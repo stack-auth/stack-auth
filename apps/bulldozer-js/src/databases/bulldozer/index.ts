@@ -864,18 +864,19 @@ function createTablesStateFromMigrations(migrations: readonly BulldozerDatabaseM
 export type BulldozerDatabase = {
   getDebugInfo(): any,
   listTables(): BulldozerDatabaseTableDescriptor[],
-  getDataIntegrityContext(snapshot: BulldozerDatabaseSnapshotSerialized): {
+  getDataIntegrityState(): {
     piledriverDatabase: PiledriverDatabase,
-    migrationIndex: number,
-    tables: Array<{
-      tableId: string,
-      table: BulldozerTableImplementation,
-      serializedTable: PiledriverObject,
-      inputTables: Record<string, BulldozerTableImplementationInputTable>,
-    }>,
+    getRoot(): Promise<{ buffer: ArrayBuffer, seq: DatabaseSeq }>,
+    getContext(snapshot: BulldozerDatabaseSnapshotSerialized): {
+      migrationIndex: number,
+      tables: Array<{
+        tableId: string,
+        table: BulldozerTableImplementation,
+        serializedTable: PiledriverObject,
+        inputTables: Record<string, BulldozerTableImplementationInputTable>,
+      }>,
+    },
   },
-  getDataIntegrityRoot(): Promise<{ buffer: ArrayBuffer, seq: DatabaseSeq }>,
-  getDataIntegrityPiledriver(): PiledriverDatabase,
   debugPiledriverSnapshot?(): Promise<PiledriverDatabaseDebugSnapshot>,
   debugLowLevelSnapshot?(): Promise<LowLevelDatabaseDebugSnapshot>,
   getSnapshot(): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
@@ -1009,23 +1010,29 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
         closePromise,
       };
     },
-    getDataIntegrityContext(snapshot: BulldozerDatabaseSnapshotSerialized) {
+    getDataIntegrityState() {
       return {
         piledriverDatabase,
-        migrationIndex: tablesState.mostRecentlyCompletedMigrationIndex,
-        tables: Object.entries(tablesState.tables).map(([tableId, tableState]) => ({
-          tableId,
-          table: tableState.table,
-          serializedTable: snapshot.serializedTables[tableId],
-          inputTables: createInputTables(tablesState.tables, id => snapshot.serializedTables[id], tableId),
-        })),
+        async getRoot() {
+          return await piledriverDatabase.getSerializedRootObject(rootKey);
+        },
+        getContext(snapshot: BulldozerDatabaseSnapshotSerialized) {
+          const tables = Object.entries(tablesState.tables).map(([tableId, tableState]) => {
+            if (!Object.prototype.hasOwnProperty.call(snapshot.serializedTables, tableId)) throw new Error(`Pinned snapshot is missing serialized table ${tableId}`);
+            const serializedTable = snapshot.serializedTables[tableId];
+            return {
+              tableId,
+              table: tableState.table,
+              serializedTable,
+              inputTables: createInputTables(tablesState.tables, id => {
+                if (!Object.prototype.hasOwnProperty.call(snapshot.serializedTables, id)) throw new Error(`Pinned snapshot is missing serialized table ${id}`);
+                return snapshot.serializedTables[id];
+              }, tableId),
+            };
+          });
+          return { migrationIndex: tablesState.mostRecentlyCompletedMigrationIndex, tables };
+        },
       };
-    },
-    async getDataIntegrityRoot() {
-      return await piledriverDatabase.getSerializedRootObject(rootKey);
-    },
-    getDataIntegrityPiledriver() {
-      return piledriverDatabase;
     },
     listTables: () => Object.entries(tablesState.tables).map(([tableId, tableState]) => ({
       tableId,

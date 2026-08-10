@@ -5,9 +5,10 @@ import type {
   BulldozerDatabaseSnapshotSerialized,
   BulldozerTableImplementation,
   BulldozerTableImplementationInputTable,
+  BulldozerTableVerificationResult,
 } from "../databases/bulldozer/index.js";
 import { canonicalGroupKeyString } from "../databases/bulldozer/index.js";
-import { isPiledriverHeapObjectSymbol, type PiledriverObject } from "../databases/piledriver/index.js";
+import { collectSerializedHeapReferences, isPiledriverHeapObjectSymbol, type PiledriverObject } from "../databases/piledriver/index.js";
 
 const CURSOR_VERSION = 2;
 const DEFAULT_STEP_COUNT = 100;
@@ -31,6 +32,7 @@ type TablePosition = {
   rowSortKeyBase64: string | null,
   rowIdentifiers: string[],
   rowIdentifierCheckSkipped: boolean,
+  groupComplete: boolean,
   genericDone: boolean,
   hookPosition: string | null,
 };
@@ -93,6 +95,7 @@ function isTablePosition(value: unknown): value is TablePosition {
     && Array.isArray(value.rowIdentifiers)
     && value.rowIdentifiers.every(item => typeof item === "string")
     && typeof value.rowIdentifierCheckSkipped === "boolean"
+    && typeof value.groupComplete === "boolean"
     && typeof value.genericDone === "boolean"
     && (value.hookPosition === null || typeof value.hookPosition === "string");
 }
@@ -149,16 +152,6 @@ function encodePosition(value: PiledriverObject): string {
 
 function decodePosition(value: string | null): PiledriverObject | null {
   return value === null ? null : parsePiledriverValue(keyBytes(value));
-}
-
-function heapReferences(value: unknown, refs: string[] = []): string[] {
-  if (Array.isArray(value)) {
-    if (value.length === 2 && value[0] === "heap-reference" && typeof value[1] === "string") refs.push(value[1]);
-    else for (const item of value) heapReferences(item, refs);
-  } else if (isRecord(value)) {
-    for (const item of Object.values(value)) heapReferences(item, refs);
-  }
-  return refs;
 }
 
 function addIssue(issues: VerificationIssue[], value: VerificationIssue): void {
@@ -247,6 +240,7 @@ function nextTablePosition(tableId: string | null): TablePosition {
     rowSortKeyBase64: null,
     rowIdentifiers: [],
     rowIdentifierCheckSkipped: false,
+    groupComplete: false,
     genericDone: false,
     hookPosition: null,
   };
@@ -269,46 +263,84 @@ async function verifyGenericTable(
   const issues: VerificationIssue[] = [];
   const skippedChecks: VerificationIssue[] = [];
   let stepsTaken = 0;
-  const previousGroup = decodePosition(position.groupKeyBase64);
-  let group: { groupKey: PiledriverObject } | undefined;
-  for await (const candidate of target.table.listGroups({
-    serializedTable: target.serializedTable,
-    inputTables: target.inputTables,
-    range: previousGroup === null ? {} : { gt: previousGroup },
-  })) {
-    group = candidate;
-    break;
-  }
-  if (group === undefined) return { issues, skippedChecks, position: nextTablePosition(null), stepsTaken, finished: true };
-  stepsTaken++;
-  if (previousGroup !== null && target.table.compareGroupKeys({
-    serializedTable: target.serializedTable,
-    inputTables: target.inputTables,
-    a: previousGroup,
-    b: group.groupKey,
-  }) >= 0) issues.push({ phase: "tables", code: "group_order", message: "Groups are not strictly increasing", context: { tableId: target.tableId } });
-  try {
-    canonicalGroupKeyString(group.groupKey);
-  } catch (error) {
-    if (error instanceof Error) {
-      issues.push({ phase: "tables", code: isHeapObject(group.groupKey) ? "heap_group_key" : "invalid_group_key", message: "A group key is not a canonical structural value", context: { tableId: target.tableId } });
-    } else {
-      throw error;
+  let groupKey = decodePosition(position.groupKeyBase64);
+  let previousSortKey = decodePosition(position.rowSortKeyBase64);
+  let seenRowIdentifiers = new Set(position.rowIdentifiers);
+  let rowIdentifierCheckSkipped = position.rowIdentifierCheckSkipped;
+  let groupComplete = position.groupComplete;
+  let lastCompletedGroup = position.groupComplete ? decodePosition(position.groupKeyBase64) : null;
+  while (true) {
+    if (groupComplete) {
+      lastCompletedGroup = groupKey;
+      groupKey = null;
+      previousSortKey = null;
+      seenRowIdentifiers = new Set();
+      rowIdentifierCheckSkipped = false;
+      groupComplete = false;
     }
-  }
-  const groupKeyBase64 = encodePosition(group.groupKey);
-  const sameGroup = position.groupKeyBase64 === groupKeyBase64;
-  let previousSortKey = sameGroup ? decodePosition(position.rowSortKeyBase64) : null;
-  const seenRowIdentifiers = new Set(sameGroup ? position.rowIdentifiers : []);
-  let rowIdentifierCheckSkipped = sameGroup && position.rowIdentifierCheckSkipped;
-  if (stepsTaken < budget) {
+    let group: { groupKey: PiledriverObject } | undefined;
+    const range = groupKey === null
+      ? (lastCompletedGroup === null ? {} : { gt: lastCompletedGroup })
+      : { gte: groupKey };
+    for await (const candidate of target.table.listGroups({
+      serializedTable: target.serializedTable,
+      inputTables: target.inputTables,
+      range,
+    })) {
+      if (groupKey === null || target.table.compareGroupKeys({
+        serializedTable: target.serializedTable,
+        inputTables: target.inputTables,
+        a: candidate.groupKey,
+        b: groupKey,
+      }) === 0) {
+        group = candidate;
+        break;
+      }
+    }
+    if (group === undefined) return {
+      issues,
+      skippedChecks,
+      position: { ...nextTablePosition(null), genericDone: true },
+      stepsTaken,
+      finished: true,
+    };
+    const groupKeyBase64 = encodePosition(group.groupKey);
+    const newGroup = position.groupKeyBase64 !== groupKeyBase64 || position.groupComplete;
+    if (newGroup) {
+      if (stepsTaken >= budget) return {
+        issues,
+        skippedChecks,
+        position: { ...position, tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: null, rowIdentifiers: [], rowIdentifierCheckSkipped: false, groupComplete: false },
+        stepsTaken,
+        finished: false,
+      };
+      stepsTaken++;
+      try {
+        canonicalGroupKeyString(group.groupKey);
+      } catch (error) {
+        if (error instanceof Error) {
+          issues.push({ phase: "tables", code: isHeapObject(group.groupKey) ? "heap_group_key" : "invalid_group_key", message: "A group key is not a canonical structural value", context: { tableId: target.tableId } });
+        } else {
+          throw error;
+        }
+      }
+      previousSortKey = null;
+      seenRowIdentifiers = new Set();
+      rowIdentifierCheckSkipped = false;
+    }
     for await (const row of target.table.listRowsInGroup({
       serializedTable: target.serializedTable,
       inputTables: target.inputTables,
       groupKey: group.groupKey,
       range: previousSortKey === null ? {} : { gt: previousSortKey },
     })) {
-      if (stepsTaken >= budget) break;
+      if (stepsTaken >= budget) return {
+        issues,
+        skippedChecks,
+        position: { ...position, tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: previousSortKey === null ? null : encodePosition(previousSortKey), rowIdentifiers: [...seenRowIdentifiers], rowIdentifierCheckSkipped, groupComplete: false },
+        stepsTaken,
+        finished: false,
+      };
       stepsTaken++;
       if (target.table.compareGroupKeys({
         serializedTable: target.serializedTable,
@@ -339,17 +371,15 @@ async function verifyGenericTable(
       }
       previousSortKey = row.rowSortKey;
     }
+    groupComplete = true;
+    if (stepsTaken >= budget) return {
+      issues,
+      skippedChecks,
+      position: { ...position, tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: null, rowIdentifiers: [], rowIdentifierCheckSkipped: false, groupComplete: true },
+      stepsTaken,
+      finished: false,
+    };
   }
-  const finishedGroup = stepsTaken < budget;
-  return {
-    issues,
-    stepsTaken,
-    position: finishedGroup
-      ? { ...nextTablePosition(target.tableId), genericDone: true }
-      : { ...position, tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: previousSortKey === null ? null : encodePosition(previousSortKey), rowIdentifiers: [...seenRowIdentifiers], rowIdentifierCheckSkipped },
-    skippedChecks,
-    finished: false,
-  };
 }
 
 export async function verifyDataIntegrity(
@@ -362,10 +392,11 @@ export async function verifyDataIntegrity(
   const errors: VerificationIssue[] = [];
   const skippedChecks: VerificationIssue[] = [];
   const tables = bulldozerDb.listTables();
+  const integrityState = bulldozerDb.getDataIntegrityState();
   let cursor: VerificationCursor;
   let rootObject: PiledriverObject;
   if (request.continue === undefined) {
-    const root = await bulldozerDb.getDataIntegrityRoot();
+    const root = await integrityState.getRoot();
     cursor = {
       version: CURSOR_VERSION,
       root: { bufferBase64: encodeBase64(new Uint8Array(root.buffer)), seq: serializeDatabaseSeq(root.seq) },
@@ -376,12 +407,12 @@ export async function verifyDataIntegrity(
       errorCount: 0,
       rootChecked: false,
     };
-    rootObject = (await bulldozerDb.getDataIntegrityPiledriver().deserializeSerializedObject(root.buffer, root.seq)).object;
+    rootObject = (await integrityState.piledriverDatabase.deserializeSerializedObject(root.buffer, root.seq)).object;
   } else {
     cursor = decodeVerificationCursor(request.continue);
     const rootBuffer = keyBytes(cursor.root.bufferBase64);
     const rootSeq = deserializeDatabaseSeq(cursor.root.seq);
-    rootObject = (await bulldozerDb.getDataIntegrityPiledriver().deserializeSerializedObject(rootBuffer, rootSeq)).object;
+    rootObject = (await integrityState.piledriverDatabase.deserializeSerializedObject(rootBuffer, rootSeq)).object;
   }
   let resolvedRootObject: PiledriverObject;
   try {
@@ -398,7 +429,7 @@ export async function verifyDataIntegrity(
   if (snapshot === null) {
     addIssue(errors, { phase: "root", code: "invalid_root_shape", message: "The pinned root is not a valid Bulldozer snapshot" });
   } else {
-    const context = bulldozerDb.getDataIntegrityContext(snapshot);
+    const context = integrityState.getContext(snapshot);
     if (!cursor.rootChecked) {
       for (const error of validateRoot(resolvedRootObject, tables, context.migrationIndex)) addIssue(errors, error);
       cursor.rootChecked = true;
@@ -406,9 +437,9 @@ export async function verifyDataIntegrity(
     let remaining = budget;
     while (remaining > 0 && cursor.phase !== "done") {
       if (cursor.phase === "root") {
-        const rootRefs = heapReferences(parsePiledriverValue(keyBytes(cursor.root.bufferBase64)));
+        const rootRefs = collectSerializedHeapReferences(parsePiledriverValue(keyBytes(cursor.root.bufferBase64)));
         for (const ref of rootRefs) {
-          const result = await context.piledriverDatabase.getSerializedHeapObject(keyBytes(ref));
+          const result = await integrityState.piledriverDatabase.getSerializedHeapObject(keyBytes(ref));
           if (result.buffer === null) addIssue(errors, { phase: "root", code: "dangling_heap_reference", message: "A pinned root heap reference is missing", context: { referencedKey: ref } });
         }
         cursor.phase = "tables";
@@ -431,12 +462,22 @@ export async function verifyDataIntegrity(
         if (!cursor.tablePosition.genericDone) {
           result = await verifyGenericTable(target, cursor.tablePosition, remaining);
         } else if (target.table.verifyDataIntegrity !== undefined) {
-          const hookResult = await target.table.verifyDataIntegrity({
-            serializedTable: target.serializedTable,
-            inputTables: target.inputTables,
-            stepCount: remaining,
-            position: cursor.tablePosition.hookPosition,
-          });
+          let hookResult: BulldozerTableVerificationResult;
+          try {
+            hookResult = await target.table.verifyDataIntegrity({
+              serializedTable: target.serializedTable,
+              inputTables: target.inputTables,
+              stepCount: remaining,
+              position: cursor.tablePosition.hookPosition,
+            });
+          } catch (error) {
+            if (!(error instanceof Error)) throw error;
+            hookResult = {
+              issues: [{ code: "invalid_table_structure", message: "A table-specific integrity checker could not read the persisted structure" }],
+              stepsTaken: Math.min(remaining, 1),
+              nextPosition: null,
+            };
+          }
           result = {
             issues: hookResult.issues.map(issue => ({ phase: "tables", ...issue })),
             skippedChecks: [],
@@ -463,7 +504,7 @@ export async function verifyDataIntegrity(
         } else cursor.tablePosition = result.position;
         continue;
       }
-      const page = await context.piledriverDatabase.iterateHeapEntries({
+      const page = await integrityState.piledriverDatabase.iterateHeapEntries({
         afterKey: cursor.afterHeapKeyBase64 === null ? undefined : keyBytes(cursor.afterHeapKeyBase64),
         limit: Math.min(HEAP_PAGE_SIZE, remaining),
       });
@@ -476,9 +517,9 @@ export async function verifyDataIntegrity(
         cursor.afterHeapKeyBase64 = entryKey;
         remaining--;
         try {
-          await context.piledriverDatabase.deserializeSerializedObject(entry.value);
-          for (const ref of heapReferences(parsePiledriverValue(entry.value))) {
-            const referenced = await context.piledriverDatabase.getSerializedHeapObject(keyBytes(ref));
+          await integrityState.piledriverDatabase.deserializeSerializedObject(entry.value);
+          for (const ref of collectSerializedHeapReferences(parsePiledriverValue(entry.value))) {
+            const referenced = await integrityState.piledriverDatabase.getSerializedHeapObject(keyBytes(ref));
             if (referenced.buffer === null) addIssue(errors, { phase: "heap-scan", code: "dangling_heap_reference", message: "A heap reference points to a missing heap entry", context: { key: entryKey, referencedKey: ref } });
           }
         } catch (error) {

@@ -97,6 +97,16 @@ function treePath(value: string | null): number[] | null {
   return parsed;
 }
 
+function isTreeRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isTreeValue(value: unknown): value is PiledriverObject {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return true;
+  if (Array.isArray(value)) return value.every(isTreeValue);
+  return isTreeRecord(value) && Object.values(value).every(isTreeValue);
+}
+
 const lowerEntryId = Symbol("lower-entry-id");
 const upperEntryId = Symbol("upper-entry-id");
 const mapEntryId = "";
@@ -202,125 +212,120 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
 
   async verifyDataIntegrity(options: { stepBudget: number, position: string | null }): Promise<PersistedTreeIntegrityResult> {
     if (!Number.isSafeInteger(options.stepBudget) || options.stepBudget <= 0) throw new Error("Invalid tree verification step budget");
-    const startPath = treePath(options.position);
-    let started = startPath === null;
-    let stepsTaken = 0;
-    const nextPaths: number[][] = [];
     const issues: PersistedTreeIntegrityIssue[] = [];
-    const maxEntries = this.arity() - 1;
-    const minEntries = this.minEntries();
-    const samePath = (path: number[]) => startPath !== null
-      && path.length === startPath.length
-      && path.every((value, index) => value === startPath[index]);
-    const startsWith = (path: number[], prefix: number[]) =>
-      path.length >= prefix.length
-      && prefix.every((value, index) => path[index] === value);
-    const compareAugmentation = (a: Augmentation, b: Augmentation, code: string) => {
-      if (!piledriverObjectEquals(a, b)) issues.push({ code, message: "Persisted tree augmentation does not match its recomputation" });
-    };
-    const walk = async (
-      child: Child<MultiKey<Key, EntryId>, Augmentation>,
-      path: number[],
-      isRoot: boolean,
-    ): Promise<{ height: number, size: number, entryCount: number, minKey: MultiKey<Key, EntryId>, maxKey: MultiKey<Key, EntryId>, augmentation: Augmentation } | null> => {
+    if (this.root === null) return { issues, stepsTaken: 0, nextPosition: null };
+    type Summary = { height: number, size: number, entryCount: number, minKey: MultiKey<Key, EntryId>, maxKey: MultiKey<Key, EntryId>, augmentation: Augmentation };
+    type Frame = { child: Child<MultiKey<Key, EntryId>, Augmentation>, node: Node<MultiKey<Key, EntryId>, Value, Augmentation>, path: number[], nextChild: number, children: Array<Summary | undefined> };
+    const stack: Frame[] = [];
+    const positionValue: unknown = options.position === null ? null : JSON.parse(options.position);
+    const savedFrames: unknown[] = positionValue === null
+      ? []
+      : isTreeRecord(positionValue) && Array.isArray(positionValue.frames)
+        ? positionValue.frames
+        : (() => { throw new Error("Invalid tree verification position"); })();
+    const loadFrame = async (child: Child<MultiKey<Key, EntryId>, Augmentation>, path: number[], saved: unknown): Promise<Frame> => {
       const node = await this.node(child.ref);
-      if (node === null) {
-        issues.push({ code: "missing_node", message: "A persisted tree child points to a missing node" });
-        return null;
+      if (node === null) throw new Error("Missing persisted tree node");
+      const savedRecord = isTreeRecord(saved) ? saved : {};
+      const nextChild = typeof savedRecord.nextChild === "number" && Number.isSafeInteger(savedRecord.nextChild)
+        ? savedRecord.nextChild
+        : 0;
+      const savedChildren = Array.isArray(savedRecord.children) && savedRecord.children.every(value => isTreeRecord(value)
+        && typeof value.height === "number"
+        && typeof value.size === "number"
+        && typeof value.entryCount === "number"
+        && isTreeValue(value.minKey)
+        && isTreeValue(value.maxKey)
+        && isTreeValue(value.augmentation))
+        ? savedRecord.children.map(value => ({
+          height: value.height,
+          size: value.size,
+          entryCount: value.entryCount,
+          minKey: value.minKey,
+          maxKey: value.maxKey,
+          augmentation: value.augmentation,
+        }))
+        : [];
+      return { child, node, path, nextChild, children: savedChildren };
+    };
+    let frame = await loadFrame(this.root, [], savedFrames[0]);
+    stack.push(frame);
+    for (let index = 1; index < savedFrames.length; index++) {
+      const saved = savedFrames[index];
+      if (!isTreeRecord(saved) || !Array.isArray(saved.path) || !saved.path.every(value => Number.isSafeInteger(value) && value >= 0)) {
+        throw new Error("Invalid tree verification position");
       }
-      const childResults: Array<{ height: number, size: number, entryCount: number, minKey: MultiKey<Key, EntryId>, maxKey: MultiKey<Key, EntryId>, augmentation: Augmentation }> = [];
-      for (let index = 0; index < node.children.length; index++) {
-        const result = await walk(node.children[index], [...path, index], false);
-        if (result !== null) childResults.push(result);
+      const parent = stack[stack.length - 1];
+      const childIndex = saved.path[saved.path.length - 1];
+      if (childIndex === undefined || childIndex >= parent.node.children.length) throw new Error("Invalid tree verification position");
+      parent.nextChild = Math.max(parent.nextChild, childIndex + 1);
+      stack.push(await loadFrame(parent.node.children[childIndex], saved.path, saved));
+    }
+    let stepsTaken = 0;
+    while (stack.length > 0) {
+      frame = stack[stack.length - 1];
+      if (frame.nextChild < frame.node.children.length) {
+        const childIndex = frame.nextChild;
+        frame.nextChild++;
+        const child = frame.node.children[childIndex];
+        stack.push(await loadFrame(child, [...frame.path, childIndex], undefined));
+        continue;
       }
-      if (startPath !== null && !startsWith(path, startPath)) {
-        return {
-          height: 1,
-          size: child.size,
-          entryCount: node.entries.length,
-          minKey: node.minKey,
-          maxKey: node.maxKey,
-          augmentation: node.augmentation,
-        };
-      }
-      if (samePath(path)) started = true;
-      if (!started) return {
-        height: 1,
-        size: child.size,
-        entryCount: node.entries.length,
-        minKey: node.minKey,
-        maxKey: node.maxKey,
-        augmentation: node.augmentation,
-      };
       if (stepsTaken >= options.stepBudget) {
-        if (nextPaths.length === 0) nextPaths.push(path);
-        const first = childResults[0];
-        return childResults.length === 0
-          ? { height: 1, size: node.entries.length, entryCount: node.entries.length, minKey: node.entries[0][0], maxKey: node.entries.at(-1)![0], augmentation: node.augmentation }
-          : { ...first, height: first.height + 1 };
+        const frames = stack.map(item => ({ path: item.path, nextChild: item.nextChild, children: item.children }));
+        return { issues, stepsTaken, nextPosition: JSON.stringify({ frames }) };
       }
       stepsTaken++;
-      if (child.entryCount !== node.entries.length) issues.push({ code: "entry_count", message: "A tree child entry count does not match its node" });
+      const node = frame.node;
+      const maxEntries = this.arity() - 1;
+      if (frame.child.entryCount !== node.entries.length) issues.push({ code: "entry_count", message: "A tree child entry count does not match its node" });
       if (node.entries.length > maxEntries) issues.push({ code: "node_arity", message: "A tree node exceeds the maximum entry count" });
-      if (!isRoot && node.entries.length < minEntries) issues.push({ code: "node_occupancy", message: "A non-root tree node has too few entries" });
-      if (node.children.length !== 0 && node.children.length !== node.entries.length + 1) {
-        issues.push({ code: "children_count", message: "A tree node must have one more child than entries" });
-      }
+      if (frame.path.length > 0 && node.entries.length < this.minEntries()) issues.push({ code: "node_occupancy", message: "A non-root tree node has too few entries" });
+      if (node.children.length > 0 && node.children.length !== node.entries.length + 1) issues.push({ code: "children_count", message: "A tree node must have one more child than entries" });
       for (let index = 1; index < node.entries.length; index++) {
         if (this.compareKeys(node.entries[index - 1][0], node.entries[index][0]) >= 0) issues.push({ code: "key_order", message: "Tree entries are not strictly ordered" });
       }
-      const childHeights = childResults.map(result => result.height);
-      if (childHeights.some(height => height !== childHeights[0])) issues.push({ code: "child_height", message: "Tree children do not have equal heights" });
+      const heights = frame.children.flatMap(child => child === undefined ? [] : [child.height]);
+      if (heights.some(height => height !== heights[0])) issues.push({ code: "child_height", message: "Tree children do not have equal heights" });
       const augmentations: Augmentation[] = [];
       let size = node.entries.length;
       let entryCount = node.entries.length;
       for (let index = 0; index < node.entries.length; index++) {
-        const grandchild = childResults[index];
-        if (index < childResults.length) {
-          augmentations.push(grandchild.augmentation);
-          size += grandchild.size;
-          entryCount += grandchild.entryCount;
-          if (this.compareKeys(grandchild.maxKey, node.entries[index][0]) >= 0) issues.push({ code: "key_boundary", message: "A child key range crosses its parent entry" });
+        const child = frame.children[index];
+        if (child !== undefined) {
+          augmentations.push(child.augmentation);
+          size += child.size;
+          entryCount += child.entryCount;
+          if (this.compareKeys(child.maxKey, node.entries[index][0]) >= 0) issues.push({ code: "key_boundary", message: "A child key range crosses its parent entry" });
         }
         const value = await this.loadValue(node.entries[index][1]);
-        const entryAugmentation = await this.options.extractAugmentation(value, node.entries[index][0].key, node.entries[index][0].id);
-        augmentations.push(entryAugmentation);
+        augmentations.push(await this.options.extractAugmentation(value, node.entries[index][0].key, node.entries[index][0].id));
       }
-      const lastChild = childResults[node.entries.length];
-      if (childResults.length > node.entries.length) {
+      const lastChild = frame.children[node.entries.length];
+      if (frame.children.length > node.entries.length && lastChild !== undefined) {
         augmentations.push(lastChild.augmentation);
         size += lastChild.size;
         entryCount += lastChild.entryCount;
-        if (this.compareKeys(node.entries.at(-1)![0], lastChild.minKey) >= 0) issues.push({ code: "key_boundary", message: "A child key range crosses its parent entry" });
+        const lastEntry = node.entries[node.entries.length - 1];
+        if (node.entries.length > 0 && this.compareKeys(node.entries[node.entries.length - 1][0], lastChild.minKey) >= 0) issues.push({ code: "key_boundary", message: "A child key range crosses its parent entry" });
       }
       const augmentation = await this.options.mergeAugmentations(...augmentations);
-      compareAugmentation(node.augmentation, augmentation, "augmentation");
+      if (!piledriverObjectEquals(node.augmentation, augmentation)) issues.push({ code: "augmentation", message: "Persisted tree augmentation does not match its recomputation" });
       if (node.size !== size) issues.push({ code: "size", message: "A tree node size does not match its contents" });
-      if (node.children.length !== childResults.length) {
-        issues.push({ code: "missing_child", message: "A tree child could not be loaded" });
-      }
-      for (let index = 0; index < childResults.length; index++) {
-        if (node.children[index].size !== childResults[index].size) {
-          issues.push({ code: "size", message: "A tree child size does not match its contents" });
-        }
-      }
-      return {
-        height: (childHeights[0] ?? 0) + 1,
+      const firstChild = frame.children.find(child => child !== undefined);
+      const finalChild = frame.children[node.entries.length];
+      const summary: Summary = {
+        height: (heights[0] ?? 0) + 1,
         size,
         entryCount,
-        minKey: childResults.length > 0 ? childResults[0].minKey : node.entries[0][0],
-        maxKey: childResults.length > node.entries.length ? lastChild.maxKey : node.entries.at(-1)![0],
+        minKey: firstChild === undefined ? node.minKey : firstChild.minKey,
+        maxKey: finalChild === undefined ? node.maxKey : finalChild.maxKey,
         augmentation,
       };
-    };
-    if (this.root !== null) {
-      const summary = await walk(this.root, [], true);
-      if (summary !== null && nextPaths.length === 0) {
-        if (this.root.size !== summary.size) issues.push({ code: "size", message: "The tree root size does not match its contents" });
-        compareAugmentation(this.root.augmentation, summary.augmentation, "augmentation");
-      }
+      stack.pop();
+      if (stack.length > 0) stack[stack.length - 1].children.push(summary);
     }
-    return { issues, stepsTaken, nextPosition: nextPaths.length === 0 ? null : JSON.stringify(nextPaths[0]) };
+    return { issues, stepsTaken, nextPosition: null };
   }
 
   static fromPiledriverObject<K extends PiledriverObject, V extends PiledriverObject, A extends PiledriverObject, I extends PiledriverObject = string>(object: PiledriverObject, options: MultiMapOptions<K, V, A, I>) {

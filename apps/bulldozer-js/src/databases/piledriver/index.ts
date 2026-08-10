@@ -77,6 +77,24 @@ export type PiledriverDatabaseOptions = {
   disableHeapReadCache?: boolean,
 };
 
+export function collectSerializedHeapReferences(jsonableObject: unknown, references: string[] = []): string[] {
+  if (Array.isArray(jsonableObject)) {
+    const tag = jsonableObject[0];
+    if (tag === "heap-reference") {
+      if (jsonableObject.length !== 2 || typeof jsonableObject[1] !== "string") throw new Error("Invalid serialized heap reference");
+      references.push(jsonableObject[1]);
+    } else if (tag === "array") {
+      if (jsonableObject.length !== 2 || !Array.isArray(jsonableObject[1])) throw new Error("Invalid serialized array");
+      for (const item of jsonableObject[1]) collectSerializedHeapReferences(item, references);
+    } else if (tag !== "NaN" && tag !== "Infinity" && tag !== "-Infinity" && tag !== "-0") {
+      throw new Error("Unknown serialized Piledriver array tag");
+    }
+  } else if (jsonableObject !== null && typeof jsonableObject === "object") {
+    for (const item of Object.values(jsonableObject)) collectSerializedHeapReferences(item, references);
+  }
+  return references;
+}
+
 // Tracks the chain of *heap objects* currently being serialized, so heap cycles fail fast with
 // a clear error instead of deadlocking on their own memoized promise. Sibling/DAG sharing is
 // fine: only true ancestors are in the path. Plain-object cycles are detected separately with a
@@ -587,6 +605,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
       }
     }
   };
+
 
   const deserializePiledriverObject = async (buffer: ArrayBuffer, enclosingSeq: DatabaseSeq): Promise<{ object: PiledriverObject, seq: DatabaseSeq }> => {
     const seqs: DatabaseSeq[] = [];
