@@ -1,21 +1,19 @@
 "use client";
 
-// The Deployments app's top level: a list of deployments (one per `hexclave
-// deploy`), each expandable into the services it deployed.
+// The Deployments app's top level: a list of deployments, one per `hexclave
+// deploy`. Opening one shows that deploy's service map.
 //
 // This inverts the previous hierarchy, where the page was a board of SERVICES
 // and each service had a "Deployments" tab listing its runs. A deploy ships
 // several services together, so "what shipped, and did all of it land?" is the
-// question the list answers first; a single service's history is now reached
-// through the deploy it was part of.
+// question the list answers first; the map is one level down.
 
 import { DesignBadge, DesignButton } from "@/components/design-components";
 import { Skeleton, Typography, cn } from "@/components/ui";
-import type { AdminDeploymentJson, AdminDeploymentRunJson, AdminProject } from "@hexclave/next";
+import type { AdminDeploymentJson, AdminProject } from "@hexclave/next";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { ArrowClockwiseIcon, CaretRightIcon, CheckCircleIcon, CircleNotchIcon, ClockIcon, CubeIcon, ProhibitIcon, RocketLaunchIcon, XCircleIcon } from "@phosphor-icons/react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { runStatusMeta } from "./panel-content";
+import { ArrowClockwiseIcon, CaretRightIcon, CheckCircleIcon, CircleNotchIcon, ClockIcon, ProhibitIcon, RocketLaunchIcon, XCircleIcon } from "@phosphor-icons/react";
+import { useCallback, useEffect, useState } from "react";
 
 type DesignBadgeColor = "blue" | "cyan" | "purple" | "green" | "orange" | "red";
 
@@ -50,110 +48,50 @@ function formatDuration(deployment: AdminDeploymentJson): string | null {
 }
 
 /**
- * One service inside a deployment. A null run means the deploy never started
- * one for it — it was planned but skipped, almost always because a service it
- * depends on failed first. Showing it as "Skipped" rather than omitting it is
- * what makes a partial deploy legible.
+ * One deployment. The whole row is the affordance for opening that deploy's
+ * service map — there is no expansion, so the row summarises the outcome
+ * (status, how many services, how long) and the map shows the detail.
  */
-function ServiceRow({ service, onOpenRun }: {
-  service: AdminDeploymentJson["services"][number],
-  onOpenRun: (run: AdminDeploymentRunJson) => void,
-}) {
-  const meta: StatusMeta = service.run === null
-    ? { label: "Skipped", color: "orange", icon: ProhibitIcon, spin: false }
-    : runStatusMeta(service.run.status);
-  const Icon = meta.icon;
-  const run = service.run;
-  return (
-    <button
-      type="button"
-      disabled={run === null}
-      onClick={() => run !== null && onOpenRun(run)}
-      className={cn(
-        "flex w-full items-center gap-3 rounded-lg border border-border/60 px-3 py-2 text-left transition-colors duration-150",
-        run === null ? "cursor-default opacity-70" : "hover:bg-muted/50",
-      )}
-    >
-      <CubeIcon className="h-4 w-4 shrink-0 text-muted-foreground" weight="fill" />
-      <span className="min-w-0 flex-1 truncate text-sm font-medium">{service.service_id}</span>
-      {run?.url != null && (
-        <span className="hidden truncate text-xs text-muted-foreground sm:block">{run.url.replace(/^https?:\/\//, "")}</span>
-      )}
-      <span className="flex shrink-0 items-center gap-1.5">
-        <Icon className={cn("h-3.5 w-3.5", meta.spin && "animate-spin")} />
-        <DesignBadge label={meta.label} color={meta.color} size="sm" />
-      </span>
-      {run !== null && <CaretRightIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-    </button>
-  );
-}
-
-function DeploymentCard({ deployment, expanded, onToggle, onOpenRun }: {
+function DeploymentCard({ deployment, onOpen }: {
   deployment: AdminDeploymentJson,
-  expanded: boolean,
-  onToggle: () => void,
-  onOpenRun: (run: AdminDeploymentRunJson) => void,
+  onOpen: () => void,
 }) {
   const meta = deploymentStatusMeta(deployment.status);
   const Icon = meta.icon;
   const duration = formatDuration(deployment);
   const serviceCount = deployment.services.length;
   return (
-    <div className="overflow-hidden rounded-xl border border-border/60">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-muted/40"
-      >
-        <CaretRightIcon className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150", expanded && "rotate-90")} />
-        <span className="shrink-0 font-mono text-sm font-semibold">#{deployment.number}</span>
-        <span className="flex shrink-0 items-center gap-1.5">
-          <Icon className={cn("h-4 w-4", meta.spin && "animate-spin")} />
-          <DesignBadge label={meta.label} color={meta.color} size="sm" />
-        </span>
-        <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-          {serviceCount} service{serviceCount === 1 ? "" : "s"}
-          {duration != null && ` · ${duration}`}
-          {` · ${deployment.triggered_by}`}
-        </span>
-        <span className="shrink-0 text-xs text-muted-foreground">{formatTime(deployment.created_at_millis)}</span>
-      </button>
-      {expanded && (
-        <div className="flex flex-col gap-1.5 border-t border-border/60 bg-muted/20 p-3">
-          {deployment.services.map((service) => (
-            <ServiceRow key={service.service_id} service={service} onOpenRun={onOpenRun} />
-          ))}
-        </div>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex w-full items-center gap-3 rounded-xl border border-border/60 px-4 py-3 text-left transition-colors duration-150 hover:bg-muted/40"
+    >
+      <span className="flex shrink-0 items-center gap-1.5">
+        <Icon className={cn("h-4 w-4", meta.spin && "animate-spin")} />
+        <DesignBadge label={meta.label} color={meta.color} size="sm" />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+        {serviceCount} service{serviceCount === 1 ? "" : "s"}
+        {duration != null && ` · ${duration}`}
+      </span>
+      <span className="shrink-0 text-xs text-muted-foreground">{formatTime(deployment.created_at_millis)}</span>
+      <CaretRightIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+    </button>
   );
 }
 
-export function DeploymentsList({ project, onOpenRun }: {
+export function DeploymentsList({ project, onOpenDeployment }: {
   project: AdminProject,
-  onOpenRun: (run: AdminDeploymentRunJson) => void,
+  onOpenDeployment: (deployment: AdminDeploymentJson) => void,
 }) {
   const [deployments, setDeployments] = useState<AdminDeploymentJson[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  // `expandedId` alone cannot distinguish "not loaded yet" from "the user
-  // collapsed everything" — both are null. Without this flag every poll would
-  // re-expand the card the user just closed.
-  const hasAutoExpanded = useRef(false);
 
   const load = useCallback(async () => {
     try {
-      const items = await project.listDeployments({ limit: 20 });
-      setDeployments(items);
+      setDeployments(await project.listDeployments({ limit: 20 }));
       setError(null);
-      // Expand the newest deployment on FIRST load only: it is what the reader
-      // came for after running `hexclave deploy`. Indexing is guarded explicitly
-      // — TS types `items[0]` as present, so `?.` would not narrow an empty list.
-      if (!hasAutoExpanded.current && items.length > 0) {
-        hasAutoExpanded.current = true;
-        setExpandedId(items[0].id);
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -229,9 +167,7 @@ export function DeploymentsList({ project, onOpenRun }: {
         <DeploymentCard
           key={deployment.id}
           deployment={deployment}
-          expanded={expandedId === deployment.id}
-          onToggle={() => setExpandedId((current) => current === deployment.id ? null : deployment.id)}
-          onOpenRun={onOpenRun}
+          onOpen={() => onOpenDeployment(deployment)}
         />
       ))}
     </div>

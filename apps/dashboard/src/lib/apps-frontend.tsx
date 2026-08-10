@@ -502,7 +502,7 @@ export const ALL_APPS_FRONTEND = {
     // `-alpha` suffix, so existing links and bookmarks keep working.
     href: "deployments",
     navigationItems: [
-      { displayName: "Services", href: "." },
+      { displayName: "Deployments", href: "." },
     ],
     screenshots: [],
     storeDescription: (

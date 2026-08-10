@@ -2198,6 +2198,10 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
       tenancyId: dummyTenancy.id,
       userEmailToId,
     }),
+    seedDummyDeployments({
+      prisma: dummyPrisma,
+      tenancyId: dummyTenancy.id,
+    }),
     seedDummySessionActivityEvents({
       tenancyId: dummyTenancy.id,
       projectId,
@@ -2622,4 +2626,177 @@ async function seedDummySessionReplays({
   }
 
   console.log(`Seeded ${targetSessionReplayCount} session replays (${shouldSeedClickhouse ? clickhouseRows.length : 0} analytics events)`);
+}
+
+// Services for the demo project's Deployments app, mirroring what a small
+// three-service `deployment` export would sync: a public serverless frontend, a
+// private serverless API, and a stateful `server` database holding the only
+// persistent volume (only a `server` may have one).
+const DUMMY_DEPLOYMENT_SERVICES = [
+  {
+    serviceId: 'web',
+    type: 'serverless',
+    visibility: 'public',
+    transport: 'http',
+    port: 3000,
+    minInstances: 0,
+    maxInstances: 3,
+    rootDirectory: './apps/web',
+    dockerfilePath: null,
+    volume: null,
+    url: 'https://demo-web.hexclave.app',
+    env: [
+      ['NEXT_PUBLIC_HEXCLAVE_PROJECT_ID', { type: 'connection', value: 'hexclave.projectId' }],
+      ['API_URL', { type: 'connection', value: 'api.internalUrl' }],
+      ['NEXT_PUBLIC_SITE_NAME', { value: 'Demo' }],
+    ],
+  },
+  {
+    serviceId: 'api',
+    type: 'serverless',
+    visibility: 'private',
+    transport: 'http',
+    port: 8080,
+    minInstances: 0,
+    maxInstances: 2,
+    rootDirectory: './apps/api',
+    dockerfilePath: 'Dockerfile',
+    volume: null,
+    url: null,
+    env: [
+      ['DATABASE_HOST', { type: 'connection', value: 'db.internalHost' }],
+      ['DATABASE_PORT', { type: 'connection', value: 'db.internalPort' }],
+      ['OPENAI_API_KEY', { type: 'secret', key: 'OPENAI_API_KEY' }],
+    ],
+  },
+  {
+    serviceId: 'db',
+    type: 'server',
+    visibility: 'private',
+    transport: 'tcp',
+    port: 5432,
+    minInstances: 0,
+    maxInstances: 1,
+    rootDirectory: './database',
+    dockerfilePath: 'Dockerfile',
+    volume: { id: 'pgdata', path: '/data', sizeGb: 10 },
+    url: null,
+    env: [['POSTGRES_PASSWORD', { type: 'secret', key: 'POSTGRES_PASSWORD' }]],
+  },
+] as const;
+
+// Deployments, newest last. Each entry is one `hexclave deploy`: the services it
+// planned, and the outcome per service. A service with no run at all was planned
+// but never started one — that is what a dependency failure looks like, and the
+// dashboard renders it as "Skipped".
+//
+// Every run is TERMINAL on purpose. The deployments list refreshes non-terminal
+// runs from Marshal on read, which a demo project has no runtime for; a seeded
+// "building" run would poll forever and log an error each time.
+//
+// No CANCELED run either: nothing in the product cancels a deploy. That status
+// only arises when a newer deploy supersedes a run mid-rollout, which is not a
+// state worth teaching a demo reader to expect.
+const DUMMY_DEPLOYMENTS = [
+  { minutesAgo: 60 * 26, runs: { db: 'READY', api: 'READY', web: 'READY' } },
+  { minutesAgo: 60 * 6, runs: { db: 'READY', api: 'ERROR', web: null } },
+  { minutesAgo: 42, runs: { db: 'READY', api: 'READY', web: 'READY' } },
+] as const;
+
+/**
+ * Seeds the Deployments app: service definitions plus a short deploy history.
+ *
+ * Without this the app renders its empty state, which shows none of the states
+ * the page exists to display — a partially failed deploy, a skipped service, a
+ * service with a persistent volume.
+ */
+async function seedDummyDeployments(options: {
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+}) {
+  const { prisma, tenancyId } = options;
+  const now = Date.now();
+  const firstDeployedAt = new Date(now - DUMMY_DEPLOYMENTS[0].minutesAgo * 60_000);
+
+  const serviceDbIdByServiceId = new Map<string, string>();
+  for (const service of DUMMY_DEPLOYMENT_SERVICES) {
+    const id = deterministicUuid(`deployment-service:${tenancyId}:${service.serviceId}`);
+    serviceDbIdByServiceId.set(service.serviceId, id);
+    const definitionColumns = {
+      definitionSyncedAt: firstDeployedAt,
+      definitionSyncId: deterministicUuid(`deployment-sync:${tenancyId}:${service.serviceId}`),
+      type: service.type,
+      visibility: service.visibility,
+      transport: service.transport,
+      port: service.port,
+      minInstances: service.minInstances,
+      maxInstances: service.maxInstances,
+      rootDirectory: service.rootDirectory,
+      dockerfilePath: service.dockerfilePath,
+      // All three volume columns move together — a partial tuple is refused by a
+      // CHECK constraint, and only a `server` may carry one at all.
+      volumeId: service.volume?.id ?? null,
+      volumePath: service.volume?.path ?? null,
+      volumeSizeGb: service.volume?.sizeGb ?? null,
+      env: service.env as unknown as Prisma.InputJsonValue,
+      provisionedAt: firstDeployedAt,
+    };
+    await prisma.deploymentService.upsert({
+      where: { tenancyId_serviceId: { tenancyId, serviceId: service.serviceId } },
+      create: { tenancyId, id, serviceId: service.serviceId, ...definitionColumns },
+      update: definitionColumns,
+    });
+  }
+
+  for (const [index, deployment] of DUMMY_DEPLOYMENTS.entries()) {
+    const deploymentId = deterministicUuid(`deployment:${tenancyId}:${index}`);
+    const createdAt = new Date(now - deployment.minutesAgo * 60_000);
+    // Deploy order is dependency order: the database first, then the API that
+    // connects to it, then the frontend that connects to the API.
+    const plannedServiceIds = ['db', 'api', 'web'];
+    const deploymentColumns = {
+      number: index + 1,
+      target: 'production',
+      triggeredBy: 'cli',
+      plannedServiceIds,
+      createdAt,
+    };
+    await prisma.deployment.upsert({
+      where: { tenancyId_id: { tenancyId, id: deploymentId } },
+      create: { tenancyId, id: deploymentId, ...deploymentColumns },
+      update: deploymentColumns,
+    });
+
+    for (const [serviceIndex, serviceId] of plannedServiceIds.entries()) {
+      const status = deployment.runs[serviceId as keyof typeof deployment.runs];
+      if (status === null) continue; // planned but never started — renders as "Skipped"
+      const runId = deterministicUuid(`deployment-run:${tenancyId}:${index}:${serviceId}`);
+      // Stagger the runs so a deployment's services read as sequential, and give
+      // the whole deploy a plausible duration.
+      const startedAt = new Date(createdAt.getTime() + serviceIndex * 40_000);
+      const service = DUMMY_DEPLOYMENT_SERVICES.find((candidate) => candidate.serviceId === serviceId) ?? throwErr(`unknown dummy service ${serviceId}`);
+      const runColumns = {
+        deploymentId,
+        marshalBuildId: null,
+        revision: createHash('sha256').update(`${deploymentId}:${serviceId}`).digest('hex').slice(0, 12),
+        serviceUrl: status === 'READY' ? service.url : null,
+        status,
+        target: 'production',
+        triggeredBy: 'cli',
+        error: status === 'ERROR' ? 'Build failed: `pnpm build` exited with code 1' : null,
+        createdAt: startedAt,
+        finishedAt: new Date(startedAt.getTime() + 35_000),
+      };
+      await prisma.deploymentRun.upsert({
+        where: { tenancyId_id: { tenancyId, id: runId } },
+        create: {
+          tenancyId,
+          id: runId,
+          deploymentServiceId: serviceDbIdByServiceId.get(serviceId) ?? throwErr(`missing dummy service row for ${serviceId}`),
+          ...runColumns,
+        },
+        update: runColumns,
+      });
+    }
+  }
 }
