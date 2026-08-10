@@ -71,6 +71,15 @@ describe("isRetryableTransactionError", () => {
     expect(isRetryableTransactionError(error)).toBe(false);
   });
 
+  it("does not retry an adapter error based on its message alone", () => {
+    const error = new Error("TransactionWriteConflict", {
+      cause: { kind: "UniqueConstraintViolation" },
+    });
+    error.name = "DriverAdapterError";
+
+    expect(isRetryableTransactionError(error)).toBe(false);
+  });
+
   it("does not retry plain errors", () => {
     expect(isRetryableTransactionError(new Error("transaction error"))).toBe(false);
   });
