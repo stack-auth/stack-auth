@@ -796,20 +796,21 @@ describe("Bulldozer", () => {
     }))).toEqual([]);
   });
 
-  it("pages identifier-ordered rows via a sort table over a stored table", async () => {
+  it("pages identifier-ordered rows via a materialized sort table over a stored table", async () => {
     let snapshot = await initializedSnapshot([[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "sorted", table: defineSortTable({
         sortKeyExtractor: (row) => row.rowIdentifier,
         sortKeyComparator: (a, b) => stringCompare(String(a), String(b)),
       }), inputTables: { input: "store" } },
+      { type: "initTable", tableId: "sortedMaterialized", table: defineMaterializeTable(), inputTables: { input: "sorted" } },
     ]]);
     snapshot = await set(snapshot, "store", "txn-a", { txnId: "txn-a" });
     snapshot = await set(snapshot, "store", "txn-b", { txnId: "txn-b" });
     snapshot = await set(snapshot, "store", "txn-c", { txnId: "txn-c" });
 
     const page1 = await collect(snapshot.listRowsInGroup({
-      tableId: "sorted",
+      tableId: "sortedMaterialized",
       groupKey: null,
       range: { limit: 2 },
     }));
@@ -817,7 +818,7 @@ describe("Bulldozer", () => {
     expect(page1.map((row) => row.rowSortKey)).toEqual(["txn-a", "txn-b"]);
 
     const page2 = await collect(snapshot.listRowsInGroup({
-      tableId: "sorted",
+      tableId: "sortedMaterialized",
       groupKey: null,
       range: { gt: "txn-b", limit: 2 },
     }));

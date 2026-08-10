@@ -1199,12 +1199,15 @@ export function createPaymentsSchema() {
     }), { input: "payments-manual-transactions" }),
   ], [
     // GroupBy and Sort intentionally retain no row payloads. These explicit read models preserve
-    // the two transaction query paths that need listRowsInGroup without materializing every index.
+    // the transaction query paths that need listRowsInGroup without materializing every index.
     table("payments-transactions-by-customer-materialized", defineMaterializeTable(), {
       input: "payments-transactions-by-customer",
     }),
     table("payments-transactions-by-tenancy-sorted-materialized", defineMaterializeTable(), {
       input: "payments-transactions-by-tenancy-sorted",
+    }),
+    table("payments-manual-transactions-sorted-materialized", defineMaterializeTable(), {
+      input: "payments-manual-transactions-sorted",
     }),
   ]];
 
@@ -1218,7 +1221,8 @@ export function createPaymentsSchema() {
     oneTimePurchases: "payments-one-time-purchases",
     manualItemQuantityChanges: "payments-manual-item-quantity-changes",
     manualTransactions: "payments-manual-transactions",
-    manualTransactionsSorted: "payments-manual-transactions-sorted",
+    manualTransactionsSorted: "payments-manual-transactions-sorted-materialized",
+    manualTransactionsSortedRaw: "payments-manual-transactions-sorted",
     subscriptionRenewalEvents: "payments-subscription-renewal-events",
     subscriptionCancelEvents: "payments-subscription-cancel-events",
     subscriptionStartEvents: "payments-subscription-start-events",
