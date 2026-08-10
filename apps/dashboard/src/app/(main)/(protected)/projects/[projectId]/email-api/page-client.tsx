@@ -6,6 +6,7 @@ import {
   DesignAlert,
   DesignButton,
   DesignCard,
+  DesignCardTint,
   DesignCategoryTabs,
   DesignEmptyState,
   DesignMetricCard,
@@ -145,13 +146,15 @@ function ApiStatsAndSources({ emails, templateNames }: {
 
 function PromptCard({ title, prompt }: { title: string, prompt: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-black/[0.06] bg-white/60 p-3 dark:border-white/[0.06] dark:bg-white/[0.03]">
-      <div className="min-w-0">
-        <div className="mb-1 text-sm font-medium">{title}</div>
-        <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">{prompt}</p>
+    <DesignCard contentClassName="p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="mb-1 text-sm font-medium">{title}</div>
+          <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">{prompt}</p>
+        </div>
+        <CopyPromptButton content={prompt} aria-label={`Copy ${title} prompt`} className="shrink-0" />
       </div>
-      <CopyPromptButton content={prompt} aria-label={`Copy ${title} prompt`} className="shrink-0" />
-    </div>
+    </DesignCard>
   );
 }
 
@@ -160,18 +163,18 @@ function ReferenceTable() {
     <DesignCard title="SendEmail reference" subtitle="Choose exactly one recipient selector and one content source" icon={FileTextIcon} glassmorphic>
       <div className="flex flex-col gap-4">
         <div className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-xl bg-blue-500/[0.06] p-3 ring-1 ring-blue-500/10">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">Exactly one recipient</div>
-            <div className="space-y-1 text-sm"><code>userIds</code> <span className="text-muted-foreground">Known users</span></div>
-            <div className="space-y-1 text-sm"><code>allUsers</code> <span className="text-muted-foreground">Every user</span></div>
-            <div className="space-y-1 text-sm"><code>emails</code> <span className="text-muted-foreground">Transactional addresses; no unsubscribe</span></div>
-          </div>
-          <div className="rounded-xl bg-purple-500/[0.06] p-3 ring-1 ring-purple-500/10">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-300">Exactly one content source</div>
-            <div className="space-y-1 text-sm"><code>html</code> <span className="text-muted-foreground">Inline markup</span></div>
-            <div className="space-y-1 text-sm"><code>templateId</code> <span className="text-muted-foreground">Email Templates app</span></div>
-            <div className="space-y-1 text-sm"><code>draftId</code> <span className="text-muted-foreground">Email Drafts app</span></div>
-          </div>
+          <DesignCardTint gradient="blue" className="p-3">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide">Exactly one recipient</div>
+            <div className="text-sm"><code>userIds</code> <span className="text-muted-foreground">Known users</span></div>
+            <div className="text-sm"><code>allUsers</code> <span className="text-muted-foreground">Every user</span></div>
+            <div className="text-sm"><code>emails</code> <span className="text-muted-foreground">Transactional addresses; no unsubscribe</span></div>
+          </DesignCardTint>
+          <DesignCardTint gradient="purple" className="p-3">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide">Exactly one content source</div>
+            <div className="text-sm"><code>html</code> <span className="text-muted-foreground">Inline markup</span></div>
+            <div className="text-sm"><code>templateId</code> <span className="text-muted-foreground">Email Templates app</span></div>
+            <div className="text-sm"><code>draftId</code> <span className="text-muted-foreground">Email Drafts app</span></div>
+          </DesignCardTint>
         </div>
         <DesignTable>
           <DesignTableHeader><DesignTableRow><DesignTableHead>Optional field</DesignTableHead><DesignTableHead>Meaning</DesignTableHead></DesignTableRow></DesignTableHeader>
@@ -183,11 +186,11 @@ function ReferenceTable() {
             <DesignTableRow><DesignTableCell><code>scheduledAt</code></DesignTableCell><DesignTableCell>Queue the send for a future date.</DesignTableCell></DesignTableRow>
           </DesignTableBody>
         </DesignTable>
-        <div className="rounded-xl bg-foreground/[0.03] p-3 text-sm">
+        <DesignCard gradient="default" contentClassName="p-3 text-sm">
           <div className="font-medium">REST endpoint</div>
           <code className="text-xs">POST https://api.hexclave.com/api/v1/emails/send-email</code>
           <p className="mt-2 text-xs text-muted-foreground">Required headers: <code>X-Stack-Access-Type: server</code>, <code>X-Stack-Project-Id</code>, and <code>X-Stack-Secret-Server-Key</code>.</p>
-        </div>
+        </DesignCard>
       </div>
     </DesignCard>
   );
@@ -213,15 +216,17 @@ function TemplatesCard({ templates, templatesHref }: {
           <DesignButton asChild size="sm" variant="outline"><a href={templatesHref}>Create a template</a></DesignButton>
         </DesignEmptyState>
       ) : (
-        <div className="divide-y divide-black/[0.06] dark:divide-white/[0.06]">
+        <div className="flex flex-col gap-2">
           {templates.map((template) => (
-            <div key={template.id} className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
-              <span className="truncate text-sm">{template.displayName}</span>
-              <div className="flex min-w-0 items-center gap-1">
-                <code className="truncate text-xs text-muted-foreground">{template.id}</code>
-                <CopyButton content={template.id} variant="ghost" />
+            <DesignCard key={template.id} gradient="default" contentClassName="p-3">
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <span className="truncate text-sm">{template.displayName}</span>
+                <div className="flex min-w-0 shrink-0 items-center gap-1">
+                  <code className="max-w-[min(24rem,50vw)] truncate text-xs text-muted-foreground">{template.id}</code>
+                  <CopyButton content={template.id} variant="ghost" />
+                </div>
               </div>
-            </div>
+            </DesignCard>
           ))}
         </div>
       )}
