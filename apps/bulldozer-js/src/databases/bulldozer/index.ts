@@ -1358,7 +1358,10 @@ export function defineStoredTable(options: {
   const emptyMap = new AugmentedTreeMap(mapOptions);
 
   // Stored tables are keyed by string rowIdentifier (unlike derived tables, whose
-  // ranges apply to rowSortKey). Reject non-string bounds
+  // ranges apply to rowSortKey). Used for identifier keyset pagination (manual-txn export).
+  // Note: this means null sort-key pushdown from identity/flatMap (gte/lte: null) throws
+  // instead of scanning — no current payments caller pages that way; reject changing the
+  // generic contract further without a dedicated sorted view + migration.
   const stringRowIdentifierBound = (value: PiledriverObject | undefined, boundName: string): string | undefined => {
     if (value === undefined) return undefined;
     if (typeof value !== "string") {

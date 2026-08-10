@@ -55,6 +55,48 @@ describe("LMDB low-level database", () => {
       const store2 = db2.declareKvStore("root");
       expect(text((await store2.get(buffer("big"))).buffer)).toBe(large);
       await db2.close();
+
+      // Raw open without compression: stored payload must be smaller than plaintext
+      // (otherwise the `compression: true` option was a no-op).
+      const rawRoot = lmdb.open({ path, compression: false });
+      try {
+        const rawDb = rawRoot.openDB({ name: "compress:store:root", encoding: "binary" });
+        const rawValue = rawDb.get(Buffer.from("big"));
+        expect(rawValue).toBeTruthy();
+        expect(Buffer.byteLength(rawValue as Buffer)).toBeLessThan(large.length);
+      } finally {
+        rawRoot.close();
+      }
+    } finally {
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
+  it("fails to read compressed values when reopened without compression (sticky)", async () => {
+    const path = await tempLmdbPath();
+    try {
+      const db1 = declareLmdbLowLevelDatabase({ path, dbId: "sticky", compression: true });
+      const store1 = db1.declareKvStore("root");
+      const large = "y".repeat(2_000);
+      const { seq } = await store1.setAll([{ key: buffer("big"), value: buffer(large) }]);
+      await db1.waitUntilDurable(seq);
+      await db1.close();
+
+      const db2 = declareLmdbLowLevelDatabase({ path, dbId: "sticky", compression: false });
+      try {
+        const store2 = db2.declareKvStore("root");
+        // Must not silently round-trip the plaintext after compression was enabled.
+        let decoded: string | null = null;
+        let threw = false;
+        try {
+          decoded = text((await store2.get(buffer("big"))).buffer);
+        } catch {
+          threw = true;
+        }
+        expect(threw || decoded !== large).toBe(true);
+      } finally {
+        await db2.close();
+      }
     } finally {
       await rm(path, { recursive: true, force: true });
     }
