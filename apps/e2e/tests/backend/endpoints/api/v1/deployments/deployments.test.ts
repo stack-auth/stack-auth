@@ -768,7 +768,7 @@ describe("deploys against the Marshal runtime", () => {
     expect(JSON.stringify(response.body)).toContain("doesn't exist");
   });
 
-  it("resolves internalUrl connections between services deterministically", { timeout: 120_000 }, async ({ expect }) => {
+  it("resolves internalUrl connections between services deterministically, named or not", { timeout: 120_000 }, async ({ expect }) => {
     await Project.createAndSwitch();
     const apiServiceId = uniqueServiceId("api");
     const webServiceId = uniqueServiceId("web");
@@ -792,6 +792,41 @@ describe("deploys against the Marshal runtime", () => {
     // private network — which is what lets a service expose more than one — so
     // there is no single well-known port to leave implicit.
     expect(webApp.machines[0].env.API_URL).toBe(`http://${apiApp.name}.flycast:8080`);
+
+    // A multi-port target has to be named explicitly: a bare internalUrl() is
+    // ambiguous and rejected, while `:9090` resolves to that port.
+    const multiServiceId = uniqueServiceId("multi");
+    const consumerId = uniqueServiceId("consumer");
+    const ambiguous = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: {
+        services: {
+          [multiServiceId]: { type: "serverless", ports: [{ port: 8080 }, { port: 9090 }], env: {} },
+          [consumerId]: { type: "serverless", ports: [{ port: 3000 }], env: { API: { type: "connection", value: `${multiServiceId}.internalUrl` } } },
+        },
+      },
+    });
+    expect(ambiguous.status).toBe(200);
+    const consumerUpload = await createUpload();
+    const ambiguousDeploy = await niceBackendFetch(`/api/v1/deployments/services/${consumerId}/deploy`, {
+      method: "POST",
+      accessType: "admin",
+      body: { upload_id: consumerUpload.uploadId, definition_sync_id: (ambiguous.body as any).sync_id },
+    });
+    expect(ambiguousDeploy.status).toBe(400);
+    expect(JSON.stringify(ambiguousDeploy.body)).toContain("exactly one HTTP port");
+
+    const namedSync = await syncServices({
+      [multiServiceId]: { type: "serverless", ports: [{ port: 8080 }, { port: 9090 }], env: {} },
+      [consumerId]: { type: "serverless", ports: [{ port: 3000 }], env: { API: { type: "connection", value: `${multiServiceId}.internalUrl:9090` } } },
+    });
+    const namedUpload = await createUpload();
+    // Note the target is never deployed: naming the port makes the URL fully
+    // determined, so it resolves on deploy ORDER alone, like internalHost.
+    await pollRunToStatus(await startDeploy(consumerId, namedUpload.uploadId, namedSync), "ready");
+    const consumerApp = await findMockApp(consumerId);
+    expect(consumerApp.machines[0].env.API).toMatch(/^http:\/\/hxc-.+\.flycast:9090$/);
   });
 
   it("fails the run when the container build fails", { timeout: 120_000 }, async ({ expect }) => {

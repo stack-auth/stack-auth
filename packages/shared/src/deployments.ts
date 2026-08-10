@@ -21,7 +21,11 @@ export const DEPLOYMENT_ENV_VAR_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
 // `{serviceId.outputKey}` interpolation syntax inside plain values: with
 // interpolation, a literal value that happens to contain `{...}` would be
 // misinterpreted as a reference, so plain values must stay entirely literal.
-export const DEPLOYMENT_CONNECTION_VALUE_REGEX = /^[a-zA-Z0-9_-]+\.[A-Za-z0-9_]+$/;
+// The optional `:<port>` suffix belongs to `internalUrl`, which names the port
+// it wants: `api.internalUrl:9090`. It is part of the reference rather than a
+// separate field because references are single opaque strings everywhere they
+// travel — config file, stored definition, and the runtime's own env refs.
+export const DEPLOYMENT_CONNECTION_VALUE_REGEX = /^[a-zA-Z0-9_-]+\.[A-Za-z0-9_]+(?::[0-9]{1,5})?$/;
 
 /**
  * The managed Hexclave service's slot on the deployments board. A service in
@@ -42,15 +46,39 @@ export const HEXCLAVE_OUTPUT_KEYS = ["projectId", "apiUrl", "jwksUrl", "publisha
 // port; private services expose it only once a custom domain verifies.
 // `internalUrl`/`internalHost` are the private-network address (deterministic
 // from the service's identity, so they never block a deploy) and are the normal
-// way services talk to each other. `internalPort` is the Flycast-facing port,
-// which is the declared port number.
+// way services talk to each other.
 //
-// `internalUrl` and `internalPort` name ONE port, so they resolve only when the
-// service leaves no doubt about which: `internalPort` needs a single declared
-// port, `internalUrl` a single HTTP one. A service with several is not an error
-// in itself — referencing its port ambiguously is, and the CLI says which ports
-// it found.
-export const SERVICE_OUTPUT_KEYS = ["url", "internalUrl", "internalHost", "internalPort"] as const;
+// A URL names ONE port, so `internalUrl` is written as a call: `internalUrl()`
+// when a single HTTP port makes it unambiguous, `internalUrl(9090)` to pick one
+// when the service declares several. There is deliberately no `internalPort`
+// output — its value is a bare number the author already wrote in the target's
+// `ports`, so a plain `"5433"` says the same thing without a second way to
+// spell it. Pair `internalHost` with a literal port for raw TCP clients.
+export const SERVICE_OUTPUT_KEYS = ["url", "internalUrl", "internalHost"] as const;
+
+/**
+ * Splits a connection reference into its parts. One parser so the CLI, the
+ * backend and the runtime cannot disagree about what `api.internalUrl:9090`
+ * means. Returns null when the value is not a reference at all.
+ */
+export function parseConnectionValue(value: string): { serviceId: string, outputKey: string, port: number | null } | null {
+  if (!DEPLOYMENT_CONNECTION_VALUE_REGEX.test(value)) return null;
+  const colonIndex = value.lastIndexOf(":");
+  const port = colonIndex === -1 ? null : Number(value.slice(colonIndex + 1));
+  const withoutPort = colonIndex === -1 ? value : value.slice(0, colonIndex);
+  // The regex allows a dot on neither side of the separator, so this is unambiguous.
+  const dotIndex = withoutPort.indexOf(".");
+  return {
+    serviceId: withoutPort.slice(0, dotIndex),
+    outputKey: withoutPort.slice(dotIndex + 1),
+    port,
+  };
+}
+
+/** Formats a connection reference. The inverse of parseConnectionValue. */
+export function formatConnectionValue(serviceId: string, outputKey: string, port: number | null = null): string {
+  return port === null ? `${serviceId}.${outputKey}` : `${serviceId}.${outputKey}:${port}`;
+}
 
 export type HexclaveOutputKey = typeof HEXCLAVE_OUTPUT_KEYS[number];
 export type ServiceOutputKey = typeof SERVICE_OUTPUT_KEYS[number];
@@ -170,16 +198,11 @@ export function deploymentServiceIsPublic(ports: DeploymentPortDefinition[]): bo
 }
 
 /**
- * The port `internalPort` refers to, or null when the service declares several
- * and the reference would be ambiguous. Callers phrase their own error (the CLI
- * wants a config-file diagnostic, the backend an HTTP status), which is why this
- * returns null rather than throwing.
+ * The port a bare `internalUrl()` refers to, or null when the service leaves it
+ * ambiguous (several HTTP ports) or impossible (none). Callers phrase their own
+ * error — the CLI wants a config-file diagnostic, the backend an HTTP status —
+ * which is why this returns null rather than throwing.
  */
-export function soleDeploymentPort(ports: DeploymentPortDefinition[]): number | null {
-  return ports.length === 1 ? ports[0].port : null;
-}
-
-/** As above, for `internalUrl`: only HTTP ports can carry one. */
 export function soleHttpDeploymentPort(ports: DeploymentPortDefinition[]): number | null {
   const httpPorts = ports.filter((entry) => portTransport(entry) === "http");
   return httpPorts.length === 1 ? httpPorts[0].port : null;
@@ -417,13 +440,28 @@ import.meta.vitest?.test("port helpers agree with what the schema allows", ({ ex
   expect(publicDeploymentPort(mixed)?.port).toBe(3000);
   expect(deploymentServiceIsPublic([{ port: 3000 }])).toBe(false);
   // Ambiguous references resolve to null so each layer can phrase its own error.
-  expect(soleDeploymentPort([{ port: 3000 }])).toBe(3000);
-  expect(soleDeploymentPort(mixed)).toBe(null);
   // internalUrl only counts HTTP ports, so the TCP sibling does not make it ambiguous.
   expect(soleHttpDeploymentPort(mixed)).toBe(3000);
   expect(soleHttpDeploymentPort([{ port: 3000 }, { port: 4000 }])).toBe(null);
   expect(portTransport({ port: 1 })).toBe("http");
   expect(portTransport({ port: 1, transport: "tcp" })).toBe("tcp");
+});
+
+import.meta.vitest?.test("connection references round-trip, with and without a port", ({ expect }) => {
+  expect(parseConnectionValue("api.internalUrl")).toEqual({ serviceId: "api", outputKey: "internalUrl", port: null });
+  expect(parseConnectionValue("api.internalUrl:9090")).toEqual({ serviceId: "api", outputKey: "internalUrl", port: 9090 });
+  // Service ids may contain hyphens; output keys may not contain dots or colons.
+  expect(parseConnectionValue("my-api.internalHost")).toEqual({ serviceId: "my-api", outputKey: "internalHost", port: null });
+  expect(parseConnectionValue("hexclave.projectId")).toEqual({ serviceId: "hexclave", outputKey: "projectId", port: null });
+  expect(parseConnectionValue("api")).toBe(null);
+  expect(parseConnectionValue("api.internalUrl:")).toBe(null);
+  expect(parseConnectionValue("api.internalUrl:123456")).toBe(null);
+  expect(formatConnectionValue("api", "internalUrl")).toBe("api.internalUrl");
+  expect(formatConnectionValue("api", "internalUrl", 9090)).toBe("api.internalUrl:9090");
+  for (const value of ["api.internalUrl", "api.internalUrl:9090", "hexclave.projectId"]) {
+    const parsed = parseConnectionValue(value)!;
+    expect(formatConnectionValue(parsed.serviceId, parsed.outputKey, parsed.port)).toBe(value);
+  }
 });
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts a persistent volume on a server service", async ({ expect }) => {

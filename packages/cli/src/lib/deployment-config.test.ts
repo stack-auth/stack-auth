@@ -33,7 +33,7 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
         dockerfilePath: "./docker/Dockerfile.web",
         env: {
           DB_URL: (service("database") as any).url,
-          DB_INTERNAL: (service("database") as any).internalUrl,
+          DB_INTERNAL: (service("database") as any).internalUrl(),
           OPENAI: isDev ? null : secret("OPENAI_API_KEY", "some-default"),
           REQUIRED_SECRET: secret("REQUIRED"),
           PROJECT_ID: (hexclave as any).projectId,
@@ -101,22 +101,37 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
   });
 
   it("rejects connections whose target ports cannot satisfy them", () => {
-    const evaluateEnv = (target: unknown, output: string) => () => evaluate(({ service }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { X: (service("api") as any)[output] } },
-      api: target,
-    }));
+    const evaluateEnv = (target: unknown, read: (service: (id: string) => any) => unknown) => () =>
+      evaluate(({ service }: ServicesFunctionContext) => ({
+        web: { type: "serverless", ports: [{ port: 3000 }], env: { X: read(service as any) } },
+        api: target,
+      }));
+    const tcpOnly = { type: "server", ports: [{ port: 5432, transport: "tcp" }] };
+    const twoHttp = { type: "serverless", ports: [{ port: 8080 }, { port: 9090 }] };
+    const httpAndTcp = { type: "serverless", ports: [{ port: 8080 }, { port: 5432, transport: "tcp" }] };
+
     // `url` needs something HTTP to serve. A PRIVATE http service is fine —
     // its URL arrives with a verified custom domain.
-    expect(evaluateEnv({ type: "server", ports: [{ port: 5432, transport: "tcp" }] }, "url")).toThrow("only TCP ports");
-    expect(evaluateEnv({ type: "serverless", ports: [{ port: 8080 }] }, "url")).not.toThrow();
-    // `internalUrl` names one HTTP port.
-    expect(evaluateEnv({ type: "server", ports: [{ port: 5432, transport: "tcp" }] }, "internalUrl")).toThrow("declares no HTTP port");
-    expect(evaluateEnv({ type: "serverless", ports: [{ port: 8080 }, { port: 9090 }] }, "internalUrl")).toThrow("ambiguous");
-    // `internalPort` names one port, of any protocol.
-    expect(evaluateEnv({ type: "serverless", ports: [{ port: 8080 }, { port: 9090 }] }, "internalPort")).toThrow("ambiguous");
-    // Unambiguous targets still resolve.
-    expect(evaluateEnv({ type: "serverless", ports: [{ port: 8080, public: true }] }, "url")).not.toThrow();
-    expect(evaluateEnv({ type: "serverless", ports: [{ port: 8080 }, { port: 5432, transport: "tcp" }] }, "internalUrl")).not.toThrow();
+    expect(evaluateEnv(tcpOnly, (service) => service("api").url)).toThrow("only TCP ports");
+    expect(evaluateEnv({ type: "serverless", ports: [{ port: 8080 }] }, (service) => service("api").url)).not.toThrow();
+
+    // A bare internalUrl() needs exactly one HTTP port to be unambiguous.
+    expect(evaluateEnv(tcpOnly, (service) => service("api").internalUrl())).toThrow("declares no HTTP port");
+    expect(evaluateEnv(twoHttp, (service) => service("api").internalUrl())).toThrow("ambiguous");
+    // Naming the port resolves it.
+    expect(evaluateEnv(twoHttp, (service) => service("api").internalUrl(9090))).not.toThrow();
+    // A TCP sibling does not make the single HTTP port ambiguous.
+    expect(evaluateEnv(httpAndTcp, (service) => service("api").internalUrl())).not.toThrow();
+
+    // A named port must exist on the target and speak HTTP.
+    expect(evaluateEnv(twoHttp, (service) => service("api").internalUrl(1234))).toThrow("does not declare that port");
+    expect(evaluateEnv(httpAndTcp, (service) => service("api").internalUrl(5432))).toThrow("that port is TCP");
+    expect(evaluateEnv(twoHttp, (service) => service("api").internalUrl("8080"))).toThrow("takes a port number");
+
+    // `internalPort` is gone: a bare number needs no reference.
+    expect(evaluateEnv(twoHttp, (service) => service("api").internalPort)).toThrow('has no output named "internalPort"');
+    // Forgetting the call is the likely mistake, so it gets its own message.
+    expect(evaluateEnv(twoHttp, (service) => service("api").internalUrl)).toThrow("without calling it");
   });
 
   it("rejects service() references to undefined services", () => {
@@ -128,7 +143,7 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
 
   it("rejects URL outputs from TCP services and exposes host and port instead", () => {
     expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { DATABASE_URL: (service("database") as any).internalUrl } },
+      web: { type: "serverless", ports: [{ port: 3000 }], env: { DATABASE_URL: (service("database") as any).internalUrl() } },
       database: { type: "serverless", ports: [{ port: 5432, transport: "tcp" }] },
     }))).toThrow("internalHost with an explicit port");
 
@@ -138,14 +153,16 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
         ports: [{ port: 3000 }],
         env: {
           DATABASE_HOST: (service("database") as any).internalHost,
-          DATABASE_PORT: (service("database") as any).internalPort,
+          // The port is a literal: the author already wrote 5432 on the target,
+          // and a bare number needs no reference to be correct.
+          DATABASE_PORT: "5432",
         },
       },
       database: { type: "serverless", ports: [{ port: 5432, transport: "tcp" }] },
     }));
     expect(services.get("web")?.definition.env).toMatchObject({
       DATABASE_HOST: { type: "connection", value: "database.internalHost" },
-      DATABASE_PORT: { type: "connection", value: "database.internalPort" },
+      DATABASE_PORT: { value: "5432" },
     });
   });
 
@@ -153,7 +170,7 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
       web: { type: "serverless", ports: [{ port: 3000 }], env: { X: (service("db") as any).ur } },
       db: { type: "serverless", ports: [{ port: 3000 }] },
-    }))).toThrow('service("db") has no output named "ur". Available outputs: url, internalUrl, internalHost, internalPort.');
+    }))).toThrow('service("db") has no output named "ur". Available outputs: url, internalUrl, internalHost.');
   });
 
   it("rejects string interpolation of references", () => {
@@ -191,7 +208,7 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     }))).toThrow("cannot exist before the service does");
     // The internal address is deterministic, so a service may reference its own.
     const { services } = evaluate(({ service }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { SELF: (service("web") as any).internalUrl } },
+      web: { type: "serverless", ports: [{ port: 3000 }], env: { SELF: (service("web") as any).internalUrl() } },
     }));
     expect(services.get("web")?.definition.env.SELF).toEqual({ type: "connection", value: "web.internalUrl" });
   });
@@ -532,7 +549,7 @@ describe("computeDeploymentLevels", () => {
     // A self `internalUrl` is deterministic (see evaluateDeploymentConfig), so it must not
     // create a self-edge that computeDeploymentLevels would report as a false cycle.
     const services = build(({ service }) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { SELF: (service("web") as any).internalUrl } },
+      web: { type: "serverless", ports: [{ port: 3000 }], env: { SELF: (service("web") as any).internalUrl() } },
     }));
     expect(computeDeploymentLevels(services)).toEqual([["web"]]);
   });

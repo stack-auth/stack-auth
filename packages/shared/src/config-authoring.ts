@@ -65,12 +65,23 @@ export type HexclaveDeploymentReference = { readonly [hexclaveDeploymentReferenc
 export type HexclaveServiceOutputs = {
   /** The public URL. Only resolves once the service has a public port or a custom domain verifies. */
   url: HexclaveDeploymentReference,
-  /** The private-network URL, including the port. Needs exactly one HTTP port to be unambiguous. */
-  internalUrl: HexclaveDeploymentReference,
-  /** The private-network host. Always available — pair it with an explicit port for a multi-port service. */
+  /**
+   * The private-network URL, including the port — a URL names ONE port, which is
+   * why this is a call rather than a value.
+   *
+   * `internalUrl()` requires the target to declare exactly one HTTP port.
+   * `internalUrl(9090)` names one when it declares several; the port must exist
+   * on the target and speak HTTP.
+   */
+  internalUrl: (port?: number) => HexclaveDeploymentReference,
+  /**
+   * The private-network host, without a port. Always available.
+   *
+   * There is deliberately no `internalPort`: its value is a number you already
+   * wrote in the target's `ports`, so pair this with a literal (e.g.
+   * `DATABASE_PORT: "5432"`) for raw TCP clients.
+   */
   internalHost: HexclaveDeploymentReference,
-  /** The private-network port. Needs the service to declare exactly one port. */
-  internalPort: HexclaveDeploymentReference,
 };
 
 /** The context object passed to the `services` function. */
@@ -126,9 +137,9 @@ type HexclaveServiceBase = {
    * exactly when one of these is.
    *
    * Each port is reachable on the private network at its own number; the public
-   * one is additionally served on 80/443. Note that `internalUrl` and
-   * `internalPort` name a single port, so declaring several makes those
-   * references ambiguous — use `internalHost` with an explicit port instead.
+   * one is additionally served on 80/443. Note that a URL names a single port,
+   * so a service with several needs `internalUrl(9090)` rather than a bare
+   * `internalUrl()`.
    */
   ports: HexclavePort[],
   /** Source directory, relative to the config file. Defaults to the config file's own directory. */

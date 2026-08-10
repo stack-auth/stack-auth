@@ -2661,7 +2661,7 @@ const DUMMY_DEPLOYMENT_SERVICES = [
     url: null,
     env: [
       ['DATABASE_HOST', { type: 'connection', value: 'db.internalHost' }],
-      ['DATABASE_PORT', { type: 'connection', value: 'db.internalPort' }],
+      ['DATABASE_PORT', { value: '5432' }],
       ['OPENAI_API_KEY', { type: 'secret', key: 'OPENAI_API_KEY' }],
     ],
   },

@@ -12,7 +12,7 @@
 //         maxInstances: 3,
 //         devCommand: "pnpm dev",
 //         env: {
-//           DB_URL: service("database").internalUrl,
+//           DB_URL: service("database").internalUrl(),
 //           OPENAI: isDev ? null : secret("OPENAI_API_KEY", "some-default"),
 //           PROJECT_ID: hexclave.projectId,
 //         },
@@ -51,9 +51,9 @@ import {
   MAX_VOLUME_SIZE_GB,
   MIN_VOLUME_SIZE_GB,
   SERVICE_OUTPUT_KEYS,
-  deploymentServiceIsPublic,
+  formatConnectionValue,
+  parseConnectionValue,
   portTransport,
-  soleDeploymentPort,
   soleHttpDeploymentPort,
   type DeploymentEnvVarDefinition,
   type DeploymentPortDefinition,
@@ -73,6 +73,9 @@ const SERVICE_ID_MAX_LENGTH = 63;
 
 const SECRET_REF_MARKER = Symbol("hexclave-secret-ref");
 const CONNECTION_REF_MARKER = Symbol("hexclave-connection-ref");
+// Marks the `internalUrl` FUNCTION itself (not the ref it returns), so assigning
+// it without calling can be reported as the missing call it is.
+const UNCALLED_OUTPUT_MARKER = Symbol("hexclave-uncalled-output");
 
 type SecretRef = {
   [SECRET_REF_MARKER]: true,
@@ -188,11 +191,29 @@ function createServicesContext(mode: "deploy" | "dev"): { context: ServicesFunct
       // evaluateDeploymentConfig wraps that crash with a hint.
       return null;
     }
-    return createOutputsProxy(`service(${JSON.stringify(serviceId)})`, SERVICE_OUTPUT_KEYS, (outputKey) => preventStringCoercion({
+    const subject = `service(${JSON.stringify(serviceId)})`;
+    const connectionRef = (outputKey: string, port: number | null, description: string) => preventStringCoercion({
       [CONNECTION_REF_MARKER]: true,
-      reference: `${serviceId}.${outputKey}`,
+      reference: formatConnectionValue(serviceId, outputKey, port),
       hexclaveOutputKey: undefined,
-    } satisfies ConnectionRef, `service(${JSON.stringify(serviceId)}).${outputKey}`));
+    } satisfies ConnectionRef, description);
+    return createOutputsProxy(subject, SERVICE_OUTPUT_KEYS, (outputKey) => {
+      // A URL names exactly one port, so `internalUrl` is a CALL rather than a
+      // property: `internalUrl()` when a single HTTP port makes it unambiguous,
+      // `internalUrl(9090)` to pick one otherwise. Everything else is a value.
+      if (outputKey !== "internalUrl") return connectionRef(outputKey, null, `${subject}.${outputKey}`);
+      const internalUrl = (port?: unknown): unknown => {
+        if (port !== undefined && (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535)) {
+          throw new CliError(`${subject}.internalUrl() takes a port number between 1 and 65535 (got ${JSON.stringify(port)}).`);
+        }
+        return connectionRef("internalUrl", port ?? null, `${subject}.internalUrl(${port ?? ""})`);
+      };
+      // Coercing the FUNCTION is the mistake to catch here — forgetting the
+      // call, as in `DB: service("db").internalUrl`, would otherwise serialize
+      // as "[object Function]" or throw somewhere far from the cause.
+      Object.defineProperty(internalUrl, UNCALLED_OUTPUT_MARKER, { value: `${subject}.internalUrl` });
+      return preventStringCoercion(internalUrl, `${subject}.internalUrl (call it: \`${subject}.internalUrl()\`)`);
+    });
   };
 
   // hexclave.* returns connection refs in BOTH modes: at deploy time the
@@ -419,6 +440,11 @@ function evaluateEnvRecord(serviceId: string, envRaw: unknown): Record<string, E
       env.set(envVarKey, { kind: "secret", secretKey: value.secretKey, defaultValue: value.defaultValue });
     } else if (isConnectionRef(value)) {
       env.set(envVarKey, { kind: "connection", reference: value.reference, hexclaveOutputKey: value.hexclaveOutputKey });
+    } else if (typeof value === "function" && UNCALLED_OUTPUT_MARKER in value) {
+      // `internalUrl` is a call, so the bare property is a function. Say so
+      // rather than reporting an unhelpful "got function".
+      const call = (value as Record<symbol, string>)[UNCALLED_OUTPUT_MARKER];
+      throw new CliError(`deployment.services.${serviceId}.env.${envVarKey} is ${call} without calling it. A URL names one port — write \`${call}()\` when the service has a single HTTP port, or \`${call}(9090)\` to pick one.`);
     } else if (typeof value === "object" && (SERVICE_OUTPUT_KEYS as readonly string[]).some((outputKey) => outputKey in (value as object))) {
       // The whole outputs object was assigned instead of one of its outputs.
       throw new CliError(`deployment.services.${serviceId}.env.${envVarKey} is a service returned by service() — pick one of its outputs instead (e.g. service("...").url).`);
@@ -662,13 +688,15 @@ export function evaluateDeploymentConfig(options: {
   // anything. The backend enforces this too, but config evaluation can name
   // both services and the correct replacement immediately.
   //
-  // `internalUrl` and `internalPort` each name ONE port, so a service with
-  // several only breaks the reference, not itself — which is why this is
-  // checked here, against the referrer, rather than when the target is parsed.
+  // `internalUrl` names ONE port, so a service with several only breaks the
+  // reference, not itself — which is why this is checked here, against the
+  // referrer, rather than when the target is parsed.
   for (const [serviceId, service] of services) {
     for (const [envVarKey, value] of Object.entries(service.env)) {
       if (value.kind !== "connection") continue;
-      const [targetServiceId, outputKey] = value.reference.split(".");
+      const parsed = parseConnectionValue(value.reference);
+      if (parsed === null) throw new CliError(`Internal error: ${JSON.stringify(value.reference)} is not a valid connection reference.`);
+      const { serviceId: targetServiceId, outputKey, port: namedPort } = parsed;
       if (targetServiceId === HEXCLAVE_SERVICE_ID) continue;
       const target = services.get(targetServiceId);
       if (target == null) throw new CliError(`Internal error: validated service reference ${JSON.stringify(value.reference)} has no target definition.`);
@@ -680,17 +708,34 @@ export function evaluateDeploymentConfig(options: {
       // still gets one once a custom domain verifies. What it does require is
       // something HTTP to serve — a URL to a service that only speaks raw TCP
       // could never resolve.
+      // `url` deliberately does NOT require a public port: a private service
+      // still gets one once a custom domain verifies. What it does require is
+      // something HTTP to serve — a URL to a service that only speaks raw TCP
+      // could never resolve.
       if (outputKey === "url" && targetPorts.every((entry) => portTransport(entry) === "tcp")) {
         throw new CliError(`${at} requests ${JSON.stringify(value.reference)}, but ${JSON.stringify(targetServiceId)} declares only TCP ports, so it can never have a URL. Use service(${JSON.stringify(targetServiceId)}).internalHost with an explicit port instead. Its ports: ${describePorts()}.`);
       }
-      if (outputKey === "internalUrl" && soleHttpDeploymentPort(targetPorts) === null) {
-        const httpPorts = targetPorts.filter((entry) => portTransport(entry) === "http");
-        throw new CliError(httpPorts.length === 0
-          ? `${at} requests ${JSON.stringify(value.reference)}, but ${JSON.stringify(targetServiceId)} declares no HTTP port, so there is no URL to build. Use service(${JSON.stringify(targetServiceId)}).internalHost with an explicit port instead. Its ports: ${describePorts()}.`
-          : `${at} requests ${JSON.stringify(value.reference)}, but ${JSON.stringify(targetServiceId)} declares ${httpPorts.length} HTTP ports (${httpPorts.map((entry) => entry.port).join(", ")}), so which one the URL means is ambiguous. Use service(${JSON.stringify(targetServiceId)}).internalHost and write the port you want.`);
-      }
-      if (outputKey === "internalPort" && soleDeploymentPort(targetPorts) === null) {
-        throw new CliError(`${at} requests ${JSON.stringify(value.reference)}, but ${JSON.stringify(targetServiceId)} declares ${targetPorts.length} ports (${targetPorts.map((entry) => entry.port).join(", ")}), so which one it means is ambiguous. Write the port number you want directly.`);
+      if (outputKey === "internalUrl") {
+        const call = `service(${JSON.stringify(targetServiceId)}).internalUrl`;
+        if (namedPort === null) {
+          // A bare internalUrl() only works when one HTTP port makes it obvious.
+          const httpPorts = targetPorts.filter((entry) => portTransport(entry) === "http");
+          if (httpPorts.length === 0) {
+            throw new CliError(`${at} calls ${call}(), but ${JSON.stringify(targetServiceId)} declares no HTTP port, so there is no URL to build. Use service(${JSON.stringify(targetServiceId)}).internalHost with an explicit port instead. Its ports: ${describePorts()}.`);
+          }
+          if (httpPorts.length > 1) {
+            throw new CliError(`${at} calls ${call}() on a service with ${httpPorts.length} HTTP ports (${httpPorts.map((entry) => entry.port).join(", ")}), so which one it means is ambiguous. Name the port you want: ${call}(${httpPorts[0].port}).`);
+          }
+        } else {
+          // A named port must actually exist on the target, and speak HTTP.
+          const match = targetPorts.find((entry) => entry.port === namedPort);
+          if (match === undefined) {
+            throw new CliError(`${at} calls ${call}(${namedPort}), but ${JSON.stringify(targetServiceId)} does not declare that port. Its ports: ${describePorts()}.`);
+          }
+          if (portTransport(match) !== "http") {
+            throw new CliError(`${at} calls ${call}(${namedPort}), but that port is TCP, so it has no URL. Use service(${JSON.stringify(targetServiceId)}).internalHost with port ${namedPort} instead.`);
+          }
+        }
       }
     }
   }

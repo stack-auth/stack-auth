@@ -33,7 +33,7 @@ import { Tenancy } from "@/lib/tenancies";
 import { PrismaClientTransaction, globalPrismaClient } from "@/prisma-client";
 import type { DeploymentRunStatus, Prisma } from "@/generated/prisma/client";
 import { readProjectSecretValue } from "@/lib/project-secrets";
-import { DEPLOYMENT_CONNECTION_VALUE_REGEX, DEPLOYMENT_ENV_VAR_KEY_REGEX, DeploymentEnvVarDefinition, DeploymentPortDefinition, DeploymentServiceDefinition, DeploymentServiceType, HEXCLAVE_OUTPUT_KEYS, HEXCLAVE_SERVICE_ID, SERVICE_OUTPUT_KEYS, ServiceOutputKey, deploymentServiceIsPublic, portTransport, soleDeploymentPort, soleHttpDeploymentPort } from "@hexclave/shared/dist/deployments";
+import { DEPLOYMENT_CONNECTION_VALUE_REGEX, DEPLOYMENT_ENV_VAR_KEY_REGEX, DeploymentEnvVarDefinition, DeploymentPortDefinition, DeploymentServiceDefinition, DeploymentServiceType, HEXCLAVE_OUTPUT_KEYS, HEXCLAVE_SERVICE_ID, SERVICE_OUTPUT_KEYS, ServiceOutputKey, deploymentServiceIsPublic, formatConnectionValue, parseConnectionValue, portTransport, soleHttpDeploymentPort } from "@hexclave/shared/dist/deployments";
 import { decryptWithKms, encryptWithKms } from "@hexclave/shared/dist/helpers/vault/server-side";
 import { PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
@@ -545,7 +545,9 @@ export function isTerminalRunStatus(status: DeploymentRunStatus): boolean {
 export type NormalizedDeploymentEnvVar =
   | { type: "plain", value: string }
   | { type: "secret", secretKey: string }
-  | { type: "connection", serviceId: string, outputKey: string };
+  // `port` is the optional `:<port>` suffix of an `internalUrl` reference,
+  // naming which port the URL means on a multi-port service.
+  | { type: "connection", serviceId: string, outputKey: string, port: number | null };
 
 /**
  * Narrows a definition env var into one of the three valid shapes, or throws a
@@ -565,10 +567,8 @@ export function normalizeEnvVarConfig(envVarKey: string, config: DeploymentEnvVa
       if (config.value == null || !DEPLOYMENT_CONNECTION_VALUE_REGEX.test(config.value)) {
         throw new StatusError(400, `The env var ${JSON.stringify(envVarKey)} has type "connection" but its value is not a service output reference like "hexclave.projectId".`);
       }
-      // The regex guarantees exactly one dot (neither side's character class
-      // allows one), so this split is unambiguous.
-      const dotIndex = config.value.indexOf(".");
-      return { type: "connection", serviceId: config.value.slice(0, dotIndex), outputKey: config.value.slice(dotIndex + 1) };
+      const parsed = parseConnectionValue(config.value) ?? throwErr(`The env var ${JSON.stringify(envVarKey)} passed the connection regex but could not be parsed.`);
+      return { type: "connection", serviceId: parsed.serviceId, outputKey: parsed.outputKey, port: parsed.port };
     }
     case undefined: {
       if (config.value == null) {
@@ -595,7 +595,6 @@ const SERVICE_OUTPUT_KEY_TO_MARSHAL = {
   url: "url",
   internalUrl: "internal_url",
   internalHost: "internal_host",
-  internalPort: "internal_port",
 } satisfies Record<ServiceOutputKey, string>;
 
 /**
@@ -613,9 +612,9 @@ const SERVICE_OUTPUT_KEY_TO_MARSHAL = {
  *   them,
  * - `hexclave.*` connections resolve the managed Hexclave service's outputs
  *   server-side (they are backend state, not runtime state),
- * - `<serviceId>.internalPort` resolves directly from the synced target
- *   definition; the other deployment-service outputs become Marshal `{ ref }`s.
- *   `internalUrl`/`internalHost` are deterministic and never block. `url` is immediate for
+ * - deployment-service outputs become Marshal `{ ref }`s, validated here first
+ *   against the synced target definition (a URL must name a port that exists
+ *   and speaks HTTP). `internalUrl`/`internalHost` are deterministic and never block. `url` is immediate for
  *   a public target, while a private target needs a verified custom domain;
  *   if neither exists yet, Marshal reports the service
  *   `blocked` and the RUN FAILS (refreshRunFromMarshal finalizes it ERROR).
@@ -719,22 +718,23 @@ export async function resolveEnvVars(options: {
         }
         const target = existingServicesById.get(normalized.serviceId);
         const targetPorts = target === undefined ? [] : parseStoredPorts(target.ports, normalized.serviceId);
-        // `internalPort` names ONE port, so it only resolves when the target
-        // leaves no doubt about which. The CLI rejects this at config-eval time
-        // with a better message; this is the boundary that makes it true.
-        if (normalized.outputKey === "internalPort") {
-          const port = soleDeploymentPort(targetPorts);
-          if (port === null) {
-            throw new StatusError(400, targetPorts.length === 0
-              ? `The env var connection "${raw}" points to a service with no synced ports. Sync the complete services export before deploying.`
-              : `The env var connection "${raw}" points to a service declaring ${targetPorts.length} ports (${targetPorts.map((entry) => entry.port).join(", ")}), so which one it means is ambiguous. Write the port number directly.`);
+        // A URL names ONE port. The CLI rejects these at config-eval time with
+        // better messages; this is the boundary that makes it true regardless of
+        // which client synced the definition.
+        if (normalized.outputKey === "internalUrl") {
+          if (normalized.port === null) {
+            if (soleHttpDeploymentPort(targetPorts) === null) {
+              throw new StatusError(400, `The env var connection "${raw}" needs exactly one HTTP port on ${JSON.stringify(normalized.serviceId)} to build a URL from, but it declares ${targetPorts.filter((entry) => portTransport(entry) === "http").length}. Name the port you want, or connect with ${JSON.stringify(`${normalized.serviceId}.internalHost`)} and an explicit port.`);
+            }
+          } else {
+            const match = targetPorts.find((entry) => entry.port === normalized.port);
+            if (match === undefined) {
+              throw new StatusError(400, `The env var connection "${raw}" names port ${normalized.port}, which ${JSON.stringify(normalized.serviceId)} does not declare. Its ports: ${targetPorts.map((entry) => entry.port).join(", ") || "none"}.`);
+            }
+            if (portTransport(match) !== "http") {
+              throw new StatusError(400, `The env var connection "${raw}" names port ${normalized.port}, which is TCP and therefore has no URL. Connect with ${JSON.stringify(`${normalized.serviceId}.internalHost`)} and port ${normalized.port} instead.`);
+            }
           }
-          resolvedEnv.set(envVarKey, { value: String(port) });
-          break;
-        }
-        // Likewise `internalUrl`, which additionally needs the port to be HTTP.
-        if (normalized.outputKey === "internalUrl" && soleHttpDeploymentPort(targetPorts) === null) {
-          throw new StatusError(400, `The env var connection "${raw}" needs exactly one HTTP port on ${JSON.stringify(normalized.serviceId)} to build a URL from, but it declares ${targetPorts.filter((entry) => portTransport(entry) === "http").length}. Connect with ${JSON.stringify(`${normalized.serviceId}.internalHost`)} and an explicit port instead.`);
         }
         if (normalized.outputKey === "url" && targetPorts.length > 0 && targetPorts.every((entry) => portTransport(entry) === "tcp")) {
           throw new StatusError(400, `The env var connection "${raw}" requests a URL from a service that declares only TCP ports. Connect with ${JSON.stringify(`${normalized.serviceId}.internalHost`)} and an explicit port instead.`);
@@ -746,7 +746,7 @@ export async function resolveEnvVars(options: {
         // the service `blocked` — the run then fails (there is no backend re-apply on domain
         // verification yet; see startDeployment / refreshRunFromMarshal). Prefer internalUrl
         // for service-to-service wiring.
-        resolvedEnv.set(envVarKey, { ref: `${normalized.serviceId}.${marshalOutputKey}` });
+        resolvedEnv.set(envVarKey, { ref: formatConnectionValue(normalized.serviceId, marshalOutputKey, normalized.port) });
         break;
       }
     }

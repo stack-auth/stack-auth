@@ -34,9 +34,9 @@ export const deploymentsSkillSection = deindent`
         env: {
           MY_ENV_VAR: "true",
           OPENAI_API_KEY: isDev ? null : secret("OPENAI_API_KEY"),
-          API_URL: isDev ? "http://localhost:3001" : service("api").internalUrl,
+          API_URL: isDev ? "http://localhost:3001" : service("api").internalUrl(),
           DATABASE_HOST: isDev ? "localhost" : service("database").internalHost,
-          DATABASE_PORT: isDev ? "5432" : service("database").internalPort,
+          DATABASE_PORT: "5432",
           NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: hexclave.projectId,
         },
       },
@@ -59,9 +59,9 @@ export const deploymentsSkillSection = deindent`
 
   ## Network model: HTTP and private TCP
 
-  Use the default HTTP transport for web applications and APIs. A service with exactly one HTTP port exposes \`internalUrl\` (which includes that port) and \`internalPort\`; \`internalHost\` always works. Declare several ports and those two become ambiguous and are rejected — pass \`internalHost\` and write the port yourself. A \`public: true\` port additionally gets a public platform URL. The process must listen on each configured port and bind to \`0.0.0.0\`.
+  Use the default HTTP transport for web applications and APIs. \`internalUrl()\` gives the private URL including the port, and requires exactly one HTTP port so it is unambiguous; \`internalUrl(9090)\` names one when there are several. \`internalHost\` always works. There is no \`internalPort\` — write the number (e.g. \`DATABASE_PORT: "5432"\`), which you already declared in the target's \`ports\`. A \`public: true\` port additionally gets a public platform URL. The process must listen on each configured port and bind to \`0.0.0.0\`.
 
-  Use \`transport: "tcp"\` on a port for a database, cache, queue, SMTP server, or other raw TCP daemon such as PostgreSQL, MySQL, Redis, or RabbitMQ. TCP ports are reachable only from other services in the same project: pass \`service("database").internalHost\` and \`.internalPort\` as separate env vars. A TCP port cannot be public, and a service with no HTTP port exposes no \`url\` or \`internalUrl\` and cannot take custom domains. The daemon must bind to \`0.0.0.0\`, not only localhost. Do not manually change generated Fly infrastructure; Hexclave reconciliation owns it and can replace out-of-band changes.
+  Use \`transport: "tcp"\` on a port for a database, cache, queue, SMTP server, or other raw TCP daemon such as PostgreSQL, MySQL, Redis, or RabbitMQ. TCP ports are reachable only from other services in the same project: pass \`service("database").internalHost\` and the port as a literal, as separate env vars. A TCP port cannot be public, and a service with no HTTP port exposes no \`url\` or \`internalUrl\` and cannot take custom domains. The daemon must bind to \`0.0.0.0\`, not only localhost. Do not manually change generated Fly infrastructure; Hexclave reconciliation owns it and can replace out-of-band changes.
 
   A service with \`minInstances: 0\` autostarts when a connection reaches its Flycast host and port. Make clients retry initial DNS/connect/auth failures with a bounded backoff: an HTTP app and its TCP dependency may be cold-starting simultaneously. If startup latency is unacceptable, use \`minInstances: 1\` on a paid plan.
 
@@ -91,7 +91,7 @@ export const deploymentsSkillSection = deindent`
 
   Disks only grow: raising \`sizeGb\` expands them in place, but LOWERING it fails the deploy rather than silently ignoring you. Removing a volume from a service detaches the disk without deleting it — the data stays (re-declaring the same id remounts it) and so does the billing, so a disk you truly want gone has to be deleted deliberately. \`hexclave dev\` ignores \`persistentVolumes\` entirely; locally your app just writes to your own filesystem.
 
-  Env var values may be: a plain string; \`null\` (omit the var — useful with \`isDev\`); \`secret(key, defaultValue?)\` — the value is stored per project in the dashboard (Project Settings > Secrets), never in the config; \`service("<id>").internalUrl\` for an HTTP target; \`.internalHost\` and \`.internalPort\` for either transport (use these as separate values for TCP clients); \`service("<id>").url\` — an HTTP target's PUBLIC URL, available immediately for a service with a public port or once a custom domain verifies otherwise (until then the depending service is \`blocked\` and its deploy FAILS — make the target public, verify its domain first, or prefer \`internalUrl\`); or \`hexclave.projectId\` / \`.apiUrl\` / \`.jwksUrl\` / \`.publishableClientKey\` / \`.secretServerKey\` for the managed Hexclave backend. A target with no HTTP port has no URL, so requesting its \`.url\` or \`.internalUrl\` fails with guidance to use host and port, as does \`.internalUrl\`/\`.internalPort\` on a target whose several ports make it ambiguous. References must be the WHOLE value — string interpolation with them throws. During \`hexclave dev\`, \`secret()\` resolves to its default value (error if it has none and isn't guarded by \`isDev\`) and \`service()\` returns \`null\`.
+  Env var values may be: a plain string; \`null\` (omit the var — useful with \`isDev\`); \`secret(key, defaultValue?)\` — the value is stored per project in the dashboard (Project Settings > Secrets), never in the config; \`service("<id>").internalUrl()\` for an HTTP target (or \`.internalUrl(9090)\` to name a port); \`.internalHost\` for either transport (pair it with a literal port for TCP clients); \`service("<id>").url\` — an HTTP target's PUBLIC URL, available immediately for a service with a public port or once a custom domain verifies otherwise (until then the depending service is \`blocked\` and its deploy FAILS — make the target public, verify its domain first, or prefer \`internalUrl\`); or \`hexclave.projectId\` / \`.apiUrl\` / \`.jwksUrl\` / \`.publishableClientKey\` / \`.secretServerKey\` for the managed Hexclave backend. A target with no HTTP port has no URL, so \`.url\` or \`.internalUrl()\` on it fails with guidance to use host and port, as does a bare \`.internalUrl()\` on a target whose several HTTP ports make it ambiguous. References must be the WHOLE value — string interpolation with them throws. During \`hexclave dev\`, \`secret()\` resolves to its default value (error if it has none and isn't guarded by \`isDev\`) and \`service()\` returns \`null\`.
 
   ## How services are built
 
@@ -173,7 +173,7 @@ export const deploymentsSkillSection = deindent`
 
   ## Domains
 
-  Public HTTP services already have a platform URL; a verified custom domain becomes their preferred user-facing URL. A custom domain is also how a private HTTP service can expose a public URL. TCP services are private-only and reject domains. Internal HTTP traffic uses \`service("<id>").internalUrl\`; internal TCP traffic uses \`.internalHost\` plus \`.internalPort\`. Prefer the CLI to attach an HTTP domain:
+  Services with a public port already have a platform URL; a verified custom domain becomes their preferred user-facing URL. A custom domain is also how a private HTTP service can expose a public URL. A service with no HTTP port rejects domains. Internal HTTP traffic uses \`service("<id>").internalUrl()\`; internal TCP traffic uses \`.internalHost\` plus a literal port. Prefer the CLI to attach an HTTP domain:
 
   \`\`\`sh title="Terminal"
   npx @hexclave/cli@latest exec --cloud-project-id <project-id> \\

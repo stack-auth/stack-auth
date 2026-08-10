@@ -16,7 +16,9 @@ import type { DnsRecord, EnvValue, PortConfig, ServiceDomainState, ServiceSpec, 
 import { ulid } from "./ulid.js";
 
 const ENV_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const REF_REGEX = /^([a-zA-Z0-9_][a-zA-Z0-9_-]*)\.([A-Za-z0-9_]+)$/;
+// The optional `:<port>` suffix belongs to `internal_url`, which names the port
+// it means on a service that declares several.
+const REF_REGEX = /^([a-zA-Z0-9_][a-zA-Z0-9_-]*)\.([A-Za-z0-9_]+)(?::([0-9]{1,5}))?$/;
 const SERVICE_KEY_REGEX = /^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,62}$/;
 const NAMESPACE_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
 // upload_id flows into an S3 object key (uploads/<ns>/<id>.tar.gz); validate it so a
@@ -188,10 +190,9 @@ type ResolvedEnv =
   | { ok: true, env: Record<string, string> }
   | { ok: false, blockedRefs: string[] };
 
-// internal_host is a pure function of the service name. Transport-dependent
-// outputs need the target spec; the backend normally resolves internal_port
-// directly from the synced definition, while this remains a safe runtime
-// implementation for direct API callers.
+// internal_host is a pure function of the service name. Port-dependent outputs
+// need the target spec: a URL carries the port, so `internal_url` either names
+// one in the ref or requires the target to declare exactly one HTTP port.
 async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvValue>): Promise<ResolvedEnv> {
   const { envId } = getConfig();
   const resolved = new Map<string, string>();
@@ -213,7 +214,10 @@ async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvVal
       blockedRefs.push(value.ref);
       continue;
     }
-    const [, targetKey, outputKey] = match;
+    const [, targetKey, outputKey, namedPortText] = match;
+    // Truthiness, not an undefined check: TS types an optional capture group as
+    // `string` even though it is undefined at run time when it did not match.
+    const namedPort = namedPortText ? Number(namedPortText) : null;
     switch (outputKey) {
       case "internal_host": {
         resolved.set(key, internalHostForService(envId, ns, targetKey));
@@ -221,25 +225,30 @@ async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvVal
       }
       case "internal_url": {
         // Each port answers on its OWN number on the private network, so the URL
-        // carries the port. Only resolvable when exactly one HTTP port makes it
-        // unambiguous; the backend rejects the ambiguous case up front, and this
-        // blocks rather than guessing.
+        // carries the port. A named port must exist on the target and speak
+        // HTTP; an unnamed one needs a single HTTP port to be unambiguous. The
+        // backend rejects both failures up front — this blocks rather than
+        // guessing, so a spec that somehow arrives unresolvable never deploys a
+        // container pointed at the wrong port.
+        // A NAMED port needs no lookup at all: the host is a pure function of
+        // the service identity and the port is right there in the ref, so the
+        // URL is fully determined. That deliberately makes `internalUrl(9090)`
+        // immune to deploy ORDER — it resolves before the target has ever been
+        // deployed, the same way internal_host does. (The backend has already
+        // checked the port exists and speaks HTTP against the synced
+        // definition, which is the authority on that.)
+        if (namedPort !== null) {
+          resolved.set(key, `http://${internalHostForService(envId, ns, targetKey)}:${namedPort}`);
+          break;
+        }
+        // An unnamed one has to ask the target which single HTTP port it means,
+        // so it blocks until the target's spec exists.
         const target = await targetSpec(targetKey);
         const httpPort = target === null ? null : soleHttpPort(target.spec.config.ports);
         if (httpPort === null) {
           blockedRefs.push(value.ref);
         } else {
           resolved.set(key, `http://${internalHostForService(envId, ns, targetKey)}:${httpPort}`);
-        }
-        break;
-      }
-      case "internal_port": {
-        const target = await targetSpec(targetKey);
-        const onlyPort = target === null || target.spec.config.ports.length !== 1 ? null : target.spec.config.ports[0].port;
-        if (onlyPort === null) {
-          blockedRefs.push(value.ref);
-        } else {
-          resolved.set(key, String(onlyPort));
         }
         break;
       }
@@ -1097,10 +1106,8 @@ export async function getServiceState(ns: string, key: string, preloadedSpec?: S
     target_revision: runningRevision === stored.revision && allAtTarget ? null : stored.revision,
     outputs: {
       internal_host: internalHostForService(config.envId, ns, key),
-      // Both name ONE port, so they are null when the service leaves it
-      // ambiguous — a caller that needs a specific port of a multi-port service
-      // uses internal_host and writes the number itself.
-      internal_port: stored.spec.config.ports.length === 1 ? String(stored.spec.config.ports[0].port) : null,
+      // Null when the service declares several HTTP ports and so leaves the URL
+      // ambiguous — a ref that names its port resolves independently of this.
       internal_url: ((httpPort) => httpPort === null ? null : `http://${internalHostForService(config.envId, ns, key)}:${httpPort}`)(soleHttpPort(stored.spec.config.ports)),
       // Keep a public service's platform URL stable even while custom domains are added or
       // removed. The backend prefers a verified custom domain for display, then falls back
