@@ -28,7 +28,7 @@ describe("stored spec cryptography", () => {
 
   it("keys revisions so the public revision is not a dictionary oracle", () => {
     const spec = {
-      config: { visibility: "private", transport: "http", min_instances: 0, max_instances: 1, port: 3000 },
+      config: { type: "serverless", visibility: "private", transport: "http", min_instances: 0, max_instances: 1, port: 3000 },
       source: { image: "example/image" },
       env: { PASSWORD: { value: "guessable-password" } },
     } satisfies ServiceSpec;

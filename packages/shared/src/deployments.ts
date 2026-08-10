@@ -66,11 +66,20 @@ export type DeploymentEnvVarDefinition = {
 };
 
 export type DeploymentServiceDefinition = {
-  // Which platform runs the service. Only container services (run on the
-  // Fly-backed Marshal runtime) exist today, but the field is required so
-  // definitions stay unambiguous once more types are added (every write path
-  // must state what it's creating).
-  type: "container",
+  // How the service is run on the Fly-backed Marshal runtime.
+  //
+  // - "server": exactly one instance (max_instances is always 1). When idle it
+  //   SUSPENDS rather than stopping, so it resumes with its memory intact and
+  //   without a cold start, and it is the only type allowed to hold a
+  //   persistent volume — a volume is local disk on one host, which only a
+  //   single instance can ever mount.
+  // - "serverless": scales between min_instances and max_instances and STOPS
+  //   (not suspends) on scale-down, so every start is a cold start from a clean
+  //   rootfs. Persistent volumes are rejected: a fleet would give each instance
+  //   its own unreplicated disk rather than shared storage.
+  //
+  // The field is required so every write path states what it is creating.
+  type: DeploymentServiceType,
   // Public services receive a platform endpoint even without a custom domain.
   // Private is the author-facing default.
   visibility: "public" | "private",
@@ -80,9 +89,10 @@ export type DeploymentServiceDefinition = {
   // The single port the container listens on. Readiness = the port accepts
   // connections.
   port: number,
-  // Scaling bounds. 1/1 = serverful (one always-on instance, no cold starts);
-  // anything else is serverless between the bounds, and min 0 scales to zero.
-  // Defaults: min 0, max 1.
+  // Scaling bounds, and "serverless" only: the instance count moves between
+  // them, and min 0 scales to zero. Defaults: min 0, max 1. A "server" service
+  // is always 0/1 — it holds one instance that suspends when idle — so both
+  // fields are rejected on it unless they spell out exactly that.
   min_instances?: number | undefined,
   max_instances?: number | undefined,
   // Relative to the directory containing hexclave.config.ts. Only used
@@ -93,12 +103,17 @@ export type DeploymentServiceDefinition = {
   // service is NOT built from a Dockerfile — the remote builder auto-detects
   // the build with Railpack (https://railpack.com) instead.
   dockerfile_path?: string | undefined,
-  // A persistent disk mounted into the container. Absent = the container
-  // filesystem is entirely ephemeral (the default). Requires
-  // `max_instances: 1`: the underlying Fly volume is local NVMe on a single
-  // host and attaches to at most one instance, so a fleet would give each
-  // instance its own unreplicated copy rather than shared storage.
-  volume?: DeploymentVolumeDefinition | undefined,
+  // Persistent disks mounted into the container, keyed by VOLUME ID. Absent or
+  // empty = the container filesystem is entirely ephemeral (the default).
+  // Only "server" services may declare one.
+  //
+  // The key names the underlying Fly volume, which lives inside the service's
+  // own Fly app. It therefore identifies the disk WITHIN a service: moving an id
+  // to another service (or renaming the service) hands the new one a fresh empty
+  // disk and strands the old one, detached and still billed. Two services may
+  // never hold one id at a time. See MAX_PERSISTENT_VOLUMES_PER_SERVICE for the
+  // current one-per-service cap.
+  persistent_volumes?: Record<string, DeploymentVolumeDefinition> | undefined,
   env: Record<string, DeploymentEnvVarDefinition>,
 };
 
@@ -109,8 +124,26 @@ export type DeploymentVolumeDefinition = {
   size_gb: number,
 };
 
+export type DeploymentServiceType = "server" | "serverless";
+export const DEPLOYMENT_SERVICE_TYPES = ["server", "serverless"] as const;
+
 export const MIN_VOLUME_SIZE_GB = 1;
 export const MAX_VOLUME_SIZE_GB = 500;
+
+// A Fly machine mounts at most one volume ("Currently, you may only mount one
+// volume per Machine" — Machines API reference), so a second entry could not be
+// honoured by the runtime. `persistent_volumes` is a record rather than a
+// single object anyway: the shape is what makes the volume ID a first-class
+// key, and the cap can lift without a breaking config change if Fly ever allows
+// more than one mount.
+export const MAX_PERSISTENT_VOLUMES_PER_SERVICE = 1;
+
+// Volume ids become Fly volume names (see appVolumeName in Marshal), which are
+// alphanumeric + underscore and at most 30 characters. The id is capped at 26
+// so a 4-character prefix still fits, and lowercased so two ids cannot differ
+// only by case and then collide once Fly normalizes them.
+export const DEPLOYMENT_VOLUME_ID_REGEX = /^[a-z][a-z0-9_]*$/;
+export const MAX_VOLUME_ID_LENGTH = 26;
 
 export const deploymentEnvVarSchema = yupObject({
   type: yupString().oneOf(["secret", "connection"]).optional(),
@@ -153,13 +186,18 @@ export const deploymentSecretDefaultsSchema = yupRecord(
 );
 
 export const deploymentServiceDefinitionSchema = yupObject({
-  type: yupString().oneOf(["container"]).defined(),
+  type: yupString().oneOf([...DEPLOYMENT_SERVICE_TYPES]).defined(),
   visibility: yupString().oneOf(["public", "private"]).default("private").defined(),
   transport: yupString().oneOf(["http", "tcp"]).default("http").defined(),
   port: yupNumber().integer().min(1).max(65535).defined(),
   // min is capped at the same MAX_INSTANCES_CAP (5) as max — an unbounded min would only
   // ever fail downstream.
-  min_instances: yupNumber().integer().min(0).max(5).optional(),
+  min_instances: yupNumber().integer().min(0).max(5).optional()
+    // A "server" is one suspending instance, so a pinned (always-on) minimum
+    // contradicts the type outright rather than merely being unusual.
+    .test("server-is-not-pinned", 'a "server" service always scales to zero by suspending, so min_instances must be 0 (use type "serverless" with min_instances: 1 for an always-on instance)', function (value) {
+      return (this.parent as { type?: string }).type !== "server" || value === undefined || value === 0;
+    }),
   max_instances: yupNumber().integer().min(1).max(5).optional()
     // Compare EFFECTIVE bounds, not just when both are present: `min_instances` alone (no
     // max) defaults max to 1 downstream, so `min: 2` with no max is an invalid spec that
@@ -168,34 +206,42 @@ export const deploymentServiceDefinitionSchema = yupObject({
       const minInstances = (this.parent as { min_instances?: number }).min_instances ?? 0;
       const effectiveMax = value ?? Math.max(minInstances, 1);
       return effectiveMax >= minInstances;
+    })
+    .test("server-is-single-instance", 'a "server" service is always a single instance, so max_instances must be 1 (use type "serverless" to scale out)', function (value) {
+      return (this.parent as { type?: string }).type !== "server" || value === undefined || value === 1;
     }),
   root_directory: yupString().optional(),
-  // Persistent disk. The rules here must be AT LEAST as strict as Marshal's
-  // validateServiceSpec so nothing reaches the runtime that it would reject
-  // after an upload has already been consumed.
-  volume: yupObject({
-    // A normalized ABSOLUTE mount point. Relative paths are ambiguous against
-    // the image's WORKDIR, and mounting over "/" would shadow the whole image.
-    path: yupString().defined().max(512)
-      // `path` is `.defined()`, so unlike the optional `dockerfile_path` above
-      // there is no undefined case to let through here.
-      .test("absolute-path", 'volume.path must be a normalized absolute path inside the container (e.g. "/data") — no trailing slash, no "." or ".." segments, no backslashes or control characters', (value) =>
-        value.startsWith("/")
-        && value !== "/"
-        && !value.endsWith("/")
-        && !value.includes("\\")
-        // eslint-disable-next-line no-control-regex
-        && !/[\x00-\x1f]/.test(value)
-        && value.split("/").slice(1).every((segment) => segment !== "" && segment !== "." && segment !== "..")),
-    size_gb: yupNumber().integer().min(MIN_VOLUME_SIZE_GB).max(MAX_VOLUME_SIZE_GB).defined(),
-  }).optional().default(undefined)
-    // Compares the EFFECTIVE max (same defaulting as `max_instances` above), so
-    // `min_instances: 2` with no explicit max is caught too.
-    .test("volume-requires-single-instance", "a service with a volume must have max_instances: 1 — a volume is local disk on one host and can only be attached to a single instance", function (value) {
-      if (value === undefined) return true;
-      const parent = this.parent as { min_instances?: number, max_instances?: number };
-      const effectiveMax = parent.max_instances ?? Math.max(parent.min_instances ?? 0, 1);
-      return effectiveMax === 1;
+  // Persistent disks, keyed by volume id. The rules here must be AT LEAST as
+  // strict as Marshal's validateServiceSpec so nothing reaches the runtime that
+  // it would reject after an upload has already been consumed.
+  persistent_volumes: yupRecord(
+    yupString()
+      .matches(DEPLOYMENT_VOLUME_ID_REGEX, "persistent volume ids must start with a lowercase letter and contain only lowercase letters, digits, and underscores")
+      .max(MAX_VOLUME_ID_LENGTH),
+    yupObject({
+      // A normalized ABSOLUTE mount point. Relative paths are ambiguous against
+      // the image's WORKDIR, and mounting over "/" would shadow the whole image.
+      path: yupString().defined().max(512)
+        // `path` is `.defined()`, so unlike the optional `dockerfile_path` above
+        // there is no undefined case to let through here.
+        .test("absolute-path", 'persistent volume paths must be a normalized absolute path inside the container (e.g. "/data") — no trailing slash, no "." or ".." segments, no backslashes or control characters', (value) =>
+          value.startsWith("/")
+          && value !== "/"
+          && !value.endsWith("/")
+          && !value.includes("\\")
+          // eslint-disable-next-line no-control-regex
+          && !/[\x00-\x1f]/.test(value)
+          && value.split("/").slice(1).every((segment) => segment !== "" && segment !== "." && segment !== "..")),
+      size_gb: yupNumber().integer().min(MIN_VOLUME_SIZE_GB).max(MAX_VOLUME_SIZE_GB).defined(),
+    }).defined(),
+  ).optional().default(undefined)
+    .test("at-most-one-persistent-volume", `a service may declare at most ${MAX_PERSISTENT_VOLUMES_PER_SERVICE} persistent volume — mounting more than one disk on a single instance is not supported yet`, (value) =>
+      value === undefined || Object.keys(value).length <= MAX_PERSISTENT_VOLUMES_PER_SERVICE)
+    // Only a "server" is single-instance-by-construction; a serverless fleet
+    // would hand each instance its own unreplicated disk.
+    .test("volume-requires-server-type", 'only a "server" service may have persistent volumes — a volume is local disk on one host and can only be attached to a single instance', function (value) {
+      if (value === undefined || Object.keys(value).length === 0) return true;
+      return (this.parent as { type?: string }).type === "server";
     }),
   // Optional Dockerfile location relative to root_directory; absent = Railpack
   // auto-detected build. Must stay inside the packaged source — it flows into
@@ -231,7 +277,7 @@ export const deploymentServiceDefinitionSchema = yupObject({
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts all env var shapes", async ({ expect }) => {
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container",
+    type: "serverless",
     port: 3000,
     min_instances: 0,
     max_instances: 2,
@@ -248,40 +294,70 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts all env var 
 });
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema defaults networking and validates public HTTP", async ({ expect }) => {
-  await expect(deploymentServiceDefinitionSchema.validate({ type: "container", port: 3000, env: {} })).resolves.toMatchObject({ visibility: "private", transport: "http" });
-  await expect(deploymentServiceDefinitionSchema.validate({ type: "container", visibility: "public", port: 3000, env: {} })).resolves.toMatchObject({ visibility: "public" });
-  await expect(deploymentServiceDefinitionSchema.validate({ type: "container", visibility: "unlisted", port: 3000, env: {} })).rejects.toThrow();
-  await expect(deploymentServiceDefinitionSchema.validate({ type: "container", visibility: "public", transport: "tcp", port: 5432, env: {} })).rejects.toThrow(/private/);
+  await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", port: 3000, env: {} })).resolves.toMatchObject({ visibility: "private", transport: "http" });
+  await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", visibility: "public", port: 3000, env: {} })).resolves.toMatchObject({ visibility: "public" });
+  await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", visibility: "unlisted", port: 3000, env: {} })).rejects.toThrow();
+  await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", visibility: "public", transport: "tcp", port: 5432, env: {} })).rejects.toThrow(/private/);
 });
 
-import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts a volume on a single-instance service", async ({ expect }) => {
-  // Explicit 1/1 (serverful) and the default 0/1 (scales to zero, volume kept
-  // across the stop) are both single-instance and therefore both valid.
+import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts a persistent volume on a server service", async ({ expect }) => {
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container", port: 3000, min_instances: 1, max_instances: 1,
-    volume: { path: "/data", size_gb: 10 }, env: {},
+    type: "server", port: 3000, persistent_volumes: { data: { path: "/data", size_gb: 10 } }, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
+  // Spelling out the implied 0/1 bounds is allowed; anything else is not.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container", port: 3000, volume: { path: "/var/lib/app/data", size_gb: 1 }, env: {},
+    type: "server", port: 3000, min_instances: 0, max_instances: 1,
+    persistent_volumes: { app_state: { path: "/var/lib/app/data", size_gb: 1 } }, env: {},
+  }, { abortEarly: false })).resolves.toBeDefined();
+  // An empty record is the same as having no volume, and stays valid on a
+  // serverless service — otherwise `persistent_volumes: {}` written out by a
+  // serializer would fail a config that declares no disks at all.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "serverless", port: 3000, persistent_volumes: {}, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
 });
 
-import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects volumes that cannot work", async ({ expect }) => {
-  for (const scaling of [{ max_instances: 2 }, { min_instances: 2 }, { min_instances: 0, max_instances: 3 }]) {
+import.meta.vitest?.test("deploymentServiceDefinitionSchema pins a server service to a single suspending instance", async ({ expect }) => {
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", port: 3000, max_instances: 2, env: {},
+  }, { abortEarly: false })).rejects.toThrow(/max_instances must be 1/);
+  // An always-on minimum contradicts "suspends when idle" — the user wants
+  // serverless with min_instances: 1 for that, and the message says so.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", port: 3000, min_instances: 1, env: {},
+  }, { abortEarly: false })).rejects.toThrow(/min_instances must be 0/);
+  // Serverless keeps the full range.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "serverless", port: 3000, min_instances: 1, max_instances: 5, env: {},
+  }, { abortEarly: false })).resolves.toBeDefined();
+});
+
+import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects persistent volumes that cannot work", async ({ expect }) => {
+  // A serverless fleet cannot share one disk, whatever its bounds are.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "serverless", port: 3000, persistent_volumes: { data: { path: "/data", size_gb: 1 } }, env: {},
+  }, { abortEarly: false })).rejects.toThrow(/only a "server" service may have persistent volumes/);
+  // More than one disk on one machine is beyond what Fly can mount today, and
+  // must fail loudly rather than silently mounting whichever came first.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", port: 3000, env: {},
+    persistent_volumes: { data: { path: "/data", size_gb: 1 }, cache: { path: "/cache", size_gb: 1 } },
+  }, { abortEarly: false })).rejects.toThrow(/at most 1 persistent volume/);
+  for (const badId of ["Data", "1data", "my-volume", "_data", "x".repeat(MAX_VOLUME_ID_LENGTH + 1)]) {
     await expect(deploymentServiceDefinitionSchema.validate({
-      type: "container", port: 3000, ...scaling, volume: { path: "/data", size_gb: 1 }, env: {},
-    }, { abortEarly: false })).rejects.toThrow(/must have max_instances: 1/);
+      type: "server", port: 3000, persistent_volumes: { [badId]: { path: "/data", size_gb: 1 } }, env: {},
+    }, { abortEarly: false }), `volume id ${JSON.stringify(badId)}`).rejects.toThrow();
   }
   for (const badPath of ["data", "/", "/data/", "/data/../etc", "/data/./x", "/da\\ta", "/da\u0000ta"]) {
     await expect(deploymentServiceDefinitionSchema.validate({
-      type: "container", port: 3000, volume: { path: badPath, size_gb: 1 }, env: {},
+      type: "server", port: 3000, persistent_volumes: { data: { path: badPath, size_gb: 1 } }, env: {},
     }, { abortEarly: false })).rejects.toThrow(/normalized absolute path/);
   }
   // Anchored to the size field: a bare toThrow() would still pass if the size
   // bounds regressed and some unrelated rule happened to reject the shape.
   for (const badSize of [0, -1, 501, 1.5]) {
     await expect(deploymentServiceDefinitionSchema.validate({
-      type: "container", port: 3000, volume: { path: "/data", size_gb: badSize }, env: {},
+      type: "server", port: 3000, persistent_volumes: { data: { path: "/data", size_gb: badSize } }, env: {},
     }, { abortEarly: false })).rejects.toThrow(/size_gb/);
   }
 });
@@ -289,23 +365,23 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects volumes that
 import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects invalid shapes", async ({ expect }) => {
   // A secret with an inline value would defeat the whole point of secrets.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container", port: 3000, env: { A: { type: "secret", key: "a", value: "leaked" } },
+    type: "serverless",port: 3000, env: { A: { type: "secret", key: "a", value: "leaked" } },
   }, { abortEarly: false })).rejects.toThrow(/must not have a value/);
   // A secret without a key can never be filled at deploy time.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container", port: 3000, env: { A: { type: "secret" } },
+    type: "serverless",port: 3000, env: { A: { type: "secret" } },
   }, { abortEarly: false })).rejects.toThrow(/key/);
   // Plain values may not carry a secret key.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container", port: 3000, env: { A: { value: "x", key: "a" } },
+    type: "serverless",port: 3000, env: { A: { value: "x", key: "a" } },
   }, { abortEarly: false })).rejects.toThrow(/only have a key/);
   // Connections must point at `<serviceId>.<outputKey>`.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container", port: 3000, env: { A: { type: "connection", value: "{hexclave.projectId}" } },
+    type: "serverless",port: 3000, env: { A: { type: "connection", value: "{hexclave.projectId}" } },
   }, { abortEarly: false })).rejects.toThrow(/service output/);
   // Env var keys must be valid POSIX-ish env var names.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container", port: 3000, env: { "1BAD": { value: "x" } },
+    type: "serverless",port: 3000, env: { "1BAD": { value: "x" } },
   }, { abortEarly: false })).rejects.toThrow(/env var keys/);
   // The service type is required.
   await expect(deploymentServiceDefinitionSchema.validate({
@@ -313,23 +389,23 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects invalid shap
   }, { abortEarly: false })).rejects.toThrow(/type/);
   // The port is required — there is no sensible default to guess.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container", env: {},
+    type: "serverless",env: {},
   }, { abortEarly: false })).rejects.toThrow(/port/);
   // Scaling bounds must be consistent when both are given.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container", port: 3000, min_instances: 3, max_instances: 1, env: {},
+    type: "serverless",port: 3000, min_instances: 3, max_instances: 1, env: {},
   }, { abortEarly: false })).rejects.toThrow(/greater than or equal to min_instances/);
   // min_instances alone is accepted — max defaults up to min so the spec stays consistent
   // (this is the case that previously slipped through validation and 400'd from the runtime).
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container", port: 3000, min_instances: 2, env: {},
+    type: "serverless",port: 3000, min_instances: 2, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
   // Both bounds are capped at 5.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container", port: 3000, min_instances: 6, env: {},
+    type: "serverless",port: 3000, min_instances: 6, env: {},
   }, { abortEarly: false })).rejects.toThrow(/min_instances/);
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container", port: 3000, max_instances: 6, env: {},
+    type: "serverless",port: 3000, max_instances: 6, env: {},
   }, { abortEarly: false })).rejects.toThrow(/max_instances/);
   // dockerfile_path must be a normalized relative path inside the packaged
   // source — mirror of Marshal's validateServiceSpec, checked here so invalid
@@ -339,11 +415,11 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects invalid shap
     "docker\\Dockerfile", "Dock\terfile", "x".repeat(513),
   ]) {
     await expect(deploymentServiceDefinitionSchema.validate({
-      type: "container", port: 3000, dockerfile_path: invalidDockerfilePath, env: {},
+      type: "serverless",port: 3000, dockerfile_path: invalidDockerfilePath, env: {},
     }, { abortEarly: false })).rejects.toThrow(/dockerfile_path/);
   }
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container", port: 3000, dockerfile_path: "docker/Dockerfile.web", env: {},
+    type: "serverless",port: 3000, dockerfile_path: "docker/Dockerfile.web", env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
 });
 
@@ -352,7 +428,7 @@ import.meta.vitest?.test("a service's dev command is not part of its definition"
   // a client sending one is out of date rather than merely verbose — say so
   // instead of dropping the field on the floor.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container", port: 3000, dev_command: "pnpm dev", env: {},
+    type: "serverless",port: 3000, dev_command: "pnpm dev", env: {},
   }, { abortEarly: false })).rejects.toThrow(/must not carry a dev_command/);
 });
 
@@ -362,12 +438,12 @@ import.meta.vitest?.test("a secret's default value is not part of its definition
   // default could be stored, "is this secret set?" would stop having a single
   // answer, which is exactly the three-way badge state this replaced.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container",
+    type: "serverless",
     port: 3000,
     env: { OPENAI_API_KEY: { type: "secret", key: "OPENAI", default_value: "sk-dev" } },
   }, { abortEarly: false })).rejects.toThrow(/must not carry a default_value/);
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container",
+    type: "serverless",
     port: 3000,
     env: { PLAIN: { value: "x", default_value: "y" } },
   }, { abortEarly: false })).rejects.toThrow(/must not carry a default_value/);

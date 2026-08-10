@@ -5,7 +5,7 @@ import { getInternalUser } from "../lib/app.js";
 import { isProjectAuthWithSecretServerKey, resolveAuth, resolveProjectId, type ProjectAuth } from "../lib/auth.js";
 import { AuthError, CliError, errorMessage } from "../lib/errors.js";
 import { packageSourceDirectory } from "../lib/source-packaging.js";
-import { collectSecretDefaults, computeDeploymentLevels, evaluateServicesFunction, importConfigModule, type EvaluatedService } from "../lib/services-config.js";
+import { collectSecretDefaults, computeDeploymentLevels, evaluateDeploymentConfig, importConfigModule, type EvaluatedService } from "../lib/deployment-config.js";
 import { buildConfigPushSource, parseConfigOverride, pushConfigToProject } from "./config-file.js";
 
 // The names checked (in order) when --config-file is not passed; same
@@ -29,7 +29,7 @@ export type DeployOptions = {
 /**
  * Resolves the config file path: --config-file wins (and must exist);
  * otherwise the first existing candidate in cwd. Unlike the pre-services CLI,
- * a config file is REQUIRED — service definitions only exist in its `services`
+ * a config file is REQUIRED — service definitions only exist in its `deployment`
  * export. Exported for unit tests.
  */
 export function resolveDeployConfigPath(configOption: string | undefined, cwd: string): string {
@@ -46,7 +46,7 @@ export function resolveDeployConfigPath(configOption: string | undefined, cwd: s
       return resolved;
     }
   }
-  throw new CliError(`No config file found in ${cwd}. \`hexclave deploy\` deploys the services defined by the \`services\` export of your hexclave.config.ts — create one, or pass --config-file <path>.`);
+  throw new CliError(`No config file found in ${cwd}. \`hexclave deploy\` deploys the services defined by the \`deployment\` export of your hexclave.config.ts — create one, or pass --config-file <path>.`);
 }
 
 /**
@@ -195,9 +195,11 @@ export async function deployService(options: {
   authHeaders: () => Promise<Record<string, string>>,
   service: EvaluatedService,
   definitionSyncId: string,
+  // The deployment (from POST /deployments/deployments) this run is grouped under.
+  deploymentId: string,
   ignoreRootDirectory: string,
 }): Promise<ServiceDeployResult> {
-  const { auth, authHeaders, service, definitionSyncId, ignoreRootDirectory } = options;
+  const { auth, authHeaders, service, definitionSyncId, deploymentId, ignoreRootDirectory } = options;
   const serviceId = service.serviceId;
   const log = (message: string) => console.error(`[${serviceId}] ${message}`);
 
@@ -241,6 +243,7 @@ export async function deployService(options: {
     jsonBody: {
       upload_id: upload.id,
       definition_sync_id: definitionSyncId,
+      deployment_id: deploymentId,
       secret_defaults: collectSecretDefaults(service),
     },
   });
@@ -333,7 +336,7 @@ function collectTransitiveDependents(failedServiceId: string, services: Map<stri
 export function registerDeployCommand(program: Command) {
   program
     .command("deploy")
-    .description("Deploy the services defined by the `services` export of your hexclave.config.ts. Pushes the config file to the project (unless --no-config-push), syncs the service definitions, then deploys every service in dependency order and waits for the remote builds to finish.")
+    .description("Deploy the services defined by the `deployment` export of your hexclave.config.ts. Pushes the config file to the project (unless --no-config-push), syncs the service definitions, then deploys every service in dependency order and waits for the remote builds to finish.")
     .option("--service-id <id>", "Deploy only this service (its connections resolve against already-deployed services)")
     .option("--config-file <path>", "Path to the config file (default: auto-discover hexclave.config.ts in the current directory)")
     .option("--cloud-project-id <id>", "Hexclave project ID to deploy to (defaults to the HEXCLAVE_PROJECT_ID env var)")
@@ -345,9 +348,9 @@ export function registerDeployCommand(program: Command) {
 
       const configPath = resolveDeployConfigPath(opts.configFile, process.cwd());
       const configModule = await importConfigModule(configPath);
-      const { services } = evaluateServicesFunction({
+      const { services } = evaluateDeploymentConfig({
         configPath,
-        servicesExport: configModule.services,
+        deploymentExport: configModule.deployment,
         mode: "deploy",
       });
 
@@ -358,7 +361,7 @@ export function registerDeployCommand(program: Command) {
       if (opts.serviceId != null) {
         const service = services.get(opts.serviceId);
         if (service == null) {
-          throw new CliError(`No service named ${JSON.stringify(opts.serviceId)} in the config file's services export. Available services: ${[...services.keys()].join(", ")}.`);
+          throw new CliError(`No service named ${JSON.stringify(opts.serviceId)} in the config file's deployment.services. Available services: ${[...services.keys()].join(", ")}.`);
         }
         levels = [[opts.serviceId]];
       } else {
@@ -428,6 +431,20 @@ export function registerDeployCommand(program: Command) {
       }
       const definitionSyncId = syncResponse.sync_id;
 
+      // Group every run of this invocation under one deployment, so the
+      // dashboard can show what shipped together instead of reconstructing it
+      // from run timestamps. `deploySet` (not `services`) is what is planned:
+      // a --service-id deploy syncs all definitions but deploys only one.
+      const deploymentResponse = await deployApiFetch(auth, authHeaders, "/deployments/deployments", {
+        method: "POST",
+        jsonBody: { planned_service_ids: deploySet, triggered_by: "cli" },
+      });
+      if (typeof deploymentResponse?.id !== "string") {
+        throw new CliError("Unexpected response from the Hexclave API when creating the deployment.");
+      }
+      const deploymentId = deploymentResponse.id;
+      console.error(`Deployment #${deploymentResponse.number}`);
+
       // Deploy level by level: services in one level are independent and run
       // concurrently; a failure skips every transitive dependent but lets
       // independent branches finish.
@@ -455,6 +472,7 @@ export function registerDeployCommand(program: Command) {
                 throw new CliError(`Internal error: deploy level contains unknown service ${JSON.stringify(serviceId)}.`);
               })(),
               definitionSyncId,
+              deploymentId,
               ignoreRootDirectory,
             });
           } catch (error) {

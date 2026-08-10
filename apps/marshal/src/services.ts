@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { computeWebhookToken, type Builder } from "./builds.js";
-import { BUILD_TIMEOUT_SECONDS, MACHINE_GUEST, MAX_INSTANCES_CAP, MAX_UPLOAD_BYTES, MAX_VOLUME_SIZE_GB, MIN_VOLUME_SIZE_GB, SOFT_CONCURRENCY_LIMIT, VOLUME_NAME, getConfig, resolveNamespaceOrg } from "./config.js";
+import { BUILD_TIMEOUT_SECONDS, MACHINE_GUEST, MAX_INSTANCES_CAP, MAX_PERSISTENT_VOLUMES_PER_SERVICE, MAX_UPLOAD_BYTES, MAX_VOLUME_ID_LENGTH, MAX_VOLUME_SIZE_GB, MIN_VOLUME_SIZE_GB, SOFT_CONCURRENCY_LIMIT, VOLUME_ID_REGEX, flyVolumeName, getConfig, resolveNamespaceOrg } from "./config.js";
 import { MarshalError, badRequest, conflict, notFound } from "./errors.js";
 import { FlyClient, flyClientForNamespaceOrg, type FlyCertificate, type FlyMachine, type FlyVolume } from "./fly/client.js";
 import { fetchAllLogs } from "./logs.js";
@@ -15,7 +15,6 @@ import { validateSourceArchive } from "./source-archive.js";
 import type { DnsRecord, EnvValue, ServiceDomainState, ServiceSpec, ServiceState, StoredBuild, StoredSpec, VolumeConfig } from "./types.js";
 import { ulid } from "./ulid.js";
 
-export const SERVICE_TYPE_CONTAINER = "container";
 const ENV_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const REF_REGEX = /^([a-zA-Z0-9_][a-zA-Z0-9_-]*)\.([A-Za-z0-9_]+)$/;
 const SERVICE_KEY_REGEX = /^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,62}$/;
@@ -54,8 +53,10 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   const minInstances = config.min_instances;
   const maxInstances = config.max_instances;
   const port = config.port;
+  const serviceKind = config.type;
   const visibility = config.visibility ?? "private";
   const transport = config.transport ?? "http";
+  if (serviceKind !== "server" && serviceKind !== "serverless") throw badRequest('config.type must be "server" or "serverless"');
   if (visibility !== "public" && visibility !== "private") throw badRequest('config.visibility must be "public" or "private"');
   if (transport !== "http" && transport !== "tcp") throw badRequest('config.transport must be "http" or "tcp"');
   if (transport === "tcp" && visibility === "public") throw badRequest('config.visibility must be "private" when config.transport is "tcp"');
@@ -64,29 +65,54 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   if (maxInstances < minInstances) throw badRequest("config.max_instances must be >= config.min_instances");
   if (maxInstances > MAX_INSTANCES_CAP) throw badRequest(`config.max_instances must be <= ${MAX_INSTANCES_CAP}`);
   if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) throw badRequest("config.port must be a valid port number");
+  // A "server" is one suspending instance by definition. Reject rather than coerce: the
+  // caller's stated bounds and its stated type would otherwise disagree in the stored spec.
+  if (serviceKind === "server" && (minInstances !== 0 || maxInstances !== 1)) {
+    throw badRequest('config.min_instances must be 0 and config.max_instances must be 1 when config.type is "server"');
+  }
 
-  // A Fly volume attaches to at most one machine, so a volume-backed service cannot have a
-  // fleet: max_instances must be exactly 1. min_instances 0 is still fine — a stopped
-  // machine keeps its volume and autostarts with it (smoke-verified).
-  let volume: VolumeConfig | undefined;
-  if (config.volume !== undefined && config.volume !== null) {
-    const volumeRecord = asRecord(config.volume);
-    if (volumeRecord === null) throw badRequest("config.volume must be an object of { path, size_gb }");
-    const volumePath = volumeRecord.path;
-    const sizeGb = volumeRecord.size_gb;
-    if (typeof volumePath !== "string" || volumePath === "" || volumePath.length > 512) throw badRequest("config.volume.path must be a non-empty string of at most 512 characters");
-    // The path becomes a mount point inside the container. Require a normalized ABSOLUTE
-    // path: relative or dot-laden paths are ambiguous against the image's WORKDIR, and
-    // mounting over "/" would shadow the whole image.
-    // eslint-disable-next-line no-control-regex
-    if (!volumePath.startsWith("/") || volumePath === "/" || volumePath.endsWith("/") || volumePath.includes("\\") || /[\x00-\x1f]/.test(volumePath) || volumePath.split("/").slice(1).some((segment) => segment === "" || segment === "." || segment === "..")) {
-      throw badRequest('config.volume.path must be a normalized absolute path inside the container (e.g. "/data") — no trailing slash, no "." or ".." segments, no backslashes or control characters');
+  // A Fly volume attaches to at most one machine, and a machine mounts at most one volume,
+  // so only a single-instance "server" can hold one. min_instances 0 is still fine — a
+  // suspended machine keeps its volume and resumes with it (smoke-verified).
+  let persistentVolumes: Record<string, VolumeConfig> | undefined;
+  if (config.persistent_volumes !== undefined && config.persistent_volumes !== null) {
+    const volumesRecord = asRecord(config.persistent_volumes);
+    if (volumesRecord === null) throw badRequest("config.persistent_volumes must be an object keyed by volume id");
+    const volumeIds = Object.keys(volumesRecord);
+    if (volumeIds.length > MAX_PERSISTENT_VOLUMES_PER_SERVICE) {
+      throw badRequest(`config.persistent_volumes may declare at most ${MAX_PERSISTENT_VOLUMES_PER_SERVICE} volume (a Fly machine mounts at most one)`);
     }
-    if (typeof sizeGb !== "number" || !Number.isInteger(sizeGb) || sizeGb < MIN_VOLUME_SIZE_GB || sizeGb > MAX_VOLUME_SIZE_GB) {
-      throw badRequest(`config.volume.size_gb must be an integer between ${MIN_VOLUME_SIZE_GB} and ${MAX_VOLUME_SIZE_GB}`);
+    if (volumeIds.length > 0 && serviceKind !== "server") {
+      throw badRequest('config.type must be "server" when config.persistent_volumes is set (a Fly volume can only be attached to one instance)');
     }
-    if (maxInstances !== 1) throw badRequest("config.max_instances must be 1 when config.volume is set (a Fly volume can only be attached to one instance)");
-    volume = { path: volumePath, size_gb: sizeGb };
+    const validatedVolumes = new Map<string, VolumeConfig>();
+    for (const [volumeId, volumeValue] of Object.entries(volumesRecord)) {
+      // The id becomes the Fly volume name (see flyVolumeName), so it has to survive that
+      // mapping unchanged — no case folding, no character substitution, nothing that could
+      // make two distinct ids name one disk.
+      if (!VOLUME_ID_REGEX.test(volumeId) || volumeId.length > MAX_VOLUME_ID_LENGTH) {
+        throw badRequest(`invalid persistent volume id ${JSON.stringify(volumeId)} (lowercase letters, digits, and underscores, starting with a letter, at most ${MAX_VOLUME_ID_LENGTH} characters)`);
+      }
+      const volumeRecord = asRecord(volumeValue);
+      if (volumeRecord === null) throw badRequest(`config.persistent_volumes.${volumeId} must be an object of { path, size_gb }`);
+      const volumePath = volumeRecord.path;
+      const sizeGb = volumeRecord.size_gb;
+      if (typeof volumePath !== "string" || volumePath === "" || volumePath.length > 512) throw badRequest(`config.persistent_volumes.${volumeId}.path must be a non-empty string of at most 512 characters`);
+      // The path becomes a mount point inside the container. Require a normalized ABSOLUTE
+      // path: relative or dot-laden paths are ambiguous against the image's WORKDIR, and
+      // mounting over "/" would shadow the whole image.
+      // eslint-disable-next-line no-control-regex
+      if (!volumePath.startsWith("/") || volumePath === "/" || volumePath.endsWith("/") || volumePath.includes("\\") || /[\x00-\x1f]/.test(volumePath) || volumePath.split("/").slice(1).some((segment) => segment === "" || segment === "." || segment === "..")) {
+        throw badRequest(`config.persistent_volumes.${volumeId}.path must be a normalized absolute path inside the container (e.g. "/data") — no trailing slash, no "." or ".." segments, no backslashes or control characters`);
+      }
+      if (typeof sizeGb !== "number" || !Number.isInteger(sizeGb) || sizeGb < MIN_VOLUME_SIZE_GB || sizeGb > MAX_VOLUME_SIZE_GB) {
+        throw badRequest(`config.persistent_volumes.${volumeId}.size_gb must be an integer between ${MIN_VOLUME_SIZE_GB} and ${MAX_VOLUME_SIZE_GB}`);
+      }
+      validatedVolumes.set(volumeId, { path: volumePath, size_gb: sizeGb });
+    }
+    // An empty record collapses to absent so it hashes identically to a volumeless spec —
+    // otherwise `{}` and omitted would be two revisions of the same service.
+    if (validatedVolumes.size > 0) persistentVolumes = Object.fromEntries(validatedVolumes);
   }
 
   const source = asRecord(record.source);
@@ -129,9 +155,9 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   }
 
   return {
-    // Key order is canonical here too (see the source note below). `volume` is only present
-    // when set; computeRevision mirrors that same conditional spread.
-    config: { visibility, transport, min_instances: minInstances, max_instances: maxInstances, port: port, ...(volume !== undefined ? { volume } : {}) },
+    // Key order is canonical here too (see the source note below). `persistent_volumes` is
+    // only present when set; computeRevision mirrors that same conditional spread.
+    config: { type: serviceKind, visibility, transport, min_instances: minInstances, max_instances: maxInstances, port: port, ...(persistentVolumes !== undefined ? { persistent_volumes: persistentVolumes } : {}) },
     // Key order is fixed here on purpose: computeRevision hashes the JSON serialization of
     // this object, so construction must stay canonical.
     source: hasUploadId
@@ -261,13 +287,13 @@ export function machineConfigForSlot(options: {
   volumeId: string | null,
 }): Record<string, unknown> {
   const pinned = options.slot < pinnedMachineCount(options.spec);
-  const volume = options.spec.config.volume;
+  const volume = specVolume(options.spec)?.volume;
   const config = {
     image: options.imageRef,
     guest: MACHINE_GUEST,
     env: options.env,
     // Only slot 0 can carry the volume, and a volume-backed spec is single-slot anyway
-    // (max_instances === 1, enforced in validateServiceSpec). The volume id is part of the
+    // (type "server", enforced in validateServiceSpec). The volume id is part of the
     // hashed config on purpose: if the volume were ever replaced, the machine must roll onto
     // the new one rather than silently keep the old mount.
     ...(volume !== undefined && options.volumeId !== null && options.slot === 0
@@ -286,7 +312,13 @@ export function machineConfigForSlot(options: {
       // Pinned machines never autostop; the rest scale to zero and Fly Proxy autostarts
       // them on demand (only *existing* machines get autostarted, which is why the full
       // max_instances fleet is pre-created).
-      autostop: pinned ? "off" : "stop",
+      //
+      // A "server" SUSPENDS instead of stopping: it resumes with its memory intact and
+      // without a cold start, and Fly leaves an attached volume and its data untouched
+      // across suspend/resume. Suspend is only advisable at <= 2 GB of memory, which
+      // MACHINE_GUEST (512 MB) satisfies. A "serverless" stops, so each start is cold from a
+      // clean rootfs.
+      autostop: pinned ? "off" : options.spec.config.type === "server" ? "suspend" : "stop",
       autostart: true,
       ports: options.spec.config.transport === "http"
         ? [
@@ -307,6 +339,15 @@ export function machineConfigForSlot(options: {
   return { ...config, metadata: { ...config.metadata, hexclave_config_hash: hash } };
 }
 
+// The spec's single persistent volume, or null. `persistent_volumes` is a record so the
+// volume ID is a first-class key, but validateServiceSpec caps it at one entry, so every
+// consumer wants exactly this.
+export function specVolume(spec: ServiceSpec): { volumeId: string, volume: VolumeConfig } | null {
+  const entries = Object.entries(spec.config.persistent_volumes ?? {});
+  if (entries.length === 0) return null;
+  return { volumeId: entries[0][0], volume: entries[0][1] };
+}
+
 // Fly does NOT enforce unique volume names within an app. The reconciliation lease prevents
 // Marshal replicas from creating concurrently, but a process can still die after Fly accepts
 // a create and before the bucket records the outcome. These helpers make recovery
@@ -314,29 +355,30 @@ export function machineConfigForSlot(options: {
 // apply converges on the same disk. Choosing arbitrarily is the dangerous case: it would roll
 // the machine onto another volume and the service would come up with an empty disk, which
 // reads to the tenant as total data loss. Volumes being destroyed are never candidates.
-export function candidateVolumes(volumes: FlyVolume[]): FlyVolume[] {
+export function candidateVolumes(volumes: FlyVolume[], volumeId: string): FlyVolume[] {
+  const name = flyVolumeName(volumeId);
   return volumes
-    .filter((candidate) => candidate.name === VOLUME_NAME && candidate.state !== "destroying" && candidate.state !== "pending_destruction")
+    .filter((candidate) => candidate.name === name && candidate.state !== "destroying" && candidate.state !== "pending_destruction")
     .sort((a, b) => {
       if ((a.attached_machine_id !== null) !== (b.attached_machine_id !== null)) return a.attached_machine_id !== null ? -1 : 1;
       return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
     });
 }
 
-export function selectCanonicalVolume(volumes: FlyVolume[]): FlyVolume | null {
-  const candidates = candidateVolumes(volumes);
+export function selectCanonicalVolume(volumes: FlyVolume[], volumeId: string): FlyVolume | null {
+  const candidates = candidateVolumes(volumes, volumeId);
   return candidates.length === 0 ? null : candidates[0];
 }
 
 // Idempotently brings the service's single volume to the configured size, returning its id.
 // Created BEFORE any machine: Fly places a machine on its volume's host, and creating the
 // machine first would usually land it on a different host (then the mount fails).
-async function ensureVolume(fly: FlyClient, appName: string, volume: VolumeConfig, lease: ReconciliationLeaseGuard): Promise<string> {
+async function ensureVolume(fly: FlyClient, appName: string, volumeId: string, volume: VolumeConfig, lease: ReconciliationLeaseGuard): Promise<string> {
   const config = getConfig();
-  const candidates = candidateVolumes(await fly.listVolumes(appName));
+  const candidates = candidateVolumes(await fly.listVolumes(appName), volumeId);
   if (candidates.length === 0) {
     await lease.assertOwned();
-    const created = await fly.createVolume(appName, { name: VOLUME_NAME, region: config.fly.region, size_gb: volume.size_gb });
+    const created = await fly.createVolume(appName, { name: flyVolumeName(volumeId), region: config.fly.region, size_gb: volume.size_gb });
     await fly.waitForVolumeListed(appName, created.id);
     // Re-list and re-select rather than trusting our own create. Two concurrent
     // applies can both see an empty list and both create a volume (Fly does not
@@ -346,7 +388,7 @@ async function ensureVolume(fly: FlyClient, appName: string, volume: VolumeConfi
     // both applies converge on one canonical volume; the loser's create is orphaned
     // (logged below), and whichever apply gets there second is refused by Fly's
     // "volume already claimed" 412 instead of silently diverging.
-    const canonical = selectCanonicalVolume(await fly.listVolumes(appName));
+    const canonical = selectCanonicalVolume(await fly.listVolumes(appName), volumeId);
     if (canonical === null) return created.id; // list raced the create; ours is all we know of
     if (canonical.id !== created.id) {
       console.error(`volume create race on ${appName}: adopted ${canonical.id}, orphaning ${created.id} (needs manual cleanup)`);
@@ -395,8 +437,10 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
   await lease.assertOwned();
   await reconcilePublicIps(fly, appName, stored.spec.config.visibility);
 
-  const volume = stored.spec.config.volume;
-  const volumeId = volume === undefined ? null : await ensureVolume(fly, appName, volume, lease);
+  const specVolumeEntry = specVolume(stored.spec);
+  const volumeId = specVolumeEntry === null
+    ? null
+    : await ensureVolume(fly, appName, specVolumeEntry.volumeId, specVolumeEntry.volume, lease);
 
   const machines = await fly.listMachines(appName);
   const bySlot = new Map<number, FlyMachine>();
@@ -993,7 +1037,9 @@ export async function getServiceState(ns: string, key: string, preloadedSpec?: S
 
   return {
     key,
-    type: SERVICE_TYPE_CONTAINER,
+    // Echo back the type the caller actually stored. Reporting a constant here
+    // meant a service PUT as "server" read back as something else entirely.
+    type: stored.spec.config.type,
     status,
     instances: startedCount,
     revision: runningRevision,

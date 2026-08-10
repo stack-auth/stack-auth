@@ -36,7 +36,7 @@ describe("buildHarnessScript", () => {
 
 describe("validateServiceSpec dockerfile_path", () => {
   const baseSpec = {
-    config: { min_instances: 0, max_instances: 1, port: 3000 },
+    config: { type: "serverless", min_instances: 0, max_instances: 1, port: 3000 },
     source: { upload_id: "00000000-0000-4000-8000-000000000001" },
     env: {},
   };

@@ -11,15 +11,20 @@ import type { ServiceSpec } from "./types.js";
 export function computeRevision(spec: ServiceSpec, rootKey: Buffer = getConfig().dataEncryptionRootKey): string {
   const canonical = {
     config: {
+      // The type decides the machine's autostop policy (suspend vs stop), so a type-only
+      // change has to roll the machines rather than hash identically.
+      type: spec.config.type,
       visibility: spec.config.visibility,
       transport: spec.config.transport,
       min_instances: spec.config.min_instances,
       max_instances: spec.config.max_instances,
       port: spec.config.port,
       // It MUST be included: without it a volume-only change —
-      // adding, resizing, or removing a disk — produces the same revision, so applyServiceSpec
-      // takes the unchanged path, keeps the PREVIOUS spec, and silently drops the change.
-      ...(spec.config.volume !== undefined ? { volume: spec.config.volume } : {}),
+      // adding, resizing, removing, or RE-IDENTIFYING a disk — produces the same revision, so
+      // applyServiceSpec takes the unchanged path, keeps the PREVIOUS spec, and silently drops
+      // the change. The id is part of it because it names the Fly volume: changing it means
+      // mounting a different disk.
+      ...(spec.config.persistent_volumes !== undefined ? { persistent_volumes: spec.config.persistent_volumes } : {}),
     },
     source: spec.source,
     env: Object.fromEntries(Object.entries(spec.env).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)),

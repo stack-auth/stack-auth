@@ -2,7 +2,8 @@
 // runtime side; apps/backend is the only caller. Everything is snake_case because these
 // are wire shapes.
 
-// Opaque discriminator; a future type is a runtime-only change. "container" is the only v1 type.
+// Opaque discriminator; a future type is a runtime-only change. v1 has "server" and
+// "serverless" (see ContainerConfig.type).
 export type ServiceType = string;
 
 // Caller-resolved value, or a ref the runtime resolves locally. Refs carry no namespace —
@@ -15,27 +16,34 @@ export type EnvValue =
 
 // A persistent disk mounted into the container. Fly volumes are a slice of local NVMe on
 // ONE host: a volume attaches to at most one machine and a machine mounts at most one
-// volume, so a service with a volume is necessarily single-instance (max_instances: 1 —
-// enforced in validateServiceSpec). size_gb is grow-only; Fly rejects a shrink.
+// volume, so only a "server" (single-instance by construction) can hold one — enforced in
+// validateServiceSpec. size_gb is grow-only; Fly rejects a shrink.
 export type VolumeConfig = {
   path: string, // absolute, normalized mount point inside the container
   size_gb: number,
 };
 
-// 1/1 → serverful (one always-on instance, no cold starts). Anything else → serverless,
-// scaling between bounds; min_instances: 0 scales to zero, cold-starts on next request.
+// "server"     → one instance, autostop "suspend": it resumes with memory intact and is
+//                the only type that may mount a volume.
+// "serverless" → scales between bounds, autostop "stop": every start is cold, no volume.
+export type ServiceKind = "server" | "serverless";
+
 export type ContainerConfig = {
+  type: ServiceKind,
   // Public allocates Fly ingress and guarantees a built-in fly.dev URL.
   visibility: "public" | "private",
   // TCP is private-only and exposes a raw Flycast port. HTTP receives the
   // existing HTTP/TLS handlers and may be public or private.
   transport: "http" | "tcp",
   min_instances: number,
-  max_instances: number, // >= min_instances; v1 cap: 5
+  max_instances: number, // >= min_instances; v1 cap: 5. Always 0/1 for "server".
   // The single port the container listens on. Readiness = port accepts connections.
   port: number,
-  // Absent = the container filesystem is entirely ephemeral.
-  volume?: VolumeConfig,
+  // Absent = the container filesystem is entirely ephemeral. Keyed by VOLUME ID, which
+  // names the Fly volume (see flyVolumeName): the id, not the service, identifies the
+  // disk, so the same id under a different service moves the mount there. At most one
+  // entry — a Fly machine mounts at most one volume.
+  persistent_volumes?: Record<string, VolumeConfig>,
 };
 
 export type ServiceSpec = {

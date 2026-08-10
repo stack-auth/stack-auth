@@ -33,7 +33,7 @@ import { Tenancy } from "@/lib/tenancies";
 import { PrismaClientTransaction, globalPrismaClient } from "@/prisma-client";
 import type { DeploymentRunStatus, Prisma } from "@/generated/prisma/client";
 import { readProjectSecretValue } from "@/lib/project-secrets";
-import { DEPLOYMENT_CONNECTION_VALUE_REGEX, DEPLOYMENT_ENV_VAR_KEY_REGEX, DeploymentEnvVarDefinition, DeploymentServiceDefinition, HEXCLAVE_OUTPUT_KEYS, HEXCLAVE_SERVICE_ID, SERVICE_OUTPUT_KEYS, ServiceOutputKey } from "@hexclave/shared/dist/deployments";
+import { DEPLOYMENT_CONNECTION_VALUE_REGEX, DEPLOYMENT_ENV_VAR_KEY_REGEX, DeploymentEnvVarDefinition, DeploymentServiceDefinition, DeploymentServiceType, HEXCLAVE_OUTPUT_KEYS, HEXCLAVE_SERVICE_ID, SERVICE_OUTPUT_KEYS, ServiceOutputKey } from "@hexclave/shared/dist/deployments";
 import { decryptWithKms, encryptWithKms } from "@hexclave/shared/dist/helpers/vault/server-side";
 import { PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
@@ -125,6 +125,7 @@ function parseStoredEnv(env: Prisma.JsonValue, serviceId: string): Record<string
 
 export function definitionFromServiceRow(row: {
   serviceId: string,
+  type: string,
   visibility: string,
   transport: string,
   port: number | null,
@@ -132,6 +133,7 @@ export function definitionFromServiceRow(row: {
   maxInstances: number | null,
   rootDirectory: string | null,
   dockerfilePath: string | null,
+  volumeId: string | null,
   volumePath: string | null,
   volumeSizeGb: number | null,
   env: Prisma.JsonValue,
@@ -142,8 +144,11 @@ export function definitionFromServiceRow(row: {
   if (row.transport !== "http" && row.transport !== "tcp") {
     throw new HexclaveAssertionError(`Deployment service ${JSON.stringify(row.serviceId)} has invalid transport ${JSON.stringify(row.transport)}.`);
   }
+  if (row.type !== "server" && row.type !== "serverless") {
+    throw new HexclaveAssertionError(`Deployment service ${JSON.stringify(row.serviceId)} has invalid type ${JSON.stringify(row.type)}.`);
+  }
   return {
-    type: "container",
+    type: row.type,
     visibility: row.visibility,
     transport: row.transport,
     // Rows that predate a synced definition have no port. The `0` placeholder is only ever
@@ -156,11 +161,11 @@ export function definitionFromServiceRow(row: {
     max_instances: row.maxInstances ?? undefined,
     root_directory: row.rootDirectory ?? undefined,
     dockerfile_path: row.dockerfilePath ?? undefined,
-    // The columns are written as a pair, so a row with only one of them set is
-    // corrupt rather than merely partial — treat it as "no volume" instead of
-    // synthesizing a definition with a made-up path or size.
-    volume: row.volumePath !== null && row.volumeSizeGb !== null
-      ? { path: row.volumePath, size_gb: row.volumeSizeGb }
+    // The three columns are written as a tuple, so a row with only some of them
+    // set is corrupt rather than merely partial — treat it as "no volume"
+    // instead of synthesizing a definition with a made-up id, path, or size.
+    persistent_volumes: row.volumeId !== null && row.volumePath !== null && row.volumeSizeGb !== null
+      ? { [row.volumeId]: { path: row.volumePath, size_gb: row.volumeSizeGb } }
       : undefined,
     env: parseStoredEnv(row.env, row.serviceId),
   };
@@ -270,23 +275,70 @@ export async function assertMinInstancesAllowedByPlan(tenancy: Tenancy, services
 async function assertNoVolumeShrink(prisma: PrismaClientTransaction, tenancy: Tenancy, services: Record<string, DeploymentServiceDefinition>): Promise<void> {
   const existingRows = await prisma.deploymentService.findMany({
     where: { tenancyId: tenancy.id, serviceId: { in: Object.keys(services) } },
-    select: { serviceId: true, volumeSizeGb: true },
+    select: { serviceId: true, volumeId: true, volumeSizeGb: true },
   });
-  const previousSizeGb = new Map(existingRows.map((row) => [row.serviceId, row.volumeSizeGb]));
+  const previousVolume = new Map(existingRows.map((row) => [row.serviceId, row]));
   for (const [serviceId, definition] of Object.entries(services)) {
-    const previous = previousSizeGb.get(serviceId) ?? null;
-    const next = definition.volume?.size_gb ?? null;
-    if (previous === null || next === null || next >= previous) continue;
+    const previous = previousVolume.get(serviceId) ?? null;
+    const next = singleVolume(definition);
+    if (previous?.volumeSizeGb == null || next === null || next.sizeGb >= previous.volumeSizeGb) continue;
+    // Only compare sizes for the SAME disk. A different id is a different
+    // volume, not a shrink of this one — rejecting that would block the very
+    // thing volume ids exist for (pointing a service at another disk).
+    if (previous.volumeId !== next.volumeId) continue;
     throw new StatusError(400, [
-      `Service \`${serviceId}\` already has a ${previous}GB volume, which cannot be shrunk to ${next}GB — disks can only grow.`,
+      `Service \`${serviceId}\` already has a ${previous.volumeSizeGb}GB volume, which cannot be shrunk to ${next.sizeGb}GB — disks can only grow.`,
       "",
-      `Set its \`volume.size\` back to at least ${previous}, or remove \`volume\` from the service to detach the disk (the data is kept either way).`,
+      // Deliberately does NOT suggest detaching and re-adding smaller: the Fly
+      // volume outlives the detach, so that path clears this row's size, slips
+      // past this check, and fails at apply time instead — after the upload has
+      // been consumed. A smaller disk needs a different volume id.
+      `Set its \`sizeGb\` back to at least ${previous.volumeSizeGb}. To start over at a smaller size, give it a new volume id — the existing disk is a separate one and keeps its data.`,
     ].join("\n"));
   }
 }
 
+/**
+ * A service may declare at most one persistent volume (a Fly machine mounts at
+ * most one), so every caller wants the single entry rather than the record.
+ */
+export function singleVolume(definition: DeploymentServiceDefinition): { volumeId: string, path: string, sizeGb: number } | null {
+  const entries = Object.entries(definition.persistent_volumes ?? {});
+  if (entries.length === 0) return null;
+  return { volumeId: entries[0][0], path: entries[0][1].path, sizeGb: entries[0][1].size_gb };
+}
+
+/**
+ * Rejects two services claiming one volume id. A volume id names one disk, so
+ * two claimants would ask Fly to mount it on two machines; the loser would come
+ * up with an empty disk. The CLI checks this too, but a definition can reach
+ * the sync route without passing through it.
+ *
+ * Only the incoming definitions are checked. A row NOT in this sync belongs to a
+ * service the config no longer defines — `hexclave deploy` always syncs the whole
+ * config, even for `--service-id` — and its id is released by the pass in
+ * syncServiceDefinitions. Rejecting on those rows instead would be a dead end:
+ * there is no route that deletes a service, so renaming a service that holds a
+ * volume would 400 the whole sync forever, telling the user to edit a service
+ * their config no longer contains.
+ */
+function assertNoVolumeIdConflicts(services: Record<string, DeploymentServiceDefinition>): Map<string, string> {
+  const claimedBy = new Map<string, string>();
+  for (const [serviceId, definition] of Object.entries(services)) {
+    const volume = singleVolume(definition);
+    if (volume === null) continue;
+    const existing = claimedBy.get(volume.volumeId);
+    if (existing !== undefined) {
+      throw new StatusError(400, `Services \`${existing}\` and \`${serviceId}\` both declare the persistent volume \`${volume.volumeId}\`. A volume is one disk and can only be mounted by one service — give one of them a different id.`);
+    }
+    claimedBy.set(volume.volumeId, serviceId);
+  }
+  return claimedBy;
+}
+
 export async function syncServiceDefinitions(prisma: PrismaClientTransaction, tenancy: Tenancy, services: Record<string, DeploymentServiceDefinition>, definitionSyncId: string): Promise<void> {
   await assertNoVolumeShrink(prisma, tenancy, services);
+  const claimedVolumeIds = assertNoVolumeIdConflicts(services);
   const tcpServiceIds = Object.entries(services)
     .filter(([, definition]) => definition.transport === "tcp")
     .map(([serviceId]) => serviceId);
@@ -303,22 +355,59 @@ export async function syncServiceDefinitions(prisma: PrismaClientTransaction, te
       throw new StatusError(400, `Service ${JSON.stringify(serviceWithDomain.serviceId)} has a custom domain, so it cannot use transport "tcp". Remove the domain first or keep transport: "http".`);
     }
   }
+  // Release volume ids BEFORE any upsert writes them. The per-service upserts
+  // below run in an arbitrary order within the sync transaction, so moving a volume
+  // service B would hit the (tenancyId, volumeId) unique index whenever B
+  // happens to be written before A — a move that is valid overall failing on
+  // iteration order. Clearing first makes the order irrelevant.
+  //
+  // Two kinds of row are released: one in this sync whose declared id changed
+  // (or went away), and any row — including one this sync does not define —
+  // still holding an id that a service here now claims. The second is what makes
+  // a service RENAME work: the old service id keeps its row forever (nothing
+  // deletes services), so without this its stale claim would block the new name.
+  const retainedVolumeIdByService = new Map(Object.entries(services).map(([serviceId, definition]) => [serviceId, singleVolume(definition)?.volumeId ?? null]));
+  const heldRows = await prisma.deploymentService.findMany({
+    where: {
+      tenancyId: tenancy.id,
+      volumeId: { not: null },
+      OR: [
+        { serviceId: { in: [...retainedVolumeIdByService.keys()] } },
+        ...(claimedVolumeIds.size > 0 ? [{ volumeId: { in: [...claimedVolumeIds.keys()] } }] : []),
+      ],
+    },
+    select: { serviceId: true, volumeId: true },
+  });
+  const releasedServiceIds = heldRows
+    .filter((row) => row.volumeId !== retainedVolumeIdByService.get(row.serviceId))
+    .map((row) => row.serviceId);
+  if (releasedServiceIds.length > 0) {
+    await prisma.deploymentService.updateMany({
+      where: { tenancyId: tenancy.id, serviceId: { in: releasedServiceIds } },
+      // The path and size go too: all three are one tuple, and the CHECK
+      // constraint refuses an id-less disk paired with a path from another one.
+      data: { volumeId: null, volumePath: null, volumeSizeGb: null },
+    });
+  }
+
   for (const [serviceId, definition] of Object.entries(services)) {
     const definitionColumns = {
       definitionSyncedAt: new Date(),
       definitionSyncId,
       port: definition.port,
+      type: definition.type,
       visibility: definition.visibility,
       transport: definition.transport,
       minInstances: definition.min_instances ?? null,
       maxInstances: definition.max_instances ?? null,
       rootDirectory: definition.root_directory ?? null,
       dockerfilePath: definition.dockerfile_path ?? null,
-      // Written as a pair: a definition that drops `volume` must clear BOTH
-      // columns, or a stale half would keep mounting a disk the config no
-      // longer declares.
-      volumePath: definition.volume?.path ?? null,
-      volumeSizeGb: definition.volume?.size_gb ?? null,
+      // Written as a tuple: a definition that drops its volume must clear ALL
+      // THREE columns, or a stale remnant would keep mounting a disk the config
+      // no longer declares.
+      volumeId: singleVolume(definition)?.volumeId ?? null,
+      volumePath: singleVolume(definition)?.path ?? null,
+      volumeSizeGb: singleVolume(definition)?.sizeGb ?? null,
       // The yup-validated env may contain explicit `undefined` fields, which
       // aren't valid JSON values; filter each entry at this boundary. Spelled
       // out field-by-field so the result is a Prisma-storable entry array
@@ -746,9 +835,15 @@ export function redactSecrets(text: string, secretValues: string[]): string {
 
 /** Assembles the Marshal service spec for a service's stored definition. */
 export function marshalSpecForDefinition(definition: DeploymentServiceDefinition, source: { upload_id: string } | { image: string }, resolvedEnv: Record<string, MarshalEnvValue>) {
-  const minInstances = definition.min_instances ?? DEFAULT_MIN_INSTANCES;
+  // A "server" is always 0/1 whatever the definition says; the schema and the
+  // CLI both reject other bounds, so this only normalizes the defaults rather
+  // than overriding a stated intent, and it keeps the spec self-consistent with
+  // the type Marshal re-validates against.
+  const isServer = definition.type === "server";
+  const minInstances = isServer ? 0 : definition.min_instances ?? DEFAULT_MIN_INSTANCES;
   return {
     config: {
+      type: definition.type,
       visibility: definition.visibility,
       transport: definition.transport,
       min_instances: minInstances,
@@ -756,11 +851,13 @@ export function marshalSpecForDefinition(definition: DeploymentServiceDefinition
       // must not synthesize an invalid spec (max < min) that Marshal 400s after the upload is
       // already consumed. Validation (CLI + schema) also rejects it up front now, but this
       // keeps the spec self-consistent regardless.
-      max_instances: definition.max_instances ?? Math.max(minInstances, DEFAULT_MAX_INSTANCES),
+      max_instances: isServer ? 1 : definition.max_instances ?? Math.max(minInstances, DEFAULT_MAX_INSTANCES),
       port: definition.port,
       // Absent = ephemeral container filesystem. Marshal re-validates that a
-      // volume implies max_instances === 1.
-      ...(definition.volume !== undefined ? { volume: definition.volume } : {}),
+      // volume implies type "server".
+      ...(definition.persistent_volumes !== undefined && Object.keys(definition.persistent_volumes).length > 0
+        ? { persistent_volumes: definition.persistent_volumes }
+        : {}),
     },
     // dockerfile_path only matters when there is something to build; absent =
     // the builder auto-detects the build with Railpack.
@@ -789,6 +886,10 @@ export async function startDeployment(options: {
   // The Marshal upload slot id holding the source tarball.
   marshalUploadId: string,
   triggeredBy: string,
+  // The `hexclave deploy` this run belongs to, when the caller grouped its
+  // services into one (see createDeployment). Null for a standalone deploy of a
+  // single service; the dashboard renders those as one-service deployments.
+  deploymentId?: string | null,
 }): Promise<StartDeploymentResult> {
   const { tenancy, prisma, serviceId, definition, resolvedEnv, redactionSecretsEncrypted, marshalUploadId, triggeredBy } = options;
   const client = getMarshalClientOrThrow();
@@ -836,6 +937,7 @@ export async function startDeployment(options: {
     data: {
       tenancyId: tenancy.id,
       deploymentServiceId: service.id,
+      deploymentId: options.deploymentId ?? null,
       marshalBuildId: build?.id ?? null,
       revision: result.revision,
       serviceUrl: result.state.outputs.url ?? null,
@@ -1033,7 +1135,7 @@ export type DnsRecord = MarshalDnsRecord;
 
 export type DeploymentServiceApiShape = {
   id: string,
-  type: "container",
+  type: DeploymentServiceType,
   visibility: "public" | "private",
   transport: "http" | "tcp",
   port: number | null,
@@ -1042,8 +1144,9 @@ export type DeploymentServiceApiShape = {
   root_directory: string | null,
   // Null = built with Railpack auto-detection rather than a Dockerfile.
   dockerfile_path: string | null,
-  // Null = no persistent disk (an ephemeral container filesystem).
-  volume: { path: string, size_gb: number } | null,
+  // Null = no persistent disk (an ephemeral container filesystem). Otherwise a
+  // single-entry record keyed by volume id.
+  persistent_volumes: Record<string, { path: string, size_gb: number }> | null,
   provisioned: boolean,
   status: "not_deployed" | "queued" | "building" | "deployed" | "failed" | "canceled",
   // Whether any run ever reached READY; the dashboard keeps its "deploy your
@@ -1072,6 +1175,140 @@ export type DeploymentRunApiShape = {
   created_at_millis: number,
   finished_at_millis: number | null,
 };
+
+// ---------------------------------------------------------------------------
+// Deployments: one `hexclave deploy`, holding the per-service runs it triggered.
+
+export type DeploymentApiShape = {
+  id: string,
+  // The user-facing "#47", monotonic per project.
+  number: number,
+  // Derived from the runs, never stored: see deploymentStatusFromRuns.
+  status: "queued" | "building" | "deployed" | "failed" | "canceled",
+  target: string,
+  triggered_by: string,
+  created_at_millis: number,
+  finished_at_millis: number | null,
+  // Every service this deploy intended to deploy. A service whose dependency
+  // failed never gets a run, so `run` is null for it and the dashboard shows it
+  // as skipped rather than omitting it.
+  services: { service_id: string, run: DeploymentRunApiShape | null }[],
+};
+
+/**
+ * A deployment's status, derived from its runs rather than stored, so there is
+ * no second copy of the truth to drift.
+ *
+ * `plannedCount` is what makes this correct mid-deploy. `hexclave deploy`
+ * creates the deployment first and then deploys service by service, so a deploy
+ * of three services whose first run has just gone READY has one READY run and
+ * nothing else. Reading only the runs would call that whole deployment
+ * "deployed" and hand it a finish time, then flip it back to "building" — so a
+ * deployment with runs still missing is only terminal once something has
+ * already failed (the rest are then skipped and will never run).
+ *
+ * Order matters among the runs themselves: a still-building run outranks an
+ * already-failed one, because "still going" is what the reader needs in order to
+ * decide whether to wait.
+ */
+export function deploymentStatusFromRuns(runStatuses: DeploymentRunStatus[], plannedCount: number): DeploymentApiShape["status"] {
+  const awaitingRuns = plannedCount > runStatuses.length;
+  if (runStatuses.some((status) => status === "BUILDING")) return "building";
+  if (runStatuses.some((status) => status === "QUEUED")) return "queued";
+  if (runStatuses.some((status) => status === "ERROR")) return "failed";
+  if (runStatuses.some((status) => status === "CANCELED")) return "canceled";
+  // Every run so far succeeded. If the deploy has services it never started a
+  // run for, it is still going — nothing has failed to skip them.
+  if (awaitingRuns) return runStatuses.length === 0 ? "queued" : "building";
+  return "deployed";
+}
+
+/**
+ * Creates the deployment that a multi-service `hexclave deploy` groups its runs
+ * under. The number is `max + 1` within the tenancy; the caller must supply a
+ * transaction (see the route) so the read and the insert are atomic, and the
+ * (tenancyId, number) unique index makes the residual race a retry rather than
+ * two deployments that print as the same "#47".
+ */
+export async function createDeployment(prisma: PrismaClientTransaction, tenancy: Tenancy, options: {
+  target: string,
+  triggeredBy: string,
+  plannedServiceIds: string[],
+}): Promise<{ id: string, number: number }> {
+  const latest = await prisma.deployment.findFirst({
+    where: { tenancyId: tenancy.id },
+    orderBy: { number: "desc" },
+    select: { number: true },
+  });
+  const created = await prisma.deployment.create({
+    data: {
+      tenancyId: tenancy.id,
+      number: (latest?.number ?? 0) + 1,
+      target: options.target,
+      triggeredBy: options.triggeredBy,
+      plannedServiceIds: options.plannedServiceIds,
+    },
+    select: { id: true, number: true },
+  });
+  return created;
+}
+
+export function deploymentToApiShape(deployment: {
+  id: string,
+  number: number,
+  target: string,
+  triggeredBy: string,
+  createdAt: Date,
+  plannedServiceIds: Prisma.JsonValue,
+  runs: {
+    id: string,
+    status: DeploymentRunStatus,
+    target: string,
+    triggeredBy: string,
+    serviceUrl: string | null,
+    error: string | null,
+    createdAt: Date,
+    finishedAt: Date | null,
+    service: { serviceId: string },
+  }[],
+}): DeploymentApiShape {
+  const runByServiceId = new Map(deployment.runs.map((run) => [run.service.serviceId, run]));
+  // Planned ids come from JSON, so a hand-edited row could hold anything.
+  // Fall back to the ids that actually have runs rather than throwing: a
+  // deployment that cannot be listed is worse than one listing only its runs.
+  const plannedServiceIds = Array.isArray(deployment.plannedServiceIds) && deployment.plannedServiceIds.every((id) => typeof id === "string")
+    ? deployment.plannedServiceIds as string[]
+    : [...runByServiceId.keys()];
+  // Union, planned order first: a run whose service is missing from the plan
+  // (the service was renamed mid-deploy, or the row was hand-edited) must still show.
+  const serviceIds = [...plannedServiceIds, ...[...runByServiceId.keys()].filter((serviceId) => !plannedServiceIds.includes(serviceId))];
+  // Status is computed over the LATEST run per service, matching what `services`
+  // below reports. Feeding every run in would let a superseded failure outrank
+  // the successful retry that replaced it.
+  const latestRuns = [...runByServiceId.values()];
+  const status = deploymentStatusFromRuns(latestRuns.map((run) => run.status), serviceIds.length);
+  const finishedAtMillis = latestRuns.map((run) => run.finishedAt?.getTime() ?? null);
+  return {
+    id: deployment.id,
+    number: deployment.number,
+    status,
+    target: deployment.target,
+    triggered_by: deployment.triggeredBy,
+    created_at_millis: deployment.createdAt.getTime(),
+    // Only finished once the deployment itself is terminal AND every run it has
+    // is finished: a deployment is done when its slowest service is. A deploy
+    // still waiting on runs it never started reports null rather than handing
+    // back an earlier service's finish time as the whole deploy's.
+    finished_at_millis: status !== "queued" && status !== "building"
+      && finishedAtMillis.length > 0 && finishedAtMillis.every((millis) => millis !== null)
+      ? Math.max(...finishedAtMillis as number[])
+      : null,
+    services: serviceIds.map((serviceId) => {
+      const run = runByServiceId.get(serviceId);
+      return { service_id: serviceId, run: run === undefined ? null : runToApiShape(run, serviceId) };
+    }),
+  };
+}
 
 export function runToApiShape(run: {
   id: string,
@@ -1216,9 +1453,10 @@ export async function serviceToApiShape(options: {
   }
   env.sort((a, b) => stringCompare(a.key, b.key));
 
+  const volume = singleVolume(definition);
   return {
     id: row.serviceId,
-    type: "container",
+    type: definition.type,
     visibility: definition.visibility,
     transport: definition.transport,
     port: row.port,
@@ -1226,7 +1464,7 @@ export async function serviceToApiShape(options: {
     max_instances: row.maxInstances,
     root_directory: row.rootDirectory,
     dockerfile_path: row.dockerfilePath,
-    volume: definition.volume ?? null,
+    persistent_volumes: volume === null ? null : { [volume.volumeId]: { path: volume.path, size_gb: volume.sizeGb } },
     provisioned: row.provisionedAt != null,
     status,
     has_successful_deploy: hasSuccessfulDeploy,

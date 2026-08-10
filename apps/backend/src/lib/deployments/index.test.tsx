@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { MarshalBuild, MarshalServiceState } from "./marshal-client";
-import { assertMinInstancesAllowedByPlan, definitionFromServiceRow, deploymentRunStatusFromMarshal, marshalSpecForDefinition } from "./index";
+import { assertMinInstancesAllowedByPlan, definitionFromServiceRow, deploymentRunStatusFromMarshal, deploymentStatusFromRuns, marshalSpecForDefinition } from "./index";
 import { getPlanIdForProjectOrNull } from "@/lib/plan-entitlements";
 
 // The gate's own decision logic, isolated from the billing store. Both the sync
@@ -24,7 +24,7 @@ const build: MarshalBuild = {
 function serviceState(overrides: Partial<MarshalServiceState> = {}): MarshalServiceState {
   return {
     key: "api",
-    type: "container",
+    type: "serverless",
     status: "deploying",
     instances: 1,
     revision: "revision-old",
@@ -66,6 +66,7 @@ describe("stored deployment environment", () => {
   it("preserves __proto__ from the entry-array database representation", () => {
     const definition = definitionFromServiceRow({
       serviceId: "api",
+      type: "serverless",
       visibility: "private",
       transport: "http",
       port: 3000,
@@ -73,6 +74,7 @@ describe("stored deployment environment", () => {
       maxInstances: 1,
       rootDirectory: null,
       dockerfilePath: null,
+      volumeId: null,
       volumePath: null,
       volumeSizeGb: null,
       env: [["__proto__", { value: "safe" }]],
@@ -84,6 +86,7 @@ describe("stored deployment environment", () => {
   it("continues to read the legacy object database representation", () => {
     const definition = definitionFromServiceRow({
       serviceId: "api",
+      type: "serverless",
       visibility: "public",
       transport: "http",
       port: 3000,
@@ -91,6 +94,7 @@ describe("stored deployment environment", () => {
       maxInstances: 1,
       rootDirectory: null,
       dockerfilePath: null,
+      volumeId: null,
       volumePath: null,
       volumeSizeGb: null,
       env: { SAFE: { value: "legacy" } },
@@ -103,6 +107,7 @@ describe("stored deployment environment", () => {
 describe("stored deployment volumes", () => {
   const baseRow = {
     serviceId: "api",
+    type: "server",
     visibility: "private",
     transport: "http",
     port: 3000,
@@ -113,47 +118,56 @@ describe("stored deployment volumes", () => {
     env: [] as [string, { value: string }][],
   };
 
-  it("reads a stored volume back into the definition", () => {
-    const definition = definitionFromServiceRow({ ...baseRow, volumePath: "/data", volumeSizeGb: 10 });
-    expect(definition.volume).toEqual({ path: "/data", size_gb: 10 });
+  it("reads a stored volume back into the definition under its id", () => {
+    const definition = definitionFromServiceRow({ ...baseRow, volumeId: "uploads", volumePath: "/data", volumeSizeGb: 10 });
+    expect(definition.persistent_volumes).toEqual({ uploads: { path: "/data", size_gb: 10 } });
   });
 
   it("reports no volume when the columns are unset", () => {
-    const definition = definitionFromServiceRow({ ...baseRow, volumePath: null, volumeSizeGb: null });
-    expect(definition.volume).toBeUndefined();
+    const definition = definitionFromServiceRow({ ...baseRow, volumeId: null, volumePath: null, volumeSizeGb: null });
+    expect(definition.persistent_volumes).toBeUndefined();
   });
 
-  it("treats a half-written pair as no volume rather than inventing the missing half", () => {
-    // The two columns are always written together, so seeing only one means the
-    // row is corrupt. Mounting a disk at a guessed path (or at a guessed size)
-    // would be worse than ignoring it.
-    expect(definitionFromServiceRow({ ...baseRow, volumePath: "/data", volumeSizeGb: null }).volume).toBeUndefined();
-    expect(definitionFromServiceRow({ ...baseRow, volumePath: null, volumeSizeGb: 10 }).volume).toBeUndefined();
+  it("treats a half-written tuple as no volume rather than inventing the missing part", () => {
+    // The columns are always written together, so seeing only some means the
+    // row is corrupt. Mounting a disk at a guessed path, size, or id would be
+    // worse than ignoring it.
+    expect(definitionFromServiceRow({ ...baseRow, volumeId: "uploads", volumePath: "/data", volumeSizeGb: null }).persistent_volumes).toBeUndefined();
+    expect(definitionFromServiceRow({ ...baseRow, volumeId: "uploads", volumePath: null, volumeSizeGb: 10 }).persistent_volumes).toBeUndefined();
+    expect(definitionFromServiceRow({ ...baseRow, volumeId: null, volumePath: "/data", volumeSizeGb: 10 }).persistent_volumes).toBeUndefined();
   });
 
   it("passes the volume through to the Marshal spec, and omits it entirely when absent", () => {
     const withVolume = marshalSpecForDefinition(
-      definitionFromServiceRow({ ...baseRow, minInstances: 1, maxInstances: 1, volumePath: "/data", volumeSizeGb: 10 }),
+      definitionFromServiceRow({ ...baseRow, volumeId: "uploads", volumePath: "/data", volumeSizeGb: 10 }),
       { image: "registry.fly.io/app@sha256:abc" },
       {},
     );
-    expect(withVolume.config).toEqual({ visibility: "private", transport: "http", min_instances: 1, max_instances: 1, port: 3000, volume: { path: "/data", size_gb: 10 } });
+    expect(withVolume.config).toEqual({
+      type: "server",
+      visibility: "private",
+      transport: "http",
+      min_instances: 0,
+      max_instances: 1,
+      port: 3000,
+      persistent_volumes: { uploads: { path: "/data", size_gb: 10 } },
+    });
 
     const withoutVolume = marshalSpecForDefinition(
-      definitionFromServiceRow({ ...baseRow, volumePath: null, volumeSizeGb: null }),
+      definitionFromServiceRow({ ...baseRow, type: "serverless", volumeId: null, volumePath: null, volumeSizeGb: null }),
       { image: "registry.fly.io/app@sha256:abc" },
       {},
     );
-    // Not `volume: undefined` — the key must be absent, since Marshal hashes the
-    // serialized spec to compute the revision.
-    expect("volume" in withoutVolume.config).toBe(false);
+    // Not `persistent_volumes: undefined` — the key must be absent, since Marshal
+    // hashes the serialized spec to compute the revision.
+    expect("persistent_volumes" in withoutVolume.config).toBe(false);
   });
 });
 
 describe("free-plan always-on gate", () => {
   const tenancy = { project: { id: "p1", ownerTeamId: "team1" } } as any;
   const service = (minInstances?: number) => ({
-    type: "container" as const,
+    type: "serverless" as const,
     visibility: "private" as const,
     transport: "http" as const,
     port: 3000,
@@ -221,5 +235,31 @@ describe("free-plan always-on gate", () => {
     const error = await rejection(assertMinInstancesAllowedByPlan(tenancy, many));
     expect(error.message).toContain("and 4 more");
     expect(error.message).toContain("upgrade your plan");
+  });
+});
+
+describe("deployment status derivation", () => {
+  it("stays in progress while the deploy has services it has not started yet", () => {
+    // The regression this guards: `hexclave deploy` creates the deployment first
+    // and deploys service by service, so reading only the runs called a 3-service
+    // deploy "deployed" the moment its first run went READY — then flipped it
+    // back to "building" on the next poll.
+    expect(deploymentStatusFromRuns(["READY"], 3)).toBe("building");
+    expect(deploymentStatusFromRuns([], 3)).toBe("queued");
+    expect(deploymentStatusFromRuns(["READY", "READY"], 3)).toBe("building");
+    expect(deploymentStatusFromRuns(["READY", "READY", "READY"], 3)).toBe("deployed");
+  });
+
+  it("is terminal once something fails, since the rest are skipped", () => {
+    // A failed service means its dependents never run at all, so waiting for
+    // their runs would leave the deployment building forever.
+    expect(deploymentStatusFromRuns(["ERROR"], 3)).toBe("failed");
+    expect(deploymentStatusFromRuns(["READY", "CANCELED"], 3)).toBe("canceled");
+  });
+
+  it("reports in-flight work ahead of an already-failed run", () => {
+    // "Still going" is what decides whether the reader waits.
+    expect(deploymentStatusFromRuns(["ERROR", "BUILDING"], 2)).toBe("building");
+    expect(deploymentStatusFromRuns(["ERROR", "QUEUED"], 2)).toBe("queued");
   });
 });

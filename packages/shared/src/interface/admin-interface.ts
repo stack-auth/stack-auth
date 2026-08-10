@@ -73,24 +73,48 @@ export type AdminDeploymentEnvVarJson = {
   secret_key: string | null,
 };
 
+// One `hexclave deploy`, holding the per-service runs it triggered. Mirrors
+// DeploymentApiShape in apps/backend/src/lib/deployments — the two are
+// hand-maintained duplicates, so they must be edited together.
+export type AdminDeploymentJson = {
+  id: string,
+  // The user-facing "#47", monotonic per project.
+  number: number,
+  // Derived from the runs rather than stored.
+  status: "queued" | "building" | "deployed" | "failed" | "canceled",
+  target: string,
+  triggered_by: string,
+  created_at_millis: number,
+  // Null until every run has finished.
+  finished_at_millis: number | null,
+  // Every service the deploy intended to deploy. `run` is null for a service
+  // that never started one (typically because a dependency failed first).
+  services: { service_id: string, run: AdminDeploymentRunJson | null }[],
+};
+
 export type AdminDeploymentServiceJson = {
   id: string,
-  type: "container",
+  // "server" = one instance that suspends when idle and may hold a persistent
+  // volume; "serverless" = scales between the bounds below and stops on
+  // scale-down.
+  type: "server" | "serverless",
   visibility: "public" | "private",
   transport: "http" | "tcp",
   // Container definition (null on rows synced before the definition existed):
   // the single port the container listens on, and the serverless scaling
-  // bounds (1/1 = serverful, min 0 scales to zero).
+  // bounds (min 0 scales to zero).
   port: number | null,
   min_instances: number | null,
   max_instances: number | null,
   root_directory: string | null,
   // Null = built with Railpack auto-detection rather than a Dockerfile.
   dockerfile_path: string | null,
-  // Null = no persistent disk (an ephemeral container filesystem). Mirrors
+  // Null = no persistent disk (an ephemeral container filesystem). Otherwise a
+  // single-entry record keyed by volume id, which names the disk within this
+  // service — the same id under another service is a different disk. Mirrors
   // DeploymentServiceApiShape in apps/backend/src/lib/deployments — the two are
   // hand-maintained duplicates, so they must be edited together.
-  volume: { path: string, size_gb: number } | null,
+  persistent_volumes: Record<string, { path: string, size_gb: number }> | null,
   provisioned: boolean,
   status: "not_deployed" | "queued" | "building" | "deployed" | "failed" | "canceled",
   has_successful_deploy: boolean,
@@ -1442,6 +1466,31 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
       { method: "DELETE" },
       null,
     );
+  }
+
+  async listDeployments(options?: { limit?: number }): Promise<AdminDeploymentJson[]> {
+    const response = await this.sendAdminRequest(
+      `/deployments/deployments` + (options?.limit !== undefined ? `?limit=${options.limit}` : ""),
+      { method: "GET" },
+      null,
+    );
+    return (await response.json()).items;
+  }
+
+  async createDeployment(options: { plannedServiceIds: string[], triggeredBy?: string }): Promise<{ id: string, number: number }> {
+    const response = await this.sendAdminRequest(
+      `/deployments/deployments`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          planned_service_ids: options.plannedServiceIds,
+          ...(options.triggeredBy !== undefined ? { triggered_by: options.triggeredBy } : {}),
+        }),
+      },
+      null,
+    );
+    return await response.json();
   }
 
   async listDeploymentRuns(serviceId: string, options?: { limit?: number }): Promise<AdminDeploymentRunJson[]> {

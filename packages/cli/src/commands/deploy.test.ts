@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { evaluateServicesFunction, type ServicesFunctionContext } from "../lib/services-config.js";
+import { evaluateDeploymentConfig, type ServicesFunctionContext } from "../lib/deployment-config.js";
 import { collectPublicUrls, collectRequiredSecretKeys, deployService, resolveDeployConfigPath } from "./deploy.js";
 
 describe("deploy command helpers", () => {
@@ -54,11 +54,11 @@ describe("deploy command helpers", () => {
     const dir = makeTempDir();
     fs.writeFileSync(path.join(dir, "index.html"), "<h1>ready</h1>");
     fs.writeFileSync(path.join(dir, "Dockerfile"), "FROM nginx:alpine\n");
-    const service = evaluateServicesFunction({
+    const service = evaluateDeploymentConfig({
       configPath: path.join(dir, "hexclave.config.ts"),
-      servicesExport: () => ({
-        web: { type: "container", visibility: "public", port: 3000, dockerfilePath: "Dockerfile" },
-      }),
+      deploymentExport: { services: () => ({
+        web: { type: "serverless", visibility: "public", port: 3000, dockerfilePath: "Dockerfile" },
+      }) },
       mode: "deploy",
     }).services.get("web");
     if (service == null) throw new Error("Test service was not evaluated");
@@ -111,6 +111,7 @@ describe("deploy command helpers", () => {
       authHeaders: () => Promise.resolve({ authorization: "test" }),
       service,
       definitionSyncId: "00000000-0000-4000-8000-000000000003",
+      deploymentId: "00000000-0000-4000-8000-0000000000de",
       ignoreRootDirectory: dir,
     });
 
@@ -125,13 +126,13 @@ describe("deploy command helpers", () => {
   });
 
   it("returns one final URL for each successfully deployed public service", () => {
-    const services = evaluateServicesFunction({
+    const services = evaluateDeploymentConfig({
       configPath: path.join(os.tmpdir(), "hexclave.config.ts"),
-      servicesExport: () => ({
-        web: { type: "container", visibility: "public", port: 3000 },
-        worker: { type: "container", port: 3001 },
-        failed: { type: "container", visibility: "public", port: 3002 },
-      }),
+      deploymentExport: { services: () => ({
+        web: { type: "serverless", visibility: "public", port: 3000 },
+        worker: { type: "serverless", port: 3001 },
+        failed: { type: "serverless", visibility: "public", port: 3002 },
+      }) },
       mode: "deploy",
     }).services;
     expect(collectPublicUrls(["web", "worker", "failed"], services, new Map([
@@ -144,11 +145,11 @@ describe("deploy command helpers", () => {
   it("fails before upload when the declared dockerfilePath is not in the packaged source", async () => {
     const dir = makeTempDir();
     fs.writeFileSync(path.join(dir, "index.html"), "<h1>no dockerfile</h1>");
-    const service = evaluateServicesFunction({
+    const service = evaluateDeploymentConfig({
       configPath: path.join(dir, "hexclave.config.ts"),
-      servicesExport: () => ({
-        web: { type: "container", port: 3000, dockerfilePath: "Dockerfile" },
-      }),
+      deploymentExport: { services: () => ({
+        web: { type: "serverless", port: 3000, dockerfilePath: "Dockerfile" },
+      }) },
       mode: "deploy",
     }).services.get("web");
     if (service == null) throw new Error("Test service was not evaluated");
@@ -165,6 +166,7 @@ describe("deploy command helpers", () => {
       authHeaders: () => Promise.resolve({ authorization: "test" }),
       service,
       definitionSyncId: "00000000-0000-4000-8000-000000000003",
+      deploymentId: "00000000-0000-4000-8000-0000000000de",
       ignoreRootDirectory: dir,
     })).rejects.toThrow("there is no such file");
   });
@@ -174,11 +176,11 @@ describe("deploy command helpers", () => {
     // ignoring it would be a trap, so the deploy must say what it is doing instead.
     const dir = makeTempDir();
     fs.writeFileSync(path.join(dir, "Dockerfile"), "FROM nginx:alpine\n");
-    const service = evaluateServicesFunction({
+    const service = evaluateDeploymentConfig({
       configPath: path.join(dir, "hexclave.config.ts"),
-      servicesExport: () => ({
-        web: { type: "container", port: 3000 },
-      }),
+      deploymentExport: { services: () => ({
+        web: { type: "serverless", port: 3000 },
+      }) },
       mode: "deploy",
     }).services.get("web");
     if (service == null) throw new Error("Test service was not evaluated");
@@ -198,6 +200,7 @@ describe("deploy command helpers", () => {
       authHeaders: () => Promise.resolve({ authorization: "test" }),
       service,
       definitionSyncId: "00000000-0000-4000-8000-000000000003",
+      deploymentId: "00000000-0000-4000-8000-0000000000de",
       ignoreRootDirectory: dir,
     })).rejects.toThrow();
     expect(logged.some((line) => line.includes("Railpack auto-detection") && line.includes('dockerfilePath: "Dockerfile"'))).toBe(true);
@@ -205,16 +208,16 @@ describe("deploy command helpers", () => {
 });
 
 describe("collectRequiredSecretKeys", () => {
-  const servicesOf = (definition: (ctx: ServicesFunctionContext) => unknown) => [...evaluateServicesFunction({
+  const servicesOf = (definition: (ctx: ServicesFunctionContext) => unknown) => [...evaluateDeploymentConfig({
     configPath: path.join(os.tmpdir(), "hexclave.config.ts"),
-    servicesExport: definition,
+    deploymentExport: { services: definition },
     mode: "deploy",
   }).services.values()];
 
   it("collects only secrets without defaults, deduplicated and sorted", () => {
     const services = servicesOf(({ secret }) => ({
       web: {
-        type: "container", port: 3000,
+        type: "serverless", port: 3000,
         env: {
           A: secret("zebra"),
           B: secret("alpha"),
@@ -224,7 +227,7 @@ describe("collectRequiredSecretKeys", () => {
         },
       },
       api: {
-        type: "container", port: 3000,
+        type: "serverless", port: 3000,
         env: { F: secret("alpha") },
       },
     }));
@@ -233,7 +236,7 @@ describe("collectRequiredSecretKeys", () => {
 
   it("returns an empty list when every secret has a default", () => {
     const services = servicesOf(({ secret }) => ({
-      web: { type: "container", port: 3000, env: { A: secret("k", "v") } },
+      web: { type: "serverless", port: 3000, env: { A: secret("k", "v") } },
     }));
     expect(collectRequiredSecretKeys(services)).toEqual([]);
   });

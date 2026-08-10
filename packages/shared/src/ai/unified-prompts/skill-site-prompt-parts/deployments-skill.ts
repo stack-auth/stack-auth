@@ -7,11 +7,13 @@ import { deindent } from "../../../utils/strings";
 export const deploymentsSkillSection = deindent`
   # Hexclave Deployments
 
-  The Deployments app runs your services as containers built remotely from your source — by default the build is auto-detected with Railpack (https://railpack.com), or you can point a service at your own Dockerfile. You can define multiple services per Hexclave project (e.g. a backend and a frontend). Services are private by default and reach each other over an internal network. Set \`visibility: "public"\` to give a service a built-in public URL without requiring a custom domain. Only the \`container\` service type exists for now.
+  The Deployments app runs your services as containers built remotely from your source — by default the build is auto-detected with Railpack (https://railpack.com), or you can point a service at your own Dockerfile. You can define multiple services per Hexclave project (e.g. a backend and a frontend). Services are private by default and reach each other over an internal network. Set \`visibility: "public"\` to give a service a built-in public URL without requiring a custom domain.
 
-  Enable the app by adding \`"deployments-alpha"\` under \`apps.installed\` in your config (quote it — it contains a hyphen). Services themselves are NOT part of the \`config\` export: they are defined by a separate \`services\` export in \`hexclave.config.ts\`.
+  Every service is either a \`"server"\` or a \`"serverless"\`. A \`server\` is a single instance that SUSPENDS when idle and resumes with its memory intact, and it is the only type that may have a persistent disk. A \`serverless\` scales out between \`minInstances\` and \`maxInstances\` and STOPS on scale-down, so each start is a cold start and it can have no disk. Use \`server\` for anything stateful (a database, a queue, anything writing to a volume) and \`serverless\` for stateless web apps and APIs.
 
-  ## The services export
+  Enable the app by adding \`"deployments-alpha"\` under \`apps.installed\` in your config (quote it — it contains a hyphen). Services themselves are NOT part of the \`config\` export: they are defined by a separate \`deployment\` export in \`hexclave.config.ts\`.
+
+  ## The deployment export
 
   \`\`\`ts title="hexclave.config.ts"
   export const config = {
@@ -23,35 +25,37 @@ export const deploymentsSkillSection = deindent`
     },
   };
 
-  export const services = ({ isDev, secret, service, hexclave }) => ({
-    web: {
-      type: "container",
-      visibility: "public",
-      port: 3000,
-      devCommand: "pnpm dev",
-      env: {
-        MY_ENV_VAR: "true",
-        OPENAI_API_KEY: isDev ? null : secret("OPENAI_API_KEY"),
-        API_URL: isDev ? "http://localhost:3001" : service("api").internalUrl,
-        DATABASE_HOST: isDev ? "localhost" : service("database").internalHost,
-        DATABASE_PORT: isDev ? "5432" : service("database").internalPort,
-        NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: hexclave.projectId,
+  export const deployment: HexclaveDeploymentConfig = {
+    services: ({ isDev, secret, service, hexclave }) => ({
+      web: {
+        type: "serverless",
+        visibility: "public",
+        port: 3000,
+        devCommand: "pnpm dev",
+        env: {
+          MY_ENV_VAR: "true",
+          OPENAI_API_KEY: isDev ? null : secret("OPENAI_API_KEY"),
+          API_URL: isDev ? "http://localhost:3001" : service("api").internalUrl,
+          DATABASE_HOST: isDev ? "localhost" : service("database").internalHost,
+          DATABASE_PORT: isDev ? "5432" : service("database").internalPort,
+          NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: hexclave.projectId,
+        },
       },
-    },
-    api: { type: "container", port: 8080, rootDirectory: "./api" },
-    database: {
-      type: "container",
-      transport: "tcp",
-      port: 5432,
-      rootDirectory: "./database",
-      dockerfilePath: "Dockerfile",
-      volume: { path: "/data", size: 10 },
-      env: { POSTGRES_PASSWORD: secret("POSTGRES_PASSWORD") },
-    },
-  });
+      api: { type: "serverless", port: 8080, rootDirectory: "./api" },
+      database: {
+        type: "server",
+        transport: "tcp",
+        port: 5432,
+        rootDirectory: "./database",
+        dockerfilePath: "Dockerfile",
+        persistentVolumes: { pgdata: { path: "/data", sizeGb: 10 } },
+        env: { POSTGRES_PASSWORD: secret("POSTGRES_PASSWORD") },
+      },
+    }),
+  };
   \`\`\`
 
-  It is a FUNCTION returning a record of services keyed by service id. \`visibility\` is \`"public"\` or \`"private"\` (default \`"private"\`); public HTTP services receive a stable platform URL and private HTTP services have no public ingress unless a custom domain is attached. \`transport\` is \`"http"\` or \`"tcp"\` (default \`"http"\`). TCP services are private-only and cannot have custom domains. \`port\` (required) is the single HTTP or TCP port the container listens on. \`rootDirectory\` (relative to the config file, default \`./\`) is where the service's code lives; \`dockerfilePath\` (optional, relative to \`rootDirectory\`) selects a Dockerfile to build from — omit it to build with Railpack auto-detection; \`minInstances\`/\`maxInstances\` (defaults 0/1, max 5) are the scaling bounds — \`1\`/\`1\` is serverful (always on, no cold starts), \`minInstances: 0\` scales to zero and cold-starts on the next connection; \`volume\` (optional) attaches a persistent disk; \`devCommand\` is what \`hexclave dev --service-id <id>\` runs.
+  \`deployment.services\` is normally a FUNCTION returning a record of services keyed by service id (a plain record works when you need no secrets, connections, or \`hexclave.*\` outputs). \`type\` (required) is \`"server"\` or \`"serverless"\` as above. \`visibility\` is \`"public"\` or \`"private"\` (default \`"private"\`); public HTTP services receive a stable platform URL and private HTTP services have no public ingress unless a custom domain is attached. \`transport\` is \`"http"\` or \`"tcp"\` (default \`"http"\`). TCP services are private-only and cannot have custom domains. \`port\` (required) is the single HTTP or TCP port the container listens on. \`rootDirectory\` (relative to the config file, default \`./\`) is where the service's code lives; \`dockerfilePath\` (optional, relative to \`rootDirectory\`) selects a Dockerfile to build from — omit it to build with Railpack auto-detection; \`minInstances\`/\`maxInstances\` (serverless only, defaults 0/1, max 5) are the scaling bounds — \`minInstances: 0\` scales to zero and cold-starts on the next connection; \`persistentVolumes\` (server only) attaches a persistent disk; \`devCommand\` is what \`hexclave dev --service-id <id>\` runs.
 
   \`minInstances\` above 0 requires a paid plan. On the Free plan the deploy fails naming the offending services; set \`minInstances: 0\` (or remove it) so they scale to zero, or upgrade.
 
@@ -65,7 +69,9 @@ export const deploymentsSkillSection = deindent`
 
   ## Storage: the container filesystem is ephemeral
 
-  By default anything a service writes to disk is lost on every deploy, restart, and scale-to-zero. Give a service a persistent disk with \`volume: { path: "/data", size: 10 }\` — \`path\` is an absolute mount point inside the container, \`size\` is gigabytes (1–500). Everything written under \`path\` then survives deploys and restarts.
+  By default anything a service writes to disk is lost on every deploy, restart, and scale-to-zero. Give a \`server\` service a persistent disk with \`persistentVolumes: { pgdata: { path: "/data", sizeGb: 10 } }\` — the key (\`pgdata\`) is the volume's id, \`path\` is an absolute mount point inside the container, \`sizeGb\` is gigabytes (1–500). Everything written under \`path\` then survives deploys and restarts. One disk per service for now; a second entry is rejected.
+
+  The volume id names the disk within its service. Two services may never claim the same id at once. Moving an id to a different service does NOT move the data: a Fly volume lives inside one service's app, so the new service gets a fresh empty disk and the old one keeps its data, detached and still billed. Renaming a service does the same thing. To move data, copy it out (object storage, a database dump) before the move and restore it after.
 
   A volume mount replaces whatever the image had at that exact path, and a newly formatted filesystem is not guaranteed to be literally empty (it may contain provider/filesystem metadata). Prefer a neutral mount point such as \`/data\`, then configure the application to store its files in a child directory such as \`/data/app\`; do not mount directly over an image's built-in data/config directory or point software that requires an empty directory at the mount root.
 
@@ -83,9 +89,9 @@ export const deploymentsSkillSection = deindent`
 
   Apply the same pattern generically: learn the base image's intended runtime user and data-directory environment setting; create and own a neutral mount point; configure data into a child directory; and leave the final \`USER\` set correctly. Never bake mutable data into the image path that the volume will cover.
 
-  A volume is a single disk on a single machine, so a service that has one must be single-instance: \`maxInstances\` must be 1 (\`minInstances: 0\` is still fine — the disk comes back with the machine). It is NOT replicated and NOT a backup; a host failure can lose it. Use it for caches, uploads, SQLite, and similar — keep anything you cannot lose in a managed database or object storage.
+  A volume is a single disk on a single machine, which is why only a \`server\` may have one — a \`serverless\` fleet would give each instance its own separate copy. It is NOT replicated and NOT a backup; a host failure can lose it. Use it for caches, uploads, SQLite, and similar — keep anything you cannot lose in a managed database or object storage.
 
-  Disks only grow: raising \`size\` expands them in place, but LOWERING it fails the deploy rather than silently ignoring you. Removing \`volume\` from a service detaches the disk without deleting it — the data stays (re-adding \`volume\` remounts it) and so does the billing, so a disk you truly want gone has to be deleted deliberately. \`hexclave dev\` ignores \`volume\` entirely; locally your app just writes to your own filesystem.
+  Disks only grow: raising \`sizeGb\` expands them in place, but LOWERING it fails the deploy rather than silently ignoring you. Removing a volume from a service detaches the disk without deleting it — the data stays (re-declaring the same id remounts it) and so does the billing, so a disk you truly want gone has to be deleted deliberately. \`hexclave dev\` ignores \`persistentVolumes\` entirely; locally your app just writes to your own filesystem.
 
   Env var values may be: a plain string; \`null\` (omit the var — useful with \`isDev\`); \`secret(key, defaultValue?)\` — the value is stored per project in the dashboard (Project Settings > Secrets), never in the config; \`service("<id>").internalUrl\` for an HTTP target; \`.internalHost\` and \`.internalPort\` for either transport (use these as separate values for TCP clients); \`service("<id>").url\` — an HTTP target's PUBLIC URL, available immediately for a public service or once a custom domain verifies for a private service (until then the depending service is \`blocked\` and its deploy FAILS — make the target public, verify its domain first, or prefer \`internalUrl\`); or \`hexclave.projectId\` / \`.apiUrl\` / \`.jwksUrl\` / \`.publishableClientKey\` / \`.secretServerKey\` for the managed Hexclave backend. A TCP target has no URL, so requesting its \`.url\` or \`.internalUrl\` fails with guidance to use host and port. References must be the WHOLE value — string interpolation with them throws. During \`hexclave dev\`, \`secret()\` resolves to its default value (error if it has none and isn't guarded by \`isDev\`) and \`service()\` returns \`null\`.
 
@@ -111,7 +117,7 @@ export const deploymentsSkillSection = deindent`
 
   AI agents must deploy and manage Deployments through the CLI and \`hexclave.config.ts\`, not by clicking around \`app.hexclave.com\` in a browser. The dashboard is a human fallback only.
 
-  1. **Read this skill** and ensure \`deployments-alpha\` is enabled and the \`services\` export exists as above.
+  1. **Read this skill** and ensure \`deployments-alpha\` is enabled and the \`deployment\` export exists as above.
   2. **Authenticate for cloud deploys** (pick the first that works):
      - If \`HEXCLAVE_SECRET_SERVER_KEY\` (or \`STACK_SECRET_SERVER_KEY\`) **and** \`HEXCLAVE_PROJECT_ID\` (or \`STACK_PROJECT_ID\`) are already in the environment, use them. No login step.
      - Else if \`npx @hexclave/cli@latest whoami\` succeeds, you already have a CLI login session — proceed.
@@ -182,5 +188,5 @@ export const deploymentsSkillSection = deindent`
 
   ## Removing a service
 
-  Removing a service from the \`services\` export stops it from being deployed, but does not (yet) tear down its existing deployment — automatic cleanup of removed services is planned.
+  Removing a service from \`deployment.services\` stops it from being deployed, but does not (yet) tear down its existing deployment — automatic cleanup of removed services is planned.
 `;

@@ -437,9 +437,10 @@ describe("Stack CLI", () => {
       fs.writeFileSync(path.join(deployDir, "db", "index.html"), "<h1>db</h1>");
       const writeConfigFile = (allowClientTeamCreation: boolean) => fs.writeFileSync(path.join(deployDir, "hexclave.config.ts"), [
         `export const config = { teams: { allowClientTeamCreation: ${allowClientTeamCreation} } };`,
-        "export const services = ({ isDev, secret, service, hexclave }: any) => ({",
+        "export const deployment = {",
+        "  services: ({ isDev, secret, service, hexclave }: any) => ({",
         "  web: {",
-        '    type: "container",',
+        '    type: "serverless",',
         "    port: 3000,",
         '    rootDirectory: "./web",',
         '    dockerfilePath: "Dockerfile",',
@@ -450,8 +451,9 @@ describe("Stack CLI", () => {
         '      OPENAI: isDev ? null : secret("OPENAI_KEY", "sk-default"),',
         "    },",
         "  },",
-        '  db: { type: "container", port: 5432, rootDirectory: "./db" },',
-        "});",
+        '  db: { type: "serverless", port: 5432, rootDirectory: "./db" },',
+        "  }),",
+        "};",
         "",
       ].join("\n"));
       writeConfigFile(true);
@@ -503,9 +505,11 @@ describe("Stack CLI", () => {
       // A secret with NO default and no stored value fails before anything is
       // packaged, naming every key that needs a dashboard value.
       fs.writeFileSync(path.join(deployDir, "missing-secret.config.ts"), [
-        "export const services = ({ secret }: any) => ({",
-        '  web: { type: "container", port: 3000, rootDirectory: "./web", env: { A: secret("NEEDS_A_VALUE"), B: secret("ALSO_NEEDED") } },',
-        "});",
+        "export const deployment = {",
+        "  services: ({ secret }: any) => ({",
+        '    web: { type: "serverless", port: 3000, rootDirectory: "./web", env: { A: secret("NEEDS_A_VALUE"), B: secret("ALSO_NEEDED") } },',
+        "  }),",
+        "};",
         "",
       ].join("\n"));
       const missingSecretRes = await runCli(

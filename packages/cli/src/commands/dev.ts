@@ -11,7 +11,7 @@ import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLoc
 import { CliError, errorMessage } from "../lib/errors.js";
 import { DASHBOARD_PORT_ENV_VAR, dashboardPort, dashboardRequest, dashboardUrl, createRemoteDevelopmentEnvironmentSession, type DashboardSessionResponse } from "../lib/local-dashboard.js";
 import { startProgress } from "../lib/progress.js";
-import { evaluateServicesFunction, importConfigModule, resolveDevEnv, type EvaluatedService } from "../lib/services-config.js";
+import { evaluateDeploymentConfig, importConfigModule, resolveDevEnv, type EvaluatedService } from "../lib/deployment-config.js";
 
 type ChildCommand = {
   command: string,
@@ -948,17 +948,17 @@ export function registerDevCommand(program: Command) {
       let devService: EvaluatedService | undefined;
       if (opts.serviceId != null) {
         const configModule = await importConfigModule(configFilePath);
-        const { services } = evaluateServicesFunction({
+        const { services } = evaluateDeploymentConfig({
           configPath: configFilePath,
-          servicesExport: configModule.services,
+          deploymentExport: configModule.deployment,
           mode: "dev",
         });
         devService = services.get(opts.serviceId);
         if (devService == null) {
-          throw new CliError(`No service named ${JSON.stringify(opts.serviceId)} in the config file's services export. Available services: ${[...services.keys()].join(", ")}.`);
+          throw new CliError(`No service named ${JSON.stringify(opts.serviceId)} in the config file's deployment.services. Available services: ${[...services.keys()].join(", ")}.`);
         }
         if (commandArgs.length === 0 && devService.devCommand == null) {
-          throw new CliError(`The service ${JSON.stringify(opts.serviceId)} has no devCommand in the config file's services export. Add one (e.g. devCommand: "npm run dev"), or pass a command after --.`);
+          throw new CliError(`The service ${JSON.stringify(opts.serviceId)} has no devCommand in the config file's deployment.services. Add one (e.g. devCommand: "npm run dev"), or pass a command after --.`);
         }
         // The service's rootDirectory becomes the child's cwd below, so check it
         // HERE rather than letting spawn fail: spawn reports a bad cwd as an

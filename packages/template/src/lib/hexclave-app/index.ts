@@ -123,6 +123,7 @@ export type {
 export type {
   AdminDeploymentDomainJson,
   AdminDeploymentEnvVarJson,
+  AdminDeploymentJson,
   AdminDeploymentRunJson,
   AdminProjectSecretJson,
   AdminDeploymentServiceJson,

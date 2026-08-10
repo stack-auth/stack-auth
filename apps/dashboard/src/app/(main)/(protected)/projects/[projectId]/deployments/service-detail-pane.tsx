@@ -2,13 +2,11 @@
 
 import { DesignBadge, DesignButton } from "@/components/design-components";
 import { Typography, cn } from "@/components/ui";
-import type { AdminDeploymentRunJson, AdminProject } from "@hexclave/next";
+import type { AdminProject } from "@hexclave/next";
 import { XIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { getServiceTypeMeta, type BoardService } from "./board-model";
 import {
-  DeploymentDetailContent,
-  DeploymentsContent,
   DomainsContent,
   OverviewContent,
   SettingsContent,
@@ -28,12 +26,15 @@ type ServiceDetailPaneProps = {
   refresh: () => Promise<void>,
 };
 
-type PanelTabId = "overview" | "variables" | "deployments" | "domains" | "settings";
+// No "Deployments" tab: deploy history now lives at the top level of the page,
+// where one deployment lists every service it shipped. A per-service copy of the
+// same runs would be a second place to look for the same facts, and the one that
+// answers "did the whole deploy land?" is the useful one.
+type PanelTabId = "overview" | "variables" | "domains" | "settings";
 
 const TABS: { id: PanelTabId, label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "variables", label: "Variables" },
-  { id: "deployments", label: "Deployments" },
   { id: "domains", label: "Domains" },
   { id: "settings", label: "Settings" },
 ];
@@ -41,7 +42,6 @@ const TABS: { id: PanelTabId, label: string }[] = [
 export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   const { service, services, project, refresh } = props;
   const [tab, setTab] = useState<PanelTabId>("overview");
-  const [openRun, setOpenRun] = useState<AdminDeploymentRunJson | null>(null);
 
   const isHexclave = service.type === "hexclave";
   const meta = getServiceTypeMeta(service.type);
@@ -49,25 +49,19 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   const Icon = meta.icon;
   const status = STATUS_META.get(service.status);
 
-  // When a different service is selected, jump back to Overview and reset the
-  // drill-in.
+  // When a different service is selected, jump back to Overview.
   useEffect(() => {
     setTab("overview");
-    setOpenRun(null);
   }, [service.id]);
 
   const selectTab = (id: PanelTabId) => {
     setTab(id);
-    setOpenRun(null);
   };
 
-  const content = openRun ? (
-    <DeploymentDetailContent run={openRun} project={project} onBack={() => setOpenRun(null)} />
-  ) : (() => {
+  const content = (() => {
     switch (tab) {
       case "overview": { return <OverviewContent service={service} project={project} isHexclave={isHexclave} />; }
       case "variables": { return <VariablesContent service={service} services={services} isHexclave={isHexclave} />; }
-      case "deployments": { return <DeploymentsContent service={service} project={project} isHexclave={isHexclave} onOpenRun={setOpenRun} />; }
       case "domains": { return <DomainsContent service={service} project={project} isHexclave={isHexclave} refresh={refresh} />; }
       case "settings": { return <SettingsContent service={service} isHexclave={isHexclave} />; }
     }

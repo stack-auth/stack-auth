@@ -28,6 +28,10 @@ export const POST = createSmartRouteHandler({
       // an old CLI sending "production" explicitly keeps working, while
       // "preview" is rejected with a clear schema error.
       target: yupString().oneOf(["production"]).optional(),
+      // The deployment (from POST /deployments/deployments) this run belongs
+      // to. Optional so a single service can be deployed directly through the
+      // API without first creating a group; `hexclave deploy` always sends one.
+      deployment_id: yupString().uuid().optional(),
       // The `secret(key, default)` defaults from the config file, keyed by env
       // var key. Request-scoped: used only to fill secrets that have no stored
       // value, and never written to the database.
@@ -59,7 +63,7 @@ export const POST = createSmartRouteHandler({
     // Deploying one would run a container with no env vars and no port —
     // refuse until a sync stored the actual definition.
     if (row.definitionSyncedAt == null || row.definitionSyncId == null) {
-      throw new StatusError(400, `The deployment service ${JSON.stringify(params.service_id)} has no synced definition (it predates config-file-defined services). Add it to the \`services\` export of your hexclave.config.ts and run \`hexclave deploy\` with an up-to-date CLI.`);
+      throw new StatusError(400, `The deployment service ${JSON.stringify(params.service_id)} has no synced definition (it predates config-file-defined services). Add it to \`deployment.services\` in your hexclave.config.ts and run \`hexclave deploy\` with an up-to-date CLI.`);
     }
     if (row.definitionSyncId !== body.definition_sync_id) {
       throw new StatusError(409, `The deployment service ${JSON.stringify(params.service_id)} changed after this deploy synced its definitions. Another deploy is using a newer config; restart this deploy so its source and definition come from the same config revision.`);
@@ -75,6 +79,21 @@ export const POST = createSmartRouteHandler({
     // (a downgrade, or a row synced before the gate existed). Runs before
     // secrets are resolved or the upload is consumed.
     await assertMinInstancesAllowedByPlan(auth.tenancy, { [params.service_id]: definition });
+
+    // Checked here rather than left to the run's foreign key: that key is only
+    // enforced when the run row is created, which is AFTER the spec has been
+    // applied and the build started. A bad id would then leave a live deploy
+    // with no run row — no status, and no logs at all, since the logs route is
+    // keyed by run id and the run holds the redaction secrets they need.
+    if (body.deployment_id !== undefined) {
+      const deployment = await prisma.deployment.findUnique({
+        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.deployment_id } },
+        select: { id: true },
+      });
+      if (deployment == null) {
+        throw new StatusError(400, `No deployment with id ${JSON.stringify(body.deployment_id)} exists in this project. Create one with POST /deployments/deployments, or omit deployment_id to deploy this service on its own.`);
+      }
+    }
 
     // Resolve env vars BEFORE consuming the upload: a missing secret or a
     // dangling connection must not spend the upload.
@@ -130,6 +149,7 @@ export const POST = createSmartRouteHandler({
         // Informational only: which access type triggered the run ("server" =
         // secret-server-key i.e. CLI/CI, "admin" = a logged-in session).
         triggeredBy: auth.type,
+        deploymentId: body.deployment_id ?? null,
       }));
     } catch (error) {
       // The upload is consumed BEFORE the runtime PUT to fence concurrent duplicates, but if

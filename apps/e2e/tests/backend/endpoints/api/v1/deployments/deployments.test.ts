@@ -66,7 +66,7 @@ async function syncServices(services: Record<string, unknown>): Promise<string> 
 }
 
 async function syncServiceAndUpload(serviceId: string, definition: Record<string, unknown> = {}, files?: Record<string, string>): Promise<{ uploadId: string, definitionSyncId: string }> {
-  const definitionSyncId = await syncServices({ [serviceId]: { type: "container", port: 3000, env: {}, ...definition } });
+  const definitionSyncId = await syncServices({ [serviceId]: { type: "serverless", port: 3000, env: {}, ...definition } });
   return { ...await createUpload(files), definitionSyncId };
 }
 
@@ -176,7 +176,7 @@ describe("access control", () => {
     const syncResponse = await niceBackendFetch("/api/v1/deployments/services", {
       method: "PUT",
       accessType: "server",
-      body: { services: { web: { type: "container", port: 3000, env: {} } } },
+      body: { services: { web: { type: "serverless", port: 3000, env: {} } } },
     });
     expect(syncResponse.status).toBe(200);
     const secretsResponse = await niceBackendFetch("/api/v1/project-secrets", { accessType: "server" });
@@ -192,7 +192,7 @@ describe("definition sync", () => {
 
     await syncServices({
       api: {
-        type: "container",
+        type: "serverless",
         visibility: "public",
         port: 8080,
         // min_instances stays 0: this project's billing team is on the Free
@@ -213,7 +213,7 @@ describe("definition sync", () => {
     const body = getResponse.body as any;
     expect(body).toMatchObject({
       id: "api",
-      type: "container",
+      type: "serverless",
       visibility: "public",
       transport: "http",
       port: 8080,
@@ -241,7 +241,7 @@ describe("definition sync", () => {
     await Project.createAndSwitch();
 
     await syncServices({
-      database: { type: "container", transport: "tcp", port: 5432, env: {} },
+      database: { type: "serverless", transport: "tcp", port: 5432, env: {} },
     });
     const database = await niceBackendFetch("/api/v1/deployments/services/database", { accessType: "admin" });
     expect(database.status).toBe(200);
@@ -252,7 +252,7 @@ describe("definition sync", () => {
       accessType: "admin",
       body: {
         services: {
-          database: { type: "container", visibility: "public", transport: "tcp", port: 5432, env: {} },
+          database: { type: "serverless", visibility: "public", transport: "tcp", port: 5432, env: {} },
         },
       },
     });
@@ -280,9 +280,9 @@ describe("definition sync", () => {
       accessType: "admin",
       body: {
         services: {
-          web: { type: "container", port: 3000, min_instances: 1, env: {} },
-          worker: { type: "container", port: 3001, min_instances: 2, max_instances: 3, env: {} },
-          idle: { type: "container", port: 3002, env: {} },
+          web: { type: "serverless", port: 3000, min_instances: 1, env: {} },
+          worker: { type: "serverless", port: 3001, min_instances: 2, max_instances: 3, env: {} },
+          idle: { type: "serverless", port: 3002, env: {} },
         },
       },
     });
@@ -312,8 +312,8 @@ describe("definition sync", () => {
       accessType: "admin",
       body: {
         services: {
-          web: { type: "container", port: 3000, min_instances: 0, max_instances: 3, env: {} },
-          worker: { type: "container", port: 3001, env: {} },
+          web: { type: "serverless", port: 3000, min_instances: 0, max_instances: 3, env: {} },
+          worker: { type: "serverless", port: 3001, env: {} },
         },
       },
     });
@@ -324,7 +324,7 @@ describe("definition sync", () => {
     await Project.createAndSwitch();
     const serviceId = uniqueServiceId("vol");
     await syncServices({
-      [serviceId]: { type: "container", port: 3000, min_instances: 0, max_instances: 1, volume: { path: "/data", size_gb: 10 }, env: {} },
+      [serviceId]: { type: "server", port: 3000, min_instances: 0, max_instances: 1, persistent_volumes: { data: { path: "/data", size_gb: 10 } }, env: {} },
     });
     const getResponse = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}`, { accessType: "admin" });
     expect(getResponse.status).toBe(200);
@@ -332,7 +332,7 @@ describe("definition sync", () => {
 
     // Re-syncing without the volume must clear BOTH columns, not leave a
     // half-written pair that would keep mounting a disk the config dropped.
-    await syncServices({ [serviceId]: { type: "container", port: 3000, min_instances: 0, max_instances: 1, env: {} } });
+    await syncServices({ [serviceId]: { type: "serverless", port: 3000, min_instances: 0, max_instances: 1, env: {} } });
     const afterRemoval = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}`, { accessType: "admin" });
     expect((afterRemoval.body as any).volume).toBe(null);
   });
@@ -341,7 +341,7 @@ describe("definition sync", () => {
     await Project.createAndSwitch();
     const serviceId = uniqueServiceId("shrink");
     const definition = (sizeGb: number) => ({
-      [serviceId]: { type: "container", port: 3000, max_instances: 1, volume: { path: "/data", size_gb: sizeGb }, env: {} },
+      [serviceId]: { type: "server", port: 3000, max_instances: 1, persistent_volumes: { data: { path: "/data", size_gb: sizeGb } }, env: {} },
     });
     await syncServices(definition(10));
 
@@ -361,7 +361,7 @@ describe("definition sync", () => {
     // Detaching entirely is always allowed, whatever the size.
     const detached = await niceBackendFetch("/api/v1/deployments/services", {
       method: "PUT", accessType: "admin",
-      body: { services: { [serviceId]: { type: "container", port: 3000, max_instances: 1, env: {} } } },
+      body: { services: { [serviceId]: { type: "serverless", port: 3000, max_instances: 1, env: {} } } },
     });
     expect(detached.status).toBe(200);
   });
@@ -369,22 +369,33 @@ describe("definition sync", () => {
   it("rejects a volume on a service that could run more than one instance", async ({ expect }) => {
     await Project.createAndSwitch();
     // A Fly volume attaches to one machine, so a fleet would silently give each
-    // instance its own separate disk.
+    // instance its own separate disk. Only a "server" is single-instance by
+    // construction, so that is where the rule lives now.
     const response = await niceBackendFetch("/api/v1/deployments/services", {
       method: "PUT",
       accessType: "admin",
-      body: { services: { web: { type: "container", port: 3000, max_instances: 2, volume: { path: "/data", size_gb: 1 }, env: {} } } },
+      body: { services: { web: { type: "serverless", port: 3000, max_instances: 2, persistent_volumes: { data: { path: "/data", size_gb: 1 } }, env: {} } } },
     });
     expect(response.status).toBe(400);
-    expect(JSON.stringify(response.body)).toContain("max_instances: 1");
+    expect(JSON.stringify(response.body)).toContain("only a \\\"server\\\" service may have persistent volumes");
 
-    // min_instances alone defaults max up to it, so it must be caught too.
-    const minOnly = await niceBackendFetch("/api/v1/deployments/services", {
+    // A server may not restate bounds that contradict its type.
+    const badBounds = await niceBackendFetch("/api/v1/deployments/services", {
       method: "PUT",
       accessType: "admin",
-      body: { services: { web: { type: "container", port: 3000, min_instances: 2, volume: { path: "/data", size_gb: 1 }, env: {} } } },
+      body: { services: { web: { type: "server", port: 3000, max_instances: 2, persistent_volumes: { data: { path: "/data", size_gb: 1 } }, env: {} } } },
     });
-    expect(minOnly.status).toBe(400);
+    expect(badBounds.status).toBe(400);
+
+    // More than one disk on one machine is beyond what Fly can mount.
+    const twoVolumes = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { services: { web: { type: "server", port: 3000, env: {},
+        persistent_volumes: { data: { path: "/data", size_gb: 1 }, cache: { path: "/cache", size_gb: 1 } } } } },
+    });
+    expect(twoVolumes.status).toBe(400);
+    expect(JSON.stringify(twoVolumes.body)).toContain("at most 1 persistent volume");
   });
 
   it("rejects a volume mount path that is not a normalized absolute path", async ({ expect }) => {
@@ -393,10 +404,10 @@ describe("definition sync", () => {
       const response = await niceBackendFetch("/api/v1/deployments/services", {
         method: "PUT",
         accessType: "admin",
-        body: { services: { web: { type: "container", port: 3000, volume: { path, size_gb: 1 }, env: {} } } },
+        body: { services: { web: { type: "server", port: 3000, persistent_volumes: { data: { path, size_gb: 1 } }, env: {} } } },
       });
       expect(response.status, `path ${JSON.stringify(path)}`).toBe(400);
-      expect(JSON.stringify(response.body)).toContain("volume.path");
+      expect(JSON.stringify(response.body)).toContain("normalized absolute path");
     }
   });
 
@@ -405,14 +416,14 @@ describe("definition sync", () => {
     const ok = await niceBackendFetch("/api/v1/deployments/services", {
       method: "PUT",
       accessType: "admin",
-      body: { services: { web: { type: "container", port: 3000, dockerfile_path: "docker/Dockerfile.web", env: {} } } },
+      body: { services: { web: { type: "serverless", port: 3000, dockerfile_path: "docker/Dockerfile.web", env: {} } } },
     });
     expect(ok.status).toBe(200);
     expect((ok.body as any).items.find((item: any) => item.id === "web").dockerfile_path).toBe("docker/Dockerfile.web");
     const escaping = await niceBackendFetch("/api/v1/deployments/services", {
       method: "PUT",
       accessType: "admin",
-      body: { services: { web: { type: "container", port: 3000, dockerfile_path: "../Dockerfile", env: {} } } },
+      body: { services: { web: { type: "serverless", port: 3000, dockerfile_path: "../Dockerfile", env: {} } } },
     });
     expect(escaping.status).toBe(400);
     expect(JSON.stringify(escaping.body)).toContain("dockerfile_path");
@@ -423,7 +434,7 @@ describe("definition sync", () => {
     const noPort = await niceBackendFetch("/api/v1/deployments/services", {
       method: "PUT",
       accessType: "admin",
-      body: { services: { web: { type: "container", env: {} } } },
+      body: { services: { web: { type: "serverless", env: {} } } },
     });
     expect(noPort.status).toBe(400);
     const wrongType = await niceBackendFetch("/api/v1/deployments/services", {
@@ -439,7 +450,7 @@ describe("definition sync", () => {
     const reserved = await niceBackendFetch("/api/v1/deployments/services", {
       method: "PUT",
       accessType: "admin",
-      body: { services: { hexclave: { type: "container", port: 3000, env: {} } } },
+      body: { services: { hexclave: { type: "serverless", port: 3000, env: {} } } },
     });
     expect(reserved.status).toBe(400);
     const empty = await niceBackendFetch("/api/v1/deployments/services", {
@@ -549,7 +560,7 @@ describe("deploys against the Marshal runtime", () => {
 
     const definitionSyncId = await syncServices({
       [serviceId]: {
-        type: "container",
+        type: "serverless",
         port: 3000,
         min_instances: 0,
         max_instances: 2,
@@ -620,13 +631,13 @@ describe("deploys against the Marshal runtime", () => {
     const { uploadId, definitionSyncId } = await syncServiceAndUpload(serviceId, {
       min_instances: 0,
       max_instances: 1,
-      volume: { path: "/data", size_gb: 3 },
+      persistent_volumes: { data: { path: "/data", size_gb: 3 } },
     });
     await pollRunToStatus(await startDeploy(serviceId, uploadId, definitionSyncId), "ready");
 
     const app = await findMockApp(serviceId, 1);
     expect(app.volumes).toHaveLength(1);
-    expect(app.volumes[0]).toMatchObject({ name: "hexclave_data", size_gb: 3 });
+    expect(app.volumes[0]).toMatchObject({ name: "hxv_data", size_gb: 3 });
     // The machine mounts that exact volume at the configured path.
     expect(app.machines[0].mounts).toEqual([{ volume: app.volumes[0].id, path: "/data" }]);
     expect(app.volumes[0].attached_machine_id).toBe(app.machines[0].id);
@@ -634,7 +645,7 @@ describe("deploys against the Marshal runtime", () => {
     // Growing the volume reuses the SAME volume rather than creating a second
     // one — the disk (and its data) must survive the redeploy.
     const grownSyncId = await syncServices({
-      [serviceId]: { type: "container", port: 3000, min_instances: 0, max_instances: 1, volume: { path: "/data", size_gb: 5 }, env: {} },
+      [serviceId]: { type: "server", port: 3000, min_instances: 0, max_instances: 1, persistent_volumes: { data: { path: "/data", size_gb: 5 } }, env: {} },
     });
     const { uploadId: grownUploadId } = await createUpload();
     await pollRunToStatus(await startDeploy(serviceId, grownUploadId, grownSyncId), "ready");
@@ -665,13 +676,13 @@ describe("deploys against the Marshal runtime", () => {
     const second = await syncServiceAndUpload(serviceId, {
       min_instances: 0,
       max_instances: 1,
-      volume: { path: "/data", size_gb: 2 },
+      persistent_volumes: { data: { path: "/data", size_gb: 2 } },
     });
     await pollRunToStatus(await startDeploy(serviceId, second.uploadId, second.definitionSyncId), "ready");
 
     const after = await findMockApp(serviceId, 1);
     expect(after.volumes).toHaveLength(1);
-    expect(after.volumes[0]).toMatchObject({ name: "hexclave_data", size_gb: 2 });
+    expect(after.volumes[0]).toMatchObject({ name: "hxv_data", size_gb: 2 });
     expect(after.machines[0].mounts).toEqual([{ volume: after.volumes[0].id, path: "/data" }]);
     // A NEW machine, on the volume's host — not the original one updated in place.
     expect(after.machines[0].id).not.toBe(originalMachineId);
@@ -684,8 +695,8 @@ describe("deploys against the Marshal runtime", () => {
     const webServiceId = uniqueServiceId("web");
     // web references the API's PUBLIC url, which needs a verified domain the API doesn't have.
     const sync = await syncServices({
-      [apiServiceId]: { type: "container", port: 8080, env: {} },
-      [webServiceId]: { type: "container", port: 3000, env: { API_URL: { type: "connection", value: `${apiServiceId}.url` } } },
+      [apiServiceId]: { type: "serverless", port: 8080, env: {} },
+      [webServiceId]: { type: "serverless", port: 3000, env: { API_URL: { type: "connection", value: `${apiServiceId}.url` } } },
     });
     const upload = await createUpload();
     const runId = await startDeploy(webServiceId, upload.uploadId, sync);
@@ -725,7 +736,7 @@ describe("deploys against the Marshal runtime", () => {
     await Project.createAndSwitch();
     const serviceId = uniqueServiceId("web");
     const syncId = await syncServices({
-      [serviceId]: { type: "container", port: 3000, env: { X: { type: "connection", value: "nonexistent.internalUrl" } } },
+      [serviceId]: { type: "serverless", port: 3000, env: { X: { type: "connection", value: "nonexistent.internalUrl" } } },
     });
     const { uploadId } = await createUpload();
     const response = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}/deploy`, {
@@ -744,8 +755,8 @@ describe("deploys against the Marshal runtime", () => {
 
     // The API deploys first...
     const sync1 = await syncServices({
-      [apiServiceId]: { type: "container", port: 8080, env: {} },
-      [webServiceId]: { type: "container", port: 3000, env: { API_URL: { type: "connection", value: `${apiServiceId}.internalUrl` } } },
+      [apiServiceId]: { type: "serverless", port: 8080, env: {} },
+      [webServiceId]: { type: "serverless", port: 3000, env: { API_URL: { type: "connection", value: `${apiServiceId}.internalUrl` } } },
     });
     const upload1 = await createUpload();
     await pollRunToStatus(await startDeploy(apiServiceId, upload1.uploadId, sync1), "ready");
@@ -777,7 +788,7 @@ describe("deploys against the Marshal runtime", () => {
     const serviceId = uniqueServiceId("needs-secret");
     const definitionSyncId = await syncServices({
       [serviceId]: {
-        type: "container",
+        type: "serverless",
         port: 3000,
         env: {
           REQUIRED: { type: "secret", key: "never_set_secret" },
@@ -807,7 +818,7 @@ describe("deploys against the Marshal runtime", () => {
   it("404s a deploy referencing an upload id that doesn't exist", async ({ expect }) => {
     await Project.createAndSwitch();
     const serviceId = uniqueServiceId("web");
-    const definitionSyncId = await syncServices({ [serviceId]: { type: "container", port: 3000, env: {} } });
+    const definitionSyncId = await syncServices({ [serviceId]: { type: "serverless", port: 3000, env: {} } });
     const response = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}/deploy`, {
       method: "POST",
       accessType: "admin",
@@ -834,7 +845,7 @@ describe("deploys against the Marshal runtime", () => {
     const serviceId = uniqueServiceId("stale");
     const { uploadId, definitionSyncId } = await syncServiceAndUpload(serviceId);
     // A second sync regenerates the fencing token...
-    await syncServices({ [serviceId]: { type: "container", port: 3001, env: {} } });
+    await syncServices({ [serviceId]: { type: "serverless", port: 3001, env: {} } });
     // ...so the first deploy's token is now stale.
     const response = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}/deploy`, {
       method: "POST",
@@ -860,14 +871,14 @@ describe("deploys against the Marshal runtime", () => {
     await Project.createAndSwitch();
     const serviceId = uniqueServiceId("recon");
     const sync1 = await syncServices({
-      [serviceId]: { type: "container", port: 3000, env: { KEEP: { value: "yes" }, DROP: { value: "bye" } } },
+      [serviceId]: { type: "serverless", port: 3000, env: { KEEP: { value: "yes" }, DROP: { value: "bye" } } },
     });
     const upload1 = await createUpload();
     await pollRunToStatus(await startDeploy(serviceId, upload1.uploadId, sync1), "ready");
     expect((await findMockApp(serviceId)).machines[0].env).toEqual({ KEEP: "yes", DROP: "bye" });
 
     const sync2 = await syncServices({
-      [serviceId]: { type: "container", port: 3000, env: { KEEP: { value: "yes" } } },
+      [serviceId]: { type: "serverless", port: 3000, env: { KEEP: { value: "yes" } } },
     });
     const upload2 = await createUpload();
     await pollRunToStatus(await startDeploy(serviceId, upload2.uploadId, sync2), "ready");
@@ -879,7 +890,7 @@ describe("deploys against the Marshal runtime", () => {
   it("serializes concurrent deploys so a stale completion cannot overwrite the winner", { timeout: 120_000 }, async ({ expect }) => {
     await Project.createAndSwitch();
     const serviceId = uniqueServiceId("concurrent");
-    const definitionSyncId = await syncServices({ [serviceId]: { type: "container", port: 3000, env: {} } });
+    const definitionSyncId = await syncServices({ [serviceId]: { type: "serverless", port: 3000, env: {} } });
     const [firstUpload, secondUpload] = await Promise.all([createUpload(), createUpload()]);
     const [firstRunId, secondRunId] = await Promise.all([
       startDeploy(serviceId, firstUpload.uploadId, definitionSyncId),
@@ -991,8 +1002,8 @@ describe("domains", () => {
     const ownerServiceId = uniqueServiceId("owner");
     const otherServiceId = uniqueServiceId("other");
     const definitionSyncId = await syncServices({
-      [ownerServiceId]: { type: "container", port: 3000, env: {} },
-      [otherServiceId]: { type: "container", port: 3000, env: {} },
+      [ownerServiceId]: { type: "serverless", port: 3000, env: {} },
+      [otherServiceId]: { type: "serverless", port: 3000, env: {} },
     });
     const ownerUpload = await createUpload();
     await pollRunToStatus(await startDeploy(ownerServiceId, ownerUpload.uploadId, definitionSyncId), "ready");
@@ -1031,8 +1042,8 @@ describe("domains", () => {
     const firstServiceId = uniqueServiceId("race-a");
     const secondServiceId = uniqueServiceId("race-b");
     const definitionSyncId = await syncServices({
-      [firstServiceId]: { type: "container", port: 3000, env: {} },
-      [secondServiceId]: { type: "container", port: 3000, env: {} },
+      [firstServiceId]: { type: "serverless", port: 3000, env: {} },
+      [secondServiceId]: { type: "serverless", port: 3000, env: {} },
     });
     const [firstUpload, secondUpload] = await Promise.all([createUpload(), createUpload()]);
     const [firstRunId, secondRunId] = await Promise.all([
@@ -1063,7 +1074,7 @@ describe("domains", () => {
   it("keeps domains as rows before the first deploy", async ({ expect }) => {
     await Project.createAndSwitch();
     const serviceId = uniqueServiceId("undeployed");
-    await syncServices({ [serviceId]: { type: "container", port: 3000, env: {} } });
+    await syncServices({ [serviceId]: { type: "serverless", port: 3000, env: {} } });
     const addResponse = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}/domains`, {
       method: "POST",
       accessType: "admin",

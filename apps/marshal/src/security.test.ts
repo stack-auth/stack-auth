@@ -74,7 +74,7 @@ describe("special environment keys", () => {
   it("preserves __proto__ as an own property during spec validation", () => {
     const env = Object.fromEntries([["__proto__", { value: "safe" }]]);
     const spec = validateServiceSpec({
-      config: { min_instances: 0, max_instances: 1, port: 3000 },
+      config: { type: "serverless", min_instances: 0, max_instances: 1, port: 3000 },
       source: { image: "example/image" },
       env,
     });

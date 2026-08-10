@@ -37,3 +37,146 @@ export function defineStackConfig(config: StrictStackConfig<StackConfig>): Stack
 export function defineHexclaveConfig(config: StrictStackConfig<HexclaveConfig>): HexclaveConfig {
   return config;
 }
+
+// ============================ deployments ============================
+// The author-facing shape of the config file's `deployment` export. These types
+// are camelCase and deliberately NOT the wire shape in ./deployments (which is
+// snake_case): the CLI evaluates this, validates it with precise per-field
+// errors, and serializes it. They exist so `export const deployment:
+// HexclaveDeploymentConfig = { ... }` gets completion and catches typos in the
+// editor — the CLI still re-validates everything at runtime, because the config
+// file is arbitrary user TypeScript that may not be typechecked at all.
+
+/** The value of one env var: a literal, `null` to omit it, or a reference from the context object. */
+export type HexclaveEnvVarValue = string | null | undefined | HexclaveDeploymentReference;
+
+/**
+ * An opaque reference produced by `secret()`, `service(...).<output>`, or
+ * `hexclave.<output>`. It has no usable members: references must be assigned as
+ * the WHOLE value of an env var, never interpolated into a string.
+ */
+// Not exported: it has no runtime value, so exporting it would put a name in the
+// package's declarations that resolves to nothing at run time (`undefined` under
+// CJS, a link error under ESM). The alias below is what consumers use.
+declare const hexclaveDeploymentReference: unique symbol;
+export type HexclaveDeploymentReference = { readonly [hexclaveDeploymentReference]: true };
+
+/** The outputs another service exposes to `service("id").<output>`. */
+export type HexclaveServiceOutputs = {
+  /** The public URL. Only resolves once the service is public or a custom domain verifies. */
+  url: HexclaveDeploymentReference,
+  /** The private-network URL — the normal way one service reaches another. */
+  internalUrl: HexclaveDeploymentReference,
+  /** The private-network host, for TCP services (pair with `internalPort`). */
+  internalHost: HexclaveDeploymentReference,
+  /** The Flycast-facing port: 80 for HTTP services, the service port for TCP. */
+  internalPort: HexclaveDeploymentReference,
+};
+
+/** The context object passed to the `services` function. */
+export type HexclaveDeploymentContext = {
+  /** True during `hexclave dev`. Guard connection values with it — `service()` returns null there. */
+  isDev: boolean,
+  /** References a project secret by key. The optional default is used by `hexclave dev` only and is never stored server-side. */
+  secret: (key: string, defaultValue?: string) => HexclaveDeploymentReference,
+  /** References another service in this deployment. Returns null during `hexclave dev`. */
+  service: (serviceId: string) => HexclaveServiceOutputs,
+  /** The managed Hexclave backend's outputs. */
+  hexclave: {
+    projectId: HexclaveDeploymentReference,
+    apiUrl: HexclaveDeploymentReference,
+    jwksUrl: HexclaveDeploymentReference,
+    publishableClientKey: HexclaveDeploymentReference,
+    secretServerKey: HexclaveDeploymentReference,
+  },
+};
+
+/** One persistent disk. `sizeGb` can be grown on a later deploy but never shrunk. */
+export type HexclavePersistentVolume = {
+  /** Absolute, normalized mount point inside the container, e.g. "/data". */
+  path: string,
+  /** Provisioned size in whole gigabytes (1–500). */
+  sizeGb: number,
+};
+
+type HexclaveServiceBase = {
+  /** "public" gives the service a platform URL even without a custom domain. Defaults to "private". */
+  visibility?: "public" | "private",
+  /** "tcp" services are private-only and are reached with `internalHost`/`internalPort`. Defaults to "http". */
+  transport?: "http" | "tcp",
+  /** The single port the container listens on. */
+  port: number,
+  /** Source directory, relative to the config file. Defaults to the config file's own directory. */
+  rootDirectory?: string,
+  /** Dockerfile to build, relative to `rootDirectory`. Omit to auto-detect the build with Railpack. */
+  dockerfilePath?: string,
+  /** Run locally by `hexclave dev --service-id`. Never sent to the server. */
+  devCommand?: string,
+  /** Environment variables. Values may be literals, `null` to omit, or references from the context object. */
+  env?: Record<string, HexclaveEnvVarValue>,
+};
+
+/**
+ * A single always-one-instance service. It SUSPENDS when idle rather than
+ * stopping, so it resumes with its memory intact, and it is the only kind of
+ * service that may hold a persistent volume.
+ */
+export type HexclaveServerService = HexclaveServiceBase & {
+  type: "server",
+  /**
+   * Persistent disks keyed by volume id. At most one is supported today.
+   *
+   * The id names the disk within this service. Moving it to another service (or
+   * renaming this one) does NOT move the data — the new service gets an empty
+   * disk and the old one is stranded, detached and still billed. Copy the data
+   * out and back if you need to move it.
+   */
+  persistentVolumes?: Record<string, HexclavePersistentVolume>,
+  /** Always 0 for a server; it holds one instance that suspends when idle. */
+  minInstances?: 0,
+  /** Always 1 for a server. Use `type: "serverless"` to scale out. */
+  maxInstances?: 1,
+};
+
+/**
+ * A service that scales between `minInstances` and `maxInstances` and STOPS on
+ * scale-down, so every start is a cold start. It cannot hold a persistent
+ * volume: each instance would get its own separate disk.
+ */
+export type HexclaveServerlessService = HexclaveServiceBase & {
+  type: "serverless",
+  /** Lower scaling bound, 0–5. Defaults to 0 (scales to zero). */
+  minInstances?: number,
+  /** Upper scaling bound, 1–5. Defaults to 1. */
+  maxInstances?: number,
+};
+
+export type HexclaveService = HexclaveServerService | HexclaveServerlessService;
+
+/**
+ * The config file's `deployment` export — the services deployed together by one
+ * `hexclave deploy`.
+ *
+ * `services` is usually a function so it can reach secrets, connections, and
+ * the managed backend's outputs; a plain record is accepted when none of those
+ * are needed.
+ *
+ * ```ts
+ * export const deployment: HexclaveDeploymentConfig = {
+ *   services: ({ secret, service, hexclave }) => ({
+ *     api: {
+ *       type: "server",
+ *       port: 3000,
+ *       persistentVolumes: { uploads: { path: "/data", sizeGb: 10 } },
+ *       env: { DB_URL: service("db").internalUrl, PROJECT_ID: hexclave.projectId },
+ *     },
+ *     web: { type: "serverless", port: 3000, maxInstances: 3, env: { KEY: secret("API_KEY") } },
+ *   }),
+ * };
+ * ```
+ */
+export type HexclaveDeploymentConfig = {
+  services:
+    | Record<string, HexclaveService>
+    | ((context: HexclaveDeploymentContext) => Record<string, HexclaveService>),
+};

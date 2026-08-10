@@ -1,5 +1,5 @@
 import { HEXCLAVE_SERVICE_ID, assertMinInstancesAllowedByPlan, listServiceRows, serviceToApiShape, syncServiceDefinitions } from "@/lib/deployments";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { deploymentServiceDefinitionSchema } from "@hexclave/shared/dist/deployments";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupArray, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -77,7 +77,12 @@ export const PUT = createSmartRouteHandler({
     await assertMinInstancesAllowedByPlan(auth.tenancy, body.services);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const syncId = randomUUID();
-    await syncServiceDefinitions(prisma, auth.tenancy, body.services, syncId);
+    // One transaction: the sync releases volume ids before re-claiming them, so a
+    // failure partway through would otherwise commit the release and leave a
+    // service silently volume-less on its next deploy.
+    await retryTransaction(prisma, async (transaction) => {
+      await syncServiceDefinitions(transaction, auth.tenancy, body.services, syncId);
+    });
     const rows = await listServiceRows(prisma, auth.tenancy);
     const items = await Promise.all(rows.map(async (row) => await serviceToApiShape({
       prisma,

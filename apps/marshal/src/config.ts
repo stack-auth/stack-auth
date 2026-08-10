@@ -129,10 +129,27 @@ export const MAX_INSTANCES_CAP = 5;
 // Fly volume bounds: 1 GB is the platform default/minimum, 500 GB the maximum.
 export const MIN_VOLUME_SIZE_GB = 1;
 export const MAX_VOLUME_SIZE_GB = 500;
+// A Fly machine mounts at most one volume ("Currently, you may only mount one volume per
+// Machine" — Machines API reference), so a second entry could not be honoured.
+export const MAX_PERSISTENT_VOLUMES_PER_SERVICE = 1;
+// Volume ids must survive flyVolumeName() unchanged; see VOLUME_NAME_PREFIX below.
+export const VOLUME_ID_REGEX = /^[a-z][a-z0-9_]*$/;
+export const MAX_VOLUME_ID_LENGTH = 26;
 // One volume per service (Fly allows at most one mount per machine, and a service with a
-// volume is pinned to a single machine). The name is constant because the Fly app is
-// already per-service — see naming.ts. Fly volume names are alnum + underscore, <= 30 chars.
-export const VOLUME_NAME = "hexclave_data";
+// volume is a single-instance "server"). Fly volume names are alnum + underscore, <= 30
+// chars, so the caller-chosen volume id (lowercase alnum + underscore, <= 26 — validated
+// upstream) fits behind this 4-character prefix.
+//
+// The name is derived from the volume ID rather than being constant so a service can hold
+// several distinct disks over its life and name which one it wants. The identity is NOT
+// global: a Fly volume lives inside one app and the app is per-service (see naming.ts), so
+// the same id under a different service is a DIFFERENT disk — ensureVolume finds no volume
+// by that name in the new app and creates an empty one. Callers must not present moving an
+// id between services as moving the data.
+export const VOLUME_NAME_PREFIX = "hxv_";
+export function flyVolumeName(volumeId: string): string {
+  return `${VOLUME_NAME_PREFIX}${volumeId}`;
+}
 export const MACHINE_GUEST = { cpu_kind: "shared", cpus: 1, memory_mb: 512 };
 export const BUILDER_GUEST = { cpu_kind: "shared", cpus: 2, memory_mb: 2048 };
 // Railpack builds get a bigger machine: every builder is ephemeral (no image cache), the

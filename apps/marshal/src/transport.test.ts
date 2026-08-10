@@ -4,7 +4,7 @@ import { computeRevision } from "./revision.js";
 
 function spec(config: Record<string, unknown> = {}) {
   return {
-    config: { min_instances: 0, max_instances: 1, port: 5432, ...config },
+    config: { type: "serverless", min_instances: 0, max_instances: 1, port: 5432, ...config },
     source: { image: "registry.fly.io/example@sha256:abc" },
     env: {},
   };

@@ -178,6 +178,7 @@ model Tenancy {
   conversationEntryPoints ConversationEntryPoint[]
   conversationMessages ConversationMessage[]
   deploymentServices  DeploymentService[]
+  deployments         Deployment[]
   deploymentSourceUploads DeploymentSourceUpload[]
   workflowDefinitions WorkflowDefinition[]
   workflowVersions WorkflowVersion[]
@@ -1713,6 +1714,12 @@ model DeploymentService {
   // stored build settings and env definition.
   definitionSyncedAt DateTime?
   definitionSyncId   String?   @db.Uuid
+  // How the service runs: "server" (one instance that suspends when idle, the
+  // only kind that may hold a volume) or "serverless" (scales between the
+  // bounds below, stops on scale-down). The default exists only so the NOT NULL
+  // column could be added to a table that already had rows; every writer sets
+  // it explicitly.
+  type          String @default("serverless")
   // Container definition: the single port the container listens on, its
   // application transport, and
   // the serverless scaling bounds (1/1 = serverful). Null on unsynced rows.
@@ -1726,19 +1733,26 @@ model DeploymentService {
   // The Dockerfile to build from, relative to rootDirectory. Null = no
   // Dockerfile: the remote builder auto-detects the build with Railpack.
   dockerfilePath String?
-  // Persistent disk. Both null = no volume, i.e. an entirely ephemeral
-  // container filesystem (the default). A service with a volume is necessarily
-  // single-instance (maxInstances 1): the underlying Fly volume is local NVMe
-  // on one host and attaches to at most one machine. volumeSizeGb is
-  // grow-only — Fly rejects a shrink, and shrinking would mean destroying
-  // tenant data.
+  // Persistent disk. All three null = no volume, i.e. an entirely ephemeral
+  // container filesystem (the default). Only a `type: "server"` service may
+  // have one: the underlying Fly volume is local NVMe on one host and attaches
+  // to at most one machine. volumeSizeGb is grow-only — Fly rejects a shrink,
+  // and shrinking would mean destroying tenant data.
   //
-  // These two are a PAIR and are always written together. Two CHECK constraints
-  // enforce that in the database (both null or both set, and size within Fly's
-  // 1–500 GB range) — see the 20260806000000_deployment_service_volumes
-  // migration. Prisma cannot express CHECK constraints, so they live only in
-  // the migration SQL and are invisible here; a `prisma db push` would drop
-  // them.
+  // volumeId is the caller-chosen id (the key of `persistentVolumes` in the
+  // config file). It names the Fly volume within the service's own Fly app, so
+  // it identifies the disk WITHIN a service — the same id under a different
+  // service is a different disk, and moving it does not move the data. A unique
+  // index still keeps two services from holding one id at a time.
+  //
+  // These three are a TUPLE and are always written together. CHECK constraints
+  // enforce that in the database (all three null or all three set, and size
+  // within Fly's 1–500 GB range) — see the
+  // 20260806000000_deployment_service_volumes and
+  // 20260810000000_deployment_service_types_and_volume_ids migrations. Prisma
+  // cannot express CHECK constraints, so they live only in the migration SQL
+  // and are invisible here; a `prisma db push` would drop them.
+  volumeId     String?
   volumePath   String?
   volumeSizeGb Int?
   // Note there is deliberately no dev command here: `devCommand` in the config
@@ -1788,6 +1802,49 @@ model DeploymentServiceDomain {
   @@unique([tenancyId, hostname])
 }
 
+// One `hexclave deploy` invocation: the unit the dashboard lists, holding the
+// per-service runs it triggered. A deploy of N services is one Deployment with
+// N DeploymentRuns, so "what shipped together" is a fact in the database rather
+// than something reconstructed from run timestamps.
+//
+// A deployment has no status column of its own: it is derived from its runs
+// (any run building → building, any error → failed, all ready → deployed), so
+// there is no second copy of the truth to drift from the runs themselves.
+model Deployment {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Monotonic per tenancy, so the dashboard and CLI can say "deployment #47"
+  // instead of showing a uuid. Assigned inside the same transaction that
+  // creates the row (see createDeployment), which the unique constraint below
+  // makes safe against two concurrent deploys picking the same number.
+  number Int
+
+  // "production" | "preview" — mirrors DeploymentRun.target, which every run in
+  // one deployment shares.
+  target String
+  // Free-form descriptor of what triggered the deploy (e.g. "cli").
+  triggeredBy String
+
+  // The service ids this deploy INTENDED to deploy, in dependency order, as a
+  // JSON string array. Kept alongside the runs because a service whose
+  // dependency failed never gets a run at all, and the dashboard still has to
+  // show it as skipped rather than silently omitting it.
+  plannedServiceIds Json @default("[]")
+
+  runs DeploymentRun[]
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, number])
+  @@index([tenancyId, createdAt(sort: Desc)])
+}
+
 enum DeploymentRunStatus {
   QUEUED
   BUILDING
@@ -1805,6 +1862,11 @@ model DeploymentRun {
   updatedAt DateTime @updatedAt
 
   deploymentServiceId String @db.Uuid
+
+  // The deploy this run was part of. Null on runs created before deployments
+  // were grouped; the dashboard lists those under a synthetic single-service
+  // deployment rather than hiding them.
+  deploymentId String? @db.Uuid
 
   // The Marshal build backing this run (ULID) and the revision it built.
   // Null for no-build runs (should not happen in practice — every deploy
@@ -1836,9 +1898,13 @@ model DeploymentRun {
   redactionSecretsEncrypted Json?
 
   service DeploymentService @relation(fields: [tenancyId, deploymentServiceId], references: [tenancyId, id], onDelete: Cascade)
+  // SetNull, not Cascade: deleting a deployment must never delete the run
+  // history of services that are still live.
+  deployment Deployment? @relation(fields: [tenancyId, deploymentId], references: [tenancyId, id], onDelete: SetNull)
 
   @@id([tenancyId, id])
   @@index([tenancyId, deploymentServiceId, createdAt(sort: Desc)])
+  @@index([tenancyId, deploymentId])
 }
 
 // Short-lived upload references for `hexclave deploy`: the CLI requests an
