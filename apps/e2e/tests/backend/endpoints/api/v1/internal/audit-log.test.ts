@@ -1,5 +1,5 @@
 import { it } from "../../../../../helpers";
-import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../../backend-helpers";
 
 async function listAuditLog(options?: { action?: string, targetUserId?: string, cursor?: string, limit?: number }) {
   return await niceBackendFetch("/api/v1/internal/audit-log", {
@@ -478,4 +478,96 @@ it("does not audit client self-service password reset emails", async ({ expect }
   const listRes = await listAuditLog({ action: "user.password_reset.sent" });
   expect(listRes.status).toBe(200);
   expect(listRes.body.items).toEqual([]);
+});
+
+it("records project API key create, update, and revoke without persisting secrets", async ({ expect }) => {
+  // createAndSwitch already mints a project key set for test auth — create a
+  // second set with a distinct description so we can assert on that event.
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+  const created = await InternalApiKey.create(undefined, {
+    description: "Audited project key",
+    has_publishable_client_key: true,
+    has_secret_server_key: true,
+    has_super_secret_admin_key: false,
+  });
+  const apiKeyId = created.createApiKeyResponse.body.id as string;
+  const secretServerKey = created.createApiKeyResponse.body.secret_server_key as string;
+  expect(typeof secretServerKey).toBe("string");
+
+  const rename = await niceBackendFetch(`/api/v1/internal/api-keys/${apiKeyId}`, {
+    accessType: "admin",
+    method: "PATCH",
+    body: {
+      description: "Renamed audited project key",
+    },
+  });
+  expect(rename.status).toBe(200);
+
+  const revoke = await niceBackendFetch(`/api/v1/internal/api-keys/${apiKeyId}`, {
+    accessType: "admin",
+    method: "PATCH",
+    body: {
+      revoked: true,
+    },
+  });
+  expect(revoke.status).toBe(200);
+
+  const createdList = await listAuditLog({ action: "project_api_key.created" });
+  expect(createdList.status).toBe(200);
+  const createdEvent = createdList.body.items.find((item: { metadata?: { changes?: { description?: { after?: string } } } }) => (
+    item.metadata?.changes?.description?.after === "Audited project key"
+  ));
+  expect(createdEvent).toMatchObject({
+    action: "project_api_key.created",
+    target_user_id: null,
+    metadata: {
+      source: "internal.api_keys.create",
+      changed_paths: expect.arrayContaining([
+        "api_key_id",
+        "description",
+        "has_publishable_client_key",
+        "has_secret_server_key",
+      ]),
+      changes: {
+        description: { before: null, after: "Audited project key" },
+        has_publishable_client_key: { before: null, after: true },
+        has_secret_server_key: { before: null, after: true },
+        has_super_secret_admin_key: { before: null, after: false },
+      },
+    },
+  });
+  expect(JSON.stringify(createdEvent.metadata)).not.toContain(secretServerKey);
+  expect(JSON.stringify(createdEvent.metadata)).not.toContain("pck_");
+  expect(JSON.stringify(createdEvent.metadata)).not.toContain("ssk_");
+
+  const updatedList = await listAuditLog({ action: "project_api_key.updated" });
+  expect(updatedList.status).toBe(200);
+  expect(updatedList.body.items).toHaveLength(1);
+  expect(updatedList.body.items[0]).toMatchObject({
+    action: "project_api_key.updated",
+    metadata: {
+      source: "internal.api_keys.update",
+      api_key_id: apiKeyId,
+      changed_paths: ["description"],
+      changes: {
+        description: {
+          before: "Audited project key",
+          after: "Renamed audited project key",
+        },
+      },
+    },
+  });
+
+  const revokedList = await listAuditLog({ action: "project_api_key.revoked" });
+  expect(revokedList.status).toBe(200);
+  expect(revokedList.body.items).toHaveLength(1);
+  expect(revokedList.body.items[0]).toMatchObject({
+    action: "project_api_key.revoked",
+    metadata: {
+      source: "internal.api_keys.update",
+      api_key_id: apiKeyId,
+      description: "Renamed audited project key",
+    },
+  });
 });

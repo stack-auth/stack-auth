@@ -20,6 +20,9 @@ export const AUDIT_LOG_ACTIONS = [
   "contact_channel.updated",
   "contact_channel.deleted",
   "contact_channel.verification.sent",
+  "project_api_key.created",
+  "project_api_key.updated",
+  "project_api_key.revoked",
 ] as const;
 
 export type AuditLogAction = typeof AUDIT_LOG_ACTIONS[number];

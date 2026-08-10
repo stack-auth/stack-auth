@@ -10,7 +10,6 @@ import {
   type DataGridColumnDef,
 } from "@hexclave/dashboard-ui-components";
 import { CaretDownIcon, CaretRightIcon, EyeSlashIcon } from "@phosphor-icons/react";
-import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { useMemo, useState } from "react";
 
 export type AuditLogAction =
@@ -29,7 +28,10 @@ export type AuditLogAction =
   | "contact_channel.created"
   | "contact_channel.updated"
   | "contact_channel.deleted"
-  | "contact_channel.verification.sent";
+  | "contact_channel.verification.sent"
+  | "project_api_key.created"
+  | "project_api_key.updated"
+  | "project_api_key.revoked";
 
 export type AuditLogEvent = {
   id: string,
@@ -108,6 +110,15 @@ function formatAction(action: AuditLogAction): string {
     case "contact_channel.verification.sent": {
       return "Verification email sent";
     }
+    case "project_api_key.created": {
+      return "Project API key created";
+    }
+    case "project_api_key.updated": {
+      return "Project API key updated";
+    }
+    case "project_api_key.revoked": {
+      return "Project API key revoked";
+    }
     default: {
       const _exhaustive: never = action;
       return _exhaustive;
@@ -133,6 +144,12 @@ const FIELD_LABELS = new Map<string, string>([
   ["restricted_by_admin_reason", "Restriction reason"],
   ["risk_scores.sign_up.bot", "Sign-up bot risk"],
   ["risk_scores.sign_up.free_trial_abuse", "Free-trial abuse risk"],
+  ["api_key_id", "API key ID"],
+  ["description", "Description"],
+  ["expires_at_millis", "Expires"],
+  ["has_publishable_client_key", "Publishable client key"],
+  ["has_secret_server_key", "Secret server key"],
+  ["has_super_secret_admin_key", "Super secret admin key"],
 ]);
 
 function humanizeFieldPath(path: string): string {
@@ -341,12 +358,6 @@ function AuditDetailsCell({ event }: { event: AuditLogEvent }) {
         sideOffset={8}
         className={auditDetailsPopoverClassName}
       >
-        {/* Tether the overlay back to the trigger so the open row stays obvious. */}
-        <PopoverPrimitive.Arrow
-          width={12}
-          height={7}
-          className="fill-white drop-shadow-[0_1px_0_rgba(0,0,0,0.08)] dark:fill-background"
-        />
         <div className="border-b border-black/[0.06] px-3 py-2.5 dark:border-white/[0.06]">
           <div className="text-sm font-medium text-foreground">{actionLabel}</div>
           <p className="mt-0.5 text-xs text-muted-foreground">

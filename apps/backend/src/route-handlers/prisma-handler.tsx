@@ -89,6 +89,11 @@ export function createPrismaCrudHandlers<
       prismaToCrud: (prisma: PRead<PrismaModelName, W & B, I>, context: Context<false, PS, QS>) => Promise<CRead<CrudTypeOf<S>>>,
       notFoundToCrud: (context: Context<false, PS, QS>) => Promise<CRead<CrudTypeOf<S>> | never>,
       onCreate?: (prisma: PRead<PrismaModelName, W & B, I>, context: Context<false, PS, QS>) => Promise<void>,
+      onUpdate?: (
+        prisma: PRead<PrismaModelName, W & B, I>,
+        context: Context<true, PS, QS>,
+        extras: { previous: PRead<PrismaModelName, W & B, I> },
+      ) => Promise<void>,
     },
 ): CrudHandlersFromCrudType<CrudTypeOf<S>, PS, QS> & ExtraDataFromCrudType<S, PrismaModelName, PS, QS, W, I, B> {
   const wrapper = <AllParams extends boolean, T>(allParams: AllParams, func: (data: any, context: Context<AllParams, PS, QS>) => Promise<T>): (opts: Context<AllParams, PS, QS> & { data?: unknown }) => Promise<T> => {
@@ -178,6 +183,7 @@ export function createPrismaCrudHandlers<
           ...baseQuery,
           data: await crudToPrisma(data, { ...context, type: 'update' }),
         });
+        await options.onUpdate?.(prisma, context, { previous: prismaRead });
         return await prismaOrNullToCrud(prisma, context);
       }
     }),
