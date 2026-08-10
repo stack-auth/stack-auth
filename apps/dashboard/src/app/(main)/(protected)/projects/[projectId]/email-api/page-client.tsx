@@ -5,6 +5,8 @@ import { StyledLink } from "@/components/link";
 import {
   DesignAlert,
   DesignCard,
+  DesignEmptyState,
+  DesignMetricCard,
 } from "@/components/design-components";
 import { CopyPromptButton } from "@/components/ui";
 import { CodeIcon, MailboxIcon, SparkleIcon } from "@phosphor-icons/react";
@@ -19,7 +21,7 @@ import { ALL_APPS_FRONTEND, getAppPath, getItemPath } from "@/lib/apps-frontend"
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import { STATUS_LABELS, getStatusBadgeColor } from "../email-sent/email-status-utils";
+import { STATUS_LABELS } from "../email-sent/email-status-utils";
 import { SentEmailsView } from "../email-sent/sent-emails-view";
 import { countEmailsSince, getDeliverySuccessRate, groupEmailsBySource, isEmailApiEmail, type EmailApiSource } from "./email-api-logic";
 
@@ -70,17 +72,16 @@ function ApiStatsAndSources({ emails, templateNames }: {
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {stats.map(({ label, value }) => (
-          <DesignCard key={label} glassmorphic contentClassName="p-3">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
-            <div className="mt-1 text-xl font-semibold">{value}</div>
-          </DesignCard>
+          <DesignMetricCard key={label} label={label} value={value} />
         ))}
       </div>
       <DesignCard title="By source" subtitle="API sends grouped by raw HTML or template" icon={MailboxIcon} glassmorphic contentClassName="p-3">
         {sources.length === 0 ? (
-          <div className="py-6 text-center text-sm text-muted-foreground">
-            No Email API sends yet. Run one of the examples above to see delivery sources here.
-          </div>
+          <DesignEmptyState
+            icon={MailboxIcon}
+            title="No Email API sends yet"
+            description="Run one of the examples above to see delivery sources here."
+          />
         ) : (
           <DataGrid<EmailApiSource>
             columns={sourceColumns}
@@ -100,13 +101,15 @@ function ApiStatsAndSources({ emails, templateNames }: {
 
 function PromptCard({ title, prompt }: { title: string, prompt: string }) {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-foreground/[0.02] p-3">
-      <div className="min-w-0">
-        <div className="mb-1 text-sm font-medium">{title}</div>
-        <p className="text-xs leading-relaxed text-muted-foreground">{prompt}</p>
+    <DesignCard glassmorphic contentClassName="p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="mb-1 text-sm font-medium">{title}</div>
+          <p className="text-xs leading-relaxed text-muted-foreground">{prompt}</p>
+        </div>
+        <CopyPromptButton content={prompt} aria-label={`Copy ${title} prompt`} className="shrink-0" />
       </div>
-      <CopyPromptButton content={prompt} aria-label={`Copy ${title} prompt`} className="shrink-0" />
-    </div>
+    </DesignCard>
   );
 }
 
