@@ -967,7 +967,7 @@ const app = new Elysia({ adapter: node() })
     await bulldozerDb.waitUntilCurrentStateDurable();
     return ok();
   }))
-  .post("/internal/payments/verify-data-integrity", ({ body }) => handler("verify-data-integrity", async () => handleVerifyDataIntegrityRequest(body, request => verifyDataIntegrity(bulldozerDb, request))))
+  .post("/internal/payments/verify-data-integrity", ({ body }) => handler("verify-data-integrity", async () => await handleVerifyDataIntegrityRequest(body, request => verifyDataIntegrity(bulldozerDb, request))))
   .get("/v1/:tenancyId/transactions", ({ params, query }) => handler("list-transactions", async () => {
     const parsedLimit = Number.parseInt(typeof query.limit === "string" ? query.limit : "50", 10);
     const result = await listTransactions({
