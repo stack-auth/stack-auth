@@ -86,7 +86,7 @@ export async function fetchBulldozerServerJson<T>(options: {
           ...options.body === undefined ? {} : { body: JSON.stringify(options.body) },
         });
 
-        if (attempt > 1) {
+        if (attempt > 1 && response.ok) {
           captureError("bulldozer-server-connect-retry", new HexclaveAssertionError("Bulldozer server request recovered after connect-phase failures", {
             cause: firstRetryError,
             attempts: attempt,

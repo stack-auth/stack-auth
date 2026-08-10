@@ -52,7 +52,13 @@ describe("fetchBulldozerServerJson", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const resultPromise = fetchBulldozerServerJson<{ success: true }>({ method: "POST", path: "/update-quantity", body: { quantity: 1 } });
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(249);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
 
     await expect(resultPromise).resolves.toEqual({ success: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -73,7 +79,15 @@ describe("fetchBulldozerServerJson", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const request = expect(fetchBulldozerServerJson({ method: "POST", path: "/update-quantity" })).rejects.toBe(failures[4]);
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    for (const [index, delay] of retryDelays.entries()) {
+      await vi.advanceTimersByTimeAsync(delay - 1);
+      expect(fetchMock).toHaveBeenCalledTimes(index + 1);
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMock).toHaveBeenCalledTimes(index + 2);
+    }
 
     await request;
     expect(fetchMock).toHaveBeenCalledTimes(5);
@@ -108,6 +122,28 @@ describe("fetchBulldozerServerJson", () => {
         attempts: 3,
       },
     });
+  });
+
+  it("does not emit a recovery diagnostic when the retried response is not ok", async () => {
+    vi.useFakeTimers();
+    const capturedErrorsBefore = globalVar.hexclaveCapturedErrors?.length ?? 0;
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError("fetch failed", {
+        cause: errorWithCode("ECONNREFUSED"),
+      }))
+      .mockResolvedValueOnce(new Response("bad request", { status: 500 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = expect(fetchBulldozerServerJson({ method: "POST", path: "/recovery-http-error" }))
+      .rejects.toThrow("Bulldozer server request failed");
+    await vi.advanceTimersByTimeAsync(250);
+
+    await request;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const capturedErrors = (globalVar.hexclaveCapturedErrors ?? [])
+      .slice(capturedErrorsBefore)
+      .filter((entry: { location: string }) => entry.location === "bulldozer-server-connect-retry");
+    expect(capturedErrors).toHaveLength(0);
   });
 
   it("does not retry an HTTP error", async () => {
