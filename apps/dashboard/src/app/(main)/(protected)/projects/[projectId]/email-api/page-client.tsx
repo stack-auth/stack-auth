@@ -11,6 +11,7 @@ import {
 import { CopyPromptButton } from "@/components/ui";
 import { CodeIcon, MailboxIcon, SparkleIcon } from "@phosphor-icons/react";
 import type { AdminEmailOutbox } from "@hexclave/next";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import {
   DataGrid,
   useDataGridUrlState,
@@ -46,7 +47,7 @@ const sourceColumns: DataGridColumnDef<EmailApiSource>[] = [
     flex: 1,
     minWidth: 180,
     type: "string",
-    accessor: (row) => Object.entries(row.statuses).map(([status, count]) => `${STATUS_LABELS[status as keyof typeof STATUS_LABELS]}: ${count}`).join(" · "),
+    accessor: (row) => [...row.statuses.entries()].map(([status, count]) => `${STATUS_LABELS[status]}: ${count}`).join(" · "),
   },
 ];
 
@@ -54,7 +55,7 @@ function ApiStatsAndSources({ emails, templateNames }: {
   emails: AdminEmailOutbox[],
   templateNames: ReadonlyMap<string, string>,
 }) {
-  const now = useMemo(() => new Date(), []);
+  const now = new Date();
   const sources = useMemo(() => groupEmailsBySource(emails, templateNames), [emails, templateNames]);
   const [gridState, setGridState] = useDataGridUrlState(sourceColumns, {
     paramPrefix: "emailsource",
@@ -122,10 +123,9 @@ export default function PageClient() {
     [templates],
   );
   const templateId = templates[0]?.id ?? "replace-with-template-id";
-  const emailSettingsItem = ALL_APPS_FRONTEND.emails.navigationItems.find((item) => item.displayName === "Email Settings");
-  const emailSettingsHref = emailSettingsItem == null
-    ? null
-    : getItemPath(project.id, ALL_APPS_FRONTEND.emails, emailSettingsItem);
+  const emailSettingsItem = ALL_APPS_FRONTEND.emails.navigationItems.find((item) => item.displayName === "Email Settings")
+    ?? throwErr("Email Settings navigation item is missing from the emails app registry");
+  const emailSettingsHref = getItemPath(project.id, ALL_APPS_FRONTEND.emails, emailSettingsItem);
   const apiKeysHref = getAppPath(project.id, ALL_APPS_FRONTEND["api-keys"]);
 
   const filterFn = useCallback((email: AdminEmailOutbox) => isEmailApiEmail(email), []);
@@ -154,7 +154,7 @@ export default function PageClient() {
           description={<>
             The Email API queues messages from trusted server code. Keep your server key private and configure a custom email server before sending; the shared development server cannot deliver email.
             <br /><br />
-            Configure delivery {emailSettingsHref == null ? "in Email Settings" : <><StyledLink href={emailSettingsHref}>in Email Settings</StyledLink></>} and manage credentials in <StyledLink href={apiKeysHref}>API Keys</StyledLink>. Read the <StyledLink href="https://docs.hexclave.com/guides/apps/emails/overview">Email API documentation</StyledLink> for the full guide.
+            Configure delivery <StyledLink href={emailSettingsHref}>in Email Settings</StyledLink> and manage credentials in <StyledLink href={apiKeysHref}>API Keys</StyledLink>. Read the <StyledLink href="https://docs.hexclave.com/guides/apps/emails/overview">Email API documentation</StyledLink> for the full guide.
           </>}
         />
 

@@ -107,7 +107,7 @@ export function SentEmailsView({ filterFn, renderActions }: SentEmailsViewProps)
   return (
     <div className="flex gap-4">
       <div className="flex-1 flex flex-col gap-4">
-        {renderActions && !loading && renderActions(filtered, refreshEmails)}
+        {renderActions != null && !loading && renderActions(filtered, refreshEmails)}
 
         {/* Delivery Stats */}
         <DesignCard gradient="default" glassmorphic contentClassName="p-3">
