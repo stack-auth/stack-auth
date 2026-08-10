@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { KnownError, KnownErrors } from "@hexclave/shared";
-import { validateAuthorizedParty } from "./external-auth";
+import { errors as joseErrors } from "jose";
+import { getExternalAuthTokenErrorReason, validateAuthorizedParty } from "./external-auth";
 
 describe("Clerk authorized parties", () => {
   it("allows verification to proceed when the optional allowlist is blank", () => {
@@ -68,5 +69,17 @@ describe("external authentication diagnostics", () => {
     expect(parsed).toMatchObject({
       details: { reason: "unknown" },
     });
+  });
+
+  it.each([
+    [new joseErrors.JWTExpired("expired", {}, "exp"), "expired"],
+    [new joseErrors.JWTClaimValidationFailed("invalid claim", {}, "iss"), "issuer_mismatch"],
+    [new joseErrors.JWTClaimValidationFailed("invalid claim", {}, "aud"), "audience_mismatch"],
+    [new joseErrors.JWTClaimValidationFailed("invalid claim", {}, "future"), "unknown"],
+    [new joseErrors.JWTInvalid(), "malformed_token"],
+    [new joseErrors.JWSInvalid(), "malformed_token"],
+    [new joseErrors.JOSENotSupported(), "unknown"],
+  ] as const)("maps %s to the %s reason", (error, reason) => {
+    expect(getExternalAuthTokenErrorReason(error)).toBe(reason);
   });
 });

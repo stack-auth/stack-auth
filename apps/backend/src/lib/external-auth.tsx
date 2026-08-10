@@ -167,14 +167,27 @@ function validateTokenEncoding(token: string): void {
   }
 }
 
-function isInvalidTokenError(error: unknown): boolean {
-  return error instanceof joseErrors.JWTClaimValidationFailed
-    || error instanceof joseErrors.JWTExpired
-    || error instanceof joseErrors.JWTInvalid
-    || error instanceof joseErrors.JOSENotSupported
-    || error instanceof joseErrors.JWSInvalid
-    || error instanceof joseErrors.JWSSignatureVerificationFailed
-    || error instanceof joseErrors.JWKSNoMatchingKey;
+export function getExternalAuthTokenErrorReason(error: unknown) {
+  if (error instanceof joseErrors.JWTExpired) {
+    return "expired" as const;
+  }
+  if (error instanceof joseErrors.JWTClaimValidationFailed) {
+    return error.claim === "iss"
+      ? "issuer_mismatch" as const
+      : error.claim === "aud"
+        ? "audience_mismatch" as const
+        : "unknown" as const;
+  }
+  if (error instanceof joseErrors.JWSSignatureVerificationFailed || error instanceof joseErrors.JWKSNoMatchingKey) {
+    return "signature_mismatch" as const;
+  }
+  if (error instanceof joseErrors.JWTInvalid || error instanceof joseErrors.JWSInvalid) {
+    return "malformed_token" as const;
+  }
+  if (error instanceof joseErrors.JOSENotSupported) {
+    return "unknown" as const;
+  }
+  return null;
 }
 
 export async function verifyExternalAuthToken(options: {
@@ -193,22 +206,9 @@ export async function verifyExternalAuthToken(options: {
     });
     payload = verified.payload;
   } catch (error) {
-    if (error instanceof joseErrors.JWTExpired) {
-      throw new KnownErrors.InvalidExternalAuthToken("expired");
-    }
-    if (error instanceof joseErrors.JWTClaimValidationFailed) {
-      const reason = error.claim === "iss"
-        ? "issuer_mismatch"
-        : error.claim === "aud"
-          ? "audience_mismatch"
-          : "unknown";
+    const reason = getExternalAuthTokenErrorReason(error);
+    if (reason != null) {
       throw new KnownErrors.InvalidExternalAuthToken(reason);
-    }
-    if (error instanceof joseErrors.JWSSignatureVerificationFailed || error instanceof joseErrors.JWKSNoMatchingKey) {
-      throw new KnownErrors.InvalidExternalAuthToken("signature_mismatch");
-    }
-    if (isInvalidTokenError(error)) {
-      throw new KnownErrors.InvalidExternalAuthToken("unknown");
     }
     throw new HexclaveAssertionError("Failed to retrieve or process an external authentication provider's signing keys.", {
       cause: error,
