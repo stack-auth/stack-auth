@@ -251,6 +251,9 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
           });
         });
       },
+      async iterateEntries(options) {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.instant.iterateEntries", attributes: { ...attributes, "bulldozer.low_level.limit": options.limit } }, async () => await wrappedStore.iterateEntries(options));
+      },
       async debugEntries() {
         return await traceSpanHot({ description: "bulldozer-js.low-level.instant.debugEntries", attributes }, async () => await wrappedStore.debugEntries?.() ?? []);
       },

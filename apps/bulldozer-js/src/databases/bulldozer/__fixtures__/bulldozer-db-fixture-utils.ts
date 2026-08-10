@@ -181,6 +181,20 @@ function declareSeededLowLevelDatabase(dump: BulldozerDbDump): LowLevelDatabase 
       async compareAndSet() {
         throw new Error("compareAndSet is not supported by the seeded fixture low-level database");
       },
+      async iterateEntries({ afterKey, limit }) {
+        const entries = [...map.entries()]
+          .map(([keyBase64, value]) => ({
+            key: decodeBase64(keyBase64).buffer,
+            value: value.slice(0),
+          }))
+          .sort((a, b) => Buffer.compare(Buffer.from(a.key), Buffer.from(b.key)))
+          .filter(entry => afterKey === undefined || Buffer.compare(Buffer.from(entry.key), Buffer.from(afterKey)) > 0)
+          .slice(0, limit);
+        return {
+          entries,
+          nextAfterKey: entries.length === limit ? entries[entries.length - 1].key.slice(0) : null,
+        };
+      },
     };
   };
 

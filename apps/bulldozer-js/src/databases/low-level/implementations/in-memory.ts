@@ -2,7 +2,7 @@ import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { traceSpanHot } from "../../../otel.js";
 import { Database, DatabaseSeq } from "../../index.js";
-import { LowLevelDatabase, LowLevelDatabaseDebugEntry, LowLevelKvDump, LowLevelKvStore } from "../index.js";
+import { LowLevelDatabase, LowLevelDatabaseDebugEntry, LowLevelEntryPage, LowLevelKvDump, LowLevelKvStore } from "../index.js";
 
 const inMemoryLowLevelKvStores = new Map<`${"store" | "dump"}-${string}`, LowLevelKvStore & LowLevelKvDump>();
 function arrayBuffersAreEqual(a: ArrayBuffer, b: ArrayBuffer): boolean {
@@ -18,6 +18,15 @@ function arrayBufferFromUint8Array(value: Uint8Array) {
   const copy = new Uint8Array(value.byteLength);
   copy.set(value);
   return copy.buffer;
+}
+
+function compareArrayBuffers(a: ArrayBuffer, b: ArrayBuffer): number {
+  const aBytes = new Uint8Array(a);
+  const bBytes = new Uint8Array(b);
+  for (let index = 0; index < Math.min(aBytes.length, bBytes.length); index++) {
+    if (aBytes[index] !== bBytes[index]) return aBytes[index] - bBytes[index];
+  }
+  return aBytes.length - bBytes.length;
 }
 
 function encodeHex(value: Uint8Array) {
@@ -106,6 +115,26 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
           };
         });
       },
+      async iterateEntries(options): Promise<LowLevelEntryPage> {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.iterateEntries", attributes: { ...attributes, "bulldozer.low_level.limit": options.limit } }, async () => {
+          if (!Number.isInteger(options.limit) || options.limit <= 0) throw new Error("iterateEntries limit must be a positive integer");
+          const afterKey = options.afterKey;
+          const entries = [...base64KeyToValue.entries()]
+            .map(([keyBase64, value]) => ({
+              key: arrayBufferFromUint8Array(new Uint8Array(Buffer.from(keyBase64, "base64"))),
+              value: value.slice(0),
+            }))
+            .sort((a, b) => compareArrayBuffers(a.key, b.key))
+            .filter(entry => afterKey === undefined || compareArrayBuffers(entry.key, afterKey) > 0)
+            .slice(0, options.limit);
+          return {
+            entries,
+            nextAfterKey: entries.length === options.limit
+              ? entries[entries.length - 1].key.slice(0)
+              : null,
+          };
+        });
+      },
       async debugEntries() {
         return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.debugEntries", attributes }, async () => [...base64KeyToValue.entries()]
           .sort(([a], [b]) => stringCompare(a, b))
@@ -174,4 +203,3 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
     initialSeq: [] as unknown as DatabaseSeq,
   };
 }
-

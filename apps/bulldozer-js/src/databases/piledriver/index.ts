@@ -56,8 +56,15 @@ export function piledriverObjectEquals(a: PiledriverObject, b: PiledriverObject)
 
 export type PiledriverDatabase = Database & {
   getRootObject(key: ArrayBuffer): Promise<{ object: PiledriverObject, seq: DatabaseSeq }>,
+  getSerializedRootObject(key: ArrayBuffer): Promise<{ buffer: ArrayBuffer, seq: DatabaseSeq }>,
   setRootObject(key: ArrayBuffer, value: PiledriverObject): Promise<{ seq: DatabaseSeq }>,
   deleteRootObject(key: ArrayBuffer): Promise<{ seq: DatabaseSeq }>,
+  deserializeSerializedObject(buffer: ArrayBuffer, seq: DatabaseSeq): Promise<{ object: PiledriverObject, seq: DatabaseSeq }>,
+  getSerializedHeapObject(key: ArrayBuffer): Promise<{ buffer: ArrayBuffer | null, seq: DatabaseSeq }>,
+  iterateHeapEntries(options: { afterKey?: ArrayBuffer, limit: number }): Promise<{
+    entries: Array<{ key: ArrayBuffer, value: ArrayBuffer }>,
+    nextAfterKey: ArrayBuffer | null,
+  }>,
   debugSnapshot?(): Promise<PiledriverDatabaseDebugSnapshot>,
   debugLowLevelSnapshot?(): Promise<LowLevelDatabaseDebugSnapshot>,
 };
@@ -611,6 +618,13 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         heapReadCacheDisabled: options.disableHeapReadCache === true,
       };
     },
+    async getSerializedRootObject(key): Promise<{ buffer: ArrayBuffer, seq: DatabaseSeq }> {
+      return await traceSpan("bulldozer-js.piledriver.getRootObject", async () => {
+        const { buffer, seq: rootSeq } = await rootStore.get(key);
+        if (buffer === null) throw new Error("Root object not found");
+        return { buffer, seq: rootSeq };
+      });
+    },
     async getRootObject(key): Promise<{ object: PiledriverObject, seq: DatabaseSeq }> {
       return await traceSpan("bulldozer-js.piledriver.getRootObject", async () => {
         const { buffer, seq: rootSeq } = await rootStore.get(key);
@@ -696,6 +710,15 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         const { seq } = await rootStore.deleteAll([key]);
         return { seq };
       });
+    },
+    async deserializeSerializedObject(buffer, seq) {
+      return await deserializePiledriverObject(buffer, seq);
+    },
+    async getSerializedHeapObject(key) {
+      return await heapDump.get(key);
+    },
+    async iterateHeapEntries(options) {
+      return await heapDump.iterateEntries(options);
     },
     combineSeqs(...seqs) {
       return lowLevelDb.combineSeqs(...seqs);

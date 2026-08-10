@@ -5,7 +5,7 @@ import * as lmdb from "lmdb";
 import { shouldSuppressPeriodicBulldozerLogs } from "../../../logging.js";
 import { traceSpanHot } from "../../../otel.js";
 import { DatabaseSeq } from "../../index.js";
-import { LowLevelDatabase, LowLevelDatabaseDebugEntry, LowLevelKvDump, LowLevelKvStore } from "../index.js";
+import { LowLevelDatabase, LowLevelDatabaseDebugEntry, LowLevelEntryPage, LowLevelKvDump, LowLevelKvStore } from "../index.js";
 import { unwrapLmdbCommitError } from "../unwrap-commit-error.js";
 
 type LmdbSeq = readonly [dbId: string, seqId: string] & { __brand: "hexclave-low-level-kv-store-seq" };
@@ -474,6 +474,25 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
           }
           const seq = await commitIfVersion(db, keyBuffer, existing.version, async version => await putWithVersion(db, keyBuffer, bufferFromArrayBuffer(value), version));
           return seq === null ? { wasSet: false, seq: null } : { wasSet: true, seq };
+        });
+      },
+      async iterateEntries(options): Promise<LowLevelEntryPage> {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.iterateEntries", attributes: { ...attributes, "bulldozer.low_level.limit": options.limit } }, async () => {
+          if (!Number.isInteger(options.limit) || options.limit <= 0) throw new Error("iterateEntries limit must be a positive integer");
+          const range = db.getRange({
+            ...(options.afterKey === undefined ? {} : { start: bufferFromArrayBuffer(options.afterKey), exclusiveStart: true }),
+            limit: options.limit,
+          }) as lmdb.RangeIterable<{ key: Uint8Array, value: Buffer }>;
+          const entries = await range.map(({ key, value }) => ({
+            key: arrayBufferFromUint8Array(key),
+            value: arrayBufferFromUint8Array(value),
+          })).asArray;
+          return {
+            entries,
+            nextAfterKey: entries.length === options.limit
+              ? entries[entries.length - 1].key.slice(0)
+              : null,
+          };
         });
       },
       async debugEntries() {

@@ -37,6 +37,9 @@ function createSlowSetDatabase() {
     async compareAndSet() {
       throw new Error("not implemented");
     },
+    async iterateEntries() {
+      throw new Error("not implemented");
+    },
   };
   const db: LowLevelDatabase = {
     getDebugInfo() {
@@ -129,6 +132,9 @@ function createReorderingSetDatabase() {
       throw new Error("not implemented");
     },
     async compareAndSet() {
+      throw new Error("not implemented");
+    },
+    async iterateEntries() {
       throw new Error("not implemented");
     },
   };

@@ -13,6 +13,28 @@ const text = (value: ArrayBuffer | null) => value === null ? null : textDecoder.
 const tempLmdbPath = async () => await mkdtemp(join(tmpdir(), "bulldozer-lmdb-"));
 
 describe("LMDB low-level database", () => {
+  it("iterates entries in bounded exclusive pages", async () => {
+    const path = await tempLmdbPath();
+    try {
+      const db = declareLmdbLowLevelDatabase({ path, dbId: "iteration" });
+      const store = db.declareKvStore("store");
+      const { seq } = await store.setAll([
+        { key: buffer("a"), value: buffer("first") },
+        { key: buffer("b"), value: buffer("second") },
+        { key: buffer("c"), value: buffer("third") },
+      ]);
+      await db.waitUntilAvailable(seq);
+      const first = await store.iterateEntries({ limit: 2 });
+      expect(first.entries.map(entry => text(entry.value))).toEqual(["first", "second"]);
+      const second = await store.iterateEntries({ afterKey: first.nextAfterKey ?? undefined, limit: 2 });
+      expect(second.entries.map(entry => text(entry.value))).toEqual(["third"]);
+      expect(await store.iterateEntries({ afterKey: second.entries[0].key, limit: 2 })).toEqual({ entries: [], nextAfterKey: null });
+      await db.close();
+    } finally {
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
   it("persists store values across database instances and exposes useful debug entries", async () => {
     const path = await tempLmdbPath();
     try {

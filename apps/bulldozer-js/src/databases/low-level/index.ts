@@ -29,6 +29,16 @@ export type LowLevelDatabaseDebugSnapshot = {
   dumps: Record<string, LowLevelDatabaseDebugEntry[]>,
 };
 
+export type LowLevelEntry = {
+  key: ArrayBuffer,
+  value: ArrayBuffer,
+};
+
+export type LowLevelEntryPage = {
+  entries: LowLevelEntry[],
+  nextAfterKey: ArrayBuffer | null,
+};
+
 /**
  * A simple KV store.
  *
@@ -44,6 +54,7 @@ export type LowLevelKvStore = {
   deleteAll(keys: ArrayBuffer[]): Promise<{ seq: DatabaseSeq }>,
 
   compareAndSet(key: ArrayBuffer, compare: ArrayBuffer, value: ArrayBuffer, options?: { requiresSeq?: DatabaseSeq }): Promise<{ wasSet: true, seq: DatabaseSeq } | { wasSet: false, seq: null }>,
+  iterateEntries(options: { afterKey?: ArrayBuffer, limit: number }): Promise<LowLevelEntryPage>,
   debugEntries?(): Promise<LowLevelDatabaseDebugEntry[]>,
 }
 
