@@ -251,7 +251,7 @@ jobs:
             '
               backend_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02"
               if ! curl --fail-with-body --silent --show-error \
-                "http://localhost:${backend_port}/api/latest/users/me" >/dev/null
+                "http://localhost:${backend_port}/api/latest/internal/component-versions" >/dev/null
               then
                 echo "Backend route smoke request failed (backend port ${backend_port})." >&2
               fi
