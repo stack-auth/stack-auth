@@ -1586,7 +1586,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       this._storedBrowserCookieTokenStore = new Store<TokenObject>(this._getCurrentBrowserCookieTokenStoreValue(null));
       let hasSucceededInWriting = true;
 
-      setInterval(() => {
+      // Tests and server-side lifecycles can outlive browser globals, so stop polling when cookie reads no longer apply.
+      const pollInterval = setInterval(() => {
+        if (!isBrowserLike()) {
+          clearInterval(pollInterval);
+          return;
+        }
         if (hasSucceededInWriting) {
           const oldValue = this._storedBrowserCookieTokenStore!.get();
           const currentValue = this._getCurrentBrowserCookieTokenStoreValue(oldValue);
@@ -1595,6 +1600,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           }
         }
       }, 100);
+      if (typeof pollInterval === "object") pollInterval.unref();
       this._storedBrowserCookieTokenStore.onChange((value) => {
         try {
           const refreshToken = value.refreshToken;
