@@ -8,6 +8,10 @@ function errorWithCode(code: string): Error & { code: string } {
 
 beforeEach(() => {
   vi.stubEnv("HEXCLAVE_BULLDOZER_SERVER_SECRET", "test-secret");
+  // The base URL is derived from the ambient environment, which differs between local runs and CI
+  // (eg. a non-default port prefix), so pin both inputs to keep the expected URLs deterministic.
+  vi.stubEnv("HEXCLAVE_BULLDOZER_SERVER_URL", "");
+  vi.stubEnv("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
 });
 
 afterEach(() => {
