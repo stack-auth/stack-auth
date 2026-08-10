@@ -1651,7 +1651,7 @@ export function defineFlatMapTable(mapper: (row: { groupKey: PiledriverObject, r
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== 2 || b.length !== 2 || typeof a[1] !== "number" || typeof b[1] !== "number") {
       throw new Error("Invalid flatMap sort key");
     }
-    return inputTables.input.compareSortKeys({ a: a[0], b: b[0] }) || a[1] - b[1];
+    return inputTables.input.compareSortKeys({ a: a[0], b: b[0] });
   };
 
   return {
@@ -1671,10 +1671,11 @@ export function defineFlatMapTable(mapper: (row: { groupKey: PiledriverObject, r
         if (!Array.isArray(bound) || bound.length !== 2) throw new Error("Invalid flatMap sort key");
         return [bound[0]];
       };
-      // Output sort keys are [inputSortKey, elementIndex], ordered by input sort key first, so
-      // each bound's input component can be pushed down (inclusively even for gt/lt: the
-      // boundary row may still contribute elements inside the range; the per-output range
-      // check below filters those). Element indexes only matter at the boundary key.
+      // Output sort keys are [inputSortKey, elementIndex], but element indexes are not part of
+      // their comparison: tied input rows produce tied output sort keys. Each bound's input
+      // component can therefore be pushed down (inclusively even for gt/lt: the boundary input
+      // row may still contribute outputs inside the range; the per-output range check below
+      // filters those). A bound selects an entire tied input-key group, not one element.
       const lowerInputKeys = [...boundInputKey(range.gte), ...boundInputKey(range.gt)];
       const upperInputKeys = [...boundInputKey(range.lte), ...boundInputKey(range.lt)];
       const lowerInputKey = lowerInputKeys.length ? lowerInputKeys.reduce((a, b) => inputCompare(a, b) >= 0 ? a : b) : undefined;
