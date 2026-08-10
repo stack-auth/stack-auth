@@ -43,7 +43,8 @@ function parseTenancyIdList(raw: string, flagName: string): string[] {
       throw new Error(`${flagName}: invalid tenancy UUID "${id}"`);
     }
   }
-  return ids;
+  // Same as backfill: normalize so --only/--exclude match logged lowercase tenancy cursors.
+  return ids.map((id) => id.toLowerCase());
 }
 
 function readFlag(args: string[], name: string): string | undefined {
@@ -88,11 +89,12 @@ export function parseExportManualTransactionsArgs(args: string[]): ExportManualT
 }
 
 export function shouldKeepTenancy(tenancyId: string, options: ExportManualTransactionsOptions): boolean {
+  const normalized = tenancyId.toLowerCase();
   if (options.onlyTenancyIds !== undefined) {
-    return options.onlyTenancyIds.includes(tenancyId);
+    return options.onlyTenancyIds.includes(normalized);
   }
   if (options.excludeTenancyIds !== undefined) {
-    return !options.excludeTenancyIds.includes(tenancyId);
+    return !options.excludeTenancyIds.includes(normalized);
   }
   return true;
 }
@@ -186,6 +188,10 @@ import.meta.vitest?.describe("parseExportManualTransactionsArgs", (test) => {
       excludeTenancyIds: [tenA, tenB],
     });
     expect(parseExportManualTransactionsArgs([`--only-tenancy-ids=${tenA}`])).toEqual({
+      continueOnError: false,
+      onlyTenancyIds: [tenA],
+    });
+    expect(parseExportManualTransactionsArgs([`--only-tenancy-ids=${tenA.toUpperCase()}`])).toEqual({
       continueOnError: false,
       onlyTenancyIds: [tenA],
     });

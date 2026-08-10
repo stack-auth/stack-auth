@@ -528,7 +528,8 @@ function parseTenancyIdList(raw: string, flagName: string): string[] {
       throw new Error(`${flagName}: invalid tenancy UUID "${id}"`);
     }
   }
-  return ids;
+  // Postgres uuid + logged cursors are lowercase; keep membership checks case-stable.
+  return ids.map((id) => id.toLowerCase());
 }
 
 /**
@@ -620,7 +621,8 @@ export function parseBackfillResumeOptions(args: string[]): BackfillResumeOption
   if (tenancyId.length === 0 || id.length === 0) {
     throw new Error("--resume-cursor must be in the form <tenancyId>,<id>");
   }
-  const resumeCursor = { tenancyId, id };
+  // Normalize tenancy UUID casing to match --only/--exclude parsing.
+  const resumeCursor = { tenancyId: tenancyId.toLowerCase(), id };
   assertResumeCursorMatchesTenancyFilter(resumeCursor, tenancyFilter);
   return { ...base, resumeTable, resumeCursor };
 }
@@ -913,9 +915,14 @@ import.meta.vitest?.describe("parseBackfillResumeOptions", (test) => {
       "--resume-table=Subscription",
       `--resume-cursor=${tenB},sub-1`,
     ])).toThrow(/only-tenancy-ids/);
-    // Matching tenancy is fine.
+    // Matching tenancy is fine (including uppercase filter + lowercase cursor).
     expect(parseBackfillResumeOptions([
       `--only-tenancy-ids=${tenA}`,
+      "--resume-table=Subscription",
+      `--resume-cursor=${tenA},sub-1`,
+    ]).resumeCursor).toEqual({ tenancyId: tenA, id: "sub-1" });
+    expect(parseBackfillResumeOptions([
+      `--only-tenancy-ids=${tenA.toUpperCase()}`,
       "--resume-table=Subscription",
       `--resume-cursor=${tenA},sub-1`,
     ]).resumeCursor).toEqual({ tenancyId: tenA, id: "sub-1" });
