@@ -306,17 +306,28 @@ export function createSmartRouteHandler<
     const fullReq = reqsParsed[0][0][1];
     const handler = reqsParsed[0][1];
 
-    let smartRes = await traceSpan({
-      description: 'calling smart route handler callback',
-      attributes: {
-        "stack.smart-request.access-type": fullReq.auth?.type ?? "<none>",
-        "stack.smart-request.client-version.platform": fullReq.clientVersion?.platform ?? "<none>",
-        "stack.smart-request.client-version.version": fullReq.clientVersion?.version ?? "<none>",
-        "stack.smart-request.client-version.sdk": fullReq.clientVersion?.sdk ?? "<none>",
-      },
-    }, async () => {
-      return await handler.handler(smartReq as any, fullReq);
-    });
+    const normalizedPath = requestContextALS.getStore()?.normalizedPath;
+    const routeSpanName = isSpanAggregationEnabled() && nextRequest != null
+      ? normalizedPath == null
+        ? null
+        : `${nextRequest.method} ${normalizedPath}`
+      : null;
+    const runHandler = async () => {
+      return await traceSpan({
+        description: 'calling smart route handler callback',
+        attributes: {
+          "stack.smart-request.access-type": fullReq.auth?.type ?? "<none>",
+          "stack.smart-request.client-version.platform": fullReq.clientVersion?.platform ?? "<none>",
+          "stack.smart-request.client-version.version": fullReq.clientVersion?.version ?? "<none>",
+          "stack.smart-request.client-version.sdk": fullReq.clientVersion?.sdk ?? "<none>",
+        },
+      }, async () => {
+        return await handler.handler(smartReq as any, fullReq);
+      });
+    };
+    let smartRes = routeSpanName == null
+      ? await runHandler()
+      : await traceSpan(routeSpanName, runHandler);
 
     return await traceSpan("validating smart response", async () => {
       return await validateSmartResponse(nextRequest, fullReq, smartRes, handler.response);
