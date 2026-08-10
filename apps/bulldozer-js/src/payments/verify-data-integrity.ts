@@ -9,7 +9,7 @@ import type {
   BulldozerTableVerificationResult,
 } from "../databases/bulldozer/index.js";
 import { canonicalGroupKeyString } from "../databases/bulldozer/index.js";
-import { collectSerializedHeapReferences, isPiledriverHeapObjectSymbol, type PiledriverObject } from "../databases/piledriver/index.js";
+import { collectSerializedHeapReferences, InvalidPiledriverSerializedObjectError, isPiledriverHeapObjectSymbol, type PiledriverObject } from "../databases/piledriver/index.js";
 
 const CURSOR_VERSION = 3;
 const DEFAULT_STEP_COUNT = 100;
@@ -509,7 +509,7 @@ export async function verifyDataIntegrity(
     try {
       rootObject = (await integrityState.piledriverDatabase.deserializeSerializedObject(root.buffer, root.seq)).object;
     } catch (error) {
-      if (!(error instanceof SyntaxError)) throw error;
+      if (!(error instanceof InvalidPiledriverSerializedObjectError)) throw error;
       recordIssue({ phase: "root", code: "invalid_root_shape", message: "The pinned root could not be deserialized" });
       invalidRootReported = true;
       rootObject = {};
@@ -521,7 +521,7 @@ export async function verifyDataIntegrity(
     try {
       rootObject = (await integrityState.piledriverDatabase.deserializeSerializedObject(rootBuffer, rootSeq)).object;
     } catch (error) {
-      if (!(error instanceof SyntaxError)) throw error;
+      if (!(error instanceof InvalidPiledriverSerializedObjectError)) throw error;
       recordIssue({ phase: "root", code: "invalid_root_shape", message: "The pinned root could not be deserialized" });
       invalidRootReported = true;
       rootObject = {};

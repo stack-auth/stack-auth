@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { declareBulldozerDatabase, type BulldozerTableImplementation } from "../databases/bulldozer/index.js";
 import { declareInMemoryLowLevelDatabase } from "../databases/low-level/implementations/in-memory.js";
 import { declarePiledriverDatabase } from "../databases/piledriver/index.js";
+import { serializeDatabaseSeq } from "../databases/index.js";
 import { createPaymentsSchema } from "./schema/index.js";
 import { subscription } from "./schema/schema-test-helpers.js";
 import { asHeapObject, collectSerializedHeapReferences, type PiledriverObject } from "../databases/piledriver/index.js";
@@ -326,9 +328,29 @@ describe("verification cursor", () => {
     const rootStore = lowLevel.declareKvStore("root");
     await rootStore.setAll([{
       key: new TextEncoder().encode("bulldozer-database-root").buffer,
-      value: new Uint8Array([0xff]).buffer,
+      value: new TextEncoder().encode(JSON.stringify(["array", 123])).buffer,
     }]);
     const result = await verifyDataIntegrity(db, { step_count: 1_000 });
+    expect(result.errors).toContainEqual(expect.objectContaining({ code: "invalid_root_shape" }));
+    expect(result.success).toBe(false);
+  });
+
+  it("reports a structurally invalid pinned root on continuation without throwing", async () => {
+    const db = await createDatabase();
+    const root = await db.getDataIntegrityState().getRoot();
+    const malformed = encodeBase64(new TextEncoder().encode(JSON.stringify(["array", 123])));
+    const continuation = Buffer.from(JSON.stringify({
+      version: 3,
+      root: { bufferBase64: malformed, seq: serializeDatabaseSeq(root.seq) },
+      phase: "root",
+      tablePosition: { tableId: null, groupKeyBase64: null, rowSortKeyBase64: null, rowIdentifiers: [], rowIdentifierCheckSkipped: false, groupComplete: false, genericDone: false, hookPosition: null },
+      afterHeapKeyBase64: null,
+      stepsTaken: 0,
+      errorCount: 0,
+      rootChecked: false,
+      rootReferenceIndex: 0,
+    }), "utf8").toString("base64url");
+    const result = await verifyDataIntegrity(db, { continue: continuation, step_count: 1_000 });
     expect(result.errors).toContainEqual(expect.objectContaining({ code: "invalid_root_shape" }));
     expect(result.success).toBe(false);
   });
