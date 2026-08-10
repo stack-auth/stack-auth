@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { globalVar } from "@hexclave/shared/dist/utils/globals";
-import { fetchBulldozerServerJson, isRetriableBulldozerFetchError } from "./bulldozer-server-client";
+import { bulldozerCustomerPath, fetchBulldozerServerJson, isRetriableBulldozerFetchError } from "./bulldozer-server-client";
 
 function errorWithCode(code: string): Error & { code: string } {
   return Object.assign(new Error(code), { code });
@@ -62,6 +62,7 @@ describe("fetchBulldozerServerJson", () => {
 
     await expect(resultPromise).resolves.toEqual({ success: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "http://localhost:8146/update-quantity", expect.anything());
   });
 
   it("rethrows the original error after exhausting all safe connection retries", async () => {
@@ -114,7 +115,7 @@ describe("fetchBulldozerServerJson", () => {
     await expect(resultPromise).resolves.toEqual({ success: true });
     const capturedErrors = (globalVar.hexclaveCapturedErrors ?? [])
       .slice(capturedErrorsBefore)
-      .filter((entry) => entry.location === "bulldozer-server-connect-retry");
+      .filter((entry: { location: string }) => entry.location === "bulldozer-server-connect-retry");
     expect(capturedErrors).toHaveLength(1);
     expect(capturedErrors[0].error).toMatchObject({
       cause: firstFailure,
@@ -152,6 +153,15 @@ describe("fetchBulldozerServerJson", () => {
 
     await expect(fetchBulldozerServerJson({ method: "POST", path: "/update-quantity" })).rejects.toThrow("Bulldozer server request failed");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("encodes customer path segments without double-encoding", () => {
+    expect(bulldozerCustomerPath({
+      tenancyId: "tenancy/id",
+      customerType: "user",
+      customerId: "customer?id",
+      suffix: "owned-products",
+    })).toBe("/v1/tenancy%2Fid/customers/user/customer%3Fid/owned-products");
   });
 
   it("does not retry an ambiguous socket failure", async () => {

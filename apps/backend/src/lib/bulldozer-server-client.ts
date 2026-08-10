@@ -1,5 +1,6 @@
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 
 const BULLDOZER_FETCH_MAX_ATTEMPTS = 5;
 const BULLDOZER_FETCH_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000];
@@ -53,17 +54,13 @@ function getBulldozerServerBaseUrl(): string {
   return `http://localhost:${getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81")}46`;
 }
 
-function encodePathSegment(segment: string): string {
-  return encodeURIComponent(segment);
-}
-
 export function bulldozerCustomerPath(options: {
   tenancyId: string,
   customerType: "user" | "team" | "custom",
   customerId: string,
   suffix: string,
 }): string {
-  return `/v1/${encodePathSegment(options.tenancyId)}/customers/${encodePathSegment(options.customerType)}/${encodePathSegment(options.customerId)}/${options.suffix}`;
+  return urlString`/v1/${options.tenancyId}/customers/${options.customerType}/${options.customerId}/${options.suffix}`;
 }
 
 export async function fetchBulldozerServerJson<T>(options: {
@@ -77,7 +74,7 @@ export async function fetchBulldozerServerJson<T>(options: {
     while (true) {
       attempt++;
       try {
-        const response = await fetch(`${getBulldozerServerBaseUrl()}${options.path}`, {
+        const response = await fetch(new URL(options.path, getBulldozerServerBaseUrl()).toString(), {
           method: options.method,
           headers: {
             "content-type": "application/json",
