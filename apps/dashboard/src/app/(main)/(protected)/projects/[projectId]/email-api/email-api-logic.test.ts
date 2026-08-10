@@ -44,8 +44,20 @@ describe("Email API analytics", () => {
     expect(groups[0].statuses).toEqual({ sent: 1, bounced: 1 });
   });
 
-  it("returns zero for empty delivery data", () => {
-    expect(getDeliverySuccessRate([])).toBe(0);
-    expect(getDeliverySuccessRate([email({ createdWith: "programmatic-call", emailProgrammaticCallTemplateId: null, status: "sent" }), email({ createdWith: "programmatic-call", emailProgrammaticCallTemplateId: null, status: "bounced" })])).toBe(0.5);
+  it("returns no rate when all rows are in progress", () => {
+    expect(getDeliverySuccessRate([
+      email({ createdWith: "programmatic-call", emailProgrammaticCallTemplateId: null, status: "queued", simpleStatus: "in-progress" }),
+      email({ createdWith: "programmatic-call", emailProgrammaticCallTemplateId: null, status: "sending", simpleStatus: "in-progress" }),
+    ])).toBeNull();
+  });
+
+  it("calculates terminal delivery success and excludes delayed rows", () => {
+    expect(getDeliverySuccessRate([
+      email({ createdWith: "programmatic-call", emailProgrammaticCallTemplateId: null, status: "sent", simpleStatus: "ok" }),
+      email({ createdWith: "programmatic-call", emailProgrammaticCallTemplateId: null, status: "opened", simpleStatus: "ok" }),
+      email({ createdWith: "programmatic-call", emailProgrammaticCallTemplateId: null, status: "bounced", simpleStatus: "error" }),
+      email({ createdWith: "programmatic-call", emailProgrammaticCallTemplateId: null, status: "delivery-delayed", simpleStatus: "in-progress" }),
+      email({ createdWith: "programmatic-call", emailProgrammaticCallTemplateId: null, status: "queued", simpleStatus: "in-progress" }),
+    ])).toBe(2 / 3);
   });
 });

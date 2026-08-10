@@ -52,12 +52,12 @@ export function groupEmailsBySource(
   return [...groups.values()].sort((a, b) => b.count - a.count || stringCompare(a.displayName, b.displayName));
 }
 
-export function getDeliverySuccessRate(emails: Pick<AdminEmailOutbox, "status">[]): number {
-  if (emails.length === 0) return 0;
-  return emails.filter((email) => (
+export function getDeliverySuccessRate(emails: Pick<AdminEmailOutbox, "status" | "simpleStatus">[]): number | null {
+  const terminalEmails = emails.filter((email) => email.simpleStatus !== "in-progress");
+  if (terminalEmails.length === 0) return null;
+  return terminalEmails.filter((email) => (
     email.status === "sent" ||
     email.status === "opened" ||
-    email.status === "clicked" ||
-    email.status === "delivery-delayed"
-  )).length / emails.length;
+    email.status === "clicked"
+  )).length / terminalEmails.length;
 }

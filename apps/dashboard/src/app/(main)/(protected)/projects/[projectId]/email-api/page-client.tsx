@@ -7,7 +7,7 @@ import {
   DesignCard,
 } from "@/components/design-components";
 import { CopyPromptButton } from "@/components/ui";
-import { LinkIcon, MailboxIcon, SparkleIcon } from "@phosphor-icons/react";
+import { CodeIcon, MailboxIcon, SparkleIcon } from "@phosphor-icons/react";
 import type { AdminEmailOutbox } from "@hexclave/next";
 import {
   DataGrid,
@@ -15,7 +15,7 @@ import {
   type DataGridColumnDef,
 } from "@hexclave/dashboard-ui-components";
 import { useCallback, useMemo } from "react";
-import { ALL_APPS_FRONTEND, getItemPath } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, getAppPath, getItemPath } from "@/lib/apps-frontend";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -24,6 +24,11 @@ import { SentEmailsView } from "../email-sent/sent-emails-view";
 import { countEmailsSince, getDeliverySuccessRate, groupEmailsBySource, isEmailApiEmail, type EmailApiSource } from "./email-api-logic";
 
 const DAY = 24 * 60 * 60 * 1000;
+
+type StatTile = {
+  label: string,
+  value: number | string,
+};
 
 function formatDate(date: Date | null): string {
   return date == null ? "Never" : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -53,17 +58,18 @@ function ApiStatsAndSources({ emails, templateNames }: {
     paramPrefix: "emailsource",
     initial: { sorting: [{ columnId: "count", direction: "desc" }] },
   });
-  const windows = [
-    ["24h", countEmailsSince(emails, now, DAY)],
-    ["7d", countEmailsSince(emails, now, 7 * DAY)],
-    ["30d", countEmailsSince(emails, now, 30 * DAY)],
+  const rate = getDeliverySuccessRate(emails);
+  const stats: StatTile[] = [
+    { label: "24h", value: countEmailsSince(emails, now, DAY) },
+    { label: "7d", value: countEmailsSince(emails, now, 7 * DAY) },
+    { label: "30d", value: countEmailsSince(emails, now, 30 * DAY) },
+    { label: "Success", value: rate == null ? "—" : `${Math.round(rate * 100)}%` },
   ];
-  const successRate = Math.round(getDeliverySuccessRate(emails) * 100);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {[...windows, ["Success", `${successRate}%`]].map(([label, value]) => (
+        {stats.map(({ label, value }) => (
           <DesignCard key={label} glassmorphic contentClassName="p-3">
             <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
             <div className="mt-1 text-xl font-semibold">{value}</div>
@@ -99,9 +105,7 @@ function PromptCard({ title, prompt }: { title: string, prompt: string }) {
         <div className="mb-1 text-sm font-medium">{title}</div>
         <p className="text-xs leading-relaxed text-muted-foreground">{prompt}</p>
       </div>
-      <CopyPromptButton content={prompt} aria-label={`Copy ${title} prompt`} className="shrink-0">
-        <SparkleIcon className="text-purple-500 dark:text-purple-400" />
-      </CopyPromptButton>
+      <CopyPromptButton content={prompt} aria-label={`Copy ${title} prompt`} className="shrink-0" />
     </div>
   );
 }
@@ -115,12 +119,16 @@ export default function PageClient() {
     [templates],
   );
   const templateId = templates[0]?.id ?? "replace-with-template-id";
-  const emailSettingsHref = getItemPath(project.id, ALL_APPS_FRONTEND.emails, ALL_APPS_FRONTEND.emails.navigationItems[3]);
+  const emailSettingsItem = ALL_APPS_FRONTEND.emails.navigationItems.find((item) => item.displayName === "Email Settings");
+  const emailSettingsHref = emailSettingsItem == null
+    ? null
+    : getItemPath(project.id, ALL_APPS_FRONTEND.emails, emailSettingsItem);
+  const apiKeysHref = getAppPath(project.id, ALL_APPS_FRONTEND["api-keys"]);
 
   const filterFn = useCallback((email: AdminEmailOutbox) => isEmailApiEmail(email), []);
   const snippets = useMemo(() => ({
     setup: `pnpm add @hexclave/next\n\n# .env\nNEXT_PUBLIC_HEXCLAVE_PROJECT_ID=${project.id}\nHEXCLAVE_SECRET_SERVER_KEY=your_server_key`,
-    html: `import { hexclaveServerApp } from "@hexclave/next/server";\n\nawait hexclaveServerApp.sendEmail({\n  userIds: ["user-id"],\n  subject: "Welcome to Acme",\n  html: "<h1>Welcome!</h1><p>Thanks for joining.</p>",\n});`,
+    html: `import { hexclaveServerApp } from "@/hexclave/server";\n\nawait hexclaveServerApp.sendEmail({\n  userIds: ["user-id"],\n  subject: "Welcome to Acme",\n  html: "<h1>Welcome!</h1><p>Thanks for joining.</p>",\n});`,
     template: `await hexclaveServerApp.sendEmail({\n  userIds: ["user-id"],\n  templateId: "${templateId}",\n  variables: { firstName: "Ada", plan: "Pro" },\n});`,
     emails: `await hexclaveServerApp.sendEmail({\n  emails: ["customer@example.com"],\n  subject: "Your receipt",\n  html: "<p>Thanks for your purchase.</p>",\n});\n// Arbitrary addresses cannot unsubscribe; use this for transactional mail only.`,
     curl: `curl -X POST https://api.hexclave.com/api/v1/emails/send-email \\\n  -H "Content-Type: application/json" \\\n  -H "X-Stack-Access-Type: server" \\\n  -H "X-Stack-Project-Id: ${project.id}" \\\n  -H "X-Stack-Secret-Server-Key: $HEXCLAVE_SECRET_SERVER_KEY" \\\n  -d '${JSON.stringify({ user_ids: ["user-id"], template_id: templateId, variables: { firstName: "Ada" } })}'`,
@@ -143,11 +151,11 @@ export default function PageClient() {
           description={<>
             The Email API queues messages from trusted server code. Keep your server key private and configure a custom email server before sending; the shared development server cannot deliver email.
             <br /><br />
-            Configure delivery in <StyledLink href={emailSettingsHref}>Email Settings</StyledLink> and manage credentials in <StyledLink href={`/projects/${project.id}/project-keys`}>API Keys</StyledLink>. Read the <StyledLink href="https://docs.hexclave.com/guides/apps/emails/overview">Email API documentation</StyledLink> for the full guide.
+            Configure delivery {emailSettingsHref == null ? "in Email Settings" : <><StyledLink href={emailSettingsHref}>in Email Settings</StyledLink></>} and manage credentials in <StyledLink href={apiKeysHref}>API Keys</StyledLink>. Read the <StyledLink href="https://docs.hexclave.com/guides/apps/emails/overview">Email API documentation</StyledLink> for the full guide.
           </>}
         />
 
-        <DesignCard title="Usage" subtitle="Copy a complete example into your server application" icon={LinkIcon} glassmorphic>
+        <DesignCard title="Usage" subtitle="Copy a complete example into your server application" icon={CodeIcon} glassmorphic>
           <div className="flex flex-col gap-4">
             <CodeBlock language="bash" title="Install and configure" content={snippets.setup} icon="code" />
             <CodeBlock language="typescript" title="Send raw HTML to users" content={snippets.html} icon="code" />
