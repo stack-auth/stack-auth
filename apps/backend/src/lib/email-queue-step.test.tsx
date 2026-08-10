@@ -255,16 +255,18 @@ describe.sequential("claimEmailsForSending burst allowance", () => {
     expect(oldRows).toHaveLength(BURST_SEND_LIMIT);
   });
 
-  it("does not double-consume the burst when a worker contends for the tenancy lock", async () => {
-    await withTenancyClaimLock(testTenancyId, async (tx) => {
-      await Promise.all(Array.from({ length: BURST_SEND_LIMIT * 2 }, () => makeRow(tx, null)));
-      const firstClaim = await claimEmailsForSendingWithinLock(tx, testTenancyId, 0);
-      expect(firstClaim).toHaveLength(BURST_SEND_LIMIT);
+  it("keeps two concurrent claimers within one burst allowance", async () => {
+    await Promise.all(
+      Array.from({ length: BURST_SEND_LIMIT * 2 }, () => makeRow(globalPrismaClient, null)),
+    );
+    const [firstClaim, secondClaim] = await Promise.all([
+      claimEmailsForSending(testTenancyId, 0),
+      claimEmailsForSending(testTenancyId, 0),
+    ]);
 
-      // A concurrent production claimer must bail on lock contention rather than claim a second burst.
-      const secondClaim = await claimEmailsForSending(testTenancyId, 0);
-      expect(secondClaim).toHaveLength(0);
-    });
+    // Both claimers can see the committed rows; without the advisory-lock guard, they could each
+    // claim a full burst. A background worker can only reduce what these two calls return.
+    expect(firstClaim.length + secondClaim.length).toBeLessThanOrEqual(BURST_SEND_LIMIT);
   });
 
   it("uses the rate quota when it exceeds the burst allowance", async () => {
