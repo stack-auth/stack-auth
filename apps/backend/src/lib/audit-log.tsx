@@ -7,6 +7,19 @@ export const AUDIT_LOG_ACTIONS = [
   "impersonation.started",
   "impersonation.revoked",
   "project_settings.updated",
+  "user.created",
+  "user.deleted",
+  "user.updated",
+  "user.restricted",
+  "user.unrestricted",
+  "user.password.set",
+  "user.mfa.removed",
+  "user.password_reset.sent",
+  "user.sign_in_invitation.sent",
+  "contact_channel.created",
+  "contact_channel.updated",
+  "contact_channel.deleted",
+  "contact_channel.verification.sent",
 ] as const;
 
 export type AuditLogAction = typeof AUDIT_LOG_ACTIONS[number];
@@ -40,7 +53,23 @@ export type AuditActorSource = {
     display_name: string | null,
     primary_email: string | null,
   } | null | undefined,
+  /**
+   * Set by createCrudHandlers' programmatic admin/server/client helpers
+   * (adminUpdate, serverCreate, etc.). Those synthesize auth.type from the
+   * helper name (often "admin") even for signup / self-service /
+   * password-reset internals — never treat them as dashboard/admin audit
+   * actors. HTTP route handlers leave this unset.
+   */
+  isProgrammaticInvocation?: boolean,
 };
+
+/** Admin audit trail covers dashboard/admin + server-key HTTP mutations, not client self-service or internal programmatic CRUD. */
+export function shouldRecordAdminAudit(auth: AuditActorSource): boolean {
+  if (auth.isProgrammaticInvocation === true) {
+    return false;
+  }
+  return auth.type === "admin" || auth.type === "server";
+}
 
 const MAX_CHANGED_PATHS = 100;
 const MAX_AUDIT_VALUE_STRING_LENGTH = 500;
@@ -349,6 +378,70 @@ export function buildProjectSettingsAuditMetadata(options: {
     source: options.source,
     write_mode: options.writeMode,
     ...(options.level != null ? { level: options.level } : {}),
+    changed_paths,
+    ...(changed_paths_truncated ? { changed_paths_truncated: true } : {}),
+    ...(Object.keys(changes).length > 0 ? { changes } : {}),
+  };
+}
+
+/**
+ * Metadata for resource creates: changed_paths + after values (before is null).
+ * Secrets stay path-only. Shape matches what the Compliance details column renders.
+ */
+export function buildCreatedFieldsAuditMetadata(options: {
+  source: string,
+  fields: Record<string, unknown>,
+}): Record<string, unknown> | null {
+  const afterRoot: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(options.fields)) {
+    // Skip omitted and explicit-null creates (dashboard often posts null for
+    // unused metadata). Logging `+ null` just noise in the audit UI.
+    if (value !== undefined && value !== null) {
+      afterRoot[key] = value;
+    }
+  }
+  const changedPaths = collectConfigPaths(afterRoot);
+  if (changedPaths.length === 0) {
+    return null;
+  }
+  const { changed_paths, changed_paths_truncated } = limitChangedPaths(changedPaths);
+  // Empty beforeRoot → normalizeAuditJsonValue(undefined) → null, so UI shows
+  // green "+ value" rows for each non-sensitive leaf.
+  const changes = buildNonSensitiveFieldChanges({
+    paths: changed_paths,
+    beforeRoot: {},
+    afterRoot,
+  });
+  return {
+    source: options.source,
+    changed_paths,
+    ...(changed_paths_truncated ? { changed_paths_truncated: true } : {}),
+    ...(Object.keys(changes).length > 0 ? { changes } : {}),
+  };
+}
+
+/**
+ * Metadata for resource updates: leaf paths from the patch + before/after from
+ * full snapshots. Secrets stay path-only (same as settings / creates).
+ */
+export function buildUpdatedFieldsAuditMetadata(options: {
+  source: string,
+  patch: Record<string, unknown>,
+  beforeRoot: unknown,
+  afterRoot: unknown,
+}): Record<string, unknown> | null {
+  const changedPaths = collectConfigPaths(options.patch);
+  if (changedPaths.length === 0) {
+    return null;
+  }
+  const { changed_paths, changed_paths_truncated } = limitChangedPaths(changedPaths);
+  const changes = buildNonSensitiveFieldChanges({
+    paths: changed_paths,
+    beforeRoot: options.beforeRoot,
+    afterRoot: options.afterRoot,
+  });
+  return {
+    source: options.source,
     changed_paths,
     ...(changed_paths_truncated ? { changed_paths_truncated: true } : {}),
     ...(Object.keys(changes).length > 0 ? { changes } : {}),

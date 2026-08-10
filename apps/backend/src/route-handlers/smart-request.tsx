@@ -33,6 +33,12 @@ export type SmartRequestAuth = {
   adminUser?: UsersCrud["Admin"]["Read"] | undefined,
   type: "client" | "server" | "admin",
   refreshTokenId?: string,
+  /**
+   * True when auth was synthesized by programmatic CRUD helpers (adminUpdate,
+   * etc.). Absent on real HTTP requests. Used so admin audit logging does not
+   * treat internal signup/self-service paths as dashboard actions.
+   */
+  isProgrammaticInvocation?: boolean,
 };
 
 export type DeepPartialSmartRequestWithSentinel<T = SmartRequest> = (T extends object ? {

@@ -241,3 +241,241 @@ it("does not persist values for sensitive config leaves", async ({ expect }) => 
   });
   expect(JSON.stringify(event.metadata)).not.toContain("super-secret-password");
 });
+
+it("does not audit end-user password signup (programmatic user create)", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Auth.Password.signUpWithEmail();
+
+  const listRes = await listAuditLog();
+  expect(listRes.status).toBe(200);
+  expect(listRes.body.items).toEqual([]);
+});
+
+it("records Authentication user-directory admin actions", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+  const created = await niceBackendFetch("/api/v1/users", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      primary_email: "audited-user@example.com",
+      primary_email_verified: true,
+      // Password-reset lookup only finds contact channels with used_for_auth.
+      primary_email_auth_enabled: true,
+      password: "password123",
+      display_name: "Audited User",
+    },
+  });
+  expect(created.status).toBe(201);
+  const userId = created.body.id as string;
+
+  const restrict = await niceBackendFetch(`/api/v1/users/${userId}`, {
+    accessType: "admin",
+    method: "PATCH",
+    body: {
+      restricted_by_admin: true,
+      restricted_by_admin_reason: "Suspicious activity",
+    },
+  });
+  expect(restrict.status).toBe(200);
+
+  const setPassword = await niceBackendFetch(`/api/v1/users/${userId}`, {
+    accessType: "admin",
+    method: "PATCH",
+    body: {
+      password: "new-password-456",
+    },
+  });
+  expect(setPassword.status).toBe(200);
+
+  const enableMfa = await niceBackendFetch(`/api/v1/users/${userId}`, {
+    accessType: "admin",
+    method: "PATCH",
+    body: {
+      totp_secret_base64: "ZXhhbXBsZSB2YWx1ZQ==",
+    },
+  });
+  expect(enableMfa.status).toBe(200);
+
+  const removeMfa = await niceBackendFetch(`/api/v1/users/${userId}`, {
+    accessType: "admin",
+    method: "PATCH",
+    body: {
+      totp_secret_base64: null,
+    },
+  });
+  expect(removeMfa.status).toBe(200);
+
+  const updateProfile = await niceBackendFetch(`/api/v1/users/${userId}`, {
+    accessType: "admin",
+    method: "PATCH",
+    body: {
+      display_name: "Renamed Audited User",
+    },
+  });
+  expect(updateProfile.status).toBe(200);
+
+  const unrestrict = await niceBackendFetch(`/api/v1/users/${userId}`, {
+    accessType: "admin",
+    method: "PATCH",
+    body: {
+      restricted_by_admin: false,
+    },
+  });
+  expect(unrestrict.status).toBe(200);
+
+  const contactChannel = await niceBackendFetch("/api/v1/contact-channels", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      user_id: userId,
+      type: "email",
+      value: "secondary-audit@example.com",
+      is_verified: false,
+      used_for_auth: false,
+    },
+  });
+  expect(contactChannel.status).toBe(201);
+  const contactChannelId = contactChannel.body.id as string;
+
+  const updateChannel = await niceBackendFetch(`/api/v1/contact-channels/${userId}/${contactChannelId}`, {
+    accessType: "admin",
+    method: "PATCH",
+    body: {
+      used_for_auth: false,
+      is_primary: false,
+    },
+  });
+  expect(updateChannel.status).toBe(200);
+
+  const sendVerification = await niceBackendFetch(`/api/v1/contact-channels/${userId}/${contactChannelId}/send-verification-code`, {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      callback_url: "http://localhost:12345/some-callback-url",
+    },
+  });
+  expect(sendVerification.status).toBe(200);
+
+  const sendReset = await niceBackendFetch("/api/v1/auth/password/send-reset-code", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      email: "audited-user@example.com",
+      callback_url: "http://localhost:12345/some-callback-url",
+    },
+  });
+  expect(sendReset.status).toBe(200);
+
+  const invitation = await niceBackendFetch("/api/v1/internal/send-sign-in-invitation", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      email: "invitee-audit@example.com",
+      callback_url: "http://localhost:12345/some-callback-url",
+    },
+  });
+  expect(invitation.status).toBe(200);
+
+  const deleteChannel = await niceBackendFetch(`/api/v1/contact-channels/${userId}/${contactChannelId}`, {
+    accessType: "admin",
+    method: "DELETE",
+  });
+  expect(deleteChannel.status).toBe(200);
+
+  const deleted = await niceBackendFetch(`/api/v1/users/${userId}`, {
+    accessType: "admin",
+    method: "DELETE",
+  });
+  expect(deleted.status).toBe(200);
+
+  const listRes = await listAuditLog({ targetUserId: userId });
+  expect(listRes.status).toBe(200);
+  const actions = listRes.body.items.map((item: { action: string }) => item.action);
+  expect(actions).toContain("user.created");
+  expect(actions).toContain("user.restricted");
+  expect(actions).toContain("user.password.set");
+  expect(actions).toContain("user.mfa.removed");
+  expect(actions).toContain("user.updated");
+  expect(actions).toContain("user.unrestricted");
+  expect(actions).toContain("contact_channel.created");
+  expect(actions).toContain("contact_channel.updated");
+  expect(actions).toContain("contact_channel.verification.sent");
+  expect(actions).toContain("user.password_reset.sent");
+  expect(actions).toContain("contact_channel.deleted");
+  expect(actions).toContain("user.deleted");
+
+  const createdEvent = listRes.body.items.find((item: { action: string }) => item.action === "user.created");
+  expect(createdEvent.metadata.changed_paths).toEqual(expect.arrayContaining([
+    "primary_email",
+    "primary_email_verified",
+    "display_name",
+    "password",
+  ]));
+  expect(createdEvent.metadata.changes).toMatchObject({
+    primary_email: { before: null, after: "audited-user@example.com" },
+    display_name: { before: null, after: "Audited User" },
+    primary_email_verified: { before: null, after: true },
+  });
+  // Password: path recorded, value never persisted.
+  expect(createdEvent.metadata.changes?.password).toBeUndefined();
+  expect(JSON.stringify(createdEvent.metadata)).not.toContain("password123");
+
+  const updated = listRes.body.items.find((item: { action: string }) => item.action === "user.updated");
+  expect(updated).toMatchObject({
+    action: "user.updated",
+    target_user_id: userId,
+    metadata: {
+      source: "users.update",
+      changed_paths: ["display_name"],
+      changes: {
+        display_name: {
+          before: "Audited User",
+          after: "Renamed Audited User",
+        },
+      },
+    },
+  });
+
+  const restricted = listRes.body.items.find((item: { action: string }) => item.action === "user.restricted");
+  expect(restricted).toMatchObject({
+    action: "user.restricted",
+    target_user_id: userId,
+    reason: "Suspicious activity",
+  });
+
+  const passwordSet = listRes.body.items.find((item: { action: string }) => item.action === "user.password.set");
+  expect(JSON.stringify(passwordSet.metadata)).not.toContain("new-password-456");
+
+  const invitationList = await listAuditLog({ action: "user.sign_in_invitation.sent" });
+  expect(invitationList.status).toBe(200);
+  expect(invitationList.body.items).toHaveLength(1);
+  expect(invitationList.body.items[0]).toMatchObject({
+    action: "user.sign_in_invitation.sent",
+    target_user_id: null,
+    metadata: {
+      source: "internal.send_sign_in_invitation",
+    },
+  });
+  expect(JSON.stringify(invitationList.body.items[0].metadata)).not.toContain("invitee-audit@example.com");
+});
+
+it("does not audit client self-service password reset emails", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const signUp = await Auth.Password.signUpWithEmail();
+  await Auth.signOut();
+
+  const sendReset = await niceBackendFetch("/api/v1/auth/password/send-reset-code", {
+    accessType: "client",
+    method: "POST",
+    body: {
+      email: signUp.email,
+      callback_url: "http://localhost:12345/some-callback-url",
+    },
+  });
+  expect(sendReset.status).toBe(200);
+
+  const listRes = await listAuditLog({ action: "user.password_reset.sent" });
+  expect(listRes.status).toBe(200);
+  expect(listRes.body.items).toEqual([]);
+});

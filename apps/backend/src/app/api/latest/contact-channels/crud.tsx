@@ -1,4 +1,5 @@
 import { Prisma } from "@/generated/prisma/client";
+import { recordAuditEvent, shouldRecordAdminAudit } from "@/lib/audit-log";
 import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryById } from "@/lib/contact-channel";
 import { normalizeEmail } from "@/lib/emails";
 import { markProjectUserForExternalDbSync, recordExternalDbSyncDeletion, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
@@ -139,7 +140,24 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       }) || throwErr("Failed to create contact channel");
     });
 
-    return contactChannelToCrud(contactChannel);
+    const crud = contactChannelToCrud(contactChannel);
+    if (shouldRecordAdminAudit(auth)) {
+      await recordAuditEvent({
+        tenancy: auth.tenancy,
+        auth,
+        action: "contact_channel.created",
+        targetUserId: crud.user_id,
+        metadata: {
+          source: "contact_channels.create",
+          contact_channel_id: crud.id,
+          type: crud.type,
+          is_primary: crud.is_primary,
+          is_verified: crud.is_verified,
+          used_for_auth: crud.used_for_auth,
+        },
+      });
+    }
+    return crud;
   },
   onUpdate: async ({ params, auth, data }) => {
     if (auth.type === 'client') {
@@ -219,7 +237,31 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       return updated;
     });
 
-    return contactChannelToCrud(updatedContactChannel);
+    const crud = contactChannelToCrud(updatedContactChannel);
+    if (shouldRecordAdminAudit(auth)) {
+      const changedPaths: string[] = [];
+      for (const [key, value] of Object.entries(data)) {
+        if (value !== undefined) {
+          changedPaths.push(key);
+        }
+      }
+      await recordAuditEvent({
+        tenancy: auth.tenancy,
+        auth,
+        action: "contact_channel.updated",
+        targetUserId: crud.user_id,
+        metadata: {
+          source: "contact_channels.update",
+          contact_channel_id: crud.id,
+          type: crud.type,
+          changed_paths: changedPaths,
+          is_primary: crud.is_primary,
+          is_verified: crud.is_verified,
+          used_for_auth: crud.used_for_auth,
+        },
+      });
+    }
+    return crud;
   },
   onDelete: async ({ params, auth }) => {
     if (auth.type === 'client') {
@@ -260,6 +302,19 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
         projectUserId: params.user_id,
       });
     });
+
+    if (shouldRecordAdminAudit(auth)) {
+      await recordAuditEvent({
+        tenancy: auth.tenancy,
+        auth,
+        action: "contact_channel.deleted",
+        targetUserId: params.user_id,
+        metadata: {
+          source: "contact_channels.delete",
+          contact_channel_id: params.contact_channel_id,
+        },
+      });
+    }
   },
   onList: async ({ query, auth }) => {
     if (auth.type === 'client') {

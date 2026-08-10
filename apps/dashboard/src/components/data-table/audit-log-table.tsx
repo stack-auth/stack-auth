@@ -1,19 +1,35 @@
 "use client";
 
 import { Link } from "@/components/link";
-import { Badge } from "@/components/ui";
+import { Badge, Button, Popover, PopoverContent, PopoverTrigger } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import {
   DataGrid,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
 } from "@hexclave/dashboard-ui-components";
-import { useMemo } from "react";
+import { CaretDownIcon, CaretRightIcon, EyeSlashIcon } from "@phosphor-icons/react";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
+import { useMemo, useState } from "react";
 
 export type AuditLogAction =
   | "impersonation.started"
   | "impersonation.revoked"
-  | "project_settings.updated";
+  | "project_settings.updated"
+  | "user.created"
+  | "user.deleted"
+  | "user.updated"
+  | "user.restricted"
+  | "user.unrestricted"
+  | "user.password.set"
+  | "user.mfa.removed"
+  | "user.password_reset.sent"
+  | "user.sign_in_invitation.sent"
+  | "contact_channel.created"
+  | "contact_channel.updated"
+  | "contact_channel.deleted"
+  | "contact_channel.verification.sent";
 
 export type AuditLogEvent = {
   id: string,
@@ -53,6 +69,45 @@ function formatAction(action: AuditLogAction): string {
     case "project_settings.updated": {
       return "Project settings updated";
     }
+    case "user.created": {
+      return "User created";
+    }
+    case "user.deleted": {
+      return "User deleted";
+    }
+    case "user.updated": {
+      return "User updated";
+    }
+    case "user.restricted": {
+      return "User restricted";
+    }
+    case "user.unrestricted": {
+      return "User unrestricted";
+    }
+    case "user.password.set": {
+      return "User password set";
+    }
+    case "user.mfa.removed": {
+      return "User MFA removed";
+    }
+    case "user.password_reset.sent": {
+      return "Password reset email sent";
+    }
+    case "user.sign_in_invitation.sent": {
+      return "Sign-in invitation sent";
+    }
+    case "contact_channel.created": {
+      return "Contact channel created";
+    }
+    case "contact_channel.updated": {
+      return "Contact channel updated";
+    }
+    case "contact_channel.deleted": {
+      return "Contact channel deleted";
+    }
+    case "contact_channel.verification.sent": {
+      return "Verification email sent";
+    }
     default: {
       const _exhaustive: never = action;
       return _exhaustive;
@@ -60,10 +115,55 @@ function formatAction(action: AuditLogAction): string {
   }
 }
 
-function formatAuditValue(value: unknown): string {
-  if (value === null) return "null";
-  if (typeof value === "string") return JSON.stringify(value);
-  if (typeof value === "boolean" || typeof value === "number") return String(value);
+const FIELD_LABELS = new Map<string, string>([
+  ["primary_email", "Primary email"],
+  ["primary_email_verified", "Email verified"],
+  ["primary_email_auth_enabled", "Password sign-in"],
+  ["display_name", "Display name"],
+  ["password", "Password"],
+  ["country_code", "Country"],
+  ["signed_up_at_millis", "Signed up"],
+  ["is_anonymous", "Anonymous"],
+  ["client_metadata", "Client metadata"],
+  ["client_read_only_metadata", "Client read-only metadata"],
+  ["server_metadata", "Server metadata"],
+  ["profile_image_url", "Profile image"],
+  ["totp_secret_base64", "MFA secret"],
+  ["restricted_by_admin", "Restricted by admin"],
+  ["restricted_by_admin_reason", "Restriction reason"],
+  ["risk_scores.sign_up.bot", "Sign-up bot risk"],
+  ["risk_scores.sign_up.free_trial_abuse", "Free-trial abuse risk"],
+]);
+
+function humanizeFieldPath(path: string): string {
+  const known = FIELD_LABELS.get(path);
+  if (known != null) return known;
+  return path
+    .split(".")
+    .map((segment) => segment
+      .split("_")
+      .filter((part) => part.length > 0)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" "))
+    .join(" · ");
+}
+
+function formatDisplayValue(value: unknown, path?: string): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number") {
+    if (path != null && path.endsWith("_millis")) {
+      return new Date(value).toLocaleString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    }
+    return String(value);
+  }
+  if (typeof value === "string") return value;
   return JSON.stringify(value);
 }
 
@@ -100,6 +200,27 @@ function parseDetails(event: AuditLogEvent): ParsedDetails {
   };
 }
 
+function visibleChangePaths(parsed: Extract<ParsedDetails, { kind: "changes" }>): string[] {
+  return parsed.paths.filter((path) => {
+    const change = parsed.changes?.[path];
+    if (change == null) return true;
+    // Hide empty create noise (`null` → `null` metadata from older events).
+    if (change.before === null && change.after === null) return false;
+    return true;
+  });
+}
+
+function summarizeChanges(paths: string[], truncated: boolean): string {
+  const count = paths.length;
+  if (count === 0) return truncated ? "Changes…" : "No field details";
+  // Keep the chip scannable: show a short field-name preview, then fall back to a count.
+  const previewLimit = 3;
+  const labels = paths.slice(0, previewLimit).map(humanizeFieldPath);
+  const preview = labels.join(" · ");
+  if (count <= previewLimit && !truncated) return preview;
+  return `${preview} · +${count - previewLimit}${truncated ? "…" : ""}`;
+}
+
 function formatDetails(event: AuditLogEvent): string {
   const parsed = parseDetails(event);
   switch (parsed.kind) {
@@ -110,15 +231,7 @@ function formatDetails(event: AuditLogEvent): string {
       return parsed.reason;
     }
     case "changes": {
-      const parts = parsed.paths.map((path) => {
-        const change = parsed.changes?.[path];
-        if (change != null && "before" in change && "after" in change) {
-          return `${path}: -${formatAuditValue(change.before)} +${formatAuditValue(change.after)}`;
-        }
-        return path;
-      });
-      const joined = parts.join(", ");
-      return parsed.truncated ? `${joined}, …` : joined;
+      return summarizeChanges(visibleChangePaths(parsed), parsed.truncated);
     }
     default: {
       const _exhaustive: never = parsed;
@@ -127,7 +240,64 @@ function formatDetails(event: AuditLogEvent): string {
   }
 }
 
+function AuditFieldRow({
+  path,
+  change,
+}: {
+  path: string,
+  change: AuditFieldChange | null | undefined,
+}) {
+  const label = humanizeFieldPath(path);
+
+  if (change == null || !("before" in change) || !("after" in change)) {
+    return (
+      <div className="flex items-center justify-between gap-3 py-2">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <Badge variant="secondary" className="gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium">
+          <EyeSlashIcon className="size-3" />
+          Hidden
+        </Badge>
+      </div>
+    );
+  }
+
+  if (change.before === null) {
+    const after = formatDisplayValue(change.after, path);
+    return (
+      <div className="flex items-start justify-between gap-3 py-2">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className="max-w-[60%] truncate text-right text-xs font-medium text-foreground" title={after}>
+          {after}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1 py-2">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        <span className="rounded-md bg-red-500/[0.08] px-1.5 py-0.5 text-red-700 line-through decoration-red-700/40 dark:text-red-300 dark:decoration-red-300/40">
+          {formatDisplayValue(change.before, path)}
+        </span>
+        <span className="text-muted-foreground" aria-hidden>→</span>
+        <span className="rounded-md bg-emerald-500/[0.1] px-1.5 py-0.5 font-medium text-emerald-800 dark:text-emerald-300">
+          {formatDisplayValue(change.after, path)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Same glass surface as user-table filter popovers / design controls. */
+const auditDetailsPopoverClassName = cn(
+  "w-[min(22rem,calc(100vw-2rem))] rounded-xl border-black/[0.08] bg-white/95 p-0 shadow-md",
+  "ring-1 ring-black/[0.08] backdrop-blur-xl",
+  "dark:border-white/[0.06] dark:bg-background/95 dark:ring-white/[0.06]",
+);
+
 function AuditDetailsCell({ event }: { event: AuditLogEvent }) {
+  const [open, setOpen] = useState(false);
   const parsed = parseDetails(event);
   if (parsed.kind === "empty") {
     return <span className="text-muted-foreground">—</span>;
@@ -140,43 +310,57 @@ function AuditDetailsCell({ event }: { event: AuditLogEvent }) {
     );
   }
 
+  const paths = visibleChangePaths(parsed);
+  const summary = summarizeChanges(paths, parsed.truncated);
+  const actionLabel = formatAction(event.action);
+
   return (
-    <div className="flex min-w-0 flex-col gap-1.5 py-0.5">
-      {parsed.paths.map((path) => {
-        const change = parsed.changes?.[path];
-        if (change == null || !("before" in change) || !("after" in change)) {
-          return (
-            <code key={path} className="truncate font-mono text-[11px] text-muted-foreground" title={path}>
-              {path}
-            </code>
-          );
-        }
-        const before = formatAuditValue(change.before);
-        const after = formatAuditValue(change.after);
-        return (
-          <div
-            key={path}
-            className="min-w-0 overflow-hidden rounded-md border border-border/60 bg-muted/20 font-mono text-[11px] leading-snug"
-            title={`${path}\n- ${before}\n+ ${after}`}
-          >
-            <div className="truncate border-b border-border/50 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-              {path}
-            </div>
-            <div className="truncate bg-red-500/[0.08] px-1.5 py-0.5 text-red-700 dark:text-red-300">
-              <span className="select-none text-red-500/70 dark:text-red-400/70">- </span>
-              {before}
-            </div>
-            <div className="truncate bg-green-500/[0.08] px-1.5 py-0.5 text-green-800 dark:text-green-300">
-              <span className="select-none text-green-600/70 dark:text-green-400/70">+ </span>
-              {after}
-            </div>
-          </div>
-        );
-      })}
-      {parsed.truncated ? (
-        <span className="text-[11px] text-muted-foreground">…</span>
-      ) : null}
-    </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn(
+            "h-8 max-w-full justify-start gap-1.5 rounded-xl border-black/[0.08] bg-white/85 px-3 text-xs shadow-sm ring-1 ring-black/[0.08] hover:bg-white hover:transition-none dark:border-white/[0.06] dark:bg-foreground/[0.03] dark:ring-white/[0.06] dark:hover:bg-foreground/[0.06]",
+            open && "bg-white ring-black/[0.14] dark:bg-foreground/[0.08] dark:ring-white/[0.14]",
+          )}
+          aria-expanded={open}
+          aria-label={`${open ? "Hide" : "Show"} details: ${summary}`}
+        >
+          {open ? (
+            <CaretDownIcon className="size-3.5 shrink-0 text-muted-foreground" weight="bold" />
+          ) : (
+            <CaretRightIcon className="size-3.5 shrink-0 text-muted-foreground" weight="bold" />
+          )}
+          <span className="truncate font-medium text-foreground/80">{summary}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        side="bottom"
+        sideOffset={8}
+        className={auditDetailsPopoverClassName}
+      >
+        {/* Tether the overlay back to the trigger so the open row stays obvious. */}
+        <PopoverPrimitive.Arrow
+          width={12}
+          height={7}
+          className="fill-white drop-shadow-[0_1px_0_rgba(0,0,0,0.08)] dark:fill-background"
+        />
+        <div className="border-b border-black/[0.06] px-3 py-2.5 dark:border-white/[0.06]">
+          <div className="text-sm font-medium text-foreground">{actionLabel}</div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {paths.length} {paths.length === 1 ? "field" : "fields"}
+            {parsed.truncated ? " · list truncated" : ""}
+          </p>
+        </div>
+        <div className="max-h-64 divide-y divide-border/40 overflow-y-auto px-3">
+          {paths.map((path) => (
+            <AuditFieldRow key={path} path={path} change={parsed.changes?.[path]} />
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -249,8 +433,8 @@ function getColumns(projectId: string): DataGridColumnDef<AuditLogEvent>[] {
       header: "Details",
       accessor: (row) => formatDetails(row),
       type: "string",
-      width: 320,
-      flex: 1.4,
+      width: 220,
+      flex: 1.2,
       renderCell: ({ row }) => <AuditDetailsCell event={row} />,
     },
   ];
@@ -291,7 +475,6 @@ export function AuditLogTable(props: {
       state={gridState}
       onChange={setGridState}
       fillHeight={false}
-      rowHeight="auto"
     />
   );
 }
