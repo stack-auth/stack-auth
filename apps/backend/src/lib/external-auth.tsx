@@ -57,8 +57,13 @@ function requireConfigured(value: string | undefined): string {
   return value;
 }
 
-function getAuthorizedParties(value: string | undefined): string[] {
-  const parties = requireConfigured(value)
+function getAuthorizedParties(value: string | undefined): string[] | undefined {
+  if (value == null || value.trim().length === 0) {
+    // Clerk treats authorizedParties as an optional allowlist. A blank setting
+    // deliberately means that no azp restriction is applied.
+    return undefined;
+  }
+  const parties = value
     .split(/[\n,]/)
     .map(party => party.trim())
     .filter(party => party.length > 0);
@@ -75,6 +80,17 @@ function getAuthorizedParties(value: string | undefined): string[] {
       throw new KnownErrors.ExternalAuthProviderNotConfigured();
     }
   });
+}
+
+export function validateAuthorizedParty(payload: JWTPayload, authorizedParties: string[] | undefined): void {
+  if (authorizedParties == null) return;
+  const authorizedParty = payload.azp;
+  // Treat absence as a validation failure when an allowlist is configured:
+  // otherwise a token without azp bypasses the subdomain-cookie-leak protection
+  // that authorizedParties is meant to add.
+  if (typeof authorizedParty !== "string" || !authorizedParties.includes(authorizedParty)) {
+    throw new KnownErrors.InvalidExternalAuthToken();
+  }
 }
 
 function getProviderVerificationConfig(
@@ -186,14 +202,7 @@ export async function verifyExternalAuthToken(options: {
     });
   }
 
-  if (config.authorizedParties != null) {
-    const authorizedParty = payload.azp;
-    // Treat absence as a validation failure: otherwise a token without azp bypasses the configured
-    // allowlist and loses the subdomain-cookie-leak protection that authorizedParties is meant to add.
-    if (typeof authorizedParty !== "string" || !config.authorizedParties.includes(authorizedParty)) {
-      throw new KnownErrors.InvalidExternalAuthToken();
-    }
-  }
+  validateAuthorizedParty(payload, config.authorizedParties);
   if (config.clientId != null && payload.client_id !== config.clientId) {
     throw new KnownErrors.InvalidExternalAuthToken();
   }

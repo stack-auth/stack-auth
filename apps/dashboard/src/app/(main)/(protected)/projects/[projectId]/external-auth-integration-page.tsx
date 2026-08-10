@@ -187,9 +187,9 @@ export function ExternalAuthIntegrationPage(props: { provider: ExternalAuthInteg
               </label>
               {props.provider === "clerk" && (
                 <label className="flex flex-col gap-2 text-sm font-medium">
-                  Authorized parties
+                  Authorized parties (optional)
                   <DesignInput value={authorizedParties} onChange={event => setAuthorizedParties(event.target.value)} placeholder="https://app.example.com, http://localhost:3000" />
-                  <span className="text-xs font-normal text-muted-foreground">Comma-separated origins accepted in Clerk&apos;s azp claim.</span>
+                  <span className="text-xs font-normal text-muted-foreground">Leave blank to skip Clerk&apos;s azp allowlist, or enter comma-separated origins accepted in the azp claim.</span>
                 </label>
               )}
               {props.provider === "better-auth" && (
