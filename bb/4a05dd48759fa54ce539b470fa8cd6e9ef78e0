@@ -1,0 +1,85 @@
+packages/shared/src/config/schema.ts
+  s_737ddf173f162d::t_cf788b8b212662 28-49
+  s_737ddf173f162d::t_7f93f9f2ce4927 520
+apps/backend/src/app/api/latest/analytics/envelope/route.ts
+  s_737ddf173f162d::t_13ae85fda324a2 57,64-72,75,116,125,206,231,246
+  s_737ddf173f162d::t_88c6a0715f7ce6 1-56,58-63,73-74,76-115,117-124,126-205,207-230,232-245,247-268
+apps/backend/prisma/migrations/20260801000000_add_error_ingest_client_reports/migration.sql
+  s_737ddf173f162d::t_b98d47f39aba13 1-43
+apps/backend/prisma/migrations/20260801000000_add_error_ingest_client_reports/tests/error-ingest-client-reports-schema-and-constraints.ts
+  s_737ddf173f162d::t_85f73f12cebadc 1-91
+apps/backend/prisma/schema.prisma
+  s_737ddf173f162d::t_32bb0d87046313 59,211,2126-2152
+apps/backend/src/app/api/latest/analytics/attachments/[attachment_id]/route.ts
+  s_737ddf173f162d::t_ce554b14e6a89c 1-47
+apps/backend/src/app/api/latest/analytics/attachments/route.ts
+  s_737ddf173f162d::t_3afc6ca486adbf 1-121
+apps/backend/src/app/api/latest/analytics/client-reports/route.ts
+  s_737ddf173f162d::t_fc2400b92152e4 1-46
+apps/backend/src/lib/error-ingest/error-ingest-client-reports.test.ts
+  s_737ddf173f162d::t_056adc91a9433a 1-124
+apps/backend/src/lib/error-ingest/error-ingest-client-reports.ts
+  s_737ddf173f162d::t_ad4f8f5992edf4 1-278
+apps/backend/src/lib/error-ingest/error-ingest-envelope.test.ts
+  s_737ddf173f162d::t_ba785be0cfe527 1-390
+apps/backend/src/lib/error-ingest/error-ingest-envelope.ts
+  s_737ddf173f162d::t_01d79feb7fc952 1-845
+apps/backend/src/lib/error-ingest/error-ingest-event-adapter.test.ts
+  s_737ddf173f162d::t_9c4324dc7d413d 1-99
+apps/backend/src/lib/error-ingest/error-ingest-event-adapter.ts
+  s_737ddf173f162d::t_79c010e359a16b 1-143
+apps/backend/src/lib/error-ingest/error-ingest-outcomes.test.ts
+  s_737ddf173f162d::t_20e5e59818054e 1-80
+apps/backend/src/lib/error-ingest/error-ingest-outcomes.ts
+  s_737ddf173f162d::t_6489e5e960d7f2 1-117
+apps/backend/src/lib/error-ingest/error-ingest-policy.test.ts
+  s_737ddf173f162d::t_aeada1abd6974e 1-192
+apps/backend/src/lib/error-ingest/error-ingest-policy.ts
+  s_737ddf173f162d::t_ca083e81d87990 1-659
+apps/backend/src/lib/error-ingest/error-ingest-protocol-adapter.test.ts
+  s_737ddf173f162d::t_d0511ee8c9164c 1-198
+apps/backend/src/lib/error-ingest/error-ingest-protocol-adapter.ts
+  s_737ddf173f162d::t_1ab679a299abe0 1-596
+apps/backend/src/lib/error-ingest/error-ingest-rate-limits.test.ts
+  s_737ddf173f162d::t_1f8233ffa143a5 1-26
+apps/backend/src/lib/error-ingest/error-ingest-rate-limits.ts
+  s_737ddf173f162d::t_ab3c180387729d 1-30
+apps/backend/src/lib/error-ingest/index.ts
+  s_737ddf173f162d::t_9b91a99a936d24 10-100
+apps/e2e/tests/backend/endpoints/api/v1/analytics-sentry-envelope.test.ts
+  s_737ddf173f162d::t_ea482abe417a2f 1-164
+packages/template/src/lib/hexclave-app/apps/implementations/error-attachments.test.ts
+  s_737ddf173f162d::t_17b216e17527ab 1-144
+packages/template/src/lib/hexclave-app/apps/implementations/error-attachments.ts
+  s_737ddf173f162d::t_ca8afd106fa2e2 1-324
+packages/template/src/lib/hexclave-app/apps/implementations/error-capture.test.ts
+  s_737ddf173f162d::t_704a8f65003f38 6,9,16,51,59-66,106-131,195-209
+packages/template/src/lib/hexclave-app/apps/implementations/error-capture.ts
+  s_737ddf173f162d::t_592a25e7427ed6 3,6-9,36-40,60-61,65-68,72-73,132-209,247-250,261-262,275-280,288,295-306,308,316,323,328-398,401,498,506-507,516
+packages/template/src/lib/hexclave-app/apps/implementations/error-processors.test.ts
+  s_737ddf173f162d::t_c56fc231dba2b9 1-120
+packages/template/src/lib/hexclave-app/apps/implementations/error-processors.ts
+  s_737ddf173f162d::t_ebb36bd5b89888 1-274
+packages/template/src/lib/hexclave-app/apps/implementations/error-scope.test.ts
+  s_737ddf173f162d::t_27f1c53f69ff51 1-72
+packages/template/src/lib/hexclave-app/apps/implementations/error-scope.ts
+  s_737ddf173f162d::t_ef24696f5f5c5d 1-204
+packages/template/src/lib/hexclave-app/apps/interfaces/error-capture.ts
+  s_737ddf173f162d::t_5e853784ad9251 1-225
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "bb4a05dd48759fa54ce539b470fa8cd6e9ef78e0",
+  "prompts": {},
+  "sessions": {
+    "s_737ddf173f162d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "662f9ec2-8b34-40a9-a320-743f336905f5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
