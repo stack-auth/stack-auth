@@ -4,6 +4,7 @@ import { parseCookieHeader, requestContextALS, type RequestContext } from "@/lib
 import { node } from "@elysia/node";
 import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { trace } from "@opentelemetry/api";
+import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
 import * as Sentry from "@sentry/node";
 import { Elysia } from "elysia";
 import { gunzipSync } from "node:zlib";
@@ -14,6 +15,7 @@ import { handleUncaughtBackendError } from "./error-handler";
 import { getCorsHeadersInit, runRequestPipeline } from "./middleware";
 import { createRequestCompletionLog } from "./request-log";
 import { MalformedRouteParamError, matchRoute, type RouteMethods } from "./registry";
+import { isSpanAggregationEnabled } from "@/utils/span-aggregation";
 
 const globalSecurityHeaders = {
   "Cross-Origin-Opener-Policy": "same-origin",
@@ -143,7 +145,7 @@ async function dispatch(request: Request) {
     }
 
     const backendRequest = createBackendRequest(request, pipeline.mergedHeaders, pipeline.originalUrl);
-    const response = await withVercelCronMonitor(request, match.normalizedPath, async () => {
+    const invokeHandler = async () => await withVercelCronMonitor(request, match.normalizedPath, async () => {
       try {
         return await handler(backendRequest, {
           params: Promise.resolve(match.params),
@@ -160,6 +162,9 @@ async function dispatch(request: Request) {
         throw error;
       }
     });
+    const response = isSpanAggregationEnabled()
+      ? await traceSpan(`${method} ${match.normalizedPath}`, invokeHandler)
+      : await invokeHandler();
 
     await discardHeadResponseBody(method, response);
     const finalResponse = method === "HEAD" ? new Response(null, {

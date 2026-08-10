@@ -1,6 +1,4 @@
 import { httpMethodNames, routeModules } from "@/generated/route-modules";
-import { isSpanAggregationEnabled } from "@/utils/span-aggregation";
-import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
 import { RoutePatternIndex } from "./route-pattern-index";
 
 type HttpMethod = typeof httpMethodNames[number];
@@ -119,10 +117,7 @@ function isRouteFunction(value: unknown): value is UnknownRouteFunction {
 
 function createRouteHandler(normalizedPath: string, method: HttpMethod, handler: UnknownRouteFunction): RouteHandler {
   return async (request, options) => {
-    const invokeHandler = async () => await handler(request, options);
-    const result = isSpanAggregationEnabled()
-      ? await traceSpan(`${method} ${normalizedPath}`, invokeHandler)
-      : await invokeHandler();
+    const result = await handler(request, options);
     if (result instanceof Response) {
       return result;
     }
