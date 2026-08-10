@@ -1,0 +1,57 @@
+apps/backend/src/app/api/latest/source-maps/artifacts/finalize/route.ts
+  s_737ddf173f162d::t_05635238811204 1-4
+apps/backend/src/app/api/latest/source-maps/artifacts/lookup/route.ts
+  s_737ddf173f162d::t_6378a3fa75ca67 1-4
+apps/backend/src/app/api/latest/source-maps/artifacts/route.ts
+  s_737ddf173f162d::t_60e219c043ce6c 1-4
+apps/backend/src/lib/artifacts/artifact-archive-safety.test.ts
+  s_737ddf173f162d::t_4591e2707a5e62 1-57
+apps/backend/src/lib/artifacts/artifact-archive-safety.ts
+  s_737ddf173f162d::t_fac5776742bb78 1-118
+apps/backend/src/lib/artifacts/artifact-errors.ts
+  s_737ddf173f162d::t_be42a22e213130 1-24
+apps/backend/src/lib/artifacts/artifact-manifest.test.ts
+  s_737ddf173f162d::t_6f5a5f3ef9da16 1-103
+apps/backend/src/lib/artifacts/artifact-manifest.ts
+  s_737ddf173f162d::t_3addd096035cc0 1-268
+apps/backend/src/lib/artifacts/artifact-route-handlers.test.ts
+  s_737ddf173f162d::t_6ec645d7a1d202 1-70
+apps/backend/src/lib/artifacts/artifact-route-handlers.ts
+  s_737ddf173f162d::t_feff480e0e2d2e 1-381
+apps/backend/src/lib/artifacts/artifact-storage.ts
+  s_737ddf173f162d::t_67547f98981933 1-86
+apps/backend/src/lib/artifacts/artifact-upload-service.test.ts
+  s_737ddf173f162d::t_e75c00b6abd5f7 1-198
+apps/backend/src/lib/artifacts/artifact-upload-service.ts
+  s_737ddf173f162d::t_718ba0f2e6e0a9 1-545
+apps/backend/src/lib/symbolication/index.ts
+  s_737ddf173f162d::t_ae3e257eafaaeb 1-16
+apps/backend/src/lib/symbolication/javascript-symbolication.test.ts
+  s_737ddf173f162d::t_dbbb688f37ba6c 1-293
+apps/backend/src/lib/symbolication/javascript-symbolication.ts
+  s_737ddf173f162d::t_5cbc2786f9afb8 1-1005
+apps/backend/src/s3.tsx
+  s_737ddf173f162d::t_d36d94da4dad93 74-104,125,135
+packages/cli/src/commands/source-maps.ts
+  s_737ddf173f162d::t_d77b5eb5d44b77 6-13,21,23,32,49-54,67,70-72,75-76,82,86-279,282-310,317-320,322-325,340-752,785-787,789,791-796,801-805,831-832,837-839,842-843,850-852,859-872,884-886,895-901,923-928,945-949,954-974,976-991
+packages/cli/src/lib/source-maps.test.ts
+  s_737ddf173f162d::t_289dda40c1ebd8 8-17,312-315,373-378,495-586,631-875
+packages/cli/src/lib/source-maps.ts
+  s_737ddf173f162d::t_1196b398300e05 38-49,65,215-219,322-363,381-383,426-451
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "d85eb54cdfa223eff11f5313a70cbcea077d353c",
+  "prompts": {},
+  "sessions": {
+    "s_737ddf173f162d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "662f9ec2-8b34-40a9-a320-743f336905f5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
