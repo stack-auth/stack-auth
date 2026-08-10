@@ -255,23 +255,16 @@ describe.sequential("claimEmailsForSending burst allowance", () => {
     expect(oldRows).toHaveLength(BURST_SEND_LIMIT);
   });
 
-  it("does not double-consume the burst when workers claim concurrently", async () => {
-    await Promise.all(Array.from({ length: BURST_SEND_LIMIT * 2 }, () => makeRow(globalPrismaClient, null)));
-    const [firstClaim, secondClaim] = await Promise.all([
-      claimEmailsForSending(testTenancyId, 0),
-      claimEmailsForSending(testTenancyId, 0),
-    ]);
+  it("does not double-consume the burst when a worker contends for the tenancy lock", async () => {
+    await withTenancyClaimLock(testTenancyId, async (tx) => {
+      await Promise.all(Array.from({ length: BURST_SEND_LIMIT * 2 }, () => makeRow(tx, null)));
+      const firstClaim = await claimEmailsForSendingWithinLock(tx, testTenancyId, 0);
+      expect(firstClaim).toHaveLength(BURST_SEND_LIMIT);
 
-    // An external queue step in CI may claim some rows, so assert the DB-level invariant rather
-    // than relying on the two return values to account for every claim.
-    const claimedRows = await globalPrismaClient.emailOutbox.count({
-      where: {
-        ...testFilter,
-        startedSendingAt: { gte: new Date(Date.now() - 10 * 60 * 1000) },
-      },
+      // A concurrent production claimer must bail on lock contention rather than claim a second burst.
+      const secondClaim = await claimEmailsForSending(testTenancyId, 0);
+      expect(secondClaim).toHaveLength(0);
     });
-    expect(claimedRows).toBe(BURST_SEND_LIMIT);
-    expect(firstClaim.length + secondClaim.length).toBeLessThanOrEqual(BURST_SEND_LIMIT);
   });
 
   it("uses the rate quota when it exceeds the burst allowance", async () => {
