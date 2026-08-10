@@ -1,0 +1,23 @@
+apps/backend/prisma/schema.prisma
+  s_737ddf173f162d::t_741724dd8bf205 56-57,195-196,1964-2019
+packages/shared/src/index.ts
+  s_737ddf173f162d::t_de57f7c7469efa 17-50
+packages/shared/src/known-errors.tsx
+  s_737ddf173f162d::t_e63084f7174d1e 1851-1860,2034
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "2608e006b3a3a6bae7113722495c28a7a5d3dfc1",
+  "prompts": {},
+  "sessions": {
+    "s_737ddf173f162d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "662f9ec2-8b34-40a9-a320-743f336905f5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
