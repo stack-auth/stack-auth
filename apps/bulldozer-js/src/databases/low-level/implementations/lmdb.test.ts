@@ -73,7 +73,7 @@ describe("LMDB low-level database", () => {
     }
   });
 
-  it("fails to read compressed values when reopened without compression (sticky)", async () => {
+  it("does not decode plaintext when reopened without compression (sticky)", async () => {
     const path = await tempLmdbPath();
     try {
       const db1 = declareLmdbLowLevelDatabase({ path, dbId: "sticky", compression: true });

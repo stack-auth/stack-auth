@@ -156,10 +156,21 @@ export function manualTransactionToStoredRow(transaction: ManualTransactionRow):
 }
 
 function prismaCustomerTypeFromManualTransaction(customerType: ManualTransactionRow["customerType"]): "USER" | "TEAM" | "CUSTOM" {
-  if (customerType === "user") return "USER";
-  if (customerType === "team") return "TEAM";
-  if (customerType === "custom") return "CUSTOM";
-  throw new Error(`Invalid manual transaction customerType: ${JSON.stringify(customerType)}`);
+  switch (customerType) {
+    case "user": {
+      return "USER";
+    }
+    case "team": {
+      return "TEAM";
+    }
+    case "custom": {
+      return "CUSTOM";
+    }
+    default: {
+      customerType satisfies never;
+      throw new Error(`Invalid manual transaction customerType: ${JSON.stringify(customerType)}`);
+    }
+  }
 }
 
 function lowerCustomerType(customerType: string): "user" | "team" | "custom" {
