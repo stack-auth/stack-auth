@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { globalVar } from "@hexclave/shared/dist/utils/globals";
 import { fetchBulldozerServerJson, isRetriableBulldozerFetchError } from "./bulldozer-server-client";
 
 function errorWithCode(code: string): Error & { code: string } {
@@ -55,6 +56,58 @@ describe("fetchBulldozerServerJson", () => {
 
     await expect(resultPromise).resolves.toEqual({ success: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("rethrows the original error after exhausting all safe connection retries", async () => {
+    vi.useFakeTimers();
+    const retryDelays = [250, 500, 1_000, 2_000];
+    const failures = Array.from({ length: 5 }, (_, index) => new TypeError(`fetch failed ${index}`, {
+      cause: errorWithCode("ECONNREFUSED"),
+    }));
+    const fetchMock = vi.fn().mockRejectedValueOnce(failures[0])
+      .mockRejectedValueOnce(failures[1])
+      .mockRejectedValueOnce(failures[2])
+      .mockRejectedValueOnce(failures[3])
+      .mockRejectedValueOnce(failures[4]);
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = expect(fetchBulldozerServerJson({ method: "POST", path: "/update-quantity" })).rejects.toBe(failures[4]);
+    await vi.runAllTimersAsync();
+
+    await request;
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(setTimeoutSpy.mock.calls.map(([, delay]) => delay)).toEqual(retryDelays);
+  });
+
+  it("emits one recovery diagnostic with the first failure and final attempt count", async () => {
+    vi.useFakeTimers();
+    const firstFailure = new TypeError("first fetch failed", {
+      cause: errorWithCode("ECONNREFUSED"),
+    });
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(firstFailure)
+      .mockRejectedValueOnce(new TypeError("second fetch failed", {
+        cause: errorWithCode("ECONNREFUSED"),
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }));
+    const capturedErrorsBefore = globalVar.hexclaveCapturedErrors?.length ?? 0;
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resultPromise = fetchBulldozerServerJson<{ success: true }>({ method: "POST", path: "/recovery-after-several" });
+    await vi.runAllTimersAsync();
+
+    await expect(resultPromise).resolves.toEqual({ success: true });
+    const capturedErrors = (globalVar.hexclaveCapturedErrors ?? [])
+      .slice(capturedErrorsBefore)
+      .filter((entry) => entry.location === "bulldozer-server-connect-retry");
+    expect(capturedErrors).toHaveLength(1);
+    expect(capturedErrors[0].error).toMatchObject({
+      cause: firstFailure,
+      extraData: {
+        attempts: 3,
+      },
+    });
   });
 
   it("does not retry an HTTP error", async () => {
