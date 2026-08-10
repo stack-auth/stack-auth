@@ -246,16 +246,28 @@ function awaitAbort(promise, signal) {
   if (signal.aborted) {
     return Promise.reject(signal.reason || new Error("Operation aborted"));
   }
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      signal.addEventListener(
-        "abort",
-        () => reject(signal.reason || new Error("Operation aborted")),
-        { once: true },
-      );
-    }),
-  ]);
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      cleanup();
+      reject(signal.reason || new Error("Operation aborted"));
+    };
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    Promise.resolve(promise).then(
+      (value) => {
+        cleanup();
+        resolve(value);
+      },
+      (error) => {
+        cleanup();
+        reject(error);
+      },
+    );
+  });
 }
 
 function runNpmInstall(workDir, signal) {
