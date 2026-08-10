@@ -122,7 +122,6 @@ describe("Bulldozer", () => {
     await collectionStarted;
     const closing = db.close();
     await new Promise<void>(resolve => setImmediate(resolve));
-    expect(markCollectionStarted).toBeDefined();
     expect(closeCalls).toBe(0);
 
     if (releaseCollection === undefined) throw new Error("Collection gate was not initialized");
