@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/mcp",
-  "version": "1.0.81",
+  "version": "1.0.84",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "type": "module",
@@ -13,6 +13,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@bydefault/vercel": "^0.1.4",
     "@hexclave/shared": "workspace:*",
     "@sentry/nextjs": "^10.45.0",
     "@vercel/mcp-adapter": "^1.0.0",

@@ -2,7 +2,7 @@ import { it } from "../../../../../helpers";
 import { Auth, ContactChannels, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
 it("can't send a verification code while logged out", async ({ expect }) => {
-  const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const { userId } = await Auth.Password.signUpWithEmail();
   const ccResponse = await niceBackendFetch("/api/v1/contact-channels?user_id=me", {
     method: "GET",
     accessType: "client",
@@ -33,7 +33,7 @@ it("can't send a verification code while logged out", async ({ expect }) => {
 
 
 it("should send a verification code per e-mail", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ sendVerificationEmail: true });
   await ContactChannels.sendVerificationCode();
   // expect two emails; one from the signup, and one from the send-verification-code
   const messages = await backendContext.value.mailbox.waitForMessagesWithSubjectCount("Verify your email", 2, { noBody: true });

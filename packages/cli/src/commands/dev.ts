@@ -929,9 +929,9 @@ export function registerDevCommand(program: Command) {
   program
     .command("dev")
     .usage("--config-file <path> [--service-id <id>] [-- <command> [args...]]")
-    .description("Run a command with Hexclave development-environment credentials. With --service-id, the service's devCommand from the config file's `services` export is run in the service's rootDirectory and its env vars are injected (secrets resolve to their default values; `service()` returns null, so guard connection values with isDev — reading an output off it, e.g. `service(\"api\").url`, throws).")
+    .description("Run a command with Hexclave development-environment credentials. With --service-id, the service's devCommand from the config file's `deployment.services` is run in the service's rootDirectory and its env vars are injected (secrets resolve to their default values; `service()` returns null, so guard connection values with isDev — reading an output off it, e.g. `service(\"api\").url`, throws).")
     .requiredOption("--config-file <path>", "Path to hexclave.config.ts")
-    .option("--service-id <id>", "Run the devCommand of this service from the config file's `services` export, in its rootDirectory and with the service's env vars injected")
+    .option("--service-id <id>", "Run the devCommand of this service from the config file's `deployment.services`, in its rootDirectory and with the service's env vars injected")
     .argument("[command...]", "Command and arguments to run after -- (overrides the service's devCommand)")
     .action(async (commandArgs: string[], opts: DevOptions) => {
       if (opts.configFile == null) {

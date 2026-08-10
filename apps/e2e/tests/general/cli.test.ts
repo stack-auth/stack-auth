@@ -71,7 +71,7 @@ describe("Stack CLI", () => {
     Result.orThrow(await internalApp.signUpWithCredential({
       email: fakeEmail,
       password: "test-password-123",
-      verificationCallbackUrl: "http://localhost:3000",
+      noVerificationCallback: true,
     }));
 
     const user = await internalApp.getUser({ or: "throw" });

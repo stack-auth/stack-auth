@@ -261,7 +261,7 @@ export function registerConfigCommand(program: Command) {
   config
     .command("pull")
     .description("Pull branch config to a local file")
-    .option("--cloud-project-id <id>", "Cloud project ID to pull config from (defaults to the HEXCLAVE_PROJECT_ID env var)")
+    .option("--cloud-project-id <id>", "Cloud project ID to pull config from (defaults to the HEXCLAVE_PROJECT_ID env var; STACK_PROJECT_ID is also supported)")
     .option("--config-file <path>", "Path to write config file (.ts); defaults to ./hexclave.config.ts in the current directory")
     .option("--overwrite", "Replace the config file if one already exists at the target path")
     .action(async (opts) => {
@@ -292,7 +292,7 @@ export function registerConfigCommand(program: Command) {
   config
     .command("push")
     .description("Push a local config file to branch config")
-    .option("--cloud-project-id <id>", "Cloud project ID to push config to (defaults to the HEXCLAVE_PROJECT_ID env var)")
+    .option("--cloud-project-id <id>", "Cloud project ID to push config to (defaults to the HEXCLAVE_PROJECT_ID env var; STACK_PROJECT_ID is also supported)")
     .requiredOption("--config-file <path>", "Path to config file (.js or .ts)")
     .option("--source <type>", "Explicit source type for this push. Only 'github' is supported.")
     .option("--source-repo <owner/repo>", "GitHub repository in 'owner/repo' format. Only allowed with --source github.")
