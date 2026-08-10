@@ -971,7 +971,6 @@ async function executeScript(runtime, job) {
   const userModulePath = `${userModuleDir}/user.mjs`;
   await runtime.writeFile(userModulePath, job.script);
   let result;
-  let cleanupFallbackNeeded = true;
   try {
     result = await runtime.run(makeWrapper(userModulePath, userModuleDir), {
       env: job.config.envVars || {},
@@ -980,7 +979,6 @@ async function executeScript(runtime, job) {
       onStdout: (chunk) => appendOutput(job.output, "stdout", chunk),
       onStderr: (chunk) => appendOutput(job.output, "stderr", chunk),
     });
-    cleanupFallbackNeeded = result.exitCode !== 0 || result.value === undefined;
   } catch (error) {
     logInternalError("secure-exec execution", error);
     return {
@@ -991,9 +989,7 @@ async function executeScript(runtime, job) {
       },
     };
   } finally {
-    if (cleanupFallbackNeeded) {
-      await cleanupGuestFiles(runtime, userModuleDir);
-    }
+    await cleanupGuestFiles(runtime, userModuleDir);
   }
   if (result.exitCode !== 0 || result.value === undefined) {
     logInternalError("secure-exec nonzero exit", result.stderr || result.exitCode);
