@@ -37,13 +37,11 @@ export const workflowPlatformEvents = [
 
 export const workflowPlatformEventTypes = workflowPlatformEvents.map((event) => event.type);
 
-// NOTE: there are deliberately no `workflow.run.*` lifecycle events. An earlier
-// draft emitted started/completed/failed/canceled and let workflows subscribe to
-// them, which made self-amplification trivial: a workflow triggered on
-// `workflow.run.completed` re-triggers itself on every completion, with no
-// chain-depth cap to stop it. Run state is already fully visible in the
-// dashboard and via the runs API, so the trigger bought little and cost a
-// footgun. If they ever come back, they need loop protection first.
+// Public workflows deliberately do not subscribe to `workflow.run.*` lifecycle
+// events. The backend may persist a private `workflow.internal.run.*` outbox
+// namespace for first-party reconciliation (for example, durable issue-alert
+// delivery), but the engine consumes that namespace before user matching so it
+// cannot self-amplify a workflow on every completion.
 
 /**
  * The wire type of custom events is ALWAYS prefixed with this; send() only

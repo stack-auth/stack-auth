@@ -1,14 +1,22 @@
 import { Prisma } from "@/generated/prisma/client";
+import { createProductionErrorAttachmentService } from "@/lib/attachments";
+import { getErrorAttachmentEventId } from "@/lib/attachments/attachment-event-id";
+import { validateErrorAttachmentScope } from "@/lib/attachments/attachment-contract";
 import { decodeOccurrenceCursor, deriveSubstatus, issueRangeStart, loadIssueWindowStats, loadOccurrence } from "@/lib/issues/issue-queries";
 import { emitIssueLifecycleWebhook } from "@/lib/issues/issue-webhooks";
+import { loadIssueProductSnapshot } from "@/lib/issues/issue-product";
+import { serializeIssueProductSnapshot } from "@/lib/issues/issue-product-projection";
+import { projectPublicIssueOccurrence } from "@/lib/issues/public-issue-api";
+import { loadIssueReleaseContext } from "@/lib/releases/issue-release-context";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
+import { scrubErrorIngestPayload } from "@/lib/error-ingest";
 import {
   IssueDetailResponseSchema,
   IssueUpdateRequestSchema,
-  type IssueFrame,
+  type IssueAttachment,
   type IssueListItem,
 } from "@hexclave/shared/dist/interface/admin-issues";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -19,6 +27,8 @@ import type { Tenancy } from "@/lib/tenancies";
 type ResolvedIssue = {
   item: IssueListItem,
   hashes: string[],
+  firstSeenRelease: string | null,
+  lastSeenRelease: string | null,
   ignoredUntil: Date | null,
   /** Non-null when the requested id was a merged-away issue. */
   redirectedFromIssueId: string | null,
@@ -62,13 +72,13 @@ async function resolveIssue(
     status: string, firstSeenAt: Date, lastSeenAt: Date, regressedAt: Date | null,
     timesSeen: bigint, countersTruncatedAt: Date | null, ignoredUntil: Date | null,
     serviceName: string | null, deploymentEnvironmentName: string | null,
-    lastSeenRelease: string | null, updatedAt: Date,
+    firstSeenRelease: string | null, lastSeenRelease: string | null, updatedAt: Date,
     handled: boolean, synthetic: boolean, hashes: string[],
   }[]>(Prisma.sql`
     SELECT i."id", i."shortId", i."type", i."value", i."culprit", i."status"::text AS "status",
            i."firstSeenAt", i."lastSeenAt", i."regressedAt", i."timesSeen",
            i."countersTruncatedAt", i."ignoredUntil", i."serviceName",
-           i."deploymentEnvironmentName", i."lastSeenRelease", i."updatedAt",
+           i."deploymentEnvironmentName", i."firstSeenRelease", i."lastSeenRelease", i."updatedAt",
            i."handled", i."synthetic",
            COALESCE(
              (SELECT array_agg(h."hash") FROM "IssueHash" h
@@ -123,6 +133,8 @@ async function resolveIssue(
 
   return {
     hashes: resolvedRow.hashes,
+    firstSeenRelease: resolvedRow.firstSeenRelease,
+    lastSeenRelease: resolvedRow.lastSeenRelease,
     ignoredUntil: resolvedRow.ignoredUntil,
     redirectedFromIssueId,
     item: {
@@ -153,30 +165,43 @@ async function resolveIssue(
   };
 }
 
-/**
- * `error_frames` is stored as a JSON string rather than a typed column, so it
- * has to be parsed defensively: a row written by an older grouping config, or a
- * degraded one, may hold `''`. Returning `[]` lets the UI fall back to
- * rendering the raw stack instead of blanking the panel.
- */
-function parseFrames(raw: string): IssueFrame[] {
-  if (raw === "") return [];
+function parseErrorEnvelope(raw: string): Record<string, unknown> | null {
+  if (raw === "" || raw === "{}") return null;
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map((frame: Record<string, unknown>) => ({
-      filename: typeof frame.filename === "string" ? frame.filename : null,
-      function: typeof frame.function === "string" ? frame.function : null,
-      module: typeof frame.module === "string" ? frame.module : null,
-      abs_path: typeof frame.absPath === "string" ? frame.absPath : null,
-      lineno: typeof frame.lineno === "number" ? frame.lineno : null,
-      colno: typeof frame.colno === "number" ? frame.colno : null,
-      in_app: frame.inApp === true,
-      ...typeof frame.debugId === "string" ? { debug_id: frame.debugId } : {},
-    }));
-  } catch {
-    return [];
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    if (error instanceof SyntaxError) return null;
+    throw error;
   }
+  const scrubbed = scrubErrorIngestPayload(parsed).value;
+  if (scrubbed === undefined || typeof scrubbed !== "object" || scrubbed === null || Array.isArray(scrubbed)) return null;
+  return scrubbed;
+}
+
+function serializeIssueAttachment(attachment: {
+  id: string,
+  eventId: string,
+  occurrenceId: string | null,
+  filename: string,
+  contentType: string,
+  attachmentType: string,
+  byteLength: number,
+  sha256: string,
+  createdAt: Date,
+}): IssueAttachment {
+  return {
+    id: attachment.id,
+    event_id: attachment.eventId,
+    occurrence_id: attachment.occurrenceId,
+    filename: attachment.filename,
+    content_type: attachment.contentType,
+    attachment_type: attachment.attachmentType,
+    byte_length: attachment.byteLength,
+    sha256: attachment.sha256,
+    download_path: `/api/latest/analytics/attachments/${encodeURIComponent(attachment.id)}`,
+    created_at: attachment.createdAt.toISOString(),
+  };
 }
 
 export const GET = createSmartRouteHandler({
@@ -200,7 +225,7 @@ export const GET = createSmartRouteHandler({
   async handler({ auth, params, query }) {
     const tenancy = auth.tenancy;
     if (tenancy.config.apps.installed["observability"]?.enabled !== true) {
-      throw new KnownErrors.AnalyticsNotEnabled();
+      throw new KnownErrors.ObservabilityNotEnabled();
     }
 
     const rangeStart = issueRangeStart(24, new Date());
@@ -219,6 +244,41 @@ export const GET = createSmartRouteHandler({
     // so they come from the same rollup rather than being recomputed (or, as
     // they briefly were, left at zero).
     const windowStats = await loadIssueWindowStats({ tenancy, hashes: resolved.hashes, rangeStart });
+    const product = await loadIssueProductSnapshot({ tenancy, issueId: resolved.item.id });
+    const releaseContext = await loadIssueReleaseContext({
+      tenancy,
+      issueId: resolved.item.id,
+      firstSeenRelease: resolved.firstSeenRelease,
+      lastSeenRelease: resolved.lastSeenRelease,
+    });
+    const errorEnvelope = occurrence === null ? null : parseErrorEnvelope(occurrence.error_envelope);
+    const attachmentEventId = occurrence === null ? null : getErrorAttachmentEventId({
+      occurrenceId: occurrence.occurrence_id,
+      data: occurrence.data,
+      errorEnvelope,
+    });
+    const attachments = attachmentEventId === null
+      ? []
+      : await (await createProductionErrorAttachmentService(tenancy)).list(
+        validateErrorAttachmentScope({
+          tenantId: tenancy.id,
+          projectId: tenancy.project.id,
+          branchId: tenancy.branchId,
+        }),
+        attachmentEventId,
+      );
+    const projectedOccurrence = occurrence === null ? null : await projectPublicIssueOccurrence(
+      occurrence,
+      resolved.item.release,
+      {
+        scope: {
+          tenantId: tenancy.id,
+          projectId: tenancy.project.id,
+          branchId: tenancy.branchId,
+        },
+        attachments: attachments.map(serializeIssueAttachment),
+      },
+    );
 
     return {
       statusCode: 200,
@@ -229,25 +289,14 @@ export const GET = createSmartRouteHandler({
           window_occurrences: windowStats.occurrences,
           window_users: windowStats.users,
         },
-        occurrence: occurrence === null ? null : {
-          occurrence_id: occurrence.occurrence_id,
-          event_at_millis: new Date(`${occurrence.event_at}Z`).getTime(),
-          message: occurrence.message,
-          level: occurrence.level,
-          data: occurrence.data,
-          frames: parseFrames(occurrence.error_frames),
-          raw_stack: typeof occurrence.data.stack === "string" ? occurrence.data.stack : null,
-          trace_id: occurrence.trace_id,
-          span_id: occurrence.span_id,
-          page_view_span_id: occurrence.page_view_span_id,
-          session_replay_id: occurrence.session_replay_id,
-          user_id: occurrence.user_id,
-          service_name: occurrence.service_name,
-          environment: occurrence.deployment_environment_name,
-          release: resolved.item.release,
+        occurrence: projectedOccurrence === null ? null : {
+          ...projectedOccurrence,
+          error_envelope: errorEnvelope,
         },
         newer_cursor: newerCursor,
         older_cursor: olderCursor,
+        product: serializeIssueProductSnapshot(product),
+        release_context: releaseContext,
         redirected_from_issue_id: resolved.redirectedFromIssueId,
       },
     } as const;
@@ -272,7 +321,7 @@ export const PATCH = createSmartRouteHandler({
   async handler({ auth, params, body }) {
     const tenancy = auth.tenancy;
     if (tenancy.config.apps.installed["observability"]?.enabled !== true) {
-      throw new KnownErrors.AnalyticsNotEnabled();
+      throw new KnownErrors.ObservabilityNotEnabled();
     }
 
     const resolved = await resolveIssue(tenancy, params.issue_id, issueRangeStart(24, new Date()));

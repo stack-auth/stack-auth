@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
   ERRORS_VIEW_SQL,
+  ERROR_ENVELOPE_COLUMN_NAMES,
   ERROR_GROUPING_COLUMNS,
   ERROR_GROUPING_COLUMN_NAMES,
   EVENTS_COLUMNS,
@@ -152,12 +153,16 @@ describe("derived read models", () => {
 });
 
 describe("error grouping columns on analytics_internal.logs", () => {
-  test("logs carries the grouping columns appended after created_at, and nothing else does", () => {
+  test("logs carries the grouping and envelope columns appended after created_at, and nothing else does", () => {
     // Appended (not interleaved) is the whole reason a table grown by
     // buildColumnUpgradeSql lands on the same physical order as a fresh one —
     // each ADD COLUMN names its predecessor, and `created_at` is the last
     // EVENTS_COLUMNS entry. Asserted end-to-end against a real server below.
-    expect(names(LOGS_COLUMNS)).toEqual([...names(EVENTS_COLUMNS), ...ERROR_GROUPING_COLUMN_NAMES]);
+    expect(names(LOGS_COLUMNS)).toEqual([
+      ...names(EVENTS_COLUMNS),
+      ...ERROR_GROUPING_COLUMN_NAMES,
+      ...ERROR_ENVELOPE_COLUMN_NAMES,
+    ]);
     expect(names(EVENTS_COLUMNS).at(-1)).toBe("created_at");
 
     // The other two telemetry destinations keep the plain event shape. Errors
@@ -195,10 +200,15 @@ describe("error grouping columns on analytics_internal.logs", () => {
       expect(LOGS_VIEW_SQL).not.toContain(`\n  ${name}`);
     }
     // The two views must otherwise stay identical in shape — the difference is
-    // the grouping columns and the event_type predicate, nothing else.
+    // the grouping columns and the event_type predicate, nothing else. The
+    // envelope column is public on both: it is the error payload the issue API
+    // reads back, not an issue-grouping internal.
     expect(ERRORS_VIEW_SQL).toContain("WHERE event_type = '$error'");
     expect(LOGS_VIEW_SQL).toContain("WHERE event_type = '$log'");
-    expect(selectColumnNames(LOGS_COLUMNS, ERROR_GROUPING_COLUMN_NAMES)).toEqual(names(EVENTS_COLUMNS));
+    expect(selectColumnNames(LOGS_COLUMNS, ERROR_GROUPING_COLUMN_NAMES)).toEqual([
+      ...names(EVENTS_COLUMNS),
+      ...ERROR_ENVELOPE_COLUMN_NAMES,
+    ]);
   });
 
   test("the skip index covers the scalar owning hash, not the diagnostic alias array", () => {

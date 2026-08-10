@@ -54,11 +54,18 @@ export type ParsedFrame = {
 export type GroupingInput = {
   /** The exception type, i.e. `data.name` ("TypeError", "NS_ERROR_FAILURE", ...). Hashed as a leaf. */
   type: string,
-  /** The exception message, i.e. `data.message`. Only hashed (parameterized) when no frame contributes. */
+  /** The exception message, i.e. `data.message`. The default algorithm only hashes it without frames; `{{ message }}` opts in explicitly. */
   message: string,
   /** The raw stack string as shipped by the SDK, or null when the throw was stackless. */
   stack: string | null,
   platform: StackPlatform,
+  /**
+   * Sentry-compatible fingerprint values after wire normalization. The flat
+   * SDK event calls this `fingerprint_override`; the richer envelope calls it
+   * `fingerprint`. The local flat-event `fingerprint` string is deliberately
+   * not projected here because it is only an SDK deduplication key.
+   */
+  fingerprint?: readonly string[],
   /**
    * `data.synthetic` — set when the thrown value was not an `Error`. Such
    * throws all carry `name: "Error"` and a capture-site stack, so they need
@@ -67,14 +74,59 @@ export type GroupingInput = {
   synthetic?: boolean,
 };
 
+export type GroupingFingerprintType = "default" | "custom" | "hybrid";
+
+export type GroupingFingerprintSource = "default" | "event" | "degraded";
+
+/**
+ * What the server used for the fingerprint portion of a grouping decision.
+ *
+ * `tokens` preserves the normalized event contract for explainability. The
+ * resolved values are included because a token such as `{{ message }}` is not
+ * useful to an operator without seeing the parameterized value that was hashed.
+ * Neither list participates in the hash as metadata; the hash is derived from
+ * the same resolved values in `grouping.ts`.
+ */
+export type GroupingFingerprintProvenance = {
+  type: GroupingFingerprintType,
+  source: GroupingFingerprintSource,
+  tokens: readonly string[],
+  resolvedTokens: readonly string[],
+};
+
+export type GroupingProvenance = {
+  configId: GroupingConfigId,
+  fingerprint: GroupingFingerprintProvenance,
+};
+
+/**
+ * The role of one hash in an event's grouping decision. Sentry keeps the
+ * primary hash and transition/secondary hashes ordered and distinct; retaining
+ * that distinction lets issue storage explain why a hash was considered without
+ * pretending that an alias is an occurrence owner.
+ */
+export type GroupingHashRole = "primary" | "secondary";
+
+/**
+ * Explainable metadata for one hash produced by the grouping decision.
+ * `hash` is included so this record can be stored as a self-contained JSON
+ * provenance entry on both IssueHash and the occurrence read model.
+ */
+export type GroupingHashProvenance = GroupingProvenance & {
+  hash: string,
+  role: GroupingHashRole,
+  variant: GroupingVariant,
+};
+
 /**
  * Which rule produced `ownerHash`.
  * - `app`     — hashed the in-app frames only (the normal, best case).
  * - `system`  — hashed every frame (no in-app frame, or both variants agreed).
  * - `message` — no frame contributed anything hashable, or the synthetic rule fired.
+ * - `custom`  — a normalized custom or hybrid fingerprint owns the hash.
  * - `degraded`— grouping threw; a deterministic type+message hash was used instead.
  */
-export type GroupingVariant = "app" | "system" | "message" | "degraded";
+export type GroupingVariant = "app" | "system" | "message" | "custom" | "degraded";
 
 export type GroupingResult = {
   configId: GroupingConfigId,
@@ -82,8 +134,12 @@ export type GroupingResult = {
   ownerHash: string,
   /** Other variants' hashes, for ingest-time issue lookup only — never for occurrence resolution. */
   aliasHashes: string[],
+  /** Explainability for transition/secondary hashes, in the same order as aliasHashes. */
+  secondaryProvenance: GroupingHashProvenance[],
   variant: GroupingVariant,
   /** Human-readable "where it happened", for list rows. Never participates in any hash. */
   culprit: string,
   frames: ParsedFrame[],
+  /** Explainable config/fingerprint inputs; storage v1 only persists its id and variant columns. */
+  provenance: GroupingProvenance,
 };

@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
-import { GROUPING_CONFIG_IDS, type GroupingConfigId } from "./grouping-config";
+import { GROUPING_CONFIG_IDS, type GroupingConfigId, type GroupingConfigResolution } from "./grouping-config";
+import { resolveGroupingFingerprint } from "./grouping-fingerprint";
 import { parameterizeMessage } from "./parameterize";
 import { parseStack, hasUrlOrigin, normalizeFilenameForGrouping } from "./stack-parser";
-import type { GroupingInput, GroupingResult, ParsedFrame } from "./types";
+import type { GroupingHashProvenance, GroupingInput, GroupingResult, ParsedFrame } from "./types";
 
 /**
  * Server-side error grouping.
@@ -64,6 +65,7 @@ type GroupingImplementation = (input: GroupingInput, configId: GroupingConfigId)
  */
 const GROUPING_IMPLEMENTATIONS_BY_ID: Record<GroupingConfigId, GroupingImplementation> = {
   "hexclave-js:2026-08-01": computeGroupingV1,
+  "hexclave-js:2026-08-06": computeGroupingV2,
 };
 
 /**
@@ -96,8 +98,102 @@ export function computeGrouping(input: GroupingInput, configId: GroupingConfigId
   }
 }
 
+/**
+ * Computes the active hash plus every readable historical hash for one
+ * occurrence. A rollout must not make a dormant issue disappear merely
+ * because its new primary algorithm is different: historical hashes are
+ * lookup aliases, while only the active result owns the occurrence.
+ */
+export function computeGroupingWithReadableConfigs(input: GroupingInput, resolution: GroupingConfigResolution): GroupingResult {
+  const primary = computeGrouping(input, resolution.activeConfigId);
+  const aliasHashes = [...primary.aliasHashes];
+  const secondaryProvenance = [...primary.secondaryProvenance];
+  const knownHashes = new Set<string>([primary.ownerHash, ...aliasHashes]);
+
+  for (const readableConfigId of resolution.readableConfigIds) {
+    const historical = computeGrouping(input, readableConfigId);
+    for (const provenance of getGroupingHashProvenance(historical)) {
+      if (knownHashes.has(provenance.hash)) continue;
+      knownHashes.add(provenance.hash);
+      aliasHashes.push(provenance.hash);
+      secondaryProvenance.push({ ...provenance, role: "secondary" });
+    }
+  }
+
+  return { ...primary, aliasHashes, secondaryProvenance };
+}
+
 function computeGroupingV1(input: GroupingInput, configId: GroupingConfigId): GroupingResult {
+  return computeGroupingWithRules(input, configId, false);
+}
+
+function computeGroupingV2(input: GroupingInput, configId: GroupingConfigId): GroupingResult {
+  return computeGroupingWithRules(input, configId, true);
+}
+
+function computeGroupingWithRules(input: GroupingInput, configId: GroupingConfigId, includeMessageForStackedErrors: boolean): GroupingResult {
   const frames = input.stack === null ? [] : parseStack(input.stack, input.platform);
+  const defaultResult = computeDefaultGroupingV1(input, configId, frames, includeMessageForStackedErrors);
+  const fingerprint = resolveGroupingFingerprint(input.fingerprint, input, frames);
+
+  if (fingerprint.provenance.type === "default") {
+    return {
+      ...defaultResult,
+      provenance: { configId, fingerprint: fingerprint.provenance },
+      secondaryProvenance: defaultResult.aliasHashes.map((hash): GroupingHashProvenance => ({
+        hash,
+        role: "secondary",
+        configId,
+        variant: "system",
+        fingerprint: fingerprint.provenance,
+      })),
+    };
+  }
+
+  // A custom fingerprint owns one hash. A hybrid fingerprint salts the active
+  // default owner into that hash, matching Sentry's "default component plus
+  // custom components" semantics without treating the old hash as a lookup
+  // alias. An old issue must not absorb an explicitly custom-grouped event.
+  //
+  // The occurrence schema has one config id and one alias array, not a
+  // per-component provenance record. The smallest compatible representation is
+  // therefore `variant: "custom"` plus the explainable in-process provenance;
+  // the normalized row persists the owner/config/variant columns already in v1.
+  const fingerprintLeaves = fingerprint.provenance.type === "hybrid"
+    ? ["custom-fingerprint", defaultResult.ownerHash, ...fingerprint.resolvedValues]
+    : ["custom-fingerprint", ...fingerprint.resolvedValues];
+
+  return {
+    ...defaultResult,
+    ownerHash: hashLeaves(fingerprintLeaves),
+    aliasHashes: [],
+    variant: "custom",
+    provenance: { configId, fingerprint: fingerprint.provenance },
+    secondaryProvenance: [],
+  };
+}
+
+type DefaultGroupingResult = Omit<GroupingResult, "provenance" | "secondaryProvenance">;
+
+/**
+ * Materialization needs one ordered record for the owner and every alias. Keep
+ * this projection next to the grouping algorithm so a new variant cannot be
+ * added without also making its durable role/config/fingerprint explainable.
+ */
+export function getGroupingHashProvenance(grouping: GroupingResult): GroupingHashProvenance[] {
+  return [
+    {
+      hash: grouping.ownerHash,
+      role: "primary",
+      configId: grouping.provenance.configId,
+      variant: grouping.variant,
+      fingerprint: grouping.provenance.fingerprint,
+    },
+    ...grouping.secondaryProvenance,
+  ];
+}
+
+function computeDefaultGroupingV1(input: GroupingInput, configId: GroupingConfigId, frames: ParsedFrame[], includeMessageForStackedErrors: boolean): DefaultGroupingResult {
   const culprit = deriveCulprit(frames);
 
   if (input.synthetic === true) {
@@ -135,7 +231,7 @@ function computeGroupingV1(input: GroupingInput, configId: GroupingConfigId): Gr
   const appTuples = collapseConsecutive(frames.map((frame) => frame.inApp ? frameLeafTuple(frame) : []));
   const appFrameLeaves = appTuples.flat();
 
-  const systemHash = hashLeaves(buildLeaves(input, systemFrameLeaves));
+  const systemHash = hashLeaves(buildLeaves(input, systemFrameLeaves, includeMessageForStackedErrors));
 
   if (systemFrameLeaves.length === 0) {
     // No frame contributed anything hashable (stackless throw, or a stack of
@@ -150,7 +246,7 @@ function computeGroupingV1(input: GroupingInput, configId: GroupingConfigId): Gr
   // variant's hash, and attaching that as an alias would let an unrelated
   // stackless error of the same type and message resolve to this issue.
   const hasAppVariant = frames.some((frame) => frame.inApp) && appFrameLeaves.length > 0;
-  const appHash = hasAppVariant ? hashLeaves(buildLeaves(input, appFrameLeaves)) : null;
+  const appHash = hasAppVariant ? hashLeaves(buildLeaves(input, appFrameLeaves, includeMessageForStackedErrors)) : null;
 
   // The app variant only wins when it says something different. If every frame
   // is in-app the two lists are identical, and emitting the same hash twice as
@@ -175,9 +271,11 @@ function computeGroupingV1(input: GroupingInput, configId: GroupingConfigId): Gr
  * with different fixes, and without this leaf they share every other leaf and
  * collapse into one issue.
  */
-function buildLeaves(input: GroupingInput, frameLeaves: string[]): string[] {
+function buildLeaves(input: GroupingInput, frameLeaves: string[], includeMessageForStackedErrors = false): string[] {
   if (frameLeaves.length === 0) return [input.type, parameterizeMessage(input.message)];
-  return [input.type, ...frameLeaves];
+  return includeMessageForStackedErrors
+    ? [input.type, parameterizeMessage(input.message), ...frameLeaves]
+    : [input.type, ...frameLeaves];
 }
 
 /**
@@ -313,5 +411,18 @@ function degradedResult(input: GroupingInput, configId: GroupingConfigId): Group
     variant: "degraded",
     culprit: "<unknown>",
     frames: [],
+    provenance: {
+      configId,
+      fingerprint: {
+        // The fallback itself does not resolve custom values. Keeping the raw
+        // contract visible, while marking the source as degraded, is more
+        // useful than claiming that an invalid custom request was honored.
+        type: input.fingerprint === undefined || input.fingerprint.length === 0 ? "default" : "custom",
+        source: "degraded",
+        tokens: input.fingerprint === undefined ? [] : [...input.fingerprint],
+        resolvedTokens: [],
+      },
+    },
+    secondaryProvenance: [],
   };
 }

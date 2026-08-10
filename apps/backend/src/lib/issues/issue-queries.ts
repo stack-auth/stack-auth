@@ -1,10 +1,12 @@
 import { getSharedClickhouseAdminClient, type ClickHouseClient } from "@/lib/clickhouse";
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import {
   CLICKHOUSE_RANKED_SORT_FIELDS,
   ISSUE_LIST_PAGE_SIZE,
   ISSUE_RANK_CANDIDATE_CAP,
+  ISSUE_LIST_SORT_FIELDS,
   type IssueListItem,
   type IssueListSortField,
   type IssueStatus,
@@ -72,6 +74,7 @@ type IssueRow = {
   regressedAt: Date | null,
   timesSeen: bigint,
   countersTruncatedAt: Date | null,
+  ignoredUntil: Date | null,
   serviceName: string | null,
   deploymentEnvironmentName: string | null,
   lastSeenRelease: string | null,
@@ -82,10 +85,32 @@ type IssueRow = {
 };
 
 type WindowStats = {
-  issueHash: string,
+  issueId: string,
   occurrences: number,
   users: number,
 };
+
+type CursorDirection = "asc" | "desc";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isIssueListSortField(value: unknown): value is IssueListSortField {
+  return ISSUE_LIST_SORT_FIELDS.some((field) => field === value);
+}
+
+function isCursorDirection(value: unknown): value is CursorDirection {
+  return value === "asc" || value === "desc";
+}
+
+function isWindowRankedSort(value: IssueListSortField): value is Extract<IssueListSortField, "events" | "users"> {
+  return CLICKHOUSE_RANKED_SORT_FIELDS.some((field) => field === value);
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
 
 /**
  * Derived at read time, never stored: an issue that is "new" inside a 24h
@@ -113,10 +138,18 @@ export function deriveSubstatus(
  */
 function effectiveStatus(row: Pick<IssueRow, "status">, ignoredUntil: Date | null, now: Date): IssueStatus {
   if (row.status === "IGNORED" && ignoredUntil !== null && ignoredUntil < now) return "unresolved";
-  return row.status.toLowerCase() as IssueStatus;
+  if (row.status === "RESOLVED") return "resolved";
+  if (row.status === "IGNORED") return "ignored";
+  return "unresolved";
 }
 
-export type IssueListCursor = { lastSeenAtMillis: number, id: string };
+export type IssueListCursor = {
+  /** Kept under this name for compatibility with already-issued opaque cursors. */
+  lastSeenAtMillis: number,
+  id: string,
+  sort?: IssueListSortField,
+  sortDir?: CursorDirection,
+};
 
 /**
  * Shared by the list and the detail route so the two cannot disagree about the
@@ -132,13 +165,37 @@ export function encodeIssueCursor(cursor: IssueListCursor): string {
   return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
 }
 
-export function decodeIssueCursor(raw: string): IssueListCursor | null {
+export function decodeIssueCursor(
+  raw: string,
+  expected?: { sort: IssueListSortField, sortDir: CursorDirection },
+): IssueListCursor | null {
   try {
+    if (raw.length === 0) return null;
     const parsed: unknown = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
-    if (typeof parsed !== "object" || parsed === null) return null;
-    const { lastSeenAtMillis, id } = parsed as Record<string, unknown>;
-    if (typeof lastSeenAtMillis !== "number" || typeof id !== "string") return null;
-    return { lastSeenAtMillis, id };
+    if (!isRecord(parsed)) return null;
+
+    const { lastSeenAtMillis, id, sort, sortDir } = parsed;
+    if (
+      typeof lastSeenAtMillis !== "number"
+      || !Number.isSafeInteger(lastSeenAtMillis)
+      || lastSeenAtMillis < 0
+      || lastSeenAtMillis > 8_640_000_000_000_000
+      || typeof id !== "string"
+      || !isUuid(id)
+    ) return null;
+    if (sort !== undefined && !isIssueListSortField(sort)) return null;
+    if (sortDir !== undefined && !isCursorDirection(sortDir)) return null;
+    if (expected !== undefined && (
+      (sort !== undefined && sort !== expected.sort)
+      || (sortDir !== undefined && sortDir !== expected.sortDir)
+    )) return null;
+
+    return {
+      lastSeenAtMillis,
+      id,
+      ...sort === undefined ? {} : { sort },
+      ...sortDir === undefined ? {} : { sortDir },
+    };
   } catch {
     // A malformed cursor is a client bug, not a server error: fall back to the
     // first page rather than 500ing on a stale bookmark.
@@ -155,6 +212,26 @@ export function decodeIssueCursor(raw: string): IssueListCursor | null {
 function handledFilterSql(handled: boolean | null): Prisma.Sql {
   if (handled === null) return Prisma.sql``;
   return Prisma.sql`AND i."handled" = ${handled}`;
+}
+
+function searchFilterSql(search: string | null): Prisma.Sql {
+  if (search === null || search.trim() === "") return Prisma.sql``;
+  // Deliberately a prefix/substring match over the denormalized display
+  // fields rather than full-text search: these three columns are what the
+  // list renders, so matching anything else would highlight nothing.
+  return Prisma.sql`AND (i."type" ILIKE ${`%${search}%`} OR i."value" ILIKE ${`%${search}%`} OR i."culprit" ILIKE ${`%${search}%`})`;
+}
+
+function occurrenceHashFilterSql(matchingHashes: readonly string[] | null): Prisma.Sql {
+  if (matchingHashes === null) return Prisma.sql``;
+  if (matchingHashes.length === 0) return Prisma.sql`AND FALSE`;
+  return Prisma.sql`AND EXISTS (
+    SELECT 1
+    FROM "IssueHash" h
+    WHERE h."tenancyId" = i."tenancyId"
+      AND h."issueId" = i."id"
+      AND h."hash" = ANY(${matchingHashes}::text[])
+  )`;
 }
 
 /**
@@ -192,20 +269,18 @@ async function loadCandidateIssues(
   rangeStart: Date,
   now: Date,
   limit: number,
+  matchingHashes: readonly string[] | null,
 ): Promise<IssueRow[]> {
-  const cursor = filters.cursor === null ? null : decodeIssueCursor(filters.cursor);
+  const rankedSort = isWindowRankedSort(filters.sort) ? filters.sort : null;
+  const isWindowRanked = rankedSort !== null;
+  const cursor = filters.cursor === null || isWindowRanked
+    ? null
+    : decodeIssueCursor(filters.cursor, { sort: filters.sort, sortDir: filters.sortDir });
   const cursorSql = cursor === null
     ? Prisma.sql``
     : filters.sortDir === "asc"
       ? Prisma.sql`AND (${filters.sort === "first_seen" ? Prisma.sql`i."firstSeenAt"` : Prisma.sql`i."lastSeenAt"`}, i."id") > (${new Date(cursor.lastSeenAtMillis)}::timestamptz, ${cursor.id}::uuid)`
       : Prisma.sql`AND (${filters.sort === "first_seen" ? Prisma.sql`i."firstSeenAt"` : Prisma.sql`i."lastSeenAt"`}, i."id") < (${new Date(cursor.lastSeenAtMillis)}::timestamptz, ${cursor.id}::uuid)`;
-
-  const searchSql = filters.search === null || filters.search.trim() === ""
-    ? Prisma.sql``
-    // Deliberately a prefix/substring match over the denormalized display
-    // fields rather than full-text search: these three columns are what the
-    // list renders, so matching anything else would highlight nothing.
-    : Prisma.sql`AND (i."type" ILIKE ${`%${filters.search}%`} OR i."value" ILIKE ${`%${filters.search}%`} OR i."culprit" ILIKE ${`%${filters.search}%`})`;
 
   // The cursor must be keyed on the SAME column the rows are ordered by, or the
   // next page silently skips or repeats rows. `sortColumn` is chosen from a
@@ -216,7 +291,7 @@ async function loadCandidateIssues(
     ? Prisma.sql`ORDER BY ${sortColumn} DESC, i."id" DESC`
     : Prisma.sql`ORDER BY ${sortColumn} ASC, i."id" ASC`;
 
-  return await prisma.$queryRaw<IssueRow[]>(Prisma.sql`
+  return await prisma.$replica().$queryRaw<IssueRow[]>(Prisma.sql`
     SELECT
       i."id", i."shortId", i."type", i."value", i."culprit", i."platform",
       i."status"::text AS "status", i."firstSeenAt", i."lastSeenAt", i."regressedAt",
@@ -233,11 +308,47 @@ async function loadCandidateIssues(
       AND i."lastSeenAt" >= ${rangeStart}::timestamptz
       ${statusFilterSql(filters.status, now)}
       ${handledFilterSql(filters.handled)}
-      ${searchSql}
+      ${searchFilterSql(filters.search)}
+      ${occurrenceHashFilterSql(matchingHashes)}
       ${cursorSql}
     ${orderSql}
     LIMIT ${limit}
   `);
+}
+
+async function loadMatchingHashes(
+  clickhouse: ClickHouseClient,
+  projectId: string,
+  branchId: string,
+  rangeStart: Date,
+  filters: Pick<IssueListFilters, "serviceName" | "environment">,
+): Promise<string[] | null> {
+  if (filters.serviceName === null && filters.environment === null) return null;
+
+  const serviceFilter = filters.serviceName === null ? "" : "AND service_name = {service:String}";
+  const environmentFilter = filters.environment === null ? "" : "AND deployment_environment_name = {environment:String}";
+  const resultSet = await clickhouse.query({
+    query: `
+      SELECT DISTINCT issue_hash AS issueHash
+      FROM analytics_internal.issue_occurrence_rollup
+      WHERE project_id = {projectId:String}
+        AND branch_id = {branchId:String}
+        AND bucket_start >= {rangeStart:DateTime}
+        ${serviceFilter}
+        ${environmentFilter}
+    `,
+    query_params: {
+      projectId,
+      branchId,
+      rangeStart: Math.floor(rangeStart.getTime() / 1000),
+      ...filters.serviceName === null ? {} : { service: filters.serviceName },
+      ...filters.environment === null ? {} : { environment: filters.environment },
+    },
+    format: "JSONEachRow",
+  });
+
+  const rows = await resultSet.json<{ issueHash: string }>();
+  return rows.map((row) => row.issueHash);
 }
 
 /**
@@ -251,19 +362,24 @@ async function loadWindowStats(
   clickhouse: ClickHouseClient,
   projectId: string,
   branchId: string,
-  hashes: readonly string[],
+  issues: readonly Pick<IssueRow, "id" | "hashes">[],
   rangeStart: Date,
   filters: IssueListFilters,
 ): Promise<Map<string, WindowStats>> {
-  if (hashes.length === 0) return new Map();
+  const hashToIssue = issues.flatMap((issue) => issue.hashes.map((hash) => ({ hash, issueId: issue.id })));
+  if (hashToIssue.length === 0) return new Map();
+
+  const hashes = hashToIssue.map((entry) => entry.hash);
+  const issueIds = hashToIssue.map((entry) => entry.issueId);
 
   const serviceFilter = filters.serviceName === null ? "" : "AND service_name = {service:String}";
   const environmentFilter = filters.environment === null ? "" : "AND deployment_environment_name = {environment:String}";
 
   const resultSet = await clickhouse.query({
     query: `
+      WITH mapFromArrays({hashes:Array(String)}, {issueIds:Array(String)}) AS issue_by_hash
       SELECT
-        issue_hash AS issueHash,
+        issue_by_hash[issue_hash] AS issueId,
         toUInt64(sum(occurrences)) AS occurrences,
         toUInt64(uniqMerge(users_state)) AS users
       FROM analytics_internal.issue_occurrence_rollup
@@ -273,12 +389,14 @@ async function loadWindowStats(
         AND bucket_start >= {rangeStart:DateTime}
         ${serviceFilter}
         ${environmentFilter}
-      GROUP BY issue_hash
+        AND issue_by_hash[issue_hash] != ''
+      GROUP BY issueId
     `,
     query_params: {
       projectId,
       branchId,
       hashes,
+      issueIds,
       rangeStart: Math.floor(rangeStart.getTime() / 1000),
       ...filters.serviceName === null ? {} : { service: filters.serviceName },
       ...filters.environment === null ? {} : { environment: filters.environment },
@@ -286,28 +404,21 @@ async function loadWindowStats(
     format: "JSONEachRow",
   });
 
-  const rows = await resultSet.json<{ issueHash: string, occurrences: string, users: string }>();
-  return new Map(rows.map((row) => [row.issueHash, {
-    issueHash: row.issueHash,
+  const rows = await resultSet.json<{ issueId: string, occurrences: string, users: string }>();
+  return new Map(rows.map((row) => [row.issueId, {
+    issueId: row.issueId,
     occurrences: Number(row.occurrences),
     users: Number(row.users),
   }]));
 }
 
 function toListItem(row: IssueRow, stats: Map<string, WindowStats>, rangeStart: Date, now: Date, ignoredUntil: Date | null): IssueListItem {
-  // Sum occurrences across the issue's hashes, but take the MAX of users rather
-  // than the sum: the per-hash `uniq` states were already merged per hash, and
-  // summing them would double-count a user seen under two hashes of the same
-  // issue. Merging across hashes exactly would require a second grouped query;
-  // max is the correct lower bound and is never an overcount.
-  let occurrences = 0;
-  let users = 0;
-  for (const hash of row.hashes) {
-    const stat = stats.get(hash);
-    if (stat === undefined) continue;
-    occurrences += stat.occurrences;
-    users = Math.max(users, stat.users);
-  }
+  // The ClickHouse query merges `users_state` across every hash owned by this
+  // issue. Taking the old per-hash max was only a lower bound and disagreed
+  // with the detail view whenever two hashes had disjoint users.
+  const stat = stats.get(row.id);
+  const occurrences = stat?.occurrences ?? 0;
+  const users = stat?.users ?? 0;
 
   return {
     id: row.id,
@@ -380,10 +491,19 @@ export function encodeOccurrenceCursor(cursor: OccurrenceCursor): string {
 
 export function decodeOccurrenceCursor(raw: string): OccurrenceCursor | null {
   try {
+    if (raw.length === 0) return null;
     const parsed: unknown = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
-    if (typeof parsed !== "object" || parsed === null) return null;
-    const { eventAtMillis, occurrenceId } = parsed as Record<string, unknown>;
-    if (typeof eventAtMillis !== "number" || typeof occurrenceId !== "string") return null;
+    if (!isRecord(parsed)) return null;
+    const { eventAtMillis, occurrenceId } = parsed;
+    if (
+      typeof eventAtMillis !== "number"
+      || !Number.isSafeInteger(eventAtMillis)
+      || eventAtMillis < 0
+      || eventAtMillis > 8_640_000_000_000_000
+      || typeof occurrenceId !== "string"
+      || occurrenceId.length === 0
+      || occurrenceId.length > 256
+    ) return null;
     return { eventAtMillis, occurrenceId };
   } catch {
     return null;
@@ -398,6 +518,10 @@ type OccurrenceRow = {
   // ClickHouse returns the `JSON`-typed column already parsed under
   // JSONEachRow, so this is an object rather than a string to re-parse.
   data: Record<string, unknown>,
+  /** Bounded canonical ErrorEnvelope JSON stored as one stable read-model column. */
+  error_envelope: string,
+  /** Ordered primary/secondary grouping evidence; `[]` for legacy rows. */
+  issue_grouping_provenance: string,
   error_frames: string,
   trace_id: string | null,
   span_id: string | null,
@@ -440,7 +564,8 @@ export async function loadOccurrence(options: {
 
   const resultSet = await clickhouse.query({
     query: `
-      SELECT occurrence_id, event_at, message, level, data, error_frames,
+      SELECT occurrence_id, event_at, body AS message, level, data, error_envelope,
+             issue_grouping_provenance, error_frames,
              trace_id, span_id, page_view_span_id, session_replay_id, user_id,
              service_name, deployment_environment_name
       FROM analytics_internal.logs
@@ -450,7 +575,7 @@ export async function loadOccurrence(options: {
         AND issue_hash IN {hashes:Array(String)}
         ${comparison}
       ORDER BY event_at ${order}, occurrence_id ${order}
-      LIMIT 1
+      LIMIT 2
     `,
     query_params: {
       projectId: tenancy.project.id,
@@ -468,16 +593,44 @@ export async function loadOccurrence(options: {
   if (rows.length === 0) return { occurrence: null, newerCursor: null, olderCursor: null };
   const occurrence = rows[0];
 
-  const position = { eventAtMillis: new Date(`${occurrence.event_at}Z`).getTime(), occurrenceId: occurrence.occurrence_id };
+  const eventAtMillis = new Date(`${occurrence.event_at}Z`).getTime();
+  if (!Number.isSafeInteger(eventAtMillis) || eventAtMillis < 0) {
+    throw new Error(`ClickHouse returned an invalid issue occurrence timestamp: ${occurrence.event_at}`);
+  }
+  const position = { eventAtMillis, occurrenceId: occurrence.occurrence_id };
+  const hasAnotherInDirection = rows.length > 1;
+  const inputCursor = cursor === null ? null : encodeOccurrenceCursor(cursor);
   return {
     occurrence,
-    // Both cursors are emitted unconditionally rather than probed for
-    // existence: proving "there is a newer one" costs a second query per
-    // navigation, and a dead-end arrow is a far cheaper failure than doubling
-    // the query count of every step through an issue's history.
-    newerCursor: encodeOccurrenceCursor(position),
-    olderCursor: encodeOccurrenceCursor(position),
+    // The second row is the next row in the requested direction. The input
+    // cursor is the immediate neighbor in the opposite direction, so this
+    // yields real terminal cursors without an extra query per navigation.
+    newerCursor: direction === "newer"
+      ? hasAnotherInDirection ? encodeOccurrenceCursor(position) : null
+      : inputCursor,
+    olderCursor: direction === "older"
+      ? hasAnotherInDirection ? encodeOccurrenceCursor(position) : null
+      : inputCursor,
   };
+}
+
+export function compareRankedIssues(
+  left: Pick<IssueListItem, "window_occurrences" | "window_users" | "last_seen_at_millis" | "id">,
+  right: Pick<IssueListItem, "window_occurrences" | "window_users" | "last_seen_at_millis" | "id">,
+  sort: Extract<IssueListSortField, "events" | "users">,
+  sortDir: CursorDirection,
+): number {
+  const leftMetric = sort === "events" ? left.window_occurrences : left.window_users;
+  const rightMetric = sort === "events" ? right.window_occurrences : right.window_users;
+  const direction = sortDir === "desc" ? -1 : 1;
+  const metricComparison = leftMetric === rightMetric ? 0 : leftMetric < rightMetric ? -1 : 1;
+  if (metricComparison !== 0) return metricComparison * direction;
+
+  const timeComparison = left.last_seen_at_millis === right.last_seen_at_millis
+    ? 0
+    : left.last_seen_at_millis < right.last_seen_at_millis ? -1 : 1;
+  if (timeComparison !== 0) return timeComparison * direction;
+  return stringCompare(left.id, right.id) * direction;
 }
 
 export async function listIssues(options: {
@@ -491,7 +644,9 @@ export async function listIssues(options: {
   const rangeStart = new Date(now.getTime() - filters.hours * 60 * 60 * 1000);
   const limit = Math.min(filters.limit, ISSUE_LIST_PAGE_SIZE);
 
-  const isWindowRanked = CLICKHOUSE_RANKED_SORT_FIELDS.includes(filters.sort);
+  const rankedSort = isWindowRankedSort(filters.sort) ? filters.sort : null;
+  const isWindowRanked = rankedSort !== null;
+  const matchingHashes = await loadMatchingHashes(clickhouse, tenancy.project.id, tenancy.branchId, rangeStart, filters);
 
   // Window-scoped sorts must be ranked by ClickHouse, so the candidate set is
   // widened (status-filtered but not paginated) and capped. Beyond the cap the
@@ -499,16 +654,15 @@ export async function listIssues(options: {
   // `approximate` — "the top N issues" and "a correct ranking over a declared
   // candidate set" are different claims, and only one of them is honest.
   const candidateLimit = isWindowRanked ? ISSUE_RANK_CANDIDATE_CAP : limit + 1;
-  const candidates = await loadCandidateIssues(prisma, tenancy.id, filters, rangeStart, now, candidateLimit);
+  const candidates = await loadCandidateIssues(prisma, tenancy.id, filters, rangeStart, now, candidateLimit, matchingHashes);
   const approximate = isWindowRanked && candidates.length >= ISSUE_RANK_CANDIDATE_CAP;
 
-  const allHashes = [...new Set(candidates.flatMap((row) => row.hashes))];
-  const stats = await loadWindowStats(clickhouse, tenancy.project.id, tenancy.branchId, allHashes, rangeStart, filters);
+  const stats = await loadWindowStats(clickhouse, tenancy.project.id, tenancy.branchId, candidates, rangeStart, filters);
 
   // The CASE mirrors `effectiveStatus` below. Counting the raw stored column
   // instead would make the tab badge say "ignored: 1" for an issue the list
   // itself renders as unresolved, which reads as a bug to anyone looking at it.
-  const counts = await prisma.$queryRaw<{ status: string, count: bigint }[]>`
+  const counts = await prisma.$replica().$queryRaw<{ status: string, count: bigint }[]>(Prisma.sql`
     SELECT
       CASE
         WHEN i."status" = 'IGNORED' AND i."ignoredUntil" IS NOT NULL AND i."ignoredUntil" < ${now}::timestamptz
@@ -518,8 +672,11 @@ export async function listIssues(options: {
       count(*) AS "count"
     FROM "Issue" i
     WHERE i."tenancyId" = ${tenancy.id}::uuid AND i."lastSeenAt" >= ${rangeStart}::timestamptz
+      ${handledFilterSql(filters.handled)}
+      ${searchFilterSql(filters.search)}
+      ${occurrenceHashFilterSql(matchingHashes)}
     GROUP BY 1
-  `;
+  `);
   const countByStatus = new Map(counts.map((row) => [row.status, Number(row.count)]));
 
   let items = candidates.map((row) => toListItem(
@@ -527,20 +684,11 @@ export async function listIssues(options: {
     stats,
     rangeStart,
     now,
-    (row as IssueRow & { ignoredUntil: Date | null }).ignoredUntil,
+    row.ignoredUntil,
   ));
 
-  // A service/environment filter is occurrence-scoped, so an issue that has no
-  // rollup rows under that filter did not occur there and must drop out. This
-  // cannot be done in Postgres: `Issue.serviceName` is only the LAST observed
-  // service, and an issue can legitimately span several.
-  if (filters.serviceName !== null || filters.environment !== null) {
-    items = items.filter((item) => item.window_occurrences > 0);
-  }
-
   if (isWindowRanked) {
-    const key = filters.sort === "events" ? "window_occurrences" : "window_users";
-    items.sort((a, b) => filters.sortDir === "desc" ? b[key] - a[key] : a[key] - b[key]);
+    items.sort((left, right) => compareRankedIssues(left, right, rankedSort, filters.sortDir));
     items = items.slice(0, limit);
   }
 
@@ -556,6 +704,8 @@ export async function listIssues(options: {
         // value of whichever column the ordering used.
         lastSeenAtMillis: filters.sort === "first_seen" ? last.first_seen_at_millis : last.last_seen_at_millis,
         id: last.id,
+        sort: filters.sort,
+        sortDir: filters.sortDir,
       })
       : null,
     counts: {

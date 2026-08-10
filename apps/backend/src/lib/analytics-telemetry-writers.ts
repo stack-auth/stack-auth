@@ -2,9 +2,14 @@ import { classifyTelemetrySignal, type LogLevel, type TelemetryResource } from "
 import { TELEMETRY_MAX_LOG_MESSAGE_BYTES, truncateUtf8Bytes } from "@hexclave/shared/dist/utils/analytics-wire";
 import { createHash } from "crypto";
 import { stripLoneSurrogates, type ClickHouseClient } from "./clickhouse";
-import { computeGrouping } from "./issues/grouping";
-import { DEFAULT_GROUPING_CONFIG_ID, type GroupingConfigId } from "./issues/grouping-config";
+import { computeGrouping, computeGroupingWithReadableConfigs, getGroupingHashProvenance } from "./issues/grouping";
+import { readGroupingFingerprint } from "./issues/grouping-fingerprint";
+import { resolveGroupingConfig, type GroupingConfigId, type GroupingConfigResolution, type GroupingRuntimeConfig } from "./issues/grouping-config";
+import { serializeGroupingProvenance } from "./issues/grouping-provenance";
+import type { GroupingHashProvenance } from "./issues/types";
 import { buildTelemetryResourceFields } from "./telemetry-resource";
+import { scrubErrorIngestPayload } from "./error-ingest";
+import { normalizeErrorEnvelope } from "@hexclave/shared/dist/utils/error-envelope";
 
 export type BatchEventWireItem = {
   event_type: string,
@@ -39,6 +44,8 @@ export type BatchSignalContext = {
    * from this batch.
    */
   producer: "sdk",
+  /** Environment-level grouping rollout settings; omitted means the default. */
+  groupingConfig?: GroupingRuntimeConfig,
 };
 
 export function getEventStorageTable(eventType: string): "analytics_internal.events" | "analytics_internal.logs" {
@@ -81,7 +88,16 @@ export function computeOccurrenceId(batchId: string, ordinal: number): string {
 export type IssueMaterializationInput = {
   ownerHash: string,
   aliasHashes: string[],
+  /** The first durable occurrence represented by this coalesced hash input. */
+  occurrenceId?: string,
   groupingConfigId: GroupingConfigId,
+  /**
+   * Ordered primary/secondary decisions retained for issue-hash explainability.
+   * Canonical normalized ingest supplies this; legacy reconciliation callers may
+   * omit it and leave the nullable storage fields empty rather than inventing
+   * provenance that was not present on the original occurrence.
+   */
+  groupingProvenance?: GroupingHashProvenance[],
   type: string,
   value: string,
   culprit: string,
@@ -117,8 +133,31 @@ export type NormalizedEventBatch = {
  * optional even for a field we control.
  */
 function stripLoneSurrogatesInString(value: string): string {
-  const stripped = stripLoneSurrogates(value);
-  return typeof stripped === "string" ? stripped : "";
+  const sanitized = stripLoneSurrogates(value);
+  if (typeof sanitized !== "string") throw new Error("Expected lone-surrogate normalization to preserve a string value");
+  return sanitized;
+}
+
+function scrubBatchEvent(event: BatchEventWireItem): BatchEventWireItem {
+  const result = scrubErrorIngestPayload(event.data);
+  if (result.value === undefined) throw new Error("Telemetry event data could not be normalized for durable storage");
+  return { ...event, data: result.value };
+}
+
+function scrubBatchMessage(message: string): string {
+  const result = scrubErrorIngestPayload(message);
+  if (typeof result.value !== "string") throw new Error("Telemetry log message could not be normalized for durable storage");
+  return result.value;
+}
+
+function serializeErrorEnvelope(data: unknown): string {
+  const serialized = JSON.stringify(normalizeErrorEnvelope(data));
+  return stripLoneSurrogatesInString(serialized);
+}
+
+function requireLogMessage(event: BatchEventWireItem): string {
+  if (event.message === undefined) throw new Error("$log event is missing its validated message");
+  return event.message;
 }
 
 function readField(data: unknown, key: string): unknown {
@@ -156,22 +195,26 @@ type ErrorGroupingFields = {
 type GroupedErrorOccurrence = {
   event: BatchEventWireItem,
   grouping: ReturnType<typeof computeGrouping>,
+  occurrenceId: string,
 };
 
-function buildErrorGroupingFields(event: BatchEventWireItem, context: BatchSignalContext, configId: GroupingConfigId): ErrorGroupingFields {
+function buildErrorGroupingFields(event: BatchEventWireItem, context: Pick<BatchSignalContext, "runtime">, groupingConfig: GroupingConfigResolution): ErrorGroupingFields {
   const name = readStringField(event.data, "name") ?? "Error";
   const message = readStringField(event.data, "message") ?? "";
   const stack = readStringField(event.data, "stack");
   const synthetic = typeof event.data === "object" && event.data !== null
     && (event.data as Record<string, unknown>).synthetic != null;
+  const level = event.level ?? "error";
 
-  const grouping = computeGrouping({
+  const grouping = computeGroupingWithReadableConfigs({
     type: name,
     message,
     stack,
     platform: context.runtime === "browser" ? "javascript" : "node",
+    fingerprint: readGroupingFingerprint(event.data),
     synthetic,
-  }, configId);
+  }, groupingConfig);
+  const groupingProvenance = getGroupingHashProvenance(grouping);
 
   return {
     grouping,
@@ -180,15 +223,17 @@ function buildErrorGroupingFields(event: BatchEventWireItem, context: BatchSigna
       issue_hashes: [grouping.ownerHash, ...grouping.aliasHashes],
       issue_grouping_config: grouping.configId,
       issue_variant: grouping.variant,
+      issue_grouping_provenance: serializeGroupingProvenance(groupingProvenance),
       grouping_degraded: grouping.variant === "degraded" ? 1 : 0,
       error_type: name,
       error_culprit: grouping.culprit,
       error_frames: JSON.stringify(grouping.frames),
+      error_envelope: serializeErrorEnvelope(event.data),
       // Promoted out of `data` and stamped SERVER-side, so the batch route's
       // "log-fields" yup test — which forbids client-supplied `message`/`level`
       // on anything that is not `$log` — stays exactly as it is. No wire change.
       message: truncateUtf8Bytes(stripLoneSurrogatesInString(message), TELEMETRY_MAX_LOG_MESSAGE_BYTES),
-      level: "error",
+      level,
     },
   };
 }
@@ -241,15 +286,20 @@ function buildLogRow(
   ordinal: number,
   errorFields: ErrorGroupingFields | null,
 ) {
+  const otelBase = buildBaseEventRow(event, context);
   return {
-    ...buildBaseEventRow(event, context),
+    ...otelBase,
     occurrence_id: computeOccurrenceId(batchId, ordinal),
     // Stored alongside `occurrence_id` because the latter is a one-way hash:
     // the reconciler needs to ask "which batches have no ledger row?", which
     // requires the batch id itself, not a digest of it.
     batch_id: batchId,
-    message: event.event_type === "$log" ? stripLoneSurrogates(event.message) : "",
+    message: event.event_type === "$log" ? stripLoneSurrogates(scrubBatchMessage(requireLogMessage(event))) : "",
     level: event.event_type === "$log" ? event.level : "",
+    // Non-error logs have no envelope. The column is written explicitly rather
+    // than left to its ClickHouse default so a fresh table and one grown by
+    // ALTER produce identical rows.
+    error_envelope: "{}",
     ...errorFields?.columns ?? {},
   };
 }
@@ -270,22 +320,41 @@ function buildLogRow(
  * cost of the one part of ingest that scales with error volume (a 50-frame
  * parse plus two SHA-256 passes each).
  */
-function collectIssueInputs(grouped: readonly GroupedErrorOccurrence[], context: BatchSignalContext): IssueMaterializationInput[] {
+function collectIssueInputs(grouped: readonly GroupedErrorOccurrence[], context: {
+  runtime: BatchSignalContext["runtime"],
+  serviceName: string | null,
+  deploymentEnvironmentName: string | null,
+}): IssueMaterializationInput[] {
   const byHash = new Map<string, IssueMaterializationInput>();
 
-  for (const { event, grouping } of grouped) {
+  for (const { event, grouping, occurrenceId } of grouped) {
     const eventAt = new Date(event.event_at_ms);
     const existing = byHash.get(grouping.ownerHash);
     if (existing !== undefined) {
       existing.count += 1;
       if (eventAt < existing.firstEventAt) existing.firstEventAt = eventAt;
       if (eventAt > existing.lastEventAt) existing.lastEventAt = eventAt;
+      existing.aliasHashes = [...new Set([...existing.aliasHashes, ...grouping.aliasHashes])];
+      const incomingProvenance = getGroupingHashProvenance(grouping);
+      if (existing.groupingProvenance === undefined) {
+        existing.groupingProvenance = incomingProvenance;
+        continue;
+      }
+      for (const candidate of incomingProvenance) {
+        const alreadyRecorded = existing.groupingProvenance.some((recorded) =>
+          serializeGroupingProvenance([recorded]) === serializeGroupingProvenance([candidate])
+        );
+        if (!alreadyRecorded) existing.groupingProvenance.push(candidate);
+      }
       continue;
     }
+    const groupingProvenance = getGroupingHashProvenance(grouping);
     byHash.set(grouping.ownerHash, {
       ownerHash: grouping.ownerHash,
       aliasHashes: grouping.aliasHashes,
+      occurrenceId,
       groupingConfigId: grouping.configId,
+      groupingProvenance,
       type: readStringField(event.data, "name") ?? "Error",
       value: readStringField(event.data, "message") ?? "",
       culprit: grouping.culprit,
@@ -293,14 +362,17 @@ function collectIssueInputs(grouped: readonly GroupedErrorOccurrence[], context:
       count: 1,
       firstEventAt: eventAt,
       lastEventAt: eventAt,
-      serviceName: context.resource.service.name,
-      deploymentEnvironmentName: context.resource.deploymentEnvironmentName ?? null,
+      serviceName: context.serviceName,
+      deploymentEnvironmentName: context.deploymentEnvironmentName,
       release: readStringField(event.data, "release"),
-      level: "error",
+      level: event.level ?? readStringField(event.data, "level") ?? "error",
       // `handled` defaults to true when the SDK omitted it: an error we cannot
       // prove crashed the caller should not be reported as a crash.
       handled: readBooleanField(event.data, "handled") ?? true,
-      synthetic: grouping.variant === "message" && readField(event.data, "synthetic") != null,
+      // The fingerprint variant may be `custom` even when the captured value
+      // was synthetic; preserve the mechanism fact independently of which hash
+      // won.
+      synthetic: readField(event.data, "synthetic") != null,
     });
   }
 
@@ -312,25 +384,36 @@ export function normalizeBatchEvents(
   context: BatchSignalContext,
   batchId: string,
 ): NormalizedEventBatch {
-  const configId = DEFAULT_GROUPING_CONFIG_ID;
+  const groupingConfig = resolveGroupingConfig(context.groupingConfig);
   const grouped: GroupedErrorOccurrence[] = [];
+  const scrubbedEvents = events.map(scrubBatchEvent);
 
   const productEvents: ReturnType<typeof buildBaseEventRow>[] = [];
   const logOccurrences: ReturnType<typeof buildLogRow>[] = [];
 
-  events.forEach((event, ordinal) => {
+  scrubbedEvents.forEach((event, ordinal) => {
     if (getEventStorageTable(event.event_type) === "analytics_internal.events") {
       productEvents.push(buildBaseEventRow(event, context));
       return;
     }
     const errorFields = event.event_type === "$error"
-      ? buildErrorGroupingFields(event, context, configId)
+      ? buildErrorGroupingFields(event, context, groupingConfig)
       : null;
-    if (errorFields !== null) grouped.push({ event, grouping: errorFields.grouping });
+    if (errorFields !== null) {
+      grouped.push({
+        event,
+        grouping: errorFields.grouping,
+        occurrenceId: computeOccurrenceId(batchId, ordinal),
+      });
+    }
     logOccurrences.push(buildLogRow(event, context, batchId, ordinal, errorFields));
   });
 
-  return { productEvents, logOccurrences, issueInputs: collectIssueInputs(grouped, context) };
+  return { productEvents, logOccurrences, issueInputs: collectIssueInputs(grouped, {
+    runtime: context.runtime,
+    serviceName: context.resource.service.name,
+    deploymentEnvironmentName: context.resource.deploymentEnvironmentName ?? null,
+  }) };
 }
 
 /**

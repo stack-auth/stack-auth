@@ -3,6 +3,9 @@ import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { IssueMaterializationInput } from "../analytics-telemetry-writers";
+import { materializeIssuesFromBatch } from "./issue-store";
+import { DEFAULT_GROUPING_CONFIG_ID } from "./grouping-config";
 import {
   ISSUE_COUNTER_WINDOW_DAYS,
   ISSUE_LOCK_LEASE_MS,
@@ -105,6 +108,7 @@ const freshHash = () => `${RUN_PREFIX}-${hashCounter++}`;
 let tenancy: Tenancy;
 let otherTenancy: Tenancy;
 const createdIssueIds: string[] = [];
+const createdBatchIds: string[] = [];
 
 type SeedOptions = {
   firstSeenAt?: Date,
@@ -195,6 +199,38 @@ async function readOwnedHashes(issueId: string): Promise<string[]> {
   return rows.map((row) => row.hash);
 }
 
+async function readHashOwner(hash: string): Promise<string | null> {
+  const prisma = await getPrismaClientForTenancy(tenancy);
+  const rows = await prisma.$queryRaw<{ issueId: string }[]>`
+    SELECT "issueId"
+    FROM "IssueHash"
+    WHERE "tenancyId" = ${tenancy.id}::uuid AND "hash" = ${hash}
+  `;
+  return rows.at(0)?.issueId ?? null;
+}
+
+function materializationInput(ownerHash: string, count = 1): IssueMaterializationInput {
+  const eventAt = new Date("2026-08-06T12:00:00Z");
+  return {
+    ownerHash,
+    aliasHashes: [],
+    groupingConfigId: DEFAULT_GROUPING_CONFIG_ID,
+    type: "TypeError",
+    value: "x is not a function",
+    culprit: "app/page.tsx in render",
+    platform: "javascript",
+    count,
+    firstEventAt: eventAt,
+    lastEventAt: eventAt,
+    serviceName: "test-service",
+    deploymentEnvironmentName: "test",
+    release: "test-release",
+    level: "error",
+    handled: true,
+    synthetic: false,
+  };
+}
+
 async function readRedirectTarget(fromIssueId: string): Promise<string | null> {
   const prisma = await getPrismaClientForTenancy(tenancy);
   const rows = await prisma.$queryRaw<{ toIssueId: string }[]>`
@@ -237,6 +273,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if (createdBatchIds.length > 0) {
+    await globalPrismaClient.$executeRaw`
+      DELETE FROM "IssueMaterialization"
+      WHERE "tenancyId" = ${tenancy.id}::uuid AND "batchId" = ANY(${createdBatchIds}::uuid[])
+    `;
+  }
   if (createdIssueIds.length === 0) return;
   // Redirects have no FK (their `fromIssueId` names an already-deleted issue by
   // design), so they need deleting explicitly. `IssueHash` cascades.
@@ -349,7 +391,24 @@ describe("mergeIssues (real DB)", () => {
     const b = await seedIssue({ firstSeenAt: new Date("2026-01-01T00:00:00Z") });
     await mergeIssues({ tenancy, issueIds: [a.id, b.id] });
 
-    await expect(mergeIssues({ tenancy, issueIds: [a.id, b.id] })).rejects.toThrow(/already been merged/);
+    await expect(mergeIssues({ tenancy, issueIds: [a.id, b.id] })).resolves.toEqual({
+      primaryIssueId: b.id,
+      mergedIssueIds: [],
+    });
+  });
+
+  it("is safe to retry concurrently: one merge wins and the other is a no-op", async () => {
+    const older = await seedIssue({ firstSeenAt: new Date("2026-01-01T00:00:00Z"), timesSeen: 2n });
+    const newer = await seedIssue({ firstSeenAt: new Date("2026-02-01T00:00:00Z"), timesSeen: 3n });
+
+    const results = await Promise.all([
+      mergeIssues({ tenancy, issueIds: [older.id, newer.id] }),
+      mergeIssues({ tenancy, issueIds: [older.id, newer.id] }),
+    ]);
+
+    expect(results.every((result) => result.primaryIssueId === older.id)).toBe(true);
+    expect((await readIssue(older.id))?.timesSeen).toBe(5n);
+    expect(await readIssue(newer.id)).toBeNull();
   });
 
   it("requires at least two distinct issues", async () => {
@@ -477,6 +536,61 @@ describe("unmergeIssue (real DB)", () => {
     const theirs = await seedIssue({ tenancy: otherTenancy, hashes: [freshHash(), freshHash()] });
     await expect(unmergeIssue({ tenancy, issueId: theirs.id, hashes: [theirs.hashes[0]!] }))
       .rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+describe("materializeIssuesFromBatch (real DB)", () => {
+  it("defers the complete batch when one owner hash is locked", async () => {
+    const lockedHash = freshHash();
+    const missingHash = freshHash();
+    const lockedIssue = await seedIssue({ hashes: [lockedHash] });
+    await setHashLock(lockedHash, new Date());
+
+    const batchId = randomUUID();
+    createdBatchIds.push(batchId);
+    const inputs = [materializationInput(lockedHash), materializationInput(missingHash, 2)];
+
+    expect(await materializeIssuesFromBatch({ tenancy, batchId, inputs, receivedAt: new Date() })).toEqual([]);
+    expect((await readIssue(lockedIssue.id))?.timesSeen).toBe(0n);
+    expect(await readHashOwner(missingHash)).toBeNull();
+
+    await setHashLock(lockedHash, null);
+    const outcomes = await materializeIssuesFromBatch({ tenancy, batchId, inputs, receivedAt: new Date() });
+    for (const outcome of outcomes) createdIssueIds.push(outcome.issueId);
+
+    expect(outcomes.map((outcome) => outcome.ownerHash).sort()).toEqual([lockedHash, missingHash].sort());
+    expect((await readIssue(lockedIssue.id))?.timesSeen).toBe(1n);
+    const missingIssueId = await readHashOwner(missingHash);
+    expect(missingIssueId).not.toBeNull();
+    expect((await readIssue(missingIssueId!))?.timesSeen).toBe(2n);
+  });
+
+  it("materializes concurrent first sightings onto one issue without an orphan", async () => {
+    const ownerHash = freshHash();
+    const firstBatchId = randomUUID();
+    const secondBatchId = randomUUID();
+    createdBatchIds.push(firstBatchId, secondBatchId);
+    const input = materializationInput(ownerHash);
+
+    const [first, second] = await Promise.all([
+      materializeIssuesFromBatch({ tenancy, batchId: firstBatchId, inputs: [input], receivedAt: new Date() }),
+      materializeIssuesFromBatch({ tenancy, batchId: secondBatchId, inputs: [input], receivedAt: new Date() }),
+    ]);
+    for (const outcome of [...first, ...second]) createdIssueIds.push(outcome.issueId);
+
+    const issueId = await readHashOwner(ownerHash);
+    expect(issueId).not.toBeNull();
+    const ownerRows = await globalPrismaClient.$queryRaw<{ id: string }[]>`
+      SELECT i."id"
+      FROM "Issue" i
+      WHERE i."tenancyId" = ${tenancy.id}::uuid
+        AND i."id" IN (
+          SELECT "issueId" FROM "IssueHash"
+          WHERE "tenancyId" = ${tenancy.id}::uuid AND "hash" = ${ownerHash}
+        )
+    `;
+    expect(ownerRows).toHaveLength(1);
+    expect((await readIssue(issueId!))?.timesSeen).toBe(2n);
   });
 });
 

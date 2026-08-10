@@ -237,12 +237,15 @@ async function releaseHashLocks(
   prisma: TenancyPrismaClient,
   tenancyId: string,
   hashes: readonly string[],
+  lockedAt: Date,
 ): Promise<void> {
   if (hashes.length === 0) return;
   await prisma.$executeRaw`
     UPDATE "IssueHash"
     SET "state" = NULL, "lockedAt" = NULL
-    WHERE "tenancyId" = ${tenancyId}::uuid AND "hash" = ANY(${[...hashes]}::text[])
+    WHERE "tenancyId" = ${tenancyId}::uuid
+      AND "hash" = ANY(${[...hashes]}::text[])
+      AND "lockedAt" = ${lockedAt}::timestamptz
   `;
 }
 
@@ -262,7 +265,7 @@ async function lockHashesOrThrow(
 ): Promise<void> {
   const acquired = await acquireHashLocks(prisma, tenancyId, hashes, now);
   if (acquired.length === hashes.length) return;
-  await releaseHashLocks(prisma, tenancyId, acquired);
+  await releaseHashLocks(prisma, tenancyId, acquired, now);
   throw new StatusError(
     StatusError.Conflict,
     "Another merge or unmerge is currently in flight for one of these issues. Try again in a moment.",
@@ -290,7 +293,7 @@ async function withHashLocks<T>(
     // Not a catch-all: we release and RETHROW. Without this the lease would
     // still expire on its own, but every occurrence of these errors would stop
     // materializing for the next five minutes for no reason.
-    await releaseHashLocks(prisma, tenancyId, hashes);
+    await releaseHashLocks(prisma, tenancyId, hashes, now);
     throw error;
   }
 }
@@ -322,6 +325,18 @@ export type MergeIssuesResult = {
   mergedIssueIds: string[],
 };
 
+class RetryMerge extends Error {
+  constructor() {
+    super("The issue set changed while the merge was running.");
+  }
+}
+
+function sameStringSet(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const bSet = new Set(b);
+  return a.every((value) => bSet.has(value));
+}
+
 export async function mergeIssues(options: {
   tenancy: Tenancy,
   issueIds: string[],
@@ -329,58 +344,84 @@ export async function mergeIssues(options: {
   const { tenancy, issueIds } = options;
   const prisma = await getPrismaClientForTenancy(tenancy);
   const tenancyId = tenancy.id;
-  const now = new Date();
 
   const requested = [...new Set(issueIds)];
   if (requested.length < 2) {
     throw new StatusError(StatusError.BadRequest, "Merging requires at least two distinct issues.");
   }
 
-  const resolvedById = await resolveIssueIds(prisma, tenancyId, requested);
-  const targetIds = [...new Set(resolvedById.values())];
-  if (targetIds.length < 2) {
-    // Every id the caller gave us collapsed onto the same issue — they have
-    // already been merged. Not an error worth a 500, but not a merge either.
-    throw new StatusError(StatusError.BadRequest, "All of these issues have already been merged into the same issue.");
-  }
-
-  const preLock = await readIssuesWithHashes(prisma, tenancyId, targetIds);
-  if (preLock.length !== targetIds.length) {
-    const found = new Set(preLock.map((issue) => issue.id));
-    const missing = targetIds.find((id) => !found.has(id));
-    // Cross-tenancy isolation falls out of this: the read is tenancy-scoped, so
-    // another project's issue is indistinguishable from a nonexistent one.
-    throw new StatusError(StatusError.NotFound, `Issue ${missing} was not found in this project.`);
-  }
-
-  const lockedHashes = preLock.flatMap((issue) => issue.hashes);
-
-  return await withHashLocks(prisma, tenancyId, lockedHashes, now, async () => {
-    // Re-read under the lease. Everything below is now stable: materialization
-    // skips LOCKED hashes, so no delta can land on any of these issues.
-    const issues = await readIssuesWithHashes(prisma, tenancyId, targetIds);
-    const ordered = orderIssuesForMerge(issues);
-    const primary = ordered[0] ?? throwNoPrimary(targetIds);
-    const losers = ordered.slice(1);
-    const metadata = resolveMergedMetadata(ordered);
-
-    const applied = await applyMerge(prisma, {
-      tenancyId,
-      primaryId: primary.id,
-      loserIds: losers.map((issue) => issue.id),
-      lockedHashes,
-      metadata,
-      now,
-    });
-    if (applied.primaryUpdated !== 1) {
-      throw new StatusError(
-        StatusError.Conflict,
-        "The primary issue changed while the merge was running. Try again.",
-      );
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const now = new Date();
+    const resolvedById = await resolveIssueIds(prisma, tenancyId, requested);
+    const targetIds = [...new Set(resolvedById.values())];
+    if (targetIds.length < 2) {
+      // Repeating a successful merge is a no-op with the same survivor, rather
+      // than an error. This is important for retried dashboard requests and for
+      // a concurrent merge that completed while this request was waiting.
+      const primaryIssueId = targetIds[0] ?? throwNoPrimary(requested);
+      return { primaryIssueId, mergedIssueIds: [] };
     }
 
-    return { primaryIssueId: primary.id, mergedIssueIds: losers.map((issue) => issue.id) };
-  });
+    const preLock = await readIssuesWithHashes(prisma, tenancyId, targetIds);
+    if (preLock.length !== targetIds.length) {
+      const found = new Set(preLock.map((issue) => issue.id));
+      const missing = targetIds.find((id) => !found.has(id));
+      // Cross-tenancy isolation falls out of this: the read is tenancy-scoped,
+      // so another project's issue is indistinguishable from nonexistent one.
+      throw new StatusError(StatusError.NotFound, `Issue ${missing} was not found in this project.`);
+    }
+
+    const lockedHashes = preLock.flatMap((issue) => issue.hashes);
+
+    try {
+      return await withHashLocks(prisma, tenancyId, lockedHashes, now, async () => {
+        // Re-resolve ids and hashes under the committed lease. A merge or
+        // unmerge may have won the race after the pre-lock read; retrying from
+        // the top prevents repointing a hash that no longer belongs to this set.
+        const currentResolvedById = await resolveIssueIds(prisma, tenancyId, requested);
+        const currentTargetIds = [...new Set(currentResolvedById.values())];
+        if (!sameStringSet(currentTargetIds, targetIds)) throw new RetryMerge();
+
+        const issues = await readIssuesWithHashes(prisma, tenancyId, targetIds);
+        if (issues.length !== targetIds.length) throw new RetryMerge();
+        const currentHashes = issues.flatMap((issue) => issue.hashes);
+        if (!sameStringSet(currentHashes, lockedHashes)) throw new RetryMerge();
+
+        const ordered = orderIssuesForMerge(issues);
+        const primary = ordered[0] ?? throwNoPrimary(targetIds);
+        const losers = ordered.slice(1);
+        const metadata = resolveMergedMetadata(ordered);
+
+        const applied = await applyMerge(prisma, {
+          tenancyId,
+          primaryId: primary.id,
+          loserIds: losers.map((issue) => issue.id),
+          lockedHashes,
+          metadata,
+          now,
+        });
+        if (applied.primaryUpdated !== 1) throw new RetryMerge();
+
+        return { primaryIssueId: primary.id, mergedIssueIds: losers.map((issue) => issue.id) };
+      });
+    } catch (error) {
+      if (error instanceof StatusError && error.statusCode === StatusError.Conflict.statusCode) {
+        if (attempt === 2) throw error;
+        // A concurrent retry of the same merge should observe the redirect
+        // written by the winner and become a no-op. Give the short lease holder
+        // one scheduling window to finish before re-reading the issue set;
+        // explicit fresh leases still return 409 after the bounded retries.
+        await new Promise<void>((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
+        continue;
+      }
+      if (!(error instanceof RetryMerge)) throw error;
+      if (attempt === 2) {
+        throw new StatusError(StatusError.Conflict, "The issue set kept changing while the merge was running. Try again.");
+      }
+    }
+  }
+
+  throw new StatusError(StatusError.Conflict, "The merge did not complete.");
 }
 
 function throwNoPrimary(targetIds: readonly string[]): never {
@@ -435,7 +476,15 @@ async function applyMerge(
 ): Promise<MergeCounts> {
   const { tenancyId, primaryId, loserIds, lockedHashes, metadata, now } = options;
   const rows = await prisma.$queryRaw<MergeCounts[]>(Prisma.sql`
-    WITH losers AS (
+    WITH lease AS (
+      SELECT COUNT(*) = ${lockedHashes.length} AS "held"
+      FROM "IssueHash"
+      WHERE "tenancyId" = ${tenancyId}::uuid
+        AND "hash" = ANY(${[...lockedHashes]}::text[])
+        AND "state" = 'LOCKED'::"IssueHashState"
+        AND "lockedAt" = ${now}::timestamptz
+    ),
+    losers AS (
       SELECT "id", "shortId", "timesSeen", "firstSeenAt", "lastSeenAt"
       FROM "Issue"
       WHERE "tenancyId" = ${tenancyId}::uuid AND "id" = ANY(${[...loserIds]}::uuid[])
@@ -456,8 +505,10 @@ async function applyMerge(
           "firstSeenRelease" = ${metadata.firstSeenRelease},
           "lastSeenRelease"  = ${metadata.lastSeenRelease},
           "updatedAt"        = ${now}::timestamptz
-      FROM folded f
-      WHERE i."tenancyId" = ${tenancyId}::uuid AND i."id" = ${primaryId}::uuid
+      FROM folded f, lease l
+      WHERE i."tenancyId" = ${tenancyId}::uuid
+        AND i."id" = ${primaryId}::uuid
+        AND l."held"
       RETURNING i."id"
     ),
     -- Everything below is gated on primary_updated having produced a row -- the
@@ -471,6 +522,8 @@ async function applyMerge(
       SET "issueId" = ${primaryId}::uuid, "state" = NULL, "lockedAt" = NULL
       WHERE h."tenancyId" = ${tenancyId}::uuid
         AND h."hash" = ANY(${[...lockedHashes]}::text[])
+        AND h."state" = 'LOCKED'::"IssueHashState"
+        AND h."lockedAt" = ${now}::timestamptz
         AND EXISTS (SELECT 1 FROM primary_updated)
       RETURNING h."hash"
     ),
@@ -714,7 +767,15 @@ async function applyUnmerge(
 ): Promise<{ id: string, shortId: bigint }> {
   const { tenancyId, source, movedHashes, lockedHashes, timesSeen, firstSeenAt, lastSeenAt, countersTruncatedAt, now } = options;
   const rows = await prisma.$queryRaw<{ id: string, shortId: bigint, reboundHashes: number }[]>(Prisma.sql`
-    WITH counter AS (
+    WITH lease AS (
+      SELECT COUNT(*) = ${lockedHashes.length} AS "held"
+      FROM "IssueHash"
+      WHERE "tenancyId" = ${tenancyId}::uuid
+        AND "hash" = ANY(${[...lockedHashes]}::text[])
+        AND "state" = 'LOCKED'::"IssueHashState"
+        AND "lockedAt" = ${now}::timestamptz
+    ),
+    counter AS (
       INSERT INTO "IssueCounter" ("tenancyId", "nextShortId")
       VALUES (${tenancyId}::uuid, 2::bigint)
       ON CONFLICT ("tenancyId") DO UPDATE
@@ -745,7 +806,8 @@ async function applyUnmerge(
         ${source.serviceName}, ${source.deploymentEnvironmentName},
         ${source.firstSeenRelease}, ${source.lastSeenRelease},
         ${now}::timestamptz
-      FROM counter c
+      FROM counter c, lease l
+      WHERE l."held"
       RETURNING "id", "shortId"
     ),
     rebound AS (
@@ -756,7 +818,10 @@ async function applyUnmerge(
           END,
           "state" = NULL,
           "lockedAt" = NULL
-      WHERE h."tenancyId" = ${tenancyId}::uuid AND h."hash" = ANY(${[...lockedHashes]}::text[])
+      WHERE h."tenancyId" = ${tenancyId}::uuid
+        AND h."hash" = ANY(${[...lockedHashes]}::text[])
+        AND h."state" = 'LOCKED'::"IssueHashState"
+        AND h."lockedAt" = ${now}::timestamptz
       RETURNING h."hash"
     )
     SELECT c."id", c."shortId", (SELECT COUNT(*)::int FROM rebound) AS "reboundHashes"

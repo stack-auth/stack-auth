@@ -794,6 +794,10 @@ export const ERROR_GROUPING_COLUMNS = [
   { name: "issue_hashes", type: "Array(String)", default: "[]" },
   { name: "issue_grouping_config", type: "LowCardinality(String)", default: "''" },
   { name: "issue_variant", type: "LowCardinality(String)", default: "''" },
+  // Ordered primary/secondary hash decisions. This is a String rather than a
+  // dynamic JSON path so fingerprint tokens cannot expand ClickHouse's shared
+  // dynamic-column namespace. Historical rows read back as an empty array.
+  { name: "issue_grouping_provenance", type: "String", default: "'[]'" },
   // 1 when grouping fell back to the deterministic degraded hash. The
   // occurrence is still grouped and still countable; this makes the degraded
   // population measurable (and later reprocessable) instead of invisible.
@@ -805,6 +809,20 @@ export const ERROR_GROUPING_COLUMNS = [
 
 export const ERROR_GROUPING_COLUMN_NAMES = ERROR_GROUPING_COLUMNS.map((column) => column.name);
 
+/**
+ * The canonical bounded ErrorEnvelope is stored as one JSON string rather than
+ * as dynamic ClickHouse JSON subcolumns. Error envelopes contain user-defined
+ * context keys and nested exception/breadcrumb arrays; promoting those keys
+ * into ClickHouse's dynamic-path namespace would make unrelated tenants change
+ * the physical shape of the shared logs table. The typed read contract parses
+ * this projection after the ClickHouse query and applies the public scrubber.
+ */
+export const ERROR_ENVELOPE_COLUMNS = [
+  { name: "error_envelope", type: "String", default: "'{}'" },
+] as const satisfies readonly ClickhouseColumn[];
+
+export const ERROR_ENVELOPE_COLUMN_NAMES = ERROR_ENVELOPE_COLUMNS.map((column) => column.name);
+
 // Logs and error occurrences share one log-shaped physical table. `$log` rows
 // carry the plain event shape; `$error` rows additionally carry the grouping
 // columns above.
@@ -814,7 +832,7 @@ export const ERROR_GROUPING_COLUMN_NAMES = ERROR_GROUPING_COLUMNS.map((column) =
 // each ADD COLUMN after its declared predecessor, so appending is the only
 // placement where a freshly-created table and a table grown by ALTER end up
 // with identical physical column order.
-export const LOGS_COLUMNS = [...EVENTS_COLUMNS, ...ERROR_GROUPING_COLUMNS] as const satisfies readonly ClickhouseColumn[];
+export const LOGS_COLUMNS = [...EVENTS_COLUMNS, ...ERROR_GROUPING_COLUMNS, ...ERROR_ENVELOPE_COLUMNS] as const satisfies readonly ClickhouseColumn[];
 export type LogColumnName = (typeof LOGS_COLUMNS)[number]["name"];
 
 // Bloom filter on the SCALAR `issue_hash` — the column every issue query

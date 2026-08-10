@@ -40,7 +40,7 @@ export const POST = createSmartRouteHandler({
     // the observability app must not be able to mutate issue grouping through a
     // surface it does not have.
     if (auth.tenancy.config.apps.installed["observability"]?.enabled !== true) {
-      throw new KnownErrors.AnalyticsNotEnabled();
+      throw new KnownErrors.ObservabilityNotEnabled();
     }
 
     const { sourceIssueId, newIssueId, countersTruncatedAt } = await unmergeIssue({

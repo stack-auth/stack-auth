@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_GROUPING_CONFIG_ID, GROUPING_CONFIGS, GROUPING_CONFIG_IDS, isGroupingConfigId } from "./grouping-config";
+import {
+  DEFAULT_GROUPING_CONFIG_ID,
+  GROUPING_CONFIGS,
+  GROUPING_CONFIG_IDS,
+  isGroupingConfigId,
+  resolveActiveGroupingConfigId,
+  resolveGroupingConfig,
+} from "./grouping-config";
 
 describe("grouping config registry", () => {
   it("lists exactly the configs it can describe", () => {
@@ -25,6 +32,7 @@ describe("grouping config registry", () => {
     expect([...GROUPING_CONFIG_IDS]).toMatchInlineSnapshot(`
       [
         "hexclave-js:2026-08-01",
+        "hexclave-js:2026-08-06",
       ]
     `);
   });
@@ -33,6 +41,7 @@ describe("grouping config registry", () => {
 describe("isGroupingConfigId", () => {
   it.each([
     ["a known id", "hexclave-js:2026-08-01", true],
+    ["a transition id", "hexclave-js:2026-08-06", true],
     ["a retired-looking id", "hexclave-js:1999-01-01", false],
     ["the empty string", "", false],
     ["a number", 42, false],
@@ -48,5 +57,61 @@ describe("isGroupingConfigId", () => {
     if (!isGroupingConfigId(fromDatabase)) throw new Error("expected the id to narrow");
     // `fromDatabase` is a `GroupingConfigId` here; the lookup compiles without a cast.
     expect(GROUPING_CONFIGS.get(fromDatabase)?.introducedAt).toMatchInlineSnapshot(`"2026-08-01"`);
+  });
+});
+
+describe("resolveActiveGroupingConfigId", () => {
+  it("uses the current default when older projects have no rollout setting", () => {
+    expect(resolveActiveGroupingConfigId(undefined)).toBe(DEFAULT_GROUPING_CONFIG_ID);
+  });
+
+  it("accepts a configured registry id", () => {
+    expect(resolveActiveGroupingConfigId({ activeConfigId: DEFAULT_GROUPING_CONFIG_ID })).toBe(DEFAULT_GROUPING_CONFIG_ID);
+  });
+
+  it("fails closed for a stale or unsupported id", () => {
+    expect(() => resolveActiveGroupingConfigId({ activeConfigId: "hexclave-js:retired" })).toThrow("Unknown active grouping config id");
+  });
+});
+
+describe("resolveGroupingConfig", () => {
+  it("returns explicit provenance for defaults and leaves the readable chain empty", () => {
+    expect(resolveGroupingConfig(undefined)).toEqual({
+      activeConfigId: DEFAULT_GROUPING_CONFIG_ID,
+      readableConfigIds: [],
+      provenance: { active: "default", readable: "default" },
+    });
+  });
+
+  it("resolves readable ids from enabled settings without duplicating the active id", () => {
+    expect(resolveGroupingConfig({
+      activeConfigId: DEFAULT_GROUPING_CONFIG_ID,
+      readableConfigIds: {
+        [DEFAULT_GROUPING_CONFIG_ID]: { enabled: true },
+      },
+    })).toEqual({
+      activeConfigId: DEFAULT_GROUPING_CONFIG_ID,
+      readableConfigIds: [],
+      provenance: { active: "configured", readable: "configured" },
+    });
+  });
+
+  it("fails closed when the readable chain contains an unknown id", () => {
+    expect(() => resolveGroupingConfig({
+      readableConfigIds: { "hexclave-js:retired": { enabled: true } },
+    })).toThrow("Unknown readable grouping config id");
+  });
+
+  it("keeps an explicitly configured historical id readable during a transition", () => {
+    expect(resolveGroupingConfig({
+      activeConfigId: "hexclave-js:2026-08-06",
+      readableConfigIds: {
+        "hexclave-js:2026-08-01": { enabled: true },
+      },
+    })).toEqual({
+      activeConfigId: "hexclave-js:2026-08-06",
+      readableConfigIds: ["hexclave-js:2026-08-01"],
+      provenance: { active: "configured", readable: "configured" },
+    });
   });
 });

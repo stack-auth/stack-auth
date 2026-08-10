@@ -11,8 +11,15 @@ import {
 } from "@hexclave/shared/dist/interface/workflows";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
-import { deterministicWorkflowUuid, enqueueWorkflowEvent } from "./events";
+import {
+  deterministicWorkflowUuid,
+  enqueueWorkflowEvent,
+  enqueueWorkflowRunLifecycleEvent,
+  parseWorkflowRunLifecycleEvent,
+  type WorkflowRunLifecycleTransition,
+} from "./events";
 import { workflowDefinitionMatchesEvent, workflowEventRetryDelayMs } from "./event-processing";
+import { reconcileIssueAlertWorkflowLifecycle } from "../issues/issue-alerts/workflow-status";
 import { invokeWorkflowSandbox } from "./invoke";
 import { listCronOccurrences, MAX_CATCHUP_WINDOW_MS, parseCronExpression } from "./cron";
 import {
@@ -342,6 +349,29 @@ async function createFailedRun(options: {
       VALUES (${options.tenancy.id}::uuid, ${options.runId}::uuid, ${options.workflowId}, ${options.version}, ${options.runKey}, 'FAILED', ${options.event.id}::uuid, ${options.event.type}, ${JSON.stringify(options.triggerPayload)}::jsonb, 'USER', ${options.errorSummary}, NOW(), NOW())
       ON CONFLICT ("tenancyId", "id") DO NOTHING
     `);
+    const lifecycleEvent = await enqueueWorkflowRunLifecycleEvent(tx, {
+      tenancy: options.tenancy,
+      workflowId: options.workflowId,
+      runId: options.runId,
+      workflowVersion: options.version,
+      runKey: options.runKey,
+      triggerEventId: options.event.id,
+      triggerType: options.event.type,
+      transition: {
+        kind: "failure",
+        attempt: 0,
+        retryEpoch: 0,
+        error: options.errorSummary,
+        eventKey: "run-key-failed",
+      },
+    });
+    if (lifecycleEvent === null) {
+      throw new HexclaveAssertionError("Workflow run-key failure lifecycle event could not be persisted", {
+        tenancyId: options.tenancy.id,
+        workflowId: options.workflowId,
+        runId: options.runId,
+      });
+    }
   });
 }
 
@@ -519,6 +549,27 @@ async function processWorkflowEvents(tenancyCache: Map<string, Tenancy | null>, 
     try {
       const tenancy = await getCachedTenancy(event.tenancyId, tenancyCache);
       if (tenancy != null) {
+        const lifecycle = parseWorkflowRunLifecycleEvent(event.type, event.payload);
+        if (lifecycle.status !== "ignored") {
+          if (lifecycle.status === "invalid") {
+            captureError("workflow-run-lifecycle-invalid", new HexclaveAssertionError(lifecycle.reason, {
+              tenancyId: event.tenancyId,
+              eventId: event.id,
+              type: event.type,
+            }));
+          } else {
+            await reconcileIssueAlertWorkflowLifecycle({
+              tenancyId: event.tenancyId,
+              type: lifecycle.type,
+              payload: lifecycle.payload,
+            });
+          }
+          await globalPrismaClient.workflowEvent.update({
+            where: { tenancyId_id: { tenancyId: event.tenancyId, id: event.id } },
+            data: { processedAt: new Date() },
+          });
+          continue;
+        }
         const definitions = await listDefinitionsForTenancy(event.tenancyId, definitionCache);
         let processedEveryDefinition = true;
         for (const definition of definitions) {
@@ -665,18 +716,65 @@ async function recordStepAttempt(options: {
  * lease expired mid-invocation cannot clobber the new claimant's state).
  * Returns whether the transition applied.
  */
-async function transitionRunFromRunningWithClient(client: PrismaClientTransaction, tenancyId: string, runId: string, leaseToken: string, set: Prisma.Sql): Promise<boolean> {
-  const rows = await client.$queryRaw<{ id: string }[]>(Prisma.sql`
+type TransitionedRunRow = {
+  id: string,
+  workflowId: string,
+  version: number,
+  runKey: string | null,
+  triggerEventId: string | null,
+  triggerType: string,
+  wakeAt: Date | null,
+};
+
+async function transitionRunFromRunningWithClient(
+  client: PrismaClientTransaction,
+  tenancyId: string,
+  runId: string,
+  leaseToken: string,
+  set: Prisma.Sql,
+  lifecycle?: WorkflowRunLifecycleTransition,
+): Promise<boolean> {
+  const rows = await client.$queryRaw<TransitionedRunRow[]>(Prisma.sql`
     UPDATE "WorkflowRun"
     SET ${set}, "updatedAt" = NOW()
     WHERE "tenancyId" = ${tenancyId}::uuid AND "id" = ${runId}::uuid AND "state" = 'RUNNING' AND "leaseToken" = ${leaseToken}::uuid
-    RETURNING "id"
+    RETURNING "id", "workflowId", "version", "runKey", "triggerEventId", "triggerType", "wakeAt"
   `);
-  return rows.length > 0;
+  if (rows.length === 0) return false;
+  const transitioned = rows[0];
+  if (lifecycle !== undefined) {
+    const event = await enqueueWorkflowRunLifecycleEvent(client, {
+      tenancy: { id: tenancyId },
+      workflowId: transitioned.workflowId,
+      runId: transitioned.id,
+      workflowVersion: transitioned.version,
+      runKey: transitioned.runKey,
+      triggerEventId: transitioned.triggerEventId,
+      triggerType: transitioned.triggerType,
+      transition: {
+        ...lifecycle,
+        retryAt: lifecycle.retryAt ?? (lifecycle.kind === "retry" ? transitioned.wakeAt : null),
+      },
+    });
+    if (event === null) {
+      throw new HexclaveAssertionError("Workflow run lifecycle event could not be persisted with its run transition", {
+        tenancyId,
+        runId,
+        lifecycle: lifecycle.kind,
+      });
+    }
+  }
+  return true;
 }
 
-async function transitionRunFromRunning(tenancyId: string, runId: string, leaseToken: string, set: Prisma.Sql): Promise<boolean> {
-  return await transitionRunFromRunningWithClient(globalPrismaClient, tenancyId, runId, leaseToken, set);
+async function transitionRunFromRunning(
+  tenancyId: string,
+  runId: string,
+  leaseToken: string,
+  set: Prisma.Sql,
+  lifecycle?: WorkflowRunLifecycleTransition,
+): Promise<boolean> {
+  return await retryTransaction(globalPrismaClient, async (tx) => await transitionRunFromRunningWithClient(tx, tenancyId, runId, leaseToken, set, lifecycle));
 }
 
 /**
@@ -690,8 +788,9 @@ async function transitionRunToTerminalState(options: {
   leaseToken: string,
   set: Prisma.Sql,
   run: { id: string, workflowId: string, runKey: string | null, version: number, triggerType: string },
+  lifecycle?: WorkflowRunLifecycleTransition,
 }): Promise<boolean> {
-  return await transitionRunFromRunning(options.tenancy.id, options.run.id, options.leaseToken, options.set);
+  return await transitionRunFromRunning(options.tenancy.id, options.run.id, options.leaseToken, options.set, options.lifecycle);
 }
 
 async function recordCompletedSleepsAtomically(options: {
@@ -699,6 +798,7 @@ async function recordCompletedSleepsAtomically(options: {
   run: ClaimedRunRow,
   version: number,
   sleeps: { stepKey: string, stepId: string, untilMillis: number }[],
+  lifecycle?: WorkflowRunLifecycleTransition,
 }): Promise<{ continued: boolean, memoTotalBytes: number }> {
   if (options.sleeps.length === 0) {
     return { continued: true, memoTotalBytes: options.run.memoTotalBytes };
@@ -750,7 +850,12 @@ async function recordCompletedSleepsAtomically(options: {
     const memoTotalBytes = options.run.memoTotalBytes + insertedBytes;
     if (memoTotalBytes > WORKFLOW_RUN_MEMO_MAX_BYTES) {
       const summary = `Total memoized state would reach ${memoTotalBytes} bytes, exceeding the ${WORKFLOW_RUN_MEMO_MAX_BYTES}-byte (4 MiB) per-run limit. Store large payloads externally and keep step results small.`;
-      const failed = await transitionRunFromRunningWithClient(tx, options.run.tenancyId, options.run.id, options.run.leaseToken, Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'USER', "errorSummary" = ${summary}`);
+      await transitionRunFromRunningWithClient(tx, options.run.tenancyId, options.run.id, options.run.leaseToken, Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'USER', "errorSummary" = ${summary}`, options.lifecycle ?? {
+        kind: "failure",
+        attempt: options.run.currentStepAttempt + 1,
+        retryEpoch: options.run.retryEpoch,
+        error: summary,
+      });
       return { continued: false, memoTotalBytes: options.run.memoTotalBytes };
     }
 
@@ -782,6 +887,13 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
       leaseToken: run.leaseToken,
       set: Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'PLATFORM', "errorSummary" = ${GENERIC_PLATFORM_ERROR_SUMMARY}`,
       run: { id: run.id, workflowId: run.workflowId, runKey: run.runKey, version: run.version, triggerType: run.triggerType },
+      lifecycle: {
+        kind: "failure",
+        attempt: run.currentStepAttempt + 1,
+        retryEpoch: run.retryEpoch,
+        error: GENERIC_PLATFORM_ERROR_SUMMARY,
+        eventKey: "version-missing",
+      },
     });
     return;
   }
@@ -950,9 +1062,16 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
           leaseToken: run.leaseToken,
           set: Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'PLATFORM', "errorSummary" = ${GENERIC_PLATFORM_ERROR_SUMMARY}, "currentStepAttempt" = ${attempt}`,
           run: lifecycleRun,
+          lifecycle: { kind: "failure", attempt, retryEpoch: run.retryEpoch, error: GENERIC_PLATFORM_ERROR_SUMMARY },
         });
       } else {
-        await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'QUEUED', "wakeAt" = NOW() + make_interval(secs => ${jitteredBackoffMs(attempt) / 1000}), "leaseUntil" = NULL, "currentStepAttempt" = ${attempt}`);
+        await transitionRunFromRunning(
+          run.tenancyId,
+          run.id,
+          run.leaseToken,
+          Prisma.sql`"state" = 'QUEUED', "wakeAt" = NOW() + make_interval(secs => ${jitteredBackoffMs(attempt) / 1000}), "leaseUntil" = NULL, "currentStepAttempt" = ${attempt}`,
+          { kind: "retry", attempt, retryEpoch: run.retryEpoch, error: GENERIC_PLATFORM_ERROR_SUMMARY },
+        );
       }
       return;
     }
@@ -980,6 +1099,7 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
             leaseToken: run.leaseToken,
             set: Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'USER', "errorSummary" = ${summary}, "currentStepKey" = ${outcome.stepKey}`,
             run: lifecycleRun,
+            lifecycle: { kind: "failure", attempt: currentStepAttempt + 1, retryEpoch: run.retryEpoch, error: summary },
           });
           return;
         }
@@ -990,6 +1110,7 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
             leaseToken: run.leaseToken,
             set: Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'USER', "errorSummary" = ${summary}, "currentStepKey" = ${outcome.stepKey}`,
             run: lifecycleRun,
+            lifecycle: { kind: "failure", attempt: currentStepAttempt + 1, retryEpoch: run.retryEpoch, error: summary },
           });
           return;
         }
@@ -1045,6 +1166,7 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
             leaseToken: run.leaseToken,
             set: Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'USER', "errorSummary" = ${summary}, "currentStepKey" = ${outcome.stepKey}`,
             run: lifecycleRun,
+            lifecycle: { kind: "failure", attempt: currentStepAttempt + 1, retryEpoch: run.retryEpoch, error: summary },
           });
           return;
         }
@@ -1083,6 +1205,7 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
           leaseToken: run.leaseToken,
           set: Prisma.sql`"state" = 'COMPLETED', "completedAt" = NOW(), "leaseUntil" = NULL, "wakeAt" = NULL, "currentStepKey" = NULL, "memoTotalBytes" = ${run.memoTotalBytes}`,
           run: lifecycleRun,
+          lifecycle: { kind: "success", attempt: currentStepAttempt + 1, retryEpoch: run.retryEpoch, eventKey: "completed" },
         });
         return;
       }
@@ -1111,9 +1234,16 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
             leaseToken: run.leaseToken,
             set: Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'USER', "errorSummary" = ${summary}, "currentStepAttempt" = ${attempt}, "currentStepKey" = ${stepKey}, "memoTotalBytes" = ${run.memoTotalBytes}`,
             run: lifecycleRun,
+            lifecycle: { kind: "failure", attempt, retryEpoch: run.retryEpoch, error: summary },
           });
         } else {
-          await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'QUEUED', "wakeAt" = NOW() + make_interval(secs => ${jitteredBackoffMs(attempt) / 1000}), "leaseUntil" = NULL, "currentStepAttempt" = ${attempt}, "currentStepKey" = ${stepKey}, "memoTotalBytes" = ${run.memoTotalBytes}`);
+          await transitionRunFromRunning(
+            run.tenancyId,
+            run.id,
+            run.leaseToken,
+            Prisma.sql`"state" = 'QUEUED', "wakeAt" = NOW() + make_interval(secs => ${jitteredBackoffMs(attempt) / 1000}), "leaseUntil" = NULL, "currentStepAttempt" = ${attempt}, "currentStepKey" = ${stepKey}, "memoTotalBytes" = ${run.memoTotalBytes}`,
+            { kind: "retry", attempt, retryEpoch: run.retryEpoch, error: `${outcome.error.name}: ${outcome.error.message}` },
+          );
         }
         return;
       }
@@ -1139,7 +1269,13 @@ async function executeDueRuns(tenancyCache: Map<string, Tenancy | null>, deadlin
       if (tenancy == null) {
         // A deleted tenancy normally cascades the row before this can run;
         // retain the guarded cleanup for an in-flight stale claim.
-        await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'CANCELED', "completedAt" = NOW(), "leaseUntil" = NULL`);
+        await transitionRunFromRunning(
+          run.tenancyId,
+          run.id,
+          run.leaseToken,
+          Prisma.sql`"state" = 'CANCELED', "completedAt" = NOW(), "leaseUntil" = NULL`,
+          { kind: "cancel", attempt: run.currentStepAttempt, retryEpoch: run.retryEpoch, eventKey: "deleted-tenancy" },
+        );
         return;
       }
       await executeClaimedRun(run, tenancy, deadlineMs);
@@ -1166,7 +1302,16 @@ export async function cancelWorkflowRuns(tenancy: Tenancy, filter: { workflowId:
   const runIdFilter = filter.runId != null ? Prisma.sql`AND "id" = ${filter.runId}::uuid` : Prisma.empty;
   const versionFilter = filter.version != null ? Prisma.sql`AND "version" = ${filter.version}` : Prisma.empty;
   const rows = await retryTransaction(globalPrismaClient, async (tx) => {
-    const canceled = await tx.$queryRaw<{ id: string, runKey: string | null, version: number, triggerType: string }[]>(Prisma.sql`
+    const canceled = await tx.$queryRaw<{
+      id: string,
+      workflowId: string,
+      runKey: string | null,
+      version: number,
+      triggerEventId: string | null,
+      triggerType: string,
+      currentStepAttempt: number,
+      retryEpoch: number,
+    }[]>(Prisma.sql`
       UPDATE "WorkflowRun"
       SET "state" = 'CANCELED', "completedAt" = NOW(), "wakeAt" = NULL, "leaseUntil" = NULL, "updatedAt" = NOW()
       WHERE "tenancyId" = ${tenancy.id}::uuid
@@ -1176,8 +1321,32 @@ export async function cancelWorkflowRuns(tenancy: Tenancy, filter: { workflowId:
         ${runKeyFilter}
         ${runIdFilter}
         ${versionFilter}
-      RETURNING "id", "runKey", "version", "triggerType"
+      RETURNING "id", "workflowId", "runKey", "version", "triggerEventId", "triggerType", "currentStepAttempt", "retryEpoch"
     `);
+    for (const run of canceled) {
+      const lifecycleEvent = await enqueueWorkflowRunLifecycleEvent(tx, {
+        tenancy,
+        workflowId: run.workflowId,
+        runId: run.id,
+        workflowVersion: run.version,
+        runKey: run.runKey,
+        triggerEventId: run.triggerEventId,
+        triggerType: run.triggerType,
+        transition: {
+          kind: "cancel",
+          attempt: run.currentStepAttempt,
+          retryEpoch: run.retryEpoch,
+          eventKey: "cancel",
+        },
+      });
+      if (lifecycleEvent === null) {
+        throw new HexclaveAssertionError("Workflow run cancellation lifecycle event could not be persisted", {
+          tenancyId: tenancy.id,
+          workflowId: run.workflowId,
+          runId: run.id,
+        });
+      }
+    }
     return canceled;
   });
   return { canceledCount: rows.length };
@@ -1370,17 +1539,54 @@ export async function retryFailedWorkflowRun(tenancy: Tenancy, runId: string): P
   // been taken by a NEWER active run — flipping to QUEUED would set the
   // generated isActive column and violate the active-run uniqueness index
   // with an unhandled 500 instead of a clean error.
-  const rows = await globalPrismaClient.$queryRaw<{ id: string }[]>(Prisma.sql`
-    UPDATE "WorkflowRun" r
-    SET "state" = 'QUEUED', "wakeAt" = NOW(), "currentStepAttempt" = 0, "retryEpoch" = r."retryEpoch" + 1, "failureKind" = NULL, "errorSummary" = NULL, "completedAt" = NULL, "updatedAt" = NOW()
-    WHERE r."tenancyId" = ${tenancy.id}::uuid AND r."id" = ${runId}::uuid AND r."state" = 'FAILED'
-      AND NOT EXISTS (
-        SELECT 1 FROM "WorkflowRun" other
-        WHERE other."tenancyId" = r."tenancyId" AND other."workflowId" = r."workflowId"
-          AND other."runKey" = r."runKey" AND other."isActive" = TRUE
-      )
-    RETURNING "id"
-  `);
+  const rows = await retryTransaction(globalPrismaClient, async (tx) => {
+    const retried = await tx.$queryRaw<{
+      id: string,
+      workflowId: string,
+      runKey: string | null,
+      version: number,
+      triggerEventId: string | null,
+      triggerType: string,
+      wakeAt: Date | null,
+      retryEpoch: number,
+    }[]>(Prisma.sql`
+      UPDATE "WorkflowRun" r
+      SET "state" = 'QUEUED', "wakeAt" = NOW(), "currentStepAttempt" = 0, "retryEpoch" = r."retryEpoch" + 1, "failureKind" = NULL, "errorSummary" = NULL, "completedAt" = NULL, "updatedAt" = NOW()
+      WHERE r."tenancyId" = ${tenancy.id}::uuid AND r."id" = ${runId}::uuid AND r."state" = 'FAILED'
+        AND NOT EXISTS (
+          SELECT 1 FROM "WorkflowRun" other
+          WHERE other."tenancyId" = r."tenancyId" AND other."workflowId" = r."workflowId"
+            AND other."runKey" = r."runKey" AND other."isActive" = TRUE
+        )
+      RETURNING "id", "workflowId", "runKey", "version", "triggerEventId", "triggerType", "wakeAt", "retryEpoch"
+    `);
+    for (const run of retried) {
+      const lifecycleEvent = await enqueueWorkflowRunLifecycleEvent(tx, {
+        tenancy,
+        workflowId: run.workflowId,
+        runId: run.id,
+        workflowVersion: run.version,
+        runKey: run.runKey,
+        triggerEventId: run.triggerEventId,
+        triggerType: run.triggerType,
+        transition: {
+          kind: "retry",
+          attempt: 0,
+          retryEpoch: run.retryEpoch,
+          retryAt: run.wakeAt,
+          eventKey: `manual-retry:${run.retryEpoch}`,
+        },
+      });
+      if (lifecycleEvent === null) {
+        throw new HexclaveAssertionError("Workflow run retry lifecycle event could not be persisted", {
+          tenancyId: tenancy.id,
+          workflowId: run.workflowId,
+          runId: run.id,
+        });
+      }
+    }
+    return retried;
+  });
   return rows.length > 0;
 }
 

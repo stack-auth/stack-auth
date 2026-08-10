@@ -14,4 +14,37 @@ export {
   KnownError,
   KnownErrors
 } from "./known-errors";
-
+export {
+  ERROR_ENVELOPE_LIMITS,
+  ERROR_ENVELOPE_SCHEMA,
+  ERROR_ENVELOPE_VERSION,
+  adaptLegacyErrorEvent,
+  adaptOtlpErrorLogRecord,
+  deriveErrorEnvelopeEventId,
+  normalizeErrorEnvelope,
+} from "./utils/error-envelope";
+export type {
+  ErrorEnvelopeAttachment,
+  ErrorEnvelopeBreadcrumb,
+  ErrorEnvelopeCorrelation,
+  ErrorEnvelopeDebugImage,
+  ErrorEnvelopeDebugMeta,
+  ErrorEnvelopeExceptionValue,
+  ErrorEnvelopeInput,
+  ErrorEnvelopeItemMetadata,
+  ErrorEnvelopeKind,
+  ErrorEnvelopeLevel,
+  ErrorEnvelopeLimits,
+  ErrorEnvelopeMechanism,
+  ErrorEnvelopeNormalization,
+  ErrorEnvelopeNormalizationOptions,
+  ErrorEnvelopeRequest,
+  ErrorEnvelopeRuntime,
+  ErrorEnvelopeSdk,
+  ErrorEnvelopeStackFrame,
+  ErrorEnvelopeStacktrace,
+  ErrorEnvelopeUser,
+  ErrorEnvelopeV1,
+  LegacyErrorEventInput,
+  OtlpErrorLogRecordInput,
+} from "./utils/error-envelope";

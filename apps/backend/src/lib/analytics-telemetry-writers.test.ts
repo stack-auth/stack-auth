@@ -64,6 +64,98 @@ describe("SDK ingest insert rows vs. ClickHouse column declarations", () => {
   });
 });
 
+describe("error grouping normalization", () => {
+  it("uses the server-side override and ignores the flat local deduplication fingerprint", () => {
+    const baseData = {
+      name: "TypeError",
+      message: "row is null",
+      stack: [
+        "TypeError: row is null",
+        "    at renderRow (https://app.example.com/static/js/table.js:42:9)",
+      ].join("\n"),
+    };
+    const defaultGrouping = normalizeBatchEvents([{
+      event_type: "$error",
+      event_at_ms: 1_700_000_000_000,
+      data: baseData,
+    }], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID);
+    const localFingerprintOnly = normalizeBatchEvents([{
+      event_type: "$error",
+      event_at_ms: 1_700_000_000_000,
+      data: { ...baseData, fingerprint: "sdk-local-dedupe-key" },
+    }], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID);
+    const customGrouping = normalizeBatchEvents([{
+      event_type: "$error",
+      event_at_ms: 1_700_000_000_000,
+      data: { ...baseData, fingerprint_override: ["{{ type }}"], synthetic: 1 },
+    }], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID);
+
+    expect(localFingerprintOnly.issueInputs[0]?.ownerHash).toBe(defaultGrouping.issueInputs[0]?.ownerHash);
+    expect(customGrouping.issueInputs[0]?.ownerHash).not.toBe(defaultGrouping.issueInputs[0]?.ownerHash);
+    expect(customGrouping.issueInputs[0]?.synthetic).toBe(true);
+    expect(customGrouping.logOccurrences[0]).toMatchObject({ issue_variant: "custom" });
+  });
+
+  it("persists the bounded canonical envelope without request secrets", () => {
+    const normalized = normalizeBatchEvents([{
+      event_type: "$error",
+      event_at_ms: 1_700_000_000_000,
+      data: {
+        event_id: "0123456789abcdef0123456789abcdef",
+        name: "TypeError",
+        message: "row is null",
+        handled: true,
+        exception: {
+          values: [{
+            type: "TypeError",
+            value: "row is null",
+            stacktrace: { frames: [{ filename: "src/table.ts", lineno: 42, colno: 9 }] },
+          }],
+        },
+        breadcrumbs: [{ category: "http", data: { url: "https://example.test/items?token=secret" } }],
+        request: { url: "https://example.test/items?token=secret", headers: { authorization: "Bearer secret" } },
+      },
+    }], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID);
+
+    const envelope = JSON.parse(normalized.logOccurrences[0]?.error_envelope ?? "{}");
+    expect(envelope).toMatchObject({
+      schema: "hexclave.error-envelope",
+      version: 1,
+      event_id: "0123456789abcdef0123456789abcdef",
+      exception: { values: [{ type: "TypeError", value: "row is null" }] },
+    });
+    expect(envelope.request).toEqual({ url: "https://example.test/items" });
+    expect(envelope.breadcrumbs[0].data).toEqual({ url: "https://example.test/items" });
+    expect(normalized.logOccurrences[0]).toMatchObject({ error_envelope: expect.any(String) });
+  });
+
+  it("keeps one manual-capture identity coherent across envelope, occurrence and issue projections", () => {
+    const eventId = "0123456789abcdef0123456789abcdef";
+    const normalized = normalizeBatchEvents([{
+      event_type: "$error",
+      event_at_ms: 1_700_000_000_000,
+      data: {
+        event_id: eventId,
+        name: "TypeError",
+        message: "render failed",
+        handled: false,
+        release: "web@2026.08.06",
+      },
+    }], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID);
+    const occurrence = normalized.logOccurrences[0];
+    const issueInput = normalized.issueInputs[0];
+
+    expect(JSON.parse(occurrence.error_envelope).event_id).toBe(eventId);
+    expect(occurrence.occurrence_id).toBe(issueInput.occurrenceId);
+    expect(issueInput).toMatchObject({
+      value: "render failed",
+      release: "web@2026.08.06",
+      handled: false,
+      count: 1,
+    });
+  });
+});
+
 describe("analytics telemetry storage dispatch", () => {
   it("keeps product events out of observability logs", () => {
     for (const eventType of ["checkout.completed", "$click", "$form-submit"]) {

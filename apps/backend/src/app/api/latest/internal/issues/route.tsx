@@ -85,7 +85,7 @@ export const GET = createSmartRouteHandler({
     // the dashboard) keeps a project that never enabled it from paying for the
     // ClickHouse round trip at all.
     if (tenancy.config.apps.installed["observability"]?.enabled !== true) {
-      throw new KnownErrors.AnalyticsNotEnabled();
+      throw new KnownErrors.ObservabilityNotEnabled();
     }
 
     const filters: IssueListFilters = {

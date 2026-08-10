@@ -1,18 +1,22 @@
 import type { Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Prisma } from "@/generated/prisma/client";
 import type { IssueMaterializationInput } from "../analytics-telemetry-writers";
 import { emitIssueWebhooks } from "./issue-webhooks";
+import { dispatchIssueAlertsForMaterialization } from "./issue-alerts/ingestion";
+import { randomUUID } from "node:crypto";
+import { toDurableGroupingProvenance } from "./grouping-provenance";
+import type { GroupingHashProvenance } from "./types";
 
 /**
  * Turns a batch's grouped `$error` occurrences into persistent Issue records.
  *
- * ── Why this is not a Prisma transaction ──────────────────────────────────
- * `retryTransaction` is deprecated in this codebase ("Prisma transactions are
- * slow and lock the database. Use rawQuery with CTEs instead"). Everything
- * below is raw SQL, and the one place that genuinely needs atomicity gets it
- * from a single statement with a CTE rather than from a transaction.
+ * ── Transaction boundary ─────────────────────────────────────────────────
+ * The statements below are raw SQL. First-sighting allocation and the
+ * lock/claim sequence need a short retrying transaction because they span
+ * multiple statements; the repo's `retryTransaction` wrapper keeps transient
+ * serialization failures from turning into duplicate issues or lost batches.
  *
  * ── The exactly-once story ────────────────────────────────────────────────
  * This runs off the request path, so it must survive being run twice (a
@@ -23,8 +27,8 @@ import { emitIssueWebhooks } from "./issue-webhooks";
  *   Step 1  Ensure an Issue + IssueHash exists for every owning hash.
  *           Idempotent by construction (`ON CONFLICT DO NOTHING` on the hash
  *           primary key, which is also the first-sighting race arbiter).
- *           Crashing here leaves an Issue with zero counters, which the next
- *           occurrence or the reconciler corrects — it never double-counts.
+ *           Losing first-sighting candidates are deleted before this function
+ *           returns, so a race cannot expose an Issue with no owning hash.
  *
  *   Step 2  ONE statement: claim the batch in the ledger and apply the counter
  *           deltas, with the update gated on the claim having succeeded. Both
@@ -35,7 +39,9 @@ import { emitIssueWebhooks } from "./issue-webhooks";
  * Ordering matters: creation before the claim, counters inside it. Doing
  * creation inside the claim would make a crash mid-way leave a claimed batch
  * with no issues at all, which the reconciler could not distinguish from a
- * fully-applied one.
+ * fully-applied one. A candidate issue is bound to its owner hash before
+ * aliases are inserted; this prevents a losing concurrent candidate from
+ * surviving through an alias.
  */
 
 export type IssueMaterializationOutcome = {
@@ -58,6 +64,90 @@ type IssueDelta = {
   serviceName: string | null,
 };
 
+type PendingIssue = {
+  id: string,
+  input: IssueMaterializationInput,
+};
+
+type IssueHashRole = "primary" | "secondary";
+
+type StoredIssueHashValues = {
+  hash: string,
+  issueId: string,
+  groupingConfigId: string,
+  groupingRole: "PRIMARY" | "SECONDARY" | null,
+  groupingVariant: string | null,
+  groupingProvenance: ReturnType<typeof toDurableGroupingProvenance> | null,
+};
+
+/**
+ * Selects the decision records for one stored hash. A hash can be observed
+ * under more than one config during a transition, so the JSON column retains
+ * every matching observation while the direct columns expose the first one for
+ * cheap issue/hash reads. Materialization inputs from canonical ingest include
+ * provenance; older reconciliation callers may omit it, in which case the new
+ * nullable columns remain null instead of storing an invented decision.
+ */
+function issueHashValues(
+  input: IssueMaterializationInput,
+  hash: string,
+  role: IssueHashRole,
+  issueId: string,
+): StoredIssueHashValues {
+  const matching = input.groupingProvenance?.filter((entry) => entry.hash === hash && entry.role === role) ?? [];
+  const first = matching.at(0);
+  if (first === undefined) {
+    if (input.groupingProvenance !== undefined) {
+      throw new Error(`Missing ${role} grouping provenance for hash ${JSON.stringify(hash)}`);
+    }
+    return {
+      hash,
+      issueId,
+      groupingConfigId: input.groupingConfigId,
+      groupingRole: null,
+      groupingVariant: null,
+      groupingProvenance: null,
+    };
+  }
+  const observedConfigId = String(first.configId);
+  const expectedConfigId = String(input.groupingConfigId);
+  if (role === "primary" && observedConfigId !== expectedConfigId) {
+    throw new Error(`Primary grouping provenance config does not match ${JSON.stringify(input.groupingConfigId)}`);
+  }
+
+  return {
+    hash,
+    issueId,
+    groupingConfigId: first.configId,
+    groupingRole: role === "primary" ? "PRIMARY" : "SECONDARY",
+    groupingVariant: first.variant,
+    groupingProvenance: toDurableGroupingProvenance(matching),
+  };
+}
+
+/**
+ * One materialization input is allowed per owning hash. The normalizer already
+ * coalesces a batch this way, but keeping the invariant at the persistence
+ * boundary prevents a malformed or future ingestion path from allocating two
+ * short ids for the same first sighting and then leaving one candidate orphaned.
+ */
+export function deduplicateIssueMaterializationInputs(
+  inputs: readonly IssueMaterializationInput[],
+): IssueMaterializationInput[] {
+  const byOwnerHash = new Map<string, IssueMaterializationInput>();
+  for (const input of inputs) {
+    if (!byOwnerHash.has(input.ownerHash)) byOwnerHash.set(input.ownerHash, input);
+  }
+  return [...byOwnerHash.values()];
+}
+
+/** A locked hash defers the complete ledger batch, never just one delta. */
+export function shouldDeferIssueMaterialization(
+  rows: readonly { state: string | null }[],
+): boolean {
+  return rows.some((row) => row.state !== null);
+}
+
 /**
  * Resolves owning hashes to issues, creating any that don't exist yet.
  *
@@ -74,98 +164,151 @@ async function resolveOrCreateIssues(
   inputs: readonly IssueMaterializationInput[],
   receivedAt: Date,
 ): Promise<Map<string, { issueId: string, shortId: bigint, isNew: boolean }>> {
-  const resolved = new Map<string, { issueId: string, shortId: bigint, isNew: boolean }>();
-  const ownerHashes = inputs.map((input) => input.ownerHash);
+  return await retryTransaction(prisma, async (tx) => {
+    const resolved = new Map<string, { issueId: string, shortId: bigint, isNew: boolean }>();
+    const uniqueInputs = deduplicateIssueMaterializationInputs(inputs);
+    const ownerHashes = uniqueInputs.map((input) => input.ownerHash);
 
-  const existing = await prisma.$queryRaw<{ hash: string, issueId: string, shortId: bigint, state: string | null }[]>`
-    SELECT h."hash", h."issueId", i."shortId", h."state"::text AS "state"
-    FROM "IssueHash" h
-    JOIN "Issue" i ON i."tenancyId" = h."tenancyId" AND i."id" = h."issueId"
-    WHERE h."tenancyId" = ${tenancyId}::uuid AND h."hash" = ANY(${ownerHashes}::text[])
-  `;
-  for (const row of existing) {
-    if (row.state !== null) continue; // LOCKED — see the doc comment above.
-    resolved.set(row.hash, { issueId: row.issueId, shortId: row.shortId, isNew: false });
-  }
-
-  const missing = inputs.filter((input) => !resolved.has(input.ownerHash));
-  if (missing.length === 0) return resolved;
-
-  // Reserve a contiguous block of short ids in ONE statement, so the counter
-  // row is locked once per batch rather than once per issue. A batch that then
-  // fails burns its range; gaps are accepted and documented, because the
-  // alternative (allocating lazily per insert) reintroduces per-issue
-  // contention on a single hot row.
-  const [{ firstShortId }] = await prisma.$queryRaw<{ firstShortId: bigint }[]>`
-    INSERT INTO "IssueCounter" ("tenancyId", "nextShortId")
-    VALUES (${tenancyId}::uuid, ${missing.length + 1}::bigint)
-    ON CONFLICT ("tenancyId") DO UPDATE
-      SET "nextShortId" = "IssueCounter"."nextShortId" + ${missing.length}::bigint
-    RETURNING "nextShortId" - ${missing.length}::bigint AS "firstShortId"
-  `;
-
-  const created = await prisma.$queryRaw<{ id: string, shortId: bigint }[]>(buildIssueInsertSql(
-    tenancyId,
-    missing,
-    firstShortId,
-    receivedAt,
-  ));
-
-  // Bind each owning hash to its issue. `ON CONFLICT DO NOTHING` on the hash
-  // primary key is the concurrency control: if a concurrent batch created the
-  // same issue first, its row wins and ours is discarded.
-  const hashValues = missing.flatMap((input, index) => {
-    const issue = created[index] as { id: string } | undefined;
-    if (issue === undefined) return [];
-    return [input.ownerHash, ...input.aliasHashes].map((hash) => ({
-      hash,
-      issueId: issue.id,
-      groupingConfigId: input.groupingConfigId,
-    }));
-  });
-  if (hashValues.length > 0) {
-    await prisma.$executeRaw`
-      INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId")
-      SELECT ${tenancyId}::uuid, v."hash", v."issueId"::uuid, v."groupingConfigId"
-      FROM jsonb_to_recordset(${JSON.stringify(hashValues)}::jsonb)
-        AS v("hash" text, "issueId" text, "groupingConfigId" text)
-      ON CONFLICT ("tenancyId", "hash") DO NOTHING
+    const existing = await tx.$queryRaw<{ hash: string, issueId: string, shortId: bigint, state: string | null }[]>`
+      SELECT h."hash", h."issueId", i."shortId", h."state"::text AS "state"
+      FROM "IssueHash" h
+      JOIN "Issue" i ON i."tenancyId" = h."tenancyId" AND i."id" = h."issueId"
+      WHERE h."tenancyId" = ${tenancyId}::uuid AND h."hash" = ANY(${ownerHashes}::text[])
     `;
-  }
+    for (const row of existing) {
+      if (row.state !== null) continue; // LOCKED — see the doc comment above.
+      resolved.set(row.hash, { issueId: row.issueId, shortId: row.shortId, isNew: false });
+    }
 
-  // Re-read so a hash the race lost binds to the WINNER's issue, not to the
-  // orphan we just inserted. Without this, two concurrent first-sightings would
-  // each count into a different issue and the user would see a duplicate.
-  const rebound = await prisma.$queryRaw<{ hash: string, issueId: string, shortId: bigint }[]>`
-    SELECT h."hash", h."issueId", i."shortId"
-    FROM "IssueHash" h
-    JOIN "Issue" i ON i."tenancyId" = h."tenancyId" AND i."id" = h."issueId"
-    WHERE h."tenancyId" = ${tenancyId}::uuid
-      AND h."hash" = ANY(${missing.map((m) => m.ownerHash)}::text[])
-      AND h."state" IS NULL
-  `;
-  const createdIds = new Set(created.map((c) => c.id));
-  for (const row of rebound) {
-    resolved.set(row.hash, {
-      issueId: row.issueId,
-      shortId: row.shortId,
-      // Only genuinely new if OUR insert is the one that survived; otherwise a
-      // concurrent batch already emitted `issue.created` for it.
-      isNew: createdIds.has(row.issueId),
+    // A materialization batch is the unit of ledger idempotency. Claiming it while
+    // even one owner hash is locked would permanently discard that hash when the
+    // caller returns: the next retry would see the batch already applied. Do not
+    // create candidates for the other hashes either; the whole batch is retried
+    // after the merge/unmerge lease clears.
+    if (shouldDeferIssueMaterialization(existing)) return new Map();
+
+    const missing: PendingIssue[] = uniqueInputs
+      .filter((input) => !resolved.has(input.ownerHash))
+      .map((input) => ({ id: randomUUID(), input }));
+    if (missing.length === 0) return resolved;
+
+    // Reserve a contiguous block of short ids in ONE statement, so the counter
+    // row is locked once per batch rather than once per issue. A batch that then
+    // fails burns its range; gaps are accepted and documented, because the
+    // alternative (allocating lazily per insert) reintroduces per-issue
+    // contention on a single hot row.
+    const [{ firstShortId }] = await tx.$queryRaw<{ firstShortId: bigint }[]>`
+      INSERT INTO "IssueCounter" ("tenancyId", "nextShortId")
+      VALUES (${tenancyId}::uuid, ${missing.length + 1}::bigint)
+      ON CONFLICT ("tenancyId") DO UPDATE
+        SET "nextShortId" = "IssueCounter"."nextShortId" + ${missing.length}::bigint
+      RETURNING "nextShortId" - ${missing.length}::bigint AS "firstShortId"
+    `;
+
+    const created = await tx.$queryRaw<{ id: string, shortId: bigint }[]>(buildIssueInsertSql(
+      tenancyId,
+      missing,
+      firstShortId,
+      receivedAt,
+    ));
+
+    // Bind ONLY each owning hash first. `ON CONFLICT DO NOTHING` on the hash
+    // primary key is the concurrency control: if a concurrent batch created the
+    // same issue first, its row wins and ours is discarded. Aliases are delayed
+    // until after the owner winner is known; otherwise an alias that happened to
+    // be unique could keep a losing candidate Issue visible with no owner hash.
+    const ownerHashValues = missing.map(({ id, input }) => issueHashValues(input, input.ownerHash, "primary", id));
+    if (ownerHashValues.length > 0) {
+      await tx.$executeRaw`
+        INSERT INTO "IssueHash" (
+          "tenancyId", "hash", "issueId", "groupingConfigId", "groupingRole", "groupingVariant", "groupingProvenance"
+        )
+        SELECT
+          ${tenancyId}::uuid, v."hash", v."issueId"::uuid, v."groupingConfigId",
+          v."groupingRole"::"IssueHashGroupingRole", v."groupingVariant", v."groupingProvenance"
+        FROM jsonb_to_recordset(${JSON.stringify(ownerHashValues)}::jsonb)
+          AS v(
+            "hash" text, "issueId" text, "groupingConfigId" text,
+            "groupingRole" text, "groupingVariant" text, "groupingProvenance" jsonb
+          )
+        ON CONFLICT ("tenancyId", "hash") DO NOTHING
+      `;
+    }
+
+    // Re-read so a hash the race lost binds to the WINNER's issue, not to the
+    // orphan we just inserted. Without this, two concurrent first-sightings would
+    // each count into a different issue and the user would see a duplicate.
+    const rebound = await tx.$queryRaw<{ hash: string, issueId: string, shortId: bigint }[]>`
+      SELECT h."hash", h."issueId", i."shortId"
+      FROM "IssueHash" h
+      JOIN "Issue" i ON i."tenancyId" = h."tenancyId" AND i."id" = h."issueId"
+      WHERE h."tenancyId" = ${tenancyId}::uuid
+        AND h."hash" = ANY(${missing.map((candidate) => candidate.input.ownerHash)}::text[])
+        AND h."state" IS NULL
+    `;
+    const createdIds = new Set(created.map((candidate) => candidate.id));
+
+    // The owner-hash insert is the race arbiter. Candidates that lost it are not
+    // addressable by any materializer and must be removed in the same retry
+    // window; leaving them behind makes the issue list show zero-count orphan
+    // issues forever. The NOT EXISTS guard preserves a candidate if a future
+    // aliasing operation has already attached a hash to it.
+    await tx.$executeRaw`
+      DELETE FROM "Issue" i
+      WHERE i."tenancyId" = ${tenancyId}::uuid
+        AND i."id" = ANY(${[...createdIds]}::uuid[])
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "IssueHash" h
+          WHERE h."tenancyId" = i."tenancyId" AND h."issueId" = i."id"
+        )
+    `;
+
+    const pendingByOwnerHash = new Map(missing.map((candidate) => [candidate.input.ownerHash, candidate]));
+    const aliasHashValues = rebound.flatMap((row) => {
+      const candidate = pendingByOwnerHash.get(row.hash);
+      if (candidate === undefined || row.issueId !== candidate.id) return [];
+      return candidate.input.aliasHashes.map((hash) => issueHashValues(candidate.input, hash, "secondary", candidate.id));
     });
-  }
+    if (aliasHashValues.length > 0) {
+      await tx.$executeRaw`
+        INSERT INTO "IssueHash" (
+          "tenancyId", "hash", "issueId", "groupingConfigId", "groupingRole", "groupingVariant", "groupingProvenance"
+        )
+        SELECT
+          ${tenancyId}::uuid, v."hash", v."issueId"::uuid, v."groupingConfigId",
+          v."groupingRole"::"IssueHashGroupingRole", v."groupingVariant", v."groupingProvenance"
+        FROM jsonb_to_recordset(${JSON.stringify(aliasHashValues)}::jsonb)
+          AS v(
+            "hash" text, "issueId" text, "groupingConfigId" text,
+            "groupingRole" text, "groupingVariant" text, "groupingProvenance" jsonb
+          )
+        ON CONFLICT ("tenancyId", "hash") DO NOTHING
+      `;
+    }
 
-  return resolved;
+    for (const row of rebound) {
+      resolved.set(row.hash, {
+        issueId: row.issueId,
+        shortId: row.shortId,
+        // Only genuinely new if OUR insert is the one that survived; otherwise a
+        // concurrent batch already emitted `issue.created` for it.
+        isNew: createdIds.has(row.issueId),
+      });
+    }
+
+    return resolved;
+  });
 }
 
 function buildIssueInsertSql(
   tenancyId: string,
-  missing: readonly IssueMaterializationInput[],
+  missing: readonly PendingIssue[],
   firstShortId: bigint,
   receivedAt: Date,
 ): Prisma.Sql {
-  const rows = missing.map((input, index) => Prisma.sql`(
-    gen_random_uuid(),
+  const rows = missing.map(({ id, input }, index) => Prisma.sql`(
+    ${id}::uuid,
     ${tenancyId}::uuid,
     ${(firstShortId + BigInt(index)).toString()}::bigint,
     ${input.type}, ${input.value}, ${input.culprit}, ${input.platform},
@@ -175,14 +318,12 @@ function buildIssueInsertSql(
     ${input.release}, ${input.release},
     ${receivedAt}::timestamptz
   )`);
-  // `id` is generated in SQL, not omitted and left to Prisma.
-  //
   // `Issue.id` is declared `@default(uuid())`, which Prisma applies CLIENT-side
   // in its own query builder. The generated migration therefore emits a bare
-  // `"id" UUID NOT NULL` with no database default, so a raw INSERT that leaves
-  // the column out fails with 23502. That failure was invisible in practice:
-  // `materializeIssuesFromBatchSafely` reports it and returns, ingest still
-  // answers 200, and the issue list just stays permanently empty.
+  // `"id" UUID NOT NULL`, so raw INSERTs must provide the candidate id
+  // explicitly. Supplying it from Node also lets us identify and delete the
+  // loser of a concurrent owner-hash insert without relying on unspecified
+  // `RETURNING` row order.
   return Prisma.sql`
     INSERT INTO "Issue" (
       "id", "tenancyId", "shortId", "type", "value", "culprit", "platform",
@@ -233,13 +374,15 @@ function foldDeltasByIssue(
 }
 
 /**
- * Claims the batch and applies the deltas in a single statement.
+ * Claims the batch and applies the deltas in one retrying transaction.
  *
  * The `claim` CTE is the idempotency check: `ON CONFLICT DO NOTHING` returns no
- * rows when this batch was already materialized, and the `WHERE EXISTS (SELECT
- * 1 FROM claim)` makes the update a no-op in that case. Because both live in
- * one statement they share one implicit transaction, so a crash can never leave
- * the ledger claiming work that was not applied.
+ * rows when this batch was already materialized. The transaction explicitly
+ * locks every owner hash and target Issue before claiming. A merge that deleted
+ * one after hash resolution therefore wins the race and leaves this batch
+ * unclaimed for reconciliation instead of losing its delta. The lock query is
+ * intentionally separate from the claim aggregate: PostgreSQL rejects row-lock
+ * clauses once the planner has to evaluate the target count.
  *
  * Lifecycle transitions ride in the same `CASE` rather than in a separate
  * read-decide-write, which also makes them race-free against a concurrent
@@ -259,6 +402,7 @@ async function claimAndApply(
   tenancyId: string,
   batchId: string,
   deltas: readonly IssueDelta[],
+  ownerHashes: readonly string[],
   receivedAt: Date,
 ): Promise<{ issueId: string, isRegression: boolean }[]> {
   const valueRows = deltas.map((delta) => Prisma.sql`(
@@ -267,17 +411,40 @@ async function claimAndApply(
     ${delta.release}, ${delta.serviceName}
   )`);
 
-  return await prisma.$queryRaw<{ issueId: string, isRegression: boolean }[]>(Prisma.sql`
-    WITH claim AS (
+  return await retryTransaction(prisma, async (tx) => {
+    const lockedHashes = await tx.$queryRaw<{ hash: string, state: string | null }[]>(Prisma.sql`
+      SELECT h."hash", h."state"::text AS "state"
+      FROM "IssueHash" AS h
+      WHERE h."tenancyId" = ${tenancyId}::uuid
+        AND h."hash" = ANY(${[...ownerHashes]}::text[])
+      ORDER BY h."hash"
+      FOR UPDATE OF h
+    `);
+    if (lockedHashes.length !== ownerHashes.length || lockedHashes.some((row) => row.state !== null)) return [];
+
+    const lockedIssues = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+      WITH target_ids (issue_id) AS (
+        VALUES ${Prisma.join(deltas.map((delta) => Prisma.sql`(${delta.issueId}::uuid)`), ",")}
+      )
+      SELECT i."id"
+      FROM "Issue" AS i
+      JOIN target_ids AS d ON d.issue_id = i."id"
+      WHERE i."tenancyId" = ${tenancyId}::uuid
+      FOR UPDATE OF i
+    `);
+    if (lockedIssues.length !== deltas.length) return [];
+
+    return await tx.$queryRaw<{ issueId: string, isRegression: boolean }[]>(Prisma.sql`
+    WITH deltas (issue_id, cnt, first_event_at, last_event_at, release, service_name) AS (
+      VALUES ${Prisma.join(valueRows, ",")}
+    ),
+    claim AS (
       INSERT INTO "IssueMaterialization" ("tenancyId", "batchId")
       VALUES (${tenancyId}::uuid, ${batchId}::uuid)
       ON CONFLICT ("tenancyId", "batchId") DO NOTHING
       RETURNING 1
     ),
-    deltas (issue_id, cnt, first_event_at, last_event_at, release, service_name) AS (
-      VALUES ${Prisma.join(valueRows, ",")}
-    ),
-    updated AS (
+    applied AS (
       UPDATE "Issue" AS i
       SET "timesSeen"   = i."timesSeen" + d.cnt,
           "lastSeenAt"  = GREATEST(i."lastSeenAt",  d.last_event_at),
@@ -310,8 +477,9 @@ async function claimAndApply(
         AND EXISTS (SELECT 1 FROM claim)
       RETURNING i."id" AS "issueId", (i."regressedAt" = ${receivedAt}::timestamptz) AS "isRegression"
     )
-    SELECT * FROM updated
-  `);
+    SELECT * FROM applied
+    `);
+  });
 }
 
 export async function materializeIssuesFromBatch(options: {
@@ -334,7 +502,8 @@ export async function materializeIssuesFromBatch(options: {
     return [];
   }
 
-  const applied = await claimAndApply(prisma, tenancyId, batchId, deltas, receivedAt);
+  const ownerHashes = [...new Set(inputs.map((input) => input.ownerHash))];
+  const applied = await claimAndApply(prisma, tenancyId, batchId, deltas, ownerHashes, receivedAt);
   if (applied.length === 0) {
     // The ledger already had this batch: it was materialized by an earlier run.
     // Not an error — this is the retried-batch path working as designed.
@@ -376,6 +545,16 @@ export async function materializeIssuesFromBatchSafely(options: {
     // Webhooks are emitted only for issues this run actually materialized, so a
     // replayed batch (which returns no outcomes) cannot re-announce anything.
     await emitIssueWebhooks({ tenancy: options.tenancy, outcomes, now: options.receivedAt });
+    // Alert email never calls a provider from ingestion. The dispatcher claims
+    // a typed delivery row and writes the Workflows event in the same
+    // serializable transaction; the built-in workflow owns the existing
+    // ServerApp -> EmailOutbox delivery boundary.
+    await dispatchIssueAlertsForMaterialization({
+      tenancy: options.tenancy,
+      outcomes,
+      inputs: options.inputs,
+      receivedAt: options.receivedAt,
+    });
   } catch (error) {
     captureError("issue-materialization", {
       error,

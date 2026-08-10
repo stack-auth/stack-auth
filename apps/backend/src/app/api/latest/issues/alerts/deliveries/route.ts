@@ -1,0 +1,30 @@
+import { assertPublicIssueReadEnabled } from "@/lib/issues/public-issue-api";
+import { listIssueAlertDeliveriesPage, parseIssueAlertListLimit } from "@/lib/issues/issue-alerts/api";
+import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { issueAlertAuthSchema } from "../_shared";
+
+export const GET = createSmartRouteHandler({
+  metadata: {
+    summary: "List issue alert deliveries",
+    description: "Returns a bounded, tenant-, project-, and branch-scoped delivery history for issue alert rules.",
+    tags: ["Issues"],
+  },
+  request: yupObject({
+    auth: issueAlertAuthSchema,
+    query: yupObject({ limit: yupString().optional() }).optional(),
+  }).defined(),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({
+      deliveries: yupArray(yupMixed().defined()).defined(),
+      truncated: yupBoolean().defined(),
+    }).defined(),
+  }),
+  async handler({ auth, query }) {
+    assertPublicIssueReadEnabled(auth.tenancy);
+    const page = await listIssueAlertDeliveriesPage(auth.tenancy, parseIssueAlertListLimit(query.limit));
+    return { statusCode: 200, bodyType: "json", body: { deliveries: [...page.items], truncated: page.truncated } } as const;
+  },
+});
