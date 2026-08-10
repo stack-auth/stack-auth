@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { globalVar } from "@hexclave/shared/dist/utils/globals";
 import { bulldozerCustomerPath, fetchBulldozerServerJson, isRetriableBulldozerFetchError } from "./bulldozer-server-client";
 
@@ -6,12 +7,15 @@ function errorWithCode(code: string): Error & { code: string } {
   return Object.assign(new Error(code), { code });
 }
 
+// The default base URL follows the port prefix of the environment the tests run in (CI uses a
+// non-default one), so expectations must be derived from it instead of hardcoding the 81xx default.
+const defaultBulldozerBaseUrl = `http://localhost:${getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81")}46`;
+
 beforeEach(() => {
   vi.stubEnv("HEXCLAVE_BULLDOZER_SERVER_SECRET", "test-secret");
-  // The base URL is derived from the ambient environment, which differs between local runs and CI
-  // (eg. a non-default port prefix), so pin both inputs to keep the expected URLs deterministic.
+  // An explicitly configured URL would take precedence over the port-prefix default, so clear it to
+  // exercise the default derivation regardless of the ambient environment.
   vi.stubEnv("HEXCLAVE_BULLDOZER_SERVER_URL", "");
-  vi.stubEnv("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
 });
 
 afterEach(() => {
@@ -66,7 +70,7 @@ describe("fetchBulldozerServerJson", () => {
 
     await expect(resultPromise).resolves.toEqual({ success: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock).toHaveBeenNthCalledWith(1, "http://localhost:8146/update-quantity", expect.anything());
+    expect(fetchMock).toHaveBeenNthCalledWith(1, `${defaultBulldozerBaseUrl}/update-quantity`, expect.anything());
   });
 
   it("rethrows the original error after exhausting all safe connection retries", async () => {
@@ -169,14 +173,14 @@ describe("fetchBulldozerServerJson", () => {
   });
 
   it("preserves a path prefix in the configured Bulldozer URL", async () => {
-    vi.stubEnv("HEXCLAVE_BULLDOZER_SERVER_URL", "http://localhost:8146/bulldozer");
+    vi.stubEnv("HEXCLAVE_BULLDOZER_SERVER_URL", `${defaultBulldozerBaseUrl}/bulldozer`);
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(fetchBulldozerServerJson<{ success: true }>({ method: "POST", path: "/update-quantity" }))
       .resolves.toEqual({ success: true });
 
-    expect(fetchMock).toHaveBeenCalledWith("http://localhost:8146/bulldozer/update-quantity", expect.anything());
+    expect(fetchMock).toHaveBeenCalledWith(`${defaultBulldozerBaseUrl}/bulldozer/update-quantity`, expect.anything());
   });
 
   it("does not retry an ambiguous socket failure", async () => {
