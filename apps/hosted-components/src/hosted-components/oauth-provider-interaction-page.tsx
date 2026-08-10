@@ -1,8 +1,9 @@
 import { useStackApp, useUser } from "@hexclave/react";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getApiBaseUrlFromEnv } from "~/lib/api-base-url";
+import { getProjectClientRequestHeaders } from "~/lib/project-client-request";
 import { Button, Checkbox, Typography } from "~/components/ui";
 import {
   HostedAuthHeading,
@@ -26,6 +27,8 @@ export function HostedOAuthProviderInteraction() {
   const [selectedScopes, setSelectedScopes] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
+  const loadStateRef = useRef<{ interactionUid: string | null, status: "idle" | "loading" | "done" | "error" }>({ interactionUid: null, status: "idle" });
+  const trustedCompletionStartedRef = useRef(false);
   const interactionUid = new URLSearchParams(window.location.search).get("interaction_uid");
   const apiBaseUrl = getApiBaseUrlFromEnv() ?? throwErr("A hosted components API base URL is required. Set VITE_HEXCLAVE_API_URL or VITE_STACK_API_URL.");
 
@@ -37,24 +40,27 @@ export function HostedOAuthProviderInteraction() {
 
   useEffect(() => {
     if (user == null || interactionUid == null) return;
+    if (loadStateRef.current.interactionUid === interactionUid && loadStateRef.current.status !== "idle") return;
+    loadStateRef.current = { interactionUid, status: "loading" };
     let cancelled = false;
     const load = async () => {
       try {
-        const token = await app.getAccessToken();
-        if (token == null) throw new Error("Your session expired. Please sign in again.");
+        const headers = await getProjectClientRequestHeaders(app);
         const response = await fetch(
           `${apiBaseUrl}/api/v1/projects/${encodeURIComponent(app.projectId)}/oauth-provider/interaction/${encodeURIComponent(interactionUid)}`,
-          { headers: { "x-stack-access-token": token } },
+          { headers },
         );
         const body: unknown = await response.json();
         if (!response.ok) throw new Error("This authorization request is expired or no longer available.");
         if (cancelled) return;
         if (!isInteractionDetails(body)) throw new Error("The authorization request returned invalid details.");
         const nextDetails = body;
+        loadStateRef.current = { interactionUid, status: "done" };
         setDetails(nextDetails);
         setSelectedScopes(nextDetails.scopes.map(scope => scope.scope));
       } catch (loadError) {
         if (!cancelled) {
+          loadStateRef.current = { interactionUid, status: "error" };
           setError("This authorization request is expired or no longer available.");
         }
       }
@@ -63,29 +69,20 @@ export function HostedOAuthProviderInteraction() {
     return () => {
       cancelled = true;
     };
-  }, [app, interactionUid, user]);
+  }, [app, interactionUid, user?.id]);
 
-  if (interactionUid == null) {
-    return <HostedAuthMessage title="Invalid authorization request" fullPage>Please return to the application that started sign-in.</HostedAuthMessage>;
-  }
-  if (user == null || redirecting) return <HostedAuthLoading fullPage />;
-  if (error != null) {
-    return <HostedAuthMessage title="Authorization unavailable" fullPage>{error}</HostedAuthMessage>;
-  }
-  if (details == null) return <HostedAuthLoading fullPage />;
-
-  const finish = async (denied: boolean) => {
+  const finish = useCallback(async (denied: boolean) => {
     setRedirecting(true);
     try {
-      const token = await app.getAccessToken();
-      if (token == null) throw new Error("Your session expired. Please sign in again.");
+      const headers = await getProjectClientRequestHeaders(app);
+      const uid = interactionUid ?? throwErr("An interaction ID is required to complete OAuth authorization.");
       const response = await fetch(
-        `${apiBaseUrl}/api/v1/projects/${encodeURIComponent(app.projectId)}/oauth-provider/interaction/${encodeURIComponent(interactionUid)}`,
+        `${apiBaseUrl}/api/v1/projects/${encodeURIComponent(app.projectId)}/oauth-provider/interaction/${encodeURIComponent(uid)}`,
         {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            "x-stack-access-token": token,
+            ...headers,
           },
           body: JSON.stringify({
             approved_scopes: denied ? [] : selectedScopes,
@@ -102,10 +99,24 @@ export function HostedOAuthProviderInteraction() {
       setRedirecting(false);
       setError("We couldn't complete this authorization request. Please return to the application and try again.");
     }
-  };
+  }, [apiBaseUrl, app, interactionUid, selectedScopes]);
+
+  useEffect(() => {
+    if (details?.trusted_client !== true || trustedCompletionStartedRef.current) return;
+    trustedCompletionStartedRef.current = true;
+    runAsynchronously(finish(false));
+  }, [details?.trusted_client, finish]);
+
+  if (interactionUid == null) {
+    return <HostedAuthMessage title="Invalid authorization request" fullPage>Please return to the application that started sign-in.</HostedAuthMessage>;
+  }
+  if (error != null) {
+    return <HostedAuthMessage title="Authorization unavailable" fullPage>{error}</HostedAuthMessage>;
+  }
+  if (user == null || redirecting) return <HostedAuthLoading fullPage />;
+  if (details == null) return <HostedAuthLoading fullPage />;
 
   if (details.trusted_client) {
-    runAsynchronously(finish(false));
     return <HostedAuthLoading fullPage />;
   }
 

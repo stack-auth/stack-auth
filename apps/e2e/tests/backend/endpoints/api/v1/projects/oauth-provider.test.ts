@@ -7,7 +7,7 @@ import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
 const oauthCodeVerifier = "a".repeat(43);
 const oauthCodeChallenge = createHash("sha256").update(oauthCodeVerifier).digest("base64url");
 
-async function createConfiguredProject(options: { trustedClient?: boolean } = {}) {
+async function createConfiguredProject(options: { trustedClient?: boolean, includeWriteScope?: boolean } = {}) {
   const { projectId } = await Project.createAndSwitch();
   await Project.pushConfig({
     oauthProvider: {
@@ -16,6 +16,12 @@ async function createConfiguredProject(options: { trustedClient?: boolean } = {}
           scope: "files:read",
           displayName: "Read files",
         },
+        ...(options.includeWriteScope ? {
+          filesWrite: {
+            scope: "files:write",
+            displayName: "Write files",
+          },
+        } : {}),
       },
       resources: {
         mcp: {
@@ -473,6 +479,27 @@ it("rejects an approved scope that was not requested", async () => {
   });
   expect(decision.status).toBe(400);
   expect(decision.body).toMatchInlineSnapshot(`"The selected permissions are not part of this authorization request."`);
+});
+
+it("filters a requested custom scope that is not allowed for the selected resource", async () => {
+  const projectId = await createConfiguredProject({ includeWriteScope: true });
+  await Auth.fastSignUp();
+  const { interactionUid } = await startProjectInteraction(projectId, "openid files:write");
+  const details = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
+    accessType: "client",
+  });
+  expect(details.status).toBe(200);
+  expect(details.body.scopes).toEqual(expect.arrayContaining([
+    expect.objectContaining({ scope: "openid" }),
+    expect.objectContaining({ scope: "files:write" }),
+  ]));
+  const decision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
+    method: "POST",
+    accessType: "client",
+    body: { approved_scopes: ["openid", "files:write"], denied: false },
+  });
+  expect(decision.status).toBe(400);
+  expect(decision.body).toMatchInlineSnapshot(`"The selected permissions are not allowed for this resource."`);
 });
 
 it("denies an interaction and rejects replay of its consumed decision", async () => {
