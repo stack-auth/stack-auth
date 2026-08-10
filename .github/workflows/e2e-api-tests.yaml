@@ -258,7 +258,7 @@ jobs:
               then
                 printf "%s\n" "$response" | jq .
                 if ! printf "%s\n" "$response" | jq -e \
-                  '[.spans[] | select(.name | startswith("STACK: GET "))] | length > 0' \
+                  "[.spans[] | select(.name | startswith(\"STACK: GET \"))] | length > 0" \
                   >/dev/null
                 then
                   echo "Backend route span smoke snapshot contained no GET route span." >&2
