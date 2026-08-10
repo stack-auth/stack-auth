@@ -39,6 +39,69 @@ describe("LMDB low-level database", () => {
     }
   });
 
+  it("records compression in constructorArguments and reopens compressed values", async () => {
+    const path = await tempLmdbPath();
+    try {
+      const db1 = declareLmdbLowLevelDatabase({ path, dbId: "compress", compression: true });
+      expect((db1.getDebugInfo() as { constructorArguments: { compression?: boolean } }).constructorArguments.compression).toBe(true);
+      const store1 = db1.declareKvStore("root");
+      // Value larger than the default 1000-byte compression threshold so LZ4 actually engages.
+      const large = "x".repeat(2_000);
+      const { seq } = await store1.setAll([{ key: buffer("big"), value: buffer(large) }]);
+      await db1.waitUntilDurable(seq);
+      await db1.close();
+
+      const db2 = declareLmdbLowLevelDatabase({ path, dbId: "compress", compression: true });
+      const store2 = db2.declareKvStore("root");
+      expect(text((await store2.get(buffer("big"))).buffer)).toBe(large);
+      await db2.close();
+
+      // Raw open without compression: stored payload must be smaller than plaintext
+      // (otherwise the `compression: true` option was a no-op).
+      const rawRoot = lmdb.open({ path, compression: false });
+      try {
+        const rawDb = rawRoot.openDB({ name: "compress:store:root", encoding: "binary" });
+        const rawValue = rawDb.get(Buffer.from("big"));
+        expect(rawValue).toBeTruthy();
+        expect(Buffer.byteLength(rawValue as Buffer)).toBeLessThan(large.length);
+      } finally {
+        // lmdb-js close() is async; await so the outer rm() does not race mapped files.
+        await rawRoot.close();
+      }
+    } finally {
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
+  it("does not decode plaintext when reopened without compression (sticky)", async () => {
+    const path = await tempLmdbPath();
+    try {
+      const db1 = declareLmdbLowLevelDatabase({ path, dbId: "sticky", compression: true });
+      const store1 = db1.declareKvStore("root");
+      const large = "y".repeat(2_000);
+      const { seq } = await store1.setAll([{ key: buffer("big"), value: buffer(large) }]);
+      await db1.waitUntilDurable(seq);
+      await db1.close();
+
+      const db2 = declareLmdbLowLevelDatabase({ path, dbId: "sticky", compression: false });
+      try {
+        const store2 = db2.declareKvStore("root");
+        // With compression off, lmdb-js still returns the on-disk bytes (LZ4 framing) —
+        // it does not throw. Assert we get opaque compressed payload, not plaintext.
+        const value = (await store2.get(buffer("big"))).buffer;
+        if (value == null) {
+          throw new Error("expected on-disk compressed bytes, got null");
+        }
+        expect(value.byteLength).toBeLessThan(large.length);
+        expect(text(value)).not.toBe(large);
+      } finally {
+        await db2.close();
+      }
+    } finally {
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
   it("flushes delayed commits before close resolves", async () => {
     const path = await tempLmdbPath();
     const db = declareLmdbLowLevelDatabase({ path, dbId: "close-drain" });
