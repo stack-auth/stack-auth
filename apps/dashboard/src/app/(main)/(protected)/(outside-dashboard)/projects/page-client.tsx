@@ -199,7 +199,7 @@ function RdeProjectsListPage() {
           To open a new config file, run <code>npx @hexclave/cli dev --config-file &lt;config-path&gt; -- &lt;your-dev-command&gt;</code>.
         </Typography>
         <Typography variant="secondary" className="text-sm">
-          Once you are ready to go to production, you can link your config file to Hexclave&apos;s <Link className="underline" target="_blank" href="https://app.hexclave.com">cloud dashboard</Link>.
+          Once you are ready to go to production, you can deploy your config file to Hexclave&apos;s <Link className="underline" target="_blank" href="https://app.hexclave.com">cloud dashboard</Link>.
         </Typography>
       </div>
 

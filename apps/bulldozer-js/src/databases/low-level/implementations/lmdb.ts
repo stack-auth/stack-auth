@@ -1,5 +1,6 @@
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { wait } from "@hexclave/shared/dist/utils/promises";
+import { createUuidV7Generator } from "@hexclave/shared/dist/utils/uuids";
 import * as lmdb from "lmdb";
 import { shouldSuppressPeriodicBulldozerLogs } from "../../../logging.js";
 import { traceSpanHot } from "../../../otel.js";
@@ -12,6 +13,20 @@ type BinaryDatabase = lmdb.Database<Buffer, Uint8Array>;
 type VersionedBinaryDatabase = BinaryDatabase & {
   getEntry(key: Buffer): { value: Buffer, version?: number } | undefined,
 };
+
+function createDumpKeyGenerator() {
+  const generateUuidV7 = createUuidV7Generator();
+  return () => {
+    const key = new Uint8Array(17);
+    // Timestamp-first UUIDv7 keys cluster dump writes in an advancing range,
+    // reducing LMDB page scatter. The leading byte is a layout-version marker
+    // so future dump-key formats can coexist without migrating legacy 48-byte keys.
+    key[0] = 0x01;
+    key.set(generateUuidV7(), 1);
+    return key.buffer;
+  };
+}
+
 type PendingCommitOperation = {
   seqId: string,
   requiresSeq: DatabaseSeq,
@@ -364,7 +379,6 @@ export function declareLmdbLowLevelDatabase(options: {
     rememberDurability(seqId, Promise.resolve());
     return toSeq(seqId);
   };
-  const dumpKey = () => crypto.getRandomValues(new Uint8Array(48)).buffer;
   const putWithVersion = async (db: BinaryDatabase, key: Buffer, value: Buffer, version: number) => {
     activityStats.puts++;
     activityStats.putBytes += value.byteLength;
@@ -408,6 +422,7 @@ export function declareLmdbLowLevelDatabase(options: {
       keyEncoding: "binary",
       useVersions: true,
     }) as VersionedBinaryDatabase;
+    const dumpKey = createDumpKeyGenerator();
 
     const result: LowLevelKvStore & LowLevelKvDump = {
       async get(key) {

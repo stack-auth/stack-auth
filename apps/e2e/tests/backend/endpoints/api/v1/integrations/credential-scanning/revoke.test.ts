@@ -12,7 +12,7 @@ it("should send email notification to user when revoking an API key through cred
   await Project.createAndSwitch({ config: { magic_link_enabled: true, allow_team_api_keys: true, allow_user_api_keys: true } });
 
   const mailbox2 = await bumpEmailAddress();
-  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  await Auth.Password.signUpWithEmail();
   await Auth.signOut();
   const mailbox1 = await bumpEmailAddress();
   const user1 = await Auth.fastSignUp({ primary_email: mailbox1.emailAddress, primary_email_verified: true });
@@ -134,13 +134,13 @@ it("should send email notification to team members when revoking a team API key 
   await InternalApiKey.createAndSetProjectKeys();
 
   const mailbox2 = await bumpEmailAddress();
-  const user2 = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const user2 = await Auth.Password.signUpWithEmail();
   await Auth.signOut();
   const mailbox3 = await bumpEmailAddress();
-  const user3 = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const user3 = await Auth.Password.signUpWithEmail();
   await Auth.signOut();
   const mailbox1 = await bumpEmailAddress();
-  const user1 = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const user1 = await Auth.Password.signUpWithEmail();
 
   // Create a team and add all users
   const { teamId } = await Team.create();

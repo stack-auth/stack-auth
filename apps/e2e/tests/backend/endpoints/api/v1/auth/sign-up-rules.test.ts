@@ -48,7 +48,7 @@ describe("sign-up rules", () => {
       },
     });
 
-    const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const res = await Auth.Password.signUpWithEmail();
     expect(res.signUpResponse.status).toBe(200);
   });
 
@@ -74,7 +74,7 @@ describe("sign-up rules", () => {
     });
 
     // Sign up with a different email should work
-    const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const res = await Auth.Password.signUpWithEmail();
     expect(res.signUpResponse.status).toBe(200);
   });
 
@@ -173,7 +173,7 @@ describe("sign-up rules", () => {
       'auth.signUpRulesDefaultAction': 'allow',
     });
 
-    const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const res = await Auth.Password.signUpWithEmail();
     expect(res.signUpResponse.status).toBe(200);
   });
 
@@ -815,7 +815,7 @@ describe("sign-up rules", () => {
       'auth.signUpRulesDefaultAction': 'allow',
     });
 
-    const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const res = await Auth.Password.signUpWithEmail();
     expect(res.signUpResponse.status).toBe(200);
   });
 
@@ -1159,7 +1159,7 @@ describe("sign-up rules", () => {
     });
 
     // Password signup should work
-    const passwordRes = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const passwordRes = await Auth.Password.signUpWithEmail();
     expect(passwordRes.signUpResponse.status).toBe(200);
   });
 
@@ -1186,7 +1186,7 @@ describe("sign-up rules", () => {
     });
 
     // Password signup should work
-    const passwordRes = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const passwordRes = await Auth.Password.signUpWithEmail();
     expect(passwordRes.signUpResponse.status).toBe(200);
   });
 
@@ -2000,7 +2000,7 @@ describe("sign-up rules", () => {
     });
 
     // Should be allowed since rule never matches
-    const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const res = await Auth.Password.signUpWithEmail();
     expect(res.signUpResponse.status).toBe(200);
   });
 
@@ -2434,7 +2434,7 @@ describe("sign-up rules", () => {
       },
     });
 
-    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const { userId } = await Auth.Password.signUpWithEmail();
 
     // User should not be restricted initially
     const beforeResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
@@ -2475,7 +2475,7 @@ describe("sign-up rules", () => {
       },
     });
 
-    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const { userId } = await Auth.Password.signUpWithEmail();
 
     // Restrict without reason or details - should succeed (both are optional)
     const restrictResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
@@ -2505,7 +2505,7 @@ describe("sign-up rules", () => {
       },
     });
 
-    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const { userId } = await Auth.Password.signUpWithEmail();
 
     // Try to set unrestricted with a reason - should fail
     const restrictResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
@@ -2527,7 +2527,7 @@ describe("sign-up rules", () => {
       },
     });
 
-    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const { userId } = await Auth.Password.signUpWithEmail();
 
     // Try to set unrestricted with private details - should fail
     const restrictResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
@@ -2611,7 +2611,7 @@ describe("sign-up rules", () => {
       },
     });
 
-    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const { userId } = await Auth.Password.signUpWithEmail();
 
     // Restrict with reason + details
     const restrictResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {

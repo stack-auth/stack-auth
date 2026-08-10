@@ -9,6 +9,7 @@
 
 import { Prisma } from "@/generated/prisma/client";
 import { bulldozerCustomerPath, fetchBulldozerServerJson } from "@/lib/bulldozer-server-client";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import {
   PAYMENT_PROVIDERS,
   TRANSACTION_TYPES,
@@ -284,7 +285,7 @@ export async function bulldozerWriteSubscription(
   sub: Parameters<typeof subscriptionToStoredRow>[0],
 ) {
   await postBulldozerRow(
-    `/v1/${encodeURIComponent(sub.tenancyId)}/stripe/subscriptions/changed`,
+    urlString`/v1/${sub.tenancyId}/stripe/subscriptions/changed`,
     subscriptionToStoredRow(sub),
   );
 }
@@ -293,7 +294,7 @@ export async function bulldozerWriteSubscriptionInvoice(
   inv: Parameters<typeof subscriptionInvoiceToStoredRow>[0],
 ) {
   await postBulldozerRow(
-    `/v1/${encodeURIComponent(inv.tenancyId)}/stripe/subscription-invoices/changed`,
+    urlString`/v1/${inv.tenancyId}/stripe/subscription-invoices/changed`,
     subscriptionInvoiceToStoredRow(inv),
   );
 }
@@ -302,7 +303,7 @@ export async function bulldozerWriteOneTimePurchase(
   purchase: Parameters<typeof oneTimePurchaseToStoredRow>[0],
 ) {
   await postBulldozerRow(
-    `/v1/${encodeURIComponent(purchase.tenancyId)}/stripe/one-time-purchases/changed`,
+    urlString`/v1/${purchase.tenancyId}/stripe/one-time-purchases/changed`,
     oneTimePurchaseToStoredRow(purchase),
   );
 }
@@ -326,7 +327,7 @@ export async function bulldozerWriteManualTransaction(
   transaction: ManualTransactionRow,
 ) {
   await postBulldozerRow(
-    `/v1/${encodeURIComponent(readManualTransactionTenancyId(transaction))}/transactions/${encodeURIComponent(transactionId)}/refund`,
+    urlString`/v1/${readManualTransactionTenancyId(transaction)}/transactions/${transactionId}/refund`,
     manualTransactionToStoredRow(transaction),
   );
 }
