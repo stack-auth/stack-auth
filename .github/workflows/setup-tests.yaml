@@ -7,8 +7,12 @@ on:
       - dev
   pull_request:
 
+# A concurrency group only ever runs one run at a time, so the sha is part of the group on main/dev:
+# otherwise consecutive dev pushes queue behind each other (and GitHub cancels the older queued run),
+# so one slow or hung run silently skips CI for every commit after it. PRs and feature branches stay
+# grouped per ref, where cancelling superseded runs is what we want.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 env:
@@ -32,6 +36,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   setup-tests:
+    timeout-minutes: 90
     needs: wait-for-fast-fail
     # `success()` is required because the custom `if` otherwise overrides the
     # implicit success() gate from `needs`, letting this run even if the gate failed.
