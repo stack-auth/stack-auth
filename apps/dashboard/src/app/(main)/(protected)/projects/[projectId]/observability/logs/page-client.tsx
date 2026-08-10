@@ -3,7 +3,6 @@
 import { Link } from "@/components/link";
 import { DesignButton, DesignPillToggle, DesignSelectorDropdown } from "@/components/design-components";
 import { Button, Typography } from "@/components/ui";
-import { cn } from "@/lib/utils";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -27,6 +26,8 @@ import {
 } from "../service-identity";
 import { ALL_SERVICES_SELECT_VALUE, isObservabilityTimeRangeHours, OBSERVABILITY_TIME_RANGE_OPTIONS, parseObservabilityTimeRangeId, useServiceIdentityLoader } from "../filters";
 import { tryParseJson } from "../format";
+import { LogLevelChip } from "../log-level";
+import { issueSearchHref } from "../issues/issue-links";
 
 export const DEFAULT_LOG_TIME_RANGE_HOURS = 720;
 
@@ -121,36 +122,6 @@ WHERE e.event_at >= now64(3) - INTERVAL ${hours} HOUR${levelCondition}${serviceC
   };
 }
 
-// DesignBadge (the house chip) has no muted color for low-severity levels and
-// lives in a package outside this change's scope, so the level chip replicates
-// the DesignBadge "sm" pill formula locally, adding a zinc entry. All five
-// levels use the same local chip so the column's chips are metrically
-// identical.
-const MUTED_LEVEL_CHIP_CLASSES = "text-zinc-600 dark:text-zinc-400 bg-zinc-500/15 dark:bg-zinc-500/10 ring-1 ring-zinc-500/25 dark:ring-zinc-500/20";
-const LEVEL_CHIP_CLASSES = new Map<string, string>([
-  ["trace", MUTED_LEVEL_CHIP_CLASSES],
-  ["debug", MUTED_LEVEL_CHIP_CLASSES],
-  ["info", "text-blue-700 dark:text-blue-400 bg-blue-500/20 dark:bg-blue-500/10 ring-1 ring-blue-500/30 dark:ring-blue-500/20"],
-  ["warn", "text-amber-700 dark:text-amber-300 bg-amber-500/20 dark:bg-amber-500/10 ring-1 ring-amber-500/30 dark:ring-amber-500/20"],
-  ["error", "text-red-700 dark:text-red-400 bg-red-500/20 dark:bg-red-500/10 ring-1 ring-red-500/30 dark:ring-red-500/20"],
-]);
-
-export function LogLevelChip({ level }: { level: string }) {
-  // A level outside the known set means malformed ingested data; render it
-  // muted with its raw text instead of crashing the whole grid over one row.
-  const classes = LEVEL_CHIP_CLASSES.get(level) ?? MUTED_LEVEL_CHIP_CLASSES;
-  return (
-    <span
-      className={cn(
-        "inline-flex max-w-full items-center whitespace-nowrap rounded-full px-2 py-0.5 font-medium uppercase leading-none tracking-wide text-[10px]",
-        classes,
-      )}
-    >
-      {level === "" ? "—" : level}
-    </span>
-  );
-}
-
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value !== "" ? value : null;
 }
@@ -239,15 +210,31 @@ function LogDetailExtraContent({ row, projectId }: { row: RowData, projectId: st
   const fingerprint = typeof data === "object" && data != null && "error_fingerprint" in data
     ? stringOrNull(data.error_fingerprint)
     : null;
+  const message = stringOrNull(row.message);
 
   if (userId == null && replayId == null && fingerprint == null) return null;
 
   return (
     <div className="space-y-3">
       {fingerprint != null && (
-        <div className="flex items-center gap-2 rounded-lg bg-red-500/5 px-3 py-2 text-xs ring-1 ring-red-500/20">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-red-500/5 px-3 py-2 text-xs ring-1 ring-red-500/20">
           <span className="font-medium text-red-700 dark:text-red-400">Error fingerprint:</span>
           <code className="font-mono text-foreground">{fingerprint}</code>
+          {/*
+            Seeds the Issues search with the log's message rather than the
+            fingerprint. The fingerprint here is the SDK's client-side djb2
+            hash, which is NOT the server-side issue hash and has no stored
+            mapping to one — searching for it would reliably return nothing.
+            Issue search covers the exception type, value, and culprit, so the
+            message is the field most likely to actually land on the right
+            issue. A direct fingerprint → issue_hash link needs the correlation
+            map that is deliberately out of scope here.
+          */}
+          {message != null && (
+            <Button size="sm" variant="outline" asChild className="ml-auto h-6 px-2 text-[11px]">
+              <Link href={issueSearchHref(projectId, message)}>View issue</Link>
+            </Button>
+          )}
         </div>
       )}
       {(userId != null || replayId != null) && (

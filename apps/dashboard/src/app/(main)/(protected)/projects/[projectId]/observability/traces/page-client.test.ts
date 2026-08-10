@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   getRecentTraceRootsQuery,
   getSelectedTraceEventQuery,
+  getSelectedTraceLinksQuery,
   getSelectedTraceSpanQuery,
   getSpanDetailQuery,
   parseEventRow,
+  parseTraceLinkRow,
   parseUniqueTraceRootRows,
   parseUniqueSpanRows,
   SPAN_DETAIL_COLUMNS,
@@ -162,6 +164,43 @@ describe("analytics trace row parsing", () => {
     expect(spanQuery.query).not.toContain(" OR ");
     expect(spanQuery.query).not.toContain("startsWith(");
     expect(spanQuery.query).toContain("ORDER BY s.started_at ASC");
+  });
+
+  it("keeps a directly linked target inside the large-trace safety cap", () => {
+    const spanQuery = getSelectedTraceSpanQuery(
+      "0123456789abcdef0123456789abcdef",
+      "fedcba9876543210",
+    );
+
+    expect(spanQuery.params).toEqual({
+      traceId: "0123456789abcdef0123456789abcdef",
+      focusSpanId: "fedcba9876543210",
+    });
+    expect(spanQuery.query).toContain("s.span_id = {focusSpanId:String} DESC, s.started_at ASC");
+    expect(spanQuery.query).toContain("LIMIT 10000");
+  });
+
+  it("loads and parses span links separately without merging them into the tree", () => {
+    const linkQuery = getSelectedTraceLinksQuery("0123456789abcdef0123456789abcdef");
+    expect(linkQuery.params).toEqual({ traceId: "0123456789abcdef0123456789abcdef" });
+    expect(linkQuery.query).toContain("FROM default.span_links");
+    expect(linkQuery.query).toContain("target_is_same_scope");
+    expect(linkQuery.query).not.toContain("JOIN default.spans");
+    expect(parseTraceLinkRow({
+      owner_span_id: "1111111111111111",
+      linked_trace_id: "22222222222222222222222222222222",
+      linked_span_id: "3333333333333333",
+      linked_project_id: "internal",
+      linked_branch_id: "main",
+      target_is_same_scope: 1,
+    })).toEqual({
+      ownerSpanId: "1111111111111111",
+      linkedTraceId: "22222222222222222222222222222222",
+      linkedSpanId: "3333333333333333",
+      linkedProjectId: "internal",
+      linkedBranchId: "main",
+      targetIsSameScope: true,
+    });
   });
 
   it("selects the enclosing span and page-view correlation on events, not an ancestry array", () => {

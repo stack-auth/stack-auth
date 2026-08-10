@@ -206,6 +206,11 @@ const DEMO_PRODUCTS: DemoProduct[] = [
   { id: "4", name: "Sensor Hub", category: "Hardware", price: 79.99, status: "active" },
 ];
 
+/** Every DesignBadgeColor, in the order the component declares them. */
+const BADGE_PALETTE: readonly DesignBadgeColor[] = [
+  "zinc", "blue", "cyan", "purple", "green", "orange", "red",
+];
+
 const STATUS_BADGE: Record<DemoProduct["status"], { label: string, color: DesignBadgeColor }> = {
   active: { label: "Active", color: "green" },
   draft: { label: "Draft", color: "orange" },
@@ -826,14 +831,23 @@ export default function PageClient() {
         ? CheckCircle
         : (badgeIcon ? CheckCircle : undefined);
       return (
-        <DesignBadge
-          label={badgeLabel || "Badge"}
-          color={badgeColor}
-          size={badgeSize}
-          icon={badgeIconProp}
-          iconClassName={badgeSpin ? "animate-spin" : undefined}
-          contentMode={badgeContentMode}
-        />
+        <div className="flex flex-col items-center gap-4">
+          <DesignBadge
+            label={badgeLabel || "Badge"}
+            color={badgeColor}
+            size={badgeSize}
+            icon={badgeIconProp}
+            iconClassName={badgeSpin ? "animate-spin" : undefined}
+            contentMode={badgeContentMode}
+          />
+          {/* The whole palette in one row: the only way to judge `zinc` is
+              beside the colored badges it is meant to recede behind. */}
+          <div className="flex flex-wrap items-center justify-center gap-1.5">
+            {BADGE_PALETTE.map((color) => (
+              <DesignBadge key={color} label={color} color={color} size="sm" />
+            ))}
+          </div>
+        </div>
       );
     }
     if (selected === "button") {
@@ -1462,7 +1476,7 @@ export default function PageClient() {
             <DesignSelectorDropdown
               value={badgeColor}
               onValueChange={(v) => {
-                if (v === "blue" || v === "cyan" || v === "purple" || v === "green" || v === "orange" || v === "red") {
+                if (v === "blue" || v === "cyan" || v === "purple" || v === "green" || v === "orange" || v === "red" || v === "zinc") {
                   setBadgeColor(v);
                   return;
                 }
@@ -1475,6 +1489,7 @@ export default function PageClient() {
                 { value: "green", label: "Green" },
                 { value: "orange", label: "Orange" },
                 { value: "red", label: "Red" },
+                { value: "zinc", label: "Zinc (neutral)" },
               ]}
               size="sm"
             />
