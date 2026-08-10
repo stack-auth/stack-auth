@@ -119,7 +119,11 @@ export async function withReconciliationLease<T>(
       try {
         const released = await releaseReconciliationLease(ns, key, held.etag);
         if (!released && !actionFailed) {
-          throw new Error(`reconciliation lease for ${ns}/${key} was replaced before it could be released`);
+          // Still fails the request — another owner holding this lease means the
+          // action was NOT serialized, and reporting success would be a lie. But
+          // it is a fencing outcome, not an internal fault: typed as one so the
+          // HTTP layer answers "retry" instead of "internal error".
+          throw new ReconciliationLeaseLostError(`reconciliation lease for ${ns}/${key} was replaced before it could be released`);
         }
       } catch (error) {
         // Preserve the action's original error. On success, a release failure must surface:

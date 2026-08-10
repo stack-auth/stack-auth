@@ -138,6 +138,22 @@ export const POST = createSmartRouteHandler({
 
     let runId: string;
     try {
+      // Re-check the definition immediately before the spec goes to the runtime. The check at
+      // the top of this handler was several slow steps ago — a plan lookup, secret resolution,
+      // a KMS round-trip and the upload consume — and a config sync landing in that window
+      // would leave this deploy applying a definition the project has already moved off. The
+      // sync id is a fresh uuid per sync, so an unchanged value means nothing was re-synced.
+      //
+      // Inside the try so that losing this race restores the upload, exactly like a failed
+      // runtime PUT: the tarball is still good and the deploy is worth retrying.
+      const current = await prisma.deploymentService.findUnique({
+        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: row.id } },
+        select: { definitionSyncId: true },
+      });
+      if (current?.definitionSyncId !== body.definition_sync_id) {
+        throw new StatusError(409, `The deployment service ${JSON.stringify(params.service_id)} was re-synced while this deploy was being prepared. Another deploy is using a newer config; restart this deploy so its source and definition come from the same config revision.`);
+      }
+
       ({ runId } = await startDeployment({
         tenancy: auth.tenancy,
         prisma,

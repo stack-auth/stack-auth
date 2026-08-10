@@ -138,6 +138,11 @@ async function deleteObjectConditionally(key: string, etag: string): Promise<boo
     return true;
   } catch (error) {
     if (isPreconditionFailed(error)) return false;
+    // The object is already gone — someone else's delete won. That is the same
+    // outcome as a precondition failure (this caller did not perform the
+    // delete), and must not escape as an internal error. Stores differ here:
+    // an IfMatch delete of a missing key is a 404 on some, a 412 on others.
+    if (isNoSuchKey(error)) return false;
     throw error;
   }
 }
@@ -398,10 +403,9 @@ export async function readBuildVersioned(ns: string, key: string, id: string): P
   return await getJsonVersioned<StoredBuild>(buildRecordKey(ns, key, id));
 }
 
-export async function writeBuild(build: StoredBuild): Promise<void> {
-  await putJson(buildRecordKey(build.ns, build.key, build.id), build);
-}
-
+// No unconditional build write on purpose: every writer of a build record races the
+// completion webhook, so they all go through createBuild (ifNoneMatch) or replaceBuild
+// (ifMatch) and handle losing.
 export async function createBuild(build: StoredBuild): Promise<string | null> {
   return await putJsonConditionally(buildRecordKey(build.ns, build.key, build.id), build, { ifNoneMatch: true });
 }

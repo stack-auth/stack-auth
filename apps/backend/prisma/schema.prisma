@@ -1863,9 +1863,11 @@ model DeploymentRun {
 
   deploymentServiceId String @db.Uuid
 
-  // The deploy this run was part of. Null on runs created before deployments
-  // were grouped; the dashboard lists those under a synthetic single-service
-  // deployment rather than hiding them.
+  // The deploy this run was part of. Null on runs created before deployments were
+  // grouped, and on direct API deploys that sent no deployment_id. Such runs are only
+  // reachable per service — the deployments list reads Deployment rows, so it does not
+  // show them. `hexclave deploy` always creates a Deployment, so this is currently only
+  // reachable by hand-driving the API.
   deploymentId String? @db.Uuid
 
   // The Marshal build backing this run (ULID) and the revision it built.

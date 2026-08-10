@@ -10,7 +10,7 @@ import { redactSecrets } from "./redact.js";
 import { ReconciliationLeaseLostError, withReconciliationLease, type ReconciliationLeaseGuard } from "./reconciliation-lock.js";
 import { computeRevision } from "./revision.js";
 import { reconcilePublicIps } from "./public-networking.js";
-import { createBuild, deleteSpecConditionally, deleteUpload, deleteValidatedUpload, listBuilds, listDomainClaimsForService, listSpecKeys, readBuild, readBuildVersioned, readDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, replaceBuild, statUpload, writeBuild, writeBuildLog, writeSpec, writeValidatedUpload } from "./store.js";
+import { createBuild, deleteSpecConditionally, deleteUpload, deleteValidatedUpload, listBuilds, listDomainClaimsForService, listSpecKeys, readBuild, readBuildVersioned, readDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, replaceBuild, statUpload, writeBuildLog, writeSpec, writeValidatedUpload } from "./store.js";
 import { validateSourceArchive } from "./source-archive.js";
 import type { DnsRecord, EnvValue, ServiceDomainState, ServiceSpec, ServiceState, StoredBuild, StoredSpec, VolumeConfig } from "./types.js";
 import { ulid } from "./ulid.js";
@@ -970,8 +970,18 @@ export async function maybeFinalizeStaleBuild(build: StoredBuild): Promise<Store
       return build;
     }
   }
-  const finalized: StoredBuild = { ...build, status: "failed", error: "the build never reported completion (builder died or the completion webhook was lost)", finished_at_millis: Date.now() };
-  await writeBuild(finalized);
+  // Compare-and-swap on the record as it is NOW, not on the copy this call was handed.
+  // Everything above — the staleness arithmetic and a Fly round-trip — happened against a
+  // stale read, and a completion (webhook or mock) can land in that window. A blind write
+  // would then bury a terminal success under this "never reported completion" failure.
+  const current = await readBuildVersioned(build.ns, build.key, build.id);
+  if (current === null) return build;
+  if (current.value.status !== "queued" && current.value.status !== "running") return current.value;
+  const finalized: StoredBuild = { ...current.value, status: "failed", error: "the build never reported completion (builder died or the completion webhook was lost)", finished_at_millis: Date.now() };
+  if (await replaceBuild(finalized, current.etag) === null) {
+    // Someone else wrote first; theirs wins. Report what actually landed.
+    return (await readBuildVersioned(build.ns, build.key, build.id))?.value ?? build;
+  }
   await persistBuildLog(fly, finalized);
   return finalized;
 }

@@ -55,6 +55,54 @@ declare module "yup" {
   }
 }
 
+// `JSON.parse` turns `__proto__` into an ordinary own property, so any request
+// body can carry one — and yup's ObjectSchema mishandles it while casting, in
+// two separate ways:
+//
+//  1. It resolves each key against its `fields` object. `fields` is created with
+//     a null prototype, but `clone()` rebuilds it as `Object.assign({}, ...)`,
+//     so on every DERIVED schema — which is all of them, since `.defined()`,
+//     `.unknown()` etc. all clone — `fields["__proto__"]` resolves to
+//     `Object.prototype`. That is truthy but not a schema, and the cast dies
+//     with `field.resolve is not a function`, failing an otherwise valid
+//     request.
+//  2. Unknown keys are copied onto a fresh `{}` with `result[key] = value`,
+//     which for `__proto__` sets the result's prototype instead of creating the
+//     key, silently dropping the entry.
+//
+// Fixed here rather than at each call site: every object schema in the codebase
+// parses untrusted JSON, so every one of them is exposed. The key is carried
+// around the cast and reattached with `defineProperty`, which keeps it a plain
+// data property and treats it exactly like any other unknown key.
+const PROTOTYPE_KEY = "__proto__";
+
+function hasOwnPrototypeKey(value: unknown): boolean {
+  return typeof value === "object" && value !== null && Object.prototype.hasOwnProperty.call(value, PROTOTYPE_KEY);
+}
+
+const originalObjectSchemaCast = (yup.ObjectSchema.prototype as any)._cast;
+(yup.ObjectSchema.prototype as any)._cast = function (this: any, value: any, options: any = {}) {
+  if (!hasOwnPrototypeKey(value)) return originalObjectSchemaCast.call(this, value, options);
+
+  const prototypeEntry = Object.getOwnPropertyDescriptor(value, PROTOTYPE_KEY)!.value;
+  // Object schemas only ever read own enumerable string keys, so a shallow copy
+  // without this one is exactly what yup would otherwise have walked.
+  const withoutPrototypeKey: Record<string, unknown> = {};
+  for (const key of Object.keys(value)) {
+    if (key === PROTOTYPE_KEY) continue;
+    withoutPrototypeKey[key] = value[key];
+  }
+  const cast = originalObjectSchemaCast.call(this, withoutPrototypeKey, options);
+
+  // `__proto__` can never be a declared field — `yupObject({ __proto__: x })`
+  // sets the shape literal's prototype instead of declaring anything — so it is
+  // always an unknown key, and follows the same strip rule as the others.
+  const stripsUnknownKeys = options.stripUnknown ?? this.spec?.noUnknown;
+  if (stripsUnknownKeys || typeof cast !== "object" || cast === null) return cast;
+  Object.defineProperty(cast, PROTOTYPE_KEY, { value: prototypeEntry, writable: true, enumerable: true, configurable: true });
+  return cast;
+};
+
 // eslint-disable-next-line no-restricted-syntax
 yup.addMethod(yup.string, "nonEmpty", function (message?: string) {
   return this.test(
@@ -130,6 +178,28 @@ import.meta.vitest?.test("yupRecord applies nested defaults without leaking the 
   await expect(schema.validate({ services: { web: {} } })).resolves.toEqual({
     services: { web: { visibility: "private", transport: "http" } },
   });
+});
+import.meta.vitest?.test("object schemas keep a `__proto__` key as data instead of dying on it", async ({ expect }) => {
+  // JSON.parse, not a literal: `{ __proto__: ... }` in source sets the
+  // prototype, so only the parsed form reproduces what a request body does.
+  const body = JSON.parse('{"env":{"__proto__":{"value":"a"},"NORMAL":{}},"unknown":{"__proto__":"b"}}');
+  const schema = yupObject({
+    env: yupRecord(yupString(), yupObject({
+      value: yupString().default("fallback").defined(),
+    }).defined()).defined(),
+  });
+
+  const result = await schema.validate(body);
+  // The key survives as a real own property — and the sibling still gets its
+  // default, which is what forces yup to rebuild the record rather than pass it
+  // through untouched.
+  expect(Object.getOwnPropertyDescriptor(result.env, "__proto__")?.value).toEqual({ value: "a" });
+  expect(result.env.NORMAL).toEqual({ value: "fallback" });
+  // Nothing was written to the actual prototype chain, here or globally.
+  expect(Object.getPrototypeOf(result.env)).toBe(Object.prototype);
+  expect(({} as any).value).toBe(undefined);
+  // Unknown keys pass through with theirs intact too.
+  expect(Object.getOwnPropertyDescriptor((result as any).unknown, "__proto__")?.value).toBe("b");
 });
 
 export async function yupValidate<S extends yup.ISchema<any>>(
@@ -316,7 +386,9 @@ export function yupRecord<K extends yup.StringSchema, T extends yup.AnySchema>(
 
         // Validate the value
         try {
-          const validatedValue = await yupValidate(valueSchema, (value as Record<string, unknown>)[key], {
+          // `path` is cast in because Yup drives it internally and leaves it off
+          // the public ValidateOptions type, even though validate() honours it.
+          const childOptions = {
             // Do not forward Yup's internal `parent`/`originalValue` fields
             // from the record test. They describe the whole record and make
             // the nested schema validate that record as its own parent, which
@@ -324,6 +396,10 @@ export function yupRecord<K extends yup.StringSchema, T extends yup.AnySchema>(
             abortEarly: context.options.abortEarly,
             disableStackTrace: context.options.disableStackTrace,
             recursive: context.options.recursive,
+            // Forwarded explicitly because it is what names the field in the
+            // child's error message. Dropping it leaves every nested failure
+            // reading "this cannot be null" with nothing identifying the entry.
+            path: (context.options as { path?: string }).path,
             // Yup runs custom tests in a strict validation phase after the
             // outer object has cast. The record's dynamic children were not
             // part of that cast, so they still need their own non-strict pass
@@ -334,11 +410,16 @@ export function yupRecord<K extends yup.StringSchema, T extends yup.AnySchema>(
               ...context.options.context,
               path: path ? `${path}.${key}` : key,
             },
-          });
+          } as yup.ValidateOptions & { currentUserId?: string | null };
+          const validatedValue = await yupValidate(valueSchema, (value as Record<string, unknown>)[key], childOptions);
           // yupRecord is represented as a custom object test, so Yup cannot
           // install the cast child value for us. Preserve defaults and other
           // child casts in the returned record explicitly.
-          (value as Record<string, unknown>)[key] = validatedValue;
+          //
+          // defineProperty, not assignment: a record key is arbitrary user
+          // input, and `record.__proto__ = value` would reassign the record's
+          // prototype instead of storing the entry.
+          Object.defineProperty(value, key, { value: validatedValue, writable: true, enumerable: true, configurable: true });
         } catch (e: any) {
           return createError({
             path: path ? `${path}.${key}` : key,

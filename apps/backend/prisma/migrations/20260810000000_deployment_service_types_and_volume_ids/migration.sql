@@ -88,7 +88,10 @@ CHECK ("volumePath" IS NULL OR "type" = 'server');
 -- ============================ 3. deployments ============================
 CREATE TABLE "Deployment" (
     "tenancyId" UUID NOT NULL,
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    -- No database default: the id is generated client-side by Prisma
+    -- (`@default(uuid())`), matching DeploymentRun and the rest of the schema.
+    -- A database default here is drift that `prisma migrate diff` fails on.
+    "id" UUID NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "number" INTEGER NOT NULL,
@@ -109,8 +112,11 @@ CREATE INDEX "Deployment_tenancyId_createdAt_idx" ON "Deployment"("tenancyId", "
 ALTER TABLE "Deployment" ADD CONSTRAINT "Deployment_tenancyId_fkey"
 FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- Null on runs that predate grouping; the dashboard renders those as
--- single-service deployments rather than hiding them.
+-- Null on runs that predate grouping, and on runs from a direct deploy that sent no
+-- deployment_id. Those runs are reachable per service (the Services tab and the runs
+-- routes are keyed by service, not by deployment) but do NOT appear in the deployments
+-- list, which reads Deployment rows only. Acceptable while deployments are alpha —
+-- `hexclave deploy` always creates a Deployment — but it is a real gap, not a design.
 ALTER TABLE "DeploymentRun" ADD COLUMN "deploymentId" UUID;
 
 CREATE INDEX "DeploymentRun_tenancyId_deploymentId_idx" ON "DeploymentRun"("tenancyId", "deploymentId");
@@ -124,5 +130,10 @@ CREATE INDEX "DeploymentRun_tenancyId_deploymentId_idx" ON "DeploymentRun"("tena
 -- `null value in column "tenancyId" ... violates not-null constraint` instead of
 -- orphaning its runs. Naming "deploymentId" (Postgres 15+) nulls only the half
 -- that is nullable. Verified against the local database both ways.
-ALTER TABLE "DeploymentRun" ADD CONSTRAINT "DeploymentRun_deployment_fkey"
+--
+-- The NAME must be the one Prisma derives from the relation's field list
+-- ("DeploymentRun" + the referencing columns + "_fkey"); anything else is drift
+-- that `prisma migrate diff` fails on, since the relation itself is expressible
+-- in schema.prisma and only its ON DELETE column list is not.
+ALTER TABLE "DeploymentRun" ADD CONSTRAINT "DeploymentRun_tenancyId_deploymentId_fkey"
 FOREIGN KEY ("tenancyId", "deploymentId") REFERENCES "Deployment"("tenancyId", "id") ON DELETE SET NULL ("deploymentId") ON UPDATE CASCADE;

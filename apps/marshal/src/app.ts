@@ -7,7 +7,9 @@ import { attachDomain, detachDomain, normalizeHostnameOrThrow, readDomain } from
 import { MarshalError } from "./errors.js";
 import { FlyApiError, flyClientForNamespaceOrg } from "./fly/client.js";
 import { fetchLogPage } from "./logs.js";
+import { MutationOutcomeUnknownError } from "./mutation-safety.js";
 import { appNameForService } from "./naming.js";
+import { ReconciliationLeaseLostError } from "./reconciliation-lock.js";
 import {
   BUILD_ID_REGEX,
   applyServiceSpec,
@@ -40,6 +42,21 @@ function jsonResponse(status: number, body: unknown): Response {
 function errorResponse(error: unknown): Response {
   if (error instanceof MarshalError) {
     return jsonResponse(error.status, { error: error.code, message: error.message });
+  }
+  // Fencing outcomes: another reconciliation owns this service, or a Fly write's
+  // outcome could not be established. Both are deliberately propagated by the
+  // apply paths rather than swallowed, and neither is an internal fault — the
+  // caller's move is to retry, so say that instead of "internal error" (which
+  // the backend correctly escalates to an ISE).
+  if (error instanceof ReconciliationLeaseLostError) {
+    console.error("reconciliation fenced", error);
+    return jsonResponse(409, { error: "reconciliation_conflict", message: "another reconciliation of this service is in progress; retry the request" });
+  }
+  if (error instanceof MutationOutcomeUnknownError) {
+    // NOT 409: the write may well have landed, so this must not read as "nothing
+    // happened, safely retry" — the state has to be re-read first.
+    console.error("fly mutation outcome unknown", error);
+    return jsonResponse(503, { error: "mutation_outcome_unknown", message: "a runtime mutation did not confirm; re-read the service state before retrying" });
   }
   if (error instanceof FlyApiError) {
     // Relay a sanitized upstream failure; Fly's own 4xxes on our requests are still OUR

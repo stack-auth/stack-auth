@@ -26,7 +26,7 @@ vi.mock("./store.js", () => ({
   }),
 }));
 
-import { withReconciliationLease } from "./reconciliation-lock.js";
+import { ReconciliationLeaseLostError, withReconciliationLease } from "./reconciliation-lock.js";
 import { releaseReconciliationLease } from "./store.js";
 
 describe("service reconciliation lease", () => {
@@ -94,5 +94,18 @@ describe("service reconciliation lease", () => {
 
     expect(releaseReconciliationLease).not.toHaveBeenCalled();
     expect(stored?.value.owner_id).toBeDefined();
+  });
+
+  it("reports a lease it could not release as fencing, not as an internal fault", async () => {
+    // A store whose conditional writes are not atomic (adobe/s3mock is one) lets
+    // two owners hold the lease at once, and the first to finish finds a foreign
+    // etag at release time. The action still succeeded, so this must fail the
+    // request — but as a typed fencing error the HTTP layer answers 409 for,
+    // rather than a bare Error that becomes an opaque 500.
+    await expect(withReconciliationLease("ns", "web", async () => {
+      stored = { value: { owner_id: "other-owner", expires_at_millis: Date.now() + 1000 }, etag: String(nextEtag++) };
+      return "done";
+    }, { durationMs: 1000, renewIntervalMs: 500, contendedPollMs: 2, takeoverGraceMs: 10 }))
+      .rejects.toThrow(ReconciliationLeaseLostError);
   });
 });
