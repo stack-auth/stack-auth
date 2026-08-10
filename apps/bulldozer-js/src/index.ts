@@ -68,8 +68,8 @@ function createLowLevelDatabase(): LowLevelDatabase {
   mkdirSync(lmdbPath, { recursive: true });
   return declareInstantAvailabilityLowLevelDatabase(declareLmdbLowLevelDatabase({
     path: lmdbPath,
-    // Sticky: once a store is written with compression, every subsequent open of that path
-    // must keep this set. Pair with a filtered rebuild into a new path when enabling on prod.
+    // Sticky per path: once a store has compressed values, keep this set on every open.
+    // Enabling on an existing uncompressed store is safe (old values still read; new writes compress).
     compression: process.env.HEXCLAVE_BULLDOZER_JS_LMDB_COMPRESSION === "1",
     simulateReadMissDelayMs: readOptionalNonNegativeNumberEnv("HEXCLAVE_BULLDOZER_JS_SIMULATE_READ_MISS_DELAY_MS"),
   }));
