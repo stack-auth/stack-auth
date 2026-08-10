@@ -39,6 +39,7 @@ if (
 const MAX_JOBS_PER_RUNTIME = 50;
 const MAX_NON_DEFAULT_RUNTIMES = 3;
 const NPM_INSTALL_TIMEOUT_MS = 60_000;
+const PREPARATION_TIMEOUT_MS = NPM_INSTALL_TIMEOUT_MS + 60_000;
 const MAX_NODE_MODULES = 20;
 const MAX_CACHE_BYTES = 512 * 1024 * 1024;
 const MAX_NPM_CACHE_BYTES = 128 * 1024 * 1024;
@@ -196,17 +197,25 @@ function isSatisfiedByDefault(nodeModules) {
 function serializePayload(payload) {
   try {
     const serialized = JSON.stringify(payload);
-    if (Buffer.byteLength(serialized) <= MAX_RESPONSE_BYTES) return serialized;
+    if (serialized !== undefined && Buffer.byteLength(serialized) <= MAX_RESPONSE_BYTES) {
+      return { body: serialized, exceeded: false };
+    }
   } catch (error) {
     logInternalError("serialize response", error);
   }
-  return JSON.stringify({ error: "Response exceeded the maximum size", logs: [] });
+  return {
+    body: JSON.stringify({ error: "Response exceeded the maximum size", logs: [] }),
+    exceeded: true,
+  };
 }
 
 function sendJson(response, statusCode, payload) {
   if (response.headersSent) return;
-  response.writeHead(statusCode, { "Content-Type": "application/json" });
-  response.end(serializePayload(payload));
+  const serialized = serializePayload(payload);
+  response.writeHead(serialized.exceeded ? 500 : statusCode, {
+    "Content-Type": "application/json",
+  });
+  response.end(serialized.body);
 }
 
 async function readRequestBody(request) {
@@ -651,7 +660,25 @@ class RuntimeCache {
   }
 
   nonDefaultCount() {
-    return [...this.entries.values()].filter((entry) => !entry.isDefault).length;
+    const hashes = new Set();
+    for (const entry of this.entries.values()) {
+      if (!entry.isDefault) hashes.add(entry.hash);
+    }
+    for (const hash of this.creationPromises.keys()) {
+      if (hash !== "default") hashes.add(hash);
+    }
+    for (const hash of this.recyclingPromises.keys()) {
+      if (hash !== "default") hashes.add(hash);
+    }
+    return hashes.size;
+  }
+
+  protectedHashes() {
+    return new Set([
+      ...this.entries.keys(),
+      ...this.creationPromises.keys(),
+      ...this.recyclingPromises.keys(),
+    ]);
   }
 
   async waitForRuntime() {
@@ -1026,21 +1053,38 @@ class JobQueue {
     job.resolve(result);
   }
 
+  armPreparationTimeout(job) {
+    job.timer = setTimeout(() => {
+      job.controller.abort(new Error("Dependency preparation timed out"));
+      this.settle(job, {
+        statusCode: 500,
+        payload: {
+          error: "Dependency preparation timed out",
+          logs: logsFromOutput(job.output),
+        },
+      });
+    }, PREPARATION_TIMEOUT_MS);
+  }
+
+  armExecutionTimeout(job) {
+    job.timer = setTimeout(() => {
+      if (job.entry) this.runtimeCache.retire(job.entry);
+      job.controller.abort(new Error("Execution timed out"));
+      this.settle(job, {
+        statusCode: 500,
+        payload: {
+          error: "Script execution timed out",
+          logs: logsFromOutput(job.output),
+        },
+      });
+    }, job.timeoutMs + OUTER_TIMEOUT_GRACE_MS);
+  }
+
   dispatch() {
     while (this.activeJobs < MAX_IN_FLIGHT && this.queue.length > 0) {
       const job = this.queue.shift();
       this.activeJobs++;
-      job.timer = setTimeout(() => {
-        if (job.entry) this.runtimeCache.retire(job.entry);
-        job.controller.abort(new Error("Execution timed out"));
-        this.settle(job, {
-          statusCode: 500,
-          payload: {
-            error: "Script execution timed out",
-            logs: logsFromOutput(job.output),
-          },
-        });
-      }, job.timeoutMs + OUTER_TIMEOUT_GRACE_MS);
+      this.armPreparationTimeout(job);
       this.execute(job)
         .then((result) => this.settle(job, result))
         .catch((error) => {
@@ -1073,6 +1117,8 @@ class JobQueue {
         job.controller.signal,
       );
       job.entry = entry;
+      if (job.timer) clearTimeout(job.timer);
+      this.armExecutionTimeout(job);
       return await executeScript(entry.runtime, job);
     } finally {
       if (entry) this.runtimeCache.release(entry);
@@ -1083,7 +1129,7 @@ class JobQueue {
 
 const dependencyCache = new DependencyCache(MODULE_CACHE_DIR);
 const runtimeCache = new RuntimeCache();
-dependencyCache.setProtectedHashes(() => new Set(runtimeCache.entries.keys()));
+dependencyCache.setProtectedHashes(() => runtimeCache.protectedHashes());
 const jobQueue = new JobQueue(runtimeCache, dependencyCache);
 
 await mkdir(MODULE_CACHE_DIR, { recursive: true });
