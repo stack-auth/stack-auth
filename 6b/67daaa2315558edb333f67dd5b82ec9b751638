@@ -1,0 +1,30 @@
+apps/backend/src/server/standalone.ts
+  s_5ffc71306a9e04::t_fa6f2ab09d2d97 14
+apps/backend/src/lib/trusted-proxy.ts
+  s_5ffc71306a9e04::t_fa6f2ab09d2d97 4,7,17,22,28,32
+docker/backend/Dockerfile
+  s_5ffc71306a9e04::t_fa6f2ab09d2d97 86
+docker/server/entrypoint.sh
+  s_5ffc71306a9e04::t_fa6f2ab09d2d97 207
+apps/backend/src/lib/end-users.tsx
+  s_5ffc71306a9e04::t_fa6f2ab09d2d97 109,119-121,125,190-191,286-313
+  s_5ffc71306a9e04::t_dce75bec20220c 314
+apps/backend/.env.development
+  s_5ffc71306a9e04::t_fa6f2ab09d2d97 71-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "6b67daaa2315558edb333f67dd5b82ec9b751638",
+  "prompts": {},
+  "sessions": {
+    "s_5ffc71306a9e04": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd29b-8f21-7731-8b4b-3022e696152b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}

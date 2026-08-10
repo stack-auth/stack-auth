@@ -1,0 +1,45 @@
+apps/backend/src/lib/runtime/request-context.tsx
+  s_5ffc71306a9e04::t_fa86b11c4efc39 18-19,43-44
+  s_5ffc71306a9e04::t_9382858ccbf0ba 45-46
+apps/backend/src/lib/deployments/vercel-client.tsx
+  s_5ffc71306a9e04::t_fa86b11c4efc39 12,144
+apps/backend/src/lib/js-execution.tsx
+  s_5ffc71306a9e04::t_fa86b11c4efc39 2,166-169,174,177,180,182,185,191
+apps/backend/src/lib/deployments/index.tsx
+  s_5ffc71306a9e04::t_104e9ca421313a 49,655-670
+  s_5ffc71306a9e04::t_fa86b11c4efc39 600-618,626-627,630-633,635,641,646
+  s_5ffc71306a9e04::t_69ad9f86ccbdba 671
+apps/backend/src/server/cron-monitor.ts
+  s_5ffc71306a9e04::t_91350b05b791a7 54-81,83,85-88,92-103,105,109-122,124,126
+  s_5ffc71306a9e04::t_944d29e6785535 47-51,53,91,108,127-128
+  s_5ffc71306a9e04::t_7954b55cc258b3 89,106
+  s_5ffc71306a9e04::t_4dcef849e6f3ad 46
+apps/backend/src/server/app.ts
+  s_5ffc71306a9e04::t_fa86b11c4efc39 123
+apps/backend/src/lib/config/repo-agent.ts
+  s_5ffc71306a9e04::t_fa86b11c4efc39 109-111,113-114
+apps/backend/src/instrumentation-export.test.ts
+  s_5ffc71306a9e04::t_fa86b11c4efc39 87-114
+apps/backend/src/app/api/latest/internal/workflow-engine-step/route.tsx
+  s_5ffc71306a9e04::t_104e9ca421313a 37-44
+  s_5ffc71306a9e04::t_fa86b11c4efc39 2,22-36,83,86,88,94
+apps/backend/src/s3.tsx
+  s_5ffc71306a9e04::t_34d7642ab4a5fd 5,7,110,115,120,139-144,146-177,180-181,183-188,191-212,219,221,229,234,239,243,246-264
+  s_5ffc71306a9e04::t_24977076138145 265
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "545ee20e93ee25ec5107a60ebd5852562c1437ed",
+  "prompts": {},
+  "sessions": {
+    "s_5ffc71306a9e04": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd29b-8f21-7731-8b4b-3022e696152b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}

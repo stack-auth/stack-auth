@@ -1,0 +1,24 @@
+apps/backend/src/s3.tsx
+  s_5ffc71306a9e04::t_2b3deb37e4f9c0 117-123,142-153,206-208,247-250,261-267,290-298
+  s_5ffc71306a9e04::t_7fbd890ffae310 299-300
+apps/backend/src/lib/deployments/index.tsx
+  s_5ffc71306a9e04::t_25d730b6f8c628 46-47,599-610,623,627-629,643,682-692
+  s_5ffc71306a9e04::t_43d1f9f587f83e 611-622,624-626
+  s_5ffc71306a9e04::t_391a70ed608b08 693-694
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "bbf1a4bb76db0081b7ffffc453ae79788d855bb0",
+  "prompts": {},
+  "sessions": {
+    "s_5ffc71306a9e04": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd29b-8f21-7731-8b4b-3022e696152b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,34 @@
+apps/backend/package.json
+  s_5ffc71306a9e04::t_046efbf0f09786 23
+docker/server/entrypoint.sh
+  s_5ffc71306a9e04::t_046efbf0f09786 207
+apps/backend/.env.development
+  s_5ffc71306a9e04::t_046efbf0f09786 73
+apps/backend/src/server/server.ts
+  s_5ffc71306a9e04::t_046efbf0f09786 1-11,13-110
+apps/backend/src/app/health/route.tsx
+  s_5ffc71306a9e04::t_e51bf1484a2536 2,6-10
+apps/backend/src/prisma-client.tsx
+  s_5ffc71306a9e04::t_046efbf0f09786 46,53-54,57-60,66-67
+docker/backend/Dockerfile
+  s_5ffc71306a9e04::t_e51bf1484a2536 93
+  s_5ffc71306a9e04::t_046efbf0f09786 86
+docker/server/Dockerfile
+  s_5ffc71306a9e04::t_e51bf1484a2536 109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "6658aa119824825bc1f69c6ba5b7429e16705bfb",
+  "prompts": {},
+  "sessions": {
+    "s_5ffc71306a9e04": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd29b-8f21-7731-8b4b-3022e696152b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}

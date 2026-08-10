@@ -1,0 +1,77 @@
+apps/backend/src/server/compression.ts
+  s_5cd874e3a3be70::t_546749a4e69ccd 42-50
+  s_5cd874e3a3be70::t_ee43f07a2853ae 1-2
+  s_5cd874e3a3be70::t_ef28303d77dd20 151-166
+apps/backend/src/lib/runtime/request-context.tsx
+  s_5cd874e3a3be70::t_ddffd6b3b7f9af 47-66,82,86-97
+apps/backend/src/server/shutdown.test.ts
+  s_5cd874e3a3be70::t_312367e7fc0ced 9
+apps/backend/src/lib/runtime/headers.tsx
+  s_5cd874e3a3be70::t_0675cfe43d037d 73-126
+  s_5cd874e3a3be70::t_cefe85c0947db1 48-52
+  s_5cd874e3a3be70::t_5d0202c9d5b377 1
+apps/backend/src/instrumentation-plan.test.ts
+  s_5cd874e3a3be70::t_75c7d3ca19d593 83-137
+apps/backend/src/server/shutdown.ts
+  s_5cd874e3a3be70::t_8913ce50235468 12-16,18-19
+apps/backend/src/route-handlers/smart-route-handler.tsx
+  s_5cd874e3a3be70::t_6933e5521a865c 5
+  s_5cd874e3a3be70::t_8c5bd6289cb2ed 53-61
+apps/backend/src/lib/deployments/vercel-client.tsx
+  s_5cd874e3a3be70::t_28c883cb15dc2d 390-399
+  s_5cd874e3a3be70::t_a00904fd47fa33 192-195,207
+  s_5cd874e3a3be70::t_346af9356e25b0 177,181
+  s_5cd874e3a3be70::t_d74ceca93cf7ec 126-172
+  s_5cd874e3a3be70::t_1b2ea4eb94880a 354-363
+  s_5cd874e3a3be70::t_530e9a37386762 230-241
+apps/backend/src/app/api/latest/deployments/runs/[run_id]/logs/route.tsx
+  s_5cd874e3a3be70::t_0961aca8d6b0c4 135-139
+apps/backend/src/instrumentation-plan.ts
+  s_5cd874e3a3be70::t_2ce8a5f133491e 54-63
+  s_5cd874e3a3be70::t_f861677f55f06d 26-33
+apps/backend/src/server/app.ts
+  s_5cd874e3a3be70::t_44e62f08dc8ba8 319-321,323,330,333
+  s_5cd874e3a3be70::t_a4ab0b37c02dd1 234-243
+  s_5cd874e3a3be70::t_cd0afc8f1247cc 313-318,322,324-329,331-332,334-340
+apps/backend/src/server/request-body-limit.ts
+  s_5cd874e3a3be70::t_19c4a38c370d26 1-59
+apps/backend/src/utils/background-tasks.tsx
+  s_5cd874e3a3be70::t_89cd851f57aa4b 2,9-34,41-49
+apps/backend/src/server/server.ts
+  s_5cd874e3a3be70::t_348f7907425c00 11
+  s_5cd874e3a3be70::t_6aefb0e10e807e 30-42
+  s_5cd874e3a3be70::t_fb1ab8571af88d 86-95
+apps/backend/src/server/error-handler.ts
+  s_5cd874e3a3be70::t_4c26180de8e61c 2,14-24,44-56
+  s_5cd874e3a3be70::t_843d95590b4040 57-75
+apps/backend/src/server/cron-monitor.ts
+  s_5cd874e3a3be70::t_1423a42855d6d1 83
+  s_5cd874e3a3be70::t_98f980474c9587 38-44
+apps/backend/src/server/middleware.ts
+  s_5cd874e3a3be70::t_fb0bf8df5be88f 71-106
+  s_5cd874e3a3be70::t_acd4263e98fd4a 180-210
+apps/backend/src/route-handlers/smart-response.tsx
+  s_5cd874e3a3be70::t_0cf89b4976b159 61-66
+  s_5cd874e3a3be70::t_eabdf8dab2c2be 141-153
+  s_5cd874e3a3be70::t_be0e232f20b322 59-60
+  s_5cd874e3a3be70::t_a116cb2ae1720f 160-167
+  s_5cd874e3a3be70::t_ea45f5cd46bfdc 192-221
+apps/backend/package.json
+  s_5cd874e3a3be70::t_001d463a6cf738 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "8c94e1f2266e6d1152604c254bd46076fb98d3a6",
+  "prompts": {},
+  "sessions": {
+    "s_5cd874e3a3be70": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6736fe4-df52-4b8d-a46a-355c85d4a0a6",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+apps/backend/src/s3.tsx
+  s_5ffc71306a9e04::t_357a2de566c587 148-153,297-298,302,305-310
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "ce0927727a37423c5864b7ae9b92098b09d81a00",
+  "prompts": {},
+  "sessions": {
+    "s_5ffc71306a9e04": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd29b-8f21-7731-8b4b-3022e696152b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}

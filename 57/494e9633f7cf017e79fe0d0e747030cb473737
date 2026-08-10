@@ -1,0 +1,296 @@
+.github/workflows/all-good.yaml
+  h_8c1b79571cf22c 43
+.github/workflows/bulldozer-serialization-compat.yaml
+  h_8c1b79571cf22c 1-11,15,19-22,25-35,38-39,41-43,45-46,49-82,84-88,90-107,110,115-154,156-160,162-175,177,179-218
+AGENTS.md
+  h_8c1b79571cf22c 125
+apps/backend/package.json
+  h_8c1b79571cf22c 3
+apps/backend/src/app/api/latest/auth/mfa/sign-in/verification-code-handler.tsx
+  h_8c1b79571cf22c 2,29-31,59-68,78-86,101-109,117-119
+apps/backend/src/app/api/latest/auth/oauth/callback/[provider_id]/route.tsx
+  h_8c1b79571cf22c 2,268-281,353-369,424-427,433-434,456,461-462,513,519-520,524-539,568-571
+apps/backend/src/app/api/latest/auth/otp/sign-in/verification-code-handler.tsx
+  h_8c1b79571cf22c 2,87,147-148,157-162
+apps/backend/src/app/api/latest/auth/passkey/sign-in/verification-code-handler.tsx
+  h_8c1b79571cf22c 2,64-68,77-82,106-111,137,146-150
+apps/backend/src/app/api/latest/auth/password/sign-in/route.tsx
+  h_8c1b79571cf22c 2,57-62,76-77,86-91
+apps/backend/src/app/api/latest/internal/compliance/access-review/route.tsx
+  h_8c1b79571cf22c 1-161
+apps/backend/src/app/api/latest/internal/compliance/restricted-users/route.tsx
+  h_8c1b79571cf22c 1-105
+apps/backend/src/app/api/latest/internal/compliance/security-events/route.tsx
+  h_8c1b79571cf22c 1-368
+apps/backend/src/app/api/latest/internal/compliance/security-posture/route.tsx
+  h_8c1b79571cf22c 1-87
+apps/backend/src/app/api/latest/internal/newly-created-projects/helpers.tsx
+  h_8c1b79571cf22c 54-55,68,265-276,280-292,479-480,500-501,624
+apps/backend/src/app/api/latest/internal/newly-created-projects/route.tsx
+  h_8c1b79571cf22c 29-30,60,75,93,104,156
+apps/backend/src/app/api/latest/internal/newly-created-projects/schemas.tsx
+  h_8c1b79571cf22c 15-16,40
+apps/backend/src/app/api/latest/internal/session-replays/[session_replay_id]/route.tsx
+  h_8c1b79571cf22c 28
+apps/backend/src/app/api/latest/internal/session-replays/route.tsx
+  h_8c1b79571cf22c 111
+apps/backend/src/app/api/latest/internal/session-replays/session-replay-admin-rows.ts
+  h_8c1b79571cf22c 8,32,84-86
+apps/backend/src/app/api/latest/team-invitations/[id]/accept/route.tsx
+  h_8c1b79571cf22c 2,49-52
+apps/backend/src/app/api/latest/team-invitations/accept/verification-code-handler.tsx
+  h_8c1b79571cf22c 2,77-80,147-150
+apps/backend/src/app/api/latest/teams/crud.tsx
+  h_8c1b79571cf22c 14,142-147
+apps/backend/src/lib/compliance-events.ts
+  h_8c1b79571cf22c 1-141
+apps/backend/src/lib/events.tsx
+  h_8c1b79571cf22c 172-214,224-226,367-373,423-496,513-516,527
+apps/backend/src/lib/permissions.tsx
+  h_8c1b79571cf22c 34-35,55,62
+apps/backend/src/lib/request-checks.tsx
+  h_8c1b79571cf22c 2,113-118,151-155
+apps/backend/src/lib/seed-dummy-data.ts
+  h_8c1b79571cf22c 2211-2212,2455-2467,2471-2472,2479-2480,2503,2509-2514,2518,2520,2524-2590,2609-2624
+apps/backend/src/oauth/model.tsx
+  h_8c1b79571cf22c 21-24,179-181,187-191
+apps/backend/src/route-handlers/verification-code-handler.tsx
+  h_8c1b79571cf22c 2,119,196-213,228-243,259-273
+apps/bulldozer-js/package.json
+  h_8c1b79571cf22c 3
+apps/bulldozer-js/src/databases/bulldozer/__fixtures__/bulldozer-db-compat.test.ts
+  h_8c1b79571cf22c 1-49
+apps/bulldozer-js/src/databases/bulldozer/__fixtures__/bulldozer-db-cross-version.ts
+  h_8c1b79571cf22c 1-57
+apps/bulldozer-js/src/databases/bulldozer/__fixtures__/bulldozer-db-fixture-utils.ts
+  h_8c1b79571cf22c 1-214
+apps/bulldozer-js/src/databases/bulldozer/__fixtures__/db-v0.json
+  h_8c1b79571cf22c 1-2635
+apps/bulldozer-js/src/databases/bulldozer/__fixtures__/db-v1.json
+  h_8c1b79571cf22c 1-2635
+apps/bulldozer-js/src/databases/bulldozer/__fixtures__/generate-bulldozer-db-fixtures.ts
+  h_8c1b79571cf22c 1-87
+apps/bulldozer-js/src/databases/low-level/implementations/instant-availability.test.ts
+  h_8c1b79571cf22c 86-174,272-310
+apps/bulldozer-js/src/databases/low-level/implementations/instant-availability.ts
+  h_8c1b79571cf22c 143,160-165,169,171-173,177,211,213,218,233
+apps/bulldozer-js/src/databases/piledriver/data-structures/__fixtures__/generate-serialization-fixtures.ts
+  h_8c1b79571cf22c 1-64
+apps/bulldozer-js/src/databases/piledriver/data-structures/__fixtures__/serialization-cross-version.ts
+  h_8c1b79571cf22c 1-65
+apps/bulldozer-js/src/databases/piledriver/data-structures/__fixtures__/serialization-fixture-utils.ts
+  h_8c1b79571cf22c 1-111
+apps/bulldozer-js/src/databases/piledriver/data-structures/__fixtures__/v0.json
+  h_8c1b79571cf22c 1-592
+apps/bulldozer-js/src/databases/piledriver/data-structures/__fixtures__/v1.json
+  h_8c1b79571cf22c 1-659
+apps/bulldozer-js/src/databases/piledriver/data-structures/augmented-tree-map.test.ts
+  h_8c1b79571cf22c 291-321
+apps/bulldozer-js/src/databases/piledriver/data-structures/augmented-tree-map.ts
+  h_8c1b79571cf22c 33-37,39-44,80-83,309-313,318,330,339-344,353,355,365-392,436,438-439,443-444,455,460,465,474,484,489,502,507,515,522,526,531,538,542,548,551,554,557,559,564-565,570-573,578-579,585-588,592,595,598-614,616-618,640-646
+apps/bulldozer-js/src/databases/piledriver/data-structures/serialization-compat.test.ts
+  h_8c1b79571cf22c 1-36
+apps/dashboard/package.json
+  h_8c1b79571cf22c 3
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/top-lists.tsx
+  h_8c1b79571cf22c 4
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/compliance/page-client.tsx
+  h_8c1b79571cf22c 1-332
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/compliance/page.tsx
+  h_8c1b79571cf22c 1-9
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/domains/page-client.tsx
+  h_8c1b79571cf22c 3,13,15,47-72,74,86,94-98,100-101,111-112,118-119,127-142,147-150,156-159,166-172,209-222,224-240,242-243,246-287
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/newly-created-projects/page-client.tsx
+  h_8c1b79571cf22c 10,49-51,58-59,72,128,136-138,149,154-160,163-165,168,170-172,192,200,223-234,238-239,266,281-284,335,487-531,546,554,559-562,567-568,570-571,674,752-762,776,874-880,983-988
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/session-replays/page-client.tsx
+  h_8c1b79571cf22c 9,31,51-54,71,1914,1916-1926
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/session-replays/replay-user-overview.tsx
+  h_8c1b79571cf22c 1-616
+apps/dashboard/src/components/geo-referrer.tsx
+  h_8c1b79571cf22c 1-76
+apps/dashboard/src/components/user-dialogs.tsx
+  h_8c1b79571cf22c 3,6-7,72-78,88-90,92-120,157-174,178-195,199-218,220
+apps/dashboard/src/lib/apps-frontend.tsx
+  h_8c1b79571cf22c 3,485-498
+apps/dashboard/src/lib/session-replay-format.ts
+  h_8c1b79571cf22c 1-10
+apps/dashboard/src/lib/user-agent.test.ts
+  h_8c1b79571cf22c 1-137
+apps/dashboard/src/lib/user-agent.ts
+  h_8c1b79571cf22c 1-124
+apps/dev-launchpad/package.json
+  h_8c1b79571cf22c 3
+apps/e2e/package.json
+  h_8c1b79571cf22c 3
+apps/e2e/tests/backend/endpoints/api/v1/auth-flows.test.ts
+  h_8c1b79571cf22c 71,128
+apps/e2e/tests/backend/endpoints/api/v1/auth/anonymous/anonymous-comprehensive.test.ts
+  h_8c1b79571cf22c 42,262
+apps/e2e/tests/backend/endpoints/api/v1/auth/anonymous/anonymous-upgrade.test.ts
+  h_8c1b79571cf22c 153,230,510
+apps/e2e/tests/backend/endpoints/api/v1/auth/email-normalization.test.ts
+  h_8c1b79571cf22c 35,72,158,234,304,359
+apps/e2e/tests/backend/endpoints/api/v1/auth/mfa/sign-in.test.ts
+  h_8c1b79571cf22c 6,67,97
+apps/e2e/tests/backend/endpoints/api/v1/auth/oauth/merge-strategy.test.ts
+  h_8c1b79571cf22c 119
+apps/e2e/tests/backend/endpoints/api/v1/auth/passkey/sign-in.test.ts
+  h_8c1b79571cf22c 9,37,90
+apps/e2e/tests/backend/endpoints/api/v1/auth/passkey/wildcard-domains.test.ts
+  h_8c1b79571cf22c 92,165,230,306,378
+apps/e2e/tests/backend/endpoints/api/v1/auth/password/reset.test.ts
+  h_8c1b79571cf22c 36,84,112,167
+apps/e2e/tests/backend/endpoints/api/v1/auth/password/send-reset-code.test.ts
+  h_8c1b79571cf22c 87
+apps/e2e/tests/backend/endpoints/api/v1/auth/password/set.test.ts
+  h_8c1b79571cf22c 26
+apps/e2e/tests/backend/endpoints/api/v1/auth/password/sign-in.test.ts
+  h_8c1b79571cf22c 5,84,109
+apps/e2e/tests/backend/endpoints/api/v1/auth/password/sign-up.test.ts
+  h_8c1b79571cf22c 129
+apps/e2e/tests/backend/endpoints/api/v1/auth/sessions/current/index.test.ts
+  h_8c1b79571cf22c 88,119
+apps/e2e/tests/backend/endpoints/api/v1/auth/sessions/current/refresh.test.ts
+  h_8c1b79571cf22c 5,25,51,87
+apps/e2e/tests/backend/endpoints/api/v1/auth/sessions/index.test.ts
+  h_8c1b79571cf22c 7,39,62,136,171,220,326
+apps/e2e/tests/backend/endpoints/api/v1/auth/sign-up-rules.test.ts
+  h_8c1b79571cf22c 51,77,176,818,1162,1189,2003,2437,2478,2508,2530,2614
+apps/e2e/tests/backend/endpoints/api/v1/connected-accounts.test.ts
+  h_8c1b79571cf22c 538,709,955
+apps/e2e/tests/backend/endpoints/api/v1/contact-channels/legacy-send-verification-code.test.ts
+  h_8c1b79571cf22c 5
+apps/e2e/tests/backend/endpoints/api/v1/contact-channels/send-verification-code.test.ts
+  h_8c1b79571cf22c 5
+apps/e2e/tests/backend/endpoints/api/v1/contact-channels/verify.test.ts
+  h_8c1b79571cf22c 83
+apps/e2e/tests/backend/endpoints/api/v1/emails/email-queue.test.ts
+  h_8c1b79571cf22c 122,188,252,336,515,572,630,959,1068
+apps/e2e/tests/backend/endpoints/api/v1/integrations/credential-scanning/revoke.test.ts
+  h_8c1b79571cf22c 15,137,140,143
+apps/e2e/tests/backend/endpoints/api/v1/internal-metrics.test.ts
+  h_8c1b79571cf22c 375
+apps/e2e/tests/backend/endpoints/api/v1/internal/compliance-security-events.test.ts
+  h_8c1b79571cf22c 1-204
+apps/e2e/tests/backend/endpoints/api/v1/internal/newly-created-projects.test.ts
+  h_8c1b79571cf22c 91-122
+apps/e2e/tests/backend/endpoints/api/v1/internal/sign-up-rules-stats.test.ts
+  h_8c1b79571cf22c 134-136,193
+apps/e2e/tests/backend/endpoints/api/v1/project-permissions.test.ts
+  h_8c1b79571cf22c 122,257
+apps/e2e/tests/backend/endpoints/api/v1/projects.test.ts
+  h_8c1b79571cf22c 1617
+apps/e2e/tests/backend/endpoints/api/v1/risk-scores.test.ts
+  h_8c1b79571cf22c 144,157
+apps/e2e/tests/backend/endpoints/api/v1/send-email.test.ts
+  h_8c1b79571cf22c 216,421,753,786
+apps/e2e/tests/backend/endpoints/api/v1/session-replays.test.ts
+  h_8c1b79571cf22c 8-16,723,731-776
+apps/e2e/tests/backend/endpoints/api/v1/team-memberships.test.ts
+  h_8c1b79571cf22c 506,508
+apps/e2e/tests/backend/endpoints/api/v1/team-permissions.test.ts
+  h_8c1b79571cf22c 126
+apps/e2e/tests/backend/endpoints/api/v1/token-refresh-events.test.ts
+  h_8c1b79571cf22c 151,233
+apps/e2e/tests/backend/endpoints/api/v1/unsubscribe-link.test.ts
+  h_8c1b79571cf22c 20,153,225
+apps/e2e/tests/backend/endpoints/api/v1/users-list-limit.test.ts
+  h_8c1b79571cf22c 6,77-79
+apps/e2e/tests/backend/endpoints/api/v1/users.test.ts
+  h_8c1b79571cf22c 2388,2470,2532,2563
+apps/e2e/tests/backend/helpers/replication.ts
+  h_8c1b79571cf22c 1-29
+apps/hosted-components/package.json
+  h_8c1b79571cf22c 4
+apps/internal-tool/package.json
+  h_8c1b79571cf22c 4
+apps/mcp/package.json
+  h_8c1b79571cf22c 3
+apps/mock-oauth-server/package.json
+  h_8c1b79571cf22c 3
+apps/skills/package.json
+  h_8c1b79571cf22c 3
+docs-mintlify/guides/getting-started/setup.mdx
+  h_8c1b79571cf22c 9,1172,1194
+docs-mintlify/package.json
+  h_8c1b79571cf22c 3
+docs-mintlify/snippets/home-prompt-island.jsx
+  h_8c1b79571cf22c 3
+docs/package.json
+  h_8c1b79571cf22c 3
+examples/cjs-test/package.json
+  h_8c1b79571cf22c 3
+examples/convex/package.json
+  h_8c1b79571cf22c 3
+examples/demo/package.json
+  h_8c1b79571cf22c 3
+examples/docs-examples/package.json
+  h_8c1b79571cf22c 3
+examples/e-commerce/package.json
+  h_8c1b79571cf22c 3
+examples/js-example/package.json
+  h_8c1b79571cf22c 3
+examples/lovable-react-18-example/package.json
+  h_8c1b79571cf22c 4
+examples/middleware/package.json
+  h_8c1b79571cf22c 3
+examples/react-example/package.json
+  h_8c1b79571cf22c 4
+examples/supabase/package.json
+  h_8c1b79571cf22c 3
+examples/tanstack-start-demo/package.json
+  h_8c1b79571cf22c 3
+package.json
+  h_8c1b79571cf22c 60
+packages/cli/package.json
+  h_8c1b79571cf22c 3
+packages/dashboard-ui-components/package.json
+  h_8c1b79571cf22c 3
+packages/js/package.json
+  h_8c1b79571cf22c 4
+packages/next/package.json
+  h_8c1b79571cf22c 4
+packages/react/package.json
+  h_8c1b79571cf22c 4
+packages/sc/package.json
+  h_8c1b79571cf22c 3
+packages/shared-backend/package.json
+  h_8c1b79571cf22c 3
+packages/shared/package.json
+  h_8c1b79571cf22c 3
+packages/shared/src/apps/apps-config.ts
+  h_8c1b79571cf22c 201-206
+packages/shared/src/config/schema.ts
+  h_8c1b79571cf22c 95-98,966-969,1362-1369,1405,1689-1702,1721-1735
+packages/shared/src/interface/crud/session-replays.ts
+  h_8c1b79571cf22c 16,34
+packages/tanstack-start/package.json
+  h_8c1b79571cf22c 4
+packages/template/package-template.json
+  h_8c1b79571cf22c 16
+packages/template/package.json
+  h_8c1b79571cf22c 5
+packages/template/src/lib/hexclave-app/apps/implementations/admin-app-impl.ts
+  h_8c1b79571cf22c 1433,1455
+packages/template/src/lib/hexclave-app/session-replays/index.ts
+  h_8c1b79571cf22c 3-4
+packages/ui/package.json
+  h_8c1b79571cf22c 3
+scripts/reseed-bulldozer.sh
+  h_8c1b79571cf22c 85-93
+sdks/implementations/swift/package.json
+  h_8c1b79571cf22c 3
+sdks/spec/package.json
+  h_8c1b79571cf22c 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "57494e9633f7cf017e79fe0d0e747030cb473737",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,44 @@
+apps/backend/src/index.ts
+  s_5ffc71306a9e04::t_0e9ef0ba557136 15
+apps/backend/src/server/app.ts
+  s_5ffc71306a9e04::t_d2e45200b1cf2d 130,140,174-175
+apps/backend/src/lib/js-execution.tsx
+  s_5ffc71306a9e04::t_d01ada528fe1d8 169,172,175,177,180,186
+apps/backend/src/server/registry.ts
+  s_5ffc71306a9e04::t_d2e45200b1cf2d 8,68,144,166,169
+apps/backend/src/app/api/latest/internal/workflow-engine-step/route.tsx
+  s_5ffc71306a9e04::t_29614ae937a588 6,11,65
+apps/backend/src/lib/deployments/vercel-client.tsx
+  s_5ffc71306a9e04::t_177c78bdcdba4f 143
+apps/backend/src/s3.tsx
+  s_5ffc71306a9e04::t_e6ad60b12e5d17 142
+  s_5ffc71306a9e04::t_30f886c8849723 108,117,136,163,172,177,185
+apps/backend/src/lib/deployments/index.tsx
+  s_5ffc71306a9e04::t_177c78bdcdba4f 608,610
+apps/backend/src/server/backend-request.ts
+  s_5ffc71306a9e04::t_0e9ef0ba557136 5
+apps/backend/scripts/generate-route-info.ts
+  s_5ffc71306a9e04::t_0e9ef0ba557136 21,28
+apps/backend/src/utils/background-tasks.tsx
+  s_5ffc71306a9e04::t_d2e45200b1cf2d 5-6,9-11,14-16,18,21,28,33
+apps/backend/src/lib/workflows/invoke.tsx
+  s_5ffc71306a9e04::t_d01ada528fe1d8 61-62,72
+apps/backend/src/lib/config/repo-agent.ts
+  s_5ffc71306a9e04::t_acc3d640b9febf 103,105,108,110-111,151,154-155,160,174-175,258,261-262,278,285,288,310,322,325,327,329,331,344-345,365,378,394,475,484,496-497,507,510-511,518,526,540,584,771
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "78b3078204bab79cabdfc38e67c9dff2170ebd05",
+  "prompts": {},
+  "sessions": {
+    "s_5ffc71306a9e04": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd29b-8f21-7731-8b4b-3022e696152b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}

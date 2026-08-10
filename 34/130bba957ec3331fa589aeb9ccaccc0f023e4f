@@ -1,0 +1,53 @@
+docker/server/Dockerfile
+  s_db796eb0114009::t_1914aebf65c7b8 108-111
+  s_db796eb0114009::t_9e249e3b85c40a 112
+docker/server/.env
+  s_db796eb0114009::t_fc28f69b20f796 4-10
+apps/backend/src/server/cron-monitor.ts
+  s_db796eb0114009::t_42d4e6ef292c3b 79,124
+  s_db796eb0114009::t_396996825e7634 6,8,10-17,28,31,33,38,42-73,84,87,89,91,99,103,117,122-123,125-168,171,173,175,178,182,185,188,196-197,199,203
+apps/backend/src/server/trusted-proxy.test.ts
+  s_db796eb0114009::t_b646efb2870da7 16
+apps/e2e/tests/backend/endpoints/health/database.test.ts
+  s_db796eb0114009::t_7d5ae38db215d7 1-14
+docker/backend/Dockerfile
+  s_db796eb0114009::t_043094dc1c97d2 93
+.github/workflows/docker-server-build-run.yaml
+  s_db796eb0114009::t_67eeb973e8cbcb 93
+  s_db796eb0114009::t_b6cce7ab157f05 38-48
+apps/backend/src/app/health/route.tsx
+  s_db796eb0114009::t_fb95c6a05bdd9a 6-7
+  s_db796eb0114009::t_6f00a025dd7edd 8
+apps/backend/src/lib/end-users.tsx
+  s_db796eb0114009::t_834e96d8d6502c 190
+docs-mintlify/guides/other/self-host.mdx
+  s_db796eb0114009::t_c981fe7dc60be3 297,341
+  s_db796eb0114009::t_1f863e503feade 88-90,179,195,200-204,206
+  s_db796eb0114009::t_96c9c15c74afe8 318,331,333-334,336-338
+  s_db796eb0114009::t_8c364d5afbe9ee 295-296,298-306,315-317,319,323-328,332,335
+docker/server/.env.example
+  s_db796eb0114009::t_18462762fb5ad8 6-12
+apps/backend/src/server/request-body-limit.ts
+  s_db796eb0114009::t_3a19820828942d 3-6
+apps/backend/src/lib/trusted-proxy.ts
+  s_db796eb0114009::t_6f5b9a0e89f7ac 7-26,47,50,68,72-85,89-111
+apps/backend/src/server/server.ts
+  s_db796eb0114009::t_47b1146216c6bd 42-46
+  s_db796eb0114009::t_28f1cffab7f95b 20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "34130bba957ec3331fa589aeb9ccaccc0f023e4f",
+  "prompts": {},
+  "sessions": {
+    "s_db796eb0114009": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "be5fb3c1-b15c-4360-a3cf-175eea87d62e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}

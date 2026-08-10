@@ -1,0 +1,21 @@
+apps/backend/src/index.ts
+  s_5ffc71306a9e04::t_37e713038f2a7f 14-20
+apps/backend/src/server/runtime-limits.test.ts
+  s_5ffc71306a9e04::t_37e713038f2a7f 3-4,8-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "8e517713a990a10dcc145aef1c6d086925112071",
+  "prompts": {},
+  "sessions": {
+    "s_5ffc71306a9e04": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd29b-8f21-7731-8b4b-3022e696152b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}

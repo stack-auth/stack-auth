@@ -1,0 +1,41 @@
+apps/backend/src/server/compression.ts
+  s_5ffc71306a9e04::t_8f597d91a8df71 44,170-178
+apps/backend/src/server/node-server.ts
+  s_5ffc71306a9e04::t_8f597d91a8df71 1-58
+apps/backend/src/server/standalone.ts
+  s_5ffc71306a9e04::t_8f597d91a8df71 10,30,32,38-51
+  s_cd420589440574::t_9fef14aed19e4e 52
+apps/backend/src/server/node-environment.ts
+  s_5ffc71306a9e04::t_8f597d91a8df71 3,12-16
+apps/backend/src/server/start-command.test.ts
+  s_5ffc71306a9e04::t_8f597d91a8df71 10-15
+apps/backend/src/server/trusted-proxy.test.ts
+  s_5ffc71306a9e04::t_8f597d91a8df71 5,35
+apps/backend/src/lib/js-execution.tsx
+  s_5ffc71306a9e04::t_8f597d91a8df71 147-155,161-173
+  s_cd420589440574::t_4dd8e983e0d354 174-175
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "a5be2cdf470fe90bdaa567e1dcbada28f87e3f71",
+  "prompts": {},
+  "sessions": {
+    "s_5ffc71306a9e04": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd29b-8f21-7731-8b4b-3022e696152b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_cd420589440574": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0a93b8df-c740-4552-a5c6-0762bcc1c688",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}

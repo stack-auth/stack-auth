@@ -1,0 +1,20 @@
+apps/backend/src/lib/js-execution.tsx
+  s_5ffc71306a9e04::t_506118761438b8 177,191-201
+  s_5ffc71306a9e04::t_a7beca0732973f 202-203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "c5aafd2256fe27e5060d8000d8665d1b96740990",
+  "prompts": {},
+  "sessions": {
+    "s_5ffc71306a9e04": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd29b-8f21-7731-8b4b-3022e696152b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
