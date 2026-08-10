@@ -154,6 +154,10 @@ export async function runExportBulldozerManualTransactionsToPrisma(
     }
     log(`page rows=${page.rows.length} upserted=${upserted} skipped=${skipped} failed=${failed} next_cursor=${page.next_cursor ?? "(done)"}`);
     if (page.next_cursor == null) break;
+    // Same as backfillTable: a non-advancing cursor would re-fetch forever.
+    if (page.next_cursor === cursor) {
+      throw new Error(`Export cursor failed to advance at ${page.next_cursor}`);
+    }
     cursor = page.next_cursor;
   }
 

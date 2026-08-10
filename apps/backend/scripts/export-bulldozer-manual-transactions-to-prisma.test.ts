@@ -78,6 +78,18 @@ describe("runExportBulldozerManualTransactionsToPrisma", () => {
     expect(fetchPageMock).toHaveBeenCalledWith({ limit: 200, cursor: null });
   });
 
+  test("fails loud when next_cursor does not advance", async () => {
+    const tenA = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    fetchPageMock
+      .mockResolvedValueOnce({ rows: [row("t1", tenA)], next_cursor: "t1" })
+      .mockResolvedValueOnce({ rows: [row("t1", tenA)], next_cursor: "t1" });
+
+    await expect(runExportBulldozerManualTransactionsToPrisma({ batchSize: 10 })).rejects.toThrow(
+      "Export cursor failed to advance at t1",
+    );
+    expect(fetchPageMock).toHaveBeenCalledTimes(2);
+  });
+
   test("re-run upserts again (idempotent at Prisma)", async () => {
     const tenA = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
     fetchPageMock.mockResolvedValue({ rows: [row("t1", tenA)], next_cursor: null });
