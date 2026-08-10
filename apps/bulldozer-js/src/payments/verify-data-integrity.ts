@@ -104,21 +104,15 @@ function isPiledriverValue(value: unknown): value is PiledriverObject {
   return false;
 }
 
-class InvalidPiledriverValueError extends Error {
-  constructor() {
-    super("Invalid Piledriver value");
-  }
-}
-
 function parsePiledriverValue(buffer: ArrayBuffer): PiledriverObject {
   let value: unknown;
   try {
     value = JSON.parse(textDecoder.decode(buffer));
   } catch (error) {
-    if (error instanceof SyntaxError) throw new InvalidPiledriverValueError();
+    if (error instanceof SyntaxError) throw new InvalidPiledriverSerializedObjectError();
     throw error;
   }
-  if (!isPiledriverValue(value)) throw new InvalidPiledriverValueError();
+  if (!isPiledriverValue(value)) throw new InvalidPiledriverSerializedObjectError();
   return value;
 }
 
@@ -568,7 +562,7 @@ export async function verifyDataIntegrity(
     try {
       rootRefs = collectSerializedHeapReferences(parsePiledriverValue(keyBytes(cursor.root.bufferBase64)));
     } catch (error) {
-      if (error instanceof InvalidPiledriverValueError) {
+      if (error instanceof InvalidPiledriverSerializedObjectError) {
         recordIssue({ phase: "root", code: "invalid_root_shape", message: "The pinned root could not be parsed for heap references" });
         cursor.phase = "heap-scan";
       } else {
