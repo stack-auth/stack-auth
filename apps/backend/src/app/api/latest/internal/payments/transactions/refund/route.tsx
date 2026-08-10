@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import { fetchBulldozerServerJson } from "@/lib/bulldozer-server-client";
-import { bulldozerWriteManualTransaction, bulldozerWriteOneTimePurchase, bulldozerWriteSubscription, manualTransactionToPrismaRow } from "@/lib/payments/bulldozer-dual-write";
+import { bulldozerWriteOneTimePurchase, bulldozerWriteSubscription, persistRefundManualTransaction } from "@/lib/payments/bulldozer-dual-write";
 import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
 import { REFUND_TXN_PREFIX } from "@/lib/payments/refund-txn-id";
 import { resolveSelectedPriceFromProduct } from "@/app/api/latest/internal/payments/transactions/transaction-builder";
@@ -810,26 +810,7 @@ async function handleSubscriptionRefund(options: {
     createdAtMillis: nowMillis,
   };
   // Same dual-write shape as subscriptions/OTPs: Prisma first, then Bulldozer.
-  const refundPrismaRow = manualTransactionToPrismaRow(refundRow);
-  await prisma.manualTransaction.upsert({
-    where: {
-      tenancyId_txnId: {
-        tenancyId: refundPrismaRow.tenancyId,
-        txnId: refundPrismaRow.txnId,
-      },
-    },
-    create: refundPrismaRow,
-    update: {
-      type: refundPrismaRow.type,
-      customerId: refundPrismaRow.customerId,
-      customerType: refundPrismaRow.customerType,
-      paymentProvider: refundPrismaRow.paymentProvider,
-      effectiveAt: refundPrismaRow.effectiveAt,
-      // Preserve original create time on conflict (idempotent re-refund / retry).
-      entries: refundPrismaRow.entries,
-    },
-  });
-  await bulldozerWriteManualTransaction(refundTxnId, refundRow);
+  await persistRefundManualTransaction(prisma, refundRow);
 
   return {
     statusCode: 200 as const,
@@ -988,26 +969,7 @@ async function handleOneTimePurchaseRefund(options: {
     createdAtMillis: nowMillis,
   };
   // Same dual-write shape as subscriptions/OTPs: Prisma first, then Bulldozer.
-  const refundPrismaRow = manualTransactionToPrismaRow(refundRow);
-  await prisma.manualTransaction.upsert({
-    where: {
-      tenancyId_txnId: {
-        tenancyId: refundPrismaRow.tenancyId,
-        txnId: refundPrismaRow.txnId,
-      },
-    },
-    create: refundPrismaRow,
-    update: {
-      type: refundPrismaRow.type,
-      customerId: refundPrismaRow.customerId,
-      customerType: refundPrismaRow.customerType,
-      paymentProvider: refundPrismaRow.paymentProvider,
-      effectiveAt: refundPrismaRow.effectiveAt,
-      // Preserve original create time on conflict (idempotent re-refund / retry).
-      entries: refundPrismaRow.entries,
-    },
-  });
-  await bulldozerWriteManualTransaction(refundTxnId, refundRow);
+  await persistRefundManualTransaction(prisma, refundRow);
 
   return {
     statusCode: 200 as const,

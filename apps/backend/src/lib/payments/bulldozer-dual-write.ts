@@ -332,6 +332,40 @@ export async function bulldozerWriteManualTransaction(
   );
 }
 
+/**
+ * Prisma-then-Bulldozer dual-write for a refund manual transaction. Shared by
+ * the subscription and OTP refund handlers so field updates stay in sync.
+ */
+export async function persistRefundManualTransaction(
+  prisma: { manualTransaction: { upsert: (args: {
+    where: { tenancyId_txnId: { tenancyId: string, txnId: string } },
+    create: ReturnType<typeof manualTransactionToPrismaRow>,
+    update: Omit<ReturnType<typeof manualTransactionToPrismaRow>, "tenancyId" | "txnId" | "createdAt">,
+  }) => Promise<unknown> } },
+  refundRow: ManualTransactionRow,
+): Promise<void> {
+  const refundPrismaRow = manualTransactionToPrismaRow(refundRow);
+  await prisma.manualTransaction.upsert({
+    where: {
+      tenancyId_txnId: {
+        tenancyId: refundPrismaRow.tenancyId,
+        txnId: refundPrismaRow.txnId,
+      },
+    },
+    create: refundPrismaRow,
+    update: {
+      type: refundPrismaRow.type,
+      customerId: refundPrismaRow.customerId,
+      customerType: refundPrismaRow.customerType,
+      paymentProvider: refundPrismaRow.paymentProvider,
+      effectiveAt: refundPrismaRow.effectiveAt,
+      // Preserve original create time on conflict (idempotent re-refund / retry).
+      entries: refundPrismaRow.entries,
+    },
+  });
+  await bulldozerWriteManualTransaction(refundRow.txnId, refundRow);
+}
+
 // ── Batch dual-write executors (backfill only) ────────────────────────
 // These mirror the single-row helpers but POST a whole page through the batch
 // ingress routes, which collapse the downstream cascade into one pass per batch.
