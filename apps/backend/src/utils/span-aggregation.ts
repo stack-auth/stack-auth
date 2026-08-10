@@ -55,6 +55,7 @@ export type BackendRuntimeDiagnostics = {
 };
 
 const spanAggregationEnabled = getEnvVariable("HEXCLAVE_SPAN_AGGREGATION", "false") === "true";
+const cpuProfilingEnabled = getEnvVariable("HEXCLAVE_CPU_PROFILING", "false") === "true";
 const eventLoopHistogram: IntervalHistogram | undefined = spanAggregationEnabled
   ? monitorEventLoopDelay({ resolution: 20 })
   : undefined;
@@ -285,7 +286,7 @@ function inspectorPost<T>(session: inspector.Session, method: string, params?: o
 }
 
 export async function startBackendCpuProfile(): Promise<boolean> {
-  if (!spanAggregationEnabled || cpuProfileSession != null) return false;
+  if (!cpuProfilingEnabled || cpuProfileSession != null) return false;
   const session = new inspector.Session();
   session.connect();
   try {

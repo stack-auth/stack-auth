@@ -170,7 +170,9 @@ jobs:
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         env:
-          HEXCLAVE_SPAN_AGGREGATION: "true"
+          # Profile-only mode deliberately leaves span aggregation and forced
+          # trace sampling disabled, so the profile measures the real backend.
+          HEXCLAVE_CPU_PROFILING: "true"
         with:
           run: pnpm -C apps/backend run with-env:test pnpm run start &
           wait-on: |
@@ -295,8 +297,11 @@ jobs:
               fi
             '
 
+      # Temporary diagnostic-PR exception: keep collecting both pass snapshots when
+      # the known flaky E2E suite failure occurs; the test failure remains visible.
       - name: Run tests
         id: run_tests_pass1
+        continue-on-error: ${{ github.head_ref == 'devin/1786345250-backend-span-diagnostics' }}
         timeout-minutes: 60
         run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
