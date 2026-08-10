@@ -767,6 +767,7 @@ function makeCleanupWrapper(userModuleDir) {
   return `
 try {
   const fs = await import("node:fs/promises");
+  await fs.chmod(${JSON.stringify(userModuleDir)}, 0o700).catch(() => {});
   await fs.rm(${JSON.stringify(userModuleDir)}, { recursive: true, force: true });
 } catch {}
 `;
