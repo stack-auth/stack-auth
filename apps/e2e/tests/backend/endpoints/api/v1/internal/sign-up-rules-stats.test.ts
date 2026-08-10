@@ -131,13 +131,23 @@ describe("with admin access", () => {
       await wait(1_000 + 10_000 - (now.getTime() - lastSecondOfHour.getTime()));
     }
 
-    // Sign up a user to trigger the rule. Keep the (otherwise unnecessary) verification email wait:
-    // it doubles as the delay that lets the rule-trigger event land in ClickHouse before we query
-    // the stats endpoint below, which snapshots exact trigger counts.
+    // ClickHouse receives the rule-trigger event asynchronously, so wait for it before querying stats.
     const { userId } = await Auth.Password.signUpWithEmail();
 
-    const response = await niceBackendFetch("/api/v1/internal/sign-up-rules-stats", { accessType: "admin" });
-    expect(response.status).toBe(200);
+    const getStats = () => niceBackendFetch("/api/v1/internal/sign-up-rules-stats", { accessType: "admin" });
+    let response = await getStats();
+    for (let attempt = 0; attempt < 15; attempt++) {
+      const testRule = response.status === 200
+        ? response.body.rule_triggers.find((rule: { rule_id: string }) => rule.rule_id === "test-rule")
+        : undefined;
+      if (testRule?.total_count > 0) break;
+      await wait(500);
+      response = await getStats();
+    }
+
+    expect(response.status, "Timed out waiting for sign-up rule stats").toBe(200);
+    const testRule = response.body.rule_triggers.find((rule: { rule_id: string }) => rule.rule_id === "test-rule");
+    expect(testRule?.total_count, "Timed out waiting for test-rule event in ClickHouse").toBeGreaterThan(0);
     expect(Array.isArray(response.body.rule_triggers)).toBe(true);
     expect(typeof response.body.total_triggers).toBe('number');
     expect(response).toMatchInlineSnapshot(`
@@ -190,7 +200,7 @@ describe("with admin access", () => {
       },
     });
 
-    await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    await Auth.Password.signUpWithEmail();
 
     // Wait for the ClickHouse event to appear and verify via a raw COALESCE query
     let chResult: any;

@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/skills",
-  "version": "1.0.81",
+  "version": "1.0.85",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "type": "module",
@@ -13,6 +13,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@bydefault/vercel": "^0.1.4",
     "@hexclave/shared": "workspace:*",
     "@sentry/nextjs": "^10.45.0",
     "next": "16.3.0",

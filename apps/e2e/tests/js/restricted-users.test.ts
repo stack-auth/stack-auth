@@ -22,7 +22,7 @@ describe("restricted user SDK filtering", () => {
       await clientApp.signUpWithCredential({
         email: "test-restricted@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       // By default, getUser should return null for restricted users
@@ -47,7 +47,7 @@ describe("restricted user SDK filtering", () => {
       await clientApp.signUpWithCredential({
         email: "test-restricted@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       // With includeRestricted: true, should return the restricted user
@@ -74,7 +74,7 @@ describe("restricted user SDK filtering", () => {
       await clientApp.signUpWithCredential({
         email: "test-verified@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       // User should be restricted at first
@@ -125,7 +125,7 @@ describe("restricted user SDK filtering", () => {
       await clientApp.signUpWithCredential({
         email: "test-restricted@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       // Get the restricted user with includeRestricted to capture its ID
@@ -161,7 +161,7 @@ describe("restricted user SDK filtering", () => {
       await clientApp.signUpWithCredential({
         email: "test-restricted@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       // Get the tokens from the restricted user (must use includeRestricted to get the user first)
@@ -191,7 +191,7 @@ describe("restricted user SDK filtering", () => {
       await clientApp.signUpWithCredential({
         email: "test-restricted@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       // Get the tokens from the restricted user (must use includeRestricted to get the user first)
@@ -222,7 +222,7 @@ describe("restricted user SDK filtering", () => {
       await clientApp.signUpWithCredential({
         email: "test-restricted@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       // Get the tokens from the restricted user
@@ -266,7 +266,7 @@ describe("restricted user SDK filtering", () => {
       await clientApp.signUpWithCredential({
         email: "test-restricted@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       // By default, getUser should return null for restricted users

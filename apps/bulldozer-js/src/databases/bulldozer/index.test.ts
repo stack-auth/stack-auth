@@ -774,6 +774,56 @@ describe("Bulldozer", () => {
     ]);
   });
 
+  it("keeps null sort-key range semantics on stored tables", async () => {
+    let snapshot = await initializedSnapshot([[
+      { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
+    ]]);
+    snapshot = await set(snapshot, "store", "txn-a", { txnId: "txn-a" });
+    snapshot = await set(snapshot, "store", "txn-b", { txnId: "txn-b" });
+
+    // Inclusive null bounds (flatMap/identity pushdown of [null, i]) still list rows.
+    expect((await collect(snapshot.listRowsInGroup({
+      tableId: "store",
+      groupKey: null,
+      range: { gte: null, lte: null },
+    }))).map((row) => row.rowIdentifier)).toEqual(["txn-a", "txn-b"]);
+
+    // Exclusive gt on the null sort key cannot match any row.
+    expect(await collect(snapshot.listRowsInGroup({
+      tableId: "store",
+      groupKey: null,
+      range: { gt: null },
+    }))).toEqual([]);
+  });
+
+  it("pages identifier-ordered rows via a sort table over a stored table", async () => {
+    let snapshot = await initializedSnapshot([[
+      { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
+      { type: "initTable", tableId: "sorted", table: defineSortTable({
+        sortKeyExtractor: (row) => row.rowIdentifier,
+        sortKeyComparator: (a, b) => stringCompare(String(a), String(b)),
+      }), inputTables: { input: "store" } },
+    ]]);
+    snapshot = await set(snapshot, "store", "txn-a", { txnId: "txn-a" });
+    snapshot = await set(snapshot, "store", "txn-b", { txnId: "txn-b" });
+    snapshot = await set(snapshot, "store", "txn-c", { txnId: "txn-c" });
+
+    const page1 = await collect(snapshot.listRowsInGroup({
+      tableId: "sorted",
+      groupKey: null,
+      range: { limit: 2 },
+    }));
+    expect(page1.map((row) => row.rowIdentifier)).toEqual(["txn-a", "txn-b"]);
+    expect(page1.map((row) => row.rowSortKey)).toEqual(["txn-a", "txn-b"]);
+
+    const page2 = await collect(snapshot.listRowsInGroup({
+      tableId: "sorted",
+      groupKey: null,
+      range: { gt: "txn-b", limit: 2 },
+    }));
+    expect(page2.map((row) => row.rowIdentifier)).toEqual(["txn-c"]);
+  });
+
   it("does not eagerly evaluate rows beyond requested limits", async () => {
     let mapCalls = 0;
     let flatMapCalls = 0;

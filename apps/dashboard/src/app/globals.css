@@ -368,7 +368,11 @@
   opacity: 0;
   transition: opacity 0.2s ease-in-out;
 }
-body:has(.show-site-loading-indicator) .site-loading-indicator {
+body:has(.show-site-loading-indicator) .site-loading-indicator:not([data-site-loading-indicator]) {
+  opacity: 1;
+  transition: none;
+}
+.site-loading-indicator[data-site-loading-indicator="active"] {
   opacity: 1;
   transition: none;
 }

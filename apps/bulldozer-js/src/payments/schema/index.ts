@@ -1191,6 +1191,13 @@ export function createPaymentsSchema() {
       },
     }), { input: "payments-subscriptions-sorted" }),
   ], [
+    // Identifier-ordered view for keyset pagination (manual-txn export). Stored tables
+    // keep a null sort key so Range stays sort-key everywhere; page this table instead.
+    table("payments-manual-transactions-sorted", defineSortTable({
+      sortKeyExtractor: (row) => row.rowIdentifier,
+      sortKeyComparator: (a, b) => stringCompare(String(a), String(b)),
+    }), { input: "payments-manual-transactions" }),
+  ], [
     // GroupBy and Sort intentionally retain no row payloads. These explicit read models preserve
     // the two transaction query paths that need listRowsInGroup without materializing every index.
     table("payments-transactions-by-customer-materialized", defineMaterializeTable(), {
@@ -1201,10 +1208,8 @@ export function createPaymentsSchema() {
     }),
   ]];
 
-  const allTables = migrations.flat();
-  // Replacing "-" with "_" would clash if two table ids differed only by that — fine today since
-  // ids only use "-".
-  const tableIds = Object.fromEntries(allTables.map(step => [step.tableId.replaceAll("-", "_"), step.tableId]));
+  // Flatten all migration batches for the id map (ids only use "-").
+  const tableIds = Object.fromEntries(migrations.flatMap((batch) => batch).map(step => [step.tableId.replaceAll("-", "_"), step.tableId]));
   return {
     migrations,
     tableIds,
@@ -1213,6 +1218,7 @@ export function createPaymentsSchema() {
     oneTimePurchases: "payments-one-time-purchases",
     manualItemQuantityChanges: "payments-manual-item-quantity-changes",
     manualTransactions: "payments-manual-transactions",
+    manualTransactionsSorted: "payments-manual-transactions-sorted",
     subscriptionRenewalEvents: "payments-subscription-renewal-events",
     subscriptionCancelEvents: "payments-subscription-cancel-events",
     subscriptionStartEvents: "payments-subscription-start-events",
@@ -1235,7 +1241,7 @@ export function createPaymentsSchema() {
     splitChanges: "payments-split-item-changes-with-expiry",
     itemQuantities: "payments-item-quantities",
     subscriptionMapByCustomer: "payments-subscription-map-by-customer",
-    _allTables: allTables,
+    _allTables: migrations.flatMap((batch) => batch),
   };
 }
 
