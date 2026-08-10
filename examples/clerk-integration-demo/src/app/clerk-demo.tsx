@@ -91,9 +91,11 @@ export function ClerkDemo() {
 
   useEffect(() => {
     let active = true;
+    let interval: number | null = null;
     const loadClerk = () => {
       const clerk = window.Clerk;
       if (!active || clerk == null) return;
+      if (interval != null) window.clearInterval(interval);
       runAsynchronouslyWithAlert(async () => {
         await clerk.load({
           publishableKey: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
@@ -101,11 +103,11 @@ export function ClerkDemo() {
         if (active) setClerk(clerk);
       });
     };
+    interval = window.setInterval(loadClerk, 100);
     loadClerk();
-    const interval = window.setInterval(loadClerk, 100);
     return () => {
       active = false;
-      window.clearInterval(interval);
+      if (interval != null) window.clearInterval(interval);
     };
   }, []);
 
@@ -176,6 +178,13 @@ export function ClerkDemo() {
         displayName: sdkUser.displayName,
       });
       setStatus("exchanged");
+    }, {
+      onError: error => {
+        if (active) {
+          setStatus("error");
+          setError(error instanceof Error ? error.message : "Clerk exchange failed");
+        }
+      },
     });
     return () => {
       active = false;

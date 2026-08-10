@@ -80,13 +80,21 @@ export async function POST(request: Request) {
   }
   const result = parseExchangeResponse(await response.json().catch(() => null));
   if (result == null) return NextResponse.json({ error: "Hexclave returned an invalid token exchange response" }, { status: 502 });
-  const profileResponse = await fetchWithTimeout(request, new URL("/api/v1/users/me", apiUrl).toString(), {
-    headers: {
-      "x-hexclave-access-token": result.access_token,
-      "x-hexclave-access-type": "client",
-      "x-hexclave-project-id": projectId,
-    },
-  });
+  let profileResponse: Response;
+  try {
+    profileResponse = await fetchWithTimeout(request, new URL("/api/v1/users/me", apiUrl).toString(), {
+      headers: {
+        "x-hexclave-access-token": result.access_token,
+        "x-hexclave-access-type": "client",
+        "x-hexclave-project-id": projectId,
+      },
+    });
+  } catch (error) {
+    if (error instanceof DOMException && (error.name === "AbortError" || error.name === "TimeoutError")) {
+      return NextResponse.json({ error: "Hexclave user lookup timed out" }, { status: 504 });
+    }
+    throw error;
+  }
   if (!profileResponse.ok || !(profileResponse.headers.get("content-type") ?? "").includes("application/json")) {
     return NextResponse.json({ error: "Hexclave user lookup failed after token exchange" }, { status: 502 });
   }
