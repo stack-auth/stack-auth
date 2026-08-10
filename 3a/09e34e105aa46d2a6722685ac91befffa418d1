@@ -1,0 +1,19 @@
+apps/backend/prisma/migrations/20260726000000_add_releases/migration.sql
+  s_737ddf173f162d::t_2ab57c29295f80 22-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "3a09e34e105aa46d2a6722685ac91befffa418d1",
+  "prompts": {},
+  "sessions": {
+    "s_737ddf173f162d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "662f9ec2-8b34-40a9-a320-743f336905f5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
