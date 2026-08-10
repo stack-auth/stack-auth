@@ -47,6 +47,10 @@ jobs:
       HEXCLAVE_EXTERNAL_DB_SYNC_DIRECT: "false"
 
     strategy:
+      # Keep the mock arm alive when the comparable prod arm times out. The
+      # diagnostic dataset comes from mock, and matrix cancellation would discard
+      # its later snapshots.
+      fail-fast: false
       matrix:
         node-version: [22.x]
         freestyle-mode: [mock, prod]
