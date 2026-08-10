@@ -108,8 +108,8 @@ if [[ "$1" == snapshot ]]; then
     IFS='|' read -r previous_host_total previous_host_idle < "$previous_host_file"
     awk -v total="$host_total_cpu" -v idle="$host_idle_cpu" \
       -v previous_total="$previous_host_total" -v previous_idle="$previous_host_idle" \
-      -v load="$load_average" \
-      'BEGIN { printf "host_cpu_total_seconds|%.6f\nhost_cpu_busy_seconds|%.6f\nload_average_1_5_15|%s\n", total - previous_total, (total - previous_total) - (idle - previous_idle), load }'
+      -v load_values="$load_average" \
+      'BEGIN { printf "host_cpu_total_seconds|%.6f\nhost_cpu_busy_seconds|%.6f\nload_average_1_5_15|%s\n", total - previous_total, (total - previous_total) - (idle - previous_idle), load_values }'
   else
     printf 'host_cpu_total_seconds|0\nhost_cpu_busy_seconds|0\nload_average_1_5_15|%s\n' "$load_average"
   fi
