@@ -1,5 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import {
+  getBackendRuntimeDiagnostics,
   getSpanAggregates,
   isSpanAggregationEnabled,
 } from "@/utils/span-aggregation";
@@ -33,6 +34,21 @@ export const GET = createSmartRouteHandler({
         totalInclusiveDurationMs: yupNumber().defined(),
         totalExclusiveDurationMs: yupNumber().defined(),
       }).defined()).defined(),
+      runtime: yupObject({
+        eventLoopDelay: yupObject({
+          minMs: yupNumber().defined(),
+          maxMs: yupNumber().defined(),
+          meanMs: yupNumber().defined(),
+          p50Ms: yupNumber().defined(),
+          p95Ms: yupNumber().defined(),
+          p99Ms: yupNumber().defined(),
+          p99_9Ms: yupNumber().defined(),
+        }).defined(),
+        cpu: yupObject({
+          userSeconds: yupNumber().defined(),
+          systemSeconds: yupNumber().defined(),
+        }).defined(),
+      }).defined(),
     }).defined(),
   }),
   handler: async ({ headers, query }) => {
@@ -42,6 +58,7 @@ export const GET = createSmartRouteHandler({
 
     const enabled = isSpanAggregationEnabled();
     const spans = enabled ? getSpanAggregates(query.reset === "true") : [];
+    const runtime = getBackendRuntimeDiagnostics(query.reset === "true");
 
     return {
       statusCode: 200,
@@ -50,6 +67,7 @@ export const GET = createSmartRouteHandler({
         enabled,
         // These totals are sums across concurrent requests, not a wall-time budget.
         spans,
+        runtime,
       },
     };
   },
