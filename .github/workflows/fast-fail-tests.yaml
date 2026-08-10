@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 jobs:
@@ -188,6 +188,7 @@ jobs:
           echo "test_files=$selected" >> "$GITHUB_OUTPUT"
 
   fast-fail-tests:
+    timeout-minutes: 45
     name: fast-fail-tests
     needs: select-tests
     if: ${{ needs.select-tests.outputs.test_files != '' }}

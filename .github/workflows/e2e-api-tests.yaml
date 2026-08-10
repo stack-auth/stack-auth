@@ -8,7 +8,7 @@ on:
   pull_request:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 jobs:
@@ -28,6 +28,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   build:
+    timeout-minutes: 150
     needs: wait-for-fast-fail
     name: E2E Tests (Node ${{ matrix.node-version }}, Freestyle ${{ matrix.freestyle-mode }})
     runs-on: ubicloud-standard-8
