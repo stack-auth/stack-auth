@@ -2381,6 +2381,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       emailAuthEnabled: crud.auth_with_email,
       otpAuthEnabled: crud.otp_auth_enabled,
       oauthProviders: crud.oauth_providers,
+      externalAuthProviders: crud.external_auth_providers,
       passkeyAuthEnabled: crud.passkey_auth_enabled,
       isMultiFactorRequired: crud.requires_totp_mfa,
       isAnonymous: crud.is_anonymous,

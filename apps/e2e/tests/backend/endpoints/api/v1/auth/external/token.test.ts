@@ -119,6 +119,7 @@ describe("external authentication token exchange", () => {
       primary_email_verified: false,
       primary_email_auth_enabled: false,
       display_name: "Provider User",
+      external_auth_providers: [{ id: "better-auth-integration" }],
     });
 
     const repeated = await exchange(firstToken);
@@ -424,15 +425,16 @@ describe("external authentication token exchange", () => {
   it("rejects malformed and claim-invalid provider tokens", async ({ expect }) => {
     await configureProject();
 
-    for (const token of [
-      "not-a-jwt",
-      await createProviderToken({ issuer: "https://wrong-issuer.example.com" }),
-      await createProviderToken({ audience: "wrong-audience" }),
-      await createProviderToken({ expirationTime: "-1s" }),
-    ]) {
+    for (const [token, reason] of [
+      ["not-a-jwt", "malformed_token"],
+      [await createProviderToken({ issuer: "https://wrong-issuer.example.com" }), "issuer_mismatch"],
+      [await createProviderToken({ audience: "wrong-audience" }), "audience_mismatch"],
+      [await createProviderToken({ expirationTime: "-1s" }), "expired"],
+    ] as const) {
       const response = await exchange(token);
       expect(response.status).toBe(401);
       expect(response.body.code).toBe("INVALID_EXTERNAL_AUTH_TOKEN");
+      expect(response.body.details).toMatchObject({ reason });
     }
   });
 
@@ -448,6 +450,7 @@ describe("external authentication token exchange", () => {
     const missingAuthorizedParty = await exchange(await createProviderToken(), "clerk-integration");
     expect(missingAuthorizedParty.status).toBe(401);
     expect(missingAuthorizedParty.body.code).toBe("INVALID_EXTERNAL_AUTH_TOKEN");
+    expect(missingAuthorizedParty.body.details).toMatchObject({ reason: "authorized_party_mismatch" });
 
     const allowed = await exchange(await createProviderToken({
       authorizedParty: "https://app.example.com",

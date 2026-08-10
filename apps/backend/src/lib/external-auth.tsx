@@ -3,7 +3,7 @@ import { safeOAuthFetch } from "@/lib/ssrf-protection/oauth";
 import { KnownErrors } from "@hexclave/shared";
 import { externalAuthProviderIds, getWorkOSVerificationUrls, type ExternalAuthProviderId } from "@hexclave/shared/dist/interface/external-auth";
 import { emailSchema } from "@hexclave/shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { createRemoteJWKSet, customFetch, decodeJwt, decodeProtectedHeader, errors as joseErrors, jwtVerify, type JWTPayload } from "jose";
 
 export { externalAuthProviderIds };
@@ -30,6 +30,17 @@ type ProviderVerificationConfig = {
 const remoteJwkSets = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 const MAX_CACHED_REMOTE_JWK_SETS = 100;
 
+function throwInvalidExternalAuthToken(
+  reason: ConstructorParameters<typeof KnownErrors.InvalidExternalAuthToken>[0],
+  extraData?: Record<string, unknown>,
+): never {
+  captureError("external-auth-token-verification", new HexclaveAssertionError(
+    "External authentication token verification failed.",
+    { reason, ...extraData },
+  ));
+  throw new KnownErrors.InvalidExternalAuthToken(reason);
+}
+
 function getRemoteJwkSet(jwksUrl: string) {
   const existing = remoteJwkSets.get(jwksUrl);
   if (existing != null) {
@@ -52,7 +63,7 @@ function getRemoteJwkSet(jwksUrl: string) {
 
 function requireConfigured(value: string | undefined): string {
   if (value == null || value.length === 0) {
-    throw new KnownErrors.ExternalAuthProviderNotConfigured();
+    throw new KnownErrors.ExternalAuthProviderNotConfigured("required_setting_missing");
   }
   return value;
 }
@@ -68,7 +79,7 @@ function getAuthorizedParties(value: string | undefined): string[] | undefined {
     .map(party => party.trim())
     .filter(party => party.length > 0);
   if (parties.length === 0) {
-    throw new KnownErrors.ExternalAuthProviderNotConfigured();
+    throw new KnownErrors.ExternalAuthProviderNotConfigured("invalid_authorized_party");
   }
   return parties.map(party => {
     try {
@@ -77,7 +88,7 @@ function getAuthorizedParties(value: string | undefined): string[] | undefined {
       // config would reject every token.
       return new URL(party).origin;
     } catch {
-      throw new KnownErrors.ExternalAuthProviderNotConfigured();
+      throw new KnownErrors.ExternalAuthProviderNotConfigured("invalid_authorized_party");
     }
   });
 }
@@ -89,7 +100,9 @@ export function validateAuthorizedParty(payload: JWTPayload, authorizedParties: 
   // otherwise a token without azp bypasses the subdomain-cookie-leak protection
   // that authorizedParties is meant to add.
   if (typeof authorizedParty !== "string" || !authorizedParties.includes(authorizedParty)) {
-    throw new KnownErrors.InvalidExternalAuthToken();
+    return throwInvalidExternalAuthToken("authorized_party_mismatch", {
+      actualAuthorizedParty: authorizedParty,
+    });
   }
 }
 
@@ -98,7 +111,7 @@ function getProviderVerificationConfig(
   providerId: ExternalAuthProviderId,
 ): ProviderVerificationConfig {
   if (tenancy.config.apps.installed[providerId]?.enabled !== true) {
-    throw new KnownErrors.ExternalAuthProviderNotConfigured();
+    throw new KnownErrors.ExternalAuthProviderNotConfigured("provider_disabled");
   }
 
   switch (providerId) {
@@ -135,7 +148,7 @@ function getProviderVerificationConfig(
 function getRequiredClaim(payload: JWTPayload, claim: "sub" | "sid"): string {
   const value = payload[claim];
   if (typeof value !== "string" || value.length === 0) {
-    throw new KnownErrors.InvalidExternalAuthToken();
+    return throwInvalidExternalAuthToken("missing_claim", { claim });
   }
   return value;
 }
@@ -157,13 +170,13 @@ function getOptionalProfileClaim(payload: JWTPayload, claim: "email" | "name"): 
 
 function validateTokenEncoding(token: string): void {
   if (token.length > 16_384 || token.split(".").length !== 3) {
-    throw new KnownErrors.InvalidExternalAuthToken();
+    return throwInvalidExternalAuthToken("malformed_token", { tokenLength: token.length });
   }
   try {
     decodeProtectedHeader(token);
     decodeJwt(token);
   } catch {
-    throw new KnownErrors.InvalidExternalAuthToken();
+    return throwInvalidExternalAuthToken("malformed_token", { tokenLength: token.length });
   }
 }
 
@@ -193,8 +206,26 @@ export async function verifyExternalAuthToken(options: {
     });
     payload = verified.payload;
   } catch (error) {
+    if (error instanceof joseErrors.JWTExpired) {
+      return throwInvalidExternalAuthToken("expired", { providerId: options.providerId, cause: error });
+    }
+    if (error instanceof joseErrors.JWTClaimValidationFailed) {
+      const reason = error.claim === "iss"
+        ? "issuer_mismatch"
+        : error.claim === "aud"
+          ? "audience_mismatch"
+          : "malformed_token";
+      return throwInvalidExternalAuthToken(reason, {
+        providerId: options.providerId,
+        claim: error.claim,
+        cause: error,
+      });
+    }
+    if (error instanceof joseErrors.JWSSignatureVerificationFailed || error instanceof joseErrors.JWKSNoMatchingKey) {
+      return throwInvalidExternalAuthToken("signature_mismatch", { providerId: options.providerId, cause: error });
+    }
     if (isInvalidTokenError(error)) {
-      throw new KnownErrors.InvalidExternalAuthToken();
+      return throwInvalidExternalAuthToken("malformed_token", { providerId: options.providerId, cause: error });
     }
     throw new HexclaveAssertionError("Failed to retrieve or process an external authentication provider's signing keys.", {
       cause: error,
@@ -204,13 +235,19 @@ export async function verifyExternalAuthToken(options: {
 
   validateAuthorizedParty(payload, config.authorizedParties);
   if (config.clientId != null && payload.client_id !== config.clientId) {
-    throw new KnownErrors.InvalidExternalAuthToken();
+    return throwInvalidExternalAuthToken("client_id_mismatch", {
+      providerId: options.providerId,
+      actualClientId: payload.client_id,
+    });
   }
 
   const subject = getRequiredClaim(payload, "sub");
   const providerSessionId = getRequiredClaim(payload, "sid");
   if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp)) {
-    throw new KnownErrors.InvalidExternalAuthToken();
+    return throwInvalidExternalAuthToken("missing_claim", {
+      providerId: options.providerId,
+      claim: "exp",
+    });
   }
 
   const email = getOptionalProfileClaim(payload, "email");

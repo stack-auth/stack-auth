@@ -52,7 +52,7 @@ export const POST = createSmartRouteHandler({
       apiUrl: getApiUrlForRequest(fullReq),
     });
     if (accessToken == null) {
-      throw new KnownErrors.InvalidExternalAuthToken();
+      throw new KnownErrors.InvalidExternalAuthToken("malformed_token");
     }
 
     return {

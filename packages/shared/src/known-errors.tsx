@@ -1428,24 +1428,51 @@ const InvalidAppleCredentials = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const externalAuthProviderConfigurationReasons = [
+  "provider_disabled",
+  "required_setting_missing",
+  "invalid_authorized_party",
+] as const;
+type ExternalAuthProviderConfigurationReason = typeof externalAuthProviderConfigurationReasons[number];
+const externalAuthTokenReasons = [
+  "malformed_token",
+  "signature_mismatch",
+  "expired",
+  "issuer_mismatch",
+  "audience_mismatch",
+  "authorized_party_mismatch",
+  "client_id_mismatch",
+  "missing_claim",
+] as const;
+type ExternalAuthTokenReason = typeof externalAuthTokenReasons[number];
+
+function parseExternalAuthReason<T extends readonly string[]>(value: unknown, reasons: T): T[number] {
+  if (typeof value === "string") {
+    return reasons.find(reason => reason === value) ?? throwErr("Invalid external authentication error reason");
+  }
+  throwErr("Invalid external authentication error reason");
+}
+
 const ExternalAuthProviderNotConfigured = createKnownErrorConstructor(
   KnownError,
   "EXTERNAL_AUTH_PROVIDER_NOT_CONFIGURED",
-  () => [
+  (reason: ExternalAuthProviderConfigurationReason) => [
     400,
-    "The external authentication provider is not configured or enabled for this project.",
+    `The external authentication provider is not configured or enabled for this project (${reason}).`,
+    { reason },
   ] as const,
-  () => [] as const,
+  (json) => [parseExternalAuthReason(json.details?.reason, externalAuthProviderConfigurationReasons)] as const,
 );
 
 const InvalidExternalAuthToken = createKnownErrorConstructor(
   KnownError,
   "INVALID_EXTERNAL_AUTH_TOKEN",
-  () => [
+  (reason: ExternalAuthTokenReason) => [
     401,
-    "The external authentication token could not be verified. Please sign in again.",
+    `The external authentication token could not be verified (${reason}). Please sign in again.`,
+    { reason },
   ] as const,
-  () => [] as const,
+  (json) => [parseExternalAuthReason(json.details?.reason, externalAuthTokenReasons)] as const,
 );
 
 const OAuthProviderAccessDenied = createKnownErrorConstructor(

@@ -129,7 +129,7 @@ describe("StackClientApp external token stores", () => {
       exchangedTokens.push(token);
       // The first provider token is treated as expired-in-flight; the retried, freshly fetched one succeeds.
       if (exchangedTokens.length === 1) {
-        return { status: "error", error: new KnownErrors.InvalidExternalAuthToken() };
+        return { status: "error", error: new KnownErrors.InvalidExternalAuthToken("malformed_token") };
       }
       return {
         status: "ok",
@@ -167,7 +167,7 @@ describe("StackClientApp external token stores", () => {
     Reflect.set(clientInterface, "exchangeExternalAuthToken", async () => {
       exchangeCount += 1;
       providerSessionId = "clerk-session-b";
-      return { status: "error", error: new KnownErrors.InvalidExternalAuthToken() };
+      return { status: "error", error: new KnownErrors.InvalidExternalAuthToken("malformed_token") };
     });
 
     const getSession = Reflect.get(clientApp, "_getSession");
@@ -315,7 +315,7 @@ describe("StackClientApp external token stores", () => {
     const clientInterface = Reflect.get(clientApp, "_interface");
     Reflect.set(clientInterface, "exchangeExternalAuthToken", async () => {
       exchangeCount += 1;
-      return { status: "error", error: new KnownErrors.InvalidExternalAuthToken() };
+      return { status: "error", error: new KnownErrors.InvalidExternalAuthToken("malformed_token") };
     });
 
     const getSession = Reflect.get(clientApp, "_getSession");
