@@ -528,6 +528,33 @@ describe("_withFallback", () => {
     }
   });
 
+  it("reports the primary URL and attributes every fallback failure", async () => {
+    const urls = urlList(3);
+    const log = mockFetch(() => "fail");
+
+    const iface = createClientInterface({ apiUrls: urls });
+    const request = sendRequest(iface);
+    await expect(request).rejects.toMatchObject({
+      name: "ApiUrlsFailedError",
+      message: expect.stringContaining(`primary URL ${urls[0]}`),
+    });
+
+    try {
+      await request;
+      throw new Error("Expected all API URLs to fail");
+    } catch (error) {
+      if (!(error instanceof AggregateError)) throw new Error("Expected an aggregate API URL error");
+      if (!(error.cause instanceof Error)) throw new Error("Expected the primary error as the aggregate cause");
+      expect(error.cause.message).toContain("Failed to fetch");
+      expect(error.errors).toHaveLength(urls.length);
+      for (const [index, urlFailure] of error.errors.entries()) {
+        if (!(urlFailure instanceof Error)) throw new Error("Expected each URL failure to be an Error");
+        expect(urlFailure.message).toContain(urls[index]);
+      }
+    }
+    expect(log).toHaveLength(urls.length * 2);
+  });
+
   it("bypasses fallback when apiUrlOverride is provided", async () => {
     const log: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {

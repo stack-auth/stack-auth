@@ -28,6 +28,26 @@ import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApi
 import { ProjectPermissionsCrud } from './crud/project-permissions';
 import { AdminUserProjectsCrud, ClientProjectsCrud } from './crud/projects';
 import { SessionsCrud } from './crud/sessions';
+
+type ApiUrlFailure = {
+  url: string,
+  error: Error,
+};
+
+export class ApiUrlsFailedError extends AggregateError {
+  readonly urlFailures: readonly ApiUrlFailure[];
+
+  constructor(urlFailures: readonly ApiUrlFailure[]) {
+    const primaryFailure = urlFailures[0];
+    super(
+      urlFailures.map(({ url, error }) => new Error(`Request to ${url} failed`, { cause: error })),
+      `All API URLs failed; primary URL ${primaryFailure.url} failed: ${primaryFailure.error.message}`,
+      { cause: primaryFailure.error },
+    );
+    this.name = "ApiUrlsFailedError";
+    this.urlFailures = urlFailures;
+  }
+}
 import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
@@ -303,7 +323,7 @@ export class HexclaveClientInterface {
     apiUrls: string[],
     cb: (apiUrl: string, retryOptions: { maxAttempts: number, skipDiagnostics: boolean }) => Promise<T>,
   ): Promise<T> {
-    let lastError: Error | undefined;
+    const errorsByUrl = new Map<number, Error>();
 
     for (let pass = 0; pass < 2; pass++) {
       for (let i = 0; i < apiUrls.length; i++) {
@@ -315,12 +335,15 @@ export class HexclaveClientInterface {
           return result;
         } catch (e) {
           if (this._shouldSkipFallback(e)) throw e;
-          lastError = e instanceof Error ? e : new Error(String(e));
+          errorsByUrl.set(i, e instanceof Error ? e : new Error(String(e)));
         }
       }
     }
 
-    throw lastError!;
+    throw new ApiUrlsFailedError(apiUrls.map((url, i) => ({
+      url,
+      error: errorsByUrl.get(i) ?? throwErr(`Missing failure for API URL ${url}`),
+    })));
   }
 
   getAnalyticsApiUrl() {
