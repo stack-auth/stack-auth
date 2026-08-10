@@ -144,11 +144,27 @@ function hasActivity(stats: LmdbActivityStats): boolean {
     || stats.combinedSeqDurabilityResolves > 0;
 }
 
-export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: string, simulateReadMissDelayMs?: number }): LowLevelDatabase {
+export function declareLmdbLowLevelDatabase(options: {
+  path: string,
+  dbId?: string,
+  simulateReadMissDelayMs?: number,
+  /**
+   * When true, enable lmdb-js LZ4 compression on values (threshold 1000 bytes by default).
+   * Sticky per on-disk path: once values are written compressed, every subsequent open of
+   * that path must keep compression on (or reads of those values will fail).
+   * Turning this on against an existing uncompressed store does NOT rewrite old values —
+   * new writes compress, old ones stay uncompressed and remain readable.
+   * To ship a fully-compressed store in prod: point HEXCLAVE_BULLDOZER_JS_LMDB_PATH at a
+   * fresh empty directory, set HEXCLAVE_BULLDOZER_JS_LMDB_COMPRESSION=1, start bulldozer-js,
+   * then run db:backfill-bulldozer-from-prisma (after ManualTransaction is in Postgres).
+   */
+  compression?: boolean,
+}): LowLevelDatabase {
   const dbId = options.dbId ?? "default";
   const simulateReadMissDelayMs = options.simulateReadMissDelayMs ?? 0;
   if (!Number.isFinite(simulateReadMissDelayMs) || simulateReadMissDelayMs < 0) throw new Error("simulateReadMissDelayMs must be a non-negative finite number");
-  const root = lmdb.open({ path: options.path, maxDbs: 1024, separateFlushed: true });
+  const compression = options.compression === true;
+  const root = lmdb.open({ path: options.path, maxDbs: 1024, separateFlushed: true, compression });
   const meta = root.openDB<number, string>({ name: `${dbId}:meta`, encoding: "json" });
   let currentVersion = meta.get("seq") ?? 0;
   const initialSeqId = "initial";
