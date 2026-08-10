@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { KnownErrors } from "../known-errors";
 import { InternalSession, RefreshToken } from "../sessions";
 import { Result } from "../utils/results";
-import { HexclaveClientInterface } from "./client-interface";
+import { ApiUrlsFailedError, HexclaveClientInterface } from "./client-interface";
 
 function createClientInterface(options?: {
   baseUrl?: string,
@@ -543,13 +543,14 @@ describe("_withFallback", () => {
       await request;
       throw new Error("Expected all API URLs to fail");
     } catch (error) {
-      if (!(error instanceof AggregateError)) throw new Error("Expected an aggregate API URL error");
+      if (!(error instanceof ApiUrlsFailedError)) throw new Error("Expected an aggregate API URL error");
       if (!(error.cause instanceof Error)) throw new Error("Expected the primary error as the aggregate cause");
       expect(error.cause.message).toContain("Failed to fetch");
       expect(error.errors).toHaveLength(urls.length);
-      for (const [index, urlFailure] of error.errors.entries()) {
-        if (!(urlFailure instanceof Error)) throw new Error("Expected each URL failure to be an Error");
-        expect(urlFailure.message).toContain(urls[index]);
+      expect(error.urlFailures).toHaveLength(urls.length);
+      for (const [index, urlFailure] of error.urlFailures.entries()) {
+        expect(urlFailure.url).toBe(`${urls[index]}/api/v1`);
+        expect(urlFailure.error).toBe(error.errors[index]);
       }
     }
     expect(log).toHaveLength(urls.length * 2);

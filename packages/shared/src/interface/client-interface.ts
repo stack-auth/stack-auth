@@ -28,6 +28,10 @@ import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApi
 import { ProjectPermissionsCrud } from './crud/project-permissions';
 import { AdminUserProjectsCrud, ClientProjectsCrud } from './crud/projects';
 import { SessionsCrud } from './crud/sessions';
+import { TeamInvitationCrud } from './crud/team-invitation';
+import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
+import { TeamPermissionsCrud } from './crud/team-permissions';
+import { TeamsCrud } from './crud/teams';
 
 type ApiUrlFailure = {
   url: string,
@@ -40,7 +44,7 @@ export class ApiUrlsFailedError extends AggregateError {
   constructor(urlFailures: readonly ApiUrlFailure[]) {
     const primaryFailure = urlFailures[0];
     super(
-      urlFailures.map(({ url, error }) => new Error(`Request to ${url} failed`, { cause: error })),
+      urlFailures.map(({ error }) => error),
       `All API URLs failed; primary URL ${primaryFailure.url} failed: ${primaryFailure.error.message}`,
       { cause: primaryFailure.error },
     );
@@ -48,10 +52,6 @@ export class ApiUrlsFailedError extends AggregateError {
     this.urlFailures = urlFailures;
   }
 }
-import { TeamInvitationCrud } from './crud/team-invitation';
-import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
-import { TeamPermissionsCrud } from './crud/team-permissions';
-import { TeamsCrud } from './crud/teams';
 
 export type RequestLogEntry = {
   path: string,
