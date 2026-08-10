@@ -1222,7 +1222,6 @@ export function createPaymentsSchema() {
     manualItemQuantityChanges: "payments-manual-item-quantity-changes",
     manualTransactions: "payments-manual-transactions",
     manualTransactionsSorted: "payments-manual-transactions-sorted-materialized",
-    manualTransactionsSortedRaw: "payments-manual-transactions-sorted",
     subscriptionRenewalEvents: "payments-subscription-renewal-events",
     subscriptionCancelEvents: "payments-subscription-cancel-events",
     subscriptionStartEvents: "payments-subscription-start-events",
