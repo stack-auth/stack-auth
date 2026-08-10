@@ -1,0 +1,93 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/[issueId]/page-client.tsx
+  s_737ddf173f162d::t_92dd0bad095e44 28,48-59,63,68-69,122-123,137-138,228-374,445-448,568-593
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/alert-rule-form.test.ts
+  s_737ddf173f162d::t_9229f8e5963bdb 1-153
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/alert-rule-form.ts
+  s_737ddf173f162d::t_fe8d3ee6b9266e 1-284
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/issue-alerts-data.test.ts
+  s_737ddf173f162d::t_339f45109c145b 1-133
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/issue-alerts-data.ts
+  s_737ddf173f162d::t_40e34ea572c7ef 1-252
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/page-client.tsx
+  s_737ddf173f162d::t_ec9814a43e00b2 1-762
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/page.tsx
+  s_737ddf173f162d::t_9233c5c14fa0ec 1-10
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/correlation.ts
+  s_737ddf173f162d::t_a9db3d119bb15c 86
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event-graph.test.tsx
+  s_737ddf173f162d::t_4eb5dbe7691360 1-29
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event-graph.tsx
+  s_737ddf173f162d::t_2c209bf961fe96 1-144
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event-sections.test.tsx
+  s_737ddf173f162d::t_f5f1f207bd1ca4 1-85
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event-sections.tsx
+  s_737ddf173f162d::t_2889e5f562640d 1-687
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event.test.ts
+  s_737ddf173f162d::t_779c8c438a9021 1-155
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event.ts
+  s_737ddf173f162d::t_d27f2684166941 1-512
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-links.ts
+  s_737ddf173f162d::t_4847af8b10b93e 15-19
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-release-context.test.tsx
+  s_737ddf173f162d::t_9b04920aba0721 1-72
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-release-context.tsx
+  s_737ddf173f162d::t_ced4a5806cc21f 1-131
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-saved-views-data.test.ts
+  s_737ddf173f162d::t_c7931399be6a36 1-129
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-saved-views-data.ts
+  s_737ddf173f162d::t_f12076671e5f06 1-180
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-saved-views.test.tsx
+  s_737ddf173f162d::t_b6140b8d41fb03 1-130
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-saved-views.tsx
+  s_737ddf173f162d::t_426dd3cbd6b083 1-298
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issues-data.test.ts
+  s_737ddf173f162d::t_ec8f8a98dae939 1-2,10-20,24-31,34-66,195-296
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issues-data.ts
+  s_737ddf173f162d::t_aeb7789c22f1a4 4-5,10-11,15,17,48,50,294-376,393-593
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/page-client.tsx
+  s_737ddf173f162d::t_ecb30d64024a49 6,17,39,61,67,130-131,264-294,368-419,422,446-465,488-497,551
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/logs/page-client.test.ts
+  s_737ddf173f162d::t_cb6cfd9366ddf3 26,28,37-38,40-41,55,57,115
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/logs/page-client.tsx
+  s_737ddf173f162d::t_49336761c3fc7b 90-93,101-102
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/performance/page-client.tsx
+  s_737ddf173f162d::t_cfb12028050db2 1-514
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/performance/page.tsx
+  s_737ddf173f162d::t_7906b8511eab3e 1,6
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/performance/performance-data.test.ts
+  s_737ddf173f162d::t_23f1c287a58201 1-91
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/performance/performance-data.ts
+  s_737ddf173f162d::t_2d15ef2b9aaf7a 1-306
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/services/services-data.ts
+  s_737ddf173f162d::t_8a4cab423160da 106-107,109
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/page-client.test.ts
+  s_737ddf173f162d::t_42cc189e9df156 30,36,55-56,207-209
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/page-client.tsx
+  s_737ddf173f162d::t_20bed83318a82c 26,381-384,387-389,393-394,398-399,403-405,409-410,464,846,851
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/trace-utils.test.ts
+  s_737ddf173f162d::t_2227359893d0e9 2,220-240,308,412,418,466
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/trace-utils.ts
+  s_737ddf173f162d::t_36783cad3bf8b0 137,150,153,157,159,340-360
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/trace-volume.test.ts
+  s_737ddf173f162d::t_c164f76c9ec713 32
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/trace-volume.ts
+  s_737ddf173f162d::t_41cbd302dfd17e 40
+docs-mintlify/guides/apps/observability/overview.mdx
+  s_737ddf173f162d::t_cea2ee667b4936 11,60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "18916bff6567f667566ade761cf4d93dbe1c278d",
+  "prompts": {},
+  "sessions": {
+    "s_737ddf173f162d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "662f9ec2-8b34-40a9-a320-743f336905f5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
