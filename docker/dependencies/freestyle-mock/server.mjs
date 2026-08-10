@@ -861,17 +861,33 @@ const bridgedFetch = async (input, init) => {
       ),
       bodyBase64: bodyBytes && encodeBase64(bodyBytes),
     });
+    const makeResponse = () => {
+      const responseBody = bridged.status === 204 ||
+        bridged.status === 205 ||
+        bridged.status === 304
+        ? undefined
+        : decodeBase64(bridged.bodyBase64);
+      return new Response(responseBody, {
+        status: bridged.status,
+        statusText: bridged.statusText,
+        headers: bridged.headers,
+      });
+    };
     const location = bridged.headers?.location;
     if (
       location &&
       [301, 302, 303, 307, 308].includes(bridged.status)
     ) {
+      if (request.redirect === "manual") return makeResponse();
+      if (request.redirect === "error") {
+        throw new TypeError("Redirect disallowed by request redirect mode");
+      }
+      // Bound guest-controlled redirect chains while revalidating every hop
+      // through hostFetch so redirects cannot bypass the bridge allowlist.
       if (redirectCount >= ${MAX_BRIDGE_REDIRECTS}) {
         throw new Error("Maximum bridge redirect limit exceeded");
       }
       const redirectUrl = resolveRedirectUrl(location, target);
-      // Rebuild each hop so the next iteration revalidates its origin;
-      // redirects must not bypass hostFetch's allowlist.
       const redirectMethod =
         (bridged.status === 303 &&
           method !== "GET" &&
@@ -890,16 +906,7 @@ const bridgedFetch = async (input, init) => {
       });
       continue;
     }
-    const responseBody = bridged.status === 204 ||
-      bridged.status === 205 ||
-      bridged.status === 304
-      ? undefined
-      : decodeBase64(bridged.bodyBase64);
-    return new Response(responseBody, {
-      status: bridged.status,
-      statusText: bridged.statusText,
-      headers: bridged.headers,
-    });
+    return makeResponse();
   }
 };
 Object.defineProperty(globalThis, "fetch", {
