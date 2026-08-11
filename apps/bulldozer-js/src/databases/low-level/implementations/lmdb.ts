@@ -114,7 +114,7 @@ type LmdbActivityStats = {
 
 export type LmdbDiagnostics = {
   dbId: string,
-  storeSizeBytes: number,
+  storeSizeBytes?: number,
   elapsedMs: number,
   putsPerSecond: number,
   averagePutBytes: number,
@@ -139,6 +139,7 @@ export type LmdbDiagnostics = {
 };
 
 let latestLmdbDiagnostics: LmdbDiagnostics | null = null;
+const bulldozerDiagnosticsEnabled = process.env.HEXCLAVE_BULLDOZER_DIAGNOSTICS === "true";
 
 function getStoreSizeBytes(path: string): number {
   try {
@@ -233,7 +234,7 @@ export function declareLmdbLowLevelDatabase(options: {
       const elapsedSeconds = elapsedMs / 1000;
       const diagnostics = {
         dbId,
-        storeSizeBytes: getStoreSizeBytes(options.path),
+        ...(bulldozerDiagnosticsEnabled ? { storeSizeBytes: getStoreSizeBytes(options.path) } : {}),
         elapsedMs,
         putsPerSecond: activityStats.puts / elapsedSeconds,
         averagePutBytes: activityStats.puts === 0 ? 0 : activityStats.putBytes / activityStats.puts,
