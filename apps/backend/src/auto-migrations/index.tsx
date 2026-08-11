@@ -106,43 +106,6 @@ export async function applyMigrations(options: {
       await options.onBeforeMigration(migration.migrationName);
     }
 
-    // PostgreSQL's CREATE UNIQUE INDEX CONCURRENTLY waits for every older transaction
-    // snapshot before its validation pass. Merely sending that command through a second
-    // pooled connection from inside our normal migration transaction deadlocks: the index
-    // waits for the wrapper transaction, while the wrapper awaits the index. Migrations
-    // carrying this sentinel contain only idempotent, outside-transaction statements; run
-    // them before opening the short transaction that records completion.
-    if (migration.sql.includes("RUN_FULL_MIGRATION_OUTSIDE_TRANSACTION_SENTINEL")) {
-      const statements = migration.sql.split('SPLIT_STATEMENT_SENTINEL');
-      for (const statementRaw of statements) {
-        const statement = statementRaw.replaceAll('/* SCHEMA_NAME_SENTINEL */', sqlQuoteIdentToString(options.schema));
-        if (!statement.includes('SINGLE_STATEMENT_SENTINEL') || !statement.includes('RUN_OUTSIDE_TRANSACTION_SENTINEL')) {
-          throw new HexclaveAssertionError("RUN_FULL_MIGRATION_OUTSIDE_TRANSACTION_SENTINEL requires every statement to be single-statement and outside-transaction", { statement });
-        }
-        if (statement.includes('CONDITIONALLY_REPEAT_MIGRATION_SENTINEL')) {
-          throw new HexclaveAssertionError("RUN_FULL_MIGRATION_OUTSIDE_TRANSACTION_SENTINEL does not support conditional repeats; split the repeated work into an earlier migration", { statement });
-        }
-        log(`  |> Running full-migration statement outside of transaction: ${statement.replace(/(\n|\s)/gm, " ").slice(0, 20)}...`);
-        await options.prismaClient.$queryRaw`${Prisma.raw(statement)}`;
-      }
-      // eslint-disable-next-line no-restricted-syntax -- migration completion and its advisory lock must share one transaction
-      await options.prismaClient.$transaction(async (tx) => {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${MIGRATION_LOCK_ID})`;
-        await tx.$executeRaw(Prisma.sql`SET search_path TO ${sqlQuoteIdent(options.schema)}`);
-        const existingMigration = await tx.$queryRaw`
-          SELECT 1 FROM "SchemaMigration" WHERE "migrationName" = ${migration.migrationName}
-        ` as { "?column?": number }[];
-        if (existingMigration.length === 0) {
-          await tx.$executeRaw`
-            INSERT INTO "SchemaMigration" ("migrationName", "finishedAt")
-            VALUES (${migration.migrationName}, clock_timestamp())
-          `;
-          newlyAppliedMigrationNames.push(migration.migrationName);
-        }
-      });
-      continue;
-    }
-
     let shouldRepeat = true;
     for (let repeat = 0; shouldRepeat; repeat++) {
       log(`Applying migration ${migration.migrationName}${repeat > 0 ? ` (repeat ${repeat})` : ''}`);

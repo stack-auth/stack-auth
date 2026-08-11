@@ -2,11 +2,12 @@
 -- previous migration has committed proof that no duplicate (tenancyId, hostname) rows exist.
 --
 -- Deliberately NOT built with CONCURRENTLY. Concurrent index builds cannot run inside the
--- migration runner's wrapper transaction, and the sentinel that lifts a whole migration out
--- of that transaction is new in this change — the currently deployed backend is what applies
--- these migrations (the database is migrated before the code rolls out), and its runner does
--- not recognize it. It would fall back to issuing the build on a second pooled connection
--- while the wrapper transaction is still open, and CREATE UNIQUE INDEX CONCURRENTLY waits for
+-- migration runner's wrapper transaction, and the runner has no sentinel that lifts a whole
+-- migration out of it. Adding one would not help either: the currently deployed backend is
+-- what applies these migrations (the database is migrated before the code rolls out), so it
+-- would not recognize a sentinel introduced here. The runner falls back to issuing the build
+-- on a second pooled connection while the wrapper transaction is still open, and
+-- CREATE UNIQUE INDEX CONCURRENTLY waits for
 -- every older snapshot before its validation pass — including that transaction's. The two
 -- then wait on each other until the statement timeout fires and the migration dies.
 --

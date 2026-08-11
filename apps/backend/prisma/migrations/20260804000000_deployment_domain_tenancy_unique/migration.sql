@@ -12,9 +12,9 @@
 -- runner issues it on a second pooled connection while that transaction is still open —
 -- and CREATE INDEX CONCURRENTLY waits for every older snapshot before its validation pass,
 -- including that transaction's. The two then wait on each other until the statement timeout
--- kills the migration. (The sentinel that lifts a whole migration out of the transaction
--- exists, but the currently deployed backend is what applies these migrations and does not
--- recognize it.)
+-- kills the migration. (The runner has no sentinel that lifts a whole migration out of that
+-- transaction, and adding one here would not help: the currently deployed backend is what
+-- applies these migrations, so it would not recognize it.)
 --
 -- A plain build takes a brief ACCESS EXCLUSIVE lock instead, which is the right trade here:
 -- DeploymentServiceDomain only holds custom domains for an alpha-gated feature, so it has no
