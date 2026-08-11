@@ -4,7 +4,6 @@ import {
   getProjectOAuthIssuer,
   getProjectResourceServers,
   isTrustedClient,
-  PROJECT_OAUTH_SESSION_TTL_SECONDS,
 } from "@/lib/project-oauth-provider";
 import { deriveScopesFromConfig } from "@/lib/permissions";
 import { globalPrismaClient, retryTransaction } from "@/prisma-client";
@@ -232,15 +231,11 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
           uid: session.uid,
           cookie: session.jti,
         };
-        // interactionFinished validates the bound session immediately, before the surrounding
-        // session middleware's finally block can persist a newly established session.
-        await session.save(PROJECT_OAUTH_SESSION_TTL_SECONDS);
-        session.touched = true;
         await interaction.save(Math.max(1, interaction.exp - Math.floor(Date.now() / 1000)));
 
         const consumed = await consumeProjectOAuthDecision(tenancy, uid);
         if (consumed.denied) {
-          return await oidc.interactionFinished(ctx.req, ctx.res, { error: "access_denied" });
+          return { error: "access_denied" };
         }
 
         const approved = consumed.approvedScopes;
@@ -262,21 +257,32 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
         // oidc-provider's default refresh-token lifetime is 14 days. Keep the consent grant alive
         // for the same period so offline_access does not silently outlive its backing grant.
         const grantId = await grant.save(GRANT_TTL_SECONDS);
-        return await oidc.interactionFinished(
-          ctx.req,
-          ctx.res,
-          { login: { accountId: userId }, consent: { grantId } },
-          { mergeWithLastSubmission: false },
-        );
+        return { login: { accountId: userId }, consent: { grantId } };
       };
 
       if (ctx.oidc === undefined) {
         Object.defineProperty(ctx, "oidc", { value: new oidc.OIDCContext(ctx) });
       }
+      type InteractionResult = Parameters<Provider["interactionResult"]>[2];
+      let result: InteractionResult | undefined;
+      const finishAndCaptureResult = async () => {
+        result = await finish();
+      };
       if (ctx.oidc.session === undefined) {
-        return await projectOAuthSessionMiddleware(ctx, finish);
+        await projectOAuthSessionMiddleware(ctx, finishAndCaptureResult);
+      } else {
+        await finishAndCaptureResult();
       }
-      return await finish();
+      const interactionResult = result ?? throwErr("Project OAuth interaction result was missing");
+      const returnTo = await oidc.interactionResult(
+        ctx.req,
+        ctx.res,
+        interactionResult,
+        { mergeWithLastSubmission: false },
+      );
+      ctx.status = 303;
+      ctx.set("Location", returnTo);
+      ctx.body = "";
     }
     const match = /^\/interaction\/([^/]+)$/.exec(ctx.path);
     if (match !== null && ctx.method === "GET") {

@@ -233,8 +233,6 @@ export type OidcProviderOptions = {
   userFacingAuthorizationErrors?: boolean,
   /** Override the JWKS route so discovery advertises the public project-provider URL. */
   jwksRoute?: string,
-  /** Explicitly configure the provider session lifetime for flows that persist sessions themselves. */
-  sessionTtl?: number,
 };
 
 function wrapOidcMiddleware(oidc: Provider, mw: Parameters<typeof oidc.use>[0]): void {
@@ -276,7 +274,6 @@ export async function createOidcProviderInternal(options: OidcProviderOptions) {
   const oidc = new Provider(options.baseUrl, {
     adapter,
     clients: options.clients ?? JSON.parse(getEnvVariable("STACK_INTEGRATION_CLIENTS_CONFIG", "[]")),
-    ttl: options.sessionTtl === undefined ? {} : { Session: options.sessionTtl },
     cookies: {
       keys: [
         toHexString(await sha512(`oidc-idp-cookie-encryption-key:${getEnvVariable("STACK_SERVER_SECRET")}`)),

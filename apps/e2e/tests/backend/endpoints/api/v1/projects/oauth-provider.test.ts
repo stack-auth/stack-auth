@@ -64,6 +64,14 @@ function normalizeIssuerUrl(url: string, issuer: string): string {
   return url.replace(issuer, "<issuer>");
 }
 
+function expectNoExpiredProviderSessionCookie(response: { headers: Headers }): void {
+  for (const cookie of response.headers.getSetCookie()) {
+    if (/^_session(?:\.legacy)?(?:\.sig)?=/i.test(cookie)) {
+      expect(cookie).not.toMatch(/expires=Thu, 01 Jan 1970/i);
+    }
+  }
+}
+
 async function startProjectInteraction(
   projectId: string,
   scope = "openid files:read",
@@ -111,6 +119,8 @@ async function getProjectAuthorizationCode(projectId: string): Promise<string> {
     redirect: "manual",
     headers: { cookie: providerCookie },
   });
+  expectNoExpiredProviderSessionCookie(completed);
+  expect(completed.status).toBe(303);
   const resumed = await niceBackendFetch(completed.headers.get("location") ?? "", {
     redirect: "manual",
     headers: { cookie: updateCookiesFromResponse(providerCookie, completed) },
@@ -317,6 +327,7 @@ it("reconciles a replaced provider session after a completed authorization", asy
     redirect: "manual",
     headers: { cookie: mismatchedProviderCookie },
   });
+  expectNoExpiredProviderSessionCookie(secondCompleted);
   expect(secondCompleted.status).toBe(303);
   const secondResumed = await niceBackendFetch(secondCompleted.headers.get("location") ?? "", {
     redirect: "manual",

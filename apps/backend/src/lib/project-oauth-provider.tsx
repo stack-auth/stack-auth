@@ -13,10 +13,6 @@ import {
   installProjectOAuthInteractionMiddleware,
 } from "./project-oauth-interaction";
 
-// Keep this equal to oidc-provider's default SessionTTL. Project OAuth persists the session before
-// interactionFinished resumes, so the same value must be configured on the provider and used there.
-export const PROJECT_OAUTH_SESSION_TTL_SECONDS = 14 * 24 * 60 * 60;
-
 /**
  * A Hexclave project acting as its own OAuth 2.1 / OIDC provider.
  *
@@ -242,7 +238,6 @@ export async function createProjectOAuthProvider(
     },
     // OAuth 2.1 and the MCP authorization spec both require PKCE unconditionally.
     requirePkce: true,
-    sessionTtl: PROJECT_OAUTH_SESSION_TTL_SECONDS,
     userFacingAuthorizationErrors: true,
     findAccount: async (_ctx, sub) => await findProjectOAuthAccount(tenancy, sub),
     middleware: (oidc) => installProjectOAuthInteractionMiddleware(oidc, tenancy),
