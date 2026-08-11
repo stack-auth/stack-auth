@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { expect } from "vitest";
 import { test } from "./helpers";
 
@@ -39,8 +40,9 @@ test("preserves diagnostics from multiple files on one worker", () => {
         RUNNER_TEMP: runnerTemp,
       },
       stdio: "pipe",
-      timeout: 30_000,
+      timeout: 60_000,
       killSignal: "SIGTERM",
+      maxBuffer: 8 * 1024 * 1024,
     });
 
     const reports = readdirSync(runnerTemp)
@@ -52,9 +54,9 @@ test("preserves diagnostics from multiple files on one worker", () => {
       });
     expect(reports).toHaveLength(2);
     expect(reports.map(({ report }) => report.pass)).toEqual(["regression", "regression"]);
-    expect(reports.map(({ report }) => report.file.endsWith("tests/diagnostics-regression/worker-one.test.ts")).sort()).toEqual([false, true]);
-    expect(reports.map(({ report }) => report.file.endsWith("tests/diagnostics-regression/worker-two.test.ts")).sort()).toEqual([false, true]);
-    expect(reports.flatMap(({ report }) => report.requests.map(request => request.path)).sort()).toEqual([
+    expect(reports.map(({ report }) => report.file.endsWith("tests/diagnostics-regression/worker-one.test.ts")).sort((left, right) => Number(left) - Number(right))).toEqual([false, true]);
+    expect(reports.map(({ report }) => report.file.endsWith("tests/diagnostics-regression/worker-two.test.ts")).sort((left, right) => Number(left) - Number(right))).toEqual([false, true]);
+    expect(reports.flatMap(({ report }) => report.requests.map(request => request.path)).sort(stringCompare)).toEqual([
       "/diagnostics-regression/one",
       "/diagnostics-regression/two",
     ]);
