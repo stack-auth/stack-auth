@@ -734,14 +734,14 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         }
         return seq;
       } catch (error) {
-        for (const entry of entries) {
+        for (const entry of claimedEntries) {
           entry.publicationStatus = "failed";
           entry.publicationError = error;
         }
         throw error;
       }
     })();
-    for (const entry of entries) entry.publicationPromise = publicationPromise;
+    for (const entry of claimedEntries) entry.publicationPromise = publicationPromise;
     return publicationPromise;
   };
 
