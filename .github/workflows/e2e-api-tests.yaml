@@ -5,6 +5,8 @@ on:
     branches:
       - main
       - dev
+      # Temporary diagnostic-branch exception; remove before merging.
+      - devin/1786345250-backend-span-diagnostics
   pull_request:
 
 # A concurrency group only ever runs one run at a time, so the sha is part of the group on main/dev:
@@ -20,7 +22,7 @@ jobs:
     name: wait-for-fast-fail
     # Temporary diagnostic-PR exception: collect backend route spans even when
     # the unrelated fast-fail suite has a flaky E2E failure.
-    continue-on-error: ${{ github.head_ref == 'devin/1786345250-backend-span-diagnostics' }}
+    continue-on-error: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -248,7 +250,7 @@ jobs:
       # spending a full test pass on request-path attribution. This is diagnostic
       # evidence only; do not gate the workload on it.
       - name: Smoke-test backend diagnostics
-        if: github.head_ref == 'devin/1786345250-backend-span-diagnostics'
+        if: (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics'
         continue-on-error: true
         run: |
           pnpm -C apps/backend run with-env:test bash -c \
@@ -290,7 +292,7 @@ jobs:
             '
 
       - name: Start backend CPU profile for pass 1
-        if: github.head_ref == 'devin/1786345250-backend-span-diagnostics'
+        if: (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics'
         continue-on-error: true
         run: |
           pnpm -C apps/backend run with-env:test bash -c \
@@ -309,7 +311,7 @@ jobs:
       # the known flaky E2E suite failure occurs; the test failure remains visible.
       - name: Run tests
         id: run_tests_pass1
-        continue-on-error: ${{ github.head_ref == 'devin/1786345250-backend-span-diagnostics' }}
+        continue-on-error: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' }}
         timeout-minutes: 60
         env:
           HEXCLAVE_E2E_DIAGNOSTICS: "true"
@@ -356,7 +358,7 @@ jobs:
             '
 
       - name: Start backend CPU profile for pass 2
-        if: github.head_ref == 'devin/1786345250-backend-span-diagnostics'
+        if: (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics'
         continue-on-error: true
         run: |
           pnpm -C apps/backend run with-env:test bash -c \
@@ -375,7 +377,7 @@ jobs:
       # so the span and process snapshots can be compared before this change merges.
       - name: Run tests again (attempt 1)
         id: run_tests_pass2
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.head_ref == 'devin/1786345250-backend-span-diagnostics'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics'
         timeout-minutes: 75
         env:
           HEXCLAVE_E2E_DIAGNOSTICS: "true"
@@ -423,7 +425,7 @@ jobs:
 
       - name: Run tests again (attempt 2)
         id: run_tests_pass3
-        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.head_ref == 'devin/1786345250-backend-span-diagnostics') && steps.run_tests_pass2.outcome == 'success'
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics') && steps.run_tests_pass2.outcome == 'success'
         timeout-minutes: 105
         env:
           HEXCLAVE_E2E_DIAGNOSTICS: "true"
@@ -487,7 +489,7 @@ jobs:
           tail -n 2000 "$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
 
       - name: Upload bulldozer-js logs
-        if: always() && github.head_ref == 'devin/1786345250-backend-span-diagnostics'
+        if: always() && (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-api-bulldozer
@@ -495,7 +497,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload E2E timing diagnostics
-        if: always() && github.head_ref == 'devin/1786345250-backend-span-diagnostics'
+        if: always() && (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-api-test-timing-diagnostics
@@ -511,7 +513,7 @@ jobs:
         run: docker compose -f docker/dependencies/docker.compose.yaml logs
 
       - name: Upload backend CPU profiles
-        if: always() && github.head_ref == 'devin/1786345250-backend-span-diagnostics'
+        if: always() && (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-api-backend-cpu-profiles
