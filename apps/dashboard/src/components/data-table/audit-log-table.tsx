@@ -9,6 +9,7 @@ import {
   useDataSource,
   type DataGridColumnDef,
 } from "@hexclave/dashboard-ui-components";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { CaretDownIcon, CaretRightIcon, EyeSlashIcon } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 
@@ -32,7 +33,16 @@ export type AuditLogAction =
   | "project_api_key.created"
   | "project_api_key.updated"
   | "project_api_key.revoked"
-  | "config_source.unlinked";
+  | "config_source.unlinked"
+  | "team.created"
+  | "team.updated"
+  | "team.deleted"
+  | "team.checkout.created"
+  | "team.item_quantity.changed"
+  | "team_membership.created"
+  | "team_membership.deleted"
+  | "team_permission.granted"
+  | "team_permission.revoked";
 
 export type AuditLogEvent = {
   id: string,
@@ -123,6 +133,33 @@ function formatAction(action: AuditLogAction): string {
     case "config_source.unlinked": {
       return "Config source unlinked";
     }
+    case "team.created": {
+      return "Team created";
+    }
+    case "team.updated": {
+      return "Team updated";
+    }
+    case "team.deleted": {
+      return "Team deleted";
+    }
+    case "team.checkout.created": {
+      return "Team checkout created";
+    }
+    case "team.item_quantity.changed": {
+      return "Team item quantity changed";
+    }
+    case "team_membership.created": {
+      return "Team member added";
+    }
+    case "team_membership.deleted": {
+      return "Team member removed";
+    }
+    case "team_permission.granted": {
+      return "Team permission granted";
+    }
+    case "team_permission.revoked": {
+      return "Team permission revoked";
+    }
     default: {
       const _exhaustive: never = action;
       return _exhaustive;
@@ -161,6 +198,18 @@ const FIELD_LABELS = new Map<string, string>([
   ["commit_hash", "Commit"],
   ["config_file_path", "Config file path"],
   ["workflow_path", "Workflow path"],
+  ["team_id", "Team ID"],
+  ["user_id", "User ID"],
+  ["permission_id", "Permission"],
+  ["creator_user_id", "Creator user ID"],
+  ["product_id", "Product"],
+  ["item_id", "Item"],
+  ["quantity", "Quantity"],
+  ["delta", "Delta"],
+  ["allow_negative", "Allow negative"],
+  ["expires_at", "Expires"],
+  ["has_product_inline", "Inline product"],
+  ["granted_permission_ids", "Granted permissions"],
 ]);
 
 const OAUTH_PROVIDER_FIELD_LABELS = new Map<string, string>([
@@ -181,7 +230,18 @@ const OAUTH_PROVIDER_FIELD_LABELS = new Map<string, string>([
   ["displayName", "Display name"],
 ]);
 
+const TRUSTED_DOMAIN_FIELD_LABELS = new Map<string, string>([
+  ["baseUrl", "Base URL"],
+  ["handlerPath", "Handler path"],
+]);
+
+const UUID_SEGMENT_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function humanizeSegment(segment: string): string {
+  if (UUID_SEGMENT_RE.test(segment)) {
+    // Full UUIDs dominate the label and hide the actual field/value.
+    return `${segment.slice(0, 4)}…${segment.slice(-4)}`;
+  }
   return segment
     .split("_")
     .filter((part) => part.length > 0)
@@ -205,25 +265,90 @@ function humanizeProviderId(providerId: string): string {
   return humanizeSegment(providerId);
 }
 
-function humanizeFieldPath(path: string): string {
-  const known = FIELD_LABELS.get(path);
-  if (known != null) return known;
+type FieldPathParts = {
+  /** Optional group header (e.g. "Trusted domain · 3bba…00d7"). */
+  groupLabel: string | null,
+  /** Short field label shown under the group (e.g. "Base URL"). */
+  fieldLabel: string,
+  /** Full single-line label for chips / ungrouped rows. */
+  fullLabel: string,
+};
 
-  // Auth Methods oauth provider paths are long and noisy when segment-joined;
-  // collapse to "OAuth · Google · Client ID".
+function parseFieldPathParts(path: string): FieldPathParts {
+  const known = FIELD_LABELS.get(path);
+  if (known != null) {
+    return { groupLabel: null, fieldLabel: known, fullLabel: known };
+  }
+
   const oauthMatch = /^auth\.oauth\.providers\.([^.]+)(?:\.(.+))?$/.exec(path);
   if (oauthMatch != null) {
     const providerLabel = humanizeProviderId(oauthMatch[1] ?? "");
+    const groupLabel = `OAuth · ${providerLabel}`;
     const fieldPath = oauthMatch[2];
     if (fieldPath == null || fieldPath === "") {
-      return `OAuth · ${providerLabel}`;
+      return { groupLabel: null, fieldLabel: groupLabel, fullLabel: groupLabel };
     }
     const fieldLabel = OAUTH_PROVIDER_FIELD_LABELS.get(fieldPath)
       ?? fieldPath.split(".").map(humanizeSegment).join(" · ");
-    return `OAuth · ${providerLabel} · ${fieldLabel}`;
+    return {
+      groupLabel,
+      fieldLabel,
+      fullLabel: `${groupLabel} · ${fieldLabel}`,
+    };
   }
 
-  return path.split(".").map(humanizeSegment).join(" · ");
+  const domainMatch = /^domains\.trustedDomains\.([^.]+)(?:\.(.+))?$/.exec(path);
+  if (domainMatch != null) {
+    const domainId = humanizeSegment(domainMatch[1] ?? "");
+    const groupLabel = `Trusted domain · ${domainId}`;
+    const fieldPath = domainMatch[2];
+    if (fieldPath == null || fieldPath === "") {
+      return { groupLabel: null, fieldLabel: groupLabel, fullLabel: groupLabel };
+    }
+    const fieldLabel = TRUSTED_DOMAIN_FIELD_LABELS.get(fieldPath)
+      ?? fieldPath.split(".").map(humanizeSegment).join(" · ");
+    return {
+      groupLabel,
+      fieldLabel,
+      fullLabel: `${groupLabel} · ${fieldLabel}`,
+    };
+  }
+
+  const fullLabel = path.split(".").map(humanizeSegment).join(" · ");
+  return { groupLabel: null, fieldLabel: fullLabel, fullLabel };
+}
+
+function humanizeFieldPath(path: string): string {
+  return parseFieldPathParts(path).fullLabel;
+}
+
+type AuditPathGroup = {
+  key: string,
+  groupLabel: string | null,
+  paths: string[],
+};
+
+/** Collapse sibling leaves under one header so UUIDs aren't repeated on every row. */
+function groupChangePaths(paths: string[]): AuditPathGroup[] {
+  const groups: AuditPathGroup[] = [];
+  const indexByKey = new Map<string, number>();
+
+  for (const path of paths) {
+    const parts = parseFieldPathParts(path);
+    const key = parts.groupLabel ?? path;
+    const existing = indexByKey.get(key);
+    if (existing != null) {
+      groups[existing]?.paths.push(path);
+      continue;
+    }
+    indexByKey.set(key, groups.length);
+    groups.push({
+      key,
+      groupLabel: parts.groupLabel,
+      paths: [path],
+    });
+  }
+  return groups;
 }
 
 function formatDisplayValue(value: unknown, path?: string): string {
@@ -291,7 +416,23 @@ function visibleChangePaths(parsed: Extract<ParsedDetails, { kind: "changes" }>)
 function summarizeChanges(paths: string[], truncated: boolean): string {
   const count = paths.length;
   if (count === 0) return truncated ? "Changes…" : "No field details";
-  // Keep the chip scannable: show a short field-name preview, then fall back to a count.
+
+  const groups = groupChangePaths(paths);
+  // Prefer group-aware chip text: "Trusted domain · 3bba… · Base URL" not the full UUID path twice.
+  if (groups.length === 1) {
+    const group = groups[0] ?? throwErr("summarizeChanges: expected one group");
+    if (group.groupLabel != null) {
+      const fieldLabels = group.paths.map((path) => parseFieldPathParts(path).fieldLabel);
+      if (fieldLabels.length === 1) {
+        return `${group.groupLabel} · ${fieldLabels[0]}${truncated ? "…" : ""}`;
+      }
+      if (fieldLabels.length <= 3) {
+        return `${group.groupLabel} · ${fieldLabels.join(" · ")}${truncated ? "…" : ""}`;
+      }
+      return `${group.groupLabel} · ${fieldLabels.length} fields${truncated ? "…" : ""}`;
+    }
+  }
+
   const previewLimit = 3;
   const labels = paths.slice(0, previewLimit).map(humanizeFieldPath);
   const preview = labels.join(" · ");
@@ -318,6 +459,49 @@ function formatDetails(event: AuditLogEvent): string {
   }
 }
 
+function AuditDiffPills({
+  path,
+  before,
+  after,
+}: {
+  path: string,
+  before: unknown,
+  after: unknown,
+}) {
+  const beforeIsEmpty = before === null;
+  const beforeText = beforeIsEmpty ? "—" : formatDisplayValue(before, path);
+  const afterIsRemoval = after === null;
+  const afterText = afterIsRemoval ? "Removed" : formatDisplayValue(after, path);
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+      <span
+        className={cn(
+          "max-w-full rounded-md px-1.5 py-0.5 break-all",
+          beforeIsEmpty
+            ? "bg-foreground/[0.04] text-muted-foreground"
+            : "bg-red-500/[0.08] text-red-700 line-through decoration-red-700/40 dark:text-red-300 dark:decoration-red-300/40",
+        )}
+        title={beforeText}
+      >
+        {beforeText}
+      </span>
+      <span className="text-muted-foreground" aria-hidden>→</span>
+      <span
+        className={cn(
+          "max-w-full rounded-md px-1.5 py-0.5 font-medium break-all",
+          afterIsRemoval
+            ? "bg-red-500/[0.1] text-red-700 dark:text-red-300"
+            : "bg-emerald-500/[0.1] text-emerald-800 dark:text-emerald-300",
+        )}
+        title={afterText}
+      >
+        {afterText}
+      </span>
+    </div>
+  );
+}
+
 function AuditFieldRow({
   path,
   change,
@@ -325,13 +509,14 @@ function AuditFieldRow({
   path: string,
   change: AuditFieldChange | null | undefined,
 }) {
+  // Always use the concise full label + before→after pills (same as "google → Removed").
   const label = humanizeFieldPath(path);
 
   if (change == null || !("before" in change) || !("after" in change)) {
     return (
-      <div className="flex items-center justify-between gap-3 py-2">
+      <div className="flex flex-col gap-1 py-2">
         <span className="text-xs text-muted-foreground">{label}</span>
-        <Badge variant="secondary" className="gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium">
+        <Badge variant="secondary" className="w-fit gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium">
           <EyeSlashIcon className="size-3" />
           Hidden
         </Badge>
@@ -339,54 +524,17 @@ function AuditFieldRow({
     );
   }
 
-  if (change.before === null) {
-    const after = formatDisplayValue(change.after, path);
-    return (
-      <div className="flex items-start justify-between gap-3 py-2">
-        <span className="text-xs text-muted-foreground">{label}</span>
-        <span className="max-w-[60%] truncate text-right text-xs font-medium text-foreground" title={after}>
-          {after}
-        </span>
-      </div>
-    );
-  }
-
-  if (change.after === null) {
-    return (
-      <div className="flex flex-col gap-1 py-2">
-        <span className="text-xs text-muted-foreground">{label}</span>
-        <div className="flex flex-wrap items-center gap-1.5 text-xs">
-          <span className="rounded-md bg-red-500/[0.08] px-1.5 py-0.5 text-red-700 line-through decoration-red-700/40 dark:text-red-300 dark:decoration-red-300/40">
-            {formatDisplayValue(change.before, path)}
-          </span>
-          <span className="text-muted-foreground" aria-hidden>→</span>
-          <span className="rounded-md bg-red-500/[0.1] px-1.5 py-0.5 font-medium text-red-700 dark:text-red-300">
-            Removed
-          </span>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-1 py-2">
       <span className="text-xs text-muted-foreground">{label}</span>
-      <div className="flex flex-wrap items-center gap-1.5 text-xs">
-        <span className="rounded-md bg-red-500/[0.08] px-1.5 py-0.5 text-red-700 line-through decoration-red-700/40 dark:text-red-300 dark:decoration-red-300/40">
-          {formatDisplayValue(change.before, path)}
-        </span>
-        <span className="text-muted-foreground" aria-hidden>→</span>
-        <span className="rounded-md bg-emerald-500/[0.1] px-1.5 py-0.5 font-medium text-emerald-800 dark:text-emerald-300">
-          {formatDisplayValue(change.after, path)}
-        </span>
-      </div>
+      <AuditDiffPills path={path} before={change.before} after={change.after} />
     </div>
   );
 }
 
 /** Same glass surface as user-table filter popovers / design controls. */
 const auditDetailsPopoverClassName = cn(
-  "w-[min(22rem,calc(100vw-2rem))] rounded-xl border-black/[0.08] bg-white/95 p-0 shadow-md",
+  "w-[min(28rem,calc(100vw-2rem))] rounded-xl border-black/[0.08] bg-white/95 p-0 shadow-md",
   "ring-1 ring-black/[0.08] backdrop-blur-xl",
   "dark:border-white/[0.06] dark:bg-background/95 dark:ring-white/[0.06]",
 );
@@ -443,9 +591,13 @@ function AuditDetailsCell({ event }: { event: AuditLogEvent }) {
             {parsed.truncated ? " · list truncated" : ""}
           </p>
         </div>
-        <div className="max-h-64 divide-y divide-border/40 overflow-y-auto px-3">
+        <div className="max-h-72 divide-y divide-border/40 overflow-y-auto px-3">
           {paths.map((path) => (
-            <AuditFieldRow key={path} path={path} change={parsed.changes?.[path]} />
+            <AuditFieldRow
+              key={path}
+              path={path}
+              change={parsed.changes?.[path]}
+            />
           ))}
         </div>
       </PopoverContent>

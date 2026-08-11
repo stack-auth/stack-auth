@@ -1,5 +1,5 @@
 import { it } from "../../../../../helpers";
-import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, InternalApiKey, Payments, Project, bumpEmailAddress, niceBackendFetch } from "../../../../backend-helpers";
 
 async function listAuditLog(options?: { action?: string, targetUserId?: string, cursor?: string, limit?: number }) {
   return await niceBackendFetch("/api/v1/internal/audit-log", {
@@ -14,12 +14,17 @@ async function listAuditLog(options?: { action?: string, targetUserId?: string, 
   });
 }
 
+/** Project.createAndSwitch mints project API keys, which now write project_api_key.created. */
+function withoutProjectBootstrapEvents(items: Array<{ action: string }>) {
+  return items.filter((item) => item.action !== "project_api_key.created");
+}
+
 it("lists admin audit events without requiring Compliance app", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
 
   const res = await listAuditLog();
   expect(res.status).toBe(200);
-  expect(res.body.items).toEqual([]);
+  expect(withoutProjectBootstrapEvents(res.body.items)).toEqual([]);
 });
 
 it("always writes impersonation events without enabling any app", async ({ expect }) => {
@@ -37,7 +42,7 @@ it("always writes impersonation events without enabling any app", async ({ expec
   });
   expect(impersonation.status).toBe(200);
 
-  const listRes = await listAuditLog();
+  const listRes = await listAuditLog({ action: "impersonation.started" });
   expect(listRes.status).toBe(200);
   expect(listRes.body.items).toHaveLength(1);
   expect(listRes.body.items[0]).toMatchObject({
@@ -62,7 +67,7 @@ it("records impersonation started with reason and actor", async ({ expect }) => 
   });
   expect(impersonation.status).toBe(200);
 
-  const listRes = await listAuditLog();
+  const listRes = await listAuditLog({ action: "impersonation.started" });
   expect(listRes.status).toBe(200);
   expect(listRes.body.items).toHaveLength(1);
   expect(listRes.body.items[0]).toMatchObject({
@@ -142,7 +147,7 @@ it("ignores reason on non-impersonation session creation", async ({ expect }) =>
 
   const listRes = await listAuditLog();
   expect(listRes.status).toBe(200);
-  expect(listRes.body.items).toEqual([]);
+  expect(withoutProjectBootstrapEvents(listRes.body.items)).toEqual([]);
 });
 
 it("records project settings config updates with non-sensitive before/after values", async ({ expect }) => {
@@ -320,23 +325,24 @@ it("audits oauth provider enable/disable without empty shared-schema noise", asy
   const listRes = await listAuditLog({ action: "project_settings.updated" });
   expect(listRes.status).toBe(200);
 
+  // Whole-provider enable collapses to one summary row (same shape as disable).
   const linkedinEnable = listRes.body.items.find((item: { metadata?: { changed_paths?: string[] } }) => (
-    item.metadata?.changed_paths?.some((path) => path.startsWith("auth.oauth.providers.linkedin."))
+    item.metadata?.changed_paths?.includes("auth.oauth.providers.linkedin")
   ));
-  expect(linkedinEnable).toBeDefined();
-  expect(linkedinEnable.metadata.changed_paths).toEqual(expect.arrayContaining([
-    "auth.oauth.providers.linkedin.type",
-    "auth.oauth.providers.linkedin.clientId",
-    "auth.oauth.providers.linkedin.clientSecret",
-  ]));
-  expect(linkedinEnable.metadata.changed_paths).not.toContain("auth.oauth.providers.linkedin.facebookConfigId");
-  expect(linkedinEnable.metadata.changed_paths).not.toContain("auth.oauth.providers.linkedin.microsoftTenantId");
-  expect(linkedinEnable.metadata.changes?.["auth.oauth.providers.linkedin.clientId"]).toMatchObject({
-    before: null,
-    after: "linkedin-client-id",
+  expect(linkedinEnable).toMatchObject({
+    action: "project_settings.updated",
+    metadata: {
+      changed_paths: ["auth.oauth.providers.linkedin"],
+      changes: {
+        "auth.oauth.providers.linkedin": {
+          before: null,
+          after: "linkedin",
+        },
+      },
+    },
   });
-  expect(linkedinEnable.metadata.changes?.["auth.oauth.providers.linkedin.clientSecret"]).toBeUndefined();
   expect(JSON.stringify(linkedinEnable.metadata)).not.toContain("linkedin-client-secret");
+  expect(JSON.stringify(linkedinEnable.metadata)).not.toContain("facebookConfigId");
 
   const googleDisable = listRes.body.items.find((item: { metadata?: { changed_paths?: string[] } }) => (
     item.metadata?.changed_paths?.includes("auth.oauth.providers.google")
@@ -355,13 +361,64 @@ it("audits oauth provider enable/disable without empty shared-schema noise", asy
   });
 });
 
+it("audits shared→standard oauth key switch with only real field diffs", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+  await Project.updateConfig({
+    "auth.oauth.providers.github": {
+      type: "github",
+      isShared: true,
+      allowSignIn: true,
+      allowConnectedAccounts: true,
+    },
+  });
+
+  await Project.updateConfig({
+    "auth.oauth.providers.github": {
+      type: "github",
+      isShared: false,
+      clientId: "gh-client-id",
+      clientSecret: "gh-client-secret",
+      customCallbackUrl: "http://localhost:8102/api/v1/auth/oauth/callback/github",
+      // Unchanged flags — must not appear as Yes→Yes in the audit.
+      allowSignIn: true,
+      allowConnectedAccounts: true,
+      facebookConfigId: "",
+      microsoftTenantId: "",
+    },
+  });
+
+  const listRes = await listAuditLog({ action: "project_settings.updated" });
+  expect(listRes.status).toBe(200);
+  const keySwitch = listRes.body.items.find((item: { metadata?: { changes?: { "auth.oauth.providers.github.isShared"?: unknown } } }) => (
+    item.metadata?.changes?.["auth.oauth.providers.github.isShared"] != null
+  ));
+  expect(keySwitch).toBeDefined();
+  expect(keySwitch.metadata.changed_paths).toEqual(expect.arrayContaining([
+    "auth.oauth.providers.github.isShared",
+    "auth.oauth.providers.github.clientId",
+    "auth.oauth.providers.github.clientSecret",
+    "auth.oauth.providers.github.customCallbackUrl",
+  ]));
+  expect(keySwitch.metadata.changed_paths).not.toContain("auth.oauth.providers.github.allowSignIn");
+  expect(keySwitch.metadata.changed_paths).not.toContain("auth.oauth.providers.github.allowConnectedAccounts");
+  expect(keySwitch.metadata.changed_paths).not.toContain("auth.oauth.providers.github.facebookConfigId");
+  expect(keySwitch.metadata.changes?.["auth.oauth.providers.github.isShared"]).toMatchObject({
+    before: true,
+    after: false,
+  });
+  expect(keySwitch.metadata.changes?.["auth.oauth.providers.github.allowSignIn"]).toBeUndefined();
+  expect(JSON.stringify(keySwitch.metadata)).not.toContain("gh-client-secret");
+});
+
 it("does not audit end-user password signup (programmatic user create)", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Password.signUpWithEmail();
 
   const listRes = await listAuditLog();
   expect(listRes.status).toBe(200);
-  expect(listRes.body.items).toEqual([]);
+  expect(withoutProjectBootstrapEvents(listRes.body.items)).toEqual([]);
+  expect(listRes.body.items.some((item: { action: string }) => item.action === "user.created")).toBe(false);
 });
 
 it("records Authentication user-directory admin actions", async ({ expect }) => {
@@ -681,6 +738,296 @@ it("records project API key create, update, and revoke without persisting secret
       source: "internal.api_keys.update",
       api_key_id: apiKeyId,
       description: "Renamed audited project key",
+    },
+  });
+});
+
+it("records Teams admin mutations (create/update/delete, membership, permissions, checkout, item quantity) and skips client self-service", async ({ expect }) => {
+  await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+    },
+  });
+  await Payments.setup();
+  await Project.updateConfig({
+    teams: {
+      allowClientTeamCreation: true,
+    },
+    payments: {
+      testMode: true,
+      items: {
+        "team-credits": {
+          displayName: "Team Credits",
+          customerType: "team",
+        },
+      },
+      products: {
+        "team-product": {
+          displayName: "Team Product",
+          customerType: "team",
+          serverOnly: false,
+          stackable: true,
+          prices: {
+            monthly: {
+              USD: "1000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId: memberUserId } = await Auth.Password.signUpWithEmail();
+  await Auth.signOut();
+
+  const createTeam = await niceBackendFetch("/api/v1/teams", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      display_name: "Audited Team",
+      client_metadata: { plan: "starter" },
+      client_read_only_metadata: { seat_limit: 5 },
+      server_metadata: { internal_note: "vip" },
+    },
+  });
+  expect(createTeam.status).toBe(201);
+  const teamId = createTeam.body.id as string;
+
+  const rename = await niceBackendFetch(`/api/v1/teams/${teamId}`, {
+    accessType: "admin",
+    method: "PATCH",
+    body: {
+      display_name: "Renamed Audited Team",
+      client_metadata: { plan: "pro" },
+      client_read_only_metadata: { seat_limit: 10 },
+      server_metadata: { internal_note: "vip-renewed" },
+    },
+  });
+  expect(rename.status).toBe(200);
+
+  const addMember = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${memberUserId}`, {
+    accessType: "admin",
+    method: "POST",
+    body: {},
+  });
+  expect(addMember.status).toBe(201);
+
+  const grantPermission = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${memberUserId}/$update_team`, {
+    accessType: "admin",
+    method: "POST",
+    body: {},
+  });
+  expect(grantPermission.status).toBe(201);
+
+  const revokePermission = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${memberUserId}/$update_team`, {
+    accessType: "admin",
+    method: "DELETE",
+  });
+  expect(revokePermission.status).toBe(200);
+
+  const quantityChange = await niceBackendFetch(`/api/v1/payments/items/team/${teamId}/team-credits/update-quantity?allow_negative=false`, {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      delta: 7,
+      description: "manual team grant",
+    },
+  });
+  expect(quantityChange.status).toBe(200);
+
+  const checkout = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      customer_type: "team",
+      customer_id: teamId,
+      product_id: "team-product",
+    },
+  });
+  expect(checkout.status).toBe(200);
+  const checkoutUrl = checkout.body.url as string;
+  expect(typeof checkoutUrl).toBe("string");
+
+  const removeMember = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${memberUserId}`, {
+    accessType: "admin",
+    method: "DELETE",
+  });
+  expect(removeMember.status).toBe(200);
+
+  const deleteTeam = await niceBackendFetch(`/api/v1/teams/${teamId}`, {
+    accessType: "admin",
+    method: "DELETE",
+  });
+  expect(deleteTeam.status).toBe(200);
+
+  // Client self-service team create must not write admin audit events.
+  await bumpEmailAddress();
+  await Auth.Password.signUpWithEmail();
+  const clientCreate = await niceBackendFetch("/api/v1/teams", {
+    accessType: "client",
+    method: "POST",
+    body: {
+      display_name: "Client Self-Service Team",
+      creator_user_id: "me",
+    },
+  });
+  expect(clientCreate.status).toBe(201);
+  const clientTeamId = clientCreate.body.id as string;
+
+  const createdList = await listAuditLog({ action: "team.created" });
+  expect(createdList.status).toBe(200);
+  expect(createdList.body.items).toHaveLength(1);
+  expect(createdList.body.items[0]).toMatchObject({
+    action: "team.created",
+    target_user_id: null,
+    metadata: {
+      source: "teams.create",
+      changed_paths: expect.arrayContaining([
+        "team_id",
+        "display_name",
+        "client_metadata.plan",
+        "client_read_only_metadata.seat_limit",
+        "server_metadata.internal_note",
+      ]),
+      changes: {
+        display_name: { before: null, after: "Audited Team" },
+        "client_metadata.plan": { before: null, after: "starter" },
+        "client_read_only_metadata.seat_limit": { before: null, after: 5 },
+        "server_metadata.internal_note": { before: null, after: "vip" },
+      },
+    },
+  });
+  expect(createdList.body.items[0].metadata.changes.team_id.after).toBe(teamId);
+  expect(JSON.stringify(createdList.body.items)).not.toContain("Client Self-Service Team");
+  expect(JSON.stringify(createdList.body.items)).not.toContain(clientTeamId);
+
+  const updatedList = await listAuditLog({ action: "team.updated" });
+  expect(updatedList.status).toBe(200);
+  expect(updatedList.body.items).toHaveLength(1);
+  expect(updatedList.body.items[0]).toMatchObject({
+    action: "team.updated",
+    metadata: {
+      source: "teams.update",
+      team_id: teamId,
+      changed_paths: expect.arrayContaining([
+        "display_name",
+        "client_metadata.plan",
+        "client_read_only_metadata.seat_limit",
+        "server_metadata.internal_note",
+      ]),
+      changes: {
+        display_name: { before: "Audited Team", after: "Renamed Audited Team" },
+        "client_metadata.plan": { before: "starter", after: "pro" },
+        "client_read_only_metadata.seat_limit": { before: 5, after: 10 },
+        "server_metadata.internal_note": { before: "vip", after: "vip-renewed" },
+      },
+    },
+  });
+
+  const membershipCreated = await listAuditLog({ action: "team_membership.created" });
+  expect(membershipCreated.status).toBe(200);
+  expect(membershipCreated.body.items).toHaveLength(1);
+  expect(membershipCreated.body.items[0]).toMatchObject({
+    action: "team_membership.created",
+    target_user_id: memberUserId,
+    metadata: {
+      source: "team_memberships.create",
+      changes: {
+        team_id: { before: null, after: teamId },
+        user_id: { before: null, after: memberUserId },
+      },
+    },
+  });
+
+  const membershipDeleted = await listAuditLog({ action: "team_membership.deleted" });
+  expect(membershipDeleted.status).toBe(200);
+  expect(membershipDeleted.body.items).toHaveLength(1);
+  expect(membershipDeleted.body.items[0]).toMatchObject({
+    action: "team_membership.deleted",
+    target_user_id: memberUserId,
+    metadata: {
+      source: "team_memberships.delete",
+      team_id: teamId,
+      user_id: memberUserId,
+    },
+  });
+
+  const permissionGranted = await listAuditLog({ action: "team_permission.granted" });
+  expect(permissionGranted.status).toBe(200);
+  expect(permissionGranted.body.items).toHaveLength(1);
+  expect(permissionGranted.body.items[0]).toMatchObject({
+    action: "team_permission.granted",
+    target_user_id: memberUserId,
+    metadata: {
+      source: "team_permissions.create",
+      changes: {
+        team_id: { before: null, after: teamId },
+        user_id: { before: null, after: memberUserId },
+        permission_id: { before: null, after: "$update_team" },
+      },
+    },
+  });
+
+  const permissionRevoked = await listAuditLog({ action: "team_permission.revoked" });
+  expect(permissionRevoked.status).toBe(200);
+  expect(permissionRevoked.body.items).toHaveLength(1);
+  expect(permissionRevoked.body.items[0]).toMatchObject({
+    action: "team_permission.revoked",
+    target_user_id: memberUserId,
+    metadata: {
+      source: "team_permissions.delete",
+      team_id: teamId,
+      user_id: memberUserId,
+      permission_id: "$update_team",
+    },
+  });
+
+  const itemQuantity = await listAuditLog({ action: "team.item_quantity.changed" });
+  expect(itemQuantity.status).toBe(200);
+  expect(itemQuantity.body.items).toHaveLength(1);
+  expect(itemQuantity.body.items[0]).toMatchObject({
+    action: "team.item_quantity.changed",
+    metadata: {
+      source: "payments.items.update_quantity",
+      team_id: teamId,
+      item_id: "team-credits",
+      delta: 7,
+      allow_negative: false,
+      description: "manual team grant",
+      changes: {
+        quantity: { before: 0, after: 7 },
+      },
+    },
+  });
+
+  const checkoutList = await listAuditLog({ action: "team.checkout.created" });
+  expect(checkoutList.status).toBe(200);
+  expect(checkoutList.body.items).toHaveLength(1);
+  expect(checkoutList.body.items[0]).toMatchObject({
+    action: "team.checkout.created",
+    metadata: {
+      source: "payments.create_purchase_url",
+      changes: {
+        team_id: { before: null, after: teamId },
+        product_id: { before: null, after: "team-product" },
+        has_product_inline: { before: null, after: false },
+      },
+    },
+  });
+  expect(JSON.stringify(checkoutList.body.items[0].metadata)).not.toContain(checkoutUrl);
+  expect(JSON.stringify(checkoutList.body.items[0].metadata)).not.toContain("/purchase/");
+
+  const deletedList = await listAuditLog({ action: "team.deleted" });
+  expect(deletedList.status).toBe(200);
+  expect(deletedList.body.items).toHaveLength(1);
+  expect(deletedList.body.items[0]).toMatchObject({
+    action: "team.deleted",
+    metadata: {
+      source: "teams.delete",
+      team_id: teamId,
+      display_name: "Renamed Audited Team",
     },
   });
 });

@@ -24,6 +24,15 @@ export const AUDIT_LOG_ACTIONS = [
   "project_api_key.updated",
   "project_api_key.revoked",
   "config_source.unlinked",
+  "team.created",
+  "team.updated",
+  "team.deleted",
+  "team.checkout.created",
+  "team.item_quantity.changed",
+  "team_membership.created",
+  "team_membership.deleted",
+  "team_permission.granted",
+  "team_permission.revoked",
 ] as const;
 
 export type AuditLogAction = typeof AUDIT_LOG_ACTIONS[number];
@@ -316,13 +325,18 @@ function summarizeConfigObjectForAudit(value: Record<string, unknown>): string {
   return "configured";
 }
 
+function oauthProviderParentPath(path: string): string | null {
+  const match = /^auth\.oauth\.providers\.([^.]+)/.exec(path);
+  if (match == null) return null;
+  return `auth.oauth.providers.${match[1]}`;
+}
+
 /**
  * Expand object-valued patch paths into leaf diffs and drop empty no-ops.
  *
- * Without this, writing `{ "auth.oauth.providers.google": null }` stays a single
- * object path whose before-value can't be JSON-normalized → UI shows "Hidden".
- * Enabling a provider with a full field bag also audits empty shared-schema
- * leftovers like `facebookConfigId: ""`.
+ * OAuth provider enable/disable stay as one path each (summary string), so the
+ * UI can show `linkedin → Added` / `google → Removed` instead of dumping every
+ * shared-schema leaf (clientId, facebookConfigId, …).
  */
 export function expandConfigChangePaths(options: {
   paths: string[],
@@ -337,7 +351,32 @@ export function expandConfigChangePaths(options: {
     expanded.push(path);
   };
 
+  // collectConfigPaths already leaf-expands provider objects — collapse whole
+  // provider creates/deletes back to the parent path for a concise audit row.
+  const oauthSummaryParents = new Set<string>();
   for (const path of options.paths) {
+    const parent = oauthProviderParentPath(path);
+    if (parent == null) continue;
+    const before = getValueAtDottedPath(options.beforeRoot, parent);
+    const after = getValueAtDottedPath(options.afterRoot, parent);
+    if (after === null && isPlainObject(before)) {
+      oauthSummaryParents.add(parent);
+      continue;
+    }
+    if (isPlainObject(after) && isBlankAuditValue(before)) {
+      oauthSummaryParents.add(parent);
+    }
+  }
+  for (const parent of oauthSummaryParents) {
+    push(parent);
+  }
+
+  for (const path of options.paths) {
+    const parent = oauthProviderParentPath(path);
+    if (parent != null && oauthSummaryParents.has(parent)) {
+      continue;
+    }
+
     const before = getValueAtDottedPath(options.beforeRoot, path);
     const after = getValueAtDottedPath(options.afterRoot, path);
 
@@ -352,14 +391,18 @@ export function expandConfigChangePaths(options: {
       continue;
     }
 
-    // Whole-object delete (provider disabled): keep one path; value builder
-    // summarizes the before object into a short string.
+    // Whole-object delete: keep one path; value builder summarizes the before object.
     if (after === null && isPlainObject(before)) {
       push(path);
       continue;
     }
 
     if (isBlankAuditValue(before) && isBlankAuditValue(after)) {
+      continue;
+    }
+    // collectConfigPaths already emits leaves for object patches — skip no-op
+    // leaves (e.g. allowSignIn true→true when only switching shared→standard keys).
+    if (auditValuesEqual(before, after)) {
       continue;
     }
     push(path);
@@ -384,12 +427,20 @@ export function buildNonSensitiveFieldChanges(options: {
     const beforeRaw = getValueAtDottedPath(options.beforeRoot, path);
     const afterRaw = getValueAtDottedPath(options.afterRoot, path);
 
-    // Object → null (e.g. oauth provider removed). Plain objects are otherwise
-    // non-auditable; summarize so the UI can show "google → Removed".
+    // Whole oauth provider (or other config object) removed/added. Plain objects
+    // are otherwise non-auditable; summarize so the UI can show
+    // "google → Removed" / "— → linkedin".
     if (afterRaw === null && isPlainObject(beforeRaw)) {
       changes[path] = {
         before: summarizeConfigObjectForAudit(beforeRaw),
         after: null,
+      };
+      continue;
+    }
+    if (isPlainObject(afterRaw) && isBlankAuditValue(beforeRaw)) {
+      changes[path] = {
+        before: null,
+        after: summarizeConfigObjectForAudit(afterRaw),
       };
       continue;
     }
@@ -398,6 +449,9 @@ export function buildNonSensitiveFieldChanges(options: {
     const afterNormalized = normalizeAuditJsonValue(afterRaw);
     // If either side looks secret / non-auditable, skip values for this path.
     if (beforeNormalized === undefined || afterNormalized === undefined) {
+      continue;
+    }
+    if (auditValuesEqual(beforeNormalized, afterNormalized)) {
       continue;
     }
     changes[path] = {

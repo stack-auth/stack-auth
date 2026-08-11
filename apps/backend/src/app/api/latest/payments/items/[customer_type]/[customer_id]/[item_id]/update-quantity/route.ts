@@ -1,3 +1,4 @@
+import { buildUpdatedFieldsAuditMetadata, recordAuditEvent, shouldRecordAdminAudit } from "@/lib/audit-log";
 import { ensureCustomerExists } from "@/lib/payments";
 import { bulldozerWriteItemQuantityChange } from "@/lib/payments/bulldozer-dual-write";
 import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
@@ -20,6 +21,7 @@ export const POST = createSmartRouteHandler({
       type: serverOrHigherAuthTypeSchema.defined(),
       project: adaptSchema.defined(),
       tenancy: adaptSchema.defined(),
+      adminUser: adaptSchema.optional(),
     }).defined(),
     params: yupObject({
       customer_type: yupString().oneOf(["user", "team", "custom"]).defined().meta({
@@ -127,6 +129,33 @@ export const POST = createSmartRouteHandler({
       return change;
     });
     await bulldozerWriteItemQuantityChange(change);
+
+    // Teams Compliance audit only — user/custom quantity changes are out of scope for this action.
+    if (req.params.customer_type === "team" && shouldRecordAdminAudit(req.auth)) {
+      const quantityAfter = totalQuantity + req.body.delta;
+      const metadata = buildUpdatedFieldsAuditMetadata({
+        source: "payments.items.update_quantity",
+        patch: { quantity: quantityAfter },
+        beforeRoot: { quantity: totalQuantity },
+        afterRoot: { quantity: quantityAfter },
+      }) ?? {
+          source: "payments.items.update_quantity",
+        };
+      await recordAuditEvent({
+        tenancy,
+        auth: req.auth,
+        action: "team.item_quantity.changed",
+        metadata: {
+          ...metadata,
+          team_id: req.params.customer_id,
+          item_id: req.params.item_id,
+          delta: req.body.delta,
+          allow_negative: allowNegative,
+          ...(req.body.expires_at != null ? { expires_at: req.body.expires_at } : {}),
+          ...(req.body.description != null ? { description: req.body.description } : {}),
+        },
+      });
+    }
 
     return {
       statusCode: 200,
