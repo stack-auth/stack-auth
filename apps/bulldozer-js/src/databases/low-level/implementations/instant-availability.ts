@@ -197,21 +197,37 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
           return { buffer, seq: initialSeq };
         });
       },
+      async listEntries(options) {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.instant.listEntries", attributes }, async () => {
+          return await withWriteGate(async () => {
+            // A range cannot be overlaid cheaply with the per-key pending cache. Drain the
+            // latest write to this store while writes are gated, then read one coherent wrapped
+            // range. Waiting on the store's causal write chain avoids unrelated stores and also
+            // propagates a failed cached write instead of exposing stale wrapped data.
+            if (lastWriteSeq !== undefined) await getSeqRecord(lastWriteSeq).underlyingAvailable;
+            const result = await wrappedStore.listEntries(options);
+            return {
+              entries: result.entries.map(({ key, value }) => ({ key: cloneArrayBuffer(key), value: cloneArrayBuffer(value) })),
+              hasMore: result.hasMore,
+            };
+          });
+        });
+      },
       async setAll(entries, setOptions) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.instant.setAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
           if (entries.length === 0) return { seq: setOptions?.requiresSeq ?? initialSeq };
           return await withWriteGate(async () => setAllLocked(entries, setOptions));
         });
       },
-      async deleteAll(keys) {
+      async deleteAll(keys, deleteOptions) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.instant.deleteAll", attributes: { ...attributes, "bulldozer.low_level.key_count": keys.length } }, async () => {
-          if (keys.length === 0) return { seq: initialSeq };
+          if (keys.length === 0) return { seq: deleteOptions?.requiresSeq ?? initialSeq };
           return await withWriteGate(async () => {
             const keysForWrapped = keys.map(cloneArrayBuffer);
             const previousWriteSeq = lastWriteSeq;
             const underlyingSeq = (async () => {
-              await getSeqRecord(previousWriteSeq).underlyingAvailable;
-              const { seq } = await wrappedStore.deleteAll(keysForWrapped);
+              const chainedRequiresSeq = await chainRequiresSeq(previousWriteSeq, await getUnderlyingSeq(deleteOptions?.requiresSeq));
+              const { seq } = await wrappedStore.deleteAll(keysForWrapped, { requiresSeq: chainedRequiresSeq });
               return seq;
             })();
             const seq = createSeq(underlyingSeq);
@@ -227,7 +243,8 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
           if (values.length === 0) return { keys: [], seq: insertOptions?.requiresSeq ?? initialSeq };
           return await withWriteGate(async () => {
             const valuesForWrapped = values.map(cloneArrayBuffer);
-            const requiresSeq = await getUnderlyingSeq(insertOptions?.requiresSeq);
+            const previousWriteSeq = lastWriteSeq;
+            const requiresSeq = await chainRequiresSeq(previousWriteSeq, await getUnderlyingSeq(insertOptions?.requiresSeq));
             const { keys, seq: underlyingInsertSeq } = await wrappedStore.insertAll(valuesForWrapped, { requiresSeq });
             const seq = createSeq(Promise.resolve(underlyingInsertSeq));
             lastWriteSeq = seq;

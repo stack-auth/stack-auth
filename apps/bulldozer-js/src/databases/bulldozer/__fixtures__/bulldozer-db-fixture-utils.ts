@@ -165,6 +165,21 @@ function declareSeededLowLevelDatabase(dump: BulldozerDbDump): LowLevelDatabase 
       async get(key) {
         return { buffer: map.get(encodeBase64(new Uint8Array(key)))?.slice(0) ?? null, seq: seqSentinel };
       },
+      async listEntries(options) {
+        const compareBytes = (a: Uint8Array, b: Uint8Array) => {
+          const commonLength = Math.min(a.length, b.length);
+          for (let index = 0; index < commonLength; index++) {
+            if (a[index] !== b[index]) return a[index] - b[index];
+          }
+          return a.length - b.length;
+        };
+        const limit = options?.limit ?? 1000;
+        const entries = [...map.entries()]
+          .map(([keyBase64, value]) => ({ key: decodeBase64(keyBase64).buffer, value: value.slice(0) }))
+          .filter(entry => options?.startAfter === undefined || compareBytes(new Uint8Array(entry.key), new Uint8Array(options.startAfter)) > 0)
+          .sort((a, b) => compareBytes(new Uint8Array(a.key), new Uint8Array(b.key)));
+        return { entries: entries.slice(0, limit), hasMore: entries.length > limit };
+      },
       async setAll(entries) {
         for (const { key, value } of entries) map.set(encodeBase64(new Uint8Array(key)), value.slice(0));
         return { seq: seqSentinel };
@@ -178,8 +193,13 @@ function declareSeededLowLevelDatabase(dump: BulldozerDbDump): LowLevelDatabase 
         keys.forEach((key, index) => map.set(encodeBase64(new Uint8Array(key)), values[index].slice(0)));
         return { keys, seq: seqSentinel };
       },
-      async compareAndSet() {
-        throw new Error("compareAndSet is not supported by the seeded fixture low-level database");
+      async compareAndSet(key, compare, value) {
+        const existing = map.get(encodeBase64(new Uint8Array(key)));
+        if (existing === undefined || existing.byteLength !== compare.byteLength) return { wasSet: false, seq: null };
+        const compareBytes = new Uint8Array(compare);
+        if (!new Uint8Array(existing).every((byte, index) => byte === compareBytes[index])) return { wasSet: false, seq: null };
+        map.set(encodeBase64(new Uint8Array(key)), value.slice(0));
+        return { wasSet: true, seq: seqSentinel };
       },
     };
   };

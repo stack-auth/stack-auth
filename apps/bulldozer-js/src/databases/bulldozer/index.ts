@@ -6,6 +6,7 @@ import { DatabaseSeq } from "../index.js";
 import type { LowLevelDatabaseDebugSnapshot } from "../low-level/index.js";
 import { AugmentedTreeMap, AugmentedTreeMultiMap } from "../piledriver/data-structures/augmented-tree-map.js";
 import { ConcatTreeList } from "../piledriver/data-structures/concat-tree-list.js";
+import { PiledriverGarbageCollectionResult } from "../piledriver/gc.js";
 import { isPiledriverHeapObjectSymbol, PiledriverDatabase, PiledriverDatabaseDebugSnapshot, PiledriverObject, piledriverObjectEquals } from "../piledriver/index.js";
 
 // Code-unit comparison; localeCompare would persist trees whose order depends on the runtime locale.
@@ -858,6 +859,8 @@ export type BulldozerDatabase = {
   withSnapshot(updateSnapshot: (snapshot: BulldozerDatabaseSnapshot) => Promise<BulldozerDatabaseSnapshot | BulldozerSnapshotMutationResult>): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
   withSnapshotReplicated(updateSnapshot: (snapshot: BulldozerDatabaseSnapshot) => Promise<BulldozerDatabaseSnapshot | BulldozerSnapshotMutationResult>): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
   waitUntilCurrentStateDurable(): Promise<void>,
+  getPiledriverGarbageCollectionProcessStartedAtMillis(): number,
+  collectPiledriverGarbage(cutoffTimestampMillis: number, maxObjects?: number): Promise<PiledriverGarbageCollectionResult>,
   close(): Promise<void>,
   applyRemainingMigrations(): Promise<{ seq: DatabaseSeq }>,
 };
@@ -1005,6 +1008,15 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
       // fresh read sees initialSeq while the original LMDB flush is still pending.
       await piledriverDatabase.waitUntilDurable(latestRootWriteSeq);
     })),
+    getPiledriverGarbageCollectionProcessStartedAtMillis: () => piledriverDatabase.getGarbageCollectionProcessStartedAtMillis(),
+    collectPiledriverGarbage: async (cutoffTimestampMillis, maxObjects) => {
+      if (closePromise !== null) throw new Error("Bulldozer database is closing and cannot start garbage collection");
+      return await withWriteLock(async () => {
+        // Recheck after waiting for the lock: close may have started while GC was queued.
+        if (closePromise !== null) throw new Error("Bulldozer database is closing and cannot start garbage collection");
+        return await piledriverDatabase.collectGarbage(cutoffTimestampMillis, maxObjects);
+      });
+    },
     close() {
       if (closePromise === null) {
         closePromise = traceSpan("bulldozer-js.bulldozer.close", async () => await withWriteLock(async () => {
