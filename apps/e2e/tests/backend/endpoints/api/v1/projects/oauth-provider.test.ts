@@ -653,6 +653,24 @@ it("rejects an expired or unavailable interaction before provider resume", async
   expect(response.status).toBe(400);
 });
 
+it("rejects completion with a different interaction cookie", async () => {
+  const projectId = await createConfiguredProject();
+  await Auth.fastSignUp();
+  const first = await startProjectInteraction(projectId);
+  const second = await startProjectInteraction(projectId);
+  const decision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${first.interactionUid}`, {
+    method: "POST",
+    accessType: "client",
+    body: { approved_scopes: ["openid", "files:read"], denied: false },
+  });
+  expect(decision.status).toBe(200);
+  const completed = await niceBackendFetch(decision.body.done_url, {
+    redirect: "manual",
+    headers: { cookie: second.providerCookie },
+  });
+  expect(completed.status).toBe(400);
+});
+
 it("rejects a decision submitted by a different user", async () => {
   const projectId = await createConfiguredProject();
   await Auth.fastSignUp();
