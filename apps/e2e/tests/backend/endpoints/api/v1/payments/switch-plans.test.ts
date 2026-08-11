@@ -3,12 +3,14 @@ import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../../helpers";
 import { Auth, Payments, Project, niceBackendFetch } from "../../../../backend-helpers";
+import { isE2eDiagnosticsEnabled, recordConvergenceWait } from "../../../../../diagnostics";
 
 // Stripe webhook processing happens in the background after a fast 200 ack, so
 // the subscription it creates (Prisma + bulldozer dual-write) is only
 // eventually visible to reads. Poll the customer's products until the expected
 // subscription shows up before exercising flows that depend on it.
 async function waitForActiveSubscription(userId: string, productId: string) {
+  const startedAt = performance.now();
   for (let i = 0; i < 30; i++) {
     const res = await niceBackendFetch(`/api/latest/payments/products/user/${userId}`, {
       accessType: "client",
@@ -18,9 +20,25 @@ async function waitForActiveSubscription(userId: string, productId: string) {
     }
     const items = (res.body as { items: { id: string, type: string }[] }).items;
     if (items.some((item) => item.id === productId && item.type === "subscription")) {
+      if (isE2eDiagnosticsEnabled()) {
+        recordConvergenceWait({
+          name: "payment-active-subscription",
+          durationMs: performance.now() - startedAt,
+          polls: i + 1,
+          completed: true,
+        });
+      }
       return;
     }
     await wait(500);
+  }
+  if (isE2eDiagnosticsEnabled()) {
+    recordConvergenceWait({
+      name: "payment-active-subscription",
+      durationMs: performance.now() - startedAt,
+      polls: 30,
+      completed: false,
+    });
   }
   throw new Error(`Subscription for product ${productId} never became visible for user ${userId}`);
 }

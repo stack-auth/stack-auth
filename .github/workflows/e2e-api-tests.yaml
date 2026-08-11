@@ -138,6 +138,7 @@ jobs:
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         env:
           HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB: "1"
+          HEXCLAVE_BULLDOZER_DIAGNOSTICS: "true"
         with:
           run: |
             bulldozer_log="$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
@@ -242,10 +243,10 @@ jobs:
         continue-on-error: true
         run: .github/scripts/postgres-attribution.sh reset
 
-      # Temporary diagnostic-PR smoke check: prove the built backend emits a route span
-      # before spending a full test pass on the request-path attribution. This is
-      # diagnostic evidence only; do not gate the workload on it.
-      - name: Smoke-test backend route span
+      # Temporary diagnostic-PR smoke check: verify the diagnostics mode before
+      # spending a full test pass on request-path attribution. This is diagnostic
+      # evidence only; do not gate the workload on it.
+      - name: Smoke-test backend diagnostics
         if: github.head_ref == 'devin/1786345250-backend-span-diagnostics'
         continue-on-error: true
         run: |
@@ -262,12 +263,24 @@ jobs:
                 "http://localhost:${backend_port}/api/latest/internal/span-aggregation?reset=true")"
               then
                 printf "%s\n" "$response" | jq .
-                if ! printf "%s\n" "$response" | jq -e \
-                  "[.spans[] | select(.name | startswith(\"STACK: GET \"))] | length > 0" \
-                  >/dev/null
-                then
-                  echo "Backend route span smoke snapshot contained no GET route span." >&2
-                  exit 1
+                if printf "%s\n" "$response" | jq -e '.enabled == true' >/dev/null; then
+                  if ! printf "%s\n" "$response" | jq -e \
+                    "[.spans[] | select(.name | startswith(\"STACK: GET \"))] | length > 0" \
+                    >/dev/null
+                  then
+                    echo "Span-enabled smoke snapshot contained no GET route span." >&2
+                    exit 1
+                  fi
+                  echo "Span-enabled mode: route span present."
+                else
+                  if ! printf "%s\n" "$response" | jq -e \
+                    '.enabled == false and (.spans | length == 0) and (.runtime.heap.usedBytes > 0) and (.runtime.gc.totalCount > 0) and (.runtime.eventLoopDelay.meanMs > 0)' \
+                    >/dev/null
+                  then
+                    echo "Profile-only smoke snapshot did not contain the expected empty spans and runtime diagnostics." >&2
+                    exit 1
+                  fi
+                  echo "Profile-only mode: empty route spans expected; runtime diagnostics are non-zero."
                 fi
               else
                 echo "Backend route span smoke snapshot failed (backend port ${backend_port})." >&2
@@ -297,7 +310,21 @@ jobs:
         id: run_tests_pass1
         continue-on-error: ${{ github.head_ref == 'devin/1786345250-backend-span-diagnostics' }}
         timeout-minutes: 60
-        run: pnpm test run
+        env:
+          HEXCLAVE_E2E_DIAGNOSTICS: "true"
+          HEXCLAVE_E2E_DIAGNOSTIC_PASS: "pass1"
+        run: pnpm test run --reporter=json --outputFile="$RUNNER_TEMP/e2e-test-results-pass1.untracked.json"
+
+      - name: Merge E2E diagnostics after pass 1
+        if: always()
+        run: |
+          files=("$RUNNER_TEMP"/hexclave-e2e-diagnostics-pass1-*.untracked.json)
+          if [[ -e "${files[0]}" ]]; then
+            jq -s '{pass: "pass1", workers: .}' "${files[@]}" > "$RUNNER_TEMP/e2e-wait-request-diagnostics-pass1.untracked.json"
+          else
+            echo "No pass-1 E2E diagnostic worker files were written." >&2
+            exit 1
+          fi
 
       - name: Snapshot PostgreSQL attribution after pass 1
         if: always()
@@ -345,7 +372,21 @@ jobs:
         id: run_tests_pass2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.head_ref == 'devin/1786345250-backend-span-diagnostics'
         timeout-minutes: 75
-        run: pnpm test run
+        env:
+          HEXCLAVE_E2E_DIAGNOSTICS: "true"
+          HEXCLAVE_E2E_DIAGNOSTIC_PASS: "pass2"
+        run: pnpm test run --reporter=json --outputFile="$RUNNER_TEMP/e2e-test-results-pass2.untracked.json"
+
+      - name: Merge E2E diagnostics after pass 2
+        if: always() && steps.run_tests_pass2.outcome != 'skipped'
+        run: |
+          files=("$RUNNER_TEMP"/hexclave-e2e-diagnostics-pass2-*.untracked.json)
+          if [[ -e "${files[0]}" ]]; then
+            jq -s '{pass: "pass2", workers: .}' "${files[@]}" > "$RUNNER_TEMP/e2e-wait-request-diagnostics-pass2.untracked.json"
+          else
+            echo "No pass-2 E2E diagnostic worker files were written." >&2
+            exit 1
+          fi
 
       - name: Snapshot PostgreSQL attribution after pass 2
         if: always() && steps.run_tests_pass2.outcome != 'skipped'
@@ -375,7 +416,21 @@ jobs:
         id: run_tests_pass3
         if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.head_ref == 'devin/1786345250-backend-span-diagnostics') && steps.run_tests_pass2.outcome == 'success'
         timeout-minutes: 105
-        run: pnpm test run
+        env:
+          HEXCLAVE_E2E_DIAGNOSTICS: "true"
+          HEXCLAVE_E2E_DIAGNOSTIC_PASS: "pass3"
+        run: pnpm test run --reporter=json --outputFile="$RUNNER_TEMP/e2e-test-results-pass3.untracked.json"
+
+      - name: Merge E2E diagnostics after pass 3
+        if: always() && steps.run_tests_pass3.outcome != 'skipped'
+        run: |
+          files=("$RUNNER_TEMP"/hexclave-e2e-diagnostics-pass3-*.untracked.json)
+          if [[ -e "${files[0]}" ]]; then
+            jq -s '{pass: "pass3", workers: .}' "${files[@]}" > "$RUNNER_TEMP/e2e-wait-request-diagnostics-pass3.untracked.json"
+          else
+            echo "No pass-3 E2E diagnostic worker files were written." >&2
+            exit 1
+          fi
 
       - name: Snapshot PostgreSQL attribution after pass 3
         if: always() && steps.run_tests_pass3.outcome != 'skipped'
@@ -424,6 +479,17 @@ jobs:
         with:
           name: e2e-api-bulldozer
           path: ${{ runner.temp }}/hexclave-bulldozer.untracked.log
+          if-no-files-found: error
+
+      - name: Upload E2E timing diagnostics
+        if: always() && github.head_ref == 'devin/1786345250-backend-span-diagnostics'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-api-test-timing-diagnostics
+          path: |
+            ${{ runner.temp }}/e2e-test-results-pass*.untracked.json
+            ${{ runner.temp }}/e2e-wait-request-diagnostics-pass*.untracked.json
+            ${{ runner.temp }}/hexclave-e2e-diagnostics-pass*-*.untracked.json
           if-no-files-found: error
 
       - name: Print Docker Compose logs

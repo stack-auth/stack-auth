@@ -14,6 +14,7 @@ import { createHash, createHmac, randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import { Context, Mailbox, NiceRequestInit, NiceResponse, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_ID, STACK_INTERNAL_PROJECT_SERVER_KEY, STACK_SVIX_SERVER_URL, generatedEmailSuffix, localRedirectUrl, niceFetch, updateCookiesFromResponse } from "../helpers";
 import { localhostUrl, withPortPrefix } from "../helpers/ports";
+import { isE2eDiagnosticsEnabled, recordClientRequest, recordConvergenceWait } from "../diagnostics";
 
 type BackendContext = {
   readonly projectKeys: ProjectKeys,
@@ -195,6 +196,7 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
   const fullUrl = new URL(url, STACK_BACKEND_BASE_URL);
   if (fullUrl.origin !== new URL(STACK_BACKEND_BASE_URL).origin) throw new HexclaveAssertionError(`Invalid niceBackendFetch origin: ${fullUrl.origin}`);
   if (fullUrl.protocol !== new URL(STACK_BACKEND_BASE_URL).protocol) throw new HexclaveAssertionError(`Invalid niceBackendFetch protocol: ${fullUrl.protocol}`);
+  const requestStartedAt = isE2eDiagnosticsEnabled() ? performance.now() : 0;
   const res = await niceFetch(fullUrl, {
     ...otherOptions,
     ...body !== undefined ? { body: JSON.stringify(body) } : {},
@@ -230,6 +232,14 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
       ...Object.fromEntries(new Headers(filterUndefined(headers ?? {}) as any).entries()),
     }),
   });
+  if (isE2eDiagnosticsEnabled()) {
+    recordClientRequest({
+      durationMs: performance.now() - requestStartedAt,
+      method: otherOptions.method ?? "GET",
+      path: fullUrl.pathname,
+      status: res.status,
+    });
+  }
   if (res.status >= 500 && res.status < 600) {
     throw new HexclaveAssertionError(`API threw ISE in ${otherOptions.method ?? "GET"} ${url}: ${res.status} ${typeof res.body === "string" ? res.body : nicify(res.body)}`);
   }
@@ -293,13 +303,20 @@ export async function getOutboxEmails(options?: { subject?: string }): Promise<O
 export async function waitForOutboxEmailWithStatus(subject: string, status: string): Promise<OutboxEmail[]> {
   const maxRetries = 24;
   let emails: OutboxEmail[] = [];
+  const startedAt = isE2eDiagnosticsEnabled() ? performance.now() : 0;
   for (let i = 0; i < maxRetries; i++) {
     emails = await getOutboxEmails({ subject });
     // Check the most recent email (first in the list due to createdAt desc ordering)
     if (emails.length > 0 && emails[0].status === status) {
+      if (isE2eDiagnosticsEnabled()) {
+        recordConvergenceWait({ name: "outbox-email-status", durationMs: performance.now() - startedAt, polls: i + 1, completed: true });
+      }
       return emails;
     }
     await wait(500);
+  }
+  if (isE2eDiagnosticsEnabled()) {
+    recordConvergenceWait({ name: "outbox-email-status", durationMs: performance.now() - startedAt, polls: maxRetries, completed: false });
   }
   throw new HexclaveAssertionError(
     `Timeout waiting for outbox email with subject "${subject}" and status "${status}"`,
@@ -1364,6 +1381,17 @@ async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<v
   const timeoutMs = 15_000;
   const startedAt = performance.now();
   const deadline = startedAt + timeoutMs;
+  let polls = 0;
+  const recordWait = (completed: boolean) => {
+    if (isE2eDiagnosticsEnabled()) {
+      recordConvergenceWait({
+        name: "billing-team-plan-entitlement",
+        durationMs: performance.now() - startedAt,
+        polls,
+        completed,
+      });
+    }
+  };
   const warnTimeout = () => {
     const elapsedMs = performance.now() - startedAt;
     console.warn(
@@ -1374,6 +1402,7 @@ async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<v
   while (true) {
     const remainingMs = deadline - performance.now();
     if (remainingMs <= 0) {
+      recordWait(false);
       warnTimeout();
       return;
     }
@@ -1382,6 +1411,7 @@ async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<v
     const abortTimeout = setTimeout(() => abortController.abort(), remainingMs);
     let quantity: number;
     try {
+      polls++;
       quantity = await withInternalProject(async () => {
         const response = await niceBackendFetch(
           `/api/v1/payments/items/team/${encodeURIComponent(ownerTeamId)}/${ITEM_IDS.analyticsTimeoutSeconds}`,
@@ -1398,6 +1428,7 @@ async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<v
       });
     } catch (error) {
       if (abortController.signal.aborted) {
+        recordWait(false);
         warnTimeout();
         return;
       }
@@ -1405,10 +1436,14 @@ async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<v
     } finally {
       clearTimeout(abortTimeout);
     }
-    if (quantity > 0) return;
+    if (quantity > 0) {
+      recordWait(true);
+      return;
+    }
 
     const remainingAfterPollMs = deadline - performance.now();
     if (remainingAfterPollMs <= 0) {
+      recordWait(false);
       warnTimeout();
       return;
     }

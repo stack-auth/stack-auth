@@ -2,6 +2,7 @@ import { ItemId } from "@hexclave/shared/dist/plans";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { niceBackendFetch, withInternalProject } from "./backend-helpers";
+import { isE2eDiagnosticsEnabled, recordConvergenceWait } from "../diagnostics";
 
 // Helpers for reading and waiting on payment-item quantities held by an
 // owner team in the internal project (the "billing team" of a Hexclave
@@ -60,12 +61,22 @@ export async function waitForItemQuantityToReach(
   const pollIntervalMs = 200;
   const timeoutMs = 8000;
   const startedAt = performance.now();
+  let polls = 0;
 
   while (true) {
+    polls++;
     const current = await getItemQuantity(ownerTeamId, itemId);
-    if (current === expected) return;
+    if (current === expected) {
+      if (isE2eDiagnosticsEnabled()) {
+        recordConvergenceWait({ name: "payment-item-quantity-target", durationMs: performance.now() - startedAt, polls, completed: true });
+      }
+      return;
+    }
 
     if (performance.now() - startedAt > timeoutMs) {
+      if (isE2eDiagnosticsEnabled()) {
+        recordConvergenceWait({ name: "payment-item-quantity-target", durationMs: performance.now() - startedAt, polls, completed: false });
+      }
       throw new HexclaveAssertionError(`Item quantity did not reach expected value within timeout`, {
         ownerTeamId, itemId, expected, current, timeoutMs,
       });
@@ -103,6 +114,7 @@ export async function waitForItemQuantityToStabilize(
   const timeoutMs = 30000;
   const minimumElapsedMs = options.minimumElapsedMs ?? 0;
   const startedAt = performance.now();
+  let polls = 1;
 
   let last = await getItemQuantity(ownerTeamId, itemId);
   let stableReads = 1;
@@ -110,9 +122,15 @@ export async function waitForItemQuantityToStabilize(
   while (true) {
     const elapsed = performance.now() - startedAt;
     if (stableReads >= stableForReads && elapsed >= minimumElapsedMs) {
+      if (isE2eDiagnosticsEnabled()) {
+        recordConvergenceWait({ name: "payment-item-quantity-stable", durationMs: elapsed, polls, completed: true });
+      }
       return last;
     }
     if (elapsed > timeoutMs) {
+      if (isE2eDiagnosticsEnabled()) {
+        recordConvergenceWait({ name: "payment-item-quantity-stable", durationMs: elapsed, polls, completed: false });
+      }
       throw new HexclaveAssertionError(`Item quantity did not stabilise within timeout`, {
         ownerTeamId, itemId, last, stableReads, stableForReads, timeoutMs, minimumElapsedMs,
       });
@@ -120,6 +138,7 @@ export async function waitForItemQuantityToStabilize(
 
     await wait(pollIntervalMs);
     const next = await getItemQuantity(ownerTeamId, itemId);
+    polls++;
 
     if (next === last) {
       stableReads++;

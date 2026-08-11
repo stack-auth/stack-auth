@@ -1,6 +1,7 @@
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { Client } from "pg";
+import { isE2eDiagnosticsEnabled, recordConvergenceWait } from "../../diagnostics";
 
 // The backend's Prisma client routes read queries to a read replica (in dev/CI, db-replica applies WAL with an
 // artificial delay). Read-after-write consistency comes from a Prisma extension that, after every write it performs,
@@ -15,13 +16,33 @@ export async function waitUntilReplicasHaveCaughtUp(primaryClient: Client, timeo
     ?? throwErr("pg_current_wal_lsn() returned no row; is this connection pointing at a PostgreSQL primary?");
 
   const deadline = performance.now() + timeoutMs;
+  let polls = 0;
   while (true) {
+    polls++;
     const behind = (await primaryClient.query<{ behind: number }>(
       `SELECT count(*)::int AS behind FROM pg_stat_replication WHERE "replay_lsn" IS NULL OR "replay_lsn" < $1::pg_lsn`,
       [target],
     )).rows[0]?.behind ?? throwErr("Counting lagging replicas returned no row");
-    if (behind === 0) return;
+    if (behind === 0) {
+      if (isE2eDiagnosticsEnabled()) {
+        recordConvergenceWait({
+          name: "test-replication-catch-up",
+          durationMs: timeoutMs - Math.max(0, deadline - performance.now()),
+          polls,
+          completed: true,
+        });
+      }
+      return;
+    }
     if (performance.now() > deadline) {
+      if (isE2eDiagnosticsEnabled()) {
+        recordConvergenceWait({
+          name: "test-replication-catch-up",
+          durationMs: timeoutMs,
+          polls,
+          completed: false,
+        });
+      }
       throw new Error(`${behind} replica(s) did not replay up to ${target} within ${timeoutMs}ms`);
     }
     await wait(20);

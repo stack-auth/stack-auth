@@ -2,6 +2,7 @@ import { Client, ClientConfig } from 'pg';
 import { expect } from 'vitest';
 import { niceFetch, STACK_BACKEND_BASE_URL } from '../../../../helpers';
 import { InternalApiKey, Project } from '../../../backend-helpers';
+import { isE2eDiagnosticsEnabled, recordConvergenceWait } from '../../../../diagnostics';
 
 
 const PORT_PREFIX = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || '81';
@@ -128,10 +129,20 @@ export async function waitForCondition(
 ): Promise<void> {
   const { timeoutMs = 10000, intervalMs = 100, description = 'condition' } = options;
   const startTime = performance.now();
+  let polls = 0;
 
   while (performance.now() - startTime < timeoutMs) {
+    polls++;
     try {
       if (await checkFn()) {
+        if (isE2eDiagnosticsEnabled()) {
+          recordConvergenceWait({
+            name: `external-db:${description}`,
+            durationMs: performance.now() - startTime,
+            polls,
+            completed: true,
+          });
+        }
         return;
       }
     } catch (err: any) {
@@ -146,6 +157,14 @@ export async function waitForCondition(
     await new Promise(r => setTimeout(r, intervalMs));
   }
 
+  if (isE2eDiagnosticsEnabled()) {
+    recordConvergenceWait({
+      name: `external-db:${description}`,
+      durationMs: performance.now() - startTime,
+      polls,
+      completed: false,
+    });
+  }
   throw new Error(`Timeout waiting for ${description} after ${timeoutMs}ms`);
 }
 

@@ -1,5 +1,10 @@
-import { afterEach, expect } from "vitest";
+import { afterAll, afterEach, expect } from "vitest";
 import { afterTestFinishesCallbacks } from "./helpers";
+import { flushE2eDiagnostics } from "./diagnostics";
+
+afterAll(() => {
+  flushE2eDiagnostics();
+});
 
 expect.extend({
   toSatisfy(received: string, predicate: (value: string) => boolean) {
