@@ -592,13 +592,7 @@ export function declareLmdbLowLevelDatabase(options: {
       });
     },
     combineSeqs(...seqs) {
-      if (seqs.length === 0) return initialSeq;
-      if (seqs.length === 1) return seqs[0];
-      const seqId = nextSeqId();
-      combinedSeqDependencies.set(seqId, seqs.map(seq => getSeqId(seq)));
-      rememberCombinedAvailability(seqId, Promise.all(seqs.map(seq => getAvailabilityPromise(getSeqId(seq)))));
-      rememberCombinedDurability(seqId, Promise.all(seqs.map(seq => getDurabilityPromise(getSeqId(seq)))));
-      return toSeq(seqId);
+      return combineSeqsForStore(...seqs);
     },
     close() {
       if (closePromise === null) {
