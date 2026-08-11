@@ -37,9 +37,11 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ auth, params }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    // Purely the existence check for the 404 — whether it is ALREADY concluded is decided by
+    // the conditional write below, not here.
     const existing = await prisma.deployment.findUnique({
       where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: params.deployment_id } },
-      select: { concludedAt: true },
+      select: { id: true },
     });
     if (existing == null) {
       throw new StatusError(404, `No deployment with id ${JSON.stringify(params.deployment_id)} exists in this project.`);
@@ -50,12 +52,15 @@ export const POST = createSmartRouteHandler({
     // so overwriting it would stretch a finished deploy's duration on every
     // retry. Runs created after this point still count — the column only says
     // "the client stopped", never "ignore what arrives later".
-    if (existing.concludedAt === null) {
-      await prisma.deployment.update({
-        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: params.deployment_id } },
-        data: { concludedAt: new Date() },
-      });
-    }
+    //
+    // The null check is part of the WRITE PREDICATE, not a read-then-write: two concurrent
+    // concludes both pass a separate `existing.concludedAt === null` check and the second
+    // overwrites the first's timestamp, which is exactly the stretch this is meant to
+    // prevent. updateMany matches zero rows for the loser instead.
+    await prisma.deployment.updateMany({
+      where: { tenancyId: auth.tenancy.id, id: params.deployment_id, concludedAt: null },
+      data: { concludedAt: new Date() },
+    });
     const deployment = await prisma.deployment.findUniqueOrThrow({
       where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: params.deployment_id } },
       include: RUNS_INCLUDE,

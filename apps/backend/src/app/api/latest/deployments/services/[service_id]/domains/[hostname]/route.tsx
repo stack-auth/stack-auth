@@ -106,6 +106,16 @@ export const GET = createSmartRouteHandler({
         // The runtime doesn't have this hostname attached (spec reset, or it is
         // attached to a different service); treat like pre-first-deploy so the
         // UI shows "deploy first" rather than a stale verified state.
+        //
+        // The CACHED flag has to be cleared too, not just the response: the service list and
+        // detail endpoints read `verified` from the row, so leaving it true would keep them
+        // advertising a custom URL that the runtime no longer routes.
+        if (domain.verified) {
+          await prisma.deploymentServiceDomain.update({
+            where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domain.id } },
+            data: { verified: false },
+          });
+        }
         return {
           statusCode: 200,
           bodyType: "json",

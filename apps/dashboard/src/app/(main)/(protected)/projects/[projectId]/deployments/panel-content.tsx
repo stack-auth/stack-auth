@@ -138,7 +138,7 @@ function DeployCodeHint({ service, project }: { service: BoardService, project: 
         Deploy your code
       </div>
       <p className="text-xs text-muted-foreground">
-        This service has no deployment yet. Deploy it with the Hexclave CLI — its configuration comes from the <span className="font-mono">services</span> export of your <span className="font-mono">hexclave.config.ts</span> (omit <span className="font-mono">--service-id</span> to deploy every service):
+        This service has no deployment yet. Deploy it with the Hexclave CLI — its configuration comes from the <span className="font-mono">services</span> member of the <span className="font-mono">deployment</span> export of your <span className="font-mono">hexclave.config.ts</span> (omit <span className="font-mono">--service-id</span> to deploy every service):
       </p>
       <CodeSnippet code={deployCommands} />
     </div>
@@ -231,7 +231,7 @@ export function VariablesContent({ service, services, isHexclave }: {
   return (
     <div className="h-full space-y-3 overflow-y-auto p-4">
       <p className="text-[11px] text-muted-foreground">
-        Variables are defined in the <span className="font-mono">services</span> export of your <span className="font-mono">hexclave.config.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. Secret values are entered under Project Settings &gt; Secrets.
+        Variables are defined in the <span className="font-mono">services</span> member of the <span className="font-mono">deployment</span> export of your <span className="font-mono">hexclave.config.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. Secret values are entered under Project Settings &gt; Secrets.
       </p>
 
       {service.envVars.length === 0 && (
@@ -300,104 +300,14 @@ function ConnectionTarget({ value, services }: { value: string, services: BoardS
   );
 }
 
-// -- Deployments (list + drill-in) ------------------------------------------
+// -- Build logs -------------------------------------------------------------
+//
+// A tab in the service detail pane. The page is scoped to one deployment, so the run shown
+// here is the one THAT deploy gave THIS service — not the service's latest, which would
+// quietly show a newer build's output under an older deploy's heading.
 
-// Poll while any run is still in flight so statuses update live.
+// Poll while the run is still in flight so its status updates live.
 const RUNS_POLL_INTERVAL_MS = 5000;
-
-function useRuns(project: AdminProject, serviceId: string, enabled: boolean) {
-  const [runs, setRuns] = useState<AdminDeploymentRunJson[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    const load = async () => {
-      try {
-        const result = await project.listDeploymentRuns(serviceId);
-        if (cancelled) return;
-        setRuns(result);
-        setError(null);
-      } catch (loadError) {
-        if (cancelled) return;
-        setError(errorMessageOf(loadError));
-      } finally {
-        // Always reschedule while the tab is open: new runs can appear at any
-        // time (a CLI deploy), and a transient fetch error must not halt
-        // polling forever.
-        if (!cancelled) {
-          timeout = setTimeout(() => runAsynchronously(load()), RUNS_POLL_INTERVAL_MS);
-        }
-      }
-    };
-    runAsynchronously(load());
-    return () => {
-      cancelled = true;
-      if (timeout !== undefined) clearTimeout(timeout);
-    };
-  }, [project, serviceId, enabled]);
-
-  return { runs, error };
-}
-
-export function DeploymentsContent({ service, project, isHexclave, onOpenRun }: {
-  service: BoardService,
-  project: AdminProject,
-  isHexclave: boolean,
-  onOpenRun: (run: AdminDeploymentRunJson) => void,
-}) {
-  const { runs, error } = useRuns(project, service.id, !isHexclave);
-
-  if (isHexclave) {
-    return (
-      <div className="h-full overflow-y-auto p-4">
-        <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
-          The Hexclave service is deployed and updated for you.
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-full space-y-2 overflow-y-auto p-4">
-      {error != null && <InlineError message={error} />}
-      {runs == null && error == null && <CenteredSpinner />}
-      {runs != null && runs.length === 0 && (
-        <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
-          No deployments yet. Run <span className="font-mono">hexclave deploy</span> to create one.
-        </div>
-      )}
-      {runs?.map((run) => {
-        const meta = runStatusMeta(run.status);
-        const Icon = meta.icon;
-        return (
-          <button
-            key={run.id}
-            onClick={() => onOpenRun(run)}
-            className="flex w-full items-start gap-3 rounded-xl bg-foreground/[0.02] p-3 text-left ring-1 ring-black/[0.04] transition-colors duration-150 hover:bg-foreground/[0.05] hover:transition-none dark:ring-white/[0.04]"
-          >
-            <DesignBadge label={meta.label} color={meta.color} size="sm" icon={Icon} iconClassName={meta.spin ? "animate-spin" : undefined} contentMode="icon" />
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium text-foreground">
-                {run.url != null ? new URL(run.url).host : `Deployment ${run.id.slice(0, 8)}`}
-              </div>
-              <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
-                <TerminalWindowIcon className="h-3 w-3 shrink-0" />
-                <span className="truncate">via {run.triggered_by === "server" ? "CLI" : "dashboard session"}</span>
-              </div>
-            </div>
-            <div className="shrink-0 text-right text-[11px] text-muted-foreground">
-              <div>{run.target}</div>
-              <div>{formatRunTime(run.created_at_millis)}</div>
-            </div>
-            <CaretRightIcon className="mt-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 function useRunLogs(project: AdminProject, runId: string | null) {
   const [logs, setLogs] = useState<string | null>(null);
@@ -431,15 +341,19 @@ function useRunLogs(project: AdminProject, runId: string | null) {
   return { logs, error, reload: () => setReloadCounter((c) => c + 1) };
 }
 
-export function DeploymentDetailContent({ run: initialRun, project, onBack }: { run: AdminDeploymentRunJson, project: AdminProject, onBack: () => void }) {
-  // The prop is a snapshot from the runs list; keep refreshing it while the
-  // run is in flight so status/url/error don't freeze at "Building".
+export function BuildLogsContent({ run: initialRun, project, isHexclave }: {
+  run: AdminDeploymentRunJson | null,
+  project: AdminProject,
+  isHexclave: boolean,
+}) {
+  // The prop is a snapshot from the deployment; keep refreshing it while the run is in flight
+  // so status/url/error don't freeze at "Building".
   const [run, setRun] = useState(initialRun);
   useEffect(() => {
     setRun(initialRun);
   }, [initialRun]);
   useEffect(() => {
-    if (isTerminalRun(initialRun)) return;
+    if (initialRun == null || isTerminalRun(initialRun)) return;
     let cancelled = false;
     const interval = setInterval(() => runAsynchronously(async () => {
       try {
@@ -459,16 +373,38 @@ export function DeploymentDetailContent({ run: initialRun, project, onBack }: { 
       clearInterval(interval);
     };
   }, [project, initialRun]);
+
+  // Hooks first: useRunLogs has to run on every render, so the "no run" cases below are
+  // returned after it rather than short-circuiting above it.
+  const { logs, error, reload } = useRunLogs(project, run?.id ?? null);
+
+  if (isHexclave) {
+    return (
+      <div className="h-full overflow-y-auto p-4">
+        <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
+          The Hexclave service is deployed and updated for you, so it has no build of its own.
+        </div>
+      </div>
+    );
+  }
+
+  if (run == null) {
+    return (
+      <div className="h-full overflow-y-auto p-4">
+        {/* REASON-NEUTRAL. A missing run also happens when packaging or the upload failed
+            locally, or the CLI died — the API records only that no run was created. */}
+        <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
+          This deployment never started a build for this service, so there are no logs.
+        </div>
+      </div>
+    );
+  }
+
   const meta = runStatusMeta(run.status);
   const Icon = meta.icon;
-  const { logs, error, reload } = useRunLogs(project, run.id);
 
   return (
     <div className="flex h-full flex-col p-4">
-      <button onClick={onBack} className="mb-3 inline-flex items-center gap-1 self-start text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground hover:transition-none">
-        <CaretLeftIcon className="h-3.5 w-3.5" /> All deployments
-      </button>
-
       <div className="mb-3 space-y-2">
         <div className="flex items-center gap-2">
           <DesignBadge label={meta.label} color={meta.color} size="sm" icon={Icon} iconClassName={meta.spin ? "animate-spin" : undefined} />
@@ -759,7 +695,7 @@ export function SettingsContent({ service, isHexclave }: {
       <div className="space-y-3">
         <SectionLabel>Container</SectionLabel>
         <p className="text-[11px] text-muted-foreground">
-          Container settings are defined in the <span className="font-mono">services</span> export of your <span className="font-mono">hexclave.config.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. The image is built from the service&apos;s Dockerfile when <span className="font-mono">dockerfilePath</span> is set, and auto-detected with Railpack otherwise.
+          Container settings are defined in the <span className="font-mono">services</span> member of the <span className="font-mono">deployment</span> export of your <span className="font-mono">hexclave.config.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. The image is built from the service&apos;s Dockerfile when <span className="font-mono">dockerfilePath</span> is set, and auto-detected with Railpack otherwise.
         </p>
         {fields.map((field) => (
           <div key={field.label} className="space-y-1.5">

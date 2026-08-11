@@ -110,6 +110,24 @@ describe("packageSourceDirectory", () => {
     expect(() => packageSourceDirectory(sourceRoot, configRoot)).toThrow("must be inside the config directory");
   });
 
+  it("still applies ancestor ignore rules when the source root is reached through an in-tree symlink", () => {
+    // `apps/web` is a symlink to `real/web` in the same config directory. Containment holds
+    // either way, so packaging proceeds — but the ancestor scopes and the tree walk have to
+    // agree on WHICH path space they describe, or the config root's .gitignore stops
+    // matching anything and the files it excludes get uploaded.
+    // The rule is ANCHORED on purpose: a bare `secret.txt` matches at any depth and would
+    // pass under either path space, hiding the divergence this test exists to catch.
+    const configRoot = fs.realpathSync(makeTempDir());
+    write(configRoot, ".gitignore", "/real/web/secret.txt\n");
+    write(configRoot, "real/web/index.ts", "export {}\n");
+    write(configRoot, "real/web/secret.txt", "shh");
+    fs.mkdirSync(path.join(configRoot, "apps"), { recursive: true });
+    fs.symlinkSync(path.join(configRoot, "real", "web"), path.join(configRoot, "apps", "web"));
+
+    const packaged = packageSourceDirectory(path.join(configRoot, "apps", "web"), configRoot);
+    expect(packaged.paths).toEqual(["index.ts"]);
+  });
+
   it("skips symlinks", () => {
     const root = makeTempDir();
     write(root, "real.txt", "hi");

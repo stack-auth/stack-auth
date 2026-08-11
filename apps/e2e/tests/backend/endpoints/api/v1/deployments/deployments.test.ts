@@ -1166,6 +1166,56 @@ describe("domains", () => {
     expect((loserService.body as any).url).toBeNull();
   });
 
+  it("refuses a domain on a service whose ports cannot hold one", async ({ expect }) => {
+    await Project.createAndSwitch();
+
+    // No HTTP port: a domain terminates TLS and routes HTTP, so there is nothing to route to.
+    const tcpOnlyId = uniqueServiceId("tcponly");
+    await syncServices({ [tcpOnlyId]: { type: "serverless", ports: [{ port: 5432, transport: "tcp" }], env: {} } });
+    const tcpAdd = await niceBackendFetch(`/api/v1/deployments/services/${tcpOnlyId}/domains`, {
+      method: "POST",
+      accessType: "admin",
+      body: { hostname: `${tcpOnlyId}.verified.test` },
+    });
+    expect(tcpAdd.status).toBe(400);
+    expect(JSON.stringify(tcpAdd.body)).toContain("http");
+
+    // An HTTP port WITH a private sibling. Both are private, so the sync is legal — but
+    // attaching a domain allocates public IPs, and the runtime's proxy serves every declared
+    // port on every address the app holds, which would put the 5432 on the internet.
+    const siblingId = uniqueServiceId("sibling");
+    await syncServices({ [siblingId]: { type: "serverless", ports: [{ port: 3000 }, { port: 5432, transport: "tcp" }], env: {} } });
+    const siblingAdd = await niceBackendFetch(`/api/v1/deployments/services/${siblingId}/domains`, {
+      method: "POST",
+      accessType: "admin",
+      body: { hostname: `${siblingId}.verified.test` },
+    });
+    expect(siblingAdd.status).toBe(400);
+    expect(JSON.stringify(siblingAdd.body)).toContain("may not declare any other port");
+  });
+
+  it("refuses to re-sync a domain-holding service into a port list that cannot hold one", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const serviceId = uniqueServiceId("resynced");
+    await syncServices({ [serviceId]: { type: "serverless", ports: [{ port: 3000 }], env: {} } });
+    const addResponse = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}/domains`, {
+      method: "POST",
+      accessType: "admin",
+      body: { hostname: `${serviceId}.verified.test` },
+    });
+    expect(addResponse.status).toBe(201);
+
+    // Adding the sibling port later must be refused too, or the rule enforced at attach time
+    // could be walked around by attaching first and re-syncing after.
+    const resync = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { services: { [serviceId]: { type: "serverless", ports: [{ port: 3000 }, { port: 5432, transport: "tcp" }], env: {} } } },
+    });
+    expect(resync.status).toBe(400);
+    expect(JSON.stringify(resync.body)).toContain("custom domain");
+  });
+
   it("keeps domains as rows before the first deploy", async ({ expect }) => {
     await Project.createAndSwitch();
     const serviceId = uniqueServiceId("undeployed");
@@ -1189,6 +1239,15 @@ describe("deployment grouping", () => {
       web: { type: "serverless", ports: [{ port: 3000 }], env: {} },
       worker: { type: "serverless", ports: [{ port: 4000 }], env: {} },
     });
+
+    // A duplicate in the plan would make a fully successful deploy count one run against two
+    // planned entries — permanently `building`, then `failed` once concluded.
+    const duplicated = await niceBackendFetch("/api/v1/deployments/deployments", {
+      method: "POST",
+      accessType: "admin",
+      body: { planned_service_ids: ["web", "web"], triggered_by: "e2e" },
+    });
+    expect(duplicated.status).toBe(400);
 
     const created = await niceBackendFetch("/api/v1/deployments/deployments", {
       method: "POST",

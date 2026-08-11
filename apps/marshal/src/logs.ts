@@ -33,11 +33,19 @@ export async function fetchLogPage(fly: FlyClient, app: string, options: { since
     instance: options.instance,
   });
   const lines = result.entries.map((entry) => flyEntryToLogLine(entry, { forceNullInstance: options.forceNullInstance }));
-  const lastAtMillis = lines.length > 0 ? lines[lines.length - 1].at_millis : undefined;
+  // MAX across the page, not the last line: flyEntryToLogLine maps an unparseable timestamp
+  // to 0, so a single bad entry at the end of a page would set the cursor to 1 — and the
+  // caller, having stored that, would replay the entire log history on the next poll and hit
+  // the same rewind again, forever.
+  const maxAtMillis = lines.length > 0 ? Math.max(...lines.map((line) => line.at_millis)) : undefined;
   return {
     // +1 so re-polling from next_since_millis doesn't replay the last line (millisecond
     // granularity can drop sub-ms siblings; acceptable for log polling).
-    nextSinceMillis: lastAtMillis !== undefined ? lastAtMillis + 1 : options.sinceMillis ?? Date.now(),
+    //
+    // Clamped to never move BACKWARDS past where the caller already was, for the same reason.
+    nextSinceMillis: maxAtMillis !== undefined
+      ? Math.max(maxAtMillis + 1, options.sinceMillis ?? 0)
+      : options.sinceMillis ?? Date.now(),
     lines,
   };
 }

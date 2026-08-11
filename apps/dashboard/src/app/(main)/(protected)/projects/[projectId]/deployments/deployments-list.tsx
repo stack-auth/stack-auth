@@ -13,7 +13,7 @@ import { Skeleton, Typography, cn } from "@/components/ui";
 import type { AdminDeploymentJson, AdminDeploymentRunJson, AdminProject } from "@hexclave/next";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { ArrowClockwiseIcon, CaretRightIcon, CheckCircleIcon, CircleNotchIcon, ClockIcon, ProhibitIcon, RocketLaunchIcon, XCircleIcon } from "@phosphor-icons/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type DesignBadgeColor = "blue" | "cyan" | "purple" | "green" | "orange" | "red";
 
@@ -80,18 +80,39 @@ function DeploymentCard({ deployment, onOpen }: {
   );
 }
 
-export function DeploymentsList({ project, onOpenDeployment }: {
+export function DeploymentsList({ project, openDeploymentId, onOpenDeployment, onOpenDeploymentChange }: {
   project: AdminProject,
+  // The deployment the caller currently has open, if any. This component keeps
+  // polling while that view is up (it is hidden, not unmounted), and hands the
+  // fresh copy back through onOpenDeploymentChange — otherwise an in-flight
+  // deploy's statuses freeze at whatever they were when it was opened.
+  openDeploymentId: string | null,
   onOpenDeployment: (deployment: AdminDeploymentJson) => void,
+  onOpenDeploymentChange: (deployment: AdminDeploymentJson) => void,
 }) {
   const [deployments, setDeployments] = useState<AdminDeploymentJson[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Read through a ref so the poll effect below doesn't restart (and lose its
+  // interval) every time the open deployment changes identity.
+  const openDeploymentIdRef = useRef(openDeploymentId);
+  openDeploymentIdRef.current = openDeploymentId;
+  const onOpenDeploymentChangeRef = useRef(onOpenDeploymentChange);
+  onOpenDeploymentChangeRef.current = onOpenDeploymentChange;
+
   const load = useCallback(async () => {
     try {
-      setDeployments(await project.listDeployments({ limit: 20 }));
+      const loaded = await project.listDeployments({ limit: 20 });
+      setDeployments(loaded);
       setError(null);
+      const openId = openDeploymentIdRef.current;
+      if (openId !== null) {
+        const refreshed = loaded.find((deployment) => deployment.id === openId);
+        // Absent means it fell off the end of the 20-deployment page while open;
+        // leave the caller's copy alone rather than blanking the view.
+        if (refreshed !== undefined) onOpenDeploymentChangeRef.current(refreshed);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -121,10 +142,27 @@ export function DeploymentsList({ project, onOpenDeployment }: {
     </div>
   );
 
+  const refreshButton = (
+    <DesignButton
+      variant="ghost"
+      size="sm"
+      onClick={() => {
+        setRefreshing(true);
+        runAsynchronously(load().finally(() => setRefreshing(false)));
+      }}
+    >
+      <ArrowClockwiseIcon className={cn("mr-1.5 h-3.5 w-3.5", refreshing && "animate-spin")} />
+      Refresh
+    </DesignButton>
+  );
+
   if (deployments === null) {
     return (
       <div className="flex flex-col gap-2">
         {errorBanner}
+        {/* A failed FIRST load has no list to fall back on, so it needs its own
+            retry control — otherwise the only way out is waiting for the poll. */}
+        {error !== null && <div className="flex justify-end">{refreshButton}</div>}
         {error === null && [0, 1, 2].map((index) => <Skeleton key={index} className="h-14 w-full rounded-xl" />)}
       </div>
     );
@@ -150,19 +188,7 @@ export function DeploymentsList({ project, onOpenDeployment }: {
   return (
     <div className="flex flex-col gap-3">
       {errorBanner}
-      <div className="flex items-center justify-end">
-        <DesignButton
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            setRefreshing(true);
-            runAsynchronously(load().finally(() => setRefreshing(false)));
-          }}
-        >
-          <ArrowClockwiseIcon className={cn("mr-1.5 h-3.5 w-3.5", refreshing && "animate-spin")} />
-          Refresh
-        </DesignButton>
-      </div>
+      <div className="flex items-center justify-end">{refreshButton}</div>
       {deployments.map((deployment) => (
         <DeploymentCard
           key={deployment.id}
@@ -170,86 +196,6 @@ export function DeploymentsList({ project, onOpenDeployment }: {
           onOpen={() => onOpenDeployment(deployment)}
         />
       ))}
-    </div>
-  );
-}
-
-function runStatusMeta(status: AdminDeploymentRunJson["status"]): StatusMeta {
-  switch (status) {
-    case "queued": { return { label: "Queued", color: "blue", icon: ClockIcon, spin: false }; }
-    case "building": { return { label: "Building", color: "cyan", icon: CircleNotchIcon, spin: true }; }
-    case "ready": { return { label: "Ready", color: "green", icon: CheckCircleIcon, spin: false }; }
-    case "error": { return { label: "Failed", color: "red", icon: XCircleIcon, spin: false }; }
-    case "canceled": { return { label: "Cancelled", color: "orange", icon: ProhibitIcon, spin: false }; }
-    default: { return { label: status, color: "blue", icon: ClockIcon, spin: false }; }
-  }
-}
-
-/**
- * What ONE deployment shipped: its planned services and the run each got.
- *
- * Reads only the deployment handed to it. The previous view rendered the service
- * BOARD here, which fetches current definitions and latest statuses of its own —
- * so opening a months-old deploy showed today's topology and today's statuses
- * under that deploy's timestamp, with nothing marking the discrepancy. A
- * deployment is a historical record, so it has to be drawn from the record.
- *
- * A service with `run: null` never started one (a dependency failed first, or
- * the CLI failed locally before it could): shown as skipped rather than omitted,
- * so the reader sees everything the deploy intended to ship.
- */
-export function DeploymentServices({ deployment }: {
-  deployment: AdminDeploymentJson,
-}) {
-  if (deployment.services.length === 0) {
-    return (
-      <Typography type="label" variant="secondary">
-        This deployment recorded no services.
-      </Typography>
-    );
-  }
-  return (
-    <div className="flex flex-col gap-2">
-      {deployment.services.map(({ service_id, run }) => {
-        const meta = run === null ? null : runStatusMeta(run.status);
-        const Icon = meta?.icon;
-        return (
-          <div
-            key={service_id}
-            className="flex items-center gap-3 rounded-xl border border-border/60 px-4 py-3"
-          >
-            <span className="flex shrink-0 items-center gap-1.5">
-              {Icon != null && <Icon className={cn("h-4 w-4", meta?.spin && "animate-spin")} />}
-              <DesignBadge
-                label={meta?.label ?? "Skipped"}
-                color={meta?.color ?? "orange"}
-                size="sm"
-              />
-            </span>
-            <span className="min-w-0 flex-1 truncate font-mono text-sm">{service_id}</span>
-            {run?.url != null && (
-              <a
-                href={run.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="shrink-0 truncate text-xs text-muted-foreground underline underline-offset-2"
-              >
-                {run.url.replace(/^https?:\/\//, "")}
-              </a>
-            )}
-            {run?.error != null && (
-              <span className="min-w-0 shrink truncate text-xs text-destructive" title={run.error}>
-                {run.error}
-              </span>
-            )}
-            {run === null && (
-              <span className="shrink-0 text-xs text-muted-foreground">
-                Never started — a service it depends on failed
-              </span>
-            )}
-          </div>
-        );
-      })}
     </div>
   );
 }

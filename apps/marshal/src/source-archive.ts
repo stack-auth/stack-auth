@@ -6,6 +6,11 @@ const TAR_BLOCK_SIZE = 512;
 const MAX_SOURCE_ENTRIES = 50_000;
 export const MAX_UNCOMPRESSED_SOURCE_BYTES = 256 * 1024 * 1024;
 
+// How much zero padding may follow the two-block end marker. GNU tar's default block factor
+// is 20 blocks (10KiB); 1MiB is generous for any archiver while keeping the terminal all-zero
+// scan short enough not to matter. See the check in validateUncompressedSourceTar.
+const MAX_TERMINAL_PADDING_BYTES = 1024 * 1024;
+
 // How many archives may be inflated at once, process-wide.
 //
 // Marshal is a single shared process serving every tenant, and an inflation holds
@@ -69,6 +74,16 @@ export function validateUncompressedSourceTar(bytes: Uint8Array): void {
   while (offset + TAR_BLOCK_SIZE <= bytes.length) {
     const header = bytes.subarray(offset, offset + TAR_BLOCK_SIZE);
     if (header.every(byte => byte === 0)) {
+      // The trailing padding is BOUNDED before it is scanned. A tar ends in two zero blocks,
+      // and archivers pad to a block factor beyond that — but a zero run compresses to almost
+      // nothing, so a ~50KB upload can legitimately inflate to MAX_UNCOMPRESSED_SOURCE_BYTES
+      // of zeros. Verifying it with `.every` over all of that is a synchronous per-byte walk
+      // on the event loop, which stalls every other tenant's request in this process. There
+      // is no reason to accept it: refuse the oversized padding outright and only then scan.
+      const trailing = bytes.length - offset;
+      if (trailing > MAX_TERMINAL_PADDING_BYTES) {
+        throw badRequest(`invalid source archive: more than ${MAX_TERMINAL_PADDING_BYTES} bytes follow the end marker`);
+      }
       if (!bytes.subarray(offset).every(byte => byte === 0)) throw badRequest("invalid source archive: data follows the end marker");
       return;
     }

@@ -12,3 +12,9 @@
 // through the Deployments app to use it.
 
 export const PROJECT_SECRET_KEY_REGEX = /^[a-zA-Z0-9_-]+$/;
+
+// The regex alone bounds the alphabet but not the LENGTH, and a key is half of a composite
+// unique index — so a multi-kilobyte key that is otherwise perfectly valid fails deep inside
+// Postgres ("index row size exceeds btree maximum") and surfaces as a 500 after the KMS work
+// has already run. 256 is far above any real environment-variable name.
+export const MAX_PROJECT_SECRET_KEY_LENGTH = 256;

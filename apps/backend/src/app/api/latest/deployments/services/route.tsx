@@ -80,9 +80,16 @@ export const PUT = createSmartRouteHandler({
     // One transaction: the sync releases volume ids before re-claiming them, so a
     // failure partway through would otherwise commit the release and leave a
     // service silently volume-less on its next deploy.
+    //
+    // SERIALIZABLE, like the deployment-create route. That release-then-reclaim spans several
+    // writes against the (tenancyId, volumeId) unique index, so two concurrent syncs moving
+    // the same volume id between services interleave into a constraint violation — a 500 on a
+    // sync that is perfectly valid against the state it would have seen. At this level the
+    // loser gets a serialization failure that retryTransaction retries against the committed
+    // newer state instead.
     await retryTransaction(prisma, async (transaction) => {
       await syncServiceDefinitions(transaction, auth.tenancy, body.services, syncId);
-    });
+    }, { level: "serializable" });
     const rows = await listServiceRows(prisma, auth.tenancy);
     const items = await Promise.all(rows.map(async (row) => await serviceToApiShape({
       prisma,

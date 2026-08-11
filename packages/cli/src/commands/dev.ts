@@ -957,7 +957,10 @@ export function registerDevCommand(program: Command) {
         if (devService == null) {
           throw new CliError(`No service named ${JSON.stringify(opts.serviceId)} in the config file's deployment.services. Available services: ${[...services.keys()].join(", ")}.`);
         }
-        if (commandArgs.length === 0 && devService.devCommand == null) {
+        // A BLANK devCommand counts as missing. `shellChildCommand("")` runs `sh -c ""`,
+        // which exits 0 immediately — so an empty string would report a successful dev
+        // session that never started the service, instead of naming the actual problem.
+        if (commandArgs.length === 0 && (devService.devCommand == null || devService.devCommand.trim() === "")) {
           throw new CliError(`The service ${JSON.stringify(opts.serviceId)} has no devCommand in the config file's deployment.services. Add one (e.g. devCommand: "npm run dev"), or pass a command after --.`);
         }
         // The service's rootDirectory becomes the child's cwd below, so check it

@@ -137,9 +137,18 @@ export function packageSourceDirectory(rootDirectory: string, ignoreRootDirector
     }
   };
 
+  // ONE PATH SPACE, the real one, for all three of: the relative chain computed above, the
+  // ancestor walk that collects their ignore files, and the walk of the source tree itself.
+  //
+  // `relativeRootFromIgnoreRoot` is derived from the REAL paths, so descending it from the
+  // lexical ignore root produces `IgnoreScope.baseDirectory` values that belong to neither
+  // chain whenever an in-tree symlink makes the two diverge. `isIgnored` then compares the
+  // absolute paths `walk` hands it against those bases, `relativeToScope` misses on every
+  // one, and every inherited .gitignore/.dockerignore rule silently stops applying — the
+  // failure mode being that files those rules exclude get packaged and uploaded.
   const ancestorScopes: IgnoreScope[] = [];
   const relativeSegments = relativeRootFromIgnoreRoot === "" ? [] : relativeRootFromIgnoreRoot.split(path.sep);
-  let currentDirectory = absoluteIgnoreRootDirectory;
+  let currentDirectory = realIgnoreRootDirectory;
   for (const segment of relativeSegments) {
     ancestorScopes.push(...readIgnoreScopes(currentDirectory));
     const childDirectory = path.join(currentDirectory, segment);
@@ -149,7 +158,7 @@ export function packageSourceDirectory(rootDirectory: string, ignoreRootDirector
     }
     currentDirectory = childDirectory;
   }
-  walk(absoluteRootDirectory, "", ancestorScopes);
+  walk(realRootDirectory, "", ancestorScopes);
 
   if (entries.length === 0) {
     throw new CliError(`No files to deploy in ${absoluteRootDirectory} (everything is ignored or the directory is empty).`);

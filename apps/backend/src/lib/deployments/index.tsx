@@ -355,22 +355,24 @@ function assertNoVolumeIdConflicts(services: Record<string, DeploymentServiceDef
 export async function syncServiceDefinitions(prisma: PrismaClientTransaction, tenancy: Tenancy, services: Record<string, DeploymentServiceDefinition>, definitionSyncId: string): Promise<void> {
   await assertNoVolumeShrink(prisma, tenancy, services);
   const claimedVolumeIds = assertNoVolumeIdConflicts(services);
-  // A custom domain terminates TLS and routes HTTP, so it needs an HTTP port to
-  // route TO. A service that declares only TCP ports can never serve one.
-  const tcpServiceIds = Object.entries(services)
-    .filter(([, definition]) => definition.ports.every((entry) => portTransport(entry) === "tcp"))
+  // A custom domain makes the service publicly reachable exactly the way a public port does,
+  // so a service that HOLDS one has to satisfy the same port rules a public service does:
+  // exactly one port, speaking HTTP. See domainPortProblem for why each half matters.
+  const serviceIdsThatCannotHoldADomain = Object.entries(services)
+    .filter(([, definition]) => domainPortProblem(definition.ports) !== null)
     .map(([serviceId]) => serviceId);
-  if (tcpServiceIds.length > 0) {
+  if (serviceIdsThatCannotHoldADomain.length > 0) {
     const serviceWithDomain = await prisma.deploymentService.findFirst({
       where: {
         tenancyId: tenancy.id,
-        serviceId: { in: tcpServiceIds },
+        serviceId: { in: serviceIdsThatCannotHoldADomain },
         domains: { some: {} },
       },
       select: { serviceId: true },
     });
     if (serviceWithDomain !== null) {
-      throw new StatusError(400, `Service ${JSON.stringify(serviceWithDomain.serviceId)} has a custom domain, so it must keep an HTTP port to route to. Remove the domain first, or give the service a port with transport: "http".`);
+      const problem = domainPortProblem(services[serviceWithDomain.serviceId].ports);
+      throw new StatusError(400, `Service ${JSON.stringify(serviceWithDomain.serviceId)} has a custom domain, so ${problem}. Remove the domain first, or fix the service's ports.`);
     }
   }
   // Release volume ids BEFORE any upsert writes them. The per-service upserts
@@ -468,6 +470,39 @@ export async function getOrCreateOperationalService(prisma: PrismaClientTransact
       serviceId,
     },
   });
+}
+
+/**
+ * Why a service's port list cannot hold a custom domain, or null when it can. The message is
+ * a clause that reads after "so ..." / "because it ...".
+ *
+ * KEPT IN SYNC WITH assertServiceCanHoldADomain in apps/marshal/src/domains.ts.
+ *
+ * Attaching a domain allocates public IPs on the service's Fly app, so it makes the service
+ * public exactly the way a `public: true` port does — and therefore has to obey the same
+ * one-port rule the `public-service-has-one-port` config rule enforces there. Fly `services`
+ * are the proxy's listener set for the whole app with no per-address scoping, so every
+ * declared port answers on every IP the app holds: an HTTP port next to a private 5432 passes
+ * the sync (nothing is `public: true`) and then publishes the database the moment a domain is
+ * attached. Two HTTP ports fail for a different reason — only one of them can own the
+ * hostname's 80/443, so the attach appears to succeed while binding no predictable route.
+ *
+ * The HTTP requirement is separate: a domain terminates TLS and routes HTTP, so a service
+ * declaring only TCP ports (or none at all — a portless worker) has nothing to route to.
+ * Enforced here rather than only at deploy time so the 400 lands on the request that can act
+ * on it; the runtime's own rejection is deliberately swallowed during a deploy, which would
+ * otherwise leave a domain silently stuck pending forever.
+ */
+export function domainPortProblem(ports: DeploymentServiceDefinition["ports"]): string | null {
+  if (!ports.some((entry) => portTransport(entry) === "http")) {
+    return ports.length === 0
+      ? 'it must declare a port with transport: "http" to route to (it declares none)'
+      : 'it must declare a port with transport: "http" to route to (it declares only TCP ports)';
+  }
+  if (ports.length > 1) {
+    return `it may not declare any other port (it declares ${ports.length}): the runtime's proxy serves every declared port on every address the app has, so the others would be public too. Move the private ports onto their own service and reach them with internalHost`;
+  }
+  return null;
 }
 
 // Bare hostname (no scheme/path/port), at least two labels. Shared by every

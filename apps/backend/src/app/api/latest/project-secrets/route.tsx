@@ -1,4 +1,4 @@
-import { MAX_SECRETS_PER_PROJECT, MAX_SECRET_VALUE_LENGTH, PROJECT_SECRET_KEY_REGEX, listProjectSecrets } from "@/lib/project-secrets";
+import { MAX_PROJECT_SECRET_KEY_LENGTH, MAX_SECRETS_PER_PROJECT, MAX_SECRET_VALUE_LENGTH, PROJECT_SECRET_KEY_REGEX, listProjectSecrets } from "@/lib/project-secrets";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { encryptWithKms } from "@hexclave/shared/dist/helpers/vault/server-side";
@@ -67,7 +67,7 @@ export const POST = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     body: yupObject({
-      key: yupString().defined().matches(PROJECT_SECRET_KEY_REGEX, "Secret keys must contain only letters, numbers, underscores, and hyphens"),
+      key: yupString().defined().max(MAX_PROJECT_SECRET_KEY_LENGTH, "Secret keys may be at most ${max} characters long").matches(PROJECT_SECRET_KEY_REGEX, "Secret keys must contain only letters, numbers, underscores, and hyphens"),
       value: yupString().defined(),
     }).defined(),
     method: yupString().oneOf(["POST"]).defined(),

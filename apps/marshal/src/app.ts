@@ -133,8 +133,18 @@ export function createMarshalApp() {
         // The webhook body is a small status/metadata document. Cap it before parsing so an
         // unauthenticated caller cannot make us allocate first and reject afterwards; the
         // large-body route (uploads) is a separate, API-key-authenticated path.
-        const declaredLength = Number(request.headers.get("content-length") ?? "0");
-        if (Number.isFinite(declaredLength) && declaredLength > MAX_WEBHOOK_BODY_BYTES) {
+        //
+        // A MISSING content-length is refused rather than treated as zero. This is the only
+        // route reachable before any credential check, and a chunked request declares no
+        // length — so `?? "0"` would let an unauthenticated client stream an unbounded body
+        // that Elysia buffers before the cap could ever apply. The builder harness posts with
+        // --post-file, which always declares a length, so nothing legitimate is refused here.
+        const declaredLengthHeader = request.headers.get("content-length");
+        const declaredLength = declaredLengthHeader === null ? null : Number(declaredLengthHeader);
+        if (declaredLength === null || !Number.isInteger(declaredLength) || declaredLength < 0) {
+          return jsonResponse(411, { error: "length_required", message: "build completion requests must declare a valid content-length" });
+        }
+        if (declaredLength > MAX_WEBHOOK_BODY_BYTES) {
           return jsonResponse(413, { error: "payload_too_large", message: `build completion body may not exceed ${MAX_WEBHOOK_BODY_BYTES} bytes` });
         }
         const token = (request.headers.get("authorization") ?? "").replace(/^Bearer /, "");

@@ -9,6 +9,7 @@ export type LeaseTimings = {
   renewIntervalMs: number,
   contendedPollMs: number,
   takeoverGraceMs: number,
+  acquireTimeoutMs: number,
 };
 
 const DEFAULT_TIMINGS: LeaseTimings = {
@@ -16,6 +17,11 @@ const DEFAULT_TIMINGS: LeaseTimings = {
   renewIntervalMs: 20 * 1000,
   contendedPollMs: 1000,
   takeoverGraceMs: RECONCILIATION_TAKEOVER_GRACE_MS,
+  // Contention has to end in an answer, not a hang — see acquireLease. Comfortably longer
+  // than one renew interval, so a healthy owner finishing normal work is still waited out,
+  // and far shorter than the backend's 15-minute apply timeout, so the caller learns to retry
+  // while its own request is still alive.
+  acquireTimeoutMs: 60 * 1000,
 };
 
 export type ReconciliationLeaseGuard = {
@@ -35,6 +41,12 @@ type HeldLease = {
 };
 
 async function acquireLease(ns: string, key: string, ownerId: string, timings: LeaseTimings): Promise<HeldLease> {
+  // BOUNDED. A live owner that keeps renewing never expires, so an unbounded loop would poll
+  // forever: the request holds a Marshal connection and a timer with nothing to end it, the
+  // backend's own APPLY_TIMEOUT_MS abort is invisible from here, and every retry against the
+  // same stuck lease stacks another loop in the process. Failing with the error app.ts already
+  // maps to a retryable 409 turns contention into an answer the caller can act on.
+  const deadline = Date.now() + timings.acquireTimeoutMs;
   for (;;) {
     const now = Date.now();
     const desired = { owner_id: ownerId, expires_at_millis: now + timings.durationMs } satisfies ReconciliationLease;
@@ -48,6 +60,9 @@ async function acquireLease(ns: string, key: string, ownerId: string, timings: L
       // previous owner could have started immediately before its last confirmed expiry.
       const etag = await replaceReconciliationLease(ns, key, desired, current.etag);
       if (etag !== null) return { etag, value: desired };
+    }
+    if (Date.now() >= deadline) {
+      throw new ReconciliationLeaseLostError(`another reconciliation of ${JSON.stringify(key)} in namespace ${JSON.stringify(ns)} held the lease for longer than ${timings.acquireTimeoutMs}ms; retry`);
     }
     await delay(timings.contendedPollMs);
   }

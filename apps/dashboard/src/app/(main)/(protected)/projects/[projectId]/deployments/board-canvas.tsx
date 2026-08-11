@@ -2,7 +2,7 @@
 
 import { Spinner, cn } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
-import type { AdminDeploymentServiceJson } from "@hexclave/next";
+import type { AdminDeploymentJson, AdminDeploymentServiceJson } from "@hexclave/next";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { FileTsIcon, MinusIcon, PlusIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -41,13 +41,30 @@ type Interaction =
   | { mode: "node", id: string, startClientX: number, startClientY: number, startWorldX: number, startWorldY: number, moved: boolean }
   | { mode: "pan", startClientX: number, startClientY: number, startViewX: number, startViewY: number, moved: boolean };
 
-export function BoardCanvas() {
+/**
+ * The service map of ONE deployment.
+ *
+ * The topology (which services exist, how they connect, their build settings) comes from the
+ * current definitions, because a Deployment row records only which services it shipped and
+ * the run each got — there is no historical copy of the graph to draw. What IS deployment-
+ * scoped is the set of nodes and the run behind each one: the map shows exactly the services
+ * this deploy planned, and the detail pane's build logs are that deploy's run, not the
+ * service's latest.
+ */
+export function BoardCanvas({ deployment }: { deployment: AdminDeploymentJson }) {
   const variant = BLUEPRINT_VARIANT;
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
 
   const [apiServices, setApiServices] = useState<AdminDeploymentServiceJson[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // service id → the run THIS deployment gave it (null when it never started one, because a
+  // dependency failed first or the CLI died before creating it).
+  const runsByServiceId = useMemo(
+    () => new Map(deployment.services.map(({ service_id, run }) => [service_id, run])),
+    [deployment],
+  );
 
   const refresh = useCallback(async () => {
     try {
@@ -90,11 +107,16 @@ export function BoardCanvas() {
 
   const services = useMemo(() => {
     if (apiServices == null) return null;
-    return buildBoardServices(apiServices, hexclaveApiHost).map((service) => {
-      const override = positionOverrides.get(service.id);
-      return override != null ? { ...service, x: override.x, y: override.y } : service;
-    });
-  }, [apiServices, hexclaveApiHost, positionOverrides]);
+    return buildBoardServices(apiServices, hexclaveApiHost)
+      // Scoped to what THIS deploy shipped. The managed "hexclave" node is always kept — it
+      // is not a deployed service, it is the backend every service talks to, and dropping it
+      // would erase the connections drawn to it.
+      .filter((service) => service.type === "hexclave" || runsByServiceId.has(service.id))
+      .map((service) => {
+        const override = positionOverrides.get(service.id);
+        return override != null ? { ...service, x: override.x, y: override.y } : service;
+      });
+  }, [apiServices, hexclaveApiHost, positionOverrides, runsByServiceId]);
 
   const selected = services?.find((s) => s.id === selectedId) ?? null;
   const connections = useMemo(() => deriveConnections(services ?? []), [services]);
@@ -319,7 +341,7 @@ export function BoardCanvas() {
         <div className="flex items-center gap-2 rounded-xl bg-white/80 px-3 py-2 text-xs text-muted-foreground ring-1 ring-black/[0.08] backdrop-blur-md dark:bg-background/70 dark:ring-white/[0.08]">
           <FileTsIcon className="h-4 w-4 shrink-0" />
           <span>
-            Services are defined by the <span className="font-mono">services</span> export of your <span className="font-mono">hexclave.config.ts</span> and synced by <span className="font-mono">hexclave deploy</span>.
+            Services are defined by the <span className="font-mono">services</span> member of the <span className="font-mono">deployment</span> export of your <span className="font-mono">hexclave.config.ts</span> and synced by <span className="font-mono">hexclave deploy</span>.
           </span>
         </div>
         {loadError != null && (
@@ -355,6 +377,10 @@ export function BoardCanvas() {
             service={selected}
             services={services}
             project={project}
+            // `?? null` rather than the map lookup alone: the managed hexclave node has no
+            // entry at all, and a service that never started a run has an explicit null. Both
+            // mean "no build logs for this deploy".
+            run={runsByServiceId.get(selected.id) ?? null}
             onClose={() => setSelectedId(null)}
             refresh={refresh}
           />

@@ -11,7 +11,7 @@
 // a translation layer that would have to be maintained in three places.
 
 import * as yup from "yup";
-import { PROJECT_SECRET_KEY_REGEX } from "./project-secrets";
+import { MAX_PROJECT_SECRET_KEY_LENGTH, PROJECT_SECRET_KEY_REGEX } from "./project-secrets";
 import { yupArray, yupBoolean, yupNumber, yupObject, yupRecord, yupString } from "./schema-fields";
 
 export const DEPLOYMENT_ENV_VAR_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -272,7 +272,7 @@ export const deploymentEnvVarSchema = yupObject({
     }
   }),
   key: yupString().when("type", ([type], schema) => type === "secret"
-    ? schema.defined().matches(PROJECT_SECRET_KEY_REGEX, "project secret keys must contain only letters, numbers, underscores, and hyphens")
+    ? schema.defined().max(MAX_PROJECT_SECRET_KEY_LENGTH, "project secret keys may be at most ${max} characters long").matches(PROJECT_SECRET_KEY_REGEX, "project secret keys must contain only letters, numbers, underscores, and hyphens")
     : schema.oneOf([undefined], 'deployment env vars may only have a key when their type is "secret"')),
   // `secret(key, default)` fallbacks are a config-file concept that must never
   // be persisted: they travel with the deploy request instead (see

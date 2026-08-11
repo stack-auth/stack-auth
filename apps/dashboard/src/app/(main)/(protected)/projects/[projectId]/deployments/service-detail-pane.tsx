@@ -2,11 +2,12 @@
 
 import { DesignBadge, DesignButton } from "@/components/design-components";
 import { Typography, cn } from "@/components/ui";
-import type { AdminProject } from "@hexclave/next";
+import type { AdminDeploymentRunJson, AdminProject } from "@hexclave/next";
 import { XIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { getServiceTypeMeta, type BoardService } from "./board-model";
 import {
+  BuildLogsContent,
   DomainsContent,
   OverviewContent,
   SettingsContent,
@@ -22,18 +23,21 @@ type ServiceDetailPaneProps = {
   service: BoardService,
   services: BoardService[],
   project: AdminProject,
+  // The run THIS deployment gave this service, or null when it never started one (and for the
+  // managed hexclave node, which is not deployed at all). Owns the Build logs tab.
+  run: AdminDeploymentRunJson | null,
   onClose: () => void,
   refresh: () => Promise<void>,
 };
 
-// No "Deployments" tab: deploy history now lives at the top level of the page,
-// where one deployment lists every service it shipped. A per-service copy of the
-// same runs would be a second place to look for the same facts, and the one that
-// answers "did the whole deploy land?" is the useful one.
-type PanelTabId = "overview" | "variables" | "domains" | "settings";
+// No "Deployments" tab listing every past run of this service: the page is already scoped to
+// ONE deployment, so the only run that belongs here is that deploy's. It gets a Build logs tab
+// instead — the thing you actually open a failed service to read.
+type PanelTabId = "overview" | "build-logs" | "variables" | "domains" | "settings";
 
 const TABS: { id: PanelTabId, label: string }[] = [
   { id: "overview", label: "Overview" },
+  { id: "build-logs", label: "Build logs" },
   { id: "variables", label: "Variables" },
   { id: "domains", label: "Domains" },
   { id: "settings", label: "Settings" },
@@ -61,6 +65,7 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   const content = (() => {
     switch (tab) {
       case "overview": { return <OverviewContent service={service} project={project} isHexclave={isHexclave} />; }
+      case "build-logs": { return <BuildLogsContent run={props.run} project={project} isHexclave={isHexclave} />; }
       case "variables": { return <VariablesContent service={service} services={services} isHexclave={isHexclave} />; }
       case "domains": { return <DomainsContent service={service} project={project} isHexclave={isHexclave} refresh={refresh} />; }
       case "settings": { return <SettingsContent service={service} isHexclave={isHexclave} />; }

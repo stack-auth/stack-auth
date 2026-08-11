@@ -44,7 +44,7 @@ describe("service reconciliation lease", () => {
       releaseFirst = resolve;
     });
     const events: string[] = [];
-    const timings = { durationMs: 1000, renewIntervalMs: 500, contendedPollMs: 5, takeoverGraceMs: 10 };
+    const timings = { durationMs: 1000, renewIntervalMs: 500, contendedPollMs: 5, takeoverGraceMs: 10, acquireTimeoutMs: 5000 };
 
     const first = withReconciliationLease("ns", "web", async () => {
       events.push("first-start");
@@ -77,6 +77,7 @@ describe("service reconciliation lease", () => {
       renewIntervalMs: 500,
       contendedPollMs: 2,
       takeoverGraceMs,
+      acquireTimeoutMs: 5000,
     });
     expect(performance.now() - startedAt).toBeGreaterThanOrEqual(takeoverGraceMs - 5);
   });
@@ -90,6 +91,7 @@ describe("service reconciliation lease", () => {
       renewIntervalMs: 500,
       contendedPollMs: 2,
       takeoverGraceMs: 10,
+      acquireTimeoutMs: 5000,
     })).rejects.toBe(error);
 
     expect(releaseReconciliationLease).not.toHaveBeenCalled();
@@ -105,7 +107,24 @@ describe("service reconciliation lease", () => {
     await expect(withReconciliationLease("ns", "web", async () => {
       stored = { value: { owner_id: "other-owner", expires_at_millis: Date.now() + 1000 }, etag: String(nextEtag++) };
       return "done";
-    }, { durationMs: 1000, renewIntervalMs: 500, contendedPollMs: 2, takeoverGraceMs: 10 }))
+    }, { durationMs: 1000, renewIntervalMs: 500, contendedPollMs: 2, takeoverGraceMs: 10, acquireTimeoutMs: 5000 }))
       .rejects.toThrow(ReconciliationLeaseLostError);
+  });
+
+  it("gives up on a lease a live owner keeps renewing, instead of polling forever", async () => {
+    // A healthy owner renews before expiry, so the takeover branch never fires and the
+    // acquire loop has nothing that would end it on its own. It must time out into the same
+    // fencing error the HTTP layer answers 409 for, so the caller retries rather than hanging.
+    stored = {
+      value: { owner_id: "live-owner", expires_at_millis: Date.now() + 60_000 },
+      etag: String(nextEtag++),
+    };
+    await expect(withReconciliationLease("ns", "web", async () => "never runs", {
+      durationMs: 1000,
+      renewIntervalMs: 500,
+      contendedPollMs: 2,
+      takeoverGraceMs: 10,
+      acquireTimeoutMs: 30,
+    })).rejects.toThrow(ReconciliationLeaseLostError);
   });
 });

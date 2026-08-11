@@ -5,7 +5,7 @@ import { appNameForService } from "./naming.js";
 import { ensurePublicIps, releasePublicIpsIfUnused } from "./public-networking.js";
 import { dnsRecordsForCertificate, specIsPublic } from "./services.js";
 import { claimDomain, readDomainClaim, readDomainClaimVersioned, readSpec, releaseDomainClaim, rewriteDomainClaim } from "./store.js";
-import type { DnsRecord } from "./types.js";
+import type { DnsRecord, PortConfig } from "./types.js";
 
 // Fly does NOT enforce hostname uniqueness across apps (smoke-verified), so the bucket
 // domain registry is the arbiter: a hostname belongs to exactly one (ns, service) claim,
@@ -24,6 +24,27 @@ export function normalizeHostnameOrThrow(hostname: string): string {
   return normalized;
 }
 
+// A custom domain allocates public IPs on the service's app (see ensurePublicIps below), so
+// it makes the service public exactly the way a `public: true` port does — and therefore has
+// to obey the SAME one-port rule that createOrReplaceService enforces there.
+//
+// Fly `services` are the proxy's listener set for the whole app with no per-address scoping,
+// so every declared port answers on every IP the app holds. A service with an HTTP port next
+// to a private 5432 looks legal at sync time (nothing is `public: true`), but attaching a
+// domain to it would put that 5432 on the internet. Two HTTP ports are just as wrong the
+// other way: only one of them can own the hostname's 80/443, so the attach would appear to
+// succeed while binding no route the caller can predict.
+//
+// Refuse both here, at the only other place that allocates public ingress.
+export function assertServiceCanHoldADomain(serviceKey: string, ports: readonly PortConfig[]): void {
+  if (!ports.some((entry) => entry.transport === "http")) {
+    throw badRequest(`custom domains need an HTTP port to route to; service ${JSON.stringify(serviceKey)} declares none`);
+  }
+  if (ports.length > 1) {
+    throw badRequest(`a service holding a custom domain may not declare any other port: the proxy serves every declared port on every address the app has, so the others would be public too. Service ${JSON.stringify(serviceKey)} declares ${ports.length} ports; move the private ones onto their own service and reach them with internalHost`);
+  }
+}
+
 export type AttachDomainResult = {
   hostname: string,
   service_key: string,
@@ -39,11 +60,7 @@ export async function attachDomain(ns: string, hostname: string, serviceKey: str
   if (stored === null) {
     throw notFound(`service ${JSON.stringify(serviceKey)} not found in namespace ${JSON.stringify(ns)}`);
   }
-  // A domain terminates TLS and routes HTTP, so there must be an HTTP port to
-  // route to.
-  if (!stored.spec.config.ports.some((entry) => entry.transport === "http")) {
-    throw badRequest("custom domains need an HTTP port to route to; this service declares none");
-  }
+  assertServiceCanHoldADomain(serviceKey, stored.spec.config.ports);
 
   const existingClaim = await readDomainClaimVersioned(hostname);
   if (existingClaim === null) {
@@ -54,11 +71,18 @@ export async function attachDomain(ns: string, hostname: string, serviceKey: str
     throw conflict(`hostname ${JSON.stringify(hostname)} is already attached elsewhere`);
   } else if (existingClaim.value.service_key !== serviceKey) {
     // Re-PUT within the namespace repoints: certificate moves from the old service's app.
+    //
+    // OWNERSHIP TRANSFERS FIRST, teardown second. The conditional rewrite is the only step
+    // that can lose a race, and losing it after the teardown would leave the registry still
+    // naming the previous service as owner while that service has already lost its TLS
+    // termination and its public IPs — a state no later code path repairs. In this order a
+    // failure after the rewrite leaves at worst an orphaned certificate on the old app, which
+    // the next attach or detach on that app reconciles.
     const previousApp = appNameForService(config.envId, ns, existingClaim.value.service_key);
-    await fly.deleteCertificate(previousApp, hostname);
-    await releaseServicePublicIpsIfUnused(ns, existingClaim.value.service_key);
     const rewritten = await rewriteDomainClaim(existingClaim, { hostname, ns, service_key: serviceKey, claimed_at_millis: Date.now() });
     if (!rewritten) throw conflict(`hostname ${JSON.stringify(hostname)} changed owners concurrently; retry the attach`);
+    await fly.deleteCertificate(previousApp, hostname);
+    await releaseServicePublicIpsIfUnused(ns, existingClaim.value.service_key);
   } else {
     // Idempotent re-attach on the same service: re-assert the index entry, which repairs the
     // case where a prior claim landed but its index write was lost (an orphaned claim that

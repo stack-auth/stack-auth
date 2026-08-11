@@ -100,7 +100,18 @@ export const POST = createSmartRouteHandler({
       // The services this deploy intends to deploy, in dependency order. Stored
       // so a service whose dependency fails — and therefore never gets a run —
       // still appears in the deployment as skipped.
-      planned_service_ids: yupArray(userSpecifiedIdSchema("serviceId").defined()).defined(),
+      //
+      // DUPLICATES ARE REFUSED. The plan is what the deployment's derived status
+      // counts against, so a repeated id makes a fully successful deploy count
+      // one run for two planned entries: it reads as `building` forever, then
+      // `failed` once concluded, and lists the service twice.
+      planned_service_ids: yupArray(userSpecifiedIdSchema("serviceId").defined())
+        .test(
+          "unique-planned-service-ids",
+          "planned_service_ids must not contain the same service id twice",
+          (value) => value == null || new Set(value).size === value.length,
+        )
+        .defined(),
     }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),

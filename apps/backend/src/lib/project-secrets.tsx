@@ -24,7 +24,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { decryptWithKms } from "@hexclave/shared/dist/helpers/vault/server-side";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
-export { PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets";
+export { MAX_PROJECT_SECRET_KEY_LENGTH, PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets";
 
 // Secret values are meant to be things like API keys, not blobs; the bound
 // exists so a hostile client can't stuff megabytes into a KMS-encrypted row.
