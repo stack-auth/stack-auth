@@ -23,6 +23,8 @@ function getKey(method: string, path: string): string {
  * Only records in development mode.
  */
 export function recordRequestStats(method: string, path: string, durationMs: number): void {
+  // CI enables this alongside the E2E diagnostics flag so route timings remain
+  // available in profile-only mode without turning on the heavier span recorder.
   if (getNodeEnvironment() !== "development" && getEnvVariable("HEXCLAVE_E2E_DIAGNOSTICS", "") !== "true") {
     return;
   }
