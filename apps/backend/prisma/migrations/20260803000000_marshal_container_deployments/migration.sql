@@ -119,12 +119,6 @@ ALTER TABLE "DeploymentService"
 ADD CONSTRAINT "DeploymentService_ports_entries_check"
 CHECK ("hexclave_deployment_ports_entries_valid"("ports"));
 
--- A hostname's 80/443 reach exactly one port, so a second public port could
--- never be served on the standard ports.
-ALTER TABLE "DeploymentService"
-ADD CONSTRAINT "DeploymentService_one_public_port_check"
-CHECK ("hexclave_deployment_ports_public_count"("ports") <= 1);
-
 -- Raw TCP gets no TLS termination and no HTTP routing, so it cannot be the
 -- public one.
 ALTER TABLE "DeploymentService"
@@ -136,11 +130,18 @@ ALTER TABLE "DeploymentService"
 ADD CONSTRAINT "DeploymentService_ports_distinct_check"
 CHECK ("hexclave_deployment_ports_are_distinct"("ports"));
 
--- A public port may not have siblings. The runtime's proxy listeners are
--- per-app rather than per-address, so once a public IP exists every declared
--- port answers on it — a "private" sibling of a public port would be on the
--- internet. Stated here as well as in the sync route because this column is the
--- only record of which ports a service exposes.
+-- FLY.IO PLATFORM LIMITATION: a public port may not have siblings. Fly's proxy
+-- listener set is per-app rather than per-address, so once a public IP exists
+-- every declared port answers on it — a "private" sibling of a public port would
+-- be on the internet. (Private traffic reaches a port over Flycast, which IS
+-- that proxy, so the entry cannot simply be omitted.) Stated here as well as in
+-- the sync route because this column is the only record of which ports a service
+-- exposes. See the `public-service-has-one-port` rule in @hexclave/shared's
+-- deployments.ts for the full write-up.
+--
+-- This also subsumes "at most one public port": two public ports are two ports,
+-- so `jsonb_array_length <= 1` already fails them. public_count is still what
+-- distinguishes a lone public port from a lone private one.
 ALTER TABLE "DeploymentService"
 ADD CONSTRAINT "DeploymentService_public_port_is_alone_check"
 CHECK (jsonb_typeof("ports") <> 'array' OR jsonb_array_length("ports") <= 1 OR "hexclave_deployment_ports_public_count"("ports") = 0);

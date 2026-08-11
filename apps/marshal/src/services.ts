@@ -64,8 +64,10 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   // Ports. Re-validated here rather than trusted from the backend: this is the
   // boundary that turns a spec into Fly machine config, and a bad port list
   // would otherwise reach the Fly API.
+  // An EMPTY array is legal: a worker with nothing listening, which gets an empty
+  // Fly `services` array. It only ever runs while pinned, since autostart lives on
+  // a `services` entry — that is the caller's call to make, not ours to refuse.
   if (!Array.isArray(config.ports)) throw badRequest("config.ports must be an array");
-  if (config.ports.length === 0) throw badRequest("config.ports must declare at least one port");
   if (config.ports.length > MAX_PORTS_PER_SERVICE) throw badRequest(`config.ports may declare at most ${MAX_PORTS_PER_SERVICE} ports`);
   const ports: PortConfig[] = config.ports.map((portRaw) => {
     const portRecord = asRecord(portRaw);
@@ -80,11 +82,20 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
     return { port, public: isPublic, transport };
   });
   if (new Set(ports.map((entry) => entry.port)).size !== ports.length) throw badRequest("config.ports must not declare the same port twice");
-  if (ports.filter((entry) => entry.public).length > 1) throw badRequest("config.ports may mark at most one port public");
-  // Fly `services` are the proxy's listener set for the WHOLE app, not per-IP.
-  // Once a public IP exists, every listed port answers on it — so a "private"
-  // sibling of a public port would be on the internet. Refuse rather than
-  // publish it.
+  // FLY.IO PLATFORM LIMITATION — see the `public-service-has-one-port` rule in
+  // @hexclave/shared's deployments.ts for the full write-up and the `.internal`
+  // escape hatch that would lift it.
+  //
+  // Fly `services` are the proxy's listener set for the WHOLE app, not per-IP:
+  // an entry cannot be scoped to one address, so every listed port answers on
+  // every IP the app holds. Once a public IP exists (a public port, or a custom
+  // domain), a "private" sibling port is on the internet. We can't simply drop
+  // the private ports' entries either — private traffic reaches them over
+  // Flycast, which IS this proxy, so the entry is what makes them reachable at
+  // all. Refuse rather than publish a database.
+  //
+  // Subsumes the old "at most one public port" rule: two public ports are two
+  // ports, so they fail here.
   if (ports.length > 1 && ports.some((entry) => entry.public)) {
     throw badRequest("a service with a public port may not declare any other port: the proxy serves every declared port on every address the app has, so the others would be public too");
   }

@@ -61,9 +61,10 @@ export const postMigration = async (sql: Sql, context: Awaited<ReturnType<typeof
   await expect(insertPorts('[{"port": 3000, "public": "true", "transport": "http"}]'))
     .rejects.toThrow(/DeploymentService_ports_entries_check/);
 
-  // 80/443 reach one port, so a second public one has nowhere to be served.
+  // Several public ports are several ports, so the alone-check catches them too
+  // — there is deliberately no separate one-public-port constraint.
   await expect(insertPorts('[{"port": 3000, "public": true, "transport": "http"}, {"port": 4000, "public": true, "transport": "http"}]'))
-    .rejects.toThrow(/DeploymentService_one_public_port_check/);
+    .rejects.toThrow(/DeploymentService_public_port_is_alone_check/);
   // Raw TCP has no TLS termination or HTTP routing to be public with.
   await expect(insertPorts('[{"port": 5432, "public": true, "transport": "tcp"}]'))
     .rejects.toThrow(/DeploymentService_public_port_is_http_check/);

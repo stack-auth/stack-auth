@@ -118,9 +118,10 @@ export type HexclavePort = {
    * Exposes this port to the internet and gives the service a platform URL,
    * even without a custom domain. Defaults to false.
    *
-   * At most one port per service may be public: a hostname's 80/443 reach only
-   * one of them, so a second public port could never be served on the standard
-   * ports.
+   * A public port must be the service's ONLY port. This is a Fly.io limitation:
+   * its proxy serves every declared port on every address the app has, so a
+   * "private" sibling of a public port would be on the internet too. Put other
+   * ports on their own service and reach them with `internalHost`.
    */
   public?: boolean,
   /**
@@ -133,13 +134,18 @@ export type HexclavePort = {
 
 type HexclaveServiceBase = {
   /**
-   * The ports the container listens on, at least one. The service is public
-   * exactly when one of these is.
+   * The ports the container listens on. The service is public exactly when one
+   * of these is.
    *
    * Each port is reachable on the private network at its own number; the public
    * one is additionally served on 80/443. Note that a URL names a single port,
    * so a service with several needs `internalUrl(9090)` rather than a bare
    * `internalUrl()`.
+   *
+   * Use `ports: []` for a worker that only makes outbound connections. It gets
+   * no URL and can hold no custom domain, and since the platform only wakes a
+   * stopped machine on inbound traffic, it should be `type: "server"` (or a
+   * "serverless" with `minInstances` above zero) or it will never run.
    */
   ports: HexclavePort[],
   /** Source directory, relative to the config file. Defaults to the config file's own directory. */

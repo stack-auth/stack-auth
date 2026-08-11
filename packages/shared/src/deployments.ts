@@ -130,19 +130,23 @@ export type DeploymentServiceDefinition = {
   //
   // The field is required so every write path states what it is creating.
   type: DeploymentServiceType,
-  // The ports the container listens on — at least one, since readiness means a
-  // declared port accepts connections. There is no separate service-level
+  // The ports the container listens on. There is no separate service-level
   // `visibility`: a service is public exactly when one of its ports says so, so
   // the two can never disagree.
+  //
+  // May be EMPTY, for a worker that only makes outbound connections. Such a
+  // service has no URL of any kind and can hold no custom domain, and it only
+  // ever runs if it is always-on (see the schema's note on autostart).
   //
   // Each port is reachable on the private network at its own number, and the
   // service's single HTTP port is additionally served on 80/443 so `url` and
   // custom domain certificates work on the standard ports.
   //
-  // A PUBLIC service declares exactly one port. The runtime's proxy listeners
-  // are per-app rather than per-address, so a private sibling of a public port
-  // would be reachable from the internet as well — see the
-  // `public-service-has-one-port` rule.
+  // A PUBLIC service declares exactly one port. This is a Fly.io limitation, not
+  // a design preference: Fly's proxy listener set is per-app rather than
+  // per-address, so a private sibling of a public port is reachable from the
+  // internet as well. The `public-service-has-one-port` rule below carries the
+  // full explanation, including the `.internal` escape hatch that would lift it.
   ports: DeploymentPortDefinition[],
   // Scaling bounds, and "serverless" only: the instance count moves between
   // them, and min 0 scales to zero. Defaults: min 0, max 1. A "server" service
@@ -175,10 +179,9 @@ export type DeploymentServiceDefinition = {
 // One port the container listens on.
 //
 // `public` (default false) is what exposes the port to the internet: it
-// allocates Fly ingress and gives the service a platform URL. At most one port
-// per service may be public — a hostname's 80/443 can only reach one of them,
-// so a second public port could never be served on the standard ports, and
-// silently demoting it to a host:port endpoint would be worse than refusing.
+// allocates Fly ingress and gives the service a platform URL. A public port must
+// be the service's ONLY port — see the `public-service-has-one-port` rule below
+// for why, which also means at most one port per service can be public.
 //
 // `transport` (default "http") picks the protocol handler. A "tcp" port is raw
 // and private-only: it gets no TLS termination and no HTTP routing, so it
@@ -307,7 +310,17 @@ export const deploymentServiceDefinitionSchema = yupObject({
       .test("tcp-is-private", 'a "tcp" port is raw and private-only, so it cannot be public — reach it over the private network with internalHost and its port number', (value) =>
         value.transport !== "tcp" || !value.public),
   ).defined()
-    .min(1, "a deployment service must declare at least one port — readiness means a declared port accepts connections")
+    // No lower bound: a service may declare zero ports. That is a worker — a
+    // queue consumer, a cron, anything that only makes outbound connections —
+    // and it runs with an empty Fly `services` array. Nothing downstream needs a
+    // port: `url` and `internalUrl` resolve to null, and a custom domain is
+    // already refused on a service with no HTTP port.
+    //
+    // It is only USEFUL on an always-on service, because autostart/autostop live
+    // on `services` entries: with none, the Fly proxy can never wake a stopped
+    // machine. A `type: "server"` is pinned and runs; a "serverless" with
+    // `minInstances: 0` will sit stopped forever. That is left to the author
+    // rather than refused — see the note on serverless status in getServiceState.
     .max(MAX_PORTS_PER_SERVICE, `a deployment service may declare at most ${MAX_PORTS_PER_SERVICE} ports`)
     // The `value === undefined` guards below are load-bearing despite what the
     // types say: `.defined()` makes yup TYPE the test input as present, but yup
@@ -316,23 +329,38 @@ export const deploymentServiceDefinitionSchema = yupObject({
     .test("ports-are-distinct", "each port may only be declared once on a service", (value) =>
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       value === undefined || new Set(value.map((entry) => entry.port)).size === value.length)
-    // A hostname's 80/443 reaches exactly one port, so a second public one could
-    // only ever be served on a non-standard external port. Refused rather than
-    // quietly demoted.
-    .test("at-most-one-public-port", "a deployment service may expose at most one public port — the platform URL and any custom domain serve a single port on 80/443", (value) =>
+    // FLY.IO PLATFORM LIMITATION. A public port must be a service's ONLY port.
+    //
+    // A Fly machine's `services` array is the proxy's listener set for the whole
+    // APP — an entry says "the proxy accepts <external port> and forwards it to
+    // <internal_port>", with no way to scope it to one address. So the proxy
+    // serves every declared port on every IP the app holds. The moment a public
+    // IP is allocated (a public port, or a custom domain), a "private" sibling
+    // port is answering on the public internet: a service with a public web port
+    // and a private 5432 puts its database online.
+    //
+    // Why we are subject to it at all: private service-to-service traffic goes
+    // over Flycast (`<app>.flycast`, see internalHostForService in marshal), which
+    // is itself the Fly proxy. A private port must therefore have a `services`
+    // entry to be reachable — the very entry that the public IP then exposes.
+    //
+    // The escape hatch, not taken: Fly also offers `<app>.internal`, 6PN DNS
+    // straight to the machines' IPv6 addresses, which bypasses the proxy entirely
+    // and needs no `services` entry (and so cannot leak). It costs the proxy
+    // features Flycast provides on private traffic — autostart/autostop (nothing
+    // wakes a stopped machine behind `.internal`), load balancing across slots,
+    // and one stable address independent of instance count. Moving private ports
+    // to `.internal` would lift this rule for always-on services; until then a
+    // public service is restricted to the one port it publishes, and private
+    // ports belong on their own service reached via `internalHost`.
+    //
+    // This subsumes "at most one public port", which used to be a separate rule:
+    // two public ports means two ports, so it fails here. One rule rather than
+    // two because the remedy is identical either way — put the extra port on its
+    // own service, which gets its own app, its own IP and its own 80/443.
+    .test("public-service-has-one-port", "a service with a public port may not declare any other port — the runtime exposes a port on every address the service has, so the others would be public too. Move them to their own service.", (value) =>
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      value === undefined || value.filter((entry) => entry.public).length <= 1)
-    // A public service cannot ALSO hold private ports. The runtime's proxy
-    // listener set is per-app, not per-IP: any port it serves is served on every
-    // address the app has, so once a public IP exists a "private" sibling port
-    // is on the internet too. Rather than silently publishing a database, a
-    // public service is restricted to the one port it publishes. Split the
-    // private ports into their own service to keep them private.
-    // Scoped to EXACTLY one public port so a two-public-port list trips only the
-    // rule above, and each message names the single thing that is wrong.
-    .test("public-service-has-one-port", "a service with a public port may not declare any other port — the runtime exposes a port on every address the service has, so a second port on a public service would be public too. Move it to its own service.", (value) =>
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      value === undefined || value.length <= 1 || value.filter((entry) => entry.public === true).length !== 1),
+      value === undefined || value.length <= 1 || !value.some((entry) => entry.public === true)),
   // min is capped at the same MAX_INSTANCES_CAP (5) as max — an unbounded min would only
   // ever fail downstream.
   min_instances: yupNumber().integer().min(0).max(5).optional()
@@ -446,13 +474,21 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema defaults each port t
   }, { abortEarly: false })).resolves.toBeDefined();
 });
 
+import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts a portless worker", async ({ expect }) => {
+  // Nothing listening: a queue consumer or cron that only dials out. Accepted on
+  // either type — a "serverless" one that never scales up is the author's call.
+  await expect(deploymentServiceDefinitionSchema.validate({ type: "server", ports: [], env: {} }, { abortEarly: false }))
+    .resolves.toMatchObject({ ports: [] });
+  await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", ports: [], env: {} }, { abortEarly: false }))
+    .resolves.toMatchObject({ ports: [] });
+});
+
 import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects port sets it could not serve", async ({ expect }) => {
-  // 80/443 reach one port, so a second public one has nowhere to live. Asserted
-  // with abortEarly so the message is this rule's, not an aggregate — two public
-  // ports also trip the public-service-has-one-port rule below.
+  // Several public ports are several ports, so they trip the one rule rather
+  // than a separate "at most one public" one.
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "serverless", ports: [{ port: 3000, public: true }, { port: 4000, public: true }], env: {},
-  })).rejects.toThrow(/at most one public port/);
+  }, { abortEarly: false })).rejects.toThrow(/may not declare any other port/);
   // Raw TCP has no TLS termination or HTTP routing to make public with.
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "server", ports: [{ port: 5432, transport: "tcp", public: true }], env: {},
@@ -462,8 +498,6 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects port sets it
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "server", ports: [{ port: 3000, public: true }, { port: 5432, transport: "tcp" }], env: {},
   }, { abortEarly: false })).rejects.toThrow(/may not declare any other port/);
-  await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", ports: [], env: {} }))
-    .rejects.toThrow(/at least one port/);
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "serverless", ports: [{ port: 3000 }, { port: 3000, transport: "tcp" }], env: {},
   }, { abortEarly: false })).rejects.toThrow(/only be declared once/);

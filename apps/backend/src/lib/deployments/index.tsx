@@ -742,8 +742,13 @@ export async function resolveEnvVars(options: {
             }
           }
         }
-        if (normalized.outputKey === "url" && targetPorts.length > 0 && targetPorts.every((entry) => portTransport(entry) === "tcp")) {
-          throw new StatusError(400, `The env var connection "${raw}" requests a URL from a service that declares only TCP ports. Connect with ${JSON.stringify(`${normalized.serviceId}.internalHost`)} and an explicit port instead.`);
+        // No `length > 0` guard: an empty list used to mean only "no definition
+        // synced yet", but it is now also a legitimate portless worker — and
+        // neither can ever have a URL, so both belong here rather than blocking
+        // later on an unresolvable ref.
+        if (normalized.outputKey === "url" && !targetPorts.some((entry) => portTransport(entry) === "http")) {
+          const why = targetPorts.length === 0 ? "declares no ports at all" : "declares only TCP ports";
+          throw new StatusError(400, `The env var connection "${raw}" requests a URL from a service that ${why}. Connect with ${JSON.stringify(`${normalized.serviceId}.internalHost`)} and an explicit port instead.`);
         }
         // Narrowed by the includes() check above; the map is `satisfies Record<ServiceOutputKey,…>`.
         const marshalOutputKey = SERVICE_OUTPUT_KEY_TO_MARSHAL[normalized.outputKey as ServiceOutputKey];

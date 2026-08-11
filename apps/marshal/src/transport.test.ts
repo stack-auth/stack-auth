@@ -28,8 +28,13 @@ describe("service ports", () => {
     expect(specIsPublic(validateServiceSpec(spec({ ports: [{ port: 3000, public: true }] })))).toBe(true);
   });
 
+  it("accepts a portless worker and gives it no Fly services entries", () => {
+    expect(validateServiceSpec(spec({ ports: [] })).config.ports).toEqual([]);
+    expect(specIsPublic(validateServiceSpec(spec({ ports: [] })))).toBe(false);
+    expect(machineFor({ ports: [] }).services).toEqual([]);
+  });
+
   it("rejects port sets it could not serve", () => {
-    expect(() => validateServiceSpec(spec({ ports: [] }))).toThrow(/at least one port/);
     expect(() => validateServiceSpec(spec({ ports: {} }))).toThrow(/must be an array/);
     expect(() => validateServiceSpec(spec({ ports: [{ port: 0 }] }))).toThrow(/valid port number/);
     expect(() => validateServiceSpec(spec({ ports: [{ port: 3000, public: "yes" }] }))).toThrow(/must be a boolean/);
@@ -37,9 +42,10 @@ describe("service ports", () => {
     expect(() => validateServiceSpec(spec({ ports: [{ port: 3000 }, { port: 3000 }] }))).toThrow(/same port twice/);
     // Raw TCP has no TLS termination or HTTP routing to be public with.
     expect(() => validateServiceSpec(spec({ ports: [{ port: 5432, transport: "tcp", public: true }] }))).toThrow(/private-only/);
-    // 80/443 reach one port, so a second public one has nowhere to be served.
+    // Several public ports are several ports, so they trip the one rule below
+    // rather than a separate "at most one public" one.
     expect(() => validateServiceSpec(spec({ ports: [{ port: 3000, public: true }, { port: 4000, public: true }] })))
-      .toThrow(/at most one port public/);
+      .toThrow(/may not declare any other port/);
     // Fly's proxy listeners are per-app, not per-address: a private sibling of a
     // public port would answer on the public IP too.
     expect(() => validateServiceSpec(spec({ ports: [{ port: 3000, public: true }, { port: 9090 }] })))

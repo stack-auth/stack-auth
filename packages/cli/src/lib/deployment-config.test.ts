@@ -88,8 +88,9 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
 
   it("rejects port lists it could not serve", () => {
     const evaluatePorts = (ports: unknown) => () => evaluate(() => ({ web: { type: "serverless", ports } }));
+    // The FIELD is still required — an omitted `ports` is a forgotten line far
+    // more often than a deliberate worker, which writes `ports: []`.
     expect(evaluatePorts(undefined)).toThrow("has no `ports`");
-    expect(evaluatePorts([])).toThrow("at least one");
     expect(evaluatePorts({ port: 3000 })).toThrow("must be an array");
     expect(evaluatePorts([{ port: 3000, protocol: "http" }])).toThrow("unknown field");
     expect(evaluatePorts([{ port: "3000" }])).toThrow("must be an integer");
@@ -99,8 +100,15 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     expect(evaluatePorts([{ port: 5432, transport: "smtp" }])).toThrow('must be "http" or "tcp"');
     // Raw TCP has no TLS or HTTP routing, so it can never be the public one.
     expect(evaluatePorts([{ port: 5432, transport: "tcp", public: true }])).toThrow("private-only");
-    // 80/443 reach one port, so a second public port has nowhere to be served.
-    expect(evaluatePorts([{ port: 3000, public: true }, { port: 4000, public: true }])).toThrow("may only expose one");
+    // Several public ports are several ports, so they trip the same rule as a
+    // public port with private siblings.
+    expect(evaluatePorts([{ port: 3000, public: true }, { port: 4000, public: true }])).toThrow("may not declare any other port");
+  });
+
+  it("accepts a portless worker", () => {
+    // A queue consumer or cron that only dials out. It gets no URL of any kind.
+    const { services } = evaluate(() => ({ worker: { type: "server", ports: [], env: {} } }));
+    expect(services.get("worker")?.definition.ports).toEqual([]);
   });
 
   it("rejects connections whose target ports cannot satisfy them", () => {

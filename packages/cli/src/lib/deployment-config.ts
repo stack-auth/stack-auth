@@ -298,14 +298,14 @@ const KNOWN_PORT_FIELDS = new Set(["port", "public", "transport"]);
  * here is the port list itself.
  */
 function evaluatePorts(serviceId: string, portsRaw: unknown): DeploymentPortDefinition[] {
+  // The FIELD stays required even though the list may be empty: an omitted
+  // `ports` is far more often a forgotten line than a deliberate worker, and
+  // `ports: []` says the latter out loud.
   if (portsRaw === undefined || portsRaw === null) {
-    throw new CliError(`deployment.services.${serviceId} has no \`ports\`. Every service must declare the ports its container listens on, e.g. \`ports: [{ port: 3000, public: true }]\`.`);
+    throw new CliError(`deployment.services.${serviceId} has no \`ports\`. Every service must declare the ports its container listens on, e.g. \`ports: [{ port: 3000, public: true }]\` — or \`ports: []\` for a worker that only makes outbound connections.`);
   }
   if (!Array.isArray(portsRaw)) {
     throw new CliError(`deployment.services.${serviceId}.ports must be an array, e.g. \`ports: [{ port: 3000, public: true }]\` (got ${JSON.stringify(typeof portsRaw)}).`);
-  }
-  if (portsRaw.length === 0) {
-    throw new CliError(`deployment.services.${serviceId}.ports is empty. A service is only ready once a declared port accepts connections, so it must declare at least one.`);
   }
   if (portsRaw.length > MAX_PORTS_PER_SERVICE) {
     throw new CliError(`deployment.services.${serviceId}.ports declares ${portsRaw.length} ports, but at most ${MAX_PORTS_PER_SERVICE} per service is supported.`);
@@ -353,18 +353,19 @@ function evaluatePorts(serviceId: string, portsRaw: unknown): DeploymentPortDefi
     ports.push({ port, public: isPublic, transport });
   }
 
-  // 80 and 443 reach exactly one port, so a second public port has nowhere to
-  // be served from.
+  // FLY.IO PLATFORM LIMITATION: a public port must be a service's ONLY port. Fly
+  // serves its whole listener set on every address the app has, so once a public
+  // IP exists a "private" sibling is on the internet too — publishing, say, a
+  // database. (The entry cannot just be omitted for private ports: private
+  // traffic reaches them over Flycast, which is that same proxy.) See the
+  // `public-service-has-one-port` rule in @hexclave/shared's deployments.ts.
+  //
+  // One rule, not two: this also covers a list marking SEVERAL ports public,
+  // since those are likewise more than one port, and the remedy is the same
+  // either way — one port per service, each getting its own app, IP and 80/443.
   const publicPorts = ports.filter((entry) => entry.public);
-  if (publicPorts.length > 1) {
-    throw new CliError(`deployment.services.${serviceId} marks ${publicPorts.length} ports public (${publicPorts.map((entry) => entry.port).join(", ")}), but a service may only expose one. Its platform URL and any custom domain serve a single port on 80/443 — keep one public and reach the rest privately with service(${JSON.stringify(serviceId)}).internalHost.`);
-  }
-  // A public service may not ALSO hold private ports. The runtime serves a port
-  // on every address the service has, so a private sibling of a public port
-  // would be on the internet too — publishing, say, a database. Refused rather
-  // than silently exposed.
-  if (publicPorts.length === 1 && ports.length > 1) {
-    const others = ports.filter((entry) => !entry.public).map((entry) => entry.port);
+  if (publicPorts.length >= 1 && ports.length > 1) {
+    const others = ports.filter((entry) => entry.port !== publicPorts[0].port).map((entry) => entry.port);
     throw new CliError(`deployment.services.${serviceId} has a public port (${publicPorts[0].port}) and may not declare any other port, but also declares ${others.join(", ")}. A service is exposed on every address it has, so those ports would be public too. Move them to their own service and connect with service(${JSON.stringify(serviceId)}).internalHost.`);
   }
   return ports;
@@ -710,14 +711,17 @@ export function evaluateDeploymentConfig(options: {
       if (target == null) throw new CliError(`Internal error: validated service reference ${JSON.stringify(value.reference)} has no target definition.`);
       const at = `deployment.services.${serviceId}.env.${envVarKey}`;
       const targetPorts = target.definition.ports;
-      const describePorts = () => targetPorts.map((entry) => `${entry.port} (${portTransport(entry)}${entry.public ? ", public" : ""})`).join(", ");
+      // "none" rather than an empty string: a portless service is a legal
+      // declaration now, so this list really can be empty.
+      const describePorts = () => targetPorts.map((entry) => `${entry.port} (${portTransport(entry)}${entry.public ? ", public" : ""})`).join(", ") || "none";
 
       // `url` deliberately does NOT require a public port: a private service
       // still gets one once a custom domain verifies. What it does require is
-      // something HTTP to serve — a URL to a service that only speaks raw TCP
-      // could never resolve.
-      if (outputKey === "url" && targetPorts.every((entry) => portTransport(entry) === "tcp")) {
-        throw new CliError(`${at} requests ${JSON.stringify(value.reference)}, but ${JSON.stringify(targetServiceId)} declares only TCP ports, so it can never have a URL. Use service(${JSON.stringify(targetServiceId)}).internalHost with an explicit port instead. Its ports: ${describePorts()}.`);
+      // something HTTP to serve — a URL to a service that speaks only raw TCP,
+      // or listens on nothing at all, could never resolve.
+      if (outputKey === "url" && !targetPorts.some((entry) => portTransport(entry) === "http")) {
+        const why = targetPorts.length === 0 ? "declares no ports at all" : "declares only TCP ports";
+        throw new CliError(`${at} requests ${JSON.stringify(value.reference)}, but ${JSON.stringify(targetServiceId)} ${why}, so it can never have a URL. Use service(${JSON.stringify(targetServiceId)}).internalHost with an explicit port instead. Its ports: ${describePorts()}.`);
       }
       if (outputKey === "internalUrl") {
         const call = `service(${JSON.stringify(targetServiceId)}).internalUrl`;

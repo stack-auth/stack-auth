@@ -268,12 +268,11 @@ describe("definition sync", () => {
     };
     // Raw TCP has no TLS termination or HTTP routing to be public with.
     await rejects([{ port: 5432, transport: "tcp", public: true }], "private-only");
-    // 80/443 reach one port, so a second public one has nowhere to be served.
-    await rejects([{ port: 3000, public: true }, { port: 4000, public: true }], "at most one public port");
-    // A public port may not have private siblings: the runtime serves a port on
-    // every address the service has, so they would be public too.
+    // A public port may not have siblings of any kind: the runtime serves a port
+    // on every address the service has, so they would be public too. Several
+    // public ports are just another case of that.
+    await rejects([{ port: 3000, public: true }, { port: 4000, public: true }], "may not declare any other port");
     await rejects([{ port: 3000, public: true }, { port: 9090 }], "may not declare any other port");
-    await rejects([], "at least one port");
     await rejects([{ port: 3000 }, { port: 3000 }], "once");
   });
 

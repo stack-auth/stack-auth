@@ -68,13 +68,12 @@ export const POST = createSmartRouteHandler({
     if (row.definitionSyncId !== body.definition_sync_id) {
       throw new StatusError(409, `The deployment service ${JSON.stringify(params.service_id)} changed after this deploy synced its definitions. Another deploy is using a newer config; restart this deploy so its source and definition come from the same config revision.`);
     }
+    // No empty-ports guard here: an empty port list is a legitimate declaration
+    // (a worker that only makes outbound connections). The case it used to catch
+    // — a row that predates a synced definition — is already refused above by the
+    // definitionSyncedAt/definitionSyncId check, which is the field that actually
+    // means "no definition synced" rather than a value that merely correlates.
     const definition = definitionFromServiceRow(row);
-    // An empty port list is what a row that predates a synced definition holds.
-    // It is displayable but not deployable — a container with nothing listening
-    // can never become ready.
-    if (definition.ports.length === 0) {
-      throw new StatusError(400, `The deployment service ${JSON.stringify(params.service_id)} declares no ports in its stored definition. Re-sync with an up-to-date CLI (\`hexclave deploy\`).`);
-    }
 
     // Re-check the plan against the STORED definition. The sync route checks
     // too, but only as CLI UX — this is the actual entitlement boundary, since
