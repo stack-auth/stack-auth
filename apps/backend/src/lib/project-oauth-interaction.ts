@@ -1,5 +1,11 @@
 import { getUser } from "@/app/api/latest/users/crud";
-import { getProjectIdpId, getProjectOAuthIssuer, getProjectResourceServers, isTrustedClient } from "@/lib/project-oauth-provider";
+import {
+  getProjectIdpId,
+  getProjectOAuthIssuer,
+  getProjectResourceServers,
+  isTrustedClient,
+  PROJECT_OAUTH_SESSION_TTL_SECONDS,
+} from "@/lib/project-oauth-provider";
 import { deriveScopesFromConfig } from "@/lib/permissions";
 import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import type { Tenancy } from "@/lib/tenancies";
@@ -9,13 +15,9 @@ import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@he
 import Provider from "oidc-provider";
 import type { AccountClaims } from "oidc-provider";
 import projectOAuthSessionMiddleware from "oidc-provider/lib/shared/session.js";
-import projectOAuthProviderInstance from "oidc-provider/lib/helpers/weak_cache.js";
 
 if (typeof projectOAuthSessionMiddleware !== "function") {
   throw new Error("Expected oidc-provider@8.5.1/lib/shared/session.js to export a session middleware function.");
-}
-if (typeof projectOAuthProviderInstance !== "function") {
-  throw new Error("Expected oidc-provider@8.5.1/lib/helpers/weak_cache.js to export its provider instance accessor.");
 }
 
 const MODEL = "ProjectOAuthInteraction";
@@ -196,6 +198,11 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
       if (interaction === undefined) {
         throw new StatusError(400, "This authorization request is no longer available.");
       }
+      const cookieInteraction = await oidc.interactionDetails(ctx.req, ctx.res);
+      if (cookieInteraction.uid !== uid) {
+        captureError("project-oauth-interaction-cookie-mismatch", new HexclaveAssertionError("Project OAuth interaction cookie mismatch"));
+        throw new StatusError(400, "This authorization request is no longer available.");
+      }
       const clientId = typeof interaction.params.client_id === "string"
         ? interaction.params.client_id
         : throwErr("Project OAuth client ID was missing");
@@ -226,28 +233,10 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
           cookie: session.jti,
         };
         // interactionFinished validates the bound session immediately, before the surrounding
-        // session middleware's finally block can persist a newly established session. Use the
-        // provider's configured session TTL here, matching oidc-provider's own middleware, rather
-        // than shortening SSO to the interaction's remaining lifetime.
-        // oidc-provider's public Session API accepts the TTL but does not expose configured TTLs.
-        // Read the same internal configuration hook used by its pinned session middleware. This
-        // private import is pinned to 8.5.1; if it moves, session persistence must fail loudly
-        // rather than silently shortening or extending SSO.
-        const sessionTtl = projectOAuthProviderInstance(oidc).configuration("ttl.Session");
-        const sessionTtlSeconds = typeof sessionTtl === "function"
-          ? sessionTtl(ctx, session)
-          : sessionTtl;
-        if (typeof sessionTtlSeconds !== "number" || sessionTtlSeconds <= 0) {
-          throw new Error("Expected oidc-provider@8.5.1 ttl.Session to resolve to a positive number.");
-        }
-        await session.save(sessionTtlSeconds);
+        // session middleware's finally block can persist a newly established session.
+        await session.save(PROJECT_OAUTH_SESSION_TTL_SECONDS);
         session.touched = true;
         await interaction.save(Math.max(1, interaction.exp - Math.floor(Date.now() / 1000)));
-        const cookieInteraction = await oidc.interactionDetails(ctx.req, ctx.res);
-        if (cookieInteraction.uid !== uid) {
-          captureError("project-oauth-interaction-cookie-mismatch", new HexclaveAssertionError("Project OAuth interaction cookie mismatch"));
-          throw new StatusError(400, "This authorization request is no longer available.");
-        }
 
         const consumed = await consumeProjectOAuthDecision(tenancy, uid);
         if (consumed.denied) {
