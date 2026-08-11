@@ -184,14 +184,14 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     const issues: PersistedTreeIntegrityIssue[] = [];
     if (this.root === null) return issues;
     type Summary = { height: number, size: number, entryCount: number, minKey: MultiKey<Key, EntryId>, maxKey: MultiKey<Key, EntryId>, augmentation: Augmentation };
-    type Frame = { child: Child<MultiKey<Key, EntryId>, Augmentation>, node: Node<MultiKey<Key, EntryId>, Value, Augmentation>, path: number[], nextChild: number, children: Array<Summary | undefined> };
+    type Frame = { child: Child<MultiKey<Key, EntryId>, Augmentation>, node: Node<MultiKey<Key, EntryId>, Value, Augmentation>, path: number[], pathRefs: Set<PiledriverHeapObject>, nextChild: number, children: Array<Summary | undefined> };
     const stack: Frame[] = [];
-    const loadFrame = async (child: Child<MultiKey<Key, EntryId>, Augmentation>, path: number[]): Promise<Frame> => {
+    const loadFrame = async (child: Child<MultiKey<Key, EntryId>, Augmentation>, path: number[], pathRefs: Set<PiledriverHeapObject>): Promise<Frame> => {
       const node = await this.node(child.ref);
       if (node === null) throw new Error("Missing persisted tree node");
-      return { child, node, path, nextChild: 0, children: [] };
+      return { child, node, path, pathRefs, nextChild: 0, children: [] };
     };
-    let frame = await loadFrame(this.root, []);
+    let frame = await loadFrame(this.root, [], new Set([this.root.ref]));
     stack.push(frame);
     while (stack.length > 0) {
       frame = stack[stack.length - 1];
@@ -199,7 +199,13 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
         const childIndex = frame.nextChild;
         frame.nextChild++;
         const child = frame.node.children[childIndex];
-        stack.push(await loadFrame(child, [...frame.path, childIndex]));
+        if (frame.pathRefs.has(child.ref)) {
+          issues.push({ code: "cycle", message: "A tree child references an ancestor node" });
+          continue;
+        }
+        const pathRefs = new Set(frame.pathRefs);
+        pathRefs.add(child.ref);
+        stack.push(await loadFrame(child, [...frame.path, childIndex], pathRefs));
         continue;
       }
       const node = frame.node;

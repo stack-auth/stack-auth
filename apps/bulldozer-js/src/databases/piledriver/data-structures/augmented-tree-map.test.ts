@@ -304,6 +304,27 @@ describe("AugmentedTreeMap", () => {
     expect(await unbalanced.verifyDataIntegrity()).toContainEqual(expect.objectContaining({ code: "size" }));
   });
 
+  it("reports a persisted child cycle without exhausting memory", async () => {
+    const tree = await build(20, 3);
+    const serialized = tree.toPiledriverObject();
+    const root = serialized.root;
+    if (root === null) throw new Error("Expected a non-empty tree");
+    let corruptedRootRef: PiledriverHeapObject;
+    corruptedRootRef = {
+      ...root.ref,
+      async get(): Promise<PiledriverObject> {
+        const node = await root.ref.get();
+        if (typeof node !== "object" || node === null || Array.isArray(node)) throw new Error("Expected a tree node");
+        const children = (node as { children: Array<Record<string, unknown>> }).children.map((child, index) => index === 0
+          ? { ...child, ref: corruptedRootRef }
+          : child);
+        return { ...node, children } as PiledriverObject;
+      },
+    };
+    const cyclic = AugmentedTreeMap.fromPiledriverObject({ ...serialized, root: { ...root, ref: corruptedRootRef } }, options(3));
+    expect(await cyclic.verifyDataIntegrity()).toContainEqual(expect.objectContaining({ code: "cycle" }));
+  });
+
   it("round-trips through piledriver objects", async () => {
     let tree = await build(100, 8);
     tree = AugmentedTreeMap.fromPiledriverObject(tree.toPiledriverObject(), options(8));
