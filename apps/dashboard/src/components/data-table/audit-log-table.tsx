@@ -152,17 +152,67 @@ const FIELD_LABELS = new Map<string, string>([
   ["has_super_secret_admin_key", "Super secret admin key"],
 ]);
 
+const OAUTH_PROVIDER_FIELD_LABELS = new Map<string, string>([
+  ["type", "Type"],
+  ["isShared", "Shared keys"],
+  ["clientId", "Client ID"],
+  ["clientSecret", "Client secret"],
+  ["allowSignIn", "Sign-in"],
+  ["allowConnectedAccounts", "Connected accounts"],
+  ["customCallbackUrl", "Callback URL"],
+  ["facebookConfigId", "Facebook config ID"],
+  ["microsoftTenantId", "Microsoft tenant ID"],
+  ["appleTeamId", "Apple team ID"],
+  ["appleKeyId", "Apple key ID"],
+  ["applePrivateKey", "Apple private key"],
+  ["issuerUrl", "Issuer URL"],
+  ["scope", "Scope"],
+  ["displayName", "Display name"],
+]);
+
+function humanizeSegment(segment: string): string {
+  return segment
+    .split("_")
+    .filter((part) => part.length > 0)
+    .map((part) => {
+      // Preserve camelCase boundaries: facebookConfigId → Facebook Config Id
+      const withSpaces = part.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+      return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1);
+    })
+    .join(" ");
+}
+
+function humanizeProviderId(providerId: string): string {
+  if (providerId === "github") return "GitHub";
+  if (providerId === "linkedin") return "LinkedIn";
+  if (providerId === "apple") return "Apple";
+  if (providerId === "microsoft") return "Microsoft";
+  if (providerId === "google") return "Google";
+  if (providerId === "facebook") return "Facebook";
+  if (providerId === "spotify") return "Spotify";
+  if (providerId === "x") return "X";
+  return humanizeSegment(providerId);
+}
+
 function humanizeFieldPath(path: string): string {
   const known = FIELD_LABELS.get(path);
   if (known != null) return known;
-  return path
-    .split(".")
-    .map((segment) => segment
-      .split("_")
-      .filter((part) => part.length > 0)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" "))
-    .join(" · ");
+
+  // Auth Methods oauth provider paths are long and noisy when segment-joined;
+  // collapse to "OAuth · Google · Client ID".
+  const oauthMatch = /^auth\.oauth\.providers\.([^.]+)(?:\.(.+))?$/.exec(path);
+  if (oauthMatch != null) {
+    const providerLabel = humanizeProviderId(oauthMatch[1] ?? "");
+    const fieldPath = oauthMatch[2];
+    if (fieldPath == null || fieldPath === "") {
+      return `OAuth · ${providerLabel}`;
+    }
+    const fieldLabel = OAUTH_PROVIDER_FIELD_LABELS.get(fieldPath)
+      ?? fieldPath.split(".").map(humanizeSegment).join(" · ");
+    return `OAuth · ${providerLabel} · ${fieldLabel}`;
+  }
+
+  return path.split(".").map(humanizeSegment).join(" · ");
 }
 
 function formatDisplayValue(value: unknown, path?: string): string {
@@ -221,8 +271,8 @@ function visibleChangePaths(parsed: Extract<ParsedDetails, { kind: "changes" }>)
   return parsed.paths.filter((path) => {
     const change = parsed.changes?.[path];
     if (change == null) return true;
-    // Hide empty create noise (`null` → `null` metadata from older events).
-    if (change.before === null && change.after === null) return false;
+    // Hide empty create noise (`null` → `null` / `""` from shared oauth field bags).
+    if (change.before === null && (change.after === null || change.after === "")) return false;
     return true;
   });
 }
@@ -286,6 +336,23 @@ function AuditFieldRow({
         <span className="max-w-[60%] truncate text-right text-xs font-medium text-foreground" title={after}>
           {after}
         </span>
+      </div>
+    );
+  }
+
+  if (change.after === null) {
+    return (
+      <div className="flex flex-col gap-1 py-2">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="rounded-md bg-red-500/[0.08] px-1.5 py-0.5 text-red-700 line-through decoration-red-700/40 dark:text-red-300 dark:decoration-red-300/40">
+            {formatDisplayValue(change.before, path)}
+          </span>
+          <span className="text-muted-foreground" aria-hidden>→</span>
+          <span className="rounded-md bg-red-500/[0.1] px-1.5 py-0.5 font-medium text-red-700 dark:text-red-300">
+            Removed
+          </span>
+        </div>
       </div>
     );
   }

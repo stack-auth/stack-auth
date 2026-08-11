@@ -284,6 +284,88 @@ function normalizeAuditJsonValue(value: unknown): Prisma.JsonValue | undefined {
   return undefined;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isBlankAuditValue(value: unknown): boolean {
+  return value === undefined || value === null || value === "";
+}
+
+function auditValuesEqual(before: unknown, after: unknown): boolean {
+  if (before === after) return true;
+  if (isBlankAuditValue(before) && isBlankAuditValue(after)) return true;
+  try {
+    return JSON.stringify(before ?? null) === JSON.stringify(after ?? null);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Compact label for a removed config object (e.g. oauth provider set to null).
+ * Prefer the provider `type` field when present.
+ */
+function summarizeConfigObjectForAudit(value: Record<string, unknown>): string {
+  if (typeof value.type === "string" && value.type.trim() !== "") {
+    return value.type;
+  }
+  if (value.isShared === true) return "shared";
+  if (value.allowSignIn === true) return "enabled";
+  return "configured";
+}
+
+/**
+ * Expand object-valued patch paths into leaf diffs and drop empty no-ops.
+ *
+ * Without this, writing `{ "auth.oauth.providers.google": null }` stays a single
+ * object path whose before-value can't be JSON-normalized → UI shows "Hidden".
+ * Enabling a provider with a full field bag also audits empty shared-schema
+ * leftovers like `facebookConfigId: ""`.
+ */
+export function expandConfigChangePaths(options: {
+  paths: string[],
+  beforeRoot: unknown,
+  afterRoot: unknown,
+}): string[] {
+  const expanded: string[] = [];
+  const seen = new Set<string>();
+  const push = (path: string) => {
+    if (seen.has(path)) return;
+    seen.add(path);
+    expanded.push(path);
+  };
+
+  for (const path of options.paths) {
+    const before = getValueAtDottedPath(options.beforeRoot, path);
+    const after = getValueAtDottedPath(options.afterRoot, path);
+
+    if (isPlainObject(after)) {
+      for (const leaf of collectConfigPaths(after, path)) {
+        const leafBefore = getValueAtDottedPath(options.beforeRoot, leaf);
+        const leafAfter = getValueAtDottedPath(options.afterRoot, leaf);
+        if (isBlankAuditValue(leafAfter) && isBlankAuditValue(leafBefore)) continue;
+        if (auditValuesEqual(leafBefore, leafAfter)) continue;
+        push(leaf);
+      }
+      continue;
+    }
+
+    // Whole-object delete (provider disabled): keep one path; value builder
+    // summarizes the before object into a short string.
+    if (after === null && isPlainObject(before)) {
+      push(path);
+      continue;
+    }
+
+    if (isBlankAuditValue(before) && isBlankAuditValue(after)) {
+      continue;
+    }
+    push(path);
+  }
+  return expanded;
+}
+
 /**
  * Build before/after value map for non-sensitive paths only.
  * Sensitive paths stay in changed_paths but are omitted here.
@@ -298,8 +380,21 @@ export function buildNonSensitiveFieldChanges(options: {
     if (isAuditLogPathSensitive(path)) {
       continue;
     }
-    const beforeNormalized = normalizeAuditJsonValue(getValueAtDottedPath(options.beforeRoot, path));
-    const afterNormalized = normalizeAuditJsonValue(getValueAtDottedPath(options.afterRoot, path));
+    const beforeRaw = getValueAtDottedPath(options.beforeRoot, path);
+    const afterRaw = getValueAtDottedPath(options.afterRoot, path);
+
+    // Object → null (e.g. oauth provider removed). Plain objects are otherwise
+    // non-auditable; summarize so the UI can show "google → Removed".
+    if (afterRaw === null && isPlainObject(beforeRaw)) {
+      changes[path] = {
+        before: summarizeConfigObjectForAudit(beforeRaw),
+        after: null,
+      };
+      continue;
+    }
+
+    const beforeNormalized = normalizeAuditJsonValue(beforeRaw);
+    const afterNormalized = normalizeAuditJsonValue(afterRaw);
     // If either side looks secret / non-auditable, skip values for this path.
     if (beforeNormalized === undefined || afterNormalized === undefined) {
       continue;
@@ -371,7 +466,15 @@ export function buildProjectSettingsAuditMetadata(options: {
   if (options.changedPaths.length === 0) {
     return null;
   }
-  const { changed_paths, changed_paths_truncated } = limitChangedPaths(options.changedPaths);
+  const expandedPaths = expandConfigChangePaths({
+    paths: options.changedPaths,
+    beforeRoot: options.beforeRoot,
+    afterRoot: options.afterRoot,
+  });
+  if (expandedPaths.length === 0) {
+    return null;
+  }
+  const { changed_paths, changed_paths_truncated } = limitChangedPaths(expandedPaths);
   const changes = buildNonSensitiveFieldChanges({
     paths: changed_paths,
     beforeRoot: options.beforeRoot,

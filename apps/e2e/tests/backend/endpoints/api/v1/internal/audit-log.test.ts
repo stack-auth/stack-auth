@@ -242,6 +242,72 @@ it("does not persist values for sensitive config leaves", async ({ expect }) => 
   expect(JSON.stringify(event.metadata)).not.toContain("super-secret-password");
 });
 
+it("audits oauth provider enable/disable without empty shared-schema noise", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+  await Project.updateConfig({
+    "auth.oauth.providers.google": {
+      type: "google",
+      isShared: true,
+      allowSignIn: true,
+      allowConnectedAccounts: true,
+    },
+  });
+  await Project.updateConfig({
+    "auth.oauth.providers.linkedin": {
+      type: "linkedin",
+      isShared: false,
+      clientId: "linkedin-client-id",
+      clientSecret: "linkedin-client-secret",
+      // Shared provider-bag leftovers the Auth Methods form can send as "".
+      facebookConfigId: "",
+      microsoftTenantId: "",
+      allowSignIn: true,
+      allowConnectedAccounts: true,
+    },
+  });
+  await Project.updateConfig({
+    "auth.oauth.providers.google": null,
+  });
+
+  const listRes = await listAuditLog({ action: "project_settings.updated" });
+  expect(listRes.status).toBe(200);
+
+  const linkedinEnable = listRes.body.items.find((item: { metadata?: { changed_paths?: string[] } }) => (
+    item.metadata?.changed_paths?.some((path) => path.startsWith("auth.oauth.providers.linkedin."))
+  ));
+  expect(linkedinEnable).toBeDefined();
+  expect(linkedinEnable.metadata.changed_paths).toEqual(expect.arrayContaining([
+    "auth.oauth.providers.linkedin.type",
+    "auth.oauth.providers.linkedin.clientId",
+    "auth.oauth.providers.linkedin.clientSecret",
+  ]));
+  expect(linkedinEnable.metadata.changed_paths).not.toContain("auth.oauth.providers.linkedin.facebookConfigId");
+  expect(linkedinEnable.metadata.changed_paths).not.toContain("auth.oauth.providers.linkedin.microsoftTenantId");
+  expect(linkedinEnable.metadata.changes?.["auth.oauth.providers.linkedin.clientId"]).toMatchObject({
+    before: null,
+    after: "linkedin-client-id",
+  });
+  expect(linkedinEnable.metadata.changes?.["auth.oauth.providers.linkedin.clientSecret"]).toBeUndefined();
+  expect(JSON.stringify(linkedinEnable.metadata)).not.toContain("linkedin-client-secret");
+
+  const googleDisable = listRes.body.items.find((item: { metadata?: { changed_paths?: string[] } }) => (
+    item.metadata?.changed_paths?.includes("auth.oauth.providers.google")
+  ));
+  expect(googleDisable).toMatchObject({
+    action: "project_settings.updated",
+    metadata: {
+      changed_paths: ["auth.oauth.providers.google"],
+      changes: {
+        "auth.oauth.providers.google": {
+          before: "google",
+          after: null,
+        },
+      },
+    },
+  });
+});
+
 it("does not audit end-user password signup (programmatic user create)", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Password.signUpWithEmail();
