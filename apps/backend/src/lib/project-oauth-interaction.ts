@@ -184,39 +184,88 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
     const doneMatch = /^\/interaction\/([^/]+)\/done$/.exec(ctx.path);
     if (doneMatch !== null && (ctx.method === "GET" || ctx.method === "POST")) {
       const uid = doneMatch[1];
-      const details = await oidc.interactionDetails(ctx.req, ctx.res);
-      const decision = await consumeProjectOAuthDecision(tenancy, uid);
-      if (decision.uid !== uid || decision.clientId !== details.params.client_id) {
+      const decision = await getProjectOAuthInteraction(tenancy, uid);
+      if (decision === undefined) {
+        throw new StatusError(400, "This authorization request has expired.");
+      }
+      const interaction = await oidc.Interaction.find(uid);
+      if (interaction === undefined) {
+        throw new StatusError(400, "This authorization request is no longer available.");
+      }
+      const clientId = typeof interaction.params.client_id === "string"
+        ? interaction.params.client_id
+        : throwErr("Project OAuth client ID was missing");
+      if (decision.uid !== uid || decision.clientId !== clientId) {
         captureError("project-oauth-interaction-context-mismatch", new HexclaveAssertionError("Project OAuth interaction context mismatch"));
         throw new StatusError(400, "This authorization request is no longer available.");
       }
-      if (decision.denied) return await oidc.interactionFinished(ctx.req, ctx.res, { error: "access_denied" });
-
-      const approved = decision.approvedScopes;
-      if (approved === undefined) {
-        captureError("project-oauth-grant-scope-mismatch", new HexclaveAssertionError("Project OAuth grant scope mismatch"));
-        throw new StatusError(400, "This authorization request is no longer valid.");
-      }
-      validateApprovedScopes(tenancy, decision, approved);
-      const clientId = typeof details.params.client_id === "string" ? details.params.client_id : throwErr("Project OAuth client ID was missing");
       const userId = decision.userId ?? throwErr("Project OAuth decision user ID was missing");
-      const grant = new oidc.Grant({ accountId: userId, clientId });
-      const oidcScopes = approved.filter(scope => OIDC_SCOPES.has(scope));
-      // oidc-provider treats every configured `scopes` entry as an OP scope for consent
-      // bookkeeping, including resource scopes. Keep the complete approved set on the grant so
-      // its `op_scopes_missing` check sees the consent as satisfied; resource authorization is
-      // separately represented below and remains enforced by the resource server.
-      if (approved.length > 0) grant.addOIDCScope(approved.join(" "));
-      if (decision.resource !== undefined) grant.addResourceScope(decision.resource, approved.filter(scope => !oidcScopes.includes(scope)).join(" "));
-      // oidc-provider's default refresh-token lifetime is 14 days. Keep the consent grant alive
-      // for the same period so offline_access does not silently outlive its backing grant.
-      const grantId = await grant.save(GRANT_TTL_SECONDS);
-      return await oidc.interactionFinished(
-        ctx.req,
-        ctx.res,
-        { login: { accountId: userId }, consent: { grantId } },
-        { mergeWithLastSubmission: false },
-      );
+      if (interaction.session?.accountId !== undefined && interaction.session.accountId !== userId) {
+        captureError("project-oauth-provider-session-user-mismatch", new HexclaveAssertionError("Project OAuth provider session user mismatch"));
+        throw new StatusError(400, "This authorization request is not available for this user.");
+      }
+
+      const finish = async () => {
+        const session = ctx.oidc.session;
+        if (session.accountId !== undefined && session.accountId !== userId) {
+          captureError("project-oauth-provider-session-user-mismatch", new HexclaveAssertionError("Project OAuth provider session user mismatch"));
+          throw new StatusError(400, "This authorization request is not available for this user.");
+        }
+        // Hosted authentication is authoritative for this interaction, while oidc-provider checks
+        // the provider session UID before applying result.login. Bind both to the same user first
+        // so stale provider cookies cannot select a different session or bypass that check.
+        session.loginAccount({ accountId: userId });
+        session.touched = true;
+        interaction.session = {
+          accountId: userId,
+          uid: session.uid,
+          cookie: session.jti,
+        };
+        // interactionFinished validates the bound session immediately, before the surrounding
+        // session middleware's finally block can persist a newly established session.
+        await session.save(Math.max(1, interaction.exp - Math.floor(Date.now() / 1000)));
+        session.touched = true;
+        await interaction.save(Math.max(1, interaction.exp - Math.floor(Date.now() / 1000)));
+
+        const consumed = await consumeProjectOAuthDecision(tenancy, uid);
+        if (consumed.denied) {
+          return await oidc.interactionFinished(ctx.req, ctx.res, { error: "access_denied" });
+        }
+
+        const approved = consumed.approvedScopes;
+        if (approved === undefined) {
+          captureError("project-oauth-grant-scope-mismatch", new HexclaveAssertionError("Project OAuth grant scope mismatch"));
+          throw new StatusError(400, "This authorization request is no longer valid.");
+        }
+        validateApprovedScopes(tenancy, consumed, approved);
+        const grant = new oidc.Grant({ accountId: userId, clientId });
+        const oidcScopes = approved.filter(scope => OIDC_SCOPES.has(scope));
+        // oidc-provider treats every configured `scopes` entry as an OP scope for consent
+        // bookkeeping, including resource scopes. Keep the complete approved set on the grant so
+        // its `op_scopes_missing` check sees the consent as satisfied; resource authorization is
+        // separately represented below and remains enforced by the resource server.
+        if (approved.length > 0) grant.addOIDCScope(approved.join(" "));
+        if (consumed.resource !== undefined) {
+          grant.addResourceScope(consumed.resource, approved.filter(scope => !oidcScopes.includes(scope)).join(" "));
+        }
+        // oidc-provider's default refresh-token lifetime is 14 days. Keep the consent grant alive
+        // for the same period so offline_access does not silently outlive its backing grant.
+        const grantId = await grant.save(GRANT_TTL_SECONDS);
+        return await oidc.interactionFinished(
+          ctx.req,
+          ctx.res,
+          { login: { accountId: userId }, consent: { grantId } },
+          { mergeWithLastSubmission: false },
+        );
+      };
+
+      if (ctx.oidc === undefined) {
+        Object.defineProperty(ctx, "oidc", { value: new oidc.OIDCContext(ctx) });
+      }
+      if (ctx.oidc.session === undefined) {
+        return await projectOAuthSessionMiddleware(ctx, finish);
+      }
+      return await finish();
     }
     const match = /^\/interaction\/([^/]+)$/.exec(ctx.path);
     if (match !== null && ctx.method === "GET") {

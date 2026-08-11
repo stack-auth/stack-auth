@@ -64,7 +64,12 @@ function normalizeIssuerUrl(url: string, issuer: string): string {
   return url.replace(issuer, "<issuer>");
 }
 
-async function startProjectInteraction(projectId: string, scope = "openid files:read") {
+async function startProjectInteraction(
+  projectId: string,
+  scope = "openid files:read",
+  initialCookie = "",
+  prompt?: string,
+) {
   const authorize = await niceBackendFetch(providerUrl(projectId, "/auth"), {
     redirect: "manual",
     query: {
@@ -75,10 +80,12 @@ async function startProjectInteraction(projectId: string, scope = "openid files:
       resource: "https://mcp.example.com/mcp",
       code_challenge: oauthCodeChallenge,
       code_challenge_method: "S256",
+      ...(prompt === undefined ? {} : { prompt }),
     },
+    headers: { cookie: initialCookie },
   });
   expect(authorize.status).toBe(303);
-  const providerCookie = updateCookiesFromResponse("", authorize);
+  const providerCookie = updateCookiesFromResponse(initialCookie, authorize);
   const interactionLocation = authorize.headers.get("location") ?? "";
   const interaction = await niceBackendFetch(interactionLocation, {
     redirect: "manual",
@@ -251,9 +258,102 @@ it("renders a user-safe page for project-provider errors on authorization naviga
   expect(response.body).not.toContain("\"error\"");
 });
 
+it("reconciles a replaced provider session after a completed authorization", async () => {
+  const projectId = await createConfiguredProject();
+  await Auth.fastSignUp();
+
+  const first = await startProjectInteraction(projectId);
+  const firstDecision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${first.interactionUid}`, {
+    method: "POST",
+    accessType: "client",
+    body: { approved_scopes: ["openid", "files:read"], denied: false },
+  });
+  expect(firstDecision.status).toBe(200);
+  const firstCompleted = await niceBackendFetch(firstDecision.body.done_url, {
+    redirect: "manual",
+    headers: { cookie: first.providerCookie },
+  });
+  const firstResumed = await niceBackendFetch(firstCompleted.headers.get("location") ?? "", {
+    redirect: "manual",
+    headers: { cookie: updateCookiesFromResponse(first.providerCookie, firstCompleted) },
+  });
+  expect(firstResumed.status).toBe(303);
+  const dirtyProviderCookie = updateCookiesFromResponse(first.providerCookie, firstResumed);
+  const dirtySessionCookie = dirtyProviderCookie
+    .split("; ")
+    .filter(cookie => cookie.startsWith("_session"))
+    .join("; ");
+
+  const second = await startProjectInteraction(projectId, "openid files:read", dirtySessionCookie, "login");
+  const rotation = await startProjectInteraction(projectId);
+  const rotationDecision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${rotation.interactionUid}`, {
+    method: "POST",
+    accessType: "client",
+    body: { approved_scopes: ["openid", "files:read"], denied: false },
+  });
+  expect(rotationDecision.status).toBe(200);
+  const rotationCompleted = await niceBackendFetch(rotationDecision.body.done_url, {
+    redirect: "manual",
+    headers: { cookie: rotation.providerCookie },
+  });
+  const rotationResumed = await niceBackendFetch(rotationCompleted.headers.get("location") ?? "", {
+    redirect: "manual",
+    headers: { cookie: updateCookiesFromResponse(rotation.providerCookie, rotationCompleted) },
+  });
+  expect(rotationResumed.status).toBe(303);
+  const rotatedProviderCookie = updateCookiesFromResponse(rotation.providerCookie, rotationResumed);
+  const mismatchedProviderCookie = [
+    ...second.providerCookie.split("; ").filter(cookie => !cookie.startsWith("_session")),
+    ...rotatedProviderCookie.split("; ").filter(cookie => cookie.startsWith("_session")),
+  ].join("; ");
+
+  const secondDecision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${second.interactionUid}`, {
+    method: "POST",
+    accessType: "client",
+    body: { approved_scopes: ["openid", "files:read"], denied: false },
+  });
+  expect(secondDecision.status).toBe(200);
+  const secondCompleted = await niceBackendFetch(secondDecision.body.done_url, {
+    redirect: "manual",
+    headers: { cookie: mismatchedProviderCookie },
+  });
+  expect(secondCompleted.status).toBe(303);
+  const secondResumed = await niceBackendFetch(secondCompleted.headers.get("location") ?? "", {
+    redirect: "manual",
+    headers: { cookie: updateCookiesFromResponse(mismatchedProviderCookie, secondCompleted) },
+  });
+  expect(secondResumed.status).toBe(303);
+  const callback = new URL(secondResumed.headers.get("location") ?? "");
+  const code = callback.searchParams.get("code");
+  expect(code).not.toBeNull();
+  const token = await niceBackendFetch(providerUrl(projectId, "/token"), {
+    method: "POST",
+    rawBody: new TextEncoder().encode(new URLSearchParams({
+      grant_type: "authorization_code",
+      code: code ?? "",
+      client_id: "testClient",
+      redirect_uri: "http://localhost:30000/callback",
+      code_verifier: oauthCodeVerifier,
+      resource: "https://mcp.example.com/mcp",
+    }).toString()),
+    rawContentType: "application/x-www-form-urlencoded",
+  });
+  expect(token.status).toBe(200);
+  const verifier = createMcpTokenVerifier({
+    projectId,
+    baseUrl: STACK_BACKEND_BASE_URL,
+    resource: "https://mcp.example.com/mcp",
+  });
+  await expect(verifier.verifyAccessToken(token.body.access_token)).resolves.toMatchObject({
+    scopes: ["files:read"],
+    resource: new URL("https://mcp.example.com/mcp"),
+  });
+}, 60_000);
+
 it("rejects unknown clients and authorization requests without PKCE", async () => {
   const projectId = await createConfiguredProject();
   const unknownClient = await niceBackendFetch(providerUrl(projectId, "/auth"), {
+    headers: { accept: "application/json" },
     query: {
       response_type: "code",
       client_id: "unknown-client",
@@ -544,6 +644,15 @@ it("denies an interaction and rejects replay of its consumed decision", async ()
   expect(replay.status).toBe(400);
 });
 
+it("rejects an expired or unavailable interaction before provider resume", async () => {
+  const projectId = await createConfiguredProject();
+  const response = await niceBackendFetch(providerUrl(projectId, "/interaction/expired-interaction/done"), {
+    redirect: "manual",
+    headers: { accept: "application/json" },
+  });
+  expect(response.status).toBe(400);
+});
+
 it("rejects a decision submitted by a different user", async () => {
   const projectId = await createConfiguredProject();
   await Auth.fastSignUp();
@@ -600,6 +709,7 @@ it("rejects invalid resources with an OAuth error and consumes each fresh code s
     const code = await getProjectAuthorizationCode(projectId);
     const token = await niceBackendFetch(providerUrl(projectId, "/token"), {
       method: "POST",
+      headers: { accept: "text/html" },
       rawBody: new TextEncoder().encode(new URLSearchParams({
         grant_type: "authorization_code",
         code,
@@ -611,6 +721,7 @@ it("rejects invalid resources with an OAuth error and consumes each fresh code s
       rawContentType: "application/x-www-form-urlencoded",
     });
     expect(token.status).toBe(400);
+    expect(token.headers.get("content-type")).toContain("application/json");
     expect(token.body).toMatchObject({ error: "invalid_target" });
   }
 });

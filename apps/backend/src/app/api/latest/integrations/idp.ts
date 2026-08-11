@@ -355,8 +355,9 @@ export async function createOidcProviderInternal(options: OidcProviderOptions) {
       }
       console.warn("IdP error occurred. This usually indicates a misconfigured client, not a server error.", { out });
       ctx.status = 400;
-      const acceptsHtml = ctx.get("accept").split(",").some(part => part.trim().split(";")[0] === "text/html");
-      if (options.userFacingAuthorizationErrors === true && acceptsHtml) {
+      const isAuthorizationNavigation = /^\/(?:auth(?:\/[^/]+)?|interaction\/[^/]+)$/.test(ctx.path);
+      const acceptsHtml = ctx.accepts("html") === "html";
+      if (options.userFacingAuthorizationErrors === true && isAuthorizationNavigation && acceptsHtml) {
         ctx.type = "text/html";
         ctx.body = `<!doctype html>
           <html lang="en">

@@ -219,7 +219,7 @@ importers:
         specifier: ^6.9.10
         version: 6.9.13
       oidc-provider:
-        specifier: ^8.5.1
+        specifier: 8.5.1
         version: 8.5.1
       openid-client:
         specifier: 5.6.4
