@@ -59,7 +59,6 @@ read_process_label() {
     *"run-email-queue"*) printf '%s' "email-queue" ;;
     *"apps/mcp"*|*"start:mcp"*) printf '%s' "mcp" ;;
     *"apps/dashboard"*|*"start:dashboard"*) printf '%s' "dashboard" ;;
-    *"vitest"*|*"node_modules/.bin/vitest"*) printf '%s' "vitest" ;;
     *"stack-backend"*|*"apps/backend"*|*"dist/server.mjs"*) printf '%s' "backend" ;;
     *) return 1 ;;
   esac

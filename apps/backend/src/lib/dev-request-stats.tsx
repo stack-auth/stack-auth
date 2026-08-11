@@ -10,7 +10,7 @@ export type RequestStat = {
   lastCalledAt: number,
 };
 
-// In-memory storage for request stats (only used in development)
+// In-memory storage for request stats (used in development and diagnostic CI runs)
 // Use globalThis to persist across hot reloads
 const requestStatsMap: Map<string, RequestStat> = (globalThis as any).__devRequestStatsMap ??= new Map<string, RequestStat>();
 
@@ -20,7 +20,7 @@ function getKey(method: string, path: string): string {
 
 /**
  * Record stats for a completed request.
- * Only records in development mode.
+ * Records in development mode, or when diagnostic CI is explicitly enabled.
  */
 export function recordRequestStats(method: string, path: string, durationMs: number, normalizedPath?: string): void {
   const isDevelopment = getNodeEnvironment() === "development";
@@ -60,7 +60,7 @@ export function recordRequestStats(method: string, path: string, durationMs: num
  * Get all request stats
  */
 export function getAllRequestStats(): RequestStat[] {
-  return Array.from(requestStatsMap.values());
+  return Array.from(requestStatsMap.values(), stat => ({ ...stat }));
 }
 
 /**

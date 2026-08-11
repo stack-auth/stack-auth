@@ -5,6 +5,15 @@ import { join } from "node:path";
 import { expect } from "vitest";
 import { test } from "./helpers";
 
+type DiagnosticReport = {
+  requests: Array<{ path: string }>,
+};
+
+function isDiagnosticReport(value: unknown): value is DiagnosticReport {
+  if (value == null || typeof value !== "object" || !("requests" in value) || !Array.isArray(value.requests)) return false;
+  return value.requests.every(request => request != null && typeof request === "object" && "path" in request && typeof request.path === "string");
+}
+
 test("preserves diagnostics from multiple files on one worker", () => {
   const runnerTemp = mkdtempSync(join(tmpdir(), "hexclave-e2e-diagnostics-regression-"));
   const e2eDirectory = join(import.meta.dirname, "..");
@@ -28,12 +37,16 @@ test("preserves diagnostics from multiple files on one worker", () => {
         RUNNER_TEMP: runnerTemp,
       },
       stdio: "pipe",
+      timeout: 30_000,
+      killSignal: "SIGTERM",
     });
 
     const reports = readdirSync(runnerTemp)
       .filter(file => file.startsWith("hexclave-e2e-diagnostics-regression-") && file.endsWith(".json"))
-      .map(file => JSON.parse(readFileSync(join(runnerTemp, file), "utf8")) as {
-        requests: Array<{ path: string }>,
+      .map(file => {
+        const parsed: unknown = JSON.parse(readFileSync(join(runnerTemp, file), "utf8"));
+        if (!isDiagnosticReport(parsed)) throw new Error(`Invalid diagnostics report: ${file}`);
+        return parsed;
       });
     expect(reports).toHaveLength(2);
     expect(reports.flatMap(report => report.requests.map(request => request.path)).sort()).toEqual([

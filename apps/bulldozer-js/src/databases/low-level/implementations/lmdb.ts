@@ -187,8 +187,7 @@ export function declareLmdbLowLevelDatabase(options: {
       const now = performance.now();
       const elapsedMs = now - activityWindowStartedAt;
       const elapsedSeconds = elapsedMs / 1000;
-      const log = shouldSuppressPeriodicBulldozerLogs ? console.debug : console.log;
-      log("bulldozer-js low-level lmdb activity", {
+      console.log("bulldozer-js low-level lmdb activity", {
         dbId,
         elapsedMs,
         putsPerSecond: activityStats.puts / elapsedSeconds,

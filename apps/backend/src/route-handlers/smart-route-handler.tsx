@@ -11,9 +11,10 @@ import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
 import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError, errorToNiceString } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { traceSpan } from "@/utils/telemetry";
+import { traceSpan as backendTraceSpan } from "@/utils/telemetry";
 import { setTimeout as waitForTimeout } from "node:timers/promises";
 import * as yup from "yup";
+import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
 import { DeepPartialSmartRequestWithSentinel, MergeSmartRequest, SmartRequest, createSmartRequest, validateSmartRequest } from "./smart-request";
 import { SmartResponse, createResponse, validateSmartResponse } from "./smart-response";
 
@@ -310,8 +311,9 @@ export function createSmartRouteHandler<
         : `${nextRequest.method} ${normalizedPath}`
       : null;
     const runHandler = async () => {
-      return await traceSpan({
-        description: 'calling smart route handler callback',
+      const traceHandlerSpan = routeSpanName == null ? traceSpan : backendTraceSpan;
+      return await traceHandlerSpan({
+        description: routeSpanName ?? 'calling smart route handler callback',
         attributes: {
           "stack.smart-request.access-type": fullReq.auth?.type ?? "<none>",
           "stack.smart-request.client-version.platform": fullReq.clientVersion?.platform ?? "<none>",
@@ -322,9 +324,7 @@ export function createSmartRouteHandler<
         return await handler.handler(smartReq as any, fullReq);
       });
     };
-    let smartRes = routeSpanName == null
-      ? await runHandler()
-      : await traceSpan(routeSpanName, runHandler);
+    const smartRes = await runHandler();
 
     return await traceSpan("validating smart response", async () => {
       return await validateSmartResponse(nextRequest, fullReq, smartRes, handler.response);

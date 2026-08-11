@@ -3,6 +3,7 @@ import {
   getBackendRuntimeDiagnostics,
   getSpanAggregates,
   isSpanAggregationEnabled,
+  resetSpanAggregates,
   startBackendCpuProfile,
   stopBackendCpuProfile,
 } from "@/utils/span-aggregation";
@@ -120,10 +121,19 @@ export const GET = createSmartRouteHandler({
     } else if (query.profile === "stop") {
       cpuProfile = await stopBackendCpuProfile();
     }
-    const spans = enabled ? getSpanAggregates(query.reset === "true") : [];
+    const shouldReset = query.reset === "true";
+    const spans = enabled ? getSpanAggregates() : [];
     const runtime = getBackendRuntimeDiagnostics(query.reset === "true");
     const requests = getAllRequestStats();
-    if (query.reset === "true") clearRequestStats();
+    if (shouldReset) {
+      // The wrapper records this control request after the handler returns, and
+      // its spans also end afterward. Reset both stores on the next turn so the
+      // control request cannot leak into the next pass.
+      setImmediate(() => {
+        clearRequestStats();
+        resetSpanAggregates();
+      });
+    }
 
     return {
       statusCode: 200,

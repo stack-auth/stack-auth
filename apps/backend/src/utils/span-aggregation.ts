@@ -127,9 +127,32 @@ function durationMs(startTime: [number, number], endTime: [number, number]): num
   return (endTime[0] - startTime[0]) * 1000 + (endTime[1] - startTime[1]) / 1_000_000;
 }
 
+function toNanoseconds(time: [number, number]): bigint {
+  return BigInt(time[0]) * 1_000_000_000n + BigInt(time[1]);
+}
+
+function getUnionDurationMs(intervals: Array<{ startNs: bigint, endNs: bigint }>): number {
+  if (intervals.length === 0) return 0;
+  const sorted = [...intervals].sort((left, right) => left.startNs < right.startNs ? -1 : left.startNs > right.startNs ? 1 : 0);
+  let unionStart = sorted[0].startNs;
+  let unionEnd = sorted[0].endNs;
+  let totalNs = 0n;
+  for (const interval of sorted.slice(1)) {
+    if (interval.startNs <= unionEnd) {
+      if (interval.endNs > unionEnd) unionEnd = interval.endNs;
+    } else {
+      totalNs += unionEnd - unionStart;
+      unionStart = interval.startNs;
+      unionEnd = interval.endNs;
+    }
+  }
+  totalNs += unionEnd - unionStart;
+  return Number(totalNs) / 1_000_000;
+}
+
 class SpanAggregationProcessor implements SpanProcessor {
   private readonly aggregates = new Map<string, SpanAggregate>();
-  private readonly childDurationBySpanId = new Map<string, number>();
+  private readonly childIntervalsBySpanId = new Map<string, Array<{ startNs: bigint, endNs: bigint }>>();
 
   forceFlush(): Promise<void> {
     return Promise.resolve();
@@ -138,9 +161,9 @@ class SpanAggregationProcessor implements SpanProcessor {
   onEnd(span: ReadableSpan): void {
     const spanId = span.spanContext().spanId;
     const inclusiveDurationMs = durationMs(span.startTime, span.endTime);
-    const childDurationMs = this.childDurationBySpanId.get(spanId) ?? 0;
+    const childDurationMs = getUnionDurationMs(this.childIntervalsBySpanId.get(spanId) ?? []);
     const exclusiveDurationMs = Math.max(0, inclusiveDurationMs - childDurationMs);
-    this.childDurationBySpanId.delete(spanId);
+    this.childIntervalsBySpanId.delete(spanId);
 
     const aggregate = this.aggregates.get(span.name);
     if (aggregate == null) {
@@ -158,9 +181,12 @@ class SpanAggregationProcessor implements SpanProcessor {
 
     const parentSpanId = span.parentSpanContext?.spanId;
     if (parentSpanId != null) {
-      this.childDurationBySpanId.set(
+      this.childIntervalsBySpanId.set(
         parentSpanId,
-        (this.childDurationBySpanId.get(parentSpanId) ?? 0) + inclusiveDurationMs,
+        [
+          ...(this.childIntervalsBySpanId.get(parentSpanId) ?? []),
+          { startNs: toNanoseconds(span.startTime), endNs: toNanoseconds(span.endTime) },
+        ],
       );
     }
   }
@@ -181,11 +207,15 @@ class SpanAggregationProcessor implements SpanProcessor {
 
   reset(): void {
     this.aggregates.clear();
-    this.childDurationBySpanId.clear();
+    this.childIntervalsBySpanId.clear();
   }
 }
 
 export const spanAggregationProcessor = new SpanAggregationProcessor();
+
+export function resetSpanAggregates(): void {
+  spanAggregationProcessor.reset();
+}
 
 export function isSpanAggregationEnabled(): boolean {
   return spanAggregationEnabled;

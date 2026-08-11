@@ -20,8 +20,8 @@ concurrency:
 jobs:
   wait-for-fast-fail:
     name: wait-for-fast-fail
-    # Temporary diagnostic-PR exception: collect backend route spans even when
-    # the unrelated fast-fail suite has a flaky E2E failure.
+    # Temporary diagnostic-PR exception: collect diagnostics even when the
+    # unrelated fast-fail suite has a flaky E2E failure.
     continue-on-error: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' }}
     runs-on: ubuntu-latest
     permissions:
@@ -49,9 +49,6 @@ jobs:
       HEXCLAVE_EXTERNAL_DB_SYNC_DIRECT: "false"
 
     strategy:
-      # Keep the mock arm alive when the comparable prod arm times out. The
-      # diagnostic dataset comes from mock, and matrix cancellation would discard
-      # its later snapshots.
       fail-fast: false
       matrix:
         node-version: [22.x]
@@ -140,7 +137,7 @@ jobs:
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         env:
           HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB: "1"
-          HEXCLAVE_BULLDOZER_DIAGNOSTICS: "true"
+          HEXCLAVE_BULLDOZER_DIAGNOSTICS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'true' || 'false' }}
         with:
           run: |
             bulldozer_log="$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
@@ -169,8 +166,8 @@ jobs:
         env:
           # Profile-only mode deliberately leaves span aggregation and forced
           # trace sampling disabled, so the profile measures the real backend.
-          HEXCLAVE_CPU_PROFILING: "true"
-          HEXCLAVE_E2E_DIAGNOSTICS: "true"
+          HEXCLAVE_CPU_PROFILING: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'true' || 'false' }}
+          HEXCLAVE_E2E_DIAGNOSTICS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'true' || 'false' }}
         with:
           run: pnpm -C apps/backend run with-env:test pnpm run start &
           wait-on: |
@@ -314,8 +311,8 @@ jobs:
         continue-on-error: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' }}
         timeout-minutes: 60
         env:
-          HEXCLAVE_E2E_DIAGNOSTICS: "true"
-          HEXCLAVE_E2E_DIAGNOSTIC_PASS: "pass1"
+          HEXCLAVE_E2E_DIAGNOSTICS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'true' || 'false' }}
+          HEXCLAVE_E2E_DIAGNOSTIC_PASS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'pass1' || '' }}
         run: pnpm test run --reporter=json --outputFile="$RUNNER_TEMP/e2e-test-results-pass1.untracked.json"
 
       - name: Merge E2E diagnostics after pass 1
@@ -383,8 +380,8 @@ jobs:
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics'
         timeout-minutes: 75
         env:
-          HEXCLAVE_E2E_DIAGNOSTICS: "true"
-          HEXCLAVE_E2E_DIAGNOSTIC_PASS: "pass2"
+          HEXCLAVE_E2E_DIAGNOSTICS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'true' || 'false' }}
+          HEXCLAVE_E2E_DIAGNOSTIC_PASS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'pass2' || '' }}
         run: pnpm test run --reporter=json --outputFile="$RUNNER_TEMP/e2e-test-results-pass2.untracked.json"
 
       - name: Merge E2E diagnostics after pass 2
@@ -434,8 +431,8 @@ jobs:
         if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics') && steps.run_tests_pass2.outcome == 'success'
         timeout-minutes: 105
         env:
-          HEXCLAVE_E2E_DIAGNOSTICS: "true"
-          HEXCLAVE_E2E_DIAGNOSTIC_PASS: "pass3"
+          HEXCLAVE_E2E_DIAGNOSTICS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'true' || 'false' }}
+          HEXCLAVE_E2E_DIAGNOSTIC_PASS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'pass3' || '' }}
         run: pnpm test run --reporter=json --outputFile="$RUNNER_TEMP/e2e-test-results-pass3.untracked.json"
 
       - name: Merge E2E diagnostics after pass 3

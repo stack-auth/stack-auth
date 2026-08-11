@@ -3,7 +3,11 @@ import { afterTestFinishesCallbacks } from "./helpers";
 import { flushE2eDiagnostics } from "./diagnostics";
 
 afterAll(() => {
-  flushE2eDiagnostics();
+  try {
+    flushE2eDiagnostics();
+  } catch (error) {
+    console.warn("Failed to flush E2E diagnostics", error);
+  }
 });
 
 expect.extend({
