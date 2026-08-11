@@ -52,14 +52,28 @@ export type BackendRuntimeDiagnostics = {
     markSweep: { durationMs: number, count: number },
     incremental: { durationMs: number, count: number },
   },
+  replication: {
+    waitCount: number,
+    totalWaitMs: number,
+    totalSleepMs: number,
+    timedOutCount: number,
+    iterations: {
+      count: number,
+      min: number,
+      max: number,
+      total: number,
+      histogram: number[],
+    },
+  },
 };
 
 const spanAggregationEnabled = getEnvVariable("HEXCLAVE_SPAN_AGGREGATION", "false") === "true";
 const cpuProfilingEnabled = getEnvVariable("HEXCLAVE_CPU_PROFILING", "false") === "true";
-const eventLoopHistogram: IntervalHistogram | undefined = spanAggregationEnabled
+const runtimeDiagnosticsEnabled = spanAggregationEnabled || cpuProfilingEnabled;
+const eventLoopHistogram: IntervalHistogram | undefined = runtimeDiagnosticsEnabled
   ? monitorEventLoopDelay({ resolution: 20 })
   : undefined;
-let previousCpuUsage = spanAggregationEnabled ? process.cpuUsage() : undefined;
+let previousCpuUsage = runtimeDiagnosticsEnabled ? process.cpuUsage() : undefined;
 const gcStats = {
   totalDurationMs: 0,
   totalCount: 0,
@@ -67,7 +81,7 @@ const gcStats = {
   markSweep: { durationMs: 0, count: 0 },
   incremental: { durationMs: 0, count: 0 },
 };
-const gcObserver: PerformanceObserver | undefined = spanAggregationEnabled
+const gcObserver: PerformanceObserver | undefined = runtimeDiagnosticsEnabled
   ? new PerformanceObserver((list) => {
     for (const entry of list.getEntries()) {
       const detail = entry.detail;
@@ -90,6 +104,17 @@ const gcObserver: PerformanceObserver | undefined = spanAggregationEnabled
     }
   })
   : undefined;
+const replicationStats = {
+  waitCount: 0,
+  totalWaitMs: 0,
+  totalSleepMs: 0,
+  timedOutCount: 0,
+  iterationCount: 0,
+  iterationMin: Number.POSITIVE_INFINITY,
+  iterationMax: 0,
+  iterationTotal: 0,
+  iterationHistogram: new Array<number>(17).fill(0),
+};
 
 if (eventLoopHistogram != null) {
   eventLoopHistogram.enable();
@@ -166,6 +191,27 @@ export function isSpanAggregationEnabled(): boolean {
   return spanAggregationEnabled;
 }
 
+export function recordReplicationWait(
+  durationMs: number,
+  sleepMs: number,
+  timedOutCount: number,
+  iterations: number[],
+): void {
+  if (!runtimeDiagnosticsEnabled) return;
+  replicationStats.waitCount++;
+  replicationStats.totalWaitMs += durationMs;
+  replicationStats.totalSleepMs += sleepMs;
+  replicationStats.timedOutCount += timedOutCount;
+  if (iterations.length === 0) return;
+  replicationStats.iterationCount += iterations.length;
+  replicationStats.iterationMin = Math.min(replicationStats.iterationMin, ...iterations);
+  replicationStats.iterationMax = Math.max(replicationStats.iterationMax, ...iterations);
+  replicationStats.iterationTotal += iterations.reduce((total, value) => total + value, 0);
+  for (const iteration of iterations) {
+    replicationStats.iterationHistogram[Math.min(iteration, 17) - 1]++;
+  }
+}
+
 export function getSpanAggregates(reset = false): SpanAggregate[] {
   const aggregates = spanAggregationProcessor.snapshot();
   if (reset) {
@@ -179,7 +225,7 @@ function histogramValue(value: number): number {
 }
 
 export function getBackendRuntimeDiagnostics(reset = false): BackendRuntimeDiagnostics {
-  if (!spanAggregationEnabled || eventLoopHistogram == null) {
+  if (!runtimeDiagnosticsEnabled || eventLoopHistogram == null || previousCpuUsage == null) {
     return {
       eventLoopDelay: {
         minMs: 0,
@@ -208,6 +254,13 @@ export function getBackendRuntimeDiagnostics(reset = false): BackendRuntimeDiagn
         scavenge: { durationMs: 0, count: 0 },
         markSweep: { durationMs: 0, count: 0 },
         incremental: { durationMs: 0, count: 0 },
+      },
+      replication: {
+        waitCount: 0,
+        totalWaitMs: 0,
+        totalSleepMs: 0,
+        timedOutCount: 0,
+        iterations: { count: 0, min: 0, max: 0, total: 0, histogram: [] },
       },
     };
   }
@@ -249,6 +302,19 @@ export function getBackendRuntimeDiagnostics(reset = false): BackendRuntimeDiagn
       markSweep: { ...gcStats.markSweep },
       incremental: { ...gcStats.incremental },
     },
+    replication: {
+      waitCount: replicationStats.waitCount,
+      totalWaitMs: replicationStats.totalWaitMs,
+      totalSleepMs: replicationStats.totalSleepMs,
+      timedOutCount: replicationStats.timedOutCount,
+      iterations: {
+        count: replicationStats.iterationCount,
+        min: Number.isFinite(replicationStats.iterationMin) ? replicationStats.iterationMin : 0,
+        max: replicationStats.iterationMax,
+        total: replicationStats.iterationTotal,
+        histogram: [...replicationStats.iterationHistogram],
+      },
+    },
   };
 
   if (reset) {
@@ -262,6 +328,15 @@ export function getBackendRuntimeDiagnostics(reset = false): BackendRuntimeDiagn
     gcStats.markSweep.count = 0;
     gcStats.incremental.durationMs = 0;
     gcStats.incremental.count = 0;
+    replicationStats.waitCount = 0;
+    replicationStats.totalWaitMs = 0;
+    replicationStats.totalSleepMs = 0;
+    replicationStats.timedOutCount = 0;
+    replicationStats.iterationCount = 0;
+    replicationStats.iterationMin = Number.POSITIVE_INFINITY;
+    replicationStats.iterationMax = 0;
+    replicationStats.iterationTotal = 0;
+    replicationStats.iterationHistogram.fill(0);
   }
 
   return diagnostics;

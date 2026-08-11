@@ -419,7 +419,7 @@ jobs:
           tail -n 2000 "$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
 
       - name: Upload bulldozer-js logs
-        if: ${{ failure() }}
+        if: always() && github.head_ref == 'devin/1786345250-backend-span-diagnostics'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-api-bulldozer

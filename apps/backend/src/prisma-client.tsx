@@ -18,6 +18,7 @@ import { isPromise } from "util/types";
 import { registerPgPool } from "./lib/dev-perf-stats";
 import { Tenancy } from "./lib/tenancies";
 import { ensurePolyfilled } from "./polyfills";
+import { recordReplicationWait } from "./utils/span-aggregation";
 
 // just ensure we're polyfilled because this file relies on envvars being expanded
 ensurePolyfilled();
@@ -226,26 +227,36 @@ async function waitForReplication(replicas: PrismaClient[], target: string, time
     }
 
     // Wait for all replicas in parallel with timeout and exponential backoff
-    const deadline = performance.now() + timeoutMs;
-    const results = await Promise.all(replicas.map(async (replica): Promise<{ caughtUp: boolean, iterations: number }> => {
+    const waitStartedAt = performance.now();
+    const deadline = waitStartedAt + timeoutMs;
+    const results = await Promise.all(replicas.map(async (replica): Promise<{ caughtUp: boolean, iterations: number, sleepMs: number }> => {
       let extraWaitMs = 5;
       let iterations = 0;
+      let sleepMs = 0;
       while (true) {
         iterations++;
         if (await checkCaughtUp(replica)) {
-          return { caughtUp: true, iterations };
+          return { caughtUp: true, iterations, sleepMs };
         }
         if (performance.now() > deadline) break;
+        const sleepStartedAt = performance.now();
         await wait(Math.min(15 + extraWaitMs, deadline - performance.now() + 10));  // Capped to avoid overshooting
+        sleepMs += performance.now() - sleepStartedAt;
         extraWaitMs = extraWaitMs * 3;
       }
-      return { caughtUp: false, iterations };
+      return { caughtUp: false, iterations, sleepMs };
     }));
 
     // Compute stats
     const iterations = results.map(r => r.iterations);
     const timedOutCount = results.filter(r => !r.caughtUp).length;
     const allCaughtUp = timedOutCount === 0;
+    recordReplicationWait(
+      performance.now() - waitStartedAt,
+      results.reduce((total, result) => total + result.sleepMs, 0),
+      timedOutCount,
+      iterations,
+    );
 
     span.setAttribute('stack.db-replication.caught-up', allCaughtUp);
     span.setAttribute('stack.db-replication.timed-out-count', timedOutCount);
