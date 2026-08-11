@@ -269,13 +269,22 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
         });
       },
       async compareAndSetAll(entries, compareAndSetOptions) {
-        return await traceSpanHot({ description: "bulldozer-js.low-level.instant.compareAndSetAll", attributes: { ...attributes, "bulldozer_low_level.entry_count": entries.length } }, async () => {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.instant.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
+          if (entries.length === 0) return { results: [], seq: compareAndSetOptions?.requiresSeq ?? initialSeq };
+          const keys = new Set<string>();
+          for (const { key } of entries) {
+            const keyCacheKey = cacheKey(key);
+            const previousSize = keys.size;
+            keys.add(keyCacheKey);
+            if (keys.size === previousSize) throw new Error("compareAndSetAll entries must not contain duplicate keys");
+          }
+          const existingValues = await Promise.all(entries.map(async ({ key }) => await result.get(key)));
           return await withWriteGate(async () => {
-            const results = await Promise.all(entries.map(async ({ key, compare }) => {
+            const results = entries.map(({ key, compare }, index) => {
               const cached = cachedValues.get(cacheKey(key));
-              const existing = cached ?? await wrappedStore.get(key);
+              const existing = cached ?? existingValues[index];
               return existing.buffer !== null && arrayBuffersAreEqual(existing.buffer, compare);
-            }));
+            });
             const matchingEntries = entries.filter((_, index) => results[index]);
             const write = matchingEntries.length === 0
               ? { seq: compareAndSetOptions?.requiresSeq ?? initialSeq }

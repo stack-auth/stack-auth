@@ -464,9 +464,9 @@ export function declarePiledriverGarbageCollector(options: {
     const pending = [...deltas];
     const changes: Array<{
       key: ArrayBuffer,
-      seq: DatabaseSeq,
       becameZero: boolean,
       stoppedBeingZero: boolean,
+      previousEligibleAtMillis: number,
       eligibleAtMillis: number,
     }> = [];
     const metadataSequences: DatabaseSeq[] = [requiresSeq];
@@ -483,20 +483,19 @@ export function declarePiledriverGarbageCollector(options: {
         compare: ArrayBuffer,
         value: ArrayBuffer,
         delta: number,
-        previousReferenceCount: number,
-        nextReferenceCount: number,
+        previousEligibleAtMillis: number,
         eligibleAtMillis: number,
         becameZero: boolean,
         stoppedBeingZero: boolean,
       }> = [];
       for (const { key, count, existing } of reads) {
         if (existing.buffer === null) {
-          changes.push({ key, seq: requiresSeq, becameZero: false, stoppedBeingZero: false, eligibleAtMillis: dereferencedAtMillis ?? 0 });
+          changes.push({ key, becameZero: false, stoppedBeingZero: false, previousEligibleAtMillis: dereferencedAtMillis ?? 0, eligibleAtMillis: dereferencedAtMillis ?? 0 });
           continue;
         }
         const metadata = parseReferenceMetadata(existing.buffer);
         if (metadata.generation !== readyGeneration()) {
-          changes.push({ key, seq: requiresSeq, becameZero: false, stoppedBeingZero: false, eligibleAtMillis: dereferencedAtMillis ?? metadata.createdAtMillis });
+          changes.push({ key, becameZero: false, stoppedBeingZero: false, previousEligibleAtMillis: metadata.createdAtMillis, eligibleAtMillis: dereferencedAtMillis ?? metadata.createdAtMillis });
           continue;
         }
         if (metadata.deletion !== null) throw new Error("Piledriver GC attempted to reference an object that is being deleted");
@@ -507,6 +506,7 @@ export function declarePiledriverGarbageCollector(options: {
         const nextLastDereferencedAtMillis = dereferencedAtMillis === null
           ? metadata.lastDereferencedAtMillis
           : Math.max(metadata.lastDereferencedAtMillis ?? 0, dereferencedAtMillis);
+        const previousEligibleAtMillis = metadata.lastDereferencedAtMillis ?? metadata.createdAtMillis;
         const replacement: ReferenceMetadata = {
           ...metadata,
           referenceCount: nextReferenceCount,
@@ -517,8 +517,7 @@ export function declarePiledriverGarbageCollector(options: {
           compare: existing.buffer,
           value: encodeJson(replacement),
           delta: count,
-          previousReferenceCount: metadata.referenceCount,
-          nextReferenceCount,
+          previousEligibleAtMillis,
           eligibleAtMillis: nextLastDereferencedAtMillis ?? metadata.createdAtMillis,
           becameZero: metadata.referenceCount !== 0 && nextReferenceCount === 0,
           stoppedBeingZero: metadata.referenceCount === 0 && nextReferenceCount !== 0,
@@ -542,9 +541,9 @@ export function declarePiledriverGarbageCollector(options: {
         metadataSequences.push(changed.seq);
         changes.push({
           key: entry.key,
-          seq: changed.seq,
           becameZero: entry.becameZero,
           stoppedBeingZero: entry.stoppedBeingZero,
+          previousEligibleAtMillis: entry.previousEligibleAtMillis,
           eligibleAtMillis: entry.eligibleAtMillis,
         });
       }
@@ -565,7 +564,8 @@ export function declarePiledriverGarbageCollector(options: {
       stoppedBeingZero.length === 0
         ? Promise.resolve({ seq: requiresSeq })
         : candidateStore.deleteAll(
-          stoppedBeingZero.map(({ key, eligibleAtMillis }) => candidateKey(key, eligibleAtMillis)),
+          // The delete key must use the timestamp that was used when the candidate was written.
+          stoppedBeingZero.map(({ key, previousEligibleAtMillis }) => candidateKey(key, previousEligibleAtMillis)),
           { requiresSeq: combineSeqsDeduped(metadataSequences) },
         ),
     ]);

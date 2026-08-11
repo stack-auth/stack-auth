@@ -522,6 +522,13 @@ export function declareLmdbLowLevelDatabase(options: {
       },
       async compareAndSetAll(entries, casOptions) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
+          const keys = new Set<string>();
+          for (const { key } of entries) {
+            const keyBase64 = encodeBase64(new Uint8Array(key));
+            const previousSize = keys.size;
+            keys.add(keyBase64);
+            if (keys.size === previousSize) throw new Error("compareAndSetAll entries must not contain duplicate keys");
+          }
           const results = await Promise.all(entries.map(async ({ key, compare, value }) => await result.compareAndSet(key, compare, value, casOptions)));
           const successful = results.filter(result => result.wasSet).map(result => result.seq);
           return {

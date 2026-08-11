@@ -42,8 +42,8 @@ function wrapWithGcReferenceCounter(
   lowLevel: LowLevelDatabase,
   onMetadataGet: () => void,
   onMetadataCompareAndSet: (entryCount: number) => void,
-  onMetadataSetAll: () => void = () => {},
-  onCandidateSetAll: () => void = () => {},
+  onMetadataSetAll: (entryCount: number) => void = () => {},
+  onCandidateSetAll: (entryCount: number) => void = () => {},
 ): LowLevelDatabase {
   return {
     ...lowLevel,
@@ -53,20 +53,41 @@ function wrapWithGcReferenceCounter(
       return {
         ...store,
         async get(key) {
-          onMetadataGet();
+          if (id === "piledriver-gc-reference-metadata-v3") onMetadataGet();
           return await store.get(key);
         },
         async compareAndSet(key, compare, value, options) {
-          onMetadataCompareAndSet(1);
+          if (id === "piledriver-gc-reference-metadata-v3") onMetadataCompareAndSet(1);
           return await store.compareAndSet(key, compare, value, options);
         },
         async compareAndSetAll(entries, options) {
-          onMetadataCompareAndSet(entries.length);
+          if (id === "piledriver-gc-reference-metadata-v3") onMetadataCompareAndSet(entries.length);
           return await store.compareAndSetAll(entries, options);
         },
         async setAll(entries, options) {
-          if (id === "piledriver-gc-reference-metadata-v3") onMetadataSetAll();
-          else onCandidateSetAll();
+          if (id === "piledriver-gc-reference-metadata-v3") onMetadataSetAll(entries.length);
+          else onCandidateSetAll(entries.length);
+          return await store.setAll(entries, options);
+        },
+      };
+    },
+  };
+}
+
+function failNextMetadataSetAll(lowLevel: LowLevelDatabase): LowLevelDatabase {
+  let shouldFail = true;
+  return {
+    ...lowLevel,
+    declareKvStore(id) {
+      const store = lowLevel.declareKvStore(id);
+      if (id !== "piledriver-gc-reference-metadata-v3") return store;
+      return {
+        ...store,
+        async setAll(entries, options) {
+          if (shouldFail) {
+            shouldFail = false;
+            throw new Error("injected metadata write failure");
+          }
           return await store.setAll(entries, options);
         },
       };
@@ -232,14 +253,14 @@ describe("PiledriverDatabase", () => {
   });
 
   it("batches metadata and candidate writes for created heap objects", async () => {
-    let metadataSetAllCalls = 0;
-    let candidateSetAllCalls = 0;
+    const metadataSetAllEntryCounts: number[] = [];
+    const candidateSetAllEntryCounts: number[] = [];
     const lowLevel = wrapWithGcReferenceCounter(
       declareInMemoryLowLevelDatabase(crypto.randomUUID()),
       () => {},
       () => {},
-      () => metadataSetAllCalls++,
-      () => candidateSetAllCalls++,
+      count => metadataSetAllEntryCounts.push(count),
+      count => candidateSetAllEntryCounts.push(count),
     );
     const writer = declarePiledriverDatabase(lowLevel);
     const rootKey = new TextEncoder().encode("root").buffer;
@@ -249,8 +270,54 @@ describe("PiledriverDatabase", () => {
 
     await writer.setRootObject(rootKey, created);
 
-    expect(metadataSetAllCalls).toBe(1);
-    expect(candidateSetAllCalls).toBe(1);
+    expect(metadataSetAllEntryCounts).toEqual([20]);
+    expect(candidateSetAllEntryCounts).toEqual([20]);
+  });
+
+  it("removes the candidate using the original eligibility timestamp", async () => {
+    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const writer = declarePiledriverDatabase(lowLevel);
+    const rootKey = new TextEncoder().encode("root").buffer;
+    const heapObject = asHeapObject({ value: "candidate-transition" });
+    const candidateStore = lowLevel.declareKvStore("piledriver-gc-zero-reference-candidates-v3");
+
+    await writer.setRootObject(rootKey, { heapObject });
+    await writer.setRootObject(rootKey, {});
+    await writer.setRootObject(rootKey, { heapObject });
+
+    expect(await candidateStore.debugEntries?.()).toHaveLength(0);
+  });
+
+  it("evicts heap cache entries when creation metadata publication fails", async () => {
+    const lowLevel = failNextMetadataSetAll(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
+    const writer = declarePiledriverDatabase(lowLevel);
+    const rootKey = new TextEncoder().encode("root").buffer;
+    const heapObject = asHeapObject({ value: "retry-me" });
+
+    await expect(writer.setRootObject(rootKey, { heapObject })).rejects.toThrow("injected metadata write failure");
+    await expect(writer.setRootObject(rootKey, { heapObject })).resolves.toEqual({ seq: expect.anything() });
+
+    const metadata = await lowLevel.declareKvStore("piledriver-gc-reference-metadata-v3").listEntries();
+    expect(metadata.entries).toHaveLength(1);
+  });
+
+  it("publishes shared heap creation before another root records its reference", async () => {
+    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const writer = declarePiledriverDatabase(lowLevel);
+    const sharedHeapObject = asHeapObject({ value: "shared" });
+    const firstRoot = new TextEncoder().encode("first").buffer;
+    const secondRoot = new TextEncoder().encode("second").buffer;
+
+    await Promise.all([
+      writer.setRootObject(firstRoot, { sharedHeapObject }),
+      writer.setRootObject(secondRoot, { sharedHeapObject }),
+    ]);
+
+    const cutoff = await timestampAfter(Date.now());
+    await timestampAfter(cutoff);
+    const restarted = declareAfterRestart(lowLevel, cutoff);
+    const result = await restarted.collectGarbage(cutoff);
+    expect(result.objects.deleted).toBe(0);
   });
 
   it("never collects objects created after the restart barrier", async () => {
