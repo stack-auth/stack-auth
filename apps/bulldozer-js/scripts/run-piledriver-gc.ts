@@ -2,7 +2,7 @@ import "../src/load-env.js";
 import { parsePiledriverGcMaxObjects, parsePiledriverGcTimestamp } from "./piledriver-gc-cli-utils.js";
 
 if (process.argv.length < 3) {
-  throw new Error("Usage: pnpm gc:piledriver <ISO timestamp | epoch milliseconds> [max objects]");
+  throw new Error("Usage: pnpm gc:piledriver <epoch milliseconds> [max objects]");
 }
 const cutoffArgument = process.argv[2];
 
