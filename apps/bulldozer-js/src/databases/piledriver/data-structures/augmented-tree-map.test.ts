@@ -309,18 +309,18 @@ describe("AugmentedTreeMap", () => {
     const serialized = tree.toPiledriverObject();
     const root = serialized.root;
     if (root === null) throw new Error("Expected a non-empty tree");
-    let corruptedRootRef: PiledriverHeapObject;
-    corruptedRootRef = {
+    const makeCorruptedRootRef = (): PiledriverHeapObject => ({
       ...root.ref,
       async get(): Promise<PiledriverObject> {
         const node = await root.ref.get();
         if (typeof node !== "object" || node === null || Array.isArray(node)) throw new Error("Expected a tree node");
         const children = (node as { children: Array<Record<string, unknown>> }).children.map((child, index) => index === 0
-          ? { ...child, ref: corruptedRootRef }
+          ? { ...child, ref: makeCorruptedRootRef() }
           : child);
         return { ...node, children } as PiledriverObject;
       },
-    };
+    });
+    const corruptedRootRef = makeCorruptedRootRef();
     const cyclic = AugmentedTreeMap.fromPiledriverObject({ ...serialized, root: { ...root, ref: corruptedRootRef } }, options(3));
     expect(await cyclic.verifyDataIntegrity()).toContainEqual(expect.objectContaining({ code: "cycle" }));
   });
