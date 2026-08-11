@@ -291,7 +291,10 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
     promise: Promise<{ key: ArrayBuffer, seq: DatabaseSeq }>,
     serializedBuffer: ArrayBuffer,
     batch: HeapSerializationBatch,
+    publicationStatus: "unpublished" | "publishing" | "published" | "failed",
     publicationPromise?: Promise<DatabaseSeq>,
+    publicationSeq?: DatabaseSeq,
+    publicationError?: unknown,
   };
   type HeapSerializationBatch = {
     createdObjects: HeapSerializationEntry[],
@@ -352,15 +355,9 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
       try {
         const creatingEntry = heapSerializationEntryByHeapObjects.get(heapObj);
         if (creatingEntry !== undefined && creatingEntry.batch !== batch) {
-          try {
-            // Publish only this object's metadata; waiting on the producer batch could
-            // deadlock when two in-flight batches cross-reference each other.
-            await publishCreatedHeapObject(creatingEntry);
-          } catch {
-            if (heapKeysAndSeqByHeapObjects.get(heapObj) === existing) heapKeysAndSeqByHeapObjects.delete(heapObj);
-            if (heapSerializationEntryByHeapObjects.get(heapObj) === creatingEntry) heapSerializationEntryByHeapObjects.delete(heapObj);
-            return await getHeapKeyAndSeq(heapObj, heapPath, serializationTimingStats, branchKey, batch);
-          }
+          // Publish only this object's metadata; waiting on the producer batch could
+          // deadlock when two in-flight batches cross-reference each other.
+          await publishCreatedHeapObject(creatingEntry);
         }
         return await existing;
       } finally {
@@ -402,6 +399,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
           promise,
           serializedBuffer: serialized.buffer,
           batch,
+          publicationStatus: "unpublished",
         };
         batch.createdObjects.push(entry);
         heapSerializationEntryByHeapObjects.set(heapObj, entry);
@@ -684,39 +682,65 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
     // We can therefore insert them first, then publish creation metadata/candidates for all
     // of them, then apply every outgoing positive edge before publishing that root.
     try {
-      const unpublished = [];
-      for (const entry of batch.createdObjects) {
-        if (entry.publicationPromise !== undefined) await entry.publicationPromise;
-        else unpublished.push(entry);
-      }
-      if (unpublished.length === 0) return lowLevelDb.initialSeq;
-      const created = await garbageCollector.recordHeapObjectCreations(unpublished);
-      const references = await garbageCollector.beforeSerializedHeapObjectsBecomeVisible(unpublished.map(entry => entry.serializedBuffer), created.seq);
+      const unpublished = batch.createdObjects.filter(entry => entry.publicationStatus === "unpublished");
+      if (unpublished.length > 0) await startHeapObjectPublication(unpublished);
+      const publicationSeqs = await Promise.all(batch.createdObjects.map(entry => {
+        if (entry.publicationPromise === undefined) throwErr("Piledriver heap serialization entry has no publication promise");
+        return entry.publicationPromise;
+      }));
       for (const { heapObj } of batch.createdObjects) {
-        if (heapSerializationEntryByHeapObjects.get(heapObj)?.batch === batch) heapSerializationEntryByHeapObjects.delete(heapObj);
+        const entry = heapSerializationEntryByHeapObjects.get(heapObj);
+        if (entry?.batch === batch && entry.publicationStatus === "published") heapSerializationEntryByHeapObjects.delete(heapObj);
       }
-      return combineSeqsDeduped([created.seq, references.seq]);
+      return combineSeqsDeduped(publicationSeqs);
     } catch (error) {
       abortHeapSerializationBatch(batch);
       throw error;
     }
   };
 
-  const publishCreatedHeapObject = (entry: HeapSerializationEntry): Promise<DatabaseSeq> => {
-    if (entry.publicationPromise === undefined) {
-      entry.publicationPromise = (async () => {
-        const created = await garbageCollector.recordHeapObjectCreations([{ key: entry.key, requiresSeq: entry.requiresSeq }]);
-        const references = await garbageCollector.beforeSerializedHeapObjectsBecomeVisible([entry.serializedBuffer], created.seq);
-        return combineSeqsDeduped([created.seq, references.seq]);
-      })();
+  const startHeapObjectPublication = (entries: HeapSerializationEntry[]): Promise<DatabaseSeq> => {
+    for (const entry of entries) {
+      if (entry.publicationStatus !== "unpublished") throw new Error("Piledriver heap object publication was claimed twice");
+      entry.publicationStatus = "publishing";
     }
-    return entry.publicationPromise;
+    const publicationPromise = (async () => {
+      try {
+        const created = await garbageCollector.recordHeapObjectCreations(entries.map(entry => ({ key: entry.key, requiresSeq: entry.requiresSeq })));
+        const references = await garbageCollector.beforeSerializedHeapObjectsBecomeVisible(entries.map(entry => entry.serializedBuffer), created.seq);
+        const seq = combineSeqsDeduped([created.seq, references.seq]);
+        for (const entry of entries) {
+          entry.publicationStatus = "published";
+          entry.publicationSeq = seq;
+        }
+        return seq;
+      } catch (error) {
+        for (const entry of entries) {
+          entry.publicationStatus = "failed";
+          entry.publicationError = error;
+        }
+        throw error;
+      }
+    })();
+    for (const entry of entries) entry.publicationPromise = publicationPromise;
+    return publicationPromise;
+  };
+
+  const publishCreatedHeapObject = async (entry: HeapSerializationEntry): Promise<DatabaseSeq> => {
+    if (entry.publicationStatus === "unpublished") await startHeapObjectPublication([entry]);
+    if (entry.publicationStatus === "failed") throw entry.publicationError;
+    if (entry.publicationSeq !== undefined) return entry.publicationSeq;
+    if (entry.publicationPromise === undefined) throwErr("Piledriver heap object publication promise is missing");
+    return await entry.publicationPromise;
   };
 
   const abortHeapSerializationBatch = (batch: HeapSerializationBatch) => {
     for (const { heapObj, promise } of batch.createdObjects) {
       if (heapKeysAndSeqByHeapObjects.get(heapObj) === promise) heapKeysAndSeqByHeapObjects.delete(heapObj);
-      if (heapSerializationEntryByHeapObjects.get(heapObj)?.batch === batch) heapSerializationEntryByHeapObjects.delete(heapObj);
+      const entry = heapSerializationEntryByHeapObjects.get(heapObj);
+      if (entry?.batch === batch && entry.publicationStatus !== "publishing" && entry.publicationStatus !== "published") {
+        heapSerializationEntryByHeapObjects.delete(heapObj);
+      }
     }
   };
 
