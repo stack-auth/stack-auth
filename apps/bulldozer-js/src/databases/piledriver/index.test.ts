@@ -320,6 +320,51 @@ describe("PiledriverDatabase", () => {
     expect(result.objects.deleted).toBe(0);
   });
 
+  it("aborts an unfinished batch when heap serialization fails", async () => {
+    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const writer = declarePiledriverDatabase(lowLevel);
+    const goodHeapObject = asHeapObject({ value: "retry-sibling" });
+    const badHeapObject: PiledriverHeapObject = {
+      async get() {
+        throw new Error("injected heap serialization failure");
+      },
+      [isPiledriverHeapObjectSymbol]: true,
+    };
+    const rootKey = new TextEncoder().encode("root").buffer;
+
+    await expect(writer.setRootObject(rootKey, { goodHeapObject, badHeapObject })).rejects.toThrow("injected heap serialization failure");
+    await expect(writer.setRootObject(rootKey, { goodHeapObject })).resolves.toEqual({ seq: expect.anything() });
+  });
+
+  it("publishes crossing shared heap objects without a batch wait cycle", async () => {
+    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const writer = declarePiledriverDatabase(lowLevel);
+    const firstHeapObject: PiledriverHeapObject = {
+      async get() {
+        return { value: "first" };
+      },
+      [isPiledriverHeapObjectSymbol]: true,
+    };
+    const secondHeapObject: PiledriverHeapObject = {
+      async get() {
+        return { value: "second" };
+      },
+      [isPiledriverHeapObjectSymbol]: true,
+    };
+
+    await Promise.all([
+      writer.setRootObject(new TextEncoder().encode("first").buffer, { firstHeapObject, secondHeapObject }),
+      writer.setRootObject(new TextEncoder().encode("second").buffer, { secondHeapObject, firstHeapObject }),
+    ]);
+
+    const metadata = await lowLevel.declareKvStore("piledriver-gc-reference-metadata-v3").listEntries();
+    expect(metadata.entries).toHaveLength(2);
+    const cutoff = await timestampAfter(Date.now());
+    await timestampAfter(cutoff);
+    const restarted = declareAfterRestart(lowLevel, cutoff);
+    expect((await restarted.collectGarbage(cutoff)).objects.deleted).toBe(0);
+  });
+
   it("never collects objects created after the restart barrier", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
     const initial = declarePiledriverDatabase(lowLevel);

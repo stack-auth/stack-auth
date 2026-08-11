@@ -278,11 +278,10 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
             keys.add(keyCacheKey);
             if (keys.size === previousSize) throw new Error("compareAndSetAll entries must not contain duplicate keys");
           }
-          const existingValues = await Promise.all(entries.map(async ({ key }) => await result.get(key)));
           return await withWriteGate(async () => {
-            const results = entries.map(({ key, compare }, index) => {
-              const cached = cachedValues.get(cacheKey(key));
-              const existing = cached ?? existingValues[index];
+            const existingValues = await Promise.all(entries.map(async ({ key }) => await result.get(key)));
+            const results = entries.map(({ compare }, index) => {
+              const existing = existingValues[index];
               return existing.buffer !== null && arrayBuffersAreEqual(existing.buffer, compare);
             });
             const matchingEntries = entries.filter((_, index) => results[index]);

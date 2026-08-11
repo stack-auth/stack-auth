@@ -282,24 +282,23 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
   const heapObjectsByHeapKeyBase64 = new Map<string, { refIdentity: string, object: WeakRef<PiledriverHeapObject>, seq: DatabaseSeq }>();
   const heapObjectsByHeapKeyFinalizer = new FinalizationRegistry(([keyBase64, refIdentity]: [string, string]) => heapObjectsByHeapKeyBase64.get(keyBase64)?.refIdentity === refIdentity && heapObjectsByHeapKeyBase64.delete(keyBase64));
   const heapKeysAndSeqByHeapObjects = new WeakMap<PiledriverHeapObject, Promise<{ key: ArrayBuffer, seq: DatabaseSeq }>>();
-  const heapSerializationBatchByHeapObjects = new WeakMap<PiledriverHeapObject, HeapSerializationBatch>();
+  const heapSerializationEntryByHeapObjects = new WeakMap<PiledriverHeapObject, HeapSerializationEntry>();
   const heapSerializationDependencies = new WeakMap<PiledriverHeapObject, Set<PiledriverHeapObject>>();
+  type HeapSerializationEntry = {
+    heapObj: PiledriverHeapObject,
+    key: ArrayBuffer,
+    requiresSeq: DatabaseSeq,
+    promise: Promise<{ key: ArrayBuffer, seq: DatabaseSeq }>,
+    serializedBuffer: ArrayBuffer,
+    batch: HeapSerializationBatch,
+    publicationPromise?: Promise<DatabaseSeq>,
+  };
   type HeapSerializationBatch = {
-    createdObjects: Array<{ heapObj: PiledriverHeapObject, key: ArrayBuffer, requiresSeq: DatabaseSeq, promise: Promise<{ key: ArrayBuffer, seq: DatabaseSeq }> }>,
+    createdObjects: HeapSerializationEntry[],
     serializedBuffers: ArrayBuffer[],
-    flushPromise: Promise<void>,
-    resolveFlush: () => void,
-    rejectFlush: (error: unknown) => void,
   };
   const createHeapSerializationBatch = (): HeapSerializationBatch => {
-    let resolveFlush: () => void = () => {};
-    let rejectFlush: (error: unknown) => void = () => {};
-    const flushPromise = new Promise<void>((resolve, reject) => {
-      resolveFlush = resolve;
-      rejectFlush = reject;
-    });
-    flushPromise.catch(() => {});
-    return { createdObjects: [], serializedBuffers: [], flushPromise, resolveFlush, rejectFlush };
+    return { createdObjects: [], serializedBuffers: [] };
   };
 
   const addHeapSerializationDependency = (parent: PiledriverHeapObject, child: PiledriverHeapObject) => {
@@ -351,13 +350,15 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
       }
       const cacheHitAwaitStartedAt = performance.now();
       try {
-        const creatingBatch = heapSerializationBatchByHeapObjects.get(heapObj);
-        if (creatingBatch !== undefined && creatingBatch !== batch) {
+        const creatingEntry = heapSerializationEntryByHeapObjects.get(heapObj);
+        if (creatingEntry !== undefined && creatingEntry.batch !== batch) {
           try {
-            await creatingBatch.flushPromise;
+            // Publish only this object's metadata; waiting on the producer batch could
+            // deadlock when two in-flight batches cross-reference each other.
+            await publishCreatedHeapObject(creatingEntry);
           } catch {
             if (heapKeysAndSeqByHeapObjects.get(heapObj) === existing) heapKeysAndSeqByHeapObjects.delete(heapObj);
-            if (heapSerializationBatchByHeapObjects.get(heapObj) === creatingBatch) heapSerializationBatchByHeapObjects.delete(heapObj);
+            if (heapSerializationEntryByHeapObjects.get(heapObj) === creatingEntry) heapSerializationEntryByHeapObjects.delete(heapObj);
             return await getHeapKeyAndSeq(heapObj, heapPath, serializationTimingStats, branchKey, batch);
           }
         }
@@ -394,14 +395,22 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         if (serializationTimingStats !== undefined) serializationTimingStats.heapObjectSerializeTotalMs += performance.now() - heapObjectSerializeStartedAt;
         const heapObjectInsertStartedAt = performance.now();
         const inserted = await heapDump.insertAll([serialized.buffer], { requiresSeq: serialized.seq });
-        batch.createdObjects.push({ heapObj, key: inserted.keys[0], requiresSeq: inserted.seq, promise });
+        const entry: HeapSerializationEntry = {
+          heapObj,
+          key: inserted.keys[0],
+          requiresSeq: inserted.seq,
+          promise,
+          serializedBuffer: serialized.buffer,
+          batch,
+        };
+        batch.createdObjects.push(entry);
+        heapSerializationEntryByHeapObjects.set(heapObj, entry);
         batch.serializedBuffers.push(serialized.buffer);
         if (serializationTimingStats !== undefined) serializationTimingStats.heapObjectInsertAwaitTotalMs += performance.now() - heapObjectInsertStartedAt;
         return { key: inserted.keys[0], seq: inserted.seq };
       });
     })();
     heapKeysAndSeqByHeapObjects.set(heapObj, promise);
-    heapSerializationBatchByHeapObjects.set(heapObj, batch);
     let result;
     const cacheMissAwaitStartedAt = performance.now();
     try {
@@ -409,7 +418,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
     } catch (error) {
       // Don't leave a poisoned rejected promise in the cache; a later retry may succeed.
       if (heapKeysAndSeqByHeapObjects.get(heapObj) === promise) heapKeysAndSeqByHeapObjects.delete(heapObj);
-      if (heapSerializationBatchByHeapObjects.get(heapObj) === batch) heapSerializationBatchByHeapObjects.delete(heapObj);
+      if (heapSerializationEntryByHeapObjects.get(heapObj)?.promise === promise) heapSerializationEntryByHeapObjects.delete(heapObj);
       throw error;
     } finally {
       if (serializationTimingStats !== undefined) serializationTimingStats.heapObjectCacheMissAwaitTotalMs += performance.now() - cacheMissAwaitStartedAt;
@@ -670,28 +679,44 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
   };
 
   const flushHeapSerializationBatch = async (batch: HeapSerializationBatch) => {
-    if (batch.createdObjects.length === 0) {
-      batch.resolveFlush();
-      return lowLevelDb.initialSeq;
-    }
+    if (batch.createdObjects.length === 0) return lowLevelDb.initialSeq;
     // Heap payloads are not reachable from any visible root until the root mutation below.
     // We can therefore insert them first, then publish creation metadata/candidates for all
     // of them, then apply every outgoing positive edge before publishing that root.
     try {
-      const created = await garbageCollector.recordHeapObjectCreations(batch.createdObjects);
-      const references = await garbageCollector.beforeSerializedHeapObjectsBecomeVisible(batch.serializedBuffers, created.seq);
-      for (const { heapObj } of batch.createdObjects) {
-        if (heapSerializationBatchByHeapObjects.get(heapObj) === batch) heapSerializationBatchByHeapObjects.delete(heapObj);
+      const unpublished = [];
+      for (const entry of batch.createdObjects) {
+        if (entry.publicationPromise !== undefined) await entry.publicationPromise;
+        else unpublished.push(entry);
       }
-      batch.resolveFlush();
+      if (unpublished.length === 0) return lowLevelDb.initialSeq;
+      const created = await garbageCollector.recordHeapObjectCreations(unpublished);
+      const references = await garbageCollector.beforeSerializedHeapObjectsBecomeVisible(unpublished.map(entry => entry.serializedBuffer), created.seq);
+      for (const { heapObj } of batch.createdObjects) {
+        if (heapSerializationEntryByHeapObjects.get(heapObj)?.batch === batch) heapSerializationEntryByHeapObjects.delete(heapObj);
+      }
       return combineSeqsDeduped([created.seq, references.seq]);
     } catch (error) {
-      for (const { heapObj, promise } of batch.createdObjects) {
-        if (heapKeysAndSeqByHeapObjects.get(heapObj) === promise) heapKeysAndSeqByHeapObjects.delete(heapObj);
-        if (heapSerializationBatchByHeapObjects.get(heapObj) === batch) heapSerializationBatchByHeapObjects.delete(heapObj);
-      }
-      batch.rejectFlush(error);
+      abortHeapSerializationBatch(batch);
       throw error;
+    }
+  };
+
+  const publishCreatedHeapObject = (entry: HeapSerializationEntry): Promise<DatabaseSeq> => {
+    if (entry.publicationPromise === undefined) {
+      entry.publicationPromise = (async () => {
+        const created = await garbageCollector.recordHeapObjectCreations([{ key: entry.key, requiresSeq: entry.requiresSeq }]);
+        const references = await garbageCollector.beforeSerializedHeapObjectsBecomeVisible([entry.serializedBuffer], created.seq);
+        return combineSeqsDeduped([created.seq, references.seq]);
+      })();
+    }
+    return entry.publicationPromise;
+  };
+
+  const abortHeapSerializationBatch = (batch: HeapSerializationBatch) => {
+    for (const { heapObj, promise } of batch.createdObjects) {
+      if (heapKeysAndSeqByHeapObjects.get(heapObj) === promise) heapKeysAndSeqByHeapObjects.delete(heapObj);
+      if (heapSerializationEntryByHeapObjects.get(heapObj)?.batch === batch) heapSerializationEntryByHeapObjects.delete(heapObj);
     }
   };
 
@@ -741,7 +766,14 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         const serializeStartedAt = performance.now();
         const serializeCpuStartedAt = process.cpuUsage();
         const heapSerializationBatch = createHeapSerializationBatch();
-        const { buffer, seq } = await serializePiledriverObject(value, new Set(), timingStats, undefined, undefined, heapSerializationBatch);
+        let buffer: ArrayBuffer;
+        let seq: DatabaseSeq;
+        try {
+          ({ buffer, seq } = await serializePiledriverObject(value, new Set(), timingStats, undefined, undefined, heapSerializationBatch));
+        } catch (error) {
+          abortHeapSerializationBatch(heapSerializationBatch);
+          throw error;
+        }
         const serializeCpuUsage = process.cpuUsage(serializeCpuStartedAt);
         const serializePiledriverObjectMs = performance.now() - serializeStartedAt;
         const serializeCpuMs = (serializeCpuUsage.user + serializeCpuUsage.system) / 1000;
