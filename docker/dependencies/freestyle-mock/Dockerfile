@@ -119,6 +119,53 @@ const MAX_JOBS_PER_WORKER = 50;
 // don't add a separate queue cap.
 const JOB_TIMEOUT_MS = 30_000;
 
+const requestMetrics = {
+  requests: 0,
+  completed: 0,
+  active: 0,
+  maxQueueDepth: 0,
+  totalDurationMs: 0,
+  maxDurationMs: 0,
+  durationBuckets: [0, 0, 0, 0, 0, 0],
+};
+
+function recordRequestDuration(durationMs) {
+  requestMetrics.completed++;
+  requestMetrics.active--;
+  requestMetrics.totalDurationMs += durationMs;
+  requestMetrics.maxDurationMs = Math.max(requestMetrics.maxDurationMs, durationMs);
+  const bucket = durationMs < 100
+    ? 0
+    : durationMs < 500
+      ? 1
+      : durationMs < 1_000
+        ? 2
+        : durationMs < 5_000
+          ? 3
+          : durationMs < 30_000
+            ? 4
+            : 5;
+  requestMetrics.durationBuckets[bucket]++;
+}
+
+function readRequestMetrics() {
+  return {
+    ...requestMetrics,
+    durationBuckets: [...requestMetrics.durationBuckets],
+    queueDepth: pool.queue.length,
+  };
+}
+
+function resetRequestMetrics() {
+  requestMetrics.requests = 0;
+  requestMetrics.completed = 0;
+  requestMetrics.active = 0;
+  requestMetrics.maxQueueDepth = 0;
+  requestMetrics.totalDurationMs = 0;
+  requestMetrics.maxDurationMs = 0;
+  requestMetrics.durationBuckets.fill(0);
+}
+
 // Worker pool. Each slot owns one Worker that handles at most one job at a time;
 // concurrency comes from running many slots in parallel, not from interleaving
 // jobs inside a single worker (which would re-introduce global-state races on
@@ -307,8 +354,17 @@ const server = createServer(async (req, res) => {
   // just gets dropped — which would leave clients hanging until their own
   // timeout. Every error path below this point must end with a sent response.
   let workDir = null;
+  const requestStartedAt = performance.now();
+  let trackedRequest = false;
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
+    if (req.method === "GET" && url.pathname === "/diagnostics") {
+      const responseBody = JSON.stringify(readRequestMetrics());
+      if (url.searchParams.get("reset") === "true") resetRequestMetrics();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(responseBody);
+      return;
+    }
     const isValidEndpoint = req.method === "POST" && (url.pathname === "/execute/v1/script" || url.pathname === "/execute/v2/script" || url.pathname === "/execute/v3/script");
 
     if (!isValidEndpoint) {
@@ -316,6 +372,10 @@ const server = createServer(async (req, res) => {
       res.end("Not found");
       return;
     }
+    trackedRequest = true;
+    requestMetrics.requests++;
+    requestMetrics.active++;
+    requestMetrics.maxQueueDepth = Math.max(requestMetrics.maxQueueDepth, pool.queue.length);
 
     let body = "";
     for await (const chunk of req) {
@@ -374,6 +434,7 @@ const server = createServer(async (req, res) => {
       try { res.end(); } catch { /* socket already gone */ }
     }
   } finally {
+    if (trackedRequest) recordRequestDuration(performance.now() - requestStartedAt);
     if (workDir) {
       try { await rm(workDir, { recursive: true }); } catch { /* ignore */ }
     }

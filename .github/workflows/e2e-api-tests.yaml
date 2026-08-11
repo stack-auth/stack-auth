@@ -336,6 +336,10 @@ jobs:
         continue-on-error: true
         run: |
           .github/scripts/process-attribution.sh snapshot || true
+          mock_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}22"
+          curl --fail --silent --show-error \
+            "http://localhost:${mock_port}/diagnostics?reset=true" \
+            > "$RUNNER_TEMP/freestyle-mock-diagnostics-pass1.untracked.json" || true
           pnpm -C apps/backend run with-env:test bash -c \
             '
               backend_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02"
@@ -398,6 +402,10 @@ jobs:
         continue-on-error: true
         run: |
           .github/scripts/process-attribution.sh snapshot || true
+          mock_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}22"
+          curl --fail --silent --show-error \
+            "http://localhost:${mock_port}/diagnostics?reset=true" \
+            > "$RUNNER_TEMP/freestyle-mock-diagnostics-pass2.untracked.json" || true
           pnpm -C apps/backend run with-env:test bash -c \
             '
               backend_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02"
@@ -442,6 +450,10 @@ jobs:
         continue-on-error: true
         run: |
           .github/scripts/process-attribution.sh snapshot || true
+          mock_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}22"
+          curl --fail --silent --show-error \
+            "http://localhost:${mock_port}/diagnostics?reset=true" \
+            > "$RUNNER_TEMP/freestyle-mock-diagnostics-pass3.untracked.json" || true
           pnpm -C apps/backend run with-env:test bash -c \
             '
               backend_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02"
@@ -490,6 +502,7 @@ jobs:
             ${{ runner.temp }}/e2e-test-results-pass*.untracked.json
             ${{ runner.temp }}/e2e-wait-request-diagnostics-pass*.untracked.json
             ${{ runner.temp }}/hexclave-e2e-diagnostics-pass*-*.untracked.json
+            ${{ runner.temp }}/freestyle-mock-diagnostics-pass*.untracked.json
           if-no-files-found: error
 
       - name: Print Docker Compose logs
