@@ -240,6 +240,15 @@ export function declareLmdbLowLevelDatabase(options: {
   const getDurabilityPromise = (seqId: string) => {
     return seqToDurability.get(seqId) ?? combinedSeqToDurability.get(seqId) ?? Promise.resolve();
   };
+  const combineSeqsForStore = (...seqs: DatabaseSeq[]) => {
+    if (seqs.length === 0) return initialSeq;
+    if (seqs.length === 1) return seqs[0];
+    const seqId = nextSeqId();
+    combinedSeqDependencies.set(seqId, seqs.map(seq => getSeqId(seq)));
+    rememberCombinedAvailability(seqId, Promise.all(seqs.map(seq => getAvailabilityPromise(getSeqId(seq)))));
+    rememberCombinedDurability(seqId, Promise.all(seqs.map(seq => getDurabilityPromise(getSeqId(seq)))));
+    return toSeq(seqId);
+  };
   // LMDB may reject with an opaque "Commit failed" wrapper whose real status
   // lives on `.commitError` (a Promise). LMDB's `committed` value is only a
   // PromiseLike, so normalize it before using native Promise methods.
@@ -514,10 +523,12 @@ export function declareLmdbLowLevelDatabase(options: {
       async compareAndSetAll(entries, casOptions) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
           const results = await Promise.all(entries.map(async ({ key, compare, value }) => await result.compareAndSet(key, compare, value, casOptions)));
-          const successful = results.find(result => result.wasSet);
+          const successful = results.filter(result => result.wasSet).map(result => result.seq);
           return {
             results,
-            seq: successful?.seq ?? initialSeq,
+            seq: successful.length === 0
+              ? casOptions?.requiresSeq ?? initialSeq
+              : combineSeqsForStore(...successful),
           };
         });
       },

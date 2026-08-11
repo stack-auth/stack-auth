@@ -452,7 +452,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
   // allocates a UUID, tracking promises, and map entries). Profiling showed that overhead — not
   // LMDB — dominated CPU during backfills, so seqs are now combined exactly once per heap
   // object/root, and only heap references involve async work at all.
-  const serializePiledriverObject = async (obj: PiledriverObject, heapPath: HeapSerializationPath, serializationTimingStats: PiledriverSerializationTimingStats | undefined, inheritedBranchKey?: string, serializingHeapObject?: PiledriverHeapObject, batch?: HeapSerializationBatch): Promise<{ buffer: ArrayBuffer, seq: DatabaseSeq }> => {
+  const serializePiledriverObject = async (obj: PiledriverObject, heapPath: HeapSerializationPath, serializationTimingStats: PiledriverSerializationTimingStats | undefined, inheritedBranchKey: string | undefined, serializingHeapObject: PiledriverHeapObject | undefined, batch: HeapSerializationBatch): Promise<{ buffer: ArrayBuffer, seq: DatabaseSeq }> => {
     const stats = serializationTimingStats;
     const pendingSlots: PendingHeapReferenceSlot[] = [];
     const objectPath = new Set<object>();
@@ -565,7 +565,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         else existing.push(pendingSlot);
       }
       const resolvedSeqs = await Promise.all([...slotsByHeapObj.entries()].map(async ([heapObj, slots]) => {
-        const heapKeyAndSeq = await getHeapKeyAndSeq(heapObj, heapPath, stats, slots[0].branchKey, batch ?? throwErr("Piledriver heap serialization batch is missing"));
+        const heapKeyAndSeq = await getHeapKeyAndSeq(heapObj, heapPath, stats, slots[0].branchKey, batch);
         const keyBase64 = encodeBase64(new Uint8Array(heapKeyAndSeq.key));
         for (const { slot } of slots) slot[1] = keyBase64;
         return heapKeyAndSeq.seq;

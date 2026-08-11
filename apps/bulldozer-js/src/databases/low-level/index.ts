@@ -53,6 +53,10 @@ export type LowLevelKvStore = {
   deleteAll(keys: ArrayBuffer[], options?: { requiresSeq?: DatabaseSeq }): Promise<{ seq: DatabaseSeq }>,
 
   compareAndSet(key: ArrayBuffer, compare: ArrayBuffer, value: ArrayBuffer, options?: { requiresSeq?: DatabaseSeq }): Promise<{ wasSet: true, seq: DatabaseSeq } | { wasSet: false, seq: null }>,
+  /**
+   * The returned sequence must cover every successful entry, not just one of them.
+   * Failed entries have no sequence because they did not write.
+   */
   compareAndSetAll(entries: Array<{ key: ArrayBuffer, compare: ArrayBuffer, value: ArrayBuffer }>, options?: { requiresSeq?: DatabaseSeq }): Promise<{
     results: Array<{ wasSet: true, seq: DatabaseSeq } | { wasSet: false, seq: null }>,
     seq: DatabaseSeq,

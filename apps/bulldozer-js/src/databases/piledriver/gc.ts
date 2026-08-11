@@ -580,10 +580,6 @@ export function declarePiledriverGarbageCollector(options: {
     };
   };
 
-  const recordHeapObjectCreation = async (key: ArrayBuffer, requiresSeq: DatabaseSeq) => {
-    return await recordHeapObjectCreations([{ key, requiresSeq }]);
-  };
-
   const recordHeapObjectCreations = async (entries: Array<{ key: ArrayBuffer, requiresSeq: DatabaseSeq }>) => {
     await initialize();
     if (entries.length === 0) return { seq: options.lowLevelDb.initialSeq };
@@ -1079,7 +1075,6 @@ export function declarePiledriverGarbageCollector(options: {
 
   return {
     initialize,
-    recordHeapObjectCreation,
     recordHeapObjectCreations,
     beforeSerializedHeapObjectsBecomeVisible,
     beforeSerializedObjectBecomesVisible,
