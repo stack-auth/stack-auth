@@ -22,14 +22,19 @@ function getKey(method: string, path: string): string {
  * Record stats for a completed request.
  * Only records in development mode.
  */
-export function recordRequestStats(method: string, path: string, durationMs: number): void {
+export function recordRequestStats(method: string, path: string, durationMs: number, normalizedPath?: string): void {
+  const isDevelopment = getNodeEnvironment() === "development";
   // CI enables this alongside the E2E diagnostics flag so route timings remain
   // available in profile-only mode without turning on the heavier span recorder.
-  if (getNodeEnvironment() !== "development" && getEnvVariable("HEXCLAVE_E2E_DIAGNOSTICS", "") !== "true") {
+  if (!isDevelopment && getEnvVariable("HEXCLAVE_E2E_DIAGNOSTICS", "") !== "true") {
     return;
   }
 
-  const key = getKey(method, path);
+  // Development keeps concrete paths for the existing local diagnostics page.
+  // CI uses route patterns to avoid retaining every customer-specific path in
+  // the measurement process; an unavailable pattern must not reintroduce one.
+  const statsPath = isDevelopment ? path : normalizedPath ?? "<unknown-route>";
+  const key = getKey(method, statsPath);
 
   const existing = requestStatsMap.get(key);
   if (existing) {
@@ -41,7 +46,7 @@ export function recordRequestStats(method: string, path: string, durationMs: num
   } else {
     requestStatsMap.set(key, {
       method,
-      path,
+      path: statsPath,
       count: 1,
       totalTimeMs: durationMs,
       minTimeMs: durationMs,

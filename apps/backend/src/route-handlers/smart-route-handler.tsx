@@ -165,7 +165,7 @@ export function handleApiRequest(handler: (req: Request, options: any, requestId
           const time = (performance.now() - timeStart);
 
           // Record request stats for dev-stats page
-          recordRequestStats(req.method, requestUrl.pathname, time);
+          recordRequestStats(req.method, requestUrl.pathname, time, normalizedPath);
 
           if ([301, 302].includes(res.status)) {
             throw new HexclaveAssertionError("HTTP status codes 301 and 302 should not be returned by our APIs because the behavior for non-GET methods is inconsistent across implementations. Use 303 (to rewrite method to GET) or 307/308 (to preserve the original method and data) instead.", { status: res.status, url: requestUrl, req, res });
