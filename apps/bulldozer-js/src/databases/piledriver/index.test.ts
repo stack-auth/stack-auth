@@ -339,15 +339,17 @@ describe("PiledriverDatabase", () => {
   it("publishes crossing shared heap objects without a batch wait cycle", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
     const writer = declarePiledriverDatabase(lowLevel);
+    const firstChildHeapObject = asHeapObject({ value: "first-child" });
+    const secondChildHeapObject = asHeapObject({ value: "second-child" });
     const firstHeapObject: PiledriverHeapObject = {
       async get() {
-        return { value: "first" };
+        return { firstChildHeapObject };
       },
       [isPiledriverHeapObjectSymbol]: true,
     };
     const secondHeapObject: PiledriverHeapObject = {
       async get() {
-        return { value: "second" };
+        return { secondChildHeapObject };
       },
       [isPiledriverHeapObjectSymbol]: true,
     };
@@ -358,7 +360,9 @@ describe("PiledriverDatabase", () => {
     ]);
 
     const metadata = await lowLevel.declareKvStore("piledriver-gc-reference-metadata-v3").listEntries();
-    expect(metadata.entries).toHaveLength(2);
+    expect(metadata.entries).toHaveLength(4);
+    const candidates = await lowLevel.declareKvStore("piledriver-gc-candidates-v3").listEntries();
+    expect(candidates.entries).toHaveLength(0);
     const cutoff = await timestampAfter(Date.now());
     await timestampAfter(cutoff);
     const restarted = declareAfterRestart(lowLevel, cutoff);

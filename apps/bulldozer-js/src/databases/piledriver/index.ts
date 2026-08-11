@@ -699,17 +699,36 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
     }
   };
 
-  const startHeapObjectPublication = (entries: HeapSerializationEntry[]): Promise<DatabaseSeq> => {
-    for (const entry of entries) {
-      if (entry.publicationStatus !== "unpublished") throw new Error("Piledriver heap object publication was claimed twice");
-      entry.publicationStatus = "publishing";
-    }
+  const startHeapObjectPublication = (requestedEntries: HeapSerializationEntry[]): Promise<DatabaseSeq> => {
+    const entries: HeapSerializationEntry[] = [];
+    const visited = new Set<PiledriverHeapObject>();
+    const visit = (entry: HeapSerializationEntry) => {
+      if (visited.has(entry.heapObj)) return;
+      visited.add(entry.heapObj);
+      for (const dependency of heapSerializationDependencies.get(entry.heapObj) ?? []) {
+        const dependencyEntry = heapSerializationEntryByHeapObjects.get(dependency);
+        if (dependencyEntry !== undefined) visit(dependencyEntry);
+      }
+      entries.push(entry);
+    };
+    for (const entry of requestedEntries) visit(entry);
+
+    const claimedEntries = entries.filter(entry => entry.publicationStatus === "unpublished");
+    for (const entry of claimedEntries) entry.publicationStatus = "publishing";
+    const waitingPromises = entries
+      .filter(entry => entry.publicationStatus === "publishing" && !claimedEntries.includes(entry))
+      .map(entry => entry.publicationPromise ?? throwErr("Piledriver heap object publication promise is missing"));
     const publicationPromise = (async () => {
       try {
-        const created = await garbageCollector.recordHeapObjectCreations(entries.map(entry => ({ key: entry.key, requiresSeq: entry.requiresSeq })));
-        const references = await garbageCollector.beforeSerializedHeapObjectsBecomeVisible(entries.map(entry => entry.serializedBuffer), created.seq);
-        const seq = combineSeqsDeduped([created.seq, references.seq]);
-        for (const entry of entries) {
+        const waitingSeqs = await Promise.all(waitingPromises);
+        const publicationSeqs = [...waitingSeqs];
+        if (claimedEntries.length > 0) {
+          const created = await garbageCollector.recordHeapObjectCreations(claimedEntries.map(entry => ({ key: entry.key, requiresSeq: entry.requiresSeq })));
+          const references = await garbageCollector.beforeSerializedHeapObjectsBecomeVisible(claimedEntries.map(entry => entry.serializedBuffer), created.seq);
+          publicationSeqs.push(combineSeqsDeduped([created.seq, references.seq]));
+        }
+        const seq = combineSeqsDeduped(publicationSeqs);
+        for (const entry of claimedEntries) {
           entry.publicationStatus = "published";
           entry.publicationSeq = seq;
         }
