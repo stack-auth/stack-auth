@@ -38,6 +38,36 @@ function wrapWithHeapListCounter(lowLevel: LowLevelDatabase, onHeapList: () => v
   };
 }
 
+function wrapWithGcReferenceCounter(
+  lowLevel: LowLevelDatabase,
+  onMetadataGet: () => void,
+  onMetadataCompareAndSet: () => void,
+): LowLevelDatabase {
+  return {
+    ...lowLevel,
+    declareKvStore(id) {
+      const store = lowLevel.declareKvStore(id);
+      if (id !== "piledriver-gc-reference-metadata-v3") return store;
+      return {
+        ...store,
+        async get(key) {
+          onMetadataGet();
+          return await store.get(key);
+        },
+        async compareAndSet(key, compare, value, options) {
+          onMetadataCompareAndSet();
+          return await store.compareAndSet(key, compare, value, options);
+        },
+        async compareAndSetAll(entries, options) {
+          for (const _entry of entries) onMetadataCompareAndSet();
+          if (store.compareAndSetAll === undefined) throw new Error("Expected in-memory metadata store to support compareAndSetAll");
+          return await store.compareAndSetAll(entries, options);
+        },
+      };
+    },
+  };
+}
+
 async function timestampAfter(value: number) {
   while (Date.now() <= value) await new Promise(resolve => setTimeout(resolve, 1));
   return Date.now();
@@ -167,6 +197,32 @@ describe("PiledriverDatabase", () => {
     await timestampAfter(cutoff);
     const restarted = declareAfterRestart(lowLevel, cutoff);
     expect((await restarted.collectGarbage(cutoff)).objects.deleted).toBe(2);
+  });
+
+  it("updates only changed root reference deltas", async () => {
+    let metadataGets = 0;
+    let metadataCompareAndSets = 0;
+    const underlyingLowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const lowLevel = wrapWithGcReferenceCounter(
+      underlyingLowLevel,
+      () => metadataGets++,
+      () => metadataCompareAndSets++,
+    );
+    const writer = declarePiledriverDatabase(lowLevel);
+    const rootKey = new TextEncoder().encode("root").buffer;
+    const sharedA = asHeapObject({ value: "shared-a" });
+    const sharedB = asHeapObject({ value: "shared-b" });
+    const previous = asHeapObject({ value: "previous" });
+    const replacement = asHeapObject({ value: "replacement" });
+
+    await writer.setRootObject(rootKey, { sharedA, sharedB, changed: previous });
+    metadataGets = 0;
+    metadataCompareAndSets = 0;
+
+    await writer.setRootObject(rootKey, { sharedA, sharedB, changed: replacement });
+
+    expect(metadataGets).toBe(2);
+    expect(metadataCompareAndSets).toBe(2);
   });
 
   it("never collects objects created after the restart barrier", async () => {

@@ -134,6 +134,22 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
           };
         });
       },
+      async compareAndSetAll(entries, options) {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
+          const results = entries.map(({ key, compare }) => {
+            const existingValue = base64KeyToValue.get(encodeBase64(new Uint8Array(key)));
+            return existingValue !== undefined && arrayBuffersAreEqual(existingValue, compare);
+          });
+          const matchingEntries = entries.filter((_, index) => results[index]);
+          const write = matchingEntries.length === 0
+            ? { seq: options?.requiresSeq ?? seqSentinel }
+            : await result.setAll(matchingEntries.map(({ key, value }) => ({ key, value })), options);
+          return {
+            results: results.map(wasSet => wasSet ? { wasSet: true, seq: write.seq } : { wasSet: false, seq: null }),
+            seq: write.seq,
+          };
+        });
+      },
       async debugEntries() {
         return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.debugEntries", attributes }, async () => [...base64KeyToValue.entries()]
           .sort(([a], [b]) => stringCompare(a, b))
@@ -202,4 +218,3 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
     initialSeq: [] as unknown as DatabaseSeq,
   };
 }
-

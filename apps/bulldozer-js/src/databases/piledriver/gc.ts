@@ -230,6 +230,23 @@ function aggregateKeys(keys: ArrayBuffer[]) {
   return result;
 }
 
+function aggregateSerializedReferences(buffer: ArrayBuffer | null) {
+  return aggregateKeys(buffer === null ? [] : serializedHeapReferenceKeys(buffer));
+}
+
+function serializedReferenceDelta(newBuffer: ArrayBuffer | null, oldBuffer: ArrayBuffer | null) {
+  const deltaByKey = new Map<string, { key: ArrayBuffer, count: number }>();
+  for (const [keyBase64, { key, count }] of aggregateSerializedReferences(newBuffer)) {
+    deltaByKey.set(keyBase64, { key, count });
+  }
+  for (const [keyBase64, { key, count }] of aggregateSerializedReferences(oldBuffer)) {
+    const existing = deltaByKey.get(keyBase64);
+    if (existing === undefined) deltaByKey.set(keyBase64, { key, count: -count });
+    else existing.count -= count;
+  }
+  return deltaByKey;
+}
+
 function candidateKey(heapKey: ArrayBuffer, eligibleAtMillis: number) {
   parseNonNegativeInteger(eligibleAtMillis, "candidate eligibleAtMillis");
   if (heapKey.byteLength + 8 > 64) throw new Error("Piledriver heap key is too large for the GC candidate index");
@@ -328,6 +345,13 @@ export function declarePiledriverGarbageCollector(options: {
   const replaceMetadata = async (key: ArrayBuffer, existingBuffer: ArrayBuffer, replacement: ReferenceMetadata, requiresSeq: DatabaseSeq) => {
     const result = await metadataStore.compareAndSet(key, existingBuffer, encodeJson(replacement), { requiresSeq });
     return result.wasSet ? result.seq : null;
+  };
+
+  const combineSeqsDeduped = (seqs: Iterable<DatabaseSeq>): DatabaseSeq => {
+    const unique = [...new Set(seqs)].filter(seq => seq !== options.lowLevelDb.initialSeq);
+    if (unique.length === 0) return options.lowLevelDb.initialSeq;
+    if (unique.length === 1) return unique[0];
+    return options.lowLevelDb.combineSeqs(...unique);
   };
 
   const changeReferenceCount = async (
@@ -432,20 +456,133 @@ export function declarePiledriverGarbageCollector(options: {
     }
   };
 
-  const changeSerializedReferences = async (
-    buffer: ArrayBuffer,
-    direction: 1 | -1,
+  const changeSerializedReferenceDeltas = async (
+    deltas: Iterable<{ key: ArrayBuffer, count: number }>,
     dereferencedAtMillis: number | null,
     requiresSeq: DatabaseSeq,
   ) => {
-    let currentSeq = requiresSeq;
-    const becameZero: Array<{ key: ArrayBuffer, eligibleAtMillis: number }> = [];
-    for (const { key, count } of aggregateKeys(serializedHeapReferenceKeys(buffer)).values()) {
-      const changed = await changeReferenceCount(key, direction * count, dereferencedAtMillis, currentSeq);
-      currentSeq = changed.seq;
-      if (changed.becameZero) becameZero.push({ key, eligibleAtMillis: changed.eligibleAtMillis });
+    const pending = [...deltas];
+    const changes: Array<{
+      key: ArrayBuffer,
+      seq: DatabaseSeq,
+      becameZero: boolean,
+      stoppedBeingZero: boolean,
+      eligibleAtMillis: number,
+    }> = [];
+    const metadataSequences: DatabaseSeq[] = [requiresSeq];
+    while (pending.length > 0) {
+      const reads = await Promise.all(
+        pending.map(async delta => ({
+          ...delta,
+          existing: await metadataStore.get(delta.key),
+        })),
+      );
+      const retry: typeof pending = [];
+      const compareAndSetEntries: Array<{
+        key: ArrayBuffer,
+        compare: ArrayBuffer,
+        value: ArrayBuffer,
+        previousReferenceCount: number,
+        nextReferenceCount: number,
+        eligibleAtMillis: number,
+        becameZero: boolean,
+        stoppedBeingZero: boolean,
+      }> = [];
+      for (const { key, count, existing } of reads) {
+        if (existing.buffer === null) {
+          changes.push({ key, seq: requiresSeq, becameZero: false, stoppedBeingZero: false, eligibleAtMillis: dereferencedAtMillis ?? 0 });
+          continue;
+        }
+        const metadata = parseReferenceMetadata(existing.buffer);
+        if (metadata.generation !== readyGeneration()) {
+          changes.push({ key, seq: requiresSeq, becameZero: false, stoppedBeingZero: false, eligibleAtMillis: dereferencedAtMillis ?? metadata.createdAtMillis });
+          continue;
+        }
+        if (metadata.deletion !== null) throw new Error("Piledriver GC attempted to reference an object that is being deleted");
+        const nextReferenceCount = metadata.referenceCount + count;
+        if (!Number.isSafeInteger(nextReferenceCount) || nextReferenceCount < 0) {
+          throw new Error(`Piledriver GC reference count would become invalid for heap object ${encodeBase64(new Uint8Array(key))}`);
+        }
+        const nextLastDereferencedAtMillis = dereferencedAtMillis === null
+          ? metadata.lastDereferencedAtMillis
+          : Math.max(metadata.lastDereferencedAtMillis ?? 0, dereferencedAtMillis);
+        const replacement: ReferenceMetadata = {
+          ...metadata,
+          referenceCount: nextReferenceCount,
+          lastDereferencedAtMillis: nextLastDereferencedAtMillis,
+        };
+        compareAndSetEntries.push({
+          key,
+          compare: existing.buffer,
+          value: encodeJson(replacement),
+          previousReferenceCount: metadata.referenceCount,
+          nextReferenceCount,
+          eligibleAtMillis: nextLastDereferencedAtMillis ?? metadata.createdAtMillis,
+          becameZero: metadata.referenceCount !== 0 && nextReferenceCount === 0,
+          stoppedBeingZero: metadata.referenceCount === 0 && nextReferenceCount !== 0,
+        });
+      }
+      if (compareAndSetEntries.length === 0) {
+        pending.length = 0;
+        continue;
+      }
+      const compareAndSet = metadataStore.compareAndSetAll;
+      const result = compareAndSet === undefined
+        ? {
+          results: await Promise.all(compareAndSetEntries.map(async entry => {
+            const seq = await replaceMetadata(entry.key, entry.compare, parseReferenceMetadata(entry.value), requiresSeq);
+            return seq === null ? { wasSet: false as const, seq: null } : { wasSet: true as const, seq };
+          })),
+          seq: requiresSeq,
+        }
+        : await compareAndSet(
+            compareAndSetEntries.map(({ key, compare, value }) => ({ key, compare, value })),
+            { requiresSeq },
+          );
+      pending.length = 0;
+      for (const [index, entry] of compareAndSetEntries.entries()) {
+        const changed = result.results[index];
+        if (changed.wasSet === false) {
+          retry.push(pending[index] ?? { key: entry.key, count: entry.nextReferenceCount - entry.previousReferenceCount });
+          continue;
+        }
+        metadataSequences.push(changed.seq);
+        changes.push({
+          key: entry.key,
+          seq: changed.seq,
+          becameZero: entry.becameZero,
+          stoppedBeingZero: entry.stoppedBeingZero,
+          eligibleAtMillis: entry.eligibleAtMillis,
+        });
+      }
+      pending.push(...retry);
     }
-    return { seq: currentSeq, becameZero };
+    const becameZero = changes.filter(change => change.becameZero);
+    const stoppedBeingZero = changes.filter(change => change.stoppedBeingZero);
+    const candidateWrites = becameZero.length === 0
+      ? { seq: requiresSeq }
+      : await candidateStore.setAll(
+        becameZero.map(({ key, eligibleAtMillis }) => ({
+          key: candidateKey(key, eligibleAtMillis),
+          value: new ArrayBuffer(0),
+        })),
+        { requiresSeq: combineSeqsDeduped(metadataSequences) },
+      );
+    const candidateDeletes = stoppedBeingZero.length === 0
+      ? { seq: requiresSeq }
+      : await candidateStore.deleteAll(
+        stoppedBeingZero.map(({ key, eligibleAtMillis }) => candidateKey(key, eligibleAtMillis)),
+        { requiresSeq: combineSeqsDeduped(metadataSequences) },
+      );
+    return {
+      seq: combineSeqsDeduped([
+        requiresSeq,
+        ...metadataSequences,
+        candidateWrites.seq,
+        candidateDeletes.seq,
+      ]),
+      becameZero: becameZero.map(({ key, eligibleAtMillis }) => ({ key, eligibleAtMillis })),
+    };
   };
 
   const recordHeapObjectCreation = async (key: ArrayBuffer, requiresSeq: DatabaseSeq) => {
@@ -459,15 +596,38 @@ export function declarePiledriverGarbageCollector(options: {
     return { seq: candidateWrite.seq };
   };
 
-  const beforeSerializedObjectBecomesVisible = async (buffer: ArrayBuffer, requiresSeq: DatabaseSeq) => {
+  const beforeSerializedObjectBecomesVisible = async (
+    buffer: ArrayBuffer,
+    previousBuffer: ArrayBuffer | null,
+    requiresSeq: DatabaseSeq,
+  ) => {
     await initialize();
-    return await changeSerializedReferences(buffer, 1, null, requiresSeq);
+    // Positive deltas must become available before the new buffer is visible. A
+    // replacement's unchanged references have a zero net delta and are deliberately
+    // skipped: their count and eligibility timestamp are unchanged.
+    return await changeSerializedReferenceDeltas(
+      [...serializedReferenceDelta(buffer, previousBuffer).values()].filter(delta => delta.count > 0),
+      null,
+      requiresSeq,
+    );
   };
 
-  const afterSerializedObjectBecameInvisible = async (buffer: ArrayBuffer, dereferencedAtMillis: number, requiresSeq: DatabaseSeq) => {
+  const afterSerializedObjectBecameInvisible = async (
+    buffer: ArrayBuffer,
+    visibleBuffer: ArrayBuffer | null,
+    dereferencedAtMillis: number,
+    requiresSeq: DatabaseSeq,
+  ) => {
     await initialize();
     parseNonNegativeInteger(dereferencedAtMillis, "dereferencedAtMillis");
-    return await changeSerializedReferences(buffer, -1, dereferencedAtMillis, requiresSeq);
+    // Apply removals only after the replacement is visible. This ordering means a crash
+    // can leak an over-counted object, but cannot free an object still reachable by the
+    // visible root.
+    return await changeSerializedReferenceDeltas(
+      [...serializedReferenceDelta(visibleBuffer, buffer).values()].filter(delta => delta.count < 0),
+      dereferencedAtMillis,
+      requiresSeq,
+    );
   };
 
   const claimDeletion = async (key: ArrayBuffer, existingBuffer: ArrayBuffer, metadata: ReferenceMetadata, totalReferences: number) => {

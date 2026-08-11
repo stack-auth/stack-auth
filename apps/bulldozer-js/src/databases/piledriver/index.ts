@@ -364,7 +364,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         const heapObjectSerializeStartedAt = performance.now();
         const serialized = await serializePiledriverObject(heapObject, childHeapPath, serializationTimingStats, branchKey, heapObj);
         if (serializationTimingStats !== undefined) serializationTimingStats.heapObjectSerializeTotalMs += performance.now() - heapObjectSerializeStartedAt;
-        const references = await garbageCollector.beforeSerializedObjectBecomesVisible(serialized.buffer, serialized.seq);
+        const references = await garbageCollector.beforeSerializedObjectBecomesVisible(serialized.buffer, null, serialized.seq);
         const heapObjectInsertStartedAt = performance.now();
         const inserted = await heapDump.insertAll([serialized.buffer], { requiresSeq: references.seq });
         const created = await garbageCollector.recordHeapObjectCreation(inserted.keys[0], inserted.seq);
@@ -685,7 +685,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         const serializeStartedAt = performance.now();
         const serializeCpuStartedAt = process.cpuUsage();
         const { buffer, seq } = await serializePiledriverObject(value, new Set(), timingStats);
-        const references = await garbageCollector.beforeSerializedObjectBecomesVisible(buffer, seq);
+        const references = await garbageCollector.beforeSerializedObjectBecomesVisible(buffer, previousRoot.buffer, seq);
         const serializeCpuUsage = process.cpuUsage(serializeCpuStartedAt);
         const serializePiledriverObjectMs = performance.now() - serializeStartedAt;
         const serializeCpuMs = (serializeCpuUsage.user + serializeCpuUsage.system) / 1000;
@@ -695,6 +695,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
           ? { seq: rootSeq }
           : await garbageCollector.afterSerializedObjectBecameInvisible(
             previousRoot.buffer,
+            buffer,
             Math.max(Date.now(), processStartedAtMillis),
             rootSeq,
           );
@@ -766,6 +767,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         if (previousRoot.buffer === null) return deleted;
         const dereferenced = await garbageCollector.afterSerializedObjectBecameInvisible(
           previousRoot.buffer,
+          null,
           Math.max(Date.now(), processStartedAtMillis),
           deleted.seq,
         );

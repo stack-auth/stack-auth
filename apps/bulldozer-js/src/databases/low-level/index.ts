@@ -53,6 +53,10 @@ export type LowLevelKvStore = {
   deleteAll(keys: ArrayBuffer[], options?: { requiresSeq?: DatabaseSeq }): Promise<{ seq: DatabaseSeq }>,
 
   compareAndSet(key: ArrayBuffer, compare: ArrayBuffer, value: ArrayBuffer, options?: { requiresSeq?: DatabaseSeq }): Promise<{ wasSet: true, seq: DatabaseSeq } | { wasSet: false, seq: null }>,
+  compareAndSetAll?(entries: Array<{ key: ArrayBuffer, compare: ArrayBuffer, value: ArrayBuffer }>, options?: { requiresSeq?: DatabaseSeq }): Promise<{
+    results: Array<{ wasSet: true, seq: DatabaseSeq } | { wasSet: false, seq: null }>,
+    seq: DatabaseSeq,
+  }>,
   debugEntries?(): Promise<LowLevelDatabaseDebugEntry[]>,
 }
 

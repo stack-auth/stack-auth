@@ -268,6 +268,25 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
           });
         });
       },
+      async compareAndSetAll(entries, compareAndSetOptions) {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.instant.compareAndSetAll", attributes: { ...attributes, "bulldozer_low_level.entry_count": entries.length } }, async () => {
+          return await withWriteGate(async () => {
+            const results = await Promise.all(entries.map(async ({ key, compare }) => {
+              const cached = cachedValues.get(cacheKey(key));
+              const existing = cached ?? await wrappedStore.get(key);
+              return existing.buffer !== null && arrayBuffersAreEqual(existing.buffer, compare);
+            }));
+            const matchingEntries = entries.filter((_, index) => results[index]);
+            const write = matchingEntries.length === 0
+              ? { seq: compareAndSetOptions?.requiresSeq ?? initialSeq }
+              : setAllLocked(matchingEntries.map(({ key, value }) => ({ key, value })), compareAndSetOptions);
+            return {
+              results: results.map(wasSet => wasSet ? { wasSet: true, seq: write.seq } : { wasSet: false, seq: null }),
+              seq: write.seq,
+            };
+          });
+        });
+      },
       async debugEntries() {
         return await traceSpanHot({ description: "bulldozer-js.low-level.instant.debugEntries", attributes }, async () => await wrappedStore.debugEntries?.() ?? []);
       },
