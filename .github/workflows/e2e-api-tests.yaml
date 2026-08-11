@@ -168,6 +168,7 @@ jobs:
           # Profile-only mode deliberately leaves span aggregation and forced
           # trace sampling disabled, so the profile measures the real backend.
           HEXCLAVE_CPU_PROFILING: "true"
+          HEXCLAVE_E2E_DIAGNOSTICS: "true"
         with:
           run: pnpm -C apps/backend run with-env:test pnpm run start &
           wait-on: |

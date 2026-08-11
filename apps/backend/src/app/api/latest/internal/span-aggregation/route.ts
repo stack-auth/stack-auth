@@ -6,6 +6,7 @@ import {
   startBackendCpuProfile,
   stopBackendCpuProfile,
 } from "@/utils/span-aggregation";
+import { clearRequestStats, getAllRequestStats } from "@/lib/dev-request-stats";
 import { yupArray, yupBoolean, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
@@ -36,6 +37,15 @@ export const GET = createSmartRouteHandler({
         count: yupNumber().defined(),
         totalInclusiveDurationMs: yupNumber().defined(),
         totalExclusiveDurationMs: yupNumber().defined(),
+      }).defined()).defined(),
+      requests: yupArray(yupObject({
+        method: yupString().defined(),
+        path: yupString().defined(),
+        count: yupNumber().defined(),
+        totalTimeMs: yupNumber().defined(),
+        minTimeMs: yupNumber().defined(),
+        maxTimeMs: yupNumber().defined(),
+        lastCalledAt: yupNumber().defined(),
       }).defined()).defined(),
       runtime: yupObject({
         eventLoopDelay: yupObject({
@@ -112,6 +122,8 @@ export const GET = createSmartRouteHandler({
     }
     const spans = enabled ? getSpanAggregates(query.reset === "true") : [];
     const runtime = getBackendRuntimeDiagnostics(query.reset === "true");
+    const requests = getAllRequestStats();
+    if (query.reset === "true") clearRequestStats();
 
     return {
       statusCode: 200,
@@ -120,6 +132,7 @@ export const GET = createSmartRouteHandler({
         enabled,
         // These totals are sums across concurrent requests, not a wall-time budget.
         spans,
+        requests,
         runtime,
         cpuProfile,
       },

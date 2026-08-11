@@ -1,4 +1,4 @@
-import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 
 export type RequestStat = {
   method: string,
@@ -23,7 +23,7 @@ function getKey(method: string, path: string): string {
  * Only records in development mode.
  */
 export function recordRequestStats(method: string, path: string, durationMs: number): void {
-  if (getNodeEnvironment() !== "development") {
+  if (getNodeEnvironment() !== "development" && getEnvVariable("HEXCLAVE_E2E_DIAGNOSTICS") !== "true") {
     return;
   }
 
@@ -106,4 +106,3 @@ export function getAggregateStats() {
 export function clearRequestStats(): void {
   requestStatsMap.clear();
 }
-
