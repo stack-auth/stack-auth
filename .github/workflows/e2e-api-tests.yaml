@@ -314,7 +314,11 @@ jobs:
         env:
           HEXCLAVE_E2E_DIAGNOSTICS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'true' || 'false' }}
           HEXCLAVE_E2E_DIAGNOSTIC_PASS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'pass1' || '' }}
-        run: pnpm test run --reporter=json --outputFile="$RUNNER_TEMP/e2e-test-results-pass1.untracked.json"
+        run: |
+          set -o pipefail
+          pnpm test run --reporter=json --outputFile="$RUNNER_TEMP/e2e-test-results-pass1.untracked.json" 2>&1 |
+            tee "$RUNNER_TEMP/e2e-test-output-pass1.untracked.log"
+          exit "${PIPESTATUS[0]}"
 
       - name: Merge E2E diagnostics after pass 1
         if: always()
@@ -379,11 +383,16 @@ jobs:
       - name: Run tests again (attempt 1)
         id: run_tests_pass2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics'
+        continue-on-error: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' }}
         timeout-minutes: 75
         env:
           HEXCLAVE_E2E_DIAGNOSTICS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'true' || 'false' }}
           HEXCLAVE_E2E_DIAGNOSTIC_PASS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'pass2' || '' }}
-        run: pnpm test run --reporter=json --outputFile="$RUNNER_TEMP/e2e-test-results-pass2.untracked.json"
+        run: |
+          set -o pipefail
+          pnpm test run --reporter=json --outputFile="$RUNNER_TEMP/e2e-test-results-pass2.untracked.json" 2>&1 |
+            tee "$RUNNER_TEMP/e2e-test-output-pass2.untracked.log"
+          exit "${PIPESTATUS[0]}"
 
       - name: Merge E2E diagnostics after pass 2
         if: always() && steps.run_tests_pass2.outcome != 'skipped'
@@ -429,12 +438,16 @@ jobs:
 
       - name: Run tests again (attempt 2)
         id: run_tests_pass3
-        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics') && steps.run_tests_pass2.outcome == 'success'
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics') && (steps.run_tests_pass2.outcome == 'success' || (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics')
         timeout-minutes: 105
         env:
           HEXCLAVE_E2E_DIAGNOSTICS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'true' || 'false' }}
           HEXCLAVE_E2E_DIAGNOSTIC_PASS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'pass3' || '' }}
-        run: pnpm test run --reporter=json --outputFile="$RUNNER_TEMP/e2e-test-results-pass3.untracked.json"
+        run: |
+          set -o pipefail
+          pnpm test run --reporter=json --outputFile="$RUNNER_TEMP/e2e-test-results-pass3.untracked.json" 2>&1 |
+            tee "$RUNNER_TEMP/e2e-test-output-pass3.untracked.log"
+          exit "${PIPESTATUS[0]}"
 
       - name: Merge E2E diagnostics after pass 3
         if: always() && steps.run_tests_pass3.outcome != 'skipped'
@@ -531,6 +544,7 @@ jobs:
           name: e2e-api-test-timing-diagnostics
           path: |
             ${{ runner.temp }}/e2e-test-results-pass*.untracked.json
+            ${{ runner.temp }}/e2e-test-output-pass*.untracked.log
             ${{ runner.temp }}/e2e-wait-request-diagnostics-pass*.untracked.json
             ${{ runner.temp }}/hexclave-e2e-diagnostics-pass*-*.untracked.json
             ${{ runner.temp }}/freestyle-mock-diagnostics-pass*.untracked.json

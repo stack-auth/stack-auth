@@ -370,6 +370,22 @@ function readStringField(body: Record<string, unknown>, fieldName: string): stri
   return value;
 }
 
+function readPositiveSafeIntegerField(body: Record<string, unknown>, fieldName: string) {
+  const value = body[fieldName];
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
+    throw new StatusError(StatusError.BadRequest, `Expected positive safe integer field: ${fieldName}`);
+  }
+  return value;
+}
+
+function readNonNegativeSafeIntegerField(body: Record<string, unknown>, fieldName: string) {
+  const value = body[fieldName];
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new StatusError(StatusError.BadRequest, `Expected non-negative safe integer field: ${fieldName}`);
+  }
+  return value;
+}
+
 function readRowData(body: unknown): Record<string, unknown> {
   const record = readObjectBody(body);
   const rowData = record.rowData;
@@ -966,6 +982,20 @@ const app = new Elysia({ adapter: node() })
   .post("/internal/wait-until-durable", () => handler("wait-until-durable", async () => {
     await bulldozerDb.waitUntilCurrentStateDurable();
     return ok();
+  }))
+  .post("/internal/piledriver-gc", ({ body }) => handler("piledriver-gc", async () => {
+    const request = readObjectBody(body);
+    const cutoffTimestampMillis = readNonNegativeSafeIntegerField(request, "cutoffTimestampMillis");
+    if (cutoffTimestampMillis >= bulldozerDb.getPiledriverGarbageCollectionProcessStartedAtMillis()) {
+      throw new StatusError(
+        StatusError.BadRequest,
+        "GC cutoff must be older than this Bulldozer process. Record the cutoff, then fully restart the singleton Bulldozer service before running GC.",
+      );
+    }
+    return await bulldozerDb.collectPiledriverGarbage(
+      cutoffTimestampMillis,
+      request.maxObjects === undefined ? undefined : readPositiveSafeIntegerField(request, "maxObjects"),
+    );
   }))
   .post("/internal/payments/verify-data-integrity", () => handler("verify-data-integrity", async () => ok()))
   .get("/v1/:tenancyId/transactions", ({ params, query }) => handler("list-transactions", async () => {

@@ -92,6 +92,52 @@ describe("Bulldozer", () => {
     ]);
   });
 
+  it("keeps shutdown behind an in-flight Piledriver garbage collection", async () => {
+    const underlying = declarePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
+    let markCollectionStarted: (() => void) | undefined;
+    const collectionStarted = new Promise<void>(resolve => {
+      markCollectionStarted = resolve;
+    });
+    let releaseCollection: (() => void) | undefined;
+    const collectionGate = new Promise<void>(resolve => {
+      releaseCollection = resolve;
+    });
+    let closeCalls = 0;
+    const piledriver = {
+      ...underlying,
+      async collectGarbage(cutoffTimestampMillis: number, maxObjects?: number) {
+        if (markCollectionStarted === undefined) throw new Error("Collection-start signal was not initialized");
+        markCollectionStarted();
+        await collectionGate;
+        return await underlying.collectGarbage(cutoffTimestampMillis, maxObjects);
+      },
+      async close() {
+        closeCalls++;
+        await underlying.close();
+      },
+    };
+    const db = declareBulldozerDatabase(piledriver, { migrations: [] });
+
+    const collection = db.collectPiledriverGarbage(0);
+    await collectionStarted;
+    const closing = db.close();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(closeCalls).toBe(0);
+
+    if (releaseCollection === undefined) throw new Error("Collection gate was not initialized");
+    releaseCollection();
+    await Promise.all([collection, closing]);
+    expect(closeCalls).toBe(1);
+  });
+
+  it("rejects Piledriver garbage collection once shutdown starts", async () => {
+    const db = newDb([]);
+    const closing = db.close();
+
+    await expect(db.collectPiledriverGarbage(0)).rejects.toThrow("closing");
+    await closing;
+  });
+
   it("retains the latest write sequence after instant-availability cache eviction", async () => {
     const path = await mkdtemp(join(tmpdir(), "bulldozer-durability-barrier-"));
     const lmdb = declareLmdbLowLevelDatabase({ path, dbId: "durability-barrier" });
