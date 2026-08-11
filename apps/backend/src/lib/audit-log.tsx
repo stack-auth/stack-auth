@@ -23,6 +23,7 @@ export const AUDIT_LOG_ACTIONS = [
   "project_api_key.created",
   "project_api_key.updated",
   "project_api_key.revoked",
+  "config_source.unlinked",
 ] as const;
 
 export type AuditLogAction = typeof AUDIT_LOG_ACTIONS[number];

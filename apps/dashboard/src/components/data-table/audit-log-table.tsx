@@ -31,7 +31,8 @@ export type AuditLogAction =
   | "contact_channel.verification.sent"
   | "project_api_key.created"
   | "project_api_key.updated"
-  | "project_api_key.revoked";
+  | "project_api_key.revoked"
+  | "config_source.unlinked";
 
 export type AuditLogEvent = {
   id: string,
@@ -119,6 +120,9 @@ function formatAction(action: AuditLogAction): string {
     case "project_api_key.revoked": {
       return "Project API key revoked";
     }
+    case "config_source.unlinked": {
+      return "Config source unlinked";
+    }
     default: {
       const _exhaustive: never = action;
       return _exhaustive;
@@ -150,6 +154,13 @@ const FIELD_LABELS = new Map<string, string>([
   ["has_publishable_client_key", "Publishable client key"],
   ["has_secret_server_key", "Secret server key"],
   ["has_super_secret_admin_key", "Super secret admin key"],
+  ["type", "Source type"],
+  ["owner", "GitHub owner"],
+  ["repo", "GitHub repo"],
+  ["branch", "GitHub branch"],
+  ["commit_hash", "Commit"],
+  ["config_file_path", "Config file path"],
+  ["workflow_path", "Workflow path"],
 ]);
 
 const OAUTH_PROVIDER_FIELD_LABELS = new Map<string, string>([

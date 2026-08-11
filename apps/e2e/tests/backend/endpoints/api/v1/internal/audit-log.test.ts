@@ -242,6 +242,53 @@ it("does not persist values for sensitive config leaves", async ({ expect }) => 
   expect(JSON.stringify(event.metadata)).not.toContain("super-secret-password");
 });
 
+it("records config source unlink with previous GitHub identity", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+  await Project.pushConfig({}, {
+    type: "pushed-from-github",
+    owner: "audit-org",
+    repo: "audit-repo",
+    branch: "main",
+    commit_hash: "abc123def456",
+    config_file_path: "hexclave.config.ts",
+  });
+
+  await Project.unlinkConfigSource();
+
+  const listRes = await listAuditLog({ action: "config_source.unlinked" });
+  expect(listRes.status).toBe(200);
+  expect(listRes.body.items).toHaveLength(1);
+  expect(listRes.body.items[0]).toMatchObject({
+    action: "config_source.unlinked",
+    target_user_id: null,
+    metadata: {
+      source: "config.source.delete",
+      changed_paths: expect.arrayContaining([
+        "type",
+        "owner",
+        "repo",
+        "branch",
+        "config_file_path",
+      ]),
+      changes: {
+        type: {
+          before: "pushed-from-github",
+          after: "unlinked",
+        },
+        owner: {
+          before: "audit-org",
+          after: null,
+        },
+        repo: {
+          before: "audit-repo",
+          after: null,
+        },
+      },
+    },
+  });
+});
+
 it("audits oauth provider enable/disable without empty shared-schema noise", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
 
