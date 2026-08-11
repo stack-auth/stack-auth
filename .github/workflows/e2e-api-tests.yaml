@@ -8,6 +8,7 @@ on:
       # Temporary diagnostic-branch exception; remove before merging.
       - devin/1786345250-backend-span-diagnostics
   pull_request:
+  workflow_dispatch:
 
 # A concurrency group only ever runs one run at a time, so the sha is part of the group on main/dev:
 # otherwise consecutive dev pushes queue behind each other (and GitHub cancels the older queued run),
