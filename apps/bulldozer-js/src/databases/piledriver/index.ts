@@ -702,24 +702,34 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
   const startHeapObjectPublication = (requestedEntries: HeapSerializationEntry[]): Promise<DatabaseSeq> => {
     const entries: HeapSerializationEntry[] = [];
     const visited = new Set<PiledriverHeapObject>();
-    const visit = (entry: HeapSerializationEntry) => {
-      if (visited.has(entry.heapObj)) return;
-      visited.add(entry.heapObj);
-      for (const dependency of heapSerializationDependencies.get(entry.heapObj) ?? []) {
-        const dependencyEntry = heapSerializationEntryByHeapObjects.get(dependency);
-        if (dependencyEntry !== undefined) visit(dependencyEntry);
+    const stack = requestedEntries.map(entry => ({ entry, expanded: false }));
+    while (stack.length > 0) {
+      const current = stack.pop() ?? throwErr("Piledriver heap publication stack unexpectedly empty");
+      if (current.expanded) {
+        entries.push(current.entry);
+        continue;
       }
-      entries.push(entry);
-    };
-    for (const entry of requestedEntries) visit(entry);
+      if (visited.has(current.entry.heapObj)) continue;
+      visited.add(current.entry.heapObj);
+      stack.push({ entry: current.entry, expanded: true });
+      for (const dependency of heapSerializationDependencies.get(current.entry.heapObj) ?? []) {
+        const dependencyEntry = heapSerializationEntryByHeapObjects.get(dependency);
+        if (dependencyEntry !== undefined && !visited.has(dependencyEntry.heapObj)) {
+          stack.push({ entry: dependencyEntry, expanded: false });
+        }
+      }
+    }
 
     const claimedEntries = entries.filter(entry => entry.publicationStatus === "unpublished");
+    const claimedEntrySet = new Set(claimedEntries);
+    const failedEntry = entries.find(entry => entry.publicationStatus === "failed");
     for (const entry of claimedEntries) entry.publicationStatus = "publishing";
     const waitingPromises = entries
-      .filter(entry => entry.publicationStatus === "publishing" && !claimedEntries.includes(entry))
+      .filter(entry => entry.publicationStatus === "publishing" && !claimedEntrySet.has(entry))
       .map(entry => entry.publicationPromise ?? throwErr("Piledriver heap object publication promise is missing"));
     const publicationPromise = (async () => {
       try {
+        if (failedEntry !== undefined) throw failedEntry.publicationError;
         const waitingSeqs = await Promise.all(waitingPromises);
         const publicationSeqs = [...waitingSeqs];
         if (claimedEntries.length > 0) {

@@ -361,7 +361,7 @@ describe("PiledriverDatabase", () => {
 
     const metadata = await lowLevel.declareKvStore("piledriver-gc-reference-metadata-v3").listEntries();
     expect(metadata.entries).toHaveLength(4);
-    const candidates = await lowLevel.declareKvStore("piledriver-gc-candidates-v3").listEntries();
+    const candidates = await lowLevel.declareKvStore("piledriver-gc-zero-reference-candidates-v3").listEntries();
     expect(candidates.entries).toHaveLength(0);
     const cutoff = await timestampAfter(Date.now());
     await timestampAfter(cutoff);
