@@ -8,6 +8,7 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import Provider from "oidc-provider";
 import type { AccountClaims } from "oidc-provider";
+import projectOAuthSessionMiddleware from "oidc-provider/lib/shared/session.js";
 
 const MODEL = "ProjectOAuthInteraction";
 const TTL_SECONDS = 10 * 60;
@@ -215,55 +216,64 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
     }
     const match = /^\/interaction\/([^/]+)$/.exec(ctx.path);
     if (match !== null && ctx.method === "GET") {
-      const uid = match[1];
-      const details = await oidc.interactionDetails(ctx.req, ctx.res);
-      const issuer = new URL(getProjectOAuthIssuer(tenancy.project.id, getEnvVariable("NEXT_PUBLIC_STACK_API_URL")));
-      const returnTo = new URL(details.returnTo, issuer);
-      if (returnTo.origin === issuer.origin && !returnTo.pathname.startsWith(issuer.pathname)) {
-        // The provider computes its resume URL from the request mount. The Next adapter dispatches
-        // through a stripped internal path, so persist the canonical issuer prefix before the
-        // browser leaves this origin; otherwise the final resume navigation would hit /auth/:uid.
-        returnTo.pathname = `${issuer.pathname.replace(/\/$/, "")}${returnTo.pathname}`;
-        details.returnTo = returnTo.toString();
-        await details.save(Math.max(1, details.exp - Math.floor(Date.now() / 1000)));
+      if (ctx.oidc === undefined) {
+        Object.defineProperty(ctx, "oidc", { value: new oidc.OIDCContext(ctx) });
       }
-      const clientId = typeof details.params.client_id === "string" ? details.params.client_id : throwErr("Project OAuth client ID was missing");
-      const resource = typeof details.params.resource === "string" ? details.params.resource : undefined;
-      const requestedScopes = `${details.params.scope ?? ""}`.split(" ").filter(Boolean);
-      await globalPrismaClient.idPAdapterData.upsert({
-        where: { idpId_model_id: { idpId: getProjectIdpId(tenancy), model: MODEL, id: interactionId(tenancy, uid) } },
-        create: {
-          idpId: getProjectIdpId(tenancy),
-          model: MODEL,
-          id: interactionId(tenancy, uid),
-          payload: {
-            uid,
-            projectId: tenancy.project.id,
+      return await projectOAuthSessionMiddleware(ctx, async () => {
+        const uid = match[1];
+        const details = await oidc.interactionDetails(ctx.req, ctx.res);
+        // A signed-out authorization starts with a new, unpersisted oidc-provider session. The
+        // hosted sign-in happens on another origin, so persist it here before leaving the provider
+        // origin; otherwise resume creates a different session and rejects the interaction.
+        ctx.oidc.session.touched = true;
+        const issuer = new URL(getProjectOAuthIssuer(tenancy.project.id, getEnvVariable("NEXT_PUBLIC_STACK_API_URL")));
+        const returnTo = new URL(details.returnTo, issuer);
+        if (returnTo.origin === issuer.origin && !returnTo.pathname.startsWith(issuer.pathname)) {
+          // The provider computes its resume URL from the request mount. The Next adapter dispatches
+          // through a stripped internal path, so persist the canonical issuer prefix before the
+          // browser leaves this origin; otherwise the final resume navigation would hit /auth/:uid.
+          returnTo.pathname = `${issuer.pathname.replace(/\/$/, "")}${returnTo.pathname}`;
+          details.returnTo = returnTo.toString();
+          await details.save(Math.max(1, details.exp - Math.floor(Date.now() / 1000)));
+        }
+        const clientId = typeof details.params.client_id === "string" ? details.params.client_id : throwErr("Project OAuth client ID was missing");
+        const resource = typeof details.params.resource === "string" ? details.params.resource : undefined;
+        const requestedScopes = `${details.params.scope ?? ""}`.split(" ").filter(Boolean);
+        await globalPrismaClient.idPAdapterData.upsert({
+          where: { idpId_model_id: { idpId: getProjectIdpId(tenancy), model: MODEL, id: interactionId(tenancy, uid) } },
+          create: {
             idpId: getProjectIdpId(tenancy),
-            clientId,
-            requestedScopes,
-            ...(resource === undefined ? {} : { resource }),
+            model: MODEL,
+            id: interactionId(tenancy, uid),
+            payload: {
+              uid,
+              projectId: tenancy.project.id,
+              idpId: getProjectIdpId(tenancy),
+              clientId,
+              requestedScopes,
+              ...(resource === undefined ? {} : { resource }),
+            },
+            expiresAt: new Date(Date.now() + TTL_SECONDS * 1000),
           },
-          expiresAt: new Date(Date.now() + TTL_SECONDS * 1000),
-        },
-        update: {},
-      });
-      // A project without required consent still requires an authenticated account. This removes
-      // the confirmation click without weakening scope/resource authority checks.
-      if (!projectOAuthClientNeedsInteraction(tenancy, clientId)
-        && typeof details.session?.accountId === "string") {
-        const doneUrl = await recordProjectOAuthDecision({
-          tenancy,
-          uid,
-          userId: details.session.accountId,
-          approvedScopes: requestedScopes,
-          denied: false,
+          update: {},
         });
-        return ctx.redirect(doneUrl);
-      }
-      const interactionUrl = new URL("/handler/oauth-provider-interaction", getHostedHandlerTrustedDomain(tenancy.project.id));
+        // A project without required consent still requires an authenticated account. This removes
+        // the confirmation click without weakening scope/resource authority checks.
+        if (!projectOAuthClientNeedsInteraction(tenancy, clientId)
+        && typeof details.session?.accountId === "string") {
+          const doneUrl = await recordProjectOAuthDecision({
+            tenancy,
+            uid,
+            userId: details.session.accountId,
+            approvedScopes: requestedScopes,
+            denied: false,
+          });
+          return ctx.redirect(doneUrl);
+        }
+        const interactionUrl = new URL("/handler/oauth-provider-interaction", getHostedHandlerTrustedDomain(tenancy.project.id));
       interactionUrl.searchParams.set("interaction_uid", uid);
       return ctx.redirect(interactionUrl.toString());
+      });
     }
     return await next();
   });

@@ -348,8 +348,21 @@ export async function createOidcProviderInternal(options: OidcProviderOptions) {
     },
 
     async renderError(ctx, out, error) {
-      console.warn("IdP error occurred. This usually indicates a misconfigured client, not a server error.", error, { out });
+      captureError("idp-oidc-provider-render-error", error);
+      console.warn("IdP error occurred. This usually indicates a misconfigured client, not a server error.", { out });
       ctx.status = 400;
+      if (/\/auth\/[^/]+$/.test(ctx.path)) {
+        ctx.type = "text/html";
+        ctx.body = `<!doctype html>
+          <html lang="en">
+            <head><meta charset="utf-8"><title>Authorization unavailable</title></head>
+            <body>
+              <h1>Authorization unavailable</h1>
+              <p>This authorization request could not be completed. Return to the application that started sign-in and try again.</p>
+            </body>
+          </html>`;
+        return;
+      }
       ctx.type = "application/json";
       ctx.body = JSON.stringify(out);
     },

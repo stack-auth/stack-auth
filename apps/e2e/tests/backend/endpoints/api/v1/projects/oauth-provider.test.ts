@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createMcpTokenVerifier } from "@hexclave/js/mcp";
 import { expect } from "vitest";
-import { it, STACK_BACKEND_BASE_URL, updateCookiesFromResponse } from "../../../../../helpers";
+import { it, niceFetch, STACK_BACKEND_BASE_URL, updateCookiesFromResponse } from "../../../../../helpers";
 import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
 
 const oauthCodeVerifier = "a".repeat(43);
@@ -85,9 +85,10 @@ async function startProjectInteraction(projectId: string, scope = "openid files:
     headers: { cookie: providerCookie },
   });
   expect(interaction.status).toBe(307);
+  const sessionCookie = updateCookiesFromResponse(providerCookie, interaction);
   return {
     interactionUid: new URL(interactionLocation).pathname.split("/").at(-1) ?? "",
-    providerCookie,
+    providerCookie: sessionCookie,
   };
 }
 
@@ -240,6 +241,14 @@ it("returns a safe 404 for an unknown project", async () => {
   `);
 });
 
+it("renders a user-safe page for provider errors on authorization navigation", async () => {
+  const response = await niceFetch(providerUrl("internal", "/auth/not-a-real-interaction"));
+  expect(response.status).toBe(400);
+  expect(response.headers.get("content-type")).toContain("text/html");
+  expect(response.body).toContain("Authorization unavailable");
+  expect(response.body).not.toContain("\"error\"");
+});
+
 it("rejects unknown clients and authorization requests without PKCE", async () => {
   const projectId = await createConfiguredProject();
   const unknownClient = await niceBackendFetch(providerUrl(projectId, "/auth"), {
@@ -315,7 +324,7 @@ it("reads and records an authenticated project OAuth interaction", async () => {
   expect(decision.body.done_url).toBe(providerUrl(projectId, `/interaction/${interactionUid}/done`));
 });
 
-it("completes the project OAuth authorization code flow", async () => {
+it("completes the signed-out-first project OAuth authorization code flow", async () => {
   const projectId = await createConfiguredProject();
   const normalSession = await Auth.fastSignUp();
   const authorize = await niceBackendFetch(providerUrl(projectId, "/auth"), {
@@ -339,6 +348,8 @@ it("completes the project OAuth authorization code flow", async () => {
     headers: { cookie: providerCookie },
   });
   expect(interaction.status).toBe(307);
+  const providerSessionCookie = updateCookiesFromResponse(providerCookie, interaction);
+  expect(providerSessionCookie).toContain("_session=");
   const interactionUid = new URL(interactionLocation).pathname.split("/").at(-1) ?? "";
   const fullDetails = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
     accessType: "client",
@@ -359,12 +370,12 @@ it("completes the project OAuth authorization code flow", async () => {
   const completed = await niceBackendFetch(decision.body.done_url, {
     method: "POST",
     redirect: "manual",
-    headers: { cookie: providerCookie },
+    headers: { cookie: providerSessionCookie },
   });
   expect(completed.status).toBe(303);
   const resumed = await niceBackendFetch(completed.headers.get("location") ?? "", {
     redirect: "manual",
-    headers: { cookie: updateCookiesFromResponse(providerCookie, completed) },
+    headers: { cookie: updateCookiesFromResponse(providerSessionCookie, completed) },
   });
   expect(resumed.status).toBe(303);
   const callback = new URL(resumed.headers.get("location") ?? "");
