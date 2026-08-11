@@ -482,6 +482,7 @@ export function declarePiledriverGarbageCollector(options: {
         key: ArrayBuffer,
         compare: ArrayBuffer,
         value: ArrayBuffer,
+        delta: number,
         previousReferenceCount: number,
         nextReferenceCount: number,
         eligibleAtMillis: number,
@@ -515,6 +516,7 @@ export function declarePiledriverGarbageCollector(options: {
           key,
           compare: existing.buffer,
           value: encodeJson(replacement),
+          delta: count,
           previousReferenceCount: metadata.referenceCount,
           nextReferenceCount,
           eligibleAtMillis: nextLastDereferencedAtMillis ?? metadata.createdAtMillis,
@@ -526,24 +528,15 @@ export function declarePiledriverGarbageCollector(options: {
         pending.length = 0;
         continue;
       }
-      const compareAndSet = metadataStore.compareAndSetAll;
-      const result = compareAndSet === undefined
-        ? {
-          results: await Promise.all(compareAndSetEntries.map(async entry => {
-            const seq = await replaceMetadata(entry.key, entry.compare, parseReferenceMetadata(entry.value), requiresSeq);
-            return seq === null ? { wasSet: false as const, seq: null } : { wasSet: true as const, seq };
-          })),
-          seq: requiresSeq,
-        }
-        : await compareAndSet(
-            compareAndSetEntries.map(({ key, compare, value }) => ({ key, compare, value })),
-            { requiresSeq },
-          );
+      const result = await metadataStore.compareAndSetAll(
+        compareAndSetEntries.map(({ key, compare, value }) => ({ key, compare, value })),
+        { requiresSeq },
+      );
       pending.length = 0;
       for (const [index, entry] of compareAndSetEntries.entries()) {
         const changed = result.results[index];
         if (changed.wasSet === false) {
-          retry.push(pending[index] ?? { key: entry.key, count: entry.nextReferenceCount - entry.previousReferenceCount });
+          retry.push({ key: entry.key, count: entry.delta });
           continue;
         }
         metadataSequences.push(changed.seq);
@@ -559,21 +552,23 @@ export function declarePiledriverGarbageCollector(options: {
     }
     const becameZero = changes.filter(change => change.becameZero);
     const stoppedBeingZero = changes.filter(change => change.stoppedBeingZero);
-    const candidateWrites = becameZero.length === 0
-      ? { seq: requiresSeq }
-      : await candidateStore.setAll(
-        becameZero.map(({ key, eligibleAtMillis }) => ({
-          key: candidateKey(key, eligibleAtMillis),
-          value: new ArrayBuffer(0),
-        })),
-        { requiresSeq: combineSeqsDeduped(metadataSequences) },
-      );
-    const candidateDeletes = stoppedBeingZero.length === 0
-      ? { seq: requiresSeq }
-      : await candidateStore.deleteAll(
-        stoppedBeingZero.map(({ key, eligibleAtMillis }) => candidateKey(key, eligibleAtMillis)),
-        { requiresSeq: combineSeqsDeduped(metadataSequences) },
-      );
+    const [candidateWrites, candidateDeletes] = await Promise.all([
+      becameZero.length === 0
+        ? Promise.resolve({ seq: requiresSeq })
+        : candidateStore.setAll(
+          becameZero.map(({ key, eligibleAtMillis }) => ({
+            key: candidateKey(key, eligibleAtMillis),
+            value: new ArrayBuffer(0),
+          })),
+          { requiresSeq: combineSeqsDeduped(metadataSequences) },
+        ),
+      stoppedBeingZero.length === 0
+        ? Promise.resolve({ seq: requiresSeq })
+        : candidateStore.deleteAll(
+          stoppedBeingZero.map(({ key, eligibleAtMillis }) => candidateKey(key, eligibleAtMillis)),
+          { requiresSeq: combineSeqsDeduped(metadataSequences) },
+        ),
+    ]);
     return {
       seq: combineSeqsDeduped([
         requiresSeq,
@@ -586,14 +581,37 @@ export function declarePiledriverGarbageCollector(options: {
   };
 
   const recordHeapObjectCreation = async (key: ArrayBuffer, requiresSeq: DatabaseSeq) => {
+    return await recordHeapObjectCreations([{ key, requiresSeq }]);
+  };
+
+  const recordHeapObjectCreations = async (entries: Array<{ key: ArrayBuffer, requiresSeq: DatabaseSeq }>) => {
     await initialize();
+    if (entries.length === 0) return { seq: options.lowLevelDb.initialSeq };
     // Clamp backward clock jumps to the process start. Every valid collection cutoff predates
     // that barrier, so a newly created object can never accidentally become eligible.
     const createdAtMillis = Math.max(Date.now(), options.processStartedAtMillis);
     const metadata = newMetadata(readyGeneration(), createdAtMillis);
-    const metadataWrite = await metadataStore.setAll([{ key, value: encodeJson(metadata) }], { requiresSeq });
-    const candidateWrite = await candidateStore.setAll([{ key: candidateKey(key, createdAtMillis), value: new ArrayBuffer(0) }], { requiresSeq: metadataWrite.seq });
+    // Creation metadata and zero-reference candidates must be durable before any positive
+    // edge delta is applied. If this batch is interrupted, a payload without metadata is
+    // legacy-immortal (a leak), while an unreferenced zero-count object is safely collectable.
+    const metadataWrite = await metadataStore.setAll(
+      entries.map(({ key }) => ({ key, value: encodeJson(metadata) })),
+      { requiresSeq: combineSeqsDeduped(entries.map(entry => entry.requiresSeq)) },
+    );
+    const candidateWrite = await candidateStore.setAll(
+      entries.map(({ key }) => ({ key: candidateKey(key, createdAtMillis), value: new ArrayBuffer(0) })),
+      { requiresSeq: metadataWrite.seq },
+    );
     return { seq: candidateWrite.seq };
+  };
+
+  const beforeSerializedHeapObjectsBecomeVisible = async (buffers: ArrayBuffer[], requiresSeq: DatabaseSeq) => {
+    await initialize();
+    return await changeSerializedReferenceDeltas(
+      aggregateKeys(buffers.flatMap(buffer => serializedHeapReferenceKeys(buffer))).values(),
+      null,
+      requiresSeq,
+    );
   };
 
   const beforeSerializedObjectBecomesVisible = async (
@@ -1062,6 +1080,8 @@ export function declarePiledriverGarbageCollector(options: {
   return {
     initialize,
     recordHeapObjectCreation,
+    recordHeapObjectCreations,
+    beforeSerializedHeapObjectsBecomeVisible,
     beforeSerializedObjectBecomesVisible,
     afterSerializedObjectBecameInvisible,
     collectGarbage,

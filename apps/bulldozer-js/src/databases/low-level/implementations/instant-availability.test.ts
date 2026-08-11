@@ -51,6 +51,9 @@ function createSlowSetDatabase() {
     async compareAndSet() {
       throw new Error("not implemented");
     },
+    async compareAndSetAll() {
+      throw new Error("not implemented");
+    },
   };
   const db: LowLevelDatabase = {
     getDebugInfo() {
@@ -155,6 +158,9 @@ function createReorderingSetDatabase() {
     async compareAndSet() {
       throw new Error("not implemented");
     },
+    async compareAndSetAll() {
+      throw new Error("not implemented");
+    },
   };
   const db: LowLevelDatabase = {
     getDebugInfo() {
@@ -247,6 +253,9 @@ function createDelayedSetImmediateInsertDatabase() {
       return { keys, seq };
     },
     async compareAndSet() {
+      throw new Error("not implemented");
+    },
+    async compareAndSetAll() {
       throw new Error("not implemented");
     },
   };

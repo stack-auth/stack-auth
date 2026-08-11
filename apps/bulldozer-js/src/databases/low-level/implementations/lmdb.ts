@@ -511,6 +511,16 @@ export function declareLmdbLowLevelDatabase(options: {
           return seq === null ? { wasSet: false, seq: null } : { wasSet: true, seq };
         });
       },
+      async compareAndSetAll(entries, casOptions) {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
+          const results = await Promise.all(entries.map(async ({ key, compare, value }) => await result.compareAndSet(key, compare, value, casOptions)));
+          const successful = results.find(result => result.wasSet);
+          return {
+            results,
+            seq: successful?.seq ?? initialSeq,
+          };
+        });
+      },
       async debugEntries() {
         return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.debugEntries", attributes }, async () => await (db.getRange() as lmdb.RangeIterable<{ key: Uint8Array, value: Buffer }>).map(({ key, value }) => {
           const keyBuffer = Buffer.from(key);

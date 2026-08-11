@@ -41,13 +41,15 @@ function wrapWithHeapListCounter(lowLevel: LowLevelDatabase, onHeapList: () => v
 function wrapWithGcReferenceCounter(
   lowLevel: LowLevelDatabase,
   onMetadataGet: () => void,
-  onMetadataCompareAndSet: () => void,
+  onMetadataCompareAndSet: (entryCount: number) => void,
+  onMetadataSetAll: () => void = () => {},
+  onCandidateSetAll: () => void = () => {},
 ): LowLevelDatabase {
   return {
     ...lowLevel,
     declareKvStore(id) {
       const store = lowLevel.declareKvStore(id);
-      if (id !== "piledriver-gc-reference-metadata-v3") return store;
+      if (id !== "piledriver-gc-reference-metadata-v3" && id !== "piledriver-gc-zero-reference-candidates-v3") return store;
       return {
         ...store,
         async get(key) {
@@ -55,13 +57,17 @@ function wrapWithGcReferenceCounter(
           return await store.get(key);
         },
         async compareAndSet(key, compare, value, options) {
-          onMetadataCompareAndSet();
+          onMetadataCompareAndSet(1);
           return await store.compareAndSet(key, compare, value, options);
         },
         async compareAndSetAll(entries, options) {
-          for (const _entry of entries) onMetadataCompareAndSet();
-          if (store.compareAndSetAll === undefined) throw new Error("Expected in-memory metadata store to support compareAndSetAll");
+          onMetadataCompareAndSet(entries.length);
           return await store.compareAndSetAll(entries, options);
+        },
+        async setAll(entries, options) {
+          if (id === "piledriver-gc-reference-metadata-v3") onMetadataSetAll();
+          else onCandidateSetAll();
+          return await store.setAll(entries, options);
         },
       };
     },
@@ -205,8 +211,8 @@ describe("PiledriverDatabase", () => {
     const underlyingLowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
     const lowLevel = wrapWithGcReferenceCounter(
       underlyingLowLevel,
-      () => metadataGets++,
-      () => metadataCompareAndSets++,
+    () => metadataGets++,
+    count => metadataCompareAndSets += count,
     );
     const writer = declarePiledriverDatabase(lowLevel);
     const rootKey = new TextEncoder().encode("root").buffer;
@@ -223,6 +229,28 @@ describe("PiledriverDatabase", () => {
 
     expect(metadataGets).toBe(2);
     expect(metadataCompareAndSets).toBe(2);
+  });
+
+  it("batches metadata and candidate writes for created heap objects", async () => {
+    let metadataSetAllCalls = 0;
+    let candidateSetAllCalls = 0;
+    const lowLevel = wrapWithGcReferenceCounter(
+      declareInMemoryLowLevelDatabase(crypto.randomUUID()),
+      () => {},
+      () => {},
+      () => metadataSetAllCalls++,
+      () => candidateSetAllCalls++,
+    );
+    const writer = declarePiledriverDatabase(lowLevel);
+    const rootKey = new TextEncoder().encode("root").buffer;
+    const created = Object.fromEntries(
+      Array.from({ length: 20 }, (_, index) => [`object${index}`, asHeapObject({ index })]),
+    );
+
+    await writer.setRootObject(rootKey, created);
+
+    expect(metadataSetAllCalls).toBe(1);
+    expect(candidateSetAllCalls).toBe(1);
   });
 
   it("never collects objects created after the restart barrier", async () => {

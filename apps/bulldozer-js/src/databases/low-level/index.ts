@@ -53,7 +53,7 @@ export type LowLevelKvStore = {
   deleteAll(keys: ArrayBuffer[], options?: { requiresSeq?: DatabaseSeq }): Promise<{ seq: DatabaseSeq }>,
 
   compareAndSet(key: ArrayBuffer, compare: ArrayBuffer, value: ArrayBuffer, options?: { requiresSeq?: DatabaseSeq }): Promise<{ wasSet: true, seq: DatabaseSeq } | { wasSet: false, seq: null }>,
-  compareAndSetAll?(entries: Array<{ key: ArrayBuffer, compare: ArrayBuffer, value: ArrayBuffer }>, options?: { requiresSeq?: DatabaseSeq }): Promise<{
+  compareAndSetAll(entries: Array<{ key: ArrayBuffer, compare: ArrayBuffer, value: ArrayBuffer }>, options?: { requiresSeq?: DatabaseSeq }): Promise<{
     results: Array<{ wasSet: true, seq: DatabaseSeq } | { wasSet: false, seq: null }>,
     seq: DatabaseSeq,
   }>,
@@ -75,7 +75,7 @@ export type LowLevelKvStore = {
  * Note that durability of a modifying function is only guaranteed after `waitUntilDurable(seq)` for either the returned
  * `seq` or a `seq` that's greater (determined using `maxSeq`).
  */
-export type LowLevelKvDump = Omit<LowLevelKvStore, "setAll" | "compareAndSet"> & {
+export type LowLevelKvDump = Omit<LowLevelKvStore, "setAll" | "compareAndSet" | "compareAndSetAll"> & {
   /**
    * Inserts the values and returns their keys in the same order.
    *
