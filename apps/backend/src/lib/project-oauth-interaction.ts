@@ -231,6 +231,9 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
           uid: session.uid,
           cookie: session.jti,
         };
+        // interactionFinished writes to the raw Node response and calls res.end(), flushing
+        // headers before the session middleware can persist its cookie. Capture the result,
+        // let that middleware unwind, then issue the redirect through Koa.
         await interaction.save(Math.max(1, interaction.exp - Math.floor(Date.now() / 1000)));
 
         const consumed = await consumeProjectOAuthDecision(tenancy, uid);
@@ -283,6 +286,7 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
       ctx.status = 303;
       ctx.set("Location", returnTo);
       ctx.body = "";
+      return;
     }
     const match = /^\/interaction\/([^/]+)$/.exec(ctx.path);
     if (match !== null && ctx.method === "GET") {
