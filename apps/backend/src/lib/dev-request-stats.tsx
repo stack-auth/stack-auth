@@ -23,7 +23,7 @@ function getKey(method: string, path: string): string {
  * Only records in development mode.
  */
 export function recordRequestStats(method: string, path: string, durationMs: number): void {
-  if (getNodeEnvironment() !== "development" && getEnvVariable("HEXCLAVE_E2E_DIAGNOSTICS") !== "true") {
+  if (getNodeEnvironment() !== "development" && getEnvVariable("HEXCLAVE_E2E_DIAGNOSTICS", "") !== "true") {
     return;
   }
 
