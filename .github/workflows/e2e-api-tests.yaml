@@ -263,7 +263,7 @@ jobs:
                 "http://localhost:${backend_port}/api/latest/internal/span-aggregation?reset=true")"
               then
                 printf "%s\n" "$response" | jq .
-                if printf "%s\n" "$response" | jq -e '.enabled == true' >/dev/null; then
+                if printf "%s\n" "$response" | jq -e ".enabled == true" >/dev/null; then
                   if ! printf "%s\n" "$response" | jq -e \
                     "[.spans[] | select(.name | startswith(\"STACK: GET \"))] | length > 0" \
                     >/dev/null
@@ -274,7 +274,7 @@ jobs:
                   echo "Span-enabled mode: route span present."
                 else
                   if ! printf "%s\n" "$response" | jq -e \
-                    '.enabled == false and (.spans | length == 0) and (.runtime.heap.usedBytes > 0) and (.runtime.gc.totalCount > 0) and (.runtime.eventLoopDelay.meanMs > 0)' \
+                    ".enabled == false and (.spans | length == 0) and (.runtime.heap.usedBytes > 0) and (.runtime.gc.totalCount > 0) and (.runtime.eventLoopDelay.meanMs > 0)" \
                     >/dev/null
                   then
                     echo "Profile-only smoke snapshot did not contain the expected empty spans and runtime diagnostics." >&2

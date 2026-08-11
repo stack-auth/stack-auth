@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { threadId } from "node:worker_threads";
 import { expect } from "vitest";
 
 const enabled = process.env.HEXCLAVE_E2E_DIAGNOSTICS === "true";
@@ -41,7 +42,7 @@ export function recordClientRequest(record: RequestRecord): void {
 
 export function flushE2eDiagnostics(): void {
   if (!enabled || runnerTemp === undefined) return;
-  const outputPath = join(runnerTemp, `hexclave-e2e-diagnostics-${pass}-${process.pid}.untracked.json`);
+  const outputPath = join(runnerTemp, `hexclave-e2e-diagnostics-${pass}-${process.pid}-${threadId}.untracked.json`);
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, JSON.stringify({
     pass,
