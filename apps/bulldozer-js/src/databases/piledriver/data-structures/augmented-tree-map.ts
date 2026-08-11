@@ -77,6 +77,14 @@ export type PersistedTreeIntegrityIssue = {
   code: string,
   message: string,
 };
+
+export function treeVerificationNodeLoadBudget(persistedSize: number): number {
+  const size = Number.isSafeInteger(persistedSize) && persistedSize >= 0 ? persistedSize : 0;
+  // Keep the work budget proportional to the persisted size; the high absolute ceiling only
+  // protects against nonsense sizes, which are also caught by the recomputed-size invariant.
+  return Math.min(10_000_000, size * 4 + 32);
+}
+
 const lowerEntryId = Symbol("lower-entry-id");
 const upperEntryId = Symbol("upper-entry-id");
 const mapEntryId = "";
@@ -186,8 +194,7 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     type Summary = { height: number, size: number, entryCount: number, minKey: MultiKey<Key, EntryId>, maxKey: MultiKey<Key, EntryId>, augmentation: Augmentation };
     type Frame = { child: Child<MultiKey<Key, EntryId>, Augmentation>, node: Node<MultiKey<Key, EntryId>, Value, Augmentation>, path: number[], nextChild: number, children: Array<Summary | undefined> };
     const stack: Frame[] = [];
-    const persistedSize = Number.isSafeInteger(this.root.size) && this.root.size >= 0 ? this.root.size : 0;
-    const maxNodeLoads = Math.min(100_000, persistedSize * 4 + 32);
+    const maxNodeLoads = treeVerificationNodeLoadBudget(this.root.size);
     let nodeLoads = 1;
     const loadFrame = async (child: Child<MultiKey<Key, EntryId>, Augmentation>, path: number[]): Promise<Frame> => {
       const node = await this.node(child.ref);

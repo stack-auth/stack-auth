@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isPiledriverHeapObjectSymbol, PiledriverHeapObject, PiledriverObject } from "../index.js";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
-import { AugmentedTreeMap, AugmentedTreeMultiMap } from "./augmented-tree-map.js";
+import { AugmentedTreeMap, AugmentedTreeMultiMap, treeVerificationNodeLoadBudget } from "./augmented-tree-map.js";
 
 type Range = { lte?: number, gte?: number, lt?: number, gt?: number };
 type Entry = [number, number];
@@ -309,9 +309,11 @@ describe("AugmentedTreeMap", () => {
     const serialized = tree.toPiledriverObject();
     const root = serialized.root;
     if (root === null) throw new Error("Expected a non-empty tree");
+    let rootLoads = 0;
     const makeCorruptedRootRef = (): PiledriverHeapObject => ({
       ...root.ref,
       async get(): Promise<PiledriverObject> {
+        rootLoads++;
         const node = await root.ref.get();
         if (typeof node !== "object" || node === null || Array.isArray(node)) throw new Error("Expected a tree node");
         const children = (node as { children: Array<Record<string, unknown>> }).children.map(child => ({ ...child, ref: makeCorruptedRootRef() }));
@@ -321,6 +323,12 @@ describe("AugmentedTreeMap", () => {
     const corruptedRootRef = makeCorruptedRootRef();
     const cyclic = AugmentedTreeMap.fromPiledriverObject({ ...serialized, root: { ...root, ref: corruptedRootRef } }, options(3));
     expect(await cyclic.verifyDataIntegrity()).toContainEqual(expect.objectContaining({ code: "cycle" }));
+    expect(rootLoads).toBeLessThan(200);
+  });
+
+  it("scales the cycle guard with the persisted size", () => {
+    expect(treeVerificationNodeLoadBudget(30_000)).toBeGreaterThan(100_000);
+    expect(treeVerificationNodeLoadBudget(Number.MAX_SAFE_INTEGER)).toBe(10_000_000);
   });
 
   it("round-trips through piledriver objects", async () => {
