@@ -3,11 +3,11 @@ import {
   getBackendRuntimeDiagnostics,
   getSpanAggregates,
   isSpanAggregationEnabled,
-  resetSpanAggregates,
   startBackendCpuProfile,
   stopBackendCpuProfile,
 } from "@/utils/span-aggregation";
 import { clearRequestStats, getAllRequestStats } from "@/lib/dev-request-stats";
+import { clearBackendRequestCorrelations, getBackendRequestCorrelations } from "@/lib/request-correlation-diagnostics";
 import { yupArray, yupBoolean, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
@@ -47,6 +47,14 @@ export const GET = createSmartRouteHandler({
         minTimeMs: yupNumber().defined(),
         maxTimeMs: yupNumber().defined(),
         lastCalledAt: yupNumber().defined(),
+      }).defined()).defined(),
+      correlations: yupArray(yupObject({
+        clientRequestId: yupString().defined(),
+        requestId: yupString().defined(),
+        method: yupString().defined(),
+        path: yupString().defined(),
+        status: yupNumber().defined(),
+        durationMs: yupNumber().defined(),
       }).defined()).defined(),
       runtime: yupObject({
         eventLoopDelay: yupObject({
@@ -122,17 +130,13 @@ export const GET = createSmartRouteHandler({
       cpuProfile = await stopBackendCpuProfile();
     }
     const shouldReset = query.reset === "true";
-    const spans = enabled ? getSpanAggregates() : [];
-    const runtime = getBackendRuntimeDiagnostics(query.reset === "true");
+    const spans = enabled ? getSpanAggregates(shouldReset) : [];
+    const runtime = getBackendRuntimeDiagnostics(shouldReset);
     const requests = getAllRequestStats();
+    const correlations = getBackendRequestCorrelations();
     if (shouldReset) {
-      // The wrapper records this control request after the handler returns, and
-      // its spans also end afterward. Reset both stores on the next turn so the
-      // control request cannot leak into the next pass.
-      setImmediate(() => {
-        clearRequestStats();
-        resetSpanAggregates();
-      });
+      clearRequestStats();
+      clearBackendRequestCorrelations();
     }
 
     return {
@@ -143,6 +147,7 @@ export const GET = createSmartRouteHandler({
         // These totals are sums across concurrent requests, not a wall-time budget.
         spans,
         requests,
+        correlations,
         runtime,
         cpuProfile,
       },

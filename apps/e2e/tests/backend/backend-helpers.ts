@@ -196,7 +196,8 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
   const fullUrl = new URL(url, STACK_BACKEND_BASE_URL);
   if (fullUrl.origin !== new URL(STACK_BACKEND_BASE_URL).origin) throw new HexclaveAssertionError(`Invalid niceBackendFetch origin: ${fullUrl.origin}`);
   if (fullUrl.protocol !== new URL(STACK_BACKEND_BASE_URL).protocol) throw new HexclaveAssertionError(`Invalid niceBackendFetch protocol: ${fullUrl.protocol}`);
-  const requestStartedAt = isE2eDiagnosticsEnabled() ? performance.now() : 0;
+  const diagnosticRequestId = isE2eDiagnosticsEnabled() ? randomUUID() : undefined;
+  const requestStartedAt = diagnosticRequestId === undefined ? 0 : performance.now();
   const res = await niceFetch(fullUrl, {
     ...otherOptions,
     ...body !== undefined ? { body: JSON.stringify(body) } : {},
@@ -217,6 +218,7 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
       "x-stack-access-token": userAuth?.accessToken,
       "x-stack-refresh-token": userAuth?.refreshToken,
       "x-stack-allow-anonymous-user": "true",
+      "x-hexclave-diagnostic-request-id": diagnosticRequestId,
       ...backendContext.value.ipData ? {
         "user-agent": "Mozilla/5.0",  // pretend to be a browser so our IP gets tracked
         "x-forwarded-for": backendContext.value.ipData.ipAddress,
@@ -232,11 +234,13 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
       ...Object.fromEntries(new Headers(filterUndefined(headers ?? {}) as any).entries()),
     }),
   });
-  if (isE2eDiagnosticsEnabled()) {
+  if (diagnosticRequestId !== undefined) {
     recordClientRequest({
+      clientRequestId: diagnosticRequestId,
       durationMs: performance.now() - requestStartedAt,
       method: otherOptions.method ?? "GET",
       path: fullUrl.pathname,
+      serverRequestId: res.headers.get("x-hexclave-request-id") ?? res.headers.get("x-stack-request-id") ?? undefined,
       status: res.status,
     });
   }

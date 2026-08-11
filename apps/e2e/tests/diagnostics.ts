@@ -17,6 +17,8 @@ type WaitRecord = {
 };
 
 type RequestRecord = {
+  clientRequestId?: string,
+  serverRequestId?: string,
   file?: string,
   durationMs: number,
   method: string,

@@ -1,6 +1,7 @@
 import "../polyfills";
 
 import { recordRequestStats } from "@/lib/dev-request-stats";
+import { backendRequestCorrelationEnabled, recordBackendRequestCorrelation } from "@/lib/request-correlation-diagnostics";
 import { requestContextALS } from "@/lib/runtime/request-context";
 import { isSpanAggregationEnabled } from "@/utils/span-aggregation";
 import { isRequestBodyTooLargeError } from "@/server/request-body-limit";
@@ -79,6 +80,7 @@ function getErrorDigest(error: unknown): unknown {
  * multiple concurrent requests to be handled by the same instance.
  */
 const processId = generateSecureRandomString(80);
+const diagnosticsResetRoute = "/api/latest/internal/span-aggregation";
 let concurrentRequestsInProcess = 0;
 
 /**
@@ -113,6 +115,7 @@ export function handleApiRequest(handler: (req: Request, options: any, requestId
           "stack.request.method": req.method,
           "stack.process.id": processId,
           "stack.process.concurrent-requests": concurrentRequestsInProcess,
+          ...(normalizedPath === diagnosticsResetRoute ? { "stack.request.diagnostics-reset-control": true } : {}),
         },
       }, async (span) => {
         // Production uses the normalized structured request log. Detailed
@@ -166,7 +169,22 @@ export function handleApiRequest(handler: (req: Request, options: any, requestId
           const time = (performance.now() - timeStart);
 
           // Record request stats for dev-stats page
-          recordRequestStats(req.method, requestUrl.pathname, time, normalizedPath);
+          if (normalizedPath !== diagnosticsResetRoute) {
+            recordRequestStats(req.method, requestUrl.pathname, time, normalizedPath);
+          }
+          if (backendRequestCorrelationEnabled) {
+            const diagnosticRequestId = req.headers.get("x-hexclave-diagnostic-request-id");
+            if (diagnosticRequestId != null) {
+              recordBackendRequestCorrelation({
+                clientRequestId: diagnosticRequestId,
+                requestId,
+                method: req.method,
+                path: normalizedPath ?? "<unknown-route>",
+                status: res.status,
+                durationMs: time,
+              });
+            }
+          }
 
           if ([301, 302].includes(res.status)) {
             throw new HexclaveAssertionError("HTTP status codes 301 and 302 should not be returned by our APIs because the behavior for non-GET methods is inconsistent across implementations. Use 303 (to rewrite method to GET) or 307/308 (to preserve the original method and data) instead.", { status: res.status, url: requestUrl, req, res });

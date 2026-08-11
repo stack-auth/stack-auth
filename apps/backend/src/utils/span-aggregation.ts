@@ -153,6 +153,19 @@ function getUnionDurationMs(intervals: Array<{ startNs: bigint, endNs: bigint }>
 class SpanAggregationProcessor implements SpanProcessor {
   private readonly aggregates = new Map<string, SpanAggregate>();
   private readonly childIntervalsBySpanId = new Map<string, Array<{ startNs: bigint, endNs: bigint }>>();
+  private readonly excludedSpanIds = new Set<string>();
+
+  onStart(span: ReadableSpan): void {
+    const spanId = span.spanContext().spanId;
+    if (span.attributes["stack.request.diagnostics-reset-control"] === true) {
+      this.excludedSpanIds.add(spanId);
+      return;
+    }
+    const parentSpanId = span.parentSpanContext?.spanId;
+    if (parentSpanId !== undefined && this.excludedSpanIds.has(parentSpanId)) {
+      this.excludedSpanIds.add(spanId);
+    }
+  }
 
   forceFlush(): Promise<void> {
     return Promise.resolve();
@@ -160,6 +173,7 @@ class SpanAggregationProcessor implements SpanProcessor {
 
   onEnd(span: ReadableSpan): void {
     const spanId = span.spanContext().spanId;
+    if (this.excludedSpanIds.delete(spanId)) return;
     const inclusiveDurationMs = durationMs(span.startTime, span.endTime);
     const childDurationMs = getUnionDurationMs(this.childIntervalsBySpanId.get(spanId) ?? []);
     const exclusiveDurationMs = Math.max(0, inclusiveDurationMs - childDurationMs);
@@ -189,10 +203,6 @@ class SpanAggregationProcessor implements SpanProcessor {
         ],
       );
     }
-  }
-
-  onStart(): void {
-    // Span durations are calculated when spans end; no start bookkeeping is required.
   }
 
   shutdown(): Promise<void> {

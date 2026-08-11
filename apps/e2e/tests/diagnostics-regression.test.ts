@@ -6,11 +6,13 @@ import { expect } from "vitest";
 import { test } from "./helpers";
 
 type DiagnosticReport = {
+  pass: string,
+  file: string,
   requests: Array<{ path: string }>,
 };
 
 function isDiagnosticReport(value: unknown): value is DiagnosticReport {
-  if (value == null || typeof value !== "object" || !("requests" in value) || !Array.isArray(value.requests)) return false;
+  if (value == null || typeof value !== "object" || !("pass" in value) || typeof value.pass !== "string" || !("file" in value) || typeof value.file !== "string" || !("requests" in value) || !Array.isArray(value.requests)) return false;
   return value.requests.every(request => request != null && typeof request === "object" && "path" in request && typeof request.path === "string");
 }
 
@@ -46,10 +48,13 @@ test("preserves diagnostics from multiple files on one worker", () => {
       .map(file => {
         const parsed: unknown = JSON.parse(readFileSync(join(runnerTemp, file), "utf8"));
         if (!isDiagnosticReport(parsed)) throw new Error(`Invalid diagnostics report: ${file}`);
-        return parsed;
+        return { file, report: parsed };
       });
     expect(reports).toHaveLength(2);
-    expect(reports.flatMap(report => report.requests.map(request => request.path)).sort()).toEqual([
+    expect(reports.map(({ report }) => report.pass)).toEqual(["regression", "regression"]);
+    expect(reports.map(({ report }) => report.file.endsWith("tests/diagnostics-regression/worker-one.test.ts")).sort()).toEqual([false, true]);
+    expect(reports.map(({ report }) => report.file.endsWith("tests/diagnostics-regression/worker-two.test.ts")).sort()).toEqual([false, true]);
+    expect(reports.flatMap(({ report }) => report.requests.map(request => request.path)).sort()).toEqual([
       "/diagnostics-regression/one",
       "/diagnostics-regression/two",
     ]);
