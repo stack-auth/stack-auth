@@ -16,6 +16,7 @@ export async function waitUntilReplicasHaveCaughtUp(primaryClient: Client, timeo
     ?? throwErr("pg_current_wal_lsn() returned no row; is this connection pointing at a PostgreSQL primary?");
 
   const deadline = performance.now() + timeoutMs;
+  const startedAt = performance.now();
   let polls = 0;
   while (true) {
     polls++;
@@ -27,7 +28,7 @@ export async function waitUntilReplicasHaveCaughtUp(primaryClient: Client, timeo
       if (isE2eDiagnosticsEnabled()) {
         recordConvergenceWait({
           name: "test-replication-catch-up",
-          durationMs: timeoutMs - Math.max(0, deadline - performance.now()),
+          durationMs: performance.now() - startedAt,
           polls,
           completed: true,
         });
@@ -38,7 +39,7 @@ export async function waitUntilReplicasHaveCaughtUp(primaryClient: Client, timeo
       if (isE2eDiagnosticsEnabled()) {
         recordConvergenceWait({
           name: "test-replication-catch-up",
-          durationMs: timeoutMs,
+          durationMs: performance.now() - startedAt,
           polls,
           completed: false,
         });

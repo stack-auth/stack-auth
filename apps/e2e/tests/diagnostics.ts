@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { threadId } from "node:worker_threads";
 import { expect } from "vitest";
@@ -42,11 +43,15 @@ export function recordClientRequest(record: RequestRecord): void {
 
 export function flushE2eDiagnostics(): void {
   if (!enabled || runnerTemp === undefined) return;
-  const outputPath = join(runnerTemp, `hexclave-e2e-diagnostics-${pass}-${process.pid}-${threadId}.untracked.json`);
+  const testFile = expect.getState().testPath ?? "unknown";
+  const testFileHash = createHash("sha256").update(testFile).digest("hex").slice(0, 16);
+  const outputPath = join(runnerTemp, `hexclave-e2e-diagnostics-${pass}-${process.pid}-${threadId}-${testFileHash}.untracked.json`);
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, JSON.stringify({
     pass,
     pid: process.pid,
+    threadId,
+    file: testFile,
     waits,
     requests,
   }));

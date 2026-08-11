@@ -159,7 +159,6 @@ function readRequestMetrics() {
 function resetRequestMetrics() {
   requestMetrics.requests = 0;
   requestMetrics.completed = 0;
-  requestMetrics.active = 0;
   requestMetrics.maxQueueDepth = 0;
   requestMetrics.totalDurationMs = 0;
   requestMetrics.maxDurationMs = 0;
@@ -375,7 +374,6 @@ const server = createServer(async (req, res) => {
     trackedRequest = true;
     requestMetrics.requests++;
     requestMetrics.active++;
-    requestMetrics.maxQueueDepth = Math.max(requestMetrics.maxQueueDepth, pool.queue.length);
 
     let body = "";
     for await (const chunk of req) {
@@ -406,10 +404,12 @@ const server = createServer(async (req, res) => {
       await runNpmInstall(workDir);
     }
 
-    const response = await pool.run({
+    const responsePromise = pool.run({
       scriptFile,
       envVars: config.envVars || {},
     });
+    requestMetrics.maxQueueDepth = Math.max(requestMetrics.maxQueueDepth, pool.queue.length);
+    const response = await responsePromise;
 
     // Serialize BEFORE writeHead. The worker's postMessage uses structured
     // cloning, which is a strict superset of JSON: it can transfer BigInts,
