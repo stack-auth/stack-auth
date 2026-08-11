@@ -241,8 +241,10 @@ it("returns a safe 404 for an unknown project", async () => {
   `);
 });
 
-it("renders a user-safe page for provider errors on authorization navigation", async () => {
-  const response = await niceFetch(providerUrl("internal", "/auth/not-a-real-interaction"));
+it("renders a user-safe page for project-provider errors on authorization navigation", async () => {
+  const response = await niceFetch(providerUrl("internal", "/auth/not-a-real-interaction"), {
+    headers: { accept: "text/html" },
+  });
   expect(response.status).toBe(400);
   expect(response.headers.get("content-type")).toContain("text/html");
   expect(response.body).toContain("Authorization unavailable");

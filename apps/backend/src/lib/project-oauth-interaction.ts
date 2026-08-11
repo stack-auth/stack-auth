@@ -10,6 +10,10 @@ import Provider from "oidc-provider";
 import type { AccountClaims } from "oidc-provider";
 import projectOAuthSessionMiddleware from "oidc-provider/lib/shared/session.js";
 
+if (typeof projectOAuthSessionMiddleware !== "function") {
+  throw new Error("Expected oidc-provider@8.5.1/lib/shared/session.js to export a session middleware function.");
+}
+
 const MODEL = "ProjectOAuthInteraction";
 const TTL_SECONDS = 10 * 60;
 const GRANT_TTL_SECONDS = 14 * 24 * 60 * 60;
@@ -216,6 +220,11 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
     }
     const match = /^\/interaction\/([^/]+)$/.exec(ctx.path);
     if (match !== null && ctx.method === "GET") {
+      // oidc-provider does not register its built-in /interaction route when devInteractions is
+      // disabled, so this custom route runs before the provider's context/session middleware.
+      // Initialize the same public OIDCContext shape before invoking the pinned session middleware;
+      // if oidc-provider moves that internal middleware, the module-load assertion above fails
+      // loudly instead of silently losing the provider session again.
       if (ctx.oidc === undefined) {
         Object.defineProperty(ctx, "oidc", { value: new oidc.OIDCContext(ctx) });
       }
@@ -260,7 +269,7 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
         // A project without required consent still requires an authenticated account. This removes
         // the confirmation click without weakening scope/resource authority checks.
         if (!projectOAuthClientNeedsInteraction(tenancy, clientId)
-        && typeof details.session?.accountId === "string") {
+          && typeof details.session?.accountId === "string") {
           const doneUrl = await recordProjectOAuthDecision({
             tenancy,
             uid,
@@ -271,8 +280,8 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
           return ctx.redirect(doneUrl);
         }
         const interactionUrl = new URL("/handler/oauth-provider-interaction", getHostedHandlerTrustedDomain(tenancy.project.id));
-      interactionUrl.searchParams.set("interaction_uid", uid);
-      return ctx.redirect(interactionUrl.toString());
+        interactionUrl.searchParams.set("interaction_uid", uid);
+        return ctx.redirect(interactionUrl.toString());
       });
     }
     return await next();

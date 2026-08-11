@@ -238,6 +238,7 @@ export async function createProjectOAuthProvider(
     },
     // OAuth 2.1 and the MCP authorization spec both require PKCE unconditionally.
     requirePkce: true,
+    userFacingAuthorizationErrors: true,
     findAccount: async (_ctx, sub) => await findProjectOAuthAccount(tenancy, sub),
     middleware: (oidc) => installProjectOAuthInteractionMiddleware(oidc, tenancy),
     jwksRoute: "/.well-known/jwks.json",

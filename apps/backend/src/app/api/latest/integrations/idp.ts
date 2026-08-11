@@ -229,6 +229,8 @@ export type OidcProviderOptions = {
   middleware?: (provider: Provider) => void,
   /** Where to send the user to log in / consent. */
   interactionUrl?: (interactionUid: string) => string,
+  /** Render browser-facing authorization failures as a generic page for this provider. */
+  userFacingAuthorizationErrors?: boolean,
   /** Override the JWKS route so discovery advertises the public project-provider URL. */
   jwksRoute?: string,
 };
@@ -348,17 +350,33 @@ export async function createOidcProviderInternal(options: OidcProviderOptions) {
     },
 
     async renderError(ctx, out, error) {
-      captureError("idp-oidc-provider-render-error", error);
+      if (!(error instanceof errors.OIDCProviderError) || error.statusCode >= 500) {
+        captureError("idp-oidc-provider-render-error", error);
+      }
       console.warn("IdP error occurred. This usually indicates a misconfigured client, not a server error.", { out });
       ctx.status = 400;
-      if (/\/auth\/[^/]+$/.test(ctx.path)) {
+      const acceptsHtml = ctx.get("accept").split(",").some(part => part.trim().split(";")[0] === "text/html");
+      if (options.userFacingAuthorizationErrors === true && acceptsHtml) {
         ctx.type = "text/html";
         ctx.body = `<!doctype html>
           <html lang="en">
-            <head><meta charset="utf-8"><title>Authorization unavailable</title></head>
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <title>Authorization unavailable</title>
+              <style>
+                :root { color-scheme: light; font-family: ui-sans-serif, system-ui, sans-serif; }
+                body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #fafafa; color: #18181b; }
+                main { max-width: 32rem; margin: 1rem; padding: 2rem; border: 1px solid #e4e4e7; border-radius: 0.75rem; background: white; text-align: center; }
+                h1 { margin: 0 0 0.75rem; font-size: 1.25rem; }
+                p { margin: 0; color: #71717a; line-height: 1.5; }
+              </style>
+            </head>
             <body>
+              <main>
               <h1>Authorization unavailable</h1>
               <p>This authorization request could not be completed. Return to the application that started sign-in and try again.</p>
+              </main>
             </body>
           </html>`;
         return;
