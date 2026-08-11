@@ -1838,6 +1838,15 @@ model Deployment {
   // show it as skipped rather than silently omitting it.
   plannedServiceIds Json @default("[]")
 
+  // Set when the client owning this deploy reports that it has stopped working
+  // on it (see the conclude route). Status is derived from the runs, and a
+  // planned service with no run normally reads as "still going" — but a client
+  // can fail before creating any run at all (packaging, upload, a crash), which
+  // leaves nothing to derive a terminal state from. This column is what says
+  // "no further runs are coming"; without it such a deployment stays queued or
+  // building forever and the dashboard polls it indefinitely.
+  concludedAt DateTime?
+
   runs DeploymentRun[]
 
   tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)

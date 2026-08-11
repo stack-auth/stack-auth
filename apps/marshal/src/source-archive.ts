@@ -1,9 +1,41 @@
-import { gunzipSync } from "node:zlib";
+import { promisify } from "node:util";
+import { gunzip } from "node:zlib";
 import { badRequest } from "./errors.js";
 
 const TAR_BLOCK_SIZE = 512;
 const MAX_SOURCE_ENTRIES = 50_000;
 export const MAX_UNCOMPRESSED_SOURCE_BYTES = 256 * 1024 * 1024;
+
+// How many archives may be inflated at once, process-wide.
+//
+// Marshal is a single shared process serving every tenant, and an inflation holds
+// both the compressed upload and its expansion in memory at the same time — up to
+// MAX_UPLOAD_BYTES + MAX_UNCOMPRESSED_SOURCE_BYTES each. Unbounded concurrency
+// let a handful of simultaneous but entirely VALID deploys add up to gigabytes,
+// which is a resource fault rather than a rejected request: the reconciliation
+// lease heartbeats and every other tenant's requests are served by this process.
+// Two at a time bounds the peak while still overlapping the S3 reads around them.
+const MAX_CONCURRENT_INFLATIONS = 2;
+
+const gunzipAsync = promisify(gunzip);
+
+let activeInflations = 0;
+const waitingInflations: (() => void)[] = [];
+
+async function acquireInflationSlot(): Promise<void> {
+  if (activeInflations < MAX_CONCURRENT_INFLATIONS) {
+    activeInflations++;
+    return;
+  }
+  await new Promise<void>((resolve) => waitingInflations.push(resolve));
+  activeInflations++;
+}
+
+function releaseInflationSlot(): void {
+  activeInflations--;
+  const next = waitingInflations.shift();
+  if (next !== undefined) next();
+}
 
 function readString(block: Uint8Array, offset: number, length: number): string {
   let end = offset;
@@ -71,13 +103,26 @@ export function validateUncompressedSourceTar(bytes: Uint8Array): void {
   throw badRequest("invalid source archive: missing end marker");
 }
 
-export function validateSourceArchive(bytes: Uint8Array): void {
+/**
+ * Inflates and structurally validates an uploaded source archive.
+ *
+ * ASYNC, and deliberately so: the previous gunzipSync ran the whole inflation —
+ * as much as MAX_UNCOMPRESSED_SOURCE_BYTES of it — on the event loop, so one
+ * large but perfectly valid archive stalled reconciliation, lease heartbeats and
+ * every concurrent request for its duration. zlib's callback form does the work
+ * on the libuv threadpool instead. The slot acquired around it bounds how many
+ * can be in flight at once; see MAX_CONCURRENT_INFLATIONS.
+ */
+export async function validateSourceArchive(bytes: Uint8Array): Promise<void> {
+  await acquireInflationSlot();
   let uncompressed: Buffer;
   try {
-    uncompressed = gunzipSync(bytes, { maxOutputLength: MAX_UNCOMPRESSED_SOURCE_BYTES });
+    uncompressed = await gunzipAsync(bytes, { maxOutputLength: MAX_UNCOMPRESSED_SOURCE_BYTES });
   } catch (error) {
     if (error instanceof Error) throw badRequest("invalid source archive: gzip decompression failed or exceeded the size limit");
     throw error;
+  } finally {
+    releaseInflationSlot();
   }
   validateUncompressedSourceTar(uncompressed);
 }

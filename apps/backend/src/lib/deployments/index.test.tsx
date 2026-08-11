@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { MarshalBuild, MarshalServiceState } from "./marshal-client";
-import { assertMinInstancesAllowedByPlan, definitionFromServiceRow, deploymentRunStatusFromMarshal, deploymentStatusFromRuns, marshalSpecForDefinition } from "./index";
+import { assertMinInstancesAllowedByPlan, definitionFromServiceRow, deploymentRunStatusFromMarshal, deploymentStatusFromRuns, marshalSpecForDefinition, redactSecrets } from "./index";
 import { getPlanIdForProjectOrNull } from "@/lib/plan-entitlements";
 
 // The gate's own decision logic, isolated from the billing store. Both the sync
@@ -251,5 +251,38 @@ describe("deployment status derivation", () => {
     // "Still going" is what decides whether the reader waits.
     expect(deploymentStatusFromRuns(["ERROR", "BUILDING"], 2)).toBe("building");
     expect(deploymentStatusFromRuns(["ERROR", "QUEUED"], 2)).toBe("queued");
+  });
+
+  it("is terminal once the client concluded, even with runs that never started", () => {
+    // The regression this guards: the CLI creates the deployment BEFORE
+    // packaging and upload, and a failure there produces no run at all. With
+    // nothing failed to skip the rest, an all-local failure read "queued" and a
+    // partial one read "building" — forever, with the dashboard polling both.
+    expect(deploymentStatusFromRuns([], 3, true)).toBe("failed");
+    expect(deploymentStatusFromRuns(["READY"], 2, true)).toBe("failed");
+    // Concluding does not rewrite an outcome the runs already settled.
+    expect(deploymentStatusFromRuns(["READY", "READY"], 2, true)).toBe("deployed");
+    expect(deploymentStatusFromRuns(["ERROR"], 2, true)).toBe("failed");
+    // A run still genuinely in flight outranks the conclusion: the client may
+    // have stopped waiting, but the build it already started is still running.
+    expect(deploymentStatusFromRuns(["BUILDING"], 2, true)).toBe("building");
+    // Unconcluded behaviour is unchanged.
+    expect(deploymentStatusFromRuns([], 3, false)).toBe("queued");
+    expect(deploymentStatusFromRuns(["READY"], 2, false)).toBe("building");
+  });
+});
+
+describe("redactSecrets", () => {
+  it("redacts a value whose prefix is also a secret", () => {
+    // The regression this guards: replacement ran in caller order, so redacting
+    // "abc" first destroyed the "abcdef" match and left "def" in the log.
+    expect(redactSecrets("token=abcdef", ["abc", "abcdef"])).toBe("token=<redacted>");
+    expect(redactSecrets("token=abcdef", ["abcdef", "abc"])).toBe("token=<redacted>");
+    // Both still redacted where they appear separately.
+    expect(redactSecrets("a=abc b=abcdef", ["abc", "abcdef"])).toBe("a=<redacted> b=<redacted>");
+  });
+
+  it("ignores empty values so an empty secret cannot blank the log", () => {
+    expect(redactSecrets("hello", ["", "lo"])).toBe("hel<redacted>");
   });
 });

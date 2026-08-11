@@ -45,9 +45,15 @@ export const POST = createSmartRouteHandler({
     // rejection is deliberately swallowed at deploy time — a domain that silently
     // never works. Checked here rather than only at deploy so the 400 lands on
     // the request that can act on it.
+    // No `length > 0` escape: an empty list is a portless worker, which has no
+    // HTTP endpoint either. It used to mean only "no definition synced yet", and
+    // letting that case through here now wedges the project — syncServiceDefinitions
+    // refuses a portless service that holds a domain, so every later `hexclave
+    // deploy` would fail until the domain is removed.
     const ports = definitionFromServiceRow(row).ports;
-    if (ports.length > 0 && !ports.some((entry) => portTransport(entry) === "http")) {
-      throw new StatusError(400, `The deployment service ${JSON.stringify(params.service_id)} declares no HTTP port, so a custom domain has nothing to route to. Give it a port with transport: "http" first.`);
+    if (!ports.some((entry) => portTransport(entry) === "http")) {
+      const why = ports.length === 0 ? "declares no ports" : "declares no HTTP port";
+      throw new StatusError(400, `The deployment service ${JSON.stringify(params.service_id)} ${why}, so a custom domain has nothing to route to. Give it a port with transport: "http" first.`);
     }
     const service = await getOrCreateOperationalService(prisma, auth.tenancy, params.service_id);
     // Scoped to the whole tenancy, not just this service: the runtime holds ONE claim per

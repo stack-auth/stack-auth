@@ -10,7 +10,7 @@
 
 import { DesignBadge, DesignButton } from "@/components/design-components";
 import { Skeleton, Typography, cn } from "@/components/ui";
-import type { AdminDeploymentJson, AdminProject } from "@hexclave/next";
+import type { AdminDeploymentJson, AdminDeploymentRunJson, AdminProject } from "@hexclave/next";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { ArrowClockwiseIcon, CaretRightIcon, CheckCircleIcon, CircleNotchIcon, ClockIcon, ProhibitIcon, RocketLaunchIcon, XCircleIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
@@ -170,6 +170,86 @@ export function DeploymentsList({ project, onOpenDeployment }: {
           onOpen={() => onOpenDeployment(deployment)}
         />
       ))}
+    </div>
+  );
+}
+
+function runStatusMeta(status: AdminDeploymentRunJson["status"]): StatusMeta {
+  switch (status) {
+    case "queued": { return { label: "Queued", color: "blue", icon: ClockIcon, spin: false }; }
+    case "building": { return { label: "Building", color: "cyan", icon: CircleNotchIcon, spin: true }; }
+    case "ready": { return { label: "Ready", color: "green", icon: CheckCircleIcon, spin: false }; }
+    case "error": { return { label: "Failed", color: "red", icon: XCircleIcon, spin: false }; }
+    case "canceled": { return { label: "Cancelled", color: "orange", icon: ProhibitIcon, spin: false }; }
+    default: { return { label: status, color: "blue", icon: ClockIcon, spin: false }; }
+  }
+}
+
+/**
+ * What ONE deployment shipped: its planned services and the run each got.
+ *
+ * Reads only the deployment handed to it. The previous view rendered the service
+ * BOARD here, which fetches current definitions and latest statuses of its own —
+ * so opening a months-old deploy showed today's topology and today's statuses
+ * under that deploy's timestamp, with nothing marking the discrepancy. A
+ * deployment is a historical record, so it has to be drawn from the record.
+ *
+ * A service with `run: null` never started one (a dependency failed first, or
+ * the CLI failed locally before it could): shown as skipped rather than omitted,
+ * so the reader sees everything the deploy intended to ship.
+ */
+export function DeploymentServices({ deployment }: {
+  deployment: AdminDeploymentJson,
+}) {
+  if (deployment.services.length === 0) {
+    return (
+      <Typography type="label" variant="secondary">
+        This deployment recorded no services.
+      </Typography>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {deployment.services.map(({ service_id, run }) => {
+        const meta = run === null ? null : runStatusMeta(run.status);
+        const Icon = meta?.icon;
+        return (
+          <div
+            key={service_id}
+            className="flex items-center gap-3 rounded-xl border border-border/60 px-4 py-3"
+          >
+            <span className="flex shrink-0 items-center gap-1.5">
+              {Icon != null && <Icon className={cn("h-4 w-4", meta?.spin && "animate-spin")} />}
+              <DesignBadge
+                label={meta?.label ?? "Skipped"}
+                color={meta?.color ?? "orange"}
+                size="sm"
+              />
+            </span>
+            <span className="min-w-0 flex-1 truncate font-mono text-sm">{service_id}</span>
+            {run?.url != null && (
+              <a
+                href={run.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 truncate text-xs text-muted-foreground underline underline-offset-2"
+              >
+                {run.url.replace(/^https?:\/\//, "")}
+              </a>
+            )}
+            {run?.error != null && (
+              <span className="min-w-0 shrink truncate text-xs text-destructive" title={run.error}>
+                {run.error}
+              </span>
+            )}
+            {run === null && (
+              <span className="shrink-0 text-xs text-muted-foreground">
+                Never started — a service it depends on failed
+              </span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

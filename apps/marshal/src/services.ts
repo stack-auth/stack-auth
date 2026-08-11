@@ -678,7 +678,7 @@ async function claimDesiredSpec(ns: string, key: string, spec: ServiceSpec, revi
         if (upload.sizeBytes > MAX_UPLOAD_BYTES) throw badRequest(`upload is ${upload.sizeBytes} bytes; the maximum is ${MAX_UPLOAD_BYTES}`);
         archive = await readUpload(ns, uploadId);
         if (archive === null) throw badRequest(`upload ${JSON.stringify(uploadId)} disappeared before it could be consumed`);
-        validateSourceArchive(archive);
+        await validateSourceArchive(archive);
         validatedArchives.set(uploadId, archive);
       }
     }

@@ -8,8 +8,7 @@ import { useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import { BoardCanvas } from "./board-canvas";
-import { DeploymentsList } from "./deployments-list";
+import { DeploymentServices, DeploymentsList } from "./deployments-list";
 
 const stageLabel = getAppStageLabel("deployments-alpha");
 
@@ -39,9 +38,6 @@ export default function PageClient() {
             <DeploymentsList project={project} onOpenDeployment={setOpenDeployment} />
           </div>
         ) : (
-          // flex-1 + min-h-0 are load-bearing: BoardCanvas is absolutely
-          // positioned inside a `flex-1` root, so a content-sized wrapper
-          // would collapse the whole map to zero height.
           <div className="flex min-h-0 flex-1 flex-col gap-3">
             <div className="flex shrink-0 items-center gap-3">
               <DesignButton variant="ghost" size="sm" onClick={() => setOpenDeployment(null)}>
@@ -51,10 +47,17 @@ export default function PageClient() {
               {/* Deployments have no user-facing number, so the timestamp is
                   what tells the reader which one they opened. */}
               <span className="truncate text-sm text-muted-foreground">
-                {formatDeploymentTime(openDeployment.created_at_millis)}
+                Deployment #{openDeployment.number} · {formatDeploymentTime(openDeployment.created_at_millis)}
               </span>
             </div>
-            <BoardCanvas />
+            {/* The deployment's OWN runs, not the live service board. The board
+                fetches current definitions and statuses independently, so
+                rendering it here showed today's topology under a historical
+                deploy's timestamp. The current board lives on the services tab,
+                which is where "what is running now" belongs. */}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <DeploymentServices deployment={openDeployment} />
+            </div>
           </div>
         )}
       </PageLayout>

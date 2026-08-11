@@ -12,6 +12,10 @@ import type { DnsRecord } from "./types.js";
 // established with an atomic conditional PUT. Fly certs remain the source of truth for
 // verification state; the registry only answers "who owns this hostname".
 
+// KEPT IN SYNC WITH the backend's HOSTNAME_REGEX (apps/backend/src/lib/deployments/index.tsx),
+// duplicated because Marshal is standalone and takes no @hexclave/shared dependency. The
+// backend copy must stay at least as strict as this one — see the note there for what a
+// divergence costs.
 const HOSTNAME_REGEX = /^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
 
 export function normalizeHostnameOrThrow(hostname: string): string {

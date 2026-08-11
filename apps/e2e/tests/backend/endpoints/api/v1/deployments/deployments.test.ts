@@ -12,6 +12,9 @@ import { InternalApiKey, Project, backendContext, niceBackendFetch } from "../..
 // the mock builder (instant fake digests). CI never talks to real Fly.
 // Secret values are KMS-encrypted server-side via the localstack container.
 const FLY_MOCK_URL = `http://localhost:${process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || "81"}48`;
+// Same well-known dev token Marshal uses (MOCK_FLY_TOKEN in apps/marshal/src/config.ts).
+// The mock's /__mock namespace requires it because its listing exposes resolved secrets.
+const FLY_MOCK_TOKEN = "mock_hexclave_fly_key";
 
 // Service ids are randomized per test because the fly-mock accumulates apps
 // for its whole container lifetime: metadata-based lookups (see findMockApp)
@@ -115,7 +118,11 @@ type MockApp = {
 async function findMockApp(serviceId: string, expectedMachines = 1, ns?: string): Promise<MockApp> {
   let seen: MockApp | undefined;
   for (let attempt = 0; attempt < 60; attempt++) {
-    const response = await fetch(`${FLY_MOCK_URL}/__mock/apps`);
+    // The /__mock namespace is authenticated: its listing includes each machine's
+    // resolved env, which holds decrypted project secrets.
+    const response = await fetch(`${FLY_MOCK_URL}/__mock/apps`, {
+      headers: { authorization: `Bearer ${FLY_MOCK_TOKEN}` },
+    });
     if (response.ok) {
       const { apps } = await response.json() as { apps: MockApp[] };
       const matches = apps.filter((candidate) => candidate.machines.some((machine) =>
@@ -1172,5 +1179,78 @@ describe("domains", () => {
     expect((addResponse.body as any).verified).toBe(false);
     const getResponse = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}/domains/${serviceId}.verified.test`, { accessType: "admin" });
     expect((getResponse.body as any).pending_first_deploy).toBe(true);
+  });
+});
+
+describe("deployment grouping", () => {
+  it("stays in progress until the client concludes, then reports the services that never ran", async ({ expect }) => {
+    await Project.createAndSwitch();
+    await syncServices({
+      web: { type: "serverless", ports: [{ port: 3000 }], env: {} },
+      worker: { type: "serverless", ports: [{ port: 4000 }], env: {} },
+    });
+
+    const created = await niceBackendFetch("/api/v1/deployments/deployments", {
+      method: "POST",
+      accessType: "admin",
+      body: { planned_service_ids: ["web", "worker"], triggered_by: "e2e" },
+    });
+    expect(created.status).toBe(200);
+    const deploymentId = (created.body as any).id;
+
+    const listOne = await niceBackendFetch("/api/v1/deployments/deployments", { accessType: "admin" });
+    const beforeConclude = (listOne.body as any).items.find((item: any) => item.id === deploymentId);
+    // Nothing has run yet and the client is still working: genuinely in flight.
+    expect(beforeConclude).toMatchObject({ status: "queued", finished_at_millis: null });
+
+    // The client gives up before creating a single run — a packaging or upload
+    // failure. Without the conclude call this row stays "queued" forever and the
+    // dashboard polls it indefinitely.
+    const concluded = await niceBackendFetch(`/api/v1/deployments/deployments/${deploymentId}/conclude`, {
+      method: "POST",
+      accessType: "admin",
+      body: {},
+    });
+    expect(concluded.status).toBe(200);
+    expect(concluded.body).toMatchObject({ status: "failed" });
+    expect((concluded.body as any).finished_at_millis).toBeGreaterThan(0);
+    // Both planned services are still reported, as skipped rather than omitted.
+    expect((concluded.body as any).services).toEqual([
+      { service_id: "web", run: null },
+      { service_id: "worker", run: null },
+    ]);
+
+    const listTwo = await niceBackendFetch("/api/v1/deployments/deployments", { accessType: "admin" });
+    expect((listTwo.body as any).items.find((item: any) => item.id === deploymentId)).toMatchObject({ status: "failed" });
+  });
+
+  it("keeps the first conclusion's timestamp when concluded again", async ({ expect }) => {
+    await Project.createAndSwitch();
+    await syncServices({ web: { type: "serverless", ports: [{ port: 3000 }], env: {} } });
+    const created = await niceBackendFetch("/api/v1/deployments/deployments", {
+      method: "POST",
+      accessType: "admin",
+      body: { planned_service_ids: ["web"], triggered_by: "e2e" },
+    });
+    const deploymentId = (created.body as any).id;
+
+    const first = await niceBackendFetch(`/api/v1/deployments/deployments/${deploymentId}/conclude`, {
+      method: "POST", accessType: "admin", body: {},
+    });
+    expect(first.status).toBe(200);
+    const second = await niceBackendFetch(`/api/v1/deployments/deployments/${deploymentId}/conclude`, {
+      method: "POST", accessType: "admin", body: {},
+    });
+    // Idempotent: a retried CLI request must not stretch the recorded duration.
+    expect(second.status).toBe(200);
+    expect((second.body as any).finished_at_millis).toBe((first.body as any).finished_at_millis);
+  });
+
+  it("404s on a deployment that doesn't exist", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const response = await niceBackendFetch(`/api/v1/deployments/deployments/${randomUUID()}/conclude`, {
+      method: "POST", accessType: "admin", body: {},
+    });
+    expect(response.status).toBe(404);
   });
 });

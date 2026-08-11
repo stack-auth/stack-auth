@@ -472,7 +472,21 @@ export async function getOrCreateOperationalService(prisma: PrismaClientTransact
 
 // Bare hostname (no scheme/path/port), at least two labels. Shared by every
 // path that accepts a hostname so validation can't drift between them again.
-export const HOSTNAME_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+//
+// KEPT IN SYNC WITH apps/marshal/src/domains.ts, which duplicates it because
+// Marshal is a standalone service with no @hexclave/shared dependency. This copy
+// must stay AT LEAST AS STRICT as Marshal's: a hostname the backend accepts and
+// Marshal later rejects is stored as a domain row that can never be attached and
+// never verifies, and the runtime's rejection is deliberately swallowed at deploy
+// time — so it sits permanently pending with nothing reporting why.
+//
+// Hence the DNS limits, which the previous pattern left off: 4–253 characters
+// overall, labels of at most 63, and a TLD of at least two characters starting
+// with a letter (so `a.1` and `a.b` are refused rather than stored). Stricter
+// than Marshal in one place — Marshal strips a trailing dot before matching and
+// this rejects it — which is the safe direction, since it only ever refuses at
+// the request that can still act on the error.
+export const HOSTNAME_REGEX = /^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
 
 /** Lowercases and validates a user-supplied hostname, or throws a clean 400. */
 export function normalizeHostnameOrThrow(hostname: string): string {
@@ -864,7 +878,12 @@ export async function decryptDeploymentRedactionSecrets(encrypted: Prisma.JsonVa
 
 export function redactSecrets(text: string, secretValues: string[]): string {
   let result = text;
-  for (const secret of secretValues) {
+  // LONGEST FIRST, not caller order. Replacing a value that is a PREFIX of
+  // another one first destroys the longer match and leaves its tail in the log:
+  // with "abc" before "abcdef", "abcdef" becomes "<redacted>def". Sorting by
+  // descending length means the longest containing value is always consumed
+  // whole before any of its substrings can break it up.
+  for (const secret of [...secretValues].sort((a, b) => b.length - a.length)) {
     if (secret.length === 0) continue;
     result = result.split(secret).join("<redacted>");
   }
@@ -1249,15 +1268,23 @@ export type DeploymentApiShape = {
  * already-failed one, because "still going" is what the reader needs in order to
  * decide whether to wait.
  */
-export function deploymentStatusFromRuns(runStatuses: DeploymentRunStatus[], plannedCount: number): DeploymentApiShape["status"] {
+export function deploymentStatusFromRuns(runStatuses: DeploymentRunStatus[], plannedCount: number, concluded: boolean = false): DeploymentApiShape["status"] {
   const awaitingRuns = plannedCount > runStatuses.length;
   if (runStatuses.some((status) => status === "BUILDING")) return "building";
   if (runStatuses.some((status) => status === "QUEUED")) return "queued";
   if (runStatuses.some((status) => status === "ERROR")) return "failed";
   if (runStatuses.some((status) => status === "CANCELED")) return "canceled";
-  // Every run so far succeeded. If the deploy has services it never started a
-  // run for, it is still going — nothing has failed to skip them.
-  if (awaitingRuns) return runStatuses.length === 0 ? "queued" : "building";
+  // Every run so far succeeded, but services are still missing runs.
+  if (awaitingRuns) {
+    // `concluded` is the client saying it has stopped: the missing runs are
+    // never coming, because it failed before it could create them (packaging, an
+    // upload error, a crash). Those services did not deploy, so neither did this
+    // deployment. Without this the row is read as still-in-flight forever —
+    // "queued" when nothing ever ran, "building" when a sibling succeeded — and
+    // the dashboard polls it for eternity.
+    if (concluded) return "failed";
+    return runStatuses.length === 0 ? "queued" : "building";
+  }
   return "deployed";
 }
 
@@ -1298,6 +1325,7 @@ export function deploymentToApiShape(deployment: {
   triggeredBy: string,
   createdAt: Date,
   plannedServiceIds: Prisma.JsonValue,
+  concludedAt: Date | null,
   runs: {
     id: string,
     status: DeploymentRunStatus,
@@ -1324,8 +1352,14 @@ export function deploymentToApiShape(deployment: {
   // below reports. Feeding every run in would let a superseded failure outrank
   // the successful retry that replaced it.
   const latestRuns = [...runByServiceId.values()];
-  const status = deploymentStatusFromRuns(latestRuns.map((run) => run.status), serviceIds.length);
+  const status = deploymentStatusFromRuns(latestRuns.map((run) => run.status), serviceIds.length, deployment.concludedAt !== null);
   const finishedAtMillis = latestRuns.map((run) => run.finishedAt?.getTime() ?? null);
+  // A concluded deploy that never started some of its runs has no run finish
+  // time to take the maximum of — for an all-local failure, no runs at all. The
+  // moment the client concluded it is when it stopped, so use that rather than
+  // reporting a terminal deployment with no duration.
+  const concludedAtMillis = deployment.concludedAt?.getTime() ?? null;
+  const awaitingRuns = serviceIds.length > latestRuns.length;
   return {
     id: deployment.id,
     number: deployment.number,
@@ -1337,10 +1371,14 @@ export function deploymentToApiShape(deployment: {
     // is finished: a deployment is done when its slowest service is. A deploy
     // still waiting on runs it never started reports null rather than handing
     // back an earlier service's finish time as the whole deploy's.
-    finished_at_millis: status !== "queued" && status !== "building"
-      && finishedAtMillis.length > 0 && finishedAtMillis.every((millis) => millis !== null)
-      ? Math.max(...finishedAtMillis as number[])
-      : null,
+    finished_at_millis: status === "queued" || status === "building"
+      ? null
+      : awaitingRuns || finishedAtMillis.length === 0
+        // Terminal with runs it never started: only `concludedAt` marks the end.
+        ? concludedAtMillis
+        : finishedAtMillis.every((millis) => millis !== null)
+          ? Math.max(...finishedAtMillis as number[])
+          : concludedAtMillis,
     services: serviceIds.map((serviceId) => {
       const run = runByServiceId.get(serviceId);
       return { service_id: serviceId, run: run === undefined ? null : runToApiShape(run, serviceId) };

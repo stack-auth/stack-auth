@@ -94,9 +94,17 @@ export function packageSourceDirectory(rootDirectory: string, ignoreRootDirector
   if (rootStat == null || !rootStat.isDirectory()) {
     throw new CliError(`Source directory not found: ${absoluteRootDirectory}`);
   }
-  const relativeRootFromIgnoreRoot = path.relative(absoluteIgnoreRootDirectory, absoluteRootDirectory);
+  // Containment is checked on REAL paths. path.resolve/path.relative only prove
+  // LEXICAL containment, while statSync and readdirSync follow symlinks — so a
+  // rootDirectory (or any ancestor of it) that is an in-tree symlink pointing
+  // outside the config directory would pass a lexical check and then be walked,
+  // uploading unrelated files. The per-entry symlink skip below never sees this
+  // because it only inspects children, not the root it starts from.
+  const realRootDirectory = fs.realpathSync(absoluteRootDirectory);
+  const realIgnoreRootDirectory = fs.realpathSync(absoluteIgnoreRootDirectory);
+  const relativeRootFromIgnoreRoot = path.relative(realIgnoreRootDirectory, realRootDirectory);
   if (relativeRootFromIgnoreRoot === ".." || relativeRootFromIgnoreRoot.startsWith(`..${path.sep}`) || path.isAbsolute(relativeRootFromIgnoreRoot)) {
-    throw new CliError(`Source directory ${absoluteRootDirectory} must be inside the config directory ${absoluteIgnoreRootDirectory}.`);
+    throw new CliError(`Source directory ${absoluteRootDirectory} must be inside the config directory ${absoluteIgnoreRootDirectory}.${realRootDirectory === absoluteRootDirectory ? "" : ` It resolves to ${realRootDirectory}, which is outside it — check for a symlink.`}`);
   }
 
   const entries: TarEntry[] = [];

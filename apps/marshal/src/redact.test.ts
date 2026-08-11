@@ -23,6 +23,15 @@ describe("redactSecrets", () => {
   it("ignores empty values (so an empty secret can't blank the whole log)", () => {
     expect(redactSecrets("hello world", [""])).toBe("hello world");
   });
+
+  it("redacts a value whose prefix is also a secret, in either order", () => {
+    // Redacting the shorter value first used to destroy the longer match and
+    // leave its tail exposed: "abcdef" became "<redacted>def". The Fly token and
+    // its scheme-stripped form (see redactBuildLogText) are exactly this shape.
+    expect(redactSecrets("token=abcdef", ["abc", "abcdef"])).toBe("token=<redacted>");
+    expect(redactSecrets("token=abcdef", ["abcdef", "abc"])).toBe("token=<redacted>");
+    expect(redactSecrets("a=abc b=abcdef", ["abc", "abcdef"])).toBe("a=<redacted> b=<redacted>");
+  });
 });
 
 describe("redactBuildLogText", () => {

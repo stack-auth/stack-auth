@@ -18,7 +18,9 @@ FROM node:22-slim
 #   accepts the raw token as the authorization header (Marshal's client depends
 #   on this difference staying visible in dev).
 # - GET /__mock/apps and /__mock/apps/:name expose full app state (machines
-#   with env/metadata, certs, IPs) for test assertions.
+#   with env/metadata, certs, IPs) for test assertions. The whole /__mock
+#   namespace requires the mock token: machine env holds RESOLVED deployment
+#   secrets, so it is not something to hand out unauthenticated.
 
 WORKDIR /app
 
@@ -242,6 +244,18 @@ async function handleRequest(req, res) {
   const rawBody = Buffer.concat(chunks).toString("utf8");
   const auth = req.headers.authorization ?? "";
 
+  // The /__mock namespace is AUTHENTICATED, unlike the vercel-mock's. Its listing
+  // returns each machine's full env, which for a deployments test run is the
+  // RESOLVED deployment environment — every project secret, decrypted. An
+  // unauthenticated dump of that is worth a token even in a dev-only container,
+  // and /__mock/reset is destructive to a running test besides. The compose file
+  // also binds this port to loopback so it is not reachable from the LAN.
+  if (path.startsWith("/__mock/")) {
+    if (auth !== `Bearer ${EXPECTED_TOKEN}`) {
+      return sendJson(res, 401, { error: "Invalid token in mock (the /__mock namespace expects the mock_hexclave_fly_key token)" });
+    }
+  }
+
   // Test-only reset: wipe all in-memory state so a fresh test run (or beforeAll) starts clean
   // and the mock's app/log maps don't grow unbounded across a container's lifetime.
   if (path === "/__mock/reset") {
@@ -249,10 +263,10 @@ async function handleRequest(req, res) {
     return sendJson(res, 200, { reset: true });
   }
 
-  // Test-only introspection (no auth, like the vercel-mock's /__mock namespace).
-  // The listing includes machine metadata/env so e2e tests can find the app
-  // belonging to a (namespace, service key) pair without knowing Marshal's
-  // naming scheme (machines carry hexclave_ns/hexclave_key metadata).
+  // Test-only introspection. The listing includes machine metadata/env so e2e
+  // tests can find the app belonging to a (namespace, service key) pair without
+  // knowing Marshal's naming scheme (machines carry hexclave_ns/hexclave_key
+  // metadata).
   if (path === "/__mock/apps") {
     return sendJson(res, 200, {
       apps: [...appsByName.values()].map((app) => ({

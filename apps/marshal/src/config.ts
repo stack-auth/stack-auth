@@ -179,4 +179,8 @@ export const RAILPACK_FRONTEND_IMAGE = `ghcr.io/railwayapp/railpack-frontend:v${
 export const BUILD_TIMEOUT_SECONDS = 15 * 60;
 export const UPLOAD_EXPIRY_SECONDS = 15 * 60;
 export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+// The build-completion webhook carries a status plus a small metadata document
+// (an image digest at most). It is the only route reachable before the API-key
+// check, so it gets an explicit cap rather than inheriting the server default.
+export const MAX_WEBHOOK_BODY_BYTES = 64 * 1024;
 export const SOFT_CONCURRENCY_LIMIT = 25;

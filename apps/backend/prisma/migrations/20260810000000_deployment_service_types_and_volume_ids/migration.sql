@@ -98,6 +98,18 @@ CREATE TABLE "Deployment" (
     "target" TEXT NOT NULL,
     "triggeredBy" TEXT NOT NULL,
     "plannedServiceIds" JSONB NOT NULL DEFAULT '[]',
+    -- Set when the client that owns the deploy reports it has stopped working on
+    -- it. Status is derived from the runs, and a planned service with NO run is
+    -- normally read as "still going" — correct mid-deploy, since the deploy
+    -- creates this row first and then starts runs one at a time.
+    --
+    -- But a client can fail before it ever creates a run (packaging, upload, a
+    -- crash), and that failure leaves no row to derive from. Without this column
+    -- an all-local failure reads "queued" and a partial one reads "building"
+    -- forever, and the dashboard polls them for eternity. This is what says "no
+    -- further runs are coming", so the missing ones can be read as failed
+    -- instead of pending.
+    "concludedAt" TIMESTAMP(3),
 
     CONSTRAINT "Deployment_pkey" PRIMARY KEY ("tenancyId","id")
 );

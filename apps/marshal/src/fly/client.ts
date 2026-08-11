@@ -412,11 +412,26 @@ export class FlyClient {
     });
     if (!response.ok) {
       await response.arrayBuffer();
-      // The logs API 401s (and 404s) for apps that don't exist and can't distinguish that
-      // from an auth failure — treat only those as "no logs" so a service without an app
-      // reads as empty. 429 (rate limit) and 5xx MUST throw: swallowing them would silently
-      // truncate a durable build-log drain or hide a broken token as "no logs".
-      if (response.status === 401 || response.status === 404) return { entries: [], nextToken: null };
+      // The logs API answers 401 (and 404) BOTH for an app that doesn't exist and for
+      // invalid or expired credentials, and gives no way to tell them apart. Returning
+      // "no logs" for either used to hide a broken org token as an ordinary empty page —
+      // and, worse, could silently truncate the one-shot durable build-log drain.
+      //
+      // So ask the Machines API, which does distinguish: 404 for a missing app, 401 for a
+      // bad credential. Only a confirmed-absent app is "no logs"; anything else propagates.
+      // Costs one extra round-trip, and only on a path that was going to return nothing.
+      if (response.status === 401 || response.status === 404) {
+        let appExists: boolean;
+        try {
+          appExists = (await this.getApp(app)) !== null;
+        } catch (error) {
+          // The probe itself failed — an auth failure, or the API being unreachable. Either
+          // way we cannot claim the app is gone, so report the original logs failure.
+          throw new FlyApiError(response.status, `logs GET /apps/${app}/logs`, `logs API returned ${response.status} and the app could not be confirmed missing (${error instanceof Error ? error.message : "unknown error"})`);
+        }
+        if (!appExists) return { entries: [], nextToken: null };
+        throw new FlyApiError(response.status, `logs GET /apps/${app}/logs`, `logs API returned ${response.status} for an app that exists — the Fly credential is likely invalid or expired`);
+      }
       throw new FlyApiError(response.status, `logs GET /apps/${app}/logs`, "logs API error");
     }
     const json = await response.json() as { data?: FlyLogEntry[], meta?: { next_token?: string } };

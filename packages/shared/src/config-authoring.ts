@@ -88,7 +88,18 @@ export type HexclaveServiceOutputs = {
 export type HexclaveDeploymentContext = {
   /** True during `hexclave dev`. Guard connection values with it — `service()` returns null there. */
   isDev: boolean,
-  /** References a project secret by key. The optional default is used by `hexclave dev` only and is never stored server-side. */
+  /**
+   * References a project secret by key. Values are set per project under
+   * Project Settings → Secrets and resolved server-side at deploy time.
+   *
+   * The optional default is NOT dev-only. It is never stored server-side, but it
+   * travels with each deploy request and fills the secret whenever the project
+   * has no stored value for that key — on production deploys as well as
+   * `hexclave dev`. A key with a default is also excluded from the preflight
+   * that fails a deploy on missing secrets, since it can always be satisfied.
+   * Treat anything you pass here as a value you are willing to ship: to force a
+   * real secret to be set, omit the default.
+   */
   secret: (key: string, defaultValue?: string) => HexclaveDeploymentReference,
   /** References another service in this deployment. Returns null during `hexclave dev`. */
   service: (serviceId: string) => HexclaveServiceOutputs,

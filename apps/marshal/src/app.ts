@@ -2,7 +2,7 @@ import { node } from "@elysiajs/node";
 import { Elysia } from "elysia";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { createFlyBuilder, createMockBuilder, verifyWebhookToken, type Builder } from "./builds.js";
-import { MAX_UPLOAD_BYTES, getConfig, resolveNamespaceOrg } from "./config.js";
+import { MAX_UPLOAD_BYTES, MAX_WEBHOOK_BODY_BYTES, getConfig, resolveNamespaceOrg } from "./config.js";
 import { attachDomain, detachDomain, normalizeHostnameOrThrow, readDomain } from "./domains.js";
 import { MarshalError } from "./errors.js";
 import { FlyApiError, flyClientForNamespaceOrg } from "./fly/client.js";
@@ -115,9 +115,36 @@ export function createMarshalApp() {
   const app = new Elysia({ adapter: node() })
     .onRequest(({ request }) => {
       const url = new URL(request.url);
-      // /health is the only unauthenticated surface; /internal/builds/* carries its own
-      // per-build HMAC token (the builder machine never holds the backend credential).
-      if (url.pathname === "/health" || url.pathname.startsWith("/internal/")) return;
+      // /health is the only unauthenticated surface.
+      if (url.pathname === "/health") return;
+      // /internal/builds/* carries its own per-build HMAC token (the builder machine never
+      // holds the backend credential), and it is authenticated HERE rather than in the
+      // handler. Everything the token covers — build id, ns, key — is in the URL, and the
+      // token is in a header, so nothing about this needs the body. Verifying inside the
+      // handler instead meant Elysia had already buffered and parsed an arbitrary body from
+      // an unauthenticated Internet client before the first credential check ran.
+      if (url.pathname.startsWith("/internal/")) {
+        const completeMatch = /^\/internal\/builds\/([^/]+)\/complete$/.exec(url.pathname);
+        if (completeMatch === null) {
+          // No other /internal route exists. Anything else under the prefix would otherwise
+          // inherit the auth bypass without carrying a token of its own.
+          return jsonResponse(404, { error: "not_found", message: "unknown internal route" });
+        }
+        // The webhook body is a small status/metadata document. Cap it before parsing so an
+        // unauthenticated caller cannot make us allocate first and reject afterwards; the
+        // large-body route (uploads) is a separate, API-key-authenticated path.
+        const declaredLength = Number(request.headers.get("content-length") ?? "0");
+        if (Number.isFinite(declaredLength) && declaredLength > MAX_WEBHOOK_BODY_BYTES) {
+          return jsonResponse(413, { error: "payload_too_large", message: `build completion body may not exceed ${MAX_WEBHOOK_BODY_BYTES} bytes` });
+        }
+        const token = (request.headers.get("authorization") ?? "").replace(/^Bearer /, "");
+        const ns = url.searchParams.get("ns") ?? "";
+        const key = url.searchParams.get("key") ?? "";
+        if (ns === "" || key === "" || !verifyWebhookToken(token, completeMatch[1], ns, key)) {
+          return jsonResponse(401, { error: "unauthenticated", message: "invalid webhook token" });
+        }
+        return;
+      }
       if (!isAuthorized(request.headers.get("authorization"), config.apiKey)) {
         return jsonResponse(401, { error: "unauthenticated", message: "missing or invalid bearer credential" });
       }
@@ -289,6 +316,9 @@ export function createMarshalApp() {
       // arbitrary-key write primitive.
       validateNamespace(ns);
       validateServiceKey(key);
+      // Re-verified here as well as in onRequest: onRequest is what stops an unauthenticated
+      // body from being buffered, but this check is the one tied to the ns/key that
+      // completeBuild actually writes with, after the validators above have run on them.
       if (!verifyWebhookToken(token, params.buildId, ns, key)) {
         return jsonResponse(401, { error: "unauthenticated", message: "invalid webhook token" });
       }

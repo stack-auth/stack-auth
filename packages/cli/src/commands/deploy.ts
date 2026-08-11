@@ -459,45 +459,65 @@ export function registerDeployCommand(program: Command) {
       const ignoreRootDirectory = path.dirname(configPath);
       const results = new Map<string, ServiceDeployResult>();
       const skipped = new Set<string>();
-      for (const level of levels) {
-        const toDeploy = level.filter((serviceId) => !skipped.has(serviceId));
-        for (const serviceId of level) {
-          if (skipped.has(serviceId)) {
-            console.error(`[${serviceId}] Skipped (a service it depends on failed to deploy).`);
-            results.set(serviceId, { serviceId, status: "skipped", runId: null, url: null, error: "Skipped because a dependency failed to deploy." });
+      // try/finally around the whole deploy: the deployment row was created
+      // BEFORE any of this, and its status is derived from the runs underneath
+      // it. A service that never gets a run reads as still-in-flight, which is
+      // right while a deploy is progressing and wrong the moment this process
+      // stops — so whatever happens from here, the server has to be told we are
+      // done. Without it a deploy that died during packaging or upload leaves a
+      // row the dashboard polls forever.
+      try {
+        for (const level of levels) {
+          const toDeploy = level.filter((serviceId) => !skipped.has(serviceId));
+          for (const serviceId of level) {
+            if (skipped.has(serviceId)) {
+              console.error(`[${serviceId}] Skipped (a service it depends on failed to deploy).`);
+              results.set(serviceId, { serviceId, status: "skipped", runId: null, url: null, error: "Skipped because a dependency failed to deploy." });
+            }
           }
-        }
-        // Every outcome — including thrown errors (packaging failures, upload
-        // errors, poll give-ups) — must become a RESULT: a rejection here
-        // would abandon sibling deploys mid-flight and skip both summaries,
-        // leaving CI with no machine-readable output at all.
-        const levelResults = await Promise.all(toDeploy.map(async (serviceId): Promise<ServiceDeployResult> => {
-          try {
-            return await deployService({
-              auth,
-              authHeaders,
-              service: services.get(serviceId) ?? (() => {
-                throw new CliError(`Internal error: deploy level contains unknown service ${JSON.stringify(serviceId)}.`);
-              })(),
-              definitionSyncId,
-              deploymentId,
-              ignoreRootDirectory,
-            });
-          } catch (error) {
-            const message = errorMessage(error);
-            console.error(`[${serviceId}] Deploy failed: ${message}`);
-            return { serviceId, status: "error", runId: null, url: null, error: message };
-          }
-        }));
-        for (const result of levelResults) {
-          results.set(result.serviceId, result);
-          if (result.status !== "ready") {
-            for (const dependent of collectTransitiveDependents(result.serviceId, services)) {
-              if (deploySet.includes(dependent) && !results.has(dependent)) {
-                skipped.add(dependent);
+          // Every outcome — including thrown errors (packaging failures, upload
+          // errors, poll give-ups) — must become a RESULT: a rejection here
+          // would abandon sibling deploys mid-flight and skip both summaries,
+          // leaving CI with no machine-readable output at all.
+          const levelResults = await Promise.all(toDeploy.map(async (serviceId): Promise<ServiceDeployResult> => {
+            try {
+              return await deployService({
+                auth,
+                authHeaders,
+                service: services.get(serviceId) ?? (() => {
+                  throw new CliError(`Internal error: deploy level contains unknown service ${JSON.stringify(serviceId)}.`);
+                })(),
+                definitionSyncId,
+                deploymentId,
+                ignoreRootDirectory,
+              });
+            } catch (error) {
+              const message = errorMessage(error);
+              console.error(`[${serviceId}] Deploy failed: ${message}`);
+              return { serviceId, status: "error", runId: null, url: null, error: message };
+            }
+          }));
+          for (const result of levelResults) {
+            results.set(result.serviceId, result);
+            if (result.status !== "ready") {
+              for (const dependent of collectTransitiveDependents(result.serviceId, services)) {
+                if (deploySet.includes(dependent) && !results.has(dependent)) {
+                  skipped.add(dependent);
+                }
               }
             }
           }
+        }
+
+      } finally {
+        // Best-effort, and deliberately swallowing: this is bookkeeping, so a
+        // failure here must not replace the real deploy error the caller needs
+        // to see, nor turn a successful deploy into a failed one. Worst case the
+        // deployment keeps the status it would have had before this existed.
+        try {
+          await deployApiFetch(auth, authHeaders, `/deployments/deployments/${deploymentId}/conclude`, { method: "POST", jsonBody: {} });
+        } catch (error) {
+          console.error(`Warning: could not mark deployment #${deploymentResponse.number} as concluded (${errorMessage(error)}). Its status in the dashboard may stay in progress.`);
         }
       }
 

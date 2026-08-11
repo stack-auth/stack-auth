@@ -188,7 +188,16 @@ export const DELETE = createSmartRouteHandler({
     await getServiceRowOrThrow(prisma, auth.tenancy, params.service_id);
     const { service, domain } = await findDomainRowOrThrow(prisma, auth.tenancy, params.service_id, params.hostname);
 
-    if (service.provisionedAt != null && getMarshalDeploymentsConfigOrNull() != null) {
+    // A provisioned service may hold a GLOBAL hostname claim in the runtime, and
+    // this row is the only record that this project owns it. Deleting the row
+    // while the claim survives strands the hostname: it blocks every future
+    // attachment, and the API that could release it only reaches claims it can
+    // still find a row for. So refuse rather than delete a row we cannot back
+    // with cleanup — the claim outlives the request, the row must too.
+    if (service.provisionedAt != null && getMarshalDeploymentsConfigOrNull() == null) {
+      throw new StatusError(400, `The domain ${JSON.stringify(params.hostname)} cannot be removed right now: deployments are not configured on this Hexclave instance, so its certificate and hostname claim in the deployment runtime cannot be released. Configure HEXCLAVE_MARSHAL_API_KEY (and HEXCLAVE_MARSHAL_URL) and try again.`);
+    }
+    if (service.provisionedAt != null) {
       try {
         // Scoped to this service on purpose: the runtime's hostname claim is global, so an
         // unscoped delete would tear down the certificate of whichever service currently owns

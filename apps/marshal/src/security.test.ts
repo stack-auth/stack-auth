@@ -37,14 +37,30 @@ function sourceArchive(path: string, type: number = 0x30): Uint8Array {
 }
 
 describe("source archive validation", () => {
-  it("accepts the regular-file ustar subset emitted by the CLI", () => {
-    expect(() => validateSourceArchive(sourceArchive("src/index.ts"))).not.toThrow();
+  it("accepts the regular-file ustar subset emitted by the CLI", async () => {
+    await expect(validateSourceArchive(sourceArchive("src/index.ts"))).resolves.toBeUndefined();
   });
 
-  it("rejects traversal and link entries before the builder receives credentials", () => {
-    expect(() => validateSourceArchive(sourceArchive("../escape"))).toThrow("unsafe entry path");
-    expect(() => validateSourceArchive(sourceArchive("src/link", 0x32))).toThrow("only regular files and directories");
-    expect(() => validateSourceArchive(new Uint8Array([1, 2, 3]))).toThrow("gzip decompression failed");
+  it("rejects traversal and link entries before the builder receives credentials", async () => {
+    await expect(validateSourceArchive(sourceArchive("../escape"))).rejects.toThrow("unsafe entry path");
+    await expect(validateSourceArchive(sourceArchive("src/link", 0x32))).rejects.toThrow("only regular files and directories");
+    await expect(validateSourceArchive(new Uint8Array([1, 2, 3]))).rejects.toThrow("gzip decompression failed");
+  });
+
+  it("releases its inflation slot on both success and failure", async () => {
+    // The semaphore is process-wide, so a slot leaked on the rejection path would
+    // deadlock every later deploy rather than merely slowing one down. More
+    // iterations than MAX_CONCURRENT_INFLATIONS, so a leak cannot hide.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await expect(validateSourceArchive(new Uint8Array([1, 2, 3]))).rejects.toThrow("gzip decompression failed");
+    }
+    await expect(validateSourceArchive(sourceArchive("src/index.ts"))).resolves.toBeUndefined();
+    // Concurrent callers all finish rather than queueing behind a lost slot.
+    await expect(Promise.all([
+      validateSourceArchive(sourceArchive("a.ts")),
+      validateSourceArchive(sourceArchive("b.ts")),
+      validateSourceArchive(sourceArchive("c.ts")),
+    ])).resolves.toHaveLength(3);
   });
 });
 describe("runtime identity", () => {
