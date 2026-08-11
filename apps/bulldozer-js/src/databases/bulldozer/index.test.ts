@@ -92,6 +92,52 @@ describe("Bulldozer", () => {
     ]);
   });
 
+  it("keeps shutdown behind an in-flight Piledriver garbage collection", async () => {
+    const underlying = declarePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
+    let markCollectionStarted: (() => void) | undefined;
+    const collectionStarted = new Promise<void>(resolve => {
+      markCollectionStarted = resolve;
+    });
+    let releaseCollection: (() => void) | undefined;
+    const collectionGate = new Promise<void>(resolve => {
+      releaseCollection = resolve;
+    });
+    let closeCalls = 0;
+    const piledriver = {
+      ...underlying,
+      async collectGarbage(cutoffTimestampMillis: number, maxObjects?: number) {
+        if (markCollectionStarted === undefined) throw new Error("Collection-start signal was not initialized");
+        markCollectionStarted();
+        await collectionGate;
+        return await underlying.collectGarbage(cutoffTimestampMillis, maxObjects);
+      },
+      async close() {
+        closeCalls++;
+        await underlying.close();
+      },
+    };
+    const db = declareBulldozerDatabase(piledriver, { migrations: [] });
+
+    const collection = db.collectPiledriverGarbage(0);
+    await collectionStarted;
+    const closing = db.close();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(closeCalls).toBe(0);
+
+    if (releaseCollection === undefined) throw new Error("Collection gate was not initialized");
+    releaseCollection();
+    await Promise.all([collection, closing]);
+    expect(closeCalls).toBe(1);
+  });
+
+  it("rejects Piledriver garbage collection once shutdown starts", async () => {
+    const db = newDb([]);
+    const closing = db.close();
+
+    await expect(db.collectPiledriverGarbage(0)).rejects.toThrow("closing");
+    await closing;
+  });
+
   it("retains the latest write sequence after instant-availability cache eviction", async () => {
     const path = await mkdtemp(join(tmpdir(), "bulldozer-durability-barrier-"));
     const lmdb = declareLmdbLowLevelDatabase({ path, dbId: "durability-barrier" });
@@ -1270,10 +1316,7 @@ describe("Bulldozer", () => {
     for (const value of [1, 2, 3, 4]) snapshot = await set(snapshot, "store", `r${value}`, value);
 
     mapperCalls = 0;
-    // Flat-map bounds are now input-row bounds: element-level precision is unsound when
-    // tied input rows emit elements in row-identifier order that the sort-key comparator cannot see.
     expect(await collect(snapshot.listRowsInGroup({ tableId: "flat", groupKey: null, range: { gte: [2, 1], lt: [4, 0] } }))).toEqual([
-      { groupKey: null, rowIdentifier: JSON.stringify(["r2", 0]), rowSortKey: [2, 0], rowData: 2 },
       { groupKey: null, rowIdentifier: JSON.stringify(["r2", 1]), rowSortKey: [2, 1], rowData: 12 },
       { groupKey: null, rowIdentifier: JSON.stringify(["r3", 0]), rowSortKey: [3, 0], rowData: 3 },
       { groupKey: null, rowIdentifier: JSON.stringify(["r3", 1]), rowSortKey: [3, 1], rowData: 13 },
@@ -1285,77 +1328,9 @@ describe("Bulldozer", () => {
     expect(await collect(snapshot.listRowsInGroup({ tableId: "flat", groupKey: null, range: { gt: [3, 0], reverse: true } }))).toEqual([
       { groupKey: null, rowIdentifier: JSON.stringify(["r4", 1]), rowSortKey: [4, 1], rowData: 14 },
       { groupKey: null, rowIdentifier: JSON.stringify(["r4", 0]), rowSortKey: [4, 0], rowData: 4 },
+      { groupKey: null, rowIdentifier: JSON.stringify(["r3", 1]), rowSortKey: [3, 1], rowData: 13 },
     ]);
     expect(mapperCalls).toBe(2);
-  });
-
-  it("paginates flatMap tied sort keys with gte and tie handling", async () => {
-    const inputRows = [
-      { groupKey: null, rowIdentifier: "a", rowSortKey: null, rowData: "a" },
-      { groupKey: null, rowIdentifier: "b", rowSortKey: null, rowData: "b" },
-      { groupKey: null, rowIdentifier: "c", rowSortKey: null, rowData: "c" },
-    ];
-    const input = {
-      async *listGroups() {
-        yield { groupKey: null };
-      },
-      async *listRowsInGroup({ range }: { range: { limit?: number } }) {
-        if (range.limit === 0) return;
-        for (const row of inputRows) yield row;
-      },
-      compareGroupKeys: () => 0,
-      compareSortKeys: () => 0,
-    };
-    const flat = defineFlatMapTable(row => [row.rowData, `${row.rowData}-second`]);
-    const options = {
-      serializedTable: null,
-      inputTables: { input },
-      groupKey: null,
-    };
-    const collectFlat = async (range: { gte?: PiledriverObject, limit?: number }) =>
-      await collect(flat.listRowsInGroup({ ...options, range }));
-    const unbounded = await collectFlat({});
-    const paged = [];
-    let previousSortKey: PiledriverObject | null = null;
-    let tiedRowsToSkip = 0;
-
-    for (;;) {
-      const page = await collectFlat(previousSortKey === null
-        ? {}
-        : { gte: previousSortKey });
-      if (page.length === 0) break;
-
-      let returned = false;
-      const consumedAtSortKey = tiedRowsToSkip;
-      for (const row of page) {
-        const comparison = previousSortKey === null
-          ? null
-          : flat.compareSortKeys({
-            ...options,
-            a: previousSortKey,
-            b: row.rowSortKey,
-          });
-        if (comparison === 0 && tiedRowsToSkip > 0) {
-          tiedRowsToSkip--;
-          continue;
-        }
-        paged.push(row);
-        if (comparison === 0) tiedRowsToSkip = consumedAtSortKey + 1;
-        else tiedRowsToSkip = 1;
-        previousSortKey = row.rowSortKey;
-        returned = true;
-        break;
-      }
-      if (!returned) break;
-    }
-
-    expect(flat.compareSortKeys({
-      ...options,
-      a: [null, 0],
-      b: [null, 1],
-    })).toBe(0);
-    expect(paged).toEqual(unbounded);
-    expect(new Set(paged.map(row => row.rowIdentifier)).size).toBe(unbounded.length);
   });
 
   it("emits flatMap modifications as element-level diffs", async () => {

@@ -13,28 +13,6 @@ const text = (value: ArrayBuffer | null) => value === null ? null : textDecoder.
 const tempLmdbPath = async () => await mkdtemp(join(tmpdir(), "bulldozer-lmdb-"));
 
 describe("LMDB low-level database", () => {
-  it("iterates entries in bounded exclusive pages", async () => {
-    const path = await tempLmdbPath();
-    try {
-      const db = declareLmdbLowLevelDatabase({ path, dbId: "iteration" });
-      const store = db.declareKvStore("store");
-      const { seq } = await store.setAll([
-        { key: buffer("a"), value: buffer("first") },
-        { key: buffer("b"), value: buffer("second") },
-        { key: buffer("c"), value: buffer("third") },
-      ]);
-      await db.waitUntilAvailable(seq);
-      const first = await store.iterateEntries({ limit: 2 });
-      expect(first.entries.map(entry => text(entry.value))).toEqual(["first", "second"]);
-      const second = await store.iterateEntries({ afterKey: first.nextAfterKey ?? undefined, limit: 2 });
-      expect(second.entries.map(entry => text(entry.value))).toEqual(["third"]);
-      expect(await store.iterateEntries({ afterKey: second.entries[0].key, limit: 2 })).toEqual({ entries: [], nextAfterKey: null });
-      await db.close();
-    } finally {
-      await rm(path, { recursive: true, force: true });
-    }
-  });
-
   it("persists store values across database instances and exposes useful debug entries", async () => {
     const path = await tempLmdbPath();
     try {
@@ -171,11 +149,26 @@ describe("LMDB low-level database", () => {
     try {
       const db = declareLmdbLowLevelDatabase({ path, dbId: "dump" });
       const dump = db.declareKvDump("heap");
-      const { keys: [key], seq } = await dump.insertAll([buffer("payload")]);
+      const { keys, seq } = await dump.insertAll([buffer("payload"), buffer("second"), buffer("third")]);
       await db.waitUntilDurable(seq);
-      expect(key.byteLength).toBe(17);
-      expect(new Uint8Array(key)[0]).toBe(0x01);
-      expect(text((await dump.get(key)).buffer)).toBe("payload");
+      expect(keys.every(key => key.byteLength === 17)).toBe(true);
+      expect(keys.every(key => new Uint8Array(key)[0] === 0x01)).toBe(true);
+      expect(text((await dump.get(keys[0])).buffer)).toBe("payload");
+      const firstPage = await dump.listEntries({ limit: 2 });
+      expect(firstPage.entries).toHaveLength(2);
+      expect(firstPage.hasMore).toBe(true);
+      const secondPage = await dump.listEntries({ startAfter: firstPage.entries[1].key, limit: 2 });
+      expect(secondPage.entries).toHaveLength(1);
+      expect(secondPage.hasMore).toBe(false);
+      const listedEntries = [...firstPage.entries, ...secondPage.entries];
+      expect(listedEntries.every((entry, index) => index === 0 || Buffer.compare(
+        Buffer.from(listedEntries[index - 1].key),
+        Buffer.from(entry.key),
+      ) < 0)).toBe(true);
+      expect(new Set(listedEntries.map(entry => text(entry.value)))).toEqual(new Set(["payload", "second", "third"]));
+      const deleted = await dump.deleteAll(keys, { requiresSeq: seq });
+      await db.waitUntilAvailable(deleted.seq);
+      expect(await Promise.all(keys.map(async key => text((await dump.get(key)).buffer)))).toEqual([null, null, null]);
     } finally {
       await rm(path, { recursive: true, force: true });
     }
@@ -208,6 +201,11 @@ describe("LMDB low-level database", () => {
         expect(inserted.keys).toHaveLength(450);
         expect(inserted.keys[0].byteLength).toBe(17);
         expect(new Uint8Array(inserted.keys[0])[0]).toBe(0x01);
+        expect(new Set(inserted.keys.map(key => Buffer.from(key).toString("hex"))).size).toBe(450);
+        expect(inserted.keys.every((key, index) => index === 0 || Buffer.compare(
+          Buffer.from(inserted.keys[index - 1]),
+          Buffer.from(key),
+        ) < 0)).toBe(true);
         expect(text((await dump.get(byteBuffer(Buffer.alloc(48, 0x7f)))).buffer)).toBe("legacy-arbitrary");
         expect(text((await dump.get(byteBuffer(Buffer.alloc(48, 0xff)))).buffer)).toBe("legacy-max");
         expect(text((await dump.get(inserted.keys[0])).buffer)).toBe("first");
@@ -237,6 +235,7 @@ describe("LMDB low-level database", () => {
 
         expect(second.keys[0].byteLength).toBe(17);
         expect(new Uint8Array(second.keys[0])[0]).toBe(0x01);
+        expect(Buffer.compare(Buffer.from(first.keys[0]), Buffer.from(second.keys[0]))).toBeLessThan(0);
         expect(text((await dump2.get(first.keys[0])).buffer)).toBe("first");
         expect(text((await dump2.get(second.keys[0])).buffer)).toBe("second");
       } finally {

@@ -6,6 +6,7 @@ import { DatabaseSeq } from "../index.js";
 import type { LowLevelDatabaseDebugSnapshot } from "../low-level/index.js";
 import { AugmentedTreeMap, AugmentedTreeMultiMap } from "../piledriver/data-structures/augmented-tree-map.js";
 import { ConcatTreeList } from "../piledriver/data-structures/concat-tree-list.js";
+import { PiledriverGarbageCollectionResult } from "../piledriver/gc.js";
 import { isPiledriverHeapObjectSymbol, PiledriverDatabase, PiledriverDatabaseDebugSnapshot, PiledriverObject, piledriverObjectEquals } from "../piledriver/index.js";
 
 // Code-unit comparison; localeCompare would persist trees whose order depends on the runtime locale.
@@ -31,7 +32,7 @@ async function fromAsync<T>(iterable: AsyncIterable<T>): Promise<T[]> {
  * safe; the WeakMap lets group key objects be collected normally.
  */
 const canonicalGroupKeyStringCache = new WeakMap<object, string>();
-export function canonicalGroupKeyString(groupKey: PiledriverObject): string {
+function canonicalGroupKeyString(groupKey: PiledriverObject): string {
   if (groupKey !== null && typeof groupKey === "object") {
     const cached = canonicalGroupKeyStringCache.get(groupKey);
     if (cached !== undefined) return cached;
@@ -327,7 +328,7 @@ function changedRowsToTableChanges(
   };
 }
 
-export type BulldozerTableImplementationInputTable = {
+type BulldozerTableImplementationInputTable = {
   listGroups(options: {
     range: Range,
   }): AsyncIterable<{ groupKey: PiledriverObject }>,
@@ -347,13 +348,7 @@ export type BulldozerTableImplementationInputTable = {
   }): number,
 };
 
-export type BulldozerTableVerificationResult = {
-  issues: Array<{ code: string, message: string, context?: Record<string, string | number | boolean | null> }>,
-  stepsTaken: number,
-  nextPosition: string | null,
-};
-
-export type BulldozerTableImplementation = {
+type BulldozerTableImplementation = {
   /**
    * If true, the table keeps no materialized state derived from its inputs (all reads are
    * computed lazily from the inputs), so migrations skip the input backfill when the table
@@ -413,12 +408,6 @@ export type BulldozerTableImplementation = {
     a: PiledriverObject,
     b: PiledriverObject,
   }): number,
-  verifyDataIntegrity?(options: {
-    serializedTable: PiledriverObject,
-    inputTables: Record<string, BulldozerTableImplementationInputTable>,
-    stepCount: number,
-    position: string | null,
-  }): Promise<BulldozerTableVerificationResult>,
 };
 
 type BulldozerTableState = {
@@ -432,14 +421,10 @@ type BulldozerDatabaseTablesState = {
   mostRecentlyCompletedMigrationIndex: number,
 };
 
-export type BulldozerDatabaseSnapshotSerialized = {
+type BulldozerDatabaseSnapshotSerialized = {
   serializedTables: Record<string, PiledriverObject>,
   mostRecentlyCompletedMigrationIndex: number,
   uniqueSnapshotIdentifier: string,
-};
-export type BulldozerDataIntegrityContextIssue = {
-  tableId: string,
-  inputTableId?: string,
 };
 
 function createInputTables(
@@ -867,27 +852,16 @@ function createTablesStateFromMigrations(migrations: readonly BulldozerDatabaseM
 
 export type BulldozerDatabase = {
   getDebugInfo(): any,
+  getPiledriverDatabase(): PiledriverDatabase,
   listTables(): BulldozerDatabaseTableDescriptor[],
-  getDataIntegrityState(): {
-    piledriverDatabase: PiledriverDatabase,
-    getRoot(): Promise<{ buffer: ArrayBuffer, seq: DatabaseSeq }>,
-    getContext(snapshot: BulldozerDatabaseSnapshotSerialized): {
-      migrationIndex: number,
-      issues: BulldozerDataIntegrityContextIssue[],
-      tables: Array<{
-        tableId: string,
-        table: BulldozerTableImplementation,
-        serializedTable: PiledriverObject,
-        inputTables: Record<string, BulldozerTableImplementationInputTable>,
-      }>,
-    },
-  },
   debugPiledriverSnapshot?(): Promise<PiledriverDatabaseDebugSnapshot>,
   debugLowLevelSnapshot?(): Promise<LowLevelDatabaseDebugSnapshot>,
   getSnapshot(): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
   withSnapshot(updateSnapshot: (snapshot: BulldozerDatabaseSnapshot) => Promise<BulldozerDatabaseSnapshot | BulldozerSnapshotMutationResult>): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
   withSnapshotReplicated(updateSnapshot: (snapshot: BulldozerDatabaseSnapshot) => Promise<BulldozerDatabaseSnapshot | BulldozerSnapshotMutationResult>): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
   waitUntilCurrentStateDurable(): Promise<void>,
+  getPiledriverGarbageCollectionProcessStartedAtMillis(): number,
+  collectPiledriverGarbage(cutoffTimestampMillis: number, maxObjects?: number): Promise<PiledriverGarbageCollectionResult>,
   close(): Promise<void>,
   applyRemainingMigrations(): Promise<{ seq: DatabaseSeq }>,
 };
@@ -1015,47 +989,7 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
         closePromise,
       };
     },
-    getDataIntegrityState() {
-      return {
-        piledriverDatabase,
-        async getRoot() {
-          return await piledriverDatabase.getSerializedRootObject(rootKey);
-        },
-        getContext(snapshot: BulldozerDatabaseSnapshotSerialized) {
-          const issues: BulldozerDataIntegrityContextIssue[] = [];
-          const missingInputTableId = (tableId: string, visited = new Set<string>()): string | undefined => {
-            if (visited.has(tableId)) return undefined;
-            visited.add(tableId);
-            const tableState = tablesState.tables[tableId];
-            for (const inputTableId of Object.values(tableState.inputTableIds)) {
-              if (!Object.prototype.hasOwnProperty.call(snapshot.serializedTables, inputTableId)) return inputTableId;
-              const missing = missingInputTableId(inputTableId, visited);
-              if (missing !== undefined) return missing;
-            }
-            return undefined;
-          };
-          const tables = Object.entries(tablesState.tables).flatMap(([tableId, tableState]) => {
-            if (!Object.prototype.hasOwnProperty.call(snapshot.serializedTables, tableId)) {
-              issues.push({ tableId });
-              return [];
-            }
-            const missingInput = missingInputTableId(tableId);
-            if (missingInput !== undefined) {
-              issues.push({ tableId, inputTableId: missingInput });
-              return [];
-            }
-            const serializedTable = snapshot.serializedTables[tableId];
-            return [{
-              tableId,
-              table: tableState.table,
-              serializedTable,
-              inputTables: createInputTables(tablesState.tables, id => snapshot.serializedTables[id], tableId),
-            }];
-          });
-          return { migrationIndex: tablesState.mostRecentlyCompletedMigrationIndex, issues, tables };
-        },
-      };
-    },
+    getPiledriverDatabase: () => piledriverDatabase,
     listTables: () => Object.entries(tablesState.tables).map(([tableId, tableState]) => ({
       tableId,
       inputTableIds: { ...tableState.inputTableIds },
@@ -1076,6 +1010,15 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
       // fresh read sees initialSeq while the original LMDB flush is still pending.
       await piledriverDatabase.waitUntilDurable(latestRootWriteSeq);
     })),
+    getPiledriverGarbageCollectionProcessStartedAtMillis: () => piledriverDatabase.getGarbageCollectionProcessStartedAtMillis(),
+    collectPiledriverGarbage: async (cutoffTimestampMillis, maxObjects) => {
+      if (closePromise !== null) throw new Error("Bulldozer database is closing and cannot start garbage collection");
+      return await withWriteLock(async () => {
+        // Recheck after waiting for the lock: close may have started while GC was queued.
+        if (closePromise !== null) throw new Error("Bulldozer database is closing and cannot start garbage collection");
+        return await piledriverDatabase.collectGarbage(cutoffTimestampMillis, maxObjects);
+      });
+    },
     close() {
       if (closePromise === null) {
         closePromise = traceSpan("bulldozer-js.bulldozer.close", async () => await withWriteLock(async () => {
@@ -1322,15 +1265,6 @@ function createGroupwiseTableImplementation(options: {
         a,
         b,
       });
-    },
-    async verifyDataIntegrity({ serializedTable, inputTables, stepCount, position }) {
-      const map = deserialize(serializedTable, inputTables);
-      const result = await map.verifyDataIntegrity({ stepBudget: stepCount, position });
-      return {
-        issues: result.issues,
-        stepsTaken: result.stepsTaken,
-        nextPosition: result.nextPosition,
-      };
     },
   };
 }
@@ -1651,7 +1585,7 @@ export function defineFlatMapTable(mapper: (row: { groupKey: PiledriverObject, r
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== 2 || b.length !== 2 || typeof a[1] !== "number" || typeof b[1] !== "number") {
       throw new Error("Invalid flatMap sort key");
     }
-    return inputTables.input.compareSortKeys({ a: a[0], b: b[0] });
+    return inputTables.input.compareSortKeys({ a: a[0], b: b[0] }) || a[1] - b[1];
   };
 
   return {
@@ -1671,11 +1605,10 @@ export function defineFlatMapTable(mapper: (row: { groupKey: PiledriverObject, r
         if (!Array.isArray(bound) || bound.length !== 2) throw new Error("Invalid flatMap sort key");
         return [bound[0]];
       };
-      // Output sort keys are [inputSortKey, elementIndex], but element indexes are not part of
-      // their comparison: tied input rows produce tied output sort keys. Each bound's input
-      // component can therefore be pushed down (inclusively even for gt/lt: the boundary input
-      // row may still contribute outputs inside the range; the per-output range check below
-      // filters those). A bound selects an entire tied input-key group, not one element.
+      // Output sort keys are [inputSortKey, elementIndex], ordered by input sort key first, so
+      // each bound's input component can be pushed down (inclusively even for gt/lt: the
+      // boundary row may still contribute elements inside the range; the per-output range
+      // check below filters those). Element indexes only matter at the boundary key.
       const lowerInputKeys = [...boundInputKey(range.gte), ...boundInputKey(range.gt)];
       const upperInputKeys = [...boundInputKey(range.lte), ...boundInputKey(range.lt)];
       const lowerInputKey = lowerInputKeys.length ? lowerInputKeys.reduce((a, b) => inputCompare(a, b) >= 0 ? a : b) : undefined;

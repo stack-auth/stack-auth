@@ -9,6 +9,10 @@ import path from "path";
 import * as readline from "readline";
 import { seed } from "../prisma/seed";
 import { runBackfillInternalFreePlans } from "./backfill-internal-free-plans";
+import {
+  parseCopySpecifiedTenancySubscriptionsArgs,
+  runCopySpecifiedTenancySubscriptions,
+} from "./copy-specified-tenancy-subscriptions";
 import { parseBackfillResumeOptions, runBulldozerPaymentsInit } from "./bulldozer-payments-init";
 import { runClickhouseMigrations } from "./clickhouse-migrations";
 import { runRegenInternalSubscriptionsToLatest } from "./regen-internal-subscriptions-to-latest";
@@ -202,6 +206,11 @@ Commands:
                                    all at the end (default is fail-fast on the first bad row)
                                    --batch-size=<n> rows per page/POST (default 50)
   backfill-internal-free-plans     Grant the free plan to internal-tenancy teams that have no plan. Run AFTER seed.
+  copy-specified-tenancy-subscriptions
+                                   One-off: copy Subscription + related SubscriptionInvoice rows for one
+                                   tenancy filtered by productId into bulldozer-js over HTTP.
+                                   Requires --tenancy-id=<uuid> --only-product-ids=team,growth
+                                   Optional: --batch-size / --continue-on-error (idempotent; re-run if interrupted)
   regen-internal-subscriptions-to-latest
                                    Bring every active internal-tenancy subscription up to the latest version of its
                                    product (rewrites the stored snapshot; rebases Stripe metadata for live subs).
@@ -273,6 +282,12 @@ const main = async () => {
       // a prior `backfill-bulldozer-from-prisma` on a fresh DB) — this reads
       // the Subscription LFold via `ensureFreePlanForBillingTeam`.
       await runBackfillInternalFreePlans();
+      break;
+    }
+    case 'copy-specified-tenancy-subscriptions': {
+      // One-off productId-filtered subscription (+ invoice) ingress.
+      // Point HEXCLAVE_BULLDOZER_SERVER_URL at the target bulldozer (e.g. 7146).
+      await runCopySpecifiedTenancySubscriptions(parseCopySpecifiedTenancySubscriptionsArgs(args));
       break;
     }
     case 'regen-internal-subscriptions-to-latest': {

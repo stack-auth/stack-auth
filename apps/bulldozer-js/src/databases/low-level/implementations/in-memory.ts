@@ -2,7 +2,7 @@ import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { traceSpanHot } from "../../../otel.js";
 import { Database, DatabaseSeq } from "../../index.js";
-import { LowLevelDatabase, LowLevelDatabaseDebugEntry, LowLevelEntryPage, LowLevelKvDump, LowLevelKvStore } from "../index.js";
+import { LowLevelDatabase, LowLevelDatabaseDebugEntry, LowLevelKvDump, LowLevelKvStore } from "../index.js";
 
 const inMemoryLowLevelKvStores = new Map<`${"store" | "dump"}-${string}`, LowLevelKvStore & LowLevelKvDump>();
 function arrayBuffersAreEqual(a: ArrayBuffer, b: ArrayBuffer): boolean {
@@ -20,10 +20,11 @@ function arrayBufferFromUint8Array(value: Uint8Array) {
   return copy.buffer;
 }
 
-function compareArrayBuffers(a: ArrayBuffer, b: ArrayBuffer): number {
+function compareArrayBuffers(a: ArrayBuffer, b: ArrayBuffer) {
   const aBytes = new Uint8Array(a);
   const bBytes = new Uint8Array(b);
-  for (let index = 0; index < Math.min(aBytes.length, bBytes.length); index++) {
+  const commonLength = Math.min(aBytes.length, bBytes.length);
+  for (let index = 0; index < commonLength; index++) {
     if (aBytes[index] !== bBytes[index]) return aBytes[index] - bBytes[index];
   }
   return aBytes.length - bBytes.length;
@@ -61,6 +62,24 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
           return {
             buffer: base64KeyToValue.get(encodeBase64(new Uint8Array(key)))?.slice(0) ?? null,
             seq: seqSentinel,
+          };
+        });
+      },
+      async listEntries(options) {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.listEntries", attributes }, async () => {
+          const limit = options?.limit ?? 1000;
+          if (!Number.isInteger(limit) || limit <= 0) throw new Error("KV store list limit must be a positive integer");
+          if (options?.startAfter !== undefined && options.startAfter.byteLength > 64) throw new Error("KV store key must be <= 64 bytes");
+          const matchingEntries = [...base64KeyToValue.entries()]
+            .map(([keyBase64, value]) => ({
+              key: arrayBufferFromUint8Array(Buffer.from(keyBase64, "base64")),
+              value,
+            }))
+            .filter(entry => options?.startAfter === undefined || compareArrayBuffers(entry.key, options.startAfter) > 0)
+            .sort((a, b) => compareArrayBuffers(a.key, b.key));
+          return {
+            entries: matchingEntries.slice(0, limit).map(({ key, value }) => ({ key, value: value.slice(0) })),
+            hasMore: matchingEntries.length > limit,
           };
         });
       },
@@ -112,26 +131,6 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
           return {
             wasSet: true,
             ...await result.setAll([{ key, value }], options),
-          };
-        });
-      },
-      async iterateEntries(options): Promise<LowLevelEntryPage> {
-        return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.iterateEntries", attributes: { ...attributes, "bulldozer.low_level.limit": options.limit } }, async () => {
-          if (!Number.isInteger(options.limit) || options.limit <= 0) throw new Error("iterateEntries limit must be a positive integer");
-          const afterKey = options.afterKey;
-          const entries = [...base64KeyToValue.entries()]
-            .map(([keyBase64, value]) => ({
-              key: arrayBufferFromUint8Array(new Uint8Array(Buffer.from(keyBase64, "base64"))),
-              value: value.slice(0),
-            }))
-            .sort((a, b) => compareArrayBuffers(a.key, b.key))
-            .filter(entry => afterKey === undefined || compareArrayBuffers(entry.key, afterKey) > 0)
-            .slice(0, options.limit);
-          return {
-            entries,
-            nextAfterKey: entries.length === options.limit
-              ? entries[entries.length - 1].key.slice(0)
-              : null,
           };
         });
       },
