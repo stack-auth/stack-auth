@@ -217,8 +217,7 @@ async function build(size: number, arity = 32) {
 }
 
 async function checkStructuralInvariants(tree: AugmentedTreeMap<number, number, number>, arity: number) {
-  const result = await tree.verifyDataIntegrity({ stepBudget: 10_000, position: null });
-  expect(result.issues, `tree arity ${arity} should satisfy persisted invariants`).toEqual([]);
+  expect(await tree.verifyDataIntegrity(), `tree arity ${arity} should satisfy persisted invariants`).toEqual([]);
 }
 
 async function corruptedTree(
@@ -290,38 +289,19 @@ describe("AugmentedTreeMap", () => {
   it("reports a wrong aggregate through the production checker", async () => {
     const tree = await build(20, 3);
     const wrongAggregate = await corruptedTree(tree, node => ({ ...node, augmentation: 999 }));
-    expect((await wrongAggregate.verifyDataIntegrity({ stepBudget: 10_000, position: null })).issues).toContainEqual(expect.objectContaining({ code: "augmentation" }));
+    expect(await wrongAggregate.verifyDataIntegrity()).toContainEqual(expect.objectContaining({ code: "augmentation" }));
   });
 
   it("reports a wrong entry count through the production checker", async () => {
     const tree = await build(20, 3);
     const wrongEntryCount = await corruptedTree(tree, node => ({ ...node, entries: [...(node.entries as unknown[]), [999, 999]] }));
-    expect((await wrongEntryCount.verifyDataIntegrity({ stepBudget: 10_000, position: null })).issues).toContainEqual(expect.objectContaining({ code: "entry_count" }));
+    expect(await wrongEntryCount.verifyDataIntegrity()).toContainEqual(expect.objectContaining({ code: "entry_count" }));
   });
 
   it("reports unbalanced child heights through the production checker", async () => {
     const tree = await build(20, 3);
     const unbalanced = await corruptedTree(tree, node => ({ ...node, children: [] }));
-    expect((await unbalanced.verifyDataIntegrity({ stepBudget: 10_000, position: null })).issues).toContainEqual(expect.objectContaining({ code: "size" }));
-  });
-
-  it("produces the same findings when resumed with one-node budgets", async () => {
-    const tree = await build(40, 4);
-    const oneCall = await tree.verifyDataIntegrity({ stepBudget: 10_000, position: null });
-    let position: string | null = null;
-    const resumed: string[] = [];
-    let calls = 0;
-    for (let iteration = 0; ; iteration++) {
-      const result = await tree.verifyDataIntegrity({ stepBudget: 1, position });
-      calls++;
-      expect(result.stepsTaken).toBeLessThanOrEqual(1);
-      resumed.push(...result.issues.map(issue => issue.code));
-      if (result.nextPosition === null) break;
-      if (iteration >= 10_000) throw new Error("Tree verification did not terminate");
-      position = result.nextPosition;
-    }
-    expect(calls).toBeGreaterThan(1);
-    expect(new Set(resumed)).toEqual(new Set(oneCall.issues.map(issue => issue.code)));
+    expect(await unbalanced.verifyDataIntegrity()).toContainEqual(expect.objectContaining({ code: "size" }));
   });
 
   it("round-trips through piledriver objects", async () => {

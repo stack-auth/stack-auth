@@ -182,6 +182,8 @@ export async function verifyDataIntegrity(
     if (!addIssue(errors, issue)) errorsTruncated = true;
   };
   const piledriverDatabase = bulldozerDb.getPiledriverDatabase();
+  // A pinned root can outlive the process that created the cursor and be collected after restart,
+  // so the GC process-start timestamp is the identity that makes a continuation safe to resume.
   const processStartedAtMillis = bulldozerDb.getPiledriverGarbageCollectionProcessStartedAtMillis();
   let cursor: VerificationCursor;
   if (request.continue === undefined) {

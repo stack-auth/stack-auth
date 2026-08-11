@@ -77,22 +77,6 @@ export type PersistedTreeIntegrityIssue = {
   code: string,
   message: string,
 };
-export type PersistedTreeIntegrityResult = {
-  issues: PersistedTreeIntegrityIssue[],
-  stepsTaken: number,
-  nextPosition: string | null,
-};
-
-function isTreeRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isTreeValue(value: unknown): value is PiledriverObject {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return true;
-  if (Array.isArray(value)) return value.every(isTreeValue);
-  return isTreeRecord(value) && Object.values(value).every(isTreeValue);
-}
-
 const lowerEntryId = Symbol("lower-entry-id");
 const upperEntryId = Symbol("upper-entry-id");
 const mapEntryId = "";
@@ -196,86 +180,26 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     return { type: "AugmentedTreeMap", root: this.root };
   }
 
-  async verifyDataIntegrity(options: { stepBudget: number, position: string | null }): Promise<PersistedTreeIntegrityResult> {
-    if (!Number.isSafeInteger(options.stepBudget) || options.stepBudget <= 0) throw new Error("Invalid tree verification step budget");
+  async verifyDataIntegrity(): Promise<PersistedTreeIntegrityIssue[]> {
     const issues: PersistedTreeIntegrityIssue[] = [];
-    if (this.root === null) return { issues, stepsTaken: 0, nextPosition: null };
+    if (this.root === null) return issues;
     type Summary = { height: number, size: number, entryCount: number, minKey: MultiKey<Key, EntryId>, maxKey: MultiKey<Key, EntryId>, augmentation: Augmentation };
     type Frame = { child: Child<MultiKey<Key, EntryId>, Augmentation>, node: Node<MultiKey<Key, EntryId>, Value, Augmentation>, path: number[], nextChild: number, children: Array<Summary | undefined> };
     const stack: Frame[] = [];
-    let positionValue: unknown = null;
-    if (options.position !== null) {
-      try {
-        positionValue = JSON.parse(options.position);
-      } catch (error) {
-        if (error instanceof SyntaxError) throw new Error("Invalid tree verification position");
-        throw error;
-      }
-    }
-    const savedFrames: unknown[] = positionValue === null
-      ? []
-      : isTreeRecord(positionValue) && Array.isArray(positionValue.frames)
-        ? positionValue.frames
-        : (() => { throw new Error("Invalid tree verification position"); })();
-    let stepsTaken = 0;
-    const framePosition = () => JSON.stringify({
-      frames: stack.map(item => ({ path: item.path, nextChild: item.nextChild, children: item.children })),
-    });
-    const loadFrame = async (child: Child<MultiKey<Key, EntryId>, Augmentation>, path: number[], saved: unknown): Promise<Frame> => {
+    const loadFrame = async (child: Child<MultiKey<Key, EntryId>, Augmentation>, path: number[]): Promise<Frame> => {
       const node = await this.node(child.ref);
       if (node === null) throw new Error("Missing persisted tree node");
-      if (saved === undefined) return { child, node, path, nextChild: 0, children: [] };
-      if (!isTreeRecord(saved)
-        || typeof saved.nextChild !== "number"
-        || !Number.isSafeInteger(saved.nextChild)
-        || saved.nextChild < 0
-        || !Array.isArray(saved.children)
-        || !saved.children.every(value => isTreeRecord(value)
-        && typeof value.height === "number"
-        && typeof value.size === "number"
-        && typeof value.entryCount === "number"
-        && isTreeValue(value.minKey)
-        && isTreeValue(value.maxKey)
-        && isTreeValue(value.augmentation))) throw new Error("Invalid tree verification position");
-      if (saved.nextChild > node.children.length || saved.children.length > node.children.length) throw new Error("Invalid tree verification position");
-      const savedChildren = saved.children.map(value => ({
-        height: value.height,
-        size: value.size,
-        entryCount: value.entryCount,
-        minKey: value.minKey,
-        maxKey: value.maxKey,
-        augmentation: value.augmentation,
-      }));
-      return { child, node, path, nextChild: saved.nextChild, children: savedChildren };
+      return { child, node, path, nextChild: 0, children: [] };
     };
-    if (savedFrames.length === 0) {
-      if (stepsTaken >= options.stepBudget) return { issues, stepsTaken, nextPosition: JSON.stringify({ frames: savedFrames }) };
-      stepsTaken++;
-    }
-    let frame = await loadFrame(this.root, [], savedFrames[0]);
+    let frame = await loadFrame(this.root, []);
     stack.push(frame);
-    for (let index = 1; index < savedFrames.length; index++) {
-      const saved = savedFrames[index];
-      if (!isTreeRecord(saved) || !Array.isArray(saved.path) || !saved.path.every(value => Number.isSafeInteger(value) && value >= 0)) {
-        throw new Error("Invalid tree verification position");
-      }
-      const parent = stack[stack.length - 1];
-      const childIndex = saved.path[saved.path.length - 1];
-      if (childIndex === undefined || childIndex >= parent.node.children.length) throw new Error("Invalid tree verification position");
-      parent.nextChild = Math.max(parent.nextChild, childIndex + 1);
-      stack.push(await loadFrame(parent.node.children[childIndex], saved.path, saved));
-    }
     while (stack.length > 0) {
       frame = stack[stack.length - 1];
       if (frame.nextChild < frame.node.children.length) {
-        if (stepsTaken >= options.stepBudget) {
-          return { issues, stepsTaken, nextPosition: framePosition() };
-        }
         const childIndex = frame.nextChild;
         frame.nextChild++;
         const child = frame.node.children[childIndex];
-        stepsTaken++;
-        stack.push(await loadFrame(child, [...frame.path, childIndex], undefined));
+        stack.push(await loadFrame(child, [...frame.path, childIndex]));
         continue;
       }
       const node = frame.node;
@@ -345,7 +269,7 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
         compareChild(frame.child);
       }
     }
-    return { issues, stepsTaken, nextPosition: null };
+    return issues;
   }
 
   static fromPiledriverObject<K extends PiledriverObject, V extends PiledriverObject, A extends PiledriverObject, I extends PiledriverObject = string>(object: PiledriverObject, options: MultiMapOptions<K, V, A, I>) {
@@ -904,8 +828,8 @@ export class AugmentedTreeMap<K extends PiledriverObject, V extends PiledriverOb
     return await this.multiMap.getAugmentation(range);
   }
 
-  async verifyDataIntegrity(options: { stepBudget: number, position: string | null }): Promise<PersistedTreeIntegrityResult> {
-    return await this.multiMap.verifyDataIntegrity(options);
+  async verifyDataIntegrity(): Promise<PersistedTreeIntegrityIssue[]> {
+    return await this.multiMap.verifyDataIntegrity();
   }
 
   toPiledriverObject(): AugmentedTreeMapObject {
