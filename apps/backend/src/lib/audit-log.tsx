@@ -33,6 +33,11 @@ export const AUDIT_LOG_ACTIONS = [
   "team_membership.deleted",
   "team_permission.granted",
   "team_permission.revoked",
+  "permission_definition.created",
+  "permission_definition.updated",
+  "permission_definition.deleted",
+  "project_permission.granted",
+  "project_permission.revoked",
 ] as const;
 
 export type AuditLogAction = typeof AUDIT_LOG_ACTIONS[number];
@@ -76,12 +81,32 @@ export type AuditActorSource = {
   isProgrammaticInvocation?: boolean,
 };
 
-/** Admin audit trail covers dashboard/admin + server-key HTTP mutations, not client self-service or internal programmatic CRUD. */
+/**
+ * Whether this auth should produce a Compliance admin-audit event.
+ *
+ * Dashboard-only: requires a resolved admin user from
+ * `x-stack-admin-access-token`. Bare admin/server API keys, client
+ * self-service, and programmatic CRUD helpers (`isProgrammaticInvocation`)
+ * do not audit.
+ *
+ * Prefer calling `recordAuditEvent` and letting it no-op; use this helper
+ * only to skip expensive metadata construction when nothing will be written.
+ */
 export function shouldRecordAdminAudit(auth: AuditActorSource): boolean {
+  return shouldRecordDashboardAudit(auth);
+}
+
+/**
+ * Same gate as {@link shouldRecordAdminAudit}. Kept as a named alias for call
+ * sites that want to emphasize the dashboard-actor requirement.
+ */
+export function shouldRecordDashboardAudit(auth: AuditActorSource): boolean {
   if (auth.isProgrammaticInvocation === true) {
     return false;
   }
-  return auth.type === "admin" || auth.type === "server";
+  // adminUser is only set when the request carried a valid dashboard admin
+  // access token — not when authenticating with an API key alone.
+  return auth.adminUser != null;
 }
 
 const MAX_CHANGED_PATHS = 100;
@@ -463,11 +488,18 @@ export function buildNonSensitiveFieldChanges(options: {
 }
 
 /**
- * Always-on admin audit write — the single integration point for new call sites.
+ * Admin audit write — the single integration point for new call sites.
+ *
+ * Hard-gates dashboard-only at this hook: without a resolved `adminUser`,
+ * this is a no-op (bare API keys / programmatic CRUD never write). Call sites
+ * do not need their own auth-type checks for correctness; optional
+ * `shouldRecordAdminAudit` / `shouldRecordDashboardAudit` early-returns are
+ * only for skipping metadata work.
  *
  * Pass `auth` (not a pre-built actor); actor resolution is handled here.
- * Insert failures fail the caller so audited actions cannot succeed without a
- * durable trail. Viewing is gated by the Compliance app; writes are not.
+ * When a write *is* attempted, insert failures fail the caller so audited
+ * dashboard actions cannot succeed without a durable trail. Viewing is gated
+ * by the Compliance app; writes are not.
  *
  * For settings diffs, use `buildProjectSettingsAuditMetadata` then pass the
  * result as `metadata` — don't invent per-action wrappers for simple events.
@@ -480,6 +512,11 @@ export async function recordAuditEvent(options: {
   reason?: string | null,
   metadata?: Record<string, unknown> | null,
 }): Promise<void> {
+  // Central dashboard-only gate — do not weaken this in individual routes.
+  if (!shouldRecordDashboardAudit(options.auth)) {
+    return;
+  }
+
   const actor = resolveAuditActor(options.auth);
   const reason = normalizeReason(options.reason);
 

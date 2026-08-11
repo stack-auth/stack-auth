@@ -42,7 +42,12 @@ export type AuditLogAction =
   | "team_membership.created"
   | "team_membership.deleted"
   | "team_permission.granted"
-  | "team_permission.revoked";
+  | "team_permission.revoked"
+  | "permission_definition.created"
+  | "permission_definition.updated"
+  | "permission_definition.deleted"
+  | "project_permission.granted"
+  | "project_permission.revoked";
 
 export type AuditLogEvent = {
   id: string,
@@ -160,6 +165,21 @@ function formatAction(action: AuditLogAction): string {
     case "team_permission.revoked": {
       return "Team permission revoked";
     }
+    case "permission_definition.created": {
+      return "Permission definition created";
+    }
+    case "permission_definition.updated": {
+      return "Permission definition updated";
+    }
+    case "permission_definition.deleted": {
+      return "Permission definition deleted";
+    }
+    case "project_permission.granted": {
+      return "Project permission granted";
+    }
+    case "project_permission.revoked": {
+      return "Project permission revoked";
+    }
     default: {
       const _exhaustive: never = action;
       return _exhaustive;
@@ -210,6 +230,9 @@ const FIELD_LABELS = new Map<string, string>([
   ["expires_at", "Expires"],
   ["has_product_inline", "Inline product"],
   ["granted_permission_ids", "Granted permissions"],
+  ["scope", "Scope"],
+  ["contained_permission_ids", "Contained permissions"],
+  ["old_permission_id", "Previous permission ID"],
 ]);
 
 const OAUTH_PROVIDER_FIELD_LABELS = new Map<string, string>([

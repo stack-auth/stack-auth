@@ -1,5 +1,5 @@
 import { it } from "../../../../../helpers";
-import { Auth, InternalApiKey, Payments, Project, bumpEmailAddress, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, InternalApiKey, Payments, Project, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../backend-helpers";
 
 async function listAuditLog(options?: { action?: string, targetUserId?: string, cursor?: string, limit?: number }) {
   return await niceBackendFetch("/api/v1/internal/audit-log", {
@@ -31,8 +31,9 @@ it("always writes impersonation events without enabling any app", async ({ expec
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const signUp = await Auth.Password.signUpWithEmail();
 
+  // Compliance audits are dashboard-only — impersonation must use admin + admin access token.
   const impersonation = await niceBackendFetch("/api/v1/auth/sessions", {
-    accessType: "server",
+    accessType: "admin",
     method: "POST",
     body: {
       user_id: signUp.userId,
@@ -47,6 +48,7 @@ it("always writes impersonation events without enabling any app", async ({ expec
   expect(listRes.body.items).toHaveLength(1);
   expect(listRes.body.items[0]).toMatchObject({
     action: "impersonation.started",
+    actor_type: "admin_user",
     target_user_id: signUp.userId,
     reason: "always on",
   });
@@ -57,7 +59,7 @@ it("records impersonation started with reason and actor", async ({ expect }) => 
   const signUp = await Auth.Password.signUpWithEmail();
 
   const impersonation = await niceBackendFetch("/api/v1/auth/sessions", {
-    accessType: "server",
+    accessType: "admin",
     method: "POST",
     body: {
       user_id: signUp.userId,
@@ -72,9 +74,8 @@ it("records impersonation started with reason and actor", async ({ expect }) => 
   expect(listRes.body.items).toHaveLength(1);
   expect(listRes.body.items[0]).toMatchObject({
     action: "impersonation.started",
-    actor_type: "server_key",
-    actor_label: "Server API key",
-    actor_user_id: null,
+    actor_type: "admin_user",
+    actor_user_id: expect.any(String),
     target_user_id: signUp.userId,
     reason: "Investigating billing issue",
   });
@@ -84,12 +85,32 @@ it("records impersonation started with reason and actor", async ({ expect }) => 
   expect(typeof listRes.body.items[0].metadata.refresh_token_id).toBe("string");
 });
 
-it("records impersonation revoked when an impersonation session is deleted", async ({ expect }) => {
+it("does not audit impersonation started via server API key alone", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const signUp = await Auth.Password.signUpWithEmail();
 
   const impersonation = await niceBackendFetch("/api/v1/auth/sessions", {
     accessType: "server",
+    method: "POST",
+    body: {
+      user_id: signUp.userId,
+      is_impersonation: true,
+      reason: "server key only",
+    },
+  });
+  expect(impersonation.status).toBe(200);
+
+  const listRes = await listAuditLog({ action: "impersonation.started" });
+  expect(listRes.status).toBe(200);
+  expect(listRes.body.items).toEqual([]);
+});
+
+it("records impersonation revoked when an impersonation session is deleted", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const signUp = await Auth.Password.signUpWithEmail();
+
+  const impersonation = await niceBackendFetch("/api/v1/auth/sessions", {
+    accessType: "admin",
     method: "POST",
     body: {
       user_id: signUp.userId,
@@ -125,8 +146,8 @@ it("records impersonation revoked when an impersonation session is deleted", asy
   expect(listRes.body.items[0]).toMatchObject({
     action: "impersonation.revoked",
     target_user_id: signUp.userId,
-    actor_type: "unknown",
-    actor_label: "Admin API key",
+    actor_type: "admin_user",
+    actor_user_id: expect.any(String),
   });
 });
 
@@ -135,7 +156,7 @@ it("ignores reason on non-impersonation session creation", async ({ expect }) =>
   const signUp = await Auth.Password.signUpWithEmail();
 
   const session = await niceBackendFetch("/api/v1/auth/sessions", {
-    accessType: "server",
+    accessType: "admin",
     method: "POST",
     body: {
       user_id: signUp.userId,
@@ -163,8 +184,8 @@ it("records project settings config updates with non-sensitive before/after valu
   expect(listRes.body.items[0]).toMatchObject({
     action: "project_settings.updated",
     target_user_id: null,
-    actor_type: "unknown",
-    actor_label: "Admin API key",
+    actor_type: "admin_user",
+    actor_user_id: expect.any(String),
   });
   expect(listRes.body.items[0].metadata).toMatchObject({
     source: "config.override.patch",
@@ -1028,6 +1049,211 @@ it("records Teams admin mutations (create/update/delete, membership, permissions
       source: "teams.delete",
       team_id: teamId,
       display_name: "Renamed Audited Team",
+    },
+  });
+});
+
+it("records RBAC permission definition and project permission changes only for dashboard admin users", async ({ expect }) => {
+  await Project.createAndSwitch({
+    config: { magic_link_enabled: true },
+  });
+  const projectKeys = backendContext.value.projectKeys;
+  expect(projectKeys).not.toBe("no-project");
+  const dashboardAdminAccessToken = projectKeys.adminAccessToken;
+  expect(typeof dashboardAdminAccessToken).toBe("string");
+
+  // Bare admin API key (no dashboard admin user) must not write Compliance events.
+  backendContext.set({
+    projectKeys: {
+      ...projectKeys,
+      adminAccessToken: undefined,
+    },
+  });
+  const programmaticCreate = await niceBackendFetch("/api/v1/project-permission-definitions", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      id: "programmatic_perm",
+      description: "Should not be audited",
+    },
+  });
+  expect(programmaticCreate.status).toBe(201);
+
+  const programmaticList = await listAuditLog({ action: "permission_definition.created" });
+  expect(programmaticList.status).toBe(200);
+  expect(programmaticList.body.items).toEqual([]);
+
+  backendContext.set({
+    projectKeys: {
+      ...projectKeys,
+      adminAccessToken: dashboardAdminAccessToken,
+    },
+  });
+
+  const createDef = await niceBackendFetch("/api/v1/project-permission-definitions", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      id: "audited_perm",
+      description: "Audited project permission",
+      contained_permission_ids: [],
+    },
+  });
+  expect(createDef.status).toBe(201);
+
+  const createTeamDef = await niceBackendFetch("/api/v1/team-permission-definitions", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      id: "audited_team_perm",
+      description: "Audited team permission",
+    },
+  });
+  expect(createTeamDef.status).toBe(201);
+
+  const updateDef = await niceBackendFetch("/api/v1/project-permission-definitions/audited_perm", {
+    accessType: "admin",
+    method: "PATCH",
+    body: {
+      description: "Renamed audited project permission",
+      contained_permission_ids: [],
+    },
+  });
+  expect(updateDef.status).toBe(200);
+
+  const { userId } = await Auth.Password.signUpWithEmail();
+  await Auth.signOut();
+
+  const grant = await niceBackendFetch(`/api/v1/project-permissions/${userId}/audited_perm`, {
+    accessType: "admin",
+    method: "POST",
+    body: {},
+  });
+  expect(grant.status).toBe(201);
+
+  // Programmatic grant with admin key alone must not audit.
+  backendContext.set({
+    projectKeys: {
+      ...projectKeys,
+      adminAccessToken: undefined,
+    },
+  });
+  const programmaticGrant = await niceBackendFetch(`/api/v1/project-permissions/${userId}/programmatic_perm`, {
+    accessType: "admin",
+    method: "POST",
+    body: {},
+  });
+  expect(programmaticGrant.status).toBe(201);
+  backendContext.set({
+    projectKeys: {
+      ...projectKeys,
+      adminAccessToken: dashboardAdminAccessToken,
+    },
+  });
+
+  const revoke = await niceBackendFetch(`/api/v1/project-permissions/${userId}/audited_perm`, {
+    accessType: "admin",
+    method: "DELETE",
+  });
+  expect(revoke.status).toBe(200);
+
+  const deleteDef = await niceBackendFetch("/api/v1/project-permission-definitions/audited_perm", {
+    accessType: "admin",
+    method: "DELETE",
+  });
+  expect(deleteDef.status).toBe(200);
+
+  const createdDefs = await listAuditLog({ action: "permission_definition.created" });
+  expect(createdDefs.status).toBe(200);
+  expect(createdDefs.body.items).toHaveLength(2);
+  expect(createdDefs.body.items).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      action: "permission_definition.created",
+      actor_type: "admin_user",
+      metadata: expect.objectContaining({
+        source: "project_permission_definitions.create",
+        changes: expect.objectContaining({
+          scope: { before: null, after: "project" },
+          permission_id: { before: null, after: "audited_perm" },
+          description: { before: null, after: "Audited project permission" },
+        }),
+      }),
+    }),
+    expect.objectContaining({
+      action: "permission_definition.created",
+      actor_type: "admin_user",
+      metadata: expect.objectContaining({
+        source: "team_permission_definitions.create",
+        changes: expect.objectContaining({
+          scope: { before: null, after: "team" },
+          permission_id: { before: null, after: "audited_team_perm" },
+        }),
+      }),
+    }),
+  ]));
+  expect(JSON.stringify(createdDefs.body.items)).not.toContain("programmatic_perm");
+  expect(JSON.stringify(createdDefs.body.items)).not.toContain("Should not be audited");
+
+  const updatedDefs = await listAuditLog({ action: "permission_definition.updated" });
+  expect(updatedDefs.status).toBe(200);
+  expect(updatedDefs.body.items).toHaveLength(1);
+  expect(updatedDefs.body.items[0]).toMatchObject({
+    action: "permission_definition.updated",
+    actor_type: "admin_user",
+    metadata: {
+      source: "project_permission_definitions.update",
+      scope: "project",
+      permission_id: "audited_perm",
+      changes: {
+        description: {
+          before: "Audited project permission",
+          after: "Renamed audited project permission",
+        },
+      },
+    },
+  });
+
+  const granted = await listAuditLog({ action: "project_permission.granted" });
+  expect(granted.status).toBe(200);
+  expect(granted.body.items).toHaveLength(1);
+  expect(granted.body.items[0]).toMatchObject({
+    action: "project_permission.granted",
+    actor_type: "admin_user",
+    target_user_id: userId,
+    metadata: {
+      source: "project_permissions.create",
+      changes: {
+        user_id: { before: null, after: userId },
+        permission_id: { before: null, after: "audited_perm" },
+      },
+    },
+  });
+
+  const revoked = await listAuditLog({ action: "project_permission.revoked" });
+  expect(revoked.status).toBe(200);
+  expect(revoked.body.items).toHaveLength(1);
+  expect(revoked.body.items[0]).toMatchObject({
+    action: "project_permission.revoked",
+    actor_type: "admin_user",
+    target_user_id: userId,
+    metadata: {
+      source: "project_permissions.delete",
+      user_id: userId,
+      permission_id: "audited_perm",
+    },
+  });
+
+  const deletedDefs = await listAuditLog({ action: "permission_definition.deleted" });
+  expect(deletedDefs.status).toBe(200);
+  expect(deletedDefs.body.items).toHaveLength(1);
+  expect(deletedDefs.body.items[0]).toMatchObject({
+    action: "permission_definition.deleted",
+    actor_type: "admin_user",
+    metadata: {
+      source: "project_permission_definitions.delete",
+      scope: "project",
+      permission_id: "audited_perm",
+      description: "Renamed audited project permission",
     },
   });
 });
