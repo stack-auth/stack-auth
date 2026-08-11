@@ -186,10 +186,9 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     type Summary = { height: number, size: number, entryCount: number, minKey: MultiKey<Key, EntryId>, maxKey: MultiKey<Key, EntryId>, augmentation: Augmentation };
     type Frame = { child: Child<MultiKey<Key, EntryId>, Augmentation>, node: Node<MultiKey<Key, EntryId>, Value, Augmentation>, path: number[], nextChild: number, children: Array<Summary | undefined> };
     const stack: Frame[] = [];
-    const maxDepth = Math.min(
-      1_000_000,
-      Math.max(8, 2 * (Math.ceil(Math.log(Math.max(1, this.root.size) + 1) / Math.log(Math.max(2, this.minEntries()))) + 1)),
-    );
+    const persistedSize = Number.isSafeInteger(this.root.size) && this.root.size >= 0 ? this.root.size : 0;
+    const maxNodeLoads = Math.min(100_000, persistedSize * 4 + 32);
+    let nodeLoads = 1;
     const loadFrame = async (child: Child<MultiKey<Key, EntryId>, Augmentation>, path: number[]): Promise<Frame> => {
       const node = await this.node(child.ref);
       if (node === null) throw new Error("Missing persisted tree node");
@@ -203,10 +202,11 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
         const childIndex = frame.nextChild;
         frame.nextChild++;
         const child = frame.node.children[childIndex];
-        if (frame.path.length + 1 >= maxDepth) {
-          issues.push({ code: "cycle", message: "A tree descends deeper than its persisted size can justify, indicating a cycle or corrupt structure" });
-          continue;
+        if (nodeLoads >= maxNodeLoads) {
+          issues.push({ code: "cycle", message: "A tree loaded more nodes than its persisted size can justify, indicating a cycle or corrupt structure" });
+          break;
         }
+        nodeLoads++;
         stack.push(await loadFrame(child, [...frame.path, childIndex]));
         continue;
       }

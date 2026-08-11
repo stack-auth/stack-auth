@@ -314,9 +314,7 @@ describe("AugmentedTreeMap", () => {
       async get(): Promise<PiledriverObject> {
         const node = await root.ref.get();
         if (typeof node !== "object" || node === null || Array.isArray(node)) throw new Error("Expected a tree node");
-        const children = (node as { children: Array<Record<string, unknown>> }).children.map((child, index) => index === 0
-          ? { ...child, ref: makeCorruptedRootRef() }
-          : child);
+        const children = (node as { children: Array<Record<string, unknown>> }).children.map(child => ({ ...child, ref: makeCorruptedRootRef() }));
         return { ...node, children } as PiledriverObject;
       },
     });
