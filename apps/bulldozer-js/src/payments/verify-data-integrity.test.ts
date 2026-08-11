@@ -233,13 +233,13 @@ describe("verification cursor", () => {
     const cursor = response.next_cursor;
     if (cursor === null) throw new Error("Expected a verification continuation");
     const decodedCursor = decodeVerificationCursor(cursor);
-    expect(decodedCursor).toMatchObject({ version: 4, stepsTaken: 1 });
+    expect(decodedCursor).toMatchObject({ version: 5, stepsTaken: 1 });
     expect(() => decodeVerificationCursor("not-a-cursor")).toThrow("Invalid verification cursor");
     const wrongVersion = Buffer.from(
       JSON.stringify({ ...decodedCursor, version: 999 }),
       "utf8",
     ).toString("base64url");
-    expect(() => decodeVerificationCursor(wrongVersion)).toThrow("expected 4");
+    expect(() => decodeVerificationCursor(wrongVersion)).toThrow("expected 5");
     const malformedPayload = Buffer.from(
       JSON.stringify({ ...decodedCursor, tablePosition: { ...decodedCursor.tablePosition, groupKeyBase64: "not-base64" } }),
       "utf8",
@@ -340,10 +340,10 @@ describe("verification cursor", () => {
     const root = await db.getDataIntegrityState().getRoot();
     const malformed = encodeBase64(new TextEncoder().encode(JSON.stringify(["heap-reference", "bWlzc2luZw==", "extra"])));
     const continuation = Buffer.from(JSON.stringify({
-      version: 4,
+      version: 5,
       root: { bufferBase64: malformed, seq: serializeDatabaseSeq(root.seq) },
       phase: "root",
-      tablePosition: { tableId: null, groupKeyBase64: null, rowSortKeyBase64: null, rowSortKeyTieCount: 0, rowIdentifiers: [], rowIdentifierCheckSkipped: false, groupComplete: false, genericDone: false, hookPosition: null },
+      tablePosition: { tableId: null, groupKeyBase64: null, groupKeyTieCount: 0, rowSortKeyBase64: null, rowSortKeyTieCount: 0, rowIdentifiers: [], rowIdentifierCheckSkipped: false, groupComplete: false, genericDone: false, hookPosition: null },
       afterHeapKeyBase64: null,
       stepsTaken: 0,
       errorCount: 0,
@@ -360,6 +360,7 @@ function fakePosition(overrides: Partial<TablePosition> = {}): TablePosition {
   return {
     tableId: "fake",
     groupKeyBase64: null,
+    groupKeyTieCount: 0,
     rowSortKeyBase64: null,
     rowSortKeyTieCount: 0,
     rowIdentifiers: [],
@@ -471,7 +472,7 @@ describe("generic table corruption checks", () => {
     expect(result.issues.map(issue => issue.code)).toContain("group_order");
   });
 
-  it("reports duplicate group corruption independently", async () => {
+  it("allows duplicate groups when their comparator considers them tied", async () => {
     const result = await verifyGenericTable({
       tableId: "duplicate-group",
       serializedTable: {},
@@ -486,7 +487,82 @@ describe("generic table corruption checks", () => {
         compareSortKeys() { return 0; },
       },
     }, fakePosition(), 10);
-    expect(result.issues.map(issue => issue.code)).toContain("group_order");
+    expect(result.issues).toEqual([]);
+  });
+
+  it("resumes through distinct groups whose comparator considers them tied", async () => {
+    const groups = ["a", "b", "c"].map(groupKey => ({ groupKey, rows: [] }));
+    const visitedGroups: string[] = [];
+    const target = {
+      tableId: "tied-groups",
+      serializedTable: {},
+      inputTables: {},
+      table: {
+        async *listGroups({ range }: { range: { gte?: PiledriverObject } }) {
+          const start = range.gte === undefined
+            ? 0
+            : groups.findIndex(group => group.groupKey === range.gte);
+          for (const group of groups.slice(start < 0 ? groups.length : start)) yield { groupKey: group.groupKey };
+        },
+        async *listRowsInGroup({ groupKey }: { groupKey: PiledriverObject }) {
+          visitedGroups.push(String(groupKey));
+          const group = groups.find(candidate => candidate.groupKey === groupKey);
+          for (const row of group?.rows ?? []) yield row;
+        },
+        compareGroupKeys() { return 0; },
+        compareSortKeys() { return 0; },
+      },
+    };
+    let position = fakePosition();
+    const issues = [];
+    let finished = false;
+    for (let call = 0; call < 20; call++) {
+      const result = await verifyGenericTable(target, position, 1);
+      issues.push(...result.issues);
+      position = result.position;
+      if (result.finished) {
+        finished = true;
+        break;
+      }
+    }
+    expect(finished).toBe(true);
+    expect(visitedGroups).toEqual(["a", "b", "c"]);
+    expect(issues).toEqual([]);
+  });
+
+  it("uses the group tie count to resume duplicate canonical groups", async () => {
+    const groups = ["a", "a", "b"].map(groupKey => ({ groupKey, rows: [] }));
+    const visitedGroups: string[] = [];
+    const target = {
+      tableId: "duplicate-tied-groups",
+      serializedTable: {},
+      inputTables: {},
+      table: {
+        async *listGroups({ range }: { range: { gte?: PiledriverObject } }) {
+          const start = range.gte === undefined
+            ? 0
+            : groups.findIndex(group => group.groupKey === range.gte);
+          for (const group of groups.slice(start < 0 ? groups.length : start)) yield { groupKey: group.groupKey };
+        },
+        async *listRowsInGroup({ groupKey }: { groupKey: PiledriverObject }) {
+          visitedGroups.push(String(groupKey));
+        },
+        compareGroupKeys() { return 0; },
+        compareSortKeys() { return 0; },
+      },
+    };
+    let position = fakePosition();
+    let finished = false;
+    for (let call = 0; call < 20; call++) {
+      const result = await verifyGenericTable(target, position, 1);
+      position = result.position;
+      if (result.finished) {
+        finished = true;
+        break;
+      }
+    }
+    expect(finished).toBe(true);
+    expect(visitedGroups).toEqual(["a", "a", "b"]);
   });
 
   it("reports a non-canonical group key independently", async () => {

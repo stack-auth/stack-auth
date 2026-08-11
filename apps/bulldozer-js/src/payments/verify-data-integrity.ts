@@ -11,7 +11,7 @@ import type {
 import { canonicalGroupKeyString } from "../databases/bulldozer/index.js";
 import { collectSerializedHeapReferences, InvalidPiledriverSerializedObjectError, isPiledriverHeapObjectSymbol, type PiledriverObject } from "../databases/piledriver/index.js";
 
-const CURSOR_VERSION = 4;
+const CURSOR_VERSION = 5;
 const DEFAULT_STEP_COUNT = 100;
 const MAX_STEP_COUNT = 1_000;
 const MAX_ERRORS = 100;
@@ -30,6 +30,7 @@ type VerificationPhase = "root" | "tables" | "heap-scan" | "done";
 export type TablePosition = {
   tableId: string | null,
   groupKeyBase64: string | null,
+  groupKeyTieCount: number,
   rowSortKeyBase64: string | null,
   rowSortKeyTieCount: number,
   rowIdentifiers: string[],
@@ -129,6 +130,9 @@ function isTablePosition(value: unknown): value is TablePosition {
   return isRecord(value)
     && (value.tableId === null || typeof value.tableId === "string")
     && (value.groupKeyBase64 === null || typeof value.groupKeyBase64 === "string")
+    && typeof value.groupKeyTieCount === "number"
+    && Number.isInteger(value.groupKeyTieCount)
+    && value.groupKeyTieCount >= 0
     && (value.rowSortKeyBase64 === null || typeof value.rowSortKeyBase64 === "string")
     && typeof value.rowSortKeyTieCount === "number"
     && Number.isInteger(value.rowSortKeyTieCount)
@@ -294,6 +298,7 @@ function nextTablePosition(tableId: string | null): TablePosition {
   return {
     tableId,
     groupKeyBase64: null,
+    groupKeyTieCount: 0,
     rowSortKeyBase64: null,
     rowSortKeyTieCount: 0,
     rowIdentifiers: [],
@@ -306,6 +311,15 @@ function nextTablePosition(tableId: string | null): TablePosition {
 
 function isHeapObject(value: PiledriverObject): boolean {
   return typeof value === "object" && value !== null && isPiledriverHeapObjectSymbol in value;
+}
+
+function groupKeyIdentity(value: PiledriverObject): string {
+  try {
+    return canonicalGroupKeyString(value);
+  } catch (error) {
+    if (error instanceof Error && error.message === "Group keys must not contain heap objects") return encodePosition(value);
+    throw error;
+  }
 }
 
 export async function verifyGenericTable(
@@ -322,6 +336,7 @@ export async function verifyGenericTable(
   const skippedChecks: VerificationIssue[] = [];
   let stepsTaken = 0;
   let groupKey = decodePosition(position.groupKeyBase64);
+  let groupKeyTieCount = position.groupKeyTieCount;
   let previousSortKey = decodePosition(position.rowSortKeyBase64);
   let rowSortKeyTieCount = position.rowSortKeyTieCount;
   let tiedRowsToSkip = rowSortKeyTieCount;
@@ -329,9 +344,9 @@ export async function verifyGenericTable(
   let rowIdentifierCheckSkipped = position.rowIdentifierCheckSkipped;
   let groupComplete = position.groupComplete;
   let lastCompletedGroup = position.groupComplete ? decodePosition(position.groupKeyBase64) : null;
-  let cursorGroupKeyBase64 = position.groupKeyBase64;
-  let cursorGroupComplete = position.groupComplete;
+  let lastCompletedGroupTieCount = position.groupKeyTieCount;
   while (true) {
+    const resumingCompletedGroup = groupComplete;
     const beforeSteps = stepsTaken;
     const beforePosition = JSON.stringify({
       groupKeyBase64: groupKey === null ? null : encodePosition(groupKey.value),
@@ -340,6 +355,7 @@ export async function verifyGenericTable(
     });
     if (groupComplete) {
       lastCompletedGroup = groupKey;
+      lastCompletedGroupTieCount = groupKeyTieCount;
       groupKey = null;
       previousSortKey = null;
       rowSortKeyTieCount = 0;
@@ -349,20 +365,29 @@ export async function verifyGenericTable(
       groupComplete = false;
     }
     let group: { groupKey: PiledriverObject } | undefined;
-    const range = groupKey === null
-      ? (lastCompletedGroup === null ? {} : { gt: lastCompletedGroup.value })
-      : { gte: groupKey.value };
+    const resumeGroup = groupKey ?? lastCompletedGroup;
+    const resumeGroupIdentity = resumeGroup === null ? null : groupKeyIdentity(resumeGroup.value);
+    let groupsToSkip = groupKey === null
+      ? (lastCompletedGroup === null ? 0 : lastCompletedGroupTieCount + 1)
+      : groupKeyTieCount;
+    const range = resumeGroup === null ? {} : { gte: resumeGroup.value };
     for await (const candidate of target.table.listGroups({
       serializedTable: target.serializedTable,
       inputTables: target.inputTables,
       range,
     })) {
+      const candidateIdentity = groupKeyIdentity(candidate.groupKey);
+      if (resumeGroupIdentity !== null && candidateIdentity === resumeGroupIdentity && groupsToSkip > 0) {
+        groupsToSkip--;
+        continue;
+      }
+      if (groupKey !== null && candidateIdentity !== resumeGroupIdentity) continue;
       if (lastCompletedGroup !== null && target.table.compareGroupKeys({
         serializedTable: target.serializedTable,
         inputTables: target.inputTables,
         a: candidate.groupKey,
         b: lastCompletedGroup.value,
-      }) <= 0) {
+      }) < 0) {
         issues.push({ phase: "tables", code: "group_order", message: "Groups are not strictly ordered", context: { tableId: target.tableId } });
         return {
           issues,
@@ -372,15 +397,8 @@ export async function verifyGenericTable(
           finished: true,
         };
       }
-      if (groupKey === null || target.table.compareGroupKeys({
-        serializedTable: target.serializedTable,
-        inputTables: target.inputTables,
-        a: candidate.groupKey,
-        b: groupKey.value,
-      }) === 0) {
-        group = candidate;
-        break;
-      }
+      group = candidate;
+      break;
     }
     if (group === undefined) return {
       issues,
@@ -390,15 +408,21 @@ export async function verifyGenericTable(
       finished: true,
     };
     const groupKeyBase64 = encodePosition(group.groupKey);
+    const groupIdentity = groupKeyIdentity(group.groupKey);
+    const newGroup = groupKey === null
+      || groupIdentity !== resumeGroupIdentity
+      || groupComplete;
+    groupKeyTieCount = groupIdentity === resumeGroupIdentity && resumingCompletedGroup
+      ? lastCompletedGroupTieCount + 1
+      : groupIdentity === resumeGroupIdentity && groupKey !== null
+        ? groupKeyTieCount
+        : 0;
     groupKey = { value: group.groupKey };
-    const newGroup = cursorGroupKeyBase64 !== groupKeyBase64 || cursorGroupComplete;
-    cursorGroupKeyBase64 = groupKeyBase64;
-    cursorGroupComplete = false;
     if (newGroup) {
       if (stepsTaken >= budget) return {
         issues,
         skippedChecks,
-        position: { ...position, tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: null, rowSortKeyTieCount: 0, rowIdentifiers: [], rowIdentifierCheckSkipped: false, groupComplete: false },
+        position: { ...position, tableId: target.tableId, groupKeyBase64, groupKeyTieCount, rowSortKeyBase64: null, rowSortKeyTieCount: 0, rowIdentifiers: [], rowIdentifierCheckSkipped: false, groupComplete: false },
         stepsTaken,
         finished: false,
       };
@@ -438,7 +462,7 @@ export async function verifyGenericTable(
       if (stepsTaken >= budget) return {
         issues,
         skippedChecks,
-        position: { ...position, tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: previousSortKey === null ? null : encodePosition(previousSortKey.value), rowSortKeyTieCount, rowIdentifiers: [...seenRowIdentifiers], rowIdentifierCheckSkipped, groupComplete: false },
+        position: { ...position, tableId: target.tableId, groupKeyBase64, groupKeyTieCount, rowSortKeyBase64: previousSortKey === null ? null : encodePosition(previousSortKey.value), rowSortKeyTieCount, rowIdentifiers: [...seenRowIdentifiers], rowIdentifierCheckSkipped, groupComplete: false },
         stepsTaken,
         finished: false,
       };
@@ -473,7 +497,7 @@ export async function verifyGenericTable(
     if (stepsTaken >= budget) return {
       issues,
       skippedChecks,
-      position: { ...position, tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: null, rowSortKeyTieCount: 0, rowIdentifiers: [], rowIdentifierCheckSkipped: false, groupComplete: true },
+      position: { ...position, tableId: target.tableId, groupKeyBase64, groupKeyTieCount, rowSortKeyBase64: null, rowSortKeyTieCount: 0, rowIdentifiers: [], rowIdentifierCheckSkipped: false, groupComplete: true },
       stepsTaken,
       finished: false,
     };
