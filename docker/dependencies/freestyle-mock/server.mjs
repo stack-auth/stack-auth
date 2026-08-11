@@ -1214,13 +1214,13 @@ class JobQueue {
         dependency,
         job.controller.signal,
       );
+      // Preparation can finish after the preparation watchdog already settled
+      // the response; never hand a settled job to the guest or arm a timer for
+      // it, or a late timer would retire a healthy runtime.
       if (job.settled || job.controller.signal.aborted) return null;
       job.entry = entry;
-      if (job.settled || job.controller.signal.aborted) return null;
       if (job.timer) clearTimeout(job.timer);
-      if (job.settled || job.controller.signal.aborted) return null;
       this.armExecutionTimeout(job);
-      if (job.settled || job.controller.signal.aborted) return null;
       return await executeScript(entry.runtime, job);
     } finally {
       if (entry) this.runtimeCache.release(entry);
