@@ -606,6 +606,8 @@ export function declarePiledriverGarbageCollector(options: {
     requiresSeq: DatabaseSeq,
   ) => {
     await initialize();
+    // Increments must be available before the buffer referencing them is visible, so a crash can never
+    // expose a root whose children are still eligible for collection.
     return await changeSerializedReferenceDeltas(aggregateSerializedReferences(buffer).values(), null, requiresSeq);
   };
 
@@ -616,6 +618,9 @@ export function declarePiledriverGarbageCollector(options: {
   ) => {
     await initialize();
     parseNonNegativeInteger(dereferencedAtMillis, "dereferencedAtMillis");
+    // The mirror image of the increment ordering: decrements are applied only once the replacement is
+    // visible. A crash in between leaks an over-counted object, but can never free one that the visible
+    // root still reaches.
     return await changeSerializedReferenceDeltas(
       [...aggregateSerializedReferences(buffer).values()].map(({ key, count }) => ({ key, count: -count })),
       dereferencedAtMillis,
