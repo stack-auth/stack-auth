@@ -125,6 +125,30 @@ describe("LMDB low-level database", () => {
     }
   });
 
+  it("drains in-flight reads before closing and rejects reads after close starts", async () => {
+    const path = await tempLmdbPath();
+    const db = declareLmdbLowLevelDatabase({
+      path,
+      dbId: "read-close",
+      simulateReadMissDelayMs: 25,
+    });
+    try {
+      const store = db.declareKvStore("store");
+      const write = await store.setAll([{ key: buffer("key"), value: buffer("value") }]);
+      await db.waitUntilDurable(write.seq);
+
+      const read = store.get(buffer("key"));
+      const closing = db.close();
+
+      await expect(read).resolves.toMatchObject({ buffer: buffer("value") });
+      await expect(closing).resolves.toBeUndefined();
+      await expect(store.get(buffer("key"))).rejects.toThrow("LMDB database is closing");
+    } finally {
+      await db.close();
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
   it("supports compareAndSet without advancing seq on failed comparisons", async () => {
     const path = await tempLmdbPath();
     try {

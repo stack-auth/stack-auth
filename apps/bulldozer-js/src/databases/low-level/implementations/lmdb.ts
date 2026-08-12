@@ -179,6 +179,16 @@ export function declareLmdbLowLevelDatabase(options: {
   let pendingCommitFlushPromise: Promise<void> | null = null;
   let isClosing = false;
   let closePromise: Promise<void> | null = null;
+  const inFlightReads = new Set<Promise<unknown>>();
+  const trackRead = <T>(read: Promise<T>) => {
+    let trackedRead: Promise<T>;
+    trackedRead = read.finally(() => inFlightReads.delete(trackedRead));
+    inFlightReads.add(trackedRead);
+    return trackedRead;
+  };
+  const assertReadAllowed = () => {
+    if (isClosing) throw new Error("LMDB database is closing");
+  };
   let activityStats = emptyActivityStats();
   let activityWindowStartedAt = performance.now();
   if (!shouldSuppressPeriodicBulldozerLogs) {
@@ -426,7 +436,8 @@ export function declareLmdbLowLevelDatabase(options: {
 
     const result: LowLevelKvStore & LowLevelKvDump = {
       async get(key) {
-        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.get", attributes }, async () => {
+        assertReadAllowed();
+        return await trackRead(traceSpanHot({ description: "bulldozer-js.low-level.lmdb.get", attributes }, async () => {
           validateKey(key);
           if (simulateReadMissDelayMs > 0) await wait(simulateReadMissDelayMs);
           const [buffer] = await db.getMany([bufferFromArrayBuffer(key)]);
@@ -434,10 +445,11 @@ export function declareLmdbLowLevelDatabase(options: {
             buffer: buffer ? arrayBufferFromUint8Array(buffer) : null,
             seq: initialSeq,
           };
-        });
+        }));
       },
       async listEntries(options) {
-        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.listEntries", attributes }, async () => {
+        assertReadAllowed();
+        return await trackRead(traceSpanHot({ description: "bulldozer-js.low-level.lmdb.listEntries", attributes }, async () => {
           const limit = options?.limit ?? 1000;
           if (!Number.isInteger(limit) || limit <= 0) throw new Error("KV store list limit must be a positive integer");
           if (options?.startAfter !== undefined) validateKey(options.startAfter);
@@ -453,7 +465,7 @@ export function declareLmdbLowLevelDatabase(options: {
             entries: entries.slice(0, limit),
             hasMore: entries.length > limit,
           };
-        });
+        }));
       },
       async setAll(entries, setOptions) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.setAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
@@ -512,7 +524,8 @@ export function declareLmdbLowLevelDatabase(options: {
         });
       },
       async debugEntries() {
-        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.debugEntries", attributes }, async () => await (db.getRange() as lmdb.RangeIterable<{ key: Uint8Array, value: Buffer }>).map(({ key, value }) => {
+        assertReadAllowed();
+        return await trackRead(traceSpanHot({ description: "bulldozer-js.low-level.lmdb.debugEntries", attributes }, async () => await (db.getRange() as lmdb.RangeIterable<{ key: Uint8Array, value: Buffer }>).map(({ key, value }) => {
           const keyBuffer = Buffer.from(key);
           const valueBuffer = Buffer.from(value);
           return {
@@ -523,7 +536,7 @@ export function declareLmdbLowLevelDatabase(options: {
             valueUtf8: decodeUtf8(arrayBufferFromUint8Array(valueBuffer)),
             valueByteLength: valueBuffer.byteLength,
           };
-        }).asArray);
+        }).asArray));
       },
     };
     debugEntriesByStoreId.set(debugStoreId, () => result.debugEntries!());
@@ -592,7 +605,14 @@ export function declareLmdbLowLevelDatabase(options: {
               ...combinedSeqToDurability.values(),
             ]);
           } finally {
-            await root.close();
+            try {
+              // lmdb-js tracks async reads per child handle, but root.close() only drains the root handle's counter.
+              // Drain every read issued by this environment before closing the root so a child prefetch worker
+              // cannot observe the native environment after lmdb-js has nulled it.
+              await Promise.all(inFlightReads);
+            } finally {
+              await root.close();
+            }
           }
         });
       }
