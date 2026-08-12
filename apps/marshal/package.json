@@ -4,9 +4,13 @@
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
-    "start": "tsx src/index.ts",
-    "dev": "NODE_ENV=development tsx watch --clear-screen=false src/index.ts",
+    "start": "tsx src/server.ts",
+    "dev": "NODE_ENV=development tsx watch --clear-screen=false src/server.ts",
+    "build": "tsdown --config tsdown.config.ts",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "typecheck": "tsc --noEmit",
@@ -23,6 +27,7 @@
   "devDependencies": {
     "@types/node": "20.17.6",
     "rimraf": "^5.0.5",
+    "tsdown": "^0.22.14",
     "tsx": "4.15.5",
     "typescript": "5.9.3"
   },
