@@ -4,7 +4,7 @@ import { Auth, InternalProjectKeys, Project, backendContext, bumpEmailAddress, n
 const supportConversationsPath = "/api/v1/internal/dogfood/support/conversations";
 
 it("current user can create and reply to a conversation", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUpWithEmail();
 
   const createResponse = await niceBackendFetch(supportConversationsPath, {
     accessType: "client",
@@ -221,7 +221,7 @@ it("current user can create and reply to a conversation", async ({ expect }) => 
 });
 
 it("users cannot access conversations owned by another user", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUpWithEmail();
 
   const createResponse = await niceBackendFetch(supportConversationsPath, {
     accessType: "client",
@@ -233,7 +233,7 @@ it("users cannot access conversations owned by another user", async ({ expect })
   });
 
   await bumpEmailAddress();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUpWithEmail();
 
   const listResponse = await niceBackendFetch(supportConversationsPath, {
     accessType: "client",
@@ -267,7 +267,7 @@ it("deleting a user preserves their conversations with historical user IDs", asy
       magic_link_enabled: true,
     },
   });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUpWithEmail();
 
   const userResponse = await niceBackendFetch("/api/v1/users/me", {
     accessType: "server",

@@ -5,7 +5,7 @@ const signIn = async (clientApp: any) => {
   await clientApp.signUpWithCredential({
     email: "test@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({
     email: "test@test.com",
@@ -510,7 +510,7 @@ it("getUser should work with request-like tokenStore containing auth cookies", a
   await clientApp.signUpWithCredential({
     email: userAEmail,
     password,
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({ email: userAEmail, password });
   const userA = await clientApp.getUser({ or: "throw" });
@@ -521,7 +521,7 @@ it("getUser should work with request-like tokenStore containing auth cookies", a
   await clientApp.signUpWithCredential({
     email: userBEmail,
     password,
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({ email: userBEmail, password });
   const userB = await clientApp.getUser({ or: "throw" });

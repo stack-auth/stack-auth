@@ -307,7 +307,7 @@ function Dashboard({
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <ChartCard title="Where users are" subtitle="Active users by country" gradient="cyan">
           <div className="h-[320px] w-full">
-            <GlobeSection countryData={data.breakdowns.users_by_country} totalUsers={k.total_users.value} interactive />
+            <GlobeSection countryData={data.breakdowns.users_by_country} interactive />
           </div>
         </ChartCard>
         <ChartCard title="Sign-in methods" subtitle="How end users authenticate" gradient="purple">
