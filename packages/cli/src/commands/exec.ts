@@ -49,9 +49,9 @@ export function parseExecTarget(opts: ExecTargetOpts): ExecTarget {
 export function registerExecCommand(program: Command) {
   program
     .command("exec [javascript]")
-    .description("Execute JavaScript with a pre-configured StackServerApp as `hexclaveServerApp`. Pass --cloud-project-id <id> for the cloud API, or --config-file <path> for the development environment.")
+    .description("Execute JavaScript with a pre-configured Hexclave server app as `hexclaveServerApp`. Pass --cloud-project-id <id> for the cloud API, or --config-file <path> for the development environment.")
     .option("--cloud-project-id <id>", "Cloud project ID to run against (use --config-file instead for the development environment)")
-    .option("--config-file <path>", "Path to a development-environment stack.config.ts (use --cloud-project-id instead for the cloud API)")
+    .option("--config-file <path>", "Path to a development-environment hexclave.config.ts (use --cloud-project-id instead for the cloud API)")
     .addHelpText("after", "\nFor available API methods, see: https://docs.hexclave.com/sdk/overview")
     .action(async (javascript: string | undefined, opts: ExecTargetOpts) => {
       if (javascript === undefined) {

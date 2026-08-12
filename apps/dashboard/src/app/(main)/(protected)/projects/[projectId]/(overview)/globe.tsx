@@ -360,7 +360,7 @@ type SatelliteHandle = {
   lastCountryCheckAt: number,
 };
 
-export function GlobeSection({ countryData, totalUsers, activeUsersByCountry, satelliteCount, interactive, initialPointOfView, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry?: Record<string, MetricsRecentUser[]>, satelliteCount?: number, interactive?: boolean, initialPointOfView?: { lat: number, lng: number }, children?: React.ReactNode}) {
+export function GlobeSection({ countryData, activeUsersByCountry, satelliteCount, interactive, initialPointOfView, children }: {countryData: Record<string, number>, activeUsersByCountry?: Record<string, MetricsRecentUser[]>, satelliteCount?: number, interactive?: boolean, initialPointOfView?: { lat: number, lng: number }, children?: React.ReactNode}) {
   const hasWaitedForIdle = useWaitForIdle(1000, 5000);
   if (!hasWaitedForIdle) {
     return <GlobeLoading devReason="waiting for cpu" />;
@@ -369,7 +369,6 @@ export function GlobeSection({ countryData, totalUsers, activeUsersByCountry, sa
     <Suspense fallback={<GlobeLoading devReason="suspended" />}>
       <GlobeSectionInner
         countryData={countryData}
-        totalUsers={totalUsers}
         activeUsersByCountry={activeUsersByCountry ?? {}}
         satelliteCount={satelliteCount ?? 2}
         interactive={interactive ?? false}
@@ -468,7 +467,7 @@ function GlobeLoading(props: { devReason: string, className?: string }) {
   );
 }
 
-function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, satelliteCount, interactive, initialPointOfView, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry: Record<string, MetricsRecentUser[]>, satelliteCount: number, interactive: boolean, initialPointOfView?: { lat: number, lng: number }, children?: React.ReactNode}) {
+function GlobeSectionInner({ countryData, activeUsersByCountry, satelliteCount, interactive, initialPointOfView, children }: {countryData: Record<string, number>, activeUsersByCountry: Record<string, MetricsRecentUser[]>, satelliteCount: number, interactive: boolean, initialPointOfView?: { lat: number, lng: number }, children?: React.ReactNode}) {
   const countries = use(countriesPromise);
   const projectId = useProjectId();
   const globeRef = useRef<GlobeMethods | undefined>(undefined);
@@ -693,6 +692,11 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
     resumeRender();
   }, [cameraDistance, shouldShowGlobe, squareSize, interactive]);
 
+  // Every share/colour on the globe is relative to the users we actually have a
+  // country for — not the project's total user count. Those are different
+  // populations (country data comes from analytics events, which include users
+  // without an account and exclude anyone we never geolocated), so dividing by
+  // the total made the tooltip show shares far above 100%.
   const totalUsersInCountries = Object.values(countryData).reduce((acc, curr) => acc + curr, 0);
   const totalPopulationInCountries = countries.features.reduce((acc, curr) => acc + curr.properties.POP_EST, 0);
   const oneSided95PercentZScore = 1.645;
@@ -1411,8 +1415,8 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
             <div className="flex justify-between items-center gap-6">
               <span className="text-muted-foreground">Share</span>
               <span className="font-mono font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
-                {totalUsers > 0
-                  ? `${((countryData[lastSelectedCountry.code] ?? 0) / totalUsers * 100).toFixed(1)}%`
+                {totalUsersInCountries > 0
+                  ? `${((countryData[lastSelectedCountry.code] ?? 0) / totalUsersInCountries * 100).toFixed(1)}%`
                   : 'N/A'}
               </span>
             </div>

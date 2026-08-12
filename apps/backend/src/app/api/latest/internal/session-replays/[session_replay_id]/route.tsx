@@ -25,6 +25,7 @@ export const GET = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       id: yupString().defined(),
+      refresh_token_id: yupString().defined(),
       project_user: yupObject({
         id: yupString().defined(),
         display_name: yupString().nullable().defined(),

@@ -43,8 +43,10 @@ import { filterUndefined } from "@hexclave/shared/dist/utils/objects";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { parseTar } from "@hexclave/shared/dist/utils/tar";
 import { createHash } from "node:crypto";
-import { gunzipSync } from "node:zlib";
+import { addAbortSignal } from "node:stream";
+import { createGunzip } from "node:zlib";
 import { VercelDeploymentsClient, VercelApiError, VercelDeploymentFile, getVercelDeploymentsClientOrThrow, getVercelDeploymentsConfigOrNull, sanitizeVercelError } from "./vercel-client";
+import { getOptionalRequestAbortSignal, requestContextALS } from "@/lib/runtime/request-context";
 
 /**
  * The app id doubles as the top-level config section key, and it carries the
@@ -594,26 +596,64 @@ export function redactSecrets(text: string, secretValues: string[]): string {
   return result;
 }
 
+async function gunzipSourceTarball(tarballGzipped: Uint8Array, signal: AbortSignal | undefined): Promise<Buffer> {
+  const gunzipStream = createGunzip();
+  if (signal != null) {
+    // zlib.gunzip does not accept AbortSignal in Node 22. A streaming decoder
+    // gives cancellation a real resource to destroy instead of merely letting
+    // the request stop awaiting a native job that continues in the background.
+    addAbortSignal(signal, gunzipStream);
+  }
+  gunzipStream.end(tarballGzipped);
+
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  try {
+    for await (const chunk of gunzipStream) {
+      signal?.throwIfAborted();
+      if (!(chunk instanceof Uint8Array)) {
+        throw new HexclaveAssertionError("Gunzip returned an unexpected chunk type");
+      }
+      totalBytes += chunk.byteLength;
+      if (totalBytes > MAX_TARBALL_UNPACKED_BYTES) {
+        gunzipStream.destroy();
+        throw new RangeError("Uploaded source tarball exceeds the unpacked size limit");
+      }
+      chunks.push(Buffer.from(chunk));
+    }
+  } catch (error) {
+    signal?.throwIfAborted();
+    throw error;
+  }
+  signal?.throwIfAborted();
+  return Buffer.concat(chunks, totalBytes);
+}
+
 /**
  * Unpacks an uploaded gzipped tarball into deployable files. Defensive on
  * purpose — the tarball is untrusted user input (see limits above; path
  * traversal is rejected by parseTar itself). node_modules and .git are dropped
  * as defense-in-depth even though the CLI already excludes them.
  */
-export function unpackSourceTarball(tarballGzipped: Uint8Array): { path: string, data: Uint8Array }[] {
+export async function unpackSourceTarball(tarballGzipped: Uint8Array): Promise<{ path: string, data: Uint8Array }[]> {
+  const signal = getOptionalRequestAbortSignal();
+  signal?.throwIfAborted();
   let tarBytes: Buffer;
   try {
-    tarBytes = gunzipSync(tarballGzipped, { maxOutputLength: MAX_TARBALL_UNPACKED_BYTES });
+    tarBytes = await gunzipSourceTarball(tarballGzipped, signal);
   } catch (e) {
-    if (e instanceof RangeError || (e as any)?.code === "ERR_BUFFER_TOO_LARGE") {
+    signal?.throwIfAborted();
+    if (e instanceof RangeError || (e instanceof Error && "code" in e && e.code === "ERR_BUFFER_TOO_LARGE")) {
       throw new StatusError(400, `Uploaded source tarball is too large when unpacked (max ${MAX_TARBALL_UNPACKED_BYTES} bytes).`);
     }
     throw new StatusError(400, "Uploaded source is not a valid gzip stream.");
   }
+  signal?.throwIfAborted();
   const entries = parseTar(tarBytes, {
     maxEntries: MAX_TARBALL_ENTRIES,
     maxTotalBytes: MAX_TARBALL_UNPACKED_BYTES,
   });
+  signal?.throwIfAborted();
   return entries
     .filter((entry) => !entry.path.endsWith("/"))
     .filter((entry) => {
@@ -621,6 +661,36 @@ export function unpackSourceTarball(tarballGzipped: Uint8Array): { path: string,
       return !segments.includes("node_modules") && !segments.includes(".git");
     });
 }
+
+import.meta.vitest?.test("source unpacking observes the inbound client signal", async ({ expect }) => {
+  const controller = new AbortController();
+  const cancellation = new Error("client disconnected");
+  controller.abort(cancellation);
+
+  await requestContextALS.run({
+    abortSignal: controller.signal,
+    headers: new Headers(),
+    incomingCookies: new Map(),
+    pendingSetCookies: [],
+    deletedCookies: [],
+    normalizedPath: "/api/latest/deployments/services/[service_id]/deploy",
+  }, async () => {
+    await expect(unpackSourceTarball(new Uint8Array())).rejects.toBe(cancellation);
+  });
+});
+
+import.meta.vitest?.test("source inflation stops when the inbound client disconnects", async ({ expect }) => {
+  const { gzipSync } = await import("node:zlib");
+  const controller = new AbortController();
+  const cancellation = new Error("client disconnected during inflation");
+  const inflationPromise = gunzipSourceTarball(
+    gzipSync(Buffer.alloc(1024 * 1024)),
+    controller.signal,
+  );
+
+  controller.abort(cancellation);
+  await expect(inflationPromise).rejects.toBe(cancellation);
+});
 
 export type StartDeploymentResult = {
   runId: string,
@@ -740,7 +810,7 @@ export async function startDeployment(options: {
     sanitizeVercelError(e, "Pushing env vars to the deployment failed");
   }
 
-  const files = unpackSourceTarball(tarballGzipped);
+  const files = await unpackSourceTarball(tarballGzipped);
   if (files.length === 0) {
     throw new StatusError(400, "Uploaded source tarball contains no files.");
   }

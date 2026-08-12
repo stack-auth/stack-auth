@@ -92,7 +92,10 @@ const branchApiKeysSchema = yupObject({
 const appIds = Object.keys(ALL_APPS) as (keyof typeof ALL_APPS)[];
 const branchAppsSchema = yupObject({
   installed: yupRecord(
-    yupString().oneOf(appIds),
+    // App config is persisted independently of backend releases. Retain app IDs
+    // introduced by newer releases so an older backend can still render the
+    // config; getIncompleteConfigWarnings reports IDs it does not recognize.
+    yupString(),
     yupObject({
       enabled: yupBoolean(),
     }),
@@ -960,7 +963,10 @@ const organizationConfigDefaults = {
   },
 
   apps: {
-    installed: typedFromEntries(appIds.map(appId => [appId, { enabled: false }])) as Record<string, { enabled: boolean } | undefined>,
+    installed: Object.assign(
+      (appId: string) => has(ALL_APPS, appId) ? { enabled: false } : undefined,
+      typedFromEntries(appIds.map(appId => [appId, { enabled: false }])),
+    ),
   },
 
   teams: {
@@ -1353,6 +1359,14 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
   }));
 
   const appSortIndices = new Map(Object.keys(ALL_APPS).map((appId, index) => [appId, index]));
+  const compareAppIds = (a: string, b: string) => {
+    const aIndex = appSortIndices.get(a);
+    const bIndex = appSortIndices.get(b);
+    if (aIndex != null && bIndex != null) return aIndex - bIndex;
+    if (aIndex != null) return -1;
+    if (bIndex != null) return 1;
+    return stringCompare(a, b);
+  };
 
   // Get all sign-up rules and sort by priority (descending), then by ID (alphabetically)
   // Note: We don't filter out disabled rules here because the dashboard needs to show them
@@ -1388,7 +1402,7 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     apps: {
       installed: typedFromEntries(
         typedEntries(prepared.apps.installed)
-          .sort(([a], [b]) => appSortIndices.get(a)! - appSortIndices.get(b)!)
+          .sort(([a], [b]) => compareAppIds(a, b))
       ),
     },
   };
@@ -1672,6 +1686,20 @@ export async function getIncompleteConfigWarnings<T extends yup.AnySchema>(schem
     throw error;
   }
 
+  const apps = normalized.apps;
+  const installedApps = isObjectLike(apps) && !Array.isArray(apps) ? apps.installed : undefined;
+  if (isObjectLike(installedApps)) {
+    const unknownAppIds = Object.keys(installedApps)
+      .filter(appId => !has(ALL_APPS, appId))
+      .sort(stringCompare);
+    if (unknownAppIds.length > 0) {
+      return Result.error(
+        `Unknown installed app ${unknownAppIds.length === 1 ? "ID" : "IDs"}: ${unknownAppIds.map(id => JSON.stringify(id)).join(", ")}. `
+        + "This config can still be rendered, but this version cannot validate or operate those apps.",
+      );
+    }
+  }
+
   // test the schema against the normalized config
   try {
     await schema.validate(normalized, {
@@ -1689,6 +1717,21 @@ export async function getIncompleteConfigWarnings<T extends yup.AnySchema>(schem
   }
 }
 export type ValidatedToHaveNoIncompleteConfigWarnings<T extends yup.AnySchema> = yup.InferType<T>;
+
+import.meta.vitest?.test("unknown installed apps render with a config warning", async ({ expect }) => {
+  const config = {
+    apps: {
+      installed: {
+        "future-app": { enabled: true },
+      },
+    },
+  };
+
+  expect(await getConfigOverrideErrors(branchConfigSchema, config)).toEqual(Result.ok(null));
+  expect(await getIncompleteConfigWarnings(branchConfigSchema, config)).toEqual(Result.error(
+    "Unknown installed app ID: \"future-app\". This config can still be rendered, but this version cannot validate or operate those apps.",
+  ));
+});
 
 
 // Normalized overrides

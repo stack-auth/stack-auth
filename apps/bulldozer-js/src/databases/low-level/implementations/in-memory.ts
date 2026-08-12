@@ -20,6 +20,16 @@ function arrayBufferFromUint8Array(value: Uint8Array) {
   return copy.buffer;
 }
 
+function compareArrayBuffers(a: ArrayBuffer, b: ArrayBuffer) {
+  const aBytes = new Uint8Array(a);
+  const bBytes = new Uint8Array(b);
+  const commonLength = Math.min(aBytes.length, bBytes.length);
+  for (let index = 0; index < commonLength; index++) {
+    if (aBytes[index] !== bBytes[index]) return aBytes[index] - bBytes[index];
+  }
+  return aBytes.length - bBytes.length;
+}
+
 function encodeHex(value: Uint8Array) {
   return [...value].map(byte => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -52,6 +62,24 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
           return {
             buffer: base64KeyToValue.get(encodeBase64(new Uint8Array(key)))?.slice(0) ?? null,
             seq: seqSentinel,
+          };
+        });
+      },
+      async listEntries(options) {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.listEntries", attributes }, async () => {
+          const limit = options?.limit ?? 1000;
+          if (!Number.isInteger(limit) || limit <= 0) throw new Error("KV store list limit must be a positive integer");
+          if (options?.startAfter !== undefined && options.startAfter.byteLength > 64) throw new Error("KV store key must be <= 64 bytes");
+          const matchingEntries = [...base64KeyToValue.entries()]
+            .map(([keyBase64, value]) => ({
+              key: arrayBufferFromUint8Array(Buffer.from(keyBase64, "base64")),
+              value,
+            }))
+            .filter(entry => options?.startAfter === undefined || compareArrayBuffers(entry.key, options.startAfter) > 0)
+            .sort((a, b) => compareArrayBuffers(a.key, b.key));
+          return {
+            entries: matchingEntries.slice(0, limit).map(({ key, value }) => ({ key, value: value.slice(0) })),
+            hasMore: matchingEntries.length > limit,
           };
         });
       },
