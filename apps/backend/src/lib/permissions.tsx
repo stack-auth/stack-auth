@@ -31,6 +31,8 @@ export async function listPermissions<S extends "team" | "project">(
   options: {
     tenancy: Tenancy,
     userId?: string,
+    // Bound recursive resolution to a known page of users without changing full-tenancy callers.
+    userIds?: string[],
     permissionId?: string,
     recursive: boolean,
     scope: S,
@@ -50,14 +52,14 @@ export async function listPermissions<S extends "team" | "project">(
     await tx.teamMemberDirectPermission.findMany({
       where: {
         tenancyId: options.tenancy.id,
-        projectUserId: options.userId,
+        projectUserId: options.userId ?? (options.userIds == null ? undefined : { in: options.userIds }),
         teamId: (options as any).teamId
       },
     }) :
     await tx.projectUserDirectPermission.findMany({
       where: {
         tenancyId: options.tenancy.id,
-        projectUserId: options.userId,
+        projectUserId: options.userId ?? (options.userIds == null ? undefined : { in: options.userIds }),
       },
     });
 

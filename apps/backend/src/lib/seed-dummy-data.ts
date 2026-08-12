@@ -2307,6 +2307,8 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
     seedDummySessionReplays({
       prisma: dummyPrisma,
       tenancyId: dummyTenancy.id,
+      projectId,
+      clickhouseClient,
       userEmailToId,
       freshProject,
     }),
@@ -2853,15 +2855,32 @@ async function seedDummyIssues(options: {
   }
 }
 
+// Device/browser strings the replay seeder cycles through, so the dashboard's
+// replay overview shows a realistic spread of desktop, mobile and tablet
+// sessions instead of one hardcoded browser.
+const SESSION_REPLAY_DEVICES = [
+  { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', screenWidth: 2560, screenHeight: 1440, viewportWidth: 1512, viewportHeight: 916 },
+  { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.3485.66', screenWidth: 1920, screenHeight: 1080, viewportWidth: 1920, viewportHeight: 969 },
+  { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15', screenWidth: 1728, screenHeight: 1117, viewportWidth: 1440, viewportHeight: 810 },
+  { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1', screenWidth: 393, screenHeight: 852, viewportWidth: 393, viewportHeight: 659 },
+  { userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36', screenWidth: 412, screenHeight: 915, viewportWidth: 412, viewportHeight: 780 },
+  { userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/604.1', screenWidth: 1024, screenHeight: 1366, viewportWidth: 1024, viewportHeight: 1219 },
+  { userAgent: 'Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0', screenWidth: 1920, screenHeight: 1200, viewportWidth: 1680, viewportHeight: 1050 },
+];
+
 async function seedDummySessionReplays({
   prisma,
   tenancyId,
+  projectId,
+  clickhouseClient,
   userEmailToId,
   freshProject,
   targetSessionReplayCount = 250,
 }: {
   prisma: PrismaClientTransaction,
   tenancyId: string,
+  projectId: string,
+  clickhouseClient: ClickHouseClient,
   userEmailToId: Map<string, string>,
   freshProject: boolean,
   targetSessionReplayCount?: number,
@@ -2884,20 +2903,94 @@ async function seedDummySessionReplays({
   const rand = deterministicPrng(seedFromString(`session-replays:${tenancyId}`));
 
   const seeds: Prisma.SessionReplayCreateManyInput[] = [];
+  const clickhouseRows: Array<Record<string, unknown>> = [];
   for (let i = 0; i < targetSessionReplayCount; i++) {
     const startedAt = new Date(twoWeeksAgo.getTime() + rand() * windowMs);
     const durationMs = 10_000 + Math.floor(rand() * (20 * 60 * 1000)); // 10s..20m
     const lastEventAt = new Date(startedAt.getTime() + durationMs);
     const projectUserId = userIds[Math.floor(rand() * userIds.length)]!;
+    const replayId = deterministicUuid(`session-replay:${tenancyId}:${i}`);
+    const refreshTokenId = deterministicUuid(`session-replay-refresh-token:${tenancyId}:${i}`);
+    // The overview's bounce rate and average session duration group events by
+    // segment (one browser tab), skipping rows where it's null, so seeded events
+    // need one too — the browser SDK always sends it.
+    const segmentId = deterministicUuid(`session-replay-segment:${tenancyId}:${i}`);
 
     seeds.push({
       tenancyId,
-      refreshTokenId: deterministicUuid(`session-replay-refresh-token:${tenancyId}:${i}`),
+      refreshTokenId,
       projectUserId,
-      id: deterministicUuid(`session-replay:${tenancyId}:${i}`),
+      id: replayId,
       startedAt,
       lastEventAt,
     });
+
+    // The dashboard reads the device, entry page, referrer and location of a
+    // replay from the analytics events recorded alongside it, so a replay
+    // without events would render a header full of blanks. Seed the same event
+    // shapes the browser SDK emits.
+    const device = SESSION_REPLAY_DEVICES[Math.floor(rand() * SESSION_REPLAY_DEVICES.length)]!;
+    const location = sessionActivityLocations[Math.floor(rand() * sessionActivityLocations.length)]!;
+    clickhouseRows.push(buildTokenRefreshClickhouseRow({
+      projectId,
+      userId: projectUserId,
+      refreshTokenId,
+      eventAt: startedAt,
+      ipAddress: bulkFakeIp(`${10 + Math.floor(rand() * 200)}.${Math.floor(rand() * 256)}`, rand),
+      location,
+    }));
+
+    const pageViewCount = 1 + Math.floor(rand() * 4);
+    for (let p = 0; p < pageViewCount; p++) {
+      const path = BULK_PAGE_PATHS[Math.floor(rand() * BULK_PAGE_PATHS.length)]!;
+      clickhouseRows.push({
+        event_type: '$page-view',
+        event_at: formatClickhouseTimestamp(new Date(startedAt.getTime() + Math.floor((durationMs * p) / pageViewCount))),
+        data: {
+          url: `https://demo.hexclave.com${path}`,
+          path,
+          // Only the session's first page-view has a referrer; later ones are
+          // internal navigations, exactly like in the real SDK.
+          referrer: p === 0 ? pickBulkReferrer(rand) : '',
+          title: 'Demo Project',
+          user_agent: device.userAgent,
+          screen_width: device.screenWidth,
+          screen_height: device.screenHeight,
+          viewport_width: device.viewportWidth,
+          viewport_height: device.viewportHeight,
+          is_anonymous: false,
+        },
+        project_id: projectId,
+        branch_id: DEFAULT_BRANCH_ID,
+        user_id: projectUserId,
+        team_id: null,
+        refresh_token_id: refreshTokenId,
+        session_replay_id: replayId,
+        session_replay_segment_id: segmentId,
+      });
+    }
+
+    const clickCount = Math.floor(rand() * 12);
+    for (let c = 0; c < clickCount; c++) {
+      clickhouseRows.push({
+        event_type: '$click',
+        event_at: formatClickhouseTimestamp(new Date(startedAt.getTime() + Math.floor(rand() * durationMs))),
+        data: {
+          selector: 'button.cta-primary',
+          tag_name: 'button',
+          text: 'Get started',
+          user_agent: device.userAgent,
+          is_anonymous: false,
+        },
+        project_id: projectId,
+        branch_id: DEFAULT_BRANCH_ID,
+        user_id: projectUserId,
+        team_id: null,
+        refresh_token_id: refreshTokenId,
+        session_replay_id: replayId,
+        session_replay_segment_id: segmentId,
+      });
+    }
   }
 
   // Delete existing deterministic IDs first, then bulk-insert (Prisma createMany
@@ -2916,5 +3009,20 @@ async function seedDummySessionReplays({
     data: seeds,
   });
 
-  console.log(`Seeded ${targetSessionReplayCount} session replays`);
+  // Self-hosted setups without ClickHouse still get the replay rows; only the
+  // analytics-derived parts of the replay overview stay empty for them.
+  const shouldSeedClickhouse = getEnvVariable('STACK_CLICKHOUSE_URL', '') !== '';
+  if (shouldSeedClickhouse) {
+    await clickhouseClient.insert({
+      table: 'analytics_internal.events',
+      values: clickhouseRows,
+      format: 'JSONEachRow',
+      clickhouse_settings: {
+        date_time_input_format: 'best_effort',
+        async_insert: 1,
+      },
+    });
+  }
+
+  console.log(`Seeded ${targetSessionReplayCount} session replays (${shouldSeedClickhouse ? clickhouseRows.length : 0} analytics events)`);
 }

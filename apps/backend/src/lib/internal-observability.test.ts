@@ -1,7 +1,6 @@
 import { context } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import { isTracingSuppressed } from "@opentelemetry/core";
-import { NextRequest } from "next/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { isTelemetryIngestionPath, runWithInternalRequestObservability } from "./internal-observability";
 import { resolveCustomerRequestObservability } from "./customer-request-observability";
@@ -54,7 +53,7 @@ describe("internal backend observability", () => {
   });
 
   it("suppresses Prisma/OTel instrumentation while handling telemetry ingestion", async () => {
-    const request = new NextRequest("http://localhost:8102/api/v1/analytics/events/batch", { method: "POST" });
+    const request = new Request("http://localhost:8102/api/v1/analytics/events/batch", { method: "POST" });
     let suppressed = false;
     const response = await runWithInternalRequestObservability(request, "request-1", async () => {
       suppressed = isTracingSuppressed(context.active());
@@ -68,7 +67,7 @@ describe("internal backend observability", () => {
   });
 
   it("roots the internal request trace instead of adopting the incoming W3C parent", async () => {
-    const request = new NextRequest("http://localhost:8102/api/latest/users?secret=never-record-this", {
+    const request = new Request("http://localhost:8102/api/latest/users?secret=never-record-this", {
       method: "GET",
       headers: {
         traceparent: "00-0123456789abcdef0123456789abcdef-fedcba9876543210-01",
@@ -90,7 +89,7 @@ describe("internal backend observability", () => {
   });
 
   it("links the internal request span to the authenticated customer client span", async () => {
-    const request = new NextRequest("http://localhost:8102/api/latest/users", {
+    const request = new Request("http://localhost:8102/api/latest/users", {
       method: "GET",
       headers: {
         traceparent: "00-0123456789abcdef0123456789abcdef-fedcba9876543210-01",
@@ -117,7 +116,7 @@ describe("internal backend observability", () => {
   });
 
   it("links an internal-dashboard client span without relying on ambient parent resolution", async () => {
-    const request = new NextRequest("http://localhost:8102/api/latest/users", {
+    const request = new Request("http://localhost:8102/api/latest/users", {
       method: "GET",
       headers: {
         traceparent: "00-cccccccccccccccccccccccccccccccc-dddddddddddddddd-01",
@@ -144,7 +143,7 @@ describe("internal backend observability", () => {
   });
 
   it("keeps the verified customer link when the request handler throws", async () => {
-    const request = new NextRequest("http://localhost:8102/api/latest/users", {
+    const request = new Request("http://localhost:8102/api/latest/users", {
       method: "GET",
       headers: {
         traceparent: "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01",
