@@ -4,7 +4,10 @@ import { it } from "../../../../../../helpers";
 import { Auth, Project, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should sign up new users", async ({ expect }) => {
-  const res = await Auth.Password.signUpWithEmail();
+  const res = await Auth.Password.signUpWithEmail({
+    sendVerificationEmail: true,
+    waitForVerificationEmail: false,
+  });
   expect(res.signUpResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,

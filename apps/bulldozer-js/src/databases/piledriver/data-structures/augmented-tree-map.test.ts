@@ -288,6 +288,37 @@ describe("AugmentedTreeMap", () => {
     expect(await tree.getAugmentation({ gte: 20, lte: 25 })).toBe(135);
   });
 
+  it("reads legacy nodes persisted before format versioning", async () => {
+    // Nodes written by an older build have no `version` and no `entryAugmentations`. Simulate such
+    // an on-disk tree by stripping those fields on read, then confirm reads still work (the tree
+    // must fall back to recomputing augmentations rather than trusting absent cached ones).
+    const legacyRef = (ref: PiledriverHeapObject): PiledriverHeapObject => ({
+      async get() {
+        const node: any = await ref.get();
+        if (!isNode(node)) return node;
+        const { version: _version, entryAugmentations: _entryAugmentations, ...legacy } = node as any;
+        return { ...legacy, children: node.children.map((child: any) => child ? { ...child, ref: legacyRef(child.ref) } : child) };
+      },
+      [isPiledriverHeapObjectSymbol]: true as const,
+    } as PiledriverHeapObject);
+
+    const built = await build(100, 8);
+    const serialized = built.toPiledriverObject();
+    const legacy = AugmentedTreeMap.fromPiledriverObject(
+      { ...serialized, root: serialized.root ? { ...serialized.root, ref: legacyRef(serialized.root.ref) } : null },
+      options(8),
+    );
+
+    expect(await arrayFrom(legacy.entries({ gte: 20, lt: 25 }))).toEqual([[20, 20], [21, 21], [22, 22], [23, 23], [24, 24]]);
+    expect(await legacy.getAugmentation({ gte: 20, lte: 25 })).toBe(135);
+    expect(await legacy.getAugmentation({})).toBe(5050);
+
+    // A mutation over a legacy tree must produce a valid current-format tree.
+    const updated = await legacy.set(50, -1);
+    expect(await updated.get(50)).toBe(-1);
+    expect(await updated.getAugmentation({})).toBe(5050 - 50 + -1);
+  });
+
   it("defaults arity when omitted", async () => {
     let tree = new AugmentedTreeMap({
       comparator: (a: number, b: number) => a - b,
