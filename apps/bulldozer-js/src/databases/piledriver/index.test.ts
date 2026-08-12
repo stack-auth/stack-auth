@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { LowLevelDatabase } from "../low-level/index.js";
 import { declareInMemoryLowLevelDatabase } from "../low-level/implementations/in-memory.js";
+import { encodePiledriverGcReferenceMetadata, parsePiledriverGcReferenceMetadata } from "./gc.js";
 import { asHeapObject, declarePiledriverDatabase, isPiledriverHeapObjectSymbol, PiledriverHeapObject, PiledriverObject, piledriverObjectEquals } from "./index.js";
 
 function wrapWithHeapGetCounter(lowLevel: LowLevelDatabase, onHeapGet: () => void): LowLevelDatabase {
@@ -402,9 +403,37 @@ describe("PiledriverDatabase", () => {
     const metadata = await lowLevel.declareKvStore("piledriver-gc-reference-metadata-v3").listEntries();
     expect(metadata.entries).toHaveLength(2);
     expect(new Set(metadata.entries.map(entry => Reflect.get(
-      JSON.parse(new TextDecoder().decode(entry.value)),
+      parsePiledriverGcReferenceMetadata(entry.value),
       "generation",
     )))).toEqual(new Set([stateGeneration]));
+  });
+
+  it("reads and rewrites legacy JSON reference metadata", async () => {
+    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const rootKey = new TextEncoder().encode("root").buffer;
+    const heapObject = asHeapObject({ value: "legacy-metadata" });
+    const writer = declarePiledriverDatabase(lowLevel);
+    await writer.setRootObject(rootKey, { heapObject });
+
+    const metadataStore = lowLevel.declareKvStore("piledriver-gc-reference-metadata-v3");
+    const metadataEntries = await metadataStore.listEntries();
+    expect(metadataEntries.entries).toHaveLength(1);
+    const metadataEntry = metadataEntries.entries[0];
+    const metadata = parsePiledriverGcReferenceMetadata(metadataEntry.value);
+    const binaryValue = encodePiledriverGcReferenceMetadata(metadata);
+    expect([...new Uint8Array(binaryValue).slice(0, 4)]).toEqual([0x50, 0x44, 0x52, 0x4d]);
+    const legacyValue = new TextEncoder().encode(JSON.stringify(metadata)).buffer;
+    expect(new Uint8Array(legacyValue)[0]).toBe("{".charCodeAt(0));
+    await metadataStore.setAll([{ key: metadataEntry.key, value: legacyValue }]);
+
+    await expect(writer.setRootObject(rootKey, { heapObject })).resolves.toEqual({ seq: expect.anything() });
+
+    const rewrittenEntries = await metadataStore.listEntries();
+    expect(rewrittenEntries.entries).toHaveLength(1);
+    const rewrittenMetadata = parsePiledriverGcReferenceMetadata(rewrittenEntries.entries[0].value);
+    expect(rewrittenMetadata.referenceCount).toBe(metadata.referenceCount);
+    expect(rewrittenMetadata.generation).toBe(metadata.generation);
+    expect([...new Uint8Array(rewrittenEntries.entries[0].value).slice(0, 4)]).toEqual([0x50, 0x44, 0x52, 0x4d]);
   });
 
   it("walks deeply nested serialized structures without an artificial GC depth limit", async () => {

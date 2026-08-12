@@ -13,7 +13,7 @@ const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 const gcStateKey = textEncoder.encode("state").buffer;
 
-type ReferenceMetadata = {
+export type ReferenceMetadata = {
   schemaVersion: typeof GC_SCHEMA_VERSION,
   generation: string,
   referenceCount: number,
@@ -130,6 +130,12 @@ function parseJson(buffer: ArrayBuffer): unknown {
   return JSON.parse(textDecoder.decode(buffer));
 }
 
+const referenceMetadataMagic = new Uint8Array([0x50, 0x44, 0x52, 0x4d]);
+const referenceMetadataBinaryVersion = 1;
+const referenceMetadataFlagsLastDereferencedAt = 1;
+const referenceMetadataFlagsDeletion = 2;
+const referenceMetadataHeaderSize = referenceMetadataMagic.length + 1 + 1 + 4;
+
 function parseNonNegativeInteger(value: unknown, name: string) {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
     throw new Error(`Invalid Piledriver GC ${name}`);
@@ -137,7 +143,112 @@ function parseNonNegativeInteger(value: unknown, name: string) {
   return value;
 }
 
-function parseReferenceMetadata(buffer: ArrayBuffer): ReferenceMetadata {
+export function encodePiledriverGcReferenceMetadata(metadata: ReferenceMetadata): ArrayBuffer {
+  const referenceCount = parseNonNegativeInteger(metadata.referenceCount, "referenceCount");
+  const createdAtMillis = parseNonNegativeInteger(metadata.createdAtMillis, "createdAtMillis");
+  const generationBytes = textEncoder.encode(metadata.generation);
+  const lastDereferencedAtMillis = metadata.lastDereferencedAtMillis;
+  const deletion = metadata.deletion;
+  if (lastDereferencedAtMillis !== null) parseNonNegativeInteger(lastDereferencedAtMillis, "lastDereferencedAtMillis");
+  if (deletion !== null) {
+    parseNonNegativeInteger(deletion.nextReferenceIndex, "nextReferenceIndex");
+    parseNonNegativeInteger(deletion.totalReferences, "totalReferences");
+    if (deletion.nextReferenceIndex > deletion.totalReferences) throw new Error("Invalid Piledriver GC deletion progress");
+  }
+  const hasLastDereferencedAt = lastDereferencedAtMillis !== null;
+  const hasDeletion = deletion !== null;
+  const flags = (hasLastDereferencedAt ? referenceMetadataFlagsLastDereferencedAt : 0)
+    | (hasDeletion ? referenceMetadataFlagsDeletion : 0);
+  const byteLength = referenceMetadataHeaderSize
+    + generationBytes.byteLength
+    + 8
+    + 8
+    + (hasLastDereferencedAt ? 8 : 0)
+    + (hasDeletion ? 16 : 0);
+  const bytes = new Uint8Array(byteLength);
+  bytes.set(referenceMetadataMagic);
+  const view = new DataView(bytes.buffer);
+  view.setUint8(referenceMetadataMagic.length, referenceMetadataBinaryVersion);
+  view.setUint8(referenceMetadataMagic.length + 1, flags);
+  view.setUint32(referenceMetadataMagic.length + 2, generationBytes.byteLength);
+  let offset = referenceMetadataHeaderSize;
+  bytes.set(generationBytes, offset);
+  offset += generationBytes.byteLength;
+  view.setBigUint64(offset, BigInt(referenceCount));
+  offset += 8;
+  view.setBigUint64(offset, BigInt(createdAtMillis));
+  offset += 8;
+  if (hasLastDereferencedAt) {
+    view.setBigUint64(offset, BigInt(lastDereferencedAtMillis));
+    offset += 8;
+  }
+  if (hasDeletion) {
+    view.setBigUint64(offset, BigInt(deletion.nextReferenceIndex));
+    offset += 8;
+    view.setBigUint64(offset, BigInt(deletion.totalReferences));
+  }
+  return bytes.buffer;
+}
+
+function hasReferenceMetadataMagic(buffer: ArrayBuffer): boolean {
+  const bytes = new Uint8Array(buffer);
+  return referenceMetadataMagic.every((byte, index) => bytes[index] === byte);
+}
+
+function decodeReferenceMetadataInteger(view: DataView, offset: number, name: string): number {
+  const value = view.getBigUint64(offset);
+  if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error(`Invalid Piledriver GC ${name}`);
+  return Number(value);
+}
+
+export function parsePiledriverGcReferenceMetadata(buffer: ArrayBuffer): ReferenceMetadata {
+  if (hasReferenceMetadataMagic(buffer)) {
+    const bytes = new Uint8Array(buffer);
+    if (bytes.byteLength < referenceMetadataHeaderSize) throw new Error("Invalid Piledriver GC reference metadata");
+    const view = new DataView(buffer);
+    const binaryVersion = view.getUint8(referenceMetadataMagic.length);
+    const flags = view.getUint8(referenceMetadataMagic.length + 1);
+    if (
+      binaryVersion !== referenceMetadataBinaryVersion
+      || (flags & ~(referenceMetadataFlagsLastDereferencedAt | referenceMetadataFlagsDeletion)) !== 0
+    ) {
+      throw new Error("Unsupported Piledriver GC reference metadata");
+    }
+    const generationByteLength = view.getUint32(referenceMetadataMagic.length + 2);
+    let offset = referenceMetadataHeaderSize;
+    if (offset + generationByteLength + 16 > bytes.byteLength) throw new Error("Invalid Piledriver GC reference metadata");
+    const generation = textDecoder.decode(bytes.subarray(offset, offset + generationByteLength));
+    offset += generationByteLength;
+    const referenceCount = decodeReferenceMetadataInteger(view, offset, "referenceCount");
+    offset += 8;
+    const createdAtMillis = decodeReferenceMetadataInteger(view, offset, "createdAtMillis");
+    offset += 8;
+    const lastDereferencedAtMillis = (flags & referenceMetadataFlagsLastDereferencedAt) === 0
+      ? null
+      : decodeReferenceMetadataInteger(view, offset, "lastDereferencedAtMillis");
+    if (lastDereferencedAtMillis !== null) offset += 8;
+    let deletion: ReferenceMetadata["deletion"] = null;
+    if ((flags & referenceMetadataFlagsDeletion) !== 0) {
+      if (offset + 16 > bytes.byteLength) throw new Error("Invalid Piledriver GC reference metadata");
+      deletion = {
+        nextReferenceIndex: decodeReferenceMetadataInteger(view, offset, "nextReferenceIndex"),
+        totalReferences: decodeReferenceMetadataInteger(view, offset + 8, "totalReferences"),
+      };
+      if (deletion.nextReferenceIndex > deletion.totalReferences) throw new Error("Invalid Piledriver GC deletion progress");
+      offset += 16;
+    }
+    if (offset !== bytes.byteLength || generation.length === 0 || view.getUint8(referenceMetadataMagic.length) !== referenceMetadataBinaryVersion) {
+      throw new Error("Invalid Piledriver GC reference metadata");
+    }
+    return {
+      schemaVersion: GC_SCHEMA_VERSION,
+      generation,
+      referenceCount,
+      createdAtMillis,
+      lastDereferencedAtMillis,
+      deletion,
+    };
+  }
   const parsed = parseJson(buffer);
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("Invalid Piledriver GC reference metadata");
   const schemaVersion = Reflect.get(parsed, "schemaVersion");
@@ -331,7 +442,7 @@ export function declarePiledriverGarbageCollector(options: {
 
   const replaceMetadata = async (key: ArrayBuffer, existingBuffer: ArrayBuffer, replacement: ReferenceMetadata, requiresSeq: DatabaseSeq) => {
     const result = await metadataStore.compareAndSetAll(
-      [{ key, compare: existingBuffer, value: encodeJson(replacement) }],
+      [{ key, compare: existingBuffer, value: encodePiledriverGcReferenceMetadata(replacement) }],
       { requiresSeq },
     );
     const entry = result.results[0];
@@ -375,7 +486,7 @@ export function declarePiledriverGarbageCollector(options: {
           compareAndSetConflicts,
         };
       }
-      const metadata = parseReferenceMetadata(existing.buffer);
+      const metadata = parsePiledriverGcReferenceMetadata(existing.buffer);
       if (metadata.generation !== readyGeneration()) {
         // A partial initialization from an abandoned generation is also fail-safe immortal.
         return {
@@ -484,7 +595,7 @@ export function declarePiledriverGarbageCollector(options: {
           changes.push({ key, becameZero: false, stoppedBeingZero: false, previousEligibleAtMillis: dereferencedAtMillis ?? 0, eligibleAtMillis: dereferencedAtMillis ?? 0 });
           continue;
         }
-        const metadata = parseReferenceMetadata(existing.buffer);
+        const metadata = parsePiledriverGcReferenceMetadata(existing.buffer);
         if (metadata.generation !== readyGeneration()) {
           changes.push({ key, becameZero: false, stoppedBeingZero: false, previousEligibleAtMillis: metadata.createdAtMillis, eligibleAtMillis: dereferencedAtMillis ?? metadata.createdAtMillis });
           continue;
@@ -506,7 +617,7 @@ export function declarePiledriverGarbageCollector(options: {
         compareAndSetEntries.push({
           key,
           compare: existing.buffer,
-          value: encodeJson(replacement),
+          value: encodePiledriverGcReferenceMetadata(replacement),
           delta: count,
           previousEligibleAtMillis,
           eligibleAtMillis: nextLastDereferencedAtMillis ?? metadata.createdAtMillis,
@@ -582,7 +693,7 @@ export function declarePiledriverGarbageCollector(options: {
     // edge delta is applied. If this batch is interrupted, a payload without metadata is
     // legacy-immortal (a leak), while an unreferenced zero-count object is safely collectable.
     const metadataWrite = await metadataStore.setAll(
-      entries.map(({ key }) => ({ key, value: encodeJson(metadata) })),
+      entries.map(({ key }) => ({ key, value: encodePiledriverGcReferenceMetadata(metadata) })),
       { requiresSeq: combineSeqsDeduped(entries.map(entry => entry.requiresSeq)) },
     );
     const candidateWrite = await candidateStore.setAll(
@@ -641,7 +752,7 @@ export function declarePiledriverGarbageCollector(options: {
     while (true) {
       const existing = await metadataStore.get(key);
       if (existing.buffer === null) throw new Error("Piledriver GC deletion metadata disappeared");
-      const metadata = parseReferenceMetadata(existing.buffer);
+      const metadata = parsePiledriverGcReferenceMetadata(existing.buffer);
       if (metadata.deletion === null) throw new Error("Piledriver GC object lost its deletion state");
       if (metadata.deletion.nextReferenceIndex !== expectedIndex) {
         throw new Error("Piledriver GC deletion progress changed concurrently");
@@ -783,7 +894,7 @@ export function declarePiledriverGarbageCollector(options: {
             metadataRepairPagesRead++;
             for (const { key, value } of page.entries) {
               examinedMetadataEntries++;
-              const metadata = parseReferenceMetadata(value);
+              const metadata = parsePiledriverGcReferenceMetadata(value);
               if (metadata.generation !== readyGeneration() || metadata.referenceCount !== 0) continue;
               const eligibleAtMillis = metadata.lastDereferencedAtMillis ?? metadata.createdAtMillis;
               const expectedCandidateKey = candidateKey(key, eligibleAtMillis);
@@ -835,7 +946,7 @@ export function declarePiledriverGarbageCollector(options: {
           skippedCandidates++;
           continue;
         }
-        let metadata = parseReferenceMetadata(metadataRead.buffer);
+        let metadata = parsePiledriverGcReferenceMetadata(metadataRead.buffer);
         if (metadata.generation !== readyGeneration()) {
           recordMutation((await candidateStore.deleteAll(
             [candidate.candidateKey],
@@ -888,7 +999,7 @@ export function declarePiledriverGarbageCollector(options: {
           recordMutation(claimSeq);
           metadataRead = await metadataStore.get(key);
           if (metadataRead.buffer === null) throw new Error("Piledriver GC deletion claim disappeared");
-          metadata = parseReferenceMetadata(metadataRead.buffer);
+          metadata = parsePiledriverGcReferenceMetadata(metadataRead.buffer);
         } else {
           resumedDeletions++;
           addKeySample(resumedDeletionObjectKeysBase64, key);
@@ -933,7 +1044,7 @@ export function declarePiledriverGarbageCollector(options: {
         const deletedHeapPayloadBytes = heapRead.buffer?.byteLength ?? 0;
         heapPayloadBytes += deletedHeapPayloadBytes;
         heapKeyBytes += key.byteLength;
-        metadataValueBytes += encodeJson(metadata).byteLength;
+        metadataValueBytes += encodePiledriverGcReferenceMetadata(metadata).byteLength;
         metadataKeyBytes += key.byteLength;
         candidateKeyBytes += candidate.candidateKey.byteLength;
         addKeySample(deletedObjectKeysBase64, key);
