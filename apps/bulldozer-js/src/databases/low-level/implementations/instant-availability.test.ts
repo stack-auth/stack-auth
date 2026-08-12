@@ -135,18 +135,25 @@ function createReorderingSetDatabase() {
       const seq = ["reordering", crypto.randomUUID()] as unknown as DatabaseSeq;
       underlyingSeqs.push(seq);
       let resolveSet!: () => void;
-      const committedPromise = new Promise<void>(resolve => {
+      let rejectSet!: (error: unknown) => void;
+      const committedPromise = new Promise<void>((resolve, reject) => {
         resolveSet = resolve;
+        rejectSet = reject;
       });
       seqToPromise.set(seq, committedPromise);
+      const commit = () => {
+        for (const { key, value } of entries) committed.set(text(key)!, value.slice(0));
+        resolveSet();
+      };
       if (setCallCount === 1) {
         firstSetStartedResolve!();
-        await new Promise<void>(resolve => {
-          releaseFirstSet = resolve;
-        });
+        releaseFirstSet = commit;
+      } else {
+        const requiresSeq = setOptions?.requiresSeq ?? initialSeq;
+        const prerequisite = seqToPromise.get(requiresSeq);
+        if (prerequisite === undefined) throw new Error("Missing prerequisite sequence in reordering test backend");
+        prerequisite.then(commit, rejectSet).catch(rejectSet);
       }
-      for (const { key, value } of entries) committed.set(text(key)!, value.slice(0));
-      resolveSet();
       return { seq };
     },
     async deleteAll() {
