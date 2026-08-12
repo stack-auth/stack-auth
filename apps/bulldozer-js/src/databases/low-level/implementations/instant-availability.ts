@@ -43,6 +43,11 @@ export type InstantAvailabilityLowLevelDatabaseOptions = {
 };
 
 const cloneArrayBuffer = (value: ArrayBuffer) => value.slice(0);
+// Cache keys only need to be injective Map keys, never persisted or shown, so we use the cheapest
+// injective bytes-to-string mapping instead of base64 (which showed up as write-path CPU). The
+// "latin1" label resolves to windows-1252, which maps each of the 256 byte values to a distinct
+// single code point (bytes with no character assigned map to the byte value itself), so distinct
+// byte sequences always produce distinct, equal-length strings.
 const cacheKeyTextDecoder = new TextDecoder("latin1");
 
 export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelDatabase, options: InstantAvailabilityLowLevelDatabaseOptions = {}): InstantAvailabilityLowLevelDatabase {
@@ -148,6 +153,10 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
     const cacheKey = (key: ArrayBuffer) => {
       return cacheKeyTextDecoder.decode(new Uint8Array(key));
     };
+    // The buffer stored here is the same private clone we hand to the wrapped store, rather than a
+    // second copy of it. That's safe because callers can't reach it (their input is cloned before
+    // the first await) and `get` clones on the way out; the one assumption it does add is that a
+    // wrapped store never mutates the buffers it is handed, which every backend currently honours.
     const setCachedValue = (keyString: string, value: ArrayBuffer | null, seq: DatabaseSeq) => {
       cachedValues.set(keyString, { buffer: value, seq });
     };
