@@ -132,7 +132,11 @@ export const GET = createSmartRouteHandler({
         status: 200,
         headers: {
           "content-type": "text/plain; charset=utf-8",
-          "cache-control": "no-store",
+          // no-transform keeps the compression layer (server/compression.ts)
+          // from piping this stream through CompressionStream("gzip"), whose
+          // internal buffering would stall the incremental log delivery this
+          // route exists to provide.
+          "cache-control": "no-store, no-transform",
         },
       }),
     };

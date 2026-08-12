@@ -160,7 +160,7 @@ it("should set refresh token cookies for trusted parent domains", async ({ expec
   const signUpResult = await clientApp.signUpWithCredential({
     email,
     password,
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
     noRedirect: true,
   });
   expect(signUpResult.status).toBe("ok");
@@ -226,7 +226,7 @@ it("should avoid setting custom refresh cookies when no trusted parent domain is
   const signUpResult = await clientApp.signUpWithCredential({
     email,
     password,
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
     noRedirect: true,
   });
   expect(signUpResult.status).toBe("ok");
@@ -278,7 +278,7 @@ it("should omit secure-only defaults when running on http origins", async ({ exp
   const signUpResult = await clientApp.signUpWithCredential({
     email,
     password,
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
     noRedirect: true,
   });
   expect(signUpResult.status).toBe("ok");
@@ -381,7 +381,7 @@ it("should eagerly create cross-subdomain cookie on construction when session ex
   // Sign in to get a valid session
   const email = `${crypto.randomUUID()}@eager-cookie.test`;
   const password = "password";
-  await clientApp.signUpWithCredential({ email, password, verificationCallbackUrl: "http://localhost:3000", noRedirect: true });
+  await clientApp.signUpWithCredential({ email, password, noVerificationCallback: true, noRedirect: true });
   await clientApp.signInWithCredential({ email, password, noRedirect: true });
 
   const defaultCookieName = getDefaultRefreshCookieName(clientApp.projectId, true);

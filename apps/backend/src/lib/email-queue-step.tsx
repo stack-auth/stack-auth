@@ -7,7 +7,7 @@ import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements
 import { getHexclaveServerApp } from "@/hexclave";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import { allPromisesAndWaitUntilEach } from "@/utils/background-tasks";
 import { withTraceSpan } from "@/utils/telemetry";
 import { groupBy } from "@hexclave/shared/dist/utils/arrays";
@@ -214,9 +214,11 @@ async function failEmailsStuckInSending(additionalWhere?: Prisma.EmailOutboxWher
 
 export const _forTesting = {
   claimEmailsForSending,
+  claimEmailsForSendingWithinLock,
   failEmailsStuckInSending,
   STUCK_EMAIL_TIMEOUT_MS,
   updateLastExecutionTime,
+  withTenancyClaimLock,
 };
 
 async function updateLastExecutionTime(key = "EMAIL_QUEUE_METADATA_KEY"): Promise<number> {
@@ -600,16 +602,42 @@ async function claimEmailsForSending(tenancyId: string, limit: number): Promise<
     `;
     if (!locked) return [];
 
-    // Claim queued emails for sending, at least `limit` of them (the tenancy's capacity rate for this
-    // step) but always enough to stay at BURST_SEND_LIMIT claims within the burst window. Without the
-    // burst, a tenancy at the default capacity of 200 emails/hour would wait ~18s on average before its
-    // first email leaves the queue, which is far too slow for things like sign-in codes; letting small
-    // senders briefly exceed their nominal hourly capacity is a deliberate trade for that latency.
-    // The burst is counted over claims (`startedSendingAt`) rather than completed sends so that a claim
-    // by a concurrent, unsynchronized worker counts against the window as soon as it commits, and it is
-    // computed inside the claiming statement itself so the two cannot drift apart.
-    // Note: queueReadyEmails() handles the time-based logic, so we just look for isQueued = TRUE
-    return await tx.$queryRaw<EmailOutbox[]>(Prisma.sql`
+    return await claimEmailsForSendingWithinLock(tx, tenancyId, limit);
+  });
+}
+
+async function withTenancyClaimLock<T>(
+  tenancyId: string,
+  callback: (tx: PrismaClientTransaction) => Promise<T>,
+): Promise<T> {
+  // Tests create rows and claim them under this lock so concurrent production queue steps cannot
+  // see the uncommitted rows or claim them before the test's transaction finishes.
+  return await retryTransaction(globalPrismaClient, async (tx) => {
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(
+        ${EMAIL_QUEUE_CLAIM_LOCK_CLASS}::int,
+        hashtext(${tenancyId}::text)
+      )
+    `;
+    return await callback(tx);
+  });
+}
+
+async function claimEmailsForSendingWithinLock(
+  tx: PrismaClientTransaction,
+  tenancyId: string,
+  limit: number,
+): Promise<EmailOutbox[]> {
+  // Claim queued emails for sending, at least `limit` of them (the tenancy's capacity rate for this
+  // step) but always enough to stay at BURST_SEND_LIMIT claims within the burst window. Without the
+  // burst, a tenancy at the default capacity of 200 emails/hour would wait ~18s on average before its
+  // first email leaves the queue, which is far too slow for things like sign-in codes; letting small
+  // senders briefly exceed their nominal hourly capacity is a deliberate trade for that latency.
+  // The burst is counted over claims (`startedSendingAt`) rather than completed sends so that a claim
+  // by a concurrent, unsynchronized worker counts against the window as soon as it commits, and it is
+  // computed inside the claiming statement itself so the two cannot drift apart.
+  // Note: queueReadyEmails() handles the time-based logic, so we just look for isQueued = TRUE
+  return await tx.$queryRaw<EmailOutbox[]>(Prisma.sql`
     WITH selected AS (
       SELECT "tenancyId", "id"
       FROM "EmailOutbox"
@@ -642,7 +670,6 @@ async function claimEmailsForSending(tenancyId: string, limit: number): Promise<
     WHERE e."tenancyId" = selected."tenancyId" AND e."id" = selected."id"
     RETURNING e.*;
     `);
-  });
 }
 
 async function processSendPlan(plan: TenancySendBatch[]): Promise<void> {
