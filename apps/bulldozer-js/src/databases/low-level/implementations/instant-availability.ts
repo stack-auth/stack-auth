@@ -254,12 +254,19 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
               return existing.buffer !== null && arrayBuffersAreEqual(existing.buffer, compare);
             });
             const matchingEntries = entries.filter((_, index) => results[index]);
-            const write = matchingEntries.length === 0
-              ? { seq: compareAndSetOptions?.requiresSeq ?? initialSeq }
-              : setAllLocked(matchingEntries.map(({ key, value }) => ({ key, value })), compareAndSetOptions);
+            if (matchingEntries.length === 0) {
+              return {
+                results: results.map(() => ({ wasSet: false as const, seq: null })),
+                seq: compareAndSetOptions?.requiresSeq ?? initialSeq,
+              };
+            }
+            const entriesForWrapped = matchingEntries.map(({ key, value }) => ({ key: cloneArrayBuffer(key), value: cloneArrayBuffer(value) }));
+            const requiresSeq = getChainedRequiresSeq(compareAndSetOptions?.requiresSeq);
+            const { seq: underlyingSeq } = await wrappedStore.setAll(entriesForWrapped, { requiresSeq });
+            const seq = recordWrite(underlyingSeq, entriesForWrapped);
             return {
-              results: results.map(wasSet => wasSet ? { wasSet: true, seq: write.seq } : { wasSet: false, seq: null }),
-              seq: write.seq,
+              results: results.map(wasSet => wasSet ? { wasSet: true, seq } : { wasSet: false, seq: null }),
+              seq,
             };
           });
         });
