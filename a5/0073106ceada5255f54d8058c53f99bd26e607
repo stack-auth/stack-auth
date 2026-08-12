@@ -1,0 +1,21 @@
+packages/shared/src/apps/apps-config.test.ts
+  s_3c91c688f9ef63::t_a609affa1d1255 2-3
+apps/dashboard/src/lib/apps-frontend.tsx
+  s_3c91c688f9ef63::t_c22c6e0ca682f4 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "a50073106ceada5255f54d8058c53f99bd26e607",
+  "prompts": {},
+  "sessions": {
+    "s_3c91c688f9ef63": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "fbacfd22-e620-4fe0-b85f-d002d6d80ae4",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
