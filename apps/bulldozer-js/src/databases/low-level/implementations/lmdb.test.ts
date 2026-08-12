@@ -1,12 +1,14 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import * as lmdb from "lmdb";
 import { describe, expect, it } from "vitest";
 import { declareLmdbLowLevelDatabase } from "./lmdb.js";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 const buffer = (value: string) => textEncoder.encode(value).buffer;
+const byteBuffer = (value: Uint8Array) => new Uint8Array(value).slice().buffer;
 const text = (value: ArrayBuffer | null) => value === null ? null : textDecoder.decode(value);
 const tempLmdbPath = async () => await mkdtemp(join(tmpdir(), "bulldozer-lmdb-"));
 
@@ -32,6 +34,69 @@ describe("LMDB low-level database", () => {
           }],
         },
       });
+    } finally {
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
+  it("records compression in constructorArguments and reopens compressed values", async () => {
+    const path = await tempLmdbPath();
+    try {
+      const db1 = declareLmdbLowLevelDatabase({ path, dbId: "compress", compression: true });
+      expect((db1.getDebugInfo() as { constructorArguments: { compression?: boolean } }).constructorArguments.compression).toBe(true);
+      const store1 = db1.declareKvStore("root");
+      // Value larger than the default 1000-byte compression threshold so LZ4 actually engages.
+      const large = "x".repeat(2_000);
+      const { seq } = await store1.setAll([{ key: buffer("big"), value: buffer(large) }]);
+      await db1.waitUntilDurable(seq);
+      await db1.close();
+
+      const db2 = declareLmdbLowLevelDatabase({ path, dbId: "compress", compression: true });
+      const store2 = db2.declareKvStore("root");
+      expect(text((await store2.get(buffer("big"))).buffer)).toBe(large);
+      await db2.close();
+
+      // Raw open without compression: stored payload must be smaller than plaintext
+      // (otherwise the `compression: true` option was a no-op).
+      const rawRoot = lmdb.open({ path, compression: false });
+      try {
+        const rawDb = rawRoot.openDB({ name: "compress:store:root", encoding: "binary" });
+        const rawValue = rawDb.get(Buffer.from("big"));
+        expect(rawValue).toBeTruthy();
+        expect(Buffer.byteLength(rawValue as Buffer)).toBeLessThan(large.length);
+      } finally {
+        // lmdb-js close() is async; await so the outer rm() does not race mapped files.
+        await rawRoot.close();
+      }
+    } finally {
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
+  it("does not decode plaintext when reopened without compression (sticky)", async () => {
+    const path = await tempLmdbPath();
+    try {
+      const db1 = declareLmdbLowLevelDatabase({ path, dbId: "sticky", compression: true });
+      const store1 = db1.declareKvStore("root");
+      const large = "y".repeat(2_000);
+      const { seq } = await store1.setAll([{ key: buffer("big"), value: buffer(large) }]);
+      await db1.waitUntilDurable(seq);
+      await db1.close();
+
+      const db2 = declareLmdbLowLevelDatabase({ path, dbId: "sticky", compression: false });
+      try {
+        const store2 = db2.declareKvStore("root");
+        // With compression off, lmdb-js still returns the on-disk bytes (LZ4 framing) —
+        // it does not throw. Assert we get opaque compressed payload, not plaintext.
+        const value = (await store2.get(buffer("big"))).buffer;
+        if (value == null) {
+          throw new Error("expected on-disk compressed bytes, got null");
+        }
+        expect(value.byteLength).toBeLessThan(large.length);
+        expect(text(value)).not.toBe(large);
+      } finally {
+        await db2.close();
+      }
     } finally {
       await rm(path, { recursive: true, force: true });
     }
@@ -84,10 +149,98 @@ describe("LMDB low-level database", () => {
     try {
       const db = declareLmdbLowLevelDatabase({ path, dbId: "dump" });
       const dump = db.declareKvDump("heap");
-      const { keys: [key], seq } = await dump.insertAll([buffer("payload")]);
+      const { keys, seq } = await dump.insertAll([buffer("payload"), buffer("second"), buffer("third")]);
       await db.waitUntilDurable(seq);
-      expect(key.byteLength).toBe(48);
-      expect(text((await dump.get(key)).buffer)).toBe("payload");
+      expect(keys.every(key => key.byteLength === 17)).toBe(true);
+      expect(keys.every(key => new Uint8Array(key)[0] === 0x01)).toBe(true);
+      expect(text((await dump.get(keys[0])).buffer)).toBe("payload");
+      const firstPage = await dump.listEntries({ limit: 2 });
+      expect(firstPage.entries).toHaveLength(2);
+      expect(firstPage.hasMore).toBe(true);
+      const secondPage = await dump.listEntries({ startAfter: firstPage.entries[1].key, limit: 2 });
+      expect(secondPage.entries).toHaveLength(1);
+      expect(secondPage.hasMore).toBe(false);
+      const listedEntries = [...firstPage.entries, ...secondPage.entries];
+      expect(listedEntries.every((entry, index) => index === 0 || Buffer.compare(
+        Buffer.from(listedEntries[index - 1].key),
+        Buffer.from(entry.key),
+      ) < 0)).toBe(true);
+      expect(new Set(listedEntries.map(entry => text(entry.value)))).toEqual(new Set(["payload", "second", "third"]));
+      const deleted = await dump.deleteAll(keys, { requiresSeq: seq });
+      await db.waitUntilAvailable(deleted.seq);
+      expect(await Promise.all(keys.map(async key => text((await dump.get(key)).buffer)))).toEqual([null, null, null]);
+    } finally {
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
+  it("generates ordered dump keys and preserves legacy values", async () => {
+    const path = await tempLmdbPath();
+    try {
+      const rawRoot = lmdb.open({ path, maxDbs: 1024, separateFlushed: true });
+      const rawDump = rawRoot.openDB<Buffer, Uint8Array>({
+        name: "ordered:dump:heap",
+        encoding: "binary",
+        keyEncoding: "binary",
+        useVersions: true,
+      });
+      rawDump.putSync(Buffer.alloc(48, 0x7f), Buffer.from("legacy-arbitrary"), 1);
+      rawDump.putSync(Buffer.alloc(48, 0xff), Buffer.from("legacy-max"), 2);
+      await rawRoot.close();
+
+      const db = declareLmdbLowLevelDatabase({ path, dbId: "ordered" });
+      try {
+        const dump = db.declareKvDump("heap");
+        const inserted = await dump.insertAll([
+          buffer("first"),
+          buffer("second"),
+          ...Array.from({ length: 448 }, () => buffer("extra")),
+        ]);
+        await db.waitUntilDurable(inserted.seq);
+
+        expect(inserted.keys).toHaveLength(450);
+        expect(inserted.keys[0].byteLength).toBe(17);
+        expect(new Uint8Array(inserted.keys[0])[0]).toBe(0x01);
+        expect(new Set(inserted.keys.map(key => Buffer.from(key).toString("hex"))).size).toBe(450);
+        expect(inserted.keys.every((key, index) => index === 0 || Buffer.compare(
+          Buffer.from(inserted.keys[index - 1]),
+          Buffer.from(key),
+        ) < 0)).toBe(true);
+        expect(text((await dump.get(byteBuffer(Buffer.alloc(48, 0x7f)))).buffer)).toBe("legacy-arbitrary");
+        expect(text((await dump.get(byteBuffer(Buffer.alloc(48, 0xff)))).buffer)).toBe("legacy-max");
+        expect(text((await dump.get(inserted.keys[0])).buffer)).toBe("first");
+        expect(text((await dump.get(inserted.keys[1])).buffer)).toBe("second");
+      } finally {
+        await db.close();
+      }
+    } finally {
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
+  it("continues generating versioned dump keys after reopening", async () => {
+    const path = await tempLmdbPath();
+    try {
+      const db1 = declareLmdbLowLevelDatabase({ path, dbId: "reopen" });
+      const dump1 = db1.declareKvDump("heap");
+      const first = await dump1.insertAll([buffer("first")]);
+      await db1.waitUntilDurable(first.seq);
+      await db1.close();
+
+      const db2 = declareLmdbLowLevelDatabase({ path, dbId: "reopen" });
+      try {
+        const dump2 = db2.declareKvDump("heap");
+        const second = await dump2.insertAll([buffer("second")]);
+        await db2.waitUntilDurable(second.seq);
+
+        expect(second.keys[0].byteLength).toBe(17);
+        expect(new Uint8Array(second.keys[0])[0]).toBe(0x01);
+        expect(Buffer.compare(Buffer.from(first.keys[0]), Buffer.from(second.keys[0]))).toBeLessThan(0);
+        expect(text((await dump2.get(first.keys[0])).buffer)).toBe("first");
+        expect(text((await dump2.get(second.keys[0])).buffer)).toBe("second");
+      } finally {
+        await db2.close();
+      }
     } finally {
       await rm(path, { recursive: true, force: true });
     }

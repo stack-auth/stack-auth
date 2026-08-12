@@ -1,4 +1,4 @@
-import * as Sentry from "@sentry/nextjs";
+import * as Sentry from "@sentry/node";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { captureError, registerErrorSink } from "@hexclave/shared/dist/utils/errors";
 import * as util from "util";
@@ -17,7 +17,7 @@ const sentryErrorSink = (location: string, error: unknown, level: "error" | "war
     return;
   }
   Sentry.captureException(error, { extra: { location }, level });
-  runAsynchronouslyAndWaitUntil(Sentry.flush());
+  runAsynchronouslyAndWaitUntil(Sentry.flush(2000));
 };
 
 export function ensurePolyfilled() {

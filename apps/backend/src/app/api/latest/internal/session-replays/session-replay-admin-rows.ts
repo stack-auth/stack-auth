@@ -5,6 +5,7 @@ import { type PrismaClientWithReplica, sqlQuoteIdent } from "@/prisma-client";
 export type SessionReplayAdminListRow = {
   id: string,
   projectUserId: string,
+  refreshTokenId: string,
   startedAt: Date,
   lastEventAt: Date,
   projectUserDisplayName: string | null,
@@ -28,6 +29,7 @@ export async function querySessionReplayAdminRows(options: {
     SELECT
       sr."id",
       sr."projectUserId",
+      sr."refreshTokenId",
       sr."startedAt",
       sr."lastEventAt",
       pu."displayName" AS "projectUserDisplayName",
@@ -79,6 +81,9 @@ export function sessionReplayAdminRowToApiItem(
 ) {
   return {
     id: row.id,
+    // Lets the dashboard correlate the replay with the analytics events of this
+    // exact session, rather than with the same user's other concurrent sessions.
+    refresh_token_id: row.refreshTokenId,
     project_user: {
       id: row.projectUserId,
       display_name: row.projectUserDisplayName ?? null,

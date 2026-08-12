@@ -2,7 +2,9 @@ import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectComm
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { ignoreUnhandledRejection } from "@hexclave/shared/dist/utils/promises";
 import { ImageProcessingError, parseBase64Image } from "./lib/images";
+import { getOptionalRequestAbortSignal } from "./lib/runtime/request-context";
 
 const S3_REGION = getEnvVariable("STACK_S3_REGION", "");
 const S3_ENDPOINT = getEnvVariable("STACK_S3_ENDPOINT", "");
@@ -105,16 +107,20 @@ export async function createPresignedUploadUrl(options: {
   );
 }
 
-export async function headBytes(options: { key: string, private?: boolean }): Promise<{
+export async function headBytes(options: { key: string, private?: boolean, signal?: AbortSignal }): Promise<{
   byteLength: number,
   eTag: string,
 } | null> {
   const { client, bucket } = getS3Target(options.private === true);
+  const signal = options.signal ?? getOptionalRequestAbortSignal();
   try {
-    const response = await client.send(new HeadObjectCommand({
-      Bucket: bucket,
-      Key: options.key,
-    }));
+    const response = await awaitS3Operation(
+      client.send(new HeadObjectCommand({
+        Bucket: bucket,
+        Key: options.key,
+      }), { abortSignal: signal }),
+      signal,
+    );
     if (response.ContentLength == null) {
       throw new HexclaveAssertionError("S3 headObject response is missing ContentLength");
     }
@@ -133,35 +139,108 @@ export async function headBytes(options: { key: string, private?: boolean }): Pr
   }
 }
 
-async function readBodyToBytes(body: unknown): Promise<Uint8Array> {
-  if (body instanceof Uint8Array) return body;
-  if (Buffer.isBuffer(body)) return new Uint8Array(body);
-
-  // Web ReadableStream (some runtimes)
-  if (typeof body === "object" && body !== null && "transformToByteArray" in body && typeof (body as any).transformToByteArray === "function") {
-    return (body as any).transformToByteArray();
+async function awaitS3Operation<T>(operation: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  try {
+    return await operation;
+  } catch (error) {
+    // AWS wraps request cancellation in a provider-specific AbortError. Keep
+    // the originating reason so request and explicit cleanup callers can
+    // distinguish their own cancellation from an unrelated S3 failure. The
+    // name guard matters when cancellation races a real provider error: that
+    // error and its S3 status metadata must remain intact.
+    if (error instanceof Error && error.name === "AbortError") {
+      signal?.throwIfAborted();
+    }
+    throw error;
   }
+}
+
+function isAsyncIterableBody(body: unknown): body is AsyncIterable<unknown> {
+  return typeof body === "object"
+    && body !== null
+    && Symbol.asyncIterator in body
+    && typeof body[Symbol.asyncIterator] === "function";
+}
+
+function hasTransformToByteArray(body: unknown): body is { transformToByteArray: () => Promise<Uint8Array> } {
+  return typeof body === "object"
+    && body !== null
+    && "transformToByteArray" in body
+    && typeof body.transformToByteArray === "function";
+}
+
+function isDestroyableBody(body: unknown): body is { destroy: () => void } {
+  return typeof body === "object" && body !== null && "destroy" in body && typeof body.destroy === "function";
+}
+
+function isCancelableBody(body: unknown): body is { cancel: (reason?: unknown) => Promise<unknown> } {
+  return typeof body === "object" && body !== null && "cancel" in body && typeof body.cancel === "function";
+}
+
+function attachBodyAbortHandler(body: unknown, signal: AbortSignal | undefined): () => void {
+  if (signal == null) return () => {};
+  const onAbort = () => {
+    if (isDestroyableBody(body)) {
+      body.destroy();
+    } else if (isCancelableBody(body)) {
+      ignoreUnhandledRejection(body.cancel(signal.reason));
+    }
+  };
+  signal.addEventListener("abort", onAbort, { once: true });
+  if (signal.aborted) onAbort();
+  return () => signal.removeEventListener("abort", onAbort);
+}
+
+async function readBodyToBytes(body: unknown, signal: AbortSignal | undefined): Promise<Uint8Array> {
+  signal?.throwIfAborted();
+  if (body instanceof Uint8Array) return body;
 
   // Node.js Readable or any AsyncIterable<Uint8Array>
-  if (typeof body === "object" && body !== null && Symbol.asyncIterator in (body as any)) {
+  if (isAsyncIterableBody(body)) {
+    const detachAbortHandler = attachBodyAbortHandler(body, signal);
     const chunks: Buffer[] = [];
-    for await (const chunk of body as any) {
-      if (chunk instanceof Uint8Array) {
+    try {
+      for await (const chunk of body) {
+        signal?.throwIfAborted();
+        if (!(chunk instanceof Uint8Array)) {
+          throw new HexclaveAssertionError("Unexpected S3 body chunk type");
+        }
         chunks.push(Buffer.from(chunk));
-      } else if (Buffer.isBuffer(chunk)) {
-        chunks.push(chunk);
-      } else {
-        throw new HexclaveAssertionError("Unexpected S3 body chunk type");
       }
+      // destroy() is allowed to end a Node stream normally, so the iterator
+      // can complete after cancellation without throwing on its own.
+      signal?.throwIfAborted();
+      return new Uint8Array(Buffer.concat(chunks));
+    } catch (error) {
+      signal?.throwIfAborted();
+      throw error;
+    } finally {
+      detachAbortHandler();
     }
-    return new Uint8Array(Buffer.concat(chunks));
+  }
+
+  // SDK stream mixins in non-Node runtimes expose a buffering helper rather
+  // than an async iterator. Cancel/destroy it immediately on client abort.
+  if (hasTransformToByteArray(body)) {
+    const detachAbortHandler = attachBodyAbortHandler(body, signal);
+    try {
+      const result = await body.transformToByteArray();
+      signal?.throwIfAborted();
+      return result;
+    } catch (error) {
+      signal?.throwIfAborted();
+      throw error;
+    } finally {
+      detachAbortHandler();
+    }
   }
 
   throw new HexclaveAssertionError("Unexpected S3 body type");
 }
 
-export async function downloadBytes(options: { key: string, private?: boolean, ifMatch?: string }): Promise<Uint8Array> {
+export async function downloadBytes(options: { key: string, private?: boolean, ifMatch?: string, signal?: AbortSignal }): Promise<Uint8Array> {
   const { client, bucket } = getS3Target(options.private === true);
+  const signal = options.signal ?? getOptionalRequestAbortSignal();
 
   const command = new GetObjectCommand({
     Bucket: bucket,
@@ -169,21 +248,67 @@ export async function downloadBytes(options: { key: string, private?: boolean, i
     IfMatch: options.ifMatch,
   });
 
-  const res = await client.send(command);
+  const res = await awaitS3Operation(
+    client.send(command, { abortSignal: signal }),
+    signal,
+  );
   if (!res.Body) {
     throw new HexclaveAssertionError("S3 getObject returned empty body");
   }
 
-  return await readBodyToBytes(res.Body);
+  return await readBodyToBytes(res.Body, signal);
 }
 
-export async function deleteBytes(options: { key: string, private?: boolean }): Promise<void> {
+export async function deleteBytes(options: { key: string, private?: boolean, signal?: AbortSignal }): Promise<void> {
   const { client, bucket } = getS3Target(options.private === true);
-  await client.send(new DeleteObjectCommand({
-    Bucket: bucket,
-    Key: options.key,
-  }));
+  const signal = options.signal ?? getOptionalRequestAbortSignal();
+  await awaitS3Operation(
+    client.send(new DeleteObjectCommand({
+      Bucket: bucket,
+      Key: options.key,
+    }), { abortSignal: signal }),
+    signal,
+  );
 }
+
+import.meta.vitest?.test("S3 body buffering cancels immediately with the client signal", async ({ expect }) => {
+  const controller = new AbortController();
+  const cancellation = new Error("client disconnected");
+  let rejectRead: ((reason?: unknown) => void) | undefined;
+  const body = {
+    transformToByteArray: async () => await new Promise<Uint8Array>((_resolve, reject) => {
+      rejectRead = reject;
+    }),
+    cancel: async (reason?: unknown) => {
+      rejectRead?.(reason);
+    },
+  };
+
+  const readPromise = readBodyToBytes(body, controller.signal);
+  await Promise.resolve();
+  controller.abort(cancellation);
+
+  await expect(readPromise).rejects.toBe(cancellation);
+});
+
+import.meta.vitest?.test("S3 operation failures preserve the originating cancellation reason", async ({ expect }) => {
+  const controller = new AbortController();
+  const cancellation = new Error("client disconnected");
+  const sdkAbortError = new Error("AWS SDK abort wrapper");
+  sdkAbortError.name = "AbortError";
+  controller.abort(cancellation);
+
+  await expect(awaitS3Operation(
+    Promise.reject(sdkAbortError),
+    controller.signal,
+  )).rejects.toBe(cancellation);
+
+  const unrelatedS3Error = new Error("S3 service unavailable");
+  await expect(awaitS3Operation(
+    Promise.reject(unrelatedS3Error),
+    controller.signal,
+  )).rejects.toBe(unrelatedS3Error);
+});
 
 async function uploadBase64Image({
   input,
