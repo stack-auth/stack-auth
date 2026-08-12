@@ -483,6 +483,53 @@ describe("StackClientApp cross-domain auth", () => {
     expect(refreshedRawRefreshTokens).toEqual(["new-refresh-token"]);
   });
 
+  it("stops polling the browser cookie store when browser globals are removed", () => {
+    vi.useFakeTimers();
+    const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval");
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+
+    globalThis.document = createMockDocument();
+    globalThis.window = {
+      location: {
+        href: "https://demo.stack-auth.com/",
+        protocol: "https:",
+        hostname: "demo.stack-auth.com",
+      },
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    } as any;
+
+    try {
+      const clientApp = new StackClientApp({
+        baseUrl: "http://localhost:12345",
+        projectId: "00000000-0000-4000-8000-000000000007",
+        publishableClientKey: "stack-pk-test",
+        tokenStore: "cookie",
+        redirectMethod: "none",
+        noAutomaticPrefetch: true,
+        automaticSideEffects: false,
+        devTool: false,
+      });
+      const getBrowserCookieTokenStore = Reflect.get(clientApp, "_getBrowserCookieTokenStore");
+      if (typeof getBrowserCookieTokenStore !== "function") {
+        throw new Error("Expected StackClientApp to expose _getBrowserCookieTokenStore in tests.");
+      }
+      getBrowserCookieTokenStore.call(clientApp);
+
+      Reflect.set(globalThis, "window", previousWindow);
+      Reflect.set(globalThis, "document", previousDocument);
+
+      expect(() => vi.advanceTimersByTime(100)).not.toThrow();
+      expect(clearIntervalSpy).toHaveBeenCalledOnce();
+    } finally {
+      Reflect.set(globalThis, "window", previousWindow);
+      Reflect.set(globalThis, "document", previousDocument);
+      clearIntervalSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("does not re-bounce nested cross-domain auth after the OAuth callback consumed code+state from the URL", async () => {
     const projectId = "00000000-0000-4000-8000-000000000008";
     const previousWindow = globalThis.window;

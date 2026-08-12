@@ -49,7 +49,7 @@ it("anonymous user can upgrade to regular user via password sign-up", async ({ e
   `);
 
   // Upgrade the user via password sign-up while logged in as anonymous
-  const { signUpResponse: upgradeRes } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const { signUpResponse: upgradeRes } = await Auth.Password.signUpWithEmail();
 
   expect(upgradeRes).toMatchInlineSnapshot(`
     NiceResponse {

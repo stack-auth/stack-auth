@@ -65,6 +65,15 @@ function getReplayListItems(value: unknown) {
   return Array.isArray(value) ? value.filter(isReplayListItem) : [];
 }
 
+/**
+ * Response bodies come back as `any` from the fetch helper; this narrows a list
+ * of them to something indexable so the tests can read fields without casts.
+ */
+function asObjects(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null);
+}
+
 async function uploadBatch(options: {
   browserSessionId: string,
   batchId: string,
@@ -125,7 +134,7 @@ it("requires a user token", async ({ expect }) => {
 it("throws error when analytics is not enabled", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   // Analytics is disabled by default - do NOT call Project.updateConfig
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const res = await niceBackendFetch("/api/v1/session-replays/batch", {
     method: "POST",
@@ -365,7 +374,7 @@ it("emits W3C $session-replay and $session-replay-segment spans with scalar pare
 it("accepts a gzipped binary body (compressed large-payload encoding)", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const now = Date.now();
   const payload = {
@@ -405,7 +414,7 @@ it("accepts a gzipped binary body (compressed large-payload encoding)", async ({
 it("rejects a binary body that isn't valid gzip", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const res = await niceBackendFetch("/api/v1/session-replays/batch", {
     method: "POST",
@@ -425,7 +434,7 @@ it("rejects a binary body that isn't valid gzip", async ({ expect }) => {
 it("rejects a binary body larger than the compressed size cap", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   // Random bytes don't compress, so the byteLength check fires before gunzip.
   // 1.1 MB > the 1 MB MAX_BODY_BYTES cap.
@@ -449,7 +458,7 @@ it("rejects a binary body larger than the compressed size cap", async ({ expect 
 it("rejects a gzipped body that decompresses past the server size cap", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   // 9 MB of zeros gzips to ~9 KB but decompresses past the 8 MB server cap.
   const bomb = gzipSync(Buffer.alloc(9 * 1024 * 1024));
@@ -472,7 +481,7 @@ it("rejects a gzipped body that decompresses past the server size cap", async ({
 it("rejects empty events", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const res = await niceBackendFetch("/api/v1/session-replays/batch", {
     method: "POST",
@@ -500,7 +509,7 @@ it("rejects empty events", async ({ expect }) => {
 it("rejects too many events", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const tooManyEvents = Array.from({ length: 5001 }, (_, i) => ({ timestamp: 1_700_000_000_000 + i }));
 
@@ -530,7 +539,7 @@ it("rejects too many events", async ({ expect }) => {
 it("rejects invalid browser_session_id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const res = await niceBackendFetch("/api/v1/session-replays/batch", {
     method: "POST",
@@ -573,7 +582,7 @@ it("rejects invalid browser_session_id", async ({ expect }) => {
 it("rejects invalid batch_id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const res = await niceBackendFetch("/api/v1/session-replays/batch", {
     method: "POST",
@@ -616,7 +625,7 @@ it("rejects invalid batch_id", async ({ expect }) => {
 it("rejects invalid session_replay_segment_id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const res = await niceBackendFetch("/api/v1/session-replays/batch", {
     method: "POST",
@@ -659,7 +668,7 @@ it("rejects invalid session_replay_segment_id", async ({ expect }) => {
 it("skips malformed timestamps and falls back to sent_at_ms for replay bounds", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const browserSessionId = randomUUID();
   const batchId = randomUUID();
@@ -696,7 +705,7 @@ it("skips malformed timestamps and falls back to sent_at_ms for replay bounds", 
 it("rejects non-integer started_at_ms", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const res = await niceBackendFetch("/api/v1/session-replays/batch", {
     method: "POST",
@@ -739,7 +748,7 @@ it("rejects non-integer started_at_ms", async ({ expect }) => {
 it("rejects oversized payloads", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   // Backend limit is 1_000_000 bytes; a single large string is sufficient to exceed it.
   const hugeString = "a".repeat(1_100_000);
@@ -770,7 +779,7 @@ it("rejects oversized payloads", async ({ expect }) => {
 it("admin can list session replays, list chunks, and fetch events", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const browserSessionId = randomUUID();
   const batchId = randomUUID();
@@ -875,7 +884,7 @@ it("admin list session replays paginates without skipping items", async ({ expec
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
 
   // Use separate sign-ins to get different refresh tokens → different session replays.
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const uploadA = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -886,7 +895,7 @@ it("admin list session replays paginates without skipping items", async ({ expec
   expect(uploadA.status).toBe(200);
   const recordingA = uploadA.body?.session_replay_id;
 
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const uploadB = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -936,7 +945,7 @@ it("admin list session replays paginates without skipping items", async ({ expec
 it("admin can fetch a single session replay by id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const upload = await uploadBatch({
     browserSessionId: randomUUID(),
@@ -971,8 +980,9 @@ it("admin can fetch a single session replay by id", async ({ expect }) => {
         "project_user": {
           "display_name": null,
           "id": "<stripped UUID>",
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+          "primary_email": null,
         },
+        "refresh_token_id": <stripped field 'refresh_token_id'>,
         "started_at_millis": 1700000000100,
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -980,9 +990,55 @@ it("admin can fetch a single session replay by id", async ({ expect }) => {
   `);
 });
 
+it("admin session replay endpoints expose the recording session's refresh token", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ "apps.installed.analytics.enabled": true });
+  await Auth.fastSignUp();
+
+  const upload = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: 1_700_000_000_000,
+    sentAtMs: 1_700_000_000_400,
+    events: [{ type: 1, timestamp: 1_700_000_000_100 }],
+  });
+  expect(upload.status).toBe(200);
+  const recordingId = upload.body?.session_replay_id;
+  if (typeof recordingId !== "string") {
+    throw new Error("Expected session replay id.");
+  }
+
+  // The session that uploaded the replay, straight from the sessions endpoint —
+  // asserting against this is what proves the field isn't just some other UUID
+  // (the replay's own id, say) that happens to survive snapshot anonymization.
+  const sessions = await niceBackendFetch("/api/v1/auth/sessions?user_id=me", {
+    method: "GET",
+    accessType: "client",
+  });
+  expect(sessions.status).toBe(200);
+  const currentSessionId = asObjects(sessions.body?.items).find(s => s.is_current_session === true)?.id;
+  if (typeof currentSessionId !== "string") {
+    throw new Error("Expected the signed-in session to be listed as the current session.");
+  }
+
+  const single = await niceBackendFetch(`/api/v1/internal/session-replays/${encodeURIComponent(recordingId)}`, {
+    method: "GET",
+    accessType: "admin",
+  });
+  expect(single.status).toBe(200);
+  expect(single.body?.refresh_token_id).toBe(currentSessionId);
+
+  const list = await listReplaysWithRetry(
+    {},
+    (res) => res.status === 200 && asObjects(res.body?.items).some(i => i.id === recordingId),
+  );
+  const listed = asObjects(list.body?.items).find(i => i.id === recordingId);
+  expect(listed?.refresh_token_id).toBe(currentSessionId);
+});
+
 it("admin get session replay returns 404 for nonexistent id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const fakeId = randomUUID();
   const res = await niceBackendFetch(`/api/v1/internal/session-replays/${fakeId}`, {
@@ -1009,7 +1065,7 @@ it("admin get session replay returns 404 for nonexistent id", async ({ expect })
 it("non-admin access cannot call single session replay endpoint", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const upload = await uploadBatch({
     browserSessionId: randomUUID(),
@@ -1069,7 +1125,7 @@ it("non-admin access cannot call single session replay endpoint", async ({ expec
 
 it("admin list session replays rejects unknown cursor", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const cursor = randomUUID();
   const res = await niceBackendFetch(`/api/v1/internal/session-replays?cursor=${encodeURIComponent(cursor)}`, {
@@ -1100,7 +1156,7 @@ it("admin list chunks paginates and rejects a cursor from another session", asyn
   const now = Date.now();
 
   // session1: two batches under first refresh token
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const upload1a = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -1120,7 +1176,7 @@ it("admin list chunks paginates and rejects a cursor from another session", asyn
   });
 
   // session2: one batch under a different refresh token
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const upload2 = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -1252,7 +1308,7 @@ it("admin events endpoint does not allow fetching a chunk via the wrong session 
 
 it("non-admin access cannot call internal session replays endpoints", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const clientRes = await niceBackendFetch("/api/v1/internal/session-replays", {
     method: "GET",
@@ -1302,7 +1358,7 @@ it("non-admin access cannot call internal session replays endpoints", async ({ e
 it("groups batches from same refresh token into one session replay", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const now = Date.now();
 
@@ -1436,7 +1492,7 @@ it("admin list session replays filters by team_ids", async ({ expect }) => {
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
 
   // User A — member of a team
-  const userA = await Auth.Otp.signIn();
+  const userA = await Auth.fastSignUp();
   const uploadA = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -1450,7 +1506,7 @@ it("admin list session replays filters by team_ids", async ({ expect }) => {
 
   // User B — not in any team
   await bumpEmailAddress();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const uploadB = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -1482,7 +1538,7 @@ it("admin list session replays filters by duration range", async ({ expect }) =>
   const baseTime = 1_700_000_000_000;
 
   // Short replay: 5 seconds (first event → last event = 5000ms)
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const uploadShort = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -1498,7 +1554,7 @@ it("admin list session replays filters by duration range", async ({ expect }) =>
 
   // Long replay: 30 seconds (first event → last event = 30000ms)
   await bumpEmailAddress();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const uploadLong = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -1552,7 +1608,7 @@ it("admin list session replays filters by last_event_at time range", async ({ ex
   const lateTime = 1_700_000_100_000; // 100 seconds later
 
   // Early replay
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const uploadEarly = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -1565,7 +1621,7 @@ it("admin list session replays filters by last_event_at time range", async ({ ex
 
   // Late replay
   await bumpEmailAddress();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const uploadLate = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -1693,7 +1749,7 @@ it("admin list session replays filters by click_count_min", async ({ expect }) =
 
 it("admin list session replays rejects invalid UUID values in user_ids and team_ids", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const invalidUserIds = await listReplays({ user_ids: "not-a-uuid" });
   expect(invalidUserIds).toMatchInlineSnapshot(`
@@ -1720,7 +1776,7 @@ it("admin list session replays paginates correctly when last_event_at timestamps
 
   const baseTime = 1_700_000_000_000;
 
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const uploadA = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -1732,7 +1788,7 @@ it("admin list session replays paginates correctly when last_event_at timestamps
   const replayIdA = uploadA.body?.session_replay_id;
 
   await bumpEmailAddress();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const uploadB = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -1777,7 +1833,7 @@ it("admin list session replays combines filters with AND semantics", async ({ ex
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
 
-  const userA = await Auth.Otp.signIn();
+  const userA = await Auth.fastSignUp();
   const uploadA = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -1789,7 +1845,7 @@ it("admin list session replays combines filters with AND semantics", async ({ ex
   const { teamId } = await Team.create({ accessType: "server", creatorUserId: userA.userId });
 
   await bumpEmailAddress();
-  const userB = await Auth.Otp.signIn();
+  const userB = await Auth.fastSignUp();
   const uploadB = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -1818,7 +1874,7 @@ it("admin list session replays returns empty page with null next_cursor when cli
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
 
   const now = Date.now();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const segmentId = randomUUID();
 
   const upload = await uploadBatch({
@@ -1875,7 +1931,7 @@ it("admin list session replays returns empty page with null next_cursor when cli
 
 it("admin list session replays rejects invalid filter parameters", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   // Non-integer duration_ms_min
   const res1 = await listReplays({ duration_ms_min: "abc" });
@@ -2003,7 +2059,7 @@ it("rejects new session replay when quota is exhausted", async ({ expect }) => {
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   const ownerTeamId = createProjectResponse.body.owner_team_id;
 
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   await setSessionReplayItemQuantity(ownerTeamId, 0);
 
   const now = Date.now();
@@ -2024,7 +2080,7 @@ it("accepts new session replay and debits quota by 1", async ({ expect }) => {
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   const ownerTeamId = createProjectResponse.body.owner_team_id;
 
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const quantityBefore = await getSessionReplayItemQuantity(ownerTeamId);
 
@@ -2049,7 +2105,7 @@ it("does not debit quota when appending chunks to an existing session replay, ev
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   const ownerTeamId = createProjectResponse.body.owner_team_id;
 
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const now = Date.now();
   const firstBatch = await uploadBatch({

@@ -1,7 +1,6 @@
 import { context } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import { isTracingSuppressed } from "@opentelemetry/core";
-import { NextRequest } from "next/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { isTelemetryIngestionPath, runWithInternalRequestObservability } from "./internal-observability";
 import { resolveCustomerRequestObservability } from "./customer-request-observability";
@@ -57,6 +56,10 @@ describe("internal backend observability", () => {
     "/api/v1/analytics/otlp/v1/logs",
     "/api/latest/analytics/otlp/v1/metrics",
     "/api/v1/analytics/otlp/v1/metrics",
+    "/api/latest/analytics/client-reports",
+    "/api/v1/analytics/client-reports",
+    "/api/latest/analytics/attachments",
+    "/api/v1/analytics/attachments",
     "/api/latest/session-replays/batch",
     "/api/v1/session-replays/batch",
   ])("recognizes the exact recursive ingestion path %s", (pathname) => {
@@ -65,7 +68,7 @@ describe("internal backend observability", () => {
   });
 
   it("suppresses Prisma/OTel instrumentation while handling telemetry ingestion", async () => {
-    const request = new NextRequest("http://localhost:8102/api/v1/analytics/events/batch", { method: "POST" });
+    const request = new Request("http://localhost:8102/api/v1/analytics/events/batch", { method: "POST" });
     let suppressed = false;
     const response = await runWithInternalRequestObservability(request, "request-1", async () => {
       suppressed = isTracingSuppressed(context.active());
@@ -79,7 +82,7 @@ describe("internal backend observability", () => {
   });
 
   it("parents internal requests under the incoming sampled W3C client span", async () => {
-    const request = new NextRequest("http://localhost:8102/api/latest/users?secret=never-record-this", {
+    const request = new Request("http://localhost:8102/api/latest/users?secret=never-record-this", {
       method: "GET",
       headers: {
         traceparent: "00-0123456789abcdef0123456789abcdef-fedcba9876543210-01",
@@ -106,7 +109,7 @@ describe("internal backend observability", () => {
   });
 
   it("links the internal request span to the authenticated customer client span", async () => {
-    const request = new NextRequest("http://localhost:8102/api/latest/users", {
+    const request = new Request("http://localhost:8102/api/latest/users", {
       method: "GET",
       headers: {
         traceparent: "00-0123456789abcdef0123456789abcdef-fedcba9876543210-01",
@@ -133,7 +136,7 @@ describe("internal backend observability", () => {
   });
 
   it("parents an internal-dashboard client span without adding a cross-project link", async () => {
-    const request = new NextRequest("http://localhost:8102/api/latest/users", {
+    const request = new Request("http://localhost:8102/api/latest/users", {
       method: "GET",
       headers: {
         traceparent: "00-cccccccccccccccccccccccccccccccc-dddddddddddddddd-01",
@@ -162,7 +165,7 @@ describe("internal backend observability", () => {
   });
 
   it("does not force an internal request to become a root when the wire has no parent", async () => {
-    const request = new NextRequest("http://localhost:8102/api/latest/internal/issues/reconciler", {
+    const request = new Request("http://localhost:8102/api/latest/internal/issues/reconciler", {
       method: "GET",
       headers: {
         "x-hexclave-project-id": "internal",
@@ -171,8 +174,8 @@ describe("internal backend observability", () => {
 
     await runWithInternalRequestObservability(request, "request-ambient", async () => new Response(null, { status: 200 }));
 
-    // The SDK now inherits an already-active Next/OTel server span when one
-    // exists, and only creates a true root when no ambient span exists either.
+    // The SDK now inherits an already-active OTel server span when one exists,
+    // and only creates a true root when no ambient span exists either.
     expect(state.startSpan).toHaveBeenCalledWith("hexclave.api.request", {
       data: {
         request_id: "request-ambient",
@@ -183,7 +186,7 @@ describe("internal backend observability", () => {
   });
 
   it("preserves an unsampled internal parent so parent-based sampling can drop the request", async () => {
-    const request = new NextRequest("http://localhost:8102/api/latest/users", {
+    const request = new Request("http://localhost:8102/api/latest/users", {
       method: "GET",
       headers: {
         traceparent: "00-0123456789abcdef0123456789abcdef-fedcba9876543210-00",
@@ -208,7 +211,7 @@ describe("internal backend observability", () => {
   });
 
   it("keeps customer requests as rooted internal spans with a verified link", async () => {
-    const request = new NextRequest("http://localhost:8102/api/latest/users", {
+    const request = new Request("http://localhost:8102/api/latest/users", {
       method: "GET",
       headers: {
         traceparent: "00-cccccccccccccccccccccccccccccccc-dddddddddddddddd-01",
@@ -236,7 +239,7 @@ describe("internal backend observability", () => {
   });
 
   it("keeps the verified customer link when the request handler throws", async () => {
-    const request = new NextRequest("http://localhost:8102/api/latest/users", {
+    const request = new Request("http://localhost:8102/api/latest/users", {
       method: "GET",
       headers: {
         traceparent: "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01",

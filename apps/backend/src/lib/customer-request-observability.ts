@@ -5,7 +5,6 @@ import { isSpanContextValid, ROOT_CONTEXT, trace, TraceFlags } from "@openteleme
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { NextRequest } from "next/server";
 import { getSharedClickhouseAdminClient } from "./clickhouse";
 import { insertSpans, type SpanInsertRow } from "./spans";
 import { isTelemetryIngestionPath } from "./telemetry-ingestion-paths";
@@ -181,11 +180,11 @@ async function writeCustomerRequestSpan(row: SpanInsertRow): Promise<void> {
  * external boundary instead of rewriting the trace.
  */
 export async function runWithCustomerRequestObservability(
-  request: NextRequest,
+  request: Request,
   fn: () => Promise<Response>,
   writer: CustomerRequestSpanWriter = writeCustomerRequestSpan,
 ): Promise<Response> {
-  if (isTelemetryIngestionPath(request.nextUrl.pathname)) return await fn();
+  if (isTelemetryIngestionPath(new URL(request.url).pathname)) return await fn();
 
   const extractedContext = traceContextPropagator.extract(ROOT_CONTEXT, request.headers, {
     keys: () => ["traceparent", "tracestate"],

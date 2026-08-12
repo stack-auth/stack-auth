@@ -246,10 +246,22 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
     environment:
-      DENO_DIR: /deno-cache
       HOST_ON_HOST: host.docker.internal
+      HEXCLAVE_FREESTYLE_MOCK_MAX_IN_FLIGHT: "4"
+      HEXCLAVE_FREESTYLE_MOCK_BRIDGE_ENABLED: "true"
+      HEXCLAVE_FREESTYLE_MOCK_BRIDGE_ORIGINS: "http://host.docker.internal:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02"
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    cpus: 4
+    pids_limit: 512
     volumes:
-      - deno-cache:/deno-cache
+      - freestyle-module-cache:/app/module-cache
 
   # ================= Vercel mock =================
 
@@ -332,7 +344,7 @@ volumes:
   svix-redis-data:
   svix-postgres-data:
   s3mock-data:
-  deno-cache:
+  freestyle-module-cache:
   localstack-data:
   clickhouse-data:
   drizzle-gateway:

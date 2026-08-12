@@ -757,7 +757,7 @@ it("enables create team on sign up", async ({ expect }) => {
   await InternalApiKey.createAndSetProjectKeys(adminAccessToken);
 
   await bumpEmailAddress();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const response2 = await niceBackendFetch("/api/v1/teams?user_id=me", { accessType: "server" });
   expect(response2).toMatchInlineSnapshot(`
@@ -770,7 +770,7 @@ it("enables create team on sign up", async ({ expect }) => {
             "client_metadata": null,
             "client_read_only_metadata": null,
             "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "mailbox-1--<stripped UUID>@stack-generated.example.com's Team",
+            "display_name": "Personal Team",
             "id": "<stripped UUID>",
             "profile_image_url": null,
             "server_metadata": null,

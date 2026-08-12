@@ -9,6 +9,7 @@
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
+import { getOptionalRequestAbortSignal } from "@/lib/runtime/request-context";
 
 const MOCK_VERCEL_TOKEN = "mock_hexclave_vercel_key";
 
@@ -122,14 +123,62 @@ export type VercelDeploymentEvent = {
   text: string,
 };
 
+/**
+ * Decides which abort signal (if any) an upstream Vercel fetch should use.
+ *
+ * An explicitly passed signal always wins — the caller opted into its own
+ * cancellation semantics. Otherwise, the ambient inbound-request signal (the
+ * one that fires when the HTTP client disconnects) is only used for GET/HEAD:
+ * aborting an idempotent read mid-flight is always safe and frees resources.
+ *
+ * For every other method it must NOT be used. These are mutations
+ * (createProject, createDeployment, uploadFile, env var upserts/deletes,
+ * domain add/verify/delete, project deletes/PATCHes), and Vercel may have
+ * already committed the mutation by the time our local fetch rejects with an
+ * AbortError — e.g. a deployment gets created or a project gets deleted
+ * upstream, but we then skip the corresponding local Prisma/config write. That
+ * leaves upstream and local state split, and retries then duplicate
+ * deployments or wedge deletions on a Vercel 404. Letting mutations run to
+ * completion regardless of the inbound client's lifetime also matches the
+ * pre-Elysia Next.js behavior, where handlers kept running after a client
+ * disconnect.
+ */
+function resolveUpstreamAbortSignal(method: string, explicitSignal: AbortSignal | null | undefined, ambientSignal: AbortSignal | undefined): AbortSignal | undefined {
+  if (explicitSignal != null) {
+    return explicitSignal;
+  }
+  return method === "GET" || method === "HEAD" ? ambientSignal : undefined;
+}
+
+import.meta.vitest?.test("resolveUpstreamAbortSignal only defaults to the ambient request signal for idempotent reads", ({ expect }) => {
+  const ambient = new AbortController().signal;
+  const explicit = new AbortController().signal;
+
+  // Idempotent reads default to the ambient inbound-request signal.
+  expect(resolveUpstreamAbortSignal("GET", undefined, ambient)).toBe(ambient);
+  expect(resolveUpstreamAbortSignal("HEAD", undefined, ambient)).toBe(ambient);
+
+  // Mutations must never inherit the ambient signal — they run to completion
+  // even if the inbound client disconnects.
+  expect(resolveUpstreamAbortSignal("POST", undefined, ambient)).toBeUndefined();
+  expect(resolveUpstreamAbortSignal("PATCH", undefined, ambient)).toBeUndefined();
+  expect(resolveUpstreamAbortSignal("DELETE", undefined, ambient)).toBeUndefined();
+
+  // An explicitly passed signal always wins, whatever the method.
+  expect(resolveUpstreamAbortSignal("GET", explicit, ambient)).toBe(explicit);
+  expect(resolveUpstreamAbortSignal("POST", explicit, ambient)).toBe(explicit);
+  expect(resolveUpstreamAbortSignal("DELETE", explicit, undefined)).toBe(explicit);
+});
+
 export class VercelDeploymentsClient {
   constructor(private readonly config: VercelDeploymentsConfig) {}
 
   private async fetchVercel(path: string, init: RequestInit & { rawBody?: Uint8Array, extraHeaders?: Record<string, string> } = {}): Promise<any> {
+    const method = init.method ?? "GET";
     const url = new URL(path, this.config.baseUrl);
     url.searchParams.set("teamId", this.config.teamId);
     const response = await fetch(url.toString(), {
-      method: init.method ?? "GET",
+      method,
       headers: {
         "authorization": `Bearer ${this.config.token}`,
         ...(init.body != null ? { "content-type": "application/json" } : {}),
@@ -140,6 +189,10 @@ export class VercelDeploymentsClient {
       // (SharedArrayBuffer-backed views are not valid bodies); it also
       // guarantees we never send trailing bytes of a larger shared buffer.
       body: init.rawBody != null ? new Uint8Array(init.rawBody).slice().buffer : init.body,
+      // Only idempotent reads default to the inbound request's abort signal;
+      // mutations must run to completion even after a client disconnect. See
+      // resolveUpstreamAbortSignal for the full state-consistency reasoning.
+      signal: resolveUpstreamAbortSignal(method, init.signal, getOptionalRequestAbortSignal()),
     });
     const text = await response.text();
     let json: any = undefined;
@@ -151,7 +204,7 @@ export class VercelDeploymentsClient {
     if (!response.ok) {
       const code = typeof json?.error?.code === "string" ? json.error.code : "unknown";
       const message = typeof json?.error?.message === "string" ? json.error.message : `HTTP ${response.status}`;
-      throw new VercelApiError(response.status, code, message, `${init.method ?? "GET"} ${path}`);
+      throw new VercelApiError(response.status, code, message, `${method} ${path}`);
     }
     if (json === undefined && text !== "") {
       throw new HexclaveAssertionError(`Vercel API returned OK but non-JSON body at ${path}`);
@@ -174,7 +227,18 @@ export class VercelDeploymentsClient {
   }
 
   async deleteProject(projectIdOrName: string): Promise<void> {
-    await this.fetchVercel(urlString`/v9/projects/${projectIdOrName}`, { method: "DELETE" });
+    try {
+      await this.fetchVercel(urlString`/v9/projects/${projectIdOrName}`, { method: "DELETE" });
+    } catch (error) {
+      // A 404 means the project is already gone upstream — the deletion goal
+      // is achieved, so treat it as success. This un-wedges retries after a
+      // partial failure (e.g. Vercel committed the delete but we crashed
+      // before the local write).
+      if (error instanceof VercelApiError && error.status === 404) {
+        return;
+      }
+      throw error;
+    }
   }
 
   async getProject(projectIdOrName: string): Promise<VercelProject> {
@@ -287,7 +351,16 @@ export class VercelDeploymentsClient {
   }
 
   async deleteEnvVar(projectId: string, envId: string): Promise<void> {
-    await this.fetchVercel(urlString`/v9/projects/${projectId}/env/${envId}`, { method: "DELETE" });
+    try {
+      await this.fetchVercel(urlString`/v9/projects/${projectId}/env/${envId}`, { method: "DELETE" });
+    } catch (error) {
+      // Already-deleted env var: the deletion goal is achieved, so a 404 is
+      // success — keeps retry flows idempotent after a partial failure.
+      if (error instanceof VercelApiError && error.status === 404) {
+        return;
+      }
+      throw error;
+    }
   }
 
   async addProjectDomain(projectId: string, hostname: string): Promise<VercelProjectDomain> {
@@ -314,7 +387,16 @@ export class VercelDeploymentsClient {
   }
 
   async removeProjectDomain(projectId: string, hostname: string): Promise<void> {
-    await this.fetchVercel(urlString`/v9/projects/${projectId}/domains/${hostname}`, { method: "DELETE" });
+    try {
+      await this.fetchVercel(urlString`/v9/projects/${projectId}/domains/${hostname}`, { method: "DELETE" });
+    } catch (error) {
+      // Already-removed domain: the deletion goal is achieved, so a 404 is
+      // success — keeps retry flows idempotent after a partial failure.
+      if (error instanceof VercelApiError && error.status === 404) {
+        return;
+      }
+      throw error;
+    }
   }
 
   /**

@@ -1,4 +1,4 @@
-import { StackServerApp } from '@hexclave/next';
+import { StackServerApp } from '@hexclave/js';
 import { getEnvBoolean, getEnvVariable } from '@hexclave/shared/dist/utils/env';
 
 function createHexclaveServerApp() {

@@ -1,4 +1,3 @@
-import { NextRequest } from "next/server";
 import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { createSmartRequest } from "./smart-request";
@@ -13,7 +12,7 @@ function bodyBufferFor(value: string): ArrayBuffer {
 describe("Smart Request raw body parsing", () => {
   it("preserves Sentry envelope bytes without materializing the envelope", async () => {
     const bodyBuffer = bodyBufferFor('{"event_id":"0123456789abcdef0123456789abcdef"}\n{"type":"event"}\n{}\n');
-    const request = new NextRequest("http://localhost/api/latest/analytics/sentry", {
+    const request = new Request("http://localhost/api/latest/analytics/sentry", {
       method: "POST",
       headers: { "content-type": "application/x-sentry-envelope; charset=utf-8" },
     });
@@ -28,7 +27,7 @@ describe("Smart Request raw body parsing", () => {
   it("decodes transport compression without interpreting envelope framing", async () => {
     const envelope = '{"event_id":"0123456789abcdef0123456789abcdef"}\n';
     const compressed = gzipSync(new TextEncoder().encode(envelope));
-    const request = new NextRequest("http://localhost/api/latest/analytics/sentry", {
+    const request = new Request("http://localhost/api/latest/analytics/sentry", {
       method: "POST",
       headers: { "content-type": "application/x-sentry-envelope", "content-encoding": "gzip" },
     });
@@ -42,7 +41,7 @@ describe("Smart Request raw body parsing", () => {
   });
 
   it("does not broaden the accepted content-type boundary", async () => {
-    const request = new NextRequest("http://localhost/api/latest/analytics/unknown", {
+    const request = new Request("http://localhost/api/latest/analytics/unknown", {
       method: "POST",
       headers: { "content-type": "application/x-unknown" },
     });

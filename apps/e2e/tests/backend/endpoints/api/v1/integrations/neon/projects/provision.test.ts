@@ -104,7 +104,7 @@ it("should be able to provision a new project if neon client details are correct
   `);
 
   // ensure we can create a user in the new project (make sure it's writable)
-  const signInResponse = await Auth.Password.signUpWithEmail({ password: "test1234", noWaitForEmail: true });
+  const signInResponse = await Auth.Password.signUpWithEmail({ password: "test1234" });
   expect(signInResponse).toMatchInlineSnapshot(`
     {
       "email": "default-mailbox--<stripped UUID>@stack-generated.example.com",

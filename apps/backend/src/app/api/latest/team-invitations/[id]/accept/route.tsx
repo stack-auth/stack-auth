@@ -1,4 +1,5 @@
 import { teamMembershipsCrudHandlers } from "@/app/api/latest/team-memberships/crud";
+import { logUserRestrictedInBackground } from "@/lib/compliance-events";
 import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
 import { arePlanLimitsEnforced, UNLIMITED_ITEM_CAPACITY } from "@/lib/plan-entitlements";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
@@ -45,6 +46,10 @@ export const POST = createSmartRouteHandler({
       }
 
       if (auth.user.restricted_reason) {
+        logUserRestrictedInBackground(auth.tenancy, {
+          userId: auth.user.id,
+          restrictedReason: auth.user.restricted_reason.type,
+        });
         throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(auth.user.restricted_reason);
       }
     }

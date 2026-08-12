@@ -1,10 +1,9 @@
 import { getHexclaveServerApp } from "@/hexclave";
+import type { Span, SpanContext } from "@hexclave/js";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { context, isSpanContextValid, ROOT_CONTEXT, trace } from "@opentelemetry/api";
 import { suppressTracing, W3CTraceContextPropagator } from "@opentelemetry/core";
-import type { NextRequest } from "next/server";
 import { getVerifiedCustomerRequestLinkTarget, runWithCustomerRequestObservability } from "./customer-request-observability";
-import type { Span, SpanContext } from "@hexclave/next";
 import { runWithNodeTelemetrySuppressed } from "./node-telemetry-suppression";
 import { isTelemetryIngestionPath } from "./telemetry-ingestion-paths";
 
@@ -13,11 +12,11 @@ export { isTelemetryIngestionPath } from "./telemetry-ingestion-paths";
 const TRUSTED_SPAN_LINK_WRITER = Symbol.for("hexclave.analytics.trusted-span-link-writer.v1");
 const traceContextPropagator = new W3CTraceContextPropagator();
 
-function isInternalProjectRequest(request: NextRequest): boolean {
+function isInternalProjectRequest(request: Request): boolean {
   return (request.headers.get("x-hexclave-project-id") ?? request.headers.get("x-stack-project-id")) === "internal";
 }
 
-function getIncomingParent(request: NextRequest): SpanContext | null {
+function getIncomingParent(request: Request): SpanContext | null {
   const extractedContext = traceContextPropagator.extract(ROOT_CONTEXT, request.headers, {
     keys: () => ["traceparent", "tracestate"],
     get: (carrier, key) => carrier.get(key) ?? undefined,
@@ -67,16 +66,18 @@ function addTrustedBackendSpanLink(span: Span, link: {
  * backend-specific exporter or instrumentation fork.
  */
 export async function runWithInternalRequestObservability(
-  request: NextRequest,
+  request: Request,
   requestId: string,
   fn: () => Promise<Response>,
 ): Promise<Response> {
+  const requestPath = new URL(request.url).pathname;
   return await runWithCustomerRequestObservability(request, async () => {
-    if (isTelemetryIngestionPath(request.nextUrl.pathname)) {
+    if (isTelemetryIngestionPath(requestPath)) {
       // Keep both boundaries. Standard OTel suppression covers instrumentation
       // sharing this @opentelemetry/core instance; the SDK runner enters the
       // registered provider's context manager so Prisma remains suppressed even
-      // when Next.js evaluates the OTel API through another server chunk.
+      // when another runtime chunk evaluates the OTel API through a different
+      // module graph.
       return await runWithNodeTelemetrySuppressed(
         async () => await context.with(suppressTracing(context.active()), fn),
       );
@@ -90,7 +91,7 @@ export async function runWithInternalRequestObservability(
     const internalProjectRequest = isInternalProjectRequest(request);
     const incomingParent = internalProjectRequest ? getIncomingParent(request) : null;
     const span = getHexclaveServerApp().startSpan("hexclave.api.request", {
-      // Do not force a root when the wire carries no parent. Next/another OTel
+      // Do not force a root when the wire carries no parent. Another OTel
       // server instrumentation may already have an active request span; the
       // SDK's server startSpan path inherits that context. Only when both the
       // wire parent and the active context are absent should this request root
@@ -102,7 +103,7 @@ export async function runWithInternalRequestObservability(
       data: {
         request_id: requestId,
         method: request.method,
-        path: request.nextUrl.pathname,
+        path: requestPath,
       },
     });
     return await span.run(async () => {

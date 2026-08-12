@@ -6,6 +6,7 @@ import { StyledLink } from "@/components/link";
 import { Alert, Button, Dialog, DialogContent, DialogHeader, DialogTitle, Skeleton, Switch, Typography } from "@/components/ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useFromNow } from "@/hooks/use-from-now";
+import { formatDurationMs } from "@/lib/session-replay-format";
 import {
   getDesiredGlobalOffsetFromPlaybackState,
   INTER_TAB_GAP_FAST_FORWARD_MULTIPLIER,
@@ -28,6 +29,7 @@ import { PageLayout } from "../page-layout";
 import { useAdminApp, useServerApp } from "../use-admin-app";
 import { SessionReplayLimitBanner } from "../analytics/shared";
 import { ReplayActivityMetrics } from "./replay-activity-metrics";
+import { ReplayUserOverview, ReplayUserOverviewSkeleton } from "./replay-user-overview";
 import {
   ALLOWED_PLAYER_SPEEDS,
   areStatesRenderEquivalent,
@@ -47,6 +49,10 @@ const replaysListChromeClass =
   "shrink-0 space-y-2 border-b border-black/[0.06] px-3 py-2.5 dark:border-border/30";
 const replaysDetailChromeClass =
   "flex h-10 shrink-0 items-center justify-between gap-3 border-b border-black/[0.06] px-3 py-2 dark:border-border/30";
+// Same chrome as above, but the user overview is multi-line, so it grows instead
+// of being pinned to the transport bar's height.
+const replaysDetailOverviewChromeClass =
+  "flex shrink-0 items-start justify-between gap-3 border-b border-black/[0.06] px-3 py-2.5 dark:border-border/30";
 const replaysViewerSurfaceClass = "bg-zinc-100 dark:bg-background";
 const replaysTransportBarClass =
   "flex items-center gap-3 border-t border-black/[0.06] bg-white/95 px-3 dark:border-border/30 dark:bg-background/80";
@@ -63,6 +69,7 @@ type RrwebReplayer = InstanceType<typeof import("rrweb").Replayer>;
 
 type RecordingRow = {
   id: string,
+  refreshTokenId: string,
   projectUser: {
     id: string,
     displayName: string | null,
@@ -1988,14 +1995,19 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                   </div>
                 )}
 
-                <div className={replaysDetailChromeClass}>
+                <div className={cn(selectedRecording ? replaysDetailOverviewChromeClass : replaysDetailChromeClass)}>
                   {selectedRecording ? (
-                    <StyledLink
-                      href={`/projects/${encodeURIComponent(adminApp.projectId)}/users/${encodeURIComponent(selectedRecording.projectUser.id)}`}
-                      className="text-sm font-medium truncate"
-                    >
-                      {getRecordingTitle(selectedRecording)}
-                    </StyledLink>
+                    <React.Suspense fallback={<ReplayUserOverviewSkeleton />}>
+                      <ReplayUserOverview
+                        replay={{
+                          id: selectedRecording.id,
+                          userId: selectedRecording.projectUser.id,
+                          refreshTokenId: selectedRecording.refreshTokenId,
+                          startedAt: selectedRecording.startedAt,
+                          lastEventAt: selectedRecording.lastEventAt,
+                        }}
+                      />
+                    </React.Suspense>
                   ) : isStandaloneReplayPage && selectedRecordingId ? (
                     <Typography className="text-sm font-medium truncate font-mono">
                       Replay {selectedRecordingId}

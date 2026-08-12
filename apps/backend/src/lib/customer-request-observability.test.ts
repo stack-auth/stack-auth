@@ -1,6 +1,5 @@
 import { isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
 import { BAGGAGE_HEADER, encodeCorrelationBaggage, type SpanPropagationContext } from "@hexclave/shared/dist/utils/span-context-codec";
-import { NextRequest } from "next/server";
 import { describe, expect, it, vi } from "vitest";
 import { getVerifiedCustomerRequestLinkTarget, resolveCustomerRequestObservability, runWithCustomerRequestObservability } from "./customer-request-observability";
 import type { SpanInsertRow } from "./spans";
@@ -13,14 +12,14 @@ function request(options: {
   path?: string,
   traceparent?: string,
   correlation?: SpanPropagationContext,
-} = {}): NextRequest {
+} = {}): Request {
   const headers = new Headers();
   if (options.traceparent !== undefined) headers.set("traceparent", options.traceparent);
   if (options.correlation !== undefined) {
     const baggage = encodeCorrelationBaggage(options.correlation);
     if (baggage !== null) headers.set(BAGGAGE_HEADER, baggage);
   }
-  return new NextRequest(`http://localhost${options.path ?? "/api/v1/auth/oauth/token"}`, {
+  return new Request(`http://localhost${options.path ?? "/api/v1/auth/oauth/token"}`, {
     method: "POST",
     headers,
   });
