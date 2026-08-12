@@ -1,10 +1,9 @@
 import { getHexclaveServerApp } from "@/hexclave";
+import type { Span } from "@hexclave/js";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { context } from "@opentelemetry/api";
 import { suppressTracing } from "@opentelemetry/core";
-import type { NextRequest } from "next/server";
 import { getVerifiedCustomerRequestLinkTarget, runWithCustomerRequestObservability } from "./customer-request-observability";
-import type { Span } from "@hexclave/next";
 import { runWithNodeTelemetrySuppressed } from "./node-telemetry-suppression";
 import { isTelemetryIngestionPath } from "./telemetry-ingestion-paths";
 
@@ -43,12 +42,13 @@ function addTrustedBackendSpanLink(span: Span, link: {
  * backend-specific exporter or instrumentation fork.
  */
 export async function runWithInternalRequestObservability(
-  request: NextRequest,
+  request: Request,
   requestId: string,
   fn: () => Promise<Response>,
 ): Promise<Response> {
+  const requestPath = new URL(request.url).pathname;
   return await runWithCustomerRequestObservability(request, async () => {
-    if (isTelemetryIngestionPath(request.nextUrl.pathname)) {
+    if (isTelemetryIngestionPath(requestPath)) {
       // Keep both boundaries. Standard OTel suppression covers instrumentation
       // sharing this @opentelemetry/core instance; the SDK runner enters the
       // hidden bridge's exact context manager so Prisma remains suppressed even
@@ -70,7 +70,7 @@ export async function runWithInternalRequestObservability(
       data: {
         request_id: requestId,
         method: request.method,
-        path: request.nextUrl.pathname,
+        path: requestPath,
       },
     });
     return await span.run(async () => {

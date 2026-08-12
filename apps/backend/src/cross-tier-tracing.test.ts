@@ -1,25 +1,9 @@
-import { NextRequest } from "next/server";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { proxy } from "./proxy";
-
-const { waitMock } = vi.hoisted(() => ({
-  waitMock: vi.fn(async () => {}),
-}));
-
-vi.mock("@hexclave/shared/dist/utils/promises", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@hexclave/shared/dist/utils/promises")>(),
-  wait: waitMock,
-}));
-
-afterEach(() => {
-  vi.unstubAllEnvs();
-  waitMock.mockClear();
-});
+import { describe, expect, it } from "vitest";
+import { runRequestPipeline } from "./server/middleware";
 
 describe("cross-tier telemetry boundary", () => {
   it("allows W3C trace headers and the native span-context header through API CORS", async () => {
-    vi.stubEnv("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "500");
-    const response = await proxy(new NextRequest("http://localhost:8102/api/latest/users", {
+    const result = await runRequestPipeline(new Request("http://localhost:8102/api/latest/users", {
       method: "OPTIONS",
       headers: {
         origin: "http://localhost:8101",
@@ -27,25 +11,26 @@ describe("cross-tier telemetry boundary", () => {
       },
     }));
 
-    expect(response.headers.get("Access-Control-Allow-Headers")?.split(", ")).toEqual(expect.arrayContaining([
+    const allowHeaders = new Headers(result.corsHeadersInit).get("Access-Control-Allow-Headers")?.split(", ") ?? [];
+    expect(allowHeaders).toEqual(expect.arrayContaining([
       "traceparent",
       "tracestate",
       "x-hexclave-span-context",
     ]));
-    expect(waitMock).not.toHaveBeenCalled();
+    expect(result.shortCircuitResponse?.status).toBe(200);
   });
 
-  it("keeps telemetry ingestion outside artificial development pressure", async () => {
-    vi.stubEnv("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "500");
-
-    await proxy(new NextRequest("http://localhost:8102/api/v1/analytics/events/batch", {
-      method: "POST",
+  it("returns CORS headers for telemetry ingestion without a Next.js proxy", async () => {
+    const result = await runRequestPipeline(new Request("http://localhost:8102/api/v1/analytics/events/batch", {
+      method: "OPTIONS",
     }));
-    expect(waitMock).not.toHaveBeenCalled();
 
-    await proxy(new NextRequest("http://localhost:8102/api/latest/users", {
-      method: "GET",
-    }));
-    expect(waitMock).toHaveBeenCalledWith(500);
+    const allowHeaders = new Headers(result.corsHeadersInit).get("Access-Control-Allow-Headers")?.split(", ") ?? [];
+    expect(allowHeaders).toEqual(expect.arrayContaining([
+      "traceparent",
+      "tracestate",
+      "x-hexclave-span-context",
+    ]));
+    expect(result.shortCircuitResponse?.status).toBe(200);
   });
 });

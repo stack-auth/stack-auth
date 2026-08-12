@@ -108,6 +108,7 @@ export const GET = createSmartRouteHandler({
     body: yupObject({
       items: yupArray(yupObject({
         id: yupString().defined(),
+        refresh_token_id: yupString().defined(),
         project_user: yupObject({
           id: yupString().defined(),
           display_name: yupString().nullable().defined(),

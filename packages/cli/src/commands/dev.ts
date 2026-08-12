@@ -888,7 +888,7 @@ export function registerDevCommand(program: Command) {
     .command("dev")
     .usage("--config-file <path> -- <command> [args...]")
     .description("Run a command with Hexclave development-environment credentials")
-    .requiredOption("--config-file <path>", "Path to stack.config.ts")
+    .requiredOption("--config-file <path>", "Path to hexclave.config.ts")
     .argument("<command...>", "Command and arguments to run after --")
     .action(async (commandArgs: string[], opts: DevOptions) => {
       if (opts.configFile == null) {

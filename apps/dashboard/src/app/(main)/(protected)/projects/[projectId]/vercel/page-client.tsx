@@ -512,7 +512,7 @@ function StepCard(props: {
           disabled={props.isGenerating}
           className="font-medium border border-border shadow-sm transition-all duration-150 hover:bg-accent active:scale-95 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90"
         >
-          {props.isGenerating ? "Generating..." : "Generate keys"}
+          {props.isGenerating ? "Generating..." : "Generate project keys"}
         </DesignButton>
       );
     }

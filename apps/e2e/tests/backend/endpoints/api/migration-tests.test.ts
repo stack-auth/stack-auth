@@ -27,6 +27,7 @@ describe("SmartRouteHandler", () => {
           "headers": Headers { <some fields may have been hidden> },
         }
       `);
+      expect(response.headers.get("access-control-allow-origin")).toMatchInlineSnapshot(`"*"`);
     });
   });
 
@@ -52,7 +53,10 @@ describe("SmartRouteHandler", () => {
           "headers": Headers { <some fields may have been hidden> },
         }
       `);
-      expect(response.headers.get("x-middleware-rewrite")).toBe(`/api/migrations/v2beta2/migration-tests/smart-route-handler`);
+      // The version migration is internal routing state. Next.js strips this
+      // implementation header in production, so the Elysia transport must not
+      // expose the rewritten path either.
+      expect(response.headers.get("x-middleware-rewrite")).toBeNull();
     });
 
     it("should return 200 with queryParam", async ({ expect }) => {

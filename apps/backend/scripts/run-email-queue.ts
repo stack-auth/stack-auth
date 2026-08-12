@@ -6,7 +6,11 @@ async function main() {
   console.log("Starting email queue processor...");
   const cronSecret = getEnvVariable('CRON_SECRET');
 
-  const baseUrl = `http://localhost:${getEnvVariable('NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX', '81')}02`;
+  // The queue driver calls the backend over HTTP, so it must follow the port the
+  // backend listens on (including fallback setups where the primary port is down).
+  const portPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
+  const backendPort = getEnvVariable("PORT", getEnvVariable("BACKEND_PORT", `${portPrefix}02`));
+  const baseUrl = `http://localhost:${backendPort}`;
 
   // Wait a few seconds to make sure the server is fully started
   await wait(5_000);

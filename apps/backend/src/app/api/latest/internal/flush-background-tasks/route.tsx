@@ -1,5 +1,5 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { drainInFlightPromises } from "@/utils/background-tasks";
+import { flushInFlightPromises } from "@/utils/background-tasks";
 import { adminAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
 // Test/dev-only hook that awaits any in-flight background tasks spawned via
@@ -34,7 +34,10 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async () => {
-    await drainInFlightPromises();
+    // Flush (snapshot of call-time tasks), not drain (wait-until-empty): E2E
+    // test files run concurrently against one backend, so the global set never
+    // empties while other tests keep enqueueing work — see flushInFlightPromises.
+    await flushInFlightPromises();
     return {
       statusCode: 200,
       bodyType: "json",
