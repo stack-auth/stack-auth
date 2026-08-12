@@ -48,9 +48,6 @@ function createSlowSetDatabase() {
     async deleteAll() {
       throw new Error("not implemented");
     },
-    async compareAndSet() {
-      throw new Error("not implemented");
-    },
     async compareAndSetAll() {
       throw new Error("not implemented");
     },
@@ -155,9 +152,6 @@ function createReorderingSetDatabase() {
     async deleteAll() {
       throw new Error("not implemented");
     },
-    async compareAndSet() {
-      throw new Error("not implemented");
-    },
     async compareAndSetAll() {
       throw new Error("not implemented");
     },
@@ -251,9 +245,6 @@ function createDelayedSetImmediateInsertDatabase() {
       const seq = ["delayed-set", "insert"] as unknown as DatabaseSeq;
       seqToPromise.set(seq, Promise.resolve());
       return { keys, seq };
-    },
-    async compareAndSet() {
-      throw new Error("not implemented");
     },
     async compareAndSetAll() {
       throw new Error("not implemented");
@@ -411,7 +402,7 @@ describe("instant-availability low-level database", () => {
     await expect(store.setAll([{ key: buffer("late"), value: buffer("rejected") }])).rejects.toThrow("closing");
   });
 
-  it("only allows a single winner for concurrent compareAndSet on the same key", async () => {
+  it("only allows a single winner for concurrent compareAndSetAll on the same key", async () => {
     const slow = createSlowSetDatabase();
     const db = declareInstantAvailabilityLowLevelDatabase(slow.db, { dbId: "instant-test" });
     const store = db.declareKvStore("store");
@@ -419,15 +410,16 @@ describe("instant-availability low-level database", () => {
     // Seed the key so both racers observe the same starting value from the in-memory cache.
     await store.setAll([{ key: buffer("key"), value: buffer("start") }]);
 
-    // Launch both compare-and-sets concurrently. The read+compare must be gated together with
+    // Launch both one-entry compare-and-sets concurrently. The read+compare must be gated together with
     // the write, so exactly one of them may observe "start" and win — the other must lose.
     const [first, second] = await Promise.all([
-      store.compareAndSet(buffer("key"), buffer("start"), buffer("a")),
-      store.compareAndSet(buffer("key"), buffer("start"), buffer("b")),
+      store.compareAndSetAll([{ key: buffer("key"), compare: buffer("start"), value: buffer("a") }]),
+      store.compareAndSetAll([{ key: buffer("key"), compare: buffer("start"), value: buffer("b") }]),
     ]);
 
-    const winners = [first, second].filter(result => result.wasSet);
-    const losers = [first, second].filter(result => !result.wasSet);
+    const results = [first.results[0], second.results[0]];
+    const winners = results.filter(result => result.wasSet);
+    const losers = results.filter(result => !result.wasSet);
     expect(winners).toHaveLength(1);
     expect(losers).toHaveLength(1);
     expect(losers[0].seq).toBeNull();
@@ -435,7 +427,7 @@ describe("instant-availability low-level database", () => {
     expect(slow.setCallCount()).toBe(2);
 
     // The stored value must reflect the single winner.
-    expect(text((await store.get(buffer("key"))).buffer)).toBe(first.wasSet ? "a" : "b");
+    expect(text((await store.get(buffer("key"))).buffer)).toBe(first.results[0].wasSet ? "a" : "b");
   });
 
   it("preserves instant-seq order when a prior underlying write is delayed", async () => {

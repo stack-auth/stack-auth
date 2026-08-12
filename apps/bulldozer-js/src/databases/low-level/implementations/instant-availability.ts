@@ -254,20 +254,6 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
           });
         });
       },
-      async compareAndSet(key, compare, value, compareAndSetOptions) {
-        return await traceSpanHot({ description: "bulldozer-js.low-level.instant.compareAndSet", attributes }, async () => {
-          // The read+compare must happen inside the SAME write-gate critical section as the
-          // subsequent write; otherwise two concurrent calls could both read the same value,
-          // both pass the comparison, and both write — each returning wasSet: true, defeating
-          // compare-and-set's single-winner guarantee.
-          return await withWriteGate(async () => {
-            const existing = await result.get(key);
-            if (existing.buffer === null || !arrayBuffersAreEqual(existing.buffer, compare)) return { wasSet: false, seq: null };
-            const { seq } = setAllLocked([{ key, value }], compareAndSetOptions);
-            return { wasSet: true, seq };
-          });
-        });
-      },
       async compareAndSetAll(entries, compareAndSetOptions) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.instant.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
           if (entries.length === 0) return { results: [], seq: compareAndSetOptions?.requiresSeq ?? initialSeq };

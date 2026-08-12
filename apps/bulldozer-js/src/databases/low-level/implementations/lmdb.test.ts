@@ -125,19 +125,20 @@ describe("LMDB low-level database", () => {
     }
   });
 
-  it("supports compareAndSet without advancing seq on failed comparisons", async () => {
+  it("supports compareAndSetAll without advancing seq on failed comparisons", async () => {
     const path = await tempLmdbPath();
     try {
       const db = declareLmdbLowLevelDatabase({ path, dbId: "cas" });
       const store = db.declareKvStore("store");
       const first = await store.setAll([{ key: buffer("key"), value: buffer("old") }]);
-      const failed = await store.compareAndSet(buffer("key"), buffer("wrong"), buffer("new"));
-      expect(failed).toEqual({ wasSet: false, seq: null });
+      const failed = await store.compareAndSetAll([{ key: buffer("key"), compare: buffer("wrong"), value: buffer("new") }]);
+      expect(failed.results).toEqual([{ wasSet: false, seq: null }]);
+      expect(failed.seq).toBe(db.initialSeq);
       expect(text((await store.get(buffer("key"))).buffer)).toBe("old");
 
-      const succeeded = await store.compareAndSet(buffer("key"), buffer("old"), buffer("new"), { requiresSeq: first.seq });
-      expect(succeeded.wasSet).toBe(true);
-      if (succeeded.seq) await db.waitUntilReplicated(succeeded.seq);
+      const succeeded = await store.compareAndSetAll([{ key: buffer("key"), compare: buffer("old"), value: buffer("new") }], { requiresSeq: first.seq });
+      expect(succeeded.results).toEqual([{ wasSet: true, seq: succeeded.seq }]);
+      await db.waitUntilReplicated(succeeded.seq);
       expect(text((await store.get(buffer("key"))).buffer)).toBe("new");
     } finally {
       await rm(path, { recursive: true, force: true });

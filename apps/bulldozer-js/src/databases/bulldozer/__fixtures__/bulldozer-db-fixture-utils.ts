@@ -193,14 +193,6 @@ function declareSeededLowLevelDatabase(dump: BulldozerDbDump): LowLevelDatabase 
         keys.forEach((key, index) => map.set(encodeBase64(new Uint8Array(key)), values[index].slice(0)));
         return { keys, seq: seqSentinel };
       },
-      async compareAndSet(key, compare, value) {
-        const existing = map.get(encodeBase64(new Uint8Array(key)));
-        if (existing === undefined || existing.byteLength !== compare.byteLength) return { wasSet: false, seq: null };
-        const compareBytes = new Uint8Array(compare);
-        if (!new Uint8Array(existing).every((byte, index) => byte === compareBytes[index])) return { wasSet: false, seq: null };
-        map.set(encodeBase64(new Uint8Array(key)), value.slice(0));
-        return { wasSet: true, seq: seqSentinel };
-      },
       async compareAndSetAll(entries) {
         const results = entries.map(({ key, compare }) => {
           const existing = map.get(encodeBase64(new Uint8Array(key)));

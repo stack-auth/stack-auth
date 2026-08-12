@@ -118,22 +118,6 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
           };
         });
       },
-      async compareAndSet(key: ArrayBuffer, compare: ArrayBuffer, value: ArrayBuffer, options: { requiresSeq: DatabaseSeq }) {
-        return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.compareAndSet", attributes }, async () => {
-          if (key.byteLength > 64) throw new Error("KV store key must be <= 64 bytes");
-          if (compare.byteLength > 2_000_000_000) throw new Error("KV store compare must be <= 2GB");
-          if (value.byteLength > 2_000_000_000) throw new Error("KV store value must be <= 2GB");
-          const base64Key = encodeBase64(new Uint8Array(key));
-          const existingValue = base64KeyToValue.get(base64Key);
-          if (existingValue === undefined || !arrayBuffersAreEqual(existingValue, compare)) {
-            return { wasSet: false, seq: null };
-          }
-          return {
-            wasSet: true,
-            ...await result.setAll([{ key, value }], options),
-          };
-        });
-      },
       async compareAndSetAll(entries, options) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
           for (const { key, compare, value } of entries) {

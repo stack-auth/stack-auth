@@ -504,32 +504,29 @@ export function declareLmdbLowLevelDatabase(options: {
           };
         });
       },
-      async compareAndSet(key, compare, value, casOptions) {
-        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.compareAndSet", attributes }, async () => {
-          validateKey(key);
-          validateValue("compare", compare);
-          validateValue("value", value);
-          await waitUntilAvailable(casOptions?.requiresSeq ?? initialSeq);
-          await waitUntilAllAvailable();
-          const keyBuffer = bufferFromArrayBuffer(key);
-          const existing = db.getEntry(keyBuffer);
-          if (!existing || existing.version === undefined || !arrayBuffersAreEqual(arrayBufferFromUint8Array(existing.value), compare)) {
-            return { wasSet: false, seq: null };
-          }
-          const seq = await commitIfVersion(db, keyBuffer, existing.version, async version => await putWithVersion(db, keyBuffer, bufferFromArrayBuffer(value), version));
-          return seq === null ? { wasSet: false, seq: null } : { wasSet: true, seq };
-        });
-      },
       async compareAndSetAll(entries, casOptions) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
           const keys = new Set<string>();
-          for (const { key } of entries) {
+          for (const { key, compare, value } of entries) {
+            validateKey(key);
+            validateValue("compare", compare);
+            validateValue("value", value);
             const keyBase64 = encodeBase64(new Uint8Array(key));
             const previousSize = keys.size;
             keys.add(keyBase64);
             if (keys.size === previousSize) throw new Error("compareAndSetAll entries must not contain duplicate keys");
           }
-          const results = await Promise.all(entries.map(async ({ key, compare, value }) => await result.compareAndSet(key, compare, value, casOptions)));
+          const results = await Promise.all(entries.map(async ({ key, compare, value }) => {
+            await waitUntilAvailable(casOptions?.requiresSeq ?? initialSeq);
+            await waitUntilAllAvailable();
+            const keyBuffer = bufferFromArrayBuffer(key);
+            const existing = db.getEntry(keyBuffer);
+            if (!existing || existing.version === undefined || !arrayBuffersAreEqual(arrayBufferFromUint8Array(existing.value), compare)) {
+              return { wasSet: false as const, seq: null };
+            }
+            const seq = await commitIfVersion(db, keyBuffer, existing.version, async version => await putWithVersion(db, keyBuffer, bufferFromArrayBuffer(value), version));
+            return seq === null ? { wasSet: false as const, seq: null } : { wasSet: true as const, seq };
+          }));
           const successful = results.filter(result => result.wasSet).map(result => result.seq);
           return {
             results,

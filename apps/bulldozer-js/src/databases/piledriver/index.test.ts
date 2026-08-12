@@ -56,10 +56,6 @@ function wrapWithGcReferenceCounter(
           if (id === "piledriver-gc-reference-metadata-v3") onMetadataGet();
           return await store.get(key);
         },
-        async compareAndSet(key, compare, value, options) {
-          if (id === "piledriver-gc-reference-metadata-v3") onMetadataCompareAndSet(1);
-          return await store.compareAndSet(key, compare, value, options);
-        },
         async compareAndSetAll(entries, options) {
           if (id === "piledriver-gc-reference-metadata-v3") onMetadataCompareAndSet(entries.length);
           return await store.compareAndSetAll(entries, options);

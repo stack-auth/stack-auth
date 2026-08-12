@@ -343,8 +343,12 @@ export function declarePiledriverGarbageCollector(options: {
   };
 
   const replaceMetadata = async (key: ArrayBuffer, existingBuffer: ArrayBuffer, replacement: ReferenceMetadata, requiresSeq: DatabaseSeq) => {
-    const result = await metadataStore.compareAndSet(key, existingBuffer, encodeJson(replacement), { requiresSeq });
-    return result.wasSet ? result.seq : null;
+    const result = await metadataStore.compareAndSetAll(
+      [{ key, compare: existingBuffer, value: encodeJson(replacement) }],
+      { requiresSeq },
+    );
+    const entry = result.results[0];
+    return entry.wasSet ? entry.seq : null;
   };
 
   const combineSeqsDeduped = (seqs: Iterable<DatabaseSeq>): DatabaseSeq => {
