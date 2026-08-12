@@ -43,6 +43,7 @@ export type InstantAvailabilityLowLevelDatabaseOptions = {
 };
 
 const cloneArrayBuffer = (value: ArrayBuffer) => value.slice(0);
+const cacheKeyTextDecoder = new TextDecoder("latin1");
 
 export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelDatabase, options: InstantAvailabilityLowLevelDatabaseOptions = {}): InstantAvailabilityLowLevelDatabase {
   const dbId = options.dbId ?? `instant-availability-${crypto.randomUUID()}`;
@@ -145,10 +146,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
     cacheMaps.add(cachedValues);
     const attributes = { "bulldozer.low_level.backend": "instant-availability" };
     const cacheKey = (key: ArrayBuffer) => {
-      const bytes = new Uint8Array(key);
-      const characters = new Array<string>(bytes.length);
-      for (let index = 0; index < bytes.length; index++) characters[index] = String.fromCharCode(bytes[index]);
-      return characters.join("");
+      return cacheKeyTextDecoder.decode(new Uint8Array(key));
     };
     const setCachedValue = (keyString: string, value: ArrayBuffer | null, seq: DatabaseSeq) => {
       cachedValues.set(keyString, { buffer: value, seq });

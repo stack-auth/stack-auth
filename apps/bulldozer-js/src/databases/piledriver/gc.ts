@@ -11,6 +11,7 @@ const GC_SCAN_PAGE_SIZE = 1000;
 const GC_DIAGNOSTIC_SAMPLE_LIMIT = 25;
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+const referenceMetadataTextDecoder = new TextDecoder("utf-8", { fatal: true });
 const gcStateKey = textEncoder.encode("state").buffer;
 
 export type ReferenceMetadata = {
@@ -131,10 +132,10 @@ function parseJson(buffer: ArrayBuffer): unknown {
 }
 
 const referenceMetadataMagic = new Uint8Array([0x50, 0x44, 0x52, 0x4d]);
-const referenceMetadataBinaryVersion = 1;
+const referenceMetadataBinaryVersion = 2;
 const referenceMetadataFlagsLastDereferencedAt = 1;
 const referenceMetadataFlagsDeletion = 2;
-const referenceMetadataHeaderSize = referenceMetadataMagic.length + 1 + 1 + 4;
+const referenceMetadataHeaderSize = referenceMetadataMagic.length + 1 + 4 + 1 + 4;
 
 function parseNonNegativeInteger(value: unknown, name: string) {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
@@ -144,8 +145,10 @@ function parseNonNegativeInteger(value: unknown, name: string) {
 }
 
 export function encodePiledriverGcReferenceMetadata(metadata: ReferenceMetadata): ArrayBuffer {
+  const schemaVersion = parseNonNegativeInteger(metadata.schemaVersion, "schemaVersion");
   const referenceCount = parseNonNegativeInteger(metadata.referenceCount, "referenceCount");
   const createdAtMillis = parseNonNegativeInteger(metadata.createdAtMillis, "createdAtMillis");
+  if (metadata.generation.length === 0) throw new Error("Piledriver GC generation must not be empty");
   const generationBytes = textEncoder.encode(metadata.generation);
   const lastDereferencedAtMillis = metadata.lastDereferencedAtMillis;
   const deletion = metadata.deletion;
@@ -169,8 +172,9 @@ export function encodePiledriverGcReferenceMetadata(metadata: ReferenceMetadata)
   bytes.set(referenceMetadataMagic);
   const view = new DataView(bytes.buffer);
   view.setUint8(referenceMetadataMagic.length, referenceMetadataBinaryVersion);
-  view.setUint8(referenceMetadataMagic.length + 1, flags);
-  view.setUint32(referenceMetadataMagic.length + 2, generationBytes.byteLength);
+  view.setUint32(referenceMetadataMagic.length + 1, schemaVersion);
+  view.setUint8(referenceMetadataMagic.length + 5, flags);
+  view.setUint32(referenceMetadataMagic.length + 6, generationBytes.byteLength);
   let offset = referenceMetadataHeaderSize;
   bytes.set(generationBytes, offset);
   offset += generationBytes.byteLength;
@@ -207,17 +211,19 @@ export function parsePiledriverGcReferenceMetadata(buffer: ArrayBuffer): Referen
     if (bytes.byteLength < referenceMetadataHeaderSize) throw new Error("Invalid Piledriver GC reference metadata");
     const view = new DataView(buffer);
     const binaryVersion = view.getUint8(referenceMetadataMagic.length);
-    const flags = view.getUint8(referenceMetadataMagic.length + 1);
+    const schemaVersion = view.getUint32(referenceMetadataMagic.length + 1);
+    const flags = view.getUint8(referenceMetadataMagic.length + 5);
     if (
       binaryVersion !== referenceMetadataBinaryVersion
+      || schemaVersion !== GC_SCHEMA_VERSION
       || (flags & ~(referenceMetadataFlagsLastDereferencedAt | referenceMetadataFlagsDeletion)) !== 0
     ) {
       throw new Error("Unsupported Piledriver GC reference metadata");
     }
-    const generationByteLength = view.getUint32(referenceMetadataMagic.length + 2);
+    const generationByteLength = view.getUint32(referenceMetadataMagic.length + 6);
     let offset = referenceMetadataHeaderSize;
     if (offset + generationByteLength + 16 > bytes.byteLength) throw new Error("Invalid Piledriver GC reference metadata");
-    const generation = textDecoder.decode(bytes.subarray(offset, offset + generationByteLength));
+    const generation = referenceMetadataTextDecoder.decode(bytes.subarray(offset, offset + generationByteLength));
     offset += generationByteLength;
     const referenceCount = decodeReferenceMetadataInteger(view, offset, "referenceCount");
     offset += 8;
@@ -237,11 +243,11 @@ export function parsePiledriverGcReferenceMetadata(buffer: ArrayBuffer): Referen
       if (deletion.nextReferenceIndex > deletion.totalReferences) throw new Error("Invalid Piledriver GC deletion progress");
       offset += 16;
     }
-    if (offset !== bytes.byteLength || generation.length === 0 || view.getUint8(referenceMetadataMagic.length) !== referenceMetadataBinaryVersion) {
+    if (offset !== bytes.byteLength || generation.length === 0) {
       throw new Error("Invalid Piledriver GC reference metadata");
     }
     return {
-      schemaVersion: GC_SCHEMA_VERSION,
+      schemaVersion,
       generation,
       referenceCount,
       createdAtMillis,

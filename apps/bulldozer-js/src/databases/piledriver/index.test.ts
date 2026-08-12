@@ -422,6 +422,10 @@ describe("PiledriverDatabase", () => {
     const metadata = parsePiledriverGcReferenceMetadata(metadataEntry.value);
     const binaryValue = encodePiledriverGcReferenceMetadata(metadata);
     expect([...new Uint8Array(binaryValue).slice(0, 4)]).toEqual([0x50, 0x44, 0x52, 0x4d]);
+    expect(() => encodePiledriverGcReferenceMetadata({ ...metadata, generation: "" })).toThrow("generation must not be empty");
+    const invalidGenerationValue = new Uint8Array(binaryValue);
+    invalidGenerationValue[14] = 0xff;
+    expect(() => parsePiledriverGcReferenceMetadata(invalidGenerationValue.buffer)).toThrow();
     const legacyValue = new TextEncoder().encode(JSON.stringify(metadata)).buffer;
     expect(new Uint8Array(legacyValue)[0]).toBe("{".charCodeAt(0));
     await metadataStore.setAll([{ key: metadataEntry.key, value: legacyValue }]);
