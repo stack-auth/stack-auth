@@ -193,6 +193,8 @@ export function declareLmdbLowLevelDatabase(options: {
   const assertReadAllowed = () => {
     if (isClosing) throw new Error("LMDB database is closing");
   };
+  // A read that rejects after close begins removes itself from inFlightReads in its own `finally`, which can run
+  // before the drain snapshots the set; the retained slot above keeps that error observable so close still surfaces it.
   const drainInFlightReads = async () => {
     const results = await Promise.allSettled(inFlightReads);
     const rejected = results.find(result => result.status === "rejected");
