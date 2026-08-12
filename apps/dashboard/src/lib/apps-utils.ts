@@ -1,7 +1,8 @@
 "use client";
 
 import { ALL_APPS_FRONTEND, hasNavigationItems } from "@/lib/apps-frontend";
-import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { ALL_APPS, expandAppSoftRequirements, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 
 type InstalledAppConfig = {
   enabled?: boolean,
@@ -76,4 +77,17 @@ export function getEnabledNavigableAppIds(installedApps: InstalledAppsMap): AppI
 export function getUninstalledAppIds(installedApps: AppId[]): AppId[] {
   const installedSet = new Set(installedApps);
   return getAllAvailableAppIds().filter(appId => !installedSet.has(appId));
+}
+
+/**
+ * Enables an app together with its recursively recommended apps. These are
+ * deliberately one-way defaults: disabling any app remains an independent
+ * action because soft requirements are guidance, not config constraints.
+ */
+export function getAppEnableConfigUpdate(appId: AppId): EnvironmentConfigOverrideOverride {
+  const update: EnvironmentConfigOverrideOverride = {};
+  for (const enabledAppId of expandAppSoftRequirements([appId])) {
+    update[`apps.installed.${enabledAppId}.enabled`] = true;
+  }
+  return update;
 }

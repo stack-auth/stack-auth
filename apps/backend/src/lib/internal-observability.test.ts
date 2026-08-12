@@ -1,7 +1,6 @@
 import { context } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import { isTracingSuppressed } from "@opentelemetry/core";
-import { NextRequest } from "next/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { isTelemetryIngestionPath, runWithInternalRequestObservability } from "./internal-observability";
 
@@ -43,7 +42,7 @@ describe("internal backend observability", () => {
   });
 
   it("suppresses Prisma/OTel instrumentation while handling telemetry ingestion", async () => {
-    const request = new NextRequest("http://localhost:8102/api/v1/analytics/events/batch", { method: "POST" });
+    const request = new Request("http://localhost:8102/api/v1/analytics/events/batch", { method: "POST" });
     let suppressed = false;
     const response = await runWithInternalRequestObservability(request, "request-1", async () => {
       suppressed = isTracingSuppressed(context.active());
@@ -57,7 +56,7 @@ describe("internal backend observability", () => {
   });
 
   it("joins an incoming W3C trace without attributing the customer session to the internal project", async () => {
-    const request = new NextRequest("http://localhost:8102/api/latest/users?secret=never-record-this", {
+    const request = new Request("http://localhost:8102/api/latest/users?secret=never-record-this", {
       method: "GET",
       headers: {
         traceparent: "00-0123456789abcdef0123456789abcdef-fedcba9876543210-01",

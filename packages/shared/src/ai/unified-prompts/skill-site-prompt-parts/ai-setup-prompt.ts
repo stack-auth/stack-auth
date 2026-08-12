@@ -811,6 +811,10 @@ export const appSetupPrompts = deindent`
       This is a standalone app. App ID: ${appId}
     `}
 
+    ${ALL_APPS[appId].softRequirements.length === 0
+      ? "Soft requirements: none."
+      : `Soft requirements (strongly recommended, but not enforced): ${ALL_APPS[appId].softRequirements.join(", ")}. Enable these apps alongside this one unless the user explicitly opts out.`}
+
     ${prompt}
   `).join("\n")}
 `;

@@ -100,15 +100,18 @@ function sandboxCreds(): SandboxCreds {
   };
 }
 
-async function getConfigAgentSandbox(sandboxId: string): Promise<Sandbox> {
+async function getConfigAgentSandbox(sandboxId: string, signal: AbortSignal): Promise<Sandbox> {
   const creds = sandboxCreds();
-  return await Sandbox.get({ sandboxId, token: creds.token, teamId: creds.teamId, projectId: creds.projectId });
+  return await Sandbox.get({ sandboxId, token: creds.token, teamId: creds.teamId, projectId: creds.projectId, signal });
 }
 
 async function stopSandboxWithContext(sandboxId: string, context: string): Promise<void> {
+  // One request-independent budget covers lookup plus stop. It is shorter than
+  // the standalone background-task drain, so shutdown cannot outlive PID 1.
+  const cleanupSignal = AbortSignal.timeout(5000);
   try {
-    const sandbox = await getConfigAgentSandbox(sandboxId);
-    await sandbox.stop();
+    const sandbox = await getConfigAgentSandbox(sandboxId, cleanupSignal);
+    await sandbox.stop({ signal: cleanupSignal });
   } catch (error) {
     captureError(context, error);
   }
@@ -324,7 +327,7 @@ async function runAgent(sandbox: Sandbox, prompt: string, onProgress?: AgentProg
   // is read from status.json afterwards (the exit code isn't authoritative here).
   const command = await sandbox.runCommand({ cmd: "node", args: [`${TOOLS_DIR}/runner.mjs`], detached: true });
   if (onProgress) {
-    await pollAgentProgress(sandbox, command, onProgress).catch((e) => captureError("config-repo-agent-progress", e));
+    await pollAgentProgress(sandbox, command, onProgress).catch((error) => captureError("config-repo-agent-progress", error));
   } else {
     await command.wait().catch(() => {});
   }
@@ -373,9 +376,14 @@ async function bootAgentSandbox(creds: SandboxCreds): Promise<Sandbox> {
       projectId: creds.projectId,
       token: creds.token,
     });
-    // Snapshot boots can ship an empty CA bundle; rebuild it before any HTTPS git.
-    await ensureTls(sandbox);
-    return sandbox;
+    try {
+      // Snapshot boots can ship an empty CA bundle; rebuild it before any HTTPS git.
+      await ensureTls(sandbox);
+      return sandbox;
+    } catch (error) {
+      await stopSandboxAfterFailedBoot(sandbox);
+      throw error;
+    }
   }
   const sandbox = await Sandbox.create({
     resources: { vcpus: 4 },
@@ -385,8 +393,21 @@ async function bootAgentSandbox(creds: SandboxCreds): Promise<Sandbox> {
     projectId: creds.projectId,
     token: creds.token,
   });
-  await installAgentSdk(sandbox);
-  return sandbox;
+  try {
+    await installAgentSdk(sandbox);
+    return sandbox;
+  } catch (error) {
+    await stopSandboxAfterFailedBoot(sandbox);
+    throw error;
+  }
+}
+
+async function stopSandboxAfterFailedBoot(sandbox: Sandbox): Promise<void> {
+  try {
+    await sandbox.stop({ signal: AbortSignal.timeout(5000) });
+  } catch (error) {
+    captureError("config-repo-agent-failed-boot-stop", error);
+  }
 }
 
 // ---------------------------------------------------------------------------

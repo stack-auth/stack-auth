@@ -1,4 +1,5 @@
 import { teamMembershipsCrudHandlers } from "@/app/api/latest/team-memberships/crud";
+import { logUserRestrictedInBackground } from "@/lib/compliance-events";
 import { sendEmailFromDefaultTemplate } from "@/lib/emails";
 import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
 import { arePlanLimitsEnforced, UNLIMITED_ITEM_CAPACITY } from "@/lib/plan-entitlements";
@@ -73,6 +74,10 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
   async handler(tenancy, {}, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
     if (user.restricted_reason) {
+      logUserRestrictedInBackground(tenancy, {
+        userId: user.id,
+        restrictedReason: user.restricted_reason.type,
+      });
       throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(user.restricted_reason);
     }
     const prisma = await getPrismaClientForTenancy(tenancy);
@@ -139,6 +144,10 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
   async details(tenancy, {}, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
     if (user.restricted_reason) {
+      logUserRestrictedInBackground(tenancy, {
+        userId: user.id,
+        restrictedReason: user.restricted_reason.type,
+      });
       throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(user.restricted_reason);
     }
 

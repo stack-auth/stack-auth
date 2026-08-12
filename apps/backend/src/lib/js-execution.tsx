@@ -1,4 +1,5 @@
 import { traceSpan } from '@/utils/telemetry';
+import { getOptionalRequestAbortSignal } from '@/lib/runtime/request-context';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
 import { getEnvVariable, getNodeEnvironment } from '@hexclave/shared/dist/utils/env';
 import { HexclaveAssertionError, captureError } from '@hexclave/shared/dist/utils/errors';
@@ -7,6 +8,8 @@ import { Sandbox } from '@vercel/sandbox';
 import { Freestyle as FreestyleClient } from 'freestyle';
 
 export type ExecuteJavascriptOptions = {
+  /** Cancels provider setup, command execution, and fallback attempts. */
+  signal?: AbortSignal,
   nodeModules?: Record<string, string>,
   /**
    * Maximum time the caller allows the execution provider to remain alive.
@@ -60,10 +63,11 @@ function createFreestyleEngine(): JsEngine {
         baseUrl,
       });
 
-      const response = await freestyle.serverless.runs.create({
+      const response = await awaitWithAbortSignal(freestyle.serverless.runs.create({
         code,
         nodeModules: options.nodeModules ?? {},
-      });
+        timeout: options.executionTimeoutMs,
+      }), options.signal);
 
       if (response.result === undefined) {
         throw new HexclaveAssertionError("Freestyle execution returned undefined result", { response, innerCode: options.logSafeCode ?? code, innerOptions: options });
@@ -89,6 +93,7 @@ function createVercelSandboxEngine(): JsEngine {
         teamId: teamId || undefined,
         projectId: projectId || undefined,
         token: token || undefined,
+        signal: options.signal,
       });
 
       try {
@@ -96,7 +101,9 @@ function createVercelSandboxEngine(): JsEngine {
           const packages = Object.entries(options.nodeModules)
             .map(([name, version]) => `${name}@${version}`);
 
-          const installResult = await sandbox.runCommand('npm', ['install', '--no-save', ...packages]);
+          const installResult = await sandbox.runCommand('npm', ['install', '--no-save', ...packages], {
+            signal: options.signal,
+          });
 
           if (installResult.exitCode !== 0) {
             throw new HexclaveAssertionError("Failed to install packages in Vercel Sandbox", { exitCode: installResult.exitCode, innerCode: options.logSafeCode ?? code, innerOptions: options });
@@ -115,15 +122,17 @@ function createVercelSandboxEngine(): JsEngine {
         await sandbox.writeFiles([
           { path: '/vercel/sandbox/code.mjs', content: Buffer.from(code, 'utf-8') },
           { path: '/vercel/sandbox/runner.mjs', content: Buffer.from(runnerScript, 'utf-8') },
-        ]);
+        ], { signal: options.signal });
 
-        const runResult = await sandbox.runCommand('node', ['/vercel/sandbox/runner.mjs']);
+        const runResult = await sandbox.runCommand('node', ['/vercel/sandbox/runner.mjs'], {
+          signal: options.signal,
+        });
 
         if (runResult.exitCode !== 0) {
           throw new HexclaveAssertionError("Vercel Sandbox runner exited with non-zero code", { innerCode: options.logSafeCode ?? code, innerOptions: options, exitCode: runResult.exitCode });
         }
 
-        const resultBuffer = await sandbox.readFileToBuffer({ path: resultPath });
+        const resultBuffer = await sandbox.readFileToBuffer({ path: resultPath }, { signal: options.signal });
         if (resultBuffer === null) {
           throw new HexclaveAssertionError("Result file not found in Vercel Sandbox", { resultPath, innerCode: options.logSafeCode ?? code, innerOptions: options });
         }
@@ -135,10 +144,33 @@ function createVercelSandboxEngine(): JsEngine {
           throw new HexclaveAssertionError("Failed to parse result from Vercel Sandbox", { resultJson, cause: e, innerCode: options.logSafeCode ?? code, innerOptions: options });
         }
       } finally {
-        await sandbox.stop();
+        const cleanupPromise = stopVercelSandboxAfterExecution(sandbox);
+        if (options.signal?.aborted === true) {
+          // Once the caller has timed out, cleanup must not add another five
+          // seconds to its latency. Keep the teardown owned by the invocation
+          // so Vercel or standalone shutdown still gives it time to finish.
+          runAsynchronouslyAndWaitUntil(cleanupPromise);
+        } else {
+          await cleanupPromise;
+        }
       }
     },
   };
+}
+
+async function stopVercelSandboxAfterExecution(sandbox: Sandbox): Promise<void> {
+  try {
+    // The operation signal may already be aborted, but stopping the
+    // already-created sandbox is exactly the cleanup that still needs to run.
+    await sandbox.stop({ signal: AbortSignal.timeout(5000) });
+  } catch (error) {
+    // Teardown failure is observable, but must not replace the execution
+    // result or the original provider error that led us into `finally`.
+    captureError("js-execution-vercel-sandbox-cleanup-failed", new HexclaveAssertionError(
+      "Failed to stop Vercel Sandbox after JavaScript execution",
+      { cause: error },
+    ));
+  }
 }
 
 const engineMap = new Map<string, JsEngine>([
@@ -152,29 +184,47 @@ const engineMap = new Map<string, JsEngine>([
  * the code throws an error.
  */
 export async function executeJavascript(code: string, options: ExecuteJavascriptOptions = {}): Promise<ExecuteResult> {
+  const resolvedOptions: ExecuteJavascriptOptions = {
+    ...options,
+    signal: options.signal ?? getOptionalRequestAbortSignal(),
+  };
   return await traceSpan({
     description: 'js-execution.executeJavascript',
     attributes: {
       'js-execution.code.length': code.length.toString(),
-      'js-execution.nodeModules.count': options.nodeModules ? Object.keys(options.nodeModules).length.toString() : '0',
+      'js-execution.nodeModules.count': resolvedOptions.nodeModules ? Object.keys(resolvedOptions.nodeModules).length.toString() : '0',
     }
   }, async () => {
+    resolvedOptions.signal?.throwIfAborted();
 
     if (getEnvVariable("STACK_VERCEL_SANDBOX_TOKEN") != "vercel_sandbox_disabled_for_local_development") {
-      const shouldSanityTest = !options.disableSanityTest && Math.random() < 0.05;
+      const shouldSanityTest = !resolvedOptions.disableSanityTest && Math.random() < 0.05;
       if (shouldSanityTest) {
-        runAsynchronouslyAndWaitUntil(runSanityTest(code, options));
+        runAsynchronouslyAndWaitUntil(runSanityTestWithoutExpectedCancellation(code, resolvedOptions));
       }
 
-      return await runWithFallback(code, options);
+      return await runWithFallback(code, resolvedOptions);
     } else {
       if (getNodeEnvironment().includes("prod")) {
         throw new HexclaveAssertionError("STACK_VERCEL_SANDBOX_TOKEN is set to the disabled sentinel value in production. Please configure a real Vercel Sandbox token.");
       }
 
-      return await runWithoutFallback(code, options);
+      return await runWithoutFallback(code, resolvedOptions);
     }
   });
+}
+
+async function runSanityTestWithoutExpectedCancellation(code: string, options: ExecuteJavascriptOptions): Promise<void> {
+  try {
+    await runSanityTest(code, options);
+  } catch (error) {
+    // Client disconnects are expected cancellation, not failed canary executions.
+    // Only suppress the exact reason thrown by this signal; unrelated failures
+    // still reach runAsynchronouslyAndWaitUntil's error reporting.
+    if (options.signal?.aborted !== true || error !== options.signal.reason) {
+      throw error;
+    }
+  }
 }
 
 /**
@@ -201,10 +251,12 @@ async function runSanityTest(code: string, options: ExecuteJavascriptOptions) {
   const failures: Array<{ engine: string, error: unknown }> = [];
 
   for (const [name, engine] of engineMap) {
+    options.signal?.throwIfAborted();
     try {
       const result = await engine.execute(code, options);
       results.push({ engine: name, result });
     } catch (error) {
+      options.signal?.throwIfAborted();
       failures.push({ engine: name, error });
     }
   }
@@ -237,10 +289,12 @@ async function runWithFallback(code: string, options: ExecuteJavascriptOptions):
   const maxAttempts = 2;
   const retryResult = await Result.retry(
       async () => {
+        options.signal?.throwIfAborted();
         try {
           const result = await freestyleEngine.execute(code, options);
           return Result.ok(result);
         } catch (error) {
+          options.signal?.throwIfAborted();
           return Result.error(error);
         }
       },
@@ -252,6 +306,8 @@ async function runWithFallback(code: string, options: ExecuteJavascriptOptions):
     return retryResult.data;
   }
 
+  options.signal?.throwIfAborted();
+
   captureError(`js-execution-freestyle-failed`, new HexclaveAssertionError(
     `JS execution freestyle engine failed, falling back to vercel sandbox engine`,
     { cause: retryResult.error, innerCode: options.logSafeCode ?? code, innerOptions: options }
@@ -261,6 +317,7 @@ async function runWithFallback(code: string, options: ExecuteJavascriptOptions):
     const result = await vercelSandboxEngine.execute(code, options);
     return result;
   } catch (error){
+      options.signal?.throwIfAborted();
       captureError(`js-execution-vercel-sandbox-failed`, new HexclaveAssertionError(
         `JS execution vercel sandbox engine failed after fallback from freestyle engine`,
         { cause: error, innerCode: options.logSafeCode ?? code, innerOptions: options }
@@ -275,6 +332,28 @@ async function runWithoutFallback(code: string, options: ExecuteJavascriptOption
     const result = await freestyleEngine.execute(code, options);
     return result;
   } catch (error) {
+    options.signal?.throwIfAborted();
     throw new HexclaveAssertionError("Freestyle rendering service unavailable when running without fallback", { cause: error, innerCode: options.logSafeCode ?? code, innerOptions: options });
   }
+}
+
+async function awaitWithAbortSignal<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (signal == null) {
+    return await promise;
+  }
+  signal.throwIfAborted();
+  return await new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
 }

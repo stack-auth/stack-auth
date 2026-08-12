@@ -8,7 +8,7 @@ it("allows a client team member with permission to remove another member", { tim
   await clientApp.signUpWithCredential({
     email: "membership-owner@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({
     email: "membership-owner@test.com",
@@ -20,7 +20,7 @@ it("allows a client team member with permission to remove another member", { tim
   await clientApp.signUpWithCredential({
     email: "membership-member@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   const member = await clientApp.getUser({ or: "throw" });
   const serverTeam = await serverApp.getTeam(team.id);
@@ -47,7 +47,7 @@ it("rejects client team member removal without the remove-members permission", {
   await clientApp.signUpWithCredential({
     email: "membership-owner-no-permission@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({
     email: "membership-owner-no-permission@test.com",
@@ -59,7 +59,7 @@ it("rejects client team member removal without the remove-members permission", {
   await clientApp.signUpWithCredential({
     email: "membership-member-no-permission@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   const member = await clientApp.getUser({ or: "throw" });
   const serverTeam = await serverApp.getTeam(team.id);
@@ -79,7 +79,7 @@ it("refreshes the current user after removing themselves from a team", { timeout
   await clientApp.signUpWithCredential({
     email: "membership-leave@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   const user = await clientApp.getUser({ or: "throw" });
   const team = await user.createTeam({ displayName: "Leave Team" });
@@ -103,7 +103,7 @@ it("refreshes the current user after leaving a team", { timeout: 60_000 }, async
   await clientApp.signUpWithCredential({
     email: "membership-leave-team@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   const user = await clientApp.getUser({ or: "throw" });
   const team = await user.createTeam({ displayName: "Leave Team" });

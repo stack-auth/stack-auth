@@ -1,6 +1,5 @@
 import { formatTraceparent, isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
 import { encodeSpanContextHeader, SPAN_CONTEXT_HEADER } from "@hexclave/shared/dist/utils/span-context-codec";
-import { NextRequest } from "next/server";
 import { describe, expect, it, vi } from "vitest";
 import { resolveCustomerRequestObservability, runWithCustomerRequestObservability } from "./customer-request-observability";
 import type { SpanInsertRow } from "./spans";
@@ -9,13 +8,13 @@ function request(options: {
   path?: string,
   traceparent?: string,
   spanContextProjectId?: string,
-} = {}): NextRequest {
+} = {}): Request {
   const headers = new Headers();
   if (options.traceparent !== undefined) headers.set("traceparent", options.traceparent);
   if (options.spanContextProjectId !== undefined) {
     headers.set(SPAN_CONTEXT_HEADER, encodeSpanContextHeader({ projectId: options.spanContextProjectId }));
   }
-  return new NextRequest(`http://localhost${options.path ?? "/api/v1/auth/oauth/token"}`, {
+  return new Request(`http://localhost${options.path ?? "/api/v1/auth/oauth/token"}`, {
     method: "POST",
     headers,
   });

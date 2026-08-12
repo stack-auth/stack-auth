@@ -8,8 +8,8 @@
 **The user infrastructure platform.**
 
 Hexclave handles everything around your users: authentication, teams,
-payments, emails, analytics, and much more. Start in minutes on the hosted
-cloud. Your data is always yours to export and self-host.
+payments, emails, analytics, and much more. Get started with our AI
+prompt below.
 
 [Website](https://hexclave.com) · [Docs](https://docs.hexclave.com) · [Dashboard](https://app.hexclave.com) · [Discord](https://discord.hexclave.com)
 
