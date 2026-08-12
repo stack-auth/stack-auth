@@ -180,14 +180,26 @@ export function declareLmdbLowLevelDatabase(options: {
   let isClosing = false;
   let closePromise: Promise<void> | null = null;
   const inFlightReads = new Set<Promise<unknown>>();
+  let readErrorDuringClose: unknown | undefined;
   const trackRead = <T>(read: Promise<T>) => {
     let trackedRead: Promise<T>;
-    trackedRead = read.finally(() => inFlightReads.delete(trackedRead));
+    trackedRead = read.catch(error => {
+      if (isClosing && readErrorDuringClose === undefined) readErrorDuringClose = error;
+      throw error;
+    }).finally(() => inFlightReads.delete(trackedRead));
     inFlightReads.add(trackedRead);
     return trackedRead;
   };
   const assertReadAllowed = () => {
     if (isClosing) throw new Error("LMDB database is closing");
+  };
+  const drainInFlightReads = async () => {
+    const results = await Promise.allSettled(inFlightReads);
+    const rejected = results.find(result => result.status === "rejected");
+    const readError = readErrorDuringClose;
+    readErrorDuringClose = undefined;
+    if (rejected?.status === "rejected") throw rejected.reason;
+    if (readError !== undefined) throw readError;
   };
   let activityStats = emptyActivityStats();
   let activityWindowStartedAt = performance.now();
@@ -609,7 +621,7 @@ export function declareLmdbLowLevelDatabase(options: {
               // lmdb-js tracks async reads per child handle, but root.close() only drains the root handle's counter.
               // Drain every read issued by this environment before closing the root so a child prefetch worker
               // cannot observe the native environment after lmdb-js has nulled it.
-              await Promise.all(inFlightReads);
+              await drainInFlightReads();
             } finally {
               await root.close();
             }
