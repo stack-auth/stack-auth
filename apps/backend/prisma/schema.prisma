@@ -183,6 +183,7 @@ model Tenancy {
   workflowRuns WorkflowRun[]
   workflowEvents WorkflowEvent[]
   workflowScheduleCursors WorkflowScheduleCursor[]
+  dataWarehouse       DataWarehouse?
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
@@ -1776,6 +1777,53 @@ model DeploymentSourceUpload {
 
   @@id([tenancyId, id])
   @@index([expiresAt])
+}
+
+// ─── Data Warehouse ─────────────────────────────────────────────────────────
+//
+// A per-project ClickHouse database (named after the project id) plus a
+// dedicated ClickHouse user with read/write access to it. Provisioning is
+// explicit — installing the `data-warehouse-alpha` app does nothing on its
+// own; the dashboard's Provision button runs the DDL inline.
+//
+// The password is stored KMS-encrypted because the backend connects as this
+// same user when running `/analytics/query` for a project that has a
+// warehouse (so their queries can join analytics data against their own
+// tables). It is only ever *displayed* at provision and rotation time.
+//
+// See apps/backend/src/lib/data-warehouse.tsx.
+
+enum DataWarehouseStatus {
+  PROVISIONING
+  READY
+  FAILED
+}
+
+model DataWarehouse {
+  // One warehouse per tenancy. The ClickHouse database is named after the
+  // project id (branches are not modelled yet — see the app's alpha caveats),
+  // so a second branch would collide; the primary key enforces one row per
+  // tenancy and provisioning refuses to run when another tenancy in the same
+  // project already owns the database.
+  tenancyId String  @id @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ClickHouse object names, stored rather than derived so that a future
+  // change to the naming scheme cannot orphan already-provisioned objects.
+  databaseName String
+  userName     String @unique
+
+  status DataWarehouseStatus @default(PROVISIONING)
+  // Populated when status is FAILED, so the dashboard can explain what to retry.
+  error String?
+
+  // { edkBase64, ciphertextBase64 } from encryptWithKms(), same envelope shape
+  // as DataVaultEntry.encrypted.
+  encryptedPassword Json?
+  passwordUpdatedAt DateTime?
 }
 
 // ─── Workflows ──────────────────────────────────────────────────────────────

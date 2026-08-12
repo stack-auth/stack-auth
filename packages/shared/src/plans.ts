@@ -18,6 +18,9 @@ export const ITEM_IDS = {
   analyticsEvents: "analytics_events",
   sessionReplays: "session_replays",
   onboardingCall: "onboarding_call",
+  // Entitlement flag rather than a limit: quantity >= 1 means the project may
+  // provision a Data Warehouse. Seeded on team and growth, absent on free.
+  dataWarehouse: "data_warehouse",
 } as const;
 
 export type ItemId = typeof ITEM_IDS[keyof typeof ITEM_IDS];

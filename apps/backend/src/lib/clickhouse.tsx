@@ -7,6 +7,23 @@ import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 // dependency on the @clickhouse/client package.
 export type { ClickHouseClient } from "@clickhouse/client";
 
+/**
+ * The `default.*` views that customers can read through `/analytics/query`.
+ * Row policies scope every one of them to `SQL_project_id`/`SQL_branch_id`.
+ */
+export const ANALYTICS_TABLES = [
+  "events", "users", "contact_channels", "teams", "team_member_profiles",
+  "team_permissions", "team_invitations", "email_outboxes",
+  "project_permissions", "notification_preferences", "refresh_tokens", "connected_accounts",
+] as const;
+
+/**
+ * ClickHouse role carrying the row policies and SELECT grants for
+ * `ANALYTICS_TABLES`. Held by the shared `limited_user` and by every
+ * per-project Data Warehouse user, so both read analytics the same way.
+ */
+export const ANALYTICS_READER_ROLE = "analytics_reader";
+
 function getAdminAuth() {
   return {
     username: getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER", "stackframe"),
@@ -25,6 +42,27 @@ export function createClickhouseClient(
       username: "limited_user",
       password: getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD"),
     },
+    database,
+    request_timeout: 10 * 60 * 1000, // 10 minutes
+    clickhouse_settings,
+  });
+}
+
+/**
+ * Client for a project's own Data Warehouse user (see lib/data-warehouse.tsx).
+ * Unlike the admin and `limited_user` clients, the credentials are per project
+ * and come from the caller — they are stored KMS-encrypted, not in the
+ * environment.
+ */
+export function createClickhouseWarehouseClient(
+  auth: { username: string, password: string },
+  database?: string,
+  clickhouse_settings?: ClickHouseSettings,
+) {
+  return createClient({
+    url: getEnvVariable("STACK_CLICKHOUSE_URL"),
+    username: auth.username,
+    password: auth.password,
     database,
     request_timeout: 10 * 60 * 1000, // 10 minutes
     clickhouse_settings,

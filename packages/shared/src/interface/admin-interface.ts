@@ -46,6 +46,31 @@ export type ChatContent = Array<
   | { type: "tool-call", toolName: string, toolCallId: string, args: any, argsText: string, result: any }
 >;
 
+/** The details a customer needs to point a ClickHouse client at their warehouse. */
+export type DataWarehouseConnectionJson = {
+  host: string,
+  https_port: number,
+  native_port: number,
+};
+
+export type DataWarehouseJson = {
+  status: "not_provisioned" | "provisioning" | "ready" | "failed",
+  /** Predictable even before provisioning: the database is named after the project id. */
+  database_name: string | null,
+  username: string | null,
+  error: string | null,
+  password_updated_at_millis: number | null,
+  connection: DataWarehouseConnectionJson,
+};
+
+/** Only ever returned by provisioning and rotation — the password is not stored in a readable form for any other path. */
+export type DataWarehouseCredentialsJson = {
+  database_name: string,
+  username: string,
+  password: string,
+  connection: DataWarehouseConnectionJson,
+};
+
 export type AdminDeploymentRunJson = {
   id: string,
   service_id: string,
@@ -258,6 +283,29 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     const response = await this.sendAdminRequest(`/internal/email-templates`, {}, null);
     const result = await response.json() as { templates: { id: string, display_name: string, theme_id?: string, tsx_source: string }[] };
     return result.templates;
+  }
+
+  // ─── Data Warehouse ─────────────────────────────────────────────────────
+
+  async getDataWarehouse(): Promise<DataWarehouseJson> {
+    const response = await this.sendAdminRequest(`/data-warehouse`, {}, null);
+    return await response.json();
+  }
+
+  /**
+   * Returns the password, which is shown once and never retrievable again.
+   */
+  async provisionDataWarehouse(): Promise<DataWarehouseCredentialsJson> {
+    const response = await this.sendAdminRequest(`/data-warehouse/provision`, { method: "POST" }, null);
+    return await response.json();
+  }
+
+  /**
+   * Returns the new password, which — like provisioning — is shown once.
+   */
+  async rotateDataWarehousePassword(): Promise<DataWarehouseCredentialsJson> {
+    const response = await this.sendAdminRequest(`/data-warehouse/rotate-password`, { method: "POST" }, null);
+    return await response.json();
   }
 
   // ─── Workflows (internal-project gated; see the Workflows v1 spec) ───────

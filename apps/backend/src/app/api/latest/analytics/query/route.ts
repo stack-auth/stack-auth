@@ -1,11 +1,13 @@
 import { getHexclaveServerApp } from "@/hexclave";
-import { getClickhouseExternalClient } from "@/lib/clickhouse";
+import { createClickhouseWarehouseClient, getClickhouseExternalClient } from "@/lib/clickhouse";
 import { getSafeClickhouseErrorMessage } from "@/lib/clickhouse-errors";
+import { getDataWarehouseQueryAuth } from "@/lib/data-warehouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS, PLAN_LIMITS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, jsonSchema, serverOrHigherAuthTypeSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import type { Json } from "@hexclave/shared/dist/utils/json";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { randomUUID } from "crypto";
@@ -68,15 +70,28 @@ export const POST = createSmartRouteHandler({
       effectiveTimeoutMs = Math.min(body.timeout_ms, maxAllowedMs);
     }
 
-    const client = getClickhouseExternalClient();
+    // Projects with a Data Warehouse connect as their own ClickHouse user
+    // rather than the shared `limited_user`, so that their queries can also
+    // reach their own database (and only their own). That user carries the
+    // `analytics_reader` role, so analytics access is identical either way.
+    //
+    // Its `SQL_project_id`/`SQL_branch_id` are pinned as CONST user-level
+    // settings, so we must not send them per query — ClickHouse rejects any
+    // attempt to change a CONST setting, even to the same value.
+    const warehouseAuth = await getDataWarehouseQueryAuth(auth.tenancy);
+    const client = warehouseAuth == null
+      ? getClickhouseExternalClient()
+      : createClickhouseWarehouseClient(warehouseAuth, getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"));
     const queryId = `${auth.tenancy.project.id}:${auth.tenancy.branchId}:${randomUUID()}`;
     const resultSet = await Result.fromPromise(client.query({
       query: body.query,
       query_id: queryId,
       query_params: body.params,
       clickhouse_settings: {
-        SQL_project_id: auth.tenancy.project.id,
-        SQL_branch_id: auth.tenancy.branchId,
+        ...warehouseAuth == null ? {
+          SQL_project_id: auth.tenancy.project.id,
+          SQL_branch_id: auth.tenancy.branchId,
+        } : {},
         max_execution_time: effectiveTimeoutMs / 1000,
         readonly: "1",
         allow_ddl: 0,

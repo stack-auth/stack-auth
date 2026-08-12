@@ -549,7 +549,7 @@ it("has a restricted user and roles", async ({ expect }) => {
       "body": {
         "result": [
           {
-            "assigned_roles": [],
+            "assigned_roles": ["analytics_reader"],
             "user": "limited_user",
           },
         ],
@@ -1212,22 +1212,7 @@ it("shows grants", async ({ expect }) => {
   expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": {
-        "result": [
-          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.connected_accounts TO limited_user" },
-          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.contact_channels TO limited_user" },
-          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.email_outboxes TO limited_user" },
-          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.events TO limited_user" },
-          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.notification_preferences TO limited_user" },
-          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.project_permissions TO limited_user" },
-          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.refresh_tokens TO limited_user" },
-          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.team_invitations TO limited_user" },
-          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.team_member_profiles TO limited_user" },
-          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.team_permissions TO limited_user" },
-          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.teams TO limited_user" },
-          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.users TO limited_user" },
-        ],
-      },
+      "body": { "result": [{ "GRANTS FORMAT JSONEachRow": "GRANT analytics_reader TO limited_user" }] },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);

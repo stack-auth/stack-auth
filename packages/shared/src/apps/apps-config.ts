@@ -223,6 +223,13 @@ export const ALL_APPS = {
     tags: ["automation", "developers"],
     stage: "alpha",
   },
+  // Same `-alpha` suffix reasoning as Deployments and Workflows above.
+  "data-warehouse-alpha": {
+    displayName: "Data Warehouse",
+    subtitle: "A ClickHouse database of your own, next to your analytics data",
+    tags: ["storage", "developers"],
+    stage: "alpha",
+  },
 } as const satisfies Record<string, App>;
 
 export function getParentAppId(appId: AppId): AppId | null {

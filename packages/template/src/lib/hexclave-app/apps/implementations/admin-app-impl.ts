@@ -1,6 +1,6 @@
 import { KnownErrors, HexclaveAdminInterface } from "@hexclave/shared";
 import { getProductionModeErrors } from "@hexclave/shared/dist/helpers/production-mode";
-import { InternalApiKeyCreateCrudResponse } from "@hexclave/shared/dist/interface/admin-interface";
+import { DataWarehouseCredentialsJson, DataWarehouseJson, InternalApiKeyCreateCrudResponse } from "@hexclave/shared/dist/interface/admin-interface";
 import type { AnalyticsClickmapOptions, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "@hexclave/shared/dist/interface/admin-metrics";
 import { EmailTemplateCrud } from "@hexclave/shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@hexclave/shared/dist/interface/crud/internal-api-keys";
@@ -98,6 +98,9 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
   });
   private readonly _adminWorkflowsCache = createCache(async () => {
     return await this._interface.listWorkflows();
+  });
+  private readonly _adminDataWarehouseCache = createCache(async () => {
+    return await this._interface.getDataWarehouse();
   });
   private readonly _adminTeamPermissionDefinitionsCache = createCache(async () => {
     return await this._interface.listTeamPermissionDefinitions();
@@ -535,6 +538,9 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     const crud = useAsyncCache(this._adminWorkflowsCache, [], "adminApp.useWorkflows()");
     return useMemo(() => crud.map(adminWorkflowFromCrud), [crud]);
   }
+  useDataWarehouse(): DataWarehouseJson {
+    return useAsyncCache(this._adminDataWarehouseCache, [], "adminApp.useDataWarehouse()");
+  }
   // END_PLATFORM
   async listEmailThemes(): Promise<{ id: string, displayName: string }[]> {
     const crud = Result.orThrow(await this._adminEmailThemesCache.getOrWait([], "write-only"));
@@ -552,6 +558,30 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
       themeId: template.theme_id,
       tsxSource: template.tsx_source,
     }));
+  }
+
+  // ─── Data Warehouse ─────────────────────────────────────────────────────
+
+  async getDataWarehouse(): Promise<DataWarehouseJson> {
+    return Result.orThrow(await this._adminDataWarehouseCache.getOrWait([], "write-only"));
+  }
+
+  /**
+   * Provisions the project's ClickHouse database and user. The returned
+   * password is shown once — it is stored encrypted for the backend's own use
+   * and is never returned by `getDataWarehouse`.
+   */
+  async provisionDataWarehouse(): Promise<DataWarehouseCredentialsJson> {
+    const result = await this._interface.provisionDataWarehouse();
+    await this._adminDataWarehouseCache.refresh([]);
+    return result;
+  }
+
+  /** Issues a new password, invalidating the previous one. Also shown once. */
+  async rotateDataWarehousePassword(): Promise<DataWarehouseCredentialsJson> {
+    const result = await this._interface.rotateDataWarehousePassword();
+    await this._adminDataWarehouseCache.refresh([]);
+    return result;
   }
 
   // ─── Workflows (internal-project gated; see the Workflows v1 spec) ───────

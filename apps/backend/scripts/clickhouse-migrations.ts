@@ -1,4 +1,4 @@
-import { getClickhouseAdminClient } from "@/lib/clickhouse";
+import { ANALYTICS_READER_ROLE, ANALYTICS_TABLES, getClickhouseAdminClient } from "@/lib/clickhouse";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 
 export async function runClickhouseMigrations() {
@@ -78,24 +78,38 @@ export async function runClickhouseMigrations() {
     await client.command({ query: sql });
   }
 
-  // Row policies in parallel
-  const tables = [
-    "events", "users", "contact_channels", "teams", "team_member_profiles",
-    "team_permissions", "team_invitations", "email_outboxes",
-    "project_permissions", "notification_preferences", "refresh_tokens", "connected_accounts",
-  ];
-  await Promise.all(tables.map(table =>
+  // The project-isolated read access to `default.*` lives on a role rather
+  // than directly on `limited_user`, because the Data Warehouse app gives each
+  // provisioned project its own ClickHouse user (see lib/data-warehouse.tsx)
+  // and those users need exactly the same analytics access. Row policies and
+  // grants are attached to the role; every user that should read analytics is
+  // granted the role.
+  await client.command({ query: `CREATE ROLE IF NOT EXISTS ${ANALYTICS_READER_ROLE}` });
+
+  // OR REPLACE rather than IF NOT EXISTS: existing deployments already have
+  // these policies pointing at `limited_user`, and they have to be re-pointed
+  // at the role. A policy that named only `limited_user` would leave every
+  // per-project user seeing no rows at all (ClickHouse restricts a table to
+  // the users its policies name, once any policy exists on it).
+  await Promise.all(ANALYTICS_TABLES.map(table =>
     client.command({
-      query: `CREATE ROW POLICY IF NOT EXISTS ${table}_project_isolation ON default.${table} FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user`,
+      query: `CREATE ROW POLICY OR REPLACE ${table}_project_isolation ON default.${table} FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO ${ANALYTICS_READER_ROLE}`,
     })
   ));
 
-  // Grants
+  // Grants. The REVOKEs come first and include `REVOKE ALL FROM limited_user`,
+  // which strips granted *roles* too — so the role grant has to follow them.
+  await client.command({ query: `REVOKE ALL PRIVILEGES ON *.* FROM ${ANALYTICS_READER_ROLE};` });
   await client.command({ query: "REVOKE ALL PRIVILEGES ON *.* FROM limited_user;" });
   await client.command({ query: "REVOKE ALL FROM limited_user;" });
-  await Promise.all(tables.map(table =>
-    client.command({ query: `GRANT SELECT ON default.${table} TO limited_user;` })
+  await Promise.all(ANALYTICS_TABLES.map(table =>
+    client.command({ query: `GRANT SELECT ON default.${table} TO ${ANALYTICS_READER_ROLE};` })
   ));
+  await client.command({ query: `GRANT ${ANALYTICS_READER_ROLE} TO limited_user;` });
+  // Granted roles are only active in a session if they are default roles.
+  // CREATE USER defaults to `DEFAULT ROLE ALL`, but say it explicitly so a
+  // user created by an older migration behaves the same.
+  await client.command({ query: "ALTER USER limited_user DEFAULT ROLE ALL;" });
 
   const elapsed = ((performance.now() - start) / 1000).toFixed(1);
   console.log(`[Clickhouse] Clickhouse migrations complete (${elapsed}s)`);
