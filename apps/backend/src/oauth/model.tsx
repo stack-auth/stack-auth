@@ -18,7 +18,10 @@ declare module "@node-oauth/oauth2-server" {
   interface Client {}
 
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
-  interface User {}
+  interface User {
+    email?: string | null;
+    oauthProvider?: string;
+  }
 }
 
 const enabledScopes = ["legacy"];
@@ -173,11 +176,19 @@ export class OAuthModel implements AuthorizationCodeModel {
         },
       });
       if (projectUser.requiresTotpMfa) {
+        // A link flow returns a User without oauthProvider/email; mirror the callback's
+        // link guard so an MFA re-challenge cannot be recorded as a sign-in success.
+        const isComplianceSignIn = user.oauthProvider != null;
         throw await createMfaRequiredError({
           project: tenancy.project,
           branchId: tenancy.branchId,
           userId: projectUser.projectUserId,
           isNewUser: false,
+          ...(isComplianceSignIn ? {
+            method: "oauth" as const,
+            email: user.email ?? undefined,
+            oauthProvider: user.oauthProvider,
+          } : {}),
         });
       }
 

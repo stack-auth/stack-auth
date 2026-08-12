@@ -347,7 +347,7 @@ async function fetchDeepWikiAnswer(questionText: string): Promise<string> {
       params: {
         name: "ask_question",
         arguments: {
-          repoName: "stack-auth/stack-auth",
+          repoName: "hexclave/hexclave",
           question: questionText,
         },
       },

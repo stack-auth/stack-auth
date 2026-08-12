@@ -293,11 +293,13 @@ export const GET = createSmartRouteHandler({
             AND event_at >= {since:DateTime} AND event_at < {until:DateTime}
           GROUP BY day ORDER BY day ASC
         `, windowParams),
-        // Page views + unique visitors per day.
+        // Page views + unique visitors per day. Exact distinct counts are taken
+        // over hashed user ids: the state is kept once per day group, so 36-char
+        // uuids across every customer project overran the metrics memory limit.
         chQuery<{ day: string, pv: string | number, visitors: string | number }>(`
           SELECT toDate(event_at) AS day,
             countIf(event_type = '$page-view') AS pv,
-            uniqExactIf(assumeNotNull(user_id), event_type = '$page-view') AS visitors
+            uniqExactIf(sipHash64(assumeNotNull(user_id)), event_type = '$page-view') AS visitors
           FROM analytics_internal.events
           WHERE event_type IN ('$page-view', '$click')
             AND ${customerEventScope}
@@ -339,13 +341,13 @@ export const GET = createSmartRouteHandler({
         // Users by country (for the globe) over the window.
         chQuery<{ country_code: string, c: string | number }>(`
           SELECT country_code, count() AS c FROM (
-            SELECT user_id, argMax(cc, event_at) AS country_code FROM (
-              SELECT user_id, event_at, CAST(data.ip_info.country_code, 'Nullable(String)') AS cc
+            SELECT argMax(cc, event_at) AS country_code FROM (
+              SELECT sipHash64(user_id) AS user_hash, event_at, CAST(data.ip_info.country_code, 'Nullable(String)') AS cc
               FROM analytics_internal.events
               WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
                 AND ${customerEventScope}
                 AND event_at >= {since:DateTime} AND event_at < {until:DateTime}
-            ) WHERE cc IS NOT NULL GROUP BY user_id
+            ) WHERE cc IS NOT NULL GROUP BY user_hash
           ) WHERE country_code IS NOT NULL GROUP BY country_code ORDER BY c DESC
         `, windowParams),
         // Dead-click health over the window.

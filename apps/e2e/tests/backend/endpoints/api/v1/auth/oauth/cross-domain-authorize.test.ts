@@ -54,7 +54,7 @@ const exchangeAuthorizationCode = async (options: {
 };
 
 it("creates a one-time cross-domain redirect and exchanges it with PKCE", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  await Auth.Password.signUpWithEmail();
   const existingRefreshToken = backendContext.value.userAuth?.refreshToken ?? throwErr("Missing refresh token in backend test context");
   const redirectUri = `${localRedirectUrl}/handler/oauth-callback?stack_cross_domain_auth=1`;
   const afterCallbackRedirectUrl = `${localRedirectUrl}/after-sign-in`;
@@ -88,7 +88,7 @@ it("creates a one-time cross-domain redirect and exchanges it with PKCE", async 
 });
 
 it("rejects reusing the same cross-domain authorization code", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  await Auth.Password.signUpWithEmail();
   const redirectUri = `${localRedirectUrl}/handler/oauth-callback?stack_cross_domain_auth=1`;
 
   const authorizeResponse = await createCrossDomainAuthorizeRedirect({ redirectUri });
@@ -114,7 +114,7 @@ it("rejects reusing the same cross-domain authorization code", async ({ expect }
 });
 
 it("rejects exchanging with an invalid PKCE code_verifier", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  await Auth.Password.signUpWithEmail();
   const redirectUri = `${localRedirectUrl}/handler/oauth-callback?stack_cross_domain_auth=1`;
 
   const authorizeResponse = await createCrossDomainAuthorizeRedirect({ redirectUri });
@@ -141,7 +141,7 @@ it("rejects exchanging with an invalid PKCE code_verifier", async ({ expect }) =
 });
 
 it("rejects untrusted redirect URLs before issuing a code", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  await Auth.Password.signUpWithEmail();
 
   const response = await createCrossDomainAuthorizeRedirect({
     redirectUri: "https://evil.example.com/oauth/callback",
@@ -163,7 +163,7 @@ it("rejects untrusted redirect URLs before issuing a code", async ({ expect }) =
 });
 
 it("rejects untrusted after-callback redirect URLs before issuing a code", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  await Auth.Password.signUpWithEmail();
 
   const response = await createCrossDomainAuthorizeRedirect({
     afterCallbackRedirectUrl: "https://evil.example.com/post-auth",
@@ -185,7 +185,7 @@ it("rejects untrusted after-callback redirect URLs before issuing a code", async
 });
 
 it("requires a signed-in user to issue a cross-domain code", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  await Auth.Password.signUpWithEmail();
   backendContext.set({ userAuth: null });
 
   const response = await createCrossDomainAuthorizeRedirect();
@@ -194,7 +194,7 @@ it("requires a signed-in user to issue a cross-domain code", async ({ expect }) 
 });
 
 it("requires providing the current refresh token to issue a cross-domain code", async ({ expect }) => {
-  const { signUpResponse } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const { signUpResponse } = await Auth.Password.signUpWithEmail();
   backendContext.set({
     userAuth: {
       accessToken: signUpResponse.body.access_token,
@@ -208,7 +208,7 @@ it("requires providing the current refresh token to issue a cross-domain code", 
 });
 
 it("rejects refresh tokens that do not match the authenticated session", async ({ expect }) => {
-  const firstSignUp = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const firstSignUp = await Auth.Password.signUpWithEmail();
   const response = await createCrossDomainAuthorizeRedirect({
     userAuth: {
       accessToken: firstSignUp.signUpResponse.body.access_token,
@@ -220,7 +220,7 @@ it("rejects refresh tokens that do not match the authenticated session", async (
 });
 
 it("does not authorize when only a refresh token is present", async ({ expect }) => {
-  const { signUpResponse } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const { signUpResponse } = await Auth.Password.signUpWithEmail();
   backendContext.set({
     userAuth: {
       accessToken: undefined,
