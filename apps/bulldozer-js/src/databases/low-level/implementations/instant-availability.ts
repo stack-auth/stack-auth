@@ -241,7 +241,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
               const { seq: underlyingSeq } = await wrappedStore.setAll(entriesForWrapped, { requiresSeq });
               return {
                 underlyingSeq,
-                cacheEntries: entries,
+                cacheEntries: entriesForWrapped,
                 result: undefined,
               };
             });
@@ -258,7 +258,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
               const { seq: underlyingSeq } = await wrappedStore.deleteAll(keysForWrapped, { requiresSeq });
               return {
                 underlyingSeq,
-                cacheEntries: keys.map(key => ({ key, value: null })),
+                cacheEntries: keysForWrapped.map(key => ({ key, value: null })),
                 result: undefined,
               };
             });
@@ -275,7 +275,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
               const { keys, seq: underlyingSeq } = await wrappedStore.insertAll(valuesForWrapped, { requiresSeq });
               return {
                 underlyingSeq,
-                cacheEntries: keys.map((key, index) => ({ key, value: values[index] })),
+                cacheEntries: keys.map((key, index) => ({ key, value: valuesForWrapped[index] })),
                 allocatedKeys: keys,
                 result: { keys: keys.map(cloneArrayBuffer) },
               };
@@ -294,10 +294,11 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
             const existing = await result.get(key);
             if (existing.buffer === null || !arrayBuffersAreEqual(existing.buffer, compare)) return { wasSet: false, seq: null };
             const write = await runWriteLocked(compareAndSetOptions?.requiresSeq, async requiresSeq => {
-              const { seq: underlyingSeq } = await wrappedStore.setAll([{ key: cloneArrayBuffer(key), value: cloneArrayBuffer(value) }], { requiresSeq });
+              const entryForWrapped = { key: cloneArrayBuffer(key), value: cloneArrayBuffer(value) };
+              const { seq: underlyingSeq } = await wrappedStore.setAll([entryForWrapped], { requiresSeq });
               return {
                 underlyingSeq,
-                cacheEntries: [{ key, value }],
+                cacheEntries: [entryForWrapped],
                 result: undefined,
               };
             });
