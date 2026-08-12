@@ -164,15 +164,21 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
     type WriteAllocation<T> = {
       underlyingSeq: DatabaseSeq,
       cacheEntries: Array<{ key: ArrayBuffer, value: ArrayBuffer | null }>,
+      allocatedKeys?: ArrayBuffer[],
       result: T,
     };
+    const isThenable = (value: unknown): value is PromiseLike<unknown> => {
+      return value !== null
+        && (typeof value === "object" || typeof value === "function")
+        && "then" in value
+        && typeof value.then === "function";
+    };
     const assertWriteAllocation = <T>(allocation: WriteAllocation<T>) => {
-      if (!Array.isArray(allocation.underlyingSeq) || allocation.underlyingSeq.length !== 2
-        || typeof allocation.underlyingSeq[0] !== "string" || typeof allocation.underlyingSeq[1] !== "string") {
-        throw new Error("Instant-availability wrapped writes must allocate a sequence synchronously");
+      if (isThenable(allocation.underlyingSeq)) {
+        throw new Error("Instant-availability wrapped write allocation must return a non-thenable sequence");
       }
-      for (const { key } of allocation.cacheEntries) {
-        if (!(key instanceof ArrayBuffer)) throw new Error("Instant-availability wrapped writes must allocate ArrayBuffer keys synchronously");
+      for (const key of allocation.allocatedKeys ?? []) {
+        if (!(key instanceof ArrayBuffer)) throw new Error("Instant-availability wrapped insert allocation must return ArrayBuffer keys");
       }
     };
     const runWriteLocked = async <T>(
@@ -270,6 +276,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
               return {
                 underlyingSeq,
                 cacheEntries: keys.map((key, index) => ({ key, value: values[index] })),
+                allocatedKeys: keys,
                 result: { keys: keys.map(cloneArrayBuffer) },
               };
             });
