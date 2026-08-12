@@ -204,7 +204,7 @@ describe("ProjectOnboardingWizard", () => {
     expect(componentsSource).toContain("Not sure / Decide later");
     expect(componentsSource).toContain("Search products...");
     expect(componentsSource).toContain("Choose the first app you want to install now");
-    expect(componentsSource).toContain('["deployments-alpha", "authentication", "analytics"]');
+    expect(componentsSource).toContain('["authentication", "analytics", "payments"]');
     expect(componentsSource).toContain("expandAppSoftRequirements([...installableApps, \"analytics\"])");
     expect(componentsSource).toContain("parseOnboardingAppSearchParam");
     expect(componentsSource).toContain("getInstallableAppId");
