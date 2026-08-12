@@ -234,19 +234,6 @@ function aggregateSerializedReferences(buffer: ArrayBuffer | null) {
   return aggregateKeys(buffer === null ? [] : serializedHeapReferenceKeys(buffer));
 }
 
-function serializedReferenceDelta(newBuffer: ArrayBuffer | null, oldBuffer: ArrayBuffer | null) {
-  const deltaByKey = new Map<string, { key: ArrayBuffer, count: number }>();
-  for (const [keyBase64, { key, count }] of aggregateSerializedReferences(newBuffer)) {
-    deltaByKey.set(keyBase64, { key, count });
-  }
-  for (const [keyBase64, { key, count }] of aggregateSerializedReferences(oldBuffer)) {
-    const existing = deltaByKey.get(keyBase64);
-    if (existing === undefined) deltaByKey.set(keyBase64, { key, count: -count });
-    else existing.count -= count;
-  }
-  return deltaByKey;
-}
-
 function candidateKey(heapKey: ArrayBuffer, eligibleAtMillis: number) {
   parseNonNegativeInteger(eligibleAtMillis, "candidate eligibleAtMillis");
   if (heapKey.byteLength + 8 > 64) throw new Error("Piledriver heap key is too large for the GC candidate index");
@@ -616,33 +603,21 @@ export function declarePiledriverGarbageCollector(options: {
 
   const beforeSerializedObjectBecomesVisible = async (
     buffer: ArrayBuffer,
-    previousBuffer: ArrayBuffer | null,
     requiresSeq: DatabaseSeq,
   ) => {
     await initialize();
-    // Positive deltas must become available before the new buffer is visible. A
-    // replacement's unchanged references have a zero net delta and are deliberately
-    // skipped: their count and eligibility timestamp are unchanged.
-    return await changeSerializedReferenceDeltas(
-      [...serializedReferenceDelta(buffer, previousBuffer).values()].filter(delta => delta.count > 0),
-      null,
-      requiresSeq,
-    );
+    return await changeSerializedReferenceDeltas(aggregateSerializedReferences(buffer).values(), null, requiresSeq);
   };
 
   const afterSerializedObjectBecameInvisible = async (
     buffer: ArrayBuffer,
-    visibleBuffer: ArrayBuffer | null,
     dereferencedAtMillis: number,
     requiresSeq: DatabaseSeq,
   ) => {
     await initialize();
     parseNonNegativeInteger(dereferencedAtMillis, "dereferencedAtMillis");
-    // Apply removals only after the replacement is visible. This ordering means a crash
-    // can leak an over-counted object, but cannot free an object still reachable by the
-    // visible root.
     return await changeSerializedReferenceDeltas(
-      [...serializedReferenceDelta(visibleBuffer, buffer).values()].filter(delta => delta.count < 0),
+      [...aggregateSerializedReferences(buffer).values()].map(({ key, count }) => ({ key, count: -count })),
       dereferencedAtMillis,
       requiresSeq,
     );

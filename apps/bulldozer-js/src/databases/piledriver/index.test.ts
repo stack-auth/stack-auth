@@ -222,32 +222,6 @@ describe("PiledriverDatabase", () => {
     expect((await restarted.collectGarbage(cutoff)).objects.deleted).toBe(2);
   });
 
-  it("updates only changed root reference deltas", async () => {
-    let metadataGets = 0;
-    let metadataCompareAndSets = 0;
-    const underlyingLowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
-    const lowLevel = wrapWithGcReferenceCounter(
-      underlyingLowLevel,
-    () => metadataGets++,
-    count => metadataCompareAndSets += count,
-    );
-    const writer = declarePiledriverDatabase(lowLevel);
-    const rootKey = new TextEncoder().encode("root").buffer;
-    const sharedA = asHeapObject({ value: "shared-a" });
-    const sharedB = asHeapObject({ value: "shared-b" });
-    const previous = asHeapObject({ value: "previous" });
-    const replacement = asHeapObject({ value: "replacement" });
-
-    await writer.setRootObject(rootKey, { sharedA, sharedB, changed: previous });
-    metadataGets = 0;
-    metadataCompareAndSets = 0;
-
-    await writer.setRootObject(rootKey, { sharedA, sharedB, changed: replacement });
-
-    expect(metadataGets).toBe(2);
-    expect(metadataCompareAndSets).toBe(2);
-  });
-
   it("batches metadata and candidate writes for created heap objects", async () => {
     const metadataSetAllEntryCounts: number[] = [];
     const candidateSetAllEntryCounts: number[] = [];

@@ -834,7 +834,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         const heapBatchSeq = await flushHeapSerializationBatch(heapSerializationBatch);
         const heapSerializationFlushMs = performance.now() - heapFlushStartedAt;
         const visibilityStartedAt = performance.now();
-        const references = await garbageCollector.beforeSerializedObjectBecomesVisible(buffer, previousRoot.buffer, combineSeqsDeduped([seq, heapBatchSeq]));
+        const references = await garbageCollector.beforeSerializedObjectBecomesVisible(buffer, combineSeqsDeduped([seq, heapBatchSeq]));
         const heapReferenceVisibilityMs = performance.now() - visibilityStartedAt;
         const rootStoreSetAllStartedAt = performance.now();
         const { seq: rootSeq } = await rootStore.setAll([{ key, value: buffer }], { requiresSeq: references.seq });
@@ -842,7 +842,6 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
           ? { seq: rootSeq }
           : await garbageCollector.afterSerializedObjectBecameInvisible(
             previousRoot.buffer,
-            buffer,
             Math.max(Date.now(), processStartedAtMillis),
             rootSeq,
           );
@@ -916,7 +915,6 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         if (previousRoot.buffer === null) return deleted;
         const dereferenced = await garbageCollector.afterSerializedObjectBecameInvisible(
           previousRoot.buffer,
-          null,
           Math.max(Date.now(), processStartedAtMillis),
           deleted.seq,
         );
