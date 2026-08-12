@@ -11,7 +11,7 @@ import { DesignBadge } from "@/components/design-components/badge";
 import { DesignButton } from "@/components/design-components/button";
 import { DesignCard } from "@/components/design-components/card";
 import { DesignInput } from "@/components/design-components/input";
-import { buildSelectedOnboardingConfigFile, formatApproximateTokenCountLabel, getManualSetupDocsUrl, prependExactConfigToSetupPrompt } from "@/lib/setup-prompt";
+import { buildSelectedOnboardingConfigFile, formatApproximateTokenCountLabel, getManualSetupDocsUrl, prependConfigChangesToSetupPrompt } from "@/lib/setup-prompt";
 import { getAppIdsForListing } from "@/lib/apps-utils";
 import { HostedAuthMethodPreview } from "@/components/hosted-auth-preview";
 import {
@@ -940,7 +940,7 @@ export function SetupNewProjectPage(props: {
   const manualSetupDocsUrl = getManualSetupDocsUrl();
   const setupPrompt = props.configFile == null
     ? aiSetupPrompt
-    : prependExactConfigToSetupPrompt(aiSetupPrompt, props.configFile);
+    : prependConfigChangesToSetupPrompt(aiSetupPrompt, props.configFile);
 
   return (
     <OnboardingPage

@@ -4,7 +4,7 @@ import {
   buildOnboardingConfigFile,
   estimatePromptTokenCount,
   formatApproximateTokenCountLabel,
-  prependExactConfigToSetupPrompt,
+  prependConfigChangesToSetupPrompt,
 } from "./setup-prompt";
 
 describe("estimatePromptTokenCount", () => {
@@ -65,8 +65,21 @@ describe("configured onboarding setup", () => {
     `);
   });
 
-  it("puts the exact config instruction before the setup prompt", () => {
-    expect(prependExactConfigToSetupPrompt("SETUP", "export const config = {};"))
-      .toMatch(/^IMPORTANT: Use this exact `hexclave\.config\.ts` file[\s\S]*SETUP$/);
+  it("instructs the agent to preserve unrelated settings in an existing config", () => {
+    expect(prependConfigChangesToSetupPrompt("SETUP", "export const config = {};"))
+      .toMatchInlineSnapshot(`
+        "IMPORTANT: Apply the selected products and settings from the \`hexclave.config.ts\` example below.
+
+        - If \`hexclave.config.ts\` does not exist, create it with the exact contents shown.
+        - If \`hexclave.config.ts\` already exists, update the existing config to apply the products and settings shown while preserving every unrelated existing setting.
+
+        \`\`\`ts
+        export const config = {};
+        \`\`\`
+
+        Below is the setup prompt for using Hexclave. Follow it carefully, while applying the \`hexclave.config.ts\` changes described above.
+
+        SETUP"
+      `);
   });
 });

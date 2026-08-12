@@ -11,7 +11,7 @@ import {
   buildOnboardingConfigFile,
   getManualSetupDocsUrl,
   getSetupDocsBaseUrl,
-  prependExactConfigToSetupPrompt,
+  prependConfigChangesToSetupPrompt,
 } from '@/lib/setup-prompt';
 import { useThemeWatcher } from '@/lib/theme';
 import { BookIcon, XIcon } from "@phosphor-icons/react";
@@ -55,7 +55,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
 
   const setupDocsBaseUrl = getSetupDocsBaseUrl();
   const onboardingConfigFile = buildOnboardingConfigFile(projectConfig);
-  const selectedInstallPrompt = prependExactConfigToSetupPrompt(
+  const selectedInstallPrompt = prependConfigChangesToSetupPrompt(
     buildCliDevSetupPrompt({
       docsBaseUrl: setupDocsBaseUrl,
     }),
