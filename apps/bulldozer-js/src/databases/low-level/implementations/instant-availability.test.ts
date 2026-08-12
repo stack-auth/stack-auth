@@ -139,14 +139,17 @@ function createReorderingSetDatabase() {
         resolveSet = resolve;
       });
       seqToPromise.set(seq, committedPromise);
+      const commit = () => {
+        for (const { key, value } of entries) committed.set(text(key)!, value.slice(0));
+        resolveSet();
+      };
       if (setCallCount === 1) {
         firstSetStartedResolve!();
-        await new Promise<void>(resolve => {
-          releaseFirstSet = resolve;
-        });
+        releaseFirstSet = commit;
+      } else {
+        const requiresSeq = setOptions?.requiresSeq ?? initialSeq;
+        seqToPromise.get(requiresSeq)!.then(commit).catch(() => {});
       }
-      for (const { key, value } of entries) committed.set(text(key)!, value.slice(0));
-      resolveSet();
       return { seq };
     },
     async deleteAll() {
