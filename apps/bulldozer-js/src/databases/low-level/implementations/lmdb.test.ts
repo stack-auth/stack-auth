@@ -140,9 +140,9 @@ describe("LMDB low-level database", () => {
       const read = store.get(buffer("key"));
       const closing = db.close();
 
+      await expect(store.get(buffer("key"))).rejects.toThrow("LMDB database is closing");
       await expect(read).resolves.toMatchObject({ buffer: buffer("value") });
       await expect(closing).resolves.toBeUndefined();
-      await expect(store.get(buffer("key"))).rejects.toThrow("LMDB database is closing");
     } finally {
       await db.close();
       await rm(path, { recursive: true, force: true });
