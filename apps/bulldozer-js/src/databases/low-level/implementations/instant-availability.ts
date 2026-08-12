@@ -1,4 +1,3 @@
-import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { traceSpanHot } from "../../../otel.js";
 import { DatabaseSeq } from "../../index.js";
@@ -23,6 +22,10 @@ type SeqRecord = {
 type CachedValue = {
   buffer: ArrayBuffer | null,
   seq: DatabaseSeq,
+};
+type CacheEntry = {
+  keyString: string,
+  value: ArrayBuffer | null,
 };
 export type InstantAvailabilityLowLevelDatabaseDebugSnapshot = {
   createdSeqRecords: number,
@@ -141,15 +144,19 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
     let lastWriteSeq: DatabaseSeq | undefined;
     cacheMaps.add(cachedValues);
     const attributes = { "bulldozer.low_level.backend": "instant-availability" };
-    const cacheKey = (key: ArrayBuffer) => encodeBase64(new Uint8Array(key));
-    const setCachedValue = (key: ArrayBuffer, value: ArrayBuffer | null, seq: DatabaseSeq) => {
-      cachedValues.set(cacheKey(key), { buffer: value === null ? null : cloneArrayBuffer(value), seq });
+    const cacheKey = (key: ArrayBuffer) => {
+      const bytes = new Uint8Array(key);
+      const characters = new Array<string>(bytes.length);
+      for (let index = 0; index < bytes.length; index++) characters[index] = String.fromCharCode(bytes[index]);
+      return characters.join("");
     };
-    const evictAfterWrappedAvailability = (keys: ArrayBuffer[], seq: DatabaseSeq) => {
+    const setCachedValue = (keyString: string, value: ArrayBuffer | null, seq: DatabaseSeq) => {
+      cachedValues.set(keyString, { buffer: value === null ? null : cloneArrayBuffer(value), seq });
+    };
+    const evictAfterWrappedAvailability = (keyStrings: string[], seq: DatabaseSeq) => {
       getSeqRecord(seq).underlyingAvailable
         .then(() => {
-          for (const key of keys) {
-            const keyString = cacheKey(key);
+          for (const keyString of keyStrings) {
             if (cachedValues.get(keyString)?.seq === seq) cachedValues.delete(keyString);
           }
         })
@@ -162,11 +169,11 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
       // Same-key underlying writes must be issued in instant-seq order; otherwise an evicted cache entry exposes and persists the older value.
       return wrapped.combineSeqs(underlyingRequiresSeq, getSeqRecord(previousWriteSeq).underlyingSeq);
     };
-    const recordWrite = (underlyingSeq: DatabaseSeq, cacheEntries: Array<{ key: ArrayBuffer, value: ArrayBuffer | null }>) => {
+    const recordWrite = (underlyingSeq: DatabaseSeq, cacheEntries: CacheEntry[]) => {
       const seq = createSeq(underlyingSeq);
       lastWriteSeq = seq;
-      for (const { key, value } of cacheEntries) setCachedValue(key, value, seq);
-      evictAfterWrappedAvailability(cacheEntries.map(({ key }) => key), seq);
+      for (const { keyString, value } of cacheEntries) setCachedValue(keyString, value, seq);
+      evictAfterWrappedAvailability(cacheEntries.map(({ keyString }) => keyString), seq);
       return seq;
     };
 
@@ -207,7 +214,11 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
         return await traceSpanHot({ description: "bulldozer-js.low-level.instant.setAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
           if (entries.length === 0) return { seq: setOptions?.requiresSeq ?? initialSeq };
           return await withWriteGate(async () => {
-            const entriesForWrapped = entries.map(({ key, value }) => ({ key: cloneArrayBuffer(key), value: cloneArrayBuffer(value) }));
+            const entriesForWrapped = entries.map(({ key, value }) => ({
+              key: cloneArrayBuffer(key),
+              keyString: cacheKey(key),
+              value: cloneArrayBuffer(value),
+            }));
             const requiresSeq = getChainedRequiresSeq(setOptions?.requiresSeq);
             const { seq: underlyingSeq } = await wrappedStore.setAll(entriesForWrapped, { requiresSeq });
             return { seq: recordWrite(underlyingSeq, entriesForWrapped) };
@@ -218,10 +229,13 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
         return await traceSpanHot({ description: "bulldozer-js.low-level.instant.deleteAll", attributes: { ...attributes, "bulldozer.low_level.key_count": keys.length } }, async () => {
           if (keys.length === 0) return { seq: deleteOptions?.requiresSeq ?? initialSeq };
           return await withWriteGate(async () => {
-            const keysForWrapped = keys.map(cloneArrayBuffer);
+            const keysForWrapped = keys.map(key => ({
+              key: cloneArrayBuffer(key),
+              keyString: cacheKey(key),
+            }));
             const requiresSeq = getChainedRequiresSeq(deleteOptions?.requiresSeq);
-            const { seq: underlyingSeq } = await wrappedStore.deleteAll(keysForWrapped, { requiresSeq });
-            return { seq: recordWrite(underlyingSeq, keysForWrapped.map(key => ({ key, value: null }))) };
+            const { seq: underlyingSeq } = await wrappedStore.deleteAll(keysForWrapped.map(({ key }) => key), { requiresSeq });
+            return { seq: recordWrite(underlyingSeq, keysForWrapped.map(({ key, keyString }) => ({ key, keyString, value: null }))) };
           });
         });
       },
@@ -232,7 +246,10 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
             const valuesForWrapped = values.map(cloneArrayBuffer);
             const requiresSeq = getChainedRequiresSeq(insertOptions?.requiresSeq);
             const { keys, seq: underlyingSeq } = await wrappedStore.insertAll(valuesForWrapped, { requiresSeq });
-            const seq = recordWrite(underlyingSeq, keys.map((key, index) => ({ key, value: valuesForWrapped[index] })));
+            const seq = recordWrite(underlyingSeq, keys.map((key, index) => ({
+              keyString: cacheKey(key),
+              value: valuesForWrapped[index],
+            })));
             return { keys: keys.map(cloneArrayBuffer), seq };
           });
         });
@@ -240,9 +257,9 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
       async compareAndSetAll(entries, compareAndSetOptions) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.instant.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
           if (entries.length === 0) return { results: [], seq: compareAndSetOptions?.requiresSeq ?? initialSeq };
+          const keyStrings = entries.map(({ key }) => cacheKey(key));
           const keys = new Set<string>();
-          for (const { key } of entries) {
-            const keyCacheKey = cacheKey(key);
+          for (const keyCacheKey of keyStrings) {
             const previousSize = keys.size;
             keys.add(keyCacheKey);
             if (keys.size === previousSize) throw new Error("compareAndSetAll entries must not contain duplicate keys");
@@ -253,17 +270,20 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
               const existing = existingValues[index];
               return existing.buffer !== null && arrayBuffersAreEqual(existing.buffer, compare);
             });
-            const matchingEntries = entries.filter((_, index) => results[index]);
+            const matchingEntries = entries.flatMap((entry, index) => results[index] ? [{
+              key: cloneArrayBuffer(entry.key),
+              keyString: keyStrings[index],
+              value: cloneArrayBuffer(entry.value),
+            }] : []);
             if (matchingEntries.length === 0) {
               return {
                 results: results.map(() => ({ wasSet: false as const, seq: null })),
                 seq: compareAndSetOptions?.requiresSeq ?? initialSeq,
               };
             }
-            const entriesForWrapped = matchingEntries.map(({ key, value }) => ({ key: cloneArrayBuffer(key), value: cloneArrayBuffer(value) }));
             const requiresSeq = getChainedRequiresSeq(compareAndSetOptions?.requiresSeq);
-            const { seq: underlyingSeq } = await wrappedStore.setAll(entriesForWrapped, { requiresSeq });
-            const seq = recordWrite(underlyingSeq, entriesForWrapped);
+            const { seq: underlyingSeq } = await wrappedStore.setAll(matchingEntries.map(({ key, value }) => ({ key, value })), { requiresSeq });
+            const seq = recordWrite(underlyingSeq, matchingEntries);
             return {
               results: results.map(wasSet => wasSet ? { wasSet: true, seq } : { wasSet: false, seq: null }),
               seq,
