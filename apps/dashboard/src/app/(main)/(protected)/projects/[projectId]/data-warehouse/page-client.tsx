@@ -1,146 +1,147 @@
 "use client";
 
-import { CodeBlock } from "@/components/code-block";
 import { DesignBadge, DesignButton, DesignCard } from "@/components/design-components";
-import { Alert, AlertDescription, CopyField, toast } from "@/components/ui";
+import { ActionDialog, Alert, AlertDescription, Card, CardContent, CopyField, SimpleTooltip, Typography } from "@/components/ui";
 import { getAppStageLabel } from "@/lib/apps-utils";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import type { DataWarehouseCredentialsJson } from "@hexclave/shared/dist/interface/admin-interface";
 import { ITEM_IDS, resolvePlanId } from "@hexclave/shared/dist/plans";
-import { ArrowClockwiseIcon, DatabaseIcon, KeyIcon, PlugIcon, WarningCircleIcon } from "@phosphor-icons/react";
-import { useMemo, useState } from "react";
+import { ArrowClockwiseIcon, DatabaseIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { useMemo, useState, type ReactNode } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
 const stageLabel = getAppStageLabel("data-warehouse-alpha");
+const UNENTITLED_MESSAGE = "Available on the Team plan and above.";
 
 export default function PageClient() {
   return (
     <AppEnabledGuard appId="data-warehouse-alpha">
-      <PageLayout
-        title="Data Warehouse"
-        description={
-          <span className="flex items-center gap-2">
-            A ClickHouse database of your own, on the same instance as your analytics data.
-            {stageLabel != null && <DesignBadge label={stageLabel} color="purple" size="sm" />}
-          </span>
-        }
-      >
-        <DataWarehouseContent />
-      </PageLayout>
+      <DataWarehousePage />
     </AppEnabledGuard>
   );
 }
 
-function DataWarehouseContent() {
+function DataWarehousePage() {
   const adminApp = useAdminApp();
   const warehouse = adminApp.useDataWarehouse();
   const [credentials, setCredentials] = useState<DataWarehouseCredentialsJson | null>(null);
 
-  const isProvisioned = warehouse.status === "ready";
-
   const handleProvision = async () => {
     setCredentials(await adminApp.provisionDataWarehouse());
-    toast({ title: "Data warehouse created" });
   };
 
   const handleRotate = async () => {
     setCredentials(await adminApp.rotateDataWarehousePassword());
-    toast({ title: "Password rotated" });
   };
 
+  const isProvisioned = warehouse.status === "ready";
+
   return (
-    <div className="flex flex-col gap-4">
-      <EntitlementGate />
-
-      {warehouse.status === "failed" && (
-        <Alert variant="destructive">
-          <WarningCircleIcon className="h-4 w-4" />
-          <AlertDescription>
-            {warehouse.error ?? "Provisioning failed."} Provisioning is safe to repeat — try again.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {credentials != null && <CredentialsPanel credentials={credentials} />}
-
-      <DesignCard
-        icon={DatabaseIcon}
-        title={isProvisioned ? "Your warehouse" : "Create your warehouse"}
-        subtitle={
-          isProvisioned
-            ? "Connect any ClickHouse client with the details below. Your analytics tables are readable from the same connection, so you can join them against your own."
-            : "We'll create a ClickHouse database named after your project id, plus a user with read and write access to it. Nothing else on the instance is reachable from that user."
-        }
-      >
-        <div className="flex flex-col gap-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <CopyField type="input" label="Database" value={warehouse.database_name ?? ""} monospace />
-            <CopyField type="input" label="Host" value={warehouse.connection.host} monospace />
-            <CopyField type="input" label="HTTPS port" value={String(warehouse.connection.https_port)} monospace />
-            <CopyField type="input" label="Native port" value={String(warehouse.connection.native_port)} monospace />
-            {warehouse.username != null && (
-              <CopyField type="input" label="Username" value={warehouse.username} monospace />
-            )}
-          </div>
-
-          {isProvisioned && (
-            <p className="text-sm text-muted-foreground">
-              The password is shown only when it is created. If you no longer have it, rotate it — rotating
-              invalidates the previous password immediately.
-            </p>
-          )}
-
-          <div className="flex gap-2">
+    <PageLayout
+      title="Data Warehouse"
+      description={stageLabel != null ? <DesignBadge label={stageLabel} color="purple" size="sm" /> : undefined}
+      actions={isProvisioned ? (
+        <DesignButton variant="secondary" className="gap-2" onClick={handleRotate}>
+          <ArrowClockwiseIcon className="h-4 w-4" />
+          Rotate password
+        </DesignButton>
+      ) : undefined}
+    >
+      <EntitlementBoundary>
+        {(isEntitled) => (
+          <div className="flex flex-1 flex-col gap-4">
             {isProvisioned ? (
-              <DesignButton variant="secondary" onClick={handleRotate}>
-                <ArrowClockwiseIcon className="h-4 w-4" />
-                Rotate password
-              </DesignButton>
+              <DesignCard icon={DatabaseIcon} title="Your warehouse">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <CopyField type="input" label="Database" value={warehouse.database_name ?? ""} monospace />
+                  <CopyField type="input" label="Host" value={warehouse.connection.host} monospace />
+                  <CopyField type="input" label="HTTPS port" value={String(warehouse.connection.https_port)} monospace />
+                  <CopyField type="input" label="Native port" value={String(warehouse.connection.native_port)} monospace />
+                  {warehouse.username != null && (
+                    <CopyField type="input" label="Username" value={warehouse.username} monospace />
+                  )}
+                </div>
+              </DesignCard>
             ) : (
-              <DesignButton onClick={handleProvision} loading={warehouse.status === "provisioning"}>
-                <DatabaseIcon className="h-4 w-4" />
-                {warehouse.status === "failed" ? "Retry provisioning" : "Provision"}
-              </DesignButton>
+              <div className="flex flex-1 w-full items-center justify-center self-stretch px-3 py-8">
+                <Card className="w-full max-w-sm">
+                  <CardContent className="p-8 text-center">
+                    <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary">
+                      <DatabaseIcon className="h-6 w-6" />
+                    </div>
+                    <Typography type="h3" className="mb-4">Set up your warehouse</Typography>
+                    <Typography type="p" variant="secondary" className="mt-2">
+                      Get a private database for your project data.
+                    </Typography>
+                    <div className="mt-8 flex justify-center">
+                      {/* The tooltip wraps the button rather than sitting on it:
+                          a disabled button emits no pointer events, so Radix
+                          would never see the hover. */}
+                      <SimpleTooltip tooltip={isEntitled ? null : UNENTITLED_MESSAGE}>
+                        <DesignButton
+                          className="gap-2"
+                          onClick={handleProvision}
+                          disabled={!isEntitled}
+                          loading={warehouse.status === "provisioning"}
+                        >
+                          <DatabaseIcon className="h-4 w-4" />
+                          {warehouse.status === "failed" ? "Try again" : "Provision"}
+                        </DesignButton>
+                      </SimpleTooltip>
+                    </div>
+                    {warehouse.status === "failed" && (
+                      <Typography type="p" variant="secondary" className="mt-4 text-xs">
+                        {warehouse.error ?? "Provisioning failed."}
+                      </Typography>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             )}
-          </div>
-        </div>
-      </DesignCard>
 
-      {isProvisioned && warehouse.username != null && (
-        <DesignCard
-          icon={PlugIcon}
-          title="Connecting"
-          subtitle="Any ClickHouse client works — clickhouse-client, dbt, or your BI tool."
-        >
-          <CodeBlock
-            language="bash"
-            title="clickhouse-client"
-            icon="terminal"
-            content={[
-              "clickhouse-client \\",
-              `  --host ${warehouse.connection.host} \\`,
-              `  --port ${warehouse.connection.native_port} \\`,
-              "  --secure \\",
-              `  --user ${warehouse.username} \\`,
-              "  --password <your-password> \\",
-              `  --database ${warehouse.database_name ?? ""}`,
-            ].join("\n")}
-          />
-        </DesignCard>
-      )}
-    </div>
+            <PasswordDialog credentials={credentials} onClose={() => setCredentials(null)} />
+          </div>
+        )}
+      </EntitlementBoundary>
+    </PageLayout>
+  );
+}
+
+/**
+ * Shown once, right after provisioning or rotation. The password is not
+ * retrievable afterwards, so this dialog is the only chance to copy it.
+ */
+function PasswordDialog({ credentials, onClose }: { credentials: DataWarehouseCredentialsJson | null, onClose: () => void }) {
+  return (
+    <ActionDialog
+      open={credentials != null}
+      onOpenChange={(open) => { if (!open) onClose(); }}
+      title="Your password"
+      okButton={{ label: "Done" }}
+    >
+      <div className="hexclave-sensitive flex flex-col gap-3">
+        <Typography type="p" variant="secondary">
+          Save this password somewhere safe. It is not shown again. If you lose it, rotate it to get a new one.
+        </Typography>
+        <CopyField type="input" label="Password" value={credentials?.password ?? ""} monospace isSecret />
+      </div>
+    </ActionDialog>
   );
 }
 
 /**
  * The Data Warehouse needs a team plan or higher. The backend enforces this on
- * every provision and rotation; this is the version the user can see before
- * clicking, and it stays quiet when plan limits aren't enforced at all
- * (self-hosted, and local development).
+ * every provision and rotation; this renders the upgrade banner and tells the
+ * page whether to enable the provision button.
+ *
+ * It resolves in two steps because `team.useItem` is a hook: the outer half
+ * decides whether there is a billing team to read at all, the inner half reads
+ * it. Projects with no billing team, and deployments that do not enforce plan
+ * limits at all (self-hosted, local development), count as entitled.
  */
-function EntitlementGate() {
+function EntitlementBoundary({ children }: { children: (isEntitled: boolean) => ReactNode }) {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const planUsage = adminApp.usePlanUsage();
@@ -153,26 +154,24 @@ function EntitlementGate() {
   );
 
   if (!planUsage.arePlanLimitsEnforced || ownerTeam == null) {
-    return null;
+    return <>{children(true)}</>;
   }
 
-  return <EntitlementGateInner team={ownerTeam} />;
+  return <EntitlementBoundaryInner team={ownerTeam}>{children}</EntitlementBoundaryInner>;
 }
 
-function EntitlementGateInner({ team }: {
+function EntitlementBoundaryInner({ team, children }: {
   team: {
     useItem: (itemId: string) => { quantity: number },
     useProducts: () => Array<{ id: string | null, type?: string }>,
     createCheckoutUrl: (options: { productId: string, returnUrl: string }) => Promise<string>,
   },
+  children: (isEntitled: boolean) => ReactNode,
 }) {
   const item = team.useItem(ITEM_IDS.dataWarehouse);
   const products = team.useProducts();
   const planId = resolvePlanId(products);
-
-  if (item.quantity >= 1) {
-    return null;
-  }
+  const isEntitled = item.quantity >= 1;
 
   const handleUpgrade = async () => {
     const checkoutUrl = await team.createCheckoutUrl({
@@ -183,31 +182,17 @@ function EntitlementGateInner({ team }: {
   };
 
   return (
-    <Alert>
-      <WarningCircleIcon className="h-4 w-4" />
-      <AlertDescription className="flex items-center justify-between gap-4">
-        <span>The Data Warehouse is available on the Team plan and above.</span>
-        <DesignButton size="sm" onClick={handleUpgrade}>Upgrade</DesignButton>
-      </AlertDescription>
-    </Alert>
-  );
-}
-
-/**
- * Shown once, right after provisioning or rotation. The password is never
- * retrievable afterwards, so this panel is the only chance to copy it.
- */
-function CredentialsPanel({ credentials }: { credentials: DataWarehouseCredentialsJson }) {
-  return (
-    <DesignCard
-      icon={KeyIcon}
-      title="Your password"
-      subtitle="Copy it now — this is the only time it is shown. Rotate it if you lose it."
-    >
-      <div className="hexclave-sensitive flex flex-col gap-3">
-        <CopyField type="input" label="Username" value={credentials.username} monospace />
-        <CopyField type="input" label="Password" value={credentials.password} monospace isSecret />
-      </div>
-    </DesignCard>
+    <>
+      {!isEntitled && (
+        <Alert>
+          <WarningCircleIcon className="h-4 w-4" />
+          <AlertDescription className="flex items-center justify-between gap-4">
+            <span>{UNENTITLED_MESSAGE}</span>
+            <DesignButton size="sm" onClick={handleUpgrade}>Upgrade</DesignButton>
+          </AlertDescription>
+        </Alert>
+      )}
+      {children(isEntitled)}
+    </>
   );
 }

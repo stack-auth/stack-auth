@@ -226,7 +226,7 @@ export const ALL_APPS = {
   // Same `-alpha` suffix reasoning as Deployments and Workflows above.
   "data-warehouse-alpha": {
     displayName: "Data Warehouse",
-    subtitle: "A ClickHouse database of your own, next to your analytics data",
+    subtitle: "A private database for your project data",
     tags: ["storage", "developers"],
     stage: "alpha",
   },

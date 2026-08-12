@@ -542,9 +542,9 @@ export const ALL_APPS_FRONTEND = {
     screenshots: [],
     storeDescription: (
       <>
-        <p>Data Warehouse gives your project its own ClickHouse database, running on the same instance as your Hexclave analytics.</p>
-        <p>Connect any ClickHouse client — <code>clickhouse-client</code>, dbt, or your BI tool — to load your own tables, then query them alongside your analytics events in one place.</p>
-        <p>Every project gets a dedicated database and user, so nothing outside your own data is reachable from those credentials.</p>
+        <p>Data Warehouse gives your project its own private database.</p>
+        <p>Load your own tables into it, then query them alongside your analytics events in one place.</p>
+        <p>Each project gets its own database and credentials, so nothing outside your own data is reachable.</p>
       </>
     ),
   },
