@@ -183,7 +183,7 @@ export function OnboardingPage(props: OnboardingPageProps) {
           <Typography variant="secondary" className="text-center text-xs">
             Need help?{" "}
             <a
-              href="https://cal.com/stack-konsti/chat"
+              href="https://cal.com/team/hexclave/onboarding-call"
               target="_blank"
               rel="noopener noreferrer"
               className="underline underline-offset-2 transition-colors hover:text-foreground hover:transition-none"
