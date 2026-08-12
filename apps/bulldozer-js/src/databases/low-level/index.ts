@@ -56,7 +56,17 @@ export type LowLevelKvStore = {
   setAll(entries: Array<{ key: ArrayBuffer, value: ArrayBuffer }>, options?: { requiresSeq?: DatabaseSeq }): Promise<{ seq: DatabaseSeq }>,
   deleteAll(keys: ArrayBuffer[], options?: { requiresSeq?: DatabaseSeq }): Promise<{ seq: DatabaseSeq }>,
 
-  compareAndSet(key: ArrayBuffer, compare: ArrayBuffer, value: ArrayBuffer, options?: { requiresSeq?: DatabaseSeq }): Promise<{ wasSet: true, seq: DatabaseSeq } | { wasSet: false, seq: null }>,
+  /**
+   * The returned sequence must cover every successful entry, not just one of them.
+   * `results[i]` corresponds to `entries[i]`. Failed entries have no sequence because
+   * they did not write. When nothing is written, the returned sequence is
+   * `options.requiresSeq` or the store's initial sequence. A batch must not contain
+   * duplicate keys.
+   */
+  compareAndSetAll(entries: Array<{ key: ArrayBuffer, compare: ArrayBuffer, value: ArrayBuffer }>, options?: { requiresSeq?: DatabaseSeq }): Promise<{
+    results: Array<{ wasSet: true, seq: DatabaseSeq } | { wasSet: false, seq: null }>,
+    seq: DatabaseSeq,
+  }>,
   debugEntries?(): Promise<LowLevelDatabaseDebugEntry[]>,
 }
 
@@ -75,7 +85,7 @@ export type LowLevelKvStore = {
  * Note that durability of a modifying function is only guaranteed after `waitUntilDurable(seq)` for either the returned
  * `seq` or a `seq` that's greater (determined using `maxSeq`).
  */
-export type LowLevelKvDump = Omit<LowLevelKvStore, "setAll" | "compareAndSet"> & {
+export type LowLevelKvDump = Omit<LowLevelKvStore, "setAll" | "compareAndSetAll"> & {
   /**
    * Inserts the values and returns their keys in the same order.
    *

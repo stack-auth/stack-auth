@@ -237,19 +237,37 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
           });
         });
       },
-      async compareAndSet(key, compare, value, compareAndSetOptions) {
-        return await traceSpanHot({ description: "bulldozer-js.low-level.instant.compareAndSet", attributes }, async () => {
-          // The read+compare must happen inside the SAME write-gate critical section as the
-          // subsequent write; otherwise two concurrent calls could both read the same value,
-          // both pass the comparison, and both write — each returning wasSet: true, defeating
-          // compare-and-set's single-winner guarantee.
+      async compareAndSetAll(entries, compareAndSetOptions) {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.instant.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
+          if (entries.length === 0) return { results: [], seq: compareAndSetOptions?.requiresSeq ?? initialSeq };
+          const keys = new Set<string>();
+          for (const { key } of entries) {
+            const keyCacheKey = cacheKey(key);
+            const previousSize = keys.size;
+            keys.add(keyCacheKey);
+            if (keys.size === previousSize) throw new Error("compareAndSetAll entries must not contain duplicate keys");
+          }
           return await withWriteGate(async () => {
-            const existing = await result.get(key);
-            if (existing.buffer === null || !arrayBuffersAreEqual(existing.buffer, compare)) return { wasSet: false, seq: null };
-            const entryForWrapped = { key: cloneArrayBuffer(key), value: cloneArrayBuffer(value) };
+            const existingValues = await Promise.all(entries.map(async ({ key }) => await result.get(key)));
+            const results = entries.map(({ compare }, index) => {
+              const existing = existingValues[index];
+              return existing.buffer !== null && arrayBuffersAreEqual(existing.buffer, compare);
+            });
+            const matchingEntries = entries.filter((_, index) => results[index]);
+            if (matchingEntries.length === 0) {
+              return {
+                results: results.map(() => ({ wasSet: false as const, seq: null })),
+                seq: compareAndSetOptions?.requiresSeq ?? initialSeq,
+              };
+            }
+            const entriesForWrapped = matchingEntries.map(({ key, value }) => ({ key: cloneArrayBuffer(key), value: cloneArrayBuffer(value) }));
             const requiresSeq = getChainedRequiresSeq(compareAndSetOptions?.requiresSeq);
-            const { seq: underlyingSeq } = await wrappedStore.setAll([entryForWrapped], { requiresSeq });
-            return { wasSet: true, seq: recordWrite(underlyingSeq, [entryForWrapped]) };
+            const { seq: underlyingSeq } = await wrappedStore.setAll(entriesForWrapped, { requiresSeq });
+            const seq = recordWrite(underlyingSeq, entriesForWrapped);
+            return {
+              results: results.map(wasSet => wasSet ? { wasSet: true, seq } : { wasSet: false, seq: null }),
+              seq,
+            };
           });
         });
       },
