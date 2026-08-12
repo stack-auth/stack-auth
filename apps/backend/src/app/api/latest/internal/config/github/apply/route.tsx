@@ -16,10 +16,6 @@ import { getInvalidConfigReason } from "@hexclave/shared/dist/config/format";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 
-// Background work (sandbox boot, clone, agent edit, capture the change set) continues
-// via waitUntil after the immediate response, so allow a long invocation.
-export const maxDuration = 800;
-
 /**
  * Kicks off an AI-agent config write to the linked GitHub repo (writes go through
  * the agent in a Vercel Sandbox; reads use jiti). The agent edits the repo in the

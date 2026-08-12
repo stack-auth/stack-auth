@@ -2,7 +2,7 @@ import { it, localRedirectUrl } from "../../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should send a password reset code per e-mail", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ sendVerificationEmail: true });
   await Auth.signOut();
   const mailbox = backendContext.value.mailbox;
   const response = await niceBackendFetch("/api/v1/auth/password/send-reset-code", {

@@ -1,8 +1,10 @@
 import { decodeBase64, encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { shouldSuppressPeriodicBulldozerLogs } from "../../logging.js";
 import { traceSpan, traceSpanHot } from "../../otel.js";
 import { Database, DatabaseSeq } from "../index.js";
 import { LowLevelDatabase, LowLevelDatabaseDebugSnapshot } from "../low-level/index.js";
+import { declarePiledriverGarbageCollector, PiledriverGarbageCollectionResult } from "./gc.js";
 
 export const isPiledriverHeapObjectSymbol = Symbol.for("hexclave-piledriver-heap-object-symbol");
 export type PiledriverHeapObject = {
@@ -12,6 +14,7 @@ export type PiledriverHeapObject = {
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+const piledriverProcessStartedAtMillis = Date.now();
 
 const heapObjectsMapNullSentinel = { __heapObjectsMapNullSentinel: true };
 const heapObjectsByObject = new WeakMap<PiledriverObject & object, PiledriverHeapObject>();
@@ -58,6 +61,8 @@ export type PiledriverDatabase = Database & {
   getRootObject(key: ArrayBuffer): Promise<{ object: PiledriverObject, seq: DatabaseSeq }>,
   setRootObject(key: ArrayBuffer, value: PiledriverObject): Promise<{ seq: DatabaseSeq }>,
   deleteRootObject(key: ArrayBuffer): Promise<{ seq: DatabaseSeq }>,
+  getGarbageCollectionProcessStartedAtMillis(): number,
+  collectGarbage(cutoffTimestampMillis: number, maxObjects?: number): Promise<PiledriverGarbageCollectionResult>,
   debugSnapshot?(): Promise<PiledriverDatabaseDebugSnapshot>,
   debugLowLevelSnapshot?(): Promise<LowLevelDatabaseDebugSnapshot>,
 };
@@ -68,6 +73,11 @@ export type PiledriverDatabaseDebugSnapshot = {
 };
 export type PiledriverDatabaseOptions = {
   disableHeapReadCache?: boolean,
+  /**
+   * Overrides the process-lifetime GC barrier for isolated tests and embedders that supervise
+   * Piledriver in a longer-lived host process. Production Bulldozer uses the module-load time.
+   */
+  garbageCollectionProcessStartedAtMillis?: number,
 };
 
 // Tracks the chain of *heap objects* currently being serialized, so heap cycles fail fast with
@@ -245,12 +255,51 @@ function serializationBranchStatsByKey(stats: PiledriverSerializationTimingStats
 export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options: PiledriverDatabaseOptions = {}): PiledriverDatabase {
   // TODO actually support cycles both for heap and non-heap objects (right now they are detected and rejected)
 
+  const processStartedAtMillis = options.garbageCollectionProcessStartedAtMillis ?? piledriverProcessStartedAtMillis;
+  if (!Number.isSafeInteger(processStartedAtMillis) || processStartedAtMillis < 0) {
+    throw new Error("Piledriver garbageCollectionProcessStartedAtMillis must be a non-negative safe integer");
+  }
   const rootStore = lowLevelDb.declareKvStore("root");
   const heapDump = lowLevelDb.declareKvDump("heap");
+  const garbageCollector = declarePiledriverGarbageCollector({
+    lowLevelDb,
+    heapDump,
+    processStartedAtMillis,
+  });
+  const rootMutationByKey = new Map<string, Promise<unknown>>();
+  const withRootMutationLock = async <T>(key: ArrayBuffer, operation: () => Promise<T>) => {
+    const keyBase64 = encodeBase64(new Uint8Array(key));
+    const previous = rootMutationByKey.get(keyBase64) ?? Promise.resolve();
+    const current = previous.catch(() => {}).then(operation);
+    rootMutationByKey.set(keyBase64, current);
+    try {
+      return await current;
+    } finally {
+      if (rootMutationByKey.get(keyBase64) === current) rootMutationByKey.delete(keyBase64);
+    }
+  };
 
   const heapObjectsByHeapKeyBase64 = new Map<string, { refIdentity: string, object: WeakRef<PiledriverHeapObject>, seq: DatabaseSeq }>();
   const heapObjectsByHeapKeyFinalizer = new FinalizationRegistry(([keyBase64, refIdentity]: [string, string]) => heapObjectsByHeapKeyBase64.get(keyBase64)?.refIdentity === refIdentity && heapObjectsByHeapKeyBase64.delete(keyBase64));
   const heapKeysAndSeqByHeapObjects = new WeakMap<PiledriverHeapObject, Promise<{ key: ArrayBuffer, seq: DatabaseSeq }>>();
+  const heapSerializationDependencies = new WeakMap<PiledriverHeapObject, Set<PiledriverHeapObject>>();
+
+  const addHeapSerializationDependency = (parent: PiledriverHeapObject, child: PiledriverHeapObject) => {
+    // Backfills can produce dependency graphs deep enough to overflow a recursive reachability
+    // walk. Keep cycle failures deterministic with an explicit stack.
+    const visited = new Set<PiledriverHeapObject>();
+    const pending = [child];
+    while (pending.length > 0) {
+      const current = pending.pop() ?? throwErr("Piledriver heap dependency stack unexpectedly became empty");
+      if (current === parent) throw new Error("Piledriver objects must not contain cycles (found a cycle of heap objects)");
+      if (visited.has(current)) continue;
+      visited.add(current);
+      for (const dependency of heapSerializationDependencies.get(current) ?? []) pending.push(dependency);
+    }
+    const dependencies = heapSerializationDependencies.get(parent);
+    if (dependencies === undefined) heapSerializationDependencies.set(parent, new Set([child]));
+    else dependencies.add(child);
+  };
 
   const cacheHeapObjectByKey = (key: ArrayBuffer, heapObj: PiledriverHeapObject, seq: DatabaseSeq) => {
     const keyBase64 = encodeBase64(new Uint8Array(key));
@@ -313,12 +362,14 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
           serializationTimingStats.heapObjectGetTotalMs += performance.now() - heapObjectGetStartedAt;
         }
         const heapObjectSerializeStartedAt = performance.now();
-        const serialized = await serializePiledriverObject(heapObject, childHeapPath, serializationTimingStats, branchKey);
+        const serialized = await serializePiledriverObject(heapObject, childHeapPath, serializationTimingStats, branchKey, heapObj);
         if (serializationTimingStats !== undefined) serializationTimingStats.heapObjectSerializeTotalMs += performance.now() - heapObjectSerializeStartedAt;
+        const references = await garbageCollector.beforeSerializedObjectBecomesVisible(serialized.buffer, serialized.seq);
         const heapObjectInsertStartedAt = performance.now();
-        const inserted = await heapDump.insertAll([serialized.buffer], { requiresSeq: serialized.seq });
+        const inserted = await heapDump.insertAll([serialized.buffer], { requiresSeq: references.seq });
+        const created = await garbageCollector.recordHeapObjectCreation(inserted.keys[0], inserted.seq);
         if (serializationTimingStats !== undefined) serializationTimingStats.heapObjectInsertAwaitTotalMs += performance.now() - heapObjectInsertStartedAt;
-        return { key: inserted.keys[0], seq: inserted.seq };
+        return { key: inserted.keys[0], seq: created.seq };
       });
     })();
     heapKeysAndSeqByHeapObjects.set(heapObj, promise);
@@ -397,7 +448,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
   // allocates a UUID, tracking promises, and map entries). Profiling showed that overhead — not
   // LMDB — dominated CPU during backfills, so seqs are now combined exactly once per heap
   // object/root, and only heap references involve async work at all.
-  const serializePiledriverObject = async (obj: PiledriverObject, heapPath: HeapSerializationPath, serializationTimingStats: PiledriverSerializationTimingStats | undefined, inheritedBranchKey?: string): Promise<{ buffer: ArrayBuffer, seq: DatabaseSeq }> => {
+  const serializePiledriverObject = async (obj: PiledriverObject, heapPath: HeapSerializationPath, serializationTimingStats: PiledriverSerializationTimingStats | undefined, inheritedBranchKey?: string, serializingHeapObject?: PiledriverHeapObject): Promise<{ buffer: ArrayBuffer, seq: DatabaseSeq }> => {
     const stats = serializationTimingStats;
     const pendingSlots: PendingHeapReferenceSlot[] = [];
     const objectPath = new Set<object>();
@@ -452,6 +503,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
             // Fail fast on heap cycles at walk time (resolution would deadlock on the ancestor's
             // own memoized promise otherwise).
             if (heapPath.has(node)) throw new Error("Piledriver objects must not contain cycles (found a cycle of heap objects)");
+            if (serializingHeapObject !== undefined) addHeapSerializationDependency(serializingHeapObject, node);
             const slot: [string, string | null] = ["heap-reference", null];
             pendingSlots.push({ slot, heapObj: node, branchKey });
             return slot;
@@ -604,15 +656,20 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         lowLevelDb,
         rootStore,
         heapDump,
+        garbageCollector,
+        processStartedAtMillis,
+        rootMutationByKey,
         heapObjectsByObject,
         heapObjectsByHeapKeyBase64,
         heapObjectsByHeapKeyFinalizer,
         heapKeysAndSeqByHeapObjects,
+        heapSerializationDependencies,
         heapReadCacheDisabled: options.disableHeapReadCache === true,
       };
     },
     async getRootObject(key): Promise<{ object: PiledriverObject, seq: DatabaseSeq }> {
       return await traceSpan("bulldozer-js.piledriver.getRootObject", async () => {
+        await garbageCollector.initialize();
         const { buffer, seq: rootSeq } = await rootStore.get(key);
         if (buffer === null) throw new Error("Root object not found");
         const { object, seq: deserializeSeq } = await deserializePiledriverObject(buffer, rootSeq);
@@ -620,17 +677,27 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
       });
     },
     async setRootObject(key, value): Promise<{ seq: DatabaseSeq }> {
-      return await traceSpan("bulldozer-js.piledriver.setRootObject", async () => {
+      return await traceSpan("bulldozer-js.piledriver.setRootObject", async () => await withRootMutationLock(key, async () => {
+        await garbageCollector.initialize();
+        const previousRoot = await rootStore.get(key);
         const timingStats = emptyPiledriverSerializationTimingStats();
         const startedAt = performance.now();
         const serializeStartedAt = performance.now();
         const serializeCpuStartedAt = process.cpuUsage();
         const { buffer, seq } = await serializePiledriverObject(value, new Set(), timingStats);
+        const references = await garbageCollector.beforeSerializedObjectBecomesVisible(buffer, seq);
         const serializeCpuUsage = process.cpuUsage(serializeCpuStartedAt);
         const serializePiledriverObjectMs = performance.now() - serializeStartedAt;
         const serializeCpuMs = (serializeCpuUsage.user + serializeCpuUsage.system) / 1000;
         const rootStoreSetAllStartedAt = performance.now();
-        const { seq: rootSeq } = await rootStore.setAll([{ key, value: buffer }], { requiresSeq: seq });
+        const { seq: rootSeq } = await rootStore.setAll([{ key, value: buffer }], { requiresSeq: references.seq });
+        const dereferenced = previousRoot.buffer === null
+          ? { seq: rootSeq }
+          : await garbageCollector.afterSerializedObjectBecameInvisible(
+            previousRoot.buffer,
+            Math.max(Date.now(), processStartedAtMillis),
+            rootSeq,
+          );
         const rootStoreSetAllMs = performance.now() - rootStoreSetAllStartedAt;
         const topSerializationBranches = [...timingStats.branchStats.entries()]
           .map(([branch, stats]) => ({
@@ -688,13 +755,29 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
             topSerializationBranches,
           });
         }
-        return { seq: rootSeq };
-      });
+        return { seq: dereferenced.seq };
+      }));
     },
     async deleteRootObject(key): Promise<{ seq: DatabaseSeq }> {
-      return await traceSpan("bulldozer-js.piledriver.deleteRootObject", async () => {
-        const { seq } = await rootStore.deleteAll([key]);
-        return { seq };
+      return await traceSpan("bulldozer-js.piledriver.deleteRootObject", async () => await withRootMutationLock(key, async () => {
+        await garbageCollector.initialize();
+        const previousRoot = await rootStore.get(key);
+        const deleted = await rootStore.deleteAll([key]);
+        if (previousRoot.buffer === null) return deleted;
+        const dereferenced = await garbageCollector.afterSerializedObjectBecameInvisible(
+          previousRoot.buffer,
+          Math.max(Date.now(), processStartedAtMillis),
+          deleted.seq,
+        );
+        return { seq: dereferenced.seq };
+      }));
+    },
+    getGarbageCollectionProcessStartedAtMillis() {
+      return processStartedAtMillis;
+    },
+    async collectGarbage(cutoffTimestampMillis, maxObjects) {
+      return await traceSpan("bulldozer-js.piledriver.collectGarbage", async () => {
+        return await garbageCollector.collectGarbage(cutoffTimestampMillis, maxObjects);
       });
     },
     combineSeqs(...seqs) {

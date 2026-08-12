@@ -11,6 +11,7 @@ import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { Prisma, PurchaseCreationSource } from "@/generated/prisma/client";
 import { KnownErrors } from "@hexclave/shared";
 import { teamsCrud } from "@hexclave/shared/dist/interface/crud/teams";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { validateBase64Image } from "@hexclave/shared/dist/utils/base64";
 import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -138,9 +139,12 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     });
 
     if (freePlanSubscription != null) {
-      // This is quite slow with current Bulldozer. Let's not block the team creation for this and run asynchronously.
-      // TODO: Run this synchronously once we have bulldozerjs
-      runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(freePlanSubscription));
+      try {
+        await bulldozerWriteSubscription(freePlanSubscription);
+      } catch (error) {
+        // let's not block team creation for this
+        captureError("teams:create:free-plan-bulldozer-write", error);
+      }
     }
 
     const result = teamPrismaToCrud(db);

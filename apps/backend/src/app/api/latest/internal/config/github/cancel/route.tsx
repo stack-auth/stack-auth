@@ -8,8 +8,6 @@ import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 
-export const maxDuration = 60;
-
 /**
  * Atomically flips the run to terminal `cancelled` (so the original run's late
  * result is ignored) and hard-stops its sandbox if one was recorded (only `running`

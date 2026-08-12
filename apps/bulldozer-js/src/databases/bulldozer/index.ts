@@ -6,6 +6,7 @@ import { DatabaseSeq } from "../index.js";
 import type { LowLevelDatabaseDebugSnapshot } from "../low-level/index.js";
 import { AugmentedTreeMap, AugmentedTreeMultiMap } from "../piledriver/data-structures/augmented-tree-map.js";
 import { ConcatTreeList } from "../piledriver/data-structures/concat-tree-list.js";
+import { PiledriverGarbageCollectionResult } from "../piledriver/gc.js";
 import { isPiledriverHeapObjectSymbol, PiledriverDatabase, PiledriverDatabaseDebugSnapshot, PiledriverObject, piledriverObjectEquals } from "../piledriver/index.js";
 
 // Code-unit comparison; localeCompare would persist trees whose order depends on the runtime locale.
@@ -858,6 +859,8 @@ export type BulldozerDatabase = {
   withSnapshot(updateSnapshot: (snapshot: BulldozerDatabaseSnapshot) => Promise<BulldozerDatabaseSnapshot | BulldozerSnapshotMutationResult>): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
   withSnapshotReplicated(updateSnapshot: (snapshot: BulldozerDatabaseSnapshot) => Promise<BulldozerDatabaseSnapshot | BulldozerSnapshotMutationResult>): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
   waitUntilCurrentStateDurable(): Promise<void>,
+  getPiledriverGarbageCollectionProcessStartedAtMillis(): number,
+  collectPiledriverGarbage(cutoffTimestampMillis: number, maxObjects?: number): Promise<PiledriverGarbageCollectionResult>,
   close(): Promise<void>,
   applyRemainingMigrations(): Promise<{ seq: DatabaseSeq }>,
 };
@@ -1005,6 +1008,15 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
       // fresh read sees initialSeq while the original LMDB flush is still pending.
       await piledriverDatabase.waitUntilDurable(latestRootWriteSeq);
     })),
+    getPiledriverGarbageCollectionProcessStartedAtMillis: () => piledriverDatabase.getGarbageCollectionProcessStartedAtMillis(),
+    collectPiledriverGarbage: async (cutoffTimestampMillis, maxObjects) => {
+      if (closePromise !== null) throw new Error("Bulldozer database is closing and cannot start garbage collection");
+      return await withWriteLock(async () => {
+        // Recheck after waiting for the lock: close may have started while GC was queued.
+        if (closePromise !== null) throw new Error("Bulldozer database is closing and cannot start garbage collection");
+        return await piledriverDatabase.collectGarbage(cutoffTimestampMillis, maxObjects);
+      });
+    },
     close() {
       if (closePromise === null) {
         closePromise = traceSpan("bulldozer-js.bulldozer.close", async () => await withWriteLock(async () => {
@@ -1357,6 +1369,10 @@ export function defineStoredTable(options: {
   };
   const emptyMap = new AugmentedTreeMap(mapOptions);
 
+  // Stored tables always use a null sort key (`compareSortKeys` is constantly 0).
+  // Range bounds are sort-key ranges — same contract as derived tables / timefold —
+  // so identity/flatMap pushdown of null bounds keeps working. Identifier-ordered
+  // pagination belongs on a derived sort table (see payments-manual-transactions-sorted).
   const serialize = (map: typeof emptyMap) => ({
     version: 1,
     map: map.toPiledriverObject(),
@@ -1379,9 +1395,12 @@ export function defineStoredTable(options: {
       yield { groupKey: null };
     },
     async * listRowsInGroup({ serializedTable, groupKey, range }) {
+      if (groupKey !== null || !isInRange(null, range, () => 0) || range.limit === 0) return;
       const map = deserialize(serializedTable);
-      if (groupKey !== null || range.gt !== undefined || range.lt !== undefined || range.limit === 0) return;
-      for await (const [rowIdentifier, rowData] of map.entries({ reverse: range.reverse, limit: range.limit })) {
+      for await (const [rowIdentifier, rowData] of map.entries({
+        reverse: range.reverse,
+        limit: range.limit,
+      })) {
         yield { groupKey: null, rowIdentifier, rowSortKey: null, rowData };
       }
     },

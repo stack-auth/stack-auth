@@ -1430,6 +1430,7 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
 
     const items: AdminSessionReplay[] = response.items.map((r) => ({
       id: r.id,
+      refreshTokenId: r.refresh_token_id,
       projectUser: {
         id: r.project_user.id,
         displayName: r.project_user.display_name,
@@ -1451,6 +1452,7 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     const response = await this._interface.getSessionReplay(sessionReplayId);
     return {
       id: response.id,
+      refreshTokenId: response.refresh_token_id,
       projectUser: {
         id: response.project_user.id,
         displayName: response.project_user.display_name,
