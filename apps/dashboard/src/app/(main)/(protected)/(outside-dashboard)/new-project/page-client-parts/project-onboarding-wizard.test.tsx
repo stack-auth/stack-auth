@@ -127,7 +127,13 @@ vi.mock("./components", () => ({
   DomainSetupTransitionState: () => <div>Domain setup transition</div>,
   ModeNotImplementedCard: () => <div>Mode not implemented</div>,
   OnboardingAppCard: () => <div>App card</div>,
-  OnboardingEmailThemePreview: () => <div>Email theme preview</div>,
+  EmailThemePicker: () => <div>Email theme picker</div>,
+  SetupNewProjectPage: ({ configFile }: { configFile?: string }) => (
+    <div>
+      <h1>Almost done!</h1>
+      {configFile != null && <pre>{configFile}</pre>}
+    </div>
+  ),
   OnboardingPage: ({
     title,
     subtitle,
@@ -193,11 +199,22 @@ describe("ProjectOnboardingWizard", () => {
     expect(componentsSource).toContain("Welcome to Hexclave!");
     expect(componentsSource).toContain("What would you like to do?");
     expect(componentsSource).toContain("Add Hexclave to a new project");
+    expect(componentsSource).toContain("What will you use Hexclave for?");
+    expect(componentsSource).toContain("Do you want to install any other apps?");
+    expect(componentsSource).toContain("Not sure / Decide later");
+    expect(componentsSource).toContain("Search products...");
+    expect(componentsSource).toContain("Choose the first app you want to install now");
+    expect(componentsSource).toContain('["deployments-alpha", "authentication", "analytics"]');
+    expect(componentsSource).toContain("expandAppSoftRequirements([...installableApps, \"analytics\"])");
+    expect(componentsSource).toContain("parseOnboardingAppSearchParam");
+    expect(componentsSource).toContain("getInstallableAppId");
+    expect(componentsSource).toContain("text-amber-500");
     expect(componentsSource).toContain("Deploy my existing Hexclave project to production");
     expect(componentsSource).toContain("I just want to look around");
     expect(componentsSource).toContain("https://preview.hexclave.com");
     expect(componentsSource).toContain("Where is your project currently?");
-    expect(componentsSource).toContain("You don't need Hexclave Cloud to build your project with Hexclave.");
+    expect(componentsSource).toContain("Almost done!");
+    expect(componentsSource).toContain("To finish the setup, install Hexclave in your local project.");
     expect(componentsSource).toContain("On my computer (local)");
     expect(componentsSource).toContain("On GitHub");
     expect(componentsSource).toContain("Advanced");
@@ -345,7 +362,7 @@ describe("ProjectOnboardingWizard", () => {
     }
   });
 
-  it("prefetches email themes on early steps without mounting heavy hooks", () => {
+  it("does not call email theme APIs on early onboarding steps", () => {
     const useEmailThemes = vi.fn(() => {
       throw new Error("Email themes should not load on the app selection step.");
     });
@@ -400,7 +417,7 @@ describe("ProjectOnboardingWizard", () => {
       />,
     );
 
-    expect(listEmailThemes).toHaveBeenCalledOnce();
+    expect(listEmailThemes).not.toHaveBeenCalled();
     expect(getEmailPreview).not.toHaveBeenCalled();
     expect(getStripeAccountInfo).not.toHaveBeenCalled();
     expect(useEmailThemes).not.toHaveBeenCalled();
@@ -637,9 +654,7 @@ describe("ProjectOnboardingWizard", () => {
     expect(useStripeAccountInfo).not.toHaveBeenCalled();
   });
 
-  it("shows an email-theme shimmer instead of the page spinner while themes load", () => {
-    const pendingEmailThemes = new Promise<never>(() => {});
-
+  it("renders the static email theme picker without waiting on project theme APIs", () => {
     render(
       <ProjectOnboardingWizard
         project={{
@@ -668,11 +683,7 @@ describe("ProjectOnboardingWizard", () => {
           }),
           app: {
             setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
-            listEmailThemes: vi.fn(async () => []),
             getStripeAccountInfo: vi.fn(async () => null),
-            useEmailThemes: () => {
-              throw pendingEmailThemes;
-            },
             useStripeAccountInfo: () => null,
           },
         } as never}
@@ -686,7 +697,7 @@ describe("ProjectOnboardingWizard", () => {
     );
 
     expect(screen.getByText("Select an email theme")).toBeTruthy();
-    expect(screen.getByTestId("email-theme-step-skeleton")).toBeTruthy();
+    expect(screen.getByText("Email theme picker")).toBeTruthy();
   });
 
   it("shows a payments shimmer instead of the page spinner while Stripe status loads", () => {
