@@ -3,7 +3,6 @@ import { decodeSpanContextHeader, readSpanContextHeader } from "@hexclave/shared
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { NextRequest } from "next/server";
 import { getSharedClickhouseAdminClient } from "./clickhouse";
 import { insertSpans, type SpanInsertRow } from "./spans";
 import { isTelemetryIngestionPath } from "./telemetry-ingestion-paths";
@@ -169,11 +168,11 @@ async function writeCustomerRequestSpan(row: SpanInsertRow): Promise<void> {
  * or another disconnected root inside the caller's trace.
  */
 export async function runWithCustomerRequestObservability(
-  request: NextRequest,
+  request: Request,
   fn: () => Promise<Response>,
   writer: CustomerRequestSpanWriter = writeCustomerRequestSpan,
 ): Promise<Response> {
-  if (isTelemetryIngestionPath(request.nextUrl.pathname)) return await fn();
+  if (isTelemetryIngestionPath(new URL(request.url).pathname)) return await fn();
 
   const parsedIncomingParent = parseTraceparent(request.headers.get("traceparent"));
   // An unsampled W3C context does not promise that its parent was recorded.

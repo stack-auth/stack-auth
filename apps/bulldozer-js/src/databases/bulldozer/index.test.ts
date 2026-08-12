@@ -92,6 +92,52 @@ describe("Bulldozer", () => {
     ]);
   });
 
+  it("keeps shutdown behind an in-flight Piledriver garbage collection", async () => {
+    const underlying = declarePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
+    let markCollectionStarted: (() => void) | undefined;
+    const collectionStarted = new Promise<void>(resolve => {
+      markCollectionStarted = resolve;
+    });
+    let releaseCollection: (() => void) | undefined;
+    const collectionGate = new Promise<void>(resolve => {
+      releaseCollection = resolve;
+    });
+    let closeCalls = 0;
+    const piledriver = {
+      ...underlying,
+      async collectGarbage(cutoffTimestampMillis: number, maxObjects?: number) {
+        if (markCollectionStarted === undefined) throw new Error("Collection-start signal was not initialized");
+        markCollectionStarted();
+        await collectionGate;
+        return await underlying.collectGarbage(cutoffTimestampMillis, maxObjects);
+      },
+      async close() {
+        closeCalls++;
+        await underlying.close();
+      },
+    };
+    const db = declareBulldozerDatabase(piledriver, { migrations: [] });
+
+    const collection = db.collectPiledriverGarbage(0);
+    await collectionStarted;
+    const closing = db.close();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(closeCalls).toBe(0);
+
+    if (releaseCollection === undefined) throw new Error("Collection gate was not initialized");
+    releaseCollection();
+    await Promise.all([collection, closing]);
+    expect(closeCalls).toBe(1);
+  });
+
+  it("rejects Piledriver garbage collection once shutdown starts", async () => {
+    const db = newDb([]);
+    const closing = db.close();
+
+    await expect(db.collectPiledriverGarbage(0)).rejects.toThrow("closing");
+    await closing;
+  });
+
   it("retains the latest write sequence after instant-availability cache eviction", async () => {
     const path = await mkdtemp(join(tmpdir(), "bulldozer-durability-barrier-"));
     const lmdb = declareLmdbLowLevelDatabase({ path, dbId: "durability-barrier" });
@@ -756,6 +802,56 @@ describe("Bulldozer", () => {
       { groupKey: null, rowIdentifier: JSON.stringify(["b", JSON.stringify(["c", 1])]), rowSortKey: [1, [null, 1]], rowData: 103 },
       { groupKey: null, rowIdentifier: JSON.stringify(["b", JSON.stringify(["c", 0])]), rowSortKey: [1, [null, 0]], rowData: 3 },
     ]);
+  });
+
+  it("keeps null sort-key range semantics on stored tables", async () => {
+    let snapshot = await initializedSnapshot([[
+      { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
+    ]]);
+    snapshot = await set(snapshot, "store", "txn-a", { txnId: "txn-a" });
+    snapshot = await set(snapshot, "store", "txn-b", { txnId: "txn-b" });
+
+    // Inclusive null bounds (flatMap/identity pushdown of [null, i]) still list rows.
+    expect((await collect(snapshot.listRowsInGroup({
+      tableId: "store",
+      groupKey: null,
+      range: { gte: null, lte: null },
+    }))).map((row) => row.rowIdentifier)).toEqual(["txn-a", "txn-b"]);
+
+    // Exclusive gt on the null sort key cannot match any row.
+    expect(await collect(snapshot.listRowsInGroup({
+      tableId: "store",
+      groupKey: null,
+      range: { gt: null },
+    }))).toEqual([]);
+  });
+
+  it("pages identifier-ordered rows via a sort table over a stored table", async () => {
+    let snapshot = await initializedSnapshot([[
+      { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
+      { type: "initTable", tableId: "sorted", table: defineSortTable({
+        sortKeyExtractor: (row) => row.rowIdentifier,
+        sortKeyComparator: (a, b) => stringCompare(String(a), String(b)),
+      }), inputTables: { input: "store" } },
+    ]]);
+    snapshot = await set(snapshot, "store", "txn-a", { txnId: "txn-a" });
+    snapshot = await set(snapshot, "store", "txn-b", { txnId: "txn-b" });
+    snapshot = await set(snapshot, "store", "txn-c", { txnId: "txn-c" });
+
+    const page1 = await collect(snapshot.listRowsInGroup({
+      tableId: "sorted",
+      groupKey: null,
+      range: { limit: 2 },
+    }));
+    expect(page1.map((row) => row.rowIdentifier)).toEqual(["txn-a", "txn-b"]);
+    expect(page1.map((row) => row.rowSortKey)).toEqual(["txn-a", "txn-b"]);
+
+    const page2 = await collect(snapshot.listRowsInGroup({
+      tableId: "sorted",
+      groupKey: null,
+      range: { gt: "txn-b", limit: 2 },
+    }));
+    expect(page2.map((row) => row.rowIdentifier)).toEqual(["txn-c"]);
   });
 
   it("does not eagerly evaluate rows beyond requested limits", async () => {

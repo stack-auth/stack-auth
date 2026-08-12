@@ -1,6 +1,6 @@
 "use client";
 import { FormDialog } from "@/components/form-dialog";
-import { InputField, SwitchField } from "@/components/form-fields";
+import { InputField, SelectField, SwitchField } from "@/components/form-fields";
 import { InlineSaveDiscard } from "@/components/inline-save-discard";
 import { DesignAlert } from "@/components/design-components";
 import { SettingCard, SettingSwitch } from "@/components/settings";
@@ -10,8 +10,9 @@ import { DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } 
 import { yupString } from "@hexclave/shared/dist/schema-fields";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { typedEntries } from "@hexclave/shared/dist/utils/objects";
-import { isValidHostnameWithWildcards, isValidUrl } from "@hexclave/shared/dist/utils/urls";
+import { isValidHostnameWithWildcards } from "@hexclave/shared/dist/utils/urls";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import React, { useMemo, useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -43,8 +44,34 @@ function EditDialog(props: {
 )) {
   const hexclaveAdminApp = useAdminApp();
   const updateConfig = useUpdateConfig();
+  const canAddWww = (domain: string | undefined) => {
+    return domain == null || (!domain.includes('*') && !domain.startsWith('www.'));
+  };
+  const canAddSubdomains = (domain: string | undefined) => {
+    return domain == null || !domain.includes('*');
+  };
+  const isScopeAvailable = (scope: string, domain: string | undefined) => {
+    if (scope === 'only') {
+      return true;
+    }
+    if (scope === 'www') {
+      return canAddWww(domain);
+    }
+    if (scope === 'subdomains') {
+      return canAddSubdomains(domain);
+    }
+    return false;
+  };
 
-  const domainFormSchema = yup.object({
+  type DomainFormValues = {
+    domain: string,
+    handlerPath: string,
+    scope: 'only' | 'subdomains' | 'www',
+    insecureHttp: boolean,
+  };
+  const previousScope = React.useRef<DomainFormValues["scope"] | undefined>(undefined);
+
+  const domainFormSchema: yup.ObjectSchema<DomainFormValues> = yup.object({
     domain: yupString()
       .test({
         name: 'domain',
@@ -56,7 +83,7 @@ function EditDialog(props: {
         message: "Domain already exists",
         test: function(value) {
           if (!value) return true;
-          const { addWww, insecureHttp } = this.parent;
+          const { scope, insecureHttp } = this.parent;
 
           // Get all existing domains except the one being edited
           const existingDomains = props.domains
@@ -64,15 +91,14 @@ function EditDialog(props: {
             .map(({ baseUrl }) => baseUrl);
 
           // Generate all variations of the domain being tested
-          const variations = [];
-          const protocols = insecureHttp ? ['http://', 'https://'] : ['https://'];
-          const prefixes = addWww ? ['', 'www.'] : [''];
-
-          for (const protocol of protocols) {
-            for (const prefix of prefixes) {
-              variations.push(protocol + prefix + value);
-            }
+          const hostVariations = [value];
+          if (scope === 'www') {
+            hostVariations.push('www.' + value);
+          } else if (scope === 'subdomains') {
+            hostVariations.push('**.' + value);
           }
+          const protocols = insecureHttp ? ['http://', 'https://'] : ['https://'];
+          const variations = protocols.flatMap(protocol => hostVariations.map(variation => protocol + variation));
 
           // Check if any variation exists in existing domains
           return !variations.some(variation => existingDomains.includes(variation));
@@ -82,38 +108,15 @@ function EditDialog(props: {
     handlerPath: yup.string()
       .matches(/^\//, "Handler path must start with /")
       .defined(),
-    addWww: yup.boolean(),
-    insecureHttp: yup.boolean(),
+    scope: yup.string().oneOf(['only', 'subdomains', 'www']).defined(),
+    insecureHttp: yup.boolean().defined(),
   });
-
-  const canAddWww = (domain: string | undefined) => {
-    if (!domain) {
-      return false;
-    }
-
-    // Don't allow adding www. to wildcard domains
-    if (domain.includes('*')) {
-      return false;
-    }
-
-    const httpsUrl = 'https://' + domain;
-    if (!isValidUrl(httpsUrl)) {
-      return false;
-    }
-
-    if (domain.startsWith('www.')) {
-      return false;
-    }
-
-    const wwwUrl = 'https://www.' + domain;
-    return isValidUrl(wwwUrl);
-  };
 
   return <FormDialog
     open={props.open}
     defaultValues={{
-      addWww: props.type === 'create',
-      domain: props.type === 'update' ? props.defaultDomain.replace(/^https?:\/\//, "") : undefined,
+      scope: 'only',
+      domain: props.type === 'update' ? props.defaultDomain.replace(/^https?:\/\//, "") : "",
       handlerPath: props.type === 'update' ? props.defaultHandlerPath : "/handler",
       insecureHttp: props.type === 'update' ? props.defaultDomain.startsWith('http://') : false,
     }}
@@ -121,28 +124,52 @@ function EditDialog(props: {
     trigger={props.trigger}
     title={(props.type === 'create' ? "Create" : "Update") + " domain and handler"}
     formSchema={domainFormSchema}
+    onFormChange={(form) => {
+      if (props.type !== 'create') {
+        return;
+      }
+
+      const scope = form.getValues('scope');
+      const domain = form.getValues('domain');
+      const scopeChanged = previousScope.current !== scope;
+      previousScope.current = scope;
+      if (!isScopeAvailable(scope, domain)) {
+        form.setValue('scope', 'only', { shouldValidate: true });
+      }
+      if (scopeChanged) {
+        runAsynchronously(form.trigger('domain'));
+      }
+    }}
     okButton={{ label: props.type === 'create' ? "Create" : "Save" }}
     onSubmit={async (values) => {
       const protocol = values.insecureHttp ? 'http://' : 'https://';
       const baseUrl = protocol + values.domain;
-      const wwwBaseUrl = protocol + 'www.' + values.domain;
+
+      if (props.type === 'create' && !isScopeAvailable(values.scope, values.domain)) {
+        throw new HexclaveAssertionError(`Unavailable domain scope "${values.scope}" for "${values.domain}"`);
+      }
 
       try {
         if (props.type === 'create') {
           // Create new domain(s)
           const newDomainId = generateUuid();
-          const configUpdate: Record<string, any> = {
+          const configUpdate: Record<string, {
+            baseUrl: string,
+            handlerPath: string,
+          }> = {
             [`domains.trustedDomains.${newDomainId}`]: {
               baseUrl,
               handlerPath: values.handlerPath,
             },
           };
 
-          // Add www variant if requested
-          if (canAddWww(values.domain) && values.addWww) {
-            const wwwDomainId = generateUuid();
-            configUpdate[`domains.trustedDomains.${wwwDomainId}`] = {
-              baseUrl: wwwBaseUrl,
+          if (values.scope !== 'only') {
+            const additionalDomainId = generateUuid();
+            const additionalDomain = values.scope === 'www'
+              ? 'www.' + values.domain
+              : '**.' + values.domain;
+            configUpdate[`domains.trustedDomains.${additionalDomainId}`] = {
+              baseUrl: protocol + additionalDomain,
               handlerPath: values.handlerPath,
             };
           }
@@ -179,69 +206,85 @@ function EditDialog(props: {
         );
       }
     }}
-    render={(form) => (
-      <>
-        <DesignAlert variant="info">
-          <div className="space-y-2 text-foreground/80 dark:text-muted-foreground">
-            <p>Please ensure you own or have control over this domain. Also note that each subdomain (e.g. blog.example.com, app.example.com) is treated as a distinct domain.</p>
-            <p><strong className="text-foreground">Wildcard domains:</strong> You can use wildcards to match multiple domains:</p>
-            <ul className="ml-2 list-inside list-disc space-y-1">
-              <li><code>*.example.com</code> - matches any single subdomain (e.g., api.example.com, www.example.com)</li>
-              <li><code>**.example.com</code> - matches any subdomain level (e.g., api.v2.example.com)</li>
-              <li><code>api-*.example.com</code> - matches api-v1.example.com, api-prod.example.com, etc.</li>
-              <li><code>*.*.org</code> - matches mail.example.org, but not example.org</li>
-            </ul>
-          </div>
-        </DesignAlert>
-        <InputField
-          label="Domain"
-          name="domain"
-          control={form.control}
-          prefixItem={form.getValues('insecureHttp') ? 'http://' : 'https://'}
-          placeholder='example.com'
-        />
+    render={(form) => {
+      const domain = form.watch('domain');
+      const domainLabel = domain === '' ? 'this domain' : domain;
+      const scopeOptions = [
+        { value: 'only', label: `Only ${domainLabel}` },
+        ...(canAddSubdomains(domain) ? [{
+          value: 'subdomains',
+          label: domain === '' ? 'This domain and all subdomains' : `${domain} and all subdomains`,
+        }] : []),
+        ...(canAddWww(domain) ? [{
+          value: 'www',
+          label: domain === '' ? 'This domain and its www subdomain' : `${domain} and www.${domain}`,
+        }] : []),
+      ];
 
-        {props.type === 'create' &&
-          canAddWww(form.watch('domain')) && (
-          <SwitchField
-            label={`Also add www.${form.watch('domain') as any ?? ''} as a trusted domain`}
-            name="addWww"
+      return (
+        <>
+          <DesignAlert variant="info">
+            <div className="space-y-2 text-foreground/80 dark:text-muted-foreground">
+              <p>Please ensure you own or have control over this domain. Also note that each subdomain (e.g. blog.example.com, app.example.com) is treated as a distinct domain.</p>
+              <p><strong className="text-foreground">Wildcard domains:</strong> You can use wildcards to match multiple domains:</p>
+              <ul className="ml-2 list-inside list-disc space-y-1">
+                <li><code>*.example.com</code> - matches any single subdomain (e.g., api.example.com, www.example.com)</li>
+                <li><code>**.example.com</code> - matches any subdomain level (e.g., api.v2.example.com)</li>
+                <li><code>api-*.example.com</code> - matches api-v1.example.com, api-prod.example.com, etc.</li>
+                <li><code>*.*.org</code> - matches mail.example.org, but not example.org</li>
+              </ul>
+            </div>
+          </DesignAlert>
+          <InputField
+            label="Domain"
+            name="domain"
             control={form.control}
+            prefixItem={form.getValues('insecureHttp') ? 'http://' : 'https://'}
+            placeholder='example.com'
           />
-        )}
 
-        <Accordion type="single" collapsible className="w-full">
-          <AccordionItem value="item-1">
-            <AccordionTrigger>Advanced</AccordionTrigger>
-            <AccordionContent className="flex flex-col gap-8">
-              <div className="flex flex-col gap-4">
-                <SwitchField
-                  label="Use HTTP instead of HTTPS"
-                  name="insecureHttp"
-                  control={form.control}
-                />
-                {form.watch('insecureHttp') && (
-                  <Alert variant="destructive">
-                    HTTP should only be allowed during development use. For production use, please use HTTPS.
-                  </Alert>
-                )}
-              </div>
-              <div className="flex flex-col gap-2">
-                <InputField
-                  label="Handler path"
-                  name="handlerPath"
-                  control={form.control}
-                  placeholder='/handler'
-                />
-                <Typography variant="secondary" type="footnote">
-                  only modify this if you changed the default handler path in your app
-                </Typography>
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
-      </>
-    )}
+          {props.type === 'create' && (
+            <SelectField
+              label="Scope"
+              name="scope"
+              control={form.control}
+              options={scopeOptions}
+            />
+          )}
+
+          <Accordion type="single" collapsible className="w-full">
+            <AccordionItem value="item-1">
+              <AccordionTrigger>Advanced</AccordionTrigger>
+              <AccordionContent className="flex flex-col gap-8">
+                <div className="flex flex-col gap-4">
+                  <SwitchField
+                    label="Use HTTP instead of HTTPS"
+                    name="insecureHttp"
+                    control={form.control}
+                  />
+                  {form.watch('insecureHttp') && (
+                    <Alert variant="destructive">
+                      HTTP should only be allowed during development use. For production use, please use HTTPS.
+                    </Alert>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <InputField
+                    label="Handler path"
+                    name="handlerPath"
+                    control={form.control}
+                    placeholder='/handler'
+                  />
+                  <Typography variant="secondary" type="footnote">
+                    only modify this if you changed the default handler path in your app
+                  </Typography>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </>
+      );
+    }}
   />;
 }
 
