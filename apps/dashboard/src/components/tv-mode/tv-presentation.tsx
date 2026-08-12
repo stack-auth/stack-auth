@@ -76,6 +76,7 @@ function PresentationStatus({ snapshot }: { snapshot: TvSnapshot }) {
 function EventHighlight({ highlight }: { highlight: TvPresentedEventHighlight }) {
   const isCelebration = highlight.variant === "celebration";
   const isResolved = highlight.variant === "resolved-incident";
+  const isCritical = highlight.event.presentationClass === "critical-incident";
   const usesWideLayout = highlight.event.title.length > 52 || highlight.event.summary.length > 88;
   const tone = isCelebration
     ? "border-amber-200/20 bg-[radial-gradient(circle_at_10%_10%,rgba(251,191,36,0.18),transparent_55%),rgba(24,18,9,0.84)] text-amber-100"
@@ -97,7 +98,7 @@ function EventHighlight({ highlight }: { highlight: TvPresentedEventHighlight })
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3 text-[clamp(0.62rem,0.68vw,1.5rem)] font-semibold uppercase tracking-[0.16em]">
-            <span>{isCelebration ? "Event Highlight" : isResolved ? "Resolved" : "Active Incident"}</span>
+            <span>{isCelebration ? "Event Highlight" : isResolved ? "Restored" : isCritical ? "Active Critical Incident" : "Active Incident"}</span>
             <span className="text-white/35">{formatFixtureTime(highlight.event.updatedAt)}</span>
           </div>
           <h2 className="mt-[clamp(0.4rem,0.55vw,1rem)] line-clamp-2 text-[clamp(1rem,1.28vw,3rem)] font-semibold leading-[1.08] text-white">{highlight.event.title}</h2>
@@ -137,7 +138,7 @@ function EventTakeover({ takeover }: { takeover: TvPresentedTakeover }) {
       <div className="relative flex items-center justify-between">
         <div className={`flex items-center gap-3 text-[clamp(0.7rem,0.9vw,1.05rem)] font-semibold uppercase tracking-[0.25em] ${isCelebration ? "text-amber-200" : isRecovery ? "text-emerald-200" : "text-rose-200"}`}>
           {isCelebration ? <ConfettiIcon className="h-[1.4em] w-[1.4em]" weight="fill" /> : isRecovery ? <CheckCircleIcon className="h-[1.4em] w-[1.4em]" weight="fill" /> : <BroadcastIcon className="h-[1.4em] w-[1.4em]" weight="fill" />}
-          {isCelebration ? "Company milestone" : isRecovery ? "Incident resolved" : isCritical ? "Critical incident" : "Incident"}
+          {isCelebration ? "Company Milestone" : isRecovery ? "Recovery Confirmed" : isCritical ? "Critical Incident" : "Incident"}
         </div>
         <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[clamp(0.68rem,0.8vw,0.95rem)] text-white/45">
           {takeover.event.sourceLabel}
@@ -170,7 +171,7 @@ function EventTakeover({ takeover }: { takeover: TvPresentedTakeover }) {
       </div>
 
       <div className="relative flex items-center justify-between text-[clamp(0.7rem,0.8vw,0.95rem)] text-white/35">
-        <span>{takeover.endsAt == null ? "This view remains until validated recovery" : "Returning to the playlist automatically"}</span>
+        <span>Returning to the playlist automatically</span>
         <span>Observed {formatFixtureTime(takeover.event.occurredAt)}</span>
       </div>
     </section>
@@ -503,16 +504,18 @@ export function TvPresentation({
   unavailableReason = null,
   onExit,
   initialScreenId,
+  previewData = false,
 }: {
   snapshot: TvSnapshot | null,
   loading?: boolean,
   unavailableReason?: "offline" | "error" | null,
   onExit: () => void,
   initialScreenId?: TvScreenId,
+  previewData?: boolean,
 }) {
   const reducedMotion = useReducedMotion();
   const [screenIndex, setScreenIndex] = useState(0);
-  const [boundedTakeoverCompleted, setBoundedTakeoverCompleted] = useState(false);
+  const [completedTakeoverKey, setCompletedTakeoverKey] = useState<string | null>(null);
   const [controlsVisible, setControlsVisible] = useState(false);
   const [rotationPaused, setRotationPaused] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -527,10 +530,19 @@ export function TvPresentation({
       ? 0
       : playlistKey?.split("\u0000").indexOf(initialScreenId) ?? -1;
     setScreenIndex(requestedIndex < 0 ? 0 : requestedIndex);
-    setBoundedTakeoverCompleted(false);
     setRotationPaused(false);
   }, [initialScreenId, playlistKey, profileId]);
 
+  const assignedTakeover = snapshot?.presentation.takeover ?? null;
+  const takeoverKey = assignedTakeover == null
+    ? null
+    : [
+      assignedTakeover.event.id,
+      assignedTakeover.variant,
+      assignedTakeover.startedAt,
+      assignedTakeover.endsAt,
+    ].join("\u0000");
+  const boundedTakeoverCompleted = takeoverKey != null && completedTakeoverKey === takeoverKey;
   const view = useMemo(
     () => snapshot == null
       ? null
@@ -561,19 +573,15 @@ export function TvPresentation({
       ?? snapshot?.profile.defaultDurationSeconds;
 
   useEffect(() => {
-    setBoundedTakeoverCompleted(false);
-  }, [takeoverEventId]);
-
-  useEffect(() => {
-    if (viewType !== "takeover" || rotationPaused || takeoverEndsAt == null || generatedAt == null) return;
+    if (viewType !== "takeover" || takeoverEndsAt == null || generatedAt == null || takeoverKey == null) return;
     const remainingMilliseconds = Math.max(0, new Date(takeoverEndsAt).getTime() - new Date(generatedAt).getTime());
     if (remainingMilliseconds === 0) {
-      setBoundedTakeoverCompleted(true);
+      setCompletedTakeoverKey(takeoverKey);
       return;
     }
-    const timeout = window.setTimeout(() => setBoundedTakeoverCompleted(true), remainingMilliseconds);
+    const timeout = window.setTimeout(() => setCompletedTakeoverKey(takeoverKey), remainingMilliseconds);
     return () => window.clearTimeout(timeout);
-  }, [generatedAt, rotationPaused, takeoverEndsAt, takeoverEventId, viewType]);
+  }, [generatedAt, takeoverEndsAt, takeoverKey, viewType]);
 
   useEffect(() => {
     if (viewType !== "screen" || playlistLength == null || rotationDurationSeconds == null) return;
@@ -633,10 +641,10 @@ export function TvPresentation({
     return <div className="h-dvh w-full"><PresentationMessage type="loading" title="Preparing TV Mode" message="Assembling the latest office-safe snapshot…" /></div>;
   }
   if (snapshot == null && unavailableReason === "offline") {
-    return <div className="h-dvh w-full"><PresentationMessage type="error" title="TV Mode is offline" message="Reconnect to load the first presentation snapshot." /></div>;
+    return <div className="h-dvh w-full"><PresentationMessage type="error" title="TV Mode Is Offline" message="Check the connection. TV Mode will resume automatically when it is back online." /></div>;
   }
   if (snapshot == null || view == null) {
-    return <div className="h-dvh w-full"><PresentationMessage type="error" title="TV Mode is unavailable" message="The presentation snapshot could not be loaded." /></div>;
+    return <div className="h-dvh w-full"><PresentationMessage type="error" title="TV Mode Is Temporarily Unavailable" message="We couldn’t load the latest presentation. Please try again shortly." /></div>;
   }
 
   let content;
@@ -649,9 +657,9 @@ export function TvPresentation({
       </AnimatePresence>
     );
   if (view.type === "fatal-error") {
-    content = <PresentationMessage type="error" title="TV Mode is unavailable" message={view.message} />;
+    content = <PresentationMessage type="error" title="TV Mode Is Temporarily Unavailable" message={view.message} />;
   } else if (view.type === "empty") {
-    content = <PresentationMessage type="empty" title="Waiting for activity" message="This profile is ready. Data will appear as soon as the selected sources receive activity." />;
+    content = <PresentationMessage type="empty" title="Waiting for Activity" message="This profile is ready. The presentation will update automatically when activity arrives." />;
   } else if (view.type === "takeover") {
     content = <EventTakeover takeover={view.presentedTakeover} />;
   } else {
@@ -664,6 +672,11 @@ export function TvPresentation({
       className="relative h-dvh min-h-[36rem] w-full overflow-hidden bg-[#070910] font-sans text-white"
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_15%,rgba(99,102,241,0.09),transparent_32%),radial-gradient(circle_at_85%_75%,rgba(34,211,238,0.06),transparent_30%)]" />
+      {previewData ? (
+        <div data-tv-preview-label className="pointer-events-none absolute left-1/2 top-5 z-30 -translate-x-1/2 rounded-full border border-amber-200/20 bg-black/65 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-amber-100/80 backdrop-blur-xl">
+          Preview · Synthetic Data
+        </div>
+      ) : null}
       <CelebrationFireworks
         ambientActive={celebrationAnimationActive && !takeoverIsCelebration}
         eventId={takeoverIsCelebration ? takeoverEventId : highlight?.event.id ?? null}

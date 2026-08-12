@@ -23,7 +23,7 @@ export function selectTvPresentationView(
   const takeover = snapshot.presentation.takeover;
   if (
     takeover != null
-    && !(takeover.endsAt != null && boundedTakeoverCompleted)
+    && !boundedTakeoverCompleted
   ) {
     return { type: "takeover", presentedTakeover: takeover };
   }

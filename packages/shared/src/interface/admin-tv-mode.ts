@@ -71,7 +71,7 @@ const TvStackedTrendPointSchema = yupObject({
 
 const TvStatusFactSchema = yupObject({
   label: yupString().defined(),
-  status: yupString().oneOf(["healthy", "insufficient-data", "unavailable"]).defined(),
+  status: yupString().oneOf(["healthy", "ready", "empty", "insufficient-data", "unavailable", "error", "stale"]).defined(),
   value: yupString().defined(),
   detail: yupString().defined(),
 }).noUnknown().defined();
@@ -252,28 +252,28 @@ const TvPresentedTakeoverSchema = yupObject({
   event: TvEventSchema,
   variant: yupString().oneOf(["celebration", "incident", "critical-incident", "recovery-confirmation"]).defined(),
   startedAt: yupString().defined(),
-  endsAt: yupString().nullable().defined(),
+  endsAt: yupString().defined(),
 }).noUnknown().defined().test({
   name: "takeover-lifecycle-integrity",
   message: "TV takeover variant, event lifecycle, and deadline are inconsistent",
   skipAbsent: true,
   test: (takeover) => {
     const startedAt = Date.parse(takeover.startedAt);
-    const endsAt = takeover.endsAt == null ? null : Date.parse(takeover.endsAt);
-    if (!Number.isFinite(startedAt) || (endsAt != null && (!Number.isFinite(endsAt) || endsAt <= startedAt))) return false;
+    const endsAt = Date.parse(takeover.endsAt);
+    if (!Number.isFinite(startedAt) || !Number.isFinite(endsAt) || endsAt <= startedAt) return false;
     if (takeover.variant === "celebration") {
       return takeover.event.presentationClass === "celebration"
         && takeover.event.status === "active"
-        && endsAt != null;
+        && Number.isFinite(endsAt);
     }
     if (takeover.variant === "recovery-confirmation") {
       return takeover.event.presentationClass !== "celebration"
         && takeover.event.status === "resolved"
-        && endsAt != null;
+        && Number.isFinite(endsAt);
     }
     return takeover.event.presentationClass === takeover.variant
       && takeover.event.status === "active"
-      && (takeover.variant === "critical-incident" ? endsAt == null : endsAt != null);
+      && Number.isFinite(endsAt);
   },
 });
 
@@ -404,9 +404,12 @@ export const TvInterruptionPreferencesSchema = yupObject({
     }).noUnknown().defined(),
     incident: yupObject({
       takeoverSeconds: yupNumber().integer().oneOf(TV_TAKEOVER_DURATION_SECONDS).defined(),
+      recoveryTakeoverSeconds: yupNumber().integer().oneOf(TV_TAKEOVER_DURATION_SECONDS).defined(),
       resolvedHighlightSeconds: yupNumber().integer().oneOf(TV_EVENT_HIGHLIGHT_DURATION_SECONDS).defined(),
     }).noUnknown().defined(),
     criticalIncident: yupObject({
+      takeoverSeconds: yupNumber().integer().oneOf(TV_TAKEOVER_DURATION_SECONDS).defined(),
+      recoveryTakeoverSeconds: yupNumber().integer().oneOf(TV_TAKEOVER_DURATION_SECONDS).defined(),
       resolvedHighlightSeconds: yupNumber().integer().oneOf(TV_EVENT_HIGHLIGHT_DURATION_SECONDS).defined(),
     }).noUnknown().defined(),
   }).noUnknown().defined(),
@@ -473,8 +476,8 @@ const defaultInterruptionPreferences: TvInterruptionPreferences = {
   celebrations: { userMilestone: true, revenueMilestone: false },
   timing: {
     celebration: { takeoverSeconds: 60, animationSeconds: 3600, highlightSeconds: 21600 },
-    incident: { takeoverSeconds: 60, resolvedHighlightSeconds: 3600 },
-    criticalIncident: { resolvedHighlightSeconds: 21600 },
+    incident: { takeoverSeconds: 60, recoveryTakeoverSeconds: 30, resolvedHighlightSeconds: 3600 },
+    criticalIncident: { takeoverSeconds: 120, recoveryTakeoverSeconds: 60, resolvedHighlightSeconds: 21600 },
   },
 };
 

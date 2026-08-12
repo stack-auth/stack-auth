@@ -3,12 +3,12 @@ import {
   evaluateTvEmailDelivery,
   evaluateTvUserMilestone,
   TV_EVENT_EVALUATION_INTERVAL_MS,
+  TV_EMAIL_RECOVERY_TITLE,
   type TvEmailEvaluationSample,
   type TvEmailEvaluatorState,
 } from "@/lib/tv-mode/event-evaluators";
 import {
   deriveTvPresentation,
-  TV_RECOVERY_CONFIRMATION_MS,
   type TvDurableEventOccurrence,
   type TvDurablePresentationAssignment,
 } from "@/lib/tv-mode/event-orchestration";
@@ -41,7 +41,7 @@ type EvaluatorClaimRow = {
   activePresentationClass: "CELEBRATION" | "INCIDENT" | "CRITICAL_INCIDENT" | null,
 };
 
-type OccurrenceRow = {
+export type TvEventOccurrenceRow = {
   id: string,
   eventType: "EMAIL_DELIVERY_DEGRADATION" | "USER_MILESTONE",
   presentationClass: "CELEBRATION" | "INCIDENT" | "CRITICAL_INCIDENT",
@@ -63,6 +63,7 @@ type AssignmentRow = {
   occurrenceId: string,
   takeoverStartedAt: Date | null,
   takeoverEndsAt: Date | null,
+  recoveryEndsAt: Date | null,
   highlightExpiresAt: Date | null,
   animationExpiresAt: Date | null,
   supersededAt: Date | null,
@@ -272,8 +273,8 @@ async function persistEmailEvaluation(options: {
           ${presentationClass}::${sqlQuoteIdent(schema)}."TvEventPresentationClass",
           'ACTIVE'::${sqlQuoteIdent(schema)}."TvEventOccurrenceLifecycle",
           ${`email-delivery-degradation:${activeOccurrenceId}`},
-          'Email delivery degraded',
-          'Delivery performance is below its expected operating range.',
+          'Email Delivery Degraded',
+          ${"Email delivery is below the expected range. We’re monitoring recovery."},
           'Delivery rate',
           ${`${currentRate}%`},
           'Expected 95% or higher',
@@ -310,7 +311,8 @@ async function persistEmailEvaluation(options: {
         SET
           "lifecycle" = 'RESOLVED'::${sqlQuoteIdent(schema)}."TvEventOccurrenceLifecycle",
           "resolvedAt" = ${options.now},
-          "summary" = 'Email delivery has returned to its expected operating range.',
+          "title" = ${TV_EMAIL_RECOVERY_TITLE},
+          "summary" = 'Email delivery is back within the expected range.',
           "metricValue" = ${`${currentRate}%`},
           "aggregateEvidence" = ${evidence}::JSONB,
           "updatedAt" = ${options.now}
@@ -390,8 +392,8 @@ async function evaluateMilestoneIfDue(
           'CELEBRATION'::${sqlQuoteIdent(schema)}."TvEventPresentationClass",
           'OCCURRED'::${sqlQuoteIdent(schema)}."TvEventOccurrenceLifecycle",
           ${`user-milestone:${result.crossedThreshold}`},
-          ${`${formattedThreshold} users`},
-          'A new community milestone, reached together.',
+          ${`${formattedThreshold} Users`},
+          'The community reached a new milestone—worth celebrating together.',
           'Total users',
           ${new Intl.NumberFormat("en-US").format(totalUsers)},
           'Hexclave users',
@@ -450,24 +452,24 @@ function addSeconds(timestamp: Date, seconds: number): Date {
   return new Date(timestamp.getTime() + seconds * 1000);
 }
 
-function presentationClass(occurrence: OccurrenceRow): TvDurableEventOccurrence["presentationClass"] {
+function presentationClass(occurrence: TvEventOccurrenceRow): TvDurableEventOccurrence["presentationClass"] {
   if (occurrence.presentationClass === "CELEBRATION") return "celebration";
   if (occurrence.presentationClass === "INCIDENT") return "incident";
   return "critical-incident";
 }
 
-function occurrenceLifecycle(occurrence: OccurrenceRow): TvDurableEventOccurrence["lifecycle"] {
+function occurrenceLifecycle(occurrence: TvEventOccurrenceRow): TvDurableEventOccurrence["lifecycle"] {
   if (occurrence.lifecycle === "OCCURRED") return "occurred";
   if (occurrence.lifecycle === "ACTIVE") return "active";
   return "resolved";
 }
 
-function occurrenceType(occurrence: OccurrenceRow): TvDurableEventOccurrence["type"] {
+function occurrenceType(occurrence: TvEventOccurrenceRow): TvDurableEventOccurrence["type"] {
   return occurrence.eventType === "USER_MILESTONE" ? "user-milestone" : "email-delivery-degradation";
 }
 
 function isEligible(
-  occurrence: OccurrenceRow,
+  occurrence: TvEventOccurrenceRow,
   preferences: TvInterruptionPreferences,
 ): boolean {
   return occurrence.eventType === "USER_MILESTONE"
@@ -478,11 +480,11 @@ function isEligible(
 async function loadOccurrences(
   tenancy: Tenancy,
   now: Date,
-): Promise<OccurrenceRow[]> {
+): Promise<TvEventOccurrenceRow[]> {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
   const lookback = new Date(now.getTime() - MAX_EVENT_LOOKBACK_MS);
-  return await prisma.$queryRaw<OccurrenceRow[]>`
+  return await prisma.$queryRaw<TvEventOccurrenceRow[]>`
     SELECT
       "id", "eventType", "presentationClass", "lifecycle", "title", "summary",
       "metricLabel", "metricValue", "expectedRange", "sourceLabel",
@@ -498,15 +500,18 @@ async function loadOccurrences(
   `;
 }
 
-async function synchronizeProfileAssignments(options: {
+export async function synchronizeTvProfileAssignments(options: {
   tenancy: Tenancy,
   profile: TvProfileResource,
-  occurrences: OccurrenceRow[],
+  occurrences: TvEventOccurrenceRow[],
   now: Date,
 }): Promise<void> {
   const schema = await getPrismaSchemaForTenancy(options.tenancy);
   const prisma = await getPrismaClientForTenancy(options.tenancy);
   const preferences = options.profile.configuration.interruptionPreferences;
+  const existingAssignments = new Map(
+    (await loadAssignments(options.tenancy, options.profile.id)).map((assignment) => [assignment.occurrenceId, assignment]),
+  );
   const activeIncident = options.occurrences.some((occurrence) => (
     occurrence.lifecycle === "ACTIVE"
     && occurrence.presentationClass !== "CELEBRATION"
@@ -515,7 +520,15 @@ async function synchronizeProfileAssignments(options: {
   const recoveryConfirmationActive = options.occurrences.some((occurrence) => (
     occurrence.presentationClass !== "CELEBRATION"
     && occurrence.resolvedAt != null
-    && options.now.getTime() < occurrence.resolvedAt.getTime() + TV_RECOVERY_CONFIRMATION_MS
+    && options.now.getTime() < (
+      existingAssignments.get(occurrence.id)?.recoveryEndsAt
+      ?? addSeconds(
+        occurrence.resolvedAt,
+        occurrence.presentationClass === "CRITICAL_INCIDENT"
+          ? preferences.timing.criticalIncident.recoveryTakeoverSeconds
+          : preferences.timing.incident.recoveryTakeoverSeconds,
+      )
+    ).getTime()
     && isEligible(occurrence, preferences)
   ));
   const celebrationPresentationBlocked = activeIncident || recoveryConfirmationActive;
@@ -600,8 +613,16 @@ async function synchronizeProfileAssignments(options: {
       ? occurrence.escalatedAt ?? occurrence.activatedAt ?? occurrence.occurredAt
       : occurrence.activatedAt ?? occurrence.occurredAt;
     const takeoverEndsAt = occurrence.presentationClass === "CRITICAL_INCIDENT"
-      ? null
+      ? addSeconds(takeoverStartedAt, preferences.timing.criticalIncident.takeoverSeconds)
       : addSeconds(takeoverStartedAt, preferences.timing.incident.takeoverSeconds);
+    const recoveryEndsAt = occurrence.resolvedAt == null
+      ? null
+      : addSeconds(
+        occurrence.resolvedAt,
+        occurrence.presentationClass === "CRITICAL_INCIDENT"
+          ? preferences.timing.criticalIncident.recoveryTakeoverSeconds
+          : preferences.timing.incident.recoveryTakeoverSeconds,
+      );
     const resolvedHighlightSeconds = occurrence.presentationClass === "CRITICAL_INCIDENT"
       ? preferences.timing.criticalIncident.resolvedHighlightSeconds
       : preferences.timing.incident.resolvedHighlightSeconds;
@@ -611,7 +632,7 @@ async function synchronizeProfileAssignments(options: {
     await prisma.$executeRaw`
       INSERT INTO ${sqlQuoteIdent(schema)}."TvProfileEventPresentation" (
         "tenancyId", "profileId", "occurrenceId", "takeoverStartedAt",
-        "takeoverEndsAt", "highlightExpiresAt", "updatedAt"
+        "takeoverEndsAt", "recoveryEndsAt", "highlightExpiresAt", "updatedAt"
       )
       VALUES (
         ${options.tenancy.id}::UUID,
@@ -619,26 +640,31 @@ async function synchronizeProfileAssignments(options: {
         ${occurrence.id}::UUID,
         ${takeoverStartedAt},
         ${takeoverEndsAt},
+        ${recoveryEndsAt},
         ${highlightExpiresAt},
         ${options.now}
       )
       ON CONFLICT ("tenancyId", "profileId", "occurrenceId")
       DO UPDATE SET
         "takeoverStartedAt" = CASE
-          WHEN ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"."takeoverEndsAt" IS NOT NULL
-            AND EXCLUDED."takeoverEndsAt" IS NULL
+          WHEN EXCLUDED."takeoverStartedAt" > ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"."takeoverStartedAt"
             THEN EXCLUDED."takeoverStartedAt"
           ELSE ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"."takeoverStartedAt"
         END,
         "takeoverEndsAt" = CASE
-          WHEN ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"."takeoverEndsAt" IS NOT NULL
-            AND EXCLUDED."takeoverEndsAt" IS NULL
-            THEN NULL
+          WHEN EXCLUDED."takeoverStartedAt" > ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"."takeoverStartedAt"
+            THEN EXCLUDED."takeoverEndsAt"
           ELSE ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"."takeoverEndsAt"
         END,
+        "recoveryEndsAt" = COALESCE(
+          ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"."recoveryEndsAt",
+          EXCLUDED."recoveryEndsAt"
+        ),
+        -- A resolved Highlight is also an assigned phase. Preserve its original
+        -- deadline so profile edits only affect future resolutions.
         "highlightExpiresAt" = COALESCE(
-          EXCLUDED."highlightExpiresAt",
-          ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"."highlightExpiresAt"
+          ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"."highlightExpiresAt",
+          EXCLUDED."highlightExpiresAt"
         ),
         "updatedAt" = EXCLUDED."updatedAt"
     `;
@@ -709,20 +735,25 @@ async function loadAssignments(
   return await prisma.$queryRaw<AssignmentRow[]>`
     SELECT
       "occurrenceId", "takeoverStartedAt", "takeoverEndsAt",
-      "highlightExpiresAt", "animationExpiresAt", "supersededAt"
+      "recoveryEndsAt", "highlightExpiresAt", "animationExpiresAt", "supersededAt"
     FROM ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"
     WHERE "tenancyId" = ${tenancy.id}::UUID
       AND "profileId" = ${profileId}
   `;
 }
 
-function snapshotEvent(occurrence: OccurrenceRow): TvEvent {
+function snapshotEvent(occurrence: TvEventOccurrenceRow): TvEvent {
+  const title = occurrence.eventType === "EMAIL_DELIVERY_DEGRADATION"
+    ? occurrence.lifecycle === "RESOLVED" ? TV_EMAIL_RECOVERY_TITLE : "Email Delivery Degraded"
+    : occurrence.title.replace(/ users$/i, " Users");
   return {
     id: occurrence.id,
     type: occurrenceType(occurrence),
     presentationClass: presentationClass(occurrence),
     status: occurrence.lifecycle === "RESOLVED" ? "resolved" : "active",
-    title: occurrence.title,
+    // Normalize persisted copy at the snapshot boundary so occurrences created
+    // before a wording update render consistently with newly detected events.
+    title,
     summary: occurrence.summary,
     metricLabel: occurrence.metricLabel,
     metricValue: occurrence.metricValue,
@@ -742,7 +773,7 @@ export async function resolveTvEventPresentation(options: {
     return { takeover: null, highlight: null };
   }
   const occurrences = await loadOccurrences(options.tenancy, options.now);
-  await synchronizeProfileAssignments({ ...options, occurrences });
+  await synchronizeTvProfileAssignments({ ...options, occurrences });
   const assignments = await loadAssignments(options.tenancy, options.profile.id);
   const durableOccurrences: TvDurableEventOccurrence[] = occurrences.map((occurrence) => ({
     id: occurrence.id,
@@ -757,6 +788,7 @@ export async function resolveTvEventPresentation(options: {
     occurrenceId: assignment.occurrenceId,
     takeoverStartedAt: assignment.takeoverStartedAt,
     takeoverEndsAt: assignment.takeoverEndsAt,
+    recoveryEndsAt: assignment.recoveryEndsAt,
     highlightExpiresAt: assignment.highlightExpiresAt,
     animationExpiresAt: assignment.animationExpiresAt,
     supersededAt: assignment.supersededAt,
@@ -784,7 +816,7 @@ export async function resolveTvEventPresentation(options: {
       event: snapshotEvent(takeoverOccurrence),
       variant: derived.takeover.variant,
       startedAt: derived.takeover.startedAt.toISOString(),
-      endsAt: derived.takeover.endsAt?.toISOString() ?? null,
+      endsAt: derived.takeover.endsAt.toISOString(),
     },
     highlight: derived.highlight == null || highlightOccurrence == null ? null : {
       event: snapshotEvent(highlightOccurrence),
@@ -794,5 +826,3 @@ export async function resolveTvEventPresentation(options: {
     },
   };
 }
-
-export { TV_RECOVERY_CONFIRMATION_MS };

@@ -23,13 +23,13 @@ describe("TV presentation controller", () => {
     `);
   });
 
-  it("prioritizes a persistent takeover over the playlist", () => {
+  it("prioritizes a bounded Critical takeover over the playlist", () => {
     const snapshot = createTvFixtureSnapshot("project-fixture", getProfile(), "critical-takeover");
     expect(selectTvPresentationView(snapshot, 2, false)).toMatchObject({
       type: "takeover",
       presentedTakeover: {
         variant: "critical-incident",
-        endsAt: null,
+        endsAt: "2026-07-23T14:34:00.000Z",
         event: {
           id: "fixture-email-delivery-degradation",
           presentationClass: "critical-incident",
@@ -42,13 +42,22 @@ describe("TV presentation controller", () => {
   it("returns to the playlist after a temporary takeover is dismissed", () => {
     const snapshot = createTvFixtureSnapshot("project-fixture", getProfile(), "incident-takeover");
     expect(selectTvPresentationView(snapshot, 2, true)).toEqual({ type: "screen", screenIndex: 2 });
+    expect(snapshot.presentation.highlight).toMatchObject({
+      variant: "active-incident",
+      event: { id: snapshot.presentation.takeover?.event.id },
+    });
+  });
+
+  it("returns to the playlist after a bounded Critical takeover is dismissed", () => {
+    const snapshot = createTvFixtureSnapshot("project-fixture", getProfile(), "critical-takeover");
+    expect(selectTvPresentationView(snapshot, 1, true)).toEqual({ type: "screen", screenIndex: 1 });
   });
 
   it("surfaces fatal snapshot failures before all presentation content", () => {
     const snapshot = createTvFixtureSnapshot("project-fixture", getProfile(), "error");
     expect(selectTvPresentationView(snapshot, 0, false)).toEqual({
       type: "fatal-error",
-      message: "The presentation snapshot could not be prepared.",
+      message: "We couldn’t prepare the latest presentation. Please try again shortly.",
     });
   });
 });

@@ -685,7 +685,13 @@ async function loadRevenueScreen(
     const revenueByDay = new Map(trendRows.map((row) => [row.day, Number(row.revenue)]));
     const revenueTrend = buildCumulativeRevenueTrend(bounds, revenueByDay);
     const revenueChangePercent = percentChange(currentRevenue, previousRevenue);
-    const hasPaymentData = attempts > 0 || currentRevenue !== 0 || Number(summary.active_subscriptions) > 0;
+    const hasPaymentData = hasTvPaymentData({
+      applicableAttempts: attempts,
+      currentRevenue,
+      activeSubscriptions: Number(summary.active_subscriptions),
+      newSubscriptions: Number(summary.new_subscriptions),
+      pastDueSubscriptions: Number(summary.past_due_subscriptions),
+    });
     const screen: TvRevenuePaymentsScreen = {
       ...emptyScreen,
       sourceStatus: !hasPaymentData ? "empty" : attempts < TV_MINIMUM_PAYMENT_ATTEMPTS ? "insufficient-data" : "ready",
@@ -789,10 +795,10 @@ async function loadEmailScreen(tenancy: Tenancy, now: Date): Promise<TvAdapterRe
             OR "simpleStatus" = 'IN_PROGRESS'::"EmailOutboxSimpleStatus"
           )
       `,
-      metricsPrisma.$queryRaw<{ day: string, ok: number, error: number, in_progress: number }[]>`
+      metricsPrisma.$queryRaw<{ day: string, delivered: number, error: number, in_progress: number }[]>`
         SELECT
           TO_CHAR("createdAt"::date, 'YYYY-MM-DD') AS day,
-          COUNT(*) FILTER (WHERE "simpleStatus" = 'OK'::"EmailOutboxSimpleStatus")::int AS ok,
+          COUNT(*) FILTER (WHERE "deliveredAt" IS NOT NULL)::int AS delivered,
           COUNT(*) FILTER (WHERE "simpleStatus" = 'ERROR'::"EmailOutboxSimpleStatus")::int AS error,
           COUNT(*) FILTER (WHERE "simpleStatus" = 'IN_PROGRESS'::"EmailOutboxSimpleStatus")::int AS in_progress
         FROM ${sqlQuoteIdent(schema)}."EmailOutbox"
@@ -816,7 +822,7 @@ async function loadEmailScreen(tenancy: Tenancy, now: Date): Promise<TvAdapterRe
       const row = trendByDay.get(date);
       return {
         label: dayLabel(date),
-        primary: Number(row?.ok ?? 0),
+        primary: Number(row?.delivered ?? 0),
         secondary: Number(row?.error ?? 0),
         tertiary: Number(row?.in_progress ?? 0),
       };
@@ -850,31 +856,54 @@ async function loadEmailScreen(tenancy: Tenancy, now: Date): Promise<TvAdapterRe
   }
 }
 
-function sourceHealthFact(
+export function hasTvPaymentData(metrics: {
+  applicableAttempts: number,
+  currentRevenue: number,
+  activeSubscriptions: number,
+  newSubscriptions: number,
+  pastDueSubscriptions: number,
+}): boolean {
+  return metrics.applicableAttempts > 0
+    || metrics.currentRevenue !== 0
+    || metrics.activeSubscriptions > 0
+    || metrics.newSubscriptions > 0
+    || metrics.pastDueSubscriptions > 0;
+}
+
+export function sourceHealthFact(
   label: string,
   screen: TvRevenuePaymentsScreen | TvEmailHealthScreen | TvAudienceMomentumScreen,
-): { label: string, status: "healthy" | "insufficient-data" | "unavailable", value: string, detail: string } {
+): { label: string, status: "healthy" | "ready" | "empty" | "insufficient-data" | "unavailable" | "error" | "stale", value: string, detail: string } {
   if (screen.sourceStatus === "ready") {
     if (screen.id === "email-health") {
       return {
         label,
-        status: "healthy",
+        status: "ready",
         value: screen.data?.deliveryRatePercent == null ? "Ready" : `${screen.data.deliveryRatePercent}%`,
-        detail: "No issues detected",
+        detail: "Metrics available",
       };
     }
     if (screen.id === "revenue-payments") {
       return {
         label,
-        status: "healthy",
+        status: "ready",
         value: screen.data?.paymentSuccess.percent == null ? "Ready" : `${screen.data.paymentSuccess.percent}%`,
-        detail: "No issues detected",
+        detail: "Metrics available",
       };
     }
-    return { label, status: "healthy", value: "Fresh", detail: "No issues detected" };
+    return { label, status: "ready", value: "Fresh", detail: "Metrics available" };
   }
-  if (screen.sourceStatus === "insufficient-data" || screen.sourceStatus === "empty") {
+  if (screen.sourceStatus === "empty") {
+    return { label, status: "empty", value: "No activity", detail: "No data in this reporting window" };
+  }
+  if (screen.sourceStatus === "insufficient-data") {
     return { label, status: "insufficient-data", value: "Limited", detail: "Insufficient data" };
+  }
+  if (screen.sourceStatus === "error") {
+    return { label, status: "error", value: "Error", detail: "Source error" };
+  }
+  if (screen.sourceStatus === "stale") {
+    return { label, status: "stale", value: "Stale", detail: "Data may be outdated" };
   }
   return { label, status: "unavailable", value: "Unavailable", detail: "Source unavailable" };
 }

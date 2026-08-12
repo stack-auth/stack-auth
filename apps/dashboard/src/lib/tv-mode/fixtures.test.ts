@@ -180,6 +180,7 @@ describe("TV Mode centralized fixtures", () => {
       "celebration-highlight",
       "celebration-takeover",
       "incident-highlight",
+      "critical-highlight",
       "incident-takeover",
       "critical-takeover",
       "incident-recovery-highlight",
@@ -192,11 +193,32 @@ describe("TV Mode centralized fixtures", () => {
       "celebration",
       "celebration",
       "active-incident",
+      "active-incident",
       "incident",
       "critical-incident",
       "resolved-incident",
       "recovery-confirmation",
     ]);
+  });
+
+  it("keeps the active Incident Highlight assigned throughout bounded takeover previews", () => {
+    const incident = createTvFixtureSnapshot("project-fixture", getProfile(), "incident-takeover");
+    const critical = createTvFixtureSnapshot("project-fixture", getProfile(), "critical-takeover");
+
+    expect(incident.presentation).toMatchObject({
+      takeover: { variant: "incident" },
+      highlight: {
+        variant: "active-incident",
+        event: { id: incident.presentation.takeover?.event.id },
+      },
+    });
+    expect(critical.presentation).toMatchObject({
+      takeover: { variant: "critical-incident" },
+      highlight: {
+        variant: "active-incident",
+        event: { id: critical.presentation.takeover?.event.id },
+      },
+    });
   });
 
   it("uses recovery-specific copy for resolved incident fixtures", () => {

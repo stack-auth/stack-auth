@@ -20,6 +20,17 @@ export const TV_EVENT_PREVIEW_GROUPS = [
   },
 ] as const;
 
+export const TV_STATE_PREVIEWS = [
+  { fixture: "stale", label: "Stale" },
+  { fixture: "offline", label: "Offline" },
+  { fixture: "financial-redacted", label: "Financial Redaction" },
+  { fixture: "empty", label: "Empty" },
+  { fixture: "insufficient-data", label: "Insufficient Data" },
+  { fixture: "unavailable", label: "Unavailable Source" },
+  { fixture: "partial-failure", label: "Partial Failure" },
+  { fixture: "error", label: "Fatal Error" },
+] as const;
+
 export function getTvProfileEditorCopy(
   origin: TvProfileResource["origin"],
   createFromTemplate: boolean,
@@ -49,6 +60,18 @@ export function getTvProfileEditorCopy(
   };
 }
 
-export function getTvProfileOverviewAction(origin: TvProfileResource["origin"]): "Customize" | "Configure" {
-  return origin === "built-in" ? "Customize" : "Configure";
+export function getTvProfileOverviewAction(origin: TvProfileResource["origin"]): "Duplicate" | "Configure" {
+  return origin === "built-in" ? "Duplicate" : "Configure";
+}
+
+export function getTvProfileEventCoverageLabel(
+  preferences: TvProfileResource["configuration"]["interruptionPreferences"],
+): "Incidents + Milestones" | "Incidents" | "Milestones" | "None" {
+  const incidentsEnabled = preferences.incidentTypes.emailDeliveryDegradation;
+  const milestonesEnabled = preferences.celebrations.userMilestone
+    || preferences.celebrations.revenueMilestone;
+  if (incidentsEnabled && milestonesEnabled) return "Incidents + Milestones";
+  if (incidentsEnabled) return "Incidents";
+  if (milestonesEnabled) return "Milestones";
+  return "None";
 }

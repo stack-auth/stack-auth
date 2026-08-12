@@ -58,7 +58,23 @@ it("persists project-scoped TV profiles with duplication and optimistic concurre
   expect(immediateReadResponse.body.profile).toMatchObject({
     id: created.id,
     version: created.version,
-    configuration: { displayName: "Operations Wall" },
+    configuration: {
+      displayName: "Operations Wall",
+      interruptionPreferences: {
+        timing: {
+          incident: {
+            takeoverSeconds: 60,
+            recoveryTakeoverSeconds: 30,
+            resolvedHighlightSeconds: 3600,
+          },
+          criticalIncident: {
+            takeoverSeconds: 120,
+            recoveryTakeoverSeconds: 60,
+            resolvedHighlightSeconds: 21600,
+          },
+        },
+      },
+    },
   });
 
   const immediateListResponse = await niceBackendFetch(

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateTvEmailDelivery,
   evaluateTvUserMilestone,
+  TV_EMAIL_RECOVERY_TITLE,
   type TvEmailEvaluationSample,
   type TvEmailEvaluatorState,
   type TvUserMilestoneEvaluatorState,
@@ -30,6 +31,10 @@ function evaluateRepeatedly(
 }
 
 describe("email delivery TV event evaluator", () => {
+  it("uses recovery-specific presentation copy for resolved occurrences", () => {
+    expect(TV_EMAIL_RECOVERY_TITLE).toBe("Email Delivery Restored");
+  });
+
   it("requires three qualifying incident evaluations", () => {
     const sample = {
       currentFinishedSends: 100,

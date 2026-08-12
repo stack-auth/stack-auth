@@ -1,8 +1,11 @@
 import { type Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
+import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { type Prisma } from "@/generated/prisma/client";
 import {
   getTvBuiltInProfile,
+  TV_CELEBRATION_ANIMATION_DURATION_SECONDS,
+  TV_EVENT_HIGHLIGHT_DURATION_SECONDS,
+  TV_TAKEOVER_DURATION_SECONDS,
   TvProfileConfigurationSchema,
   TvProfilePlaylistSchema,
   TvInterruptionPreferencesSchema,
@@ -12,7 +15,7 @@ import {
   type TvProfileResource,
   type TvSavedProfileResource,
 } from "@hexclave/shared/dist/interface/admin-tv-mode";
-import { yupBoolean, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 
 type TvProfileDatabaseRow = Prisma.TvPresentationProfileGetPayload<{}>;
@@ -48,11 +51,54 @@ const LegacyTvInterruptionPreferencesSchema = yupObject({
   }).noUnknown().defined(),
 }).noUnknown().defined();
 
+const PreviousTvInterruptionPreferencesSchema = yupObject({
+  incidentTypes: yupObject({
+    emailDeliveryDegradation: yupBoolean().defined(),
+  }).noUnknown().defined(),
+  celebrations: yupObject({
+    userMilestone: yupBoolean().defined(),
+    revenueMilestone: yupBoolean().defined(),
+  }).noUnknown().defined(),
+  timing: yupObject({
+    celebration: yupObject({
+      takeoverSeconds: yupNumber().integer().oneOf(TV_TAKEOVER_DURATION_SECONDS).defined(),
+      animationSeconds: yupNumber().integer().oneOf(TV_CELEBRATION_ANIMATION_DURATION_SECONDS).defined(),
+      highlightSeconds: yupNumber().integer().oneOf(TV_EVENT_HIGHLIGHT_DURATION_SECONDS).defined(),
+    }).noUnknown().defined(),
+    incident: yupObject({
+      takeoverSeconds: yupNumber().integer().oneOf(TV_TAKEOVER_DURATION_SECONDS).defined(),
+      resolvedHighlightSeconds: yupNumber().integer().oneOf(TV_EVENT_HIGHLIGHT_DURATION_SECONDS).defined(),
+    }).noUnknown().defined(),
+    criticalIncident: yupObject({
+      resolvedHighlightSeconds: yupNumber().integer().oneOf(TV_EVENT_HIGHLIGHT_DURATION_SECONDS).defined(),
+    }).noUnknown().defined(),
+  }).noUnknown().defined(),
+}).noUnknown().defined();
+
 export async function normalizeTvInterruptionPreferences(
   input: unknown,
 ): Promise<TvInterruptionPreferences> {
   if (await TvInterruptionPreferencesSchema.isValid(input, { strict: true })) {
     return await TvInterruptionPreferencesSchema.validate(input, { strict: true });
+  }
+  if (await PreviousTvInterruptionPreferencesSchema.isValid(input, { strict: true })) {
+    const previous = await PreviousTvInterruptionPreferencesSchema.validate(input, { strict: true });
+    return {
+      incidentTypes: previous.incidentTypes,
+      celebrations: previous.celebrations,
+      timing: {
+        celebration: previous.timing.celebration,
+        incident: {
+          ...previous.timing.incident,
+          recoveryTakeoverSeconds: 30,
+        },
+        criticalIncident: {
+          takeoverSeconds: 120,
+          recoveryTakeoverSeconds: 60,
+          resolvedHighlightSeconds: previous.timing.criticalIncident.resolvedHighlightSeconds,
+        },
+      },
+    };
   }
   const legacy = await LegacyTvInterruptionPreferencesSchema.validate(input, { strict: true });
   const anyIncidentLevelEnabled = Object.values(legacy.incidentLevels).some((level) => level !== "disabled");
@@ -63,8 +109,8 @@ export async function normalizeTvInterruptionPreferences(
     celebrations: legacy.celebrations,
     timing: {
       celebration: { takeoverSeconds: 60, animationSeconds: 3600, highlightSeconds: 21600 },
-      incident: { takeoverSeconds: 60, resolvedHighlightSeconds: 3600 },
-      criticalIncident: { resolvedHighlightSeconds: 21600 },
+      incident: { takeoverSeconds: 60, recoveryTakeoverSeconds: 30, resolvedHighlightSeconds: 3600 },
+      criticalIncident: { takeoverSeconds: 120, recoveryTakeoverSeconds: 60, resolvedHighlightSeconds: 21600 },
     },
   };
 }
@@ -236,14 +282,25 @@ export async function deleteTvProfile(
   if (!(await profileTableIsReady(tenancy))) return null;
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
-    DELETE FROM ${sqlQuoteIdent(schema)}."TvPresentationProfile"
-    WHERE "tenancyId" = ${tenancy.id}::UUID
-      AND "id" = ${profileId}::UUID
-      AND "version" = ${expectedVersion}
-    RETURNING "id"
-  `;
-  if (rows.length > 0) return true;
+  const deleted = await retryTransaction(prisma, async (transaction) => {
+    const rows = await transaction.$queryRaw<Array<{ id: string }>>`
+      DELETE FROM ${sqlQuoteIdent(schema)}."TvPresentationProfile"
+      WHERE "tenancyId" = ${tenancy.id}::UUID
+        AND "id" = ${profileId}::UUID
+        AND "version" = ${expectedVersion}
+      RETURNING "id"
+    `;
+    if (rows.length === 0) return false;
+    // Presentation rows also represent virtual built-in profiles, so there is
+    // intentionally no profile foreign key to cascade this cleanup for us.
+    await transaction.$executeRaw`
+      DELETE FROM ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"
+      WHERE "tenancyId" = ${tenancy.id}::UUID
+        AND "profileId" = ${profileId}
+    `;
+    return true;
+  });
+  if (deleted) return true;
   const current = (await querySavedProfileRows(tenancy, profileId)).at(0);
   if (current == null) return false;
   throw new TvProfileVersionConflictError();

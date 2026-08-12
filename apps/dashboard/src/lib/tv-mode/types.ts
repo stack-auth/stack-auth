@@ -43,6 +43,7 @@ export const TV_FIXTURE_VARIANTS = defineTvFixtureVariants([
   "celebration-replaced",
   "event-long-content",
   "incident-highlight",
+  "critical-highlight",
   "incident-takeover",
   "critical-takeover",
   "incident-recovery",

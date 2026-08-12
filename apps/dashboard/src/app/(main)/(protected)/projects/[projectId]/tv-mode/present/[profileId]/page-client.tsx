@@ -101,6 +101,7 @@ export default function PageClient() {
         environment: getBrowserTvPresentationExitEnvironment(),
       }))}
       initialScreenId={isTvScreenId(screenParam) ? screenParam : undefined}
+      previewData={fixtureVariant != null}
     />
   );
 }

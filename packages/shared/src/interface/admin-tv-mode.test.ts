@@ -8,7 +8,7 @@ import {
   TvSnapshotSchema,
 } from "./admin-tv-mode";
 
-function validSnapshot() {
+function validSnapshot(sourceHealthStatus: "healthy" | "ready" | "empty" | "insufficient-data" | "unavailable" | "error" | "stale" = "ready") {
   const observedAt = "2026-07-25T12:00:00.000Z";
   const window = {
     current: { startsAt: observedAt, endsAt: observedAt, label: "Current" },
@@ -34,7 +34,12 @@ function validSnapshot() {
         observedAt,
         window,
         diagnosticCode: null,
-        data: { liveUsers: 1, todayActiveUsers: 2, hourlyActivity: [], sourceHealth: [] },
+        data: {
+          liveUsers: 1,
+          todayActiveUsers: 2,
+          hourlyActivity: [],
+          sourceHealth: [{ label: "Email", status: sourceHealthStatus, value: "Status", detail: "Detail" }],
+        },
         insight: null,
       },
       {
@@ -106,6 +111,13 @@ describe("TvSnapshotSchema", () => {
     });
   });
 
+  it.each(["healthy", "ready", "empty", "insufficient-data", "unavailable", "error", "stale"] as const)(
+    "accepts the %s source-health status",
+    async (status) => {
+      await expect(TvSnapshotSchema.validate(validSnapshot(status), { strict: true })).resolves.toBeDefined();
+    },
+  );
+
   it("accepts a profile-owned duration schedule aligned with the playlist", async () => {
     const snapshot = validSnapshot();
     await expect(TvSnapshotSchema.validate({
@@ -147,7 +159,7 @@ describe("TvSnapshotSchema", () => {
     }, { strict: true })).rejects.toThrow("unique, known screen IDs");
   });
 
-  it("rejects inconsistent takeover and Highlight lifecycle states", async () => {
+  it("accepts a bounded Critical takeover and rejects inconsistent lifecycle states", async () => {
     const snapshot = validSnapshot();
     const event = {
       id: "event",
@@ -174,7 +186,19 @@ describe("TvSnapshotSchema", () => {
         },
         highlight: null,
       },
-    }, { strict: true })).rejects.toThrow("inconsistent");
+    }, { strict: true })).resolves.toBeDefined();
+    await expect(TvSnapshotSchema.validate({
+      ...snapshot,
+      presentation: {
+        takeover: {
+          event,
+          variant: "critical-incident",
+          startedAt: snapshot.generatedAt,
+          endsAt: null,
+        },
+        highlight: null,
+      },
+    }, { strict: true })).rejects.toThrow();
     await expect(TvSnapshotSchema.validate({
       ...snapshot,
       presentation: {

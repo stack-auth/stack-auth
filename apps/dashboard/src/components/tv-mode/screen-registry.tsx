@@ -18,6 +18,7 @@ import type {
   TvScreenId,
   TvScreenSnapshot,
   TvStackedTrendPoint,
+  TvStatusFact,
   TvTrendPoint,
 } from "@/lib/tv-mode/types";
 
@@ -62,6 +63,35 @@ export function getTvScreenDefinition(screenId: TvScreenId): TvScreenDefinition 
   const definition = TV_SCREEN_REGISTRY.get(screenId);
   if (definition == null) throw new Error(`Missing TV screen definition for "${screenId}"`);
   return definition;
+}
+
+export function getTvSourceHealthVisual(status: TvStatusFact["status"]): {
+  icon: "check" | "info" | "warning",
+  className: string,
+} {
+  switch (status) {
+    case "healthy": {
+      return { icon: "check", className: "text-emerald-300/80" };
+    }
+    case "ready": {
+      return { icon: "info", className: "text-cyan-200/70" };
+    }
+    case "empty": {
+      return { icon: "info", className: "text-white/40" };
+    }
+    case "insufficient-data": {
+      return { icon: "info", className: "text-white/55" };
+    }
+    case "unavailable": {
+      return { icon: "info", className: "text-white/35" };
+    }
+    case "error": {
+      return { icon: "warning", className: "text-rose-300/80" };
+    }
+    case "stale": {
+      return { icon: "warning", className: "text-amber-300/80" };
+    }
+  }
 }
 
 function formatCompact(value: number): string {
@@ -348,7 +378,7 @@ function LivePulseScreen({
   headerAccessory?: ReactNode,
 }) {
   return (
-    <TvScreenFrame eyebrow="Right now" title="Live Pulse" description="Current activity and source-level signals Hexclave can verify." icon={<ActivityIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-cyan-300" headerAccessory={headerAccessory}>
+    <TvScreenFrame eyebrow="Right Now" title="Live Pulse" description="Current activity and source-level signals Hexclave can verify." icon={<ActivityIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-cyan-300" headerAccessory={headerAccessory}>
       <div className="grid h-full min-h-0 grid-cols-[0.75fr_1.25fr] gap-[clamp(2rem,5vw,12rem)]">
         <GlassPanel tone="cyan" className="h-full">
           <div className="flex h-full min-h-0 flex-col justify-between p-[clamp(1.5rem,2.5vw,6rem)]">
@@ -376,7 +406,7 @@ function LivePulseScreen({
         <GlassPanel tone="cyan" className="h-full">
           <div className="grid h-full min-h-0 grid-rows-[auto_1fr_auto] gap-[clamp(1rem,2vh,2.5rem)] p-[clamp(1.25rem,2vw,5rem)]">
             <TvChartHeader
-              title="Today’s activity"
+              title="Today’s Activity"
               subtitle="Current UTC day"
               accentClassName="text-cyan-200/55"
               trailing={(
@@ -388,15 +418,23 @@ function LivePulseScreen({
             />
             <TvLineChart points={data.hourlyActivity} color="#67e8f9" label="Current UTC day activity" />
             <div className="grid grid-cols-3 gap-3">
-              {data.sourceHealth.map((fact) => (
-                <div key={fact.label} className="rounded-[clamp(1rem,1vw,2.5rem)] border border-cyan-100/[0.09] bg-black/15 p-[clamp(0.8rem,1.2vw,2.8rem)]">
-                  <p className="text-[clamp(0.62rem,0.72vw,1.72rem)] font-semibold uppercase tracking-[0.14em] text-cyan-300/80">{fact.label}</p>
-                  <p className="mt-3 text-[clamp(1.25rem,1.65vw,4rem)] font-semibold text-white">{fact.value}</p>
-                  <p className="mt-1 flex items-center gap-1.5 text-[clamp(0.65rem,0.75vw,1.8rem)] text-emerald-300/80">
-                    <CheckCircleIcon className="h-[1em] w-[1em]" weight="fill" />{fact.detail}
-                  </p>
-                </div>
-              ))}
+              {data.sourceHealth.map((fact) => {
+                const visual = getTvSourceHealthVisual(fact.status);
+                const SourceIcon = visual.icon === "check"
+                  ? CheckCircleIcon
+                  : visual.icon === "warning"
+                    ? ShieldWarningIcon
+                    : InfoIcon;
+                return (
+                  <div key={fact.label} className="rounded-[clamp(1rem,1vw,2.5rem)] border border-cyan-100/[0.09] bg-black/15 p-[clamp(0.8rem,1.2vw,2.8rem)]">
+                    <p className="text-[clamp(0.62rem,0.72vw,1.72rem)] font-semibold uppercase tracking-[0.14em] text-cyan-300/80">{fact.label}</p>
+                    <p className="mt-3 text-[clamp(1.25rem,1.65vw,4rem)] font-semibold text-white">{fact.value}</p>
+                    <p className={`mt-1 flex items-center gap-1.5 text-[clamp(0.65rem,0.75vw,1.8rem)] ${visual.className}`}>
+                      <SourceIcon className="h-[1em] w-[1em]" weight="fill" />{fact.detail}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </GlassPanel>
@@ -417,16 +455,16 @@ function AudienceMomentumScreen({
   headerAccessory?: ReactNode,
 }) {
   return (
-    <TvScreenFrame eyebrow="Seven-day audience" title="Audience Momentum" description="Whether new attention is becoming sustained, returning activity." icon={<ChartLineUpIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-violet-300" headerAccessory={headerAccessory}>
+    <TvScreenFrame eyebrow="Seven-Day Audience" title="Audience Momentum" description="Whether new attention is becoming sustained, returning activity." icon={<ChartLineUpIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-violet-300" headerAccessory={headerAccessory}>
       <div className="grid h-full min-h-0 grid-cols-[0.72fr_1.28fr] gap-[clamp(2rem,5vw,12rem)]">
         <GlassPanel tone="violet" className="h-full">
           <div className="flex h-full min-h-0 flex-col justify-between p-[clamp(1.5rem,2.3vw,5.5rem)]">
-            <TvMetric label="Total users" value={data.totalUsers.toLocaleString()} detail={`↑ ${data.userGrowthPercent}% vs previous 7 days`} hero />
+            <TvMetric label="Total users" value={data.totalUsers.toLocaleString()} detail={`${data.userGrowthPercent}% growth over the last 7 days`} hero />
             <div className="grid grid-cols-2 gap-x-6 gap-y-5">
               <TvMetric label="New users · 7d" value={`+${data.newUsers}`} />
               <TvMetric label="Monthly active · 30d" value={formatCompact(data.monthlyActiveUsers)} />
-              <TvMetric label="Visitors · 7d" value={formatCompact(data.visitors)} />
-              <TvMetric label="Avg session · 7d" value={formatDuration(data.averageSessionSeconds)} detail={`${data.verificationRatePercent}% verified`} />
+              <TvMetric label="Signed-In Visitors · 7d" value={formatCompact(data.visitors)} />
+              <TvMetric label="Identified Session Avg · 7d" value={formatDuration(data.averageSessionSeconds)} detail={`Replay-segment data · ${data.verificationRatePercent}% users verified`} />
             </div>
             <TvInsightArea screenId="audience-momentum" sourceStatus={sourceStatus} insight={insight} tone="violet" />
           </div>
@@ -434,7 +472,7 @@ function AudienceMomentumScreen({
         <GlassPanel tone="violet" className="h-full">
           <div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-[clamp(1rem,2vh,2.5rem)] p-[clamp(1.25rem,2vw,5rem)]">
             <TvChartHeader
-              title="Audience lifecycle"
+              title="Audience Lifecycle"
               subtitle="Daily activity · trailing 7 days"
               accentClassName="text-violet-200/55"
             />
@@ -460,13 +498,13 @@ function RevenuePaymentsScreen({
   const financials = data.financials;
   const trend = financials.visibility === "exact" ? financials.revenueTrend : financials.normalizedRevenueTrend;
   return (
-    <TvScreenFrame eyebrow="Trailing 30 days" title="Revenue & Payments" description="Commercial momentum and whether applicable payments are collecting." icon={<CurrencyDollarIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-emerald-300" headerAccessory={headerAccessory}>
+    <TvScreenFrame eyebrow="Trailing 30 Days" title="Revenue & Payments" description="Commercial momentum and whether applicable payments are collecting." icon={<CurrencyDollarIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-emerald-300" headerAccessory={headerAccessory}>
       <div className="grid h-full min-h-0 grid-cols-[0.78fr_1.22fr] gap-[clamp(2rem,5vw,12rem)]">
         <GlassPanel tone="emerald" className="h-full">
           <div className="flex h-full min-h-0 flex-col justify-between p-[clamp(1.5rem,2.3vw,5.5rem)]">
             <TvMetric label="Paid revenue · 30d" value={financials.visibility === "exact" ? formatUsd(financials.paidRevenueCents) : "Hidden"} detail={`${data.revenueChangePercent >= 0 ? "↑" : "↓"} ${Math.abs(data.revenueChangePercent)}% vs previous 30 days${financials.visibility === "exact" ? "" : " · exact values off"}`} hero />
             <div className="grid grid-cols-2 gap-6">
-              <TvMetric label="MRR proxy" value={financials.visibility === "exact" ? formatUsd(financials.mrrProxyCents) : "Hidden"} />
+              <TvMetric label="30-Day Revenue Proxy" value={financials.visibility === "exact" ? formatUsd(financials.mrrProxyCents) : "Hidden"} detail="Paid invoice revenue · trailing 30 days" />
               <TvMetric label="Payment success" value={data.paymentSuccess.percent == null ? "Insufficient data" : `${data.paymentSuccess.percent}%`} detail={`${data.paymentSuccess.applicableAttempts} applicable attempts`} />
               <TvMetric label="Active subscriptions" value={data.activeSubscriptions.toLocaleString()} />
               <TvMetric label="New subscriptions" value={`+${data.newSubscriptions}`} detail={`${data.pastDueSubscriptions} past due`} />
@@ -477,7 +515,7 @@ function RevenuePaymentsScreen({
         <GlassPanel tone="emerald" className="h-full">
           <div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-[clamp(1rem,2vh,2.5rem)] p-[clamp(1.25rem,2vw,5rem)]">
             <TvChartHeader
-              title="Paid revenue momentum"
+              title="Paid Revenue Momentum"
               subtitle="Cumulative daily trend · trailing 30 days"
               accentClassName="text-emerald-200/55"
             />
@@ -501,7 +539,7 @@ function EmailHealthScreen({
   headerAccessory?: ReactNode,
 }) {
   return (
-    <TvScreenFrame eyebrow="Seven-day delivery" title="Email Health" description="Whether customer messages are reaching recipients reliably." icon={<EnvelopeSimpleIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-amber-300" headerAccessory={headerAccessory}>
+    <TvScreenFrame eyebrow="Seven-Day Delivery" title="Email Health" description="Whether customer messages are reaching recipients reliably." icon={<EnvelopeSimpleIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-amber-300" headerAccessory={headerAccessory}>
       <div className="grid h-full min-h-0 grid-cols-[0.76fr_1.24fr] gap-[clamp(2rem,5vw,12rem)]">
         <GlassPanel tone="amber" className="h-full">
           <div className="flex h-full min-h-0 flex-col justify-between p-[clamp(1.5rem,2.3vw,5.5rem)]">
@@ -518,7 +556,7 @@ function EmailHealthScreen({
         <GlassPanel tone="amber" className="h-full">
           <div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-[clamp(1rem,2vh,2.5rem)] p-[clamp(1.25rem,2vw,5rem)]">
             <TvChartHeader
-              title="Email delivery volume"
+              title="Email Delivery Volume"
               subtitle="Daily send status · trailing 7 days"
               accentClassName="text-amber-200/55"
             />
@@ -550,27 +588,27 @@ export function getTvSourceStatePresentation(
       return {
         type: "terminal",
         status,
-        eyebrow: "Waiting for activity",
-        message: "There is no qualifying activity in this reporting window.",
-        detail: "TV Mode will display this screen when qualifying activity arrives.",
+        eyebrow: "Waiting for Activity",
+        message: "No qualifying activity yet.",
+        detail: "This screen will update automatically when activity arrives.",
       };
     }
     case "unavailable": {
       return {
         type: "terminal",
         status,
-        eyebrow: "Source unavailable",
-        message: "The required Hexclave app is not enabled for this profile.",
-        detail: "Configure the required app to enable this screen.",
+        eyebrow: "Source Unavailable",
+        message: "This data source isn’t connected yet.",
+        detail: "Connect the required app to show this screen.",
       };
     }
     case "error": {
       return {
         type: "terminal",
         status,
-        eyebrow: "Source error",
-        message: "This source could not be measured. The rest of the presentation will continue.",
-        detail: "TV Mode will retry this source automatically.",
+        eyebrow: "Data Temporarily Unavailable",
+        message: "We couldn’t refresh this data right now.",
+        detail: "TV Mode will retry automatically while the rest of the presentation continues.",
       };
     }
     case "ready":

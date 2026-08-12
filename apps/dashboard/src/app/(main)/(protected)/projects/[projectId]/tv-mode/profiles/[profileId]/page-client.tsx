@@ -44,12 +44,14 @@ import {
   updateTvProfileOrThrow,
 } from "@/lib/hexclave-app-internals";
 import {
+  createTvProfileEditorDraft,
   editorDraftToProfileConfiguration,
   profileResourceToEditorDraft,
 } from "@/lib/tv-mode/profile-editor-model";
 import {
   getTvProfileEditorCopy,
   TV_EVENT_PREVIEW_GROUPS,
+  TV_STATE_PREVIEWS,
 } from "@/lib/tv-mode/profile-editor-copy";
 import type { TvProfileFixture, TvScreenId } from "@/lib/tv-mode/types";
 import { PageLayout } from "../../../page-layout";
@@ -236,11 +238,8 @@ export default function PageClient() {
       try {
         const loaded = await fetchTvProfileOrThrow(adminApp, profileId);
         if (!active) return;
-        const editorDraft = profileResourceToEditorDraft(loaded);
-        const savedDraft = cloneProfile(editorDraft);
-        if (createFromTemplate) {
-          editorDraft.displayName = `${editorDraft.displayName} copy`;
-        }
+        const savedDraft = profileResourceToEditorDraft(loaded);
+        const editorDraft = createTvProfileEditorDraft(loaded, createFromTemplate);
         setResource(loaded);
         setDraft(cloneProfile(editorDraft));
         setSaved(savedDraft);
@@ -301,7 +300,7 @@ export default function PageClient() {
               const duplicated = await duplicateTvProfileOrThrow(
                 adminApp,
                 resource,
-                `${resource.configuration.displayName} copy`,
+                `${resource.configuration.displayName} Copy`,
               );
               window.location.assign(`/projects/${projectId}/tv-mode/profiles/${duplicated.id}`);
             }}>
@@ -373,6 +372,19 @@ export default function PageClient() {
                     disabled
                     size="lg"
                     options={[{ value: "general", label: "General Mode" }]}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label htmlFor="tv-profile-description" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Description</label>
+                  <DesignInput
+                    id="tv-profile-description"
+                    value={draft.description}
+                    maxLength={240}
+                    placeholder="Describe where or how this profile will be used."
+                    onChange={(event) => {
+                      setDraft({ ...draft, description: event.target.value });
+                      setSavedNoticeVisible(false);
+                    }}
                   />
                 </div>
                 <div className="sm:col-span-2">
@@ -454,135 +466,211 @@ export default function PageClient() {
             </DesignCard>
 
             <DesignCard title="Timing" subtitle="Default pacing for the room" icon={ClockIcon} gradient="purple" glassmorphic>
-              <label htmlFor="tv-default-duration" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Rotation Speed</label>
-              <DesignSelectorDropdown
-                triggerId="tv-default-duration"
-                value={draft.defaultDurationSeconds.toString()}
-                onValueChange={(value) => setDraft({ ...draft, defaultDurationSeconds: parseDurationOption(value) })}
-                size="lg"
-                options={[
-                  { value: "15", label: "15 seconds" },
-                  { value: "20", label: "20 seconds" },
-                  { value: "30", label: "30 seconds" },
-                ]}
-              />
-              <Typography variant="secondary" className="mt-3 text-xs">Individual playlist screens may override this value.</Typography>
-              <div className="mt-4 border-t border-foreground/[0.06] pt-2">
-                {settingRow({
-                  title: "Celebration Takeover",
-                  description: "Full-screen milestone moment.",
-                  control: <DesignSelectorDropdown value={draft.interruptionTiming.celebration.takeoverSeconds.toString()} onValueChange={(value) => setDraft({
-                    ...draft,
-                    interruptionTiming: {
-                      ...draft.interruptionTiming,
-                      celebration: { ...draft.interruptionTiming.celebration, takeoverSeconds: parseTakeoverSeconds(value) },
-                    },
-                  })} options={[
-                    { value: "30", label: "30 seconds" },
-                    { value: "60", label: "60 seconds" },
-                    { value: "90", label: "90 seconds" },
-                    { value: "120", label: "2 minutes" },
-                  ]} />,
-                })}
-                {settingRow({
-                  title: "Celebration Effect",
-                  description: "Fireworks over the rotating screens.",
-                  control: <DesignSelectorDropdown value={draft.interruptionTiming.celebration.animationSeconds.toString()} onValueChange={(value) => setDraft({
-                    ...draft,
-                    interruptionTiming: {
-                      ...draft.interruptionTiming,
-                      celebration: {
-                        ...draft.interruptionTiming.celebration,
-                        animationSeconds: parseAnimationSeconds(value),
-                        highlightSeconds: retainValidHighlight(
-                          draft.interruptionTiming.celebration.highlightSeconds,
-                          parseAnimationSeconds(value),
-                        ),
-                      },
-                    },
-                  })} options={[
-                    { value: "600", label: "10 minutes" },
-                    { value: "1800", label: "30 minutes" },
-                    { value: "3600", label: "1 hour" },
-                    { value: "7200", label: "2 hours" },
-                  ]} />,
-                })}
-                {settingRow({
-                  title: "Celebration Highlight",
-                  description: "How long the milestone remains in rotation.",
-                  control: <DesignSelectorDropdown value={draft.interruptionTiming.celebration.highlightSeconds.toString()} onValueChange={(value) => setDraft({
-                    ...draft,
-                    interruptionTiming: {
-                      ...draft.interruptionTiming,
-                      celebration: {
-                        ...draft.interruptionTiming.celebration,
-                        highlightSeconds: parseHighlightSeconds(value),
-                        animationSeconds: retainValidAnimation(
-                          draft.interruptionTiming.celebration.animationSeconds,
-                          parseHighlightSeconds(value),
-                        ),
-                      },
-                    },
-                  })} options={[
-                    { value: "3600", label: "1 hour" },
-                    { value: "21600", label: "6 hours" },
-                    { value: "43200", label: "12 hours" },
-                    { value: "86400", label: "24 hours" },
-                  ]} />,
-                })}
-                {settingRow({
-                  title: "Incident Takeover",
-                  description: "Temporary attention period before rotation resumes.",
-                  control: <DesignSelectorDropdown value={draft.interruptionTiming.incident.takeoverSeconds.toString()} onValueChange={(value) => setDraft({
-                    ...draft,
-                    interruptionTiming: {
-                      ...draft.interruptionTiming,
-                      incident: { ...draft.interruptionTiming.incident, takeoverSeconds: parseTakeoverSeconds(value) },
-                    },
-                  })} options={[
-                    { value: "30", label: "30 seconds" },
-                    { value: "60", label: "60 seconds" },
-                    { value: "90", label: "90 seconds" },
-                    { value: "120", label: "2 minutes" },
-                  ]} />,
-                })}
-                {settingRow({
-                  title: "Incident Resolved Highlight",
-                  description: "How long an ordinary resolved incident remains visible.",
-                  control: <DesignSelectorDropdown value={draft.interruptionTiming.incident.resolvedHighlightSeconds.toString()} onValueChange={(value) => setDraft({
-                    ...draft,
-                    interruptionTiming: {
-                      ...draft.interruptionTiming,
-                      incident: {
-                        ...draft.interruptionTiming.incident,
-                        resolvedHighlightSeconds: parseHighlightSeconds(value),
-                      },
-                    },
-                  })} options={[
-                    { value: "3600", label: "1 hour" },
-                    { value: "21600", label: "6 hours" },
-                    { value: "43200", label: "12 hours" },
-                    { value: "86400", label: "24 hours" },
-                  ]} />,
-                })}
-                {settingRow({
-                  title: "Critical Resolved Highlight",
-                  description: "How long a resolved Critical Incident remains visible.",
-                  control: <DesignSelectorDropdown value={draft.interruptionTiming.criticalIncident.resolvedHighlightSeconds.toString()} onValueChange={(value) => setDraft({
-                    ...draft,
-                    interruptionTiming: {
-                      ...draft.interruptionTiming,
-                      criticalIncident: {
-                        resolvedHighlightSeconds: parseHighlightSeconds(value),
-                      },
-                    },
-                  })} options={[
-                    { value: "3600", label: "1 hour" },
-                    { value: "21600", label: "6 hours" },
-                    { value: "43200", label: "12 hours" },
-                    { value: "86400", label: "24 hours" },
-                  ]} />,
-                })}
+              <div className="grid gap-x-6 gap-y-5 2xl:grid-cols-2">
+                <div className="min-w-0">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Rotation</p>
+                  <label htmlFor="tv-default-duration" className="mb-2 block text-xs font-medium text-foreground">Rotation Speed</label>
+                  <DesignSelectorDropdown
+                    triggerId="tv-default-duration"
+                    value={draft.defaultDurationSeconds.toString()}
+                    onValueChange={(value) => setDraft({ ...draft, defaultDurationSeconds: parseDurationOption(value) })}
+                    size="lg"
+                    options={[
+                      { value: "15", label: "15 seconds" },
+                      { value: "20", label: "20 seconds" },
+                      { value: "30", label: "30 seconds" },
+                    ]}
+                  />
+                  <Typography variant="secondary" className="mt-3 text-xs">Individual playlist screens may override this value.</Typography>
+                </div>
+                <div className="min-w-0">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Celebrations</p>
+                  <div>
+                    {settingRow({
+                      title: "Celebration Takeover",
+                      description: "Full-screen milestone moment.",
+                      control: <DesignSelectorDropdown value={draft.interruptionTiming.celebration.takeoverSeconds.toString()} onValueChange={(value) => setDraft({
+                        ...draft,
+                        interruptionTiming: {
+                          ...draft.interruptionTiming,
+                          celebration: { ...draft.interruptionTiming.celebration, takeoverSeconds: parseTakeoverSeconds(value) },
+                        },
+                      })} options={[
+                        { value: "30", label: "30 seconds" },
+                        { value: "60", label: "60 seconds" },
+                        { value: "90", label: "90 seconds" },
+                        { value: "120", label: "2 minutes" },
+                      ]} />,
+                    })}
+                    {settingRow({
+                      title: "Celebration Effect",
+                      description: "Fireworks over the rotating screens.",
+                      control: <DesignSelectorDropdown value={draft.interruptionTiming.celebration.animationSeconds.toString()} onValueChange={(value) => setDraft({
+                        ...draft,
+                        interruptionTiming: {
+                          ...draft.interruptionTiming,
+                          celebration: {
+                            ...draft.interruptionTiming.celebration,
+                            animationSeconds: parseAnimationSeconds(value),
+                            highlightSeconds: retainValidHighlight(
+                              draft.interruptionTiming.celebration.highlightSeconds,
+                              parseAnimationSeconds(value),
+                            ),
+                          },
+                        },
+                      })} options={[
+                        { value: "600", label: "10 minutes" },
+                        { value: "1800", label: "30 minutes" },
+                        { value: "3600", label: "1 hour" },
+                        { value: "7200", label: "2 hours" },
+                      ]} />,
+                    })}
+                    {settingRow({
+                      title: "Celebration Highlight",
+                      description: "How long the milestone remains in rotation.",
+                      control: <DesignSelectorDropdown value={draft.interruptionTiming.celebration.highlightSeconds.toString()} onValueChange={(value) => setDraft({
+                        ...draft,
+                        interruptionTiming: {
+                          ...draft.interruptionTiming,
+                          celebration: {
+                            ...draft.interruptionTiming.celebration,
+                            highlightSeconds: parseHighlightSeconds(value),
+                            animationSeconds: retainValidAnimation(
+                              draft.interruptionTiming.celebration.animationSeconds,
+                              parseHighlightSeconds(value),
+                            ),
+                          },
+                        },
+                      })} options={[
+                        { value: "3600", label: "1 hour" },
+                        { value: "21600", label: "6 hours" },
+                        { value: "43200", label: "12 hours" },
+                        { value: "86400", label: "24 hours" },
+                      ]} />,
+                    })}
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Incidents</p>
+                  <div>
+                    {settingRow({
+                      title: "Incident Takeover",
+                      description: "Temporary attention period before rotation resumes.",
+                      control: <DesignSelectorDropdown value={draft.interruptionTiming.incident.takeoverSeconds.toString()} onValueChange={(value) => setDraft({
+                        ...draft,
+                        interruptionTiming: {
+                          ...draft.interruptionTiming,
+                          incident: { ...draft.interruptionTiming.incident, takeoverSeconds: parseTakeoverSeconds(value) },
+                        },
+                      })} options={[
+                        { value: "30", label: "30 seconds" },
+                        { value: "60", label: "60 seconds" },
+                        { value: "90", label: "90 seconds" },
+                        { value: "120", label: "2 minutes" },
+                      ]} />,
+                    })}
+                    {settingRow({
+                      title: "Incident Recovery Takeover",
+                      description: "How long a confirmed recovery takes over before rotation resumes.",
+                      control: <DesignSelectorDropdown value={draft.interruptionTiming.incident.recoveryTakeoverSeconds.toString()} onValueChange={(value) => setDraft({
+                        ...draft,
+                        interruptionTiming: {
+                          ...draft.interruptionTiming,
+                          incident: {
+                            ...draft.interruptionTiming.incident,
+                            recoveryTakeoverSeconds: parseTakeoverSeconds(value),
+                          },
+                        },
+                      })} options={[
+                        { value: "30", label: "30 seconds" },
+                        { value: "60", label: "60 seconds" },
+                        { value: "90", label: "90 seconds" },
+                        { value: "120", label: "2 minutes" },
+                      ]} />,
+                    })}
+                    {settingRow({
+                      title: "Incident Restored Highlight",
+                      description: "How long an ordinary restored incident remains visible.",
+                      control: <DesignSelectorDropdown value={draft.interruptionTiming.incident.resolvedHighlightSeconds.toString()} onValueChange={(value) => setDraft({
+                        ...draft,
+                        interruptionTiming: {
+                          ...draft.interruptionTiming,
+                          incident: {
+                            ...draft.interruptionTiming.incident,
+                            resolvedHighlightSeconds: parseHighlightSeconds(value),
+                          },
+                        },
+                      })} options={[
+                        { value: "3600", label: "1 hour" },
+                        { value: "21600", label: "6 hours" },
+                        { value: "43200", label: "12 hours" },
+                        { value: "86400", label: "24 hours" },
+                      ]} />,
+                    })}
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Critical Incidents</p>
+                  <div>
+                    {settingRow({
+                      title: "Critical Incident Takeover",
+                      description: "Urgent attention period before rotation resumes with a Critical Highlight.",
+                      control: <DesignSelectorDropdown value={draft.interruptionTiming.criticalIncident.takeoverSeconds.toString()} onValueChange={(value) => setDraft({
+                        ...draft,
+                        interruptionTiming: {
+                          ...draft.interruptionTiming,
+                          criticalIncident: {
+                            ...draft.interruptionTiming.criticalIncident,
+                            takeoverSeconds: parseTakeoverSeconds(value),
+                          },
+                        },
+                      })} options={[
+                        { value: "30", label: "30 seconds" },
+                        { value: "60", label: "60 seconds" },
+                        { value: "90", label: "90 seconds" },
+                        { value: "120", label: "2 minutes" },
+                      ]} />,
+                    })}
+                    {settingRow({
+                      title: "Critical Recovery Takeover",
+                      description: "How long a confirmed Critical recovery takes over before rotation resumes.",
+                      control: <DesignSelectorDropdown value={draft.interruptionTiming.criticalIncident.recoveryTakeoverSeconds.toString()} onValueChange={(value) => setDraft({
+                        ...draft,
+                        interruptionTiming: {
+                          ...draft.interruptionTiming,
+                          criticalIncident: {
+                            ...draft.interruptionTiming.criticalIncident,
+                            recoveryTakeoverSeconds: parseTakeoverSeconds(value),
+                          },
+                        },
+                      })} options={[
+                        { value: "30", label: "30 seconds" },
+                        { value: "60", label: "60 seconds" },
+                        { value: "90", label: "90 seconds" },
+                        { value: "120", label: "2 minutes" },
+                      ]} />,
+                    })}
+                    {settingRow({
+                      title: "Critical Restored Highlight",
+                      description: "How long a restored Critical Incident remains visible.",
+                      control: <DesignSelectorDropdown value={draft.interruptionTiming.criticalIncident.resolvedHighlightSeconds.toString()} onValueChange={(value) => setDraft({
+                        ...draft,
+                        interruptionTiming: {
+                          ...draft.interruptionTiming,
+                          criticalIncident: {
+                            ...draft.interruptionTiming.criticalIncident,
+                            resolvedHighlightSeconds: parseHighlightSeconds(value),
+                          },
+                        },
+                      })} options={[
+                        { value: "3600", label: "1 hour" },
+                        { value: "21600", label: "6 hours" },
+                        { value: "43200", label: "12 hours" },
+                        { value: "86400", label: "24 hours" },
+                      ]} />,
+                    })}
+                  </div>
+                </div>
               </div>
             </DesignCard>
 
@@ -593,7 +681,7 @@ export default function PageClient() {
               <div>
                 {settingRow({
                   title: "Email Delivery Degradation",
-                  description: "Temporary Incident takeover, escalating to a persistent Critical Incident when required.",
+                  description: "Bounded Incident and Critical takeovers followed by persistent active Highlights until recovery.",
                   control: <Switch checked={draft.incidentTypes.emailDeliveryDegradation} onCheckedChange={(emailDeliveryDegradation) => setDraft({
                     ...draft,
                     incidentTypes: { emailDeliveryDegradation },
@@ -614,11 +702,8 @@ export default function PageClient() {
                 })}
                 {settingRow({
                   title: "Revenue Milestones",
-                  description: "Requires exact financial visibility.",
-                  control: <Switch checked={draft.celebrations.revenueMilestone} disabled={!draft.showExactFinancialValues} onCheckedChange={(revenueMilestone) => setDraft({
-                    ...draft,
-                    celebrations: { ...draft.celebrations, revenueMilestone },
-                  })} aria-label="Enable revenue milestone celebrations" />,
+                  description: "Unavailable · live revenue milestone evaluation is not yet supported.",
+                  control: <Switch checked={draft.celebrations.revenueMilestone} disabled aria-label="Revenue milestone celebrations are unavailable" />,
                 })}
                 {settingRow({
                   title: "Successful Launches",
@@ -640,7 +725,7 @@ export default function PageClient() {
                     : { ...draft.celebrations, revenueMilestone: false },
                 })} aria-label="Show exact financial values on this TV" />,
               })}
-              <DesignAlert variant="success" title="Aggregate-Only Foundation" description="No user identity, email subject, recipient, support message, or session replay content exists in the fixture snapshot." />
+              <DesignAlert variant="success" title="Backend-Enforced Privacy" description="Live TV snapshots expose aggregate metrics only. User identities, email subjects, recipients, support messages, and session replay content are excluded by the backend." />
             </DesignCard>
 
             <DesignCard title="Event Previews" subtitle="Preview milestone and incident presentations" icon={BroadcastIcon} gradient="cyan" glassmorphic>
@@ -668,21 +753,11 @@ export default function PageClient() {
 
             <DesignCard title="State Previews" subtitle="Validate honest failure and freshness behavior" icon={WarningCircleIcon} gradient="orange" glassmorphic>
               <div className="grid grid-cols-2 gap-2">
-                {[
-                  { id: "stale", label: "Stale" },
-                  { id: "offline", label: "Offline" },
-                  { id: "loading", label: "Loading" },
-                  { id: "empty", label: "Empty" },
-                  { id: "insufficient-data", label: "Insufficient Data" },
-                  { id: "unavailable", label: "Unavailable Source" },
-                  { id: "partial-failure", label: "Partial Failure" },
-                  { id: "financial-redacted", label: "Financial Redaction" },
-                  { id: "error", label: "Fatal Error" },
-                ].map((state) => (
+                {TV_STATE_PREVIEWS.map((state) => (
                   <button
                     type="button"
-                    key={state.id}
-                    onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=${state.id}`)}
+                    key={state.fixture}
+                    onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=${state.fixture}`)}
                     className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-xs font-medium text-foreground hover:bg-foreground/[0.04]"
                   >
                     {state.label}
@@ -752,7 +827,7 @@ export default function PageClient() {
 
       {previewOpen && previewSnapshot != null ? (
         <div className="fixed inset-0 z-[200] bg-black">
-          <TvPresentation snapshot={previewSnapshot} onExit={() => setPreviewOpen(false)} />
+          <TvPresentation snapshot={previewSnapshot} onExit={() => setPreviewOpen(false)} previewData />
           <button
             type="button"
             className="absolute right-5 top-5 z-[250] flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black/60 text-white/80 backdrop-blur-xl"

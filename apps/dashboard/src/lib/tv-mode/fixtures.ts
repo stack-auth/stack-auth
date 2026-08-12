@@ -232,8 +232,8 @@ const userMilestoneEvent: TvEvent = {
   type: "user-milestone",
   presentationClass: "celebration",
   status: "active",
-  title: "500 users",
-  summary: "A new community milestone, reached together.",
+  title: "500 Users",
+  summary: "The community reached a new milestone—worth celebrating together.",
   metricLabel: "Total users",
   metricValue: "512",
   expectedRange: null,
@@ -245,7 +245,7 @@ const userMilestoneEvent: TvEvent = {
 const newerUserMilestoneEvent: TvEvent = {
   ...userMilestoneEvent,
   id: "fixture-user-milestone-1000",
-  title: "1K users",
+  title: "1K Users",
   metricValue: "1,024",
   occurredAt: "2026-07-23T14:31:00.000Z",
 };
@@ -253,8 +253,8 @@ const newerUserMilestoneEvent: TvEvent = {
 const longContentMilestoneEvent: TvEvent = {
   ...newerUserMilestoneEvent,
   id: "fixture-user-milestone-long-content",
-  title: "One hundred thousand customers now building with Acme International",
-  summary: "Teams across every region helped the company reach a meaningful new community milestone today.",
+  title: "One Hundred Thousand Customers Now Building With Acme International",
+  summary: "Teams around the world helped the community reach this milestone today.",
 };
 
 const emailDegradationEvent: TvEvent = {
@@ -262,8 +262,8 @@ const emailDegradationEvent: TvEvent = {
   type: "email-delivery-degradation",
   presentationClass: "critical-incident",
   status: "active",
-  title: "Email delivery degraded",
-  summary: "Delivery performance is below its expected operating range.",
+  title: "Email Delivery Degraded",
+  summary: "Email delivery is below the expected range. We’re monitoring recovery.",
   metricLabel: "Delivery rate",
   metricValue: "78.4%",
   expectedRange: "Expected 95% or higher",
@@ -284,13 +284,13 @@ const resolvedEmailEvent: TvEvent = {
   status: "resolved",
   title: "Email Delivery Restored",
   metricValue: "98.2%",
-  summary: "Email delivery has returned to its expected operating range.",
+  summary: "Email delivery is back within the expected range.",
 };
 
 function presentedTakeover(
   event: TvEvent,
   variant: TvPresentedTakeover["variant"],
-  endsAt: string | null,
+  endsAt: string,
 ): TvPresentedTakeover {
   return {
     event,
@@ -400,21 +400,23 @@ export function createTvFixtureSnapshot(projectId: string, profile: TvProfileFix
         ? celebrationHighlightWith({ event: newerUserMilestoneEvent })
         : variant === "event-long-content"
           ? celebrationHighlightWith({ event: longContentMilestoneEvent })
-          : variant === "incident-highlight"
+          : variant === "incident-highlight" || variant === "incident-takeover"
             ? incidentHighlight(ordinaryEmailIncidentEvent, "active-incident", null)
-            : variant === "incident-recovery-highlight"
-              ? incidentHighlight({
-                ...resolvedEmailEvent,
-                id: "fixture-resolved-email-highlight",
-                presentationClass: "incident",
-              }, "resolved-incident", "2026-07-23T20:30:00.000Z")
-              : null;
+            : variant === "critical-highlight" || variant === "critical-takeover"
+              ? incidentHighlight(emailDegradationEvent, "active-incident", null)
+              : variant === "incident-recovery-highlight"
+                ? incidentHighlight({
+                  ...resolvedEmailEvent,
+                  id: "fixture-resolved-email-highlight",
+                  presentationClass: "incident",
+                }, "resolved-incident", "2026-07-23T20:30:00.000Z")
+                : null;
   const takeover = variant === "celebration-takeover"
     ? presentedTakeover(userMilestoneEvent, "celebration", "2026-07-23T14:33:00.000Z")
     : variant === "celebration-suspended" || variant === "incident-takeover"
       ? presentedTakeover(ordinaryEmailIncidentEvent, "incident", "2026-07-23T14:33:00.000Z")
       : variant === "critical-takeover"
-        ? presentedTakeover(emailDegradationEvent, "critical-incident", null)
+        ? presentedTakeover(emailDegradationEvent, "critical-incident", "2026-07-23T14:34:00.000Z")
         : variant === "incident-recovery"
           ? presentedTakeover({
             ...resolvedEmailEvent,
@@ -457,7 +459,7 @@ export function createTvFixtureSnapshot(projectId: string, profile: TvProfileFix
       }),
     },
     screens, presentation: { highlight, takeover },
-    fatalErrorMessage: variant === "error" ? "The presentation snapshot could not be prepared." : null,
+    fatalErrorMessage: variant === "error" ? "We couldn’t prepare the latest presentation. Please try again shortly." : null,
   };
 }
 

@@ -207,6 +207,7 @@ model TvProfileEventPresentation {
 
   takeoverStartedAt  DateTime?
   takeoverEndsAt     DateTime?
+  recoveryEndsAt     DateTime?
   highlightExpiresAt DateTime?
   animationExpiresAt DateTime?
   supersededAt       DateTime?

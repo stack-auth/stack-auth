@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getTvFixtureSnapshot } from "@/lib/tv-mode/fixtures";
 import { getTvInsightPresentation, renderTvScreen } from "./screen-registry";
@@ -69,10 +69,10 @@ describe("TvPresentation rotation", () => {
 
 describe("TV chart headers", () => {
   it.each([
-    ["live-pulse", "Today’s activity", "Current UTC day"],
-    ["audience-momentum", "Audience lifecycle", "Daily activity · trailing 7 days"],
-    ["revenue-payments", "Paid revenue momentum", "Cumulative daily trend · trailing 30 days"],
-    ["email-health", "Email delivery volume", "Daily send status · trailing 7 days"],
+    ["live-pulse", "Today’s Activity", "Current UTC day"],
+    ["audience-momentum", "Audience Lifecycle", "Daily activity · trailing 7 days"],
+    ["revenue-payments", "Paid Revenue Momentum", "Cumulative daily trend · trailing 30 days"],
+    ["email-health", "Email Delivery Volume", "Daily send status · trailing 7 days"],
   ] as const)("labels the %s chart and its reporting window", (screenId, title, subtitle) => {
     const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
     if (snapshot == null) throw new Error("Missing company-pulse fixture");
@@ -83,6 +83,48 @@ describe("TV chart headers", () => {
 
     expect(screen.getByText(title)).toBeDefined();
     expect(screen.getByText(subtitle)).toBeDefined();
+  });
+});
+
+describe("TV metric semantics", () => {
+  it("uses precise Audience, revenue-proxy, and delivered-series wording", () => {
+    const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
+    if (snapshot == null) throw new Error("Missing company-pulse fixture");
+
+    const audience = snapshot.screens.find((candidate) => candidate.id === "audience-momentum");
+    const revenue = snapshot.screens.find((candidate) => candidate.id === "revenue-payments");
+    const email = snapshot.screens.find((candidate) => candidate.id === "email-health");
+    if (audience == null || revenue == null || email == null) throw new Error("Missing TV metric fixture screens");
+
+    const audienceRender = render(renderTvScreen(audience));
+    screen.getByText("12.8% growth over the last 7 days");
+    screen.getByText("Signed-In Visitors · 7d");
+    screen.getByText("Identified Session Avg · 7d");
+    screen.getByText("Replay-segment data · 91.6% users verified");
+    audienceRender.unmount();
+
+    const revenueRender = render(renderTvScreen(revenue));
+    screen.getByText("30-Day Revenue Proxy");
+    screen.getByText("Paid invoice revenue · trailing 30 days");
+    revenueRender.unmount();
+
+    render(renderTvScreen(email));
+    expect(screen.getAllByText("Delivered").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Completed Successfully")).toBeNull();
+  });
+});
+
+describe("TV synthetic preview safety", () => {
+  it("labels fixture previews without marking normal playback", () => {
+    const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
+    if (snapshot == null) throw new Error("Missing company-pulse fixture");
+
+    const preview = render(<TvPresentation snapshot={snapshot} onExit={() => undefined} previewData />);
+    screen.getByText("Preview · Synthetic Data");
+    preview.unmount();
+
+    render(<TvPresentation snapshot={snapshot} onExit={() => undefined} />);
+    expect(screen.queryByText("Preview · Synthetic Data")).toBeNull();
   });
 });
 
@@ -98,19 +140,87 @@ describe("TV interruption presentation", () => {
     render(<TvPresentation snapshot={snapshot} onExit={() => undefined} />);
 
     expect(screen.getByText("Event Highlight")).toBeDefined();
-    expect(screen.getByRole("heading", { name: "500 users" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "500 Users" })).toBeDefined();
     expect(screen.getByRole("heading", { name: "Live Pulse" })).toBeDefined();
   });
 
-  it("renders the persistent Critical Incident instead of the playlist", () => {
+  it("renders the bounded Critical Incident instead of the playlist", () => {
     const snapshot = getTvFixtureSnapshot("project-a", "company-pulse", "critical-takeover");
     if (snapshot == null) throw new Error("Missing Critical Incident fixture");
 
     render(<TvPresentation snapshot={snapshot} onExit={() => undefined} />);
 
-    expect(screen.getByText("Critical incident")).toBeDefined();
-    expect(screen.getByRole("heading", { name: "Email delivery degraded" })).toBeDefined();
+    expect(screen.getByText("Critical Incident")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Email Delivery Degraded" })).toBeDefined();
     expect(screen.queryByRole("heading", { name: "Live Pulse" })).toBeNull();
+  });
+
+  it("treats escalation and recovery as new phases of the same occurrence", async () => {
+    vi.useFakeTimers();
+    const incident = getTvFixtureSnapshot("project-a", "company-pulse", "incident-takeover");
+    const critical = getTvFixtureSnapshot("project-a", "company-pulse", "critical-takeover");
+    const recovery = getTvFixtureSnapshot("project-a", "company-pulse", "critical-recovery");
+    if (incident == null || critical == null || recovery == null) throw new Error("Missing bounded lifecycle fixtures");
+    const eventId = incident.presentation.takeover?.event.id;
+    if (eventId == null || critical.presentation.takeover == null || recovery.presentation.takeover == null) {
+      throw new Error("Missing bounded lifecycle takeover");
+    }
+
+    const { rerender } = render(<TvPresentation snapshot={incident} onExit={() => undefined} />);
+    await act(() => vi.advanceTimersByTime(60_000));
+    expect(screen.getByLabelText("Screen 1 of 4")).toBeDefined();
+
+    rerender(<TvPresentation snapshot={{
+      ...critical,
+      presentation: {
+        ...critical.presentation,
+        takeover: {
+          ...critical.presentation.takeover,
+          event: { ...critical.presentation.takeover.event, id: eventId },
+        },
+      },
+    }} onExit={() => undefined} />);
+    expect(screen.getByText("Critical Incident")).toBeDefined();
+
+    rerender(<TvPresentation snapshot={{
+      ...recovery,
+      presentation: {
+        ...recovery.presentation,
+        takeover: {
+          ...recovery.presentation.takeover,
+          event: { ...recovery.presentation.takeover.event, id: eventId },
+        },
+      },
+    }} onExit={() => undefined} />);
+    await act(() => vi.advanceTimersByTime(1_000));
+    expect(screen.getByText("Recovery Confirmed")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Email Delivery Restored" })).toBeDefined();
+  });
+
+  it("does not let rotation pause extend an absolute takeover deadline", async () => {
+    vi.useFakeTimers();
+    const rotation = getTvFixtureSnapshot("project-a", "company-pulse");
+    const incident = getTvFixtureSnapshot("project-a", "company-pulse", "incident-takeover");
+    if (rotation == null || incident == null) throw new Error("Missing rotation-pause fixtures");
+
+    const { rerender } = render(<TvPresentation snapshot={rotation} onExit={() => undefined} />);
+    fireEvent.keyDown(window, { key: " " });
+    rerender(<TvPresentation snapshot={incident} onExit={() => undefined} />);
+    await act(() => vi.advanceTimersByTime(60_000));
+    await act(() => vi.advanceTimersByTime(1_000));
+
+    expect(screen.getByRole("heading", { name: "Live Pulse" })).toBeDefined();
+  });
+
+  it("labels an active Critical Incident Highlight after its takeover expires", () => {
+    const snapshot = getTvFixtureSnapshot("project-a", "company-pulse", "critical-highlight");
+    if (snapshot == null) throw new Error("Missing Critical Incident Highlight fixture");
+
+    render(<TvPresentation snapshot={snapshot} onExit={() => undefined} />);
+
+    expect(screen.getByText("Active Critical Incident")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Email Delivery Degraded" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Live Pulse" })).toBeDefined();
   });
 
   it("renders recovery-specific takeover and Highlight presentations", () => {
@@ -119,12 +229,12 @@ describe("TV interruption presentation", () => {
     if (recoveryScreen == null || recoveryHighlight == null) throw new Error("Missing incident recovery fixtures");
 
     const recoveryScreenRender = render(<TvPresentation snapshot={recoveryScreen} onExit={() => undefined} />);
-    expect(screen.getByText("Incident resolved")).toBeDefined();
+    expect(screen.getByText("Recovery Confirmed")).toBeDefined();
     expect(screen.getByRole("heading", { name: "Email Delivery Restored" })).toBeDefined();
     recoveryScreenRender.unmount();
 
     render(<TvPresentation snapshot={recoveryHighlight} onExit={() => undefined} />);
-    expect(screen.getByText("Resolved")).toBeDefined();
+    expect(screen.getByText("Restored")).toBeDefined();
     expect(screen.getByRole("heading", { name: "Email Delivery Restored" })).toBeDefined();
     expect(screen.getByText("Expected 95% or higher", { exact: false })).toBeDefined();
   });
@@ -139,7 +249,7 @@ describe("TV interruption presentation", () => {
     expect(container.querySelectorAll("[data-entry-burst='active']")).toHaveLength(0);
 
     rerender(<TvPresentation snapshot={snapshot} onExit={() => undefined} />);
-    expect(screen.getByRole("heading", { name: "500 users" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "500 Users" })).toBeDefined();
     expect(container.querySelectorAll("[data-entry-burst='active']")).toHaveLength(1);
     expect(container.querySelector("[data-takeover-effects='active']")).not.toBeNull();
   });

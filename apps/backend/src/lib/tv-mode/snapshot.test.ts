@@ -12,8 +12,10 @@ import {
   createReadyTvLivePulseScreen,
   createTvLivePulseErrorScreen,
   getTvOperationalMetricsClient,
+  hasTvPaymentData,
   isTvEmailInsightEligible,
   isTvReturningInsightEligible,
+  sourceHealthFact,
 } from "./snapshot";
 
 const observedAt = "2026-07-25T12:00:00.000Z";
@@ -177,6 +179,63 @@ describe("assembleTvSnapshot", () => {
         },
       },
     })).toThrow("must not expose exact financial values");
+  });
+});
+
+describe("TV source health facts", () => {
+  it("describes a ready source as reporting without claiming evaluator-backed health", () => {
+    expect(sourceHealthFact("Analytics", {
+      ...screens.audience,
+      sourceStatus: "ready",
+      diagnosticCode: null,
+      data: {
+        totalUsers: 2,
+        userGrowthPercent: 0,
+        newUsers: 1,
+        monthlyActiveUsers: 2,
+        visitors: 1,
+        averageSessionSeconds: 10,
+        verificationRatePercent: 50,
+        lifecycle: [],
+      },
+    })).toEqual({ label: "Analytics", status: "ready", value: "Fresh", detail: "Metrics available" });
+  });
+
+  it.each([
+    ["empty", "empty", "No activity", "No data in this reporting window"],
+    ["insufficient-data", "insufficient-data", "Limited", "Insufficient data"],
+    ["unavailable", "unavailable", "Unavailable", "Source unavailable"],
+    ["error", "error", "Error", "Source error"],
+    ["stale", "stale", "Stale", "Data may be outdated"],
+  ] as const)("maps %s to accurate source wording", (sourceStatus, status, value, detail) => {
+    expect(sourceHealthFact("Audience", { ...screens.audience, sourceStatus })).toEqual({
+      label: "Audience",
+      status,
+      value,
+      detail,
+    });
+  });
+});
+
+describe("TV payment activity qualification", () => {
+  const emptyMetrics = {
+    applicableAttempts: 0,
+    currentRevenue: 0,
+    activeSubscriptions: 0,
+    newSubscriptions: 0,
+    pastDueSubscriptions: 0,
+  };
+
+  it("keeps a past-due-only project out of the empty state", () => {
+    expect(hasTvPaymentData({ ...emptyMetrics, pastDueSubscriptions: 1 })).toBe(true);
+  });
+
+  it("keeps a new-subscription-only project out of the empty state", () => {
+    expect(hasTvPaymentData({ ...emptyMetrics, newSubscriptions: 1 })).toBe(true);
+  });
+
+  it("recognizes a truly empty project", () => {
+    expect(hasTvPaymentData(emptyMetrics)).toBe(false);
   });
 });
 

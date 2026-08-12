@@ -87,6 +87,7 @@ describe("TV event presentation orchestration", () => {
         preferences: preferences(),
         takeoverStartedAt: occurredAt,
       }),
+      recoveryEndsAt: new Date("2026-07-29T10:21:00.000Z"),
       highlightExpiresAt: new Date("2026-07-29T16:20:00.000Z"),
     };
     expect(deriveTvPresentation({
@@ -96,10 +97,10 @@ describe("TV event presentation orchestration", () => {
     }).takeover).toMatchObject({
       occurrenceId: "incident",
       variant: "recovery-confirmation",
-      endsAt: new Date("2026-07-29T10:20:30.000Z"),
+      endsAt: new Date("2026-07-29T10:21:00.000Z"),
     });
     expect(deriveTvPresentation({
-      now: new Date("2026-07-29T10:20:31.000Z"),
+      now: new Date("2026-07-29T10:21:01.000Z"),
       occurrences: [celebration, incident],
       assignments: [celebrationAssignment, incidentAssignment],
     }).highlight).toMatchObject({
@@ -159,9 +160,18 @@ describe("TV event presentation orchestration", () => {
       takeover: {
         occurrenceId: "critical",
         variant: "critical-incident",
-        endsAt: null,
+        endsAt: new Date("2026-07-29T10:02:30.000Z"),
       },
       highlight: { occurrenceId: "critical" },
+    });
+
+    expect(deriveTvPresentation({
+      now: new Date("2026-07-29T10:02:31.000Z"),
+      occurrences: [incident, critical],
+      assignments: [incidentAssignment, criticalAssignment],
+    })).toMatchObject({
+      takeover: null,
+      highlight: { occurrenceId: "critical", variant: "active-incident" },
     });
 
     expect(deriveTvPresentation({
@@ -174,6 +184,57 @@ describe("TV event presentation orchestration", () => {
         occurrenceId: "incident",
         variant: "active-incident",
       },
+    });
+  });
+
+  it("starts a fresh bounded Critical phase at the authoritative escalation time", () => {
+    const escalatedAt = new Date("2026-07-29T10:03:00.000Z");
+    const critical = occurrence("incident", "critical-incident");
+    const assignment = createTvPresentationAssignment({
+      occurrence: critical,
+      preferences: preferences(),
+      takeoverStartedAt: escalatedAt,
+    });
+
+    expect(assignment).toMatchObject({
+      takeoverStartedAt: escalatedAt,
+      takeoverEndsAt: new Date("2026-07-29T10:05:00.000Z"),
+    });
+    expect(deriveTvPresentation({
+      now: new Date("2026-07-29T10:04:00.000Z"),
+      occurrences: [critical],
+      assignments: [assignment],
+    }).takeover).toMatchObject({
+      occurrenceId: "incident",
+      variant: "critical-incident",
+      startedAt: escalatedAt,
+    });
+  });
+
+  it("skips a recovery takeover after its frozen event-time deadline", () => {
+    const resolvedAt = new Date("2026-07-29T10:00:00.000Z");
+    const resolved: TvDurableEventOccurrence = {
+      ...occurrence("incident", "incident"),
+      lifecycle: "resolved",
+      resolvedAt,
+    };
+    const assignment = {
+      ...createTvPresentationAssignment({
+        occurrence: resolved,
+        preferences: preferences(),
+        takeoverStartedAt: occurredAt,
+      }),
+      recoveryEndsAt: new Date("2026-07-29T10:00:30.000Z"),
+      highlightExpiresAt: new Date("2026-07-29T11:00:00.000Z"),
+    };
+
+    expect(deriveTvPresentation({
+      now: new Date("2026-07-29T10:02:00.000Z"),
+      occurrences: [resolved],
+      assignments: [assignment],
+    })).toMatchObject({
+      takeover: null,
+      highlight: { occurrenceId: "incident", variant: "resolved-incident" },
     });
   });
 });

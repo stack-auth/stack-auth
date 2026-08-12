@@ -31,6 +31,19 @@ export function profileResourceToEditorDraft(profile: TvProfileResource): TvProf
   };
 }
 
+export function createTvProfileEditorDraft(
+  profile: TvProfileResource,
+  createFromTemplate: boolean,
+): TvProfileFixture {
+  const draft = profileResourceToEditorDraft(profile);
+  if (!createFromTemplate) return draft;
+  return {
+    ...draft,
+    displayName: `${draft.displayName} Copy`,
+    description: "New Profile",
+  };
+}
+
 export function editorDraftToProfileConfiguration(draft: TvProfileFixture): TvProfileConfiguration {
   return {
     displayName: draft.displayName,

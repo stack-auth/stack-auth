@@ -1,8 +1,6 @@
 import type { TvInterruptionPreferences } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
-export const TV_RECOVERY_CONFIRMATION_MS = 30_000;
-
 export type TvDurableEventOccurrence = {
   id: string,
   type: "email-delivery-degradation" | "user-milestone",
@@ -17,6 +15,7 @@ export type TvDurablePresentationAssignment = {
   occurrenceId: string,
   takeoverStartedAt: Date | null,
   takeoverEndsAt: Date | null,
+  recoveryEndsAt: Date | null,
   highlightExpiresAt: Date | null,
   animationExpiresAt: Date | null,
   supersededAt: Date | null,
@@ -27,7 +26,7 @@ export type TvDerivedPresentation = {
     occurrenceId: string,
     variant: "celebration" | "incident" | "critical-incident" | "recovery-confirmation",
     startedAt: Date,
-    endsAt: Date | null,
+    endsAt: Date,
   } | null,
   highlight: {
     occurrenceId: string,
@@ -59,14 +58,21 @@ export function createTvPresentationAssignment(options: {
       highlightExpiresAt: addSeconds(occurrence.occurredAt, preferences.timing.celebration.highlightSeconds),
       animationExpiresAt: addSeconds(occurrence.occurredAt, preferences.timing.celebration.animationSeconds),
       supersededAt: null,
+      recoveryEndsAt: null,
     };
   }
   return {
     occurrenceId: occurrence.id,
     takeoverStartedAt,
-    takeoverEndsAt: occurrence.presentationClass === "incident" && takeoverStartedAt != null
-      ? addSeconds(takeoverStartedAt, preferences.timing.incident.takeoverSeconds)
-      : null,
+    takeoverEndsAt: takeoverStartedAt == null
+      ? null
+      : addSeconds(
+        takeoverStartedAt,
+        occurrence.presentationClass === "critical-incident"
+          ? preferences.timing.criticalIncident.takeoverSeconds
+          : preferences.timing.incident.takeoverSeconds,
+      ),
+    recoveryEndsAt: null,
     highlightExpiresAt: null,
     animationExpiresAt: null,
     supersededAt: null,
@@ -110,17 +116,16 @@ export function deriveTvPresentation(options: {
   const activeIncident = selectOutrankingOccurrence(options.occurrences);
   if (activeIncident != null) {
     const assignment = assignments.get(activeIncident.id);
-    if (assignment == null || assignment.takeoverStartedAt == null) {
+    if (assignment == null || assignment.takeoverStartedAt == null || assignment.takeoverEndsAt == null) {
       throw new Error(`Active TV incident "${activeIncident.id}" has no presentation assignment`);
     }
-    const showTakeover = activeIncident.presentationClass === "critical-incident"
-      || isBefore(assignment.takeoverEndsAt, options.now);
+    const showTakeover = isBefore(assignment.takeoverEndsAt, options.now);
     return {
       takeover: showTakeover ? {
         occurrenceId: activeIncident.id,
         variant: activeIncident.presentationClass,
         startedAt: assignment.takeoverStartedAt,
-        endsAt: activeIncident.presentationClass === "critical-incident" ? null : assignment.takeoverEndsAt,
+        endsAt: assignment.takeoverEndsAt,
       } : null,
       highlight: {
         occurrenceId: activeIncident.id,
@@ -136,17 +141,16 @@ export function deriveTvPresentation(options: {
     .sort((left, right) => (
       (right.resolvedAt?.getTime() ?? 0) - (left.resolvedAt?.getTime() ?? 0)
     ))
-    .find((occurrence) => (
-      occurrence.resolvedAt != null
-      && options.now.getTime() < occurrence.resolvedAt.getTime() + TV_RECOVERY_CONFIRMATION_MS
-    ));
+    .find((occurrence) => isBefore(assignments.get(occurrence.id)?.recoveryEndsAt ?? null, options.now));
   if (recovery != null && recovery.resolvedAt != null) {
+    const recoveryEndsAt = assignments.get(recovery.id)?.recoveryEndsAt;
+    if (recoveryEndsAt == null) throw new Error(`Resolved TV incident "${recovery.id}" has no recovery deadline`);
     return {
       takeover: {
         occurrenceId: recovery.id,
         variant: "recovery-confirmation",
         startedAt: recovery.resolvedAt,
-        endsAt: new Date(recovery.resolvedAt.getTime() + TV_RECOVERY_CONFIRMATION_MS),
+        endsAt: recoveryEndsAt,
       },
       highlight: {
         occurrenceId: recovery.id,
@@ -169,7 +173,9 @@ export function deriveTvPresentation(options: {
   if (celebration != null) {
     const assignment = assignments.get(celebration.id);
     if (assignment == null) throw new Error(`Celebration "${celebration.id}" has no presentation assignment`);
-    const takeover: TvDerivedPresentation["takeover"] = assignment.takeoverStartedAt != null && isBefore(assignment.takeoverEndsAt, options.now)
+    const takeover: TvDerivedPresentation["takeover"] = assignment.takeoverStartedAt != null
+      && assignment.takeoverEndsAt != null
+      && isBefore(assignment.takeoverEndsAt, options.now)
       ? {
         occurrenceId: celebration.id,
         variant: "celebration",

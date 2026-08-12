@@ -1,11 +1,30 @@
 import { describe, expect, it } from "vitest";
 import {
   getTvProfileEditorCopy,
+  getTvProfileEventCoverageLabel,
   getTvProfileOverviewAction,
   TV_EVENT_PREVIEW_GROUPS,
+  TV_STATE_PREVIEWS,
 } from "./profile-editor-copy";
 
 describe("TV profile customization copy", () => {
+  it.each([
+    [true, true, false, "Incidents + Milestones"],
+    [true, false, false, "Incidents"],
+    [false, true, false, "Milestones"],
+    [false, false, false, "None"],
+  ] as const)("summarizes profile event coverage", (incident, userMilestone, revenueMilestone, expected) => {
+    expect(getTvProfileEventCoverageLabel({
+      incidentTypes: { emailDeliveryDegradation: incident },
+      celebrations: { userMilestone, revenueMilestone },
+      timing: {
+        celebration: { takeoverSeconds: 60, animationSeconds: 3600, highlightSeconds: 21600 },
+        incident: { takeoverSeconds: 60, recoveryTakeoverSeconds: 30, resolvedHighlightSeconds: 3600 },
+        criticalIncident: { takeoverSeconds: 120, recoveryTakeoverSeconds: 60, resolvedHighlightSeconds: 21600 },
+      },
+    })).toBe(expected);
+  });
+
   it("frames a built-in profile as an unsaved template draft", () => {
     expect(getTvProfileEditorCopy("built-in", false)).toMatchInlineSnapshot(`
       {
@@ -17,7 +36,7 @@ describe("TV profile customization copy", () => {
         "saveLabel": "Save as New Profile",
       }
     `);
-    expect(getTvProfileOverviewAction("built-in")).toBe("Customize");
+    expect(getTvProfileOverviewAction("built-in")).toBe("Duplicate");
   });
 
   it("retains normal edit-and-save language for a persisted profile", () => {
@@ -84,5 +103,18 @@ describe("TV profile customization copy", () => {
         },
       ]
     `);
+  });
+
+  it("keeps State Previews compact and excludes the implemented Loading state", () => {
+    expect(TV_STATE_PREVIEWS.map((preview) => preview.fixture)).toEqual([
+      "stale",
+      "offline",
+      "financial-redacted",
+      "empty",
+      "insufficient-data",
+      "unavailable",
+      "partial-failure",
+      "error",
+    ]);
   });
 });

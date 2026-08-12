@@ -2,6 +2,7 @@ export const TV_EVENT_EVALUATION_INTERVAL_MS = 60_000;
 export const TV_EMAIL_CURRENT_WINDOW_MINUTES = 15;
 export const TV_EMAIL_MATURITY_DELAY_MINUTES = 5;
 export const TV_EMAIL_MINIMUM_FINISHED_SENDS = 50;
+export const TV_EMAIL_RECOVERY_TITLE = "Email Delivery Restored";
 export const TV_USER_MILESTONES = [
   100,
   500,

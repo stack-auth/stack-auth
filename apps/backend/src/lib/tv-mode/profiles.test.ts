@@ -18,8 +18,8 @@ describe("TV profile interruption preference normalization", () => {
       celebrations: { userMilestone: true, revenueMilestone: false },
       timing: {
         celebration: { takeoverSeconds: 60, animationSeconds: 3600, highlightSeconds: 21600 },
-        incident: { takeoverSeconds: 60, resolvedHighlightSeconds: 3600 },
-        criticalIncident: { resolvedHighlightSeconds: 21600 },
+        incident: { takeoverSeconds: 60, recoveryTakeoverSeconds: 30, resolvedHighlightSeconds: 3600 },
+        criticalIncident: { takeoverSeconds: 120, recoveryTakeoverSeconds: 60, resolvedHighlightSeconds: 21600 },
       },
     });
   });
@@ -69,10 +69,30 @@ describe("TV profile interruption preference normalization", () => {
       celebrations: { userMilestone: false, revenueMilestone: false },
       timing: {
         celebration: { takeoverSeconds: 90, animationSeconds: 1800, highlightSeconds: 43200 },
-        incident: { takeoverSeconds: 120, resolvedHighlightSeconds: 21600 },
-        criticalIncident: { resolvedHighlightSeconds: 86400 },
+        incident: { takeoverSeconds: 120, recoveryTakeoverSeconds: 90, resolvedHighlightSeconds: 21600 },
+        criticalIncident: { takeoverSeconds: 90, recoveryTakeoverSeconds: 120, resolvedHighlightSeconds: 86400 },
       },
     };
     await expect(normalizeTvInterruptionPreferences(finalPreferences)).resolves.toEqual(finalPreferences);
+  });
+
+  it("adds bounded Critical and recovery defaults to the previous saved timing shape", async () => {
+    await expect(normalizeTvInterruptionPreferences({
+      incidentTypes: { emailDeliveryDegradation: true },
+      celebrations: { userMilestone: false, revenueMilestone: false },
+      timing: {
+        celebration: { takeoverSeconds: 90, animationSeconds: 1800, highlightSeconds: 43200 },
+        incident: { takeoverSeconds: 120, resolvedHighlightSeconds: 21600 },
+        criticalIncident: { resolvedHighlightSeconds: 86400 },
+      },
+    })).resolves.toEqual({
+      incidentTypes: { emailDeliveryDegradation: true },
+      celebrations: { userMilestone: false, revenueMilestone: false },
+      timing: {
+        celebration: { takeoverSeconds: 90, animationSeconds: 1800, highlightSeconds: 43200 },
+        incident: { takeoverSeconds: 120, recoveryTakeoverSeconds: 30, resolvedHighlightSeconds: 21600 },
+        criticalIncident: { takeoverSeconds: 120, recoveryTakeoverSeconds: 60, resolvedHighlightSeconds: 86400 },
+      },
+    });
   });
 });
