@@ -639,7 +639,7 @@ it("should not allow restricted users (unverified email) to accept team invitati
   });
 
   // Create a verified user to send the invitation
-  const { userId: inviterId } = await Auth.Otp.signIn();
+  const { userId: inviterId } = await Auth.fastSignUp();
   const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
 
   // Grant invite permission to the inviter
@@ -725,7 +725,7 @@ it("should not allow anonymous users to accept team invitations", async ({ expec
   });
 
   // Create a verified user to send the invitation
-  const { userId: inviterId } = await Auth.Otp.signIn();
+  const { userId: inviterId } = await Auth.fastSignUp();
   const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
 
   // Grant invite permission to the inviter
@@ -812,7 +812,7 @@ it("should not allow restricted users to get team invitation details", async ({ 
   });
 
   // Create a verified user to send the invitation
-  const { userId: inviterId } = await Auth.Otp.signIn();
+  const { userId: inviterId } = await Auth.fastSignUp();
   const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
 
   // Grant invite permission to the inviter

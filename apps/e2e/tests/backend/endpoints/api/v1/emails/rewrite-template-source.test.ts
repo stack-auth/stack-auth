@@ -4,7 +4,7 @@ import { Auth, niceBackendFetch, Project } from "../../../../backend-helpers";
 
 describe("rewrite-template-source", () => {
   it("rewrites a regular template with variables", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     await Project.createAndSwitch({ display_name: "Rewrite Happy Path Project" }, true);
 
     const response = await niceBackendFetch("/api/v1/internal/rewrite-template-source", {
@@ -29,7 +29,7 @@ describe("rewrite-template-source", () => {
   });
 
   it("rewrites templates even when schema symbol is renamed", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     await Project.createAndSwitch({ display_name: "Rewrite Renamed Schema Project" }, true);
 
     const response = await niceBackendFetch("/api/v1/internal/rewrite-template-source", {
@@ -54,7 +54,7 @@ describe("rewrite-template-source", () => {
   });
 
   it("passes through templates without variables schema", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     await Project.createAndSwitch({ display_name: "Rewrite Pass Through Project" }, true);
 
     const source = `

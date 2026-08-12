@@ -37,7 +37,7 @@ const signIn = async (clientApp: any) => {
   await clientApp.signUpWithCredential({
     email: "test@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({
     email: "test@test.com",

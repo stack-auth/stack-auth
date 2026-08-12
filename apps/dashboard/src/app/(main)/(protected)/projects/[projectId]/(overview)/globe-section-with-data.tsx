@@ -43,7 +43,6 @@ function GlobeSectionWithMetrics({ includeAnonymous, interactive }: { includeAno
       <LiveUsersBadge count={data.live_users ?? 0} />
       <GlobeSection
         countryData={data.users_by_country}
-        totalUsers={data.total_users}
         activeUsersByCountry={data.active_users_by_country ?? {}}
         interactive={interactive}
         initialPointOfView={viewerLocation}

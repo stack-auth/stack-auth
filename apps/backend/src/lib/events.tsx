@@ -170,6 +170,49 @@ const SignUpRuleTriggerEventType = {
   inherits: [],
 } as const satisfies SystemEventTypeBase;
 
+const SignInAttemptEventType = {
+  id: "$sign-in-attempt",
+  dataSchema: yupObject({
+    projectId: yupString().defined(),
+    branchId: yupString().defined(),
+    userId: yupString().nullable().defined(),
+    outcome: yupString().oneOf(["success", "failed"]).defined(),
+    method: yupString().oneOf(["password", "otp", "passkey", "oauth"]).defined(),
+    failureReason: yupString().nullable().defined(),
+    email: yupString().nullable().defined(),
+    oauthProvider: yupString().nullable().defined(),
+    ipInfo: endUserIpInfoSchema.nullable().defined(),
+  }),
+  inherits: [],
+} as const satisfies SystemEventTypeBase;
+
+const PermissionCheckEventType = {
+  id: "$permission-check",
+  dataSchema: yupObject({
+    projectId: yupString().defined(),
+    branchId: yupString().defined(),
+    userId: yupString().nullable().defined(),
+    outcome: yupString().oneOf(["denied"]).defined(),
+    permissionId: yupString().defined(),
+    teamId: yupString().nullable().defined(),
+    scope: yupString().oneOf(["team", "project"]).defined(),
+    ipInfo: endUserIpInfoSchema.nullable().defined(),
+  }),
+  inherits: [],
+} as const satisfies SystemEventTypeBase;
+
+const UserRestrictedEventType = {
+  id: "$user-restricted",
+  dataSchema: yupObject({
+    projectId: yupString().defined(),
+    branchId: yupString().defined(),
+    userId: yupString().defined(),
+    restrictedReason: yupString().defined(),
+    ipInfo: endUserIpInfoSchema.nullable().defined(),
+  }),
+  inherits: [],
+} as const satisfies SystemEventTypeBase;
+
 export const SystemEventTypes = stripEventTypeSuffixFromKeys({
   ProjectEventType,
   ProjectActivityEventType,
@@ -179,6 +222,9 @@ export const SystemEventTypes = stripEventTypeSuffixFromKeys({
   ApiRequestEventType,
   LegacyApiEventType,
   SignUpRuleTriggerEventType,
+  SignInAttemptEventType,
+  PermissionCheckEventType,
+  UserRestrictedEventType,
 } as const);
 const systemEventTypesById = new Map(Object.values(SystemEventTypes).map(eventType => [eventType.id, eventType]));
 
@@ -320,7 +366,13 @@ export async function logEvent<T extends EventType[]>(
     });
 
     // Log specific events to ClickHouse
-    const clickhouseEventTypes = ['$token-refresh', '$sign-up-rule-trigger'];
+    const clickhouseEventTypes = [
+      '$token-refresh',
+      '$sign-up-rule-trigger',
+      '$sign-in-attempt',
+      '$permission-check',
+      '$user-restricted',
+    ];
     const matchingEventType = eventTypesArray.find(e => clickhouseEventTypes.includes(e.id));
     if (matchingEventType) {
       let clickhouseEventData: Record<string, unknown>;
@@ -370,6 +422,80 @@ export async function logEvent<T extends EventType[]>(
           auth_method: authMethod,
           oauth_provider: oauthProvider,
         };
+      } else if (matchingEventType.id === "$sign-in-attempt") {
+        const outcome =
+          typeof dataRecord === "object" && dataRecord && typeof dataRecord.outcome === "string"
+            ? dataRecord.outcome
+            : throwErr(new HexclaveAssertionError("outcome is required for $sign-in-attempt ClickHouse event", { dataRecord }));
+        const method =
+          typeof dataRecord === "object" && dataRecord && typeof dataRecord.method === "string"
+            ? dataRecord.method
+            : throwErr(new HexclaveAssertionError("method is required for $sign-in-attempt ClickHouse event", { dataRecord }));
+        const failureReason =
+          typeof dataRecord === "object" && dataRecord
+            ? (dataRecord.failureReason as string | null | undefined) ?? null
+            : null;
+        const email =
+          typeof dataRecord === "object" && dataRecord
+            ? (dataRecord.email as string | null | undefined) ?? null
+            : null;
+        const oauthProvider =
+          typeof dataRecord === "object" && dataRecord
+            ? (dataRecord.oauthProvider as string | null | undefined) ?? null
+            : null;
+        const ipInfo =
+          typeof dataRecord === "object" && dataRecord
+            ? (dataRecord.ipInfo as EndUserIpInfo | null | undefined)
+            : undefined;
+        clickhouseEventData = {
+          outcome,
+          method,
+          failure_reason: failureReason,
+          email,
+          oauth_provider: oauthProvider,
+          ip_info: toClickhouseEndUserIpInfo(ipInfo ?? null),
+        };
+      } else if (matchingEventType.id === "$permission-check") {
+        const outcome =
+          typeof dataRecord === "object" && dataRecord && typeof dataRecord.outcome === "string"
+            ? dataRecord.outcome
+            : throwErr(new HexclaveAssertionError("outcome is required for $permission-check ClickHouse event", { dataRecord }));
+        const permissionId =
+          typeof dataRecord === "object" && dataRecord && typeof dataRecord.permissionId === "string"
+            ? dataRecord.permissionId
+            : throwErr(new HexclaveAssertionError("permissionId is required for $permission-check ClickHouse event", { dataRecord }));
+        const scope =
+          typeof dataRecord === "object" && dataRecord && typeof dataRecord.scope === "string"
+            ? dataRecord.scope
+            : throwErr(new HexclaveAssertionError("scope is required for $permission-check ClickHouse event", { dataRecord }));
+        const teamId =
+          typeof dataRecord === "object" && dataRecord
+            ? (dataRecord.teamId as string | null | undefined) ?? null
+            : null;
+        const ipInfo =
+          typeof dataRecord === "object" && dataRecord
+            ? (dataRecord.ipInfo as EndUserIpInfo | null | undefined)
+            : undefined;
+        clickhouseEventData = {
+          outcome,
+          permission_id: permissionId,
+          team_id: teamId,
+          scope,
+          ip_info: toClickhouseEndUserIpInfo(ipInfo ?? null),
+        };
+      } else if (matchingEventType.id === "$user-restricted") {
+        const restrictedReason =
+          typeof dataRecord === "object" && dataRecord && typeof dataRecord.restrictedReason === "string"
+            ? dataRecord.restrictedReason
+            : throwErr(new HexclaveAssertionError("restrictedReason is required for $user-restricted ClickHouse event", { dataRecord }));
+        const ipInfo =
+          typeof dataRecord === "object" && dataRecord
+            ? (dataRecord.ipInfo as EndUserIpInfo | null | undefined)
+            : undefined;
+        clickhouseEventData = {
+          restricted_reason: restrictedReason,
+          ip_info: toClickhouseEndUserIpInfo(ipInfo ?? null),
+        };
       } else {
         throw new HexclaveAssertionError(`Unhandled ClickHouse event type: ${matchingEventType.id}`, { matchingEventType });
       }
@@ -386,6 +512,10 @@ export async function logEvent<T extends EventType[]>(
         ?? (matchingEventType.id === "$token-refresh" && typeof (clickhouseEventData as any).refresh_token_id === "string"
           ? (clickhouseEventData as any).refresh_token_id as string
           : null);
+      // Resolve team_id from the event data for $permission-check events.
+      const resolvedTeamId = matchingEventType.id === "$permission-check" && typeof (clickhouseEventData as any).team_id === "string"
+        ? (clickhouseEventData as any).team_id as string
+        : null;
 
       if (matchingEventType.id === "$token-refresh") {
         resolveCustomerRequestObservability({
@@ -405,7 +535,7 @@ export async function logEvent<T extends EventType[]>(
           project_id: projectId,
           branch_id: branchId,
           user_id: userId || null,
-          team_id: null,
+          team_id: resolvedTeamId ?? null,
           refresh_token_id: resolvedRefreshTokenId ?? null,
           session_replay_id: options.sessionReplayId ?? null,
           session_replay_segment_id: options.sessionReplaySegmentId ?? null,
