@@ -17,7 +17,6 @@ import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/
 import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { deindent } from "@hexclave/shared/dist/utils/strings";
 import { traceSpan, withTraceSpan } from "@hexclave/shared/dist/utils/telemetry";
-import { NextRequest } from "next/server";
 import * as zlib from "node:zlib";
 import * as yup from "yup";
 
@@ -73,7 +72,7 @@ export type MergeSmartRequest<T, MSQ = SmartRequest> =
     )
   );
 
-async function validate<T>(obj: SmartRequest, schema: yup.Schema<T>, req: NextRequest | null): Promise<T> {
+async function validate<T>(obj: SmartRequest, schema: yup.Schema<T>, req: Request | null): Promise<T> {
   try {
     return await yupValidate(schema, obj, {
       abortEarly: false,
@@ -104,7 +103,7 @@ async function validate<T>(obj: SmartRequest, schema: yup.Schema<T>, req: NextRe
 
         throw new KnownErrors.SchemaError(
           deindent`
-            Request validation failed on ${req.method} ${req.nextUrl.pathname}:
+            Request validation failed on ${req.method} ${new URL(req.url).pathname}:
               ${inners.map(e => deindent`
                 - ${e.message}
               `).join("\n")}
@@ -135,7 +134,7 @@ const MAX_JSON_BODY_BYTES = 8 * 1024 * 1024;
 // JSON requests are a documented HTTP capability that clients may already rely
 // on, and dropping transport decompression would turn their requests into
 // hard 400s.
-async function decodeBodyContentEncoding(req: NextRequest, bodyBuffer: ArrayBuffer): Promise<Uint8Array> {
+async function decodeBodyContentEncoding(req: Request, bodyBuffer: ArrayBuffer): Promise<Uint8Array> {
   const contentEncoding = req.headers.get("content-encoding")?.trim().toLowerCase() ?? "";
   const raw = new Uint8Array(bodyBuffer);
   if (contentEncoding === "" || contentEncoding === "identity") return raw;
@@ -172,7 +171,7 @@ async function decodeBodyContentEncoding(req: NextRequest, bodyBuffer: ArrayBuff
   }
 }
 
-async function parseBody(req: NextRequest, bodyBuffer: ArrayBuffer): Promise<SmartRequest["body"]> {
+async function parseBody(req: Request, bodyBuffer: ArrayBuffer): Promise<SmartRequest["body"]> {
   const contentType = req.method === "GET" || req.method === "HEAD" ? undefined : req.headers.get("content-type")?.split(";")[0];
 
   const getText = () => {
@@ -220,7 +219,7 @@ async function parseBody(req: NextRequest, bodyBuffer: ArrayBuffer): Promise<Sma
   }
 }
 
-const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextRequest): Promise<SmartRequestAuth | null> => {
+const parseAuth = withTraceSpan('smart request parseAuth', async (req: Request): Promise<SmartRequestAuth | null> => {
   const projectId = req.headers.get("x-stack-project-id");
   const branchId = req.headers.get("x-stack-branch-id") ?? DEFAULT_BRANCH_ID;
   let requestType = req.headers.get("x-stack-access-type");
@@ -433,7 +432,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   };
 });
 
-export async function createSmartRequest(req: NextRequest, bodyBuffer: ArrayBuffer, options?: { params: Promise<Record<string, string>> }): Promise<SmartRequest> {
+export async function createSmartRequest(req: Request, bodyBuffer: ArrayBuffer, options?: { params: Promise<Record<string, string>> }): Promise<SmartRequest> {
   return await traceSpan("creating smart request", async () => {
     const urlObject = new URL(req.url);
     const clientVersionMatch = req.headers.get("x-stack-client-version")?.match(/^(\w+)\s+(@[\w\/]+)@([\d.]+)$/);
@@ -459,6 +458,6 @@ export async function createSmartRequest(req: NextRequest, bodyBuffer: ArrayBuff
   });
 }
 
-export async function validateSmartRequest<T extends DeepPartialSmartRequestWithSentinel>(nextReq: NextRequest | null, smartReq: SmartRequest, schema: yup.Schema<T>): Promise<T> {
+export async function validateSmartRequest<T extends DeepPartialSmartRequestWithSentinel>(nextReq: Request | null, smartReq: SmartRequest, schema: yup.Schema<T>): Promise<T> {
   return await validate(smartReq, schema, nextReq);
 }

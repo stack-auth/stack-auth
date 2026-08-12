@@ -4,11 +4,21 @@ import {
   getEnabledAppIds,
   getTrustedDomainBaseUrls,
   isStripeAccountSetupComplete,
+  chunkProjectIds,
   mergeInternalProjectIntoCandidates,
   selectProjectsWithInternalPinned,
 } from "./helpers";
 
 describe("newly-created-projects helpers", () => {
+  it("chunks project IDs without changing their order", () => {
+    expect(chunkProjectIds(["a", "b", "c", "d", "e"], 2)).toEqual([
+      ["a", "b"],
+      ["c", "d"],
+      ["e"],
+    ]);
+    expect(chunkProjectIds([], 2)).toEqual([]);
+  });
+
   it("reads enabled apps from normalized nested config", () => {
     expect(getEnabledAppIds({
       apps: {

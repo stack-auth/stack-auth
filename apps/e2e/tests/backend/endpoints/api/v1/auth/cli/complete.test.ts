@@ -86,7 +86,7 @@ it("should allow a restricted user's refresh token so clients can choose their o
     "onboarding.requireEmailVerification": true,
   });
 
-  const restrictedUser = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const restrictedUser = await Auth.Password.signUpWithEmail();
   const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
     method: "POST",
     accessType: "server",
@@ -243,7 +243,7 @@ it("should keep the same user when the browser upgrades the CLI anonymous sessio
     },
   });
 
-  const browserUpgradeResponse = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const browserUpgradeResponse = await Auth.Password.signUpWithEmail();
   expect(browserUpgradeResponse.userId).toBe(cliAnonymousUser.userId);
 
   const completeResponse = await niceBackendFetch("/api/latest/auth/cli/complete", {
@@ -591,7 +591,7 @@ it("should handle the full claim → upgrade → complete flow with same user ID
   expect(claimResponse.status).toBe(200);
   expect(claimResponse.body.refresh_token).toBe(cliAnonymousUser.refreshToken);
 
-  const upgradeResponse = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const upgradeResponse = await Auth.Password.signUpWithEmail();
 
   expect(upgradeResponse.userId).toBe(originalUserId);
 
