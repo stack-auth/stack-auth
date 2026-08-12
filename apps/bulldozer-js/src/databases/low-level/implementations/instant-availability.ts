@@ -151,7 +151,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
       return characters.join("");
     };
     const setCachedValue = (keyString: string, value: ArrayBuffer | null, seq: DatabaseSeq) => {
-      cachedValues.set(keyString, { buffer: value === null ? null : cloneArrayBuffer(value), seq });
+      cachedValues.set(keyString, { buffer: value, seq });
     };
     const evictAfterWrappedAvailability = (keyStrings: string[], seq: DatabaseSeq) => {
       getSeqRecord(seq).underlyingAvailable
@@ -213,12 +213,12 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
       async setAll(entries, setOptions) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.instant.setAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
           if (entries.length === 0) return { seq: setOptions?.requiresSeq ?? initialSeq };
+          const entriesForWrapped = entries.map(({ key, value }) => ({
+            key: cloneArrayBuffer(key),
+            keyString: cacheKey(key),
+            value: cloneArrayBuffer(value),
+          }));
           return await withWriteGate(async () => {
-            const entriesForWrapped = entries.map(({ key, value }) => ({
-              key: cloneArrayBuffer(key),
-              keyString: cacheKey(key),
-              value: cloneArrayBuffer(value),
-            }));
             const requiresSeq = getChainedRequiresSeq(setOptions?.requiresSeq);
             const { seq: underlyingSeq } = await wrappedStore.setAll(entriesForWrapped, { requiresSeq });
             return { seq: recordWrite(underlyingSeq, entriesForWrapped) };
@@ -228,11 +228,11 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
       async deleteAll(keys, deleteOptions) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.instant.deleteAll", attributes: { ...attributes, "bulldozer.low_level.key_count": keys.length } }, async () => {
           if (keys.length === 0) return { seq: deleteOptions?.requiresSeq ?? initialSeq };
+          const keysForWrapped = keys.map(key => ({
+            key: cloneArrayBuffer(key),
+            keyString: cacheKey(key),
+          }));
           return await withWriteGate(async () => {
-            const keysForWrapped = keys.map(key => ({
-              key: cloneArrayBuffer(key),
-              keyString: cacheKey(key),
-            }));
             const requiresSeq = getChainedRequiresSeq(deleteOptions?.requiresSeq);
             const { seq: underlyingSeq } = await wrappedStore.deleteAll(keysForWrapped.map(({ key }) => key), { requiresSeq });
             return { seq: recordWrite(underlyingSeq, keysForWrapped.map(({ key, keyString }) => ({ key, keyString, value: null }))) };
@@ -242,11 +242,12 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
       async insertAll(values, insertOptions) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.instant.insertAll", attributes: { ...attributes, "bulldozer.low_level.value_count": values.length } }, async () => {
           if (values.length === 0) return { keys: [], seq: insertOptions?.requiresSeq ?? initialSeq };
+          const valuesForWrapped = values.map(cloneArrayBuffer);
           return await withWriteGate(async () => {
-            const valuesForWrapped = values.map(cloneArrayBuffer);
             const requiresSeq = getChainedRequiresSeq(insertOptions?.requiresSeq);
             const { keys, seq: underlyingSeq } = await wrappedStore.insertAll(valuesForWrapped, { requiresSeq });
             const seq = recordWrite(underlyingSeq, keys.map((key, index) => ({
+              key,
               keyString: cacheKey(key),
               value: valuesForWrapped[index],
             })));
@@ -257,24 +258,25 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
       async compareAndSetAll(entries, compareAndSetOptions) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.instant.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
           if (entries.length === 0) return { results: [], seq: compareAndSetOptions?.requiresSeq ?? initialSeq };
-          const keyStrings = entries.map(({ key }) => cacheKey(key));
+          const entriesForOperation = entries.map(({ key, compare, value }) => ({
+            key: cloneArrayBuffer(key),
+            keyString: cacheKey(key),
+            compare: cloneArrayBuffer(compare),
+            value: cloneArrayBuffer(value),
+          }));
           const keys = new Set<string>();
-          for (const keyCacheKey of keyStrings) {
+          for (const { keyString } of entriesForOperation) {
             const previousSize = keys.size;
-            keys.add(keyCacheKey);
+            keys.add(keyString);
             if (keys.size === previousSize) throw new Error("compareAndSetAll entries must not contain duplicate keys");
           }
           return await withWriteGate(async () => {
-            const existingValues = await Promise.all(entries.map(async ({ key }) => await result.get(key)));
-            const results = entries.map(({ compare }, index) => {
+            const existingValues = await Promise.all(entriesForOperation.map(async ({ key }) => await result.get(key)));
+            const results = entriesForOperation.map(({ compare }, index) => {
               const existing = existingValues[index];
               return existing.buffer !== null && arrayBuffersAreEqual(existing.buffer, compare);
             });
-            const matchingEntries = entries.flatMap((entry, index) => results[index] ? [{
-              key: cloneArrayBuffer(entry.key),
-              keyString: keyStrings[index],
-              value: cloneArrayBuffer(entry.value),
-            }] : []);
+            const matchingEntries = entriesForOperation.filter((_, index) => results[index]);
             if (matchingEntries.length === 0) {
               return {
                 results: results.map(() => ({ wasSet: false as const, seq: null })),
