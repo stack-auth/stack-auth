@@ -155,48 +155,19 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
         })
         .catch(() => {});
     };
-    const chainRequiresSeq = (previousWriteSeq: DatabaseSeq | undefined, requiresSeq: DatabaseSeq): DatabaseSeq => {
-      if (previousWriteSeq === undefined) return requiresSeq;
-      // Same-key underlying writes must be issued in instant-seq order; otherwise an evicted cache entry exposes and persists the older value.
-      return wrapped.combineSeqs(requiresSeq, getSeqRecord(previousWriteSeq).underlyingSeq);
-    };
-
-    type WriteAllocation<T> = {
-      underlyingSeq: DatabaseSeq,
-      cacheEntries: Array<{ key: ArrayBuffer, value: ArrayBuffer | null }>,
-      allocatedKeys?: ArrayBuffer[],
-      result: T,
-    };
-    const isThenable = (value: unknown): value is PromiseLike<unknown> => {
-      return value !== null
-        && (typeof value === "object" || typeof value === "function")
-        && "then" in value
-        && typeof value.then === "function";
-    };
-    const assertWriteAllocation = <T>(allocation: WriteAllocation<T>) => {
-      if (isThenable(allocation.underlyingSeq)) {
-        throw new Error("Instant-availability wrapped write allocation must return a non-thenable sequence");
-      }
-      for (const key of allocation.allocatedKeys ?? []) {
-        if (!(key instanceof ArrayBuffer)) throw new Error("Instant-availability wrapped insert allocation must return ArrayBuffer keys");
-      }
-    };
-    const runWriteLocked = async <T>(
-      requiresSeq: DatabaseSeq | undefined,
-      allocate: (chainedRequiresSeq: DatabaseSeq) => Promise<WriteAllocation<T>>,
-    ): Promise<{ seq: DatabaseSeq, result: T }> => {
+    const getChainedRequiresSeq = (requiresSeq: DatabaseSeq | undefined): DatabaseSeq => {
       const previousWriteSeq = lastWriteSeq;
-      const chainedRequiresSeq = chainRequiresSeq(previousWriteSeq, getUnderlyingSeq(requiresSeq));
-      // The wrapped store allocates its sequence and, for dumps, keys without IO. Commit completion
-      // remains asynchronous through `underlyingAvailable`, so a failed predecessor still blocks its
-      // successor through the wrapped store's causal dependency.
-      const allocation = await allocate(chainedRequiresSeq);
-      assertWriteAllocation(allocation);
-      const seq = createSeq(allocation.underlyingSeq);
+      const underlyingRequiresSeq = getUnderlyingSeq(requiresSeq);
+      if (previousWriteSeq === undefined) return underlyingRequiresSeq;
+      // Same-key underlying writes must be issued in instant-seq order; otherwise an evicted cache entry exposes and persists the older value.
+      return wrapped.combineSeqs(underlyingRequiresSeq, getSeqRecord(previousWriteSeq).underlyingSeq);
+    };
+    const recordWrite = (underlyingSeq: DatabaseSeq, cacheEntries: Array<{ key: ArrayBuffer, value: ArrayBuffer | null }>) => {
+      const seq = createSeq(underlyingSeq);
       lastWriteSeq = seq;
-      for (const { key, value } of allocation.cacheEntries) setCachedValue(key, value, seq);
-      evictAfterWrappedAvailability(allocation.cacheEntries.map(({ key }) => key), seq);
-      return { seq, result: allocation.result };
+      for (const { key, value } of cacheEntries) setCachedValue(key, value, seq);
+      evictAfterWrappedAvailability(cacheEntries.map(({ key }) => key), seq);
+      return seq;
     };
 
     const result: LowLevelKvStore & LowLevelKvDump = {
@@ -237,15 +208,9 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
           if (entries.length === 0) return { seq: setOptions?.requiresSeq ?? initialSeq };
           return await withWriteGate(async () => {
             const entriesForWrapped = entries.map(({ key, value }) => ({ key: cloneArrayBuffer(key), value: cloneArrayBuffer(value) }));
-            const write = await runWriteLocked(setOptions?.requiresSeq, async requiresSeq => {
-              const { seq: underlyingSeq } = await wrappedStore.setAll(entriesForWrapped, { requiresSeq });
-              return {
-                underlyingSeq,
-                cacheEntries: entriesForWrapped,
-                result: undefined,
-              };
-            });
-            return { seq: write.seq };
+            const requiresSeq = getChainedRequiresSeq(setOptions?.requiresSeq);
+            const { seq: underlyingSeq } = await wrappedStore.setAll(entriesForWrapped, { requiresSeq });
+            return { seq: recordWrite(underlyingSeq, entriesForWrapped) };
           });
         });
       },
@@ -254,15 +219,9 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
           if (keys.length === 0) return { seq: deleteOptions?.requiresSeq ?? initialSeq };
           return await withWriteGate(async () => {
             const keysForWrapped = keys.map(cloneArrayBuffer);
-            const write = await runWriteLocked(deleteOptions?.requiresSeq, async requiresSeq => {
-              const { seq: underlyingSeq } = await wrappedStore.deleteAll(keysForWrapped, { requiresSeq });
-              return {
-                underlyingSeq,
-                cacheEntries: keysForWrapped.map(key => ({ key, value: null })),
-                result: undefined,
-              };
-            });
-            return { seq: write.seq };
+            const requiresSeq = getChainedRequiresSeq(deleteOptions?.requiresSeq);
+            const { seq: underlyingSeq } = await wrappedStore.deleteAll(keysForWrapped, { requiresSeq });
+            return { seq: recordWrite(underlyingSeq, keysForWrapped.map(key => ({ key, value: null }))) };
           });
         });
       },
@@ -271,16 +230,10 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
           if (values.length === 0) return { keys: [], seq: insertOptions?.requiresSeq ?? initialSeq };
           return await withWriteGate(async () => {
             const valuesForWrapped = values.map(cloneArrayBuffer);
-            const write = await runWriteLocked(insertOptions?.requiresSeq, async requiresSeq => {
-              const { keys, seq: underlyingSeq } = await wrappedStore.insertAll(valuesForWrapped, { requiresSeq });
-              return {
-                underlyingSeq,
-                cacheEntries: keys.map((key, index) => ({ key, value: valuesForWrapped[index] })),
-                allocatedKeys: keys,
-                result: { keys: keys.map(cloneArrayBuffer) },
-              };
-            });
-            return { ...write.result, seq: write.seq };
+            const requiresSeq = getChainedRequiresSeq(insertOptions?.requiresSeq);
+            const { keys, seq: underlyingSeq } = await wrappedStore.insertAll(valuesForWrapped, { requiresSeq });
+            const seq = recordWrite(underlyingSeq, keys.map((key, index) => ({ key, value: valuesForWrapped[index] })));
+            return { keys: keys.map(cloneArrayBuffer), seq };
           });
         });
       },
@@ -293,16 +246,10 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
           return await withWriteGate(async () => {
             const existing = await result.get(key);
             if (existing.buffer === null || !arrayBuffersAreEqual(existing.buffer, compare)) return { wasSet: false, seq: null };
-            const write = await runWriteLocked(compareAndSetOptions?.requiresSeq, async requiresSeq => {
-              const entryForWrapped = { key: cloneArrayBuffer(key), value: cloneArrayBuffer(value) };
-              const { seq: underlyingSeq } = await wrappedStore.setAll([entryForWrapped], { requiresSeq });
-              return {
-                underlyingSeq,
-                cacheEntries: [entryForWrapped],
-                result: undefined,
-              };
-            });
-            return { wasSet: true, seq: write.seq };
+            const entryForWrapped = { key: cloneArrayBuffer(key), value: cloneArrayBuffer(value) };
+            const requiresSeq = getChainedRequiresSeq(compareAndSetOptions?.requiresSeq);
+            const { seq: underlyingSeq } = await wrappedStore.setAll([entryForWrapped], { requiresSeq });
+            return { wasSet: true, seq: recordWrite(underlyingSeq, [entryForWrapped]) };
           });
         });
       },
