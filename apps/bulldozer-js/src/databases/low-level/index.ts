@@ -37,6 +37,10 @@ export type LowLevelDatabaseDebugSnapshot = {
  *
  * Note that durability (or replication) of a modifying function is only guaranteed after `waitUntilDurable(seq)` (or
  * `waitUntilReplicated(seq)` for either the returned `seq` or a `seq` that's greater (determined using `maxSeq`).
+ *
+ * Wrapped stores used by the instant-availability implementation must allocate their returned sequence (and dump
+ * keys) locally, before any asynchronous commit or IO. Commit completion remains asynchronous and is represented by
+ * the returned sequence's availability barrier.
  */
 export type LowLevelKvStore = {
   get(key: ArrayBuffer): Promise<{ buffer: ArrayBuffer | null, seq: DatabaseSeq }>,
