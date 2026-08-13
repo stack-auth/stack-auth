@@ -82,40 +82,48 @@ export const POST = createSmartRouteHandler({
     const client = warehouseAuth == null
       ? getClickhouseExternalClient()
       : createClickhouseWarehouseClient(warehouseAuth, getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"));
-    const queryId = `${auth.tenancy.project.id}:${auth.tenancy.branchId}:${randomUUID()}`;
-    const resultSet = await Result.fromPromise(client.query({
-      query: body.query,
-      query_id: queryId,
-      query_params: body.params,
-      clickhouse_settings: {
-        ...warehouseAuth == null ? {
-          SQL_project_id: auth.tenancy.project.id,
-          SQL_branch_id: auth.tenancy.branchId,
-        } : {},
-        max_execution_time: effectiveTimeoutMs / 1000,
-        readonly: "1",
-        allow_ddl: 0,
-        max_result_rows: MAX_RESULT_ROWS.toString(),
-        max_result_bytes: MAX_RESULT_BYTES.toString(),
-        result_overflow_mode: "throw",
-      },
-      format: "JSONEachRow",
-    }));
-
-    if (resultSet.status === "error") {
-      const message = getSafeClickhouseErrorMessage(resultSet.error, body.query);
-      throw new KnownErrors.AnalyticsQueryError(message);
-    }
-
-    const rows = await resultSet.data.json<Record<string, Json>>();
-    return {
-      statusCode: 200,
-      bodyType: "json",
-      body: {
-        result: rows,
+    try {
+      const queryId = `${auth.tenancy.project.id}:${auth.tenancy.branchId}:${randomUUID()}`;
+      const resultSet = await Result.fromPromise(client.query({
+        query: body.query,
         query_id: queryId,
-      },
-    };
+        query_params: body.params,
+        clickhouse_settings: {
+          ...warehouseAuth == null ? {
+            SQL_project_id: auth.tenancy.project.id,
+            SQL_branch_id: auth.tenancy.branchId,
+          } : {},
+          max_execution_time: effectiveTimeoutMs / 1000,
+          readonly: "1",
+          allow_ddl: 0,
+          max_result_rows: MAX_RESULT_ROWS.toString(),
+          max_result_bytes: MAX_RESULT_BYTES.toString(),
+          result_overflow_mode: "throw",
+        },
+        format: "JSONEachRow",
+      }));
+
+      if (resultSet.status === "error") {
+        const message = getSafeClickhouseErrorMessage(resultSet.error, body.query);
+        throw new KnownErrors.AnalyticsQueryError(message);
+      }
+
+      const rows = await resultSet.data.json<Record<string, Json>>();
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {
+          result: rows,
+          query_id: queryId,
+        },
+      };
+    } finally {
+      // The shared limited-user client is intentionally reused, while a
+      // warehouse client carries per-project credentials and is created for
+      // this request only. Closing it releases its HTTP agent and sockets.
+      if (warehouseAuth != null) {
+        await client.close();
+      }
+    }
   },
 });
-

@@ -57,7 +57,7 @@ function DataWarehousePage() {
                 <div className="grid gap-3 sm:grid-cols-2">
                   <CopyField type="input" label="Database" value={warehouse.database_name ?? ""} monospace />
                   <CopyField type="input" label="Host" value={warehouse.connection.host} monospace />
-                  <CopyField type="input" label="HTTPS port" value={String(warehouse.connection.https_port)} monospace />
+                  <CopyField type="input" label="HTTP(S) port" value={String(warehouse.connection.https_port)} monospace />
                   <CopyField type="input" label="Native port" value={String(warehouse.connection.native_port)} monospace />
                   {warehouse.username != null && (
                     <CopyField type="input" label="Username" value={warehouse.username} monospace />

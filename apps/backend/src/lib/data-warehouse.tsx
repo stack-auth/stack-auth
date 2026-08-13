@@ -35,14 +35,15 @@
 //   another tenancy in the same project already owns the database.
 
 import { getHexclaveServerApp } from "@/hexclave";
-import { ANALYTICS_READER_ROLE, getClickhouseAdminClient } from "@/lib/clickhouse";
+import { ANALYTICS_READER_ROLE, createClickhouseWarehouseClient, getClickhouseAdminClient } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import type { Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { getPrismaClientForTenancy, type PrismaClientTransaction } from "@/prisma-client";
 import type { DataWarehouse } from "@/generated/prisma/client";
 import { KnownErrors } from "@hexclave/shared";
 import { decryptWithKms, encryptWithKms } from "@hexclave/shared/dist/helpers/vault/server-side";
 import { ITEM_IDS, PLAN_LIMITS } from "@hexclave/shared/dist/plans";
+import { yupObject, yupString, yupValidate } from "@hexclave/shared/dist/schema-fields";
 import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
@@ -69,6 +70,15 @@ const QUOTA_MAX_QUERIES = 10_000;
 const QUOTA_MAX_ERRORS = 1_000;
 const QUOTA_MAX_EXECUTION_TIME_SECONDS = 3_600;
 
+/** PostgreSQL advisory-lock namespace for per-warehouse mutations. */
+const DATA_WAREHOUSE_OPERATION_LOCK_CLASS = 247_911;
+const DATA_WAREHOUSE_OPERATION_TIMEOUT_MS = 60_000;
+
+const encryptedWarehousePasswordSchema = yupObject({
+  edkBase64: yupString().defined(),
+  ciphertextBase64: yupString().defined(),
+}).defined();
+
 /**
  * Table engines that can read from or write to somewhere other than this
  * ClickHouse instance. Recent ClickHouse versions already revoke these from
@@ -83,6 +93,17 @@ const FORBIDDEN_TABLE_ENGINES = [
   "AzureBlobStorage", "Distributed", "File", "HDFS", "Hive", "JDBC", "Kafka",
   "MongoDB", "MySQL", "NATS", "ODBC", "PostgreSQL", "RabbitMQ", "Redis", "S3",
   "SQLite", "URL", "IcebergS3", "DeltaLake",
+] as const;
+
+/**
+ * Local-only engines that remain useful in a customer warehouse. Once
+ * table_engines_require_grant is enabled, ClickHouse requires an explicit
+ * engine grant, so this allow-list is the counterpart to the deny-list above.
+ */
+const ALLOWED_TABLE_ENGINES = [
+  "MergeTree", "ReplacingMergeTree", "SummingMergeTree", "AggregatingMergeTree",
+  "CollapsingMergeTree", "VersionedCollapsingMergeTree", "GraphiteMergeTree",
+  "Log", "TinyLog", "StripeLog", "Memory", "Set", "Join", "Buffer", "Null",
 ] as const;
 
 /**
@@ -168,6 +189,44 @@ async function getPlanTimeoutSeconds(tenancy: Tenancy): Promise<number> {
   return Math.min(Math.max(item.quantity, 1), MAX_EXECUTION_TIME_SECONDS);
 }
 
+async function assertClickhouseTableEngineGrantsEnabled(): Promise<void> {
+  const probeSuffix = generateSecureRandomString(80);
+  if (!/^[a-zA-Z0-9]+$/.test(probeSuffix)) {
+    throw new HexclaveAssertionError("Unexpected random string shape for the ClickHouse engine-grant probe");
+  }
+  const probeName = `data_warehouse_engine_probe_${probeSuffix}`;
+  const quotedProbe = `\`${probeName}\``;
+  const probePassword = generateWarehousePassword();
+  const adminClient = getClickhouseAdminClient();
+  try {
+    await adminClient.command({
+      query: `CREATE USER ${quotedProbe} IDENTIFIED WITH sha256_password BY {password:String}`,
+      query_params: { password: probePassword },
+    });
+    await adminClient.command({ query: `GRANT CREATE TABLE ON default.* TO ${quotedProbe}` });
+
+    const probeClient = createClickhouseWarehouseClient({ username: probeName, password: probePassword }, "default");
+    try {
+      await probeClient.command({
+        query: `CREATE TABLE default.${quotedProbe} (value UInt8) ENGINE = Memory`,
+      });
+      throw new HexclaveAssertionError(
+        "ClickHouse must enable access_control_improvements.table_engines_require_grant before provisioning Data Warehouse users",
+      );
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("TABLE ENGINE ON Memory")) {
+        throw error;
+      }
+    } finally {
+      await probeClient.close();
+    }
+  } finally {
+    await adminClient.command({ query: `DROP TABLE IF EXISTS default.${quotedProbe}` });
+    await adminClient.command({ query: `DROP USER IF EXISTS ${quotedProbe}` });
+    await adminClient.close();
+  }
+}
+
 /**
  * Creates (or repairs) the ClickHouse database, user, grants, settings, and
  * quota for a project, and sets the user's password to `password`.
@@ -206,20 +265,6 @@ async function applyWarehouseDdl(options: {
     if (!/^[a-zA-Z0-9_-]+$/.test(tenancy.branchId)) {
       throw new HexclaveAssertionError("Unexpected branch id shape for a ClickHouse setting", { branchId: tenancy.branchId });
     }
-    await client.command({
-      query: `
-        ALTER USER ${quotedUser}
-        IDENTIFIED WITH sha256_password BY {password:String}
-        DEFAULT ROLE ALL
-        SETTINGS
-          SQL_project_id = '${tenancy.project.id}' CONST,
-          SQL_branch_id = '${tenancy.branchId}' CONST,
-          max_execution_time = ${timeoutSeconds} MAX ${MAX_EXECUTION_TIME_SECONDS},
-          max_memory_usage = ${MAX_MEMORY_USAGE_BYTES} MAX ${MAX_MEMORY_USAGE_BYTES}
-      `,
-      query_params: { password },
-    });
-
     // Start from nothing so that a re-run also *removes* anything a previous
     // version of this function granted.
     await client.command({ query: `REVOKE ALL PRIVILEGES ON *.* FROM ${quotedUser}` });
@@ -233,6 +278,9 @@ async function applyWarehouseDdl(options: {
     // before querying (clickhouse-client, BI tools, dbt).
     await client.command({ query: `GRANT SHOW DATABASES ON ${quotedDatabase}.* TO ${quotedUser}` });
 
+    for (const engine of ALLOWED_TABLE_ENGINES) {
+      await client.command({ query: `GRANT TABLE ENGINE ON ${engine} TO ${quotedUser}` });
+    }
     for (const engine of FORBIDDEN_TABLE_ENGINES) {
       await client.command({ query: `REVOKE TABLE ENGINE ON ${engine} FROM ${quotedUser}` });
     }
@@ -251,9 +299,116 @@ async function applyWarehouseDdl(options: {
         TO ${quotedUser}
       `,
     });
+
+    // Change the password last. If any preceding grant or quota command fails,
+    // a rotation can still repair the full prior DDL state using the old
+    // password instead of locking the customer and backend out mid-operation.
+    await client.command({
+      query: `
+        ALTER USER ${quotedUser}
+        IDENTIFIED WITH sha256_password BY {password:String}
+        DEFAULT ROLE ALL
+        SETTINGS
+          SQL_project_id = '${tenancy.project.id}' CONST,
+          SQL_branch_id = '${tenancy.branchId}' CONST,
+          max_execution_time = ${timeoutSeconds} MAX ${MAX_EXECUTION_TIME_SECONDS},
+          max_memory_usage = ${MAX_MEMORY_USAGE_BYTES} MAX ${MAX_MEMORY_USAGE_BYTES}
+      `,
+      query_params: { password },
+    });
   } finally {
     await client.close();
   }
+}
+
+async function decryptWarehousePassword(encryptedPassword: DataWarehouse["encryptedPassword"]): Promise<string | null> {
+  if (encryptedPassword == null) return null;
+  const envelope = await yupValidate(encryptedWarehousePasswordSchema, encryptedPassword);
+  return await decryptWithKms(envelope);
+}
+
+async function withDataWarehouseOperationLock<T>(options: {
+  prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
+  tenancyId: string,
+  operation: (tx: PrismaClientTransaction) => Promise<T>,
+}): Promise<T> {
+  // This transaction deliberately spans the ClickHouse mutation. Retrying it
+  // could replay a non-transactional external side effect, so this must not use
+  // retryTransaction. The advisory lock makes overlapping provision/rotation
+  // requests fail immediately instead of returning two competing passwords.
+  // eslint-disable-next-line no-restricted-syntax
+  return await options.prisma.$transaction(async (tx) => {
+    const lockRows = await tx.$queryRaw<{ locked: boolean }[]>`
+      SELECT pg_try_advisory_xact_lock(
+        ${DATA_WAREHOUSE_OPERATION_LOCK_CLASS}::int,
+        hashtext(${options.tenancyId}::text)
+      ) AS locked
+    `;
+    if (lockRows.length !== 1) {
+      throw new HexclaveAssertionError("PostgreSQL returned an unexpected result count for the Data Warehouse advisory lock", {
+        resultCount: lockRows.length,
+      });
+    }
+    const [lockRow] = lockRows;
+    if (!lockRow.locked) {
+      throw new StatusError(409, "Another Data Warehouse operation is already in progress. Please try again.");
+    }
+    return await options.operation(tx);
+  }, { timeout: DATA_WAREHOUSE_OPERATION_TIMEOUT_MS });
+}
+
+async function restorePreviousWarehouseDdl(options: {
+  tenancy: Tenancy,
+  databaseName: string,
+  userName: string,
+  previousPassword: string,
+}): Promise<boolean> {
+  try {
+    await applyWarehouseDdl({
+      tenancy: options.tenancy,
+      databaseName: options.databaseName,
+      userName: options.userName,
+      password: options.previousPassword,
+    });
+    return true;
+  } catch (error) {
+    captureError("data-warehouse-restore-previous-ddl", error);
+    return false;
+  }
+}
+
+async function cleanUpUnpersistedWarehouseUser(userName: string): Promise<boolean> {
+  const quotedUser = quoteClickhouseIdentifierFromProjectId(userName);
+  const quotaName = `\`${userName}_quota\``;
+  const client = getClickhouseAdminClient();
+  try {
+    // Keep the database and any customer data so a retry remains non-destructive,
+    // but remove credentials that the failed request could not return or store.
+    await client.command({ query: `DROP QUOTA IF EXISTS ${quotaName}` });
+    await client.command({ query: `DROP USER IF EXISTS ${quotedUser}` });
+    return true;
+  } catch (error) {
+    captureError("data-warehouse-clean-up-unpersisted-user", error);
+    return false;
+  } finally {
+    await client.close();
+  }
+}
+
+async function recoverPreviousWarehouseAccess(options: {
+  tenancy: Tenancy,
+  databaseName: string,
+  userName: string,
+  previousPassword: string | null,
+}): Promise<boolean> {
+  return options.previousPassword == null
+    ? await cleanUpUnpersistedWarehouseUser(options.userName)
+    : await restorePreviousWarehouseDdl({
+      tenancy: options.tenancy,
+      databaseName: options.databaseName,
+      userName: options.userName,
+      previousPassword: options.previousPassword,
+    });
 }
 
 function generateWarehousePassword(): string {
@@ -277,55 +432,87 @@ export async function provisionDataWarehouse(tenancy: Tenancy): Promise<{ passwo
   const prisma = await getPrismaClientForTenancy(tenancy);
   const { databaseName, userName } = getDataWarehouseNames(tenancy.project.id);
 
-  const existing = await prisma.dataWarehouse.findUnique({ where: { tenancyId: tenancy.id } });
-  if (existing?.status === "READY") {
-    throw new StatusError(400, "This project already has a data warehouse. Rotate the password instead if you need new credentials.");
-  }
-  // The ClickHouse database is per project while this row is per tenancy, so a
-  // second tenancy in the same project would provision on top of the first
-  // one's data. Branches don't exist yet, so this is a guard against a future
-  // change rather than a reachable state today.
-  const otherTenancyRow = await prisma.dataWarehouse.findUnique({ where: { userName } });
-  if (otherTenancyRow != null && otherTenancyRow.tenancyId !== tenancy.id) {
-    throw new HexclaveAssertionError("A data warehouse for this project is already owned by another tenancy", {
-      projectId: tenancy.project.id,
-      tenancyId: tenancy.id,
-      otherTenancyId: otherTenancyRow.tenancyId,
-    });
-  }
+  type ProvisionResult =
+    | { status: "ok", password: string, warehouse: DataWarehouse }
+    | { status: "failed" };
 
-  await prisma.dataWarehouse.upsert({
-    where: { tenancyId: tenancy.id },
-    create: { tenancyId: tenancy.id, databaseName, userName, status: "PROVISIONING" },
-    update: { status: "PROVISIONING", error: null },
-  });
+  const result = await withDataWarehouseOperationLock({
+    prisma,
+    tenancyId: tenancy.id,
+    operation: async (tx): Promise<ProvisionResult> => {
+      const existing = await tx.dataWarehouse.findUnique({ where: { tenancyId: tenancy.id } });
+      if (existing?.status === "READY") {
+        throw new StatusError(400, "This project already has a data warehouse. Rotate the password instead if you need new credentials.");
+      }
+      const previousPassword = existing == null
+        ? null
+        : await decryptWarehousePassword(existing.encryptedPassword);
+      // The ClickHouse database is per project while this row is per tenancy, so a
+      // second tenancy in the same project would provision on top of the first
+      // one's data. Branches don't exist yet, so this is a guard against a future
+      // change rather than a reachable state today.
+      const otherTenancyRow = await tx.dataWarehouse.findUnique({ where: { userName } });
+      if (otherTenancyRow != null && otherTenancyRow.tenancyId !== tenancy.id) {
+        throw new HexclaveAssertionError("A data warehouse for this project is already owned by another tenancy", {
+          projectId: tenancy.project.id,
+          tenancyId: tenancy.id,
+          otherTenancyId: otherTenancyRow.tenancyId,
+        });
+      }
+      await assertClickhouseTableEngineGrantsEnabled();
 
-  const password = generateWarehousePassword();
-  try {
-    await applyWarehouseDdl({ tenancy, databaseName, userName, password });
-  } catch (error) {
-    captureError("data-warehouse-provision", error);
-    await prisma.dataWarehouse.update({
-      where: { tenancyId: tenancy.id },
-      data: { status: "FAILED", error: "Provisioning failed. Please try again." },
-    });
-    throw new StatusError(500, "Failed to provision the data warehouse. Please try again.");
-  }
+      await tx.dataWarehouse.upsert({
+        where: { tenancyId: tenancy.id },
+        create: { tenancyId: tenancy.id, databaseName, userName, status: "PROVISIONING" },
+        update: { status: "PROVISIONING", error: null },
+      });
 
-  // ClickHouse first, then the stored copy: if this write fails the customer's
-  // displayed password still works, and the backend falls back to
-  // `limited_user` for analytics until the next rotation repairs the row.
-  const warehouse = await prisma.dataWarehouse.update({
-    where: { tenancyId: tenancy.id },
-    data: {
-      status: "READY",
-      error: null,
-      encryptedPassword: await encryptWithKms(password),
-      passwordUpdatedAt: new Date(),
+      const password = generateWarehousePassword();
+      const encryptedPassword = await encryptWithKms(password);
+      try {
+        await applyWarehouseDdl({ tenancy, databaseName, userName, password });
+      } catch (error) {
+        captureError("data-warehouse-provision-ddl", error);
+        const recovered = await recoverPreviousWarehouseAccess({ tenancy, databaseName, userName, previousPassword });
+        await tx.dataWarehouse.update({
+          where: { tenancyId: tenancy.id },
+          data: {
+            status: "FAILED",
+            error: recovered
+              ? "Provisioning failed. Please try again."
+              : "Provisioning failed and the partial credentials could not be cleaned up. Please try again.",
+          },
+        });
+        return { status: "failed" };
+      }
+
+      try {
+        const warehouse = await tx.dataWarehouse.update({
+          where: { tenancyId: tenancy.id },
+          data: {
+            status: "READY",
+            error: null,
+            encryptedPassword,
+            passwordUpdatedAt: new Date(),
+          },
+        });
+        return { status: "ok", password, warehouse };
+      } catch (error) {
+        const recovered = await recoverPreviousWarehouseAccess({ tenancy, databaseName, userName, previousPassword });
+        throw new HexclaveAssertionError(
+          recovered
+            ? "Failed to persist Data Warehouse credentials after ClickHouse provisioning; the previous access state was restored"
+            : "Failed to persist Data Warehouse credentials after ClickHouse provisioning and could not restore the previous access state",
+          { cause: error, tenancyId: tenancy.id },
+        );
+      }
     },
   });
 
-  return { password, warehouse };
+  if (result.status === "failed") {
+    throw new StatusError(500, "Failed to provision the data warehouse. Please try again.");
+  }
+  return { password: result.password, warehouse: result.warehouse };
 }
 
 /**
@@ -337,35 +524,89 @@ export async function rotateDataWarehousePassword(tenancy: Tenancy): Promise<{ p
   await ensureDataWarehouseEntitlement(tenancy);
 
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const existing = await prisma.dataWarehouse.findUnique({ where: { tenancyId: tenancy.id } });
-  if (existing == null) {
-    throw new StatusError(400, "This project does not have a data warehouse yet.");
-  }
 
-  const password = generateWarehousePassword();
-  try {
-    await applyWarehouseDdl({
-      tenancy,
-      databaseName: existing.databaseName,
-      userName: existing.userName,
-      password,
-    });
-  } catch (error) {
-    captureError("data-warehouse-rotate", error);
-    throw new StatusError(500, "Failed to rotate the data warehouse password. Please try again.");
-  }
+  type RotationResult =
+    | { status: "ok", password: string, warehouse: DataWarehouse }
+    | { status: "failed" };
 
-  const warehouse = await prisma.dataWarehouse.update({
-    where: { tenancyId: tenancy.id },
-    data: {
-      status: "READY",
-      error: null,
-      encryptedPassword: await encryptWithKms(password),
-      passwordUpdatedAt: new Date(),
+  const result = await withDataWarehouseOperationLock({
+    prisma,
+    tenancyId: tenancy.id,
+    operation: async (tx): Promise<RotationResult> => {
+      const existing = await tx.dataWarehouse.findUnique({ where: { tenancyId: tenancy.id } });
+      if (existing == null) {
+        throw new StatusError(400, "This project does not have a data warehouse yet.");
+      }
+      const previousPassword = await decryptWarehousePassword(existing.encryptedPassword);
+      if (previousPassword == null) {
+        throw new HexclaveAssertionError("A provisioned Data Warehouse must have an encrypted password before it can be rotated", {
+          tenancyId: tenancy.id,
+          warehouseStatus: existing.status,
+        });
+      }
+      await assertClickhouseTableEngineGrantsEnabled();
+
+      const password = generateWarehousePassword();
+      const encryptedPassword = await encryptWithKms(password);
+      try {
+        await applyWarehouseDdl({
+          tenancy,
+          databaseName: existing.databaseName,
+          userName: existing.userName,
+          password,
+        });
+      } catch (error) {
+        captureError("data-warehouse-rotate-ddl", error);
+        const restored = await restorePreviousWarehouseDdl({
+          tenancy,
+          databaseName: existing.databaseName,
+          userName: existing.userName,
+          previousPassword,
+        });
+        if (!restored) {
+          await tx.dataWarehouse.update({
+            where: { tenancyId: tenancy.id },
+            data: {
+              status: "FAILED",
+              error: "Password rotation failed and the previous credentials could not be restored. Please try again.",
+            },
+          });
+        }
+        return { status: "failed" };
+      }
+
+      try {
+        const warehouse = await tx.dataWarehouse.update({
+          where: { tenancyId: tenancy.id },
+          data: {
+            status: "READY",
+            error: null,
+            encryptedPassword,
+            passwordUpdatedAt: new Date(),
+          },
+        });
+        return { status: "ok", password, warehouse };
+      } catch (error) {
+        const restored = await restorePreviousWarehouseDdl({
+          tenancy,
+          databaseName: existing.databaseName,
+          userName: existing.userName,
+          previousPassword,
+        });
+        throw new HexclaveAssertionError(
+          restored
+            ? "Failed to persist the rotated Data Warehouse password; the previous password was restored"
+            : "Failed to persist the rotated Data Warehouse password and could not restore the previous password",
+          { cause: error, tenancyId: tenancy.id },
+        );
+      }
     },
   });
 
-  return { password, warehouse };
+  if (result.status === "failed") {
+    throw new StatusError(500, "Failed to rotate the data warehouse password. Please try again.");
+  }
+  return { password: result.password, warehouse: result.warehouse };
 }
 
 /**
@@ -382,7 +623,10 @@ export async function getDataWarehouseQueryAuth(tenancy: Tenancy): Promise<{ use
   if (warehouse == null || warehouse.status !== "READY" || warehouse.encryptedPassword == null) {
     return null;
   }
-  const password = await decryptWithKms(warehouse.encryptedPassword as { edkBase64: string, ciphertextBase64: string });
+  const password = await decryptWarehousePassword(warehouse.encryptedPassword);
+  if (password == null) {
+    throw new HexclaveAssertionError("A READY Data Warehouse must have an encrypted password", { tenancyId: tenancy.id });
+  }
   return { username: warehouse.userName, password };
 }
 
@@ -393,11 +637,19 @@ export async function getDataWarehouseQueryAuth(tenancy: Tenancy): Promise<{ use
  * under a different name — hence the explicit env var.
  */
 export function getDataWarehouseConnectionInfo(): { host: string, httpsPort: number, nativePort: number } {
-  const configuredHost = getEnvVariable("STACK_CLICKHOUSE_PUBLIC_HOST", "");
-  const host = configuredHost || new URL(getEnvVariable("STACK_CLICKHOUSE_URL")).hostname;
+  const configuredHost = getEnvVariable("HEXCLAVE_CLICKHOUSE_PUBLIC_HOST", "");
+  const host = configuredHost || new URL(getEnvVariable("HEXCLAVE_CLICKHOUSE_URL")).hostname;
+  const httpsPort = Number(getEnvVariable("HEXCLAVE_CLICKHOUSE_PUBLIC_HTTPS_PORT", "8443"));
+  const nativePort = Number(getEnvVariable("HEXCLAVE_CLICKHOUSE_PUBLIC_NATIVE_PORT", "9440"));
+  if (!Number.isInteger(httpsPort) || httpsPort < 1 || httpsPort > 65_535) {
+    throw new HexclaveAssertionError("HEXCLAVE_CLICKHOUSE_PUBLIC_HTTPS_PORT must be an integer between 1 and 65535", { httpsPort });
+  }
+  if (!Number.isInteger(nativePort) || nativePort < 1 || nativePort > 65_535) {
+    throw new HexclaveAssertionError("HEXCLAVE_CLICKHOUSE_PUBLIC_NATIVE_PORT must be an integer between 1 and 65535", { nativePort });
+  }
   return {
     host,
-    httpsPort: Number(getEnvVariable("STACK_CLICKHOUSE_PUBLIC_HTTPS_PORT", "8443")),
-    nativePort: Number(getEnvVariable("STACK_CLICKHOUSE_PUBLIC_NATIVE_PORT", "9440")),
+    httpsPort,
+    nativePort,
   };
 }

@@ -69,6 +69,12 @@ it("is not provisioned by default, but reports the database name it would get", 
   expect(response.body.database_name).toBe(projectId);
   expect(response.body.username).toBe(null);
   expect(response.body.password_updated_at_millis).toBe(null);
+  const portPrefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
+  expect(response.body.connection).toEqual({
+    host: "localhost",
+    https_port: Number(`${portPrefix}36`),
+    native_port: Number(`${portPrefix}37`),
+  });
 });
 
 it("cannot be provisioned on the free plan", async ({ expect }) => {
@@ -106,6 +112,19 @@ it("refuses to provision twice, so live credentials are never silently invalidat
   expect(second.status).toBe(400);
   // StatusError responses carry the message as a plain-text body.
   expect(String(second.body)).toContain("already has a data warehouse");
+});
+
+it("serializes concurrent provisioning so only one password can be issued", async ({ expect }) => {
+  await createEntitledProject();
+  const responses = await Promise.all([provision(), provision()]);
+  expect(responses.map(response => response.status).sort((a, b) => a - b)).toEqual([200, 409]);
+
+  const successful = responses.find(response => response.status === 200);
+  if (successful == null) {
+    throw new HexclaveAssertionError("Expected one concurrent provisioning request to succeed", { responses });
+  }
+  const direct = await clickhouse({ ...successful.body, query: "SELECT 1" });
+  expect(direct.status).toBe(200);
 });
 
 it("lets the project read and write its own database", async ({ expect }) => {
@@ -164,6 +183,16 @@ it("denies the table engines and table functions that reach outside the instance
     query: "SELECT * FROM url('http://example.com', CSV, 'a String')",
   });
   expect(urlFunction.status).not.toBe(200);
+
+  // Kafka has no matching source privilege in FORBIDDEN_SOURCES, so this only
+  // fails when ClickHouse actually enforces the TABLE ENGINE revoke. The URL
+  // engine assertion alone could pass because URL is also revoked as a source.
+  const kafkaEngine = await clickhouse({
+    ...credentials,
+    query: `CREATE TABLE "${projectId}".kafka_exfil (a String) ENGINE = Kafka('localhost:9092', 'topic', 'group', 'JSONEachRow')`,
+  });
+  expect(kafkaEngine.status).not.toBe(200);
+  expect(kafkaEngine.text).toContain("TABLE ENGINE");
 });
 
 it("does not let one project read another project's warehouse", async ({ expect }) => {
@@ -247,6 +276,26 @@ it("rotates the password, invalidating the old one and keeping analytics working
   // follows the rotation without any cache to invalidate.
   const analytics = await runAnalyticsQuery("SELECT count() AS c FROM events");
   expect(analytics.status).toBe(200);
+});
+
+it("rejects an overlapping rotation instead of persisting a competing password", async ({ expect }) => {
+  await createEntitledProject();
+  const { body: original } = await provision();
+
+  const rotate = () => niceBackendFetch("/api/v1/data-warehouse/rotate-password", {
+    method: "POST",
+    accessType: "admin",
+    body: {},
+  });
+  const responses = await Promise.all([rotate(), rotate()]);
+  expect(responses.map(response => response.status).sort((a, b) => a - b)).toEqual([200, 409]);
+
+  const successful = responses.find(response => response.status === 200);
+  if (successful == null) {
+    throw new HexclaveAssertionError("Expected one concurrent password rotation to succeed", { responses });
+  }
+  expect((await clickhouse({ ...original, query: "SELECT 1" })).status).not.toBe(200);
+  expect((await clickhouse({ ...successful.body, query: "SELECT 1" })).status).toBe(200);
 });
 
 it("cannot be rotated before it has been provisioned", async ({ expect }) => {
