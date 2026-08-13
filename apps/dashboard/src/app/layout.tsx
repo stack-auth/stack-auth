@@ -12,7 +12,6 @@ import React, { Suspense } from 'react';
 import '../polyfills';
 import './globals.css';
 import { LayoutClient } from './layout-client';
-import { GlobalErrorRecoveryReset } from './global-error-recovery-reset';
 import Loading from './loading';
 
 const apiUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL');
@@ -97,7 +96,6 @@ export default function RootLayout({
       >
         <Analytics />
         <SpeedInsights />
-        <GlobalErrorRecoveryReset />
         <Suspense fallback={<Loading />}>
           <LayoutClient translationLocale={translationLocale}>
             {children}

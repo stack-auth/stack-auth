@@ -171,6 +171,16 @@ fi
 SENTINEL_MARKER="$WORK_DIR/.stack-sentinels-replaced"
 sentinel_env_vars=""
 sentinel_fingerprint=""
+rebuild_runtime_tree() {
+  if [ "$WORK_DIR" = "/app" ]; then
+    echo "ERROR: STACK_RUNTIME_WORK_DIR=/app cannot rebuild changed sentinel values in place. Recreate the container without STACK_RUNTIME_WORK_DIR=/app." >&2
+    exit 1
+  fi
+  rm -rf "$WORK_DIR"
+  mkdir -p "$WORK_DIR"
+  cp -r /app/. "$WORK_DIR"/.
+  rm -f "$SENTINEL_MARKER"
+}
 if [ -f "$SENTINEL_MARKER" ]; then
   stored_sentinel_fingerprint=$(sed -n '1p' "$SENTINEL_MARKER")
   sentinel_env_vars=$(sed -n '2p' "$SENTINEL_MARKER")
@@ -181,17 +191,11 @@ if [ -f "$SENTINEL_MARKER" ]; then
       sentinel_fingerprint=$stored_sentinel_fingerprint
     else
       echo "Sentinel values changed; rebuilding runtime files and rescanning."
-      rm -rf "$WORK_DIR"
-      mkdir -p "$WORK_DIR"
-      cp -r /app/. "$WORK_DIR"/.
-      rm -f "$SENTINEL_MARKER"
+      rebuild_runtime_tree
     fi
   else
     echo "Sentinel marker has no fingerprint; rebuilding runtime files and rescanning."
-    rm -rf "$WORK_DIR"
-    mkdir -p "$WORK_DIR"
-    cp -r /app/. "$WORK_DIR"/.
-    rm -f "$SENTINEL_MARKER"
+    rebuild_runtime_tree
   fi
 fi
 

@@ -1,27 +1,32 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   GLOBAL_ERROR_RECOVERY_ATTEMPTS_KEY,
+  GLOBAL_ERROR_RECOVERY_WINDOW_MS,
   MAX_GLOBAL_ERROR_RECOVERY_ATTEMPTS,
   recordGlobalErrorRecoveryAttempt,
-  resetGlobalErrorRecoveryAttempts,
 } from "./global-error-recovery";
 
 afterEach(() => {
+  vi.useRealTimers();
   window.sessionStorage.clear();
 });
 
 describe("global error recovery", () => {
   it("stops retrying after the recovery limit", () => {
+    vi.useFakeTimers();
     expect(Array.from({ length: MAX_GLOBAL_ERROR_RECOVERY_ATTEMPTS }, () => recordGlobalErrorRecoveryAttempt())).toEqual([true, true]);
     expect(recordGlobalErrorRecoveryAttempt()).toBe(false);
-    expect(window.sessionStorage.getItem(GLOBAL_ERROR_RECOVERY_ATTEMPTS_KEY)).toBe(String(MAX_GLOBAL_ERROR_RECOVERY_ATTEMPTS));
+    expect(JSON.parse(window.sessionStorage.getItem(GLOBAL_ERROR_RECOVERY_ATTEMPTS_KEY) ?? "{}")).toMatchObject({
+      attempts: MAX_GLOBAL_ERROR_RECOVERY_ATTEMPTS,
+    });
   });
 
-  it("resets after a healthy render", () => {
+  it("allows a fresh attempt after the recovery window", () => {
+    vi.useFakeTimers();
     recordGlobalErrorRecoveryAttempt();
-    resetGlobalErrorRecoveryAttempts();
+    vi.advanceTimersByTime(GLOBAL_ERROR_RECOVERY_WINDOW_MS + 1);
     expect(recordGlobalErrorRecoveryAttempt()).toBe(true);
   });
 });
