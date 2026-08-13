@@ -5,7 +5,7 @@ import { DesignButton, DesignPillToggle, DesignSelectorDropdown } from "@/compon
 import { Button, Typography } from "@/components/ui";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
@@ -24,15 +24,20 @@ import {
   serviceIdentityToSelectValue,
   type ServiceIdentity,
 } from "../service-identity";
-import { ALL_SERVICES_SELECT_VALUE, isObservabilityTimeRangeHours, OBSERVABILITY_TIME_RANGE_OPTIONS, parseObservabilityTimeRangeId, useServiceIdentityLoader } from "../filters";
+import { ALL_SERVICES_SELECT_VALUE, isObservabilityTimeRangeHours, OBSERVABILITY_TIME_RANGE_OPTIONS, parseObservabilityTimeRangeId, readLocationSearch, replaceLocationSearch, useServiceIdentityLoader, type ObservabilityTimeRangeHours } from "../filters";
 import { tryParseJson } from "../format";
 import { LogLevelChip } from "../log-level";
 import { issueSearchHref } from "../issues/issue-links";
+import { TelemetryRowLinks } from "../telemetry-row-links";
+import {
+  DEFAULT_LOG_TIME_RANGE_HOURS,
+  LOG_LEVELS,
+  parseLogFilters,
+  serializeLogFilters,
+  type LogLevel,
+} from "./log-filters";
 
-export const DEFAULT_LOG_TIME_RANGE_HOURS = 720;
-
-export const LOG_LEVELS = ["error", "warn", "info", "debug", "trace"] as const;
-export type LogLevel = (typeof LOG_LEVELS)[number];
+export { DEFAULT_LOG_TIME_RANGE_HOURS, LOG_LEVELS, type LogLevel };
 
 const ALL_LEVELS_SELECT_VALUE = "all";
 
@@ -208,14 +213,15 @@ export const LOG_DETAIL_TECHNICAL_COLUMNS = [
 
 function LogDetailExtraContent({ row, projectId }: { row: RowData, projectId: string }) {
   const userId = stringOrNull(row.user_id);
-  const replayId = stringOrNull(row.session_replay_id);
   const data = tryParseJson(row.data);
   const fingerprint = typeof data === "object" && data != null && "error_fingerprint" in data
     ? stringOrNull(data.error_fingerprint)
     : null;
   const message = stringOrNull(row.message);
 
-  if (userId == null && replayId == null && fingerprint == null) return null;
+  if (userId == null && fingerprint == null && stringOrNull(row.trace_id) == null && stringOrNull(row.session_replay_id) == null) {
+    return null;
+  }
 
   return (
     <div className="space-y-3">
@@ -240,24 +246,16 @@ function LogDetailExtraContent({ row, projectId }: { row: RowData, projectId: st
           )}
         </div>
       )}
-      {(userId != null || replayId != null) && (
-        <div className="flex flex-wrap items-center gap-2">
-          {userId != null && (
-            <Button size="sm" variant="outline" asChild>
-              <Link href={`/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`}>
-                View user
-              </Link>
-            </Button>
-          )}
-          {replayId != null && (
-            <Button size="sm" variant="outline" asChild>
-              <Link href={`/projects/${encodeURIComponent(projectId)}/session-replays/${encodeURIComponent(replayId)}`}>
-                View session replay
-              </Link>
-            </Button>
-          )}
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {userId != null && (
+          <Button size="sm" variant="outline" asChild>
+            <Link href={`/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`}>
+              View user
+            </Link>
+          </Button>
+        )}
+        <TelemetryRowLinks row={row} projectId={projectId} />
+      </div>
     </div>
   );
 }
@@ -286,13 +284,20 @@ function LogsEmptyState({ filterActive }: { filterActive: boolean }) {
 
 export default function PageClient() {
   const adminApp = useAdminApp();
-  const [hours, setHours] = useState<number>(DEFAULT_LOG_TIME_RANGE_HOURS);
-  const [level, setLevel] = useState<LogLevel | null>(null);
-  const [service, setService] = useState<ServiceIdentity | null>(null);
+  const initialFilters = useState(() => parseLogFilters(
+    typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search),
+  ))[0];
+  const [hours, setHours] = useState<ObservabilityTimeRangeHours>(initialFilters.hours);
+  const [level, setLevel] = useState<LogLevel | null>(initialFilters.level);
+  const [service, setService] = useState<ServiceIdentity | null>(initialFilters.service);
   const [services, setServices] = useState<ServiceIdentity[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true);
   const [detailRow, setDetailRow] = useState<RowData | null>(null);
   const logsQuery = useMemo(() => getLogsQuery(hours, level, service), [hours, level, service]);
+
+  useEffect(() => {
+    replaceLocationSearch(serializeLogFilters({ hours, level, service }, readLocationSearch()));
+  }, [hours, level, service]);
 
   const loadLogServices = useServiceIdentityLoader(adminApp, LOG_SERVICES_QUERY);
 

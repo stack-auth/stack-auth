@@ -1,9 +1,9 @@
 "use client";
 
-import { DesignAlert, DesignButton, DesignCategoryTabs, DesignInput, DesignPillToggle, DesignSelectorDropdown } from "@/components/design-components";
+import { DesignAlert, DesignButton, DesignCategoryTabs, DesignDialog, DesignInput, DesignPillToggle, DesignSelectorDropdown } from "@/components/design-components";
 import { TooltipProvider, Typography } from "@/components/ui";
 import { useRouter } from "@/components/router";
-import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, CheckCircleIcon, MagnifyingGlassIcon, ProhibitIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, ArrowsMergeIcon, CheckCircleIcon, MagnifyingGlassIcon, ProhibitIcon } from "@phosphor-icons/react";
 import {
   DataGrid,
   DataGridToolbar,
@@ -58,6 +58,7 @@ import {
 } from "./issue-status";
 import {
   fetchIssueList,
+  mergeIssues,
   updateIssuesStatusBulk,
   updateIssueStatus,
   type IssueListItem,
@@ -65,6 +66,7 @@ import {
   type IssueStatusCounts,
 } from "./issues-data";
 import { IssueSavedViews } from "./issue-saved-views";
+import { IssueEventSearch } from "./issue-event-search";
 import { useIssueFacets, useIssueSparklines } from "./use-issue-data";
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -129,6 +131,9 @@ export default function PageClient() {
   const [statusError, setStatusError] = useState<string | null>(null);
   const [bulkStatusError, setBulkStatusError] = useState<string | null>(null);
   const [bulkStatusBusy, setBulkStatusBusy] = useState<IssueStatus | null>(null);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
   // Single "now" for every relative timestamp in the table, refreshed on reload
   // so the column doesn't quietly drift while the page sits open.
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -273,8 +278,10 @@ export default function PageClient() {
     }));
   }, [setGridState]);
 
+  const bulkBusy = bulkStatusBusy != null || mergeBusy;
+
   const changeBulkStatus = useCallback(async (status: IssueStatus) => {
-    if (selectedIssueIds.length === 0 || bulkStatusBusy != null) return;
+    if (selectedIssueIds.length === 0 || bulkBusy) return;
     setBulkStatusError(null);
     setBulkStatusBusy(status);
     try {
@@ -290,7 +297,23 @@ export default function PageClient() {
     } finally {
       setBulkStatusBusy(null);
     }
-  }, [adminApp, bulkStatusBusy, clearIssueSelection, reload, selectedIssueIds]);
+  }, [adminApp, bulkBusy, clearIssueSelection, reload, selectedIssueIds]);
+
+  const confirmMerge = useCallback(async () => {
+    if (selectedIssueIds.length < 2 || bulkBusy) return;
+    setMergeError(null);
+    setMergeBusy(true);
+    try {
+      await mergeIssues(adminApp, selectedIssueIds);
+      setMergeDialogOpen(false);
+      clearIssueSelection();
+      reload();
+    } catch (error) {
+      setMergeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMergeBusy(false);
+    }
+  }, [adminApp, bulkBusy, clearIssueSelection, reload, selectedIssueIds]);
 
   const statusTabs = useMemo(() => [
     { id: "unresolved", label: "Unresolved", count: counts?.unresolved },
@@ -371,11 +394,26 @@ export default function PageClient() {
               <Typography variant="secondary" className="px-1 text-xs">
                 {selectedIssueIds.length} selected
               </Typography>
+              {selectedIssueIds.length >= 2 && (
+                <DesignButton
+                  variant="secondary"
+                  size="sm"
+                  disabled={bulkBusy}
+                  onClick={() => {
+                    setMergeError(null);
+                    setMergeDialogOpen(true);
+                  }}
+                  className="gap-1.5"
+                >
+                  <ArrowsMergeIcon className="h-3.5 w-3.5" />
+                  Merge
+                </DesignButton>
+              )}
               <DesignButton
                 variant="secondary"
                 size="sm"
                 loading={bulkStatusBusy === "resolved"}
-                disabled={bulkStatusBusy != null}
+                disabled={bulkBusy}
                 onClick={() => changeBulkStatus("resolved")}
                 className="gap-1.5"
               >
@@ -386,7 +424,7 @@ export default function PageClient() {
                 variant="secondary"
                 size="sm"
                 loading={bulkStatusBusy === "ignored"}
-                disabled={bulkStatusBusy != null}
+                disabled={bulkBusy}
                 onClick={() => changeBulkStatus("ignored")}
                 className="gap-1.5"
               >
@@ -397,7 +435,7 @@ export default function PageClient() {
                 variant="ghost"
                 size="sm"
                 loading={bulkStatusBusy === "unresolved"}
-                disabled={bulkStatusBusy != null}
+                disabled={bulkBusy}
                 onClick={() => changeBulkStatus("unresolved")}
                 className="gap-1.5"
               >
@@ -419,7 +457,7 @@ export default function PageClient() {
         </>
       }
     />
-  ), [changeBulkStatus, facetsState.facets, facetsState.loading, filters.environment, filters.handled, filters.search, filters.service, gridData.isRefetching, reload, selectedIssueIds.length, bulkStatusBusy]);
+  ), [bulkBusy, bulkStatusBusy, changeBulkStatus, facetsState.facets, facetsState.loading, filters.environment, filters.handled, filters.search, filters.service, gridData.isRefetching, reload, selectedIssueIds.length]);
 
   const filtersActive = !issueFiltersAreDefault(filters);
 
@@ -440,7 +478,7 @@ export default function PageClient() {
                   Issues
                 </Typography>
                 <Typography variant="secondary" className="mt-0.5 text-sm">
-                  Errors from your app, grouped into issues you can resolve, ignore, and watch for regressions.
+                  Errors from your app, grouped into issues you can resolve, ignore, merge, and watch for regressions.
                 </Typography>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -535,6 +573,10 @@ export default function PageClient() {
               </div>
             )}
 
+            <div className="shrink-0 px-3 pt-3">
+              <IssueEventSearch adminApp={adminApp} projectId={projectId} filters={filters} />
+            </div>
+
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-3">
               <DataGrid<IssueListItem>
                 columns={columns}
@@ -561,6 +603,42 @@ export default function PageClient() {
               />
             </div>
           </div>
+          <DesignDialog
+            open={mergeDialogOpen}
+            onOpenChange={(nextOpen) => {
+              if (mergeBusy) return;
+              setMergeDialogOpen(nextOpen);
+              if (!nextOpen) setMergeError(null);
+            }}
+            size="sm"
+            variant="plain"
+            icon={ArrowsMergeIcon}
+            title={`Merge ${selectedIssueIds.length} issues?`}
+            description="They become one issue. The oldest (earliest first seen) survives; the others keep working as links to it. A merge does not change status."
+            footer={(
+              <div className="flex w-full justify-end gap-2">
+                <DesignButton
+                  variant="secondary"
+                  disabled={mergeBusy}
+                  onClick={() => setMergeDialogOpen(false)}
+                >
+                  Cancel
+                </DesignButton>
+                <DesignButton
+                  variant="default"
+                  loading={mergeBusy}
+                  disabled={mergeBusy || selectedIssueIds.length < 2}
+                  onClick={confirmMerge}
+                >
+                  Merge
+                </DesignButton>
+              </div>
+            )}
+          >
+            {mergeError != null && (
+              <DesignAlert variant="error" title="Couldn't merge issues" description={mergeError} />
+            )}
+          </DesignDialog>
         </TooltipProvider>
       </PageLayout>
     </AppEnabledGuard>

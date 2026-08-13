@@ -202,7 +202,7 @@ describe("analytics trace row parsing", () => {
   });
 
   it("selects the enclosing span and page-view correlation on events, not an ancestry array", () => {
-    const { query } = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef", 24);
+    const { query } = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef");
     expect(query).toContain("trace_id, span_id, page_view_span_id");
     expect(query).toContain("message AS body");
     expect(query).toContain("severity_number");
@@ -210,6 +210,15 @@ describe("analytics trace row parsing", () => {
     expect(query).toContain("WHERE trace_id = {traceId:String}");
     expect(query).not.toContain("parent_span_ids");
     expect(query).not.toContain("w3c_trace_id");
+  });
+
+  it("ranks a deep-linked event first so the 5000-row cap cannot hide it", () => {
+    const focused = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef", 1_720_000_000_000);
+    expect(focused.query).toContain("abs(toUnixTimestamp64Milli(event_at) - {focusEventAtMs:Int64})");
+    expect(focused.params).toEqual({
+      traceId: "0123456789abcdef0123456789abcdef",
+      focusEventAtMs: 1_720_000_000_000,
+    });
   });
 
   it("loads only the detail dialog's columns when a span detail opens", () => {
@@ -294,7 +303,7 @@ describe("analytics trace row parsing", () => {
 
   it("loads the complete distributed trace after filtering the inbox by service", () => {
     const spans = getSelectedTraceSpanQuery("0123456789abcdef0123456789abcdef");
-    const events = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef", 24);
+    const events = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef");
 
     expect(spans.query).not.toContain("{serviceName:String}");
     expect(events.query).not.toContain("{serviceName:String}");
@@ -303,8 +312,8 @@ describe("analytics trace row parsing", () => {
     });
     expect(events.params).toEqual({
       traceId: "0123456789abcdef0123456789abcdef",
-      hours: 24,
     });
+    expect(events.query).not.toContain("INTERVAL");
   });
 
   it("deduplicates a span row returned more than once", () => {

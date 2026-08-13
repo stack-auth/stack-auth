@@ -1,6 +1,6 @@
 "use client";
 
-import { DesignAlert, DesignBadge, DesignCard } from "@/components/design-components";
+import { DesignBadge, DesignCard } from "@/components/design-components";
 import { GitBranchIcon, RocketLaunchIcon } from "@phosphor-icons/react";
 import type { IssueDetailResponse } from "./issues-data";
 
@@ -15,7 +15,7 @@ function isSafeExternalUrl(url: string): boolean {
 
 function ReleaseLink({ url, children }: { url: string | null, children: React.ReactNode }) {
   if (url == null || !isSafeExternalUrl(url)) return <span>{children}</span>;
-  return <a href={url} target="_blank" rel="noreferrer" className="hover:underline">{children}</a>;
+  return <a href={url} target="_blank" rel="noreferrer" className="transition-colors duration-150 hover:transition-none hover:underline">{children}</a>;
 }
 
 function CommitRow({ commit, suspect }: { commit: IssueReleaseCommit, suspect?: string }) {
@@ -79,11 +79,9 @@ export function IssueReleaseContextSection({ context }: { context: IssueReleaseC
   return (
     <DesignCard title="Releases & suspects" subtitle="Bounded release, deployment, and commit context" icon={GitBranchIcon}>
       {!hasContext ? (
-        <DesignAlert
-          variant="info"
-          title="No release context"
-          description="This issue has no retained release entity, deployment, or suspect-commit reference in the current project and branch."
-        />
+        <p className="text-sm text-muted-foreground">
+          No release context is retained for this issue in the current project and branch.
+        </p>
       ) : (
         <div className="space-y-4">
           {(context.first_release != null || context.last_release != null) && (

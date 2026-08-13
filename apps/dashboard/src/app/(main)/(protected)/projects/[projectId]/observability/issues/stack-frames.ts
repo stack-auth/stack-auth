@@ -1,6 +1,13 @@
 import type { IssueFrame } from "./issues-data";
 
 /**
+ * The fields the stack renderer actually reads. Display frames from
+ * `heroStack` omit the API's nested symbolication object after flattening it
+ * onto filename/lineno/context, so this pick is the shared contract.
+ */
+export type StackFrameView = Pick<IssueFrame, "filename" | "function" | "module" | "abs_path" | "lineno" | "colno" | "in_app" | "debug_id" | "context">;
+
+/**
  * How a stack trace is laid out for reading.
  *
  * Frames arrive from the backend parser **oldest-first** (the outermost caller
@@ -14,18 +21,18 @@ export type StackFrameOrder = "innermost-first" | "outermost-first";
 
 export const DEFAULT_STACK_FRAME_ORDER: StackFrameOrder = "innermost-first";
 
-export function orderStackFrames(
-  frames: readonly IssueFrame[],
+export function orderStackFrames<Frame extends StackFrameView>(
+  frames: readonly Frame[],
   order: StackFrameOrder,
-): IssueFrame[] {
+): Frame[] {
   return order === "innermost-first" ? [...frames].reverse() : [...frames];
 }
 
-export type StackFrameGroup =
-  | { kind: "frame", frame: IssueFrame, index: number }
+export type StackFrameGroup<Frame extends StackFrameView = StackFrameView> =
+  | { kind: "frame", frame: Frame, index: number }
   | {
     kind: "collapsed",
-    frames: readonly IssueFrame[],
+    frames: readonly Frame[],
     /** Index of the first frame in the run, in the passed-in ordering. */
     startIndex: number,
     /**
@@ -45,9 +52,9 @@ const MIN_COLLAPSIBLE_RUN = 2;
  * `node_modules/react-dom/...` line with "⋯ 1 frame from node_modules" costs
  * the same vertical space and hides strictly more.
  */
-export function groupStackFrames(frames: readonly IssueFrame[]): StackFrameGroup[] {
+export function groupStackFrames<Frame extends StackFrameView>(frames: readonly Frame[]): StackFrameGroup<Frame>[] {
   const everyFrameIsLibrary = frames.length > 0 && frames.every((frame) => !frame.in_app);
-  const groups: StackFrameGroup[] = [];
+  const groups: StackFrameGroup<Frame>[] = [];
   let index = 0;
   while (index < frames.length) {
     const frame = frames[index] ?? throwMissingFrame(index);
@@ -85,7 +92,7 @@ function throwMissingFrame(index: number): never {
  * the run agrees on one (`node_modules`, a CDN host), since "12 frames from
  * node_modules" is actionable in a way that "12 hidden frames" is not.
  */
-export function collapsedFramesLabel(frames: readonly IssueFrame[]): string {
+export function collapsedFramesLabel(frames: readonly StackFrameView[]): string {
   const count = frames.length;
   const origins = new Set(frames.map(frameOrigin).filter((origin): origin is string => origin != null));
   const noun = count === 1 ? "frame" : "frames";
@@ -96,7 +103,7 @@ export function collapsedFramesLabel(frames: readonly IssueFrame[]): string {
   return `${count} library ${noun}`;
 }
 
-function frameOrigin(frame: IssueFrame): string | null {
+function frameOrigin(frame: StackFrameView): string | null {
   const path = frame.abs_path ?? frame.filename;
   if (path == null || path === "") return null;
   if (path.includes("node_modules")) return "node_modules";
@@ -106,14 +113,14 @@ function frameOrigin(frame: IssueFrame): string | null {
 }
 
 /** The bold half of a frame row: the function, or the file when unnamed. */
-export function frameFunctionLabel(frame: IssueFrame): string {
+export function frameFunctionLabel(frame: StackFrameView): string {
   const fn = frame.function?.trim();
   if (fn != null && fn !== "") return fn;
   return "<anonymous>";
 }
 
 /** `src/checkout.ts:42:11` — the location half. Never empty. */
-export function frameLocationLabel(frame: IssueFrame): string {
+export function frameLocationLabel(frame: StackFrameView): string {
   const path = frame.module ?? frame.filename ?? frame.abs_path;
   if (path == null || path === "") return "unknown location";
   if (frame.lineno == null) return path;

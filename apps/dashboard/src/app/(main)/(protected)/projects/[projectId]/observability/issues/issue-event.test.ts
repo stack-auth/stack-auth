@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { IssueFrame, IssueOccurrence } from "./issues-data";
-import { getIssueEventPayload } from "./issue-event";
+import { getIssueEventPayload, heroStack } from "./issue-event";
 
 function occurrence(data: Record<string, unknown>): Pick<IssueOccurrence, "data"> {
   return { data };
@@ -151,5 +151,47 @@ describe("issue event payload", () => {
       code: "projection_missing",
       message: expect.stringContaining("internal issue route/schema"),
     }));
+  });
+
+  it("flattens symbolicated source onto the hero stack", () => {
+    const stack = heroStack({
+      data: {
+        exception: {
+          values: [{
+            type: "TypeError",
+            value: "boom",
+            stacktrace: {
+              frames: [{
+                filename: "chunk.js",
+                function: "n",
+                lineno: 1,
+                in_app: true,
+                symbolication: {
+                  status: "symbolicated",
+                  source_file: "src/checkout.ts",
+                  original_line: 42,
+                  original_column: 11,
+                  name: "charge",
+                  context: { pre: ["function charge() {"], line: "  throw new Error(\"boom\");", post: ["}"] },
+                  diagnostics: [],
+                },
+              }],
+            },
+          }],
+        },
+      },
+      frames: [],
+      raw_stack: null,
+    });
+
+    expect(stack.frames[0]).toMatchObject({
+      filename: "src/checkout.ts",
+      function: "charge",
+      lineno: 42,
+      context: {
+        line: "  throw new Error(\"boom\");",
+        symbolicated: true,
+      },
+    });
   });
 });

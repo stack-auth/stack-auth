@@ -5,7 +5,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography } 
 import { cn } from "@/lib/utils";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
-import { ArrowClockwiseIcon, ChartLineIcon, LinkSimpleIcon, SpinnerGapIcon, StackIcon, TreeStructureIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, ChartLineIcon, CheckIcon, CopyIcon, LinkSimpleIcon, SpinnerGapIcon, StackIcon, TreeStructureIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebounce } from "use-debounce";
 import { AppEnabledGuard } from "../../app-enabled-guard";
@@ -46,8 +46,15 @@ import {
   parseServiceIdentityRow,
   type ServiceIdentity,
 } from "../service-identity";
-import { ALL_SERVICES_SELECT_VALUE, OBSERVABILITY_TIME_RANGE_OPTIONS, parseObservabilityTimeRangeId, queryObservability, useServiceIdentityLoader } from "../filters";
+import { ALL_SERVICES_SELECT_VALUE, OBSERVABILITY_TIME_RANGE_OPTIONS, parseObservabilityTimeRangeId, queryObservability, readLocationSearch, replaceLocationSearch, useServiceIdentityLoader } from "../filters";
 import { tryParseJson } from "../format";
+import { TelemetryRowLinks } from "../telemetry-row-links";
+import {
+  DEFAULT_TRACE_PAGE_URL_STATE,
+  parseTracePageUrlState,
+  serializeTracePageUrlState,
+  type TracePageUrlState,
+} from "./trace-url-state";
 
 const TRACE_SPAN_STRUCTURE_SELECT_SQL = `
 SELECT
@@ -369,7 +376,7 @@ LIMIT 1
   };
 }
 
-export function getSelectedTraceEventQuery(traceId: string, hours: number): {
+export function getSelectedTraceEventQuery(traceId: string, focusEventAtMs: number | null = null): {
   query: string,
   params: Record<string, string | number>,
 } {
@@ -382,6 +389,12 @@ export function getSelectedTraceEventQuery(traceId: string, hours: number): {
     // compatibility branches synthesize `body` and zero severity for the
     // event-shaped views; OTel log/error branches provide their canonical body
     // and severity fields.
+    //
+    // No time-range bound: this is a point lookup by trace_id. Bounding by the
+    // inbox hours window would drop a deep-linked custom event that happened
+    // just outside it, which is exactly the shareable URL this query exists to
+    // serve. The 5000-row cap is the safety; when a highlight timestamp is
+    // present we rank that event first so the cap cannot hide it.
     query: `
 WITH correlated AS (
   SELECT event_type, event_at, data, message AS body, level,
@@ -411,11 +424,10 @@ SELECT event_type, event_at, data, body, level, severity_number, severity_text,
        refresh_token_id, session_replay_id, session_replay_segment_id
 FROM correlated
 WHERE trace_id = {traceId:String}
-  AND event_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
-ORDER BY event_at ASC
+ORDER BY ${focusEventAtMs == null ? "event_at ASC" : "abs(toUnixTimestamp64Milli(event_at) - {focusEventAtMs:Int64}) ASC, event_at ASC"}
 LIMIT 5000
 `,
-    params: { traceId, hours },
+    params: { traceId, ...focusEventAtMs == null ? {} : { focusEventAtMs } },
   };
 }
 
@@ -534,6 +546,11 @@ function EmptyState({ title, children }: { title: string, children?: React.React
   );
 }
 
+function readInitialTracePageUrlState(): TracePageUrlState {
+  if (typeof window === "undefined") return DEFAULT_TRACE_PAGE_URL_STATE;
+  return parseTracePageUrlState(new URLSearchParams(window.location.search));
+}
+
 function HeaderCountStat({ icon, value, label }: { icon: React.ReactNode, value: number, label: string }) {
   return (
     <Tooltip>
@@ -550,34 +567,29 @@ function HeaderCountStat({ icon, value, label }: { icon: React.ReactNode, value:
 
 export default function PageClient() {
   const adminApp = useAdminApp();
+  const initialUrlState = useState(readInitialTracePageUrlState)[0];
 
-  const [hours, setHours] = useState<TraceTimeRangeHours>(24);
-  const [service, setService] = useState<ServiceIdentity | null>(null);
+  const [hours, setHours] = useState<TraceTimeRangeHours>(initialUrlState.hours);
+  const [service, setService] = useState<ServiceIdentity | null>(initialUrlState.service);
   const [services, setServices] = useState<ServiceIdentity[]>([]);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialUrlState.search);
   const [debouncedSearch] = useDebounce(search.trim(), SEARCH_DEBOUNCE_MS);
   const [selectedRootId, setSelectedRootId] = useState<string | null>(null);
   const [linkedSelection, setLinkedSelection] = useState<{ traceId: string, spanId: string | null } | null>(null);
   const [detailRow, setDetailRow] = useState<RowData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  // Pinned by a deep-link or an explicit inbox/waterfall click. Auto-selecting
+  // the first inbox root does NOT pin: writing that into the URL would churn
+  // the address bar on every refresh as the inbox moves.
+  const [pinnedTraceId, setPinnedTraceId] = useState<string | null>(initialUrlState.traceId);
+  const [highlightSpanId, setHighlightSpanId] = useState<string | null>(initialUrlState.spanId);
+  const [highlightEventType, setHighlightEventType] = useState<string | null>(initialUrlState.eventType);
+  const [highlightEventAtMs, setHighlightEventAtMs] = useState<number | null>(initialUrlState.eventAtMs);
+  const [shareLinkCopied, setShareLinkCopied] = useState(false);
   // Set when `?trace=` named a trace that isn't in the loaded window, so the
-  // page can say so instead of silently selecting an unrelated trace.
+  // page can say so instead of silently selecting an unrelated trace. The
+  // waterfall still loads that trace id directly.
   const [seedTraceMiss, setSeedTraceMiss] = useState<string | null>(null);
-
-  // `?trace=<id>` seeds the selection once, so the Issues detail page (and any
-  // other correlation rail) can deep-link straight at a trace.
-  //
-  // Read from `window.location` rather than `useSearchParams()`: this page is
-  // statically rendered, and `useSearchParams` would force a Suspense boundary
-  // around the whole client tree for a value we only ever want on first paint.
-  // Same approach `useDataGridUrlState` takes. `undefined` means "not read
-  // yet", `null` means "read, nothing there or already consumed".
-  const seedTraceIdRef = useRef<string | null | undefined>(undefined);
-  if (seedTraceIdRef.current === undefined) {
-    seedTraceIdRef.current = typeof window === "undefined"
-      ? null
-      : (new URLSearchParams(window.location.search).get("trace") || null);
-  }
 
   const [rootSpans, setRootSpans] = useState<TraceRootSpan[]>([]);
   // Page-view expansion. Children are fetched once per page view and kept, so
@@ -644,20 +656,18 @@ export default function PageClient() {
       // Resolved outside the state updater: React may invoke an updater more
       // than once, and consuming the seed inside it would drop the selection
       // on the second call.
-      const seedTraceId = seedTraceIdRef.current;
-      const seededRootId = seedTraceId == null
+      const matchingRoot = pinnedTraceId == null
         ? null
-        : (nextRoots.find((span) => span.traceId === seedTraceId)?.id ?? null);
-      if (seedTraceId != null) {
-        seedTraceIdRef.current = null;
-        setSeedTraceMiss(seededRootId == null ? seedTraceId : null);
-      }
-      setSelectedRootId((currentRootId) => (
-        seededRootId
-        ?? (currentRootId != null && nextRoots.some((span) => span.id === currentRootId)
-          ? currentRootId
-          : (nextRoots[0]?.id ?? null))
-      ));
+        : (nextRoots.find((span) => span.traceId === pinnedTraceId) ?? null);
+      setSeedTraceMiss(pinnedTraceId != null && matchingRoot == null ? pinnedTraceId : null);
+      setSelectedRootId((currentRootId) => {
+        if (matchingRoot != null) return matchingRoot.id;
+        // A deep-linked trace that isn't in this inbox window still loads in
+        // the waterfall via pinnedTraceId; don't steal the first unrelated root.
+        if (pinnedTraceId != null) return null;
+        if (currentRootId != null && nextRoots.some((span) => span.id === currentRootId)) return currentRootId;
+        return nextRoots[0]?.id ?? null;
+      });
       setNowMs(Date.now());
     } catch (e) {
       if (seq !== rootRequestSeqRef.current) return;
@@ -665,7 +675,7 @@ export default function PageClient() {
     } finally {
       if (seq === rootRequestSeqRef.current) setRootLoading(false);
     }
-  }, [adminApp, debouncedSearch, hours, loadTraceServices, service]);
+  }, [adminApp, debouncedSearch, hours, loadTraceServices, pinnedTraceId, service]);
 
   const loadTraceVolume = useCallback(async () => {
     const seq = ++traceVolumeRequestSeqRef.current;
@@ -728,7 +738,7 @@ export default function PageClient() {
     setTraceError(null);
     try {
       const spanQuery = getSelectedTraceSpanQuery(traceId, focusSpanId);
-      const eventQuery = getSelectedTraceEventQuery(traceId, hours);
+      const eventQuery = getSelectedTraceEventQuery(traceId, highlightEventAtMs);
       const linksQuery = getSelectedTraceLinksQuery(traceId);
       const [spansResponse, eventsResponse, linksResponse] = await Promise.all([
         queryObservability(adminApp, {
@@ -757,7 +767,7 @@ export default function PageClient() {
     } finally {
       if (seq === traceRequestSeqRef.current) setTraceLoading(false);
     }
-  }, [adminApp, hours]);
+  }, [adminApp, highlightEventAtMs]);
 
   const lastAutomaticRootLoadRef = useRef<{
     adminApp: typeof adminApp,
@@ -789,12 +799,35 @@ export default function PageClient() {
       ? null
       : (rootSpans.find((span) => span.id === selectedRootId)?.traceId ?? null)
   ), [rootSpans, selectedRootId]);
-  const selectedTraceId = linkedSelection?.traceId ?? selectedRootTraceId;
+  const selectedTraceId = linkedSelection?.traceId ?? pinnedTraceId ?? selectedRootTraceId;
   const selectedTraceServices = useMemo(() => {
     if (selectedRootId == null) return [];
     const selectedRoot = rootSpans.find((span) => span.id === selectedRootId);
     return selectedRoot == null ? [] : serviceIdentitiesFromTraceRow(selectedRoot.raw);
   }, [rootSpans, selectedRootId]);
+  const waterfallHighlight = useMemo(() => ({
+    spanId: linkedSelection?.spanId ?? highlightSpanId,
+    eventType: linkedSelection == null ? highlightEventType : null,
+    eventAtMs: linkedSelection == null ? highlightEventAtMs : null,
+  }), [highlightEventAtMs, highlightEventType, highlightSpanId, linkedSelection]);
+
+  useEffect(() => {
+    replaceLocationSearch(serializeTracePageUrlState({
+      hours,
+      service,
+      search: search.trim(),
+      traceId: linkedSelection?.traceId ?? pinnedTraceId,
+      spanId: linkedSelection?.spanId ?? (pinnedTraceId == null ? null : highlightSpanId),
+      eventType: linkedSelection != null || pinnedTraceId == null ? null : highlightEventType,
+      eventAtMs: linkedSelection != null || pinnedTraceId == null ? null : highlightEventAtMs,
+    }, readLocationSearch()));
+  }, [highlightEventAtMs, highlightEventType, highlightSpanId, hours, linkedSelection, pinnedTraceId, search, service]);
+
+  useEffect(() => {
+    if (!shareLinkCopied) return;
+    const timeout = window.setTimeout(() => setShareLinkCopied(false), 2000);
+    return () => window.clearTimeout(timeout);
+  }, [shareLinkCopied]);
 
   useEffect(() => {
     if (selectedTraceId == null) {
@@ -803,8 +836,8 @@ export default function PageClient() {
       setSelectedLinks([]);
       return;
     }
-    runAsynchronouslyWithAlert(loadSelectedTrace(selectedTraceId, linkedSelection?.spanId ?? null));
-  }, [linkedSelection?.spanId, loadSelectedTrace, selectedTraceId]);
+    runAsynchronouslyWithAlert(loadSelectedTrace(selectedTraceId, linkedSelection?.spanId ?? highlightSpanId));
+  }, [highlightSpanId, linkedSelection?.spanId, loadSelectedTrace, selectedTraceId]);
 
   const { traces: rootTraces } = useMemo(() => buildTraces(rootSpans, []), [rootSpans]);
 
@@ -892,9 +925,9 @@ export default function PageClient() {
       loadTraceVolume(),
       selectedTraceId == null
         ? Promise.resolve()
-        : loadSelectedTrace(selectedTraceId, linkedSelection?.spanId ?? null),
+        : loadSelectedTrace(selectedTraceId, linkedSelection?.spanId ?? highlightSpanId),
     ]);
-  }, [linkedSelection?.spanId, loadRoots, loadSelectedTrace, loadTraceVolume, selectedTraceId]);
+  }, [highlightSpanId, linkedSelection?.spanId, loadRoots, loadSelectedTrace, loadTraceVolume, selectedTraceId]);
 
   const headerActions = (
     <TooltipProvider>
@@ -941,6 +974,33 @@ export default function PageClient() {
           <ArrowClockwiseIcon className="h-4 w-4" />
           Refresh
         </DesignButton>
+        <DesignButton
+          className="shrink-0"
+          variant="secondary"
+          size="sm"
+          aria-label={shareLinkCopied ? "Link copied" : "Copy link to this view"}
+          title={shareLinkCopied ? "Copied!" : "Copy link to this view"}
+          onClick={() => runAsynchronouslyWithAlert(async () => {
+            const viewedId = linkedSelection?.traceId ?? pinnedTraceId ?? selectedTraceId;
+            if (viewedId != null && pinnedTraceId == null) setPinnedTraceId(viewedId);
+            const params = serializeTracePageUrlState({
+              hours,
+              service,
+              search: search.trim(),
+              traceId: viewedId,
+              spanId: linkedSelection?.spanId ?? highlightSpanId,
+              eventType: linkedSelection != null ? null : highlightEventType,
+              eventAtMs: linkedSelection != null ? null : highlightEventAtMs,
+            }, new URLSearchParams());
+            const query = params.toString();
+            await navigator.clipboard.writeText(
+              `${window.location.origin}${window.location.pathname}${query === "" ? "" : `?${query}`}`,
+            );
+            setShareLinkCopied(true);
+          })}
+        >
+          {shareLinkCopied ? <CheckIcon className="h-4 w-4" /> : <CopyIcon className="h-4 w-4" />}
+        </DesignButton>
       </div>
     </TooltipProvider>
   );
@@ -966,9 +1026,10 @@ export default function PageClient() {
             title="That trace isn't in this window"
             description={
               <>
-                Nothing in the last {hours}h matches trace{" "}
-                <code className="font-mono">{seedTraceMiss}</code>. Widen the time range, or clear
-                the service filter, to look for it.
+                Nothing in the last {hours}h inbox matches trace{" "}
+                <code className="font-mono">{seedTraceMiss}</code>. The waterfall below still
+                loads it. Widen the time range, or clear the service filter, to find it in the
+                list.
               </>
             }
           />
@@ -1042,6 +1103,11 @@ export default function PageClient() {
                     onSelectSpan={(rootId) => {
                       setLinkedSelection(null);
                       setSelectedRootId(rootId);
+                      const root = rootSpans.find((span) => span.id === rootId);
+                      setPinnedTraceId(root?.traceId ?? null);
+                      setHighlightSpanId(null);
+                      setHighlightEventType(null);
+                      setHighlightEventAtMs(null);
                     }}
                     expandedPageViewIds={expandedPageViewIds}
                     childrenByPageViewId={childrenByPageViewId}
@@ -1106,9 +1172,28 @@ export default function PageClient() {
                 needle={searchNeedle}
                 unattachedEventCount={unattachedEventCount}
                 links={selectedLinks}
-                onSelectSpan={(span) => runAsynchronouslyWithAlert(openSpanDetail(span))}
-                onSelectEvent={(event) => openEventDetail(event.raw)}
-                onOpenLink={(link) => setLinkedSelection({ traceId: link.linkedTraceId, spanId: link.linkedSpanId })}
+                highlight={waterfallHighlight}
+                onSelectSpan={(span) => {
+                  setPinnedTraceId(span.traceId);
+                  setHighlightSpanId(span.id);
+                  setHighlightEventType(null);
+                  setHighlightEventAtMs(null);
+                  runAsynchronouslyWithAlert(openSpanDetail(span));
+                }}
+                onSelectEvent={(event) => {
+                  setPinnedTraceId(event.traceId ?? selectedTraceId);
+                  setHighlightSpanId(event.spanId);
+                  setHighlightEventType(event.eventType);
+                  setHighlightEventAtMs(event.atMs);
+                  openEventDetail(event.raw);
+                }}
+                onOpenLink={(link) => {
+                  setLinkedSelection({ traceId: link.linkedTraceId, spanId: link.linkedSpanId });
+                  setPinnedTraceId(link.linkedTraceId);
+                  setHighlightSpanId(link.linkedSpanId);
+                  setHighlightEventType(null);
+                  setHighlightEventAtMs(null);
+                }}
               />
             )}
             {!traceLoading && traceError != null && (
@@ -1132,6 +1217,9 @@ export default function PageClient() {
           open={detailRow != null}
           technicalColumns={SPAN_TECHNICAL_DETAIL_COLUMNS}
           loading={detailLoading}
+          extraContent={detailRow == null ? null : (
+            <TelemetryRowLinks row={detailRow} projectId={adminApp.projectId} showTrace={false} />
+          )}
           onOpenChange={(open) => {
             if (!open) {
               detailRequestSeqRef.current += 1;

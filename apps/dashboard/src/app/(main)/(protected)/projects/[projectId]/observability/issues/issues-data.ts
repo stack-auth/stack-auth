@@ -5,6 +5,10 @@ import {
   IssueBulkStatusResponseSchema,
   IssueDetailResponseSchema,
   IssueListResponseSchema,
+  IssueMergeRequestSchema,
+  IssueMergeResponseSchema,
+  IssueUnmergeRequestSchema,
+  IssueUnmergeResponseSchema,
   ISSUE_LIST_PAGE_SIZE,
   type IssueDetailResponse,
   type IssueBulkStatus,
@@ -12,10 +16,12 @@ import {
   type IssueFrame,
   type IssueListResponse,
   type IssueListSortField,
+  type IssueMergeResponse,
   type IssueOwner,
   type IssueOccurrence,
   type IssueSubject,
   type IssueStatus,
+  type IssueUnmergeResponse,
 } from "@hexclave/shared/dist/interface/admin-issues";
 import * as yup from "yup";
 import { sendInternalAdminRequest } from "@/lib/hexclave-app-internals";
@@ -309,7 +315,7 @@ const IssueCommentResponseSchema = yup.object({
 }).defined();
 
 const IssueActionResponseSchema = yup.object({
-  action: yup.string().oneOf(["assign", "unassign"]).defined(),
+  action: yup.string().oneOf(["assign", "unassign", "resolve", "ignore", "unresolve", "regress", "snooze", "unsnooze"]).defined(),
   issue_id: yup.string().uuid().defined(),
   redirected: yup.boolean().defined(),
   redirected_from_issue_id: yup.string().uuid().nullable().defined(),
@@ -413,6 +419,193 @@ export async function updateIssuesStatusBulk(
     body: JSON.stringify(request),
   });
   return await IssueBulkStatusResponseSchema.validate(await readJsonOrThrow(response, "Updating issues"));
+}
+
+/**
+ * Folds two or more issues into one. The survivor is chosen server-side
+ * (earliest first seen, then highest lifetime count, then lowest id) — the
+ * dashboard does not pick a primary, so two people merging the same set get
+ * the same outcome.
+ */
+export async function mergeIssues(
+  adminApp: object,
+  issueIds: readonly string[],
+): Promise<IssueMergeResponse> {
+  const request = await IssueMergeRequestSchema.validate({
+    issue_ids: [...issueIds],
+  });
+  const response = await sendInternalAdminRequest(adminApp, "/internal/issues/merge", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return await IssueMergeResponseSchema.validate(await readJsonOrThrow(response, "Merging issues"));
+}
+
+/**
+ * Splits a strict subset of an issue's grouping hashes into a new issue.
+ * Historical occurrences follow the moved hashes immediately.
+ */
+export async function unmergeIssue(
+  adminApp: object,
+  issueId: string,
+  hashes: readonly string[],
+): Promise<IssueUnmergeResponse> {
+  const request = await IssueUnmergeRequestSchema.validate({
+    hashes: [...hashes],
+  });
+  const response = await sendInternalAdminRequest(
+    adminApp,
+    `/internal/issues/${encodeURIComponent(issueId)}/unmerge`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  return await IssueUnmergeResponseSchema.validate(await readJsonOrThrow(response, "Unmerging issue"));
+}
+
+export const ISSUE_SNOOZE_PRESETS = [
+  { id: "1h", label: "1 hour", durationMs: 60 * 60 * 1000 },
+  { id: "1d", label: "1 day", durationMs: 24 * 60 * 60 * 1000 },
+  { id: "1w", label: "1 week", durationMs: 7 * 24 * 60 * 60 * 1000 },
+] as const;
+
+export type IssueSnoozePresetId = (typeof ISSUE_SNOOZE_PRESETS)[number]["id"];
+
+export async function snoozeIssue(
+  adminApp: object,
+  issueId: string,
+  ignoredUntilMillis: number,
+): Promise<yup.InferType<typeof IssueActionResponseSchema>> {
+  if (!Number.isInteger(ignoredUntilMillis) || ignoredUntilMillis <= Date.now()) {
+    throw new HexclaveAssertionError("Snooze until must be a future timestamp");
+  }
+  const response = await sendInternalAdminRequest(
+    adminApp,
+    `/issues/${encodeURIComponent(issueId)}/actions/snooze`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ignored_until_millis: ignoredUntilMillis }),
+    },
+  );
+  return await IssueActionResponseSchema.validate(await readJsonOrThrow(response, "Snoozing issue"));
+}
+
+export async function unsnoozeIssue(
+  adminApp: object,
+  issueId: string,
+): Promise<yup.InferType<typeof IssueActionResponseSchema>> {
+  const response = await sendInternalAdminRequest(
+    adminApp,
+    `/issues/${encodeURIComponent(issueId)}/actions/unsnooze`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    },
+  );
+  return await IssueActionResponseSchema.validate(await readJsonOrThrow(response, "Unsnoozing issue"));
+}
+
+export async function regressIssue(
+  adminApp: object,
+  issueId: string,
+): Promise<yup.InferType<typeof IssueActionResponseSchema>> {
+  const response = await sendInternalAdminRequest(
+    adminApp,
+    `/issues/${encodeURIComponent(issueId)}/actions/regress`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    },
+  );
+  return await IssueActionResponseSchema.validate(await readJsonOrThrow(response, "Marking issue as regressed"));
+}
+
+export type IssuePublicSearchRequest = {
+  hours: ObservabilityTimeRangeHours,
+  status: IssueStatus | "all",
+  service: ServiceIdentity | null,
+  environment: string | null,
+  handled: IssueHandledFilter,
+  search: string,
+  level: string | null,
+  release: string | null,
+  userId: string | null,
+  tagKey: string | null,
+  tagValue: string | null,
+  cursor: string | null,
+};
+
+export type IssuePublicSearchRecord = {
+  record_type: string,
+  issue_id: string | null,
+  issue_short_id: string | null,
+  issue_type: string | null,
+  issue_value: string | null,
+  issue_culprit: string | null,
+  issue_status: IssueStatus | null,
+  event_id: string | null,
+  occurrence_id: string | null,
+  event_at_millis: number,
+  message: string,
+  level: string,
+  release: string | null,
+  matched_tag: { key: string, value: string } | null,
+};
+
+const IssuePublicSearchResponseSchema = yup.object({
+  items: yup.array(yup.object({
+    record_type: yup.string().defined(),
+    issue_id: yup.string().nullable().defined(),
+    issue_short_id: yup.string().nullable().defined(),
+    issue_type: yup.string().nullable().defined(),
+    issue_value: yup.string().nullable().defined(),
+    issue_culprit: yup.string().nullable().defined(),
+    issue_status: yup.string().oneOf(["unresolved", "resolved", "ignored"]).nullable().defined(),
+    event_id: yup.string().nullable().defined(),
+    occurrence_id: yup.string().nullable().defined(),
+    event_at_millis: yup.number().defined(),
+    message: yup.string().defined(),
+    level: yup.string().defined(),
+    release: yup.string().nullable().defined(),
+    matched_tag: yup.object({
+      key: yup.string().defined(),
+      value: yup.string().defined(),
+    }).nullable().defined(),
+  }).defined()).defined(),
+  next_cursor: yup.string().nullable().defined(),
+}).defined();
+
+export async function searchPublicIssues(
+  adminApp: object,
+  request: IssuePublicSearchRequest,
+): Promise<{ items: IssuePublicSearchRecord[], nextCursor: string | null }> {
+  const params = new URLSearchParams();
+  params.set("record", "issue");
+  params.set("hours", String(request.hours));
+  if (request.status !== "all") params.set("status", request.status);
+  if (request.service != null) params.set("service", request.service.name);
+  if (request.environment != null) params.set("environment", request.environment);
+  if (request.handled !== "all") params.set("handled", request.handled);
+  if (request.search !== "") params.set("message", request.search);
+  if (request.level != null) params.set("level", request.level);
+  if (request.release != null) params.set("release", request.release);
+  if (request.userId != null) params.set("user_id", request.userId);
+  if (request.tagKey != null) params.set("tag_key", request.tagKey);
+  if (request.tagValue != null) params.set("tag_value", request.tagValue);
+  if (request.cursor != null) params.set("cursor", request.cursor);
+  const response = await sendInternalAdminRequest(
+    adminApp,
+    `/issues/search?${params.toString()}`,
+    { method: "GET" },
+  );
+  const body = await IssuePublicSearchResponseSchema.validate(await readJsonOrThrow(response, "Searching issues"));
+  return { items: body.items, nextCursor: body.next_cursor };
 }
 
 export type IssuePriority = "low" | "medium" | "high";

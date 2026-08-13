@@ -34,7 +34,4 @@ export function issueDetailHref(projectId: string, idOrShortId: string): string 
   return urlString`/projects/${projectId}/observability/issues/${idOrShortId}`;
 }
 
-/** Deep-links the Traces page at a trace id (see its `?trace=` seeding). */
-export function traceDetailHref(projectId: string, traceId: string): string {
-  return `${urlString`/projects/${projectId}/observability/traces`}?trace=${encodeURIComponent(traceId)}`;
-}
+export { traceDetailHref, type TraceHighlight } from "../observability-links";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTraces, flattenTrace, formatDuration, getTraceScaleEnd, isSystemSpanType, panViewWindow, selectPrimaryTrace, traceContainsSpanId, traceErrorCount, traceSignalSpanIds, traceSpanDisplayName, zoomViewWindow, type EventInput, type SpanInput } from "./trace-utils";
+import { buildTraces, eventMatchesHighlight, flattenTrace, formatDuration, getTraceScaleEnd, isSystemSpanType, panViewWindow, selectPrimaryTrace, spanAncestorIds, spanIdsToExpandForHighlight, traceContainsSpanId, traceErrorCount, traceSignalSpanIds, traceSpanDisplayName, zoomViewWindow, type EventInput, type SpanInput } from "./trace-utils";
 
 function span(id: string, opts: Partial<SpanInput> = {}): SpanInput {
   return {
@@ -485,5 +485,52 @@ describe("isSystemSpanType", () => {
   it("flags $-prefixed types as system", () => {
     expect(isSystemSpanType("$page-view")).toBe(true);
     expect(isSystemSpanType("checkout")).toBe(false);
+  });
+});
+
+describe("event highlight identity", () => {
+  it("matches a custom event by enclosing span, type, and epoch-ms", () => {
+    const checkout = event("checkout_completed", { spanId: "page-view", atMs: 1_720_000_000_000 });
+    expect(eventMatchesHighlight(checkout, {
+      spanId: "page-view",
+      eventType: "checkout_completed",
+      eventAtMs: 1_720_000_000_000,
+    })).toBe(true);
+    expect(eventMatchesHighlight(checkout, {
+      spanId: "other-span",
+      eventType: "checkout_completed",
+      eventAtMs: 1_720_000_000_000,
+    })).toBe(false);
+    expect(eventMatchesHighlight(checkout, {
+      spanId: "page-view",
+      eventType: "checkout_completed",
+      eventAtMs: 1_720_000_000_001,
+    })).toBe(false);
+  });
+
+  it("does not treat a span-only highlight as an event match", () => {
+    expect(eventMatchesHighlight(event("checkout_completed", { spanId: "page-view" }), {
+      spanId: "page-view",
+      eventType: null,
+      eventAtMs: null,
+    })).toBe(false);
+  });
+});
+
+describe("spanIdsToExpandForHighlight", () => {
+  it("expands the owning span and its ancestors so a nested event is visible", () => {
+    const { traces } = buildTraces([
+      span("page-view", { spanType: "$page-view" }),
+      span("checkout", { parentSpanId: "page-view", startMs: 1100, endMs: 1800 }),
+    ], [
+      event("item_added", { spanId: "checkout", atMs: 1200 }),
+    ]);
+    const root = traces[0].root;
+    expect(spanAncestorIds(root, "checkout")).toEqual(["page-view"]);
+    expect(spanIdsToExpandForHighlight(root, {
+      spanId: "checkout",
+      eventType: "item_added",
+      eventAtMs: 1200,
+    })).toEqual(["page-view", "checkout"]);
   });
 });

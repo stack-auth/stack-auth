@@ -2,11 +2,15 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { createElement } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Trace, WaterfallRow } from "./trace-utils";
-import { computeRowOffsets, computeRowWindow, shouldShowCollapseControl, TraceWaterfall, type TraceWaterfallRow } from "./waterfall";
+import { computeRowOffsets, computeRowWindow, findHighlightedRowIndex, shouldShowCollapseControl, TraceWaterfall, type TraceWaterfallRow } from "./waterfall";
 
 afterEach(cleanup);
+
+beforeEach(() => {
+  window.scrollTo = vi.fn();
+});
 
 function spanRow(id: string): WaterfallRow {
   return {
@@ -219,5 +223,66 @@ describe("computeRowWindow", () => {
 
   it("returns an empty window for an empty row list", () => {
     expect(computeRowWindow(computeRowOffsets([]), 0, 1000, 20)).toEqual({ startIndex: 0, endIndex: 0 });
+  });
+});
+
+describe("waterfall highlight", () => {
+  it("matches a nested custom event by type and epoch-ms, not the enclosing span", () => {
+    const rows: TraceWaterfallRow[] = [
+      spanRow("page-view"),
+      {
+        kind: "event",
+        depth: 1,
+        event: { traceId: "trace", eventType: "checkout", atMs: 0, spanId: "page-view", raw: {} },
+      },
+    ];
+    expect(findHighlightedRowIndex(rows, {
+      spanId: "page-view",
+      eventType: "checkout",
+      eventAtMs: 0,
+    })).toBe(1);
+    expect(findHighlightedRowIndex(rows, {
+      spanId: "page-view",
+      eventType: null,
+      eventAtMs: null,
+    })).toBe(0);
+  });
+
+  it("marks the highlighted event as the current row", () => {
+    const checkout = {
+      traceId: "trace",
+      id: "page-view",
+      spanType: "$page-view",
+      startMs: 1000,
+      endMs: 1010,
+      parentSpanId: null,
+      raw: { producer: "sdk" },
+    };
+    const trace: Trace = {
+      root: {
+        span: checkout,
+        depth: 0,
+        children: [],
+        events: [{
+          traceId: "trace",
+          eventType: "item_added",
+          atMs: 1005,
+          spanId: "page-view",
+          raw: {},
+        }],
+      },
+      spanCount: 1,
+      eventCount: 1,
+      startMs: 1000,
+      endMs: 1010,
+      latestMs: 1010,
+    };
+
+    render(createElement(TraceWaterfall, {
+      ...waterfallProps(trace),
+      highlight: { spanId: "page-view", eventType: "item_added", eventAtMs: 1005 },
+    }));
+
+    expect(screen.getByText("item_added").closest("[aria-current=true]")).not.toBeNull();
   });
 });

@@ -97,3 +97,25 @@ export function queryObservability(adminApp: StackAdminApp<false>, options: { qu
     timeout_ms: 30000,
   });
 }
+
+/**
+ * Writes search params with `history.replaceState`, not Next's `router.replace`.
+ * Grid chrome (`useDataGridUrlState`) and these page filters share one query
+ * string; Next's cached `useSearchParams` has never seen the grid's keys and
+ * would drop them on the next filter change.
+ */
+export function replaceLocationSearch(params: URLSearchParams): void {
+  if (typeof window === "undefined") return;
+  const next = params.toString();
+  if (next === window.location.search.replace(/^\?/, "")) return;
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${window.location.pathname}${next === "" ? "" : `?${next}`}${window.location.hash}`,
+  );
+}
+
+export function readLocationSearch(): URLSearchParams {
+  if (typeof window === "undefined") return new URLSearchParams();
+  return new URLSearchParams(window.location.search);
+}
