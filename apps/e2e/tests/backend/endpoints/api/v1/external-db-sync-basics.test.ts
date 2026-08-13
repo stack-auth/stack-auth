@@ -1,7 +1,6 @@
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { afterAll, beforeAll, describe, expect } from 'vitest';
-import { Client } from "pg";
 import { niceFetch, STACK_BACKEND_BASE_URL, test } from '../../../../helpers';
 import { withPortPrefix } from '../../../../helpers/ports';
 import { Auth, backendContext, InternalApiKey, Project, User, niceBackendFetch } from '../../../backend-helpers';
@@ -36,7 +35,9 @@ import {
   waitForSyncedProjectPermissionDeletion,
   waitForCondition,
   waitForSyncedNotificationPreference,
-  waitForTable
+  waitForTable,
+  deleteSyncedRowsWithTombstones,
+  withInternalDatabase,
 } from './external-db-sync-utils';
 
 async function runQueryForCurrentProject(body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
@@ -101,64 +102,26 @@ async function waitForClickhouseUserDeletion(email: string) {
   throw new HexclaveAssertionError(`Timed out waiting for ClickHouse user ${email} to be deleted.`, { response });
 }
 
-async function waitForClickhouseEmailOutboxDeletion(id: string) {
+async function waitForClickhouseEmailOutbox(id: string, expectedCount: number, deadline: number) {
   await InternalApiKey.createAndSetProjectKeys();
 
-  const timeoutMs = 180_000;
   const intervalMs = 2_000;
-  const start = performance.now();
 
   let response;
-  while (performance.now() - start < timeoutMs) {
+  while (performance.now() < deadline) {
     response = await runQueryForCurrentProject({
       query: "SELECT id FROM email_outboxes WHERE id = {id:UUID}",
       params: { id },
     });
     expect(response.status).toBe(200);
-    if (response.body.result.length === 0) {
+    if (response.body.result.length === expectedCount) {
       return response;
     }
     await wait(intervalMs);
   }
 
-  throw new HexclaveAssertionError(`Timed out waiting for ClickHouse email outbox ${id} to be deleted.`, { response });
-}
-
-async function waitForClickhouseEmailOutbox(id: string) {
-  await InternalApiKey.createAndSetProjectKeys();
-
-  const timeoutMs = 180_000;
-  const intervalMs = 2_000;
-  const start = performance.now();
-
-  let response;
-  while (performance.now() - start < timeoutMs) {
-    response = await runQueryForCurrentProject({
-      query: "SELECT id FROM email_outboxes WHERE id = {id:UUID}",
-      params: { id },
-    });
-    expect(response.status).toBe(200);
-    if (response.body.result.length === 1) {
-      return response;
-    }
-    await wait(intervalMs);
-  }
-
-  throw new HexclaveAssertionError(`Timed out waiting for ClickHouse email outbox ${id} to sync.`, { response });
-}
-
-async function withInternalDatabase<T>(fn: (client: Client) => Promise<T>): Promise<T> {
-  const client = new Client({
-    connectionString: getEnvVariable("STACK_DATABASE_CONNECTION_STRING", ""),
-    connectionTimeoutMillis: 10_000,
-    query_timeout: 30_000,
-  });
-  await client.connect();
-  try {
-    return await fn(client);
-  } finally {
-    await client.end();
-  }
+  const state = expectedCount === 0 ? "to be deleted" : "to sync";
+  throw new HexclaveAssertionError(`Timed out waiting for ClickHouse email outbox ${id} ${state}.`, { response });
 }
 
 // Run tests sequentially to avoid concurrency issues with shared backend state
@@ -1619,9 +1582,12 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       { timeoutMs: 30_000, intervalMs: 500, description: "email to appear in outbox" },
     );
 
+    // Both ClickHouse assertions share this budget so the helper reports a useful failure before TEST_TIMEOUT.
+    const clickhouseDeadline = performance.now() + 180_000;
     await InternalApiKey.createAndSetProjectKeys();
-    await waitForClickhouseEmailOutbox(emailId);
+    await waitForClickhouseEmailOutbox(emailId, 1, clickhouseDeadline);
 
+    // No production endpoint deletes EmailOutbox rows, so e2e cannot drive this over HTTP; the tombstone shape is pinned by the backend unit test.
     await withInternalDatabase(async (client) => {
       const tenancy = await client.query<{ id: string }>(
         `SELECT "id" FROM "Tenancy" WHERE "projectId" = $1 AND "branchId" = 'main' LIMIT 1`,
@@ -1629,38 +1595,14 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       );
       const tenancyId = tenancy.rows[0]?.id ?? throwErr(`No main tenancy found for project ${project.projectId}`);
 
-      await client.query("BEGIN");
-      try {
-        await client.query(
-          `
-            INSERT INTO "DeletedRow"
-              ("id", "tenancyId", "tableName", "primaryKey", "data", "deletedAt", "shouldUpdateSequenceId")
-            SELECT
-              gen_random_uuid(),
-              "tenancyId",
-              'EmailOutbox',
-              jsonb_build_object('tenancyId', "tenancyId", 'id', "id"),
-              to_jsonb("EmailOutbox".*),
-              NOW(),
-              TRUE
-            FROM "EmailOutbox"
-            WHERE "tenancyId" = $1::uuid AND "id" = $2::uuid
-            FOR UPDATE
-          `,
-          [tenancyId, emailId],
-        );
-        await client.query(
-          `DELETE FROM "EmailOutbox" WHERE "tenancyId" = $1::uuid AND "id" = $2::uuid`,
-          [tenancyId, emailId],
-        );
-        await client.query("COMMIT");
-      } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-      }
+      await deleteSyncedRowsWithTombstones(client, {
+        table: "EmailOutbox",
+        whereClause: `"tenancyId" = $1::uuid AND "id" = $2::uuid`,
+        values: [tenancyId, emailId],
+      });
     });
 
-    await waitForClickhouseEmailOutboxDeletion(emailId);
+    await waitForClickhouseEmailOutbox(emailId, 0, clickhouseDeadline);
   }, TEST_TIMEOUT);
 
   /**

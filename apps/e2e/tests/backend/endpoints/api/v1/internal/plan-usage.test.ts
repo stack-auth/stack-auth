@@ -2,42 +2,17 @@ import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { describe } from "vitest";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
-import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { planUsageResponseSchema, type PlanUsageResponse } from "@hexclave/shared/dist/interface/plan-usage";
 import { it } from "../../../../../helpers";
 import { Auth, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
+import { deleteSyncedRowsWithTombstones, withInternalDatabase } from "../external-db-sync-utils";
 
 type ProjectUsageContext = {
   projectId: string,
   tenancyId: string,
 };
-
-function getInternalDatabaseConnectionString(): string {
-  const connectionString = getEnvVariable(
-    "HEXCLAVE_DATABASE_CONNECTION_STRING",
-    getEnvVariable("STACK_DATABASE_CONNECTION_STRING", ""),
-  );
-  if (connectionString === "") {
-    throw new HexclaveAssertionError("Plan usage E2E tests require a configured internal database connection string");
-  }
-  return connectionString;
-}
-
-async function withInternalDatabase<T>(fn: (client: Client) => Promise<T>): Promise<T> {
-  const client = new Client({
-    connectionString: getInternalDatabaseConnectionString(),
-    connectionTimeoutMillis: 10_000,
-    query_timeout: 30_000,
-  });
-  await client.connect();
-  try {
-    return await fn(client);
-  } finally {
-    await client.end();
-  }
-}
 
 async function getMainTenancyId(client: Client, projectId: string): Promise<string> {
   const tenancies = await client.query<{ id: string }>(
@@ -52,44 +27,6 @@ async function getProjectUsageContext(client: Client, projectId: string): Promis
     projectId,
     tenancyId: await getMainTenancyId(client, projectId),
   };
-}
-
-const syncedCleanupTableConfig = {
-  EmailOutbox: {
-    primaryKey: `jsonb_build_object('tenancyId', "tenancyId", 'id', "id")`,
-  },
-  ProjectUser: {
-    primaryKey: `jsonb_build_object('tenancyId', "tenancyId", 'projectUserId', "projectUserId")`,
-  },
-} as const;
-
-async function deleteSyncedRowsWithTombstones(client: Client, options: {
-  table: keyof typeof syncedCleanupTableConfig,
-  whereClause: string,
-  values: unknown[],
-}): Promise<void> {
-  const tableConfig = syncedCleanupTableConfig[options.table];
-  await client.query(
-    `
-      WITH deleted_rows AS (
-        DELETE FROM "${options.table}"
-        WHERE ${options.whereClause}
-        RETURNING *
-      )
-      INSERT INTO "DeletedRow"
-        ("id", "tenancyId", "tableName", "primaryKey", "data", "deletedAt", "shouldUpdateSequenceId")
-      SELECT
-        gen_random_uuid(),
-        "tenancyId",
-        '${options.table}',
-        ${tableConfig.primaryKey},
-        to_jsonb(deleted_rows),
-        now(),
-        true
-      FROM deleted_rows
-    `,
-    options.values,
-  );
 }
 
 async function clearSeededUsageRows(client: Client, tenancies: readonly ProjectUsageContext[]): Promise<void> {

@@ -248,6 +248,11 @@ describe("recordExternalDbSyncDeletion", () => {
       })).toBeNull();
     } finally {
       await retryTransaction(globalPrismaClient, async (tx) => {
+        await recordExternalDbSyncDeletion(tx, {
+          tableName: "EmailOutbox",
+          tenancyId,
+          emailOutboxId: id,
+        });
         await tx.emailOutbox.deleteMany({
           where: { tenancyId, id },
         });
