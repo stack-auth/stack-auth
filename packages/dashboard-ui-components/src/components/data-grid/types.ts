@@ -257,6 +257,10 @@ export type DataGridExportOptions<TRow> = {
 
 // ─── Callbacks ───────────────────────────────────────────────────────
 export type DataGridCallbacks<TRow> = {
+  /**
+   * Fires when the row body is clicked. Selection checkboxes do not trigger
+   * this — they only update `selection` — so it is safe to use for navigation.
+   */
   onRowClick?: (row: TRow, rowId: RowId, event: React.MouseEvent) => void;
   onRowDoubleClick?: (row: TRow, rowId: RowId, event: React.MouseEvent) => void;
   onCellClick?: (row: TRow, columnId: string, value: unknown, event: React.MouseEvent) => void;

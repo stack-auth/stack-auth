@@ -1,14 +1,6 @@
 "use client";
 
 import { Alert, Button, Typography } from "@/components/ui";
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { SimpleTooltip } from "@/components/ui/simple-tooltip";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react";
 import {
@@ -36,6 +28,7 @@ import {
   isJsonValue,
   JsonValue,
   parseClickHouseDate,
+  RowDetailDialog,
   type RowData,
 } from "../shared";
 
@@ -152,6 +145,12 @@ export type QueryDataGridProps = {
   enableRowDetailDialog?: boolean,
   /** Custom row click handler. Overrides the default row detail dialog. */
   onRowClick?: (row: RowData) => void,
+  /** Title for the default row-detail dialog. */
+  detailTitle?: string,
+  /** Columns collapsed behind "Technical details" in the default dialog. */
+  detailTechnicalColumns?: readonly string[],
+  /** Extra content (e.g. "View in trace") rendered above the default dialog fields. */
+  detailExtraContent?: ReactNode | ((row: RowData) => ReactNode),
   /** Called whenever the error state changes (null when cleared). */
   onError?: (error: string | null) => void,
   /** Called when the discovered schema changes. */
@@ -230,50 +229,6 @@ function CellValue({
   }
 
   return <span>{str}</span>;
-}
-
-function RowDetailDialog({
-  row,
-  columns,
-  open,
-  onOpenChange,
-}: {
-  row: RowData | null,
-  columns: string[],
-  open: boolean,
-  onOpenChange: (open: boolean) => void,
-}) {
-  if (!row) return null;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh]">
-        <DialogHeader>
-          <DialogTitle>Row Details</DialogTitle>
-        </DialogHeader>
-        <DialogBody>
-          <div className="space-y-4">
-            {columns.map((column) => (
-              <div key={column} className="space-y-1">
-                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {column}
-                </Label>
-                <div className="font-mono text-sm bg-muted/30 rounded px-3 py-2 overflow-auto max-h-48">
-                  {isJsonValue(row[column]) ? (
-                    <pre className="whitespace-pre-wrap break-all">
-                      {JSON.stringify(row[column], null, 2)}
-                    </pre>
-                  ) : (
-                    <CellValue value={row[column]} truncate={false} />
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </DialogBody>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 // ─── Query building ─────────────────────────────────────────────────
@@ -360,6 +315,9 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
       toolbarActions,
       enableRowDetailDialog = true,
       onRowClick,
+      detailTitle,
+      detailTechnicalColumns,
+      detailExtraContent,
       onError,
       onSchemaChange,
       exportFilename,
@@ -748,6 +706,15 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
             columns={discoveredColumns}
             open={detailDialogOpen}
             onOpenChange={setDetailDialogOpen}
+            title={detailTitle}
+            technicalColumns={detailTechnicalColumns}
+            extraContent={
+              selectedRow == null || detailExtraContent == null
+                ? null
+                : typeof detailExtraContent === "function"
+                  ? detailExtraContent(selectedRow)
+                  : detailExtraContent
+            }
           />
         )}
       </div>

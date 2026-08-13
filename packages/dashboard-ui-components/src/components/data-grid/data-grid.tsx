@@ -504,6 +504,7 @@ function SelectionCheckbox({
   const Icon = indeterminate ? MinusSquare : checked ? CheckSquare : Square;
   return (
     <button
+      type="button"
       className={cn(
         "flex items-center justify-center w-full h-full",
         "hover:bg-foreground/[0.04] transition-colors duration-75",
@@ -973,21 +974,42 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     [onChange, onSelectionChange, rows, getRowId],
   );
 
+  const applySelection = useCallback(
+    (rowId: RowId, event: React.MouseEvent, options?: { toggle?: boolean }) => {
+      if (selectionMode === "none") return;
+      const next = nextSelection({
+        current: state.selection,
+        rowId,
+        mode: selectionMode,
+        modifiers: {
+          shift: event.shiftKey,
+          // Checkboxes are additive: click toggles, shift-click ranges.
+          // Mapping that onto ctrl reuses nextSelection instead of forking it.
+          ctrl: event.metaKey || event.ctrlKey || options?.toggle === true,
+        },
+        allRowIds: rowIds,
+      });
+      fireSelection(next);
+    },
+    [selectionMode, state.selection, rowIds, fireSelection],
+  );
+
   const handleRowClick = useCallback(
     (row: TRow, rowId: RowId, event: React.MouseEvent) => {
-      if (selectionMode !== "none") {
-        const next = nextSelection({
-          current: state.selection,
-          rowId,
-          mode: selectionMode,
-          modifiers: { shift: event.shiftKey, ctrl: event.metaKey || event.ctrlKey },
-          allRowIds: rowIds,
-        });
-        fireSelection(next);
-      }
+      applySelection(rowId, event);
       onRowClick?.(row, rowId, event);
     },
-    [selectionMode, state.selection, rowIds, fireSelection, onRowClick],
+    [applySelection, onRowClick],
+  );
+
+  const handleCheckboxClick = useCallback(
+    (rowId: RowId, event: React.MouseEvent) => {
+      // Selection checkboxes must not fire onRowClick. Consumers use that
+      // callback for navigation, so routing checkbox clicks through
+      // handleRowClick would open the row instead of selecting it.
+      applySelection(rowId, event, { toggle: true });
+    },
+    [applySelection],
   );
 
   const handleSelectAll = useCallback(() => {
@@ -1340,8 +1362,6 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                           : { height: fixedRowHeight }),
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
-                      onClick={(e) => { if (!shouldIgnoreRowClick(e)) handleRowClick(row, rowId, e); }}
-                      onDoubleClick={(e) => { if (!shouldIgnoreRowClick(e)) onRowDoubleClick?.(row, rowId, e); }}
                       role="row"
                       aria-rowindex={virtualRow.index + 2}
                       aria-selected={isSelected}
@@ -1352,25 +1372,41 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                         <div
                           className="flex items-center justify-center border-r border-black/[0.04] dark:border-white/[0.04]"
                           style={{ width: 44 }}
+                          data-no-row-click=""
+                          onClick={(e) => e.stopPropagation()}
+                          onDoubleClick={(e) => e.stopPropagation()}
                         >
                           <SelectionCheckbox
                             checked={isSelected}
-                            onChange={(event) => handleRowClick(row, rowId, event)}
+                            onChange={(event) => handleCheckboxClick(rowId, event)}
                             ariaLabel={`Select row ${rowId}`}
                           />
                         </div>
                       )}
-                      {visibleColumns.map((col) => (
-                        <DataCell
-                          key={col.id}
-                          col={col}
-                          row={row}
-                          rowId={rowId}
-                          rowIndex={virtualRow.index}
-                          isSelected={isSelected}
-                          dateDisplay={state.dateDisplay}
-                        />
-                      ))}
+                      {/*
+                        onRowClick is attached to the cells, not the row.
+                        The checkbox is a sibling, so selecting a row cannot
+                        fire the navigation callback even if stopPropagation
+                        fails on the button.
+                      */}
+                      <div
+                        className="flex min-h-0 min-w-0 flex-1"
+                        data-row-body=""
+                        onClick={(e) => { if (!shouldIgnoreRowClick(e)) handleRowClick(row, rowId, e); }}
+                        onDoubleClick={(e) => { if (!shouldIgnoreRowClick(e)) onRowDoubleClick?.(row, rowId, e); }}
+                      >
+                        {visibleColumns.map((col) => (
+                          <DataCell
+                            key={col.id}
+                            col={col}
+                            row={row}
+                            rowId={rowId}
+                            rowIndex={virtualRow.index}
+                            isSelected={isSelected}
+                            dateDisplay={state.dateDisplay}
+                          />
+                        ))}
+                      </div>
                     </div>
                   );
                 })}
