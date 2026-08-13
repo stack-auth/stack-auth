@@ -98,8 +98,8 @@ STACK_CLICKHOUSE_ADMIN_USER=stackframe
 STACK_CLICKHOUSE_ADMIN_PASSWORD=password
 STACK_CLICKHOUSE_EXTERNAL_PASSWORD=replace-with-a-long-random-password
 
-STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=replace-with-a-random-value
-STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=replace-with-a-random-value
+STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=replace-with-a-random-value
+STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY=replace-with-a-random-value
 STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=replace-with-a-random-value
 
 STACK_SEED_INTERNAL_PROJECT_USER_EMAIL=admin@example.com
@@ -114,13 +114,13 @@ Generate `STACK_SERVER_SECRET` with a stable, high-entropy value and keep it unc
 openssl rand -base64 32 | tr '+/' '-_' | tr -d '='
 ```
 
-Generate the three `STACK_SEED_INTERNAL_PROJECT_*_KEY` values with any stable random values, for example:
+Generate the three internal project key values with any stable random values, for example:
 
 ```bash title="Terminal"
 openssl rand -hex 32
 ```
 
-The Docker entrypoint can generate the internal project keys if they are missing, but setting stable values yourself avoids rotating the dashboard project's keys on every fresh container start.
+The Docker entrypoint derives the internal project keys deterministically from `STACK_SERVER_SECRET` when they are missing, keeping them stable across restarts. You can also set the keys explicitly; keep all three values stable across deploys.
 
 Generate `CRON_SECRET` with a stable random value too. Your scheduler uses it to authenticate internal maintenance requests:
 
