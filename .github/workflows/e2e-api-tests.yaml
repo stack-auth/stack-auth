@@ -332,7 +332,7 @@ jobs:
         with:
           name: e2e-api-bulldozer
           path: ${{ runner.temp }}/hexclave-bulldozer.untracked.log
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Capture bulldozer-js diagnostics
         if: always()
@@ -353,7 +353,7 @@ jobs:
         with:
           name: e2e-api-bulldozer-diagnostics
           path: ${{ runner.temp }}/hexclave-bulldozer-diagnostics.untracked.json
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Upload E2E timing diagnostics
         if: always()
@@ -364,7 +364,7 @@ jobs:
             ${{ runner.temp }}/e2e-test-results-pass*.untracked.json
             ${{ runner.temp }}/e2e-test-output-pass*.untracked.log
             ${{ runner.temp }}/freestyle-mock-diagnostics-pass*.untracked.json
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Print Docker Compose logs
         if: always()

@@ -250,52 +250,52 @@ export function declareLmdbLowLevelDatabase(options: {
   };
   let activityStats = emptyActivityStats();
   let activityWindowStartedAt = performance.now();
-  if (!shouldSuppressPeriodicBulldozerLogs) {
-    const activityInterval = setInterval(() => {
-      if (!hasActivity(activityStats)) return;
-      const now = performance.now();
-      const elapsedMs = now - activityWindowStartedAt;
-      const elapsedSeconds = elapsedMs / 1000;
-      const diagnostics = {
-        dbId,
-        ...(bulldozerDiagnosticsEnabled ? { storeSizeBytes: getStoreSizeBytes(options.path) } : {}),
-        elapsedMs,
-        putsPerSecond: activityStats.puts / elapsedSeconds,
-        averagePutBytes: activityStats.puts === 0 ? 0 : activityStats.putBytes / activityStats.puts,
-        averagePutAwaitMs: activityStats.puts === 0 ? 0 : activityStats.putAwaitTotalMs / activityStats.puts,
-        transactionsPerSecond: activityStats.transactions / elapsedSeconds,
-        averageTransactionMs: activityStats.transactions === 0 ? 0 : activityStats.transactionTotalMs / activityStats.transactions,
-        averageTransactionQueueWaitMs: activityStats.transactions === 0 ? 0 : activityStats.transactionQueueWaitTotalMs / activityStats.transactions,
-        averageTransactionActionMs: activityStats.transactions === 0 ? 0 : activityStats.transactionActionTotalMs / activityStats.transactions,
-        averageMetaPutMs: activityStats.transactions === 0 ? 0 : activityStats.metaPutTotalMs / activityStats.transactions,
-        averageTransactionCommitTailMs: activityStats.transactions === 0 ? 0 : activityStats.transactionCommitTailTotalMs / activityStats.transactions,
-        requiredSeqWaitsPerSecond: activityStats.requiredSeqWaits / elapsedSeconds,
-        averageRequiredSeqWaitMs: activityStats.requiredSeqWaits === 0 ? 0 : activityStats.requiredSeqWaitTotalMs / activityStats.requiredSeqWaits,
-        waitUntilAvailableResolvesPerSecond: activityStats.waitUntilAvailableResolves / elapsedSeconds,
-        waitUntilDurableResolvesPerSecond: activityStats.waitUntilDurableResolves / elapsedSeconds,
-        averageSeqToAvailabilityResolveMs: activityStats.waitUntilAvailableResolves === 0 ? 0 : activityStats.waitUntilAvailableResolveTotalMs / activityStats.waitUntilAvailableResolves,
-        averageSeqToDurabilityResolveMs: activityStats.waitUntilDurableResolves === 0 ? 0 : activityStats.waitUntilDurableResolveTotalMs / activityStats.waitUntilDurableResolves,
-        combinedSeqAvailabilityResolvesPerSecond: activityStats.combinedSeqAvailabilityResolves / elapsedSeconds,
-        combinedSeqDurabilityResolvesPerSecond: activityStats.combinedSeqDurabilityResolves / elapsedSeconds,
-        averageCombinedSeqAvailabilityResolveMs: activityStats.combinedSeqAvailabilityResolves === 0 ? 0 : activityStats.combinedSeqAvailabilityResolveTotalMs / activityStats.combinedSeqAvailabilityResolves,
-        averageCombinedSeqDurabilityResolveMs: activityStats.combinedSeqDurabilityResolves === 0 ? 0 : activityStats.combinedSeqDurabilityResolveTotalMs / activityStats.combinedSeqDurabilityResolves,
-        mapSizes: {
-          seqToAvailability: seqToAvailability.size,
-          seqToDurability: seqToDurability.size,
-          combinedSeqToAvailability: combinedSeqToAvailability.size,
-          combinedSeqToDurability: combinedSeqToDurability.size,
-          combinedSeqDependencies: combinedSeqDependencies.size,
-          debugEntriesByStoreId: debugEntriesByStoreId.size,
-        },
-        currentVersion,
-      };
-      latestLmdbDiagnostics = diagnostics;
+  const activityInterval = setInterval(() => {
+    if (!hasActivity(activityStats)) return;
+    const now = performance.now();
+    const elapsedMs = now - activityWindowStartedAt;
+    const elapsedSeconds = elapsedMs / 1000;
+    const diagnostics = {
+      dbId,
+      ...(bulldozerDiagnosticsEnabled ? { storeSizeBytes: getStoreSizeBytes(options.path) } : {}),
+      elapsedMs,
+      putsPerSecond: activityStats.puts / elapsedSeconds,
+      averagePutBytes: activityStats.puts === 0 ? 0 : activityStats.putBytes / activityStats.puts,
+      averagePutAwaitMs: activityStats.puts === 0 ? 0 : activityStats.putAwaitTotalMs / activityStats.puts,
+      transactionsPerSecond: activityStats.transactions / elapsedSeconds,
+      averageTransactionMs: activityStats.transactions === 0 ? 0 : activityStats.transactionTotalMs / activityStats.transactions,
+      averageTransactionQueueWaitMs: activityStats.transactions === 0 ? 0 : activityStats.transactionQueueWaitTotalMs / activityStats.transactions,
+      averageTransactionActionMs: activityStats.transactions === 0 ? 0 : activityStats.transactionActionTotalMs / activityStats.transactions,
+      averageMetaPutMs: activityStats.transactions === 0 ? 0 : activityStats.metaPutTotalMs / activityStats.transactions,
+      averageTransactionCommitTailMs: activityStats.transactions === 0 ? 0 : activityStats.transactionCommitTailTotalMs / activityStats.transactions,
+      requiredSeqWaitsPerSecond: activityStats.requiredSeqWaits / elapsedSeconds,
+      averageRequiredSeqWaitMs: activityStats.requiredSeqWaits === 0 ? 0 : activityStats.requiredSeqWaitTotalMs / activityStats.requiredSeqWaits,
+      waitUntilAvailableResolvesPerSecond: activityStats.waitUntilAvailableResolves / elapsedSeconds,
+      waitUntilDurableResolvesPerSecond: activityStats.waitUntilDurableResolves / elapsedSeconds,
+      averageSeqToAvailabilityResolveMs: activityStats.waitUntilAvailableResolves === 0 ? 0 : activityStats.waitUntilAvailableResolveTotalMs / activityStats.waitUntilAvailableResolves,
+      averageSeqToDurabilityResolveMs: activityStats.waitUntilDurableResolves === 0 ? 0 : activityStats.waitUntilDurableResolveTotalMs / activityStats.waitUntilDurableResolves,
+      combinedSeqAvailabilityResolvesPerSecond: activityStats.combinedSeqAvailabilityResolves / elapsedSeconds,
+      combinedSeqDurabilityResolvesPerSecond: activityStats.combinedSeqDurabilityResolves / elapsedSeconds,
+      averageCombinedSeqAvailabilityResolveMs: activityStats.combinedSeqAvailabilityResolves === 0 ? 0 : activityStats.combinedSeqAvailabilityResolveTotalMs / activityStats.combinedSeqAvailabilityResolves,
+      averageCombinedSeqDurabilityResolveMs: activityStats.combinedSeqDurabilityResolves === 0 ? 0 : activityStats.combinedSeqDurabilityResolveTotalMs / activityStats.combinedSeqDurabilityResolves,
+      mapSizes: {
+        seqToAvailability: seqToAvailability.size,
+        seqToDurability: seqToDurability.size,
+        combinedSeqToAvailability: combinedSeqToAvailability.size,
+        combinedSeqToDurability: combinedSeqToDurability.size,
+        combinedSeqDependencies: combinedSeqDependencies.size,
+        debugEntriesByStoreId: debugEntriesByStoreId.size,
+      },
+      currentVersion,
+    };
+    latestLmdbDiagnostics = diagnostics;
+    if (!shouldSuppressPeriodicBulldozerLogs) {
       console.debug("bulldozer-js low-level lmdb activity", diagnostics);
-      activityStats = emptyActivityStats();
-      activityWindowStartedAt = now;
-    }, 5_000);
-    activityInterval.unref();
-  }
+    }
+    activityStats = emptyActivityStats();
+    activityWindowStartedAt = now;
+  }, 5_000);
+  activityInterval.unref();
   const initialSeq = [dbId, initialSeqId] as unknown as LmdbSeq;
   const toSeq = (seqId: string) => [dbId, seqId] as unknown as LmdbSeq;
 
