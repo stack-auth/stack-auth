@@ -71,9 +71,9 @@ const livePulseScreen: TvLivePulseScreen = {
       { label: "14:00", value: 42 },
     ],
     sourceHealth: [
-      { label: "Email delivery", status: "healthy", value: "99.2%", detail: "No issues detected" },
-      { label: "Payment collection", status: "healthy", value: "98.6%", detail: "No issues detected" },
-      { label: "Analytics", status: "healthy", value: "Fresh", detail: "Updated 1 min ago" },
+      { label: "Email delivery", status: "ready", value: "99.2%", detail: "Metrics available" },
+      { label: "Payment collection", status: "ready", value: "98.6%", detail: "Metrics available" },
+      { label: "Audience", status: "ready", value: "Fresh", detail: "All metrics available" },
     ],
   },
   insight: {
@@ -95,8 +95,6 @@ const audienceMomentumScreen: TvAudienceMomentumScreen = {
     userGrowthPercent: 12.8,
     newUsers: 38,
     monthlyActiveUsers: 361,
-    visitors: 923,
-    averageSessionSeconds: 252,
     verificationRatePercent: 91.6,
     lifecycle: [
       { label: "Thu", primary: 18, secondary: 48, tertiary: 12 },
@@ -107,6 +105,16 @@ const audienceMomentumScreen: TvAudienceMomentumScreen = {
       { label: "Tue", primary: 31, secondary: 79, tertiary: 22 },
       { label: "Wed", primary: 38, secondary: 91, tertiary: 25 },
     ],
+    analytics: {
+      sourceStatus: "ready",
+      observedAt: FIXTURE_NOW,
+      diagnosticCode: null,
+      data: {
+        visitors: 923,
+        qualifyingSessions: 214,
+        averageSessionSeconds: 252,
+      },
+    },
   },
   insight: {
     kind: "returning-users-leading",

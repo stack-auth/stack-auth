@@ -4,11 +4,12 @@ import {
   calculateTvPaymentSuccessPercent,
   getTvBuiltInProfile,
   TV_SCREEN_IDS,
+  TvAudienceMomentumScreenSchema,
   TvProfileConfigurationSchema,
   TvSnapshotSchema,
 } from "./admin-tv-mode";
 
-function validSnapshot(sourceHealthStatus: "healthy" | "ready" | "empty" | "insufficient-data" | "unavailable" | "error" | "stale" = "ready") {
+function validSnapshot(sourceHealthStatus: "healthy" | "ready" | "limited" | "empty" | "insufficient-data" | "unavailable" | "error" | "stale" = "ready") {
   const observedAt = "2026-07-25T12:00:00.000Z";
   const window = {
     current: { startsAt: observedAt, endsAt: observedAt, label: "Current" },
@@ -54,10 +55,14 @@ function validSnapshot(sourceHealthStatus: "healthy" | "ready" | "empty" | "insu
           userGrowthPercent: 0,
           newUsers: 1,
           monthlyActiveUsers: 2,
-          visitors: 2,
-          averageSessionSeconds: 10,
           verificationRatePercent: 50,
           lifecycle: [],
+          analytics: {
+            sourceStatus: "ready",
+            observedAt,
+            diagnosticCode: null,
+            data: { visitors: 2, qualifyingSessions: 1, averageSessionSeconds: 10 },
+          },
         },
         insight: null,
       },
@@ -111,12 +116,48 @@ describe("TvSnapshotSchema", () => {
     });
   });
 
-  it.each(["healthy", "ready", "empty", "insufficient-data", "unavailable", "error", "stale"] as const)(
+  it.each(["healthy", "ready", "limited", "empty", "insufficient-data", "unavailable", "error", "stale"] as const)(
     "accepts the %s source-health status",
     async (status) => {
       await expect(TvSnapshotSchema.validate(validSnapshot(status), { strict: true })).resolves.toBeDefined();
     },
   );
+
+  it.each([
+    ["ready without data", { sourceStatus: "ready", diagnosticCode: null, data: null }],
+    ["ready without activity", { sourceStatus: "ready", diagnosticCode: null, data: { visitors: 0, qualifyingSessions: 0, averageSessionSeconds: null } }],
+    ["empty with activity", { sourceStatus: "empty", diagnosticCode: null, data: { visitors: 1, qualifyingSessions: 0, averageSessionSeconds: null } }],
+    ["unavailable with data", { sourceStatus: "unavailable", diagnosticCode: "analytics-app-disabled", data: { visitors: 1, qualifyingSessions: 0, averageSessionSeconds: null } }],
+    ["no sessions with an average", { sourceStatus: "ready", diagnosticCode: null, data: { visitors: 1, qualifyingSessions: 0, averageSessionSeconds: 0 } }],
+    ["sessions without an average", { sourceStatus: "ready", diagnosticCode: null, data: { visitors: 1, qualifyingSessions: 1, averageSessionSeconds: null } }],
+  ])("rejects inconsistent Audience Analytics state: %s", async (_label, analytics) => {
+    const snapshot = validSnapshot();
+    const audience = snapshot.screens[1];
+    await expect(TvAudienceMomentumScreenSchema.validate({
+      ...audience,
+      data: {
+        ...audience.data,
+        analytics: { ...analytics, observedAt: snapshot.generatedAt },
+      },
+    }, { strict: true })).rejects.toThrow("Analytics source state is inconsistent");
+  });
+
+  it("accepts empty Analytics activity without treating it as a failed source", async () => {
+    const snapshot = validSnapshot();
+    const audience = snapshot.screens[1];
+    await expect(TvAudienceMomentumScreenSchema.validate({
+      ...audience,
+      data: {
+        ...audience.data,
+        analytics: {
+          sourceStatus: "empty",
+          observedAt: snapshot.generatedAt,
+          diagnosticCode: null,
+          data: { visitors: 0, qualifyingSessions: 0, averageSessionSeconds: null },
+        },
+      },
+    }, { strict: true })).resolves.toBeDefined();
+  });
 
   it("accepts a profile-owned duration schedule aligned with the playlist", async () => {
     const snapshot = validSnapshot();

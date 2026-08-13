@@ -8,18 +8,22 @@ import type {
 import { getTvBuiltInProfile } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import {
   addTvSourceHealth,
+  applyTvAudienceAnalytics,
   assembleTvSnapshot,
   createReadyTvLivePulseScreen,
+  createTvAudienceAnalyticsObservation,
   createTvLivePulseErrorScreen,
   getTvOperationalMetricsClient,
   hasTvPaymentData,
   isTvEmailInsightEligible,
   isTvReturningInsightEligible,
   sourceHealthFact,
+  TV_AUDIENCE_ANALYTICS_QUERY,
   TV_AUDIENCE_LIFECYCLE_QUERY,
 } from "./snapshot";
 
 const observedAt = "2026-07-25T12:00:00.000Z";
+type TvAudienceAnalytics = NonNullable<TvAudienceMomentumScreen["data"]>["analytics"];
 const window = {
   current: { startsAt: observedAt, endsAt: observedAt, label: "Current" },
   comparison: null,
@@ -184,22 +188,52 @@ describe("assembleTvSnapshot", () => {
 });
 
 describe("TV source health facts", () => {
-  it("describes a ready source as reporting without claiming evaluator-backed health", () => {
-    expect(sourceHealthFact("Analytics", {
-      ...screens.audience,
-      sourceStatus: "ready",
-      diagnosticCode: null,
-      data: {
-        totalUsers: 2,
-        userGrowthPercent: 0,
-        newUsers: 1,
-        monthlyActiveUsers: 2,
-        visitors: 1,
-        averageSessionSeconds: 10,
-        verificationRatePercent: 50,
-        lifecycle: [],
+  const readyAudience = {
+    ...screens.audience,
+    sourceStatus: "ready",
+    diagnosticCode: null,
+    data: {
+      totalUsers: 2,
+      userGrowthPercent: 0,
+      newUsers: 1,
+      monthlyActiveUsers: 2,
+      verificationRatePercent: 50,
+      lifecycle: [],
+      analytics: {
+        sourceStatus: "ready",
+        observedAt,
+        diagnosticCode: null,
+        data: { visitors: 1, qualifyingSessions: 1, averageSessionSeconds: 10 },
       },
-    })).toEqual({ label: "Analytics", status: "ready", value: "Fresh", detail: "Metrics available" });
+    },
+  } satisfies TvAudienceMomentumScreen;
+
+  it("describes a ready source as reporting without claiming evaluator-backed health", () => {
+    expect(sourceHealthFact("Audience", readyAudience)).toEqual({
+      label: "Audience",
+      status: "ready",
+      value: "Fresh",
+      detail: "All metrics available",
+    });
+  });
+
+  it.each([
+    ["unavailable", "analytics-app-disabled", "Engagement metrics not enabled"],
+    ["error", "source-query-failed", "Engagement metrics temporarily unavailable"],
+    ["insufficient-data", "insufficient-analytics-data", "Not enough engagement data"],
+  ] satisfies ReadonlyArray<readonly [TvAudienceAnalytics["sourceStatus"], string, string]>)("describes %s Analytics enrichment as limited Audience data", (sourceStatus, diagnosticCode, detail) => {
+    const audience = applyTvAudienceAnalytics(readyAudience, {
+      sourceStatus,
+      observedAt,
+      diagnosticCode,
+      data: null,
+    });
+    expect(sourceHealthFact("Audience", audience)).toEqual({
+      label: "Audience",
+      status: "limited",
+      value: "Limited",
+      detail,
+    });
   });
 
   it.each([
@@ -215,6 +249,108 @@ describe("TV source health facts", () => {
       value,
       detail,
     });
+  });
+});
+
+describe("TV Audience Analytics enrichment", () => {
+  const coreAudience = {
+    id: "audience-momentum",
+    sourceStatus: "ready",
+    sourceLabel: "Audience",
+    observedAt,
+    window,
+    diagnosticCode: null,
+    data: {
+      totalUsers: 12,
+      userGrowthPercent: 5,
+      newUsers: 2,
+      monthlyActiveUsers: 8,
+      verificationRatePercent: 50,
+      lifecycle: [{ label: "Fri", primary: 1, secondary: 3, tertiary: 1 }],
+      analytics: {
+        sourceStatus: "ready",
+        observedAt,
+        diagnosticCode: null,
+        data: { visitors: 9, qualifyingSessions: 3, averageSessionSeconds: 20 },
+      },
+    },
+    insight: {
+      kind: "returning-users-leading",
+      message: "Returning users lead.",
+      evidence: { newActivity: 1, retainedActivity: 3, reactivatedActivity: 1, leadMarginPercent: 300 },
+    },
+  } satisfies TvAudienceMomentumScreen;
+
+  it.each([
+    ["unavailable", "analytics-app-disabled"],
+    ["error", "source-query-failed"],
+  ] satisfies ReadonlyArray<readonly [TvAudienceAnalytics["sourceStatus"], string]>)("preserves core data and its insight when Analytics is %s", (sourceStatus, diagnosticCode) => {
+    const enriched = applyTvAudienceAnalytics(coreAudience, {
+      sourceStatus,
+      observedAt: "2026-07-25T12:00:15.000Z",
+      diagnosticCode,
+      data: null,
+    });
+    expect(enriched).toMatchObject({
+      sourceStatus: "ready",
+      diagnosticCode: null,
+      data: {
+        totalUsers: 12,
+        monthlyActiveUsers: 8,
+        lifecycle: coreAudience.data.lifecycle,
+        analytics: { sourceStatus, data: null },
+      },
+      insight: coreAudience.insight,
+    });
+  });
+
+  it("replaces prior Analytics values rather than leaking them into a failed poll", () => {
+    const failed = applyTvAudienceAnalytics(coreAudience, {
+      sourceStatus: "error",
+      observedAt: "2026-07-25T12:00:15.000Z",
+      diagnosticCode: "source-query-failed",
+      data: null,
+    });
+    const recovered = applyTvAudienceAnalytics(failed, {
+      sourceStatus: "ready",
+      observedAt: "2026-07-25T12:00:30.000Z",
+      diagnosticCode: null,
+      data: { visitors: 4, qualifyingSessions: 1, averageSessionSeconds: 0 },
+    });
+    expect(failed.data?.analytics.data).toBeNull();
+    expect(recovered.data?.analytics).toMatchObject({
+      sourceStatus: "ready",
+      data: { visitors: 4, qualifyingSessions: 1, averageSessionSeconds: 0 },
+    });
+  });
+
+  it("represents legitimate zero activity as an observed empty enrichment", () => {
+    expect(createTvAudienceAnalyticsObservation({
+      observedAt,
+      visitors: 0,
+      qualifyingSessions: 0,
+      averageSessionSeconds: null,
+    })).toEqual({
+      sourceStatus: "empty",
+      observedAt,
+      diagnosticCode: null,
+      data: { visitors: 0, qualifyingSessions: 0, averageSessionSeconds: null },
+    });
+  });
+
+  it("preserves a measured zero-second session and rejects inconsistent session evidence", () => {
+    expect(createTvAudienceAnalyticsObservation({
+      observedAt,
+      visitors: 1,
+      qualifyingSessions: 1,
+      averageSessionSeconds: 0,
+    }).sourceStatus).toBe("ready");
+    expect(() => createTvAudienceAnalyticsObservation({
+      observedAt,
+      visitors: 1,
+      qualifyingSessions: 0,
+      averageSessionSeconds: 0,
+    })).toThrow("inconsistent qualification data");
   });
 });
 
@@ -368,5 +504,12 @@ describe("TV Audience lifecycle query", () => {
     expect(TV_AUDIENCE_LIFECYCLE_QUERY).not.toContain("analytics_internal.users");
     expect(TV_AUDIENCE_LIFECYCLE_QUERY).not.toContain("lagInFrame");
     expect(TV_AUDIENCE_LIFECYCLE_QUERY).not.toContain("SELECT DISTINCT toDate(event_at)");
+  });
+
+  it("keeps Analytics enrichment scoped and preserves empty-session semantics", () => {
+    expect(TV_AUDIENCE_ANALYTICS_QUERY).toContain("project_id = {projectId:String}");
+    expect(TV_AUDIENCE_ANALYTICS_QUERY).toContain("branch_id = {branchId:String}");
+    expect(TV_AUDIENCE_ANALYTICS_QUERY).toContain("count() FROM sessions");
+    expect(TV_AUDIENCE_ANALYTICS_QUERY).toContain("avgOrNull(duration_s)");
   });
 });

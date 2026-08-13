@@ -8,9 +8,19 @@ import {
 } from "@/generated/prisma/client";
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import {
+  claimEvaluator,
+  persistEmailEvaluation,
+  readTvEmailState,
   synchronizeTvProfileAssignments,
   type TvEventOccurrenceRow,
 } from "@/lib/tv-mode/events";
+import {
+  calculateTvEmailEvidenceRate,
+  type TvEmailBaseline,
+  type TvEmailEvaluationSample,
+  type TvEmailEvaluatorState,
+  type TvEmailEvidenceWindow,
+} from "@/lib/tv-mode/event-evaluators";
 import {
   createTvProfile,
   deleteTvProfile,
@@ -128,9 +138,133 @@ describe.sequential("TV presentation persistence (real DB)", () => {
     };
   }
 
+  const emailBaseline: TvEmailBaseline = {
+    startsAt: "2026-07-01T00:00:00.000Z",
+    endsAt: "2026-07-29T00:00:00.000Z",
+    computedAt: "2026-07-29T12:00:00.000Z",
+    assessableSends: 10_000,
+    qualifiedDays: 28,
+    days: [],
+    medianDeliveryRatePercent: 99.9,
+  };
+
+  function emailWindow(assessable: number, failures: number): TvEmailEvidenceWindow {
+    const delivered = assessable - failures;
+    return {
+      startsAt: "2026-07-29T11:40:00.000Z",
+      endsAt: "2026-07-29T11:55:00.000Z",
+      finishedSends: assessable,
+      deliveredSends: delivered,
+      bouncedSends: failures,
+      serverErrorSends: 0,
+      neutralOrUnknownSends: 0,
+      explicitFailures: failures,
+      ...calculateTvEmailEvidenceRate(delivered, failures),
+    };
+  }
+
+  function emailSample(at: Date, assessable: number, failures: number): TvEmailEvaluationSample {
+    return {
+      status: "fresh",
+      evaluatedAt: at.toISOString(),
+      observedAt: at.toISOString(),
+      current: emailWindow(assessable, failures),
+      lowVolume: emailWindow(assessable * 4, failures * 4),
+      baseline: emailBaseline,
+    };
+  }
+
   beforeEach(async () => {
     firstTenancy = await createTestTenancy();
     secondTenancy = await createTestTenancy();
+  });
+
+  it("allows only one concurrent evaluator claimant for a tenancy and interval", async () => {
+    const now = new Date("2026-07-29T12:00:00.000Z");
+    const claims = await Promise.all([
+      claimEvaluator(firstTenancy, "email-delivery", now),
+      claimEvaluator(firstTenancy, "email-delivery", now),
+    ]);
+    expect(claims.filter((claim) => claim != null)).toHaveLength(1);
+  });
+
+  it("persists versioned activation and escalation evidence without overwriting activation", async () => {
+    const activatedAt = new Date("2026-07-29T12:03:00.000Z");
+    const activationClaim = await claimEvaluator(firstTenancy, "email-delivery", activatedAt);
+    if (activationClaim == null) throw new Error("The evaluator claim was not acquired");
+    const activationState = {
+      ruleVersion: 2,
+      activeClass: null,
+      candidate: {
+        rulePath: "standard",
+        presentationClass: "incident",
+        accumulatedMs: 2 * 60_000,
+        borderlineEvaluations: 0,
+      },
+      recovery: null,
+      lastFreshEvaluatedAt: new Date(activatedAt.getTime() - 60_000).toISOString(),
+      baseline: emailBaseline,
+    } satisfies TvEmailEvaluatorState;
+    await persistEmailEvaluation({
+      tenancy: firstTenancy,
+      claim: activationClaim,
+      previousState: activationState,
+      sample: emailSample(activatedAt, 100, 10),
+      now: activatedAt,
+    });
+
+    const afterActivation = await globalPrismaClient.tvEventOccurrence.findFirstOrThrow({
+      where: { tenancyId: firstTenancy.id, lifecycle: TvEventOccurrenceLifecycle.ACTIVE },
+    });
+    expect(afterActivation.aggregateEvidence).toMatchObject({
+      ruleVersion: 2,
+      activation: {
+        qualification: "standard",
+        accumulatedMs: 3 * 60_000,
+        qualificationEvidence: {
+          requiredPersistenceMs: 3 * 60_000,
+          thresholds: {
+            minimumAssessableSends: 50,
+            minimumExplicitFailures: 5,
+            deliveryRateBelowPercent: 95,
+            minimumBaselineDropPoints: 5,
+          },
+        },
+      },
+      latestActiveObservation: { qualification: "standard" },
+    });
+
+    const criticalAt = new Date("2026-07-29T12:05:00.000Z");
+    const firstCriticalClaim = await claimEvaluator(firstTenancy, "email-delivery", criticalAt);
+    if (firstCriticalClaim == null) throw new Error("The first Critical claim was not acquired");
+    await persistEmailEvaluation({
+      tenancy: firstTenancy,
+      claim: firstCriticalClaim,
+      previousState: readTvEmailState(firstCriticalClaim.typedState, "incident"),
+      sample: emailSample(criticalAt, 50, 11),
+      now: criticalAt,
+    });
+
+    const escalatedAt = new Date("2026-07-29T12:06:00.000Z");
+    const secondCriticalClaim = await claimEvaluator(firstTenancy, "email-delivery", escalatedAt);
+    if (secondCriticalClaim == null) throw new Error("The second Critical claim was not acquired");
+    await persistEmailEvaluation({
+      tenancy: firstTenancy,
+      claim: secondCriticalClaim,
+      previousState: readTvEmailState(secondCriticalClaim.typedState, "incident"),
+      sample: emailSample(escalatedAt, 50, 11),
+      now: escalatedAt,
+    });
+
+    const afterEscalation = await globalPrismaClient.tvEventOccurrence.findUniqueOrThrow({
+      where: { tenancyId_id: { tenancyId: firstTenancy.id, id: afterActivation.id } },
+    });
+    expect(afterEscalation).toMatchObject({ presentationClass: TvEventPresentationClass.CRITICAL_INCIDENT });
+    expect(afterEscalation.aggregateEvidence).toMatchObject({
+      ruleVersion: 2,
+      activation: { qualification: "standard" },
+      escalation: { qualification: "critical" },
+    });
   });
 
   afterEach(async () => {

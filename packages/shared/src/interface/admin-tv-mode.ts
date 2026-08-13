@@ -71,7 +71,7 @@ const TvStackedTrendPointSchema = yupObject({
 
 const TvStatusFactSchema = yupObject({
   label: yupString().defined(),
-  status: yupString().oneOf(["healthy", "ready", "empty", "insufficient-data", "unavailable", "error", "stale"]).defined(),
+  status: yupString().oneOf(["healthy", "ready", "limited", "empty", "insufficient-data", "unavailable", "error", "stale"]).defined(),
   value: yupString().defined(),
   detail: yupString().defined(),
 }).noUnknown().defined();
@@ -124,10 +124,37 @@ export const TvAudienceMomentumScreenSchema = yupObject({
     userGrowthPercent: yupNumber().defined(),
     newUsers: yupNumber().integer().min(0).defined(),
     monthlyActiveUsers: yupNumber().integer().min(0).defined(),
-    visitors: yupNumber().integer().min(0).defined(),
-    averageSessionSeconds: yupNumber().min(0).defined(),
     verificationRatePercent: yupNumber().min(0).max(100).defined(),
     lifecycle: yupArray(TvStackedTrendPointSchema).defined(),
+    analytics: yupObject({
+      sourceStatus: yupString().oneOf(["ready", "empty", "insufficient-data", "unavailable", "error"]).defined(),
+      observedAt: yupString().defined(),
+      diagnosticCode: yupString().nullable().defined(),
+      data: yupObject({
+        visitors: yupNumber().integer().min(0).defined(),
+        qualifyingSessions: yupNumber().integer().min(0).defined(),
+        averageSessionSeconds: yupNumber().min(0).nullable().defined(),
+      }).noUnknown().nullable().defined(),
+    }).noUnknown().defined().test(
+      "analytics-source-data-state",
+      "TV Audience Analytics source state is inconsistent with its data",
+      (analytics) => {
+        if (["unavailable", "error", "insufficient-data"].includes(analytics.sourceStatus)) {
+          return analytics.data === null;
+        }
+        if (analytics.data == null) return false;
+        if (analytics.sourceStatus === "empty") {
+          return analytics.data.visitors === 0
+            && analytics.data.qualifyingSessions === 0
+            && analytics.data.averageSessionSeconds === null;
+        }
+        if (analytics.sourceStatus !== "ready") return false;
+        if (analytics.data.visitors === 0 && analytics.data.qualifyingSessions === 0) return false;
+        return analytics.data.qualifyingSessions === 0
+          ? analytics.data.averageSessionSeconds === null
+          : analytics.data.averageSessionSeconds !== null;
+      },
+    ),
   }).noUnknown().nullable().defined(),
   insight: yupObject({
     kind: yupString().oneOf(["returning-users-leading"]).defined(),

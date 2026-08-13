@@ -3,6 +3,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getTvFixtureSnapshot } from "@/lib/tv-mode/fixtures";
+import type { TvAudienceMomentumScreen } from "@/lib/tv-mode/types";
 import { getTvInsightPresentation, renderTvScreen } from "./screen-registry";
 import { TvPresentation } from "./tv-presentation";
 
@@ -65,6 +66,44 @@ describe("TvPresentation rotation", () => {
     await act(() => vi.advanceTimersByTime(5_000));
     expect(screen.getByLabelText("Screen 3 of 4")).toBeDefined();
   });
+
+  it("does not reset rotation as Audience Analytics recovers on a later poll", () => {
+    const fullSnapshot = getTvFixtureSnapshot("project-a", "company-pulse");
+    const fullAudience = fullSnapshot?.screens.find((candidate) => candidate.id === "audience-momentum");
+    if (fullSnapshot == null || fullAudience?.id !== "audience-momentum" || fullAudience.data == null) {
+      throw new Error("Missing Audience polling fixture");
+    }
+    const failedAnalytics = {
+      sourceStatus: "error",
+      observedAt: "2026-07-23T14:32:15.000Z",
+      diagnosticCode: "source-query-failed",
+      data: null,
+    } satisfies NonNullable<TvAudienceMomentumScreen["data"]>["analytics"];
+    const partialSnapshot = {
+      ...fullSnapshot,
+      generatedAt: "2026-07-23T14:32:15.000Z",
+      screens: fullSnapshot.screens.map((candidate) => candidate.id === "audience-momentum" ? {
+        ...candidate,
+        data: candidate.data == null ? null : {
+          ...candidate.data,
+          analytics: failedAnalytics,
+        },
+      } : candidate),
+    };
+    const { rerender } = render(<TvPresentation snapshot={fullSnapshot} onExit={() => undefined} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Next screen" }));
+    expect(screen.getByLabelText("Screen 2 of 4")).toBeDefined();
+
+    rerender(<TvPresentation snapshot={partialSnapshot} onExit={() => undefined} />);
+    expect(screen.getByLabelText("Screen 2 of 4")).toBeDefined();
+
+    rerender(<TvPresentation snapshot={{
+      ...fullSnapshot,
+      generatedAt: "2026-07-23T14:32:30.000Z",
+    }} onExit={() => undefined} />);
+    expect(screen.getByLabelText("Screen 2 of 4")).toBeDefined();
+  });
 });
 
 describe("TV chart headers", () => {
@@ -100,18 +139,81 @@ describe("TV metric semantics", () => {
     screen.getByText("12.8% growth over the last 7 days");
     screen.getByText("Signed-In Visitors · 7d");
     screen.getByText("Identified Session Avg · 7d");
-    screen.getByText("Replay-segment data · 91.6% users verified");
+    screen.getByText("91.6% users verified");
+    screen.getByText("214 Sessions");
     audienceRender.unmount();
 
     const revenueRender = render(renderTvScreen(revenue));
     screen.getByText("Gross Paid Revenue · 30d");
     screen.getByText("30-Day Gross Revenue Proxy");
-    screen.getByText("Gross paid invoice revenue · refunds excluded");
+    screen.getByText("Refunds Excluded");
     revenueRender.unmount();
 
     render(renderTvScreen(email));
     expect(screen.getAllByText("Delivered").length).toBeGreaterThan(0);
     expect(screen.queryByText("Completed Successfully")).toBeNull();
+  });
+
+  it("keeps core Audience metrics visible when Analytics enrichment is unavailable", () => {
+    const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
+    const audience = snapshot?.screens.find((candidate) => candidate.id === "audience-momentum");
+    if (snapshot == null || audience?.id !== "audience-momentum" || audience.data == null) throw new Error("Missing Audience fixture screen");
+
+    render(renderTvScreen({
+      ...audience,
+      data: {
+        ...audience.data,
+        analytics: {
+          sourceStatus: "unavailable",
+          observedAt: snapshot.generatedAt,
+          diagnosticCode: "analytics-app-disabled",
+          data: null,
+        },
+      },
+    }));
+
+    screen.getByText("512");
+    screen.getByText("361");
+    screen.getByText("91.6% users verified");
+    expect(screen.getAllByText("—")).toHaveLength(2);
+    expect(screen.getAllByText("Not Enabled")).toHaveLength(2);
+    screen.getByText("Audience Lifecycle");
+  });
+
+  it("distinguishes no qualifying sessions from a measured zero-second session", () => {
+    const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
+    const audience = snapshot?.screens.find((candidate) => candidate.id === "audience-momentum");
+    if (snapshot == null || audience?.id !== "audience-momentum" || audience.data == null) throw new Error("Missing Audience fixture screen");
+
+    const emptyRender = render(renderTvScreen({
+      ...audience,
+      data: {
+        ...audience.data,
+        analytics: {
+          sourceStatus: "empty",
+          observedAt: snapshot.generatedAt,
+          diagnosticCode: null,
+          data: { visitors: 0, qualifyingSessions: 0, averageSessionSeconds: null },
+        },
+      },
+    }));
+    expect(screen.getAllByText("No Sessions")).toHaveLength(2);
+    emptyRender.unmount();
+
+    render(renderTvScreen({
+      ...audience,
+      data: {
+        ...audience.data,
+        analytics: {
+          sourceStatus: "ready",
+          observedAt: snapshot.generatedAt,
+          diagnosticCode: null,
+          data: { visitors: 1, qualifyingSessions: 1, averageSessionSeconds: 0 },
+        },
+      },
+    }));
+    screen.getByText("0s");
+    screen.getByText("1 Session");
   });
 });
 

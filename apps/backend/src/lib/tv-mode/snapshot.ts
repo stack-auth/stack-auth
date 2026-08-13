@@ -22,6 +22,7 @@ import {
   type TvScreenSnapshot,
   type TvSnapshot,
   type TvStackedTrendPoint,
+  type TvStatusFact,
   type TvTrendPoint,
 } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
@@ -77,6 +78,38 @@ export const TV_AUDIENCE_LIFECYCLE_QUERY = `
   ORDER BY idx
 `;
 
+export const TV_AUDIENCE_ANALYTICS_QUERY = `
+  WITH sessions AS (
+    SELECT
+      session_replay_segment_id AS sid,
+      dateDiff('second', min(event_at), max(event_at)) AS duration_s
+    FROM analytics_internal.events
+    WHERE project_id = {projectId:String}
+      AND branch_id = {branchId:String}
+      AND event_at >= {since:DateTime}
+      AND event_at < {until:DateTime}
+      AND event_type IN ('$page-view', '$click')
+      AND user_id IS NOT NULL
+      AND session_replay_segment_id IS NOT NULL
+      AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
+    GROUP BY sid
+  )
+  SELECT
+    (
+      SELECT uniqExact(assumeNotNull(user_id))
+      FROM analytics_internal.events
+      WHERE project_id = {projectId:String}
+        AND branch_id = {branchId:String}
+        AND event_at >= {since:DateTime}
+        AND event_at < {until:DateTime}
+        AND event_type = '$page-view'
+        AND user_id IS NOT NULL
+        AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
+    ) AS visitors,
+    (SELECT count() FROM sessions) AS qualifying_sessions,
+    (SELECT avgOrNull(duration_s) FROM sessions) AS average_session_seconds
+`;
+
 class TvSnapshotInvariantError extends Error {
   override name = "TvSnapshotInvariantError";
 }
@@ -91,6 +124,8 @@ type TvWindowBounds = {
 type TvAdapterResult<TScreen extends TvScreenSnapshot> =
   | { status: "success", screen: TScreen }
   | { status: "error", screen: TScreen };
+
+type TvAudienceAnalytics = NonNullable<TvAudienceMomentumScreen["data"]>["analytics"];
 
 export function getTvOperationalMetricsClient<T>(prisma: { $replica: () => T }): T {
   return prisma.$replica();
@@ -107,6 +142,55 @@ function percentChange(current: number, comparison: number): number {
 export function isTvReturningInsightEligible(newActivity: number, returningActivity: number): boolean {
   if (newActivity <= 0 || returningActivity <= newActivity) return false;
   return roundPercent(((returningActivity - newActivity) / newActivity) * 100) >= 10;
+}
+
+export function applyTvAudienceAnalytics(
+  screen: TvAudienceMomentumScreen,
+  analytics: TvAudienceAnalytics,
+): TvAudienceMomentumScreen {
+  if (screen.data == null) {
+    throw new TvSnapshotInvariantError("TV Audience Analytics enrichment requires successful core audience data.");
+  }
+  return {
+    ...screen,
+    data: {
+      ...screen.data,
+      analytics,
+    },
+  };
+}
+
+export function createTvAudienceAnalyticsObservation(options: {
+  observedAt: string,
+  visitors: number,
+  qualifyingSessions: number,
+  averageSessionSeconds: number | null,
+}): TvAudienceAnalytics {
+  if (
+    !Number.isInteger(options.visitors)
+    || options.visitors < 0
+    || !Number.isInteger(options.qualifyingSessions)
+    || options.qualifyingSessions < 0
+    || (
+      options.averageSessionSeconds != null
+      && (!Number.isFinite(options.averageSessionSeconds) || options.averageSessionSeconds < 0)
+    )
+  ) {
+    throw new TvSnapshotInvariantError("TV analytics aggregate returned invalid numeric evidence.");
+  }
+  if ((options.qualifyingSessions === 0) !== (options.averageSessionSeconds === null)) {
+    throw new TvSnapshotInvariantError("TV analytics session aggregate returned inconsistent qualification data.");
+  }
+  return {
+    sourceStatus: options.visitors === 0 && options.qualifyingSessions === 0 ? "empty" : "ready",
+    observedAt: options.observedAt,
+    diagnosticCode: null,
+    data: {
+      visitors: options.visitors,
+      qualifyingSessions: options.qualifyingSessions,
+      averageSessionSeconds: options.averageSessionSeconds,
+    },
+  };
 }
 
 export function isTvEmailInsightEligible(
@@ -478,8 +562,9 @@ async function loadActivityScreens(
     const currentNewUsers = Number(users.current_new_users);
     const previousTotalUsers = totalUsers - currentNewUsers + Number(users.deleted_existing_users);
     const currentReturning = lifecycle.reduce((sum, point) => sum + point.secondary + point.tertiary, 0);
-    const returningLeadMarginPercent = currentNewUsers > 0
-      ? roundPercent(((currentReturning - currentNewUsers) / currentNewUsers) * 100)
+    const currentNewActivity = lifecycle.reduce((sum, point) => sum + point.primary, 0);
+    const returningLeadMarginPercent = currentNewActivity > 0
+      ? roundPercent(((currentReturning - currentNewActivity) / currentNewActivity) * 100)
       : 0;
     const verificationRatePercent = totalUsers > 0
       ? roundPercent((Number(users.verified_users) / totalUsers) * 100)
@@ -504,16 +589,20 @@ async function loadActivityScreens(
         userGrowthPercent: percentChange(totalUsers, Math.max(0, previousTotalUsers)),
         newUsers: currentNewUsers,
         monthlyActiveUsers: Number(mauRow.mau),
-        visitors: 0,
-        averageSessionSeconds: 0,
         verificationRatePercent,
         lifecycle,
+        analytics: {
+          sourceStatus: "error",
+          observedAt,
+          diagnosticCode: "analytics-not-loaded",
+          data: null,
+        },
       } : null,
-      insight: hasAudience && isTvReturningInsightEligible(currentNewUsers, currentReturning) ? {
+      insight: hasAudience && isTvReturningInsightEligible(currentNewActivity, currentReturning) ? {
         kind: "returning-users-leading",
         message: "Audience momentum is being driven primarily by returning users.",
         evidence: {
-          newActivity: currentNewUsers,
+          newActivity: currentNewActivity,
           retainedActivity: lifecycle.reduce((sum, point) => sum + point.secondary, 0),
           reactivatedActivity: lifecycle.reduce((sum, point) => sum + point.tertiary, 0),
           leadMarginPercent: returningLeadMarginPercent,
@@ -542,48 +631,18 @@ async function loadAnalyticsIntoAudience(
   if (!(tenancy.config.apps.installed.analytics?.enabled ?? false)) {
     return {
       status: "success",
-      screen: {
-        ...audienceResult.screen,
+      screen: applyTvAudienceAnalytics(audienceResult.screen, {
         sourceStatus: "unavailable",
+        observedAt: now.toISOString(),
         diagnosticCode: "analytics-app-disabled",
         data: null,
-        insight: null,
-      },
+      }),
     };
   }
   const bounds = getRollingWindow(now, 7);
   try {
     const result = await getClickhouseAdminClientForMetrics().query({
-      query: `
-        WITH sessions AS (
-          SELECT
-            session_replay_segment_id AS sid,
-            dateDiff('second', min(event_at), max(event_at)) AS duration_s
-          FROM analytics_internal.events
-          WHERE project_id = {projectId:String}
-            AND branch_id = {branchId:String}
-            AND event_at >= {since:DateTime}
-            AND event_at < {until:DateTime}
-            AND event_type IN ('$page-view', '$click')
-            AND user_id IS NOT NULL
-            AND session_replay_segment_id IS NOT NULL
-            AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
-          GROUP BY sid
-        )
-        SELECT
-          (
-            SELECT uniqExact(assumeNotNull(user_id))
-            FROM analytics_internal.events
-            WHERE project_id = {projectId:String}
-              AND branch_id = {branchId:String}
-              AND event_at >= {since:DateTime}
-              AND event_at < {until:DateTime}
-              AND event_type = '$page-view'
-              AND user_id IS NOT NULL
-              AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
-          ) AS visitors,
-          (SELECT ifNull(avg(duration_s), 0) FROM sessions) AS average_session_seconds
-      `,
+      query: TV_AUDIENCE_ANALYTICS_QUERY,
       query_params: {
         projectId: tenancy.project.id,
         branchId: tenancy.branchId,
@@ -592,23 +651,42 @@ async function loadAnalyticsIntoAudience(
       },
       format: "JSONEachRow",
     });
-    const rows = await result.json<{ visitors: number | string, average_session_seconds: number | string }>();
+    const rows = await result.json<{
+      visitors: number | string,
+      qualifying_sessions: number | string,
+      average_session_seconds: number | string | null,
+    }>();
     const row = rows.at(0);
     if (row == null) throw new TvSnapshotInvariantError("TV analytics aggregate returned no summary row.");
+    const visitors = Number(row.visitors);
+    const qualifyingSessions = Number(row.qualifying_sessions);
+    const averageSessionSeconds = row.average_session_seconds == null
+      ? null
+      : Math.round(Number(row.average_session_seconds));
     return {
       status: "success",
-      screen: {
-        ...audienceResult.screen,
-        data: {
-          ...audienceResult.screen.data,
-          visitors: Number(row.visitors),
-          averageSessionSeconds: Math.round(Number(row.average_session_seconds)),
-        },
-      },
+      screen: applyTvAudienceAnalytics(audienceResult.screen, createTvAudienceAnalyticsObservation({
+        observedAt: now.toISOString(),
+        visitors,
+        qualifyingSessions,
+        averageSessionSeconds,
+      })),
     };
   } catch (cause) {
     if (cause instanceof TvSnapshotInvariantError) throw cause;
-    return errorScreen(audienceResult.screen, "analytics", cause, tenancy);
+    captureError("tv-snapshot-analytics-failed", new HexclaveAssertionError(
+      "TV snapshot analytics enrichment failed.",
+      { cause, projectId: tenancy.project.id, branchId: tenancy.branchId },
+    ));
+    return {
+      status: "success",
+      screen: applyTvAudienceAnalytics(audienceResult.screen, {
+        sourceStatus: "error",
+        observedAt: now.toISOString(),
+        diagnosticCode: "source-query-failed",
+        data: null,
+      }),
+    };
   }
 }
 
@@ -890,7 +968,7 @@ export function hasTvPaymentData(metrics: {
 export function sourceHealthFact(
   label: string,
   screen: TvRevenuePaymentsScreen | TvEmailHealthScreen | TvAudienceMomentumScreen,
-): { label: string, status: "healthy" | "ready" | "empty" | "insufficient-data" | "unavailable" | "error" | "stale", value: string, detail: string } {
+): TvStatusFact {
   if (screen.sourceStatus === "ready") {
     if (screen.id === "email-health") {
       return {
@@ -908,7 +986,20 @@ export function sourceHealthFact(
         detail: "Metrics available",
       };
     }
-    return { label, status: "ready", value: "Fresh", detail: "Metrics available" };
+    if (screen.data == null) {
+      throw new TvSnapshotInvariantError("A ready TV Audience source must contain audience data.");
+    }
+    const analyticsStatus = screen.data.analytics.sourceStatus;
+    if (analyticsStatus === "unavailable") {
+      return { label, status: "limited", value: "Limited", detail: "Engagement metrics not enabled" };
+    }
+    if (analyticsStatus === "error") {
+      return { label, status: "limited", value: "Limited", detail: "Engagement metrics temporarily unavailable" };
+    }
+    if (analyticsStatus === "insufficient-data") {
+      return { label, status: "limited", value: "Limited", detail: "Not enough engagement data" };
+    }
+    return { label, status: "ready", value: "Fresh", detail: "All metrics available" };
   }
   if (screen.sourceStatus === "empty") {
     return { label, status: "empty", value: "No activity", detail: "No data in this reporting window" };
@@ -941,7 +1032,7 @@ export function addTvSourceHealth(
       sourceHealth: [
         sourceHealthFact("Email delivery", sources.email),
         sourceHealthFact("Payment collection", sources.revenue),
-        sourceHealthFact("Analytics", sources.audience),
+        sourceHealthFact("Audience", sources.audience),
       ],
     },
   };

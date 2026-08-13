@@ -96,6 +96,30 @@ describe("TV Mode centralized fixtures", () => {
     `);
   });
 
+  it("keeps synthetic Audience enrichment aligned with the live snapshot contract", () => {
+    const snapshot = createTvFixtureSnapshot("project-fixture", getProfile());
+    const audience = snapshot.screens.find((screen) => screen.id === "audience-momentum");
+    const livePulse = snapshot.screens.find((screen) => screen.id === "live-pulse");
+    if (audience?.id !== "audience-momentum" || audience.data == null) throw new Error("Audience fixture data is missing");
+    if (livePulse?.id !== "live-pulse" || livePulse.data == null) throw new Error("Live Pulse fixture data is missing");
+
+    expect(audience.data.analytics).toMatchObject({
+      sourceStatus: "ready",
+      diagnosticCode: null,
+      data: {
+        visitors: 923,
+        qualifyingSessions: 214,
+        averageSessionSeconds: 252,
+      },
+    });
+    expect(livePulse.data.sourceHealth.at(2)).toEqual({
+      label: "Audience",
+      status: "ready",
+      value: "Fresh",
+      detail: "All metrics available",
+    });
+  });
+
   it("models non-data states without metric payloads and stale with last-safe data", () => {
     for (const variant of ["empty", "unavailable"] satisfies TvFixtureVariant[]) {
       const snapshot = createTvFixtureSnapshot("project-fixture", getProfile(), variant);

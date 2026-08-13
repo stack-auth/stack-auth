@@ -1,9 +1,20 @@
 import { type Tenancy } from "@/lib/tenancies";
 import {
+  calculateTvEmailEvidenceRate,
+  createTvEmailEvaluatorState,
   evaluateTvEmailDelivery,
   evaluateTvUserMilestone,
+  median,
   TV_EVENT_EVALUATION_INTERVAL_MS,
+  TV_EMAIL_BASELINE_DAYS,
+  TV_EMAIL_BASELINE_REFRESH_MS,
+  TV_EMAIL_CURRENT_WINDOW_MINUTES,
+  TV_EMAIL_LOW_VOLUME_WINDOW_MINUTES,
+  TV_EMAIL_MATURITY_DELAY_MINUTES,
   TV_EMAIL_RECOVERY_TITLE,
+  TV_EMAIL_RULE_VERSION,
+  type TvEmailBaseline,
+  type TvEmailEvidenceWindow,
   type TvEmailEvaluationSample,
   type TvEmailEvaluatorState,
 } from "@/lib/tv-mode/event-evaluators";
@@ -31,7 +42,7 @@ import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 const MINUTE_MS = 60_000;
 const MAX_EVENT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
-type EvaluatorClaimRow = {
+export type EvaluatorClaimRow = {
   breachCount: number,
   criticalBreachCount: number,
   recoveryCount: number,
@@ -39,6 +50,7 @@ type EvaluatorClaimRow = {
   typedState: unknown,
   activeOccurrenceId: string | null,
   activePresentationClass: "CELEBRATION" | "INCIDENT" | "CRITICAL_INCIDENT" | null,
+  activeAggregateEvidence: unknown,
 };
 
 export type TvEventOccurrenceRow = {
@@ -77,19 +89,16 @@ export type TvEventPresentation = {
 export function getTvEmailEvaluatorBounds(now: Date): {
   currentStartsAt: Date,
   currentEndsAt: Date,
-  comparisonStartsAt: Date,
-  comparisonEndsAt: Date,
+  lowVolumeStartsAt: Date,
+  lowVolumeEndsAt: Date,
 } {
+  const currentEndsAt = new Date(now.getTime() - TV_EMAIL_MATURITY_DELAY_MINUTES * MINUTE_MS);
   return {
-    currentStartsAt: new Date(now.getTime() - 20 * MINUTE_MS),
-    currentEndsAt: new Date(now.getTime() - 5 * MINUTE_MS),
-    comparisonStartsAt: new Date(now.getTime() - 35 * MINUTE_MS),
-    comparisonEndsAt: new Date(now.getTime() - 20 * MINUTE_MS),
+    currentStartsAt: new Date(currentEndsAt.getTime() - TV_EMAIL_CURRENT_WINDOW_MINUTES * MINUTE_MS),
+    currentEndsAt,
+    lowVolumeStartsAt: new Date(currentEndsAt.getTime() - TV_EMAIL_LOW_VOLUME_WINDOW_MINUTES * MINUTE_MS),
+    lowVolumeEndsAt: currentEndsAt,
   };
-}
-
-function rate(delivered: number, finished: number): number {
-  return finished === 0 ? 0 : Math.round(delivered / finished * 1000) / 10;
 }
 
 function readLastObservedTotal(typedState: unknown): number {
@@ -123,7 +132,7 @@ async function eventTablesAreReady(tenancy: Tenancy): Promise<boolean> {
     && row.presentations != null;
 }
 
-async function claimEvaluator(
+export async function claimEvaluator(
   tenancy: Tenancy,
   evaluatorKey: string,
   now: Date,
@@ -153,7 +162,8 @@ async function claimEvaluator(
       claimed."milestoneBaseline",
       claimed."typedState",
       claimed."activeOccurrenceId",
-      occurrence."presentationClass" AS "activePresentationClass"
+      occurrence."presentationClass" AS "activePresentationClass",
+      occurrence."aggregateEvidence" AS "activeAggregateEvidence"
     FROM claimed
     LEFT JOIN ${sqlQuoteIdent(schema)}."TvEventOccurrence" occurrence
       ON occurrence."tenancyId" = claimed."tenancyId"
@@ -165,6 +175,7 @@ async function claimEvaluator(
 async function loadEmailEvaluatorSample(
   tenancy: Tenancy,
   now: Date,
+  baseline: TvEmailBaseline | null,
 ): Promise<TvEmailEvaluationSample> {
   const bounds = getTvEmailEvaluatorBounds(now);
   const schema = await getPrismaSchemaForTenancy(tenancy);
@@ -172,8 +183,14 @@ async function loadEmailEvaluatorSample(
   const rows = await prisma.$replica().$queryRaw<Array<{
     currentFinished: number,
     currentDelivered: number,
-    comparisonFinished: number,
-    comparisonDelivered: number,
+    currentBounced: number,
+    currentServerError: number,
+    currentTotal: number,
+    lowVolumeFinished: number,
+    lowVolumeDelivered: number,
+    lowVolumeBounced: number,
+    lowVolumeServerError: number,
+    lowVolumeTotal: number,
   }>>`
     SELECT
       COUNT(*) FILTER (
@@ -184,35 +201,282 @@ async function loadEmailEvaluatorSample(
       COUNT(*) FILTER (
         WHERE "createdAt" >= ${bounds.currentStartsAt}
           AND "createdAt" < ${bounds.currentEndsAt}
-          AND "finishedSendingAt" IS NOT NULL
           AND "deliveredAt" IS NOT NULL
       )::INT AS "currentDelivered",
       COUNT(*) FILTER (
-        WHERE "createdAt" >= ${bounds.comparisonStartsAt}
-          AND "createdAt" < ${bounds.comparisonEndsAt}
-          AND "finishedSendingAt" IS NOT NULL
-      )::INT AS "comparisonFinished",
+        WHERE "createdAt" >= ${bounds.currentStartsAt}
+          AND "createdAt" < ${bounds.currentEndsAt}
+          AND "bouncedAt" IS NOT NULL
+      )::INT AS "currentBounced",
       COUNT(*) FILTER (
-        WHERE "createdAt" >= ${bounds.comparisonStartsAt}
-          AND "createdAt" < ${bounds.comparisonEndsAt}
+        WHERE "createdAt" >= ${bounds.currentStartsAt}
+          AND "createdAt" < ${bounds.currentEndsAt}
+          AND "bouncedAt" IS NULL
+          AND "sendServerErrorExternalMessage" IS NOT NULL
+      )::INT AS "currentServerError",
+      COUNT(*) FILTER (
+        WHERE "createdAt" >= ${bounds.currentStartsAt}
+          AND "createdAt" < ${bounds.currentEndsAt}
+      )::INT AS "currentTotal",
+      COUNT(*) FILTER (
+        WHERE "createdAt" >= ${bounds.lowVolumeStartsAt}
+          AND "createdAt" < ${bounds.lowVolumeEndsAt}
           AND "finishedSendingAt" IS NOT NULL
+      )::INT AS "lowVolumeFinished",
+      COUNT(*) FILTER (
+        WHERE "createdAt" >= ${bounds.lowVolumeStartsAt}
+          AND "createdAt" < ${bounds.lowVolumeEndsAt}
           AND "deliveredAt" IS NOT NULL
-      )::INT AS "comparisonDelivered"
+      )::INT AS "lowVolumeDelivered",
+      COUNT(*) FILTER (
+        WHERE "createdAt" >= ${bounds.lowVolumeStartsAt}
+          AND "createdAt" < ${bounds.lowVolumeEndsAt}
+          AND "bouncedAt" IS NOT NULL
+      )::INT AS "lowVolumeBounced",
+      COUNT(*) FILTER (
+        WHERE "createdAt" >= ${bounds.lowVolumeStartsAt}
+          AND "createdAt" < ${bounds.lowVolumeEndsAt}
+          AND "bouncedAt" IS NULL
+          AND "sendServerErrorExternalMessage" IS NOT NULL
+      )::INT AS "lowVolumeServerError",
+      COUNT(*) FILTER (
+        WHERE "createdAt" >= ${bounds.lowVolumeStartsAt}
+          AND "createdAt" < ${bounds.lowVolumeEndsAt}
+      )::INT AS "lowVolumeTotal"
     FROM ${sqlQuoteIdent(schema)}."EmailOutbox"
     WHERE "tenancyId" = ${tenancy.id}::UUID
-      AND "createdAt" >= ${bounds.comparisonStartsAt}
-      AND "createdAt" < ${bounds.currentEndsAt}
+      AND "createdAt" >= ${bounds.lowVolumeStartsAt}
+      AND "createdAt" < ${bounds.lowVolumeEndsAt}
   `;
   const sample = rows.at(0);
   if (sample == null) {
     throw new HexclaveAssertionError("The TV email evaluator query returned no aggregate row.");
   }
-  return {
-    currentFinishedSends: Number(sample.currentFinished),
-    currentDeliveredSends: Number(sample.currentDelivered),
-    comparisonFinishedSends: Number(sample.comparisonFinished),
-    comparisonDeliveredSends: Number(sample.comparisonDelivered),
+  const evidenceWindow = (window: {
+    startsAt: Date,
+    endsAt: Date,
+    finished: number,
+    delivered: number,
+    bounced: number,
+    serverError: number,
+    total: number,
+  }): TvEmailEvidenceWindow => {
+    const explicitFailures = window.bounced + window.serverError;
+    const rates = calculateTvEmailEvidenceRate(window.delivered, explicitFailures);
+    return {
+      startsAt: window.startsAt.toISOString(),
+      endsAt: window.endsAt.toISOString(),
+      finishedSends: window.finished,
+      deliveredSends: window.delivered,
+      bouncedSends: window.bounced,
+      serverErrorSends: window.serverError,
+      neutralOrUnknownSends: Math.max(0, window.total - window.delivered - explicitFailures),
+      explicitFailures,
+      ...rates,
+    };
   };
+  const current = evidenceWindow({
+    startsAt: bounds.currentStartsAt,
+    endsAt: bounds.currentEndsAt,
+    finished: Number(sample.currentFinished),
+    delivered: Number(sample.currentDelivered),
+    bounced: Number(sample.currentBounced),
+    serverError: Number(sample.currentServerError),
+    total: Number(sample.currentTotal),
+  });
+  const lowVolume = evidenceWindow({
+    startsAt: bounds.lowVolumeStartsAt,
+    endsAt: bounds.lowVolumeEndsAt,
+    finished: Number(sample.lowVolumeFinished),
+    delivered: Number(sample.lowVolumeDelivered),
+    bounced: Number(sample.lowVolumeBounced),
+    serverError: Number(sample.lowVolumeServerError),
+    total: Number(sample.lowVolumeTotal),
+  });
+  return {
+    status: current.assessableSends < 20 && lowVolume.assessableSends < 20 ? "insufficient" : "fresh",
+    evaluatedAt: now.toISOString(),
+    observedAt: bounds.currentEndsAt.toISOString(),
+    current,
+    lowVolume,
+    baseline,
+  };
+}
+
+function isObject(value: unknown): value is object {
+  return typeof value === "object" && value != null && !Array.isArray(value);
+}
+
+function readNumber(value: object, key: string): number | null {
+  if (!(key in value)) return null;
+  const candidate: unknown = Reflect.get(value, key);
+  return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : null;
+}
+
+function readString(value: object, key: string): string | null {
+  if (!(key in value)) return null;
+  const candidate: unknown = Reflect.get(value, key);
+  return typeof candidate === "string" ? candidate : null;
+}
+
+function readTvEmailBaseline(value: unknown): TvEmailBaseline | null {
+  if (!isObject(value)) return null;
+  const startsAt = readString(value, "startsAt");
+  const endsAt = readString(value, "endsAt");
+  const computedAt = readString(value, "computedAt");
+  const assessableSends = readNumber(value, "assessableSends");
+  const qualifiedDays = readNumber(value, "qualifiedDays");
+  if (!("days" in value) || !Array.isArray(value.days)) return null;
+  const days: TvEmailBaseline["days"] = [];
+  for (const dayValue of value.days) {
+    if (!isObject(dayValue)) return null;
+    const day = readString(dayValue, "day");
+    const deliveredSends = readNumber(dayValue, "deliveredSends");
+    const explicitFailures = readNumber(dayValue, "explicitFailures");
+    const assessableForDay = readNumber(dayValue, "assessableSends");
+    const deliveryRatePercent = readNumber(dayValue, "deliveryRatePercent");
+    if (day == null || deliveredSends == null || explicitFailures == null || assessableForDay == null || deliveryRatePercent == null) return null;
+    days.push({ day, deliveredSends, explicitFailures, assessableSends: assessableForDay, deliveryRatePercent });
+  }
+  if (
+    startsAt == null
+    || endsAt == null
+    || computedAt == null
+    || assessableSends == null
+    || qualifiedDays == null
+  ) return null;
+  const medianDeliveryRatePercent = "medianDeliveryRatePercent" in value
+    && value.medianDeliveryRatePercent == null
+    ? null
+    : readNumber(value, "medianDeliveryRatePercent");
+  return {
+    startsAt,
+    endsAt,
+    computedAt,
+    assessableSends,
+    qualifiedDays,
+    days,
+    medianDeliveryRatePercent,
+  };
+}
+
+export function readTvEmailState(value: unknown, activeClass: TvEmailEvaluatorState["activeClass"]): TvEmailEvaluatorState {
+  if (!isObject(value) || readNumber(value, "ruleVersion") !== TV_EMAIL_RULE_VERSION) {
+    return createTvEmailEvaluatorState({ activeClass });
+  }
+  const baseline = "baseline" in value ? readTvEmailBaseline(value.baseline) : null;
+  const lastFreshEvaluatedAt = "lastFreshEvaluatedAt" in value && value.lastFreshEvaluatedAt == null
+    ? null
+    : readString(value, "lastFreshEvaluatedAt");
+  let candidate: TvEmailEvaluatorState["candidate"] = null;
+  if ("candidate" in value && isObject(value.candidate)) {
+    const rulePath = readString(value.candidate, "rulePath");
+    const presentationClass = readString(value.candidate, "presentationClass");
+    const accumulatedMs = readNumber(value.candidate, "accumulatedMs");
+    const borderlineEvaluations = readNumber(value.candidate, "borderlineEvaluations");
+    if (
+      (rulePath === "standard" || rulePath === "low-volume" || rulePath === "strict-standard" || rulePath === "strict-low-volume" || rulePath === "critical" || rulePath === "high-impact")
+      && (presentationClass === "incident" || presentationClass === "critical-incident")
+      && accumulatedMs != null
+      && borderlineEvaluations != null
+    ) {
+      candidate = { rulePath, presentationClass, accumulatedMs, borderlineEvaluations };
+    }
+  }
+  let recovery: TvEmailEvaluatorState["recovery"] = null;
+  if ("recovery" in value && isObject(value.recovery)) {
+    const window = readString(value.recovery, "window");
+    const accumulatedMs = readNumber(value.recovery, "accumulatedMs");
+    if ((window === "current" || window === "low-volume") && accumulatedMs != null) {
+      recovery = { window, accumulatedMs };
+    }
+  }
+  return {
+    ruleVersion: TV_EMAIL_RULE_VERSION,
+    activeClass,
+    candidate,
+    recovery,
+    lastFreshEvaluatedAt,
+    baseline,
+  };
+}
+
+function startOfUtcDay(value: Date): Date {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+}
+
+async function loadTvEmailBaseline(tenancy: Tenancy, now: Date): Promise<TvEmailBaseline> {
+  // End before the UTC day containing the longest live window so the baseline never
+  // learns from evidence that it is simultaneously evaluating as current degradation.
+  const endsAt = startOfUtcDay(getTvEmailEvaluatorBounds(now).lowVolumeStartsAt);
+  const startsAt = new Date(endsAt.getTime() - TV_EMAIL_BASELINE_DAYS * 24 * 60 * MINUTE_MS);
+  const schema = await getPrismaSchemaForTenancy(tenancy);
+  const prisma = await getPrismaClientForTenancy(tenancy);
+  const rows = await prisma.$replica().$queryRaw<Array<{
+    day: Date,
+    delivered: number,
+    failures: number,
+    assessable: number,
+  }>>`
+    WITH daily AS (
+      SELECT
+        date_trunc('day', "createdAt") AS day,
+        COUNT(*) FILTER (WHERE "deliveredAt" IS NOT NULL)::INT AS delivered,
+        COUNT(*) FILTER (
+          WHERE "bouncedAt" IS NOT NULL
+            OR ("bouncedAt" IS NULL AND "sendServerErrorExternalMessage" IS NOT NULL)
+        )::INT AS failures
+      FROM ${sqlQuoteIdent(schema)}."EmailOutbox"
+      WHERE "tenancyId" = ${tenancy.id}::UUID
+        AND "createdAt" >= ${startsAt}
+        AND "createdAt" < ${endsAt}
+      GROUP BY day
+    )
+    SELECT day, delivered, failures, delivered + failures AS assessable
+    FROM daily
+    WHERE delivered + failures >= 10
+    ORDER BY day
+  `;
+  return buildTvEmailBaseline({ startsAt, endsAt, computedAt: now, rows });
+}
+
+export function buildTvEmailBaseline(options: {
+  startsAt: Date,
+  endsAt: Date,
+  computedAt: Date,
+  rows: Array<{ day: Date, delivered: number, failures: number, assessable: number }>,
+}): TvEmailBaseline {
+  const days = options.rows.map((row) => {
+    const rates = calculateTvEmailEvidenceRate(Number(row.delivered), Number(row.failures));
+    if (rates.deliveryRatePercent == null) {
+      throw new HexclaveAssertionError("A qualified TV email baseline day has no assessable sends.");
+    }
+    return {
+      day: row.day.toISOString(),
+      deliveredSends: Number(row.delivered),
+      explicitFailures: Number(row.failures),
+      assessableSends: Number(row.assessable),
+      deliveryRatePercent: rates.deliveryRatePercent,
+    };
+  });
+  const assessableSends = options.rows.reduce((total, row) => total + Number(row.assessable), 0);
+  const qualifiedDays = options.rows.length;
+  return {
+    startsAt: options.startsAt.toISOString(),
+    endsAt: options.endsAt.toISOString(),
+    computedAt: options.computedAt.toISOString(),
+    assessableSends,
+    qualifiedDays,
+    days,
+    medianDeliveryRatePercent: assessableSends >= 100 && qualifiedDays >= 7
+      ? median(days.map((day) => day.deliveryRatePercent))
+      : null,
+  };
+}
+
+function baselineNeedsRefresh(baseline: TvEmailBaseline | null, now: Date): boolean {
+  return baseline == null
+    || now.getTime() - new Date(baseline.computedAt).getTime() >= TV_EMAIL_BASELINE_REFRESH_MS;
 }
 
 function activeClassFromClaim(claim: EvaluatorClaimRow): TvEmailEvaluatorState["activeClass"] {
@@ -221,38 +485,89 @@ function activeClassFromClaim(claim: EvaluatorClaimRow): TvEmailEvaluatorState["
   return null;
 }
 
-async function persistEmailEvaluation(options: {
+function emailQualificationEvidence(qualification: ReturnType<typeof evaluateTvEmailDelivery>["qualification"]): {
+  requiredPersistenceMs: number,
+  thresholds: Record<string, number>,
+} | null {
+  if (qualification === "standard") return {
+    requiredPersistenceMs: 3 * MINUTE_MS,
+    thresholds: { minimumAssessableSends: 50, minimumExplicitFailures: 5, deliveryRateBelowPercent: 95, minimumBaselineDropPoints: 5 },
+  };
+  if (qualification === "low-volume") return {
+    requiredPersistenceMs: 10 * MINUTE_MS,
+    thresholds: { minimumAssessableSends: 20, minimumExplicitFailures: 3, deliveryRateBelowPercent: 85, minimumBaselineDropPoints: 10 },
+  };
+  if (qualification === "strict-standard") return {
+    requiredPersistenceMs: 5 * MINUTE_MS,
+    thresholds: { minimumAssessableSends: 50, minimumExplicitFailures: 10, deliveryRateBelowPercent: 85 },
+  };
+  if (qualification === "strict-low-volume") return {
+    requiredPersistenceMs: 15 * MINUTE_MS,
+    thresholds: { minimumAssessableSends: 20, minimumExplicitFailures: 5, deliveryRateBelowPercent: 75 },
+  };
+  if (qualification === "critical") return {
+    requiredPersistenceMs: MINUTE_MS,
+    thresholds: { minimumAssessableSends: 20, minimumExplicitFailures: 10, deliveryRateBelowPercent: 80 },
+  };
+  if (qualification === "high-impact") return {
+    requiredPersistenceMs: 0,
+    thresholds: { minimumExplicitFailures: 50, minimumExplicitFailureRatePercent: 10 },
+  };
+  if (qualification === "recovery") return {
+    requiredPersistenceMs: 0,
+    thresholds: {},
+  };
+  return null;
+}
+
+export async function persistEmailEvaluation(options: {
   tenancy: Tenancy,
   claim: EvaluatorClaimRow,
+  previousState: TvEmailEvaluatorState,
   sample: TvEmailEvaluationSample,
   now: Date,
 }): Promise<void> {
   const schema = await getPrismaSchemaForTenancy(options.tenancy);
   const prisma = await getPrismaClientForTenancy(options.tenancy);
-  const result = evaluateTvEmailDelivery({
-    activeClass: activeClassFromClaim(options.claim),
-    incidentBreachCount: Number(options.claim.breachCount),
-    criticalBreachCount: Number(options.claim.criticalBreachCount),
-    recoveryCount: Number(options.claim.recoveryCount),
-  }, options.sample);
+  const result = evaluateTvEmailDelivery(options.previousState, options.sample);
   await retryTransaction(prisma, async (transaction) => {
     let activeOccurrenceId = options.claim.activeOccurrenceId;
-    const currentRate = rate(
-      options.sample.currentDeliveredSends,
-      options.sample.currentFinishedSends,
-    );
-    const comparisonRate = rate(
-      options.sample.comparisonDeliveredSends,
-      options.sample.comparisonFinishedSends,
-    );
-    const evidence = JSON.stringify({
-      currentFinishedSends: options.sample.currentFinishedSends,
-      currentDeliveredSends: options.sample.currentDeliveredSends,
-      currentDeliveryRatePercent: currentRate,
-      comparisonFinishedSends: options.sample.comparisonFinishedSends,
-      comparisonDeliveredSends: options.sample.comparisonDeliveredSends,
-      comparisonDeliveryRatePercent: comparisonRate,
-    });
+    const rulePath = result.qualification;
+    const relevantWindow = rulePath === "low-volume" || rulePath === "strict-low-volume"
+      ? options.sample.lowVolume
+      : options.sample.current;
+    const currentRate = relevantWindow?.deliveryRatePercent ?? null;
+    const roundedRate = currentRate == null ? null : Math.round(currentRate * 10) / 10;
+    const qualificationEvidence = rulePath === "recovery"
+      ? {
+          requiredPersistenceMs: (options.previousState.recovery?.window === "low-volume" ? 15 : 5) * MINUTE_MS,
+          thresholds: options.sample.baseline?.medianDeliveryRatePercent == null
+            ? { minimumDeliveryRatePercent: 97, maximumExplicitFailureRatePercent: 3 }
+            : { minimumDeliveryRatePercent: Math.max(90, options.sample.baseline.medianDeliveryRatePercent - 2) },
+        }
+      : emailQualificationEvidence(rulePath);
+    const observationEvidence = {
+      evaluatedAt: options.sample.evaluatedAt,
+      observedAt: options.sample.observedAt,
+      sourceStatus: options.sample.status,
+      qualification: rulePath,
+      qualificationEvidence,
+      accumulatedMs: result.action.type === "activate" || result.action.type === "escalate"
+        ? qualificationEvidence?.requiredPersistenceMs ?? 0
+        : result.action.type === "resolve"
+          ? qualificationEvidence?.requiredPersistenceMs ?? 0
+        : result.state.candidate?.accumulatedMs ?? result.state.recovery?.accumulatedMs ?? 0,
+      current: options.sample.current,
+      lowVolume: options.sample.lowVolume,
+      baseline: options.sample.baseline,
+    };
+    const previousEvidence = isObject(options.claim.activeAggregateEvidence)
+      ? options.claim.activeAggregateEvidence
+      : {};
+    const metricValue = roundedRate == null ? "Unavailable" : `${roundedRate}%`;
+    const expectedRange = options.sample.baseline?.medianDeliveryRatePercent == null
+      ? "Expected delivery range"
+      : `Typical daily delivery ${Math.round(options.sample.baseline.medianDeliveryRatePercent * 10) / 10}%`;
 
     if (result.action.type === "activate") {
       activeOccurrenceId = generateUuid();
@@ -276,10 +591,10 @@ async function persistEmailEvaluation(options: {
           'Email Delivery Degraded',
           ${"Email delivery is below the expected range. We’re monitoring recovery."},
           'Delivery rate',
-          ${`${currentRate}%`},
-          'Expected 95% or higher',
+          ${metricValue},
+          ${expectedRange},
           'Hexclave email',
-          ${evidence}::JSONB,
+          ${JSON.stringify({ ruleVersion: TV_EMAIL_RULE_VERSION, activation: observationEvidence, latestActiveObservation: observationEvidence })}::JSONB,
           ${options.now},
           ${options.now},
           ${options.now},
@@ -295,8 +610,9 @@ async function persistEmailEvaluation(options: {
         SET
           "presentationClass" = 'CRITICAL_INCIDENT'::${sqlQuoteIdent(schema)}."TvEventPresentationClass",
           "escalatedAt" = ${options.now},
-          "metricValue" = ${`${currentRate}%`},
-          "aggregateEvidence" = ${evidence}::JSONB,
+          "metricValue" = ${metricValue},
+          "expectedRange" = ${expectedRange},
+          "aggregateEvidence" = ${JSON.stringify({ ...previousEvidence, ruleVersion: TV_EMAIL_RULE_VERSION, escalation: observationEvidence, latestActiveObservation: observationEvidence })}::JSONB,
           "updatedAt" = ${options.now}
         WHERE "tenancyId" = ${options.tenancy.id}::UUID
           AND "id" = ${activeOccurrenceId}::UUID
@@ -313,8 +629,9 @@ async function persistEmailEvaluation(options: {
           "resolvedAt" = ${options.now},
           "title" = ${TV_EMAIL_RECOVERY_TITLE},
           "summary" = 'Email delivery is back within the expected range.',
-          "metricValue" = ${`${currentRate}%`},
-          "aggregateEvidence" = ${evidence}::JSONB,
+          "metricValue" = ${metricValue},
+          "expectedRange" = ${expectedRange},
+          "aggregateEvidence" = ${JSON.stringify({ ...previousEvidence, ruleVersion: TV_EMAIL_RULE_VERSION, resolution: observationEvidence })}::JSONB,
           "updatedAt" = ${options.now}
         WHERE "tenancyId" = ${options.tenancy.id}::UUID
           AND "id" = ${activeOccurrenceId}::UUID
@@ -325,8 +642,9 @@ async function persistEmailEvaluation(options: {
       await transaction.$executeRaw`
         UPDATE ${sqlQuoteIdent(schema)}."TvEventOccurrence"
         SET
-          "metricValue" = ${`${currentRate}%`},
-          "aggregateEvidence" = ${evidence}::JSONB,
+          "metricValue" = ${metricValue},
+          "expectedRange" = ${expectedRange},
+          "aggregateEvidence" = ${JSON.stringify({ ...previousEvidence, ruleVersion: TV_EMAIL_RULE_VERSION, latestActiveObservation: observationEvidence })}::JSONB,
           "updatedAt" = ${options.now}
         WHERE "tenancyId" = ${options.tenancy.id}::UUID
           AND "id" = ${activeOccurrenceId}::UUID
@@ -337,9 +655,10 @@ async function persistEmailEvaluation(options: {
     await transaction.$executeRaw`
       UPDATE ${sqlQuoteIdent(schema)}."TvEventEvaluatorState"
       SET
-        "breachCount" = ${result.state.incidentBreachCount},
-        "criticalBreachCount" = ${result.state.criticalBreachCount},
-        "recoveryCount" = ${result.state.recoveryCount},
+        "breachCount" = 0,
+        "criticalBreachCount" = 0,
+        "recoveryCount" = 0,
+        "typedState" = ${JSON.stringify(result.state)}::JSONB,
         "activeOccurrenceId" = ${activeOccurrenceId}::UUID,
         "updatedAt" = ${options.now}
       WHERE "tenancyId" = ${options.tenancy.id}::UUID
@@ -352,8 +671,22 @@ async function evaluateEmailIfDue(tenancy: Tenancy, now: Date): Promise<void> {
   if (!(tenancy.config.apps.installed.emails?.enabled ?? false)) return;
   const claim = await claimEvaluator(tenancy, "email-delivery", now);
   if (claim == null) return;
-  const sample = await loadEmailEvaluatorSample(tenancy, now);
-  await persistEmailEvaluation({ tenancy, claim, sample, now });
+  const state = readTvEmailState(claim.typedState, activeClassFromClaim(claim));
+  let baseline = state.baseline;
+  if (baselineNeedsRefresh(baseline, now)) {
+    baseline = await loadTvEmailBaseline(tenancy, now).then(
+      (loaded) => loaded,
+      (cause: unknown) => {
+        captureError("tv-email-baseline-refresh-failed", new HexclaveAssertionError(
+          "The TV email evaluator baseline refresh failed; evaluation will use the last cached baseline or strict fallback rules.",
+          { cause, tenancyId: tenancy.id },
+        ));
+        return baseline;
+      },
+    );
+  }
+  const sample = await loadEmailEvaluatorSample(tenancy, now, baseline);
+  await persistEmailEvaluation({ tenancy, claim, previousState: state, sample, now });
 }
 
 async function evaluateMilestoneIfDue(

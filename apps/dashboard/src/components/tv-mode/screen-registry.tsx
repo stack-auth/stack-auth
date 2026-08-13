@@ -76,6 +76,9 @@ export function getTvSourceHealthVisual(status: TvStatusFact["status"]): {
     case "ready": {
       return { icon: "info", className: "text-cyan-200/70" };
     }
+    case "limited": {
+      return { icon: "info", className: "text-amber-200/70" };
+    }
     case "empty": {
       return { icon: "info", className: "text-white/40" };
     }
@@ -103,6 +106,7 @@ function formatUsd(cents: number): string {
 }
 
 function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   return `${minutes}m ${seconds % 60}s`;
 }
@@ -454,6 +458,28 @@ function AudienceMomentumScreen({
   sourceStatus: TvAudienceMomentumScreen["sourceStatus"],
   headerAccessory?: ReactNode,
 }) {
+  const analytics = data.analytics;
+  const analyticsUnavailableDetail = analytics.sourceStatus === "unavailable"
+    ? "Not Enabled"
+    : analytics.sourceStatus === "error"
+      ? "Temporarily Unavailable"
+      : "Limited Data";
+  const visitorsValue = analytics.data == null ? "—" : formatCompact(analytics.data.visitors);
+  const visitorsDetail = analytics.data == null
+    ? analyticsUnavailableDetail
+    : analytics.sourceStatus === "empty"
+      ? "No Page Views"
+      : undefined;
+  const sessionValue = analytics.data == null
+    ? "—"
+    : analytics.data.averageSessionSeconds == null
+      ? "No Sessions"
+      : formatDuration(analytics.data.averageSessionSeconds);
+  const sessionDetail = analytics.data == null
+    ? analyticsUnavailableDetail
+    : analytics.data.qualifyingSessions === 0
+      ? "No Sessions"
+      : `${analytics.data.qualifyingSessions.toLocaleString()} ${analytics.data.qualifyingSessions === 1 ? "Session" : "Sessions"}`;
   return (
     <TvScreenFrame eyebrow="Seven-Day Audience" title="Audience Momentum" description="Whether new attention is becoming sustained, returning activity." icon={<ChartLineUpIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-violet-300" headerAccessory={headerAccessory}>
       <div className="grid h-full min-h-0 grid-cols-[0.72fr_1.28fr] gap-[clamp(2rem,5vw,12rem)]">
@@ -461,10 +487,10 @@ function AudienceMomentumScreen({
           <div className="flex h-full min-h-0 flex-col justify-between p-[clamp(1.5rem,2.3vw,5.5rem)]">
             <TvMetric label="Total users" value={data.totalUsers.toLocaleString()} detail={`${data.userGrowthPercent}% growth over the last 7 days`} hero />
             <div className="grid grid-cols-2 gap-x-6 gap-y-5">
-              <TvMetric label="New users · 7d" value={`+${data.newUsers}`} />
+              <TvMetric label="New users · 7d" value={`+${data.newUsers}`} detail={`${data.verificationRatePercent}% users verified`} />
               <TvMetric label="Monthly active · 30d" value={formatCompact(data.monthlyActiveUsers)} />
-              <TvMetric label="Signed-In Visitors · 7d" value={formatCompact(data.visitors)} />
-              <TvMetric label="Identified Session Avg · 7d" value={formatDuration(data.averageSessionSeconds)} detail={`Replay-segment data · ${data.verificationRatePercent}% users verified`} />
+              <TvMetric label="Signed-In Visitors · 7d" value={visitorsValue} detail={visitorsDetail} />
+              <TvMetric label="Identified Session Avg · 7d" value={sessionValue} detail={sessionDetail} />
             </div>
             <TvInsightArea screenId="audience-momentum" sourceStatus={sourceStatus} insight={insight} tone="violet" />
           </div>
@@ -504,7 +530,7 @@ function RevenuePaymentsScreen({
           <div className="flex h-full min-h-0 flex-col justify-between p-[clamp(1.5rem,2.3vw,5.5rem)]">
             <TvMetric label="Gross Paid Revenue · 30d" value={financials.visibility === "exact" ? formatUsd(financials.paidRevenueCents) : "Hidden"} detail={`${data.revenueChangePercent >= 0 ? "↑" : "↓"} ${Math.abs(data.revenueChangePercent)}% vs previous 30 days${financials.visibility === "exact" ? "" : " · exact values off"}`} hero />
             <div className="grid grid-cols-2 gap-6">
-              <TvMetric label="30-Day Gross Revenue Proxy" value={financials.visibility === "exact" ? formatUsd(financials.mrrProxyCents) : "Hidden"} detail="Gross paid invoice revenue · refunds excluded" />
+              <TvMetric label="30-Day Gross Revenue Proxy" value={financials.visibility === "exact" ? formatUsd(financials.mrrProxyCents) : "Hidden"} detail="Refunds Excluded" />
               <TvMetric label="Payment success" value={data.paymentSuccess.percent == null ? "Insufficient data" : `${data.paymentSuccess.percent}%`} detail={`${data.paymentSuccess.applicableAttempts} applicable attempts`} />
               <TvMetric label="Active subscriptions" value={data.activeSubscriptions.toLocaleString()} />
               <TvMetric label="New subscriptions" value={`+${data.newSubscriptions}`} detail={`${data.pastDueSubscriptions} past due`} />
@@ -548,7 +574,7 @@ function EmailHealthScreen({
               <TvMetric label="Delivered" value={formatCompact(data.delivered)} />
               <TvMetric label="Bounced" value={formatCompact(data.bounced)} />
               <TvMetric label="Errors" value={formatCompact(data.errors)} />
-              <TvMetric label="In progress" value={formatCompact(data.inProgress)} detail="Current sending state" />
+              <TvMetric label="In progress" value={formatCompact(data.inProgress)} />
             </div>
             <TvInsightArea screenId="email-health" sourceStatus={sourceStatus} insight={insight} tone="amber" />
           </div>
