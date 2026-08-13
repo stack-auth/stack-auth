@@ -1,11 +1,11 @@
-import { getBatchDestinationDeduplicationToken, insertBatchEvents, normalizeBatchEvents, type NormalizedEventBatch } from "@/lib/analytics-telemetry-writers";
-import { evaluateErrorIngestPolicy, persistErrorIngestClientReportProjection } from "@/lib/error-ingest";
+import { buildTelemetryWritePlan, getBatchDestinationDeduplicationToken, insertBatchEvents, normalizeBatchEvents, type NormalizedEventBatch } from "@/lib/analytics-telemetry-writers";
+import { evaluateErrorIngestPolicy, persistErrorIngestClientReportProjection } from "@/lib/telemetry-ingest";
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
 import { createLegacyBatchProtocolProjection } from "@/lib/error-ingest/error-ingest-protocol-projections";
-import { materializeIssuesFromBatchSafely } from "@/lib/issues/issue-store";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { increasePlanItemQuantity, tryDecreasePlanItemQuantities, type MeteredPlanItemId } from "@/lib/plan-metering";
 import { findRecentSessionReplay } from "@/lib/session-replays";
+import { buildTelemetryMaterializationMessage, enqueueQstashMessage } from "@/lib/qstash-outbox";
 import { buildBatchSpanLinkRows, buildBatchSpanRows, getBatchDuplicateSpanIdError, insertSpanLinks, insertSpans } from "@/lib/spans";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -14,7 +14,7 @@ import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { captureError, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
-import { CLIENT_SYSTEM_SPAN_TYPES, CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_NAME_RE, LOG_LEVELS, SERVER_SYSTEM_SPAN_TYPES, SYSTEM_EVENT_TYPES, TELEMETRY_MAX_LOG_MESSAGE_BYTES, TELEMETRY_SCOPE_NAME_MAX_BYTES, TELEMETRY_SCOPE_VERSION_MAX_BYTES, TELEMETRY_SPAN_KINDS, TELEMETRY_SPAN_STATUS_CODES, TELEMETRY_SPAN_STATUS_MESSAGE_MAX_BYTES, TELEMETRY_UUID_RE, W3C_SPAN_ID_RE, W3C_TRACE_ID_RE, canWriteTelemetrySignal, classifyTelemetrySignal, getTelemetryResourceError, isTelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
+import { CLIENT_SYSTEM_SPAN_TYPES, CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_NAME_RE, LOG_LEVELS, SERVER_SYSTEM_SPAN_TYPES, SYSTEM_EVENT_TYPES, TELEMETRY_MAX_LOG_MESSAGE_BYTES, TELEMETRY_SCOPE_NAME_MAX_BYTES, TELEMETRY_SCOPE_VERSION_MAX_BYTES, TELEMETRY_SPAN_KINDS, TELEMETRY_SPAN_STATUS_CODES, TELEMETRY_SPAN_STATUS_MESSAGE_MAX_BYTES, TELEMETRY_UUID_RE, W3C_SPAN_ID_RE, W3C_TRACE_ID_RE, canWriteTelemetrySignal, classifyTelemetrySignal, getTelemetryResourceError, isTelemetryResource, type TelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
 import { Buffer } from "node:buffer";
 import * as zlib from "node:zlib";
 
@@ -171,16 +171,15 @@ export const POST = createSmartRouteHandler({
       // server/admin auth.
       session_replay_segment_id: yupString().optional().matches(UUID_RE, "Invalid session_replay_segment_id"),
       batch_id: yupString().defined().matches(UUID_RE, "Invalid batch_id"),
-      // Versions the BATCH body the way the propagation header's `v1.` prefix
-      // versions the header — so the wire contract can evolve without guessing
-      // from field shapes. This ingestion surface is unreleased, so v3 (W3C span
-      // identity) replaces the earlier pre-release shapes outright rather than
-      // being accepted alongside them.
-      schema_version: yupNumber().defined().integer().oneOf([3]),
-      resource: yupMixed().defined().test(
+      // Versioned batches use the W3C identity contract. An omitted version is
+      // the released pre-resource shape and is handled by the explicit legacy
+      // compatibility test below; it must not be confused with a malformed
+      // versioned request.
+      schema_version: yupNumber().optional().integer().oneOf([3]),
+      resource: yupMixed().optional().test(
         "telemetry-resource",
         "Invalid telemetry resource",
-        (value) => getTelemetryResourceError(value) === null,
+        (value) => value === undefined || getTelemetryResourceError(value) === null,
       ),
       sent_at_ms: yupNumber().defined().integer().min(0),
       // Server/admin auth only (see the request-level auth-type tests below):
@@ -355,6 +354,25 @@ export const POST = createSmartRouteHandler({
           .map((span) => span.span_id);
         return new Set(spanIds).size === spanIds.length;
       },
+    ).test(
+      "wire-version",
+      "Legacy analytics batches must omit versioned fields and contain only $page-view/$click events; versioned batches require schema_version 3 and a telemetry resource",
+      (body) => {
+        if (body.schema_version === undefined) {
+          const events = Array.isArray(body.events) ? body.events : [];
+          return body.resource === undefined
+            && body.spans === undefined
+            && body.user_id === undefined
+            && body.refresh_token_id === undefined
+            && body.session_replay_id === undefined
+            && body.session_replay_segment_id !== undefined
+            && events.length > 0
+            // Yup can run this parent test before child item validation.
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+            && events.every((event) => event != null && (event.event_type === "$page-view" || event.event_type === "$click"));
+        }
+        return body.schema_version === 3 && isTelemetryResource(body.resource);
+      },
     ).transform((_value, originalValue) => maybeDecodeBinaryBody(originalValue)),
   }).test(
     // Auth-type-dependent body rules live here in the schema (not the handler) so
@@ -433,10 +451,15 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth, body }) {
-    if (!isTelemetryResource(body.resource)) {
-      throw new HexclaveAssertionError("The request schema accepted an invalid telemetry resource");
+    let resource: TelemetryResource | null;
+    if (body.schema_version === undefined) {
+      resource = null;
+    } else {
+      if (!isTelemetryResource(body.resource)) {
+        throw new HexclaveAssertionError("The request schema accepted an invalid telemetry resource");
+      }
+      resource = body.resource;
     }
-    const resource = body.resource;
 
     if (!auth.tenancy.config.apps.installed["analytics"]?.enabled) {
       throw new KnownErrors.AnalyticsNotEnabled();
@@ -630,7 +653,7 @@ export const POST = createSmartRouteHandler({
     const runtime = auth.type === "client" ? "browser" : "server";
     let normalizedEvents: NormalizedEventBatch | null = null;
     try {
-      const spanRows = buildBatchSpanRows({
+      const spanRows = resource === null ? [] : buildBatchSpanRows({
         spans,
         resource,
         projectId,
@@ -641,7 +664,7 @@ export const POST = createSmartRouteHandler({
         sessionReplaySegmentId,
         serverNowMs: Date.now(),
       });
-      const spanLinkRows = buildBatchSpanLinkRows({ spans, projectId, branchId });
+      const spanLinkRows = resource === null ? [] : buildBatchSpanLinkRows({ spans, projectId, branchId });
 
       // Normalized once, up front. Grouping every `$error` in the batch is the
       // only CPU-bound step in this handler, and the result is needed twice:
@@ -663,12 +686,23 @@ export const POST = createSmartRouteHandler({
         groupingConfig: auth.tenancy.config.observability.errorGrouping,
       }, body.batch_id);
 
+      // Queue control-plane work before the ClickHouse write. If the process
+      // dies after this insert, QStash retries until the referenced batch is
+      // visible; if the ClickHouse write fails, the job has no issue rows to
+      // apply and eventually reaches its normal delivery failure state.
+      if (normalizedEvents.issueInputs.length > 0) {
+        await enqueueQstashMessage(buildTelemetryMaterializationMessage({
+          tenancyId: auth.tenancy.id,
+          batchId: body.batch_id,
+        }));
+      }
+
       // Each destination has its own stable deduplication token, so all
       // independent ClickHouse writes can run concurrently. A partial commit
       // is safe: the request refunds quota, then a retry no-ops at destinations
       // that already accepted this batch.
       await Promise.all([
-        insertBatchEvents(clickhouseClient, normalizedEvents, body.batch_id),
+        insertBatchEvents(clickhouseClient, buildTelemetryWritePlan(normalizedEvents, body.batch_id)),
         insertSpans(clickhouseClient, spanRows, {
           deduplicationToken: getBatchDestinationDeduplicationToken(body.batch_id, "analytics_internal.spans"),
         }),
@@ -683,32 +717,6 @@ export const POST = createSmartRouteHandler({
         spansBillingTeamIdForRefund == null ? Promise.resolve() : refundItem(ITEM_IDS.analyticsSpans, billableSpanCount, "analytics-spans-clickhouse-refund"),
       ]);
       throw error;
-    }
-
-    // Issue materialization runs AFTER the ClickHouse inserts have committed
-    // and deliberately off the request's critical path.
-    //
-    // The split is the whole durability story. The occurrence row is already
-    // self-describing at rest (it carries `issue_hash`, so the rollup fires and
-    // `default.errors` is queryable the instant the insert lands), which means a
-    // Postgres outage can only DELAY the Issue record — it can never lose the
-    // occurrence or fail telemetry ingestion. The ledger inside
-    // `materializeIssuesFromBatch` makes the write exactly-once, so this is safe
-    // to re-run; the reconciler replays any batch whose ledger row is missing.
-    // No null check: the `catch` above always rethrows, so control only reaches
-    // here once the assignment inside `try` has happened.
-    if (normalizedEvents.issueInputs.length > 0) {
-      const issueInputs = normalizedEvents.issueInputs;
-      runAsynchronouslyAndWaitUntil(materializeIssuesFromBatchSafely({
-        tenancy: auth.tenancy,
-        batchId: body.batch_id,
-        inputs: issueInputs,
-        // Server receipt time, NOT the client-supplied `event_at_ms`. Lifecycle
-        // transitions (regression, snooze expiry) compare against this, so a
-        // client with a fast clock cannot reopen a resolved issue and one with a
-        // slow clock cannot hide a real regression.
-        receivedAt: new Date(),
-      }));
     }
 
     const protocolProjection = createLegacyBatchProtocolProjection(

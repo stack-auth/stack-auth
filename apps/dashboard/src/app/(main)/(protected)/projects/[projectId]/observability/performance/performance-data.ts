@@ -1,9 +1,12 @@
 import { sendInternalAdminRequest } from "@/lib/hexclave-app-internals";
 import type { StackAdminApp } from "@hexclave/next";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
+import { getBucketGranularity } from "../bucket-granularity";
 import { queryObservability } from "../filters";
 import {
   getServicesSummaryQuery,
   parseServiceSummaryRow,
+  parseServiceTimestamp,
   type ServiceSummary,
   type ServiceTimeRangeHours,
 } from "../services/services-data";
@@ -80,6 +83,51 @@ export const WEB_VITAL_METRICS = [
 
 export type WebVitalMetricDefinition = (typeof WEB_VITAL_METRICS)[number];
 export type WebVitalMetricKey = WebVitalMetricDefinition["key"];
+
+export type WebVitalRatingLabel = "Good" | "Needs work" | "Poor" | "No data";
+export type WebVitalRatingColor = "green" | "orange" | "red" | "zinc";
+export type WebVitalRating = {
+  label: WebVitalRatingLabel,
+  color: WebVitalRatingColor,
+};
+
+/**
+ * Core Web Vitals are scored at p75, not the mean. An average hides the tail
+ * the user actually felt; Google's field thresholds are defined on p75, so
+ * rating a mean against those thresholds would call a page "good" while a
+ * quarter of views were already poor.
+ */
+export function webVitalRating(metric: WebVitalMetricDefinition, value: number | null): WebVitalRating {
+  if (value === null) return { label: "No data", color: "zinc" };
+  if (metric.lowerIsBetter) {
+    if (value <= metric.goodThreshold) return { label: "Good", color: "green" };
+    if (value <= metric.needsImprovementThreshold) return { label: "Needs work", color: "orange" };
+    return { label: "Poor", color: "red" };
+  }
+  if (value >= metric.goodThreshold) return { label: "Good", color: "green" };
+  if (value >= metric.needsImprovementThreshold) return { label: "Needs work", color: "orange" };
+  return { label: "Poor", color: "red" };
+}
+
+export function formatWebVitalValue(metric: WebVitalMetricDefinition, value: number | null): string {
+  if (value === null) return "No data";
+  if (metric.key === "cls") {
+    return new Intl.NumberFormat(undefined, { maximumFractionDigits: 3, minimumFractionDigits: 2 }).format(value);
+  }
+  if (metric.key === "fps") {
+    return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value)} ${metric.unit}`;
+  }
+  if (value < 1000) {
+    return `${Math.round(value)} ${metric.unit}`;
+  }
+  return `${(value / 1000).toFixed(value < 10_000 ? 2 : 1)} s`;
+}
+
+export function webVitalByKey(key: WebVitalMetricKey): WebVitalMetricDefinition {
+  const metric = WEB_VITAL_METRICS.find((candidate) => candidate.key === key);
+  if (metric == null) throw new Error(`Unknown web vital metric: ${key}`);
+  return metric;
+}
 
 export type PerformanceTimeRangeHours = (typeof PERFORMANCE_TIME_RANGES)[number]["hours"];
 export type PerformanceMetricType = "gauge" | "sum" | "histogram" | "exponential_histogram" | "summary";
@@ -303,4 +351,529 @@ export async function fetchSpanPerformance(
     params: query.params,
   });
   return response.result.map(parseServiceSummaryRow);
+}
+
+/**
+ * Page-view spans already carry the Web Vitals snapshot, path, viewport, scroll
+ * depth, and dwell time. Native Metrics only has a global average per stream —
+ * no p75, no per-page breakdown, no good/needs-work/poor split, and no way to
+ * keep soft-nav samples out of LCP. These queries read the span payload
+ * directly so the Performance tab can answer "which pages are slow, and what
+ * are people doing on them?"
+ *
+ * LCP/FCP/TTFB are hard-load metrics: the collector omits them on SPA
+ * navigations and flags `web_vitals.soft_nav = 1`. INP/CLS/FPS describe every
+ * navigation window.
+ */
+const PAGE_VIEW_VITALS_SQL = `
+  JSONExtractUInt(data, 'web_vitals', 'soft_nav') AS soft_nav,
+  if(JSONHas(data, 'web_vitals', 'lcp_ms'), JSONExtractFloat(data, 'web_vitals', 'lcp_ms'), NULL) AS lcp_ms,
+  if(JSONHas(data, 'web_vitals', 'fcp_ms'), JSONExtractFloat(data, 'web_vitals', 'fcp_ms'), NULL) AS fcp_ms,
+  if(JSONHas(data, 'web_vitals', 'ttfb_ms'), JSONExtractFloat(data, 'web_vitals', 'ttfb_ms'), NULL) AS ttfb_ms,
+  if(JSONHas(data, 'web_vitals', 'inp_ms'), JSONExtractFloat(data, 'web_vitals', 'inp_ms'), NULL) AS inp_ms,
+  if(JSONHas(data, 'web_vitals', 'cls'), JSONExtractFloat(data, 'web_vitals', 'cls'), NULL) AS cls,
+  if(JSONHas(data, 'web_vitals', 'fps'), JSONExtractFloat(data, 'web_vitals', 'fps'), NULL) AS fps
+`;
+
+const HARD_LOAD_LCP_SQL = "lcp_ms IS NOT NULL AND soft_nav != 1";
+const HARD_LOAD_FCP_SQL = "fcp_ms IS NOT NULL AND soft_nav != 1";
+const HARD_LOAD_TTFB_SQL = "ttfb_ms IS NOT NULL AND soft_nav != 1";
+
+function p75IfSql(column: string, predicate: string): string {
+  return `if(countIf(${predicate}) = 0, NULL, round(quantileTDigestIf(0.75)(${column}, ${predicate}), 4))`;
+}
+
+function assertPerformanceTimeRange(hours: number): asserts hours is PerformanceTimeRangeHours {
+  if (!isPerformanceTimeRangeHours(hours)) {
+    throw new Error(`Unsupported performance time range: ${hours}`);
+  }
+}
+
+export const MAX_PERFORMANCE_PAGES = 100;
+export const MAX_PERFORMANCE_BEHAVIOR_PATHS = 200;
+/** Below this many samples a p75 is too noisy to call a page "slow". */
+export const MIN_VITAL_INSIGHT_SAMPLES = 8;
+export const MIN_FRICTION_CLICKS = 12;
+export const MIN_SHALLOW_VIEWS = 20;
+
+export type VitalDistribution = {
+  p75: number | null,
+  samples: number,
+  good: number,
+  needsWork: number,
+  poor: number,
+};
+
+export type PerformanceVitalsOverview = {
+  pageViews: number,
+  users: number,
+  softNavViews: number,
+  avgTimeOnPageMs: number | null,
+  avgScrollRatio: number | null,
+  lcp: VitalDistribution,
+  lcpP75Mobile: number | null,
+  lcpP75Desktop: number | null,
+  fcp: VitalDistribution,
+  ttfb: VitalDistribution,
+  inp: VitalDistribution,
+  cls: VitalDistribution,
+  fps: VitalDistribution,
+};
+
+export type PageBehavior = {
+  clicks: number,
+  rageClicks: number,
+  deadClicks: number,
+  formSubmits: number,
+  outboundClicks: number,
+};
+
+export type PagePerformance = {
+  path: string,
+  views: number,
+  users: number,
+  softNavViews: number,
+  lcpP75: number | null,
+  lcpSamples: number,
+  inpP75: number | null,
+  inpSamples: number,
+  clsP75: number | null,
+  clsSamples: number,
+  avgTimeOnPageMs: number | null,
+  avgScrollRatio: number | null,
+} & PageBehavior;
+
+export type PerformanceTimelineBucket = {
+  bucketMs: number,
+  views: number,
+  lcpP75: number | null,
+  inpP75: number | null,
+};
+
+export type PageInsightKind = "slow-lcp" | "slow-inp" | "rage" | "dead-clicks" | "shallow";
+
+export type PageInsight = {
+  kind: PageInsightKind,
+  page: PagePerformance,
+};
+
+export function getPerformanceVitalsOverviewQuery(hours: number): {
+  query: string,
+  params: Record<string, number>,
+} {
+  assertPerformanceTimeRange(hours);
+  return {
+    query: `
+/* performance:vitals-overview */
+WITH
+  now64(3) AS range_end,
+  range_end - INTERVAL {hours:UInt32} HOUR AS range_start,
+  page_views AS (
+    SELECT
+      started_at,
+      ended_at,
+      user_id,
+      JSONExtractString(data, 'entry_type') AS entry_type,
+      JSONExtractUInt(data, 'viewport_width') AS viewport_width,
+      if(JSONHas(data, 'scroll_depth_ratio'), JSONExtractFloat(data, 'scroll_depth_ratio'), NULL) AS scroll_depth_ratio,
+      ${PAGE_VIEW_VITALS_SQL}
+    FROM default.spans
+    WHERE span_type = '$page-view'
+      AND started_at >= range_start
+      AND started_at < range_end
+  )
+SELECT
+  count() AS page_views,
+  uniqCombined64If(user_id, user_id IS NOT NULL AND user_id != '') AS users,
+  countIf(entry_type IN ('push', 'replace', 'pop')) AS soft_nav_views,
+  if(
+    countIf(ended_at IS NOT NULL AND ended_at > started_at) = 0,
+    NULL,
+    round(avgIf(dateDiff('millisecond', started_at, ended_at), ended_at IS NOT NULL AND ended_at > started_at), 2)
+  ) AS avg_time_on_page_ms,
+  if(countIf(scroll_depth_ratio IS NOT NULL) = 0, NULL, round(avg(scroll_depth_ratio), 3)) AS avg_scroll_ratio,
+  countIf(${HARD_LOAD_LCP_SQL}) AS lcp_samples,
+  ${p75IfSql("lcp_ms", HARD_LOAD_LCP_SQL)} AS lcp_p75,
+  countIf(${HARD_LOAD_LCP_SQL} AND lcp_ms <= 2500) AS lcp_good,
+  countIf(${HARD_LOAD_LCP_SQL} AND lcp_ms > 2500 AND lcp_ms <= 4000) AS lcp_needs_work,
+  countIf(${HARD_LOAD_LCP_SQL} AND lcp_ms > 4000) AS lcp_poor,
+  ${p75IfSql("lcp_ms", `${HARD_LOAD_LCP_SQL} AND viewport_width > 0 AND viewport_width < 768`)} AS lcp_p75_mobile,
+  ${p75IfSql("lcp_ms", `${HARD_LOAD_LCP_SQL} AND viewport_width >= 768`)} AS lcp_p75_desktop,
+  countIf(${HARD_LOAD_FCP_SQL}) AS fcp_samples,
+  ${p75IfSql("fcp_ms", HARD_LOAD_FCP_SQL)} AS fcp_p75,
+  countIf(${HARD_LOAD_FCP_SQL} AND fcp_ms <= 1800) AS fcp_good,
+  countIf(${HARD_LOAD_FCP_SQL} AND fcp_ms > 1800 AND fcp_ms <= 3000) AS fcp_needs_work,
+  countIf(${HARD_LOAD_FCP_SQL} AND fcp_ms > 3000) AS fcp_poor,
+  countIf(${HARD_LOAD_TTFB_SQL}) AS ttfb_samples,
+  ${p75IfSql("ttfb_ms", HARD_LOAD_TTFB_SQL)} AS ttfb_p75,
+  countIf(${HARD_LOAD_TTFB_SQL} AND ttfb_ms <= 800) AS ttfb_good,
+  countIf(${HARD_LOAD_TTFB_SQL} AND ttfb_ms > 800 AND ttfb_ms <= 1800) AS ttfb_needs_work,
+  countIf(${HARD_LOAD_TTFB_SQL} AND ttfb_ms > 1800) AS ttfb_poor,
+  countIf(inp_ms IS NOT NULL) AS inp_samples,
+  ${p75IfSql("inp_ms", "inp_ms IS NOT NULL")} AS inp_p75,
+  countIf(inp_ms IS NOT NULL AND inp_ms <= 200) AS inp_good,
+  countIf(inp_ms IS NOT NULL AND inp_ms > 200 AND inp_ms <= 500) AS inp_needs_work,
+  countIf(inp_ms IS NOT NULL AND inp_ms > 500) AS inp_poor,
+  countIf(cls IS NOT NULL) AS cls_samples,
+  ${p75IfSql("cls", "cls IS NOT NULL")} AS cls_p75,
+  countIf(cls IS NOT NULL AND cls <= 0.1) AS cls_good,
+  countIf(cls IS NOT NULL AND cls > 0.1 AND cls <= 0.25) AS cls_needs_work,
+  countIf(cls IS NOT NULL AND cls > 0.25) AS cls_poor,
+  countIf(fps IS NOT NULL) AS fps_samples,
+  ${p75IfSql("fps", "fps IS NOT NULL")} AS fps_p75,
+  countIf(fps IS NOT NULL AND fps >= 55) AS fps_good,
+  countIf(fps IS NOT NULL AND fps >= 30 AND fps < 55) AS fps_needs_work,
+  countIf(fps IS NOT NULL AND fps < 30) AS fps_poor
+FROM page_views
+`,
+    params: { hours },
+  };
+}
+
+export function getPerformancePagesQuery(hours: number): {
+  query: string,
+  params: Record<string, number>,
+} {
+  assertPerformanceTimeRange(hours);
+  return {
+    query: `
+/* performance:pages */
+WITH
+  now64(3) AS range_end,
+  range_end - INTERVAL {hours:UInt32} HOUR AS range_start
+SELECT
+  JSONExtractString(data, 'path') AS path,
+  count() AS views,
+  uniqCombined64If(user_id, user_id IS NOT NULL AND user_id != '') AS users,
+  countIf(JSONExtractString(data, 'entry_type') IN ('push', 'replace', 'pop')) AS soft_nav_views,
+  countIf(${HARD_LOAD_LCP_SQL}) AS lcp_samples,
+  ${p75IfSql("lcp_ms", HARD_LOAD_LCP_SQL)} AS lcp_p75,
+  countIf(inp_ms IS NOT NULL) AS inp_samples,
+  ${p75IfSql("inp_ms", "inp_ms IS NOT NULL")} AS inp_p75,
+  countIf(cls IS NOT NULL) AS cls_samples,
+  ${p75IfSql("cls", "cls IS NOT NULL")} AS cls_p75,
+  if(
+    countIf(ended_at IS NOT NULL AND ended_at > started_at) = 0,
+    NULL,
+    round(avgIf(dateDiff('millisecond', started_at, ended_at), ended_at IS NOT NULL AND ended_at > started_at), 2)
+  ) AS avg_time_on_page_ms,
+  if(countIf(JSONHas(data, 'scroll_depth_ratio')) = 0, NULL, round(avgIf(JSONExtractFloat(data, 'scroll_depth_ratio'), JSONHas(data, 'scroll_depth_ratio')), 3)) AS avg_scroll_ratio
+FROM (
+  SELECT
+    started_at,
+    ended_at,
+    user_id,
+    data,
+    ${PAGE_VIEW_VITALS_SQL}
+  FROM default.spans
+  WHERE span_type = '$page-view'
+    AND started_at >= range_start
+    AND started_at < range_end
+    AND JSONExtractString(data, 'path') != ''
+)
+GROUP BY path
+ORDER BY views DESC, path ASC
+LIMIT ${MAX_PERFORMANCE_PAGES}
+`,
+    params: { hours },
+  };
+}
+
+export function getPerformanceBehaviorQuery(hours: number): {
+  query: string,
+  params: Record<string, number>,
+} {
+  assertPerformanceTimeRange(hours);
+  return {
+    query: `
+/* performance:behavior */
+WITH
+  now64(3) AS range_end,
+  range_end - INTERVAL {hours:UInt32} HOUR AS range_start
+SELECT
+  JSONExtractString(toString(data), 'path') AS path,
+  countIf(event_type = '$click') AS clicks,
+  countIf(event_type = '$click' AND JSONExtractUInt(toString(data), 'rage') = 1) AS rage_clicks,
+  countIf(event_type = '$click' AND JSONExtractUInt(toString(data), 'dead') = 1) AS dead_clicks,
+  countIf(event_type = '$form-submit') AS form_submits,
+  countIf(event_type = '$click' AND JSONExtractUInt(toString(data), 'outbound') = 1) AS outbound_clicks
+FROM default.events
+WHERE event_at >= range_start
+  AND event_at < range_end
+  AND event_type IN ('$click', '$form-submit')
+  AND JSONExtractString(toString(data), 'path') != ''
+GROUP BY path
+ORDER BY rage_clicks DESC, dead_clicks DESC, clicks DESC, path ASC
+LIMIT ${MAX_PERFORMANCE_BEHAVIOR_PATHS}
+`,
+    params: { hours },
+  };
+}
+
+export function getPerformanceTimelineQuery(hours: number): {
+  query: string,
+  params: Record<string, number>,
+} {
+  assertPerformanceTimeRange(hours);
+  const granularity = getBucketGranularity(hours);
+  return {
+    query: `
+/* performance:timeline */
+WITH
+  toStartOfInterval(now64(3), ${granularity.stepSql}) AS current_bucket_start,
+  current_bucket_start - ${granularity.historySql} AS range_start,
+  current_bucket_start + ${granularity.stepSql} AS range_end
+SELECT
+  toStartOfInterval(started_at, ${granularity.stepSql}) AS bucket_start,
+  count() AS views,
+  ${p75IfSql("lcp_ms", HARD_LOAD_LCP_SQL)} AS lcp_p75,
+  ${p75IfSql("inp_ms", "inp_ms IS NOT NULL")} AS inp_p75
+FROM (
+  SELECT
+    started_at,
+    ${PAGE_VIEW_VITALS_SQL}
+  FROM default.spans
+  WHERE span_type = '$page-view'
+    AND started_at >= range_start
+    AND started_at < range_end
+)
+GROUP BY bucket_start
+ORDER BY bucket_start ASC
+`,
+    params: { hours },
+  };
+}
+
+function requiredRowNumber(row: Record<string, unknown>, key: string): number {
+  const value = row[key];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  throw new Error(`Performance ${key} must be a finite number`);
+}
+
+function optionalRowNumber(row: Record<string, unknown>, key: string): number | null {
+  const value = row[key];
+  if (value == null) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string") {
+    if (value === "" || value.toLowerCase() === "nan") return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  throw new Error(`Performance ${key} must be a finite number or null`);
+}
+
+function requiredRowString(row: Record<string, unknown>, key: string): string {
+  const value = row[key];
+  if (typeof value !== "string" || value === "") {
+    throw new Error(`Performance ${key} must be a non-empty string`);
+  }
+  return value;
+}
+
+function parseDistribution(
+  row: Record<string, unknown>,
+  prefix: string,
+): VitalDistribution {
+  return {
+    p75: optionalRowNumber(row, `${prefix}_p75`),
+    samples: requiredRowNumber(row, `${prefix}_samples`),
+    good: requiredRowNumber(row, `${prefix}_good`),
+    needsWork: requiredRowNumber(row, `${prefix}_needs_work`),
+    poor: requiredRowNumber(row, `${prefix}_poor`),
+  };
+}
+
+export function parsePerformanceVitalsOverviewRow(row: Record<string, unknown>): PerformanceVitalsOverview {
+  return {
+    pageViews: requiredRowNumber(row, "page_views"),
+    users: requiredRowNumber(row, "users"),
+    softNavViews: requiredRowNumber(row, "soft_nav_views"),
+    avgTimeOnPageMs: optionalRowNumber(row, "avg_time_on_page_ms"),
+    avgScrollRatio: optionalRowNumber(row, "avg_scroll_ratio"),
+    lcp: parseDistribution(row, "lcp"),
+    lcpP75Mobile: optionalRowNumber(row, "lcp_p75_mobile"),
+    lcpP75Desktop: optionalRowNumber(row, "lcp_p75_desktop"),
+    fcp: parseDistribution(row, "fcp"),
+    ttfb: parseDistribution(row, "ttfb"),
+    inp: parseDistribution(row, "inp"),
+    cls: parseDistribution(row, "cls"),
+    fps: parseDistribution(row, "fps"),
+  };
+}
+
+export function parsePerformancePageRow(row: Record<string, unknown>): Omit<PagePerformance, keyof PageBehavior> {
+  return {
+    path: requiredRowString(row, "path"),
+    views: requiredRowNumber(row, "views"),
+    users: requiredRowNumber(row, "users"),
+    softNavViews: requiredRowNumber(row, "soft_nav_views"),
+    lcpP75: optionalRowNumber(row, "lcp_p75"),
+    lcpSamples: requiredRowNumber(row, "lcp_samples"),
+    inpP75: optionalRowNumber(row, "inp_p75"),
+    inpSamples: requiredRowNumber(row, "inp_samples"),
+    clsP75: optionalRowNumber(row, "cls_p75"),
+    clsSamples: requiredRowNumber(row, "cls_samples"),
+    avgTimeOnPageMs: optionalRowNumber(row, "avg_time_on_page_ms"),
+    avgScrollRatio: optionalRowNumber(row, "avg_scroll_ratio"),
+  };
+}
+
+export function parsePerformanceBehaviorRow(row: Record<string, unknown>): { path: string } & PageBehavior {
+  return {
+    path: requiredRowString(row, "path"),
+    clicks: requiredRowNumber(row, "clicks"),
+    rageClicks: requiredRowNumber(row, "rage_clicks"),
+    deadClicks: requiredRowNumber(row, "dead_clicks"),
+    formSubmits: requiredRowNumber(row, "form_submits"),
+    outboundClicks: requiredRowNumber(row, "outbound_clicks"),
+  };
+}
+
+const EMPTY_BEHAVIOR: PageBehavior = {
+  clicks: 0,
+  rageClicks: 0,
+  deadClicks: 0,
+  formSubmits: 0,
+  outboundClicks: 0,
+};
+
+export function mergePagePerformance(
+  pages: readonly Omit<PagePerformance, keyof PageBehavior>[],
+  behaviors: readonly ({ path: string } & PageBehavior)[],
+): PagePerformance[] {
+  const behaviorByPath = new Map(behaviors.map((row) => [row.path, row]));
+  return pages.map((page) => {
+    const behavior = behaviorByPath.get(page.path);
+    return {
+      ...page,
+      clicks: behavior?.clicks ?? EMPTY_BEHAVIOR.clicks,
+      rageClicks: behavior?.rageClicks ?? EMPTY_BEHAVIOR.rageClicks,
+      deadClicks: behavior?.deadClicks ?? EMPTY_BEHAVIOR.deadClicks,
+      formSubmits: behavior?.formSubmits ?? EMPTY_BEHAVIOR.formSubmits,
+      outboundClicks: behavior?.outboundClicks ?? EMPTY_BEHAVIOR.outboundClicks,
+    };
+  });
+}
+
+export function sumPageBehavior(pages: readonly PagePerformance[]): PageBehavior {
+  return pages.reduce<PageBehavior>((totals, page) => ({
+    clicks: totals.clicks + page.clicks,
+    rageClicks: totals.rageClicks + page.rageClicks,
+    deadClicks: totals.deadClicks + page.deadClicks,
+    formSubmits: totals.formSubmits + page.formSubmits,
+    outboundClicks: totals.outboundClicks + page.outboundClicks,
+  }), { ...EMPTY_BEHAVIOR });
+}
+
+export function buildPerformanceTimeline(
+  rows: readonly Record<string, unknown>[],
+  hours: PerformanceTimeRangeHours,
+  nowMs: number,
+): PerformanceTimelineBucket[] {
+  const granularity = getBucketGranularity(hours);
+  const latestBucketMs = Math.floor(nowMs / granularity.stepMs) * granularity.stepMs;
+  const earliestBucketMs = latestBucketMs - (granularity.bucketCount - 1) * granularity.stepMs;
+  const buckets: PerformanceTimelineBucket[] = Array.from({ length: granularity.bucketCount }, (_unused, index) => ({
+    bucketMs: earliestBucketMs + index * granularity.stepMs,
+    views: 0,
+    lcpP75: null,
+    inpP75: null,
+  }));
+
+  for (const row of rows) {
+    const bucketMs = parseServiceTimestamp(requiredRowString(row, "bucket_start")).getTime();
+    if (bucketMs < earliestBucketMs || bucketMs > latestBucketMs) continue;
+    const index = (bucketMs - earliestBucketMs) / granularity.stepMs;
+    if (!Number.isInteger(index)) {
+      throw new Error(`Performance timeline bucket ${bucketMs} is not aligned to the ${granularity.label} grid`);
+    }
+    const bucket = buckets[index];
+    bucket.views += requiredRowNumber(row, "views");
+    bucket.lcpP75 = optionalRowNumber(row, "lcp_p75");
+    bucket.inpP75 = optionalRowNumber(row, "inp_p75");
+  }
+  return buckets;
+}
+
+export function deadClickRate(page: PageBehavior): number | null {
+  if (page.clicks === 0) return null;
+  return page.deadClicks / page.clicks;
+}
+
+/**
+ * Picks at most one insight per kind so the strip does not collapse into
+ * "three slow pages". A page can still appear twice if it is both slow and
+ * frustrating — that combination is the thing worth interrupting for.
+ */
+export function rankPageInsights(pages: readonly PagePerformance[]): PageInsight[] {
+  const insights: PageInsight[] = [];
+
+  const slowLcpPages = [...pages]
+    .filter((page) => page.lcpSamples >= MIN_VITAL_INSIGHT_SAMPLES && page.lcpP75 != null && page.lcpP75 > 2500)
+    .sort((left, right) => (right.lcpP75 ?? 0) - (left.lcpP75 ?? 0) || stringCompare(left.path, right.path));
+  if (slowLcpPages.length > 0) insights.push({ kind: "slow-lcp", page: slowLcpPages[0] });
+
+  const slowInpPages = [...pages]
+    .filter((page) => page.inpSamples >= MIN_VITAL_INSIGHT_SAMPLES && page.inpP75 != null && page.inpP75 > 200)
+    .sort((left, right) => (right.inpP75 ?? 0) - (left.inpP75 ?? 0) || stringCompare(left.path, right.path));
+  if (slowInpPages.length > 0) insights.push({ kind: "slow-inp", page: slowInpPages[0] });
+
+  const ragePages = [...pages]
+    .filter((page) => page.rageClicks >= 3)
+    .sort((left, right) => right.rageClicks - left.rageClicks || stringCompare(left.path, right.path));
+  if (ragePages.length > 0) insights.push({ kind: "rage", page: ragePages[0] });
+
+  const deadPages = [...pages]
+    .filter((page) => page.clicks >= MIN_FRICTION_CLICKS && (deadClickRate(page) ?? 0) >= 0.08)
+    .sort((left, right) => (deadClickRate(right) ?? 0) - (deadClickRate(left) ?? 0) || stringCompare(left.path, right.path));
+  if (deadPages.length > 0) insights.push({ kind: "dead-clicks", page: deadPages[0] });
+
+  const shallowPages = [...pages]
+    .filter((page) => (
+      page.views >= MIN_SHALLOW_VIEWS
+      && page.avgScrollRatio != null
+      && page.avgScrollRatio < 0.25
+      && page.avgTimeOnPageMs != null
+      && page.avgTimeOnPageMs < 8_000
+    ))
+    .sort((left, right) => right.views - left.views || stringCompare(left.path, right.path));
+  if (shallowPages.length > 0) insights.push({ kind: "shallow", page: shallowPages[0] });
+
+  return insights.slice(0, 3);
+}
+
+export async function fetchPerformancePageModel(
+  adminApp: StackAdminApp<false>,
+  hours: PerformanceTimeRangeHours,
+  nowMs: number,
+): Promise<{
+  overview: PerformanceVitalsOverview,
+  pages: PagePerformance[],
+  timeline: PerformanceTimelineBucket[],
+}> {
+  const overviewQuery = getPerformanceVitalsOverviewQuery(hours);
+  const pagesQuery = getPerformancePagesQuery(hours);
+  const behaviorQuery = getPerformanceBehaviorQuery(hours);
+  const timelineQuery = getPerformanceTimelineQuery(hours);
+  const [overviewResponse, pagesResponse, behaviorResponse, timelineResponse] = await Promise.all([
+    queryObservability(adminApp, { query: overviewQuery.query, params: overviewQuery.params }),
+    queryObservability(adminApp, { query: pagesQuery.query, params: pagesQuery.params }),
+    queryObservability(adminApp, { query: behaviorQuery.query, params: behaviorQuery.params }),
+    queryObservability(adminApp, { query: timelineQuery.query, params: timelineQuery.params }),
+  ]);
+  if (overviewResponse.result.length === 0) {
+    throw new Error("Performance vitals overview query returned no row");
+  }
+  return {
+    overview: parsePerformanceVitalsOverviewRow(overviewResponse.result[0]),
+    pages: mergePagePerformance(
+      pagesResponse.result.map(parsePerformancePageRow),
+      behaviorResponse.result.map(parsePerformanceBehaviorRow),
+    ),
+    timeline: buildPerformanceTimeline(timelineResponse.result, hours, nowMs),
+  };
 }

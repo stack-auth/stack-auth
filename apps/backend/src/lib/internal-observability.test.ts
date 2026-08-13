@@ -18,7 +18,8 @@ const state = vi.hoisted(() => {
   };
   const startSpan = vi.fn(() => span);
   const runWithTelemetrySuppressed = vi.fn(async (fn: () => Promise<Response>) => await fn());
-  return { addTrustedBackendSpanLink, end, runWithTelemetrySuppressed, setData, span, startSpan };
+  const recordBackendRequestMetrics = vi.fn();
+  return { addTrustedBackendSpanLink, end, recordBackendRequestMetrics, runWithTelemetrySuppressed, setData, span, startSpan };
 });
 
 vi.mock("@/hexclave", () => ({
@@ -27,6 +28,10 @@ vi.mock("@/hexclave", () => ({
 
 vi.mock("./node-telemetry-suppression", () => ({
   runWithNodeTelemetrySuppressed: state.runWithTelemetrySuppressed,
+}));
+
+vi.mock("./backend-request-metrics", () => ({
+  recordBackendRequestMetrics: state.recordBackendRequestMetrics,
 }));
 
 describe("internal backend observability", () => {
@@ -79,6 +84,7 @@ describe("internal backend observability", () => {
     expect(suppressed).toBe(true);
     expect(state.runWithTelemetrySuppressed).toHaveBeenCalledOnce();
     expect(state.startSpan).not.toHaveBeenCalled();
+    expect(state.recordBackendRequestMetrics).not.toHaveBeenCalled();
   });
 
   it("parents internal requests under the incoming sampled W3C client span", async () => {
@@ -106,6 +112,11 @@ describe("internal backend observability", () => {
     });
     expect(state.setData).toHaveBeenCalledWith({ status_code: 503, error: "HTTP 503" });
     expect(state.end).toHaveBeenCalledOnce();
+    expect(state.recordBackendRequestMetrics).toHaveBeenCalledWith({
+      durationMs: expect.any(Number),
+      method: "GET",
+      statusCode: 503,
+    });
   });
 
   it("links the internal request span to the authenticated customer client span", async () => {
@@ -263,6 +274,11 @@ describe("internal backend observability", () => {
       spanId: "bbbbbbbbbbbbbbbb",
       linkedProjectId: "customer-project",
       linkedBranchId: "main",
+    });
+    expect(state.recordBackendRequestMetrics).toHaveBeenCalledWith({
+      durationMs: expect.any(Number),
+      method: "GET",
+      statusCode: undefined,
     });
   });
 });

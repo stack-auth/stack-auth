@@ -1,8 +1,9 @@
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
-import { evaluateErrorIngestPolicy, persistErrorIngestClientReportProjection } from "@/lib/error-ingest";
+import { evaluateErrorIngestPolicy, persistErrorIngestClientReportProjection } from "@/lib/telemetry-ingest";
 import { createOtlpLogProtocolProjection } from "@/lib/error-ingest/error-ingest-protocol-projections";
 import { buildOtlpIssueInputs, getOtlpIssueBatchId, getOtlpLogPolicyData, insertOtlpLogs } from "@/lib/otlp-log-writer";
-import { materializeIssuesFromBatchSafely } from "@/lib/issues/issue-store";
+import { findRecentSessionReplay } from "@/lib/session-replays";
+import { buildTelemetryMaterializationMessage, enqueueQstashMessage } from "@/lib/qstash-outbox";
 import { createOtlpHttpResponse, decodeOtlpHttpRequest, getOtlpHttpEncoding, OtlpHttpError, scrubOtlpErrorMessage } from "@/lib/otlp-http";
 import { getHexclaveOtlpLogContractError, normalizeOtlpJsonLogsRequest, type CanonicalOtlpLogRecord } from "@/lib/otlp-logs";
 import { OtlpProtobufError } from "@/lib/otlp-protobuf";
@@ -13,6 +14,7 @@ import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 
 const MAX_LOG_RECORDS_PER_REQUEST = 10_000;
 
@@ -79,11 +81,22 @@ export const POST = createSmartRouteHandler({
         firstContractError ??= contractError;
       }
     }
+    const sessionReplayId = refreshTokenId === null
+      ? null
+      : (await findRecentSessionReplay(
+        await getPrismaClientForTenancy(auth.tenancy),
+        {
+          tenancyId: auth.tenancy.id,
+          refreshTokenId,
+          ...userId === null ? {} : { projectUserId: userId },
+        },
+      ))?.id ?? null;
     const tenant: OtlpTenantContext = {
       projectId: auth.tenancy.project.id,
       branchId: auth.tenancy.branchId,
       userId,
       refreshTokenId,
+      sessionReplayId,
       groupingConfig: auth.tenancy.config.observability.errorGrouping,
     };
     const policyDecision = evaluateErrorIngestPolicy({
@@ -118,17 +131,16 @@ export const POST = createSmartRouteHandler({
       "otlp_logs",
       protocolProjection,
     ));
+    const issueInputs = buildOtlpIssueInputs(acceptedLogRecords, tenant);
+    const issueBatchId = issueInputs.length === 0 ? null : getOtlpIssueBatchId(acceptedLogRecords, tenant);
+    if (issueBatchId !== null) {
+      await enqueueQstashMessage(buildTelemetryMaterializationMessage({
+        tenancyId: auth.tenancy.id,
+        batchId: issueBatchId,
+      }));
+    }
     if (acceptedLogRecords.length > 0) {
       await insertOtlpLogs(getSharedClickhouseAdminClient(), acceptedLogRecords, tenant);
-    }
-    const issueInputs = buildOtlpIssueInputs(acceptedLogRecords, tenant);
-    if (issueInputs.length > 0) {
-      runAsynchronouslyAndWaitUntil(materializeIssuesFromBatchSafely({
-        tenancy: auth.tenancy,
-        batchId: getOtlpIssueBatchId(acceptedLogRecords, tenant),
-        inputs: issueInputs,
-        receivedAt: new Date(),
-      }));
     }
     const partialSuccess = protocolProjection.otlpPartialSuccess.logs;
     if (partialSuccess.rejectedItems === 0) return createOtlpHttpResponse("logs", encoding);

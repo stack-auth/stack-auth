@@ -1,9 +1,20 @@
 import { CUSTOM_TELEMETRY_NAME_RE, isAnalyticsSystemEvent, isW3cSpanId, TELEMETRY_UUID_RE } from "@hexclave/shared/dist/utils/analytics-wire";
 import { createHash } from "crypto";
 import { stripLoneSurrogates, type ClickHouseClient } from "./clickhouse";
-import { computeOccurrenceId, normalizeErrorOccurrence, type IssueMaterializationInput } from "./analytics-telemetry-writers";
+import { computeOccurrenceId, normalizeErrorOccurrence } from "./analytics-telemetry-writers";
+import type { IssueBatchDelta } from "./issues/issue-materialization-contract";
 import { attributesJson, dateFromUnixNano, productAttributes, scrubOtlpValue, stringAttribute, taggedValue, type OtlpTenantContext } from "./otlp-trace-writer";
 import type { CanonicalOtlpLogRecord } from "./otlp-logs";
+import { writeTelemetryDestinations, type TelemetryWriteDestination } from "./telemetry-write-plan";
+
+/**
+ * Log records carry the server-resolved rolling replay context. Keep this
+ * explicit at the log-writer boundary so callers compiling against an older
+ * trace-context declaration still see the log-specific field.
+ */
+type OtlpLogTenantContext = OtlpTenantContext & {
+  sessionReplayId?: string | null,
+};
 
 function severityLevel(number: number, text: string): string {
   if (text !== "") return text.toLowerCase();
@@ -47,7 +58,7 @@ function validUuidAttribute(log: CanonicalOtlpLogRecord, key: string): string | 
   return value !== null && TELEMETRY_UUID_RE.test(value) ? value : null;
 }
 
-export function getOtlpLogsDeduplicationToken(logs: CanonicalOtlpLogRecord[], tenant: OtlpTenantContext): string {
+export function getOtlpLogsDeduplicationToken(logs: CanonicalOtlpLogRecord[], tenant: OtlpLogTenantContext): string {
   const batchId = getOtlpLogsBatchId(logs, tenant);
   return createHash("sha256").update(JSON.stringify({
     tenant: stableTenantIdentity(tenant),
@@ -55,7 +66,7 @@ export function getOtlpLogsDeduplicationToken(logs: CanonicalOtlpLogRecord[], te
   })).digest("hex");
 }
 
-function stableTenantIdentity(tenant: OtlpTenantContext): Pick<OtlpTenantContext, "projectId" | "branchId" | "userId" | "refreshTokenId"> {
+function stableTenantIdentity(tenant: OtlpLogTenantContext): Pick<OtlpTenantContext, "projectId" | "branchId" | "userId" | "refreshTokenId"> {
   // Grouping rollout settings are server policy, not batch identity. Including
   // them here would make a retry during a config transition write the same
   // OTLP batch under a second ClickHouse deduplication token.
@@ -85,7 +96,7 @@ function getOtlpLogIdentity(log: CanonicalOtlpLogRecord, ordinal: number): strin
   })}`;
 }
 
-function getOtlpLogsBatchId(logs: CanonicalOtlpLogRecord[], tenant: OtlpTenantContext): string {
+function getOtlpLogsBatchId(logs: CanonicalOtlpLogRecord[], tenant: OtlpLogTenantContext): string {
   const hash = createHash("sha256").update(JSON.stringify({
     tenant: stableTenantIdentity(tenant),
     identities: logs.map(getOtlpLogIdentity),
@@ -98,43 +109,30 @@ function getOtlpLogOccurrenceId(log: CanonicalOtlpLogRecord, batchId: string, or
   return computeOccurrenceId(batchId, ordinal);
 }
 
-export type OtlpLogInsertDestination = {
-  table: "analytics_internal.logs" | "analytics_internal.events",
-  values: unknown[],
-  suffix: "canonical-logs" | "product-events",
-  deduplicationToken: string,
+export type OtlpLogInsertDestination = TelemetryWriteDestination & {
+  suffix: "telemetry",
 };
 
 /**
- * Plans the two physical writes separately. ClickHouse deduplicates by the
- * destination token, so a retry can safely replay only the destination that
- * failed after the other one committed. This is the OTLP equivalent of
- * Relay's item-level processing boundary; the HTTP route still reports
- * rejected input records through OTLP partialSuccess before this plan runs.
+ * Plans one canonical physical write. Product-event and log/error projections
+ * share the telemetry table, so one request has one ClickHouse deduplication
+ * token while the HTTP route still reports rejected input records through OTLP
+ * partialSuccess before this plan runs.
  */
-export function buildOtlpLogInsertPlan(logs: CanonicalOtlpLogRecord[], tenant: OtlpTenantContext): OtlpLogInsertDestination[] {
+export function buildOtlpLogInsertPlan(logs: CanonicalOtlpLogRecord[], tenant: OtlpLogTenantContext): OtlpLogInsertDestination[] {
   if (logs.length === 0) return [];
   const requestToken = getOtlpLogsDeduplicationToken(logs, tenant);
-  const destinations: OtlpLogInsertDestination[] = [
-    {
-      table: "analytics_internal.logs",
-      values: buildOtlpLogRows(logs, tenant),
-      suffix: "canonical-logs",
-      deduplicationToken: `${requestToken}:canonical-logs`,
-    },
-    {
-      table: "analytics_internal.events",
-      values: buildOtlpProductEventRows(logs, tenant),
-      suffix: "product-events",
-      deduplicationToken: `${requestToken}:product-events`,
-    },
-  ];
-  return destinations.filter((destination) => destination.values.length > 0);
+  return [{
+    table: "analytics_internal.telemetry",
+    values: buildOtlpLogRows(logs, tenant),
+    suffix: "telemetry",
+    deduplicationToken: `${requestToken}:telemetry`,
+  }];
 }
 
-function errorProjection(log: CanonicalOtlpLogRecord, tenant: OtlpTenantContext, batchId: string, ordinal: number): {
+function errorProjection(log: CanonicalOtlpLogRecord, tenant: OtlpLogTenantContext, batchId: string, ordinal: number): {
   columns: Record<string, unknown>,
-  issueInput: IssueMaterializationInput,
+  issueInput: IssueBatchDelta,
 } | null {
   if (stringAttribute(log.attributes, "hexclave.signal.type") !== "error" || log.eventName !== "$error") return null;
   const eventNano = log.timeUnixNano === "0" ? log.observedTimeUnixNano : log.timeUnixNano;
@@ -167,7 +165,7 @@ function errorProjection(log: CanonicalOtlpLogRecord, tenant: OtlpTenantContext,
   };
 }
 
-export function buildOtlpLogRows(logs: CanonicalOtlpLogRecord[], tenant: OtlpTenantContext) {
+export function buildOtlpLogRows(logs: CanonicalOtlpLogRecord[], tenant: OtlpLogTenantContext) {
   const batchId = getOtlpLogsBatchId(logs, tenant);
   return logs.map((log, ordinal) => {
     const eventNano = log.timeUnixNano === "0" ? log.observedTimeUnixNano : log.timeUnixNano;
@@ -190,7 +188,7 @@ export function buildOtlpLogRows(logs: CanonicalOtlpLogRecord[], tenant: OtlpTen
       user_id: tenant.userId ?? validUuidAttribute(log, "hexclave.user.id"),
       team_id: null,
       refresh_token_id: tenant.refreshTokenId ?? validUuidAttribute(log, "hexclave.refresh_token.id"),
-      session_replay_id: validUuidAttribute(log, "hexclave.session_replay.id"),
+      session_replay_id: tenant.sessionReplayId ?? validUuidAttribute(log, "hexclave.session_replay.id"),
       session_replay_segment_id: validUuidAttribute(log, "hexclave.session_replay.segment.id"),
       trace_id: log.traceId,
       span_id: log.spanId,
@@ -226,7 +224,7 @@ export function buildOtlpLogRows(logs: CanonicalOtlpLogRecord[], tenant: OtlpTen
   });
 }
 
-export function buildOtlpIssueInputs(logs: CanonicalOtlpLogRecord[], tenant: OtlpTenantContext): IssueMaterializationInput[] {
+export function buildOtlpIssueInputs(logs: CanonicalOtlpLogRecord[], tenant: OtlpLogTenantContext): IssueBatchDelta[] {
   const batchId = getOtlpLogsBatchId(logs, tenant);
   return logs.flatMap((log, ordinal) => {
     const error = errorProjection(log, tenant, batchId, ordinal);
@@ -234,11 +232,11 @@ export function buildOtlpIssueInputs(logs: CanonicalOtlpLogRecord[], tenant: Otl
   });
 }
 
-export function getOtlpIssueBatchId(logs: CanonicalOtlpLogRecord[], tenant: OtlpTenantContext): string {
+export function getOtlpIssueBatchId(logs: CanonicalOtlpLogRecord[], tenant: OtlpLogTenantContext): string {
   return getOtlpLogsBatchId(logs, tenant);
 }
 
-export function buildOtlpProductEventRows(logs: CanonicalOtlpLogRecord[], tenant: OtlpTenantContext) {
+export function buildOtlpProductEventRows(logs: CanonicalOtlpLogRecord[], tenant: OtlpLogTenantContext) {
   const canonicalRows = buildOtlpLogRows(logs, tenant);
   return logs.flatMap((sourceLog, index) => {
     if (stringAttribute(sourceLog.attributes, "hexclave.signal.type") !== "event" || !isProductEventName(sourceLog.eventName)) return [];
@@ -269,17 +267,6 @@ export function buildOtlpProductEventRows(logs: CanonicalOtlpLogRecord[], tenant
   });
 }
 
-export async function insertOtlpLogs(client: ClickHouseClient, logs: CanonicalOtlpLogRecord[], tenant: OtlpTenantContext): Promise<void> {
-  await Promise.all(buildOtlpLogInsertPlan(logs, tenant).map(async (destination) => await client.insert({
-    table: destination.table,
-    values: destination.values,
-    format: "JSONEachRow",
-    clickhouse_settings: {
-      date_time_input_format: "best_effort",
-      async_insert: 0,
-      wait_for_async_insert: 1,
-      insert_deduplication_token: destination.deduplicationToken,
-      deduplicate_blocks_in_dependent_materialized_views: 1,
-    },
-  })));
+export async function insertOtlpLogs(client: ClickHouseClient, logs: CanonicalOtlpLogRecord[], tenant: OtlpLogTenantContext): Promise<void> {
+  await writeTelemetryDestinations(client, buildOtlpLogInsertPlan(logs, tenant));
 }

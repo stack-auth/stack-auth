@@ -7,5 +7,6 @@ export {
   createHexclaveBrowserCorrelationSpanProcessor,
   createHexclaveBrowserOtlpTraceExporter,
   createHexclaveBrowserOtlpLogExporter,
+  createHexclaveHttpMetricSpanProcessor,
   type HexclaveBrowserOtelExporterOptions,
 } from "../lib/hexclave-app/apps/implementations/browser-otel-sdk";

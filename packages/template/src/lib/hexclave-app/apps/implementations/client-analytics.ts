@@ -511,6 +511,10 @@ export class ClientAnalytics {
 
   async clearBuffer(): Promise<void> {
     this._bufferGeneration += 1;
+    // Rotate before any await and suspend recorder increments until the next
+    // authenticated session publishes a replacement FullSnapshot. Otherwise
+    // events captured during the sign-out request can cross the user boundary.
+    this.setSessionReplaySegmentId(generateUuid());
     this._preloadGlobalSpans.clear();
     this._integrationBreadcrumbs.length = 0;
     this._tracker?.clearBuffer();
@@ -519,6 +523,10 @@ export class ClientAnalytics {
     if (this._browserOtelRegistration !== null) {
       this._browserOtelRegistration = await this._browserOtelRegistration.flushBeforeAuthenticationChange();
     }
+  }
+
+  resumeSessionReplayAfterAuthentication(): void {
+    this._recorder?.captureFullSnapshotForCurrentSegment();
   }
 
   trackCustomEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions): Promise<void> {

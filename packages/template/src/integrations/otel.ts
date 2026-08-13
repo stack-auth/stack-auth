@@ -1,14 +1,16 @@
 /**
  * Node-only OpenTelemetry integration for applications that already configure
- * their own provider. Add the exporter and correlation processor to that
- * provider and set `observability.openTelemetry.provider` to
- * `"existing-provider"` so Hexclave never mutates process-wide OTel globals.
+ * their own provider. Add the exporter, correlation processor, and HTTP
+ * metric span processor to that provider and set
+ * `observability.openTelemetry.provider` to `"existing-provider"` so Hexclave
+ * never mutates process-wide OTel globals.
  */
 export {
   buildHexclaveOtlpTraceExporterConfig,
   buildHexclaveOtlpLogExporterConfig,
   buildHexclaveOtlpMetricExporterConfig,
   createHexclaveCorrelationSpanProcessor,
+  createHexclaveHttpMetricSpanProcessor,
   createHexclaveOtlpTraceExporter,
   createHexclaveOtlpLogExporter,
   createHexclaveOtlpMetricExporter,

@@ -48,6 +48,10 @@ describe("managed OTel span policy", () => {
     ["POST /api/v1/analytics/otlp/v1/logs", SpanKind.SERVER, "/api/v1/analytics/otlp/v1/logs"],
     ["POST /api/latest/analytics/otlp/v1/metrics", SpanKind.SERVER, "/api/latest/analytics/otlp/v1/metrics"],
     ["POST /api/v1/analytics/otlp/v1/metrics", SpanKind.SERVER, "/api/v1/analytics/otlp/v1/metrics"],
+    ["POST /api/latest/analytics/client-reports", SpanKind.SERVER, "/api/latest/analytics/client-reports"],
+    ["POST /api/v1/analytics/client-reports", SpanKind.SERVER, "/api/v1/analytics/client-reports"],
+    ["POST /api/latest/analytics/attachments", SpanKind.SERVER, "/api/latest/analytics/attachments"],
+    ["POST /api/v1/analytics/attachments", SpanKind.SERVER, "/api/v1/analytics/attachments"],
     ["POST /api/latest/session-replays/batch", SpanKind.SERVER, "/api/latest/session-replays/batch"],
     ["POST /api/v1/session-replays/batch", SpanKind.SERVER, "/api/v1/session-replays/batch"],
   ])("drops recursive telemetry ingestion request %s", (name, kind, path) => {

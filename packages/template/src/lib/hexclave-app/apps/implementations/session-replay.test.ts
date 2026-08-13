@@ -25,9 +25,18 @@ describe("session replay lifecycle", () => {
 });
 
 const rrwebMocks = vi.hoisted(() => {
-  const takeFullSnapshot = vi.fn();
-  const record = Object.assign(vi.fn(() => () => {}), { takeFullSnapshot });
-  return { record, takeFullSnapshot };
+  type TestRrwebEvent = { type: number, timestamp: number, data: Record<string, never> };
+  let emit: ((event: TestRrwebEvent) => void) | undefined;
+  const takeFullSnapshot = vi.fn(() => emit?.({ type: 2, timestamp: Date.now(), data: {} }));
+  const record = Object.assign(vi.fn((options: { emit: (event: TestRrwebEvent) => void }) => {
+    emit = options.emit;
+    return () => {};
+  }), { takeFullSnapshot });
+  const emitEvent = (event: TestRrwebEvent) => {
+    if (emit === undefined) throw new Error("rrweb record() has not started");
+    emit(event);
+  };
+  return { record, takeFullSnapshot, emitEvent };
 });
 vi.mock("rrweb", () => ({ record: rrwebMocks.record }));
 
@@ -169,6 +178,34 @@ describe("SessionRecorder stylesheet re-snapshot", () => {
 
       link.remove();
       link2.remove();
+    } finally {
+      recorder.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it("suppresses post-sign-out mutations until authentication resumes with a fresh full snapshot", async () => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    const recorder = makeRecorder();
+
+    try {
+      await startRecorder(recorder);
+      recorder.clearBuffer();
+      recorder.setSessionReplaySegmentId("next-user-segment");
+
+      rrwebMocks.emitEvent({ type: 3, timestamp: Date.now(), data: {} });
+      expect(Reflect.get(recorder, "_events")).toEqual([]);
+      expect(rrwebMocks.takeFullSnapshot).not.toHaveBeenCalled();
+
+      recorder.captureFullSnapshotForCurrentSegment();
+      rrwebMocks.emitEvent({ type: 3, timestamp: Date.now() + 1, data: {} });
+
+      expect(rrwebMocks.takeFullSnapshot).toHaveBeenCalledOnce();
+      expect(Reflect.get(recorder, "_events")).toMatchObject([
+        { type: 2 },
+        { type: 3 },
+      ]);
     } finally {
       recorder.stop();
       vi.useRealTimers();

@@ -18,7 +18,7 @@ import {
   parseWorkflowRunLifecycleEvent,
   type WorkflowRunLifecycleTransition,
 } from "./events";
-import { workflowDefinitionMatchesEvent, workflowEventRetryDelayMs } from "./event-processing";
+import { workflowDefinitionMatchesEvent, workflowEventRetryDelayMs, workflowEventShouldDeadLetter } from "./event-processing";
 import { reconcileIssueAlertWorkflowLifecycle } from "../issues/issue-alerts/workflow-status";
 import { invokeWorkflowSandbox } from "./invoke";
 import { listCronOccurrences, MAX_CATCHUP_WINDOW_MS, parseCronExpression } from "./cron";
@@ -298,6 +298,7 @@ type WorkflowEventRow = {
   payload: unknown,
   scheduledAt: Date,
   processingAttempts: number,
+  deadLetteredAt: Date | null,
 };
 
 type DefinitionWithManifest = {
@@ -529,7 +530,7 @@ async function processWorkflowEvents(tenancyCache: Map<string, Tenancy | null>, 
   // crash-replays and overlapping ticks are safe — at-least-once with
   // no duplicate runs. The cost is occasional duplicate work under overlap.
   const events: WorkflowEventRow[] = await globalPrismaClient.workflowEvent.findMany({
-    where: { processedAt: null, retryAt: { lte: new Date() } },
+    where: { processedAt: null, deadLetteredAt: null, retryAt: { lte: new Date() } },
     orderBy: { scheduledAt: "asc" },
     take: EVENT_BATCH_SIZE,
     select: {
@@ -539,6 +540,7 @@ async function processWorkflowEvents(tenancyCache: Map<string, Tenancy | null>, 
       payload: true,
       scheduledAt: true,
       processingAttempts: true,
+      deadLetteredAt: true,
     },
   });
   if (events.length === 0) return false;
@@ -594,12 +596,18 @@ async function processWorkflowEvents(tenancyCache: Map<string, Tenancy | null>, 
     } catch (error) {
       captureError("workflow-event-processing", error);
       const nextAttempt = event.processingAttempts + 1;
-      const retryDelayMs = workflowEventRetryDelayMs(nextAttempt);
+      const deadLetter = workflowEventShouldDeadLetter(nextAttempt);
+      const errorMessage = error instanceof Error ? error.message : "Workflow event processing failed";
+      const boundedErrorMessage = errorMessage.length > 2048
+        ? `${errorMessage.slice(0, 2045)}...`
+        : errorMessage;
       await globalPrismaClient.workflowEvent.updateMany({
         where: { tenancyId: event.tenancyId, id: event.id, processedAt: null },
         data: {
           processingAttempts: { increment: 1 },
-          retryAt: new Date(Date.now() + retryDelayMs),
+          retryAt: deadLetter ? new Date() : new Date(Date.now() + workflowEventRetryDelayMs(nextAttempt)),
+          lastProcessingError: boundedErrorMessage,
+          ...(deadLetter ? { deadLetteredAt: new Date() } : {}),
         },
       });
     }

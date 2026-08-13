@@ -4,12 +4,13 @@ import { createHash } from "crypto";
 import { stripLoneSurrogates, type ClickHouseClient } from "./clickhouse";
 import { computeGrouping, computeGroupingWithReadableConfigs, getGroupingHashProvenance } from "./issues/grouping";
 import { readGroupingFingerprint } from "./issues/grouping-fingerprint";
-import { resolveGroupingConfig, type GroupingConfigId, type GroupingConfigResolution, type GroupingRuntimeConfig } from "./issues/grouping-config";
+import { resolveGroupingConfig, type GroupingConfigResolution, type GroupingRuntimeConfig } from "./issues/grouping-config";
 import { serializeGroupingProvenance } from "./issues/grouping-provenance";
-import type { GroupingHashProvenance } from "./issues/types";
+import type { IssueBatchDelta } from "./issues/issue-materialization-contract";
 import { buildTelemetryResourceFields } from "./telemetry-resource";
 import { scrubErrorIngestPayload } from "./error-ingest";
 import { normalizeErrorEnvelope } from "@hexclave/shared/dist/utils/error-envelope";
+import { writeTelemetryDestinations, type TelemetryWritePlan } from "./telemetry-write-plan";
 
 export type BatchEventWireItem = {
   event_type: string,
@@ -37,7 +38,12 @@ export type BatchSignalContext = {
   sessionReplayId: string | null,
   sessionReplaySegmentId: string | null,
   runtime: "browser" | "server",
-  resource: TelemetryResource,
+  /**
+   * Released analytics batches predate the resource envelope. They retain
+   * nullable resource columns rather than being assigned an invented service
+   * name; versioned batches always provide the structured resource.
+   */
+  resource: TelemetryResource | null,
   /**
    * The authenticated SDK ingestion path is always an SDK producer. Platform-
    * synthesized events use separate writers rather than masquerading as input
@@ -48,17 +54,22 @@ export type BatchSignalContext = {
   groupingConfig?: GroupingRuntimeConfig,
 };
 
-export function getEventStorageTable(eventType: string): "analytics_internal.events" | "analytics_internal.logs" {
+export type TelemetryLens = "product" | "observability";
+
+export function getTelemetryLens(eventType: string): TelemetryLens {
   return classifyTelemetrySignal(eventType, "event").lens === "analytics"
-    ? "analytics_internal.events"
-    : "analytics_internal.logs";
+    ? "product"
+    : "observability";
 }
 
 export function getBatchDestinationDeduplicationToken(
   batchId: string,
-  table: "analytics_internal.events" | "analytics_internal.logs" | "analytics_internal.spans",
+  table: "analytics_internal.events" | "analytics_internal.logs" | "analytics_internal.telemetry" | "analytics_internal.spans",
 ): string {
-  return `${batchId}:${table}`;
+  const canonicalTable = table === "analytics_internal.events" || table === "analytics_internal.logs"
+    ? "analytics_internal.telemetry"
+    : table;
+  return `${batchId}:${canonicalTable}`;
 }
 
 /**
@@ -78,6 +89,17 @@ export function computeOccurrenceId(batchId: string, ordinal: number): string {
   return createHash("sha256").update(`${batchId}:${ordinal}`, "utf8").digest("hex").slice(0, 32);
 }
 
+const NATIVE_EVENT_ID_RE = /^[0-9a-f]{32}$/iu;
+
+function getNativeEventId(event: BatchEventWireItem): string | null {
+  const eventId = readStringField(event.data, "event_id");
+  return eventId !== null && NATIVE_EVENT_ID_RE.test(eventId) ? eventId.toLowerCase() : null;
+}
+
+function getOccurrenceId(event: BatchEventWireItem, batchId: string, ordinal: number): string {
+  return getNativeEventId(event) ?? computeOccurrenceId(batchId, ordinal);
+}
+
 /**
  * What the background materializer needs in order to create/advance an Issue,
  * already coalesced per owning hash by `normalizeBatchEvents`. Coalescing here
@@ -85,35 +107,6 @@ export function computeOccurrenceId(batchId: string, ordinal: number): string {
  * Postgres rows: the SDK's own flood control caps 10 per fingerprint per page
  * view, so N is typically 1–5.
  */
-export type IssueMaterializationInput = {
-  ownerHash: string,
-  aliasHashes: string[],
-  /** The first durable occurrence represented by this coalesced hash input. */
-  occurrenceId?: string,
-  groupingConfigId: GroupingConfigId,
-  /**
-   * Ordered primary/secondary decisions retained for issue-hash explainability.
-   * Canonical normalized ingest supplies this; legacy reconciliation callers may
-   * omit it and leave the nullable storage fields empty rather than inventing
-   * provenance that was not present on the original occurrence.
-   */
-  groupingProvenance?: GroupingHashProvenance[],
-  type: string,
-  value: string,
-  culprit: string,
-  platform: string,
-  count: number,
-  firstEventAt: Date,
-  lastEventAt: Date,
-  serviceName: string | null,
-  deploymentEnvironmentName: string | null,
-  release: string | null,
-  level: string,
-  /** Mechanism facts from the creating occurrence; persisted on the Issue row. */
-  handled: boolean,
-  synthetic: boolean,
-};
-
 /**
  * Protocol-neutral normalized event batch. The current native SDK wire
  * normalizer produces this shape; a future standards-complete OTLP normalizer
@@ -123,8 +116,10 @@ export type NormalizedEventBatch = {
   productEvents: ReturnType<typeof buildBaseEventRow>[],
   logOccurrences: ReturnType<typeof buildLogRow>[],
   /** Empty unless the batch contained `$error` events. */
-  issueInputs: IssueMaterializationInput[],
+  issueInputs: IssueBatchDelta[],
 };
+
+export type NativeTelemetryWritePlan = TelemetryWritePlan<IssueBatchDelta>;
 
 /**
  * `stripLoneSurrogates` is declared over `unknown` because it walks arbitrary
@@ -202,8 +197,7 @@ function buildErrorGroupingFields(event: BatchEventWireItem, context: Pick<Batch
   const name = readStringField(event.data, "name") ?? "Error";
   const message = readStringField(event.data, "message") ?? "";
   const stack = readStringField(event.data, "stack");
-  const synthetic = typeof event.data === "object" && event.data !== null
-    && (event.data as Record<string, unknown>).synthetic != null;
+  const synthetic = readBooleanField(event.data, "synthetic") === true;
   const level = event.level ?? "error";
 
   const grouping = computeGroupingWithReadableConfigs({
@@ -253,7 +247,7 @@ export function normalizeErrorOccurrence(
   },
   batchId: string,
   ordinal: number,
-): { columns: Record<string, unknown>, issueInput: IssueMaterializationInput } {
+): { columns: Record<string, unknown>, issueInput: IssueBatchDelta } {
   if (event.event_type !== "$error") throw new Error("normalizeErrorOccurrence requires a $error event");
   const errorFields = buildErrorGroupingFields(event, context, resolveGroupingConfig(context.groupingConfig));
   const issueInput = collectIssueInputs([{
@@ -287,7 +281,7 @@ function buildBaseEventRow(event: BatchEventWireItem, context: BatchSignalContex
       data: stripLoneSurrogates(event.data),
       producer: context.producer,
       runtime: context.runtime,
-      ...buildTelemetryResourceFields(context.resource),
+      ...(context.resource === null ? {} : buildTelemetryResourceFields(context.resource)),
       project_id: context.projectId,
       branch_id: context.branchId,
       user_id: context.userId,
@@ -315,14 +309,14 @@ function buildBaseEventRow(event: BatchEventWireItem, context: BatchSignalContex
 function buildLogRow(
   event: BatchEventWireItem,
   context: BatchSignalContext,
+  occurrenceId: string,
   batchId: string,
-  ordinal: number,
   errorFields: ErrorGroupingFields | null,
 ) {
   const otelBase = buildBaseEventRow(event, context);
   return {
     ...otelBase,
-    occurrence_id: computeOccurrenceId(batchId, ordinal),
+    occurrence_id: occurrenceId,
     // Stored alongside `occurrence_id` because the latter is a one-way hash:
     // the reconciler needs to ask "which batches have no ledger row?", which
     // requires the batch id itself, not a digest of it.
@@ -357,8 +351,8 @@ function collectIssueInputs(grouped: readonly GroupedErrorOccurrence[], context:
   runtime: BatchSignalContext["runtime"],
   serviceName: string | null,
   deploymentEnvironmentName: string | null,
-}): IssueMaterializationInput[] {
-  const byHash = new Map<string, IssueMaterializationInput>();
+}): IssueBatchDelta[] {
+  const byHash = new Map<string, IssueBatchDelta>();
 
   for (const { event, grouping, occurrenceId } of grouped) {
     const eventAt = new Date(event.event_at_ms);
@@ -405,7 +399,7 @@ function collectIssueInputs(grouped: readonly GroupedErrorOccurrence[], context:
       // The fingerprint variant may be `custom` even when the captured value
       // was synthetic; preserve the mechanism fact independently of which hash
       // won.
-      synthetic: readField(event.data, "synthetic") != null,
+      synthetic: readBooleanField(event.data, "synthetic") === true,
     });
   }
 
@@ -425,7 +419,8 @@ export function normalizeBatchEvents(
   const logOccurrences: ReturnType<typeof buildLogRow>[] = [];
 
   scrubbedEvents.forEach((event, ordinal) => {
-    if (getEventStorageTable(event.event_type) === "analytics_internal.events") {
+    const occurrenceId = getOccurrenceId(event, batchId, ordinal);
+    if (getTelemetryLens(event.event_type) === "product") {
       productEvents.push(buildBaseEventRow(event, context));
       return;
     }
@@ -436,62 +431,42 @@ export function normalizeBatchEvents(
       grouped.push({
         event,
         grouping: errorFields.grouping,
-        occurrenceId: computeOccurrenceId(batchId, ordinal),
+        occurrenceId,
       });
     }
-    logOccurrences.push(buildLogRow(event, context, batchId, ordinal, errorFields));
+    logOccurrences.push(buildLogRow(event, context, occurrenceId, batchId, errorFields));
   });
 
   return { productEvents, logOccurrences, issueInputs: collectIssueInputs(grouped, {
     runtime: context.runtime,
-    serviceName: context.resource.service.name,
-    deploymentEnvironmentName: context.resource.deploymentEnvironmentName ?? null,
+    serviceName: context.resource?.service.name ?? null,
+    deploymentEnvironmentName: context.resource?.deploymentEnvironmentName ?? null,
   }) };
 }
 
+export function buildTelemetryWritePlan(
+  normalized: NormalizedEventBatch,
+  batchId: string,
+): NativeTelemetryWritePlan {
+  return {
+    batchId,
+    destinations: [{
+      table: "analytics_internal.telemetry",
+      values: [...normalized.productEvents, ...normalized.logOccurrences],
+      deduplicationToken: getBatchDestinationDeduplicationToken(batchId, "analytics_internal.telemetry"),
+    }],
+    issueInputs: normalized.issueInputs,
+  };
+}
+
 /**
- * Dispatches event-shaped telemetry by taxonomy ownership. Product events and
- * code occurrences deliberately share a wire contract, but never a storage
- * table or dashboard read model.
+ * Writes all event-shaped telemetry to one physical table. Taxonomy ownership
+ * remains visible through event_type and the compatibility views; storage no
+ * longer duplicates the large shared tenancy/time prefix.
  */
 export async function insertBatchEvents(
   clickhouseClient: ClickHouseClient,
-  normalized: NormalizedEventBatch,
-  batchId: string,
+  plan: NativeTelemetryWritePlan,
 ): Promise<void> {
-
-  const insertRows = async (
-    table: "analytics_internal.events" | "analytics_internal.logs",
-    values: NormalizedEventBatch["productEvents"],
-  ) => {
-    if (values.length === 0) return;
-    await clickhouseClient.insert({
-      table,
-      values,
-      format: "JSONEachRow",
-      clickhouse_settings: {
-        date_time_input_format: "best_effort",
-        // A mixed wire batch becomes one insert per destination. Stable
-        // destination tokens make retries safe when one table committed before
-        // another failed.
-        async_insert: 0,
-        insert_deduplication_token: getBatchDestinationDeduplicationToken(batchId, table),
-        // Dedup must reach the MATERIALIZED VIEWS, not just the source table.
-        //
-        // ClickHouse defaults this to 0, which means a retried batch is
-        // correctly deduplicated in `analytics_internal.logs` while the blocks
-        // the dependent views push into their targets are inserted again. For
-        // `issue_occurrence_rollup` that shows up as an issue whose lifetime
-        // `times_seen` (Postgres ledger) says 1 while its windowed
-        // `window_occurrences` (ClickHouse) says 2 — the two counters visibly
-        // disagreeing on the same list row.
-        deduplicate_blocks_in_dependent_materialized_views: 1,
-      },
-    });
-  };
-
-  await Promise.all([
-    insertRows("analytics_internal.events", normalized.productEvents),
-    insertRows("analytics_internal.logs", normalized.logOccurrences),
-  ]);
+  await writeTelemetryDestinations(clickhouseClient, plan.destinations);
 }

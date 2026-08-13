@@ -188,16 +188,27 @@ function nextRequestToRequestLike(request: HexclaveNextRequestErrorRequest): Req
 }
 
 /**
- * Glue for the customer's `instrumentation.ts`:
+ * Glue for the customer's `instrumentation.ts`.
+ *
+ * Next.js compiles that file for Edge as well as Node. Dynamically import this
+ * module behind an inline `process.env.NEXT_RUNTIME !== "nodejs"` check (not a
+ * helper — Next must see the member expression to drop the Node-only graph
+ * from the Edge bundle):
  *
  * ```ts
  * // instrumentation.ts
- * import { hexclaveInstrumentation } from "@hexclave/next/next";
- * import { stackServerApp } from "./stack";
- *
- * const instrumentation = hexclaveInstrumentation(stackServerApp);
- * export const register = instrumentation.register;
- * export const onRequestError = instrumentation.onRequestError;
+ * export async function register() {
+ *   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+ *   const { hexclaveInstrumentation } = await import("@hexclave/next/next");
+ *   const { stackServerApp } = await import("./stack");
+ *   await hexclaveInstrumentation(stackServerApp).register();
+ * }
+ * export async function onRequestError(...args: Parameters<HexclaveNextInstrumentation["onRequestError"]>) {
+ *   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+ *   const { hexclaveInstrumentation } = await import("@hexclave/next/next");
+ *   const { stackServerApp } = await import("./stack");
+ *   await hexclaveInstrumentation(stackServerApp).onRequestError(...args);
+ * }
  * ```
  *
  * `register()` installs the managed OTel provider, official Undici
@@ -223,12 +234,15 @@ function nextRequestToRequestLike(request: HexclaveNextRequestErrorRequest): Req
  *
  * ```ts
  * // instrumentation.ts
- * import { PrismaInstrumentation } from "@prisma/instrumentation";
- * const instrumentation = hexclaveInstrumentation(stackServerApp, {
- *   instrumentations: [new PrismaInstrumentation()],
- * });
- * export const register = instrumentation.register;
- * export const onRequestError = instrumentation.onRequestError;
+ * export async function register() {
+ *   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+ *   const { PrismaInstrumentation } = await import("@prisma/instrumentation");
+ *   const { hexclaveInstrumentation } = await import("@hexclave/next/next");
+ *   const { stackServerApp } = await import("./stack");
+ *   await hexclaveInstrumentation(stackServerApp, {
+ *     instrumentations: [new PrismaInstrumentation()],
+ *   }).register();
+ * }
  * ```
  *
  * Honest limit: this does NOT create per-route server spans — Next.js has no

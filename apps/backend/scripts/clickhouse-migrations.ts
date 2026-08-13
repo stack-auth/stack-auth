@@ -19,24 +19,23 @@ export async function runClickhouseMigrations() {
     client.command({ query: SYNC_METADATA_TABLE_SQL }),
   ]);
 
-  // Pre-release only: rebuild the whole unreleased spans subsystem whenever its
-  // canonical schema changes, instead of detecting and migrating each dev/staging
-  // vintage. Must run before the CREATE TABLEs below claim these names, and it leaves the
-  // derived tables empty, which is what makes their backfills re-run. See
-  // resetSpansSubsystemIfFingerprintChanged for why this must die at GA.
+  // Refuse an unplanned spans schema change before the CREATEs below can make a
+  // partially-upgraded subsystem look current. Fingerprints are validation
+  // guards only: production data is never dropped or rebuilt by application
+  // startup. An actual change needs its own online migration first.
   const spansSubsystemFingerprint = computeSpansSubsystemFingerprint();
   await resetSpansSubsystemIfFingerprintChanged(client, spansSubsystemFingerprint);
 
-  // Same pre-release rebuild treatment, scoped to the derived issue rollup and
-  // its materialized view ONLY — never the `logs` grouping columns. See the
-  // banner on computeIssuesSubsystemFingerprint.
+  // Apply the same fail-closed validation to the derived issue rollup and its
+  // materialized view only — never to the non-derivable telemetry columns.
   const issuesSubsystemFingerprint = computeIssuesSubsystemFingerprint();
   await resetIssuesSubsystemIfFingerprintChanged(client, issuesSubsystemFingerprint);
 
+  await migrateLegacyTelemetryTables(client);
+
   // Create all tables in parallel
   await Promise.all([
-    client.command({ query: EVENTS_TABLE_BASE_SQL }),
-    client.command({ query: LOGS_TABLE_BASE_SQL }),
+    client.command({ query: TELEMETRY_TABLE_BASE_SQL }),
     client.command({ query: SPAN_EVENTS_TABLE_BASE_SQL }),
     client.command({ query: USERS_TABLE_BASE_SQL }),
     client.command({ query: CONTACT_CHANNELS_TABLE_BASE_SQL }),
@@ -68,8 +67,7 @@ export async function runClickhouseMigrations() {
   // which name every column explicitly and would otherwise fail to create and
   // take the whole boot down with them.
   await Promise.all([
-    client.command({ query: EVENTS_SCHEMA_UPGRADE_SQL }),
-    client.command({ query: LOGS_SCHEMA_UPGRADE_SQL }),
+    client.command({ query: TELEMETRY_SCHEMA_UPGRADE_SQL }),
     client.command({ query: SPAN_EVENTS_SCHEMA_UPGRADE_SQL }),
     client.command({ query: SPANS_SCHEMA_UPGRADE_SQL }),
     client.command({ query: SPAN_LINKS_SCHEMA_UPGRADE_SQL }),
@@ -77,11 +75,6 @@ export async function runClickhouseMigrations() {
     client.command({ query: TRACE_SERVICES_SCHEMA_UPGRADE_SQL }),
     client.command({ query: OTEL_METRICS_SCHEMA_UPGRADE_SQL }),
   ]);
-
-  // After the upgrades so it can never race an ADD COLUMN on the same table.
-  // Purely IF EXISTS actions, so this is a no-op everywhere except pre-release
-  // deployments that carry the retired log/tracing columns.
-  await client.command({ query: EVENTS_LEGACY_CLEANUP_SQL });
 
   // The public batch id is also the ClickHouse insert idempotency key. A
   // single wire batch may target events, logs, and spans independently, so
@@ -94,32 +87,34 @@ export async function runClickhouseMigrations() {
   // Retention and skip indexes for tables that existed before the CREATE
   // statements declared them (CREATE ... IF NOT EXISTS never alters).
   await Promise.all([
-    ensureTableTtl(client, { database: "analytics_internal", table: "events", ttlDays: TELEMETRY_TTL_DAYS }),
-    ensureTableTtl(client, { database: "analytics_internal", table: "logs", ttlDays: TELEMETRY_TTL_DAYS }),
+    ensureTableTtl(client, { database: "analytics_internal", table: "telemetry", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "span_events", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "spans", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "span_links", ttlDays: TELEMETRY_TTL_DAYS }),
     // The derived read models expire on the same clock as their source spans.
     // For a pre-existing trace_services table, `created_at` was added by the
-    // schema upgrade above with a non-materialized now64(3) default, so the
-    // MODIFY TTL's one-shot mutation stamps its old rows with the mutation
-    // time — i.e. they get a fresh 90-day lease rather than expiring early.
+    // schema upgrade above with a non-materialized now64(3) default. TTL
+    // materialization is deliberately disabled here; existing parts acquire
+    // the policy through normal merges or operator-budgeted maintenance.
     ensureTableTtl(client, { database: "analytics_internal", table: "trace_roots", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "trace_services", ttlDays: TELEMETRY_TTL_DAYS }),
-    ensureTableTtl(client, { database: "analytics_internal", table: "otel_metrics", ttlDays: TELEMETRY_TTL_DAYS }),
+    ensureTableTtl(client, { database: "analytics_internal", table: "metrics", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "span_writes", ttlDays: SPAN_WRITES_TTL_DAYS }),
+    ensureTableTtl(client, { database: "analytics_internal", table: "clickmap_events", ttlDays: TELEMETRY_TTL_DAYS, timestampColumn: "event_at" }),
     ensureSkipIndex(client, {
       database: "analytics_internal",
-      table: "events",
+      table: "telemetry",
       indexName: EVENTS_EVENT_TYPE_INDEX_NAME,
       indexDefinitionSql: EVENTS_EVENT_TYPE_INDEX_DEFINITION_SQL,
-      // `event_type` has always been populated, so historical parts hold real
-      // values the index can prune on.
-      materializeHistoricalParts: true,
+      // Building the index over a terabyte is deliberate maintenance, not a
+      // startup side effect. Existing parts acquire it through normal merges;
+      // closed partitions can be materialized later under an operator-owned
+      // I/O budget.
+      materializeHistoricalParts: false,
     }),
     ensureSkipIndex(client, {
       database: "analytics_internal",
-      table: "logs",
+      table: "telemetry",
       indexName: LOGS_ISSUE_HASH_INDEX_NAME,
       indexDefinitionSql: LOGS_ISSUE_HASH_INDEX_DEFINITION_SQL,
       // `issue_hash` was just added by LOGS_SCHEMA_UPGRADE_SQL above with a
@@ -134,17 +129,16 @@ export async function runClickhouseMigrations() {
   // Clickmap materialized view depends on the events table existing; create after the ALTER above
   // so the view sees the replay columns. IF NOT EXISTS makes this idempotent across reboots.
   await client.command({ query: CLICKMAP_EVENTS_MV_SQL });
-  // Plain CREATE IF NOT EXISTS is sufficient: these three views are part of the
-  // fingerprinted spans subsystem, so any change to their SELECT changes the
-  // fingerprint and the reset above has already dropped the stale view. (Left
-  // unguarded, a stale MV SELECT over renamed columns breaks every spans INSERT
-  // — it fails ingestion, not deployment, which is why this used to need a probe.)
+  await client.command({ query: CLICKMAP_EVENTS_MV_UPGRADE_SQL });
+  // Plain CREATE IF NOT EXISTS is sufficient on a fresh database. On an
+  // existing database, the fingerprint guard above refuses a changed MV
+  // definition until an explicit online migration has upgraded it.
   await Promise.all([
     client.command({ query: TRACE_ROOTS_MV_SQL }),
     client.command({ query: TRACE_SERVICES_MV_SQL }),
     client.command({ query: SPAN_WRITES_MV_SQL }),
-    // Reads `analytics_internal.logs`, so it must come after
-    // LOGS_SCHEMA_UPGRADE_SQL has added the grouping columns — an MV naming a
+    // Reads `analytics_internal.telemetry`, so it must come after
+    // TELEMETRY_SCHEMA_UPGRADE_SQL has added the grouping columns — an MV naming a
     // column that does not exist yet fails to create and takes boot down.
     // Deliberately NOT followed by a backfill; see buildIssueOccurrenceRollupMvSql.
     client.command({ query: ISSUE_OCCURRENCE_ROLLUP_MV_SQL }),
@@ -152,12 +146,20 @@ export async function runClickhouseMigrations() {
 
   // Only after the materialized views above are attached, so no span written
   // during the backfill can slip through unrecorded.
+  // Each helper reads historical spans. Run them sequentially so a large
+  // installation never starts two source-table backfills competing for the
+  // same disk and merge bandwidth.
+  await backfillDerivedSpanTable(client, { table: "trace_roots", selectSql: TRACE_ROOTS_SOURCE_SELECT_SQL, targetColumns: TRACE_ROOTS_COLUMNS });
+  await backfillDerivedSpanTable(client, { table: "trace_services", selectSql: TRACE_SERVICES_SOURCE_SELECT_SQL, targetColumns: TRACE_SERVICES_COLUMNS });
+
+  // Create internal compatibility views before public views that reference
+  // them. ClickHouse validates the source relation while creating a view.
   await Promise.all([
-    backfillDerivedSpanTable(client, { table: "trace_roots", selectSql: TRACE_ROOTS_SOURCE_SELECT_SQL, targetColumns: TRACE_ROOTS_COLUMNS }),
-    backfillDerivedSpanTable(client, { table: "trace_services", selectSql: TRACE_SERVICES_SOURCE_SELECT_SQL, targetColumns: TRACE_SERVICES_COLUMNS }),
+    client.command({ query: INTERNAL_EVENTS_COMPAT_VIEW_SQL }),
+    client.command({ query: INTERNAL_LOGS_COMPAT_VIEW_SQL }),
   ]);
 
-  // Create all views in parallel
+  // Create all public views in parallel
   await Promise.all([
     client.command({ query: EVENTS_VIEW_SQL }),
     client.command({ query: LOGS_VIEW_SQL }),
@@ -181,12 +183,13 @@ export async function runClickhouseMigrations() {
     client.command({ query: TRACE_SERVICES_VIEW_SQL }),
   ]);
 
-  // Data migrations (mutations)
-  await Promise.all([
-    client.command({ query: TOKEN_REFRESH_EVENT_ROW_FORMAT_MUTATION_SQL }),
-    client.command({ query: BACKFILL_REFRESH_TOKEN_ID_COLUMN_SQL }),
-    client.command({ query: SIGN_UP_RULE_TRIGGER_EVENT_ROW_FORMAT_MUTATION_SQL }),
-  ]);
+  // Historical event-shape rewrites are intentionally not automatic. On a TB
+  // table each ALTER UPDATE rewrites matching parts asynchronously, and the
+  // token-id backfill depends on the token JSON normalization finishing first.
+  // Enqueuing all three at boot used to race those two mutations and could
+  // leave refresh_token_id NULL permanently. New writes already use the
+  // canonical shape; any historical repair must be a separately checkpointed,
+  // partition-scoped operator job with mutation completion monitoring.
 
   // Add column comments to all views so DESCRIBE TABLE returns useful descriptions.
   // Comments are lost on CREATE OR REPLACE VIEW, so we re-apply them every migration run.
@@ -202,7 +205,7 @@ export async function runClickhouseMigrations() {
   //
   // This list is exactly the `default.*` views limited_user may read — it is the
   // customer SQL surface, not an inventory of physical tables. `errors` is
-  // already here (it is the `$error` slice of `analytics_internal.logs`, and it
+  // already here (it is the `$error` slice of `analytics_internal.telemetry`, and it
   // now carries the grouping columns). Internal-only tables are deliberately
   // absent: `analytics_internal.span_writes` (billing ledger) and
   // `analytics_internal.issue_occurrence_rollup` (issue statistics) have no
@@ -253,46 +256,582 @@ async function clickhouseTableExists(
   return Number(row.count) !== 0;
 }
 
+async function clickhousePhysicalTableExists(
+  client: ClickHouseClient,
+  options: { database: string, table: string },
+): Promise<boolean> {
+  const resultSet = await client.query({
+    query: `
+      SELECT count() AS count
+      FROM system.tables
+      WHERE database = {database:String}
+        AND name = {table:String}
+        AND engine NOT IN ('View', 'MaterializedView')
+    `,
+    query_params: { database: options.database, table: options.table },
+    format: "JSONEachRow",
+  });
+  const [row] = await resultSet.json<{ count: string }>();
+  return Number(row.count) !== 0;
+}
+
 /**
- * ============================ PRE-RELEASE ONLY ============================
+ * Moves the two compatible event-shaped stores into the canonical telemetry
+ * table. This runs before the regular CREATE/ALTER/view phase so old databases
+ * can cut over without making every caller understand two physical layouts.
+ *
+ * The migration is intentionally a copy/verify/swap protocol rather than a
+ * transaction. ClickHouse cannot hold a production-sized append-only table in
+ * one bounded transaction, and a process can disappear between any two DDL or
+ * INSERT statements. Legacy sources remain present until the verified target
+ * has been swapped in and a durable completion marker has been written. A
+ * rerun can therefore discard every owned staging table and copy from the
+ * untouched source again.
+ */
+const LEGACY_TELEMETRY_MIGRATION_ID = "events-and-logs-to-telemetry-v1";
+const LEGACY_TELEMETRY_MIGRATION_STATE_TABLE = "telemetry_legacy_migration_state";
+const LEGACY_TELEMETRY_EVENTS_STAGE_TABLE = "telemetry_legacy_events_stage";
+const LEGACY_TELEMETRY_LOGS_STAGE_TABLE = "telemetry_legacy_logs_stage";
+const LEGACY_TELEMETRY_TARGET_STAGE_TABLE = "telemetry_legacy_target_stage";
+
+const LEGACY_EVENTS_MIGRATION_COLUMNS = [
+  { name: "body", type: "String", default: "''" },
+  { name: "severity_text", type: "LowCardinality(String)", default: "''" },
+  { name: "severity_number", type: "UInt8", default: "0" },
+  { name: "trace_flags", type: "UInt8", default: "0" },
+  { name: "source", type: "LowCardinality(String)", default: "''" },
+  { name: "resource_schema_url", type: "Nullable(String)", default: "NULL" },
+  { name: "scope_name", type: "LowCardinality(Nullable(String))", default: "NULL" },
+  { name: "scope_version", type: "Nullable(String)", default: "NULL" },
+  { name: "scope_attributes", type: "String", default: "'{}'" },
+  { name: "scope_schema_url", type: "Nullable(String)", default: "NULL" },
+  { name: "dropped_attributes", type: "UInt32", default: "0" },
+] as const satisfies readonly ClickhouseColumn[];
+
+const LEGACY_LOGS_MIGRATION_COLUMNS = [
+  { name: "message", type: "String", default: "''" },
+  { name: "source", type: "LowCardinality(String)", default: "''" },
+] as const satisfies readonly ClickhouseColumn[];
+
+export type LegacyTelemetryMigrationOptions = {
+  database?: string,
+  eventsTable?: string,
+  logsTable?: string,
+};
+
+export type LegacyTelemetrySource = "events" | "logs";
+type LegacyTelemetryFingerprint = {
+  count: bigint,
+  sum: bigint,
+  xor: bigint,
+};
+
+function qualifiedClickhouseTable(database: string, table: string): string {
+  return `${database}.${table}`;
+}
+
+function legacyTelemetrySourceColumns(source: LegacyTelemetrySource): readonly ClickhouseColumn[] {
+  return source === "events"
+    ? [...EVENTS_COLUMNS, ...LEGACY_EVENTS_MIGRATION_COLUMNS]
+    : [...LOGS_COLUMNS, ...LEGACY_LOGS_MIGRATION_COLUMNS];
+}
+
+function buildLegacyTelemetrySourceUpgradeSql(source: LegacyTelemetrySource, table: string): string {
+  return buildColumnUpgradeSql(table, legacyTelemetrySourceColumns(source));
+}
+
+/**
+ * The intermediate event-shaped schemas used three different names for the
+ * same concepts. Keep these translations next to the copy query so a future
+ * column cleanup cannot silently turn a migration into data loss:
+ *
+ * - old event `body` -> canonical event `message` (and is also retained in the
+ *   physical OTel body column);
+ * - old log `message` -> canonical OTel `body` when no body was already stored;
+ * - old `source` -> canonical `producer`, preserving the exact old value.
+ */
+function buildLegacyTelemetrySelectExpressions(source: LegacyTelemetrySource): string[] {
+  const sourceColumns = new Map(legacyTelemetrySourceColumns(source).map((column) => [column.name, column]));
+  // Qualify every source reference. ClickHouse resolves SELECT aliases across
+  // the whole projection, so an unqualified `body` in the `message` expression
+  // can bind to the later output alias named `body` instead of the legacy
+  // source column. That silently changes copied values and was caught by the
+  // end-to-end fingerprint check.
+  const expressions = new Map<string, string>([...sourceColumns.keys()].map((name) => [name, `legacy_source.${name}`]));
+
+  expressions.set("data", "CAST(legacy_source.data AS JSON)");
+  expressions.set("producer", "if(legacy_source.source = '', legacy_source.producer, legacy_source.source)");
+
+  if (source === "events") {
+    expressions.set("message", "if(legacy_source.message = '', legacy_source.body, legacy_source.message)");
+    expressions.set("level", "if(legacy_source.level = '', legacy_source.severity_text, legacy_source.level)");
+    expressions.set("body", "legacy_source.body");
+    expressions.set("trace_flags", "toUInt32(legacy_source.trace_flags)");
+    expressions.set("dropped_attributes", "toUInt64(legacy_source.dropped_attributes)");
+    expressions.set("resource_schema_url", "ifNull(legacy_source.resource_schema_url, '')");
+    expressions.set("scope_schema_url", "ifNull(legacy_source.scope_schema_url, '')");
+  } else {
+    expressions.set("message", "if(legacy_source.message = '', legacy_source.body, legacy_source.message)");
+    expressions.set("level", "if(legacy_source.level = '', legacy_source.severity_text, legacy_source.level)");
+    expressions.set("body", "if(legacy_source.body = '', legacy_source.message, legacy_source.body)");
+  }
+
+  return TELEMETRY_COLUMNS.map((column) => {
+    const expression = expressions.get(column.name);
+    if (expression != null) return expression;
+    const defaultExpression = getClickhouseColumnDefault(column);
+    if (defaultExpression != null) return defaultExpression;
+    throwErr(`Legacy ${source} migration has no expression for telemetry column ${column.name}`);
+  });
+}
+
+function getClickhouseColumnDefault(column: ClickhouseColumn): string | undefined {
+  return column.default;
+}
+
+/**
+ * Exported for migration tests and for reviewers inspecting the exact
+ * compatibility contract. The INSERT callers use the same SELECT, so the
+ * assertions cannot drift from the production copy.
+ */
+export function buildLegacyTelemetrySelectSql(source: LegacyTelemetrySource, table: string): string {
+  const expressions = buildLegacyTelemetrySelectExpressions(source);
+  return `SELECT\n  ${expressions.map((expression, index) => `${expression} AS ${TELEMETRY_COLUMNS[index].name}`).join(",\n  ")}\nFROM ${table} AS legacy_source`;
+}
+
+function buildTelemetryRowFingerprintExpression(columns: readonly string[]): string {
+  const values = columns.map((column) => `ifNull(toString(${column}), '<null>')`);
+  return `cityHash64(concat(${values.join(", '\\x1f', ")}))`;
+}
+
+async function getLegacyTelemetryFingerprint(
+  client: ClickHouseClient,
+  table: string,
+  expressions: readonly string[],
+): Promise<LegacyTelemetryFingerprint> {
+  const rowFingerprint = buildTelemetryRowFingerprintExpression(expressions);
+  const resultSet = await client.query({
+    query: `
+      SELECT
+        toString(count()) AS row_count,
+        toString(sumWithOverflow(${rowFingerprint})) AS row_sum,
+        toString(groupBitXor(${rowFingerprint})) AS row_xor
+      FROM ${table}
+    `,
+    format: "JSONEachRow",
+  });
+  const row = (await resultSet.json<{ row_count: string, row_sum: string, row_xor: string }>()).at(0)
+    ?? throwErr(`Fingerprint query over ${table} returned no row`);
+  return {
+    count: BigInt(row.row_count),
+    sum: BigInt(row.row_sum),
+    xor: BigInt(row.row_xor),
+  };
+}
+
+function legacyTelemetryFingerprintsEqual(left: LegacyTelemetryFingerprint, right: LegacyTelemetryFingerprint): boolean {
+  return left.count === right.count && left.sum === right.sum && left.xor === right.xor;
+}
+
+function combineLegacyTelemetryFingerprints(
+  left: LegacyTelemetryFingerprint | undefined,
+  right: LegacyTelemetryFingerprint | undefined,
+): LegacyTelemetryFingerprint {
+  if (left == null) return right ?? { count: 0n, sum: 0n, xor: 0n };
+  if (right == null) return left;
+  const uint64Modulo = 1n << 64n;
+  return {
+    count: left.count + right.count,
+    sum: (left.sum + right.sum) % uint64Modulo,
+    xor: left.xor ^ right.xor,
+  };
+}
+
+function assertLegacyTelemetryFingerprintsEqual(
+  label: string,
+  expected: LegacyTelemetryFingerprint,
+  actual: LegacyTelemetryFingerprint,
+): void {
+  if (!legacyTelemetryFingerprintsEqual(expected, actual)) {
+    throw new Error(
+      `[Clickhouse] Legacy telemetry verification failed for ${label}: `
+      + `expected ${expected.count}/${expected.sum}/${expected.xor}, `
+      + `received ${actual.count}/${actual.sum}/${actual.xor}`,
+    );
+  }
+}
+
+type LegacyTelemetryMigrationState = {
+  phase: "prepared" | "completed",
+  fingerprint: LegacyTelemetryFingerprint,
+};
+
+async function ensureLegacyTelemetryMigrationStateTable(
+  client: ClickHouseClient,
+  table: string,
+): Promise<void> {
+  await client.command({
+    query: `
+      CREATE TABLE IF NOT EXISTS ${table} (
+        migration_id String,
+        phase LowCardinality(String) DEFAULT 'completed',
+        expected_count UInt64 DEFAULT 0,
+        expected_sum UInt64 DEFAULT 0,
+        expected_xor UInt64 DEFAULT 0,
+        completed_at DateTime64(3, 'UTC') DEFAULT now64(3)
+      )
+      ENGINE ReplacingMergeTree(completed_at)
+      ORDER BY migration_id
+    `,
+  });
+
+  await client.command({
+    query: `
+      ALTER TABLE ${table}
+        ADD COLUMN IF NOT EXISTS phase LowCardinality(String) DEFAULT 'completed',
+        ADD COLUMN IF NOT EXISTS expected_count UInt64 DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS expected_sum UInt64 DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS expected_xor UInt64 DEFAULT 0
+    `,
+  });
+}
+
+async function getLegacyTelemetryMigrationState(
+  client: ClickHouseClient,
+  table: string,
+): Promise<LegacyTelemetryMigrationState | null> {
+  const exists = await clickhousePhysicalTableExists(client, {
+    database: table.split(".")[0],
+    table: table.split(".").at(-1) ?? throwErr(`Invalid migration state table name: ${table}`),
+  });
+  if (!exists) return null;
+
+  const resultSet = await client.query({
+    query: `
+      SELECT phase, expected_count, expected_sum, expected_xor
+      FROM ${table} FINAL
+      WHERE migration_id = {migrationId:String}
+      LIMIT 1
+    `,
+    query_params: { migrationId: LEGACY_TELEMETRY_MIGRATION_ID },
+    format: "JSONEachRow",
+  });
+  const rows = await resultSet.json<{
+    phase: string,
+    expected_count: string | number,
+    expected_sum: string | number,
+    expected_xor: string | number,
+  }>();
+  const row = rows.at(0);
+  if (row === undefined) return null;
+  if (row.phase !== "prepared" && row.phase !== "completed") {
+    throwErr(`Legacy telemetry migration has an invalid phase: ${JSON.stringify(row.phase)}`);
+  }
+  return {
+    phase: row.phase,
+    fingerprint: {
+      count: BigInt(row.expected_count),
+      sum: BigInt(row.expected_sum),
+      xor: BigInt(row.expected_xor),
+    },
+  };
+}
+
+async function writeLegacyTelemetryMigrationState(
+  client: ClickHouseClient,
+  table: string,
+  phase: LegacyTelemetryMigrationState["phase"],
+  fingerprint: LegacyTelemetryFingerprint,
+): Promise<void> {
+  const uint64Modulo = 1n << 64n;
+  await client.command({
+    query: `
+      INSERT INTO ${table}
+        (migration_id, phase, expected_count, expected_sum, expected_xor)
+      VALUES
+        ({migrationId:String}, {phase:String}, {expectedCount:UInt64}, {expectedSum:UInt64}, {expectedXor:UInt64})
+    `,
+    query_params: {
+      migrationId: LEGACY_TELEMETRY_MIGRATION_ID,
+      phase,
+      expectedCount: fingerprint.count.toString(),
+      expectedSum: (fingerprint.sum % uint64Modulo).toString(),
+      expectedXor: (fingerprint.xor % uint64Modulo).toString(),
+    },
+  });
+}
+
+async function dropLegacyTelemetryTable(client: ClickHouseClient, table: string): Promise<void> {
+  await client.command({ query: `DROP TABLE IF EXISTS ${table}` });
+}
+
+function refuseAutomaticLegacyTelemetryCutover(options: {
+  eventsExists: boolean,
+  logsExists: boolean,
+  eventsTable: string,
+  logsTable: string,
+}): void {
+  if (!options.eventsExists && !options.logsExists) return;
+  throw new Error(
+    `[Clickhouse] Refusing automatic legacy telemetry cutover because ${[
+      options.eventsExists ? options.eventsTable : null,
+      options.logsExists ? options.logsTable : null,
+    ].filter((table) => table != null).join(" and ")} still ${options.eventsExists && options.logsExists ? "accept" : "accepts"} writes. `
+    + "Deploy an expand/dual-write release, verify every legacy writer is drained, run a checkpointed partition backfill, then perform the metadata cutover.",
+  );
+}
+
+export async function migrateLegacyTelemetryTables(
+  client: ClickHouseClient,
+  options: LegacyTelemetryMigrationOptions = {},
+): Promise<void> {
+  const database = options.database ?? "analytics_internal";
+  const eventsTable = qualifiedClickhouseTable(database, options.eventsTable ?? "events");
+  const logsTable = qualifiedClickhouseTable(database, options.logsTable ?? "logs");
+  const telemetryTable = qualifiedClickhouseTable(database, "telemetry");
+  const stateTable = qualifiedClickhouseTable(database, LEGACY_TELEMETRY_MIGRATION_STATE_TABLE);
+  const eventsStageTable = qualifiedClickhouseTable(database, LEGACY_TELEMETRY_EVENTS_STAGE_TABLE);
+  const logsStageTable = qualifiedClickhouseTable(database, LEGACY_TELEMETRY_LOGS_STAGE_TABLE);
+  const targetStageTable = qualifiedClickhouseTable(database, LEGACY_TELEMETRY_TARGET_STAGE_TABLE);
+
+  const [eventsExists, logsExists] = await Promise.all([
+    clickhousePhysicalTableExists(client, { database, table: options.eventsTable ?? "events" }),
+    clickhousePhysicalTableExists(client, { database, table: options.logsTable ?? "logs" }),
+  ]);
+  const telemetryExists = await clickhousePhysicalTableExists(client, { database, table: "telemetry" });
+  const migrationState = await getLegacyTelemetryMigrationState(client, stateTable);
+
+  // This consolidation cannot be an online, one-release startup migration.
+  // While an old application instance can still insert into either physical
+  // source, a copy followed by EXCHANGE has an unavoidable interval in which a
+  // committed source write is absent from the replacement table. Attaching a
+  // materialized view does not close that interval: its TO target follows the
+  // table UUID through EXCHANGE, so it starts feeding the old table after the
+  // swap. A production-safe rollout therefore needs an expand release that
+  // dual-writes/dual-reads, a positively observed old-writer drain, and a
+  // separately checkpointed partition backfill before metadata cutover.
+  //
+  // Fail before creating, copying, exchanging, or dropping anything. A failed
+  // new instance leaves the currently serving deployment and all source data
+  // untouched, which is strictly safer than pretending this can be repaired by
+  // a startup flag.
+  refuseAutomaticLegacyTelemetryCutover({ eventsExists, logsExists, eventsTable, logsTable });
+
+  // A completed marker means an earlier revision already performed its
+  // cutover. It is only trusted after the physical legacy names are absent;
+  // their presence above wins over the marker because an old writer may have
+  // committed a late row after it was stamped.
+  if (migrationState?.phase === "completed") {
+    if (!telemetryExists) {
+      throwErr("Legacy telemetry migration is marked complete but analytics_internal.telemetry is missing");
+    }
+    return;
+  }
+
+  if (!eventsExists && !logsExists) {
+    if (migrationState?.phase === "prepared") {
+      throwErr("Legacy telemetry migration is prepared but its source tables are missing before completion");
+    }
+    return;
+  }
+
+  await ensureLegacyTelemetryMigrationStateTable(client, stateTable);
+  if (telemetryExists) {
+    await client.command({ query: buildColumnUpgradeSql(telemetryTable, TELEMETRY_COLUMNS) });
+  }
+
+  // If the process stopped after writing the prepared marker, do not rebuild
+  // from sources: the canonical table or the target stage may already contain
+  // the verified copy. This is the step that makes an EXCHANGE restart-safe.
+  if (migrationState?.phase === "prepared") {
+    let canonicalReady = false;
+    if (telemetryExists) {
+      const canonicalFingerprint = await getLegacyTelemetryFingerprint(
+        client,
+        telemetryTable,
+        TELEMETRY_COLUMNS.map((column) => column.name),
+      );
+      canonicalReady = legacyTelemetryFingerprintsEqual(migrationState.fingerprint, canonicalFingerprint);
+    }
+
+    const targetStageExists = await clickhousePhysicalTableExists(client, {
+      database,
+      table: LEGACY_TELEMETRY_TARGET_STAGE_TABLE,
+    });
+    if (!canonicalReady && targetStageExists) {
+      const stagedFingerprint = await getLegacyTelemetryFingerprint(
+        client,
+        targetStageTable,
+        TELEMETRY_COLUMNS.map((column) => column.name),
+      );
+      assertLegacyTelemetryFingerprintsEqual("prepared telemetry target", migrationState.fingerprint, stagedFingerprint);
+      if (telemetryExists) {
+        await client.command({ query: `EXCHANGE TABLES ${targetStageTable} AND ${telemetryTable}` });
+      } else {
+        await client.command({ query: `RENAME TABLE ${targetStageTable} TO ${telemetryTable}` });
+      }
+    } else if (!canonicalReady) {
+      throwErr("Legacy telemetry migration is prepared but neither target nor canonical table exists");
+    }
+
+    const canonicalFingerprint = await getLegacyTelemetryFingerprint(
+      client,
+      telemetryTable,
+      TELEMETRY_COLUMNS.map((column) => column.name),
+    );
+    assertLegacyTelemetryFingerprintsEqual("prepared canonical telemetry", migrationState.fingerprint, canonicalFingerprint);
+    await writeLegacyTelemetryMigrationState(client, stateTable, "completed", migrationState.fingerprint);
+    await Promise.all([
+      eventsExists ? dropLegacyTelemetryTable(client, eventsTable) : Promise.resolve(),
+      logsExists ? dropLegacyTelemetryTable(client, logsTable) : Promise.resolve(),
+      dropLegacyTelemetryTable(client, eventsStageTable),
+      dropLegacyTelemetryTable(client, logsStageTable),
+      dropLegacyTelemetryTable(client, targetStageTable),
+    ]);
+    return;
+  }
+
+  // Staging names are durable on purpose. A retry before the prepared marker
+  // starts from the untouched source tables and discards only tables owned by
+  // this migration.
+  await Promise.all([
+    dropLegacyTelemetryTable(client, eventsStageTable),
+    dropLegacyTelemetryTable(client, logsStageTable),
+    dropLegacyTelemetryTable(client, targetStageTable),
+  ]);
+
+  if (eventsExists) {
+    await client.command({ query: buildLegacyTelemetrySourceUpgradeSql("events", eventsTable) });
+  }
+  if (logsExists) {
+    await client.command({ query: buildLegacyTelemetrySourceUpgradeSql("logs", logsTable) });
+  }
+
+  // The views target the old physical names and must not observe a half-built
+  // destination. They are recreated by the normal migration phase.
+  await Promise.all([
+    client.command({ query: `DROP VIEW IF EXISTS ${database}.clickmap_events_mv` }),
+    client.command({ query: `DROP VIEW IF EXISTS ${database}.issue_occurrence_rollup_mv` }),
+  ]);
+
+  const sourceFingerprints = new Map<LegacyTelemetrySource, LegacyTelemetryFingerprint>();
+  if (eventsExists) {
+    await client.command({
+      query: buildTelemetryCreateTableSql(eventsStageTable),
+    });
+    await client.command({
+      query: `INSERT INTO ${eventsStageTable} (${buildViewSelectList(TELEMETRY_COLUMNS)})\n${buildLegacyTelemetrySelectSql("events", eventsTable)}`,
+    });
+    const expected = await getLegacyTelemetryFingerprint(client, eventsTable, buildLegacyTelemetrySelectExpressions("events"));
+    const actual = await getLegacyTelemetryFingerprint(client, eventsStageTable, TELEMETRY_COLUMNS.map((column) => column.name));
+    assertLegacyTelemetryFingerprintsEqual("events source copy", expected, actual);
+    sourceFingerprints.set("events", expected);
+  }
+
+  if (logsExists) {
+    await client.command({
+      query: buildTelemetryCreateTableSql(logsStageTable),
+    });
+    await client.command({
+      query: `INSERT INTO ${logsStageTable} (${buildViewSelectList(TELEMETRY_COLUMNS)})\n${buildLegacyTelemetrySelectSql("logs", logsTable)}`,
+    });
+    const expected = await getLegacyTelemetryFingerprint(client, logsTable, buildLegacyTelemetrySelectExpressions("logs"));
+    const actual = await getLegacyTelemetryFingerprint(client, logsStageTable, TELEMETRY_COLUMNS.map((column) => column.name));
+    assertLegacyTelemetryFingerprintsEqual("logs source copy", expected, actual);
+    sourceFingerprints.set("logs", expected);
+  }
+
+  await client.command({ query: buildTelemetryCreateTableSql(targetStageTable) });
+  const existingTelemetryFingerprint = telemetryExists
+    ? await getLegacyTelemetryFingerprint(client, telemetryTable, TELEMETRY_COLUMNS.map((column) => column.name))
+    : undefined;
+  if (telemetryExists) {
+    await client.command({
+      query: `INSERT INTO ${targetStageTable} (${buildViewSelectList(TELEMETRY_COLUMNS)}) SELECT ${buildViewSelectList(TELEMETRY_COLUMNS)} FROM ${telemetryTable}`,
+    });
+  }
+  if (eventsExists) {
+    await client.command({
+      query: `INSERT INTO ${targetStageTable} (${buildViewSelectList(TELEMETRY_COLUMNS)}) SELECT ${buildViewSelectList(TELEMETRY_COLUMNS)} FROM ${eventsStageTable}`,
+    });
+  }
+  if (logsExists) {
+    await client.command({
+      query: `INSERT INTO ${targetStageTable} (${buildViewSelectList(TELEMETRY_COLUMNS)}) SELECT ${buildViewSelectList(TELEMETRY_COLUMNS)} FROM ${logsStageTable}`,
+    });
+  }
+
+  const expectedTargetFingerprint = combineLegacyTelemetryFingerprints(
+    existingTelemetryFingerprint,
+    combineLegacyTelemetryFingerprints(sourceFingerprints.get("events"), sourceFingerprints.get("logs")),
+  );
+  const stagedTargetFingerprint = await getLegacyTelemetryFingerprint(
+    client,
+    targetStageTable,
+    TELEMETRY_COLUMNS.map((column) => column.name),
+  );
+  assertLegacyTelemetryFingerprintsEqual("combined telemetry copy", expectedTargetFingerprint, stagedTargetFingerprint);
+
+  // Record the expected target before the exchange. If the process stops after
+  // EXCHANGE but before the completed marker, the next boot can verify the
+  // canonical table and finish cleanup without copying the source rows again.
+  await writeLegacyTelemetryMigrationState(client, stateTable, "prepared", expectedTargetFingerprint);
+
+  // Exchange is atomic in ClickHouse. The old telemetry table intentionally
+  // remains under the stage name until the completed marker is durable.
+  if (telemetryExists) {
+    await client.command({ query: `EXCHANGE TABLES ${targetStageTable} AND ${telemetryTable}` });
+  } else {
+    await client.command({ query: `RENAME TABLE ${targetStageTable} TO ${telemetryTable}` });
+  }
+
+  const swappedTargetFingerprint = await getLegacyTelemetryFingerprint(
+    client,
+    telemetryTable,
+    TELEMETRY_COLUMNS.map((column) => column.name),
+  );
+  assertLegacyTelemetryFingerprintsEqual("swapped telemetry target", expectedTargetFingerprint, swappedTargetFingerprint);
+
+  // This is the commit point for the non-transactional protocol. No source
+  // table is dropped before this marker succeeds.
+  await writeLegacyTelemetryMigrationState(client, stateTable, "completed", expectedTargetFingerprint);
+
+  await Promise.all([
+    eventsExists ? dropLegacyTelemetryTable(client, eventsTable) : Promise.resolve(),
+    logsExists ? dropLegacyTelemetryTable(client, logsTable) : Promise.resolve(),
+  ]);
+  // With EXCHANGE this is the old telemetry table; with RENAME it is absent.
+  await dropLegacyTelemetryTable(client, targetStageTable);
+}
+
+/**
+ * ============================ SCHEMA GUARD ================================
  *
  * The spans subsystem (spans, span_events, span_links and the derived read
- * models built from them) has not shipped. Rather than detect each dev/staging
- * schema vintage and migrate it — engine changes, partition-key changes, renamed columns, stale
- * materialized-view SELECTs, each needing its own probe and copy-and-swap — the
- * whole subsystem is fingerprinted and rebuilt from scratch whenever the
- * canonical schema changes. `spans` and `span_events` hold the non-derivable
- * trace signal, and losing dev/staging traces is already the accepted trade
- * for this unreleased subsystem.
- *
- * DELETE THIS the moment the spans schema ships. After GA a layout change needs
- * a real migration; dropping a customer's telemetry because a column moved
- * would be catastrophic, and the only thing standing between the two is this
- * comment. Released `events` / `logs` are deliberately NOT in scope — they use
- * the forward-compatible ADD COLUMN path and keep their rows.
+ * models built from them) is fingerprinted as one compatibility boundary.
+ * Startup may create the boundary on a fresh database, but a mismatch on an
+ * existing database fails closed. It never treats a fingerprint as authority
+ * to delete non-derivable trace data. Layout or MV changes therefore require a
+ * separately reviewed online migration and explicit fingerprint update.
  *
  * ==========================================================================
  */
 const SPANS_SUBSYSTEM_FINGERPRINT_TABLE = "analytics_internal.spans_schema_fingerprint";
 
-// Dependents first: a materialized view must go before the table it reads, and
-// a table cannot be dropped while an MV still targets it.
 const SPANS_SUBSYSTEM_MATERIALIZED_VIEWS = ["trace_roots_mv", "trace_services_mv", "span_writes_mv"] as const;
-const SPANS_SUBSYSTEM_TABLES = ["trace_roots", "trace_services", "span_writes", "span_links", "span_events", "spans"] as const;
+const SPANS_SUBSYSTEM_TABLES = ["derived_span_backfill_state", "trace_roots", "trace_services", "span_writes", "span_links", "span_events", "spans"] as const;
 export const SPANS_TRACE_MODEL_VERSION = "session-hierarchy-w3c-v1";
 
 /**
- * Everything whose change requires a rebuild: the physical layout of every
- * table plus the exact text of every materialized view. Column ADDs would be
- * survivable on their own, but including them keeps the rule simple — one
- * fingerprint, one decision — and a spurious rebuild costs nothing pre-release.
+ * Everything whose change requires an explicit online migration: the physical
+ * layout of every table plus the exact text of every materialized view.
  */
 export function computeSpansSubsystemFingerprint(traceModelVersion = SPANS_TRACE_MODEL_VERSION): string {
   const canonical = JSON.stringify([
     // Unlike a column/layout change, a trace-boundary change leaves every row
     // structurally valid while making old and new rows semantically
-    // incompatible. Version it explicitly so the pre-release reset also clears
-    // session-wide trace ids that would otherwise survive this migration.
+    // incompatible. Version it explicitly so startup refuses to combine trace
+    // identities produced under different models.
     traceModelVersion,
     SPANS_TABLE_BASE_SQL,
     SPAN_EVENTS_TABLE_BASE_SQL,
@@ -308,17 +847,10 @@ export function computeSpansSubsystemFingerprint(traceModelVersion = SPANS_TRACE
 }
 
 /**
- * Drops a fingerprinted subsystem when its fingerprint no longer matches, so
- * the canonical CREATEs downstream rebuild it. Returns true when a reset
- * happened, which is what forces any derived-table backfill to re-run.
- *
- * The fingerprint is written only AFTER the caller finishes creating everything
- * (see writeSubsystemFingerprint) — a crash mid-rebuild must leave the marker
- * stale so the next boot retries, never claim a rebuild that did not complete.
- *
- * Shared by the spans and issues subsystems. The two differ only in WHICH
- * objects they own; the drop protocol (dependents first, marker written last,
- * fresh-database detection) is identical and must not be allowed to diverge.
+ * Validates a fingerprinted subsystem. A fresh database proceeds to canonical
+ * CREATEs; an existing database with no marker or a mismatched marker refuses
+ * startup before any owned object is changed. The fingerprint is written only
+ * after every canonical object exists.
  */
 async function resetSubsystemIfFingerprintChanged(
   client: ClickHouseClient,
@@ -350,29 +882,24 @@ CREATE TABLE IF NOT EXISTS ${options.fingerprintTable} (
   const stored = rows.at(0)?.fingerprint;
   if (stored === options.fingerprint) return false;
 
-  // No marker AND no tables is a fresh database: nothing to drop, and the
-  // CREATEs produce the current layout directly. Only stamp the marker.
+  // No marker and no owned object is a fresh database; canonical CREATEs may
+  // establish the boundary. Include MVs so a partial prior setup cannot be
+  // mistaken for fresh merely because its target table is absent.
   if (stored === undefined) {
-    const anyTableExists = await Promise.all(options.tables.map(
+    const objectNames = [...options.tables, ...options.materializedViews];
+    const anyObjectExists = await Promise.all(objectNames.map(
       (table) => clickhouseTableExists(client, { database: "analytics_internal", table }),
     ));
-    if (!anyTableExists.some((exists) => exists)) return false;
+    if (!anyObjectExists.some((exists) => exists)) return false;
   }
 
-  console.log(`[Clickhouse] ${options.label} schema fingerprint changed (${stored ?? "absent"} -> ${options.fingerprint}); rebuilding the unreleased ${options.label.toLowerCase()} subsystem`);
-  // Sequential, not parallel: the drop order is a dependency order.
-  for (const view of options.materializedViews) {
-    await client.command({ query: `DROP VIEW IF EXISTS analytics_internal.${view}` });
-  }
-  for (const table of options.tables) {
-    // DROP TABLE (not DROP VIEW) also removes an old vintage that was created
-    // as a materialized view with implicit storage under one of these names.
-    await client.command({ query: `DROP TABLE IF EXISTS analytics_internal.${table}` });
-  }
-  return true;
+  throw new Error(
+    `[Clickhouse] ${options.label} schema fingerprint changed (stored ${stored ?? "absent"}, current ${options.fingerprint}). `
+    + "Automatic DROP/rebuild is disabled because it destroys telemetry. Apply an explicit online schema migration and seed the fingerprint only after validating the live definitions.",
+  );
 }
 
-/** Stamps a subsystem fingerprint. Call only once every object has been (re)created. */
+/** Stamps a subsystem fingerprint. Call only once every canonical object exists. */
 async function writeSubsystemFingerprint(client: ClickHouseClient, fingerprintTable: string, fingerprint: string): Promise<void> {
   await client.command({
     query: `INSERT INTO ${fingerprintTable} (fingerprint) VALUES ({fingerprint:String})`,
@@ -399,28 +926,17 @@ export async function writeSpansSubsystemFingerprint(client: ClickHouseClient, f
 }
 
 /**
- * ============================ PRE-RELEASE ONLY ============================
+ * ============================ SCHEMA GUARD ================================
  *
  * The issues subsystem fingerprint, and the ONE constraint on it that matters:
  *
  *   IT COVERS THE ROLLUP TABLE AND ITS MATERIALIZED VIEW. NOTHING ELSE.
  *   NEVER WIDEN IT TO THE `logs` COLUMNS.
  *
- * A fingerprint mismatch DROPS every object it covers. `issue_occurrence_rollup`
- * is a pure aggregate of `analytics_internal.logs`, so dropping it costs
- * windowed statistics that the source rows can regenerate. The grouping columns
- * on `logs` are the opposite: they hold non-derivable per-occurrence data
- * (`occurrence_id`, `issue_hash`, the parsed frames) computed once at ingest
- * from a payload that is not retained anywhere else. Pulling them into this
- * fingerprint would turn "we renamed a rollup column" into "we deleted every
- * customer error occurrence". They stay on the forward-compatible ADD COLUMN
- * path with the rest of events/logs/span_events — which is exactly why
- * LOGS_COLUMNS is not one of the inputs below.
- *
- * DELETE THIS at issues GA, for the same reason as the spans one, plus one of
- * its own: there is deliberately no backfill for the rollup (see the table
- * declaration), so post-GA a reset would silently truncate up to 90 days of
- * issue statistics rather than merely rebuilding them.
+ * Keep the fingerprint scoped to the derivable rollup boundary. The grouping
+ * columns on telemetry hold non-derivable per-occurrence data computed once at
+ * ingest, so they stay on the forward-compatible ADD COLUMN path. A mismatch
+ * still fails closed; it does not rebuild even the derivable rollup at startup.
  *
  * ==========================================================================
  */
@@ -469,43 +985,122 @@ export async function writeIssuesSubsystemFingerprint(client: ClickHouseClient, 
  * and the overlap is harmless: both targets are ReplacingMergeTrees keyed by the
  * span's identity, so a row written twice at the same `version` collapses.
  *
- * Guarded on the destination being empty, which makes it a one-shot. A fresh
- * install has no spans yet, so this is a no-op there; it only does work for a
- * database that accumulated spans before this read model existed.
+ * Work is split along the source table's physical month partitions and
+ * checkpointed after each successful insert.
+ * A destination-emptiness guard is not safe: because the MV is attached first,
+ * one concurrent span can make the target non-empty and cause all history to
+ * be skipped forever. Month-sized inserts scan each source partition once and
+ * bound memory, I/O, retry cost, and the number of new parts even when the
+ * source is around a terabyte.
  */
 export async function backfillDerivedSpanTable(
   client: ClickHouseClient,
   options: { table: string, selectSql: string, targetColumns: readonly ClickhouseColumn[], database?: string },
 ): Promise<void> {
   const database = options.database ?? "analytics_internal";
-  const resultSet = await client.query({
-    query: `SELECT count() AS count FROM ${database}.${options.table}`,
+  const stateTable = `${database}.derived_span_backfill_state`;
+  await client.command({
+    query: `
+      CREATE TABLE IF NOT EXISTS ${stateTable} (
+        target_table String,
+        source_partition String,
+        completed_at DateTime64(3, 'UTC') DEFAULT now64(3)
+      )
+      ENGINE ReplacingMergeTree(completed_at)
+      ORDER BY (target_table, source_partition)
+    `,
+  });
+
+  const completionResultSet = await client.query({
+    query: `
+      SELECT count() AS count
+      FROM ${stateTable} FINAL
+      WHERE target_table = {targetTable:String}
+        AND source_partition = '__complete__'
+    `,
+    query_params: { targetTable: options.table },
     format: "JSONEachRow",
   });
-  const rows = await resultSet.json<{ count: string }>();
-  const existingCount = Number(rows[0]?.count ?? throwErr(`count() over ${database}.${options.table} returned no row`));
-  if (existingCount > 0) return;
+  const completionRows = await completionResultSet.json<{ count: string }>();
+  if (Number(completionRows.at(0)?.count ?? throwErr(`Backfill completion probe for ${database}.${options.table} returned no row`)) !== 0) return;
 
-  console.log(`[Clickhouse] Backfilling ${database}.${options.table} from existing spans`);
+  // Query physical partition metadata rather than SELECT DISTINCT over a TB of
+  // source rows. The INSERT predicate uses the same partition expression as
+  // spans, so ClickHouse reads each part exactly once across the backfill.
+  const resultSet = await client.query({
+    query: `
+      SELECT DISTINCT partition AS source_partition
+      FROM system.parts
+      WHERE database = {database:String}
+        AND table = 'spans'
+        AND active
+        AND partition NOT IN (
+        SELECT source_partition
+        FROM ${stateTable} FINAL
+        WHERE target_table = {targetTable:String}
+      )
+      ORDER BY source_partition
+    `,
+    query_params: { database, targetTable: options.table },
+    format: "JSONEachRow",
+  });
+  const partitions = await resultSet.json<{ source_partition: string }>();
+  if (partitions.length > 0) {
+    console.log(`[Clickhouse] Backfilling ${database}.${options.table} from existing spans in ${partitions.length} partition-sized batch(es)`);
+  }
   // The target columns are named explicitly rather than relying on the INSERT
   // matching the SELECT positionally. Physical column order differs between
   // a freshly-created table and one grown by ADD COLUMN, so a positional insert
   // silently mis-pairs columns of the same type — the failure is corrupt rows,
   // not an error.
   const columnList = options.targetColumns.map((column) => column.name).join(", ");
+  const selectSql = options.selectSql.trim().replace(/;$/, "");
+  const sourceTableCandidates = [`${database}.spans`, "analytics_internal.spans"];
+  for (const { source_partition: sourcePartition } of partitions) {
+    const sourceTable = sourceTableCandidates.find((candidate) => selectSql.includes(`FROM ${candidate}`))
+      ?? throwErr(`Derived backfill SELECT for ${database}.${options.table} must read the spans table directly`);
+    // Push the predicate into the source relation. Some derived projections do
+    // not expose started_at, so an outer filter cannot prune (or even compile).
+    const partitionedSelectSql = selectSql.replace(
+      `FROM ${sourceTable}`,
+      `FROM (SELECT * FROM ${sourceTable} WHERE _partition_id = {sourcePartition:String})`,
+    );
+    await client.command({
+      query: `
+        INSERT INTO ${database}.${options.table} (${columnList})
+        ${partitionedSelectSql}
+      `,
+      query_params: { sourcePartition },
+      // Bound source pressure; correctness does not depend on thread count.
+      clickhouse_settings: { max_threads: 2, max_insert_threads: "2" },
+    });
+    await client.command({
+      query: `
+        INSERT INTO ${stateTable} (target_table, source_partition)
+        VALUES ({targetTable:String}, {sourcePartition:String})
+      `,
+      query_params: { targetTable: options.table, sourcePartition },
+    });
+  }
+  // The MV was attached before discovery, so every insert after this finite
+  // snapshot is already covered. This durable marker avoids rediscovering and
+  // re-copying newly-created partitions on every boot.
   await client.command({
-    query: `INSERT INTO ${database}.${options.table} (${columnList})\n${options.selectSql}`,
+    query: `
+      INSERT INTO ${stateTable} (target_table, source_partition)
+      VALUES ({targetTable:String}, '__complete__')
+    `,
+    query_params: { targetTable: options.table },
   });
 }
 
 /**
  * Applies the retention TTL to a table that predates the TTL clause in its
- * CREATE statement. Guarded on the table's current metadata because re-running
- * `MODIFY TTL` is not free: with `materialize_ttl_after_modify` (deliberately
- * left at its default of 1) it schedules a background mutation over every part.
- * That one-shot mutation is wanted — without it, parts in cold partitions that
- * never merge again would keep expired rows forever — and it does not block
- * boot, so it is fine even for the production-sized events table.
+ * CREATE statement. Guarded on the table's current metadata and applied with
+ * `materialize_ttl_after_modify = 0`: changing metadata must not implicitly
+ * enqueue an all-parts rewrite against a production-sized table. Existing
+ * parts pick up the TTL during normal merges; operators can materialize closed
+ * partitions separately under an explicit I/O budget.
  *
  * The probe matches ClickHouse's normalized form of the expression
  * (`INTERVAL n DAY` is stored as `toIntervalDay(n)`), so changing the retention
@@ -513,8 +1108,9 @@ export async function backfillDerivedSpanTable(
  */
 export async function ensureTableTtl(
   client: ClickHouseClient,
-  options: { database: string, table: string, ttlDays: number },
+  options: { database: string, table: string, ttlDays: number, timestampColumn?: "created_at" | "event_at" },
 ): Promise<void> {
+  const timestampColumn = options.timestampColumn ?? "created_at";
   const resultSet = await client.query({
     query: "SELECT engine_full FROM system.tables WHERE database = {database:String} AND name = {table:String}",
     query_params: { database: options.database, table: options.table },
@@ -522,37 +1118,36 @@ export async function ensureTableTtl(
   });
   const rows = await resultSet.json<{ engine_full: string }>();
   const engineFull = rows[0]?.engine_full ?? throwErr(`ensureTableTtl: table ${options.database}.${options.table} does not exist; it must be created before its TTL is ensured`);
-  if (engineFull.includes(`toDateTime(created_at) + toIntervalDay(${options.ttlDays})`)) return;
+  if (engineFull.includes(`toDateTime(${timestampColumn}) + toIntervalDay(${options.ttlDays})`)) return;
 
   console.log(`[Clickhouse] Applying ${options.ttlDays}-day TTL to ${options.database}.${options.table}`);
   await client.command({
-    query: `ALTER TABLE ${options.database}.${options.table} MODIFY TTL ${buildRetentionTtlSql(options.ttlDays)}`,
+    query: `ALTER TABLE ${options.database}.${options.table} MODIFY TTL ${buildRetentionTtlSql(options.ttlDays, timestampColumn)}`,
+    clickhouse_settings: { materialize_ttl_after_modify: 0 },
   });
 }
 
 /**
- * Adds a data-skipping index to a table that predates the INDEX clause in its
- * CREATE statement, and (by default) materializes it for parts written before
- * the index existed. `ADD INDEX` alone only covers future parts, which would
- * make the index useless for exactly the historical scans it is meant to prune.
- * MATERIALIZE INDEX is a background mutation that reads only the indexed
- * column(s), so it is acceptable one-time work even at production scale — but
- * only one-time, hence the guard on system.data_skipping_indices rather than
- * re-issuing it every boot.
+ * Adds a data-skipping index to future parts of a table that predates the INDEX
+ * clause in its CREATE statement. Historical materialization is rejected here:
+ * at production scale it is an all-parts mutation, and ADD followed by
+ * MATERIALIZE has a crash hole (metadata exists but the mutation may not).
  *
- * `materializeHistoricalParts` is the opt-out, and it is a REQUIRED field so
- * that every call site states which case it is in rather than inheriting a
- * default it never thought about. Pass `false` when the index covers a column
- * that was just introduced by an ADD COLUMN with a constant default: every
- * historical row then holds the identical default value, so the index prunes
- * literally nothing over those parts while the mutation still rewrites index
- * granules across the entire table. The forward parts — the ones that actually
- * hold varied values — are covered by ADD INDEX alone.
+ * The required flag makes every caller acknowledge this policy. A separate
+ * maintenance command can materialize and checkpoint one closed partition at
+ * a time without tying application availability to terabytes of background
+ * mutation work.
  */
 export async function ensureSkipIndex(
   client: ClickHouseClient,
   options: { database: string, table: string, indexName: string, indexDefinitionSql: string, materializeHistoricalParts: boolean },
 ): Promise<void> {
+  if (options.materializeHistoricalParts) {
+    throw new Error(
+      `[Clickhouse] Refusing to materialize skip index ${options.database}.${options.table}.${options.indexName} over all historical parts during startup; `
+      + "materialize closed partitions separately under an explicit I/O budget and checkpoint each completed partition.",
+    );
+  }
   const resultSet = await client.query({
     query: "SELECT name FROM system.data_skipping_indices WHERE database = {database:String} AND table = {table:String} AND name = {indexName:String}",
     query_params: { database: options.database, table: options.table, indexName: options.indexName },
@@ -564,10 +1159,6 @@ export async function ensureSkipIndex(
   console.log(`[Clickhouse] Adding skip index ${options.indexName} to ${options.database}.${options.table}`);
   await client.command({
     query: `ALTER TABLE ${options.database}.${options.table} ADD INDEX IF NOT EXISTS ${options.indexName} ${options.indexDefinitionSql}`,
-  });
-  if (!options.materializeHistoricalParts) return;
-  await client.command({
-    query: `ALTER TABLE ${options.database}.${options.table} MATERIALIZE INDEX ${options.indexName}`,
   });
 }
 
@@ -602,7 +1193,7 @@ export type ClickhouseColumn = {
 export const TELEMETRY_TTL_DAYS = 90;
 export const SPAN_WRITES_TTL_DAYS = 400;
 export const TELEMETRY_INSERT_DEDUPLICATION_WINDOW = 10_000;
-export const TELEMETRY_INSERT_TABLES = ["events", "logs", "spans", "span_events", "span_links", "otel_metrics"] as const;
+export const TELEMETRY_INSERT_TABLES = ["telemetry", "spans", "span_events", "span_links", "metrics"] as const;
 
 export function buildTelemetryInsertDeduplicationSettingSql(
   table: typeof TELEMETRY_INSERT_TABLES[number],
@@ -612,8 +1203,8 @@ export function buildTelemetryInsertDeduplicationSettingSql(
 
 // `toDateTime(...)` (not the raw DateTime64) matches what ensureTableTtl probes
 // for in the normalized table metadata; keep the two in sync.
-function buildRetentionTtlSql(ttlDays: number): string {
-  return `toDateTime(created_at) + INTERVAL ${ttlDays} DAY DELETE`;
+function buildRetentionTtlSql(ttlDays: number, timestampColumn: "created_at" | "event_at" = "created_at"): string {
+  return `toDateTime(${timestampColumn}) + INTERVAL ${ttlDays} DAY DELETE`;
 }
 
 function buildColumnDefinition(column: ClickhouseColumn): string {
@@ -748,18 +1339,6 @@ export type EventColumnName = (typeof EVENTS_COLUMNS)[number]["name"];
 export const EVENTS_EVENT_TYPE_INDEX_NAME = "idx_event_type";
 export const EVENTS_EVENT_TYPE_INDEX_DEFINITION_SQL = "event_type TYPE set(0) GRANULARITY 4";
 
-const EVENTS_TABLE_BASE_SQL = buildCreateTableSql("analytics_internal.events", EVENTS_COLUMNS, `
-ENGINE MergeTree
-PARTITION BY toYYYYMM(event_at)
-ORDER BY (project_id, branch_id, event_at)
-TTL ${buildRetentionTtlSql(TELEMETRY_TTL_DAYS)}`, [
-  `INDEX ${EVENTS_EVENT_TYPE_INDEX_NAME} ${EVENTS_EVENT_TYPE_INDEX_DEFINITION_SQL}`,
-]);
-
-// Upgrades databases created before the telemetry columns existed. Clean
-// databases get the identical shape straight from EVENTS_TABLE_BASE_SQL.
-const EVENTS_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.events", EVENTS_COLUMNS);
-
 // Error-grouping columns, written by the ingest-time grouper for `$error` rows
 // only. Physically present on every `logs` row (a `$log` line just leaves them
 // at their defaults) because logs and error occurrences deliberately share one
@@ -885,8 +1464,35 @@ TTL ${buildRetentionTtlSql(TELEMETRY_TTL_DAYS)}`, [
   ]);
 }
 
-const LOGS_TABLE_BASE_SQL = buildLogsCreateTableSql("analytics_internal.logs");
-const LOGS_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.logs", LOGS_COLUMNS);
+/**
+ * Canonical row store for event-shaped telemetry. Product events, logs, and
+ * errors share the same tenancy/time layout; the error and OTLP columns simply
+ * retain their defaults for rows that do not use them. Public `events`, `logs`,
+ * and `errors` views preserve the old query contracts without maintaining two
+ * append-only tables with nearly identical prefixes.
+ */
+export const TELEMETRY_COLUMNS = [
+  ...EVENTS_COLUMNS,
+  ...ERROR_GROUPING_COLUMNS,
+  ...ERROR_ENVELOPE_COLUMNS,
+  ...OTEL_LOG_COLUMNS,
+] as const satisfies readonly ClickhouseColumn[];
+
+export type TelemetryColumnName = (typeof TELEMETRY_COLUMNS)[number]["name"];
+
+export function buildTelemetryCreateTableSql(fullTableName: string): string {
+  return buildCreateTableSql(fullTableName, TELEMETRY_COLUMNS, `
+ENGINE MergeTree
+PARTITION BY toYYYYMM(event_at)
+ORDER BY (project_id, branch_id, event_at)
+TTL ${buildRetentionTtlSql(TELEMETRY_TTL_DAYS)}`, [
+    `INDEX ${EVENTS_EVENT_TYPE_INDEX_NAME} ${EVENTS_EVENT_TYPE_INDEX_DEFINITION_SQL}`,
+    `INDEX ${LOGS_ISSUE_HASH_INDEX_NAME} ${LOGS_ISSUE_HASH_INDEX_DEFINITION_SQL}`,
+  ]);
+}
+
+const TELEMETRY_TABLE_BASE_SQL = buildTelemetryCreateTableSql("analytics_internal.telemetry");
+const TELEMETRY_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.telemetry", TELEMETRY_COLUMNS);
 
 // Span events use the existing event-shaped columns so trace detail queries stay
 // backwards compatible, and append the complete OTLP event representation. The
@@ -921,8 +1527,8 @@ const SPAN_EVENTS_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal
 // `as const` so the migration test can assert the cut-list stays disjoint from
 // EVENTS_COLUMNS.
 export const EVENTS_LEGACY_COLUMNS_TO_DROP = [
-  // The unreleased full-ancestry column. Unlike the spans subsystem, events/logs/
-  // span_events are NOT fingerprint-reset — they keep their rows — so without an
+  // The unreleased full-ancestry column. Events/logs/span_events keep their
+  // rows across schema upgrades, so without an
   // explicit drop a dev/staging table would carry this dead Array(String) of
   // prefixed ids forever. Span hierarchy lives on the SPAN row's `parent_span_id`
   // now; an event stores only the enclosing span it happened inside.
@@ -948,8 +1554,6 @@ ALTER TABLE ${table}
 `;
 }
 
-const EVENTS_LEGACY_CLEANUP_SQL = buildEventsLegacyCleanupSql("analytics_internal.events");
-
 // Physical events only. `$page-view` is a SPAN (see default.spans) — never
 // project spans into this view or the traces UI shows the same fact twice
 // (event diamond + span bar). Metrics that need page views query spans directly.
@@ -961,6 +1565,29 @@ SELECT
   ${buildViewSelectList(EVENTS_COLUMNS)}
 FROM analytics_internal.events
 WHERE event_type NOT IN ('$log', '$error');
+`;
+
+/**
+ * Internal compatibility views keep existing backend SQL and self-hosted
+ * analytics queries valid while the physical source is renamed to telemetry.
+ * New writers target telemetry directly; these views are read-only aliases.
+ */
+const INTERNAL_EVENTS_COMPAT_VIEW_SQL = `
+CREATE OR REPLACE VIEW analytics_internal.events
+AS
+SELECT
+  ${buildViewSelectList(EVENTS_COLUMNS)}
+FROM analytics_internal.telemetry
+WHERE event_type NOT IN ('$log', '$error');
+`;
+
+const INTERNAL_LOGS_COMPAT_VIEW_SQL = `
+CREATE OR REPLACE VIEW analytics_internal.logs
+AS
+SELECT
+  ${buildViewSelectList(LOGS_COLUMNS)}
+FROM analytics_internal.telemetry
+WHERE event_type IN ('$log', '$error');
 `;
 
 // The error-grouping columns are physically present on `$log` rows too (they
@@ -1077,7 +1704,7 @@ SELECT
   uniqState(user_id) AS users_state,
   min(event_at) AS first_seen,
   max(event_at) AS last_seen
-FROM ${database}.logs
+FROM ${database}.telemetry
 WHERE event_type = '$error' AND issue_hash != ''
 GROUP BY project_id, branch_id, issue_hash, bucket_start, service_name, deployment_environment_name;
 `;
@@ -1093,60 +1720,6 @@ AS
 SELECT
   ${buildViewSelectList(SPAN_EVENTS_COLUMNS)}
 FROM analytics_internal.span_events;
-`;
-
-// Normalizes legacy $token-refresh rows (camelCase JSON) to the new format:
-// - Row identity stays in columns (project_id/branch_id/user_id)
-// - data JSON becomes { refresh_token_id, is_anonymous, ip_info } (snake_case)
-// Assumption: all legacy rows have the camelCase format.
-const TOKEN_REFRESH_EVENT_ROW_FORMAT_MUTATION_SQL = `
-ALTER TABLE analytics_internal.events
-UPDATE
-  data = CAST(concat(
-    '{',
-      '"refresh_token_id":', toJSONString(data.refreshTokenId::String), ',',
-      '"is_anonymous":', if(ifNull(data.isAnonymous::Nullable(Bool), false), 'true', 'false'), ',',
-      '"ip_info":', if(
-        isNull(data.ipInfo.ip::Nullable(String)),
-        'null',
-        concat(
-          '{',
-            '"ip":', toJSONString(data.ipInfo.ip::String), ',',
-            '"is_trusted":', if(ifNull(data.ipInfo.isTrusted::Nullable(Bool), false), 'true', 'false'), ',',
-            '"country_code":', if(isNull(data.ipInfo.countryCode::Nullable(String)), 'null', toJSONString(data.ipInfo.countryCode::String)), ',',
-            '"region_code":', if(isNull(data.ipInfo.regionCode::Nullable(String)), 'null', toJSONString(data.ipInfo.regionCode::String)), ',',
-            '"city_name":', if(isNull(data.ipInfo.cityName::Nullable(String)), 'null', toJSONString(data.ipInfo.cityName::String)), ',',
-            '"latitude":', if(isNull(data.ipInfo.latitude::Nullable(Float64)), 'null', toString(data.ipInfo.latitude::Float64)), ',',
-            '"longitude":', if(isNull(data.ipInfo.longitude::Nullable(Float64)), 'null', toString(data.ipInfo.longitude::Float64)), ',',
-            '"tz_identifier":', if(isNull(data.ipInfo.tzIdentifier::Nullable(String)), 'null', toJSONString(data.ipInfo.tzIdentifier::String)),
-          '}'
-        )
-      ),
-    '}'
-  ) AS JSON)
-WHERE event_type = '$token-refresh'
-  AND data.refreshTokenId::Nullable(String) IS NOT NULL;
-`;
-
-// Normalizes legacy $sign-up-rule-trigger rows (camelCase JSON) to the new format:
-// - Row identity stays in columns (project_id/branch_id)
-// - data JSON becomes { project_id, branch_id, rule_id, action, email, auth_method, oauth_provider } (snake_case)
-const SIGN_UP_RULE_TRIGGER_EVENT_ROW_FORMAT_MUTATION_SQL = `
-ALTER TABLE analytics_internal.events
-UPDATE
-  data = CAST(concat(
-    '{',
-      '"project_id":', toJSONString(JSONExtractString(toJSONString(data), 'projectId')), ',',
-      '"branch_id":', toJSONString(JSONExtractString(toJSONString(data), 'branchId')), ',',
-      '"rule_id":', toJSONString(JSONExtractString(toJSONString(data), 'ruleId')), ',',
-      '"action":', toJSONString(JSONExtractString(toJSONString(data), 'action')), ',',
-      '"email":', toJSONString(JSONExtract(toJSONString(data), 'email', 'Nullable(String)')), ',',
-      '"auth_method":', toJSONString(JSONExtract(toJSONString(data), 'authMethod', 'Nullable(String)')), ',',
-      '"oauth_provider":', toJSONString(JSONExtract(toJSONString(data), 'oauthProvider', 'Nullable(String)')),
-    '}'
-  ) AS JSON)
-WHERE event_type = '$sign-up-rule-trigger'
-  AND JSONHas(toJSONString(data), 'ruleId');
 `;
 
 const USERS_TABLE_BASE_SQL = `
@@ -1209,15 +1782,6 @@ CREATE TABLE IF NOT EXISTS analytics_internal._stack_sync_metadata (
 )
 ENGINE ReplacingMergeTree(updated_at)
 ORDER BY (tenancy_id, mapping_name);
-`;
-
-// Backfill refresh_token_id from data.refresh_token_id for existing $token-refresh rows
-const BACKFILL_REFRESH_TOKEN_ID_COLUMN_SQL = `
-ALTER TABLE analytics_internal.events
-UPDATE refresh_token_id = data.refresh_token_id::Nullable(String)
-WHERE event_type = '$token-refresh'
-  AND refresh_token_id IS NULL
-  AND data.refresh_token_id::Nullable(String) IS NOT NULL;
 `;
 
 // Spans: telemetry siblings of events, written DIRECTLY to ClickHouse (never
@@ -1379,8 +1943,8 @@ export function buildOtelMetricsCreateTableSql(fullTableName: string): string {
   return buildCreateTableSql(fullTableName, OTEL_METRICS_COLUMNS, OTEL_METRICS_TABLE_ENGINE_SQL);
 }
 
-const OTEL_METRICS_TABLE_BASE_SQL = buildOtelMetricsCreateTableSql("analytics_internal.otel_metrics");
-const OTEL_METRICS_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.otel_metrics", OTEL_METRICS_COLUMNS);
+const OTEL_METRICS_TABLE_BASE_SQL = buildOtelMetricsCreateTableSql("analytics_internal.metrics");
+const OTEL_METRICS_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.metrics", OTEL_METRICS_COLUMNS);
 
 // `otel_kind` was part of an unreleased intermediate schema. It is deliberately
 // not in the canonical column list anymore: `kind` is the OTel-compatible string
@@ -1401,9 +1965,9 @@ export const SPAN_LINKS_COLUMNS = [
   { name: "linked_trace_id", type: "String" },
   { name: "linked_span_id", type: "String" },
   // Ordinary links are same-scope; trusted platform writes override both. The
-  // DEFAULT expressions also give a post-GA ADD COLUMN migration a metadata-only
-  // path instead of rewriting retained link parts. While the subsystem remains
-  // explicitly pre-release, its fingerprint reset still rebuilds the table.
+  // DEFAULT expressions give an ADD COLUMN migration a metadata-only path
+  // instead of rewriting retained link parts. The schema fingerprint only
+  // validates this definition; it never rebuilds the table.
   { name: "linked_project_id", type: "String", default: "project_id" },
   { name: "linked_branch_id", type: "String", default: "branch_id" },
   { name: "linked_trace_state", type: "Nullable(String)", default: "NULL" },
@@ -2436,7 +3000,7 @@ CREATE DATABASE IF NOT EXISTS analytics_internal;
 `;
 
 // Clickmap-only physical table (PostHog-style schema). Fed by clickmap_events_mv
-// from analytics_internal.events WHERE event_type='$click'. Backwards compatible
+// from analytics_internal.telemetry WHERE event_type='$click'. Backwards compatible
 // with click rows that pre-date elements_chain / scaled coords: the MV derives
 // pointer_* from raw data.x / data.y / data.page_y, and elements_chain falls
 // back to the empty string when the SDK didn't emit one.
@@ -2478,7 +3042,8 @@ CREATE TABLE IF NOT EXISTS analytics_internal.clickmap_events (
 )
 ENGINE MergeTree
 PARTITION BY toYYYYMM(event_at)
-ORDER BY (project_id, branch_id, toDate(event_at), path, viewport_width);
+ORDER BY (project_id, branch_id, toDate(event_at), path, viewport_width)
+TTL ${buildRetentionTtlSql(TELEMETRY_TTL_DAYS, "event_at")};
 `;
 
 const CLICKMAP_EVENTS_ADD_DEAD_COLUMN_SQL = `
@@ -2487,16 +3052,13 @@ ADD COLUMN IF NOT EXISTS is_dead UInt8 DEFAULT 0;
 `;
 
 // Materialized view that auto-populates clickmap_events on every $click insert.
-// No POPULATE clause: existing rows stay in analytics_internal.events. New
+// No POPULATE clause: existing rows stay in analytics_internal.telemetry. New
 // click rows flow into both tables.
 //
 // All field accesses use the toFloat64OrZero(toString(...)) pattern that the
 // existing analytics queries use, so JSON-Variant nullability is handled the
 // same way.
-const CLICKMAP_EVENTS_MV_SQL = `
-CREATE MATERIALIZED VIEW IF NOT EXISTS analytics_internal.clickmap_events_mv
-TO analytics_internal.clickmap_events
-AS
+const CLICKMAP_EVENTS_MV_SELECT_SQL = `
 SELECT
     project_id,
     branch_id,
@@ -2529,6 +3091,22 @@ SELECT
     toString(data.tag_name) AS tag_name,
     nullIf(toString(data.href), '') AS href,
     toUInt8(coalesce(toUInt8OrNull(toString(data.dead)), 0)) AS is_dead
-FROM analytics_internal.events
+FROM analytics_internal.telemetry
 WHERE event_type = '$click';
+`;
+
+const CLICKMAP_EVENTS_MV_SQL = `
+CREATE MATERIALIZED VIEW IF NOT EXISTS analytics_internal.clickmap_events_mv
+TO analytics_internal.clickmap_events
+AS
+${CLICKMAP_EVENTS_MV_SELECT_SQL}
+`;
+
+// Existing MVs are not updated by CREATE IF NOT EXISTS. MODIFY QUERY changes
+// the insert trigger in place, avoiding a DROP/CREATE gap in which clicks would
+// be permanently absent from the derived table.
+const CLICKMAP_EVENTS_MV_UPGRADE_SQL = `
+ALTER TABLE analytics_internal.clickmap_events_mv
+MODIFY QUERY
+${CLICKMAP_EVENTS_MV_SELECT_SQL}
 `;

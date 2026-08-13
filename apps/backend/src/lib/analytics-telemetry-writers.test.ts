@@ -1,8 +1,9 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { EVENTS_COLUMNS, LOGS_COLUMNS, type ClickhouseColumn, type EventColumnName, type LogColumnName } from "../../scripts/clickhouse-migrations";
 import {
+  buildTelemetryWritePlan,
   getBatchDestinationDeduplicationToken,
-  getEventStorageTable,
+  getTelemetryLens,
   normalizeBatchEvents,
 } from "./analytics-telemetry-writers";
 import { createErrorIngestProtocolProjection } from "./error-ingest/error-ingest-protocol-adapter";
@@ -88,13 +89,27 @@ describe("error grouping normalization", () => {
     const customGrouping = normalizeBatchEvents([{
       event_type: "$error",
       event_at_ms: 1_700_000_000_000,
-      data: { ...baseData, fingerprint_override: ["{{ type }}"], synthetic: 1 },
+      data: { ...baseData, fingerprint_override: ["{{ type }}"], synthetic: true },
     }], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID);
 
     expect(localFingerprintOnly.issueInputs[0]?.ownerHash).toBe(defaultGrouping.issueInputs[0]?.ownerHash);
     expect(customGrouping.issueInputs[0]?.ownerHash).not.toBe(defaultGrouping.issueInputs[0]?.ownerHash);
     expect(customGrouping.issueInputs[0]?.synthetic).toBe(true);
     expect(customGrouping.logOccurrences[0]).toMatchObject({ issue_variant: "custom" });
+  });
+
+  it("does not treat an explicit synthetic false value as synthetic", () => {
+    const normalized = normalizeBatchEvents([{
+      event_type: "$error",
+      event_at_ms: 1_700_000_000_000,
+      data: {
+        name: "TypeError",
+        message: "ordinary failure",
+        synthetic: false,
+      },
+    }], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID);
+
+    expect(normalized.issueInputs[0]?.synthetic).toBe(false);
   });
 
   it("persists the bounded canonical envelope without request secrets", () => {
@@ -172,15 +187,33 @@ describe("error grouping normalization", () => {
 });
 
 describe("analytics telemetry storage dispatch", () => {
+  it("builds one canonical write plan after protocol-specific normalization", () => {
+    const normalized = normalizeBatchEvents(
+      [{ event_type: "$click", event_at_ms: 1_700_000_000_000, data: {} }],
+      DRIFT_GUARD_CONTEXT,
+      DRIFT_GUARD_BATCH_ID,
+    );
+    const plan = buildTelemetryWritePlan(normalized, DRIFT_GUARD_BATCH_ID);
+
+    expect(plan.batchId).toBe(DRIFT_GUARD_BATCH_ID);
+    expect(plan.destinations).toHaveLength(1);
+    expect(plan.destinations[0]).toMatchObject({
+      table: "analytics_internal.telemetry",
+      deduplicationToken: `${DRIFT_GUARD_BATCH_ID}:analytics_internal.telemetry`,
+    });
+    expect(plan.destinations[0]?.values).toHaveLength(1);
+    expect(plan.issueInputs).toEqual([]);
+  });
+
   it("keeps product events out of observability logs", () => {
     for (const eventType of ["checkout.completed", "$click", "$form-submit"]) {
-      expect(getEventStorageTable(eventType)).toBe("analytics_internal.events");
+      expect(getTelemetryLens(eventType)).toBe("product");
     }
   });
 
   it("keeps log-shaped occurrences out of product events", () => {
-    expect(getEventStorageTable("$log")).toBe("analytics_internal.logs");
-    expect(getEventStorageTable("$error")).toBe("analytics_internal.logs");
+    expect(getTelemetryLens("$log")).toBe("observability");
+    expect(getTelemetryLens("$error")).toBe("observability");
   });
 
   it("gives each destination of one wire batch its own idempotency token", () => {
@@ -190,13 +223,13 @@ describe("analytics telemetry storage dispatch", () => {
     // literal instead just restated the implementation.
     // `as const` so the table names stay their literal types rather than widening
     // to `string`, which the destination parameter deliberately does not accept.
-    const tokens = (["analytics_internal.events", "analytics_internal.logs", "analytics_internal.spans"] as const)
+    const tokens = (["analytics_internal.telemetry", "analytics_internal.spans"] as const)
       .map((table) => getBatchDestinationDeduplicationToken("batch-1", table));
     expect(new Set(tokens).size).toBe(tokens.length);
     // Distinct across batches too, or a retry of batch-2 would be swallowed as
     // a duplicate of batch-1.
-    expect(getBatchDestinationDeduplicationToken("batch-2", "analytics_internal.events"))
-      .not.toBe(getBatchDestinationDeduplicationToken("batch-1", "analytics_internal.events"));
+    expect(getBatchDestinationDeduplicationToken("batch-2", "analytics_internal.telemetry"))
+      .not.toBe(getBatchDestinationDeduplicationToken("batch-1", "analytics_internal.telemetry"));
   });
 
   it("stores the enclosing span identity verbatim and dispatches by taxonomy", () => {

@@ -38,6 +38,45 @@ describe("Hexclave managed OTel SDK", () => {
     }).url).toBe("https://r.hexclave.com/api/v1/analytics/otlp/v1/logs");
   });
 
+  it("shares one process provider across localhost loopback aliases", () => {
+    const options = {
+      projectId: "project",
+      secretServerKey: "secret",
+      clientVersion: "test",
+      traceSampleRate: 1,
+      resource: { serviceName: "checkout" },
+    };
+    const instrumentationRegistration = registerManagedOtel({
+      ...options,
+      analyticsBaseUrl: "http://127.0.0.1:8102",
+    });
+    const serverRegistration = registerManagedOtel({
+      ...options,
+      analyticsBaseUrl: "http://localhost:8102",
+    });
+
+    expect(serverRegistration).toBe(instrumentationRegistration);
+  });
+
+  it("still rejects a different project in the same process", () => {
+    const options = {
+      analyticsBaseUrl: "http://127.0.0.1:8102",
+      secretServerKey: "secret",
+      clientVersion: "test",
+      traceSampleRate: 1,
+      resource: { serviceName: "checkout" },
+    };
+    registerManagedOtel({
+      ...options,
+      projectId: "first-project",
+    });
+
+    expect(() => registerManagedOtel({
+      ...options,
+      projectId: "second-project",
+    })).toThrow("Hexclave OpenTelemetry is already configured for a different project or service in this process");
+  });
+
   it("emits the official OTLP/HTTP JSON identity and timestamp representation", async () => {
     let body = "";
     const server = createServer((request, response) => {
@@ -158,6 +197,39 @@ describe("Hexclave managed OTel SDK", () => {
     expect(exportedMetricBody).toContain('"resourceMetrics"');
     expect(exportedMetricBody).toContain('"name":"hexclave.http.client.request.count"');
     expect(exportedMetricBody).toContain('"name":"hexclave.http.client.request.duration"');
+  });
+
+  it("does not export HTTP client metrics when the request span is head-dropped", async () => {
+    let exportedMetricBody = "";
+    const server = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk: Buffer) => chunks.push(chunk));
+      request.on("end", () => {
+        if (request.url?.endsWith("/metrics") === true) exportedMetricBody = Buffer.concat(chunks).toString("utf8");
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end("{}");
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Expected the Undici fixture server to listen on a TCP port");
+    const analyticsBaseUrl = "http://127.0.0.1:" + address.port;
+    const registration = registerManagedOtel({
+      analyticsBaseUrl,
+      projectId: "project",
+      secretServerKey: "secret",
+      clientVersion: "test",
+      traceSampleRate: 0,
+      resource: { serviceName: "checkout" },
+      shouldInstrumentOutboundRequest: (url) => url.endsWith("/orders"),
+    });
+
+    await fetch(analyticsBaseUrl + "/orders");
+    await registration.forceFlush();
+    await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
+
+    expect(exportedMetricBody).not.toContain('"name":"hexclave.http.client.request.count"');
+    expect(exportedMetricBody).not.toContain('"name":"hexclave.http.client.request.duration"');
   });
 
   it("applies the Sentry-style Next span policy before exporting", async () => {

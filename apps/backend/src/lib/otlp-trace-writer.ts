@@ -17,6 +17,8 @@ export type OtlpTenantContext = {
   branchId: string,
   userId: string | null,
   refreshTokenId: string | null,
+  /** Server-resolved rolling replay; authenticated context wins over OTLP attributes. */
+  sessionReplayId?: string | null,
   /** Server-owned rollout setting; never trust a client-provided grouping id. */
   groupingConfig?: GroupingRuntimeConfig,
 };
@@ -287,6 +289,7 @@ export async function insertOtlpTraces(client: ClickHouseClient, canonicalSpans:
         async_insert: 0,
         wait_for_async_insert: 1,
         insert_deduplication_token: `${requestToken}:span-events`,
+        deduplicate_blocks_in_dependent_materialized_views: 1,
       },
     }),
   ]);

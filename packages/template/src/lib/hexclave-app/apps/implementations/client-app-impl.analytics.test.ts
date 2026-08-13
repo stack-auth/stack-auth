@@ -476,6 +476,32 @@ describe("browser analytics startup", () => {
     expect(() => app.captureMessage("should not disappear")).toThrow("observability is disabled");
   });
 
+  it("rotates and suspends replay capture before clearing authentication-bound buffers", async () => {
+    const app = new StackClientApp({
+      projectId: "00000000-0000-4000-8000-000000000001",
+      publishableClientKey: "pck_test",
+      baseUrl: "https://api.example.test",
+      tokenStore: null,
+      noAutomaticPrefetch: true,
+      automaticSideEffects: false,
+      devTool: false,
+      telemetry: TEST_TELEMETRY,
+    });
+    const analytics = Reflect.get(app, "_clientAnalytics");
+    if (!(analytics instanceof ClientAnalytics)) throw new Error("Expected the browser telemetry facade");
+    const calls: string[] = [];
+    Reflect.set(analytics, "_recorder", {
+      setSessionReplaySegmentId: () => calls.push("rotate"),
+      clearBuffer: () => calls.push("clear"),
+      captureFullSnapshotForCurrentSegment: () => calls.push("snapshot"),
+    });
+
+    await analytics.clearBuffer();
+    analytics.resumeSessionReplayAfterAuthentication();
+
+    expect(calls).toEqual(["rotate", "clear", "snapshot"]);
+  });
+
   it("captures SDK API calls while suppressing only recursive telemetry delivery", () => {
     const shouldIgnore = (url: string) => shouldIgnoreTelemetryDeliveryUrl(
       url,
@@ -488,8 +514,11 @@ describe("browser analytics startup", () => {
     expect(shouldIgnore("https://api.example.test/hexclave/api/v1/analytics/otlp/v1/traces")).toBe(true);
     expect(shouldIgnore("https://api.example.test/hexclave/api/v1/analytics/otlp/v1/logs")).toBe(true);
     expect(shouldIgnore("https://api.example.test/hexclave/api/v1/analytics/otlp/v1/metrics")).toBe(true);
+    expect(shouldIgnore("https://api.example.test/hexclave/api/v1/analytics/client-reports")).toBe(true);
+    expect(shouldIgnore("https://api.example.test/hexclave/api/v1/analytics/attachments")).toBe(true);
     expect(shouldIgnore("https://api.example.test/hexclave/api/v1/session-replays/batch")).toBe(true);
     expect(shouldIgnore("https://api.example.test/hexclave/api/v1/analytics/events/batch/extra")).toBe(false);
+    expect(shouldIgnore("https://api.example.test/hexclave/api/v1/analytics/attachments/extra")).toBe(false);
     expect(shouldIgnore("https://customer.example.test/hexclave/api/v1/analytics/events/batch")).toBe(false);
   });
 });

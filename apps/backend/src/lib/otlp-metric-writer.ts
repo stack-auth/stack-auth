@@ -196,7 +196,7 @@ export async function insertOtlpMetrics(client: ClickHouseClient, request: Canon
   const rows = buildOtlpMetricRows(request, tenant);
   if (rows.length === 0) return;
   await client.insert({
-    table: "analytics_internal.otel_metrics",
+    table: "analytics_internal.metrics",
     values: rows,
     format: "JSONEachRow",
     clickhouse_settings: {

@@ -1,21 +1,14 @@
 import type { HexclaveNextInstrumentation } from "@hexclave/next/next";
 
-// Next builds instrumentation for both Node.js and Edge. Resolve lazily so the
-// Edge bundle never follows the Node-only `server-only` import in ./hexclave.
-//
-// Read NEXT_RUNTIME via globalThis instead of a bare `process` identifier:
-// this file is sometimes typechecked outside the demo tsconfig (inferred
-// project), where `@types/node` is not loaded even though it is installed.
-function getNextRuntime(): string | undefined {
-  const runtimeProcess = (globalThis as { process?: { env?: { NEXT_RUNTIME?: string } } }).process;
-  return runtimeProcess?.env?.NEXT_RUNTIME;
-}
-
+// Next.js builds instrumentation for both Node.js and Edge. Keep the runtime
+// check inline (`process.env.NEXT_RUNTIME`, not a helper) so the Edge bundle
+// does not follow these Node-only imports — a wrapped read is invisible to
+// Next's define-plugin and pulls `async_hooks` / OpenTelemetry into Edge.
 let hexclaveNextInstrumentationPromise: Promise<HexclaveNextInstrumentation | null> | undefined;
 
 function getHexclaveNextInstrumentation(): Promise<HexclaveNextInstrumentation | null> {
   hexclaveNextInstrumentationPromise ??= (async () => {
-    if (getNextRuntime() !== "nodejs") return null;
+    if (process.env.NEXT_RUNTIME !== "nodejs") return null;
     const [{ hexclaveInstrumentation }, { hexclaveServerApp }] = await Promise.all([
       import("@hexclave/next/next"),
       import("./hexclave"),

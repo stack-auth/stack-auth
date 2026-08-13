@@ -3,6 +3,7 @@ import type { Span, SpanContext } from "@hexclave/js";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { context, isSpanContextValid, ROOT_CONTEXT, trace } from "@opentelemetry/api";
 import { suppressTracing, W3CTraceContextPropagator } from "@opentelemetry/core";
+import { recordBackendRequestMetrics } from "./backend-request-metrics";
 import { getVerifiedCustomerRequestLinkTarget, runWithCustomerRequestObservability } from "./customer-request-observability";
 import { runWithNodeTelemetrySuppressed } from "./node-telemetry-suppression";
 import { isTelemetryIngestionPath } from "./telemetry-ingestion-paths";
@@ -106,9 +107,12 @@ export async function runWithInternalRequestObservability(
         path: requestPath,
       },
     });
+    const startedAt = performance.now();
+    let statusCode: number | undefined;
     return await span.run(async () => {
       try {
         const response = await fn();
+        statusCode = response.status;
         // setData mutates the span synchronously before end enqueues its final row;
         // the acknowledgement must not add an internal telemetry round-trip
         // to every customer request's latency.
@@ -123,6 +127,11 @@ export async function runWithInternalRequestObservability(
         }), { noErrorLogging: true });
         throw error;
       } finally {
+        recordBackendRequestMetrics({
+          durationMs: performance.now() - startedAt,
+          method: request.method,
+          statusCode,
+        });
         const clientLink = internalProjectRequest ? null : getVerifiedCustomerRequestLinkTarget();
         if (clientLink !== null) {
           // The target scope comes from authenticated tenancy state, never from

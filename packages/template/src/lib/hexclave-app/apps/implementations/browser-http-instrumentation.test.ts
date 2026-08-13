@@ -39,6 +39,19 @@ function requestHeaders(nativeFetch: ReturnType<typeof stubNativeFetch>, callInd
   return new Headers(init?.headers);
 }
 
+// `@opentelemetry/instrumentation-fetch` delays `span.end()` by 300ms so a
+// PerformanceObserver can attach resource timings. HTTP client metrics are
+// recorded in `SpanProcessor.onEnd`, so they cannot appear until that timer
+// fires. The drop-path test waits too: otherwise a missing export could just
+// mean the span has not ended yet.
+const FETCH_SPAN_END_DELAY_MS = 350;
+
+async function waitForFetchSpanEnd(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, FETCH_SPAN_END_DELAY_MS);
+  });
+}
+
 const SESSION_TRACE_ID = "abfa79547286426fa8079a0070399027";
 const PAGE_VIEW_SPAN_ID = "56a1e66c121ef299";
 const SEGMENT_ID = "22222222-2222-4222-8222-222222222222";
@@ -57,11 +70,12 @@ function pageViewAmbientContext(traceId = SESSION_TRACE_ID): Context {
 }
 
 describe("managed browser HTTP instrumentation", () => {
-  it("exports native request metrics independently of the request span", async () => {
+  it("exports HTTP client metrics from the recorded request span", async () => {
     const nativeFetch = stubNativeFetch();
     const registration = registerWithAmbient(() => null);
 
     await fetch(window.location.origin + "/orders");
+    await waitForFetchSpanEnd();
     await registration.forceFlush();
 
     const metricCall = nativeFetch.mock.calls.find(([input]) => new URL(String(input)).pathname.endsWith("/v1/metrics"));
@@ -74,6 +88,32 @@ describe("managed browser HTTP instrumentation", () => {
     expect(JSON.stringify(payload)).toContain('"name":"hexclave.http.client.request.duration"');
   });
 
+  it("does not export HTTP client metrics for a head-dropped request span", async () => {
+    const nativeFetch = stubNativeFetch();
+    const registration = registerManagedBrowserOtel({
+      analyticsBaseUrl: "https://telemetry.example.test",
+      projectId: "project",
+      clientVersion: "test",
+      traceSampleRate: 0,
+      resource: { service: { name: "storefront" } },
+      getRequestHeaders: async () => ({ "x-hexclave-access-token": "token" }),
+      networkCapture: { enabled: true, allowOrigins: null, denyOrigins: null, ignoreUrls: [] },
+      getPropagationPolicy: () => ({ allowedOrigins: [], allowLocalhost: false }),
+      getAmbientOtelContext: () => null,
+    });
+
+    await fetch(window.location.origin + "/orders");
+    await waitForFetchSpanEnd();
+    await registration.forceFlush();
+
+    const metricCall = nativeFetch.mock.calls.find(([input]) => new URL(String(input)).pathname.endsWith("/v1/metrics"));
+    const payload = metricCall === undefined
+      ? ""
+      : new TextDecoder().decode(metricCall[1]?.body instanceof Uint8Array ? metricCall[1].body : new Uint8Array());
+    expect(payload).not.toContain('"name":"hexclave.http.client.request.count"');
+    expect(payload).not.toContain('"name":"hexclave.http.client.request.duration"');
+  });
+
   it("lets official fetch instrumentation own W3C injection", async () => {
     const nativeFetch = stubNativeFetch();
     registerWithAmbient(() => null);
@@ -82,6 +122,21 @@ describe("managed browser HTTP instrumentation", () => {
 
     expect(nativeFetch).toHaveBeenCalledTimes(1);
     expect(requestHeaders(nativeFetch, 0).get("traceparent")).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
+  });
+
+  it("does not create request spans for client reports or attachment uploads", async () => {
+    const nativeFetch = stubNativeFetch();
+    registerWithAmbient(() => pageViewAmbientContext());
+
+    await fetch("https://telemetry.example.test/api/v1/analytics/client-reports");
+    await fetch("https://telemetry.example.test/api/v1/analytics/attachments");
+
+    const deliveryRequests = nativeFetch.mock.calls.filter(([input]) => {
+      const pathname = new URL(String(input)).pathname;
+      return pathname === "/api/v1/analytics/client-reports" || pathname === "/api/v1/analytics/attachments";
+    });
+    expect(deliveryRequests).toHaveLength(2);
+    expect(deliveryRequests.every(([, init]) => new Headers(init?.headers).get("traceparent") === null)).toBe(true);
   });
 
   // Regression test: with a plain StackContextManager, app-initiated fetches

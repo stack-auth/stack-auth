@@ -16,7 +16,7 @@ import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { ignoreUnhandledRejection } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { BrowserOtlpQueuePersistenceError, createBrowserOtlpOfflineQueue, type BrowserOtlpOfflineQueue, type BrowserOtlpQueueDropSummary, type BrowserOtlpQueueEntry } from "./browser-otel-queue";
-import { OtlpHttpMetricRecorder } from "./otel-http-metrics";
+import { createHexclaveHttpMetricSpanProcessor } from "./otel-http-metrics";
 import type { TelemetryResource } from "./telemetry-config";
 import type { NetworkCaptureConfig } from "./network-capture";
 
@@ -201,8 +201,22 @@ function networkIgnorePatterns(options: BrowserManagedOtelOptions): RegExp[] {
     const allowed = options.networkCapture.allowOrigins.map((origin) => escapeRegex(origin)).join("|");
     patterns.push(new RegExp(`^(?!(?:${allowed})(?:/|$)).*$`));
   }
-  // Export requests must never recursively produce more export spans.
-  patterns.push(new RegExp(`^${escapeRegex(new URL("/api/v1/analytics/otlp/", options.analyticsBaseUrl).toString())}`));
+  // Every SDK-owned delivery request must stay outside network capture. It is
+  // not enough to suppress OTLP exports: client reports and attachment uploads
+  // are also made with fetch, and instrumenting either one can create another
+  // telemetry item while the original delivery is still being flushed.
+  for (const path of [
+    "/api/v1/analytics/events/batch",
+    "/api/v1/analytics/otlp/v1/traces",
+    "/api/v1/analytics/otlp/v1/logs",
+    "/api/v1/analytics/otlp/v1/metrics",
+    "/api/v1/analytics/client-reports",
+    "/api/v1/analytics/attachments",
+    "/api/v1/session-replays/batch",
+  ]) {
+    const endpoint = escapeRegex(new URL(path, options.analyticsBaseUrl).toString());
+    patterns.push(new RegExp(`^${endpoint}(?:[?#]|$)`));
+  }
   return patterns;
 }
 
@@ -254,6 +268,8 @@ export type BrowserOtlpDeliveryOutcome = {
 export function createHexclaveBrowserCorrelationSpanProcessor(): SpanProcessor {
   return new BrowserCorrelationSpanProcessor();
 }
+
+export { createHexclaveHttpMetricSpanProcessor };
 
 const OTLP_EXPORT_MAX_ATTEMPTS = 3;
 const OTLP_EXPORT_RETRY_BASE_DELAY_MS = 1_000;
@@ -1566,17 +1582,29 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
   const logExporter = createHexclaveBrowserOtlpLogExporter(exporterOptions);
   const metricExporter = createHexclaveBrowserOtlpMetricExporter(exporterOptions);
   const resource = resourceFromAttributes(browserResourceAttributes(options.resource));
+  const metricReader = new PeriodicExportingMetricReader({
+    exporter: metricExporter,
+    exportIntervalMillis: normalizedPositiveInteger(options.metricExportIntervalMillis, OTLP_METRIC_EXPORT_INTERVAL_MS),
+  });
+  const meterProvider = new MeterProvider({ resource, readers: [metricReader] });
   const provider = new WebTracerProvider({
     resource,
     sampler: new ParentBasedSampler({ root: new TraceIdRatioBasedSampler(options.traceSampleRate) }),
-    spanProcessors: [createHexclaveBrowserCorrelationSpanProcessor(), new OpenSystemSpanSnapshotProcessor(exporter), new BatchSpanProcessor(exporter)],
+    spanProcessors: [
+      createHexclaveBrowserCorrelationSpanProcessor(),
+      createHexclaveHttpMetricSpanProcessor(meterProvider.getMeter("@hexclave/browser-http", options.clientVersion)),
+      new OpenSystemSpanSnapshotProcessor(exporter),
+      new BatchSpanProcessor(exporter),
+    ],
   });
   if (!trace.setGlobalTracerProvider(provider)) {
+    ignoreUnhandledRejection(meterProvider.shutdown());
     ignoreUnhandledRejection(provider.shutdown());
     throw new Error("Hexclave could not install its managed browser OpenTelemetry provider because another global provider is already registered. Use observability.openTelemetry.provider = \"existing-provider\" and configure that provider explicitly.");
   }
   const contextManager = new AmbientBaseStackContextManager(() => ambientContextGetter()).enable();
   if (!context.setGlobalContextManager(contextManager)) {
+    ignoreUnhandledRejection(meterProvider.shutdown());
     ignoreUnhandledRejection(provider.shutdown());
     trace.disable();
     contextManager.disable();
@@ -1586,6 +1614,7 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
     propagators: [new W3CTraceContextPropagator(), new W3CBaggagePropagator()],
   });
   if (!propagation.setGlobalPropagator(propagator)) {
+    ignoreUnhandledRejection(meterProvider.shutdown());
     ignoreUnhandledRejection(provider.shutdown());
     trace.disable();
     context.disable();
@@ -1597,11 +1626,6 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
     resource,
     processors: [new BatchLogRecordProcessor({ exporter: logExporter })],
   });
-  const metricReader = new PeriodicExportingMetricReader({
-    exporter: metricExporter,
-    exportIntervalMillis: normalizedPositiveInteger(options.metricExportIntervalMillis, OTLP_METRIC_EXPORT_INTERVAL_MS),
-  });
-  const meterProvider = new MeterProvider({ resource, readers: [metricReader] });
   if (!metrics.setGlobalMeterProvider(meterProvider)) {
     ignoreUnhandledRejection(loggerProvider.shutdown());
     ignoreUnhandledRejection(provider.shutdown());
@@ -1630,19 +1654,12 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
   // the product UI never surfaces them, the request span's own interval
   // already carries the duration, and at up to nine rows per request they
   // would be the bulk of span_events volume.
-  const httpMetricRecorder = new OtlpHttpMetricRecorder(meterProvider.getMeter("@hexclave/browser-http", options.clientVersion));
   const httpInstrumentationConfig = () => ({
     ignoreUrls: networkIgnorePatterns(activeOptions),
     propagateTraceHeaderCorsUrls: propagationPatterns(activeOptions),
     ignoreNetworkEvents: true,
   });
-  const fetchInstrumentation = new FetchInstrumentation({
-    ...httpInstrumentationConfig(),
-    requestHook: (span, request) => httpMetricRecorder.start(span, request),
-    applyCustomAttributesOnSpan: (span, _request, result) => {
-      httpMetricRecorder.end(span, result.status, "message" in result ? "fetch_error" : undefined);
-    },
-  });
+  const fetchInstrumentation = new FetchInstrumentation(httpInstrumentationConfig());
   const xhrInstrumentation = typeof XMLHttpRequest === "function"
     ? new XMLHttpRequestInstrumentation(httpInstrumentationConfig())
     : null;

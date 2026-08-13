@@ -13,8 +13,8 @@ import { evaluateIssueAlertRule } from "./evaluator";
 import { buildIssueAlertSignal } from "./signal";
 import { hydrateIssueAlertOwnership } from "@/lib/issues/ownership/hydration";
 import type { OwnershipRoutingResolution } from "@/lib/issues/ownership/routing-metadata";
-import type { IssueMaterializationInput } from "../../analytics-telemetry-writers";
-import type { IssueMaterializationOutcome } from "../issue-store";
+import type { IssueBatchDelta } from "../issue-materialization-contract";
+import type { IssueBatchApplyOutcome } from "../issue-store";
 import type { IssueAlertMatch, IssueAlertPredicate, IssueAlertRule, IssueAlertRuleScope } from "./types";
 
 const MAX_FREQUENCY_WINDOWS = 64;
@@ -62,16 +62,32 @@ function ruleNeedsOccurrenceEnvelope(rule: IssueAlertRule): boolean {
   return rulePredicates(rule).some((predicate) => predicate.type === "attribute");
 }
 
+export function buildIssueAlertFrequencyCountsQuery(windows: readonly number[]): string {
+  const counts = windows.map((_, index) =>
+    `toUInt64(countIf(event_at >= {rangeStart${index}:DateTime})) AS count_${index}`
+  ).join(",\n          ");
+  return `
+        SELECT
+          ${counts}
+        FROM analytics_internal.telemetry
+        PREWHERE project_id = {projectId:String}
+          AND branch_id = {branchId:String}
+          AND event_type = '$error'
+          AND event_at >= {earliestRangeStart:DateTime}
+        WHERE issue_hash IN {hashes:Array(String)}
+      `;
+}
+
 async function loadOccurrenceEnvelope(tenancy: Tenancy, occurrenceId: string | null): Promise<unknown> {
   if (occurrenceId === null) return undefined;
   const result = await getSharedClickhouseAdminClient().query({
     query: `
       SELECT error_envelope
-      FROM analytics_internal.logs
-      WHERE project_id = {projectId:String}
+      FROM analytics_internal.telemetry
+      PREWHERE project_id = {projectId:String}
         AND branch_id = {branchId:String}
         AND event_type = '$error'
-        AND occurrence_id = {occurrenceId:String}
+      WHERE occurrence_id = {occurrenceId:String}
       ORDER BY event_at DESC
       LIMIT 1
     `,
@@ -88,39 +104,37 @@ async function loadOccurrenceEnvelope(tenancy: Tenancy, occurrenceId: string | n
 
 async function loadFrequencyCounts(
   tenancy: Tenancy,
-  input: IssueMaterializationInput,
+  input: IssueBatchDelta,
   windows: readonly number[],
   now: Date,
 ): Promise<ReadonlyMap<number, number>> {
   if (windows.length === 0) return new Map();
   const hashes = [input.ownerHash, ...input.aliasHashes];
   const client = getSharedClickhouseAdminClient();
-  const entries = await Promise.all(windows.map(async (windowSeconds) => {
-    const result = await client.query({
-      query: `
-        SELECT toUInt64(count()) AS count
-        FROM analytics_internal.logs
-        WHERE project_id = {projectId:String}
-          AND branch_id = {branchId:String}
-          AND event_type = '$error'
-          AND issue_hash IN {hashes:Array(String)}
-          AND event_at >= {rangeStart:DateTime}
-      `,
-      query_params: {
-        projectId: tenancy.project.id,
-        branchId: tenancy.branchId,
-        hashes,
-        rangeStart: Math.floor((now.getTime() - windowSeconds * 1000) / 1000),
-      },
-      format: "JSONEachRow",
-    });
-    const rows = await result.json<{ count: string }>();
-    const raw = rows[0]?.count ?? "0";
+  const rangeStarts = windows.map((windowSeconds) => Math.floor((now.getTime() - windowSeconds * 1000) / 1000));
+  // Alert rules can request up to 64 windows. Scanning the same issue rows once
+  // per window multiplied ClickHouse I/O by the number of rules; conditional
+  // aggregates keep every second-precise window exact while reading the widest
+  // requested window once.
+  const result = await client.query({
+    query: buildIssueAlertFrequencyCountsQuery(windows),
+    query_params: {
+      projectId: tenancy.project.id,
+      branchId: tenancy.branchId,
+      hashes,
+      earliestRangeStart: Math.min(...rangeStarts),
+      ...Object.fromEntries(rangeStarts.map((rangeStart, index) => [`rangeStart${index}`, rangeStart])),
+    },
+    format: "JSONEachRow",
+  });
+  const rows = await result.json<Record<string, string | number>>();
+  const row = rows[0] ?? {};
+  return new Map(windows.map((windowSeconds, index) => {
+    const raw = row[`count_${index}`] ?? "0";
     const count = Number(raw);
     if (!Number.isSafeInteger(count) || count < 0) throw new Error("ClickHouse returned an invalid issue-alert frequency count");
     return [windowSeconds, Math.min(count, MAX_FREQUENCY_COUNT)] as const;
   }));
-  return new Map(entries);
 }
 
 async function enqueueMatchInTransaction(
@@ -145,6 +159,7 @@ async function enqueueMatchInTransaction(
     await recordIssueAlertWorkflowUpdateInTransaction(tx, scope, claim.delivery.id, {
       kind: "enqueued",
       workflowEventId: enqueue.eventId,
+      payload: enqueue.payload,
       at: now,
     });
     return { claim, enqueued: true };
@@ -168,8 +183,8 @@ function ownershipRoutingKey(issueId: string, routing: NonNullable<Extract<Issue
 
 export async function dispatchIssueAlertsForMaterialization(options: {
   tenancy: Tenancy,
-  outcomes: readonly IssueMaterializationOutcome[],
-  inputs: readonly IssueMaterializationInput[],
+  outcomes: readonly IssueBatchApplyOutcome[],
+  inputs: readonly IssueBatchDelta[],
   receivedAt: Date,
 }): Promise<IssueAlertDispatchResult> {
   const result: IssueAlertDispatchResult = {

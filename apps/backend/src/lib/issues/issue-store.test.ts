@@ -67,23 +67,13 @@ function makeInput(ownerHash: string, overrides: {
 
 async function allocateShortId(target: Tenancy): Promise<bigint> {
   const prisma = await getPrismaClientForTenancy(target);
-  const existing = await prisma.issueCounter.findUnique({
+  const counter = await prisma.issueCounter.upsert({
     where: { tenancyId: target.id },
+    create: { tenancyId: target.id, nextShortId: 2n },
+    update: { nextShortId: { increment: 1n } },
     select: { nextShortId: true },
   });
-  if (existing === null) {
-    const created = await prisma.issueCounter.create({
-      data: { tenancyId: target.id, nextShortId: 2n },
-      select: { nextShortId: true },
-    });
-    return created.nextShortId - 1n;
-  }
-  const updated = await prisma.issueCounter.update({
-    where: { tenancyId: target.id },
-    data: { nextShortId: { increment: 1n } },
-    select: { nextShortId: true },
-  });
-  return updated.nextShortId - 1n;
+  return counter.nextShortId - 1n;
 }
 
 async function seedIssue(hash: string, options: { timesSeen?: bigint, value?: string } = {}): Promise<string> {
@@ -245,7 +235,7 @@ describe("materializeIssuesFromBatch", () => {
       inputs: [makeInput(ownerHash, { aliasHashes: [aliasOne], value })],
       receivedAt: new Date("2026-08-06T12:02:00Z"),
     });
-    expect(repeated).toEqual([]);
+    expect(repeated).toEqual(first);
     expect((await readIssueRowsForValue(value))[0]?.timesSeen).toBe(2n);
   });
 
@@ -291,5 +281,28 @@ describe("materializeIssuesFromBatch", () => {
         groupingProvenance: [expect.objectContaining({ hash: ownerHash, role: "primary" })],
       },
     ]);
+  });
+
+  it("stamps the project owner team on first sighting", async () => {
+    const target = getTestTenancy();
+    const ownerHash = RUN_PREFIX + "-owner-team";
+    const batchId = randomUUID();
+    createdBatchIds.push(batchId);
+
+    const applied = await materializeIssuesFromBatch({
+      tenancy: target,
+      batchId,
+      inputs: [makeInput(ownerHash)],
+      receivedAt: new Date("2026-08-06T12:04:00Z"),
+    });
+    expect(applied).toHaveLength(1);
+    const issueId = applied[0].issueId;
+
+    const prisma = await getPrismaClientForTenancy(target);
+    const row = await prisma.issue.findUnique({
+      where: { tenancyId_id: { tenancyId: target.id, id: issueId } },
+      select: { assignedTeamId: true },
+    });
+    expect(row?.assignedTeamId).toBe(target.project.owner_team_id);
   });
 });

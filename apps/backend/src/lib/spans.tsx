@@ -101,6 +101,9 @@ export async function insertSpans(
       date_time_input_format: "best_effort",
       async_insert: options?.deduplicationToken == null ? 1 : 0,
       wait_for_async_insert: 1,
+      // A retry must deduplicate dependent trace-root/service materialized
+      // views as well as the source span table.
+      deduplicate_blocks_in_dependent_materialized_views: 1,
       ...options?.deduplicationToken == null
         ? {}
         : { insert_deduplication_token: options.deduplicationToken },
@@ -351,6 +354,7 @@ export async function insertSpanLinks(
       date_time_input_format: "best_effort",
       async_insert: options?.deduplicationToken == null ? 1 : 0,
       wait_for_async_insert: 1,
+      deduplicate_blocks_in_dependent_materialized_views: 1,
       ...options?.deduplicationToken == null
         ? {}
         : { insert_deduplication_token: options.deduplicationToken },

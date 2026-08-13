@@ -177,15 +177,34 @@ The server tier gets the same treatment as the browser — and most of it needs 
 - **Outbound HTTP spans**: official Undici instrumentation records allowed `fetch` calls under the active OTel context and propagates the configured W3C context.
 - **The uncaught-exception monitor**: uncaught server errors become [`$error` events](/guides/apps/analytics/errors-and-logs) — observation-only, it never changes your process's crash behavior.
 
-On Next.js, additionally wire up your `instrumentation.ts` for the two pieces that need framework hooks:
+On Next.js, additionally wire up your `instrumentation.ts` for the two pieces that need framework hooks. Next compiles that file for Edge as well as Node — keep the `process.env.NEXT_RUNTIME` check **inline** (not behind a helper) so the Edge bundle does not follow Node-only OpenTelemetry / `async_hooks` code:
 
 ```ts instrumentation.ts
-import { hexclaveInstrumentation } from "@hexclave/next/next";
-import { hexclaveServerApp } from "./hexclave";
+import type { HexclaveNextInstrumentation } from "@hexclave/next/next";
 
-const instrumentation = hexclaveInstrumentation(hexclaveServerApp);
-export const register = instrumentation.register;
-export const onRequestError = instrumentation.onRequestError;
+let instrumentationPromise: Promise<HexclaveNextInstrumentation | null> | undefined;
+
+function getInstrumentation(): Promise<HexclaveNextInstrumentation | null> {
+  instrumentationPromise ??= (async () => {
+    if (process.env.NEXT_RUNTIME !== "nodejs") return null;
+    const { hexclaveInstrumentation } = await import("@hexclave/next/next");
+    const { hexclaveServerApp } = await import("./hexclave");
+    return hexclaveInstrumentation(hexclaveServerApp);
+  })();
+  return instrumentationPromise;
+}
+
+export async function register() {
+  await (await getInstrumentation())?.register();
+}
+
+export async function onRequestError(
+  ...args: Parameters<HexclaveNextInstrumentation["onRequestError"]>
+) {
+  const instrumentation = await getInstrumentation();
+  if (instrumentation === null) return;
+  await instrumentation.onRequestError(...args);
+}
 ```
 
 - `register()` registers the managed OTel provider/instrumentations and the ambient request provider that makes [bare telemetry calls attribute automatically](#bare-calls-on-next-js) in route handlers, server actions, and RSCs.
@@ -193,6 +212,10 @@ export const onRequestError = instrumentation.onRequestError;
 
 <Info>
 If the Analytics app isn't enabled for your project, server telemetry disables itself for the rest of the process after the first rejected batch, with a single console warning — the eager instrumentation never keeps sending doomed batches for every outgoing fetch.
+</Info>
+
+<Info>
+Next.js treats `import-in-the-middle` and `require-in-the-middle` as server externals (OpenTelemetry uses them to hook `import`/`require`). With pnpm they are not hoisted from `@opentelemetry/instrumentation`, so add them as direct dependencies of the Next.js app if you see "Package import-in-the-middle can't be external".
 </Info>
 
 ## Multi-Hop Propagation

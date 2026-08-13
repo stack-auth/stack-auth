@@ -53,6 +53,7 @@ export const GET = createSmartRouteHandler({
       batches_repaired: yupNumber().defined(),
       batches_deferred: yupNumber().defined(),
       occurrences_skipped: yupNumber().defined(),
+      ledger_rows_pruned: yupNumber().defined(),
     }).defined(),
   }),
   handler: async ({ headers, query }) => {
@@ -77,6 +78,7 @@ export const GET = createSmartRouteHandler({
           batches_repaired: 0,
           batches_deferred: 0,
           occurrences_skipped: 0,
+          ledger_rows_pruned: 0,
         },
       };
     }
@@ -93,6 +95,7 @@ export const GET = createSmartRouteHandler({
         batches_repaired: result.batchesRepaired,
         batches_deferred: result.batchesDeferred,
         occurrences_skipped: result.occurrencesSkipped,
+        ledger_rows_pruned: result.ledgerRowsPruned,
       },
     };
   },

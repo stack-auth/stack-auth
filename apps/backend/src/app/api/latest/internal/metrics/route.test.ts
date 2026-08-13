@@ -71,6 +71,7 @@ describe("internal metrics helpers", () => {
     const sql = getAnalyticsOverviewTelemetrySqlForTest();
 
     expect(sql).toContain("event_type IN ('$click', '$page-view')");
+    expect(sql).toContain("FROM analytics_internal.telemetry");
     expect(sql).toContain("FROM analytics_internal.spans FINAL");
     expect(sql).toContain("PREWHERE project_id = {projectId:String}");
     expect(sql).toContain("AND branch_id = {branchId:String}");

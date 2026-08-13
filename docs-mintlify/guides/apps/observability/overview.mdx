@@ -41,7 +41,7 @@ Three properties of that pipeline are worth knowing, because they explain most o
 | Naming the service an error came from | Inferred; [set `telemetry.resource`](/guides/apps/analytics/overview#identify-every-service) when several apps share a project |
 | Dropping known-noisy errors | Opt-in via `observability.errorCapture.ignoreErrors` |
 | `issue.*` webhooks | Requires the Webhooks app enabled |
-| Original (unminified) source in stack frames | **Not available yet** — see [Limits](#limits-and-caveats) |
+| Original (unminified) source in stack frames | Upload source maps, then look them up under **Observability → Source maps** |
 
 ## Enabling It
 
@@ -100,7 +100,7 @@ Treat lifetime counters as the number to quote, and windowed stats as the shape 
 
 **Ranking by window activity is capped.** Sorting the list by Events or Users ranks a bounded candidate set. Past that bound the list shows a *"Ranking is approximate"* notice rather than silently truncating; narrow the filters for an exact ordering.
 
-**Source maps are not available yet.** Stack frames render exactly as the runtime reported them, which for a production browser bundle means minified filenames and function names. Grouping is designed around this — it strips content hashes from chunk names so a redeploy doesn't split your issues — but the frames you read are still minified. The `hexclave sourcemaps upload` command exists in the CLI and can prepare artifacts locally with `--dry-run`, but the upload endpoints are not built, so **the command cannot upload anything today**. Frame source context, original paths, and original line numbers will arrive with it.
+**Source maps can be uploaded and looked up.** Stack frames still render as the runtime reported them until an artifact is registered for that debug ID. Upload with `hexclave sourcemaps upload` (register → PUT → finalize). **Observability → Source maps** looks up a registered artifact by debug ID so you can confirm the symbolicator can see it. Frame source context and original names appear once lookup succeeds for that occurrence.
 
 **Webhook delivery is best-effort.** See [Issue Webhooks](/guides/apps/observability/webhooks#delivery-guarantees).
 

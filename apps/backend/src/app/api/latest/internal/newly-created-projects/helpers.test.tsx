@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildInternalOwnerReplayIdsQuery,
   getEmailSetup,
   getEnabledAppIds,
   getTrustedDomainBaseUrls,
@@ -10,6 +11,17 @@ import {
 } from "./helpers";
 
 describe("newly-created-projects helpers", () => {
+  it("finds current span page views and retained legacy event page views with branch isolation", () => {
+    const query = buildInternalOwnerReplayIdsQuery();
+
+    expect(query).toContain("FROM analytics_internal.spans FINAL");
+    expect(query).toContain("span_type = '$page-view'");
+    expect(query).toContain("FROM analytics_internal.telemetry");
+    expect(query).toContain("event_type = '$page-view'");
+    expect(query.match(/branch_id = \{branchId:String\}/g)).toHaveLength(2);
+    expect(query).toContain("UNION ALL");
+  });
+
   it("chunks project IDs without changing their order", () => {
     expect(chunkProjectIds(["a", "b", "c", "d", "e"], 2)).toEqual([
       ["a", "b"],

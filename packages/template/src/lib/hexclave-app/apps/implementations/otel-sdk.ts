@@ -17,7 +17,7 @@ import { HEXCLAVE_PAGE_VIEW_SPAN_ID_BAGGAGE_KEY, HEXCLAVE_SESSION_REPLAY_ID_BAGG
 import { ignoreUnhandledRejection } from "@hexclave/shared/dist/utils/promises";
 import type { ManagedOtelOptions, ManagedOtelRegistration } from "./otel-managed";
 import { createManagedOtelSampler } from "./otel-span-policy";
-import { OtlpHttpMetricRecorder } from "./otel-http-metrics";
+import { createHexclaveHttpMetricSpanProcessor } from "./otel-http-metrics";
 
 export type {
   HexclaveOtelResource,
@@ -28,6 +28,7 @@ export {
   isOtelTracingSuppressed,
   runWithOtelTracingSuppressed,
 } from "./otel-managed";
+export { createHexclaveHttpMetricSpanProcessor };
 
 const OTLP_TRACES_PATH = "/api/v1/analytics/otlp/v1/traces";
 const OTLP_LOGS_PATH = "/api/v1/analytics/otlp/v1/logs";
@@ -112,10 +113,33 @@ export function createHexclaveCorrelationSpanProcessor(): SpanProcessor {
 
 let managedRegistration: { signature: string, value: ManagedOtelRegistration } | null = null;
 
+/**
+ * Next can compile the instrumentation and SSR graphs with different local
+ * API URL spellings. They still target the same development service, so the
+ * process-wide provider identity must not treat loopback aliases as separate
+ * exporters. Keep the actual exporter URL unchanged; this is only an
+ * ownership comparison.
+ */
+function canonicalizeRegistrationUrl(url: string): string {
+  const parsed = new URL(url);
+  switch (parsed.hostname) {
+    case "localhost":
+    case "127.0.0.1":
+    case "[::1]": {
+      parsed.hostname = "loopback";
+      break;
+    }
+    default: {
+      break;
+    }
+  }
+  return parsed.toString();
+}
+
 function registrationSignature(options: ManagedOtelOptions): string {
   const exporter = buildHexclaveOtlpTraceExporterConfig(options);
   return JSON.stringify({
-    url: exporter.url,
+    url: canonicalizeRegistrationUrl(exporter.url),
     projectId: options.projectId,
     serviceName: options.resource.serviceName,
     serviceNamespace: options.resource.serviceNamespace,
@@ -150,17 +174,28 @@ export function registerManagedOtel(options: ManagedOtelOptions): ManagedOtelReg
     attributes[ATTR_SERVICE_VERSION] = options.resource.serviceVersion;
   }
   const resource = resourceFromAttributes(attributes);
+  const metricReader = new PeriodicExportingMetricReader({
+    exporter: metricExporter,
+    exportIntervalMillis: OTLP_METRIC_EXPORT_INTERVAL_MS,
+  });
+  const meterProvider = new MeterProvider({ resource, readers: [metricReader] });
   const provider = new NodeTracerProvider({
     resource,
     sampler: createManagedOtelSampler(options.traceSampleRate),
-    spanProcessors: [createHexclaveCorrelationSpanProcessor(), new BatchSpanProcessor(exporter)],
+    spanProcessors: [
+      createHexclaveCorrelationSpanProcessor(),
+      createHexclaveHttpMetricSpanProcessor(meterProvider.getMeter("@hexclave/node-http", options.clientVersion)),
+      new BatchSpanProcessor(exporter),
+    ],
   });
 
   if (!trace.setGlobalTracerProvider(provider)) {
+    ignoreUnhandledRejection(meterProvider.shutdown());
     throw new Error("Hexclave could not install its managed OpenTelemetry provider because another global tracer provider is already registered. Configure that provider with Hexclave's OTLP endpoint instead of enabling managed mode.");
   }
   const contextManager = new AsyncLocalStorageContextManager().enable();
   if (!context.setGlobalContextManager(contextManager)) {
+    ignoreUnhandledRejection(meterProvider.shutdown());
     ignoreUnhandledRejection(provider.shutdown());
     trace.disable();
     contextManager.disable();
@@ -170,6 +205,7 @@ export function registerManagedOtel(options: ManagedOtelOptions): ManagedOtelReg
     propagators: [new W3CTraceContextPropagator(), new W3CBaggagePropagator()],
   });
   if (!propagation.setGlobalPropagator(propagator)) {
+    ignoreUnhandledRejection(meterProvider.shutdown());
     ignoreUnhandledRejection(provider.shutdown());
     trace.disable();
     context.disable();
@@ -177,11 +213,6 @@ export function registerManagedOtel(options: ManagedOtelOptions): ManagedOtelReg
     throw new Error("Hexclave installed its tracer provider but could not install the W3C trace context and baggage propagator because another propagator is already registered");
   }
 
-  const metricReader = new PeriodicExportingMetricReader({
-    exporter: metricExporter,
-    exportIntervalMillis: OTLP_METRIC_EXPORT_INTERVAL_MS,
-  });
-  const meterProvider = new MeterProvider({ resource, readers: [metricReader] });
   if (!metrics.setGlobalMeterProvider(meterProvider)) {
     ignoreUnhandledRejection(meterProvider.shutdown());
     ignoreUnhandledRejection(provider.shutdown());
@@ -208,11 +239,8 @@ export function registerManagedOtel(options: ManagedOtelOptions): ManagedOtelReg
     throw new Error("Hexclave installed its tracer provider but could not install its managed OpenTelemetry LoggerProvider because another global logger provider is already registered");
   }
 
-  const httpMetricRecorder = new OtlpHttpMetricRecorder(meterProvider.getMeter("@hexclave/node-http", options.clientVersion));
   const httpInstrumentation = new UndiciInstrumentation({
     ignoreRequestHook: (request) => options.shouldInstrumentOutboundRequest?.(new URL(request.path, request.origin).toString()) === false,
-    requestHook: (span, request) => httpMetricRecorder.start(span, request),
-    responseHook: (span, { response }) => httpMetricRecorder.end(span, response.statusCode),
   });
   const disableInstrumentations = registerInstrumentations({
     instrumentations: [httpInstrumentation, ...options.instrumentations ?? []],

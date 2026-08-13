@@ -1,5 +1,5 @@
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
-import { evaluateErrorIngestPolicy, persistErrorIngestClientReportProjection } from "@/lib/error-ingest";
+import { evaluateErrorIngestPolicy, persistErrorIngestClientReportProjection } from "@/lib/telemetry-ingest";
 import { createOtlpTraceProtocolProjection } from "@/lib/error-ingest/error-ingest-protocol-projections";
 import { createOtlpHttpResponse, decodeOtlpHttpRequest, getOtlpHttpEncoding, OtlpHttpError, scrubOtlpErrorMessage } from "@/lib/otlp-http";
 import { OtlpProtobufError } from "@/lib/otlp-protobuf";

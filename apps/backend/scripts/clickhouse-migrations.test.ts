@@ -24,6 +24,7 @@ import {
   SPAN_LINKS_COLUMNS,
   SPAN_EVENTS_COLUMNS,
   SPAN_WRITES_TTL_DAYS,
+  TELEMETRY_COLUMNS,
   TELEMETRY_INSERT_DEDUPLICATION_WINDOW,
   TELEMETRY_INSERT_TABLES,
   TELEMETRY_TTL_DAYS,
@@ -33,6 +34,7 @@ import {
   TRACE_SERVICES_COLUMNS,
   TRACE_SERVICES_SOURCE_SELECT_SQL,
   buildColumnUpgradeSql,
+  buildLegacyTelemetrySelectSql,
   computeIssuesSubsystemFingerprint,
   computeSpansSubsystemFingerprint,
   buildEventsLegacyCleanupSql,
@@ -44,6 +46,8 @@ import {
   buildSpanWritesCreateTableSql,
   buildSpanWritesMvSql,
   buildSpansCreateTableSql,
+  buildTelemetryCreateTableSql,
+  migrateLegacyTelemetryTables,
   buildOtelMetricsCreateTableSql,
   buildTelemetryInsertDeduplicationSettingSql,
   buildTraceRootsCreateTableSql,
@@ -59,6 +63,27 @@ import {
 function names(columns: readonly ClickhouseColumn[]): string[] {
   return columns.map((column) => column.name);
 }
+
+describe("legacy telemetry copy contract", () => {
+  test("preserves the intermediate event body, severity, and source fields", () => {
+    const sql = buildLegacyTelemetrySelectSql("events", "analytics_internal.events");
+
+    expect(sql).toContain("if(legacy_source.message = '', legacy_source.body, legacy_source.message) AS message");
+    expect(sql).toContain("if(legacy_source.level = '', legacy_source.severity_text, legacy_source.level) AS level");
+    expect(sql).toContain("if(legacy_source.source = '', legacy_source.producer, legacy_source.source) AS producer");
+    expect(sql).toContain("legacy_source.body AS body");
+    expect(sql).toContain("CAST(legacy_source.data AS JSON) AS data");
+  });
+
+  test("maps an old log message into the OTel body without discarding an existing body", () => {
+    const sql = buildLegacyTelemetrySelectSql("logs", "analytics_internal.logs");
+
+    expect(sql).toContain("if(legacy_source.message = '', legacy_source.body, legacy_source.message) AS message");
+    expect(sql).toContain("if(legacy_source.level = '', legacy_source.severity_text, legacy_source.level) AS level");
+    expect(sql).toContain("if(legacy_source.body = '', legacy_source.message, legacy_source.body) AS body");
+    expect(sql).toContain("if(legacy_source.source = '', legacy_source.producer, legacy_source.source) AS producer");
+  });
+});
 
 
 describe("default.spans", () => {
@@ -216,6 +241,17 @@ describe("error grouping columns on analytics_internal.logs", () => {
   });
 });
 
+describe("canonical telemetry table", () => {
+  test("contains the compatible product, error, and OTel column superset", () => {
+    expect(names(TELEMETRY_COLUMNS)).toEqual([
+      ...names(EVENTS_COLUMNS),
+      ...ERROR_GROUPING_COLUMN_NAMES,
+      ...ERROR_ENVELOPE_COLUMN_NAMES,
+      ...names(OTEL_LOG_COLUMNS),
+    ]);
+  });
+});
+
 describe("issue occurrence rollup", () => {
   const tableSql = buildIssueOccurrenceRollupCreateTableSql("analytics_internal");
   const mvSql = buildIssueOccurrenceRollupMvSql("analytics_internal");
@@ -261,7 +297,7 @@ describe("issue occurrence rollup", () => {
   });
 
   test("the materialized view reads only grouped $error rows from logs", () => {
-    expect(mvSql).toContain("FROM analytics_internal.logs");
+    expect(mvSql).toContain("FROM analytics_internal.telemetry");
     expect(mvSql).toContain("WHERE event_type = '$error' AND issue_hash != ''");
     expect(mvSql).toContain("toStartOfHour(event_at) AS bucket_start");
     expect(mvSql).toContain("GROUP BY project_id, branch_id, issue_hash, bucket_start, service_name, deployment_environment_name");
@@ -271,7 +307,7 @@ describe("issue occurrence rollup", () => {
     // A `TO table` materialized view pairs its SELECT with the target
     // positionally, so a reordered SELECT silently mis-pairs same-typed columns.
     const selectBody = mvSql
-      .slice(mvSql.indexOf("SELECT") + "SELECT".length, mvSql.indexOf("FROM analytics_internal.logs"))
+      .slice(mvSql.indexOf("SELECT") + "SELECT".length, mvSql.indexOf("FROM analytics_internal.telemetry"))
       .split("\n")
       .map((line) => line.trim().replace(/,$/, ""))
       .filter((line) => line.length > 0)
@@ -337,17 +373,16 @@ describe("telemetry table physical layout", () => {
 
   test("every physical batch destination enables non-replicated insert deduplication", () => {
     expect(TELEMETRY_INSERT_TABLES.map(buildTelemetryInsertDeduplicationSettingSql)).toEqual([
-      `ALTER TABLE analytics_internal.events MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
-      `ALTER TABLE analytics_internal.logs MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
+      `ALTER TABLE analytics_internal.telemetry MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
       `ALTER TABLE analytics_internal.spans MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
       `ALTER TABLE analytics_internal.span_events MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
       `ALTER TABLE analytics_internal.span_links MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
-      `ALTER TABLE analytics_internal.otel_metrics MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
+      `ALTER TABLE analytics_internal.metrics MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
     ]);
   });
 
   test("native OTLP metrics preserve point identity across retries", () => {
-    const sql = buildOtelMetricsCreateTableSql("analytics_internal.otel_metrics");
+    const sql = buildOtelMetricsCreateTableSql("analytics_internal.metrics");
     expect(names(OTEL_METRICS_COLUMNS)).toContain("metric_name");
     expect(names(OTEL_METRICS_COLUMNS)).toContain("data_point");
     expect(names(OTEL_METRICS_COLUMNS)).toContain("exemplar_trace_id");
@@ -465,6 +500,140 @@ describe("clickhouse upgrade helpers (integration)", () => {
   }
 
   const toClickhouseDateTime = (date: Date) => date.toISOString().replace("T", " ").replace("Z", "");
+
+  async function withThrowawayDatabase<T>(callback: (database: string) => Promise<T>): Promise<T> {
+    const database = `analytics_legacy_migration_test_${randomUUID().replaceAll("-", "")}`;
+    await client.command({ query: `CREATE DATABASE ${database}` });
+    try {
+      return await callback(database);
+    } finally {
+      await client.command({ query: `DROP DATABASE IF EXISTS ${database}` });
+    }
+  }
+
+  async function createLegacySourceTable(
+    database: string,
+    table: string,
+    source: "events" | "logs",
+  ): Promise<void> {
+    const oldEventFields = source === "events"
+      ? `
+          body String DEFAULT '',
+          severity_text LowCardinality(String) DEFAULT '',
+          severity_number UInt8 DEFAULT 0,
+        `
+      : `
+          message String DEFAULT '',
+          level LowCardinality(String) DEFAULT '',
+        `;
+    await client.command({
+      query: `
+        CREATE TABLE ${database}.${table} (
+            event_type LowCardinality(String),
+            event_at DateTime64(3, 'UTC'),
+            ${oldEventFields}
+            data String DEFAULT '{}',
+            project_id String,
+            branch_id String,
+            user_id Nullable(String),
+            team_id Nullable(String),
+            refresh_token_id Nullable(String),
+            session_replay_id Nullable(String),
+            session_replay_segment_id Nullable(String),
+            parent_span_ids Array(String) DEFAULT [],
+            trace_id Nullable(String),
+            span_id Nullable(String),
+            trace_flags UInt8 DEFAULT 0,
+            source LowCardinality(String) DEFAULT '',
+            service_namespace LowCardinality(Nullable(String)),
+            service_name LowCardinality(Nullable(String)),
+            service_version Nullable(String),
+            service_instance_id Nullable(String),
+            deployment_environment_name LowCardinality(Nullable(String)),
+            resource_attributes String DEFAULT '{}',
+            resource_schema_url Nullable(String),
+            scope_name LowCardinality(Nullable(String)),
+            scope_version Nullable(String),
+            scope_attributes String DEFAULT '{}',
+            scope_schema_url Nullable(String),
+            dropped_attributes UInt32 DEFAULT 0,
+            created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+        )
+        ENGINE MergeTree
+        PARTITION BY toYYYYMM(event_at)
+        ORDER BY (project_id, branch_id, event_at)
+      `,
+    });
+  }
+
+  async function physicalTableExists(database: string, table: string): Promise<boolean> {
+    const resultSet = await client.query({
+      query: `
+        SELECT count() AS count
+        FROM system.tables
+        WHERE database = {database:String}
+          AND name = {table:String}
+          AND engine NOT IN ('View', 'MaterializedView')
+      `,
+      query_params: { database, table },
+      format: "JSONEachRow",
+    });
+    const rows = await resultSet.json<{ count: string }>();
+    return Number(rows[0].count) !== 0;
+  }
+
+  async function countRowsIn(database: string, table: string): Promise<number> {
+    const resultSet = await client.query({
+      query: `SELECT count() AS count FROM ${database}.${table}`,
+      format: "JSONEachRow",
+    });
+    const rows = await resultSet.json<{ count: string }>();
+    return Number(rows[0].count);
+  }
+
+  async function seedLegacySources(database: string, eventsTable: string, logsTable: string): Promise<void> {
+    await createLegacySourceTable(database, eventsTable, "events");
+    await createLegacySourceTable(database, logsTable, "logs");
+    await client.command({
+      query: `
+        INSERT INTO ${database}.${eventsTable}
+          (event_type, event_at, body, severity_text, severity_number, data, project_id, branch_id, source)
+        VALUES
+          ('$click', '2026-08-11 10:00:00.000', 'legacy event body', 'warning', 4, '{"kind":"event"}', 'p', 'b', 'legacy-events')
+      `,
+    });
+    await client.command({
+      query: `
+        INSERT INTO ${database}.${logsTable}
+          (event_type, event_at, message, data, project_id, branch_id, source)
+        VALUES
+          ('$log', '2026-08-11 10:01:00.000', 'legacy log message', '{"kind":"log"}', 'p', 'b', 'legacy-logs')
+      `,
+    });
+  }
+
+  test("refuses an automatic one-release cutover before copying or dropping anything", async () => {
+    await withThrowawayDatabase(async (database) => {
+      const eventsTable = "legacy_events_mapping_probe";
+      const logsTable = "legacy_logs_mapping_probe";
+      await seedLegacySources(database, eventsTable, logsTable);
+
+      await expect(migrateLegacyTelemetryTables(client, { database, eventsTable, logsTable }))
+        .rejects.toThrow(/Deploy an expand\/dual-write release/);
+
+      // The refusal happens before any state or staging DDL. Both source rows
+      // and their writable physical table names remain exactly as deployed.
+      expect(await physicalTableExists(database, eventsTable)).toBe(true);
+      expect(await physicalTableExists(database, logsTable)).toBe(true);
+      expect(await countRowsIn(database, eventsTable)).toBe(1);
+      expect(await countRowsIn(database, logsTable)).toBe(1);
+      expect(await physicalTableExists(database, "telemetry")).toBe(false);
+      expect(await physicalTableExists(database, "telemetry_legacy_migration_state")).toBe(false);
+      expect(await physicalTableExists(database, "telemetry_legacy_events_stage")).toBe(false);
+      expect(await physicalTableExists(database, "telemetry_legacy_logs_stage")).toBe(false);
+      expect(await physicalTableExists(database, "telemetry_legacy_target_stage")).toBe(false);
+    });
+  });
 
 
   test("the span_writes billing view meters only classified SDK spans", async () => {
@@ -637,7 +806,7 @@ describe("clickhouse upgrade helpers (integration)", () => {
     expect(Math.abs(createdAt.getTime() - Date.now())).toBeLessThan(5 * 60 * 1000);
   });
 
-  test("ensureSkipIndex adds and materializes the index exactly once", async () => {
+  test("ensureSkipIndex refuses unbounded historical materialization before changing metadata", async () => {
     const table = "skip_index_probe";
     await client.command({
       query: `CREATE TABLE ${testDatabase}.${table} (project_id String, event_type LowCardinality(String)) ENGINE MergeTree ORDER BY project_id`,
@@ -647,21 +816,15 @@ describe("clickhouse upgrade helpers (integration)", () => {
     });
 
     const options = { database: testDatabase, table, indexName: EVENTS_EVENT_TYPE_INDEX_NAME, indexDefinitionSql: EVENTS_EVENT_TYPE_INDEX_DEFINITION_SQL, materializeHistoricalParts: true };
-    await ensureSkipIndex(client, options);
+    await expect(ensureSkipIndex(client, options)).rejects.toThrow(/materialize closed partitions separately/);
 
     const resultSet = await client.query({
       query: "SELECT count() AS count FROM system.data_skipping_indices WHERE database = {database:String} AND table = {table:String} AND name = {indexName:String}",
       query_params: { database: testDatabase, table, indexName: EVENTS_EVENT_TYPE_INDEX_NAME },
       format: "JSONEachRow",
     });
-    expect(Number((await resultSet.json<{ count: number | string }>())[0].count)).toBe(1);
-
-    // The MATERIALIZE INDEX mutation must be scheduled exactly once — reruns
-    // are guarded by the system.data_skipping_indices probe.
-    const mutationsAfterFirstRun = await countMutations(table);
-    expect(mutationsAfterFirstRun).toBeGreaterThanOrEqual(1);
-    await ensureSkipIndex(client, options);
-    expect(await countMutations(table)).toBe(mutationsAfterFirstRun);
+    expect(Number((await resultSet.json<{ count: number | string }>())[0].count)).toBe(0);
+    expect(await countMutations(table)).toBe(0);
   });
 
   test("ensureSkipIndex can skip historical materialization for a freshly-defaulted column", async () => {
@@ -691,6 +854,68 @@ describe("clickhouse upgrade helpers (integration)", () => {
     // historical ones — which is the whole point, since every pre-existing row
     // holds the same '' default and the bloom filter would prune nothing.
     expect(await countMutations(table)).toBe(0);
+  });
+
+  test("derived span backfills checkpoint physical partitions and never use target emptiness", async () => {
+    await withThrowawayDatabase(async (database) => {
+      await client.command({
+        query: `
+          CREATE TABLE ${database}.spans (
+            trace_id String,
+            started_at DateTime64(3, 'UTC'),
+            created_at DateTime64(3, 'UTC'),
+            version UInt64
+          )
+          ENGINE ReplacingMergeTree(version)
+          PARTITION BY toYYYYMM(started_at)
+          ORDER BY trace_id
+        `,
+      });
+      await client.command({
+        query: `
+          CREATE TABLE ${database}.derived_probe (
+            trace_id String,
+            started_at DateTime64(3, 'UTC'),
+            created_at DateTime64(3, 'UTC'),
+            version UInt64
+          )
+          ENGINE ReplacingMergeTree(version)
+          PARTITION BY toYYYYMM(started_at)
+          ORDER BY trace_id
+        `,
+      });
+      await client.command({
+        query: `
+          INSERT INTO ${database}.spans VALUES
+            ('old-a', '2026-06-01 00:00:00.000', '2026-06-01 00:00:01.000', 1),
+            ('old-b', '2026-07-01 00:00:00.000', '2026-07-01 00:00:01.000', 1)
+        `,
+      });
+      // Simulates a concurrent MV write. The old count-based implementation
+      // saw this row and skipped all historical spans.
+      await client.command({
+        query: `INSERT INTO ${database}.derived_probe VALUES ('live', '2026-08-01 00:00:00.000', '2026-08-01 00:00:01.000', 1)`,
+      });
+
+      const columns = [
+        { name: "trace_id", type: "String" },
+        { name: "created_at", type: "DateTime64(3, 'UTC')" },
+        { name: "version", type: "UInt64" },
+      ] as const satisfies readonly ClickhouseColumn[];
+      // Intentionally does not project started_at, matching trace_services.
+      // Partition pruning must be pushed into the source relation rather than
+      // applied around this projection.
+      const selectSql = `SELECT trace_id, created_at, version FROM ${database}.spans`;
+      await backfillDerivedSpanTable(client, { database, table: "derived_probe", selectSql, targetColumns: columns });
+      expect(await countRowsIn(database, "derived_probe")).toBe(3);
+      expect(await countRowsIn(database, "derived_span_backfill_state")).toBe(3);
+
+      // Checkpoints make a restart an O(number of active partitions) metadata
+      // probe and prevent a second INSERT of either historical partition.
+      await backfillDerivedSpanTable(client, { database, table: "derived_probe", selectSql, targetColumns: columns });
+      expect(await countRowsIn(database, "derived_probe")).toBe(3);
+      expect(await countRowsIn(database, "derived_span_backfill_state")).toBe(3);
+    });
   });
 
   test("a pre-grouping logs table receives the new columns without dropping old physical columns", async () => {
@@ -751,7 +976,7 @@ describe("clickhouse upgrade helpers (integration)", () => {
   });
 
   test("the rollup materialized view's output types match its target table exactly", async () => {
-    await client.command({ query: buildLogsCreateTableSql(`${testDatabase}.logs`) });
+    await client.command({ query: buildTelemetryCreateTableSql(`${testDatabase}.telemetry`) });
     await client.command({ query: buildIssueOccurrenceRollupCreateTableSql(testDatabase) });
     await client.command({ query: buildIssueOccurrenceRollupMvSql(testDatabase) });
 
@@ -783,13 +1008,13 @@ describe("clickhouse upgrade helpers (integration)", () => {
   test("the rollup fills forward from $error inserts without breaking the source insert", async () => {
     // The table/MV are created by the type-match test above; both `IF NOT
     // EXISTS`, so re-issuing them keeps this test independent of ordering.
-    await client.command({ query: buildLogsCreateTableSql(`${testDatabase}.logs`) });
+    await client.command({ query: buildTelemetryCreateTableSql(`${testDatabase}.telemetry`) });
     await client.command({ query: buildIssueOccurrenceRollupCreateTableSql(testDatabase) });
     await client.command({ query: buildIssueOccurrenceRollupMvSql(testDatabase) });
 
     await client.command({
       query: `
-        INSERT INTO ${testDatabase}.logs (event_type, event_at, data, project_id, branch_id, user_id, service_name, deployment_environment_name, issue_hash) VALUES
+        INSERT INTO ${testDatabase}.telemetry (event_type, event_at, data, project_id, branch_id, user_id, service_name, deployment_environment_name, issue_hash) VALUES
         ('$error', now64(3), '{}', 'roll', 'b', 'u1',  'api',  'production', 'hash-a'),
         ('$error', now64(3), '{}', 'roll', 'b', NULL,  'api',  'production', 'hash-a'),
         ('$error', now64(3), '{}', 'roll', 'b', 'u2',  'api',  'production', 'hash-a'),

@@ -28,8 +28,11 @@ import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useServerApp } from "../use-admin-app";
 import { SessionReplayLimitBanner } from "../analytics/shared";
+import { replaceLocationSearch } from "../observability/filters";
+import { sessionReplayHref } from "../observability/observability-links";
 import { ReplayActivityMetrics } from "./replay-activity-metrics";
 import { ReplayUserOverview, ReplayUserOverviewSkeleton } from "./replay-user-overview";
+import { parseReplaySeekAt, replaySeekOffsetMs } from "./replay-url-state";
 import {
   ALLOWED_PLAYER_SPEEDS,
   areStatesRenderEquivalent,
@@ -597,6 +600,9 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
 
   const [selectedRecordingId, setSelectedRecordingId] = useState<string | null>(initialReplayId ?? null);
   const [replayShareLinkCopied, setReplayShareLinkCopied] = useState(false);
+  const seedSeekRef = useRef(
+    typeof window === "undefined" ? null : parseReplaySeekAt(new URLSearchParams(window.location.search).get("at")),
+  );
   const selectedRecording = useMemo(
     () => recordings.find(r => r.id === selectedRecordingId)
       ?? (standaloneReplay?.id === selectedRecordingId ? standaloneReplay : null),
@@ -1502,7 +1508,21 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
 
   const handleSeek = useCallback((globalOffset: number) => {
     actRef.current({ type: "SEEK", globalOffsetMs: globalOffset, nowMs: performance.now() });
-  }, []);
+    if (!isStandaloneReplayPage || selectedRecordingId == null) return;
+    const atMs = Math.trunc(msRef.current.globalStartTs + globalOffset);
+    const params = new URLSearchParams(window.location.search);
+    params.set("at", String(atMs));
+    replaceLocationSearch(params);
+  }, [isStandaloneReplayPage, msRef, selectedRecordingId]);
+
+  useEffect(() => {
+    if (!isStandaloneReplayPage) return;
+    const seed = seedSeekRef.current;
+    if (seed == null) return;
+    if (ms.globalTotalMs <= 0) return;
+    seedSeekRef.current = null;
+    handleSeek(replaySeekOffsetMs(seed, ms.globalStartTs, ms.globalTotalMs));
+  }, [handleSeek, isStandaloneReplayPage, ms.globalStartTs, ms.globalTotalMs]);
 
   const updateSpeed = useCallback((speed: number) => {
     actRef.current({ type: "UPDATE_SPEED", speed });
@@ -2025,7 +2045,11 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                         title={replayShareLinkCopied ? "Copied!" : "Copy link to replay"}
                         onClick={() => runAsynchronouslyWithAlert(async () => {
                           await navigator.clipboard.writeText(
-                          `${window.location.origin}/projects/${encodeURIComponent(adminApp.projectId)}/session-replays/${encodeURIComponent(selectedRecordingId)}`,
+                          `${window.location.origin}${sessionReplayHref(
+                            adminApp.projectId,
+                            selectedRecordingId,
+                            { atMs: Math.trunc(ms.globalStartTs + ms.currentGlobalTimeMsForUi) },
+                          )}`,
                         );
                         setReplayShareLinkCopied(true);
                         })}

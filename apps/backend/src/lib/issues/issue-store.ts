@@ -1,8 +1,9 @@
 import type { Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
+import { getBillingTeamId } from "@/lib/plan-entitlements";
+import { getPrismaClientForTenancy, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Prisma } from "@/generated/prisma/client";
-import type { IssueMaterializationInput } from "../analytics-telemetry-writers";
+import type { IssueBatchDelta } from "./issue-materialization-contract";
 import { emitIssueWebhooks } from "./issue-webhooks";
 import { dispatchIssueAlertsForMaterialization } from "./issue-alerts/ingestion";
 import { randomUUID } from "node:crypto";
@@ -44,7 +45,7 @@ import type { GroupingHashProvenance } from "./types";
  * surviving through an alias.
  */
 
-export type IssueMaterializationOutcome = {
+export type IssueBatchApplyOutcome = {
   issueId: string,
   shortId: bigint,
   ownerHash: string,
@@ -53,6 +54,110 @@ export type IssueMaterializationOutcome = {
   /** A resolved issue recurred. Drives `issue.regressed`. */
   isRegression: boolean,
 };
+
+export type IssueMaterializationSideEffectState = {
+  webhooksDispatchedAt: Date | null,
+  alertsDispatchedAt: Date | null,
+};
+
+export type IssueMaterializationResult = {
+  status: "applied" | "already_applied" | "deferred_locked",
+  outcomes: IssueBatchApplyOutcome[],
+  sideEffects: IssueMaterializationSideEffectState,
+};
+
+type IssueMaterializationLedgerRow = IssueMaterializationSideEffectState & {
+  outcomes: IssueBatchApplyOutcome[],
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function decodeStoredOutcomes(value: unknown): IssueBatchApplyOutcome[] {
+  if (value == null) return [];
+  const parsedValue: unknown = typeof value === "string" ? JSON.parse(value) : value;
+  if (!Array.isArray(parsedValue)) throw new Error("Issue materialization ledger outcomes must be an array");
+
+  return parsedValue.map((entry) => {
+    if (!isRecord(entry)
+      || typeof entry.issueId !== "string"
+      || typeof entry.shortId !== "string"
+      || typeof entry.ownerHash !== "string"
+      || typeof entry.isNew !== "boolean"
+      || typeof entry.isRegression !== "boolean") {
+      throw new Error("Issue materialization ledger contains an invalid outcome");
+    }
+    return {
+      issueId: entry.issueId,
+      shortId: BigInt(entry.shortId),
+      ownerHash: entry.ownerHash,
+      isNew: entry.isNew,
+      isRegression: entry.isRegression,
+    };
+  });
+}
+
+async function readMaterializationLedger(
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  batchId: string,
+): Promise<IssueMaterializationLedgerRow | null> {
+  const rows = await prisma.$queryRaw<{
+    outcomes: unknown,
+    webhooksDispatchedAt: Date | null,
+    alertsDispatchedAt: Date | null,
+  }[]>`
+    SELECT "outcomes", "webhooksDispatchedAt", "alertsDispatchedAt"
+    FROM "IssueMaterialization"
+    WHERE "tenancyId" = ${tenancyId}::uuid AND "batchId" = ${batchId}
+    LIMIT 1
+  `;
+  const row = rows.at(0);
+  if (row === undefined) return null;
+  return {
+    outcomes: decodeStoredOutcomes(row.outcomes),
+    webhooksDispatchedAt: row.webhooksDispatchedAt,
+    alertsDispatchedAt: row.alertsDispatchedAt,
+  };
+}
+
+function serializeOutcomes(outcomes: readonly IssueBatchApplyOutcome[]): Array<{
+  issueId: string,
+  shortId: string,
+  ownerHash: string,
+  isNew: boolean,
+  isRegression: boolean,
+}> {
+  return outcomes.map((outcome) => ({
+    issueId: outcome.issueId,
+    shortId: outcome.shortId.toString(),
+    ownerHash: outcome.ownerHash,
+    isNew: outcome.isNew,
+    isRegression: outcome.isRegression,
+  }));
+}
+
+export async function markIssueMaterializationSideEffect(options: {
+  tenancy: Tenancy,
+  batchId: string,
+  sideEffect: "webhooks" | "alerts",
+}): Promise<void> {
+  const prisma = await getPrismaClientForTenancy(options.tenancy);
+  if (options.sideEffect === "webhooks") {
+    await prisma.$executeRaw`
+      UPDATE "IssueMaterialization"
+      SET "webhooksDispatchedAt" = COALESCE("webhooksDispatchedAt", NOW())
+      WHERE "tenancyId" = ${options.tenancy.id}::uuid AND "batchId" = ${options.batchId}
+    `;
+    return;
+  }
+  await prisma.$executeRaw`
+    UPDATE "IssueMaterialization"
+    SET "alertsDispatchedAt" = COALESCE("alertsDispatchedAt", NOW())
+    WHERE "tenancyId" = ${options.tenancy.id}::uuid AND "batchId" = ${options.batchId}
+  `;
+}
 
 /** Per-issue deltas, after folding every hash that maps to the same issue. */
 type IssueDelta = {
@@ -66,7 +171,7 @@ type IssueDelta = {
 
 type PendingIssue = {
   id: string,
-  input: IssueMaterializationInput,
+  input: IssueBatchDelta,
 };
 
 type IssueHashRole = "primary" | "secondary";
@@ -89,7 +194,7 @@ type StoredIssueHashValues = {
  * nullable columns remain null instead of storing an invented decision.
  */
 function issueHashValues(
-  input: IssueMaterializationInput,
+  input: IssueBatchDelta,
   hash: string,
   role: IssueHashRole,
   issueId: string,
@@ -132,9 +237,9 @@ function issueHashValues(
  * short ids for the same first sighting and then leaving one candidate orphaned.
  */
 export function deduplicateIssueMaterializationInputs(
-  inputs: readonly IssueMaterializationInput[],
-): IssueMaterializationInput[] {
-  const byOwnerHash = new Map<string, IssueMaterializationInput>();
+  inputs: readonly IssueBatchDelta[],
+): IssueBatchDelta[] {
+  const byOwnerHash = new Map<string, IssueBatchDelta>();
   for (const input of inputs) {
     if (!byOwnerHash.has(input.ownerHash)) byOwnerHash.set(input.ownerHash, input);
   }
@@ -161,8 +266,9 @@ export function shouldDeferIssueMaterialization(
 async function resolveOrCreateIssues(
   prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
   tenancyId: string,
-  inputs: readonly IssueMaterializationInput[],
+  inputs: readonly IssueBatchDelta[],
   receivedAt: Date,
+  ownerTeamId: string | null,
 ): Promise<Map<string, { issueId: string, shortId: bigint, isNew: boolean }>> {
   return await retryTransaction(prisma, async (tx) => {
     const resolved = new Map<string, { issueId: string, shortId: bigint, isNew: boolean }>();
@@ -210,6 +316,7 @@ async function resolveOrCreateIssues(
       missing,
       firstShortId,
       receivedAt,
+      ownerTeamId,
     ));
 
     // Bind ONLY each owning hash first. `ON CONFLICT DO NOTHING` on the hash
@@ -306,6 +413,7 @@ function buildIssueInsertSql(
   missing: readonly PendingIssue[],
   firstShortId: bigint,
   receivedAt: Date,
+  ownerTeamId: string | null,
 ): Prisma.Sql {
   const rows = missing.map(({ id, input }, index) => Prisma.sql`(
     ${id}::uuid,
@@ -316,8 +424,13 @@ function buildIssueInsertSql(
     ${input.firstEventAt}::timestamptz, ${input.lastEventAt}::timestamptz,
     ${input.serviceName}, ${input.deploymentEnvironmentName},
     ${input.release}, ${input.release},
+    ${ownerTeamId}::uuid,
     ${receivedAt}::timestamptz
   )`);
+  // assignedTeamId is the Hexclave project owner team, stamped at first
+  // sighting so the dashboard never has to ask. It is not a Team row in this
+  // tenancy; see Issue.assignedTeamId.
+  //
   // `Issue.id` is declared `@default(uuid())`, which Prisma applies CLIENT-side
   // in its own query builder. The generated migration therefore emits a bare
   // `"id" UUID NOT NULL`, so raw INSERTs must provide the candidate id
@@ -329,7 +442,7 @@ function buildIssueInsertSql(
       "id", "tenancyId", "shortId", "type", "value", "culprit", "platform",
       "handled", "synthetic",
       "firstSeenAt", "lastSeenAt", "serviceName", "deploymentEnvironmentName",
-      "firstSeenRelease", "lastSeenRelease", "updatedAt"
+      "firstSeenRelease", "lastSeenRelease", "assignedTeamId", "updatedAt"
     )
     VALUES ${Prisma.join(rows, ",")}
     RETURNING "id", "shortId"
@@ -345,7 +458,7 @@ function buildIssueInsertSql(
  * per-hash rows would therefore silently drop deltas for merged issues.
  */
 function foldDeltasByIssue(
-  inputs: readonly IssueMaterializationInput[],
+  inputs: readonly IssueBatchDelta[],
   resolved: ReadonlyMap<string, { issueId: string }>,
 ): IssueDelta[] {
   const byIssue = new Map<string, IssueDelta>();
@@ -397,14 +510,40 @@ function foldDeltasByIssue(
  *    There is deliberately no cron for this: an ignored issue that never recurs
  *    *should* stay ignored.
  */
+type AppliedIssue = { issueId: string, isRegression: boolean };
+
+type ClaimAndApplyResult =
+  | { status: "applied", outcomes: IssueBatchApplyOutcome[] }
+  | { status: "already_applied", ledger: IssueMaterializationLedgerRow }
+  | { status: "deferred_locked" };
+
+function buildMaterializationOutcomes(
+  resolved: ReadonlyMap<string, { issueId: string, shortId: bigint, isNew: boolean }>,
+  applied: readonly AppliedIssue[],
+): IssueBatchApplyOutcome[] {
+  const regressionByIssueId = new Map(applied.map((row) => [row.issueId, row.isRegression]));
+  return [...resolved.entries()].flatMap(([ownerHash, target]) => {
+    const isRegression = regressionByIssueId.get(target.issueId);
+    if (isRegression === undefined) return [];
+    return [{
+      issueId: target.issueId,
+      shortId: target.shortId,
+      ownerHash,
+      isNew: target.isNew,
+      isRegression,
+    }];
+  });
+}
+
 async function claimAndApply(
   prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
   tenancyId: string,
   batchId: string,
   deltas: readonly IssueDelta[],
   ownerHashes: readonly string[],
+  resolved: ReadonlyMap<string, { issueId: string, shortId: bigint, isNew: boolean }>,
   receivedAt: Date,
-): Promise<{ issueId: string, isRegression: boolean }[]> {
+): Promise<ClaimAndApplyResult> {
   const valueRows = deltas.map((delta) => Prisma.sql`(
     ${delta.issueId}::uuid, ${delta.count}::bigint,
     ${delta.firstEventAt}::timestamptz, ${delta.lastEventAt}::timestamptz,
@@ -412,6 +551,9 @@ async function claimAndApply(
   )`);
 
   return await retryTransaction(prisma, async (tx) => {
+    const existingLedger = await readMaterializationLedger(tx, tenancyId, batchId);
+    if (existingLedger !== null) return { status: "already_applied", ledger: existingLedger };
+
     const lockedHashes = await tx.$queryRaw<{ hash: string, state: string | null }[]>(Prisma.sql`
       SELECT h."hash", h."state"::text AS "state"
       FROM "IssueHash" AS h
@@ -420,7 +562,9 @@ async function claimAndApply(
       ORDER BY h."hash"
       FOR UPDATE OF h
     `);
-    if (lockedHashes.length !== ownerHashes.length || lockedHashes.some((row) => row.state !== null)) return [];
+    if (lockedHashes.length !== ownerHashes.length || lockedHashes.some((row) => row.state !== null)) {
+      return { status: "deferred_locked" };
+    }
 
     const lockedIssues = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
       WITH target_ids (issue_id) AS (
@@ -432,95 +576,141 @@ async function claimAndApply(
       WHERE i."tenancyId" = ${tenancyId}::uuid
       FOR UPDATE OF i
     `);
-    if (lockedIssues.length !== deltas.length) return [];
+    if (lockedIssues.length !== deltas.length) return { status: "deferred_locked" };
 
-    return await tx.$queryRaw<{ issueId: string, isRegression: boolean }[]>(Prisma.sql`
-    WITH deltas (issue_id, cnt, first_event_at, last_event_at, release, service_name) AS (
-      VALUES ${Prisma.join(valueRows, ",")}
-    ),
-    claim AS (
-      INSERT INTO "IssueMaterialization" ("tenancyId", "batchId")
-      VALUES (${tenancyId}::uuid, ${batchId}::uuid)
-      ON CONFLICT ("tenancyId", "batchId") DO NOTHING
-      RETURNING 1
-    ),
-    applied AS (
-      UPDATE "Issue" AS i
-      SET "timesSeen"   = i."timesSeen" + d.cnt,
-          "lastSeenAt"  = GREATEST(i."lastSeenAt",  d.last_event_at),
-          "firstSeenAt" = LEAST(i."firstSeenAt",    d.first_event_at),
-          "lastSeenRelease" = COALESCE(d.release, i."lastSeenRelease"),
-          "serviceName"     = COALESCE(d.service_name, i."serviceName"),
-          "status" = CASE
-              WHEN i."status" = 'RESOLVED'
-                   AND ${receivedAt}::timestamptz > COALESCE(i."resolvedAt", '-infinity'::timestamptz) THEN 'UNRESOLVED'
-              WHEN i."status" = 'IGNORED'
-                   AND i."ignoredUntil" IS NOT NULL
-                   AND ${receivedAt}::timestamptz > i."ignoredUntil" THEN 'UNRESOLVED'
-              ELSE i."status"
-            END::"IssueStatus",
-          "regressedAt" = CASE
-              WHEN i."status" = 'RESOLVED'
-                   AND ${receivedAt}::timestamptz > COALESCE(i."resolvedAt", '-infinity'::timestamptz) THEN ${receivedAt}::timestamptz
-              ELSE i."regressedAt"
-            END,
-          "ignoredUntil" = CASE
-              WHEN i."status" = 'IGNORED'
-                   AND i."ignoredUntil" IS NOT NULL
-                   AND ${receivedAt}::timestamptz > i."ignoredUntil" THEN NULL
-              ELSE i."ignoredUntil"
-            END,
-          "updatedAt" = ${receivedAt}::timestamptz
-      FROM deltas d
-      WHERE i."tenancyId" = ${tenancyId}::uuid
-        AND i."id" = d.issue_id
-        AND EXISTS (SELECT 1 FROM claim)
-      RETURNING i."id" AS "issueId", (i."regressedAt" = ${receivedAt}::timestamptz) AS "isRegression"
-    )
-    SELECT * FROM applied
+    const applied = await tx.$queryRaw<AppliedIssue[]>(Prisma.sql`
+      WITH deltas (issue_id, cnt, first_event_at, last_event_at, release, service_name) AS (
+        VALUES ${Prisma.join(valueRows, ",")}
+      ),
+      claim AS (
+        INSERT INTO "IssueMaterialization" ("tenancyId", "batchId")
+        VALUES (${tenancyId}::uuid, ${batchId})
+        ON CONFLICT ("tenancyId", "batchId") DO NOTHING
+        RETURNING 1
+      ),
+      applied AS (
+        UPDATE "Issue" AS i
+        SET "timesSeen"   = i."timesSeen" + d.cnt,
+            "lastSeenAt"  = GREATEST(i."lastSeenAt",  d.last_event_at),
+            "firstSeenAt" = LEAST(i."firstSeenAt",    d.first_event_at),
+            "lastSeenRelease" = COALESCE(d.release, i."lastSeenRelease"),
+            "serviceName"     = COALESCE(d.service_name, i."serviceName"),
+            "status" = CASE
+                WHEN i."status" = 'RESOLVED'
+                     AND ${receivedAt}::timestamptz > COALESCE(i."resolvedAt", '-infinity'::timestamptz) THEN 'UNRESOLVED'
+                WHEN i."status" = 'IGNORED'
+                     AND i."ignoredUntil" IS NOT NULL
+                     AND ${receivedAt}::timestamptz > i."ignoredUntil" THEN 'UNRESOLVED'
+                ELSE i."status"
+              END::"IssueStatus",
+            "regressedAt" = CASE
+                WHEN i."status" = 'RESOLVED'
+                     AND ${receivedAt}::timestamptz > COALESCE(i."resolvedAt", '-infinity'::timestamptz) THEN ${receivedAt}::timestamptz
+                ELSE i."regressedAt"
+              END,
+            "ignoredUntil" = CASE
+                WHEN i."status" = 'IGNORED'
+                     AND i."ignoredUntil" IS NOT NULL
+                     AND ${receivedAt}::timestamptz > i."ignoredUntil" THEN NULL
+                ELSE i."ignoredUntil"
+              END,
+            "updatedAt" = ${receivedAt}::timestamptz
+        FROM deltas d
+        WHERE i."tenancyId" = ${tenancyId}::uuid
+          AND i."id" = d.issue_id
+          AND EXISTS (SELECT 1 FROM claim)
+        RETURNING i."id" AS "issueId",
+          -- NULL = timestamptz is NULL, not false. New issues have no
+          -- regressedAt; storing that NULL makes a retry fail the boolean
+          -- ledger decoder.
+          COALESCE(i."regressedAt" = ${receivedAt}::timestamptz, false) AS "isRegression"
+      )
+      SELECT * FROM applied
     `);
+    if (applied.length === 0) {
+      const ledger = await readMaterializationLedger(tx, tenancyId, batchId);
+      if (ledger === null) throw new Error("Issue materialization claim disappeared without a ledger row");
+      return { status: "already_applied", ledger };
+    }
+
+    const outcomes = buildMaterializationOutcomes(resolved, applied);
+    await tx.$executeRaw`
+      UPDATE "IssueMaterialization"
+      SET "outcomes" = ${JSON.stringify(serializeOutcomes(outcomes))}::jsonb
+      WHERE "tenancyId" = ${tenancyId}::uuid AND "batchId" = ${batchId}
+    `;
+    return { status: "applied", outcomes };
   });
 }
 
-export async function materializeIssuesFromBatch(options: {
+export async function materializeIssuesFromBatchWithStatus(options: {
   tenancy: Tenancy,
   batchId: string,
-  inputs: readonly IssueMaterializationInput[],
+  inputs: readonly IssueBatchDelta[],
   receivedAt: Date,
-}): Promise<IssueMaterializationOutcome[]> {
+}): Promise<IssueMaterializationResult> {
   const { tenancy, batchId, inputs, receivedAt } = options;
-  if (inputs.length === 0) return [];
+  const emptySideEffects = {
+    webhooksDispatchedAt: null,
+    alertsDispatchedAt: null,
+  };
+  if (inputs.length === 0) {
+    return { status: "already_applied", outcomes: [], sideEffects: emptySideEffects };
+  }
 
   const prisma = await getPrismaClientForTenancy(tenancy);
   const tenancyId = tenancy.id;
+  const existingLedger = await readMaterializationLedger(prisma, tenancyId, batchId);
+  if (existingLedger !== null) {
+    return {
+      status: "already_applied",
+      outcomes: existingLedger.outcomes,
+      sideEffects: {
+        webhooksDispatchedAt: existingLedger.webhooksDispatchedAt,
+        alertsDispatchedAt: existingLedger.alertsDispatchedAt,
+      },
+    };
+  }
 
-  const resolved = await resolveOrCreateIssues(prisma, tenancyId, inputs, receivedAt);
+  const resolved = await resolveOrCreateIssues(prisma, tenancyId, inputs, receivedAt, getBillingTeamId(tenancy.project));
   const deltas = foldDeltasByIssue(inputs, resolved);
   if (deltas.length === 0) {
     // Every hash in this batch was locked by an in-flight merge/unmerge. Leave
-    // the batch unclaimed so the reconciler replays it once the lock clears.
-    return [];
+    // the batch unclaimed so the QStash delivery and reconciler can retry it.
+    return { status: "deferred_locked", outcomes: [], sideEffects: emptySideEffects };
   }
 
   const ownerHashes = [...new Set(inputs.map((input) => input.ownerHash))];
-  const applied = await claimAndApply(prisma, tenancyId, batchId, deltas, ownerHashes, receivedAt);
-  if (applied.length === 0) {
-    // The ledger already had this batch: it was materialized by an earlier run.
-    // Not an error — this is the retried-batch path working as designed.
-    return [];
+  const result = await claimAndApply(prisma, tenancyId, batchId, deltas, ownerHashes, resolved, receivedAt);
+  if (result.status === "applied") {
+    return { status: "applied", outcomes: result.outcomes, sideEffects: emptySideEffects };
   }
+  if (result.status === "deferred_locked") {
+    return { status: "deferred_locked", outcomes: [], sideEffects: emptySideEffects };
+  }
+  return {
+    status: "already_applied",
+    outcomes: result.ledger.outcomes,
+    sideEffects: {
+      webhooksDispatchedAt: result.ledger.webhooksDispatchedAt,
+      alertsDispatchedAt: result.ledger.alertsDispatchedAt,
+    },
+  };
+}
 
-  const regressionByIssueId = new Map(applied.map((row) => [row.issueId, row.isRegression]));
-  return [...resolved.entries()].flatMap(([ownerHash, target]) => {
-    if (!regressionByIssueId.has(target.issueId)) return [];
-    return [{
-      issueId: target.issueId,
-      shortId: target.shortId,
-      ownerHash,
-      isNew: target.isNew,
-      isRegression: regressionByIssueId.get(target.issueId) === true,
-    }];
-  });
+/**
+ * Backward-compatible array-shaped API for existing reconciliation callers.
+ * New workers should use `materializeIssuesFromBatchWithStatus` so they can
+ * distinguish a completed batch from one deferred behind a merge lock.
+ */
+export async function materializeIssuesFromBatch(options: {
+  tenancy: Tenancy,
+  batchId: string,
+  inputs: readonly IssueBatchDelta[],
+  receivedAt: Date,
+}): Promise<IssueBatchApplyOutcome[]> {
+  const result = await materializeIssuesFromBatchWithStatus(options);
+  return result.outcomes;
 }
 
 /**
@@ -537,24 +727,43 @@ export async function materializeIssuesFromBatch(options: {
 export async function materializeIssuesFromBatchSafely(options: {
   tenancy: Tenancy,
   batchId: string,
-  inputs: readonly IssueMaterializationInput[],
+  inputs: readonly IssueBatchDelta[],
   receivedAt: Date,
 }): Promise<void> {
   try {
-    const outcomes = await materializeIssuesFromBatch(options);
-    // Webhooks are emitted only for issues this run actually materialized, so a
-    // replayed batch (which returns no outcomes) cannot re-announce anything.
-    await emitIssueWebhooks({ tenancy: options.tenancy, outcomes, now: options.receivedAt });
+    const result = await materializeIssuesFromBatchWithStatus(options);
+    if (result.status === "deferred_locked") return;
+    if (result.sideEffects.webhooksDispatchedAt === null) {
+      await emitIssueWebhooks({
+        tenancy: options.tenancy,
+        outcomes: result.outcomes,
+        now: options.receivedAt,
+        batchId: options.batchId,
+        force: result.status === "already_applied",
+      });
+      await markIssueMaterializationSideEffect({
+        tenancy: options.tenancy,
+        batchId: options.batchId,
+        sideEffect: "webhooks",
+      });
+    }
     // Alert email never calls a provider from ingestion. The dispatcher claims
     // a typed delivery row and writes the Workflows event in the same
     // serializable transaction; the built-in workflow owns the existing
     // ServerApp -> EmailOutbox delivery boundary.
-    await dispatchIssueAlertsForMaterialization({
-      tenancy: options.tenancy,
-      outcomes,
-      inputs: options.inputs,
-      receivedAt: options.receivedAt,
-    });
+    if (result.sideEffects.alertsDispatchedAt === null) {
+      await dispatchIssueAlertsForMaterialization({
+        tenancy: options.tenancy,
+        outcomes: result.outcomes,
+        inputs: options.inputs,
+        receivedAt: options.receivedAt,
+      });
+      await markIssueMaterializationSideEffect({
+        tenancy: options.tenancy,
+        batchId: options.batchId,
+        sideEffect: "alerts",
+      });
+    }
   } catch (error) {
     captureError("issue-materialization", {
       error,

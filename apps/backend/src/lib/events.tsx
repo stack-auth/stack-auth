@@ -1,7 +1,6 @@
 import withPostHog from "@/analytics";
 import { arePlanLimitsEnforced } from "@/lib/plan-entitlements";
 import { tryDecreasePlanItemQuantities } from "@/lib/plan-metering";
-import { globalPrismaClient } from "@/prisma-client";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { urlSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -301,9 +300,6 @@ export async function logEvent<T extends EventType[]>(
   }
 
 
-  // get end user information
-  const endUserInfo = await getEndUserInfo();  // this is a dynamic API, can't run it asynchronously
-  const endUserInfoInner = endUserInfo?.maybeSpoofed ? endUserInfo.spoofedInfo : endUserInfo?.exactInfo;
   const eventTypesArray = [...allEventTypes];
   const dataRecord = data as Record<string, unknown> | null | undefined;
   const projectId =
@@ -342,41 +338,21 @@ export async function logEvent<T extends EventType[]>(
       }
     }
 
-    // log event in DB
-    await globalPrismaClient.event.create({
-      data: {
-        systemEventTypeIds: eventTypesArray.map(eventType => eventType.id),
-        data: data as any,
-        isEndUserIpInfoGuessTrusted: !endUserInfo?.maybeSpoofed,
-        endUserIpInfoGuess: endUserInfoInner ? {
-          create: {
-            ip: endUserInfoInner.ip,
-            countryCode: endUserInfoInner.countryCode,
-            regionCode: endUserInfoInner.regionCode,
-            cityName: endUserInfoInner.cityName,
-            tzIdentifier: endUserInfoInner.tzIdentifier,
-            latitude: endUserInfoInner.latitude,
-            longitude: endUserInfoInner.longitude,
-          },
-        } : undefined,
-        isWide,
-        eventStartedAt: timeRange.start,
-        eventEndedAt: timeRange.end,
-      },
-    });
-
-    // Log specific events to ClickHouse
-    const clickhouseEventTypes = [
+    // ClickHouse is the durable system-telemetry store. Write one row for each
+    // event type in the inheritance chain so the old relational
+    // `systemEventTypeIds` array remains queryable through event_type filters.
+    const clickhouseEventTypes = new Set([
       '$token-refresh',
       '$sign-up-rule-trigger',
       '$sign-in-attempt',
       '$permission-check',
       '$user-restricted',
-    ];
-    const matchingEventType = eventTypesArray.find(e => clickhouseEventTypes.includes(e.id));
-    if (matchingEventType) {
+    ]);
+    for (const matchingEventType of eventTypesArray) {
       let clickhouseEventData: Record<string, unknown>;
-      if (matchingEventType.id === "$token-refresh") {
+      if (!clickhouseEventTypes.has(matchingEventType.id)) {
+        clickhouseEventData = dataRecord ?? {};
+      } else if (matchingEventType.id === "$token-refresh") {
         const refreshTokenId =
           typeof dataRecord === "object" && dataRecord && typeof dataRecord.refreshTokenId === "string"
             ? dataRecord.refreshTokenId
@@ -527,7 +503,7 @@ export async function logEvent<T extends EventType[]>(
       }
 
       await clickhouseClient.insert({
-        table: "analytics_internal.events",
+        table: "analytics_internal.telemetry",
         values: [{
           event_type: matchingEventType.id,
           event_at: timeRange.end,
@@ -576,3 +552,6 @@ export async function logEvent<T extends EventType[]>(
     }
   })());
 }
+
+/** Semantic name for new callers; logEvent remains as the compatibility API. */
+export const recordSystemTelemetry = logEvent;

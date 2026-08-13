@@ -43,6 +43,8 @@ Environment and Release are available from the **Columns** button in the toolbar
 
 The default range is **24 hours** — deliberately shorter than the Logs page's default, because triage is about what is happening now. Filters are reflected in the URL (defaults are omitted, so a fresh page has a clean query string), which makes a filtered view shareable.
 
+Select one or more rows for bulk **Resolve**, **Ignore**, and **Reopen**. Select two or more for **Merge**. Below the list, **Event search** queries the public issue search API by level, release, user id, or tag — dimensions the filter bar does not cover.
+
 Sorting defaults to most-recently-seen first. Sorting by **Events** or **Users** ranks issues by activity inside the selected range; because that ranking happens over a bounded candidate set, very large result sets show an info banner reading *"Ranking is approximate"* rather than silently truncating. Narrowing the filters restores an exact ordering.
 
 <Info>
@@ -67,9 +69,9 @@ New / ongoing / regressed is a **substatus**, derived at read time relative to t
 
 The route accepts either the issue's UUID or its numeric short id (`.../issues/42`), so `#42` in a Slack message is a working URL. A merged-away id still resolves: the server follows the redirect and serves the surviving issue.
 
-The page has four parts.
+The page has several parts.
 
-**Header.** Sticky, so the controls stay reachable while you read a long stack. Title is the exception type; description is the culprit and message; actions are the status badge, a **Resolve** / **Unresolve** button, and an overflow menu with **Ignore** / **Unignore**.
+**Header.** Sticky, so the controls stay reachable while you read a long stack. Title is the exception type; description is the culprit and message; actions are the status badge, a **Resolve** / **Unresolve** button, and an overflow menu with **Ignore forever**, snooze presets (**1 hour**, **1 day**, **1 week**), **Unsnooze**, and **Mark as regressed** when the issue is resolved.
 
 **Stat strip.** Windowed Events and Users, the **All time** lifetime count, and First seen. Below a divider: the log level, a Handled/Unhandled badge, environment, service name, and the short id. The lifetime count is the reliable number here — for windowed activity, read the sparkline on the list row.
 
@@ -89,7 +91,7 @@ Two degraded states are rendered explicitly rather than as a blank card:
 - **Unparsed stack trace** — the stack didn't match any known runtime format, so it is shown verbatim exactly as it arrived.
 
 <Info>
-Frames are shown as the runtime reported them. In a production browser bundle that means minified filenames and function names — source maps are [not available yet](/guides/apps/observability/overview#limits-and-caveats). The `App` badge and the collapsing rules still work, because in-app detection runs on the paths, not on the symbol names.
+Frames are shown as the runtime reported them. In a production browser bundle that means minified filenames and function names unless you have uploaded source maps — look up a registered artifact under **Observability → Source maps**, and upload with `hexclave sourcemaps upload`. The `App` badge and the collapsing rules still work, because in-app detection runs on the paths, not on the symbol names.
 </Info>
 
 ### Occurrence Navigation
@@ -119,11 +121,19 @@ Below that, **Leading up to this** shows the log lines from the five minutes bef
 
 If the occurrence carries none of the three, the card says so instead of showing unrelated logs.
 
+### Grouping, symbolication, and triage
+
+Below the stack, the detail page also shows:
+
+- **Grouping** — provenance for why the occurrence landed in this issue, plus the live hash list. Select a strict subset of hashes and **Unmerge** to split them into a new issue.
+- **Symbolication** — source-map lookup diagnostics for the occurrence, when the symbolicator recorded any.
+- **Triage** — assignee (project owner-team members), issue team (always this project's owner team), manual owner, bookmark, and user/team subscribe. Owner rows keep their source (`manual`, `ownership_rule`, `codeowners`, `suspect_commit`, `seer_suggested`).
+
 ## Lifecycle
 
 An issue is stored as one of three statuses — **unresolved**, **resolved**, **ignored** — and the substatus (new / ongoing / regressed) is derived on read.
 
-**Resolve** marks the bug as fixed. **Unresolve** puts it back. **Ignore** hides an issue you have decided not to act on; **Unignore** reverses it. Both actions are available from the list row and from the detail header, and both apply optimistically: the row dims instead of vanishing, so a resolve doesn't yank the row out from under you mid-scan. A failed update reverts the row and pins an inline error — never a toast you might miss.
+**Resolve** marks the bug as fixed. **Unresolve** puts it back. **Ignore forever** hides an issue you have decided not to act on; **Unsnooze** / unignore reverses it. Both actions are available from the list row and from the detail header, and both apply optimistically: the row dims instead of vanishing, so a resolve doesn't yank the row out from under you mid-scan. A failed update reverts the row and pins an inline error — never a toast you might miss.
 
 ### Regression Detection
 
@@ -141,9 +151,7 @@ The issue model supports ignoring an issue **until a given time**: when the snoo
 
 There is deliberately no cron sweeping expired snoozes — an ignored issue that never recurs *should* stay ignored, and waking it up on a timer would just recreate the noise you silenced.
 
-<Warning>
-The dashboard's **Ignore** action currently ignores an issue indefinitely; there is no duration picker in the UI yet. Snooze-until is supported by the issue model and the API, not by a control on the page.
-</Warning>
+From the detail overflow menu, **Ignore forever** ignores indefinitely. **Snooze 1 hour / 1 day / 1 week** sets `ignored_until`. **Unsnooze** returns a snoozed issue to unresolved.
 
 ## Merge and Unmerge
 
@@ -161,7 +169,7 @@ The merged-away issues keep working as references: their ids and their short ids
 The one honest limitation is lifetime counters. Lifetime counts are all-time while occurrence data is retained for 90 days, so a split cannot divide them exactly. The new issue's counters are therefore **seeded from the retained window and marked as truncated** — the UI renders "12,431 events since 3 May" rather than an all-time number it cannot back up, and the list marks the count with a `*`. The source issue's counters are deliberately left as they are: subtracting a windowed number from a lifetime one produces a value that is neither, and can even go negative.
 
 <Warning>
-Merge and unmerge exist in the issue model and in the internal API, but **the dashboard does not surface them yet** — there is no multi-select on the list and no split control on the detail page. You will still see their effects: an issue that owns several grouping hashes, and the "since &lt;date&gt;" counter on an issue produced by an unmerge.
+**Merge** is on the Issues list: select two or more issues and click Merge. The dashboard does not let you pick the survivor — the server uses the rule above. **Unmerge** is on the issue detail **Grouping** card: select a strict subset of hashes and split them into a new issue. You land on the new issue after the split.
 </Warning>
 
 ## Next Steps

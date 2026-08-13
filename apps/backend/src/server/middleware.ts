@@ -33,6 +33,8 @@ const corsAllowedRequestHeaders = [
   "x-stack-allow-restricted-user",
   "x-stack-allow-anonymous-user",
   "baggage",
+  // Browser OTel propagation adds these headers to cross-origin API requests. Keep them
+  // in the preflight allowlist or the browser rejects the request before it reaches the API.
   "sentry-trace",
   "traceparent",
   "tracestate",
@@ -70,6 +72,12 @@ export function getCorsHeadersInit(request: Request): HeadersInit | undefined {
     "Vary": corsAllowedRequestHeadersWithAliases.join(", "),
   } : undefined;
 }
+
+import.meta.vitest?.test("CORS preflights allow W3C trace-context propagation headers", ({ expect }) => {
+  const headers = new Headers(getCorsHeadersInit(new Request("http://localhost/api/v1/projects/current")));
+  const allowedRequestHeaders = headers.get("Access-Control-Allow-Headers")?.split(", ") ?? [];
+  expect(allowedRequestHeaders).toEqual(expect.arrayContaining(["baggage", "traceparent", "tracestate", "x-hexclave-span-context"]));
+});
 
 export type PipelineResult = {
   corsHeadersInit?: HeadersInit,

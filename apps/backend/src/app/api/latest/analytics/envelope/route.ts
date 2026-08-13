@@ -1,5 +1,5 @@
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
-import { createProductionErrorAttachmentService, encodeErrorAttachmentBytes } from "@/lib/attachments";
+import { createProductionErrorAttachmentService } from "@/lib/attachments";
 import {
   createErrorIngestItemOutcome,
   createErrorIngestProtocolProjection,
@@ -12,16 +12,16 @@ import {
   type ErrorIngestEnvelopeAttachmentPayload,
   type ErrorIngestEnvelopeItem,
   type ErrorIngestItemOutcome,
-} from "@/lib/error-ingest";
+} from "@/lib/telemetry-ingest";
 import { projectSentryEnvelopeEvent } from "@/lib/error-ingest/error-ingest-event-adapter";
 import {
   ErrorIngestTransactionAdapterError,
   sentryTransactionToCanonicalOtlpSpans,
 } from "@/lib/error-ingest/error-ingest-transaction-adapter";
 import { buildErrorIngestRateLimitHeaders } from "@/lib/error-ingest/error-ingest-rate-limits";
-import { insertBatchEvents, normalizeBatchEvents } from "@/lib/analytics-telemetry-writers";
-import { materializeIssuesFromBatchSafely } from "@/lib/issues/issue-store";
+import { buildTelemetryWritePlan, insertBatchEvents, normalizeBatchEvents } from "@/lib/analytics-telemetry-writers";
 import { insertOtlpTraces, type OtlpTenantContext } from "@/lib/otlp-trace-writer";
+import { buildTelemetryMaterializationMessage, enqueueQstashMessage } from "@/lib/qstash-outbox";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import type { TelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
@@ -230,14 +230,15 @@ export const POST = createSmartRouteHandler({
           const payload = attachmentPayloads.get(item.itemId);
           if (payload === undefined) throw new Error("Sentry envelope attachment payload is missing");
           try {
-            await attachmentService.upload(attachmentScope, {
+            await attachmentService.uploadBytes(attachmentScope, {
               eventId: payload.eventId,
               occurrenceId: null,
               idempotencyKey: `${envelope.batchId}:${payload.itemIndex}:${payload.sha256}`,
               filename: payload.filename,
               contentType: payload.contentType,
               attachmentType: payload.attachmentType,
-              dataBase64: encodeErrorAttachmentBytes(payload.bytes),
+              bytes: payload.bytes,
+              sha256: payload.sha256,
             });
             attachmentOutcomes.set(item.itemId, createErrorIngestItemOutcome(
               { itemId: item.itemId, itemType: "attachment", eventId: payload.eventId },
@@ -283,15 +284,13 @@ export const POST = createSmartRouteHandler({
         producer: "sdk",
         groupingConfig: auth.tenancy.config.observability.errorGrouping,
       }, envelope.batchId);
-      await insertBatchEvents(getSharedClickhouseAdminClient(), normalized, envelope.batchId);
       if (normalized.issueInputs.length > 0) {
-        runAsynchronouslyAndWaitUntil(materializeIssuesFromBatchSafely({
-          tenancy: auth.tenancy,
+        await enqueueQstashMessage(buildTelemetryMaterializationMessage({
+          tenancyId: auth.tenancy.id,
           batchId: envelope.batchId,
-          inputs: normalized.issueInputs,
-          receivedAt: new Date(receivedAtMs),
         }));
       }
+      await insertBatchEvents(getSharedClickhouseAdminClient(), buildTelemetryWritePlan(normalized, envelope.batchId));
     }
 
     const outcomes = protocolOutcomes(envelope, policyByItemId, attachmentOutcomes, transactionOutcomes);

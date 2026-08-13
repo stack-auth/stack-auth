@@ -8,6 +8,15 @@ import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, Project, Team, backendContext, bumpEmailAddress, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 
+/**
+ * Response bodies come back as `any` from the fetch helper; this narrows a list
+ * of them to something indexable so the tests can read fields without casts.
+ */
+function asObjects(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null);
+}
+
 const TELEMETRY_RESOURCE = {
   service: { namespace: "e2e", name: "test-client", version: "test" },
   deploymentEnvironmentName: "test",
@@ -854,7 +863,7 @@ it("attributes an existing anonymous session replay to the user after upgrade", 
     primary_email: null,
   });
 
-  const { signUpResponse: upgrade } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const { signUpResponse: upgrade } = await Auth.Password.signUpWithEmail();
   expect(upgrade.status).toBe(200);
   expect(upgrade.body.user_id).toBe(anonymousUser.userId);
 
@@ -2148,4 +2157,27 @@ it("does not debit quota when appending chunks to an existing session replay, ev
 
   const quantityAfterThird = await getSessionReplayItemQuantity(ownerTeamId);
   expect(quantityAfterThird).toBe(0);
+});
+
+it("accepts the released legacy replay shape without versioned fields", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.fastSignUp();
+
+  const now = Date.now();
+  const response = await niceBackendFetch("/api/v1/session-replays/batch", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      browser_session_id: randomUUID(),
+      session_replay_segment_id: randomUUID(),
+      batch_id: randomUUID(),
+      started_at_ms: now,
+      sent_at_ms: now + 500,
+      events: [{ type: 2, timestamp: now + 100 }],
+    },
+  });
+
+  expect(response.status).toBe(200);
+  expect(response.body.deduped).toBe(false);
 });

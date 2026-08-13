@@ -168,8 +168,17 @@ describe("fetchBulldozerServerJson", () => {
       tenancyId: "tenancy/id",
       customerType: "user",
       customerId: "customer?id",
-      suffix: "owned-products",
+      suffixSegments: ["owned-products"],
     })).toBe("/v1/tenancy%2Fid/customers/user/customer%3Fid/owned-products");
+  });
+
+  it("keeps nested customer routes as separate encoded segments", () => {
+    expect(bulldozerCustomerPath({
+      tenancyId: "tenancy",
+      customerType: "team",
+      customerId: "customer",
+      suffixSegments: ["manual-item-quantity-changes", "try/decrease?batch"],
+    })).toBe("/v1/tenancy/customers/team/customer/manual-item-quantity-changes/try%2Fdecrease%3Fbatch");
   });
 
   it("preserves a path prefix in the configured Bulldozer URL", async () => {

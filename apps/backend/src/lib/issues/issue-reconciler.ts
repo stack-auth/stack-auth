@@ -1,12 +1,16 @@
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
 import { getSoleTenancyFromProjectBranch, type Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy } from "@/prisma-client";
-import { captureError } from "@hexclave/shared/dist/utils/errors";
-import { isUuid } from "@hexclave/shared/dist/utils/uuids";
-import type { IssueMaterializationInput } from "../analytics-telemetry-writers";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
+import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import type { IssueBatchDelta } from "./issue-materialization-contract";
 import { isGroupingConfigId } from "./grouping-config";
-import { materializeIssuesFromBatch } from "./issue-store";
+import {
+  markIssueMaterializationSideEffect,
+  materializeIssuesFromBatchWithStatus,
+  type IssueMaterializationResult,
+} from "./issue-store";
 import { emitIssueWebhooks } from "./issue-webhooks";
+import { dispatchIssueAlertsForMaterialization } from "./issue-alerts/ingestion";
 
 /**
  * Bounded-latency repair for issue materialization.
@@ -30,7 +34,7 @@ import { emitIssueWebhooks } from "./issue-webhooks";
  * the only thing that records whether a batch's deltas were APPLIED.
  *
  * So: find `batch_id`s with `$error` rows and no ledger row, rebuild their
- * `IssueMaterializationInput[]` from the ClickHouse columns, and feed them
+ * `IssueBatchDelta[]` from the ClickHouse columns, and feed them
  * through `materializeIssuesFromBatch` — the same function the live path calls.
  * Replay is therefore exactly-once by the very ledger that identified the gap,
  * and there is no second code path to keep in sync.
@@ -40,7 +44,7 @@ import { emitIssueWebhooks } from "./issue-webhooks";
  * How far back a run looks. Materialization normally completes in well under a
  * second, so anything still unclaimed after an hour is a genuine failure rather
  * than work in progress. Bounded because the query it drives is a group-by over
- * `analytics_internal.logs`; an unbounded lookback would turn a repair sweep
+ * `analytics_internal.telemetry`; an unbounded lookback would turn a repair sweep
  * into a full-history scan every minute.
  */
 export const ISSUE_RECONCILER_LOOKBACK_MS = 60 * 60 * 1000;
@@ -58,6 +62,8 @@ export const ISSUE_RECONCILER_MAX_CANDIDATE_BATCHES = 5000;
 export const ISSUE_RECONCILER_MAX_TENANCIES = 25;
 export const ISSUE_RECONCILER_MAX_BATCHES_PER_TENANCY = 100;
 export const ISSUE_RECONCILER_MAX_BATCHES_PER_RUN = 500;
+export const ISSUE_MATERIALIZATION_LEDGER_RETENTION_DAYS = 96;
+export const ISSUE_MATERIALIZATION_PRUNE_BATCH_SIZE = 1_000;
 
 export type IssueReconcilerResult = {
   tenanciesScanned: number,
@@ -66,6 +72,7 @@ export type IssueReconcilerResult = {
   batchesDeferred: number,
   /** Rows whose grouping config id we no longer recognise; see `rebuildInputs`. */
   occurrencesSkipped: number,
+  ledgerRowsPruned: number,
 };
 
 type CandidateRow = { project_id: string, branch_id: string, batch_id: string };
@@ -125,12 +132,12 @@ async function findCandidateBatches(from: Date, to: Date): Promise<CandidateRow[
   const result = await client.query({
     query: `
       SELECT project_id, branch_id, batch_id
-      FROM analytics_internal.logs
-      WHERE event_type = '$error'
-        AND issue_hash != ''
-        AND batch_id != ''
+      FROM analytics_internal.telemetry
+      PREWHERE event_type = '$error'
         AND event_at >= {from:DateTime64(3)}
         AND event_at < {to:DateTime64(3)}
+      WHERE issue_hash != ''
+        AND batch_id != ''
       GROUP BY project_id, branch_id, batch_id
       LIMIT {cap:UInt64}
     `,
@@ -147,10 +154,10 @@ async function findCandidateBatches(from: Date, to: Date): Promise<CandidateRow[
 /** Which of these batch ids already have a ledger row, i.e. were already applied. */
 async function findAppliedBatchIds(tenancy: Tenancy, batchIds: readonly string[]): Promise<Set<string>> {
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const rows = await prisma.$queryRaw<{ batchId: string }[]>`
+  const rows = await prisma.$replica().$queryRaw<{ batchId: string }[]>`
     SELECT "batchId"
     FROM "IssueMaterialization"
-    WHERE "tenancyId" = ${tenancy.id}::uuid AND "batchId" = ANY(${[...batchIds]}::uuid[])
+    WHERE "tenancyId" = ${tenancy.id}::uuid AND "batchId" = ANY(${[...batchIds]}::text[])
   `;
   return new Set(rows.map((row) => row.batchId));
 }
@@ -173,10 +180,15 @@ async function rebuildInputs(options: {
   projectId: string,
   branchId: string,
   batchIds: readonly string[],
-  from: Date,
-  to: Date,
-}): Promise<{ byBatch: Map<string, { inputs: IssueMaterializationInput[], receivedAt: Date }>, skipped: number }> {
+  from?: Date,
+  to?: Date,
+}): Promise<{ byBatch: Map<string, { inputs: IssueBatchDelta[], receivedAt: Date }>, skipped: number }> {
   const client = getSharedClickhouseAdminClient();
+  const timeFilter = options.from === undefined || options.to === undefined
+    ? ""
+    : `
+        AND event_at >= {from:DateTime64(3)}
+        AND event_at < {to:DateTime64(3)}`;
   const result = await client.query({
     query: `
       SELECT
@@ -200,29 +212,32 @@ async function rebuildInputs(options: {
         -- the one that creates the issue. \`handled\` defaults to true: an error we
         -- cannot prove crashed the caller must not be reported as a crash.
         argMax(toString(data.handled) = 'true', event_at) AS handled,
-        argMax(issue_variant = 'message' AND toString(data.synthetic) != '', event_at) AS synthetic
-      FROM analytics_internal.logs
-      WHERE project_id = {projectId:String}
+        argMax(issue_variant = 'message' AND toString(data.synthetic) = 'true', event_at) AS synthetic
+      FROM analytics_internal.telemetry
+      PREWHERE project_id = {projectId:String}
         AND branch_id = {branchId:String}
         AND event_type = '$error'
-        AND issue_hash != ''
+        ${timeFilter}
+      WHERE issue_hash != ''
         AND batch_id IN {batchIds:Array(String)}
-        AND event_at >= {from:DateTime64(3)}
-        AND event_at < {to:DateTime64(3)}
       GROUP BY batch_id, issue_hash
     `,
     query_params: {
       projectId: options.projectId,
       branchId: options.branchId,
       batchIds: [...options.batchIds],
-      from: options.from.getTime() / 1000,
-      to: options.to.getTime() / 1000,
+      ...(options.from === undefined || options.to === undefined
+        ? {}
+        : {
+          from: options.from.getTime() / 1000,
+          to: options.to.getTime() / 1000,
+        }),
     },
     format: "JSONEachRow",
   });
   const rows = await result.json() as OccurrenceGroupRow[];
 
-  const byBatch = new Map<string, { inputs: IssueMaterializationInput[], receivedAt: Date }>();
+  const byBatch = new Map<string, { inputs: IssueBatchDelta[], receivedAt: Date }>();
   let skipped = 0;
   for (const row of rows) {
     if (!isGroupingConfigId(row.grouping_config)) {
@@ -261,19 +276,141 @@ async function rebuildInputs(options: {
   return { byBatch, skipped };
 }
 
-/** Groups candidates by their (project, branch) pair, which is what a tenancy is. */
-function groupCandidatesByProjectBranch(candidates: readonly CandidateRow[]): Map<string, { projectId: string, branchId: string, batchIds: string[] }> {
-  const byKey = new Map<string, { projectId: string, branchId: string, batchIds: string[] }>();
-  for (const candidate of candidates) {
-    // `batch_id` is a plain ClickHouse String, but the ledger's column is a uuid.
-    // Anything else cannot possibly have a ledger row, and would fail the cast.
-    if (!isUuid(candidate.batch_id)) continue;
-    const key = `${candidate.project_id} ${candidate.branch_id}`;
-    const entry = byKey.get(key) ?? { projectId: candidate.project_id, branchId: candidate.branch_id, batchIds: [] };
-    entry.batchIds.push(candidate.batch_id);
-    byKey.set(key, entry);
+export class IssueMaterializationBatchNotVisibleError extends Error {
+  public constructor(public readonly batchId: string) {
+    super(`Telemetry batch ${JSON.stringify(batchId)} is not visible in ClickHouse yet`);
+    this.name = "IssueMaterializationBatchNotVisibleError";
   }
-  return byKey;
+}
+
+export type IssueMaterializationBatchResult =
+  | { status: "applied", batchesRepaired: 1, occurrencesSkipped: number }
+  | { status: "already_applied" | "deferred_locked" | "no_error_rows" | "deleted_tenancy", batchesRepaired: 0, occurrencesSkipped: number };
+
+async function dispatchMaterializationSideEffects(options: {
+  tenancy: Tenancy,
+  batchId: string,
+  inputs: readonly IssueBatchDelta[],
+  receivedAt: Date,
+  result: IssueMaterializationResult,
+}): Promise<void> {
+  if (options.result.status === "deferred_locked") return;
+
+  if (options.result.sideEffects.webhooksDispatchedAt === null) {
+    await emitIssueWebhooks({
+      tenancy: options.tenancy,
+      outcomes: options.result.outcomes,
+      now: options.receivedAt,
+      batchId: options.batchId,
+      force: options.result.status === "already_applied",
+    });
+    await markIssueMaterializationSideEffect({
+      tenancy: options.tenancy,
+      batchId: options.batchId,
+      sideEffect: "webhooks",
+    });
+  }
+
+  if (options.result.sideEffects.alertsDispatchedAt === null) {
+    await dispatchIssueAlertsForMaterialization({
+      tenancy: options.tenancy,
+      outcomes: options.result.outcomes,
+      inputs: options.inputs,
+      receivedAt: options.receivedAt,
+    });
+    await markIssueMaterializationSideEffect({
+      tenancy: options.tenancy,
+      batchId: options.batchId,
+      sideEffect: "alerts",
+    });
+  }
+}
+
+/**
+ * Applies one known telemetry batch from a durable queue delivery.
+ *
+ * The legacy reconciler scans a time window because it has no durable job
+ * pointer. New callers already know the exact batch, so this path performs one
+ * bounded ClickHouse lookup and lets QStash retry only when the batch is not
+ * visible yet. The scan-based reconciler remains available for old rows during
+ * migration, but it is no longer required for normal delivery.
+ */
+export async function processIssueMaterializationBatch(options: {
+  tenancy: Tenancy,
+  batchId: string,
+}): Promise<IssueMaterializationBatchResult> {
+  const client = getSharedClickhouseAdminClient();
+  const visibility = await client.query({
+    query: `
+      SELECT count() AS count
+      FROM analytics_internal.telemetry
+      PREWHERE project_id = {projectId:String}
+        AND branch_id = {branchId:String}
+        AND event_type = '$error'
+      WHERE batch_id = {batchId:String}
+    `,
+    query_params: {
+      projectId: options.tenancy.project.id,
+      branchId: options.tenancy.branchId,
+      batchId: options.batchId,
+    },
+    format: "JSONEachRow",
+  });
+  const visibilityRows = await visibility.json<{ count: string | number }>();
+  const visibilityRow = visibilityRows.at(0) ?? throwErr("ClickHouse telemetry visibility query returned no row");
+  const visibleCount = Number(visibilityRow.count);
+  if (!Number.isSafeInteger(visibleCount) || visibleCount < 0) {
+    throw new Error("ClickHouse telemetry visibility query returned an invalid count");
+  }
+  if (visibleCount === 0) throw new IssueMaterializationBatchNotVisibleError(options.batchId);
+
+  const { byBatch, skipped } = await rebuildInputs({
+    projectId: options.tenancy.project.id,
+    branchId: options.tenancy.branchId,
+    batchIds: [options.batchId],
+  });
+  const batch = byBatch.get(options.batchId);
+  if (batch === undefined || batch.inputs.length === 0) {
+    return { status: "no_error_rows", batchesRepaired: 0, occurrencesSkipped: skipped };
+  }
+
+  const result = await materializeIssuesFromBatchWithStatus({
+    tenancy: options.tenancy,
+    batchId: options.batchId,
+    inputs: batch.inputs,
+    receivedAt: batch.receivedAt,
+  });
+  if (result.status === "deferred_locked") {
+    return { status: "deferred_locked", batchesRepaired: 0, occurrencesSkipped: skipped };
+  }
+
+  await dispatchMaterializationSideEffects({
+    tenancy: options.tenancy,
+    batchId: options.batchId,
+    inputs: batch.inputs,
+    receivedAt: batch.receivedAt,
+    result,
+  });
+  if (result.status === "applied") {
+    return { status: "applied", batchesRepaired: 1, occurrencesSkipped: skipped };
+  }
+  return { status: "already_applied", batchesRepaired: 0, occurrencesSkipped: skipped };
+}
+
+/** Groups candidates by their (project, branch) pair, which is what a tenancy is. */
+function groupCandidatesByProjectBranch(candidates: readonly CandidateRow[]): Array<{ projectId: string, branchId: string, batchIds: string[] }> {
+  // Nested maps make the tuple identity structural. A delimiter-joined string
+  // can collide when either user-controlled identifier contains the delimiter,
+  // and a literal NUL in this source made standard text tooling skip the file.
+  const byProject = new Map<string, Map<string, { projectId: string, branchId: string, batchIds: string[] }>>();
+  for (const candidate of candidates) {
+    const byBranch = byProject.get(candidate.project_id) ?? new Map();
+    const entry = byBranch.get(candidate.branch_id) ?? { projectId: candidate.project_id, branchId: candidate.branch_id, batchIds: [] };
+    entry.batchIds.push(candidate.batch_id);
+    byBranch.set(candidate.branch_id, entry);
+    byProject.set(candidate.project_id, byBranch);
+  }
+  return [...byProject.values()].flatMap((byBranch) => [...byBranch.values()]);
 }
 
 export async function reconcileIssues(options?: { now?: Date }): Promise<IssueReconcilerResult> {
@@ -289,9 +426,10 @@ export async function reconcileIssues(options?: { now?: Date }): Promise<IssueRe
     batchesRepaired: 0,
     batchesDeferred: 0,
     occurrencesSkipped: 0,
+    ledgerRowsPruned: 0,
   };
 
-  for (const entry of [...byProjectBranch.values()].slice(0, ISSUE_RECONCILER_MAX_TENANCIES)) {
+  for (const entry of byProjectBranch.slice(0, ISSUE_RECONCILER_MAX_TENANCIES)) {
     if (result.batchesRepaired >= ISSUE_RECONCILER_MAX_BATCHES_PER_RUN) {
       result.batchesDeferred += entry.batchIds.length;
       continue;
@@ -311,6 +449,7 @@ export async function reconcileIssues(options?: { now?: Date }): Promise<IssueRe
     }
   }
 
+  result.ledgerRowsPruned = await pruneIssueMaterializationLedger();
   if (result.batchesRepaired > 0 || result.occurrencesSkipped > 0) {
     console.log(
       `[IssueReconciler] repaired ${result.batchesRepaired} batch(es) across ${result.tenanciesScanned} tenancy(ies)`
@@ -318,6 +457,29 @@ export async function reconcileIssues(options?: { now?: Date }): Promise<IssueRe
     );
   }
   return result;
+}
+
+/**
+ * The ClickHouse source expires after 90 days. Keep the Postgres ledger for a
+ * short reconciliation buffer beyond that window, then prune in small batches
+ * so old batches cannot be applied twice while they are still recoverable.
+ */
+export async function pruneIssueMaterializationLedger(): Promise<number> {
+  const rows = await globalPrismaClient.$queryRaw<{ id: number }[]>`
+    WITH stale AS (
+      SELECT "tenancyId", "batchId"
+      FROM "IssueMaterialization"
+      WHERE "appliedAt" < NOW() - make_interval(days => ${ISSUE_MATERIALIZATION_LEDGER_RETENTION_DAYS})
+      ORDER BY "appliedAt"
+      LIMIT ${ISSUE_MATERIALIZATION_PRUNE_BATCH_SIZE}
+    )
+    DELETE FROM "IssueMaterialization" AS ledger
+    USING stale
+    WHERE ledger."tenancyId" = stale."tenancyId"
+      AND ledger."batchId" = stale."batchId"
+    RETURNING 1 AS id
+  `;
+  return rows.length;
 }
 
 async function reconcileTenancy(options: {
@@ -351,19 +513,16 @@ async function reconcileTenancy(options: {
   let batchesRepaired = 0;
   for (const [batchId, { inputs, receivedAt }] of byBatch) {
     if (inputs.length === 0) continue;
-    const outcomes = await materializeIssuesFromBatch({ tenancy, batchId, inputs, receivedAt });
-    // An empty result means either "already in the ledger" (someone else won the
-    // race, which is fine) or "every hash was still LOCKED" (the next run picks
-    // it up). Neither counts as a repair.
-    if (outcomes.length === 0) continue;
-    batchesRepaired += 1;
-    // A repaired batch is by definition one whose live path died before it could
-    // announce anything, so this is the only chance these issues get to fire
-    // `issue.created`/`issue.regressed`. Outcomes are only non-empty when THIS
-    // run won the ledger claim, so a replay can never re-announce. `receivedAt`
-    // is the original server receipt time, which makes the emit throttle
-    // stricter than a wall clock would, never looser.
-    await emitIssueWebhooks({ tenancy, outcomes, now: receivedAt });
+    const result = await materializeIssuesFromBatchWithStatus({ tenancy, batchId, inputs, receivedAt });
+    if (result.status === "deferred_locked") continue;
+    if (result.status === "applied") batchesRepaired += 1;
+    await dispatchMaterializationSideEffects({
+      tenancy,
+      batchId,
+      inputs,
+      receivedAt,
+      result,
+    });
   }
 
   return {

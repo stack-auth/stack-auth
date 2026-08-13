@@ -22,6 +22,14 @@ type AsyncHooksModuleLike<T> = {
   AsyncLocalStorage?: new () => AsyncLocalStorageLike<T>,
 };
 
+// Same opacity trick as otel-sdk-loader: `.join` in a helper so tsdown cannot
+// constant-fold the Node builtin into a string-literal dynamic import. Next's
+// Edge checker flags that literal even with webpackIgnore — a `const specifier
+// = "node:…"` was inlined in dist and warned on every demo page load.
+function asyncHooksSpecifier(): string {
+  return ["node", "async_hooks"].join(":");
+}
+
 // One storage instance per KEY, shared across every duplicated copy of this
 // module in the process — hence globalThis rather than a module-level Map.
 //
@@ -52,7 +60,7 @@ export function loadAsyncLocalStorage<T>(key: string): Promise<AsyncLocalStorage
         // ignore pragmas) so this stays a RUNTIME dynamic import: browser
         // builds must neither resolve nor error on a Node built-in, they must
         // simply reject here at runtime.
-        const specifier = "node:async_hooks";
+        const specifier = asyncHooksSpecifier();
         const mod = await import(/* @vite-ignore */ /* webpackIgnore: true */ specifier) as AsyncHooksModuleLike<T>;
         return typeof mod.AsyncLocalStorage === "function" ? new mod.AsyncLocalStorage() : null;
       } catch {

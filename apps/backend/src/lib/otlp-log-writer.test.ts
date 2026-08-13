@@ -76,6 +76,19 @@ describe("OTLP log storage mapping", () => {
     })).toBe(getOtlpLogsDeduplicationToken(logs, tenant));
   });
 
+  it("uses the server-resolved replay instead of a client-provided replay id", () => {
+    const logs = normalizeOtlpJsonLogsRequest(OTLP_LOG_REQUEST_FIXTURE);
+    logs[0]?.attributes.set("hexclave.session_replay.id", {
+      type: "string",
+      value: "11111111-1111-4111-8111-111111111111",
+    });
+
+    expect(buildOtlpLogRows(logs, {
+      ...TENANT,
+      sessionReplayId: "22222222-2222-4222-8222-222222222222",
+    })[0]?.session_replay_id).toBe("22222222-2222-4222-8222-222222222222");
+  });
+
   it("derives product events only from the Hexclave event marker", () => {
     const requestForSignalType = (signalType: string) => ({
       resourceLogs: [{ scopeLogs: [{ logRecords: [{
@@ -270,19 +283,17 @@ describe("OTLP log storage mapping", () => {
     const retriedPlan = buildOtlpLogInsertPlan(mixed, TENANT);
 
     expect(plan.map((destination) => destination.table)).toEqual([
-      "analytics_internal.logs",
-      "analytics_internal.events",
+      "analytics_internal.telemetry",
     ]);
     expect(plan.map((destination) => destination.deduplicationToken)).toEqual(
       retriedPlan.map((destination) => destination.deduplicationToken),
     );
-    expect(new Set(plan.map((destination) => destination.deduplicationToken)).size).toBe(2);
-    expect(buildOtlpLogInsertPlan(mixed.slice(0, 1), TENANT).map((destination) => destination.table)).toEqual(["analytics_internal.logs"]);
-    // Product events retain their canonical OTel LogRecord in `logs` and are
-    // also projected into the analytics `events` table.
+    expect(new Set(plan.map((destination) => destination.deduplicationToken)).size).toBe(1);
+    expect(buildOtlpLogInsertPlan(mixed.slice(0, 1), TENANT).map((destination) => destination.table)).toEqual(["analytics_internal.telemetry"]);
+    // Product events and logs share one canonical physical telemetry table;
+    // public views retain the previous event/log query surfaces.
     expect(buildOtlpLogInsertPlan(mixed.slice(1), TENANT).map((destination) => destination.table)).toEqual([
-      "analytics_internal.logs",
-      "analytics_internal.events",
+      "analytics_internal.telemetry",
     ]);
   });
 

@@ -265,11 +265,12 @@ SDKs. Treat it as a receiver-side compatibility adapter: validate the released
 event shape, normalize it into the canonical storage model, and never make its
 custom JSON schema a dependency of new SDK code.
 
-The replay uploader uses its existing dedicated route, but the same resource
-contract applies. Every session replay batch body begins with:
+The replay uploader uses its existing dedicated route. Its body version remains
+independent from the events/spans batch because rrweb chunks have a separate
+wire format. New replay batches begin with:
 
   {
-    schema_version: 3,
+    schema_version: 2,
     resource: TelemetryResource,
     browser_session_id: uuid,
     session_replay_segment_id: uuid,
@@ -326,13 +327,21 @@ Buffering, export, and sampling:
 - Session replay remains a separate transport because replay chunks are not an
   OpenTelemetry signal. The released `/analytics/events/batch` route remains a
   receiver-side compatibility adapter for already-deployed SDKs only.
+- Authentication replacement is a hard replay boundary. Before sign-out can
+  await network I/O, rotate the per-tab segment and clear its queued replay
+  events. Suppress subsequent incremental rrweb events until the next
+  authenticated token set has been published; then take a new FullSnapshot
+  before accepting increments. This prevents both cross-user DOM attribution
+  and mutation-only replay streams that the player cannot reconstruct.
 - `observability.traceSampleRate` defaults to 0.1 and configures the managed
   provider's standard parent-aware root sampler. Existing-provider mode leaves
   sampling entirely to the application's provider.
 - Error/latency-aware retention is tail sampling. It must run after ingestion
   in a Collector or authenticated backend buffering boundary; an SDK cannot
   resurrect a head-dropped span after its outcome becomes known. Logs and
-  errors may be retained independently of trace sampling.
+  errors may be retained independently of trace sampling. HTTP client metrics
+  are derived from recorded CLIENT spans (spanmetrics), so they follow the
+  same head-sampling decision as the request span.
 
 
 ## trackEvent(eventType, data?, options?)
@@ -650,6 +659,10 @@ the authenticated exporter.
 Sampling:
 - Each request is a real OTel client span. The configured parent-aware OTel
   sampler makes the trace decision and the official exporter serializes it.
+- HTTP client metrics (`hexclave.http.client.request.count` /
+  `hexclave.http.client.request.duration`) are recorded by
+  `createHexclaveHttpMetricSpanProcessor` from those same recorded CLIENT
+  spans. A head-dropped request produces neither a span nor a metric.
 - A recorded sampled request propagates its own standard W3C context. There is
   no deferred custom-row mode: failure/latency retention requires backend tail
   sampling because those facts do not exist at span start.
@@ -849,11 +862,13 @@ shuts down both providers. forceFlush flushes both signal pipelines.
 
 In `existing-provider` mode Hexclave registers no globals. Applications add
 `createHexclaveOtlpTraceExporter`, `createHexclaveOtlpLogExporter`, and
-`createHexclaveCorrelationSpanProcessor` from the Node-only `/otel` entrypoint
-to their own official providers. They own registration, instrumentation,
-sampling, flush, and shutdown. Browser existing-provider integrations use the
-`/otel/browser` exporters, whose async header factories resolve fresh
-credentials for every export.
+`createHexclaveOtlpMetricExporter`, plus
+`createHexclaveCorrelationSpanProcessor` and
+`createHexclaveHttpMetricSpanProcessor` from the Node-only `/otel` entrypoint
+to their own official providers. Existing-provider applications own
+registration, instrumentation, sampling, flush, and shutdown. Browser
+existing-provider integrations use the `/otel/browser` exporters, whose async
+header factories resolve fresh credentials for every export.
 
 Hexclave custom spans are thin facades over the active OTel tracer. Library and
 framework instrumentations are normal typed `Instrumentation[]` registered

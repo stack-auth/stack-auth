@@ -143,15 +143,15 @@ export function buildOtlpMetricCatalogQuery(hours: OtlpMetricQueryHours): string
   return `
 SELECT
   metric_name,
-  any(metric_description) AS metric_description,
-  any(metric_unit) AS metric_unit,
+  argMax(metric_description, (time_unix_nano, created_at, point_id)) AS metric_description,
+  argMax(metric_unit, (time_unix_nano, created_at, point_id)) AS metric_unit,
   metric_type,
-  any(aggregation_temporality) AS aggregation_temporality,
-  any(is_monotonic) AS is_monotonic,
+  argMax(aggregation_temporality, (time_unix_nano, created_at, point_id)) AS aggregation_temporality,
+  argMax(is_monotonic, (time_unix_nano, created_at, point_id)) AS is_monotonic,
   count() AS point_count,
   toString(max(time_unix_nano)) AS latest_time_unix_nano
-FROM analytics_internal.otel_metrics FINAL
-WHERE project_id = {projectId:String}
+FROM analytics_internal.metrics FINAL
+PREWHERE project_id = {projectId:String}
   AND branch_id = {branchId:String}
   AND time_unix_nano >= toUnixTimestamp64Nano(now64(9) - INTERVAL {hours:UInt32} HOUR)
 GROUP BY metric_name, metric_type
@@ -193,8 +193,8 @@ SELECT
   ) AS maximum_value,
   argMaxIf(m.exemplar_trace_id, m.time_unix_nano, m.exemplar_trace_id IS NOT NULL AND m.exemplar_trace_id != '' AND m.exemplar_span_id IS NOT NULL AND m.exemplar_span_id != '') AS exemplar_trace_id,
   argMaxIf(m.exemplar_span_id, m.time_unix_nano, m.exemplar_trace_id IS NOT NULL AND m.exemplar_trace_id != '' AND m.exemplar_span_id IS NOT NULL AND m.exemplar_span_id != '') AS exemplar_span_id
-FROM analytics_internal.otel_metrics AS m FINAL
-WHERE m.project_id = {projectId:String}
+FROM analytics_internal.metrics AS m FINAL
+PREWHERE m.project_id = {projectId:String}
   AND m.branch_id = {branchId:String}
   AND m.metric_name = {metricName:String}
   AND m.metric_type = {metricType:String}

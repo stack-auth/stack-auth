@@ -25,12 +25,14 @@ describe("OTLP metric query contract", () => {
   });
 
   it("makes tenant scoping and canonical replacement explicit in both queries", () => {
-    expect(buildOtlpMetricCatalogQuery(24)).toContain("FROM analytics_internal.otel_metrics FINAL");
-    expect(buildOtlpMetricCatalogQuery(24)).toContain("project_id = {projectId:String}");
+    expect(buildOtlpMetricCatalogQuery(24)).toContain("FROM analytics_internal.metrics FINAL");
+    expect(buildOtlpMetricCatalogQuery(24)).toContain("PREWHERE project_id = {projectId:String}");
     expect(buildOtlpMetricCatalogQuery(24)).toContain("branch_id = {branchId:String}");
     expect(buildOtlpMetricCatalogQuery(24)).toContain("toString(max(time_unix_nano)) AS latest_time_unix_nano");
+    expect(buildOtlpMetricCatalogQuery(24)).toContain("argMax(metric_description, (time_unix_nano, created_at, point_id))");
     expect(buildOtlpMetricSeriesQuery(24)).toContain("m.metric_name = {metricName:String}");
     expect(buildOtlpMetricSeriesQuery(24)).toContain("m.metric_type = {metricType:String}");
+    expect(buildOtlpMetricSeriesQuery(24)).toContain("PREWHERE m.project_id = {projectId:String}");
     expect(buildOtlpMetricSeriesQuery(24)).toContain("toString(bucket_start_unix_nano_value) AS bucket_start_unix_nano");
     expect(buildOtlpMetricSeriesQuery(24)).toContain("bucketNanoseconds:UInt64");
   });

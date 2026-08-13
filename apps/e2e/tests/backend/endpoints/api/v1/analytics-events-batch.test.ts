@@ -2538,3 +2538,24 @@ it("requires schema version 3 and an explicit telemetry resource", async ({ expe
   });
   expect(missingResource.status).toBe(400);
 });
+
+it("accepts the released legacy batch shape without versioned fields", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+  const now = Date.now();
+  const sessionReplaySegmentId = randomUUID();
+
+  const response = await niceBackendFetch("/api/v1/analytics/events/batch", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      session_replay_segment_id: sessionReplaySegmentId,
+      batch_id: randomUUID(),
+      sent_at_ms: now,
+      events: [{ event_type: "$page-view", event_at_ms: now, data: {} }],
+    },
+  });
+
+  expect(response.status).toBe(200);
+  expect(response.body).toMatchObject({ inserted: 1, accepted_spans: 0 });
+});

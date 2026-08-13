@@ -2,7 +2,7 @@
 import { teamsCrudHandlers } from '@/app/api/latest/teams/crud';
 import { BooleanTrue, ContactChannelType, CustomerType, EmailOutboxCreatedWith, Prisma, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
 import { getClickhouseAdminClient, type ClickHouseClient } from '@/lib/clickhouse';
-import { insertBatchEvents, normalizeBatchEvents } from '@/lib/analytics-telemetry-writers';
+import { buildTelemetryWritePlan, insertBatchEvents, normalizeBatchEvents } from '@/lib/analytics-telemetry-writers';
 import { materializeIssuesFromBatch } from '@/lib/issues/issue-store';
 import { overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverrideSource } from '@/lib/config';
 import { isPreviewModeEnabled } from '@/lib/preview-mode';
@@ -1524,6 +1524,46 @@ export function buildDummyNavigationJourney(userIndex: number, visitIndex: numbe
   return DUMMY_NAVIGATION_JOURNEYS[journeyIndex] ?? throwErr(`Missing dummy navigation journey ${journeyIndex}`);
 }
 
+/**
+ * Field Web Vitals for a seeded `$page-view`. Heavy dashboard/docs routes get
+ * worse LCP/INP so the Performance tab has something to rank besides a flat
+ * "everything is fine" average. Soft-nav samples omit LCP/FCP/TTFB the same
+ * way the browser collector does.
+ */
+function dummyWebVitalsForPath(path: string, isSoftNav: boolean, rand: () => number): Record<string, number> {
+  const heavy = path.includes("/observability")
+    || path.includes("/analytics")
+    || path.includes("/session-replays")
+    || path.includes("/contact-sales")
+    || path === "/pricing";
+  const around = (base: number, spread: number) => Math.max(0, base + (rand() - 0.5) * 2 * spread);
+  const vitals: Record<string, number> = {
+    cls: Math.round((heavy ? around(0.18, 0.12) : around(0.04, 0.05)) * 10_000) / 10_000,
+    inp_ms: Math.round(heavy ? around(320, 200) : around(90, 70)),
+    fps: Math.round((heavy ? around(46, 14) : around(58, 6)) * 10) / 10,
+  };
+  if (isSoftNav) {
+    vitals.soft_nav = 1;
+    return vitals;
+  }
+  vitals.lcp_ms = Math.round(heavy ? around(3400, 1600) : around(1500, 800));
+  vitals.fcp_ms = Math.round(heavy ? around(1900, 800) : around(850, 400));
+  vitals.ttfb_ms = Math.round(heavy ? around(950, 450) : around(260, 160));
+  return vitals;
+}
+
+function dummyPageIsHeavy(path: string): boolean {
+  return path.includes("/observability")
+    || path.includes("/analytics")
+    || path.includes("/session-replays")
+    || path.includes("/contact-sales")
+    || path === "/pricing";
+}
+
+// Session-replay page views pick independently rather than walking a journey.
+// Keep the pool identical to the Paths fixture so demo URLs stay consistent.
+const BULK_PAGE_PATHS: readonly string[] = [...new Set(DUMMY_NAVIGATION_JOURNEYS.flat())];
+
 function bulkFakeIp(prefix: string, rand: () => number): string {
   const c = Math.floor(rand() * 256);
   const d = Math.floor(rand() * 254) + 1;
@@ -1573,7 +1613,7 @@ function formatClickhouseTimestamp(date: Date): string {
 }
 
 /**
- * Builds a `$token-refresh` row for the ClickHouse `analytics_internal.events`
+ * Builds a `$token-refresh` row for the ClickHouse `analytics_internal.telemetry`
  * table. Shared by the historical session-activity seeder and the live-user
  * seeder so the row shape stays defined in exactly one place.
  */
@@ -1616,7 +1656,7 @@ function buildTokenRefreshClickhouseRow(options: {
 }
 
 async function seedDummySessionActivityEvents(options: SessionActivityEventSeedOptions) {
-  const { tenancyId, projectId, userEmailToId, freshProject } = options;
+  const { tenancyId, projectId, userEmailToId } = options;
 
   // Anchor on midnight today so the seeded window is stable across re-runs
   // within the same day. Across days the window legitimately shifts forward.
@@ -1627,12 +1667,8 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
   const windowMs = todayUtc.getTime() - twoMonthsAgo.getTime();
 
   const userIds = Array.from(userEmailToId.values());
-  const systemEventTypeIds = ['$session-activity', '$user-activity', '$project-activity', '$project'];
-
   console.log(`Seeding session activity events for ${userIds.length} users...`);
 
-  const eventIpInfos: Prisma.EventIpInfoCreateManyInput[] = [];
-  const events: Prisma.EventCreateManyInput[] = [];
   const clickhouseRows: Array<Record<string, unknown>> = [];
 
   const clickhouseUrl = getEnvVariable('STACK_CLICKHOUSE_URL', '');
@@ -1649,44 +1685,8 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
     for (let i = 0; i < eventCount; i++) {
       const randomTime = new Date(twoMonthsAgo.getTime() + userRand() * windowMs);
       const location = sessionActivityLocations[Math.floor(userRand() * sessionActivityLocations.length)]!;
-      const sessionId = `session-${userId.substring(0, 8)}-${i.toString().padStart(3, '0')}`;
       const ipAddress = `${10 + Math.floor(userRand() * 200)}.${Math.floor(userRand() * 256)}.${Math.floor(userRand() * 256)}.${Math.floor(userRand() * 256)}`;
       const refreshTokenId = deterministicUuid(`session-events-refresh-token:${tenancyId}:${userId}:${i}`);
-
-      const ipInfoId = deterministicUuid(`event-ip-info:${tenancyId}:${userId}:${i}`);
-      const eventId = deterministicUuid(`event:${tenancyId}:${userId}:${i}`);
-
-      eventIpInfos.push({
-        id: ipInfoId,
-        ip: ipAddress,
-        countryCode: location.countryCode,
-        regionCode: location.regionCode,
-        cityName: location.cityName,
-        latitude: location.latitude,
-        longitude: location.longitude,
-        tzIdentifier: location.tzIdentifier,
-        createdAt: randomTime,
-        updatedAt: randomTime,
-      });
-
-      events.push({
-        id: eventId,
-        systemEventTypeIds,
-        data: {
-          projectId,
-          branchId: DEFAULT_BRANCH_ID,
-          userId,
-          sessionId,
-          isAnonymous: false,
-        },
-        isEndUserIpInfoGuessTrusted: true,
-        endUserIpInfoGuessId: ipInfoId,
-        isWide: false,
-        eventStartedAt: randomTime,
-        eventEndedAt: randomTime,
-        createdAt: randomTime,
-        updatedAt: randomTime,
-      });
 
       if (clickhouseClient) {
         clickhouseRows.push(buildTokenRefreshClickhouseRow({
@@ -1701,39 +1701,6 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
     }
   }
 
-  await globalPrismaClient.$transaction(async (tx) => {
-    // On a fresh project the deterministic IDs can't already exist, so skip the
-    // delete-before-insert that keeps re-seeds idempotent.
-    if (!freshProject) {
-      const eventIds = events.map((event) => event.id ?? throwErr('Seeded event row is missing id'));
-      const ipInfoIds = eventIpInfos.map((info) => info.id ?? throwErr('Seeded event IP info row is missing id'));
-
-      await tx.event.deleteMany({
-        where: {
-          id: { in: eventIds },
-        },
-      });
-      await tx.eventIpInfo.deleteMany({
-        where: {
-          id: { in: ipInfoIds },
-        },
-      });
-    }
-
-    await tx.eventIpInfo.createMany({
-      data: eventIpInfos,
-    });
-    await tx.event.createMany({
-      data: events,
-    });
-  }, {
-    // Under cross-arch arm64 TCG in the emulator qcow2 build, this batch
-    // has been observed to take 40-50s; Prisma's default is 5s. Production
-    // (KVM/native) runs it in well under 1s, so the looser bound only kicks
-    // in when the DB is genuinely slow.
-    timeout: 90_000,
-  });
-
   if (clickhouseClient && clickhouseRows.length > 0) {
     // Large batches: ClickHouse ingests tens of thousands of rows per insert
     // happily, so a bigger batch means far fewer HTTP round-trips.
@@ -1743,7 +1710,7 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
       clickhouseBatches.push(clickhouseRows.slice(i, i + BATCH_SIZE));
     }
     await Promise.all(clickhouseBatches.map((batch) => clickhouseClient.insert({
-      table: 'analytics_internal.events',
+      table: 'analytics_internal.telemetry',
       values: batch,
       format: 'JSONEachRow',
       clickhouse_settings: {
@@ -1753,7 +1720,7 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
     })));
   }
 
-  console.log(`Finished seeding session activity events (${events.length} events)`);
+  console.log(`Finished seeding session activity events (${clickhouseRows.length} events)`);
 }
 
 /**
@@ -1990,7 +1957,7 @@ async function seedBulkSignupsAndActivity(options: {
       });
 
       const navigationJourney = buildDummyNavigationJourney(index, v);
-      let clickPageViewTrace: { traceId: string, spanId: string } | null = null;
+      let clickPageViewTrace: { traceId: string, spanId: string, path: string } | null = null;
       for (let p = 0; p < navigationJourney.length; p++) {
         // Keep each journey ordered while varying dwell time between pages.
         // The Paths query infers edges from timestamp order, so independently
@@ -2000,26 +1967,38 @@ async function seedBulkSignupsAndActivity(options: {
         // Clamp to `now`: visitTime is already clamped, but adding the offset
         // can push a same-day event past `now` into the future.
         const pvTime = new Date(Math.min(visitTime.getTime() + pvOffset, now.getTime()));
+        const path = navigationJourney[p] ?? throwErr("Dummy navigation journey is missing a path");
+        const isSoftNav = p > 0;
+        const heavy = dummyPageIsHeavy(path);
+        const dwellMs = Math.floor((heavy ? 6_000 : 18_000) + rand() * (heavy ? 25_000 : 80_000));
+        const endedAt = new Date(Math.min(pvTime.getTime() + dwellMs, now.getTime()));
+        const mobile = rand() < 0.35;
         // `v` is part of the namespace because a returning user can have
         // several visits on the same sampled day; each page view must remain a
         // distinct ReplacingMergeTree row.
         const namespace = `seed-pv:${tenancy.project.id}:${userId}:${visitDaysAgo}:${v}:${p}`;
         const spanId = deterministicW3cSpanId(namespace);
         const traceId = deterministicW3cTraceId(namespace);
-        clickPageViewTrace ??= { traceId, spanId };
+        clickPageViewTrace = { traceId, spanId, path };
         pageViewSpanRows.push({
           // A `$page-view` is one of the root activities, so it roots its own trace.
           trace_id: traceId,
           span_id: spanId,
           span_type: '$page-view',
           started_at: formatClickhouseTimestamp(pvTime),
-          ended_at: formatClickhouseTimestamp(pvTime),
+          ended_at: formatClickhouseTimestamp(endedAt),
           parent_span_id: null,
           producer: 'sdk',
           data: JSON.stringify({
-            path: navigationJourney[p],
-            url: `https://demo.example${navigationJourney[p]}`,
+            path,
+            url: `https://demo.example${path}`,
             referrer: p === 0 ? pickBulkReferrer(rand) : `https://demo.example${navigationJourney[p - 1]}`,
+            title: path,
+            entry_type: isSoftNav ? "push" : "initial",
+            viewport_width: mobile ? 390 : 1440,
+            viewport_height: mobile ? 844 : 900,
+            scroll_depth_ratio: Math.round((heavy ? 0.12 + rand() * 0.25 : 0.45 + rand() * 0.5) * 1000) / 1000,
+            web_vitals: dummyWebVitalsForPath(path, isSoftNav, rand),
             is_anonymous: false,
           }),
           project_id: tenancy.project.id,
@@ -2035,17 +2014,26 @@ async function seedBulkSignupsAndActivity(options: {
         });
       }
 
-      if (rand() < 0.4) {
+      if (rand() < 0.55) {
         const clickOffset = Math.floor(rand() * 1800) * 1000;
         // Clamp to `now` so the offset can't push the event into the future.
         const clickTime = new Date(Math.min(visitTime.getTime() + clickOffset, now.getTime()));
         const pageView = clickPageViewTrace ?? throwErr("A seeded visit must generate a page view before its click");
+        const heavyClick = dummyPageIsHeavy(pageView.path);
+        const rage = heavyClick && rand() < 0.18;
+        const dead = heavyClick && rand() < 0.22;
         clickhouseRows.push({
           event_type: '$click',
           event_at: formatClickhouseTimestamp(clickTime),
           data: {
             selector: 'button.cta-primary',
+            tag_name: 'button',
+            text: 'Continue',
+            path: pageView.path,
+            url: `https://demo.example${pageView.path}`,
             is_anonymous: false,
+            ...rage ? { rage: 1 } : {},
+            ...dead ? { dead: 1 } : {},
           },
           project_id: tenancy.project.id,
           branch_id: tenancy.branchId,
@@ -2057,6 +2045,24 @@ async function seedBulkSignupsAndActivity(options: {
           span_id: pageView.spanId,
           page_view_span_id: pageView.spanId,
         });
+        if (pageView.path.includes("sign-up") && rand() < 0.35) {
+          clickhouseRows.push({
+            event_type: '$form-submit',
+            event_at: formatClickhouseTimestamp(clickTime),
+            data: {
+              path: pageView.path,
+              url: `https://demo.example${pageView.path}`,
+              is_anonymous: false,
+            },
+            project_id: tenancy.project.id,
+            branch_id: tenancy.branchId,
+            user_id: userId,
+            team_id: null,
+            trace_id: pageView.traceId,
+            span_id: pageView.spanId,
+            page_view_span_id: pageView.spanId,
+          });
+        }
       }
     }
   }
@@ -2075,7 +2081,7 @@ async function seedBulkSignupsAndActivity(options: {
   }
   await Promise.all([
     ...clickhouseBatches.map((batch) => clickhouse.insert({
-      table: 'analytics_internal.events',
+      table: 'analytics_internal.telemetry',
       values: batch,
       format: 'JSONEachRow',
       clickhouse_settings: {
@@ -2165,14 +2171,14 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
   // The preview create-project route passes in a client it already warmed up.
   const clickhouseClient = options.clickhouseClient ?? getClickhouseAdminClient();
 
-  // The ClickHouse `analytics_internal.events` table is append-only — unlike
+  // The ClickHouse `analytics_internal.telemetry` table is append-only — unlike
   // the Postgres seeders there is no delete-before-insert. When reseeding an
   // existing project, clear this project's previously-seeded events once, up
   // front (before the concurrent event seeders start), so the reseed refreshes
   // the analytics rather than duplicating them. A fresh project has none.
   if (!freshProject) {
     await clickhouseClient.command({
-      query: 'DELETE FROM analytics_internal.events WHERE project_id = {projectId:String}',
+      query: 'DELETE FROM analytics_internal.telemetry WHERE project_id = {projectId:String}',
       query_params: { projectId },
     });
   }
@@ -2313,7 +2319,7 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
       freshProject,
     }),
     // Error occurrences + the Issue records derived from them. Runs alongside
-    // the other analytics seeders: it writes `analytics_internal.logs` and the
+    // the other analytics seeders: it writes `analytics_internal.telemetry` and the
     // `Issue*` Postgres tables, which nothing else here touches.
     seedDummyIssues({
       prisma: dummyPrisma,
@@ -2335,7 +2341,7 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
   //    metrics endpoint reports non-zero user/team totals. In production those
   //    tables are filled by the external-db-sync pipeline, but preview/demo
   //    deployments don't run it — so the seed populates them directly, just
-  //    like it already writes `analytics_internal.events`.
+  //    like it already writes `analytics_internal.telemetry`.
   //  - seedDummyLiveTokenRefreshEvents plants "live" activity. It stays in the
   //    last step so the events are as fresh as possible when the dashboard
   //    loads the overview right after creation.
@@ -2441,7 +2447,7 @@ async function seedDummyLiveTokenRefreshEvents(options: {
   // Synchronous insert (no async_insert) so the events are immediately
   // queryable when the dashboard loads the overview right after creation.
   await clickhouseClient.insert({
-    table: 'analytics_internal.events',
+    table: 'analytics_internal.telemetry',
     values: clickhouseRows,
     format: 'JSONEachRow',
     clickhouse_settings: { date_time_input_format: 'best_effort' },
@@ -2700,8 +2706,8 @@ async function seedDummyIssues(options: {
   }
 
   // Re-seeding: clear this project's previous error occurrences and the Issue
-  // records derived from them. Occurrences live in `analytics_internal.logs`
-  // (not `events`), so the project-wide events DELETE at the top of
+  // records derived from them. Occurrences live in `analytics_internal.telemetry`,
+  // so the project-wide telemetry DELETE at the top of
   // `seedDummyProject` does not cover them. Postgres goes first: an Issue whose
   // occurrences were already deleted would render as a row with no detail.
   if (!freshProject) {
@@ -2709,7 +2715,7 @@ async function seedDummyIssues(options: {
     await prisma.$executeRaw`DELETE FROM "IssueMaterialization" WHERE "tenancyId" = ${tenancy.id}::uuid`;
     await prisma.$executeRaw`DELETE FROM "IssueCounter" WHERE "tenancyId" = ${tenancy.id}::uuid`;
     await clickhouseClient.command({
-      query: `DELETE FROM analytics_internal.logs WHERE project_id = {projectId:String} AND event_type = '$error'`,
+      query: `DELETE FROM analytics_internal.telemetry WHERE project_id = {projectId:String} AND event_type = '$error'`,
       query_params: { projectId },
     });
     // The rollup must be cleared SEPARATELY. A materialized view is an insert
@@ -2806,7 +2812,7 @@ async function seedDummyIssues(options: {
         },
         batchId,
       );
-      await insertBatchEvents(clickhouseClient, normalized, batchId);
+      await insertBatchEvents(clickhouseClient, buildTelemetryWritePlan(normalized, batchId));
       const outcomes = await materializeIssuesFromBatch({
         tenancy,
         batchId,
@@ -3014,7 +3020,7 @@ async function seedDummySessionReplays({
   const shouldSeedClickhouse = getEnvVariable('STACK_CLICKHOUSE_URL', '') !== '';
   if (shouldSeedClickhouse) {
     await clickhouseClient.insert({
-      table: 'analytics_internal.events',
+      table: 'analytics_internal.telemetry',
       values: clickhouseRows,
       format: 'JSONEachRow',
       clickhouse_settings: {

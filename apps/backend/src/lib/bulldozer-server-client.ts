@@ -59,9 +59,12 @@ export function bulldozerCustomerPath(options: {
   tenancyId: string,
   customerType: "user" | "team" | "custom",
   customerId: string,
-  suffix: string,
+  suffixSegments: readonly [string, ...string[]],
 }): string {
-  return urlString`/v1/${options.tenancyId}/customers/${options.customerType}/${options.customerId}/${options.suffix}`;
+  const customerPath = urlString`/v1/${options.tenancyId}/customers/${options.customerType}/${options.customerId}`;
+  // The suffix is structured as path segments so a nested route cannot be
+  // accidentally encoded as one literal segment ("a/b" -> "a%2Fb").
+  return `${customerPath}/${options.suffixSegments.map(encodeURIComponent).join("/")}`;
 }
 
 export async function fetchBulldozerServerJson<T>(options: {

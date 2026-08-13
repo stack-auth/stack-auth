@@ -134,6 +134,8 @@ export function shouldIgnoreTelemetryDeliveryUrl(url: string, analyticsBaseUrl: 
     `${basePath}/api/v1/analytics/otlp/v1/traces`,
     `${basePath}/api/v1/analytics/otlp/v1/logs`,
     `${basePath}/api/v1/analytics/otlp/v1/metrics`,
+    `${basePath}/api/v1/analytics/client-reports`,
+    `${basePath}/api/v1/analytics/attachments`,
     `${basePath}/api/v1/session-replays/batch`,
   ].includes(target.pathname);
 }
@@ -2092,6 +2094,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     // (by now outdated) tokens would roll the app back to the session it just left.
     if (attemptId !== this._signInAttemptCounter) return;
     tokenStore.set(tokens);
+    this._clientAnalytics?.resumeSessionReplayAfterAuthentication();
   }
 
   protected _getTokenStoreInitForFreshTokens(tokens: { accessToken: string | null, refreshToken: string }): TokenStoreInit | undefined {
@@ -4513,13 +4516,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   protected async _signOut(session: InternalSession, options?: { redirectUrl?: URL | string }): Promise<void> {
-    // Clear analytics buffers before sign-out to prevent cross-user event leakage
+    // Clear analytics buffers before sign-out to prevent cross-user event leakage.
+    // The reset atomically rotates and suspends the replay segment until a new
+    // authenticated session publishes its replacement FullSnapshot.
     await this._clientAnalytics?.clearBuffer();
-    // Then rotate the per-tab id (one fresh id, set on both trackers so they stay
-    // in sync). Without this, a same-tab sign-in as a different user would inherit
-    // the previous user's session_replay_segment_id and let their telemetry be
-    // correlated in analytics.
-    this._clientAnalytics?.setSessionReplaySegmentId(generateUuid());
 
     const previousSignOut = this._pendingSignOut;
     const signOutOperation = (async () => {
