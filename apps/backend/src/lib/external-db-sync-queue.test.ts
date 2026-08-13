@@ -183,9 +183,9 @@ describe("enqueueExternalDbSyncBatch (real DB, isolated schema)", () => {
 // skips the ClickHouse path and there is nothing to assert against.
 describe.skipIf(getEnvVariable("STACK_CLICKHOUSE_URL", "") === "")("recordExternalDbSyncDeletion (real DB)", () => {
   it("writes an EmailOutbox tombstone that removes the row from ClickHouse", async () => {
-    const clickhouse = getClickhouseAdminClient();
     const tenancy = await getSoleTenancyFromProjectBranch("internal", "main");
     const id = randomUUID();
+    const clickhouse = getClickhouseAdminClient();
 
     try {
       async function waitForClickhouseCount(expectedCount: number) {
