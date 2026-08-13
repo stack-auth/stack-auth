@@ -158,11 +158,6 @@ mirror_hexclave_stack_env
 WORK_DIR="${STACK_RUNTIME_WORK_DIR:-/var/tmp/stack-runtime}"
 mkdir -p "$WORK_DIR"
 
-if [ "$WORK_DIR" != "/app" ]; then
-  echo "Copying files to working directory..."
-  cp -r /app/. "$WORK_DIR"/.
-fi
-
 # The full-tree sentinel scan is expensive (several seconds over the whole built
 # app tree). On a fast-restart the placeholders have already been sed-replaced
 # by rotate-secrets, and no new sentinels need substitution. Skip the scan in
@@ -171,26 +166,39 @@ fi
 SENTINEL_MARKER="$WORK_DIR/.stack-sentinels-replaced"
 sentinel_env_vars=""
 sentinel_fingerprint=""
+required_sentinel_env_vars="NEXT_PUBLIC_STACK_PROJECT_ID NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY NEXT_PUBLIC_STACK_API_URL NEXT_PUBLIC_SERVER_STACK_API_URL NEXT_PUBLIC_STACK_DASHBOARD_URL NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL USE_INLINE_ENV_VARS"
 rebuild_runtime_tree() {
   if [ "$WORK_DIR" = "/app" ]; then
     echo "ERROR: STACK_RUNTIME_WORK_DIR=/app cannot rebuild changed sentinel values in place. Recreate the container without STACK_RUNTIME_WORK_DIR=/app." >&2
     exit 1
   fi
-  rm -rf "$WORK_DIR"
-  mkdir -p "$WORK_DIR"
+  find "$WORK_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
   cp -r /app/. "$WORK_DIR"/.
   rm -f "$SENTINEL_MARKER"
+}
+sentinel_values_are_replaced() {
+  local _env_var _value _sentinel
+  for _env_var in $sentinel_env_vars; do
+    _value="${!_env_var:-}"
+    if [ -n "$_value" ]; then
+      _sentinel="STACK_ENV_VAR_SENTINEL_$_env_var"
+      if grep -rl "$_sentinel" "$WORK_DIR/apps" >/dev/null 2>&1; then
+        return 1
+      fi
+    fi
+  done
+  return 0
 }
 if [ -f "$SENTINEL_MARKER" ]; then
   stored_sentinel_fingerprint=$(sed -n '1p' "$SENTINEL_MARKER")
   sentinel_env_vars=$(sed -n '2p' "$SENTINEL_MARKER")
   if [ -n "$stored_sentinel_fingerprint" ] && [ -n "$sentinel_env_vars" ]; then
     current_sentinel_fingerprint=$(printf '%s\n' "$sentinel_env_vars" | tr ' ' '\n' | while IFS= read -r env_var; do printf '%s=%s\n' "$env_var" "${!env_var:-}"; done | sort | sha256sum | cut -d ' ' -f1)
-    if [ "$stored_sentinel_fingerprint" = "$current_sentinel_fingerprint" ]; then
+    if [ "$stored_sentinel_fingerprint" = "$current_sentinel_fingerprint" ] && sentinel_values_are_replaced; then
       echo "Sentinel values unchanged on a previous start; skipping scan."
       sentinel_fingerprint=$stored_sentinel_fingerprint
     else
-      echo "Sentinel values changed; rebuilding runtime files and rescanning."
+      echo "Sentinel marker is stale or incomplete; rebuilding runtime files and rescanning."
       rebuild_runtime_tree
     fi
   else
@@ -200,6 +208,11 @@ if [ -f "$SENTINEL_MARKER" ]; then
 fi
 
 if [ ! -f "$SENTINEL_MARKER" ]; then
+  if [ "$WORK_DIR" != "/app" ] && [ ! -d "$WORK_DIR/apps" ]; then
+    echo "Copying files to working directory..."
+    cp -r /app/. "$WORK_DIR"/.
+  fi
+
   # Find all files in the apps directory that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
   # Require at least one character after `STACK_ENV_VAR_SENTINEL_` — a bare
   # `STACK_ENV_VAR_SENTINEL_` (trailing underscore but no suffix) makes env_var
@@ -232,9 +245,10 @@ if [ ! -f "$SENTINEL_MARKER" ]; then
     fi
 
     # Get the corresponding environment variable value.
-    value="${!env_var}"
+    value="${!env_var:-}"
 
-    # If the env var is not set, skip replacement.
+    # Optional values may remain sentinel-backed so the runtime resolver can
+    # treat them as unset. Required values are checked after the scan.
     if [ -z "$value" ]; then
       continue
     fi
@@ -257,12 +271,25 @@ if [ ! -f "$SENTINEL_MARKER" ]; then
       echo "$files" | xargs sed -i "s${delimiter}${escaped_sentinel}${delimiter}${escaped_value}${delimiter}g"
     fi
   done
+  for env_var in $required_sentinel_env_vars; do
+    value="${!env_var:-}"
+    if [ -z "$value" ]; then
+      echo "ERROR: Required sentinel environment variable $env_var is unset; refusing to start with an unreplaced dashboard value." >&2
+      exit 1
+    fi
+  done
+  if ! sentinel_values_are_replaced; then
+    echo "ERROR: Sentinel replacement was incomplete; refusing to start with unreplaced runtime values." >&2
+    exit 1
+  fi
   echo "Sentinel replacement complete."
   sentinel_fingerprint=$(printf '%s\n' "$sentinel_env_vars" | tr ' ' '\n' | while IFS= read -r env_var; do printf '%s=%s\n' "$env_var" "${!env_var:-}"; done | sort | sha256sum | cut -d ' ' -f1)
+  marker_tmp="${SENTINEL_MARKER}.tmp.$$"
   {
     printf '%s\n' "$sentinel_fingerprint"
     printf '%s\n' "$sentinel_env_vars"
-  } > "$SENTINEL_MARKER"
+  } > "$marker_tmp"
+  mv "$marker_tmp" "$SENTINEL_MARKER"
 fi
 
 # ============= START BACKEND AND DASHBOARD =============
