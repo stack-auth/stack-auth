@@ -133,7 +133,9 @@ export function buildObservabilityDemoBundle(options: {
     debugId,
   });
   const sourceMapBytes = Buffer.from(sourceMapJson, "utf8");
-  const sourceMapGzipped = gzipSync(sourceMapBytes, { mtime: 0 });
+  // Node's current zlib typings no longer expose the historical mtime option;
+  // gzipSync already emits a stable header for this in-memory fixture.
+  const sourceMapGzipped = gzipSync(sourceMapBytes);
 
   const assignment = `globalThis[${JSON.stringify(OBSERVABILITY_DEMO_THROWER_GLOBAL_KEY)}]=throwSymbolicatedChargeError;`;
   const bundleWithoutSnippet = `${minifiedFunction}\n${assignment}\n`;

@@ -145,6 +145,12 @@ async function putPresigned(
   bytes: Uint8Array,
   operation: string,
 ): Promise<void> {
+  // TypeScript's DOM definitions reject Uint8Array<ArrayBufferLike> as a fetch
+  // body even though Node's fetch accepts it at runtime. Copy into an
+  // ArrayBuffer-backed view so the body satisfies both the browser contract and
+  // the Node implementation used by this server route.
+  const fetchBody = new Uint8Array(new ArrayBuffer(bytes.byteLength));
+  fetchBody.set(bytes);
   const response = await fetch(url, {
     method: "PUT",
     headers: {
@@ -152,7 +158,7 @@ async function putPresigned(
       "content-length": bytes.byteLength.toString(),
       ...(contentEncoding === null ? {} : { "content-encoding": contentEncoding }),
     },
-    body: bytes,
+    body: fetchBody,
   });
   if (!response.ok) {
     const text = await response.text();
@@ -161,10 +167,14 @@ async function putPresigned(
 }
 
 function readRecord(value: unknown, label: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  if (!isRecord(value)) {
     throw new Error(`${label} must be a JSON object.`);
   }
   return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function readArray(record: Record<string, unknown>, key: string, label: string): Record<string, unknown>[] {
