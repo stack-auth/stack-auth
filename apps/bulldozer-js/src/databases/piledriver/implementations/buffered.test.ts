@@ -68,6 +68,30 @@ describe("BufferedPiledriverDatabase", () => {
     await expect(counted.getRootObject(rootKey)).rejects.toThrow("Root object not found");
   });
 
+  it("keeps all in-flight writes visible while the flush is blocked", async () => {
+    const gate = deferred<void>();
+    const wrapped = declareInMemoryPiledriverDatabase(crypto.randomUUID());
+    const delayed: PiledriverDatabase = {
+      ...wrapped,
+      async setRootObject(rootKey, value) {
+        if (value === "first") await gate.promise;
+        return await wrapped.setRootObject(rootKey, value);
+      },
+    };
+    const db = declareBufferedPiledriverDatabase(delayed, { throttleMs: 50 });
+    const firstKey = key("in-flight-first");
+    const secondKey = key("in-flight-second");
+
+    const first = await db.setRootObject(firstKey, "first");
+    const second = await db.setRootObject(secondKey, "second");
+    await Promise.resolve();
+
+    await expect(db.getRootObject(secondKey)).resolves.toMatchObject({ object: "second" });
+    gate.resolve();
+    await db.waitUntilDurable(first.seq);
+    await db.waitUntilDurable(second.seq);
+  });
+
   it("waits for every member of a combined sequence", async () => {
     const gate = deferred<void>();
     const wrapped = declareInMemoryPiledriverDatabase(crypto.randomUUID());
@@ -129,6 +153,18 @@ describe("BufferedPiledriverDatabase", () => {
 
     await expect(db.waitUntilDurable(seq)).rejects.toThrow("write failed");
     expect(attempts).toBe(1);
+    await expect(db.getRootObject(key("failure"))).resolves.toMatchObject({ object: "value" });
+  });
+
+  it("wraps sequences returned by fallthrough reads", async () => {
+    const wrapped = declareInMemoryPiledriverDatabase(crypto.randomUUID());
+    const rootKey = key("fallthrough");
+    await wrapped.setRootObject(rootKey, "value");
+    const db = declareBufferedPiledriverDatabase(wrapped);
+
+    const { seq } = await db.getRootObject(rootKey);
+    await db.waitUntilDurable(seq);
+    await db.waitUntilDurable(db.combineSeqs(seq));
   });
 
   it("waits for the scheduled flush before durable completion", async () => {

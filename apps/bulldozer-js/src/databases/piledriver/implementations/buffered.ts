@@ -32,6 +32,7 @@ export function declareBufferedPiledriverDatabase(
   const initialSeq = [dbId, "initial"] as unknown as DatabaseSeq;
   const seqRecords = new WeakMap<object, SeqRecord>();
   const pending = new Map<string, PendingEntry>();
+  const inFlight = new Map<string, PendingEntry>();
   let flushPromise: Promise<DatabaseSeq> | null = null;
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let lastFlushAt = -Infinity;
@@ -52,20 +53,23 @@ export function declareBufferedPiledriverDatabase(
 
     const batch = [...pending.values()];
     pending.clear();
+    for (const entry of batch) inFlight.set(encodeBase64(new Uint8Array(entry.key)), entry);
     flushPromise = (async () => {
       let combinedSeq = wrapped.initialSeq;
       try {
         for (const entry of batch) {
+          const entryId = encodeBase64(new Uint8Array(entry.key));
           const result = entry.state.type === "delete"
             ? await wrapped.deleteRootObject(entry.key)
             : await wrapped.setRootObject(entry.key, entry.state.value);
           combinedSeq = wrapped.combineSeqs(combinedSeq, result.seq);
+          if (inFlight.get(entryId) === entry && !pending.has(entryId)) inFlight.delete(entryId);
         }
         for (const entry of batch) for (const record of entry.records) record.resolve(combinedSeq);
         return combinedSeq;
       } catch (error) {
-        // The caller was already told this write succeeded, so swallowing a background failure could lose data without
-        // anyone noticing.
+        // The caller was already told this write succeeded, so rolling back a failed flush could expose stale data
+        // without anyone noticing; keep the failed value visible and report the anomaly instead.
         for (const entry of batch) for (const record of entry.records) record.reject(error);
         throw error;
       } finally {
@@ -123,6 +127,12 @@ export function declareBufferedPiledriverDatabase(
     return { seq, record };
   };
 
+  const createResolvedSeq = (underlyingSeq: DatabaseSeq) => {
+    const { seq, record } = createSeq();
+    record.resolve(underlyingSeq);
+    return seq;
+  };
+
   const write = (key: ArrayBuffer, state: PendingEntry["state"]) => {
     if (isClosing) throw new Error("Buffered Piledriver database is closing and cannot accept writes");
     const pendingKey = getPendingKey(key);
@@ -173,14 +183,16 @@ export function declareBufferedPiledriverDatabase(
       return { backend: "piledriver-buffered", wrapped, pendingBufferSize: pending.size };
     },
     async getRootObject(key) {
-      const entry = pending.get(getPendingKey(key).id);
+      const pendingKey = getPendingKey(key);
+      const entry = pending.get(pendingKey.id) ?? inFlight.get(pendingKey.id);
       if (entry !== undefined) {
         if (entry.state.type === "delete") throw new Error("Root object not found");
         // Pending reads return the original object without serialization, so callers must preserve the same immutability
         // expectations as with the in-memory Piledriver backend.
         return { object: entry.state.value, seq: entry.latestSeq };
       }
-      return await wrapped.getRootObject(key);
+      const result = await wrapped.getRootObject(key);
+      return { object: result.object, seq: createResolvedSeq(result.seq) };
     },
     async setRootObject(key, value) {
       return { seq: write(key, { type: "set", value }) };
