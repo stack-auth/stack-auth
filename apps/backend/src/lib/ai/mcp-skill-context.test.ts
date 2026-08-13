@@ -36,9 +36,9 @@ describe("getMcpSkillContextPrompt", () => {
     await expect(getMcpSkillContextPrompt("ask_hexclave")).resolves.toMatchInlineSnapshot(`
       "
 
-      ## MCP-Provided Hexclave Documentation Context
+      ## Hexclave Documentation Context
 
-      The current request came through the public Hexclave MCP server's ask_hexclave tool.
+      The current request came through the public Hexclave docs assistant (the https://skill.hexclave.com/ask endpoint or the Hexclave MCP server's ask_hexclave tool).
       The backend fetched the full Hexclave documentation from https://docs.hexclave.com/llms-full.txt
       immediately before spawning this assistant. Treat this documentation as baseline context
       for answering the user's question, while still using documentation tools for specific
@@ -55,21 +55,63 @@ describe("getMcpSkillContextPrompt", () => {
     }));
   });
 
-  it("fails loudly when the documentation cannot be fetched", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("missing", { status: 503, statusText: "Service Unavailable" }),
-    );
+  it("returns a sanitized error when the docs body stalls mid-stream", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    // Simulates real fetch behavior: headers arrive immediately, but the body stream never
+    // produces data. Like undici, aborting the request signal errors the pending body read.
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      const stalledBody = new ReadableStream<Uint8Array>({
+        start(streamController) {
+          init?.signal?.addEventListener("abort", () => {
+            streamController.error(new DOMException("The operation was aborted", "AbortError"));
+          });
+        },
+      });
+      return new Response(stalledBody);
+    });
 
-    await expect(getMcpSkillContextPrompt("ask_hexclave")).rejects.toThrowErrorMatchingInlineSnapshot(`[Error: Failed to fetch docs from https://docs.hexclave.com/llms-full.txt: 503 Service Unavailable]`);
+    try {
+      const promptPromise = getMcpSkillContextPrompt("ask_hexclave");
+      // attach the rejection expectation before advancing timers so the rejection is never unhandled
+      const expectation = expect(promptPromise).rejects.toMatchObject({
+        message: "Service Unavailable",
+        name: "StatusError",
+        statusCode: 503,
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expectation;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it("throws a descriptive error when the fetch times out", async () => {
+  it("consumes failed responses before returning a sanitized error", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const response = new Response("missing", { status: 503, statusText: "Service Unavailable" });
+    const textSpy = vi.spyOn(response, "text");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(response);
+
+    await expect(getMcpSkillContextPrompt("ask_hexclave")).rejects.toMatchObject({
+      message: "Service Unavailable",
+      name: "StatusError",
+      statusCode: 503,
+    });
+    expect(textSpy).toHaveBeenCalledOnce();
+  });
+
+  it("returns a sanitized error when the fetch times out", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(globalThis, "fetch").mockImplementation(() => {
       const err = new DOMException("The operation was aborted", "AbortError");
       return Promise.reject(err);
     });
 
-    await expect(getMcpSkillContextPrompt("ask_hexclave")).rejects.toThrowErrorMatchingInlineSnapshot(`[Error: Docs fetch from https://docs.hexclave.com/llms-full.txt timed out after 5000ms]`);
+    await expect(getMcpSkillContextPrompt("ask_hexclave")).rejects.toMatchObject({
+      message: "Service Unavailable",
+      name: "StatusError",
+      statusCode: 503,
+    });
   });
 
   it("returns cached documentation on subsequent calls within TTL", async () => {

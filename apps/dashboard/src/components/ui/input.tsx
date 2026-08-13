@@ -33,7 +33,7 @@ export const Input = forwardRefIfNeeded<HTMLInputElement, InputProps>(
           </div>
           <input
             type={type}
-            className={cn(baseClasses, 'rounded-l-none', className)}
+            className={cn(baseClasses, type === "password" && "hexclave-sensitive", 'rounded-l-none', className)}
             ref={ref}
             {...props}
           />
@@ -47,7 +47,7 @@ export const Input = forwardRefIfNeeded<HTMLInputElement, InputProps>(
           </div>
           <input
             type={type}
-            className={cn(baseClasses, "pl-8", className)}
+            className={cn(baseClasses, type === "password" && "hexclave-sensitive", "pl-8", className)}
             ref={ref}
             {...props}
           />
@@ -58,7 +58,7 @@ export const Input = forwardRefIfNeeded<HTMLInputElement, InputProps>(
         <div className="flex flex-row items-center flex-1">
           <input
             type={type}
-            className={cn(baseClasses, className)}
+            className={cn(baseClasses, type === "password" && "hexclave-sensitive", className)}
             ref={ref}
             {...props}
           />

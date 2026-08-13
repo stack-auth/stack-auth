@@ -4,7 +4,6 @@ import { RemoteDevelopmentEnvironmentApiUnavailableError, registerRemoteDevelopm
 import { readRemoteDevelopmentEnvironmentJsonBody } from "@/lib/remote-development-environment/route-json";
 import { assertRemoteDevelopmentEnvironmentRequest } from "@/lib/remote-development-environment/security";
 
-export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   const securityResponse = assertRemoteDevelopmentEnvironmentRequest(req);

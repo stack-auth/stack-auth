@@ -17,8 +17,12 @@ on:
 permissions:
   contents: read
 
+# A concurrency group only ever runs one run at a time, so the sha is part of the group on main/dev:
+# otherwise consecutive dev pushes queue behind each other (and GitHub cancels the older queued run),
+# so one slow or hung run silently skips CI for every commit after it. PRs and feature branches stay
+# grouped per ref, where cancelling superseded runs is what we want.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 jobs:
@@ -54,7 +58,7 @@ jobs:
 
           git diff --name-only "$merge_base" "$HEAD_SHA" > changed-files.txt || true
           # Cap the patch so the prompt stays within a reasonable size.
-          git diff "$merge_base" "$HEAD_SHA" | head -c 200000 > diff.patch || true
+          git diff "$merge_base" "$HEAD_SHA" | head -c 60000 > diff.patch || true
 
           echo "Changed files:"
           cat changed-files.txt || true
@@ -146,13 +150,14 @@ jobs:
           # `codex exec` runs non-interactively. We keep it read-only and never
           # prompt for approvals so it can't hang CI. It's given the diff + test
           # list directly in the prompt, so it doesn't need to explore the repo.
-          codex exec \
+          # The prompt goes through stdin (`-`) because as a single argv entry it
+          # exceeds Linux's per-argument limit (MAX_ARG_STRLEN, 128 KiB).
+          codex exec - \
             --skip-git-repo-check \
             -s read-only \
             -c approval_policy="never" \
             --output-schema schema.json \
-            --output-last-message codex-out.json \
-            "$(cat prompt.txt)"
+            --output-last-message codex-out.json < prompt.txt
 
           echo "Codex raw output:"
           cat codex-out.json
@@ -187,6 +192,7 @@ jobs:
           echo "test_files=$selected" >> "$GITHUB_OUTPUT"
 
   fast-fail-tests:
+    timeout-minutes: 45
     name: fast-fail-tests
     needs: select-tests
     if: ${{ needs.select-tests.outputs.test_files != '' }}
@@ -229,7 +235,6 @@ jobs:
           cp apps/backend/.env.development apps/backend/.env.test.local
           cp apps/dashboard/.env.development apps/dashboard/.env.test.local
           cp apps/e2e/.env.development apps/e2e/.env.test.local
-          cp docs/.env.development docs/.env.test.local
           cp examples/cjs-test/.env.development examples/cjs-test/.env.test.local
           cp examples/demo/.env.development examples/demo/.env.test.local
           cp examples/docs-examples/.env.development examples/docs-examples/.env.test.local
@@ -265,7 +270,14 @@ jobs:
         env:
           HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB: "1"
         with:
-          run: pnpm run start:bulldozer &
+          run: |
+            bulldozer_log="$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
+            (
+              set +e
+              # Keep service output correlatable with the surrounding GitHub Actions logs.
+              pnpm run start:bulldozer 2>&1 | TZ=UTC awk '{ print strftime("%Y-%m-%dT%H:%M:%SZ"), $0; fflush() }' >"$bulldozer_log"
+              echo "${PIPESTATUS[0]}" > "$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt"
+            ) &
           wait-on: |
             tcp:localhost:8146
           tail: true
@@ -278,7 +290,7 @@ jobs:
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
-          run: pnpm run start:backend --log-order=stream &
+          run: pnpm -C apps/backend run with-env:test pnpm run start &
           wait-on: |
             http://localhost:8102
           tail: true
@@ -341,8 +353,36 @@ jobs:
       - name: Run AI-selected subset of tests
         run: |
           set -euo pipefail
-          echo "Running fast-fail subset: $SELECTED_TEST_FILES"
-          pnpm test run $SELECTED_TEST_FILES --reporter=verbose
+          # Perf files are excluded by default and belong in the dedicated one-worker step.
+          selected_test_files=$(printf '%s\n' "$SELECTED_TEST_FILES" \
+            | tr ' ' '\n' \
+            | grep -Ev '\.perf\.test\.' \
+            | tr '\n' ' ' \
+            | sed 's/ *$//' || true)
+          if [ -z "$selected_test_files" ]; then
+            echo "Skipping fast-fail subset: the selector chose only perf files, which run in the dedicated one-worker step."
+            exit 0
+          fi
+          echo "Running fast-fail subset: $selected_test_files"
+          pnpm test run $selected_test_files --reporter=verbose
+
+      - name: Print bulldozer-js diagnostics
+        if: ${{ failure() }}
+        run: |
+          if [[ -f "$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt" ]]; then
+            echo "Bulldozer-js command exited with code $(<"$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt")"
+          else
+            echo "Bulldozer-js command is still running; a child process may have exited"
+          fi
+          tail -n 2000 "$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
+
+      - name: Upload bulldozer-js logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fast-fail-bulldozer
+          path: ${{ runner.temp }}/hexclave-bulldozer.untracked.log
+          if-no-files-found: error
 
       - name: Print Docker Compose logs
         if: always()

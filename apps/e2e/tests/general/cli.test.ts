@@ -68,7 +68,7 @@ describe("Stack CLI", () => {
     Result.orThrow(await internalApp.signUpWithCredential({
       email: fakeEmail,
       password: "test-password-123",
-      verificationCallbackUrl: "http://localhost:3000",
+      noVerificationCallback: true,
     }));
 
     const user = await internalApp.getUser({ or: "throw" });
@@ -520,6 +520,7 @@ describe("Stack CLI", () => {
       apps: {
         installed: {
           authentication: { enabled: true },
+          emails: { enabled: true },
           teams: { enabled: true },
         },
       },
@@ -541,6 +542,7 @@ describe("Stack CLI", () => {
       apps: {
         installed: {
           authentication: { enabled: true },
+          emails: { enabled: true },
         },
       },
     });
@@ -622,7 +624,7 @@ describe("Stack CLI", () => {
       "init", "--mode", "create", "--apps", "authentication", "--output-dir", initDir,
     ]);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("STACK AUTH SETUP INSTRUCTIONS");
+    expect(stdout).toContain("HEXCLAVE SETUP INSTRUCTIONS");
   });
 });
 

@@ -166,8 +166,10 @@ function KpiSkeletonGrid() {
 }
 
 export function EntityKpiCards({ errorTag, source, labels, metrics }: EntityKpiCardsProps) {
-  const ErrorComponent = ({ error }: { error: Error }) => {
-    captureKpiErrorOnce(error, errorTag);
+  const ErrorComponent = ({ error }: { error: unknown }) => {
+    if (error instanceof Error) {
+      captureKpiErrorOnce(error, errorTag);
+    }
     return null;
   };
   return (

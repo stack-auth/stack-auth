@@ -1,5 +1,5 @@
-import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
-import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { captureError, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
 import createEmailableClient from "emailable";
@@ -21,8 +21,7 @@ export type EmailableCheckResult =
 
 const RETRY_BACKOFF_BASE_MS = 4000;
 
-function isReservedTestDomain(emailDomain: string): boolean {
-  if (!["development", "test"].includes(getNodeEnvironment())) return false;
+function isReservedExampleDomain(emailDomain: string): boolean {
   return emailDomain === "example.com" || emailDomain.endsWith(".example.com");
 }
 
@@ -80,25 +79,22 @@ export async function checkEmailWithEmailable(
   },
 ): Promise<EmailableCheckResult> {
   try {
-    const rawApiKey = getEnvVariable("STACK_EMAILABLE_API_KEY", "");
+    const apiKey = getEnvVariable("STACK_EMAILABLE_API_KEY", "") || throwErr("STACK_EMAILABLE_API_KEY must not be empty; set it to 'disable_email_validation' to disable email validation");
     const emailDomain = email.split("@")[1]?.toLowerCase() ?? "";
 
-    // Always reject the explicit test domain, regardless of API key
     if (emailDomain === EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN) {
       const testResponse = buildTestUndeliverableResponse(email);
       return { status: "not-deliverable", emailableResponse: testResponse, emailableScore: testResponse.score };
     }
 
-    if (!rawApiKey) {
-      if (["development", "test"].includes(getNodeEnvironment())) {
-        return { status: "deliverable", emailableScore: null };
-      }
-      throw new HexclaveAssertionError("STACK_EMAILABLE_API_KEY must not be empty; set it to 'disable_email_validation' to disable email validation");
+    if (apiKey === "disable_email_validation") {
+      return { status: "deliverable", emailableScore: null };
     }
 
-    const apiKey = rawApiKey === "disable_email_validation" ? "" : rawApiKey;
-    if (!apiKey || isReservedTestDomain(emailDomain)) {
-      return { status: "deliverable", emailableScore: null };
+    // Avoid spending Emailable requests on reserved example domains without overriding the no-key dev/test behavior.
+    if (isReservedExampleDomain(emailDomain)) {
+      const testResponse = buildTestUndeliverableResponse(email);
+      return { status: "not-deliverable", emailableResponse: testResponse, emailableScore: testResponse.score };
     }
 
     const clientFactory = options?._clientFactory ?? createEmailableClient;
@@ -126,9 +122,13 @@ export async function checkEmailWithEmailable(
 // ── Tests ──────────────────────────────────────────────────────────────
 
 import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
-  const { vi, test, beforeEach } = import.meta.vitest!;
+  const { vi, test, beforeEach, expect } = import.meta.vitest!;
 
   const fakeClient = (verifyFn: (email: string) => Promise<unknown>) => (_apiKey: string) => ({ verify: verifyFn });
+  const stubEmailableApiKey = (value: string) => {
+    vi.stubEnv("HEXCLAVE_EMAILABLE_API_KEY", value);
+    vi.stubEnv("STACK_EMAILABLE_API_KEY", value);
+  };
 
   const deliverableClient = fakeClient(async () => ({
     state: "deliverable", disposable: false, score: 95, domain: "gmail.com", email: "test@gmail.com", user: "test",
@@ -139,7 +139,7 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
   });
 
   beforeEach(() => {
-    vi.stubEnv("STACK_EMAILABLE_API_KEY", "test_api_key");
+    stubEmailableApiKey("test_api_key");
     return () => vi.unstubAllEnvs();
   });
 
@@ -148,18 +148,41 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
       .resolves.toMatchObject({ status: "not-deliverable", emailableResponse: { state: "undeliverable", reason: "test_domain_rejection" } });
   });
 
-  test("returns test-domain rejection even when API key is unset", async ({ expect }) => {
-    vi.stubEnv("STACK_EMAILABLE_API_KEY", "");
+  test("falls back to deliverable when API key is unset", async ({ expect }) => {
+    stubEmailableApiKey("");
     await expect(checkEmailWithEmailable(`user@${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN}`))
-      .resolves.toMatchObject({ status: "not-deliverable", emailableResponse: { state: "undeliverable", reason: "test_domain_rejection" } });
+      .resolves.toEqual({ status: "deliverable", emailableScore: null });
+  });
+
+  test.each([
+    "user@example.com",
+    "user@stack-generated.example.com",
+  ])("falls back to deliverable for reserved example address %s when the API key is unset", async (email) => {
+    stubEmailableApiKey("");
+    vi.stubEnv("NODE_ENV", "test");
+    const result = await checkEmailWithEmailable(email);
+    expect(result).toEqual({ status: "deliverable", emailableScore: null });
+  });
+
+  test.each([
+    "user@example.com",
+    "user@status-monitor.example.com",
+  ])("bypasses reserved example address %s when validation is disabled", async (email) => {
+    stubEmailableApiKey("disable_email_validation");
+    const verify = vi.fn();
+    const result = await checkEmailWithEmailable(email, { _clientFactory: () => ({ verify }) });
+    expect(result).toEqual({ status: "deliverable", emailableScore: null });
+    expect(verify).not.toHaveBeenCalled();
   });
 
   test("returns ok for deliverable email", async ({ expect }) => {
+    stubEmailableApiKey("test_api_key");
     const result = await checkEmailWithEmailable("test@gmail.com", { _clientFactory: deliverableClient });
     expect(result).toMatchObject({ status: "deliverable", emailableScore: 95 });
   });
 
   test("successfully retries and verifies deliverable email if Emailable asks for a retry the first time", async ({ expect }) => {
+    stubEmailableApiKey("test_api_key");
     let retryCount = 0;
     const retryClient = fakeClient(async () => retryCount++ === 0 ? {
       message: "Your request is taking longer than normal. Please send your request again."

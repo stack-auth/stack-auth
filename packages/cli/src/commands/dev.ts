@@ -1,5 +1,6 @@
 import { execFileSync, spawn, type ChildProcess } from "child_process";
 import { Command } from "commander";
+import crossSpawn from "cross-spawn";
 import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { DEFAULT_API_URL, DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
@@ -9,6 +10,7 @@ import { DASHBOARD_SERVER_RELATIVE_PATH, dashboardDirOverride, fetchDashboardMan
 import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
 import { CliError, errorMessage } from "../lib/errors.js";
 import { DASHBOARD_PORT_ENV_VAR, dashboardPort, dashboardRequest, dashboardUrl, createRemoteDevelopmentEnvironmentSession, type DashboardSessionResponse } from "../lib/local-dashboard.js";
+import { startProgress } from "../lib/progress.js";
 
 type ChildCommand = {
   command: string,
@@ -25,6 +27,8 @@ type ConfigSyncEventBase = {
 };
 
 type ConfigSyncEvent = ConfigSyncEventBase & ({
+  status: "syncing",
+} | {
   status: "success",
 } | {
   status: "error",
@@ -38,7 +42,7 @@ type HeartbeatResponse = {
   config_sync_events?: ConfigSyncEvent[],
 };
 
-const HEARTBEAT_INTERVAL_MS = 5_000;
+const HEARTBEAT_INTERVAL_MS = 1_000;
 const HEARTBEAT_STOP_POLL_MS = 100;
 const DASHBOARD_RESTART_MIN_UPTIME_MS = 5_000;
 const DASHBOARD_START_TIMEOUT_MS = 60_000;
@@ -67,9 +71,12 @@ const REQUIRED_DASHBOARD_RUNTIME_ENV_VARS = new Set([
   DASHBOARD_PORT_ENV_VAR,
 ]);
 
-type ProgressLogger = {
-  stop: (finalMessage?: string) => void,
-};
+export function dashboardEnvWithStatePath(env: NodeJS.ProcessEnv, statePath: string): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    STACK_DEV_ENVS_PATH: env.STACK_DEV_ENVS_PATH ?? statePath,
+  };
+}
 
 type DashboardSessionState = {
   session: DashboardSessionResponse,
@@ -146,37 +153,6 @@ function maybeOpenOnboardingPage(session: DashboardSessionResponse, port: number
   } else {
     logDev(`Onboarding is still pending for project ${session.project_id}. Open this URL manually: ${url}`);
   }
-}
-
-function startProgressLog(message: string): ProgressLogger {
-  if (!process.stderr.isTTY) {
-    logDev(`${message}...`);
-    return {
-      stop() {
-        logDev(`${message}... done!`);
-      },
-    };
-  }
-
-  let dotCount = 0;
-  let stopped = false;
-  const render = () => {
-    process.stderr.write(`\r\x1b[2K${LOG_PREFIX}${message}${".".repeat(dotCount)}`);
-    dotCount = (dotCount + 1) % 4;
-  };
-  render();
-  const timer = setInterval(render, 400);
-  timer.unref();
-
-  return {
-    stop() {
-      if (stopped) return;
-      stopped = true;
-      clearInterval(timer);
-      process.stderr.write("\r\x1b[2K");
-      logDev(`${message}... done!`);
-    },
-  };
 }
 
 function dashboardRuntimeRoot(port: number): string {
@@ -428,6 +404,9 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
   // or falls back to cache.
   const dashboardOverride = dashboardDirOverride();
   const skipReleaseLookup = devDashboardCommand != null || dashboardOverride != null;
+  if (!skipReleaseLookup) {
+    logDev("Checking for Hexclave dashboard updates...");
+  }
   const manifest: DashboardManifest | null = skipReleaseLookup ? null : await fetchDashboardManifest();
   const latestVersion = manifest?.version;
 
@@ -459,11 +438,13 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
 
   // Download (or reuse a cached copy of) the dashboard build to launch. Not
   // needed when a custom dev dashboard command runs the dashboard itself.
-  const release = devDashboardCommand == null ? await resolveDashboardRuntime({ manifest }) : null;
+  const release = devDashboardCommand == null
+    ? await resolveDashboardRuntime({ manifest, onProgress: (message) => logDev(`${message}...`) })
+    : null;
 
-  const progress = startProgressLog(`Hexclave dashboard not found on port ${options.port}. Starting now`);
+  const progress = startProgress(`Hexclave dashboard not found on port ${options.port}. Starting now`, { prefix: LOG_PREFIX });
   const dashboardEnv = {
-    ...process.env,
+    ...dashboardEnvWithStatePath(process.env, devEnvStatePath()),
     NODE_ENV: devDashboardCommand == null ? "production" : "development",
     PORT: String(options.port),
     HOSTNAME: "0.0.0.0",
@@ -568,7 +549,7 @@ function isConfigSyncEvent(value: unknown): value is ConfigSyncEvent {
   ) {
     return false;
   }
-  if (value.status === "success") {
+  if (value.status === "syncing" || value.status === "success") {
     return true;
   }
   return (
@@ -611,10 +592,12 @@ function logBrowserSecretConfirmationCode(response: HeartbeatResponse): void {
     : `Dashboard browser confirmation code: ${response.browser_secret_confirmation_code} (expires in ${expiresInSeconds}s)`);
 }
 
-function logConfigSyncEvents(response: HeartbeatResponse): void {
+export function logConfigSyncEvents(response: HeartbeatResponse): void {
   for (const event of response.config_sync_events ?? []) {
-    if (event.status === "success") {
-      logDev(`Config synced to development environment project: ${event.config_file_path}`);
+    if (event.status === "syncing") {
+      logDev(`Detected change to config file at ${event.config_file_path}. Syncing...`);
+    } else if (event.status === "success") {
+      logDev("Updated config sync successful!");
     } else {
       logDevConfigError(`Config sync failed for ${event.config_file_path}: ${event.error_message}`);
     }
@@ -743,10 +726,11 @@ child.on("error", (error) => {
 });
 `;
 
-function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
+export function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((resolvePromise, reject) => {
     const child = process.platform === "win32"
-      ? spawn(command.command, command.args, { stdio: "inherit", env })
+      // cross-spawn handles Windows command shims that Node cannot spawn directly.
+      ? crossSpawn(command.command, command.args, { stdio: "inherit", env })
       : spawn(process.execPath, ["-e", APP_COMMAND_WRAPPER_SCRIPT], {
         detached: true,
         stdio: "inherit",
@@ -904,7 +888,7 @@ export function registerDevCommand(program: Command) {
     .command("dev")
     .usage("--config-file <path> -- <command> [args...]")
     .description("Run a command with Hexclave development-environment credentials")
-    .requiredOption("--config-file <path>", "Path to stack.config.ts")
+    .requiredOption("--config-file <path>", "Path to hexclave.config.ts")
     .argument("<command...>", "Command and arguments to run after --")
     .action(async (commandArgs: string[], opts: DevOptions) => {
       if (opts.configFile == null) {

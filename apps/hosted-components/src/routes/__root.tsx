@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import * as Sentry from '@sentry/react';
 import { HexclaveClientApp, HexclaveProvider, HexclaveTheme } from '@hexclave/react';
 import { publishableClientKeyNotNecessarySentinel } from '@hexclave/shared/dist/utils/oauth';
 import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
@@ -18,7 +19,8 @@ import '../styles.css';
 
 
 export function getProjectId(): string | null {
-  // Extract from subdomain: <projectId>.built-with-hexclave.com
+  // Extract from either cloud subdomain:
+  // <projectId>.built-with-hexclave.com or the legacy <projectId>.built-with-stack-auth.com.
   // Also works with <projectId>.localhost for local dev
   const hostname = window.location.hostname;
   const parts = hostname.split('.');
@@ -165,6 +167,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    Sentry.captureException(error, { extra: { componentStack: errorInfo.componentStack } });
     console.error('Hosted components error:', error, errorInfo);
   }
 

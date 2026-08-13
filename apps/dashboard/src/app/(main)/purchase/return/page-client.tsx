@@ -4,22 +4,12 @@ import { StyledLink } from "@/components/link";
 import { DesignCard } from "@/components/design-components/card";
 import { Typography } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
-import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { getApiBaseUrl } from "../get-api-base-url";
 import { CheckCircleIcon, SpinnerGapIcon, XCircleIcon } from "@phosphor-icons/react";
 import { loadStripe } from "@stripe/stripe-js";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-
-type Props = {
-  redirectStatus?: string,
-  paymentIntentId?: string,
-  clientSecret?: string,
-  stripeAccountId?: string,
-  purchaseFullCode?: string,
-  bypass?: string,
-  free?: string,
-};
 
 type ViewState =
   | { kind: "loading" }
@@ -27,18 +17,24 @@ type ViewState =
   | { kind: "error", message: string };
 
 const stripePublicKey = getPublicEnvVar("NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY") ?? "";
-const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
-const baseUrl = new URL("/api/v1", apiUrl).toString();
 
-export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFullCode, bypass, free }: Props) {
+export default function ReturnClient() {
   const [state, setState] = useState<ViewState>({ kind: "loading" });
   const searchParams = useSearchParams();
   const returnUrl = searchParams.get("return_url");
+  const paymentIntentClientSecret = searchParams.get("payment_intent_client_secret") ?? undefined;
+  const setupIntentClientSecret = searchParams.get("setup_intent_client_secret") ?? undefined;
+  const clientSecret = paymentIntentClientSecret ?? setupIntentClientSecret;
+  const stripeAccountId = searchParams.get("stripe_account_id") ?? undefined;
+  const purchaseFullCode = searchParams.get("purchase_full_code") ?? undefined;
+  const bypass = searchParams.get("bypass") ?? undefined;
+  const free = searchParams.get("free") ?? undefined;
 
   const checkAndReturnUser = useCallback(async () => {
     if (!returnUrl || !purchaseFullCode) {
       return;
     }
+    const baseUrl = getApiBaseUrl();
     const url = new URL(`${baseUrl}/payments/purchases/validate-code`);
     url.searchParams.set("full_code", purchaseFullCode);
     url.searchParams.set("return_url", returnUrl);
@@ -68,6 +64,40 @@ export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFu
       const stripe = await loadStripe(stripePublicKey, { stripeAccount: stripeAccountId });
       if (!stripe) throw new Error("Stripe failed to initialize");
       if (!clientSecret) return;
+
+      // Free-trial checkouts confirm a SetupIntent (setup_intent_client_secret);
+      // paid checkouts confirm a PaymentIntent (payment_intent_client_secret).
+      if (setupIntentClientSecret) {
+        const result = await stripe.retrieveSetupIntent(setupIntentClientSecret);
+        const status = result.setupIntent?.status;
+        const lastErrorMessage = result.setupIntent?.last_setup_error?.message;
+
+        if (status === "succeeded") {
+          runAsynchronously(checkAndReturnUser());
+          const message = `Payment method saved. Your free trial has started.${returnUrl ? " You will be redirected shortly." : " You can safely close this page."}`;
+          setState({ kind: "success", message });
+          return;
+        }
+        if (status === "processing") {
+          setState({ kind: "success", message: "Setup is processing. You'll receive an update shortly." });
+          return;
+        }
+        if (status === "requires_payment_method") {
+          setState({ kind: "error", message: lastErrorMessage ?? "Setup failed. Please try another payment method." });
+          return;
+        }
+        if (status === "requires_action") {
+          setState({ kind: "error", message: "Additional authentication required. Please try again." });
+          return;
+        }
+        if (status === "canceled") {
+          setState({ kind: "error", message: "Setup was canceled." });
+          return;
+        }
+        setState({ kind: "error", message: "Unexpected setup state." });
+        return;
+      }
+
       const result = await stripe.retrievePaymentIntent(clientSecret);
       const status = result.paymentIntent?.status;
       const lastErrorMessage = result.paymentIntent?.last_payment_error?.message;
@@ -99,7 +129,7 @@ export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFu
       const message = e instanceof Error ? e.message : "Unexpected error retrieving payment.";
       setState({ kind: "error", message });
     }
-  }, [clientSecret, stripeAccountId, bypass, free, returnUrl, checkAndReturnUser]);
+  }, [clientSecret, setupIntentClientSecret, stripeAccountId, bypass, free, returnUrl, checkAndReturnUser]);
 
   useEffect(() => {
     runAsynchronously(updateViewState());

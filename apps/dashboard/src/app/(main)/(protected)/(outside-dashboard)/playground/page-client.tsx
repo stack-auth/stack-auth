@@ -409,6 +409,7 @@ export default function PageClient() {
   const [badgeColor, setBadgeColor] = useState<DesignBadgeColor>("green");
   const [badgeSize, setBadgeSize] = useState<"sm" | "md">("md");
   const [badgeIcon, setBadgeIcon] = useState(true);
+  const [badgeSpin, setBadgeSpin] = useState(false);
   const [badgeContentMode, setBadgeContentMode] = useState<DesignBadgeContentMode>("both");
 
   // Button
@@ -444,6 +445,7 @@ export default function PageClient() {
   const [dgSelectionMode, setDgSelectionMode] = useState<DataGridSelectionMode>("none");
   const [dgRowHeight, setDgRowHeight] = useState(44);
   const [dgShowToolbar, setDgShowToolbar] = useState(true);
+  const [dgStickyTop, setDgStickyTop] = useState<"default" | "local">("default");
   const [dgState, setDgState] = useState(() => createDefaultDataGridState(DEMO_GRID_COLUMNS));
   const dgData = useDataSource({ data: DEMO_GRID_USERS, columns: DEMO_GRID_COLUMNS, getRowId: (r: DemoGridUser) => r.id, sorting: dgState.sorting, quickSearch: dgState.quickSearch, pagination: dgState.pagination, paginationMode: "client" });
 
@@ -536,6 +538,7 @@ export default function PageClient() {
         type: "text",
         icon: <FileText className="h-4 w-4" />,
         name: "Display Name",
+        description: "The customer-facing name for this product.",
         value: "Widget Pro",
         readOnly: false,
         onUpdate: async () => {
@@ -548,6 +551,7 @@ export default function PageClient() {
         type: "boolean",
         icon: <StackSimple className="h-4 w-4" />,
         name: "Active",
+        description: "Controls whether this product can be purchased.",
         value: true,
         readOnly: false,
         trueLabel: "Yes",
@@ -562,6 +566,7 @@ export default function PageClient() {
         type: "dropdown",
         icon: <Sliders className="h-4 w-4" />,
         name: "Category",
+        description: "Used to organize this product in the catalog.",
         value: "hardware",
         options: [
           { value: "hardware", label: "Hardware" },
@@ -579,6 +584,7 @@ export default function PageClient() {
         type: "custom",
         icon: <Tag className="h-4 w-4" />,
         name: "Price",
+        description: "Current base price before discounts.",
         children: <span className="text-sm text-foreground">$29.99</span>,
       },
     ];
@@ -591,6 +597,7 @@ export default function PageClient() {
           type: "custom-dropdown",
           icon: <Sparkle className="h-4 w-4" />,
           name: "Custom Dropdown",
+          description: "A composed control with custom popover content.",
           triggerContent: <span>Open custom panel</span>,
           popoverContent: <div>Custom content</div>,
           disabled: false,
@@ -600,6 +607,7 @@ export default function PageClient() {
           type: "custom-button",
           icon: <Cube className="h-4 w-4" />,
           name: "Custom Button",
+          description: "Runs a custom action with built-in loading behavior.",
           onClick: () => setGridActionLog("Clicked custom button"),
           children: <span>Run action</span>,
           disabled: false,
@@ -824,6 +832,7 @@ export default function PageClient() {
           color={badgeColor}
           size={badgeSize}
           icon={badgeIconProp}
+          iconClassName={badgeSpin ? "animate-spin" : undefined}
           contentMode={badgeContentMode}
         />
       );
@@ -933,6 +942,7 @@ export default function PageClient() {
             selectionMode={dgSelectionMode}
             rowHeight={dgRowHeight}
             toolbar={dgShowToolbar ? undefined : false}
+            stickyTop={dgStickyTop === "local" ? 80 : undefined}
             maxHeight={400}
           />
         </div>
@@ -1082,28 +1092,28 @@ export default function PageClient() {
     if (selected === "editable-grid") {
       return (
         <div className="w-full max-w-3xl">
-          <div className="rounded-2xl overflow-hidden bg-white/90 dark:bg-[hsl(240,10%,5.5%)] border border-black/[0.12] dark:border-foreground/[0.12] shadow-sm">
+          <div className="overflow-hidden rounded-2xl border border-black/[0.1] bg-white shadow-sm dark:border-white/[0.1] dark:bg-zinc-950">
             <div className="p-4 sm:p-5">
               <DesignEditableGrid
-                items={editableItems}
                 columns={gridCols}
-                size={gridSize}
-                editMode={gridEditMode}
                 deferredSave={gridDeferredSave}
+                editMode={gridEditMode}
+                externalModifiedKeys={gridShowModified ? new Set(["display-name", "category"]) : undefined}
                 hasChanges={gridHasChanges}
-                onSave={gridDeferredSave ? async () => {
-                  await new Promise((r) => setTimeout(r, 400));
-                  setGridActionLog("Saved deferred changes");
-                  setGridHasChanges(false);
-                } : undefined}
+                items={editableItems}
                 onDiscard={gridDeferredSave ? () => {
                   setGridActionLog("Discarded deferred changes");
                   setGridHasChanges(false);
                 } : undefined}
-                externalModifiedKeys={gridShowModified ? new Set(["display-name", "category"]) : undefined}
+                onSave={gridDeferredSave ? async () => {
+                  await new Promise((resolve) => setTimeout(resolve, 400));
+                  setGridActionLog("Saved deferred changes");
+                  setGridHasChanges(false);
+                } : undefined}
+                size={gridSize}
               />
               {gridActionLog && (
-                <Typography variant="secondary" className="text-xs mt-2">
+                <Typography className="mt-3 text-xs" variant="secondary">
                   Last action: {gridActionLog}
                 </Typography>
               )}
@@ -1511,6 +1521,11 @@ export default function PageClient() {
               <BoolToggle value={badgeIcon} onChange={setBadgeIcon} on="Show" off="Hide" />
             </PropField>
           )}
+          {(badgeContentMode === "icon" || (badgeContentMode === "both" && badgeIcon)) && (
+            <PropField label="Spin icon">
+              <BoolToggle value={badgeSpin} onChange={setBadgeSpin} on="Spin" off="Static" />
+            </PropField>
+          )}
         </div>
       );
     }
@@ -1739,6 +1754,23 @@ export default function PageClient() {
           </PropField>
           <PropField label="Toolbar">
             <BoolToggle value={dgShowToolbar} onChange={setDgShowToolbar} on="Shown" off="Hidden" />
+          </PropField>
+          <PropField label="Sticky top">
+            <DesignSelectorDropdown
+              value={dgStickyTop}
+              onValueChange={(v) => {
+                if (v === "default" || v === "local") {
+                  setDgStickyTop(v);
+                  return;
+                }
+                throw new Error(`Unknown sticky top mode "${v}"`);
+              }}
+              options={[
+                { value: "default", label: "Default (0px)" },
+                { value: "local", label: "Local (80px)" },
+              ]}
+              size="sm"
+            />
           </PropField>
         </div>
       );
@@ -2239,12 +2271,14 @@ export default function PageClient() {
       const iconProp = badgeContentMode === "icon"
         ? 'icon={CheckCircle}'
         : (badgeIcon ? "icon={CheckCircle}" : "icon={undefined}");
+      const hasIcon = badgeContentMode === "icon" || (badgeContentMode === "both" && badgeIcon);
+      const spinProp = hasIcon && badgeSpin ? '\n  iconClassName="animate-spin"' : "";
       return `<DesignBadge
   label="${escapeAttr(badgeLabel || "Badge")}"
   color="${badgeColor}"
   size="${badgeSize}"
   contentMode="${badgeContentMode}"
-  ${iconProp}
+  ${iconProp}${spinProp}
 />`;
     }
     if (selected === "button") {
@@ -2318,6 +2352,7 @@ export default function PageClient() {
   selectionMode="${dgSelectionMode}"
   rowHeight={${dgRowHeight}}
   toolbar={${dgShowToolbar ? "undefined" : "false"}}
+  stickyTop={${dgStickyTop === "local" ? "80" : "undefined"}}
   maxHeight={400}
 />`;
     }

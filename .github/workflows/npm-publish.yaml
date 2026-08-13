@@ -74,6 +74,12 @@ jobs:
           sed "s/^[[:space:]]*\"version\":.*/$version/" packages/template/package-template.json > packages/template/package-template.json.untracked.tmp
           mv packages/template/package-template.json.untracked.tmp packages/template/package-template.json
 
+          # The AI setup prompt pins the SDK version it tells users to import from esm.sh, so bumping
+          # package versions changes the docs generated from it. Regenerate them here, or the committed
+          # files go stale and lint-and-build's "check for uncommitted changes" step fails on dev and on
+          # every PR opened against it. Runs the sources directly via tsx, so no build step is needed.
+          pnpm run generate-setup-prompt-docs
+
           git add -A
           if git diff --staged --quiet; then
             echo "No package version changes to commit"

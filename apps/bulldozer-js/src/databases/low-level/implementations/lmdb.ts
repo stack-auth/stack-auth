@@ -1,5 +1,6 @@
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { wait } from "@hexclave/shared/dist/utils/promises";
+import { createUuidV7Generator } from "@hexclave/shared/dist/utils/uuids";
 import * as lmdb from "lmdb";
 import { shouldSuppressPeriodicBulldozerLogs } from "../../../logging.js";
 import { traceSpanHot } from "../../../otel.js";
@@ -12,6 +13,20 @@ type BinaryDatabase = lmdb.Database<Buffer, Uint8Array>;
 type VersionedBinaryDatabase = BinaryDatabase & {
   getEntry(key: Buffer): { value: Buffer, version?: number } | undefined,
 };
+
+function createDumpKeyGenerator() {
+  const generateUuidV7 = createUuidV7Generator();
+  return () => {
+    const key = new Uint8Array(17);
+    // Timestamp-first UUIDv7 keys cluster dump writes in an advancing range,
+    // reducing LMDB page scatter. The leading byte is a layout-version marker
+    // so future dump-key formats can coexist without migrating legacy 48-byte keys.
+    key[0] = 0x01;
+    key.set(generateUuidV7(), 1);
+    return key.buffer;
+  };
+}
+
 type PendingCommitOperation = {
   seqId: string,
   requiresSeq: DatabaseSeq,
@@ -129,11 +144,27 @@ function hasActivity(stats: LmdbActivityStats): boolean {
     || stats.combinedSeqDurabilityResolves > 0;
 }
 
-export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: string, simulateReadMissDelayMs?: number }): LowLevelDatabase {
+export function declareLmdbLowLevelDatabase(options: {
+  path: string,
+  dbId?: string,
+  simulateReadMissDelayMs?: number,
+  /**
+   * When true, enable lmdb-js LZ4 compression on values (threshold 1000 bytes by default).
+   * Sticky per on-disk path: once values are written compressed, every subsequent open of
+   * that path must keep compression on (or reads of those values will fail).
+   * Turning this on against an existing uncompressed store does NOT rewrite old values —
+   * new writes compress, old ones stay uncompressed and remain readable.
+   * To ship a fully-compressed store in prod: point HEXCLAVE_BULLDOZER_JS_LMDB_PATH at a
+   * fresh empty directory, set HEXCLAVE_BULLDOZER_JS_LMDB_COMPRESSION=1, start bulldozer-js,
+   * then run db:backfill-bulldozer-from-prisma (after ManualTransaction is in Postgres).
+   */
+  compression?: boolean,
+}): LowLevelDatabase {
   const dbId = options.dbId ?? "default";
   const simulateReadMissDelayMs = options.simulateReadMissDelayMs ?? 0;
   if (!Number.isFinite(simulateReadMissDelayMs) || simulateReadMissDelayMs < 0) throw new Error("simulateReadMissDelayMs must be a non-negative finite number");
-  const root = lmdb.open({ path: options.path, maxDbs: 1024, separateFlushed: true });
+  const compression = options.compression === true;
+  const root = lmdb.open({ path: options.path, maxDbs: 1024, separateFlushed: true, compression });
   const meta = root.openDB<number, string>({ name: `${dbId}:meta`, encoding: "json" });
   let currentVersion = meta.get("seq") ?? 0;
   const initialSeqId = "initial";
@@ -208,6 +239,15 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
   };
   const getDurabilityPromise = (seqId: string) => {
     return seqToDurability.get(seqId) ?? combinedSeqToDurability.get(seqId) ?? Promise.resolve();
+  };
+  const combineSeqsForStore = (...seqs: DatabaseSeq[]) => {
+    if (seqs.length === 0) return initialSeq;
+    if (seqs.length === 1) return seqs[0];
+    const seqId = nextSeqId();
+    combinedSeqDependencies.set(seqId, seqs.map(seq => getSeqId(seq)));
+    rememberCombinedAvailability(seqId, Promise.all(seqs.map(seq => getAvailabilityPromise(getSeqId(seq)))));
+    rememberCombinedDurability(seqId, Promise.all(seqs.map(seq => getDurabilityPromise(getSeqId(seq)))));
+    return toSeq(seqId);
   };
   // LMDB may reject with an opaque "Commit failed" wrapper whose real status
   // lives on `.commitError` (a Promise). LMDB's `committed` value is only a
@@ -348,7 +388,6 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
     rememberDurability(seqId, Promise.resolve());
     return toSeq(seqId);
   };
-  const dumpKey = () => crypto.getRandomValues(new Uint8Array(48)).buffer;
   const putWithVersion = async (db: BinaryDatabase, key: Buffer, value: Buffer, version: number) => {
     activityStats.puts++;
     activityStats.putBytes += value.byteLength;
@@ -392,6 +431,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
       keyEncoding: "binary",
       useVersions: true,
     }) as VersionedBinaryDatabase;
+    const dumpKey = createDumpKeyGenerator();
 
     const result: LowLevelKvStore & LowLevelKvDump = {
       async get(key) {
@@ -402,6 +442,25 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
           return {
             buffer: buffer ? arrayBufferFromUint8Array(buffer) : null,
             seq: initialSeq,
+          };
+        });
+      },
+      async listEntries(options) {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.listEntries", attributes }, async () => {
+          const limit = options?.limit ?? 1000;
+          if (!Number.isInteger(limit) || limit <= 0) throw new Error("KV store list limit must be a positive integer");
+          if (options?.startAfter !== undefined) validateKey(options.startAfter);
+          const entries = await (db.getRange({
+            start: options?.startAfter === undefined ? undefined : bufferFromArrayBuffer(options.startAfter),
+            exclusiveStart: options?.startAfter !== undefined,
+            limit: limit + 1,
+          }) as lmdb.RangeIterable<{ key: Uint8Array, value: Buffer }>).map(({ key, value }) => ({
+            key: arrayBufferFromUint8Array(key),
+            value: arrayBufferFromUint8Array(value),
+          })).asArray;
+          return {
+            entries: entries.slice(0, limit),
+            hasMore: entries.length > limit,
           };
         });
       },
@@ -421,12 +480,12 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
           };
         });
       },
-      async deleteAll(keys) {
+      async deleteAll(keys, deleteOptions) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.deleteAll", attributes: { ...attributes, "bulldozer.low_level.key_count": keys.length } }, async () => {
           for (const key of keys) validateKey(key);
-          if (keys.length === 0) return { seq: initialSeq };
+          if (keys.length === 0) return { seq: deleteOptions?.requiresSeq ?? initialSeq };
           return {
-            seq: commit(initialSeq, async () => {
+            seq: commit(deleteOptions?.requiresSeq ?? initialSeq, async () => {
               for (const key of keys) await db.remove(bufferFromArrayBuffer(key));
             }),
           };
@@ -445,20 +504,36 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
           };
         });
       },
-      async compareAndSet(key, compare, value, casOptions) {
-        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.compareAndSet", attributes }, async () => {
-          validateKey(key);
-          validateValue("compare", compare);
-          validateValue("value", value);
-          await waitUntilAvailable(casOptions?.requiresSeq ?? initialSeq);
-          await waitUntilAllAvailable();
-          const keyBuffer = bufferFromArrayBuffer(key);
-          const existing = db.getEntry(keyBuffer);
-          if (!existing || existing.version === undefined || !arrayBuffersAreEqual(arrayBufferFromUint8Array(existing.value), compare)) {
-            return { wasSet: false, seq: null };
+      async compareAndSetAll(entries, casOptions) {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
+          const keys = new Set<string>();
+          for (const { key, compare, value } of entries) {
+            validateKey(key);
+            validateValue("compare", compare);
+            validateValue("value", value);
+            const keyBase64 = encodeBase64(new Uint8Array(key));
+            const previousSize = keys.size;
+            keys.add(keyBase64);
+            if (keys.size === previousSize) throw new Error("compareAndSetAll entries must not contain duplicate keys");
           }
-          const seq = await commitIfVersion(db, keyBuffer, existing.version, async version => await putWithVersion(db, keyBuffer, bufferFromArrayBuffer(value), version));
-          return seq === null ? { wasSet: false, seq: null } : { wasSet: true, seq };
+          const results = await Promise.all(entries.map(async ({ key, compare, value }) => {
+            await waitUntilAvailable(casOptions?.requiresSeq ?? initialSeq);
+            await waitUntilAllAvailable();
+            const keyBuffer = bufferFromArrayBuffer(key);
+            const existing = db.getEntry(keyBuffer);
+            if (!existing || existing.version === undefined || !arrayBuffersAreEqual(arrayBufferFromUint8Array(existing.value), compare)) {
+              return { wasSet: false as const, seq: null };
+            }
+            const seq = await commitIfVersion(db, keyBuffer, existing.version, async version => await putWithVersion(db, keyBuffer, bufferFromArrayBuffer(value), version));
+            return seq === null ? { wasSet: false as const, seq: null } : { wasSet: true as const, seq };
+          }));
+          const successful = results.filter(result => result.wasSet).map(result => result.seq);
+          return {
+            results,
+            seq: successful.length === 0
+              ? casOptions?.requiresSeq ?? initialSeq
+              : combineSeqsForStore(...successful),
+          };
         });
       },
       async debugEntries() {
@@ -521,13 +596,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
       });
     },
     combineSeqs(...seqs) {
-      if (seqs.length === 0) return initialSeq;
-      if (seqs.length === 1) return seqs[0];
-      const seqId = nextSeqId();
-      combinedSeqDependencies.set(seqId, seqs.map(seq => getSeqId(seq)));
-      rememberCombinedAvailability(seqId, Promise.all(seqs.map(seq => getAvailabilityPromise(getSeqId(seq)))));
-      rememberCombinedDurability(seqId, Promise.all(seqs.map(seq => getDurabilityPromise(getSeqId(seq)))));
-      return toSeq(seqId);
+      return combineSeqsForStore(...seqs);
     },
     close() {
       if (closePromise === null) {

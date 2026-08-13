@@ -28,7 +28,7 @@ function createTestInterface() {
 
 describe("getNewOAuthProviderOrScopeUrl", () => {
   it("returns the OAuth URL without performing navigation", async () => {
-    window.history.replaceState({}, "", "/account?after_auth_return_to=%2Fsettings");
+    window.history.replaceState({}, "", "/account?after_auth_return_to=%2Fsettings#connected-accounts");
 
     const iface = createTestInterface();
     const session = iface.createSession({ refreshToken: null, accessToken: null });
@@ -48,7 +48,7 @@ describe("getNewOAuthProviderOrScopeUrl", () => {
     expect(`${url.origin}${url.pathname}`).toBe("https://api.example.com/api/v1/auth/oauth/authorize/github");
     expect(Object.fromEntries(url.searchParams.entries())).toMatchInlineSnapshot(`
       {
-        "after_callback_redirect_url": "http://localhost:3000/account?after_auth_return_to=%2Fsettings",
+        "after_callback_redirect_url": "http://localhost:3000/account?after_auth_return_to=%2Fsettings#connected-accounts",
         "client_id": "00000000-0000-4000-8000-000000000000",
         "client_secret": "pck_test",
         "code_challenge": "<stripped code challenge>",

@@ -25,7 +25,7 @@ export function CopyField(props: {
   const [isRevealed, setIsRevealed] = useState(false);
 
   return (
-    <div>
+    <div className={props.isSecret ? "hexclave-sensitive" : undefined}>
       {props.label && (
         <Label className="flex items-center gap-2 mb-2">
           {props.label}

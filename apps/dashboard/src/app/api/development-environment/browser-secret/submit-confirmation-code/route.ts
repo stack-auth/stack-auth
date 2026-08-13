@@ -5,7 +5,6 @@ import {
 import { readRemoteDevelopmentEnvironmentJsonBody } from "@/lib/remote-development-environment/route-json";
 import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = "nodejs";
 
 function confirmationCodeFromBody(value: unknown): string | null {
   if (
