@@ -1,9 +1,25 @@
+import fs from "node:fs";
+import path from "node:path";
 import { expect } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, Payments, Project, niceBackendFetch } from "../../../../backend-helpers";
 
 const USER_COUNT = 6;
 const ITEM_UPDATES_PER_USER = 10;
+
+// The benchmark can be run against a tenancy that already holds payments data, to see how the
+// measured flows scale with the amount of data Bulldozer keeps in its trees. One prefill unit is one
+// fully-populated customer (a subscription purchase, a one-time purchase, two granted stackable
+// products and ITEM_UPDATES_PER_USER item-quantity changes) written into the same tenancy before any
+// measurement happens. The measured workload stays identical at every level, so the only thing that
+// varies between runs is the volume of pre-existing data.
+const PREFILL_CUSTOMERS = Number(process.env.HEXCLAVE_PAYMENTS_PERF_PREFILL ?? "0");
+if (!Number.isInteger(PREFILL_CUSTOMERS) || PREFILL_CUSTOMERS < 0) {
+  throw new Error(`HEXCLAVE_PAYMENTS_PERF_PREFILL must be a non-negative integer, got ${process.env.HEXCLAVE_PAYMENTS_PERF_PREFILL}`);
+}
+// When set, the summary is also written to this path as JSON, so that a sweep over several prefill
+// levels can be aggregated and plotted afterwards.
+const OUTPUT_PATH = process.env.HEXCLAVE_PAYMENTS_PERF_OUTPUT;
 
 type PerfMetric = {
   name: string,
@@ -16,7 +32,8 @@ async function measure<T>(name: string, count: number, fn: () => Promise<T>, met
   const result = await fn();
   const elapsedMs = performance.now() - startedAt;
   metrics.push({ name, count, elapsedMs });
-  console.log(`[bulldozer-payments-e2e-perf] ${name}: ${elapsedMs.toFixed(1)} ms (${count} ops, ${(count / elapsedMs * 1000).toFixed(2)} ops/s)`);
+  const throughput = count === 0 ? "n/a" : `${(count / elapsedMs * 1000).toFixed(2)} ops/s`;
+  console.log(`[bulldozer-payments-e2e-perf] ${name}: ${elapsedMs.toFixed(1)} ms (${count} ops, ${throughput})`);
   return result;
 }
 
@@ -56,7 +73,11 @@ async function listAllTransactions() {
   return transactions;
 }
 
-it("benchmarks backend-level payments flows through the Bulldozer HTTP boundary", { timeout: 240_000 }, async () => {
+// The measured workload alone fits comfortably into the base timeout; prefilling is what can take
+// arbitrarily long, so the budget grows with the requested prefill size.
+const TEST_TIMEOUT_MS = 240_000 + PREFILL_CUSTOMERS * 30_000;
+
+it("benchmarks backend-level payments flows through the Bulldozer HTTP boundary", { timeout: TEST_TIMEOUT_MS }, async () => {
   const metrics: PerfMetric[] = [];
 
   await measure("setup project + payments config", 1, async () => {
@@ -111,6 +132,48 @@ it("benchmarks backend-level payments flows through the Bulldozer HTTP boundary"
         },
       },
     });
+  }, metrics);
+
+  await measure("prefill existing payments data", PREFILL_CUSTOMERS, async () => {
+    for (let i = 0; i < PREFILL_CUSTOMERS; i++) {
+      const { userId } = await Auth.fastSignUp();
+
+      const subscriptionCode = await createPurchaseCode({ customerType: "user", customerId: userId, productId: "perf-sub" });
+      const subscriptionResponse = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+        accessType: "admin",
+        method: "POST",
+        body: { full_code: subscriptionCode, price_id: "monthly", quantity: 1 },
+      });
+      expect(subscriptionResponse.status).toBe(200);
+
+      const oneTimeCode = await createPurchaseCode({ customerType: "user", customerId: userId, productId: "perf-otp" });
+      const oneTimeResponse = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+        accessType: "admin",
+        method: "POST",
+        body: { full_code: oneTimeCode, price_id: "single", quantity: 2 },
+      });
+      expect(oneTimeResponse.status).toBe(200);
+
+      for (let grant = 0; grant < 2; grant++) {
+        const grantResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+          method: "POST",
+          accessType: "server",
+          body: { product_id: "perf-api-grant", quantity: 1 },
+        });
+        expect(grantResponse.status).toBe(200);
+      }
+
+      for (let update = 0; update < ITEM_UPDATES_PER_USER; update++) {
+        const itemId = update % 2 === 0 ? "credits" : "boosts";
+        const updateResponse = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/${itemId}/update-quantity`, {
+          method: "POST",
+          accessType: "server",
+          query: { allow_negative: "false" },
+          body: { delta: update + 1, description: `prefill-${i}-${update}` },
+        });
+        expect(updateResponse.status).toBe(200);
+      }
+    }
   }, metrics);
 
   const users = await measure("create users", USER_COUNT, async () => {
@@ -205,14 +268,21 @@ it("benchmarks backend-level payments flows through the Bulldozer HTTP boundary"
   const transactions = await measure("list all transactions with pagination", 1, listAllTransactions, metrics);
   expect(transactions.length).toBeGreaterThanOrEqual(users.length * 4);
 
-  console.log("[bulldozer-payments-e2e-perf] summary", JSON.stringify({
+  const summary = {
+    prefillCustomers: PREFILL_CUSTOMERS,
     users: users.length,
     transactions: transactions.length,
     metrics: metrics.map((metric) => ({
       name: metric.name,
       count: metric.count,
       elapsedMs: Number(metric.elapsedMs.toFixed(1)),
-      opsPerSecond: Number((metric.count / metric.elapsedMs * 1000).toFixed(2)),
+      opsPerSecond: metric.count === 0 ? null : Number((metric.count / metric.elapsedMs * 1000).toFixed(2)),
     })),
-  }));
+  };
+  console.log("[bulldozer-payments-e2e-perf] summary", JSON.stringify(summary));
+
+  if (OUTPUT_PATH != null) {
+    fs.mkdirSync(path.dirname(path.resolve(OUTPUT_PATH)), { recursive: true });
+    fs.writeFileSync(OUTPUT_PATH, JSON.stringify(summary, null, 2));
+  }
 });
