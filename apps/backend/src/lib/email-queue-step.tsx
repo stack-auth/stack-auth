@@ -827,15 +827,28 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         // keep the potentially slow self-call off the send path; steady-state
         // enforcement is unchanged.
         runAsynchronouslyAndWaitUntil(async () => {
-          const isDebited = await emailItem.tryDecreaseQuantity(1);
-          if (!isDebited) {
+          try {
+            const isDebited = await emailItem.tryDecreaseQuantity(1);
+            if (!isDebited) {
+              captureError("email-queue-step:monthly-email-quota-debit-after-send", new HexclaveAssertionError(
+                "Email send passed the read-based monthly quota gate but its asynchronous quota debit was rejected",
+                {
+                  emailId: row.id,
+                  tenancyId: row.tenancyId,
+                  billingTeamId: context.billingTeamId,
+                  remainingQuotaAtGate: emailItem.quantity,
+                },
+              ));
+            }
+          } catch (error) {
             captureError("email-queue-step:monthly-email-quota-debit-after-send", new HexclaveAssertionError(
-              "Email send passed the read-based monthly quota gate but its asynchronous quota debit was rejected",
+              "Email send passed the read-based monthly quota gate but its asynchronous quota debit failed",
               {
                 emailId: row.id,
                 tenancyId: row.tenancyId,
                 billingTeamId: context.billingTeamId,
                 remainingQuotaAtGate: emailItem.quantity,
+                cause: error,
               },
             ));
           }
