@@ -354,9 +354,6 @@ model Team {
 
   teamMembers   TeamMember[]
   projectApiKey ProjectApiKey[]
-  assignedIssues Issue[] @relation("IssueAssignedTeam")
-  ownedIssues IssueOwner[]
-  subscribedIssues IssueSubscription[] @relation("IssueSubscriptionTeam")
 
   @@id([tenancyId, teamId])
   @@unique([mirroredProjectId, mirroredBranchId, teamId])
@@ -1037,60 +1034,6 @@ model ProvisionedProject {
 
   clientId String
 }
-
-//#region Events
-
-model Event {
-  id String @id @default(uuid()) @db.Uuid
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // if isWide == false, then eventEndedAt is always equal to eventStartedAt
-  isWide         Boolean
-  eventStartedAt DateTime
-  eventEndedAt   DateTime
-
-  // TODO: add event_type, and at least one of either system_event_type or event_type is always set
-  systemEventTypeIds String[]
-  data               Json
-
-  // ============================== BEGIN END USER PROPERTIES ==============================
-  // Below are properties describing the end user that caused this event to be logged
-  // This is different from a request IP. See: apps/backend/src/lib/end-users.tsx
-
-  // Note that the IP may have been spoofed, unless isEndUserIpInfoGuessTrusted is true
-  endUserIpInfoGuessId        String?      @db.Uuid
-  endUserIpInfoGuess          EventIpInfo? @relation("EventIpInfo", fields: [endUserIpInfoGuessId], references: [id])
-  // If true, then endUserIpInfoGuess is not spoofed (might still be behind VPNs/proxies). If false, then the values may be spoofed.
-  isEndUserIpInfoGuessTrusted Boolean      @default(false)
-  // =============================== END END USER PROPERTIES ===============================
-
-  @@index([data(ops: JsonbPathOps)], type: Gin)
-  @@index([createdAt])
-  @@index([createdAt, id])
-}
-
-// An IP address that was seen in an event. Use the location fields instead of refetching the location from the ip, as the real-world geoip data may have changed since the event was logged.
-model EventIpInfo {
-  id String @id @default(uuid()) @db.Uuid
-
-  ip String
-
-  countryCode  String?
-  regionCode   String?
-  cityName     String?
-  latitude     Float?
-  longitude    Float?
-  tzIdentifier String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  events Event[] @relation("EventIpInfo")
-}
-
-//#endregion
 
 enum EmailOutboxStatus {
   PAUSED
@@ -1977,6 +1920,9 @@ model ReleaseCommit {
 }
 
 model ReleaseArtifact {
+  /// PostgreSQL owns release/artifact association and lifecycle state. Object
+  /// storage owns immutable bytes and its derived debug-ID lookup records; it
+  /// must not become a second source of release membership.
   tenancyId String @db.Uuid
   projectId String
   branchId  String
@@ -2115,6 +2061,9 @@ model IssueAlertDelivery {
   outcome IssueAlertDeliveryOutcome @default(NONE)
 
   workflowEventId String? @db.Uuid
+  /// Scrubbed copy of the workflow payload so replay does not depend on the
+  /// 30-day WorkflowEvent retention window.
+  workflowPayload Json?
   attemptCount    Int @default(0)
   replayCount     Int @default(0)
   lastAttemptAt   DateTime?
@@ -2475,6 +2424,8 @@ model WorkflowEvent {
   // oldest outbox batch and starve unrelated tenants forever.
   processingAttempts Int      @default(0)
   retryAt            DateTime @default(now())
+  deadLetteredAt     DateTime?
+  lastProcessingError String? @db.VarChar(2048)
 
   createdAt DateTime @default(now())
 
@@ -2621,8 +2572,11 @@ model Issue {
   /// key: assignees are members of the internal Hexclave project, not rows in
   /// this tenancy's ProjectUser table, so there is nothing here to reference.
   assigneeUserId String? @db.Uuid
+  /// The Hexclave project owner team. Same identity boundary as assigneeUserId:
+  /// that team lives in the internal project, not this tenancy's Team table, so
+  /// a composite FK here would either reject the real owner team or (worse)
+  /// accept a customer-app team with a colliding UUID.
   assignedTeamId String? @db.Uuid
-  assignedTeam Team? @relation("IssueAssignedTeam", fields: [tenancyId, assignedTeamId], references: [tenancyId, teamId], onDelete: Restrict)
 
   // LIFETIME counters — see the header comment above. Ledger deltas only.
   firstSeenAt DateTime
@@ -2732,9 +2686,22 @@ model IssueHash {
 /// occurrences yet still bump every Postgres counter a second time.
 model IssueMaterialization {
   tenancyId String @db.Uuid
-  batchId   String @db.Uuid
+  /// Transport batch IDs are protocol-defined strings. Sentry envelopes and
+  /// OTLP requests are not required to use UUIDs, while ClickHouse stores the
+  /// same identity as a String.
+  batchId   String @db.VarChar(512)
 
   appliedAt DateTime @default(now())
+
+  /// Stored outcomes let a retry replay notifications without applying issue
+  /// counters a second time.
+  outcomes Json?
+
+  /// Notification delivery is intentionally tracked separately from the ledger
+  /// claim. The issue update can succeed even when a webhook or alert dispatch
+  /// needs a later retry.
+  webhooksDispatchedAt DateTime?
+  alertsDispatchedAt   DateTime?
 
   /// Deliberately NOT related to Tenancy. This row is inserted once per ingest
   /// batch on the write path, and an FK would take a row-share lock on the hot
@@ -2787,6 +2754,8 @@ model IssueOwner {
   issueId String @db.Uuid
   ownerType IssueOwnerType
   ownerUserId String? @db.Uuid
+  /// Internal Hexclave owner-team id when ownerType is TEAM. Not a Team row in
+  /// this tenancy — same identity boundary as Issue.assignedTeamId.
   ownerTeamId String? @db.Uuid
   source IssueOwnerSource
   context Json?
@@ -2797,7 +2766,6 @@ model IssueOwner {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   issue Issue @relation(fields: [tenancyId, issueId], references: [tenancyId, id], onDelete: Cascade)
   user ProjectUser? @relation(fields: [tenancyId, ownerUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
-  team Team? @relation(fields: [tenancyId, ownerTeamId], references: [tenancyId, teamId], onDelete: Cascade)
 
   @@id([tenancyId, id])
   @@unique([tenancyId, projectId, branchId, issueId, ownerType, ownerUserId, ownerTeamId, source])
@@ -2882,6 +2850,8 @@ model IssueSubscription {
   issueId String @db.Uuid
   subjectType IssueSubjectType
   subjectUserId String? @db.Uuid
+  /// Internal Hexclave owner-team id when subjectType is TEAM. Not a Team row
+  /// in this tenancy — same identity boundary as Issue.assignedTeamId.
   subjectTeamId String? @db.Uuid
   isActive Boolean @default(true)
   reason String? @db.VarChar(64)
@@ -2892,7 +2862,6 @@ model IssueSubscription {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   issue Issue @relation(fields: [tenancyId, issueId], references: [tenancyId, id], onDelete: Cascade)
   user ProjectUser? @relation("IssueSubscriptionUser", fields: [tenancyId, subjectUserId], references: [tenancyId, projectUserId], onDelete: Restrict)
-  team Team? @relation("IssueSubscriptionTeam", fields: [tenancyId, subjectTeamId], references: [tenancyId, teamId], onDelete: Restrict)
 
   @@id([tenancyId, id])
   @@unique([tenancyId, projectId, branchId, issueId, subjectType, subjectUserId, subjectTeamId])

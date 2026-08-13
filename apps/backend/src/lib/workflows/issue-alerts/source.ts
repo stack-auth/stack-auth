@@ -15,6 +15,7 @@ import { customEvent, hexclaveApp, NonRetriableError, workflow } from "@hexclave
 type IssueAlertAction = {
   type: "email",
   user_ids?: string[],
+  emails?: string[],
   routing_resolution?: {
     schema_version: 1,
     target: {
@@ -129,9 +130,11 @@ function isIssueAlertPayload(value: unknown): value is IssueAlertPayload {
   if (!isObject(value.action) || typeof value.action.type !== "string") return false;
   if (value.action.type === "email") {
     const hasUserIds = value.action.user_ids !== undefined;
+    const hasEmails = value.action.emails !== undefined;
     const hasRoutingResolution = value.action.routing_resolution !== undefined;
     if (!hasUserIds
       || !isStringArray(value.action.user_ids, hasRoutingResolution)
+      || (hasEmails && (hasRoutingResolution || !isStringArray(value.action.emails, false) || value.action.emails.length !== value.action.user_ids.length))
       || (hasRoutingResolution && !isRoutingResolution(value.action.routing_resolution))
       || !isString(value.action.subject)
       || !isString(value.action.html)) return false;
@@ -173,6 +176,15 @@ export default workflow<IssueAlertPayload>("issue-alert-email", {
     throw new NonRetriableError("Issue alert email recipient routing is not configured");
   }
   await step.run("send-email", async () => {
+    if (event.data.action.emails !== undefined && event.data.action.emails.length > 0) {
+      await hexclaveApp.sendEmail({
+        emails: event.data.action.emails,
+        html: event.data.action.html,
+        subject: event.data.action.subject,
+        notificationCategoryName: event.data.action.notification_category_name,
+      });
+      return;
+    }
     await hexclaveApp.sendEmail({
       userIds: event.data.action.user_ids,
       html: event.data.action.html,

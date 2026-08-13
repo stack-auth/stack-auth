@@ -67,6 +67,16 @@ function isExpectedRegistrationRace(error: unknown): boolean {
   return error.statusCode === 404 && error.message === `Workflow "${ISSUE_ALERT_EMAIL_WORKFLOW_ID}" not found`;
 }
 
+function canReplaceInstalledSource(source: string): boolean {
+  // The workflow id is shared. Ownership is "this is still the built-in
+  // issue-alert email workflow": it must pass the same email-boundary
+  // validator as the source we are about to install. That lets us publish a
+  // new built-in version without treating an older generated source as a
+  // foreign collision, while still refusing to overwrite a user-owned
+  // definition that happens to reuse the id.
+  return validateIssueAlertWorkflowSource(source).status === "ok";
+}
+
 function throwWorkflowIdCollision(current: IssueAlertWorkflowLatestSource): never {
   throw new StatusError(
     StatusError.Conflict,
@@ -78,9 +88,10 @@ function throwWorkflowIdCollision(current: IssueAlertWorkflowLatestSource): neve
  * Makes the Workflows engine aware of the trusted issue-alert email workflow.
  *
  * The workflow id is the only built-in ownership marker available in the
- * current schema. An exact latest-source match is therefore the ownership
- * proof; a collision is a hard conflict rather than an overwrite. The sync
- * API's expectedLatestSource guard closes the read/check/write race, while the
+ * current schema. A source that still passes the email-boundary validator is
+ * treated as a previous built-in version and may be upgraded; any other
+ * occupant is a hard conflict rather than an overwrite. The sync API's
+ * expectedLatestSource guard closes the read/check/write race, while the
  * bounded retry handles two first-time registrations arriving together.
  */
 export async function ensureIssueAlertEmailWorkflow(
@@ -91,7 +102,7 @@ export async function ensureIssueAlertEmailWorkflow(
 
   for (let attempt = 0; attempt < MAX_REGISTRATION_ATTEMPTS; attempt++) {
     const current = await dependencies.readLatest(tenancy.id, ISSUE_ALERT_EMAIL_WORKFLOW_ID);
-    if (current !== null && current.source !== ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE) {
+    if (current !== null && !canReplaceInstalledSource(current.source)) {
       return throwWorkflowIdCollision(current);
     }
 
@@ -124,7 +135,7 @@ export async function ensureIssueAlertEmailWorkflow(
     } catch (error) {
       if (!isExpectedRegistrationRace(error)) throw error;
       const raced = await dependencies.readLatest(tenancy.id, ISSUE_ALERT_EMAIL_WORKFLOW_ID);
-      if (raced !== null && raced.source !== ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE) {
+      if (raced !== null && !canReplaceInstalledSource(raced.source)) {
         return throwWorkflowIdCollision(raced);
       }
       if (attempt + 1 === MAX_REGISTRATION_ATTEMPTS) {

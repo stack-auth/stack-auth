@@ -4,7 +4,7 @@ import { isWebhooksAppEnabled, sendIssueCreatedWebhook, sendIssueIgnoredWebhook,
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import type { IssueStatus, IssueSubstatus } from "@hexclave/shared/dist/interface/admin-issues";
-import type { IssueMaterializationOutcome } from "./issue-store";
+import type { IssueBatchApplyOutcome } from "./issue-store";
 
 /**
  * Emits `issue.*` webhooks for the issues a materialized batch touched.
@@ -109,6 +109,7 @@ async function claimWebhookSlots(
   tenancy: Tenancy,
   issueIds: readonly string[],
   now: Date,
+  force: boolean,
 ): Promise<Map<string, IssueWebhookRow>> {
   if (issueIds.length === 0) return new Map();
   const prisma = await getPrismaClientForTenancy(tenancy);
@@ -118,7 +119,11 @@ async function claimWebhookSlots(
     SET "lastWebhookAt" = ${now}::timestamptz
     WHERE "tenancyId" = ${tenancy.id}::uuid
       AND "id" = ANY(${issueIds}::uuid[])
-      AND ("lastWebhookAt" IS NULL OR "lastWebhookAt" < ${new Date(now.getTime() - ISSUE_WEBHOOK_THROTTLE_MS)}::timestamptz)
+      AND (
+        ${force}
+        OR "lastWebhookAt" IS NULL
+        OR "lastWebhookAt" < ${new Date(now.getTime() - ISSUE_WEBHOOK_THROTTLE_MS)}::timestamptz
+      )
     RETURNING "id", "shortId", "type", "value", "culprit", "status"::text AS "status",
               "firstSeenAt", "lastSeenAt", "timesSeen", "regressedAt",
               "serviceName", "deploymentEnvironmentName", "lastSeenRelease"
@@ -128,17 +133,19 @@ async function claimWebhookSlots(
 
 export async function emitIssueWebhooks(options: {
   tenancy: Tenancy,
-  outcomes: readonly IssueMaterializationOutcome[],
+  outcomes: readonly IssueBatchApplyOutcome[],
   now: Date,
+  batchId?: string,
+  force?: boolean,
 }): Promise<void> {
-  const { tenancy, outcomes, now } = options;
+  const { tenancy, outcomes, now, batchId, force = false } = options;
   if (outcomes.length === 0) return;
   if (!isWebhooksAppEnabled(tenancy)) return;
 
   const notable = outcomes.filter((outcome) => outcome.isNew || outcome.isRegression);
   if (notable.length === 0) return;
 
-  const claimed = await claimWebhookSlots(tenancy, notable.map((outcome) => outcome.issueId), now);
+  const claimed = await claimWebhookSlots(tenancy, notable.map((outcome) => outcome.issueId), now, force);
   if (claimed.size === 0) return;
 
   await Promise.all(notable.flatMap((outcome) => {
@@ -160,7 +167,9 @@ export async function emitIssueWebhooks(options: {
       data: buildIssueWebhookData(tenancy, row, "regressed"),
       // Keyed on the regression INSTANT, so a re-delivery of the same
       // regression dedupes while a genuine second regression later does not.
-      eventId: `${row.id}:${(row.regressedAt ?? now).getTime()}`,
+      eventId: batchId === undefined
+        ? `${row.id}:${(row.regressedAt ?? now).getTime()}`
+        : `${row.id}:${batchId}:regression`,
     })];
   }));
 }
