@@ -1,7 +1,9 @@
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { createUuidV7Generator } from "@hexclave/shared/dist/utils/uuids";
 import * as lmdb from "lmdb";
+import { readdirSync, statSync } from "node:fs";
 import { shouldSuppressPeriodicBulldozerLogs } from "../../../logging.js";
 import { traceSpanHot } from "../../../otel.js";
 import { DatabaseSeq } from "../../index.js";
@@ -111,6 +113,73 @@ type LmdbActivityStats = {
   combinedSeqDurabilityResolveTotalMs: number,
 };
 
+export type LmdbDiagnostics = {
+  dbId: string,
+  storeSizeBytes?: number,
+  elapsedMs: number,
+  putsPerSecond: number,
+  averagePutBytes: number,
+  averagePutAwaitMs: number,
+  transactionsPerSecond: number,
+  averageTransactionMs: number,
+  averageTransactionQueueWaitMs: number,
+  averageTransactionActionMs: number,
+  averageMetaPutMs: number,
+  averageTransactionCommitTailMs: number,
+  requiredSeqWaitsPerSecond: number,
+  averageRequiredSeqWaitMs: number,
+  waitUntilAvailableResolvesPerSecond: number,
+  waitUntilDurableResolvesPerSecond: number,
+  averageSeqToAvailabilityResolveMs: number,
+  averageSeqToDurabilityResolveMs: number,
+  combinedSeqAvailabilityResolvesPerSecond: number,
+  combinedSeqDurabilityResolvesPerSecond: number,
+  averageCombinedSeqAvailabilityResolveMs: number,
+  averageCombinedSeqDurabilityResolveMs: number,
+  mapSizes: {
+    seqToAvailability: number,
+    seqToDurability: number,
+    combinedSeqToAvailability: number,
+    combinedSeqToDurability: number,
+    combinedSeqDependencies: number,
+    debugEntriesByStoreId: number,
+  },
+  currentVersion: number,
+};
+
+let latestLmdbDiagnostics: LmdbDiagnostics | null = null;
+const bulldozerDiagnosticsEnabled = process.env.HEXCLAVE_BULLDOZER_DIAGNOSTICS === "true";
+
+function isExpectedStoreSizeError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = "code" in error ? error.code : undefined;
+  return code === "ENOENT" || code === "EACCES" || code === "EPERM" || code === "ENOTDIR";
+}
+
+function getStoreSizeBytes(path: string): number | undefined {
+  try {
+    let total = 0;
+    for (const entry of readdirSync(path, { withFileTypes: true })) {
+      const entryPath = `${path}/${entry.name}`;
+      if (entry.isDirectory()) {
+        const nestedSize = getStoreSizeBytes(entryPath);
+        if (nestedSize === undefined) return undefined;
+        total += nestedSize;
+      } else {
+        total += statSync(entryPath).size;
+      }
+    }
+    return total;
+  } catch (error) {
+    if (isExpectedStoreSizeError(error)) return undefined;
+    throw error;
+  }
+}
+
+export function getLmdbDiagnostics(): LmdbDiagnostics | null {
+  return latestLmdbDiagnostics == null ? null : { ...latestLmdbDiagnostics };
+}
+
 function emptyActivityStats(): LmdbActivityStats {
   return {
     puts: 0,
@@ -178,6 +247,7 @@ export function declareLmdbLowLevelDatabase(options: {
   let pendingCommitFlushTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingCommitFlushPromise: Promise<void> | null = null;
   let isClosing = false;
+  let storeSizeDiagnosticsDisabled = false;
   let closePromise: Promise<void> | null = null;
   const inFlightReads = new Set<Promise<unknown>>();
   let readErrorDuringClose: unknown | undefined;
@@ -205,49 +275,62 @@ export function declareLmdbLowLevelDatabase(options: {
   };
   let activityStats = emptyActivityStats();
   let activityWindowStartedAt = performance.now();
-  if (!shouldSuppressPeriodicBulldozerLogs) {
-    const activityInterval = setInterval(() => {
-      if (!hasActivity(activityStats)) return;
-      const now = performance.now();
-      const elapsedMs = now - activityWindowStartedAt;
-      const elapsedSeconds = elapsedMs / 1000;
-      console.debug("bulldozer-js low-level lmdb activity", {
-        dbId,
-        elapsedMs,
-        putsPerSecond: activityStats.puts / elapsedSeconds,
-        averagePutBytes: activityStats.puts === 0 ? 0 : activityStats.putBytes / activityStats.puts,
-        averagePutAwaitMs: activityStats.puts === 0 ? 0 : activityStats.putAwaitTotalMs / activityStats.puts,
-        transactionsPerSecond: activityStats.transactions / elapsedSeconds,
-        averageTransactionMs: activityStats.transactions === 0 ? 0 : activityStats.transactionTotalMs / activityStats.transactions,
-        averageTransactionQueueWaitMs: activityStats.transactions === 0 ? 0 : activityStats.transactionQueueWaitTotalMs / activityStats.transactions,
-        averageTransactionActionMs: activityStats.transactions === 0 ? 0 : activityStats.transactionActionTotalMs / activityStats.transactions,
-        averageMetaPutMs: activityStats.transactions === 0 ? 0 : activityStats.metaPutTotalMs / activityStats.transactions,
-        averageTransactionCommitTailMs: activityStats.transactions === 0 ? 0 : activityStats.transactionCommitTailTotalMs / activityStats.transactions,
-        requiredSeqWaitsPerSecond: activityStats.requiredSeqWaits / elapsedSeconds,
-        averageRequiredSeqWaitMs: activityStats.requiredSeqWaits === 0 ? 0 : activityStats.requiredSeqWaitTotalMs / activityStats.requiredSeqWaits,
-        waitUntilAvailableResolvesPerSecond: activityStats.waitUntilAvailableResolves / elapsedSeconds,
-        waitUntilDurableResolvesPerSecond: activityStats.waitUntilDurableResolves / elapsedSeconds,
-        averageSeqToAvailabilityResolveMs: activityStats.waitUntilAvailableResolves === 0 ? 0 : activityStats.waitUntilAvailableResolveTotalMs / activityStats.waitUntilAvailableResolves,
-        averageSeqToDurabilityResolveMs: activityStats.waitUntilDurableResolves === 0 ? 0 : activityStats.waitUntilDurableResolveTotalMs / activityStats.waitUntilDurableResolves,
-        combinedSeqAvailabilityResolvesPerSecond: activityStats.combinedSeqAvailabilityResolves / elapsedSeconds,
-        combinedSeqDurabilityResolvesPerSecond: activityStats.combinedSeqDurabilityResolves / elapsedSeconds,
-        averageCombinedSeqAvailabilityResolveMs: activityStats.combinedSeqAvailabilityResolves === 0 ? 0 : activityStats.combinedSeqAvailabilityResolveTotalMs / activityStats.combinedSeqAvailabilityResolves,
-        averageCombinedSeqDurabilityResolveMs: activityStats.combinedSeqDurabilityResolves === 0 ? 0 : activityStats.combinedSeqDurabilityResolveTotalMs / activityStats.combinedSeqDurabilityResolves,
-        mapSizes: {
-          seqToAvailability: seqToAvailability.size,
-          seqToDurability: seqToDurability.size,
-          combinedSeqToAvailability: combinedSeqToAvailability.size,
-          combinedSeqToDurability: combinedSeqToDurability.size,
-          combinedSeqDependencies: combinedSeqDependencies.size,
-          debugEntriesByStoreId: debugEntriesByStoreId.size,
-        },
-        currentVersion,
-      });
-      activityStats = emptyActivityStats();
-      activityWindowStartedAt = now;
-    }, 5_000);
-    activityInterval.unref();
-  }
+  const activityInterval = setInterval(() => {
+    if (!hasActivity(activityStats)) return;
+    const now = performance.now();
+    const elapsedMs = now - activityWindowStartedAt;
+    const elapsedSeconds = elapsedMs / 1000;
+    let storeSizeBytes: number | undefined;
+    if (bulldozerDiagnosticsEnabled && !storeSizeDiagnosticsDisabled) {
+      try {
+        storeSizeBytes = getStoreSizeBytes(options.path);
+      } catch (error) {
+        // Disable sizing after the first unexpected failure so a persistent error cannot flood CI logs every 5 seconds.
+        storeSizeDiagnosticsDisabled = true;
+        captureError("bulldozer-js:lmdb-diagnostics-store-size", error);
+      }
+    }
+    const diagnostics: LmdbDiagnostics = {
+      dbId,
+      ...(storeSizeBytes === undefined ? {} : { storeSizeBytes }),
+      elapsedMs,
+      putsPerSecond: activityStats.puts / elapsedSeconds,
+      averagePutBytes: activityStats.puts === 0 ? 0 : activityStats.putBytes / activityStats.puts,
+      averagePutAwaitMs: activityStats.puts === 0 ? 0 : activityStats.putAwaitTotalMs / activityStats.puts,
+      transactionsPerSecond: activityStats.transactions / elapsedSeconds,
+      averageTransactionMs: activityStats.transactions === 0 ? 0 : activityStats.transactionTotalMs / activityStats.transactions,
+      averageTransactionQueueWaitMs: activityStats.transactions === 0 ? 0 : activityStats.transactionQueueWaitTotalMs / activityStats.transactions,
+      averageTransactionActionMs: activityStats.transactions === 0 ? 0 : activityStats.transactionActionTotalMs / activityStats.transactions,
+      averageMetaPutMs: activityStats.transactions === 0 ? 0 : activityStats.metaPutTotalMs / activityStats.transactions,
+      averageTransactionCommitTailMs: activityStats.transactions === 0 ? 0 : activityStats.transactionCommitTailTotalMs / activityStats.transactions,
+      requiredSeqWaitsPerSecond: activityStats.requiredSeqWaits / elapsedSeconds,
+      averageRequiredSeqWaitMs: activityStats.requiredSeqWaits === 0 ? 0 : activityStats.requiredSeqWaitTotalMs / activityStats.requiredSeqWaits,
+      waitUntilAvailableResolvesPerSecond: activityStats.waitUntilAvailableResolves / elapsedSeconds,
+      waitUntilDurableResolvesPerSecond: activityStats.waitUntilDurableResolves / elapsedSeconds,
+      averageSeqToAvailabilityResolveMs: activityStats.waitUntilAvailableResolves === 0 ? 0 : activityStats.waitUntilAvailableResolveTotalMs / activityStats.waitUntilAvailableResolves,
+      averageSeqToDurabilityResolveMs: activityStats.waitUntilDurableResolves === 0 ? 0 : activityStats.waitUntilDurableResolveTotalMs / activityStats.waitUntilDurableResolves,
+      combinedSeqAvailabilityResolvesPerSecond: activityStats.combinedSeqAvailabilityResolves / elapsedSeconds,
+      combinedSeqDurabilityResolvesPerSecond: activityStats.combinedSeqDurabilityResolves / elapsedSeconds,
+      averageCombinedSeqAvailabilityResolveMs: activityStats.combinedSeqAvailabilityResolves === 0 ? 0 : activityStats.combinedSeqAvailabilityResolveTotalMs / activityStats.combinedSeqAvailabilityResolves,
+      averageCombinedSeqDurabilityResolveMs: activityStats.combinedSeqDurabilityResolves === 0 ? 0 : activityStats.combinedSeqDurabilityResolveTotalMs / activityStats.combinedSeqDurabilityResolves,
+      mapSizes: {
+        seqToAvailability: seqToAvailability.size,
+        seqToDurability: seqToDurability.size,
+        combinedSeqToAvailability: combinedSeqToAvailability.size,
+        combinedSeqToDurability: combinedSeqToDurability.size,
+        combinedSeqDependencies: combinedSeqDependencies.size,
+        debugEntriesByStoreId: debugEntriesByStoreId.size,
+      },
+      currentVersion,
+    };
+    latestLmdbDiagnostics = diagnostics;
+    if (!shouldSuppressPeriodicBulldozerLogs) {
+      console.debug("bulldozer-js low-level lmdb activity", diagnostics);
+    }
+    activityStats = emptyActivityStats();
+    activityWindowStartedAt = now;
+  }, 5_000);
+  activityInterval.unref();
   const initialSeq = [dbId, initialSeqId] as unknown as LmdbSeq;
   const toSeq = (seqId: string) => [dbId, seqId] as unknown as LmdbSeq;
 
@@ -628,6 +711,7 @@ export function declareLmdbLowLevelDatabase(options: {
     close() {
       if (closePromise === null) {
         isClosing = true;
+        clearInterval(activityInterval);
         closePromise = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.close", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
           try {
             if (pendingCommitFlushPromise !== null) await pendingCommitFlushPromise;

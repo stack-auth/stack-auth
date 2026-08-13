@@ -14,7 +14,7 @@ import { isBulldozerRequestAuthorized } from "./auth.js";
 import { declareBulldozerDatabase, type BulldozerDatabase } from "./databases/bulldozer/index.js";
 import { declareInMemoryLowLevelDatabase } from "./databases/low-level/implementations/in-memory.js";
 import { declareInstantAvailabilityLowLevelDatabase } from "./databases/low-level/implementations/instant-availability.js";
-import { declareLmdbLowLevelDatabase } from "./databases/low-level/implementations/lmdb.js";
+import { declareLmdbLowLevelDatabase, getLmdbDiagnostics } from "./databases/low-level/implementations/lmdb.js";
 import type { LowLevelDatabase } from "./databases/low-level/index.js";
 import { declarePiledriverDatabase, type PiledriverObject } from "./databases/piledriver/index.js";
 import "./load-env.js";
@@ -972,6 +972,7 @@ const app = new Elysia({ adapter: node() })
     }
   })
   .get("/health", () => ({ ok: true }))
+  .get("/diagnostics", () => getLmdbDiagnostics() ?? { available: false })
   .get("/v1/manual-transactions", ({ query }) => handler("list-manual-transactions", async () => {
     // Cross-instance export surface: backend pages this to back up refunds into Prisma.
     const { limit, cursor } = parseManualTransactionsListQuery(query);
