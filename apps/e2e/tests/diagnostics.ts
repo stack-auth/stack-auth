@@ -14,6 +14,7 @@ type WaitRecord = {
   durationMs: number,
   polls: number,
   completed: boolean,
+  sleepDurationMs?: number,
 };
 
 type RequestRecord = {
@@ -26,8 +27,18 @@ type RequestRecord = {
   status: number,
 };
 
+type BacklogRecord = {
+  pipeline: "email-outbox" | "external-db-sync",
+  pendingCount: number,
+  oldestPendingAgeMs: number | null,
+  sampledAtMs: number,
+};
+
 const waits: WaitRecord[] = [];
 const requests: RequestRecord[] = [];
+const backlogs: BacklogRecord[] = [];
+const fileStartedAt = performance.now();
+let totalConvergenceSleepMs = 0;
 
 export function isE2eDiagnosticsEnabled(): boolean {
   return enabled;
@@ -35,7 +46,16 @@ export function isE2eDiagnosticsEnabled(): boolean {
 
 export function recordConvergenceWait(record: WaitRecord): void {
   if (!enabled) return;
+  totalConvergenceSleepMs += record.sleepDurationMs ?? 0;
   waits.push({ ...record, file: expect.getState().testPath });
+}
+
+export function recordPipelineBacklog(record: Omit<BacklogRecord, "sampledAtMs">): void {
+  if (!enabled || backlogs.length >= 512) return;
+  backlogs.push({
+    ...record,
+    sampledAtMs: performance.timeOrigin + performance.now(),
+  });
 }
 
 export function recordClientRequest(record: RequestRecord): void {
@@ -49,6 +69,9 @@ export function flushE2eDiagnostics(): void {
   const testFileHash = createHash("sha256").update(testFile).digest("hex").slice(0, 16);
   const outputPath = join(runnerTemp, `hexclave-e2e-diagnostics-${pass}-${process.pid}-${threadId}-${testFileHash}.untracked.json`);
   mkdirSync(dirname(outputPath), { recursive: true });
+  const fileWallDurationMs = performance.now() - fileStartedAt;
+  const httpRequestDurationMs = requests.reduce((total, request) => total + request.durationMs, 0);
+  const convergenceSleepDurationMs = totalConvergenceSleepMs;
   writeFileSync(outputPath, JSON.stringify({
     pass,
     pid: process.pid,
@@ -56,5 +79,12 @@ export function flushE2eDiagnostics(): void {
     file: testFile,
     waits,
     requests,
+    backlogs,
+    summary: {
+      fileWallDurationMs,
+      httpRequestDurationMs,
+      convergenceSleepDurationMs,
+      residualDurationMs: fileWallDurationMs - httpRequestDurationMs - convergenceSleepDurationMs,
+    },
   }));
 }

@@ -18,6 +18,7 @@ export async function waitUntilReplicasHaveCaughtUp(primaryClient: Client, timeo
   const deadline = performance.now() + timeoutMs;
   const startedAt = performance.now();
   let polls = 0;
+  let sleepDurationMs = 0;
   while (true) {
     polls++;
     const behind = (await primaryClient.query<{ behind: number }>(
@@ -31,6 +32,7 @@ export async function waitUntilReplicasHaveCaughtUp(primaryClient: Client, timeo
           durationMs: performance.now() - startedAt,
           polls,
           completed: true,
+          sleepDurationMs,
         });
       }
       return;
@@ -42,10 +44,12 @@ export async function waitUntilReplicasHaveCaughtUp(primaryClient: Client, timeo
           durationMs: performance.now() - startedAt,
           polls,
           completed: false,
+          sleepDurationMs,
         });
       }
       throw new Error(`${behind} replica(s) did not replay up to ${target} within ${timeoutMs}ms`);
     }
     await wait(20);
+    sleepDurationMs += 20;
   }
 }

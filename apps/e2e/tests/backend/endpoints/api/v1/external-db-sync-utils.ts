@@ -1,8 +1,8 @@
 import { Client, ClientConfig } from 'pg';
 import { expect } from 'vitest';
 import { niceFetch, STACK_BACKEND_BASE_URL } from '../../../../helpers';
-import { InternalApiKey, Project } from '../../../backend-helpers';
-import { isE2eDiagnosticsEnabled, recordConvergenceWait } from '../../../../diagnostics';
+import { InternalApiKey, Project, niceBackendFetch, withInternalProject } from '../../../backend-helpers';
+import { isE2eDiagnosticsEnabled, recordConvergenceWait, recordPipelineBacklog } from '../../../../diagnostics';
 
 
 const PORT_PREFIX = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || '81';
@@ -11,6 +11,52 @@ export const POSTGRES_USER = process.env.EXTERNAL_DB_TEST_USER || 'postgres';
 export const POSTGRES_PASSWORD = process.env.EXTERNAL_DB_TEST_PASSWORD || 'PASSWORD-PLACEHOLDER--uqfEC1hmmv';
 export const TEST_TIMEOUT = 240000;
 export const HIGH_VOLUME_TIMEOUT = 600000; // 10 minutes for 1500+ users
+
+let lastExternalDbSyncBacklogSampleAt = Number.NEGATIVE_INFINITY;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+async function sampleExternalDbSyncBacklog(): Promise<void> {
+  if (!isE2eDiagnosticsEnabled()) return;
+  const now = performance.now();
+  if (now - lastExternalDbSyncBacklogSampleAt < 5_000) return;
+  lastExternalDbSyncBacklogSampleAt = now;
+
+  try {
+    await withInternalProject(async () => {
+      const response = await niceBackendFetch("/api/latest/internal/external-db-sync/status?scope=all", {
+        method: "GET",
+        accessType: "admin",
+      });
+      if (!isRecord(response.body)) return;
+      const global = response.body.global;
+      if (!isRecord(global) || !isRecord(global.poller)) return;
+      const pendingCount = readFiniteNumber(global.poller.pending);
+      const oldestCreatedAtMs = readFiniteNumber(global.poller.oldest_created_at_millis);
+      if (pendingCount === null) return;
+      recordPipelineBacklog({
+        pipeline: "external-db-sync",
+        pendingCount,
+        oldestPendingAgeMs: oldestCreatedAtMs === null
+          ? null
+          : performance.timeOrigin + performance.now() - oldestCreatedAtMs,
+      });
+    });
+  } catch (error) {
+    console.warn("Failed to sample external DB sync backlog diagnostics", error);
+  }
+}
 
 // Connection settings to prevent connection leaks
 const CLIENT_CONFIG: Partial<ClientConfig> = {
@@ -130,9 +176,11 @@ export async function waitForCondition(
   const { timeoutMs = 10000, intervalMs = 100, description = 'condition' } = options;
   const startTime = performance.now();
   let polls = 0;
+  let sleepDurationMs = 0;
 
   while (performance.now() - startTime < timeoutMs) {
     polls++;
+    await sampleExternalDbSyncBacklog();
     try {
       if (await checkFn()) {
         if (isE2eDiagnosticsEnabled()) {
@@ -141,6 +189,7 @@ export async function waitForCondition(
             durationMs: performance.now() - startTime,
             polls,
             completed: true,
+            sleepDurationMs,
           });
         }
         return;
@@ -150,11 +199,13 @@ export async function waitForCondition(
       if (err?.code === '57P01' || err?.code === '08006' || err?.code === '53300') {
         // Connection terminated, connection failure, or too many clients
         await new Promise(r => setTimeout(r, intervalMs));
+        sleepDurationMs += intervalMs;
         continue;
       }
       throw err;
     }
     await new Promise(r => setTimeout(r, intervalMs));
+    sleepDurationMs += intervalMs;
   }
 
   if (isE2eDiagnosticsEnabled()) {
@@ -163,6 +214,7 @@ export async function waitForCondition(
       durationMs: performance.now() - startTime,
       polls,
       completed: false,
+      sleepDurationMs,
     });
   }
   throw new Error(`Timeout waiting for ${description} after ${timeoutMs}ms`);

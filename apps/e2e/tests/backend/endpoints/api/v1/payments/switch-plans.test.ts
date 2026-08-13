@@ -11,6 +11,7 @@ import { isE2eDiagnosticsEnabled, recordConvergenceWait } from "../../../../../d
 // subscription shows up before exercising flows that depend on it.
 async function waitForActiveSubscription(userId: string, productId: string) {
   const startedAt = performance.now();
+  let sleepDurationMs = 0;
   for (let i = 0; i < 30; i++) {
     const res = await niceBackendFetch(`/api/latest/payments/products/user/${userId}`, {
       accessType: "client",
@@ -26,11 +27,13 @@ async function waitForActiveSubscription(userId: string, productId: string) {
           durationMs: performance.now() - startedAt,
           polls: i + 1,
           completed: true,
+          sleepDurationMs,
         });
       }
       return;
     }
     await wait(500);
+    sleepDurationMs += 500;
   }
   if (isE2eDiagnosticsEnabled()) {
     recordConvergenceWait({
@@ -38,6 +41,7 @@ async function waitForActiveSubscription(userId: string, productId: string) {
       durationMs: performance.now() - startedAt,
       polls: 30,
       completed: false,
+      sleepDurationMs,
     });
   }
   throw new Error(`Subscription for product ${productId} never became visible for user ${userId}`);

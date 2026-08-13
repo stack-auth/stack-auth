@@ -14,7 +14,7 @@ import { createHash, createHmac, randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import { Context, Mailbox, NiceRequestInit, NiceResponse, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_ID, STACK_INTERNAL_PROJECT_SERVER_KEY, STACK_SVIX_SERVER_URL, generatedEmailSuffix, localRedirectUrl, niceFetch, updateCookiesFromResponse } from "../helpers";
 import { localhostUrl, withPortPrefix } from "../helpers/ports";
-import { isE2eDiagnosticsEnabled, recordClientRequest, recordConvergenceWait } from "../diagnostics";
+import { isE2eDiagnosticsEnabled, recordClientRequest, recordConvergenceWait, recordPipelineBacklog } from "../diagnostics";
 
 type BackendContext = {
   readonly projectKeys: ProjectKeys,
@@ -277,6 +277,7 @@ export async function bumpEmailAddress(options: { unindexed?: boolean } = {}) {
 // Type for outbox email items (simplified - full type is EmailOutboxCrud["Server"]["Read"])
 export type OutboxEmail = {
   id: string,
+  created_at_millis?: number,
   subject?: string,
   status: string,
   simple_status: string,
@@ -288,8 +289,55 @@ export type OutboxEmail = {
   [key: string]: unknown,
 };
 
+let lastEmailOutboxBacklogSampleAt = Number.NEGATIVE_INFINITY;
+
+async function sampleEmailOutboxBacklog(): Promise<void> {
+  if (!isE2eDiagnosticsEnabled()) return;
+  const now = performance.now();
+  if (now - lastEmailOutboxBacklogSampleAt < 5_000) return;
+  lastEmailOutboxBacklogSampleAt = now;
+
+  try {
+    let cursor: string | undefined;
+    let pendingCount = 0;
+    let oldestPendingCreatedAt: number | null = null;
+    for (let page = 0; page < 100; page++) {
+      const url = new URL("/api/v1/emails/outbox", STACK_BACKEND_BASE_URL);
+      url.searchParams.set("simple_status", "in-progress");
+      url.searchParams.set("limit", "100");
+      if (cursor !== undefined) url.searchParams.set("cursor", cursor);
+      const response = await niceBackendFetch(url, {
+        method: "GET",
+        accessType: "server",
+      });
+      const items: OutboxEmail[] = response.body.items;
+      pendingCount += items.length;
+      for (const item of items) {
+        if (typeof item.created_at_millis === "number") {
+          oldestPendingCreatedAt = oldestPendingCreatedAt === null
+            ? item.created_at_millis
+            : Math.min(oldestPendingCreatedAt, item.created_at_millis);
+        }
+      }
+      const nextCursor = response.body.pagination?.next_cursor;
+      if (typeof nextCursor !== "string" || nextCursor.length === 0) break;
+      cursor = nextCursor;
+    }
+    recordPipelineBacklog({
+      pipeline: "email-outbox",
+      pendingCount,
+      oldestPendingAgeMs: oldestPendingCreatedAt === null
+        ? null
+        : performance.timeOrigin + performance.now() - oldestPendingCreatedAt,
+    });
+  } catch (error) {
+    console.warn("Failed to sample email outbox backlog diagnostics", error);
+  }
+}
+
 // Helper to get emails from the outbox, filtered by subject if provided
 export async function getOutboxEmails(options?: { subject?: string }): Promise<OutboxEmail[]> {
+  await sampleEmailOutboxBacklog();
   const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
     method: "GET",
     accessType: "server",
@@ -307,20 +355,22 @@ export async function getOutboxEmails(options?: { subject?: string }): Promise<O
 export async function waitForOutboxEmailWithStatus(subject: string, status: string): Promise<OutboxEmail[]> {
   const maxRetries = 24;
   let emails: OutboxEmail[] = [];
+  let sleepDurationMs = 0;
   const startedAt = isE2eDiagnosticsEnabled() ? performance.now() : 0;
   for (let i = 0; i < maxRetries; i++) {
     emails = await getOutboxEmails({ subject });
     // Check the most recent email (first in the list due to createdAt desc ordering)
     if (emails.length > 0 && emails[0].status === status) {
       if (isE2eDiagnosticsEnabled()) {
-        recordConvergenceWait({ name: "outbox-email-status", durationMs: performance.now() - startedAt, polls: i + 1, completed: true });
+        recordConvergenceWait({ name: "outbox-email-status", durationMs: performance.now() - startedAt, polls: i + 1, completed: true, sleepDurationMs });
       }
       return emails;
     }
     await wait(500);
+    sleepDurationMs += 500;
   }
   if (isE2eDiagnosticsEnabled()) {
-    recordConvergenceWait({ name: "outbox-email-status", durationMs: performance.now() - startedAt, polls: maxRetries, completed: false });
+    recordConvergenceWait({ name: "outbox-email-status", durationMs: performance.now() - startedAt, polls: maxRetries, completed: false, sleepDurationMs });
   }
   throw new HexclaveAssertionError(
     `Timeout waiting for outbox email with subject "${subject}" and status "${status}"`,
@@ -1386,6 +1436,7 @@ async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<v
   const startedAt = performance.now();
   const deadline = startedAt + timeoutMs;
   let polls = 0;
+  let sleepDurationMs = 0;
   const recordWait = (completed: boolean) => {
     if (isE2eDiagnosticsEnabled()) {
       recordConvergenceWait({
@@ -1393,6 +1444,7 @@ async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<v
         durationMs: performance.now() - startedAt,
         polls,
         completed,
+        sleepDurationMs,
       });
     }
   };
@@ -1452,7 +1504,9 @@ async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<v
       return;
     }
 
-    await wait(Math.min(pollIntervalMs, remainingAfterPollMs));
+    const sleepMs = Math.min(pollIntervalMs, remainingAfterPollMs);
+    await wait(sleepMs);
+    sleepDurationMs += sleepMs;
   }
 }
 
