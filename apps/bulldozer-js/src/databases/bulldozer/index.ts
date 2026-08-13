@@ -900,6 +900,7 @@ export type BulldozerDatabase = {
   collectPiledriverGarbage(cutoffTimestampMillis: number, maxObjects?: number): Promise<PiledriverGarbageCollectionResult>,
   close(): Promise<void>,
   applyRemainingMigrations(): Promise<{ seq: DatabaseSeq }>,
+  debugWriteLockStats?(): { heldMs: number, waitMs: number, acquisitions: number },
 };
 
 type BulldozerDatabaseRootSerialized = {
@@ -920,16 +921,24 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
   const tablesState = createTablesStateFromMigrations(options.migrations);
   let currentOperation: Promise<unknown> | null = null;
   let closePromise: Promise<void> | null = null;
+  let writeLockHeldMs = 0;
+  let writeLockWaitMs = 0;
+  let writeLockAcquisitions = 0;
 
   const withWriteLock = async <T>(operation: () => Promise<T>): Promise<T> => {
+    const waitStartedAt = performance.now();
     while (currentOperation !== null) {
       await currentOperation.catch(() => {});
     }
+    writeLockWaitMs += performance.now() - waitStartedAt;
+    writeLockAcquisitions++;
     const operationPromise = Promise.resolve().then(operation);
     currentOperation = operationPromise;
+    const heldStartedAt = performance.now();
     try {
       return await operationPromise;
     } finally {
+      writeLockHeldMs += performance.now() - heldStartedAt;
       if (currentOperation === operationPromise) currentOperation = null;
     }
   };
@@ -1025,6 +1034,7 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
         closePromise,
       };
     },
+    debugWriteLockStats: () => ({ heldMs: writeLockHeldMs, waitMs: writeLockWaitMs, acquisitions: writeLockAcquisitions }),
     listTables: () => Object.entries(tablesState.tables).map(([tableId, tableState]) => ({
       tableId,
       inputTableIds: { ...tableState.inputTableIds },

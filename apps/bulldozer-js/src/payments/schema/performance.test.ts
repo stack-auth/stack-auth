@@ -4,6 +4,7 @@ import { declareInstantAvailabilityLowLevelDatabase } from "../../databases/low-
 import { declareLmdbLowLevelDatabase } from "../../databases/low-level/implementations/lmdb.js";
 import { declareBulldozerDatabase } from "../../databases/bulldozer/index.js";
 import { declareBasePiledriverDatabase } from "../../databases/piledriver/implementations/base.js";
+import { declareBufferedPiledriverDatabase } from "../../databases/piledriver/implementations/buffered.js";
 import { declareInMemoryPiledriverDatabase } from "../../databases/piledriver/implementations/in-memory.js";
 import type { PiledriverObject } from "../../databases/piledriver/index.js";
 import { createPaymentsSchema } from "./index.js";
@@ -12,7 +13,18 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-type Metric = { name: string, count: number, elapsedMs: number, opsPerSecond: number };
+type LockStats = { heldMs: number, waitMs: number, acquisitions: number };
+type Metric = {
+  name: string,
+  count: number,
+  elapsedMs: number,
+  opsPerSecond: number,
+  lockHeldMs: number,
+  lockWaitMs: number,
+  lockAcquisitions: number,
+  lockOccupancy: number,
+};
+type LockStatsDatabase = { debugWriteLockStats?(): LockStats };
 type Snapshot = Awaited<ReturnType<ReturnType<typeof declareBulldozerDatabase>["getSnapshot"]>>["snapshot"];
 
 const USER_COUNT = 6;
@@ -29,6 +41,10 @@ const MONTH_MS = 2_592_000_000;
 const tempPaths: string[] = [];
 const databases: Array<ReturnType<typeof declareBulldozerDatabase>> = [];
 const perfBackend = process.env.BULLDOZER_PAYMENTS_PERF_BACKEND ?? "lmdb-instant";
+const bufferThrottleMsValue = process.env.BULLDOZER_PAYMENTS_PERF_BUFFER_THROTTLE_MS ?? "200";
+if (!/^\d+$/.test(bufferThrottleMsValue)) throw new Error("BULLDOZER_PAYMENTS_PERF_BUFFER_THROTTLE_MS must be a non-negative integer");
+const BUFFER_THROTTLE_MS = Number(bufferThrottleMsValue);
+if (!Number.isSafeInteger(BUFFER_THROTTLE_MS)) throw new Error("BULLDOZER_PAYMENTS_PERF_BUFFER_THROTTLE_MS must be a non-negative integer");
 
 const product = (includedItems: ProductSnapshot["includedItems"]): ProductSnapshot => ({
   displayName: "Perf Product",
@@ -96,23 +112,47 @@ const rows = async (snapshot: Snapshot, tableId: string, groupKey: PiledriverObj
   for await (const row of snapshot.listRowsInGroup({ tableId, groupKey, range: {} })) result.push(row);
   return result;
 };
-const measure = async <T>(metrics: Metric[], name: string, count: number, operation: () => Promise<T>) => {
+const emptyLockStats = (): LockStats => ({ heldMs: 0, waitMs: 0, acquisitions: 0 });
+const measure = async <T>(
+  metrics: Metric[],
+  name: string,
+  count: number,
+  operation: () => Promise<T>,
+  db?: LockStatsDatabase | (() => LockStatsDatabase | undefined),
+) => {
+  const getLockStats = () => (typeof db === "function" ? db() : db)?.debugWriteLockStats?.() ?? emptyLockStats();
+  const before = getLockStats();
   const start = performance.now();
   const value = await operation();
   const elapsedMs = performance.now() - start;
   const opsPerSecond = count / elapsedMs * 1_000;
-  metrics.push({ name, count, elapsedMs, opsPerSecond });
+  const after = getLockStats();
+  const lockHeldMs = after.heldMs - before.heldMs;
+  const lockWaitMs = after.waitMs - before.waitMs;
+  const lockAcquisitions = after.acquisitions - before.acquisitions;
+  const lockOccupancy = elapsedMs === 0 ? 0 : lockHeldMs / elapsedMs;
+  metrics.push({ name, count, elapsedMs, opsPerSecond, lockHeldMs, lockWaitMs, lockAcquisitions, lockOccupancy });
   process.stdout.write(`\n[bulldozer-payments-schema-perf-js] ${name}: ${elapsedMs.toFixed(1)} ms (${count} ops, ${opsPerSecond.toFixed(2)} ops/s)\n`);
   return value;
 };
 const newPiledriverDb = () => {
   if (perfBackend === "piledriver-in-memory") return declareInMemoryPiledriverDatabase(crypto.randomUUID());
+  if (perfBackend === "buffered-piledriver-in-memory") {
+    return declareBufferedPiledriverDatabase(declareInMemoryPiledriverDatabase(crypto.randomUUID()), { throttleMs: BUFFER_THROTTLE_MS });
+  }
   if (perfBackend === "lmdb" || perfBackend === "lmdb-instant") {
     const path = mkdtempSync(join(tmpdir(), "bulldozer-payments-schema-perf-"));
     tempPaths.push(path);
     const lmdb = declareLmdbLowLevelDatabase({ path, dbId: crypto.randomUUID() });
     const lowLevel = perfBackend === "lmdb-instant" ? declareInstantAvailabilityLowLevelDatabase(lmdb) : lmdb;
     return declareBasePiledriverDatabase(lowLevel);
+  }
+  if (perfBackend === "buffered-lmdb-instant" || perfBackend === "buffered-lmdb") {
+    const path = mkdtempSync(join(tmpdir(), "bulldozer-payments-schema-perf-"));
+    tempPaths.push(path);
+    const lmdb = declareLmdbLowLevelDatabase({ path, dbId: crypto.randomUUID() });
+    const lowLevel = perfBackend === "buffered-lmdb-instant" ? declareInstantAvailabilityLowLevelDatabase(lmdb) : lmdb;
+    return declareBufferedPiledriverDatabase(declareBasePiledriverDatabase(lowLevel), { throttleMs: BUFFER_THROTTLE_MS });
   }
   return declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
 };
@@ -128,8 +168,13 @@ describe("payments schema performance", () => {
   it("runs the comparable schema workload", { timeout: 600_000 }, async () => {
     const metrics: Metric[] = [];
     let initialized!: Awaited<ReturnType<typeof newPaymentsDb>>;
+    let initializedDb: ReturnType<typeof declareBulldozerDatabase> | undefined;
 
-    initialized = await measure(metrics, "initialize schema", 1, newPaymentsDb);
+    initialized = await measure(metrics, "initialize schema", 1, async () => {
+      const result = await newPaymentsDb();
+      initializedDb = result.db;
+      return result;
+    }, () => initializedDb);
     const { db, schema } = initialized;
 
     await measure(metrics, "prefill baseline rows", PREFILL_SOURCE_FACT_COUNT, async () => {
@@ -144,19 +189,19 @@ describe("payments schema performance", () => {
           }));
         }
       }
-    });
+    }, () => db);
 
     await measure(metrics, "write subscriptions", USER_COUNT, async () => {
       for (let i = 0; i < USER_COUNT; i++) {
         await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.subscriptions, rowIdentifier: `sub-${i}`, newRowData: subscription(i) as unknown as PiledriverObject }));
       }
-    });
+    }, () => db);
 
     await measure(metrics, "write one-time purchases", USER_COUNT, async () => {
       for (let i = 0; i < USER_COUNT; i++) {
         await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.oneTimePurchases, rowIdentifier: `otp-${i}`, newRowData: oneTimePurchase(i) as unknown as PiledriverObject }));
       }
-    });
+    }, () => db);
 
     await measure(metrics, "write manual item quantity changes", USER_COUNT * ITEM_UPDATES_PER_USER, async () => {
       for (let userIndex = 0; userIndex < USER_COUNT; userIndex++) {
@@ -168,22 +213,22 @@ describe("payments schema performance", () => {
           }));
         }
       }
-    });
+    }, () => db);
 
     const { snapshot } = await db.getSnapshot();
     await measure(metrics, "read owned products", USER_COUNT, async () => {
       for (let i = 0; i < USER_COUNT; i++) await rows(snapshot, schema.ownedProducts, customerGroup(i));
-    });
+    }, () => db);
     await measure(metrics, "read item quantities", USER_COUNT * 3, async () => {
       for (let i = 0; i < USER_COUNT; i++) {
         for (const _itemId of ["credits", "coins", "seats"]) await rows(snapshot, schema.itemQuantities, customerGroup(i));
       }
-    });
+    }, () => db);
     const transactionRows = await measure(metrics, "read transactions", USER_COUNT, async () => {
       let count = 0;
       for (let i = 0; i < USER_COUNT; i++) count += (await rows(snapshot, schema.transactions, customerGroup(i))).length;
       return count;
-    });
+    }, () => db);
 
     expect(transactionRows).toBe(USER_COUNT * (2 + ITEM_UPDATES_PER_USER));
     const summary = { engine: "bulldozer-js", backend: perfBackend, users: USER_COUNT, prefillUsers: PREFILL_USER_COUNT, prefillSourceFacts: PREFILL_SOURCE_FACT_COUNT, transactions: transactionRows, metrics };
@@ -225,12 +270,12 @@ describe("transactions listing performance", () => {
     const metrics: Metric[] = [];
     const { db, schema } = await newPaymentsDb();
 
-    await measure(metrics, "fill tenancy (small)", SMALL_TXN_COUNT, async () => await fillTenancy(db, schema, 0, SMALL_TXN_COUNT));
-    const smallFirstPage = await measure(metrics, "first page @ small total", PAGE_SIZE, async () => await readFirstPage((await db.getSnapshot()).snapshot, schema));
+    await measure(metrics, "fill tenancy (small)", SMALL_TXN_COUNT, async () => await fillTenancy(db, schema, 0, SMALL_TXN_COUNT), () => db);
+    const smallFirstPage = await measure(metrics, "first page @ small total", PAGE_SIZE, async () => await readFirstPage((await db.getSnapshot()).snapshot, schema), () => db);
     const smallPageMs = metrics.at(-1)!.elapsedMs;
 
-    await measure(metrics, "fill tenancy (grow to large)", LARGE_TXN_COUNT - SMALL_TXN_COUNT, async () => await fillTenancy(db, schema, SMALL_TXN_COUNT, LARGE_TXN_COUNT));
-    const largeFirstPage = await measure(metrics, "first page @ large total", PAGE_SIZE, async () => await readFirstPage((await db.getSnapshot()).snapshot, schema));
+    await measure(metrics, "fill tenancy (grow to large)", LARGE_TXN_COUNT - SMALL_TXN_COUNT, async () => await fillTenancy(db, schema, SMALL_TXN_COUNT, LARGE_TXN_COUNT), () => db);
+    const largeFirstPage = await measure(metrics, "first page @ large total", PAGE_SIZE, async () => await readFirstPage((await db.getSnapshot()).snapshot, schema), () => db);
     const largePageMs = metrics.at(-1)!.elapsedMs;
 
     // A page is always ~PAGE_SIZE rows regardless of how big the tenancy got.
