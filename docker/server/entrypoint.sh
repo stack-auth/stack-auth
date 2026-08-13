@@ -166,6 +166,8 @@ mkdir -p "$WORK_DIR"
 SENTINEL_MARKER="$WORK_DIR/.stack-sentinels-replaced"
 sentinel_env_vars=""
 sentinel_fingerprint=""
+# Keep this list explicit: these values are required by the bundled dashboard,
+# while other discovered sentinels intentionally remain optional at runtime.
 required_sentinel_env_vars="NEXT_PUBLIC_STACK_PROJECT_ID NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY NEXT_PUBLIC_STACK_API_URL NEXT_PUBLIC_SERVER_STACK_API_URL NEXT_PUBLIC_STACK_DASHBOARD_URL NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL USE_INLINE_ENV_VARS"
 rebuild_runtime_tree() {
   if [ "$WORK_DIR" = "/app" ]; then
@@ -177,17 +179,15 @@ rebuild_runtime_tree() {
   rm -f "$SENTINEL_MARKER"
 }
 sentinel_values_are_replaced() {
-  local _env_var _value _sentinel
+  local _env_var _value _sentinel _pattern=""
   for _env_var in $sentinel_env_vars; do
     _value="${!_env_var:-}"
     if [ -n "$_value" ]; then
       _sentinel="STACK_ENV_VAR_SENTINEL_$_env_var"
-      if grep -rl "$_sentinel" "$WORK_DIR/apps" >/dev/null 2>&1; then
-        return 1
-      fi
+      _pattern="${_pattern:+$_pattern|}$_sentinel"
     fi
   done
-  return 0
+  [ -z "$_pattern" ] || ! grep -rl -E "$_pattern" "$WORK_DIR/apps" >/dev/null 2>&1
 }
 if [ -f "$SENTINEL_MARKER" ]; then
   stored_sentinel_fingerprint=$(sed -n '1p' "$SENTINEL_MARKER")
@@ -274,7 +274,7 @@ if [ ! -f "$SENTINEL_MARKER" ]; then
   for env_var in $required_sentinel_env_vars; do
     value="${!env_var:-}"
     if [ -z "$value" ]; then
-      echo "ERROR: Required sentinel environment variable $env_var is unset; refusing to start with an unreplaced dashboard value." >&2
+      echo "ERROR: Required sentinel environment variable $env_var is unset; set it in the self-host environment file before starting the server." >&2
       exit 1
     fi
   done
