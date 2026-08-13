@@ -29,4 +29,21 @@ describe("global error recovery", () => {
     vi.advanceTimersByTime(GLOBAL_ERROR_RECOVERY_WINDOW_MS + 1);
     expect(recordGlobalErrorRecoveryAttempt()).toBe(true);
   });
+
+  it("allows a fresh attempt when the stored timestamp is in the future", () => {
+    vi.useFakeTimers();
+    const now = performance.timeOrigin + performance.now();
+    window.sessionStorage.setItem(
+      GLOBAL_ERROR_RECOVERY_ATTEMPTS_KEY,
+      JSON.stringify({
+        attempts: MAX_GLOBAL_ERROR_RECOVERY_ATTEMPTS,
+        lastAttemptAt: now + GLOBAL_ERROR_RECOVERY_WINDOW_MS,
+      }),
+    );
+
+    expect(recordGlobalErrorRecoveryAttempt()).toBe(true);
+    expect(JSON.parse(window.sessionStorage.getItem(GLOBAL_ERROR_RECOVERY_ATTEMPTS_KEY) ?? "{}")).toMatchObject({
+      attempts: 1,
+    });
+  });
 });

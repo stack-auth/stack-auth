@@ -2,19 +2,22 @@
 
 import * as Sentry from "@sentry/nextjs";
 import { recordGlobalErrorRecoveryAttempt } from "./global-error-recovery";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 type GlobalErrorProps = {
   error: Error & { digest?: string };
 };
 
 export default function GlobalError({ error }: GlobalErrorProps) {
+  const recoveryAttemptRecorded = useRef<boolean | null>(null);
+
   useEffect(() => {
     Sentry.captureException(error);
   }, [error]);
 
   useEffect(() => {
-    if (!recordGlobalErrorRecoveryAttempt()) {
+    recoveryAttemptRecorded.current ??= recordGlobalErrorRecoveryAttempt();
+    if (!recoveryAttemptRecorded.current) {
       return;
     }
     let cancelled = false;

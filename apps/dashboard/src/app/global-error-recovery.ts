@@ -27,8 +27,12 @@ function getRecoveryState(): RecoveryState | null {
         return { attempts, lastAttemptAt };
       }
     }
-  } catch {
-    // Invalid state is treated as a fresh recovery window.
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      // Invalid state is treated as a fresh recovery window.
+      return null;
+    }
+    throw error;
   }
   return null;
 }
@@ -36,7 +40,9 @@ function getRecoveryState(): RecoveryState | null {
 export function recordGlobalErrorRecoveryAttempt(): boolean {
   const now = performance.timeOrigin + performance.now();
   const state = getRecoveryState();
-  const attempts = state !== null && now - state.lastAttemptAt <= GLOBAL_ERROR_RECOVERY_WINDOW_MS
+  const attempts = state !== null
+    && now >= state.lastAttemptAt
+    && now - state.lastAttemptAt <= GLOBAL_ERROR_RECOVERY_WINDOW_MS
     ? state.attempts
     : 0;
   if (attempts >= MAX_GLOBAL_ERROR_RECOVERY_ATTEMPTS) {
