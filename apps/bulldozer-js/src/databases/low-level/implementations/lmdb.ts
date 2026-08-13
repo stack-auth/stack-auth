@@ -1,4 +1,5 @@
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { createUuidV7Generator } from "@hexclave/shared/dist/utils/uuids";
 import * as lmdb from "lmdb";
@@ -278,7 +279,14 @@ export function declareLmdbLowLevelDatabase(options: {
     const now = performance.now();
     const elapsedMs = now - activityWindowStartedAt;
     const elapsedSeconds = elapsedMs / 1000;
-    const storeSizeBytes = bulldozerDiagnosticsEnabled ? getStoreSizeBytes(options.path) : undefined;
+    let storeSizeBytes: number | undefined;
+    if (bulldozerDiagnosticsEnabled) {
+      try {
+        storeSizeBytes = getStoreSizeBytes(options.path);
+      } catch (error) {
+        captureError("bulldozer-js:lmdb-diagnostics-store-size", error);
+      }
+    }
     const diagnostics: LmdbDiagnostics = {
       dbId,
       ...(storeSizeBytes === undefined ? {} : { storeSizeBytes }),
