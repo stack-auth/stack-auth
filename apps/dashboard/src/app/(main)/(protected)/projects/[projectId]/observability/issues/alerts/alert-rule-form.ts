@@ -1,3 +1,7 @@
+import {
+  DEFAULT_ISSUE_ALERT_EMAIL_HTML,
+  DEFAULT_ISSUE_ALERT_EMAIL_SUBJECT,
+} from "./issue-alert-email-template";
 import type {
   IssueAlertConditionGroup,
   IssueAlertPredicate,
@@ -33,8 +37,8 @@ export const DEFAULT_ALERT_RULE_DRAFT: AlertRuleDraft = {
   frequencyWindowSeconds: "300",
   cooldownDurationSeconds: "3600",
   cooldownKeyBy: "issue",
-  subject: "Hexclave issue alert",
-  html: "<p>An issue alert was triggered.</p>",
+  subject: DEFAULT_ISSUE_ALERT_EMAIL_SUBJECT,
+  html: DEFAULT_ISSUE_ALERT_EMAIL_HTML,
   notificationCategoryName: "",
   userIds: [],
   enabled: true,
@@ -177,9 +181,17 @@ type BuildRuleResult =
   | { status: "ok", rule: IssueAlertRulePayload }
   | { status: "error", message: string };
 
-function boundedText(value: string, field: string, maxBytes: number): string | null {
+function boundedText(
+  value: string,
+  field: string,
+  maxBytes: number,
+  options?: { allowHtmlWhitespace?: boolean },
+): string | null {
   if (value.length === 0) return `${field} is required`;
-  if (/[\u0000-\u001f\u007f]/u.test(value)) return `${field} contains unsupported control characters`;
+  const controlPattern = options?.allowHtmlWhitespace === true
+    ? /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u
+    : /[\u0000-\u001f\u007f]/u;
+  if (controlPattern.test(value)) return `${field} contains unsupported control characters`;
   if (new TextEncoder().encode(value).byteLength > maxBytes) return `${field} is too long`;
   return null;
 }
@@ -219,14 +231,14 @@ export function buildIssueAlertRule(
     if (integrationFormatError != null) return { status: "error", message: integrationFormatError };
     action = { type: "webhook", integrationId };
   } else {
-    if (draft.userIds.length === 0) return { status: "error", message: "Choose at least one project user to receive the email." };
-    if (draft.userIds.some((userId) => userId.trim() === "")) return { status: "error", message: "Recipients must be valid project user IDs." };
+    if (draft.userIds.length === 0) return { status: "error", message: "Choose at least one team member to receive the email." };
+    if (draft.userIds.some((userId) => userId.trim() === "")) return { status: "error", message: "Recipients must be valid team member IDs." };
 
     const subject = draft.subject.trim();
     const html = draft.html.trim();
     const subjectError = boundedText(subject, "Subject", 16 * 1024);
     if (subjectError != null) return { status: "error", message: subjectError };
-    const htmlError = boundedText(html, "HTML body", 16 * 1024);
+    const htmlError = boundedText(html, "HTML body", 16 * 1024, { allowHtmlWhitespace: true });
     if (htmlError != null) return { status: "error", message: htmlError };
     const category = draft.notificationCategoryName.trim();
     if (category !== "") {

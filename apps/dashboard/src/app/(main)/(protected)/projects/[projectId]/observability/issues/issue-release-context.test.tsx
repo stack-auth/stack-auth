@@ -31,9 +31,10 @@ const detail = IssueDetailResponseSchema.validateSync({
 afterEach(() => cleanup());
 
 describe("IssueReleaseContextSection", () => {
-  it("makes a missing release graph explicit", () => {
+  it("uses one compact state for a missing release graph", () => {
     render(<IssueReleaseContextSection context={detail.release_context} />);
-    expect(screen.getByText("No release context")).toBeTruthy();
+    expect(screen.getByText("No release context is retained for this issue in the current project and branch.")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("renders bounded release, deployment, and suspect-commit context", () => {

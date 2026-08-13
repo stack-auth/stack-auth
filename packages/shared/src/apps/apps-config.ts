@@ -193,17 +193,19 @@ export const ALL_APPS = {
     stage: "stable",
     softRequirements: [],
   },
-  "warehouse": {
-    displayName: "Warehouse",
-    subtitle: "Explore your project's data with tables and SQL queries",
-    tags: ["developers", "operations", "storage"],
-    stage: "stable",
-  },
   "observability": {
     displayName: "Observability",
     subtitle: "Investigate errors, logs, traces, and service performance",
     tags: ["developers", "operations"],
     stage: "alpha",
+    softRequirements: [],
+  },
+  "warehouse": {
+    displayName: "Warehouse",
+    subtitle: "Explore your project's data with tables and SQL queries",
+    tags: ["developers", "operations", "storage"],
+    stage: "stable",
+    softRequirements: [],
   },
   "clickmaps": {
     displayName: "Clickmaps",

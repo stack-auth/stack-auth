@@ -6,11 +6,13 @@ import { cn } from "@/lib/utils";
 import { ArrowRightIcon, CaretRightIcon, ChartLineIcon, ClockIcon, KeyboardIcon, LinkSimpleIcon, StackIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  eventMatchesHighlight,
   formatDuration,
   getTraceScaleEnd,
   isSystemSpanType,
   panViewWindow,
   spanHasError,
+  spanIdsToExpandForHighlight,
   traceErrorCount,
   traceSignalSpanIds,
   traceSpanDisplayName,
@@ -18,6 +20,7 @@ import {
   type EventInput,
   type SpanInput,
   type Trace,
+  type TraceEventHighlight,
   type TraceNode,
   type ViewWindow,
   type WaterfallRow,
@@ -247,6 +250,29 @@ export function shouldShowCollapseControl(mode: "signal" | "all", hasChildren: b
   return mode === "all" && hasChildren;
 }
 
+export function waterfallRowMatchesHighlight(row: TraceWaterfallRow, highlight: TraceEventHighlight): boolean {
+  if (row.kind === "span") {
+    return highlight.eventType == null
+      && highlight.eventAtMs == null
+      && highlight.spanId != null
+      && row.node.span.id === highlight.spanId;
+  }
+  if (row.kind === "event") {
+    return eventMatchesHighlight(row.event, highlight);
+  }
+  return false;
+}
+
+export function findHighlightedRowIndex(
+  rows: readonly TraceWaterfallRow[],
+  highlight: TraceEventHighlight,
+): number | null {
+  const index = rows.findIndex((row) => waterfallRowMatchesHighlight(row, highlight));
+  return index < 0 ? null : index;
+}
+
+const HIGHLIGHT_ROW_CLASSES = "bg-cyan-500/10 ring-1 ring-inset ring-cyan-500/35";
+
 function TimelineGridlines() {
   return (
     <>
@@ -290,6 +316,7 @@ export function TraceWaterfall({
   needle,
   unattachedEventCount,
   links,
+  highlight = null,
   onSelectSpan,
   onSelectEvent,
   onOpenLink,
@@ -312,6 +339,12 @@ export function TraceWaterfall({
   unattachedEventCount: number,
   /** Non-hierarchical edges, rendered directly beneath their owner spans. */
   links: readonly TraceWaterfallLink[],
+  /**
+   * Deep-link / click selection. A custom event that inherited its enclosing
+   * span (no `root: true`) is identified by that span plus the event's type
+   * and epoch-ms — product events have no durable id of their own.
+   */
+  highlight?: TraceEventHighlight | null,
   onSelectSpan: (span: SpanInput) => void,
   onSelectEvent: (event: EventInput) => void,
   onOpenLink: (link: TraceWaterfallLink) => void,
@@ -396,6 +429,50 @@ export function TraceWaterfall({
     setMode("signal");
     setCollapsedSpanIds(defaultCollapsedSpanIds(trace.root));
   }, [rootSpanId, trace.root]);
+
+  const highlightSpanId = highlight?.spanId ?? null;
+  const highlightEventType = highlight?.eventType ?? null;
+  const highlightEventAtMs = highlight?.eventAtMs ?? null;
+  const activeHighlight = useMemo((): TraceEventHighlight | null => {
+    if (highlightSpanId == null && highlightEventType == null && highlightEventAtMs == null) return null;
+    return { spanId: highlightSpanId, eventType: highlightEventType, eventAtMs: highlightEventAtMs };
+  }, [highlightEventAtMs, highlightEventType, highlightSpanId]);
+  const highlightedRowIndex = activeHighlight == null ? null : findHighlightedRowIndex(rows, activeHighlight);
+
+  useEffect(() => {
+    if (activeHighlight == null) return;
+    const idsToExpand = spanIdsToExpandForHighlight(trace.root, activeHighlight);
+    if (idsToExpand.length > 0) {
+      setCollapsedSpanIds((prev) => {
+        let changed = false;
+        const next = new Set(prev);
+        for (const id of idsToExpand) {
+          if (next.delete(id)) changed = true;
+        }
+        return changed ? next : prev;
+      });
+    }
+    if (findHighlightedRowIndex(signalRows, activeHighlight) == null) {
+      setMode("all");
+    }
+  }, [activeHighlight, signalRows, trace.root]);
+
+  useEffect(() => {
+    if (highlightedRowIndex == null) return;
+    const list = listRef.current;
+    if (list == null) return;
+    const rowTop = rowOffsets[highlightedRowIndex];
+    const scroller = findScrollParent(list);
+    const listRect = list.getBoundingClientRect();
+    if (scroller == null) {
+      const target = window.scrollY + listRect.top + rowTop - window.innerHeight * 0.3;
+      window.scrollTo({ top: Math.max(target, 0) });
+      return;
+    }
+    const scrollerRect = scroller.getBoundingClientRect();
+    const target = scroller.scrollTop + (listRect.top - scrollerRect.top) + rowTop - scroller.clientHeight * 0.3;
+    scroller.scrollTo({ top: Math.max(target, 0) });
+  }, [highlightedRowIndex, rootSpanId, rowOffsets]);
 
   // The scale is clamped to "now" so a malformed or clock-skewed future end
   // cannot compress everything that actually happened into a sliver. Future
@@ -635,10 +712,15 @@ export function TraceWaterfall({
               const widthPct = Math.max(rightPct - leftPct, 0.4);
               const fades = open || runsIntoFuture;
               const hasError = spanHasError(span);
+              const isHighlighted = highlightedRowIndex === rowIndex;
               return (
                 <div
                   key={`span-${span.id}`}
-                  className="group w-full grid gap-3 px-4 items-center h-8 border-b border-border/20 hover:bg-muted/30 transition-colors hover:transition-none text-left cursor-pointer"
+                  aria-current={isHighlighted ? "true" : undefined}
+                  className={cn(
+                    "group w-full grid gap-3 px-4 items-center h-8 border-b border-border/20 hover:bg-muted/30 transition-colors hover:transition-none text-left cursor-pointer",
+                    isHighlighted && HIGHLIGHT_ROW_CLASSES,
+                  )}
                   style={{ gridTemplateColumns }}
                   onClick={() => onSelectSpan(span)}
                 >
@@ -691,16 +773,21 @@ export function TraceWaterfall({
             } else if (row.kind === "event") {
               const { event } = row;
               const leftPct = toPct(event.atMs);
+              const isHighlighted = highlightedRowIndex === rowIndex;
               return (
                 <div
-                  key={`event-${rowIndex}`}
-                  className="w-full grid gap-3 px-4 items-center h-7 border-b border-border/20 hover:bg-muted/30 transition-colors hover:transition-none text-left cursor-pointer"
+                  key={`event-${event.spanId ?? "none"}-${event.eventType}-${event.atMs}`}
+                  aria-current={isHighlighted ? "true" : undefined}
+                  className={cn(
+                    "w-full grid gap-3 px-4 items-center h-7 border-b border-border/20 hover:bg-muted/30 transition-colors hover:transition-none text-left cursor-pointer",
+                    isHighlighted && HIGHLIGHT_ROW_CLASSES,
+                  )}
                   style={{ gridTemplateColumns }}
                   onClick={() => onSelectEvent(event)}
                 >
                   <div className="flex items-center gap-1.5 min-w-0" style={{ paddingLeft: `${row.depth * 14}px` }}>
-                    <span className="h-1.5 w-1.5 rotate-45 bg-foreground/50 shrink-0" />
-                    <span className="font-mono text-[11px] text-muted-foreground truncate">{event.eventType}</span>
+                    <span className={cn("h-1.5 w-1.5 rotate-45 shrink-0", isHighlighted ? "bg-cyan-600 dark:bg-cyan-400" : "bg-foreground/50")} />
+                    <span className={cn("font-mono text-[11px] truncate", isHighlighted ? "font-medium text-foreground" : "text-muted-foreground")}>{event.eventType}</span>
                   </div>
                   <div className="relative h-4 cursor-ew-resize" onPointerDown={startTimelineDrag} onClick={(e) => e.stopPropagation()}>
                     <TimelineGridlines />

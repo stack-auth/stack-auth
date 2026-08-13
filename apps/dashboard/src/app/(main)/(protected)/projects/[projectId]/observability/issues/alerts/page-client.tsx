@@ -1,6 +1,11 @@
 "use client";
 
-import type { ServerUser } from "@hexclave/next";
+import {
+  createIssueAlertEmailPreviewValues,
+  interpolateIssueAlertEmailTemplate,
+  ISSUE_ALERT_EMAIL_PLACEHOLDERS,
+} from "./issue-alert-email-template";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import {
@@ -13,7 +18,7 @@ import {
   PlusIcon,
   SpinnerGapIcon,
 } from "@phosphor-icons/react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DesignAlert,
   DesignBadge,
@@ -28,6 +33,7 @@ import {
 } from "@/components/design-components";
 import { Link } from "@/components/link";
 import { Label, Textarea, Typography } from "@/components/ui";
+import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { AppEnabledGuard } from "../../../app-enabled-guard";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp } from "../../../use-admin-app";
@@ -45,13 +51,17 @@ import {
   ISSUE_ALERT_DELIVERY_LIMIT,
   fetchIssueAlertDeliveries,
   fetchIssueAlertRules,
+  replayIssueAlertDelivery,
   saveIssueAlertRule,
   type IssueAlertDelivery,
   type IssueAlertRulePayload,
   type IssueAlertRuleResponse,
 } from "./issue-alerts-data";
 
-type AlertRecipient = Pick<ServerUser, "id" | "displayName" | "primaryEmail">;
+type AlertRecipient = {
+  id: string,
+  displayName: string | null,
+};
 
 const TRIGGER_OPTIONS: { value: AlertRuleTrigger, label: string }[] = [
   { value: "new_or_regression", label: "New or regressed issue" },
@@ -77,7 +87,18 @@ function errorMessage(error: unknown): string {
 }
 
 function recipientLabel(user: AlertRecipient): string {
-  return user.displayName ?? user.primaryEmail ?? user.id;
+  return user.displayName ?? user.id;
+}
+
+function teamMemberRecipient(member: {
+  id: string,
+  teamProfile?: { displayName?: string | null } | null,
+}): AlertRecipient {
+  const displayName = member.teamProfile?.displayName;
+  return {
+    id: member.id,
+    displayName: displayName != null && displayName.trim() !== "" ? displayName : null,
+  };
 }
 
 function deliveryStatusLabel(value: string): string {
@@ -98,6 +119,138 @@ function deliveryTimestamp(millis: number): string {
   return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
+function insertAtSelection(element: HTMLInputElement | HTMLTextAreaElement, text: string): { value: string, cursor: number } {
+  const start = element.selectionStart ?? element.value.length;
+  const end = element.selectionEnd ?? start;
+  return {
+    value: `${element.value.slice(0, start)}${text}${element.value.slice(end)}`,
+    cursor: start + text.length,
+  };
+}
+
+function issueAlertEmailPreviewDocument(html: string): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:12px;background:#fff;color:#111827;}</style></head><body>${html}</body></html>`;
+}
+
+function EmailTemplateFields(props: {
+  projectId: string,
+  subject: string,
+  html: string,
+  onSubjectChange: (value: string) => void,
+  onHtmlChange: (value: string) => void,
+}) {
+  const subjectRef = useRef<HTMLInputElement>(null);
+  const htmlRef = useRef<HTMLTextAreaElement>(null);
+  const lastFocused = useRef<"subject" | "html">("html");
+  const [dashboardOrigin, setDashboardOrigin] = useState("https://app.hexclave.com");
+  useEffect(() => {
+    setDashboardOrigin(window.location.origin);
+  }, []);
+  const previewValues = useMemo(
+    () => createIssueAlertEmailPreviewValues({
+      projectId: props.projectId,
+      dashboardOrigin,
+    }),
+    [dashboardOrigin, props.projectId],
+  );
+  const previewSubject = interpolateIssueAlertEmailTemplate(props.subject, previewValues, { escapeHtml: false });
+  const previewHtml = interpolateIssueAlertEmailTemplate(props.html, previewValues, { escapeHtml: true });
+
+  const insertPlaceholder = (token: typeof ISSUE_ALERT_EMAIL_PLACEHOLDERS[number]["token"]) => {
+    const snippet = `{{${token}}}`;
+    const target = lastFocused.current === "subject" ? subjectRef.current : htmlRef.current;
+    if (target == null) {
+      props.onHtmlChange(`${props.html}${snippet}`);
+      return;
+    }
+    const next = insertAtSelection(target, snippet);
+    if (lastFocused.current === "subject") props.onSubjectChange(next.value);
+    else props.onHtmlChange(next.value);
+    requestAnimationFrame(() => {
+      target.focus();
+      target.setSelectionRange(next.cursor, next.cursor);
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <FormField
+        label="Email subject"
+        htmlFor="issue-alert-subject"
+        description="Placeholders are filled from the triggering issue when the email is sent."
+      >
+        <DesignInput
+          ref={subjectRef}
+          id="issue-alert-subject"
+          size="sm"
+          value={props.subject}
+          placeholder="[{{kind}}] {{short_id}}: {{summary}}"
+          onFocus={() => {
+            lastFocused.current = "subject";
+          }}
+          onChange={(event) => props.onSubjectChange(event.target.value)}
+        />
+      </FormField>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="issue-alert-html" className="text-xs font-medium">Email HTML</Label>
+        <Typography variant="secondary" className="text-xs">
+          Write HTML for the email body. Click a placeholder to insert it at the cursor. The preview on the right uses a sample issue.
+        </Typography>
+        <div className="flex flex-wrap gap-1.5">
+          {ISSUE_ALERT_EMAIL_PLACEHOLDERS.map((placeholder) => (
+            <DesignButton
+              key={placeholder.token}
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-6 px-1.5 font-mono text-[11px] transition-colors duration-150 hover:transition-none"
+              title={placeholder.hint}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => insertPlaceholder(placeholder.token)}
+            >
+              {`{{${placeholder.token}}}`}
+            </DesignButton>
+          ))}
+        </div>
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Textarea
+            ref={htmlRef}
+            id="issue-alert-html"
+            value={props.html}
+            placeholder={'<p><strong>{{type}}</strong> {{short_id}}</p>\n<p>{{summary}}</p>\n<p><a href="{{issue_url}}">Open in Hexclave</a></p>'}
+            onFocus={() => {
+              lastFocused.current = "html";
+            }}
+            onChange={(event) => props.onHtmlChange(event.target.value)}
+            rows={12}
+            className="min-h-[16rem] resize-y font-mono text-xs"
+          />
+          <div className="flex min-h-[16rem] flex-col overflow-hidden rounded-xl border border-black/[0.08] bg-white shadow-sm ring-1 ring-black/[0.08] dark:border-white/[0.06] dark:ring-white/[0.06]">
+            <div className="border-b border-black/[0.06] px-3 py-2 dark:border-white/[0.06]">
+              <Typography variant="secondary" className="text-[10px] font-medium uppercase tracking-wider">Preview</Typography>
+              <Typography className="mt-0.5 truncate text-xs font-medium">{previewSubject.trim() === "" ? "Subject will appear here" : previewSubject}</Typography>
+            </div>
+            {props.html.trim() === "" ? (
+              <div className="flex flex-1 items-center justify-center px-4 text-center">
+                <Typography variant="secondary" className="text-xs">The HTML preview of the email will show here.</Typography>
+              </div>
+            ) : (
+              <iframe
+                title="Issue alert email preview"
+                sandbox=""
+                referrerPolicy="no-referrer"
+                srcDoc={issueAlertEmailPreviewDocument(previewHtml)}
+                className="min-h-0 w-full flex-1 bg-white"
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FormField(props: { label: string, htmlFor?: string, description?: string, children: ReactNode }) {
   return (
     <div className="space-y-1.5">
@@ -108,8 +261,14 @@ function FormField(props: { label: string, htmlFor?: string, description?: strin
   );
 }
 
-function DeliveryStatusRow(props: { delivery: IssueAlertDelivery, ruleLabel: string }) {
+function DeliveryStatusRow(props: {
+  delivery: IssueAlertDelivery,
+  ruleLabel: string,
+  replaying: boolean,
+  onReplay: () => Promise<void>,
+}) {
   const { delivery } = props;
+  const canReplay = delivery.state === "failed" || delivery.state === "dropped";
   return (
     <div className="flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-foreground/[0.02] p-2.5">
       <div className="min-w-0">
@@ -126,6 +285,11 @@ function DeliveryStatusRow(props: { delivery: IssueAlertDelivery, ruleLabel: str
       <div className="flex shrink-0 flex-col items-end gap-1">
         <DesignBadge label={deliveryStatusLabel(delivery.state)} color={deliveryBadgeColor(delivery.state)} size="sm" />
         <Typography variant="secondary" className="text-right text-[10px]">{deliveryStatusLabel(delivery.outcome)}</Typography>
+        {canReplay && (
+          <DesignButton size="sm" variant="ghost" loading={props.replaying} onClick={props.onReplay}>
+            Replay
+          </DesignButton>
+        )}
       </div>
     </div>
   );
@@ -134,12 +298,10 @@ function DeliveryStatusRow(props: { delivery: IssueAlertDelivery, ruleLabel: str
 type RuleEditorDialogProps = {
   open: boolean,
   onOpenChange: (open: boolean) => void,
+  projectId: string,
   existingRule: IssueAlertRuleResponse | null,
   initialDraft: AlertRuleDraft,
   recipients: readonly AlertRecipient[],
-  recipientsLoading: boolean,
-  recipientsError: string | null,
-  recipientsTruncated: boolean,
   onSave: (rule: IssueAlertRulePayload) => Promise<void>,
 };
 
@@ -155,11 +317,27 @@ function RuleEditorDialog(props: RuleEditorDialogProps) {
   }, [props.initialDraft, props.open]);
 
   const recipientOptions = useMemo(
-    () => props.recipients.map((user) => ({
-      id: user.id,
-      label: recipientLabel(user),
-      checked: draft.userIds.includes(user.id),
-    })),
+    () => {
+      const seen = new Set<string>();
+      const options: { id: string, label: string, checked: boolean }[] = [];
+      for (const user of props.recipients) {
+        seen.add(user.id);
+        options.push({
+          id: user.id,
+          label: recipientLabel(user),
+          checked: draft.userIds.includes(user.id),
+        });
+      }
+      for (const userId of draft.userIds) {
+        if (seen.has(userId)) continue;
+        options.push({
+          id: userId,
+          label: `Unknown user ${userId}`,
+          checked: true,
+        });
+      }
+      return options;
+    },
     [draft.userIds, props.recipients],
   );
   const recipientById = useMemo(
@@ -338,14 +516,14 @@ function RuleEditorDialog(props: RuleEditorDialogProps) {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <Typography className="text-xs font-medium">Recipients</Typography>
-              <Typography variant="secondary" className="text-xs">Only project users can receive issue-alert email.</Typography>
+              <Typography variant="secondary" className="text-xs">Team members who can access this project.</Typography>
             </div>
-            {!props.recipientsLoading && props.recipientsError == null && (
+            {recipientOptions.length > 0 && (
               <DesignMenu
                 variant="toggles"
                 trigger="button"
                 triggerLabel={draft.userIds.length === 0 ? "Choose recipients" : `${draft.userIds.length} selected`}
-                label="Project users"
+                label="Team members"
                 options={recipientOptions}
                 onToggleChange={(id, checked) => setDraft((current) => ({
                   ...current,
@@ -356,23 +534,11 @@ function RuleEditorDialog(props: RuleEditorDialogProps) {
               />
             )}
           </div>
-          {props.recipientsLoading && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <SpinnerGapIcon className="h-3.5 w-3.5 animate-spin" /> Loading project users…
-            </div>
-          )}
-          {props.recipientsError != null && (
-            <DesignAlert
-              variant="error"
-              title="Recipients couldn't be loaded"
-              description="Refresh the page before saving an alert rule so the server can verify project-user recipients."
-            />
-          )}
-          {props.recipientsTruncated && (
+          {props.recipients.length === 0 && (
             <DesignAlert
               variant="warning"
-              title="Recipient list is capped"
-              description="Only the first 1,000 project users are available in this editor. Existing recipients remain preserved, but new users beyond that page cannot be selected here."
+              title="No team members found"
+              description="Invite people to this project's team to receive issue-alert email."
             />
           )}
           {selectedRecipientLabels.length > 0 ? (
@@ -386,42 +552,28 @@ function RuleEditorDialog(props: RuleEditorDialogProps) {
           )}
         </div>}
 
-        {draft.destination === "email" && <div className="grid gap-4 sm:grid-cols-2">
-          <FormField label="Email subject" htmlFor="issue-alert-subject">
-            <DesignInput
-              id="issue-alert-subject"
-              size="sm"
-              value={draft.subject}
-              onChange={(event) => setDraft((current) => ({ ...current, subject: event.target.value }))}
-            />
-          </FormField>
-          <FormField
-            label="Notification category (optional)"
-            htmlFor="issue-alert-category"
-            description="Used by the existing notification preference system."
-          >
-            <DesignInput
-              id="issue-alert-category"
-              size="sm"
-              value={draft.notificationCategoryName}
-              onChange={(event) => setDraft((current) => ({ ...current, notificationCategoryName: event.target.value }))}
-            />
-          </FormField>
-        </div>}
-
         {draft.destination === "email" && <FormField
-          label="Email HTML"
-          htmlFor="issue-alert-html"
-          description="Keep this bounded and single-line; the workflow sends it through the existing email outbox."
+          label="Notification category (optional)"
+          htmlFor="issue-alert-category"
+          description="Used by the existing notification preference system."
         >
-          <Textarea
-            id="issue-alert-html"
-            value={draft.html}
-            onChange={(event) => setDraft((current) => ({ ...current, html: event.target.value }))}
-            rows={4}
-            className="resize-y text-xs"
+          <DesignInput
+            id="issue-alert-category"
+            size="sm"
+            value={draft.notificationCategoryName}
+            onChange={(event) => setDraft((current) => ({ ...current, notificationCategoryName: event.target.value }))}
           />
         </FormField>}
+
+        {draft.destination === "email" && (
+          <EmailTemplateFields
+            projectId={props.projectId}
+            subject={draft.subject}
+            html={draft.html}
+            onSubjectChange={(subject) => setDraft((current) => ({ ...current, subject }))}
+            onHtmlChange={(html) => setDraft((current) => ({ ...current, html }))}
+          />
+        )}
       </div>
     </DesignDialog>
   );
@@ -435,24 +587,39 @@ function updateRuleInList(rules: readonly IssueAlertRuleResponse[], saved: Issue
 
 export default function PageClient() {
   const adminApp = useAdminApp();
+  const dashboardUser = useDashboardInternalUser();
+  const project = adminApp.useProject();
+  const userTeams = dashboardUser.useTeams();
+  const ownerTeam = useMemo(
+    () => userTeams.find((team) => team.id === project.ownerTeamId) ?? throwErr(`Owner team for project "${project.id}" was not found in the current user's teams.`),
+    [project.id, project.ownerTeamId, userTeams],
+  );
+  const teamMembers = ownerTeam.useUsers();
+  // Owner-team members are dashboard collaborators. Project `listUsers` would
+  // list end-users of the customer app, which is why the picker used to open
+  // empty on a fresh project.
+  const recipients = useMemo(
+    () => [...teamMembers]
+      .map(teamMemberRecipient)
+      .sort((left, right) => stringCompare(recipientLabel(left), recipientLabel(right))),
+    [teamMembers],
+  );
   const [rules, setRules] = useState<IssueAlertRuleResponse[]>([]);
   const [rulesLoading, setRulesLoading] = useState(true);
   const [rulesError, setRulesError] = useState<string | null>(null);
+  const [rulesTruncated, setRulesTruncated] = useState(false);
   const [rulesReloadToken, setRulesReloadToken] = useState(0);
   const [deliveries, setDeliveries] = useState<IssueAlertDelivery[]>([]);
   const [deliveriesLoading, setDeliveriesLoading] = useState(true);
   const [deliveriesError, setDeliveriesError] = useState<string | null>(null);
   const [deliveriesTruncated, setDeliveriesTruncated] = useState(false);
   const [deliveriesReloadToken, setDeliveriesReloadToken] = useState(0);
-  const [recipients, setRecipients] = useState<AlertRecipient[]>([]);
-  const [recipientsLoading, setRecipientsLoading] = useState(true);
-  const [recipientsError, setRecipientsError] = useState<string | null>(null);
-  const [recipientsTruncated, setRecipientsTruncated] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<IssueAlertRuleResponse | null>(null);
   const [editorDraft, setEditorDraft] = useState<AlertRuleDraft>(DEFAULT_ALERT_RULE_DRAFT);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [replayingDeliveryId, setReplayingDeliveryId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -462,7 +629,8 @@ export default function PageClient() {
       try {
         const nextRules = await fetchIssueAlertRules(adminApp);
         if (cancelled) return;
-        setRules(nextRules);
+        setRules(nextRules.rules);
+        setRulesTruncated(nextRules.truncated);
       } catch (error) {
         if (cancelled) return;
         setRulesError(errorMessage(error));
@@ -496,34 +664,6 @@ export default function PageClient() {
       cancelled = true;
     };
   }, [adminApp, deliveriesReloadToken]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setRecipientsLoading(true);
-    setRecipientsError(null);
-    runAsynchronously(async () => {
-      try {
-        const page = await adminApp.listUsers({
-          limit: 1_000,
-          orderBy: "signedUpAt",
-          desc: false,
-          includeAnonymous: false,
-          includeRestricted: false,
-        });
-        if (cancelled) return;
-        setRecipients(page);
-        setRecipientsTruncated(page.nextCursor != null);
-      } catch (error) {
-        if (cancelled) return;
-        setRecipientsError(errorMessage(error));
-      } finally {
-        if (!cancelled) setRecipientsLoading(false);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [adminApp]);
 
   const activeRuleCount = rules.filter((rule) => rule.enabled).length;
   const ruleLabelByDatabaseId = useMemo(
@@ -591,11 +731,26 @@ export default function PageClient() {
     if (!open) setEditingRule(null);
   }, []);
 
+  const replayDelivery = useCallback(async (deliveryId: string) => {
+    setOperationError(null);
+    setNotice(null);
+    setReplayingDeliveryId(deliveryId);
+    try {
+      const result = await replayIssueAlertDelivery(adminApp, deliveryId);
+      setNotice(result.replayed ? "Delivery replayed." : "Replay was already in flight.");
+      setDeliveriesReloadToken((current) => current + 1);
+    } catch (error) {
+      setOperationError(errorMessage(error));
+    } finally {
+      setReplayingDeliveryId(null);
+    }
+  }, [adminApp]);
+
   return (
     <AppEnabledGuard appId="observability">
       <PageLayout
         title="Issue alerts"
-        description="Route new, regressed, or high-frequency issues to project users through the durable email workflow."
+        description="Route new, regressed, or high-frequency issues to team members through the durable email workflow."
         actions={(
           <div className="flex items-center gap-2">
             <DesignButton variant="secondary" size="sm" asChild>
@@ -613,6 +768,13 @@ export default function PageClient() {
         )}
         {notice != null && (
           <DesignAlert variant="success" title="Alert rule updated" description={notice} />
+        )}
+        {rulesTruncated && (
+          <DesignAlert
+            variant="warning"
+            title="Rule list is truncated"
+            description="This project has more issue-alert rules than the list returns. Narrow or archive unused rules so every rule is visible here."
+          />
         )}
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.42fr)]">
@@ -733,6 +895,8 @@ export default function PageClient() {
                     key={delivery.id}
                     delivery={delivery}
                     ruleLabel={ruleLabelByDatabaseId.get(delivery.rule_id) ?? `Rule ${delivery.rule_id}`}
+                    replaying={replayingDeliveryId === delivery.id}
+                    onReplay={() => replayDelivery(delivery.id)}
                   />
                 ))}
               </div>
@@ -748,12 +912,10 @@ export default function PageClient() {
         <RuleEditorDialog
           open={editorOpen}
           onOpenChange={closeEditor}
+          projectId={adminApp.projectId}
           existingRule={editingRule}
           initialDraft={supportedEditorDraft ?? DEFAULT_ALERT_RULE_DRAFT}
           recipients={recipients}
-          recipientsLoading={recipientsLoading}
-          recipientsError={recipientsError}
-          recipientsTruncated={recipientsTruncated}
           onSave={saveRule}
         />
       </PageLayout>

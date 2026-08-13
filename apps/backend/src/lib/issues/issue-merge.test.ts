@@ -3,7 +3,7 @@ import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { IssueMaterializationInput } from "../analytics-telemetry-writers";
+import type { IssueBatchDelta } from "./issue-materialization-contract";
 import { materializeIssuesFromBatch } from "./issue-store";
 import { DEFAULT_GROUPING_CONFIG_ID } from "./grouping-config";
 import {
@@ -209,7 +209,7 @@ async function readHashOwner(hash: string): Promise<string | null> {
   return rows.at(0)?.issueId ?? null;
 }
 
-function materializationInput(ownerHash: string, count = 1): IssueMaterializationInput {
+function materializationInput(ownerHash: string, count = 1): IssueBatchDelta {
   const eventAt = new Date("2026-08-06T12:00:00Z");
   return {
     ownerHash,
@@ -276,7 +276,7 @@ afterAll(async () => {
   if (createdBatchIds.length > 0) {
     await globalPrismaClient.$executeRaw`
       DELETE FROM "IssueMaterialization"
-      WHERE "tenancyId" = ${tenancy.id}::uuid AND "batchId" = ANY(${createdBatchIds}::uuid[])
+      WHERE "tenancyId" = ${tenancy.id}::uuid AND "batchId"::text = ANY(${createdBatchIds}::text[])
     `;
   }
   if (createdIssueIds.length === 0) return;
@@ -603,7 +603,7 @@ describe("unmerge counter seeding (real ClickHouse)", () => {
     // shared development instance from accumulating fixture occurrences.
     const client = getSharedClickhouseAdminClient();
     await client.command({
-      query: `ALTER TABLE analytics_internal.logs DELETE WHERE issue_hash IN ({moved:String}, {kept:String})`,
+      query: `ALTER TABLE analytics_internal.telemetry DELETE WHERE issue_hash IN ({moved:String}, {kept:String})`,
       query_params: { moved: movedHash, kept: keptHash },
     });
     await client.command({
@@ -617,7 +617,7 @@ describe("unmerge counter seeding (real ClickHouse)", () => {
     const eventAt = new Date(Date.now() - 60 * 60 * 1000);
     const batchId = randomUUID();
     await client.insert({
-      table: "analytics_internal.logs",
+      table: "analytics_internal.telemetry",
       values: [movedHash, movedHash, keptHash].map((issueHash, ordinal) => ({
         event_type: "$error",
         event_at: eventAt,
@@ -654,7 +654,7 @@ describe("unmerge counter seeding (real ClickHouse)", () => {
     const newHashes = await readOwnedHashes(result.newIssueId);
     const occurrences = await client.query({
       query: `
-        SELECT count() AS n FROM analytics_internal.logs
+        SELECT count() AS n FROM analytics_internal.telemetry
         WHERE project_id = {projectId:String} AND branch_id = {branchId:String}
           AND event_type = '$error' AND issue_hash IN {hashes:Array(String)}
       `,

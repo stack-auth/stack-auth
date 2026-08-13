@@ -17,6 +17,12 @@ import {
   updateIssueOwner,
   updateIssueSubscription,
   updateIssueTeam,
+  mergeIssues,
+  unmergeIssue,
+  snoozeIssue,
+  unsnoozeIssue,
+  regressIssue,
+  searchPublicIssues,
   updateIssuesStatusBulk,
   type IssueListRequest,
 } from "./issues-data";
@@ -226,6 +232,66 @@ describe("issue triage action helpers", () => {
     expect(sendInternalAdminRequestMock).toHaveBeenCalledTimes(1);
   });
 
+  it("validates and posts a merge of two or more issues", async () => {
+    const otherIssueId = "00000000-0000-4000-8000-000000000004";
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      primary_issue_id: ISSUE_ID,
+      merged_issue_ids: [otherIssueId],
+    }), { status: 200 }));
+
+    await expect(mergeIssues(adminApp, [ISSUE_ID, otherIssueId])).resolves.toMatchObject({
+      primary_issue_id: ISSUE_ID,
+      merged_issue_ids: [otherIssueId],
+    });
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(
+      adminApp,
+      "/internal/issues/merge",
+      expect.objectContaining({
+        body: JSON.stringify({ issue_ids: [ISSUE_ID, otherIssueId] }),
+      }),
+    );
+
+    await expect(mergeIssues(adminApp, [ISSUE_ID])).rejects.toThrow(/at least 2/);
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("validates and posts unmerge, snooze, unsnooze, and regress", async () => {
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      source_issue_id: ISSUE_ID,
+      new_issue_id: "00000000-0000-4000-8000-000000000006",
+      counters_truncated_at_millis: 10,
+    }), { status: 200 }));
+    await expect(unmergeIssue(adminApp, ISSUE_ID, [SAMPLE_HASH_A])).resolves.toMatchObject({
+      source_issue_id: ISSUE_ID,
+    });
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(
+      adminApp,
+      `/internal/issues/${ISSUE_ID}/unmerge`,
+      expect.objectContaining({ body: JSON.stringify({ hashes: [SAMPLE_HASH_A] }) }),
+    );
+
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      action: "snooze", issue_id: ISSUE_ID, redirected: false, redirected_from_issue_id: null,
+      changed: true, changed_at_millis: 10, status: "ignored", previous_assignee_user_id: null,
+      assignee_user_id: null, transition_kind: "status_changed", ignored_until_millis: 99, regressed_at_millis: null,
+    }), { status: 200 }));
+    await expect(snoozeIssue(adminApp, ISSUE_ID, Date.now() + 60_000)).resolves.toMatchObject({ action: "snooze", status: "ignored" });
+
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      action: "unsnooze", issue_id: ISSUE_ID, redirected: false, redirected_from_issue_id: null,
+      changed: true, changed_at_millis: 11, status: "unresolved", previous_assignee_user_id: null,
+      assignee_user_id: null, transition_kind: "reopened", ignored_until_millis: null, regressed_at_millis: null,
+    }), { status: 200 }));
+    await expect(unsnoozeIssue(adminApp, ISSUE_ID)).resolves.toMatchObject({ action: "unsnooze" });
+
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      action: "regress", issue_id: ISSUE_ID, redirected: false, redirected_from_issue_id: null,
+      changed: true, changed_at_millis: 12, status: "unresolved", previous_assignee_user_id: null,
+      assignee_user_id: null, transition_kind: "regressed", ignored_until_millis: null, regressed_at_millis: 12,
+    }), { status: 200 }));
+    await expect(regressIssue(adminApp, ISSUE_ID)).resolves.toMatchObject({ action: "regress", transition_kind: "regressed" });
+  });
+
   it("validates and posts self-assignment and unassignment through their typed routes", async () => {
     sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
       action: "assign", issue_id: ISSUE_ID, redirected: false, redirected_from_issue_id: null,
@@ -292,5 +358,57 @@ describe("issue triage optimistic state", () => {
     expect(owned.product).toMatchObject({ assignee_user_id: USER_ID, team_id: TEAM_ID, bookmarked_user_ids: [USER_ID] });
     expect(owned.product.subscriptions[0]?.is_active).toBe(true);
     expect(owned.product.owners[0]?.team_id).toBe(TEAM_ID);
+  });
+
+  it("searches public issue records with the extra event dimensions", async () => {
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      items: [{
+        record_type: "issue",
+        issue_id: ISSUE_ID,
+        issue_short_id: "1",
+        issue_type: "TypeError",
+        issue_value: "boom",
+        issue_culprit: "app.ts",
+        issue_status: "unresolved",
+        event_id: "evt-1",
+        occurrence_id: "occ-1",
+        event_at_millis: 10,
+        message: "boom",
+        level: "error",
+        release: "1.4.2",
+        matched_tag: { key: "browser", value: "chrome" },
+      }],
+      next_cursor: null,
+    }), { status: 200 }));
+
+    await expect(searchPublicIssues(adminApp, {
+      hours: 24,
+      status: "unresolved",
+      service: null,
+      environment: null,
+      handled: "all",
+      search: "",
+      level: "error",
+      release: "1.4.2",
+      userId: USER_ID,
+      tagKey: "browser",
+      tagValue: "chrome",
+      cursor: null,
+    })).resolves.toMatchObject({
+      items: [{ issue_id: ISSUE_ID, level: "error", release: "1.4.2" }],
+      nextCursor: null,
+    });
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(
+      adminApp,
+      expect.stringMatching(/^\/issues\/search\?/),
+      { method: "GET" },
+    );
+    const searchPath = sendInternalAdminRequestMock.mock.calls[0]?.[1];
+    expect(searchPath).toContain("record=issue");
+    expect(searchPath).toContain("level=error");
+    expect(searchPath).toContain("release=1.4.2");
+    expect(searchPath).toContain(`user_id=${USER_ID}`);
+    expect(searchPath).toContain("tag_key=browser");
+    expect(searchPath).toContain("tag_value=chrome");
   });
 });

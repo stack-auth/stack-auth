@@ -126,19 +126,26 @@ const debugId: ReleaseArtifactDebugId = {
   updatedAt: now,
 };
 
-function fakeDatabase(overrides: Partial<ReleaseDatabase> = {}): ReleaseDatabase {
+type ReleaseDatabaseOverrides = {
+  [Key in keyof ReleaseDatabase]?: Partial<ReleaseDatabase[Key]>;
+};
+
+function fakeDatabase(overrides: ReleaseDatabaseOverrides = {}): ReleaseDatabase {
   return {
     release: {
+      findMany: async () => [],
       findUnique: async () => release,
       upsert: async () => release,
       ...overrides.release,
     },
     releaseDeployment: {
+      findMany: async () => [],
       findUnique: async () => null,
       upsert: async () => deployment,
       ...overrides.releaseDeployment,
     },
     releaseCommit: {
+      findMany: async () => [],
       upsert: async () => commit,
       ...overrides.releaseCommit,
     },
@@ -192,6 +199,92 @@ describe("release service validation", () => {
 });
 
 describe("release graph persistence", () => {
+  it("lists an empty release scope", async () => {
+    const result = await new ReleaseService(fakeDatabase()).listReleases(scope, {});
+
+    expect(result).toEqual({ items: [], truncated: false });
+  });
+
+  it("scopes recent releases to the authenticated tenancy, project, and branch", async () => {
+    let captured: Prisma.ReleaseFindManyArgs | undefined;
+    const db = fakeDatabase({
+      release: {
+        findMany: async (args) => {
+          captured = args;
+          return [release];
+        },
+      },
+    });
+
+    const result = await new ReleaseService(db).listReleases(scope, {});
+
+    expect(result.items).toEqual([release]);
+    expect(captured).toMatchObject({
+      where: {
+        tenancyId,
+        projectId: "project-release-test",
+        branchId: "main",
+      },
+      orderBy: { dateAdded: "desc" },
+      take: 51,
+    });
+  });
+
+  it("fetches one extra release to report truncation without an unbounded query", async () => {
+    let captured: Prisma.ReleaseFindManyArgs | undefined;
+    const releases = [
+      release,
+      { ...release, id: "00000000-0000-4000-8000-000000000012", version: "2026.08.05" },
+      { ...release, id: "00000000-0000-4000-8000-000000000013", version: "2026.08.04" },
+    ];
+    const db = fakeDatabase({
+      release: {
+        findMany: async (args) => {
+          captured = args;
+          return releases;
+        },
+      },
+    });
+
+    const result = await new ReleaseService(db).listReleases(scope, { limit: 2 });
+
+    expect(result).toEqual({ items: releases.slice(0, 2), truncated: true });
+    expect(captured).toMatchObject({ take: 3 });
+  });
+
+  it("loads a bounded commit and deployment graph with a version lookup", async () => {
+    let commitArgs: Prisma.ReleaseCommitFindManyArgs | undefined;
+    let deploymentArgs: Prisma.ReleaseDeploymentFindManyArgs | undefined;
+    const db = fakeDatabase({
+      releaseCommit: {
+        findMany: async (args) => {
+          commitArgs = args;
+          return [commit];
+        },
+      },
+      releaseDeployment: {
+        findMany: async (args) => {
+          deploymentArgs = args;
+          return [deployment];
+        },
+      },
+    });
+
+    const result = await new ReleaseService(db).getReleaseDetail(scope, release.version);
+
+    expect(result).toEqual({ release, commits: [commit], deployments: [deployment] });
+    expect(commitArgs).toMatchObject({
+      where: { tenancyId, releaseId },
+      orderBy: { position: "asc" },
+      take: 50,
+    });
+    expect(deploymentArgs).toMatchObject({
+      where: { tenancyId, releaseId },
+      orderBy: { finishedAt: "desc" },
+      take: 50,
+    });
+  });
+
   it("hides an existing release from a different project branch", async () => {
     const foreign = { ...release, branchId: "other-branch" };
     const db = fakeDatabase({

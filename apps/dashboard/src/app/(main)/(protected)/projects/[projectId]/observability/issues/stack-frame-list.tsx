@@ -4,7 +4,6 @@ import { DesignAlert, DesignBadge } from "@/components/design-components";
 import { cn } from "@/lib/utils";
 import { CaretRightIcon } from "@phosphor-icons/react";
 import { useState } from "react";
-import type { IssueFrame } from "./issues-data";
 import {
   collapsedFramesLabel,
   frameFunctionLabel,
@@ -12,6 +11,7 @@ import {
   groupStackFrames,
   orderStackFrames,
   type StackFrameOrder,
+  type StackFrameView,
 } from "./stack-frames";
 
 /**
@@ -25,24 +25,56 @@ import {
  * indistinguishable from a page that failed to load.
  */
 
-function FrameSourceContext({ context }: { context: NonNullable<IssueFrame["context"]> }) {
-  const preStart = -context.pre.length;
+function FrameSourceContext({
+  context,
+  lineno,
+}: {
+  context: NonNullable<StackFrameView["context"]>,
+  lineno: number | null,
+}) {
+  const firstLine = lineno == null ? null : lineno - context.pre.length;
+  const rows: { key: string, text: string, current: boolean, line: number | null }[] = [
+    ...context.pre.map((text, index) => ({
+      key: `pre-${index}`,
+      text,
+      current: false,
+      line: firstLine == null ? null : firstLine + index,
+    })),
+    {
+      key: "current",
+      text: context.line,
+      current: true,
+      line: lineno,
+    },
+    ...context.post.map((text, index) => ({
+      key: `post-${index}`,
+      text,
+      current: false,
+      line: firstLine == null || lineno == null ? null : lineno + 1 + index,
+    })),
+  ];
   return (
     <div className="mt-1.5 overflow-x-auto rounded-lg bg-foreground/[0.03] ring-1 ring-foreground/[0.06]">
       <pre className="min-w-full py-1.5 font-mono text-[11px] leading-[1.6]">
-        {context.pre.map((line, index) => (
-          <div key={`pre-${preStart + index}`} className="px-3 text-muted-foreground/70">{line}</div>
-        ))}
-        <div className="bg-red-500/10 px-3 text-foreground">{context.line}</div>
-        {context.post.map((line, index) => (
-          <div key={`post-${index}`} className="px-3 text-muted-foreground/70">{line}</div>
+        {rows.map((row) => (
+          <div
+            key={row.key}
+            className={row.current ? "flex bg-red-500/10 px-3 text-foreground" : "flex px-3 text-muted-foreground/70"}
+          >
+            {row.line != null && (
+              <span className="mr-3 w-8 shrink-0 select-none text-right tabular-nums text-muted-foreground/40">
+                {row.line}
+              </span>
+            )}
+            <span className="min-w-0 whitespace-pre">{row.text}</span>
+          </div>
         ))}
       </pre>
     </div>
   );
 }
 
-function StackFrameRow({ frame }: { frame: IssueFrame }) {
+function StackFrameRow({ frame }: { frame: StackFrameView }) {
   return (
     <li className="px-3 py-2">
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
@@ -51,8 +83,9 @@ function StackFrameRow({ frame }: { frame: IssueFrame }) {
           {frameLocationLabel(frame)}
         </span>
         {frame.in_app && <DesignBadge label="App" color="blue" size="sm" />}
+        {frame.context?.symbolicated === true && <DesignBadge label="Mapped" color="green" size="sm" />}
       </div>
-      {frame.context != null && <FrameSourceContext context={frame.context} />}
+      {frame.context != null && <FrameSourceContext context={frame.context} lineno={frame.lineno} />}
     </li>
   );
 }
@@ -61,7 +94,7 @@ function CollapsedFrameGroup({
   frames,
   defaultExpanded,
 }: {
-  frames: readonly IssueFrame[],
+  frames: readonly StackFrameView[],
   defaultExpanded: boolean,
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -71,7 +104,7 @@ function CollapsedFrameGroup({
         type="button"
         onClick={() => setExpanded((current) => !current)}
         aria-expanded={expanded}
-        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-[11px] text-muted-foreground transition-colors hover:transition-none hover:bg-foreground/[0.03] hover:text-foreground"
+        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-[11px] text-muted-foreground transition-colors duration-150 hover:transition-none hover:bg-foreground/[0.03] hover:text-foreground"
       >
         <CaretRightIcon className={cn("h-3 w-3 shrink-0", expanded && "rotate-90")} />
         {collapsedFramesLabel(frames)}
@@ -92,7 +125,7 @@ export function StackFrameList({
   rawStack,
   order,
 }: {
-  frames: readonly IssueFrame[],
+  frames: readonly StackFrameView[],
   /** `data.stack` as the SDK sent it. The fallback when parsing produced nothing. */
   rawStack: string | null,
   order: StackFrameOrder,

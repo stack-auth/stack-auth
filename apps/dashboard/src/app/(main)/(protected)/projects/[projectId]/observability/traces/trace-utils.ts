@@ -102,6 +102,62 @@ export function traceErrorCount(trace: Trace): number {
   return count;
 }
 
+export type TraceEventHighlight = {
+  spanId: string | null,
+  eventType: string | null,
+  eventAtMs: number | null,
+};
+
+/**
+ * Product events have no durable id. A shareable highlight is the enclosing
+ * span plus the event's type and epoch-ms; any subset still has to match.
+ */
+export function eventMatchesHighlight(event: EventInput, highlight: TraceEventHighlight): boolean {
+  if (highlight.eventType == null && highlight.eventAtMs == null) return false;
+  if (highlight.spanId != null && event.spanId !== highlight.spanId) return false;
+  if (highlight.eventType != null && event.eventType !== highlight.eventType) return false;
+  if (highlight.eventAtMs != null && event.atMs !== highlight.eventAtMs) return false;
+  return true;
+}
+
+/** Ancestor span ids from the root down to (but not including) `spanId`. */
+export function spanAncestorIds(root: TraceNode, spanId: string): string[] | null {
+  const walk = (node: TraceNode, ancestors: string[]): string[] | null => {
+    if (node.span.id === spanId) return ancestors;
+    for (const child of node.children) {
+      const found = walk(child, [...ancestors, node.span.id]);
+      if (found != null) return found;
+    }
+    return null;
+  };
+  return walk(root, []);
+}
+
+function findSpanIdOwningHighlightedEvent(root: TraceNode, highlight: TraceEventHighlight): string | null {
+  const walk = (node: TraceNode): string | null => {
+    if (node.events.some((event) => eventMatchesHighlight(event, highlight))) return node.span.id;
+    for (const child of node.children) {
+      const found = walk(child);
+      if (found != null) return found;
+    }
+    return null;
+  };
+  return walk(root);
+}
+
+/**
+ * Spans that must be expanded in All mode so a highlighted event/span is
+ * actually visible: the owning span (its events are hidden while collapsed)
+ * and every ancestor on the path from the root.
+ */
+export function spanIdsToExpandForHighlight(root: TraceNode, highlight: TraceEventHighlight): string[] {
+  const spanId = highlight.spanId ?? findSpanIdOwningHighlightedEvent(root, highlight);
+  if (spanId == null) return [];
+  const ancestors = spanAncestorIds(root, spanId);
+  if (ancestors == null) return [];
+  return [...ancestors, spanId];
+}
+
 export function traceContainsSpanId(trace: Trace, spanId: string): boolean {
   const stack = [trace.root];
   while (stack.length > 0) {

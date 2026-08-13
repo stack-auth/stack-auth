@@ -123,7 +123,7 @@ describe("buildIssueAlertRule", () => {
       userIds: [],
     }, null)).toEqual({
       status: "error",
-      message: "Choose at least one project user to receive the email.",
+      message: "Choose at least one team member to receive the email.",
     });
     expect(buildIssueAlertRule({
       ...DEFAULT_ALERT_RULE_DRAFT,
@@ -133,6 +133,11 @@ describe("buildIssueAlertRule", () => {
       status: "error",
       message: "Subject contains unsupported control characters",
     });
+    expect(buildIssueAlertRule({
+      ...DEFAULT_ALERT_RULE_DRAFT,
+      userIds: ["user-1"],
+      html: "<p>Line one</p>\n<p>{{summary}}</p>",
+    }, null)).toEqual(expect.objectContaining({ status: "ok" }));
   });
 });
 

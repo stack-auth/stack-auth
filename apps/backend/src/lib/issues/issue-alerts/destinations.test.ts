@@ -80,4 +80,25 @@ describe("issue alert destinations", () => {
       html: "<p>Issue</p>",
     })).toBeNull();
   });
+
+  it("accepts authored HTML with newlines and still rejects other control characters", () => {
+    expect(parseIssueAlertAction({
+      type: "email",
+      userIds: ["user-1"],
+      subject: "Issue",
+      html: "<p>Line one</p>\n<p>Line two</p>",
+    })).toMatchObject({ html: "<p>Line one</p>\n<p>Line two</p>" });
+    expect(parseIssueAlertAction({
+      type: "email",
+      userIds: ["user-1"],
+      subject: "Issue",
+      html: "<p>Issue\u0000</p>",
+    })).toBeNull();
+    expect(parseIssueAlertAction({
+      type: "email",
+      userIds: ["user-1"],
+      subject: "Issue\nnewline",
+      html: "<p>Issue</p>",
+    })).toBeNull();
+  });
 });

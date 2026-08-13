@@ -7,7 +7,11 @@
 
 export type IssueAlertEmailAction = {
   type: "email",
-  /** Explicit project-user recipients. Kept as the supported execution path. */
+  /**
+   * Explicit recipients. The dashboard picker stores owner-team member IDs
+   * (dashboard collaborators). Legacy rules may still store customer-project
+   * user IDs; send-time resolution keeps both executable.
+   */
   userIds?: readonly string[],
   /**
    * Sentry-style routing intent. Ingestion hydrates this against the current
@@ -37,6 +41,10 @@ const MAX_IDENTIFIER_BYTES = 256;
 const MAX_RECIPIENTS = 64;
 const MAX_TEXT_BYTES = 16 * 1024;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
+// HTML bodies are authored in a textarea, so tab/LF/CR have to survive. Other
+// control characters still fail closed — they are not valid in email HTML and
+// would also be rejected by the workflow payload scrubber's neighboring fields.
+const HTML_CONTROL_CHARACTER_PATTERN = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 const SAFE_INTEGRATION_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,255}$/u;
 const TEXT_ENCODER = new TextEncoder();
 const ISSUE_ALERT_OWNER_FALLTHROUGHS: readonly IssueAlertOwnerFallthrough[] = ["active_members", "all_members", "none"];
@@ -49,10 +57,13 @@ function isObject(value: unknown): value is { readonly [key: string]: unknown } 
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function isBoundedText(value: unknown, maximumBytes: number): value is string {
+function isBoundedText(value: unknown, maximumBytes: number, options?: { allowHtmlWhitespace?: boolean }): value is string {
+  const controlPattern = options?.allowHtmlWhitespace === true
+    ? HTML_CONTROL_CHARACTER_PATTERN
+    : CONTROL_CHARACTER_PATTERN;
   return typeof value === "string"
     && value.length > 0
-    && !CONTROL_CHARACTER_PATTERN.test(value)
+    && !controlPattern.test(value)
     && TEXT_ENCODER.encode(value).byteLength <= maximumBytes;
 }
 
@@ -90,7 +101,7 @@ export function parseIssueAlertAction(value: unknown): IssueAlertAction | null {
       || userIds === null
       || routing === null
       || !isBoundedText(value.subject, MAX_TEXT_BYTES)
-      || !isBoundedText(value.html, MAX_TEXT_BYTES)) return null;
+      || !isBoundedText(value.html, MAX_TEXT_BYTES, { allowHtmlWhitespace: true })) return null;
     if (value.notificationCategoryName !== undefined && !isBoundedText(value.notificationCategoryName, MAX_IDENTIFIER_BYTES)) return null;
     return {
       type: "email",

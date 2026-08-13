@@ -10,17 +10,20 @@ import {
   DesignPillToggle,
 } from "@/components/design-components";
 import { cn } from "@/lib/utils";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
+  ChartLineIcon,
   ClockCounterClockwiseIcon,
   LinkIcon,
   ListDashesIcon,
   SpinnerGapIcon,
 } from "@phosphor-icons/react";
+import { useRouter } from "@/components/router";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../../../app-enabled-guard";
 import { PageLayout } from "../../../page-layout";
 import { StickyPageHeader } from "../../../sticky-page-header";
@@ -41,23 +44,29 @@ import {
   type LeadingUpToLogLine,
 } from "../correlation";
 import { formatIssueCount, issueCulprit, issueShortIdLabel, issueSubtitle, issueTitle, parseIssueRouteId } from "../issue-format";
-import { issuesListHref, traceDetailHref } from "../issue-links";
+import { issueDetailHref, issuesListHref, traceDetailHref } from "../issue-links";
+import { sessionReplayHref } from "../../observability-links";
 import { issueStatusBadge, primaryIssueStatusAction } from "../issue-status";
 import {
   fetchIssueDetail,
   addIssueComment,
+  ISSUE_SNOOZE_PRESETS,
+  regressIssue,
   setIssueAssignee,
   setIssueBookmarkState,
   setIssueOwnerState,
   setIssueSubscriptionState,
   setIssueTeam,
+  snoozeIssue,
+  unmergeIssue,
+  unsnoozeIssue,
   updateIssuePriority,
   updateIssueAssignment,
   updateIssueBookmark,
   updateIssueOwner,
   updateIssueSubscription,
-  updateIssueTeam,
   updateIssueStatus,
+  updateIssueTeam,
   type IssueDetailResponse,
   type IssueOccurrenceDirection,
   type IssuePriority,
@@ -65,8 +74,8 @@ import {
 } from "../issues-data";
 import { StackFrameList } from "../stack-frame-list";
 import { DEFAULT_STACK_FRAME_ORDER, type StackFrameOrder } from "../stack-frames";
-import { IssueEventSections } from "../issue-event-sections";
-import { IssueEventGraph } from "../issue-event-graph";
+import { IssueEventSections, IssueExceptionCauses, IssueProductSection } from "../issue-event-sections";
+import { heroStack } from "../issue-event";
 
 const FRAME_ORDER_OPTIONS = [
   { id: "innermost-first", label: "Newest first" },
@@ -117,10 +126,50 @@ function EmptyRailValue() {
   return <span className="text-muted-foreground/50">—</span>;
 }
 
+function OccurrenceUserLink({ userId }: { userId: string }) {
+  const adminApp = useAdminApp();
+  const user = adminApp.useUser(userId);
+  if (user === null) {
+    return <span title={userId}>Deleted user</span>;
+  }
+
+  const label = user.displayName ?? user.primaryEmail ?? "Unnamed user";
+  return (
+    <Link
+      className="block max-w-48 truncate text-xs hover:underline"
+      href={`/projects/${encodeURIComponent(adminApp.projectId)}/users/${encodeURIComponent(user.id)}`}
+      title={`${label} (${user.id})`}
+    >
+      {label}
+    </Link>
+  );
+}
+
+function OccurrenceUserFallback({ userId }: { userId: string }) {
+  return <span className="font-mono text-xs" title={userId}>{userId.slice(0, 12)}…</span>;
+}
+
 export default function PageClient() {
   const adminApp = useAdminApp();
+  const router = useRouter();
   const dashboardUser = useDashboardInternalUser();
-  const dashboardTeams = dashboardUser.useTeams();
+  const project = adminApp.useProject();
+  const userTeams = dashboardUser.useTeams();
+  const ownerTeam = useMemo(
+    () => userTeams.find((team) => team.id === project.ownerTeamId) ?? throwErr(`Owner team for project "${project.id}" was not found in the current user's teams.`),
+    [project.id, project.ownerTeamId, userTeams],
+  );
+  const teamMembers = ownerTeam.useUsers();
+  const assigneeOptions = useMemo(
+    () => teamMembers.map((user) => {
+      const displayName = user.teamProfile.displayName;
+      return {
+        id: user.id,
+        label: displayName != null && displayName.trim() !== "" ? displayName : user.id,
+      };
+    }),
+    [teamMembers],
+  );
   const params = useParams<{ issueId: string }>();
   const projectId = adminApp.projectId;
   const rawIssueId = params.issueId;
@@ -176,6 +225,7 @@ export default function PageClient() {
 
   const issue = detail?.issue ?? null;
   const occurrence = detail?.occurrence ?? null;
+  const stack = occurrence == null ? null : heroStack(occurrence);
   const anchor = useMemo(
     () => (occurrence == null ? null : resolveCorrelationAnchor(occurrence)),
     [occurrence],
@@ -225,6 +275,64 @@ export default function PageClient() {
     }
   }, [adminApp, detail]);
 
+  const changeSnooze = useCallback(async (durationMs: number) => {
+    if (detail == null) return;
+    setStatusError(null);
+    const previous = detail;
+    setDetail({ ...detail, issue: { ...detail.issue, status: "ignored" } });
+    try {
+      const result = await snoozeIssue(adminApp, detail.issue.id, Date.now() + durationMs);
+      const status = result.status;
+      if (status != null) {
+        setDetail((current) => current == null ? current : { ...current, issue: { ...current.issue, status } });
+      }
+    } catch (caught) {
+      setDetail(previous);
+      setStatusError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [adminApp, detail]);
+
+  const changeUnsnooze = useCallback(async () => {
+    if (detail == null) return;
+    setStatusError(null);
+    const previous = detail;
+    setDetail({ ...detail, issue: { ...detail.issue, status: "unresolved" } });
+    try {
+      const result = await unsnoozeIssue(adminApp, detail.issue.id);
+      const status = result.status;
+      if (status != null) {
+        setDetail((current) => current == null ? current : { ...current, issue: { ...current.issue, status } });
+      }
+    } catch (caught) {
+      setDetail(previous);
+      setStatusError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [adminApp, detail]);
+
+  const changeRegress = useCallback(async () => {
+    if (detail == null) return;
+    setStatusError(null);
+    const previous = detail;
+    setDetail({ ...detail, issue: { ...detail.issue, status: "unresolved", substatus: "regressed" } });
+    try {
+      const result = await regressIssue(adminApp, detail.issue.id);
+      const status = result.status;
+      if (status != null) {
+        setDetail((current) => current == null ? current : {
+          ...current,
+          issue: {
+            ...current.issue,
+            status,
+            substatus: result.transition_kind === "regressed" ? "regressed" : current.issue.substatus,
+          },
+        });
+      }
+    } catch (caught) {
+      setDetail(previous);
+      setStatusError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [adminApp, detail]);
+
   const changePriority = useCallback(async (priority: IssuePriority | null) => {
     if (detail == null) return;
     const previous = detail.product.priority;
@@ -267,23 +375,6 @@ export default function PageClient() {
     try {
       const result = await updateIssueAssignment(adminApp, detail.issue.id, assigneeUserId);
       setDetail((current) => current == null ? current : setIssueAssignee(current, result.assignee_user_id));
-    } catch (caught) {
-      setDetail(previous);
-      setProductError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setProductSaving(false);
-    }
-  }, [adminApp, detail, productSaving]);
-
-  const changeTeam = useCallback(async (teamId: string | null) => {
-    if (detail == null || productSaving) return;
-    const previous = detail;
-    setProductError(null);
-    setProductSaving(true);
-    setDetail(setIssueTeam(detail, teamId));
-    try {
-      const result = await updateIssueTeam(adminApp, detail.issue.id, teamId);
-      setDetail((current) => current == null ? current : setIssueTeam(current, result.team_id));
     } catch (caught) {
       setDetail(previous);
       setProductError(caught instanceof Error ? caught.message : String(caught));
@@ -367,10 +458,65 @@ export default function PageClient() {
     }
   }, [adminApp, dashboardUser.id, detail, productSaving]);
 
-  const teamOptions = useMemo(
-    () => dashboardTeams.map((team) => ({ id: team.id, displayName: team.displayName })),
-    [dashboardTeams],
-  );
+  const changeTeam = useCallback(async () => {
+    if (detail == null || productSaving) return;
+    const previous = detail;
+    setProductError(null);
+    setProductSaving(true);
+    // The team action only accepts the project owner team. Null would stamp
+    // the same id server-side; sending it explicitly keeps the request honest.
+    setDetail(setIssueTeam(detail, ownerTeam.id));
+    try {
+      const result = await updateIssueTeam(adminApp, detail.issue.id, ownerTeam.id);
+      setDetail((current) => current == null ? current : setIssueTeam(current, result.team_id));
+    } catch (caught) {
+      setDetail(previous);
+      setProductError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setProductSaving(false);
+    }
+  }, [adminApp, detail, ownerTeam.id, productSaving]);
+
+  const changeTeamSubscription = useCallback(async (subscribed: boolean) => {
+    if (detail == null || productSaving) return;
+    const previous = detail;
+    setProductError(null);
+    setProductSaving(true);
+    const updatedAt = new Date().toISOString();
+    setDetail(setIssueSubscriptionState(detail, { type: "team", id: ownerTeam.id, is_active: subscribed, reason: "manual", created_at: updatedAt, updated_at: updatedAt }, subscribed, updatedAt));
+    try {
+      const result = await updateIssueSubscription(adminApp, detail.issue.id, "team", ownerTeam.id, subscribed, "manual", `dashboard-team-subscription-${crypto.randomUUID()}`);
+      const existing = detail.product.subscriptions.find((subscription) => subscription.type === result.subject_type && subscription.id === result.subject_id);
+      const resultTime = new Date(result.updated_at_millis).toISOString();
+      setDetail((current) => current == null ? current : setIssueSubscriptionState(current, {
+        type: result.subject_type,
+        id: result.subject_id,
+        is_active: result.subscribed,
+        reason: result.reason,
+        created_at: existing?.created_at ?? resultTime,
+        updated_at: resultTime,
+      }, result.subscribed, resultTime));
+    } catch (caught) {
+      setDetail(previous);
+      setProductError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setProductSaving(false);
+    }
+  }, [adminApp, detail, ownerTeam.id, productSaving]);
+
+  const splitHashes = useCallback(async (hashes: string[]) => {
+    if (detail == null || productSaving) return;
+    setProductError(null);
+    setProductSaving(true);
+    try {
+      const result = await unmergeIssue(adminApp, detail.issue.id, hashes);
+      router.push(issueDetailHref(projectId, result.new_issue_id));
+    } catch (caught) {
+      setProductError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setProductSaving(false);
+    }
+  }, [adminApp, detail, productSaving, projectId, router]);
 
   if (routeId == null) {
     return (
@@ -410,11 +556,19 @@ export default function PageClient() {
             variant="actions"
             align="end"
             items={[
-              {
-                id: "ignore",
-                label: issue.status === "ignored" ? "Unignore" : "Ignore",
-                onClick: () => changeStatus(issue.status === "ignored" ? "unresolved" : "ignored"),
-              },
+              ...(issue.status === "ignored"
+                ? [{ id: "unsnooze", label: "Unsnooze", onClick: () => changeUnsnooze() }]
+                : [
+                  { id: "ignore", label: "Ignore forever", onClick: () => changeStatus("ignored") },
+                  ...ISSUE_SNOOZE_PRESETS.map((preset) => ({
+                    id: `snooze-${preset.id}`,
+                    label: `Snooze ${preset.label}`,
+                    onClick: () => changeSnooze(preset.durationMs),
+                  })),
+                ]),
+              ...(issue.status === "resolved"
+                ? [{ id: "regress", label: "Mark as regressed", onClick: () => changeRegress() }]
+                : []),
             ]}
           />
         </>
@@ -463,7 +617,7 @@ export default function PageClient() {
         {detail != null && issue != null && (
           <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <div className="flex min-w-0 flex-col gap-3">
-              <DesignCard>
+              <DesignCard title="Impact" icon={ChartLineIcon}>
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                   <StatCell
                     label="Events"
@@ -507,168 +661,177 @@ export default function PageClient() {
                 subtitle={
                   occurrence == null
                     ? "No retained occurrence"
-                    : `${formatAbsoluteTimeFromMillis(occurrence.event_at_millis)} · ${formatRelativeTimeFromMillis(occurrence.event_at_millis, nowMs)}`
-                }
-                actions={
-                  <div className="flex items-center gap-2">
-                    <DesignPillToggle
-                      selected={frameOrder}
-                      onSelect={(id) => setFrameOrder(parseFrameOrder(id))}
-                      options={FRAME_ORDER_OPTIONS}
-                      size="sm"
-                      glassmorphic={false}
-                    />
-                    {/*
-                      No "84 of 1,203" ordinal on purpose: it needs a second
-                      count query per navigation, and a stale number is worse
-                      than none.
-                    */}
-                    <DesignButton
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 gap-1 px-2 text-[11px]"
-                      disabled={detail.older_cursor == null}
-                      onClick={() => setOccurrenceStep(
-                        detail.older_cursor == null ? null : { cursor: detail.older_cursor, direction: "older" },
-                      )}
-                    >
-                      <ArrowLeftIcon className="h-3.5 w-3.5" />
-                      Older
-                    </DesignButton>
-                    <DesignButton
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 gap-1 px-2 text-[11px]"
-                      disabled={detail.newer_cursor == null}
-                      onClick={() => setOccurrenceStep(
-                        detail.newer_cursor == null ? null : { cursor: detail.newer_cursor, direction: "newer" },
-                      )}
-                    >
-                      Newer
-                      <ArrowRightIcon className="h-3.5 w-3.5" />
-                    </DesignButton>
-                  </div>
+                    : `${issue.type || "Unknown exception"} · ${occurrence.message || issue.value || "Exception message unavailable"}`
                 }
               >
-                {occurrence == null ? (
+                {stack == null || occurrence == null ? (
                   <DesignAlert
                     variant="info"
                     title="No retained occurrence"
                     description="Every occurrence of this issue has aged out of the retention window. The issue's counters are still exact."
                   />
                 ) : (
-                  <StackFrameList
-                    frames={occurrence.frames}
-                    rawStack={occurrence.raw_stack}
-                    order={frameOrder}
-                  />
+                  <>
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-[11px] text-muted-foreground" title={formatAbsoluteTimeFromMillis(occurrence.event_at_millis)}>
+                        Captured {formatRelativeTimeFromMillis(occurrence.event_at_millis, nowMs)}
+                      </span>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <DesignPillToggle
+                          selected={frameOrder}
+                          onSelect={(id) => setFrameOrder(parseFrameOrder(id))}
+                          options={FRAME_ORDER_OPTIONS}
+                          size="sm"
+                          glassmorphic={false}
+                        />
+                        {/*
+                          No "84 of 1,203" ordinal on purpose: it needs a second
+                          count query per navigation, and a stale number is worse
+                          than none.
+                        */}
+                        <DesignButton
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1 px-2 text-[11px]"
+                          disabled={loading || detail.older_cursor == null}
+                          aria-label="Load older occurrence"
+                          onClick={() => setOccurrenceStep(
+                            detail.older_cursor == null ? null : { cursor: detail.older_cursor, direction: "older" },
+                          )}
+                        >
+                          <ArrowLeftIcon className="h-3.5 w-3.5" />
+                          Older
+                        </DesignButton>
+                        <DesignButton
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1 px-2 text-[11px]"
+                          disabled={loading || detail.newer_cursor == null}
+                          aria-label="Load newer occurrence"
+                          onClick={() => setOccurrenceStep(
+                            detail.newer_cursor == null ? null : { cursor: detail.newer_cursor, direction: "newer" },
+                          )}
+                        >
+                          Newer
+                          <ArrowRightIcon className="h-3.5 w-3.5" />
+                        </DesignButton>
+                      </div>
+                    </div>
+                    <StackFrameList
+                      frames={stack.frames}
+                      rawStack={stack.rawStack}
+                      order={frameOrder}
+                    />
+                    <IssueExceptionCauses occurrence={occurrence} frameOrder={frameOrder} />
+                  </>
                 )}
               </DesignCard>
-
-              <IssueEventGraph
-                projectId={projectId}
-                issue={issue}
-                occurrence={occurrence}
-                leadingUpToCount={leadingUpTo?.length ?? 0}
-              />
 
               <IssueEventSections
                 issue={issue}
                 occurrence={occurrence}
                 detail={detail}
-                loading={loading}
                 nowMs={nowMs}
-                frameOrder={frameOrder}
-                onNavigate={(cursor, direction) => setOccurrenceStep({ cursor, direction })}
-                onPriorityChange={changePriority}
-                onAddComment={createComment}
-                currentUserId={dashboardUser.id}
-                teams={teamOptions}
                 actionLoading={productSaving}
-                onAssignmentChange={changeAssignment}
-                onTeamChange={changeTeam}
-                onOwnerChange={changeOwner}
-                onBookmarkChange={changeBookmark}
-                onSubscriptionChange={changeSubscription}
+                onUnmerge={splitHashes}
               />
             </div>
 
             <aside className="min-w-0 lg:sticky lg:top-3 lg:self-start">
-              <DesignCard title="Correlated" icon={LinkIcon}>
-                <div className="divide-y divide-foreground/[0.06]">
-                  <RailRow label="Trace">
-                    {occurrence?.trace_id == null ? <EmptyRailValue /> : (
-                      <Link
-                        className="font-mono text-xs hover:underline"
-                        href={traceDetailHref(projectId, occurrence.trace_id)}
-                      >
-                        {occurrence.trace_id.slice(0, 12)}…
-                      </Link>
-                    )}
-                  </RailRow>
-                  <RailRow label="Session replay">
-                    {occurrence?.session_replay_id == null ? <EmptyRailValue /> : (
-                      <Link
-                        className="font-mono text-xs hover:underline"
-                        href={`/projects/${encodeURIComponent(projectId)}/session-replays/${encodeURIComponent(occurrence.session_replay_id)}`}
-                      >
-                        Watch replay
-                      </Link>
-                    )}
-                  </RailRow>
-                  <RailRow label="User">
-                    {occurrence?.user_id == null ? <EmptyRailValue /> : (
-                      <Link
-                        className="font-mono text-xs hover:underline"
-                        href={`/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(occurrence.user_id)}`}
-                      >
-                        {occurrence.user_id.slice(0, 12)}…
-                      </Link>
-                    )}
-                  </RailRow>
-                  <RailRow label="Release">
-                    {issue.release == null ? <EmptyRailValue /> : <span className="font-mono text-xs">{issue.release}</span>}
-                  </RailRow>
-                </div>
-              </DesignCard>
+              <div className="flex flex-col gap-3">
+                <DesignCard title="Correlated" icon={LinkIcon}>
+                  <div className="divide-y divide-foreground/[0.06]">
+                    <RailRow label="Trace">
+                      {occurrence?.trace_id == null ? <EmptyRailValue /> : (
+                        <Link
+                          className="font-mono text-xs transition-colors duration-150 hover:transition-none hover:underline"
+                          href={traceDetailHref(projectId, {
+                            traceId: occurrence.trace_id,
+                            spanId: occurrence.span_id,
+                            eventType: "$error",
+                            eventAtMs: occurrence.event_at_millis,
+                          })}
+                        >
+                          {occurrence.trace_id.slice(0, 12)}…
+                        </Link>
+                      )}
+                    </RailRow>
+                    <RailRow label="Session replay">
+                      {occurrence?.session_replay_id == null ? <EmptyRailValue /> : (
+                        <Link
+                          className="font-mono text-xs transition-colors duration-150 hover:transition-none hover:underline"
+                          href={sessionReplayHref(projectId, occurrence.session_replay_id, { atMs: occurrence.event_at_millis })}
+                        >
+                          Watch replay
+                        </Link>
+                      )}
+                    </RailRow>
+                    <RailRow label="Occurrence user">
+                      {occurrence?.user_id == null ? <EmptyRailValue /> : (
+                        <Suspense fallback={<OccurrenceUserFallback userId={occurrence.user_id} />}>
+                          <OccurrenceUserLink userId={occurrence.user_id} />
+                        </Suspense>
+                      )}
+                    </RailRow>
+                    <RailRow label="Release">
+                      {issue.release == null ? <EmptyRailValue /> : <span className="font-mono text-xs">{issue.release}</span>}
+                    </RailRow>
+                  </div>
+                </DesignCard>
 
-              <DesignCard
-                title="Leading up to this"
-                icon={ClockCounterClockwiseIcon}
-                subtitle={anchor == null ? "No correlation id" : CORRELATION_ANCHOR_LABELS.get(anchor.kind)}
-                className="mt-3"
-              >
-                {leadingUpToError != null && (
-                  <DesignAlert variant="warning" title="Couldn't load logs" description={leadingUpToError} />
-                )}
-                {leadingUpToError == null && leadingUpTo == null && (
-                  <div className="flex items-center justify-center py-6">
-                    <SpinnerGapIcon className="h-4 w-4 animate-spin text-muted-foreground" />
-                  </div>
-                )}
-                {leadingUpToError == null && leadingUpTo != null && leadingUpTo.length === 0 && (
-                  <div className="py-2 text-xs text-muted-foreground/70">
-                    {anchor == null
-                      ? "This occurrence carries no trace, page view, or session id to correlate on."
-                      : "No log lines in the five minutes before this error."}
-                  </div>
-                )}
-                {leadingUpToError == null && leadingUpTo != null && leadingUpTo.length > 0 && (
-                  <ol className="max-h-80 space-y-1.5 overflow-y-auto">
-                    {leadingUpTo.map((line, index) => (
-                      <li key={`${line.eventAtMillis}-${index}`} className={cn("flex min-w-0 items-baseline gap-2")}>
-                        <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground/60">
-                          {formatAbsoluteTimeFromMillis(line.eventAtMillis)}
-                        </span>
-                        <LogLevelChip level={line.level} />
-                        <span className="min-w-0 truncate font-mono text-[11px]" title={line.message}>
-                          {line.message}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </DesignCard>
+                <IssueProductSection
+                  detail={detail}
+                  onPriorityChange={changePriority}
+                  onAddComment={createComment}
+                  currentUserId={dashboardUser.id}
+                  ownerTeam={{ id: ownerTeam.id, displayName: ownerTeam.displayName }}
+                  assigneeOptions={assigneeOptions}
+                  actionLoading={productSaving}
+                  onAssignmentChange={changeAssignment}
+                  onTeamChange={changeTeam}
+                  onOwnerChange={changeOwner}
+                  onBookmarkChange={changeBookmark}
+                  onSubscriptionChange={changeSubscription}
+                  onTeamSubscriptionChange={changeTeamSubscription}
+                />
+
+                <DesignCard
+                  title="Leading up to this"
+                  icon={ClockCounterClockwiseIcon}
+                  subtitle={anchor == null ? "No correlation id" : CORRELATION_ANCHOR_LABELS.get(anchor.kind)}
+                >
+                  {leadingUpToError != null && (
+                    <DesignAlert variant="warning" title="Couldn't load logs" description={leadingUpToError} />
+                  )}
+                  {leadingUpToError == null && leadingUpTo == null && (
+                    <div className="flex items-center justify-center py-6">
+                      <SpinnerGapIcon className="h-4 w-4 animate-spin text-muted-foreground" />
+                    </div>
+                  )}
+                  {leadingUpToError == null && leadingUpTo != null && leadingUpTo.length === 0 && (
+                    <div className="py-2 text-xs text-muted-foreground/70">
+                      {anchor == null
+                        ? "This occurrence carries no trace, page view, or session id to correlate on."
+                        : "No log lines in the five minutes before this error."}
+                    </div>
+                  )}
+                  {leadingUpToError == null && leadingUpTo != null && leadingUpTo.length > 0 && (
+                    <ol className="max-h-80 space-y-1.5 overflow-y-auto">
+                      {leadingUpTo.map((line, index) => (
+                        <li key={`${line.eventAtMillis}-${index}`} className={cn("flex min-w-0 items-baseline gap-2")}>
+                          <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground/60">
+                            {formatAbsoluteTimeFromMillis(line.eventAtMillis)}
+                          </span>
+                          <LogLevelChip level={line.level} />
+                          <span className="min-w-0 truncate font-mono text-[11px]" title={line.message}>
+                            {line.message}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </DesignCard>
+              </div>
             </aside>
           </div>
         )}

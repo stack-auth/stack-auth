@@ -28,6 +28,9 @@ const RELEASE_JSON_MAX_KEY_BYTES = 256;
 const RELEASE_JSON_MAX_COLLECTION_ENTRIES = 100;
 const MAX_DATABASE_INT = 2_147_483_647;
 const LOOKUP_LIMIT = 100;
+const DEFAULT_RELEASE_LIST_LIMIT = 50;
+const MAX_RELEASE_LIST_LIMIT = 100;
+const RELEASE_GRAPH_LIST_LIMIT = 50;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DEBUG_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -66,14 +69,17 @@ export type ReleaseArtifactLookupRow = Prisma.ReleaseArtifactDebugIdGetPayload<{
 /** Small Promise-based database seam: Prisma's PrismaPromise delegates adapt into this in production, while unit tests can use ordinary promises. */
 export type ReleaseDatabase = {
   release: {
+    findMany(args: Prisma.ReleaseFindManyArgs): Promise<Release[]>,
     findUnique(args: Prisma.ReleaseFindUniqueArgs): Promise<Release | null>,
     upsert(args: Prisma.ReleaseUpsertArgs): Promise<Release>,
   },
   releaseDeployment: {
+    findMany(args: Prisma.ReleaseDeploymentFindManyArgs): Promise<ReleaseDeployment[]>,
     findUnique(args: Prisma.ReleaseDeploymentFindUniqueArgs): Promise<ReleaseDeployment | null>,
     upsert(args: Prisma.ReleaseDeploymentUpsertArgs): Promise<ReleaseDeployment>,
   },
   releaseCommit: {
+    findMany(args: Prisma.ReleaseCommitFindManyArgs): Promise<ReleaseCommit[]>,
     upsert(args: Prisma.ReleaseCommitUpsertArgs): Promise<ReleaseCommit>,
   },
   releaseArtifact: {
@@ -149,6 +155,17 @@ export type ReleaseArtifactLookup = {
   release: Release,
   artifact: ReleaseArtifact,
   debugId: ReleaseArtifactDebugId,
+};
+
+export type ReleaseList = {
+  items: Release[],
+  truncated: boolean,
+};
+
+export type ReleaseDetail = {
+  release: Release,
+  commits: ReleaseCommit[],
+  deployments: ReleaseDeployment[],
 };
 
 export class ReleaseInputError extends Error {
@@ -261,6 +278,52 @@ export class ReleaseService {
       && release.branchId === fields.branchId
       ? release
       : null;
+  }
+
+  public async getReleaseDetail(scope: ReleaseScope, version: string): Promise<ReleaseDetail | null> {
+    const release = await this.getRelease(scope, version);
+    if (release === null) return null;
+    const fields = releaseScopeFields(scope);
+    const db = await this.resolveDatabase(scope);
+    const [commits, deployments] = await Promise.all([
+      db.releaseCommit.findMany({
+        where: { tenancyId: fields.tenancyId, releaseId: release.id },
+        orderBy: { position: "asc" },
+        take: RELEASE_GRAPH_LIST_LIMIT,
+      }),
+      db.releaseDeployment.findMany({
+        where: { tenancyId: fields.tenancyId, releaseId: release.id },
+        orderBy: { finishedAt: "desc" },
+        take: RELEASE_GRAPH_LIST_LIMIT,
+      }),
+    ]);
+    for (const commit of commits) assertGraphRowScope(scope, release, commit);
+    for (const deployment of deployments) assertGraphRowScope(scope, release, deployment);
+    return { release, commits, deployments };
+  }
+
+  public async listReleases(
+    scope: ReleaseScope,
+    input: { limit?: number },
+  ): Promise<ReleaseList> {
+    const fields = releaseScopeFields(scope);
+    const limit = input.limit ?? DEFAULT_RELEASE_LIST_LIMIT;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_RELEASE_LIST_LIMIT) {
+      throw new ReleaseInputError(`release list limit must be an integer between 1 and ${MAX_RELEASE_LIST_LIMIT}`);
+    }
+
+    const db = await this.resolveDatabase(scope);
+    const rows = await db.release.findMany({
+      where: fields,
+      orderBy: { dateAdded: "desc" },
+      take: limit + 1,
+    });
+    for (const release of rows) assertReleaseScope(scope, release);
+    const items = rows.slice(0, limit);
+    return {
+      items,
+      truncated: rows.length > limit,
+    };
   }
 
   public async upsertRelease(scope: ReleaseScope, input: UpsertReleaseInput): Promise<Release> {
@@ -608,14 +671,17 @@ export const releaseService = new ReleaseService();
 function adaptPrismaClient(client: PrismaClientTransaction): ReleaseDatabase {
   return {
     release: {
+      findMany: async (args) => await client.release.findMany(args),
       findUnique: async (args) => await client.release.findUnique(args),
       upsert: async (args) => await client.release.upsert(args),
     },
     releaseDeployment: {
+      findMany: async (args) => await client.releaseDeployment.findMany(args),
       findUnique: async (args) => await client.releaseDeployment.findUnique(args),
       upsert: async (args) => await client.releaseDeployment.upsert(args),
     },
     releaseCommit: {
+      findMany: async (args) => await client.releaseCommit.findMany(args),
       upsert: async (args) => await client.releaseCommit.upsert(args),
     },
     releaseArtifact: {
@@ -636,6 +702,23 @@ function assertReleaseScope(scope: ReleaseScope, release: Release): void {
   const fields = releaseScopeFields(scope);
   if (release.tenancyId !== fields.tenancyId || release.projectId !== fields.projectId || release.branchId !== fields.branchId) {
     throw new ReleaseScopeInvariantError(`release ${release.id} belongs to a different project branch`);
+  }
+}
+
+function assertGraphRowScope(
+  scope: ReleaseScope,
+  release: Release,
+  row: { tenancyId: string, projectId: string, branchId: string, releaseId: string, id: string },
+): void {
+  assertReleaseScope(scope, release);
+  const fields = releaseScopeFields(scope);
+  if (
+    row.tenancyId !== fields.tenancyId
+    || row.projectId !== fields.projectId
+    || row.branchId !== fields.branchId
+    || row.releaseId !== release.id
+  ) {
+    throw new ReleaseScopeInvariantError(`release graph row ${row.id} belongs to a different project branch`);
   }
 }
 

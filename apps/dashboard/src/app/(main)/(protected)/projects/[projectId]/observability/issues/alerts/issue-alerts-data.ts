@@ -169,6 +169,7 @@ const issueAlertRuleSchema = yup.object({
 
 const issueAlertRulesResponseSchema = yup.object({
   rules: yup.array(issueAlertRuleSchema).defined(),
+  truncated: yup.boolean().optional(),
 }).defined();
 
 const issueAlertRuleResponseSchema = yup.object({
@@ -218,10 +219,25 @@ async function readJsonOrThrow(response: Response, operation: string): Promise<u
   return await response.json();
 }
 
-export async function fetchIssueAlertRules(adminApp: object): Promise<IssueAlertRuleResponse[]> {
+export async function fetchIssueAlertRules(adminApp: object): Promise<{ rules: IssueAlertRuleResponse[], truncated: boolean }> {
   const response = await sendInternalAdminRequest(adminApp, "/issues/alerts", { method: "GET" });
   const body = await issueAlertRulesResponseSchema.validate(await readJsonOrThrow(response, "Loading issue alert rules"));
-  return body.rules;
+  return { rules: body.rules, truncated: body.truncated === true };
+}
+
+export async function replayIssueAlertDelivery(
+  adminApp: object,
+  deliveryId: string,
+): Promise<{ replayed: boolean }> {
+  const response = await sendInternalAdminRequest(
+    adminApp,
+    `/issues/alerts/deliveries/${encodeURIComponent(deliveryId)}/replay`,
+    { method: "POST" },
+  );
+  const body = await yup.object({
+    replayed: yup.boolean().defined(),
+  }).defined().validate(await readJsonOrThrow(response, "Replaying issue alert delivery"));
+  return { replayed: body.replayed };
 }
 
 export async function saveIssueAlertRule(

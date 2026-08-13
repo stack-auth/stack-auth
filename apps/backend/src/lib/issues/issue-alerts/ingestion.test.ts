@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collectIssueAlertFrequencyWindows } from "./ingestion";
+import { buildIssueAlertFrequencyCountsQuery, collectIssueAlertFrequencyWindows } from "./ingestion";
 import type { IssueAlertRule } from "./types";
 
 function rule(id: string, predicates: IssueAlertRule["conditions"]["all"]): IssueAlertRule {
@@ -30,5 +30,16 @@ describe("collectIssueAlertFrequencyWindows", () => {
 
   it("returns an empty set when no rule uses frequency", () => {
     expect(collectIssueAlertFrequencyWindows([rule("plain", [{ type: "new", value: true }])])).toEqual([]);
+  });
+
+  it("counts every alert frequency window in one bounded ClickHouse scan", () => {
+    const query = buildIssueAlertFrequencyCountsQuery([60, 3_600, 86_400]);
+
+    expect(query.match(/FROM analytics_internal\.telemetry/g)).toHaveLength(1);
+    expect(query).toContain("PREWHERE project_id = {projectId:String}");
+    expect(query).toContain("event_at >= {earliestRangeStart:DateTime}");
+    expect(query).toContain("countIf(event_at >= {rangeStart0:DateTime})");
+    expect(query).toContain("countIf(event_at >= {rangeStart1:DateTime})");
+    expect(query).toContain("countIf(event_at >= {rangeStart2:DateTime})");
   });
 });

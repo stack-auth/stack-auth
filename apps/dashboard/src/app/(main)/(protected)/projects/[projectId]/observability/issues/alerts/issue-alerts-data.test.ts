@@ -3,6 +3,7 @@ import {
   fetchIssueAlertDeliveries,
   fetchIssueAlertRules,
   type IssueAlertDelivery,
+  replayIssueAlertDelivery,
   saveIssueAlertRule,
   type IssueAlertRulePayload,
   type IssueAlertRuleResponse,
@@ -74,7 +75,7 @@ describe("fetchIssueAlertRules", () => {
       truncated: false,
     }), { status: 200 }));
 
-    await expect(fetchIssueAlertRules(adminApp)).resolves.toEqual([rule]);
+    await expect(fetchIssueAlertRules(adminApp)).resolves.toEqual({ rules: [rule], truncated: false });
     expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(adminApp, "/issues/alerts", { method: "GET" });
   });
 
@@ -106,6 +107,18 @@ describe("fetchIssueAlertDeliveries", () => {
   it("rejects an unsafe delivery page size instead of widening the query", async () => {
     await expect(fetchIssueAlertDeliveries(adminApp, 101)).rejects.toThrow("delivery limit");
     expect(sendInternalAdminRequestMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("replayIssueAlertDelivery", () => {
+  it("posts replay for a delivery id", async () => {
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({ replayed: true }), { status: 200 }));
+    await expect(replayIssueAlertDelivery(adminApp, delivery.id)).resolves.toEqual({ replayed: true });
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(
+      adminApp,
+      `/issues/alerts/deliveries/${delivery.id}/replay`,
+      { method: "POST" },
+    );
   });
 });
 

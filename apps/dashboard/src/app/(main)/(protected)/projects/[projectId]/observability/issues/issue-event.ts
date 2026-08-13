@@ -459,6 +459,24 @@ function deduplicateSymbolicationDiagnostics(
   return [...unique.values()];
 }
 
+/**
+ * The stack the issue page should lead with. Exception-chain frames already
+ * carry flattened symbolication (original file/line + source context). The
+ * occurrence projection is the fallback when the payload has no exception
+ * values, which is how non-Error throws arrive.
+ */
+export function heroStack(occurrence: Pick<IssueOccurrence, "data" | "frames" | "raw_stack">): {
+  frames: IssueEventFrame[],
+  rawStack: string | null,
+} {
+  const payload = getIssueEventPayload(occurrence);
+  const primary = payload.exceptionChain.at(0);
+  if (primary !== undefined && (primary.frames.length > 0 || (primary.rawStack != null && primary.rawStack.trim() !== ""))) {
+    return { frames: primary.frames, rawStack: primary.rawStack };
+  }
+  return { frames: payload.occurrenceFrames, rawStack: occurrence.raw_stack };
+}
+
 export function getIssueEventPayload(occurrence: IssueEventOccurrenceProjection): IssueEventPayload {
   const data = asIssueEventRecord(occurrence.data);
   const occurrenceFrames = parseFrames(occurrence.frames);

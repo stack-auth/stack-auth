@@ -3,6 +3,7 @@ import { createErrorIngestProtocolProjection } from "./error-ingest-protocol-ada
 import {
   buildErrorIngestClientReportRequestRows,
   buildErrorIngestClientReportRows,
+  ERROR_INGEST_CLIENT_REPORT_REASON_CATEGORY_MAX_BYTES,
   normalizeErrorIngestClientReportReportedAt,
   parseErrorIngestClientReportRequest,
 } from "./error-ingest-client-reports";
@@ -90,6 +91,36 @@ describe("error ingest client report persistence contract", () => {
       filtered_events: [],
       filtered_sampling_events: [],
     })).toThrow(/timestamp/iu);
+  });
+
+  it("keeps reason and category within the PostgreSQL varchar limit", () => {
+    const validEntry = {
+      reason: "r".repeat(ERROR_INGEST_CLIENT_REPORT_REASON_CATEGORY_MAX_BYTES),
+      category: "c".repeat(ERROR_INGEST_CLIENT_REPORT_REASON_CATEGORY_MAX_BYTES),
+      quantity: 1,
+    };
+    expect(parseErrorIngestClientReportRequest({
+      idempotency_key: "client-report-varchar-limit",
+      discarded_events: [validEntry],
+      rate_limited_events: [],
+      filtered_events: [],
+      filtered_sampling_events: [],
+    }).clientReport.discarded_events).toEqual([validEntry]);
+
+    expect(() => parseErrorIngestClientReportRequest({
+      idempotency_key: "client-report-reason-too-long",
+      discarded_events: [{ ...validEntry, reason: `${validEntry.reason}x` }],
+      rate_limited_events: [],
+      filtered_events: [],
+      filtered_sampling_events: [],
+    })).toThrow(/reason and category/iu);
+    expect(() => parseErrorIngestClientReportRequest({
+      idempotency_key: "client-report-category-too-long",
+      discarded_events: [{ ...validEntry, category: `${validEntry.category}x` }],
+      rate_limited_events: [],
+      filtered_events: [],
+      filtered_sampling_events: [],
+    })).toThrow(/reason and category/iu);
   });
 
   it("uses the client timestamp for durable report chronology", () => {
