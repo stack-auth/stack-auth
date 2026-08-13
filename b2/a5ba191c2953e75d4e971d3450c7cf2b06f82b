@@ -1,0 +1,33 @@
+apps/backend/prisma/migrations/20260810000000_simplify_observability/migration.sql
+  s_dd9eb7a34a9425::t_3c4204403f27d8 1-31
+apps/backend/prisma/migrations/20260810000000_simplify_observability/tests/batch-id-is-transport-string.ts
+  s_dd9eb7a34a9425::t_7f7008df3d04d0 1-51
+apps/backend/src/app/api/latest/analytics/client-reports/route.ts
+  s_dd9eb7a34a9425::t_1d195e668dbb78 4,12-13
+apps/backend/src/lib/attachments/attachment-service.ts
+  s_dd9eb7a34a9425::t_26e55373f64d17 59-78
+apps/backend/src/lib/error-ingest/error-ingest-client-reports.test.ts
+  s_dd9eb7a34a9425::t_9ee8aa0afa00bb 6,96-125
+apps/backend/src/lib/error-ingest/error-ingest-client-reports.ts
+  s_dd9eb7a34a9425::t_b72195db00e141 52-55,58,67-68,78-81,174-177,189,218
+apps/backend/src/lib/error-ingest/error-ingest-envelope.test.ts
+  s_dd9eb7a34a9425::t_e38913eb3a3256 91-105
+apps/backend/src/lib/error-ingest/error-ingest-envelope.ts
+  s_dd9eb7a34a9425::t_7301387c7ec681 727-733
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "b2a5ba191c2953e75d4e971d3450c7cf2b06f82b",
+  "prompts": {},
+  "sessions": {
+    "s_dd9eb7a34a9425": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c533dd44-e3b7-4460-8c4c-8c2479b53e37",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
