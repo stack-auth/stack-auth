@@ -141,15 +141,16 @@ function countPiledriverInlineNodes(obj: PiledriverObject, path: Set<object> = n
       if (obj === null) return { ...emptyPiledriverInlineNodeCounts(), primitiveNodes: 1 };
       if (isPiledriverHeapObjectSymbol in obj) return { ...emptyPiledriverInlineNodeCounts(), heapReferenceNodes: 1 };
       if (path.has(obj)) throw new Error("Piledriver objects must not contain cycles");
-      const childPath = new Set(path).add(obj);
+      path.add(obj);
       const counts = emptyPiledriverInlineNodeCounts();
       if (Array.isArray(obj)) {
         counts.arrayNodes++;
-        for (const item of obj) addPiledriverInlineNodeCounts(counts, countPiledriverInlineNodes(item, childPath));
+        for (const item of obj) addPiledriverInlineNodeCounts(counts, countPiledriverInlineNodes(item, path));
       } else {
         counts.objectNodes++;
-        for (const value of Object.values(obj)) addPiledriverInlineNodeCounts(counts, countPiledriverInlineNodes(value, childPath));
+        for (const value of Object.values(obj)) addPiledriverInlineNodeCounts(counts, countPiledriverInlineNodes(value, path));
       }
+      path.delete(obj);
       return counts;
     }
     default: {
@@ -311,6 +312,8 @@ export function declareBasePiledriverDatabase(lowLevelDb: LowLevelDatabase, opti
     }
 
     const promise = (async () => {
+      // Keep this copy: pending heap references resolve concurrently, so sibling branches cannot
+      // share a mutable path set.
       const childHeapPath = new Set(heapPath).add(heapObj);
       return await traceSpanHot("bulldozer-js.piledriver.heap.serializeAndInsert", async () => {
         const heapObjectGetStartedAt = performance.now();
@@ -355,7 +358,10 @@ export function declareBasePiledriverDatabase(lowLevelDb: LowLevelDatabase, opti
       result = await promise;
     } catch (error) {
       // Don't leave a poisoned rejected promise in the cache; a later retry may succeed.
-      if (heapKeysAndSeqByHeapObjects.get(heapObj) === promise) heapKeysAndSeqByHeapObjects.delete(heapObj);
+      if (heapKeysAndSeqByHeapObjects.get(heapObj) === promise) {
+        heapKeysAndSeqByHeapObjects.delete(heapObj);
+        heapSerializationDependencies.delete(heapObj);
+      }
       if (heapSerializationEntryByHeapObjects.get(heapObj)?.promise === promise) heapSerializationEntryByHeapObjects.delete(heapObj);
       throw error;
     } finally {
@@ -636,10 +642,6 @@ export function declareBasePiledriverDatabase(lowLevelDb: LowLevelDatabase, opti
       if (unpublished.length > 0) await startHeapObjectPublication(unpublished);
       const publicationSeqs = await Promise.all(batch.createdObjects.map(entry =>
         entry.publicationPromise ?? throwErr("Piledriver heap serialization entry has no publication promise")));
-      for (const { heapObj } of batch.createdObjects) {
-        const entry = heapSerializationEntryByHeapObjects.get(heapObj);
-        if (entry?.batch === batch && entry.publicationStatus === "published") heapSerializationEntryByHeapObjects.delete(heapObj);
-      }
       return combineSeqsDeduped(publicationSeqs);
     } catch (error) {
       abortHeapSerializationBatch(batch);
@@ -662,6 +664,9 @@ export function declareBasePiledriverDatabase(lowLevelDb: LowLevelDatabase, opti
       stack.push({ entry: current.entry, expanded: true });
       for (const dependency of heapSerializationDependencies.get(current.entry.heapObj) ?? []) {
         const dependencyEntry = heapSerializationEntryByHeapObjects.get(dependency);
+        // Edges are pruned when their owner publishes, so the graph only spans objects still in
+        // flight. An individual edge can outlive its target's entry when the target publishes
+        // first; that target is already durable and needs no further publication ordering.
         if (dependencyEntry !== undefined && !visited.has(dependencyEntry.heapObj)) {
           stack.push({ entry: dependencyEntry, expanded: false });
         }
@@ -689,12 +694,22 @@ export function declareBasePiledriverDatabase(lowLevelDb: LowLevelDatabase, opti
         for (const entry of claimedEntries) {
           entry.publicationStatus = "published";
           entry.publicationSeq = seq;
+          if (heapSerializationEntryByHeapObjects.get(entry.heapObj) !== entry) continue;
+          // Once an object is published, its outgoing edges are immutable and no longer needed for
+          // publication ordering or cycle detection, so prune them with the entry.
+          heapSerializationEntryByHeapObjects.delete(entry.heapObj);
+          heapSerializationDependencies.delete(entry.heapObj);
         }
         return seq;
       } catch (error) {
         for (const entry of claimedEntries) {
           entry.publicationStatus = "failed";
           entry.publicationError = error;
+          if (heapSerializationEntryByHeapObjects.get(entry.heapObj) === entry) {
+            // Publication failure is terminal for this entry, so nothing will publish through its
+            // edges; if abort drops it, a fresh serialization registers fresh edges.
+            heapSerializationDependencies.delete(entry.heapObj);
+          }
         }
         throw error;
       }
@@ -715,8 +730,11 @@ export function declareBasePiledriverDatabase(lowLevelDb: LowLevelDatabase, opti
     for (const { heapObj, promise } of batch.createdObjects) {
       if (heapKeysAndSeqByHeapObjects.get(heapObj) === promise) heapKeysAndSeqByHeapObjects.delete(heapObj);
       const entry = heapSerializationEntryByHeapObjects.get(heapObj);
-      if (entry?.batch === batch && entry.publicationStatus !== "publishing" && entry.publicationStatus !== "published") {
+      // Objects still publishing keep their entry because concurrent publications resolve through
+      // it; everything else is either durable or gone, so nothing needs its dependency edges.
+      if (entry?.batch === batch && entry.publicationStatus !== "publishing") {
         heapSerializationEntryByHeapObjects.delete(heapObj);
+        heapSerializationDependencies.delete(heapObj);
       }
     }
   };
