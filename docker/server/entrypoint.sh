@@ -48,9 +48,38 @@ fi
 
 # ============= ENV VARS =============
 
-export STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=${STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY:-$(openssl rand -base64 32)}
-export STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY=${STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY:-$(openssl rand -base64 32)}
-export STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY:-$(openssl rand -base64 32)}
+resolve_internal_project_key_aliases() {
+  local _canonical _alias
+  for _canonical in STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY; do
+    case "$_canonical" in
+      STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY) _alias=STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY ;;
+      STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY) _alias=STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY ;;
+    esac
+    if [ -n "${!_canonical:-}" ] && [ -n "${!_alias:-}" ] && [ "${!_canonical}" != "${!_alias}" ]; then
+      echo "ERROR: $_canonical and $_alias are both set to different non-empty values. Remove one of them or set them to the same value." >&2
+      exit 1
+    fi
+    if [ -z "${!_canonical:-}" ] && [ -n "${!_alias:-}" ]; then
+      export "$_canonical=${!_alias}"
+    fi
+  done
+}
+resolve_internal_project_key_aliases
+
+derive_internal_project_key() {
+  local _label=$1
+  printf '%s' "$_label" | openssl dgst -sha256 -hmac "$STACK_SERVER_SECRET" -binary | base64 -w0
+}
+
+if [ -z "${STACK_SERVER_SECRET:-}" ]; then
+  echo "WARNING: STACK_SERVER_SECRET is unset; generated internal project keys will rotate on restart and break the dashboard. Set the server secret or all internal project keys explicitly." >&2
+fi
+
+# Deterministic derivation keeps generated dashboard keys stable across restarts
+# while using distinct HMAC labels so the three keys cannot be recovered from one another.
+export STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=${STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY:-$(if [ -n "${STACK_SERVER_SECRET:-}" ]; then derive_internal_project_key internal-project-publishable-client-key; else openssl rand -base64 32; fi)}
+export STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY=${STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY:-$(if [ -n "${STACK_SERVER_SECRET:-}" ]; then derive_internal_project_key internal-project-secret-server-key; else openssl rand -base64 32; fi)}
+export STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY:-$(if [ -n "${STACK_SERVER_SECRET:-}" ]; then derive_internal_project_key internal-project-super-secret-admin-key; else openssl rand -base64 32; fi)}
 
 export NEXT_PUBLIC_STACK_PROJECT_ID=internal
 export NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY}
@@ -140,9 +169,33 @@ fi
 # that case. Marker lives in WORK_DIR because the docker/server image runs as
 # the unprivileged `node` user and cannot write to /var/run.
 SENTINEL_MARKER="$WORK_DIR/.stack-sentinels-replaced"
+sentinel_env_vars=""
+sentinel_fingerprint=""
 if [ -f "$SENTINEL_MARKER" ]; then
-  echo "Sentinels already replaced on a previous start; skipping scan."
-else
+  stored_sentinel_fingerprint=$(sed -n '1p' "$SENTINEL_MARKER")
+  sentinel_env_vars=$(sed -n '2p' "$SENTINEL_MARKER")
+  if [ -n "$stored_sentinel_fingerprint" ] && [ -n "$sentinel_env_vars" ]; then
+    current_sentinel_fingerprint=$(printf '%s\n' "$sentinel_env_vars" | tr ' ' '\n' | while IFS= read -r env_var; do printf '%s=%s\n' "$env_var" "${!env_var:-}"; done | sort | sha256sum | cut -d ' ' -f1)
+    if [ "$stored_sentinel_fingerprint" = "$current_sentinel_fingerprint" ]; then
+      echo "Sentinel values unchanged on a previous start; skipping scan."
+      sentinel_fingerprint=$stored_sentinel_fingerprint
+    else
+      echo "Sentinel values changed; rebuilding runtime files and rescanning."
+      rm -rf "$WORK_DIR"
+      mkdir -p "$WORK_DIR"
+      cp -r /app/. "$WORK_DIR"/.
+      rm -f "$SENTINEL_MARKER"
+    fi
+  else
+    echo "Sentinel marker has no fingerprint; rebuilding runtime files and rescanning."
+    rm -rf "$WORK_DIR"
+    mkdir -p "$WORK_DIR"
+    cp -r /app/. "$WORK_DIR"/.
+    rm -f "$SENTINEL_MARKER"
+  fi
+fi
+
+if [ ! -f "$SENTINEL_MARKER" ]; then
   # Find all files in the apps directory that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
   # Require at least one character after `STACK_ENV_VAR_SENTINEL_` — a bare
   # `STACK_ENV_VAR_SENTINEL_` (trailing underscore but no suffix) makes env_var
@@ -162,6 +215,10 @@ else
   for sentinel in $unhandled_sentinels; do
     # The sentinel is like "STACK_ENV_VAR_SENTINEL_MY_VAR", so extract the env var name.
     env_var=${sentinel#STACK_ENV_VAR_SENTINEL_}
+    case " $sentinel_env_vars " in
+      *" $env_var "*) ;;
+      *) sentinel_env_vars="${sentinel_env_vars:+$sentinel_env_vars }$env_var" ;;
+    esac
 
     # Defense in depth: skip if env_var name is empty. The regex above already
     # excludes bare-prefix matches, but `${!env_var}` with an empty name aborts
@@ -197,7 +254,11 @@ else
     fi
   done
   echo "Sentinel replacement complete."
-  touch "$SENTINEL_MARKER"
+  sentinel_fingerprint=$(printf '%s\n' "$sentinel_env_vars" | tr ' ' '\n' | while IFS= read -r env_var; do printf '%s=%s\n' "$env_var" "${!env_var:-}"; done | sort | sha256sum | cut -d ' ' -f1)
+  {
+    printf '%s\n' "$sentinel_fingerprint"
+    printf '%s\n' "$sentinel_env_vars"
+  } > "$SENTINEL_MARKER"
 fi
 
 # ============= START BACKEND AND DASHBOARD =============

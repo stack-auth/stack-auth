@@ -1,18 +1,22 @@
 "use client";
 
-import { Spinner } from "@/components/ui";
 import * as Sentry from "@sentry/nextjs";
-import Error from "next/error";
+import { recordGlobalErrorRecoveryAttempt } from "./global-error-recovery";
 import { useEffect } from "react";
 
-export default function GlobalError({ error }: any) {
-  const isProdLike = process.env.NODE_ENV.includes("production");
+type GlobalErrorProps = {
+  error: Error & { digest?: string };
+};
 
+export default function GlobalError({ error }: GlobalErrorProps) {
   useEffect(() => {
     Sentry.captureException(error);
   }, [error]);
 
   useEffect(() => {
+    if (!recordGlobalErrorRecoveryAttempt()) {
+      return;
+    }
     let cancelled = false;
     setTimeout(() => {
       if (!cancelled) {
@@ -22,18 +26,22 @@ export default function GlobalError({ error }: any) {
     return () => {
       cancelled = true;
     };
-  }, [isProdLike]);
+  }, []);
 
   return (
     <html>
       <body className="flex items-center justify-center min-h-screen">
-        {isProdLike ? (
-          <Spinner />
-        ) : (
-          <Error
-            statusCode={500}
-          />
-        )}
+        <div className="flex max-w-md flex-col items-center gap-4 p-6 text-center">
+          <h1 className="text-xl font-semibold">Something went wrong</h1>
+          <p className="text-muted-foreground">The dashboard could not load this page. Try again, or reload the page manually later.</p>
+          <button
+            type="button"
+            className="rounded-md bg-primary px-4 py-2 text-primary-foreground"
+            onClick={() => window.location.assign("/")}
+          >
+            Try again
+          </button>
+        </div>
       </body>
     </html>
   );
