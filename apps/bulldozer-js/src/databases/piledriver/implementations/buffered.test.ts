@@ -4,7 +4,13 @@ import { declareBufferedPiledriverDatabase } from "./buffered.js";
 import type { PiledriverDatabase } from "../index.js";
 
 const key = (value: string) => new TextEncoder().encode(value).buffer;
-const delay = (milliseconds: number) => new Promise(resolve => setTimeout(resolve, milliseconds));
+const deferred = <T>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(resolvePromise => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+};
 
 function countingDatabase() {
   const wrapped = declareInMemoryPiledriverDatabase(crypto.randomUUID());
@@ -39,13 +45,13 @@ describe("BufferedPiledriverDatabase", () => {
     const db = declareBufferedPiledriverDatabase(counted, { throttleMs: 20 });
     const rootKey = key("coalesce");
 
-    const first = db.setRootObject(rootKey, "first");
-    const second = db.setRootObject(rootKey, "second");
-    const third = db.setRootObject(rootKey, "third");
-    await Promise.all([first, second, third]);
-    await delay(30);
+    const first = await db.setRootObject(rootKey, "first");
+    await db.waitUntilDurable(first.seq);
+    const second = await db.setRootObject(rootKey, "second");
+    const third = await db.setRootObject(rootKey, "third");
+    await db.waitUntilDurable(third.seq);
 
-    expect(getWrites()).toBe(1);
+    expect(getWrites()).toBe(2);
     await expect(counted.getRootObject(rootKey)).resolves.toMatchObject({ object: "third" });
   });
 
@@ -55,9 +61,55 @@ describe("BufferedPiledriverDatabase", () => {
     await counted.setRootObject(rootKey, "value");
     const db = declareBufferedPiledriverDatabase(counted, { throttleMs: 50 });
 
-    await db.deleteRootObject(rootKey);
+    const { seq } = await db.deleteRootObject(rootKey);
 
     await expect(db.getRootObject(rootKey)).rejects.toThrow("Root object not found");
+    await db.waitUntilDurable(seq);
+    await expect(counted.getRootObject(rootKey)).rejects.toThrow("Root object not found");
+  });
+
+  it("waits for every member of a combined sequence", async () => {
+    const gate = deferred<void>();
+    const wrapped = declareInMemoryPiledriverDatabase(crypto.randomUUID());
+    let writes = 0;
+    const delayed: PiledriverDatabase = {
+      ...wrapped,
+      async setRootObject(rootKey, value) {
+        writes++;
+        if (writes === 1) await gate.promise;
+        return await wrapped.setRootObject(rootKey, value);
+      },
+    };
+    const db = declareBufferedPiledriverDatabase(delayed, { throttleMs: 50 });
+    const firstKey = key("combined-first");
+    const secondKey = key("combined-second");
+    const first = await db.setRootObject(firstKey, "first");
+    await Promise.resolve();
+    const second = await db.setRootObject(secondKey, "second");
+    const combined = db.combineSeqs(second.seq, first.seq);
+    gate.resolve();
+
+    await db.waitUntilDurable(combined);
+
+    await expect(wrapped.getRootObject(firstKey)).resolves.toMatchObject({ object: "first" });
+    await expect(wrapped.getRootObject(secondKey)).resolves.toMatchObject({ object: "second" });
+  });
+
+  it("rejects a durability waiter once without retrying a failed write", async () => {
+    const wrapped = declareInMemoryPiledriverDatabase(crypto.randomUUID());
+    let attempts = 0;
+    const failing: PiledriverDatabase = {
+      ...wrapped,
+      async setRootObject() {
+        attempts++;
+        throw new Error("write failed");
+      },
+    };
+    const db = declareBufferedPiledriverDatabase(failing, { throttleMs: 0 });
+    const { seq } = await db.setRootObject(key("failure"), "value");
+
+    await expect(db.waitUntilDurable(seq)).rejects.toThrow("write failed");
+    expect(attempts).toBe(1);
   });
 
   it("waits for the scheduled flush before durable completion", async () => {

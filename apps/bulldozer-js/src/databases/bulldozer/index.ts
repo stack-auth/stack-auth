@@ -900,7 +900,7 @@ export type BulldozerDatabase = {
   collectPiledriverGarbage(cutoffTimestampMillis: number, maxObjects?: number): Promise<PiledriverGarbageCollectionResult>,
   close(): Promise<void>,
   applyRemainingMigrations(): Promise<{ seq: DatabaseSeq }>,
-  debugWriteLockStats?(): { heldMs: number, waitMs: number, acquisitions: number },
+  debugWriteLockStats(): { heldMs: number, waitMs: number, acquisitions: number },
 };
 
 type BulldozerDatabaseRootSerialized = {

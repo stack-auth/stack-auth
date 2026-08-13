@@ -1,13 +1,13 @@
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { DatabaseSeq } from "../../index.js";
 import { PiledriverDatabase, PiledriverObject } from "../index.js";
 
-type BufferedPiledriverSeq = DatabaseSeq;
 type PendingEntry = {
   key: ArrayBuffer,
-  value: PiledriverObject | undefined,
-  deleted: boolean,
+  state: { type: "set", value: PiledriverObject } | { type: "delete" },
+  latestSeq: DatabaseSeq,
   records: SeqRecord[],
 };
 type SeqRecord = {
@@ -16,11 +16,10 @@ type SeqRecord = {
   reject: (error: unknown) => void,
 };
 
-const cloneKey = (key: ArrayBuffer) => key.slice(0);
-const pendingValue = (entry: PendingEntry): PiledriverObject => {
-  if (entry.value === undefined) throw new Error("Buffered Piledriver pending value is missing");
-  return entry.value;
-};
+const getPendingKey = (key: ArrayBuffer) => ({
+  id: encodeBase64(new Uint8Array(key)),
+  key: key.slice(0),
+});
 
 export function declareBufferedPiledriverDatabase(
   wrapped: PiledriverDatabase,
@@ -30,7 +29,7 @@ export function declareBufferedPiledriverDatabase(
   if (!Number.isFinite(throttleMs) || throttleMs < 0) throw new Error("throttleMs must be a non-negative finite number");
 
   const dbId = `buffered-piledriver-${crypto.randomUUID()}`;
-  const initialSeq = [dbId, "initial"] as unknown as BufferedPiledriverSeq;
+  const initialSeq = [dbId, "initial"] as unknown as DatabaseSeq;
   const seqRecords = new WeakMap<object, SeqRecord>();
   const pending = new Map<string, PendingEntry>();
   let flushPromise: Promise<DatabaseSeq> | null = null;
@@ -49,7 +48,7 @@ export function declareBufferedPiledriverDatabase(
 
   const flushPending = (): Promise<DatabaseSeq> => {
     if (flushPromise !== null) return flushPromise;
-    if (pending.size === 0) return Promise.resolve(initialSeq);
+    if (pending.size === 0) return Promise.resolve(wrapped.initialSeq);
 
     const batch = [...pending.values()];
     pending.clear();
@@ -57,18 +56,16 @@ export function declareBufferedPiledriverDatabase(
       let combinedSeq = wrapped.initialSeq;
       try {
         for (const entry of batch) {
-          const result = entry.deleted
+          const result = entry.state.type === "delete"
             ? await wrapped.deleteRootObject(entry.key)
-            : await wrapped.setRootObject(entry.key, pendingValue(entry));
+            : await wrapped.setRootObject(entry.key, entry.state.value);
           combinedSeq = wrapped.combineSeqs(combinedSeq, result.seq);
         }
         for (const entry of batch) for (const record of entry.records) record.resolve(combinedSeq);
         return combinedSeq;
       } catch (error) {
-        for (const entry of batch) {
-          const current = pending.get(encodeBase64(new Uint8Array(entry.key)));
-          if (current === undefined) pending.set(encodeBase64(new Uint8Array(entry.key)), entry);
-        }
+        // The caller was already told this write succeeded, so swallowing a background failure could lose data without
+        // anyone noticing.
         for (const entry of batch) for (const record of entry.records) record.reject(error);
         throw error;
       } finally {
@@ -77,20 +74,24 @@ export function declareBufferedPiledriverDatabase(
         if (pending.size > 0) scheduleFlush();
       }
     })();
-    flushPromise.catch(error => captureError("bulldozer-js:piledriver-buffered-flush", error));
     return flushPromise;
   };
+
+  const startBackgroundFlush = () => runAsynchronously(flushPending(), {
+    noErrorLogging: true,
+    onError: error => captureError("bulldozer-js:piledriver-buffered-flush", error),
+  });
 
   const scheduleFlush = () => {
     if (flushPromise !== null || pending.size === 0 || flushTimer !== null) return;
     const delay = lastFlushAt === -Infinity ? 0 : Math.max(0, throttleMs - (performance.now() - lastFlushAt));
     if (delay === 0) {
-      void Promise.resolve().then(() => flushPending().catch(() => {})).catch(() => {});
+      queueMicrotask(startBackgroundFlush);
       return;
     }
     flushTimer = setTimeout(() => {
       flushTimer = null;
-      void flushPending().catch(() => {});
+      startBackgroundFlush();
     }, delay);
     if ("unref" in flushTimer) flushTimer.unref();
   };
@@ -106,8 +107,8 @@ export function declareBufferedPiledriverDatabase(
     }
   };
 
-  const createSeq = (entry: PendingEntry) => {
-    const seq = [dbId, crypto.randomUUID()] as unknown as BufferedPiledriverSeq;
+  const createSeq = () => {
+    const seq = [dbId, crypto.randomUUID()] as unknown as DatabaseSeq;
     let resolve!: (value: DatabaseSeq) => void;
     let reject!: (error: unknown) => void;
     const flush = new Promise<DatabaseSeq>((resolvePromise, rejectPromise) => {
@@ -115,22 +116,41 @@ export function declareBufferedPiledriverDatabase(
       reject = rejectPromise;
     });
     const record = { flush, resolve, reject };
-    entry.records.push(record);
     seqRecords.set(seq, record);
+    return { seq, record };
+  };
+
+  const write = (key: ArrayBuffer, state: PendingEntry["state"]) => {
+    if (isClosing) throw new Error("Buffered Piledriver database is closing and cannot accept writes");
+    const pendingKey = getPendingKey(key);
+    const entry = pending.get(pendingKey.id) ?? {
+      key: pendingKey.key,
+      state,
+      latestSeq: initialSeq,
+      records: [],
+    };
+    const { seq, record } = createSeq();
+    entry.state = state;
+    entry.latestSeq = seq;
+    entry.records.push(record);
+    pending.set(pendingKey.id, entry);
+    scheduleFlush();
     return seq;
   };
 
-  const keyString = (key: ArrayBuffer) => encodeBase64(new Uint8Array(key));
-  const write = (key: ArrayBuffer, value: PiledriverObject | undefined, deleted: boolean) => {
-    if (isClosing) throw new Error("Buffered Piledriver database is closing and cannot accept writes");
-    const keyCopy = cloneKey(key);
-    const stringKey = keyString(keyCopy);
-    const entry = pending.get(stringKey) ?? { key: keyCopy, value, deleted, records: [] };
-    entry.value = value;
-    entry.deleted = deleted;
-    pending.set(stringKey, entry);
-    const seq = createSeq(entry);
-    scheduleFlush();
+  const createCombinedSeq = (seqs: DatabaseSeq[]) => {
+    if (seqs.length === 0) return initialSeq;
+    const { seq, record } = createSeq();
+    runAsynchronously(async () => {
+      const underlyingSeqs = await Promise.all(seqs.map(memberSeq => {
+        const memberRecord = getRecord(memberSeq);
+        return memberRecord === null ? Promise.resolve(wrapped.initialSeq) : memberRecord.flush;
+      }));
+      record.resolve(wrapped.combineSeqs(...underlyingSeqs));
+    }, {
+      noErrorLogging: true,
+      onError: error => record.reject(error),
+    });
     return seq;
   };
 
@@ -146,18 +166,20 @@ export function declareBufferedPiledriverDatabase(
       return { backend: "piledriver-buffered", wrapped, pendingBufferSize: pending.size };
     },
     async getRootObject(key) {
-      const entry = pending.get(keyString(key));
+      const entry = pending.get(getPendingKey(key).id);
       if (entry !== undefined) {
-        if (entry.deleted) throw new Error("Root object not found");
-        return { object: pendingValue(entry), seq: initialSeq };
+        if (entry.state.type === "delete") throw new Error("Root object not found");
+        // Pending reads return the original object without serialization, so callers must preserve the same immutability
+        // expectations as with the in-memory Piledriver backend.
+        return { object: entry.state.value, seq: entry.latestSeq };
       }
       return await wrapped.getRootObject(key);
     },
     async setRootObject(key, value) {
-      return { seq: write(key, value, false) };
+      return { seq: write(key, { type: "set", value }) };
     },
     async deleteRootObject(key) {
-      return { seq: write(key, undefined, true) };
+      return { seq: write(key, { type: "delete" }) };
     },
     getGarbageCollectionProcessStartedAtMillis() {
       return wrapped.getGarbageCollectionProcessStartedAtMillis();
@@ -177,7 +199,7 @@ export function declareBufferedPiledriverDatabase(
       return await wrapped.debugLowLevelSnapshot();
     },
     combineSeqs(...seqs) {
-      return seqs.length === 0 ? initialSeq : seqs[seqs.length - 1];
+      return createCombinedSeq(seqs);
     },
     waitUntilAvailable: async () => {},
     waitUntilDurable: async seq => await waitUntil(seq, underlyingSeq => wrapped.waitUntilDurable(underlyingSeq)),
