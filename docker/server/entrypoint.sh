@@ -156,6 +156,10 @@ mirror_hexclave_stack_env
 # Keep this off /tmp so config sharing can bind-mount /tmp
 # without pushing the whole runtime copy step onto the host filesystem.
 WORK_DIR="${STACK_RUNTIME_WORK_DIR:-/var/tmp/stack-runtime}"
+if [ "$WORK_DIR" = "/" ]; then
+  echo "ERROR: STACK_RUNTIME_WORK_DIR=/ cannot be used because startup cleanup would target the container root. Choose a dedicated runtime directory." >&2
+  exit 1
+fi
 mkdir -p "$WORK_DIR"
 
 # The full-tree sentinel scan is expensive (several seconds over the whole built
@@ -179,11 +183,14 @@ get_runtime_build_identity() {
   fi
   printf '%s\n' "$_identity"
 }
-rebuild_runtime_tree() {
+require_rebuildable_runtime_work_dir() {
   if [ "$WORK_DIR" = "/app" ]; then
     echo "ERROR: STACK_RUNTIME_WORK_DIR=/app cannot rebuild changed sentinel values in place. Recreate the container without STACK_RUNTIME_WORK_DIR=/app." >&2
     exit 1
   fi
+}
+rebuild_runtime_tree() {
+  require_rebuildable_runtime_work_dir
   while IFS= read -r -d '' _runtime_entry; do
     rm -rf "$WORK_DIR/$_runtime_entry"
   done < <(find /app -mindepth 1 -maxdepth 1 -printf '%f\0')
@@ -240,7 +247,9 @@ if [ "$runtime_tree_trusted" = false ]; then
     echo "Restoring pristine files to working directory..."
     rebuild_runtime_tree
   elif [ "$sentinel_marker_present" = true ]; then
-    rebuild_runtime_tree
+    # A marker proves that /app was previously processed, so it cannot safely
+    # be rescanned in place after the marker becomes stale.
+    require_rebuildable_runtime_work_dir
   fi
 fi
 
