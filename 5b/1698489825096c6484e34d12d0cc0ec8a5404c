@@ -1,0 +1,39 @@
+apps/backend/src/app/api/latest/releases/recent/route.ts
+  s_dd9eb7a34a9425::t_ced03cc543c463 1-3
+apps/backend/src/lib/releases/release-route-handlers.test.ts
+  s_dd9eb7a34a9425::t_aaaab696c4cda0 23,163,169,180-183,191,196,233-279
+apps/backend/src/lib/releases/release-route-handlers.ts
+  s_dd9eb7a34a9425::t_9df0ca2e0523a5 77-80,152-156,186-190,251,255-295,550-554,576-583
+apps/backend/src/lib/releases/release-service.test.ts
+  s_dd9eb7a34a9425::t_901007e6e8be7b 129-133,136,142,148,202-287
+apps/backend/src/lib/releases/release-service.ts
+  s_dd9eb7a34a9425::t_10644e148fc68e 31-33,72,77,82,160-170,283-328,674,679,684,708-724
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/releases/page-client.tsx
+  s_dd9eb7a34a9425::t_2bb865e8c9689f 1-601
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/releases/page.tsx
+  s_dd9eb7a34a9425::t_16969f272b0b6a 1-7
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/source-maps/page-client.tsx
+  s_dd9eb7a34a9425::t_e2de1cad9e58d3 1-454
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/source-maps/page.tsx
+  s_dd9eb7a34a9425::t_d6cbe3d7a4e30f 1-7
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/source-maps/upload-source-map.test.ts
+  s_dd9eb7a34a9425::t_88cb4c0bca164b 1-76
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/source-maps/upload-source-map.ts
+  s_dd9eb7a34a9425::t_a1a5bb48e6509b 1-247
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "5b1698489825096c6484e34d12d0cc0ec8a5404c",
+  "prompts": {},
+  "sessions": {
+    "s_dd9eb7a34a9425": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c533dd44-e3b7-4460-8c4c-8c2479b53e37",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
