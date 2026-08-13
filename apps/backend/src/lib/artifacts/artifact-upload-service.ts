@@ -69,6 +69,9 @@ export type ArtifactLookup = {
   sourceMapObjectKey: string | null,
 };
 
+// Release membership is owned by the Postgres release graph. These records are
+// the immutable object-storage manifest/index needed by symbolication, not a
+// competing release registry.
 type StoredManifestRecord = {
   schemaVersion: typeof ARTIFACT_STORAGE_SCHEMA_VERSION,
   scope: ArtifactScope,
