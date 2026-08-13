@@ -6,8 +6,6 @@ export const metadata: Metadata = {
   title: "TV Mode Presentation",
 };
 
-export { generateStaticParams } from "@/lib/generate-empty-static-params";
-
 export default function Page() {
   return (
     <Suspense fallback={<div className="h-dvh bg-[#070910]" />}>

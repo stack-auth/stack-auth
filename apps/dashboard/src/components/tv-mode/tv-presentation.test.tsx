@@ -71,7 +71,7 @@ describe("TV chart headers", () => {
   it.each([
     ["live-pulse", "Today’s Activity", "Current UTC day"],
     ["audience-momentum", "Audience Lifecycle", "Daily activity · trailing 7 days"],
-    ["revenue-payments", "Paid Revenue Momentum", "Cumulative daily trend · trailing 30 days"],
+    ["revenue-payments", "Gross Paid Revenue Momentum", "Cumulative daily trend · trailing 30 days"],
     ["email-health", "Email Delivery Volume", "Daily send status · trailing 7 days"],
   ] as const)("labels the %s chart and its reporting window", (screenId, title, subtitle) => {
     const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
@@ -104,8 +104,9 @@ describe("TV metric semantics", () => {
     audienceRender.unmount();
 
     const revenueRender = render(renderTvScreen(revenue));
-    screen.getByText("30-Day Revenue Proxy");
-    screen.getByText("Paid invoice revenue · trailing 30 days");
+    screen.getByText("Gross Paid Revenue · 30d");
+    screen.getByText("30-Day Gross Revenue Proxy");
+    screen.getByText("Gross paid invoice revenue · refunds excluded");
     revenueRender.unmount();
 
     render(renderTvScreen(email));

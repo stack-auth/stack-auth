@@ -16,6 +16,7 @@ import {
   isTvEmailInsightEligible,
   isTvReturningInsightEligible,
   sourceHealthFact,
+  TV_AUDIENCE_LIFECYCLE_QUERY,
 } from "./snapshot";
 
 const observedAt = "2026-07-25T12:00:00.000Z";
@@ -355,5 +356,17 @@ describe("TV operational metric routing", () => {
 
     expect(selected).toBe(replicaClient);
     expect(replicaSelections).toBe(1);
+  });
+});
+
+describe("TV Audience lifecycle query", () => {
+  it("uses the upstream memory-bounded day-mask shape", () => {
+    expect(TV_AUDIENCE_LIFECYCLE_QUERY).toContain("sipHash64(assumeNotNull(user_id))");
+    expect(TV_AUDIENCE_LIFECYCLE_QUERY).toContain("groupBitOr");
+    expect(TV_AUDIENCE_LIFECYCLE_QUERY).toContain("ARRAY JOIN range({windowDays:UInt32})");
+    expect(TV_AUDIENCE_LIFECYCLE_QUERY).toContain("toDate(min(event_at)) AS first_date");
+    expect(TV_AUDIENCE_LIFECYCLE_QUERY).not.toContain("analytics_internal.users");
+    expect(TV_AUDIENCE_LIFECYCLE_QUERY).not.toContain("lagInFrame");
+    expect(TV_AUDIENCE_LIFECYCLE_QUERY).not.toContain("SELECT DISTINCT toDate(event_at)");
   });
 });

@@ -47,7 +47,7 @@ export const TV_SCREEN_REGISTRY = new Map<TvScreenId, TvScreenDefinition>([
   }],
   ["revenue-payments", {
     id: "revenue-payments", displayName: "Revenue & Payments",
-    description: "Thirty-day paid revenue and payment collection.",
+    description: "Thirty-day gross paid invoice revenue and payment collection.",
     sourceLabel: "Hexclave payments", defaultDurationSeconds: 18,
     icon: CurrencyDollarIcon, accentClassName: "text-emerald-300",
   }],
@@ -498,13 +498,13 @@ function RevenuePaymentsScreen({
   const financials = data.financials;
   const trend = financials.visibility === "exact" ? financials.revenueTrend : financials.normalizedRevenueTrend;
   return (
-    <TvScreenFrame eyebrow="Trailing 30 Days" title="Revenue & Payments" description="Commercial momentum and whether applicable payments are collecting." icon={<CurrencyDollarIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-emerald-300" headerAccessory={headerAccessory}>
+    <TvScreenFrame eyebrow="Trailing 30 Days" title="Revenue & Payments" description="Gross paid invoice momentum and whether applicable payments are collecting." icon={<CurrencyDollarIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-emerald-300" headerAccessory={headerAccessory}>
       <div className="grid h-full min-h-0 grid-cols-[0.78fr_1.22fr] gap-[clamp(2rem,5vw,12rem)]">
         <GlassPanel tone="emerald" className="h-full">
           <div className="flex h-full min-h-0 flex-col justify-between p-[clamp(1.5rem,2.3vw,5.5rem)]">
-            <TvMetric label="Paid revenue · 30d" value={financials.visibility === "exact" ? formatUsd(financials.paidRevenueCents) : "Hidden"} detail={`${data.revenueChangePercent >= 0 ? "↑" : "↓"} ${Math.abs(data.revenueChangePercent)}% vs previous 30 days${financials.visibility === "exact" ? "" : " · exact values off"}`} hero />
+            <TvMetric label="Gross Paid Revenue · 30d" value={financials.visibility === "exact" ? formatUsd(financials.paidRevenueCents) : "Hidden"} detail={`${data.revenueChangePercent >= 0 ? "↑" : "↓"} ${Math.abs(data.revenueChangePercent)}% vs previous 30 days${financials.visibility === "exact" ? "" : " · exact values off"}`} hero />
             <div className="grid grid-cols-2 gap-6">
-              <TvMetric label="30-Day Revenue Proxy" value={financials.visibility === "exact" ? formatUsd(financials.mrrProxyCents) : "Hidden"} detail="Paid invoice revenue · trailing 30 days" />
+              <TvMetric label="30-Day Gross Revenue Proxy" value={financials.visibility === "exact" ? formatUsd(financials.mrrProxyCents) : "Hidden"} detail="Gross paid invoice revenue · refunds excluded" />
               <TvMetric label="Payment success" value={data.paymentSuccess.percent == null ? "Insufficient data" : `${data.paymentSuccess.percent}%`} detail={`${data.paymentSuccess.applicableAttempts} applicable attempts`} />
               <TvMetric label="Active subscriptions" value={data.activeSubscriptions.toLocaleString()} />
               <TvMetric label="New subscriptions" value={`+${data.newSubscriptions}`} detail={`${data.pastDueSubscriptions} past due`} />
@@ -515,11 +515,11 @@ function RevenuePaymentsScreen({
         <GlassPanel tone="emerald" className="h-full">
           <div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-[clamp(1rem,2vh,2.5rem)] p-[clamp(1.25rem,2vw,5rem)]">
             <TvChartHeader
-              title="Paid Revenue Momentum"
+              title="Gross Paid Revenue Momentum"
               subtitle="Cumulative daily trend · trailing 30 days"
               accentClassName="text-emerald-200/55"
             />
-            <TvLineChart points={trend} color="#6ee7b7" label={financials.visibility === "exact" ? "Daily paid revenue" : "Normalized paid revenue direction"} />
+            <TvLineChart points={trend} color="#6ee7b7" label={financials.visibility === "exact" ? "Daily gross paid revenue" : "Normalized gross paid revenue direction"} />
           </div>
         </GlassPanel>
       </div>

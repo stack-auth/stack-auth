@@ -29,6 +29,54 @@ import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/util
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PAID_INVOICE_STATUSES = ["paid", "succeeded"] as const;
 
+// Keep the TV lifecycle query aligned with the memory-bounded metrics overview
+// shape. Carrying raw UUIDs through DISTINCT + lagInFrame materializes one row
+// per active user/day; this instead keeps one UInt64 day mask per hashed user.
+// The unbounded first-activity lookup prevents established users from being
+// reclassified as new merely because their first activity predates the window.
+export const TV_AUDIENCE_LIFECYCLE_QUERY = `
+  SELECT
+    toString(addDays(toDate({since:DateTime}), idx)) AS day,
+    count() AS total_count,
+    countIf(f_first_date = addDays(toDate({since:DateTime}), idx)) AS new_count,
+    countIf(f_first_date < addDays(toDate({since:DateTime}), idx) AND idx > 0 AND bitTest(active_days, if(idx = 0, 0, idx - 1))) AS retained_count,
+    countIf(f_first_date < addDays(toDate({since:DateTime}), idx) AND (idx = 0 OR NOT bitTest(active_days, if(idx = 0, 0, idx - 1)))) AS reactivated_count
+  FROM (
+    SELECT activity.active_days AS active_days, first_activity.first_date AS f_first_date
+    FROM (
+      SELECT
+        sipHash64(assumeNotNull(user_id)) AS entity_id,
+        groupBitOr(bitShiftLeft(toUInt64(1), toUInt8(dateDiff('day', toDate({since:DateTime}), toDate(event_at))))) AS active_days
+      FROM analytics_internal.events
+      WHERE event_type = '$token-refresh'
+        AND project_id = {projectId:String}
+        AND branch_id = {branchId:String}
+        AND user_id IS NOT NULL
+        AND event_at >= {since:DateTime}
+        AND event_at < {until:DateTime}
+        AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
+      GROUP BY entity_id
+    ) AS activity
+    LEFT JOIN (
+      SELECT
+        sipHash64(assumeNotNull(user_id)) AS entity_id,
+        toDate(min(event_at)) AS first_date
+      FROM analytics_internal.events
+      WHERE event_type = '$token-refresh'
+        AND project_id = {projectId:String}
+        AND branch_id = {branchId:String}
+        AND user_id IS NOT NULL
+        AND event_at < {until:DateTime}
+        AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
+      GROUP BY entity_id
+    ) AS first_activity USING (entity_id)
+  )
+  ARRAY JOIN range({windowDays:UInt32}) AS idx
+  WHERE bitTest(active_days, idx)
+  GROUP BY idx
+  ORDER BY idx
+`;
+
 class TvSnapshotInvariantError extends Error {
   override name = "TvSnapshotInvariantError";
 }
@@ -344,44 +392,13 @@ async function loadActivityScreens(
         format: "JSONEachRow",
       }),
       clickhouse.query({
-        query: `
-          SELECT
-            toString(w.day) AS day,
-            count() AS total_count,
-            countIf(f.first_date = w.day) AS new_count,
-            countIf(f.first_date < w.day AND w.prev_day = addDays(w.day, -1)) AS retained_count,
-            countIf(f.first_date < w.day AND (isNull(w.prev_day) OR w.prev_day < addDays(w.day, -1))) AS reactivated_count
-          FROM (
-            SELECT day, user_id,
-              lagInFrame(day, 1) OVER (PARTITION BY user_id ORDER BY day) AS prev_day
-            FROM (
-              SELECT DISTINCT toDate(event_at) AS day, assumeNotNull(user_id) AS user_id
-              FROM analytics_internal.events
-              WHERE event_type = '$token-refresh'
-                AND project_id = {projectId:String}
-                AND branch_id = {branchId:String}
-                AND user_id IS NOT NULL
-                AND event_at >= {since:DateTime}
-                AND event_at < {until:DateTime}
-                AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
-            )
-          ) AS w
-          LEFT JOIN (
-            SELECT toString(id) AS user_id, toDate(signed_up_at) AS first_date
-            FROM analytics_internal.users FINAL
-            WHERE project_id = {projectId:String}
-              AND branch_id = {branchId:String}
-              AND sync_is_deleted = 0
-              AND is_anonymous = 0
-          ) AS f USING (user_id)
-          GROUP BY w.day
-          ORDER BY w.day
-        `,
+        query: TV_AUDIENCE_LIFECYCLE_QUERY,
         query_params: {
           projectId: tenancy.project.id,
           branchId: tenancy.branchId,
           since: formatClickhouseDateTime(sevenDayBounds.currentStartsAt),
           until: formatClickhouseDateTime(sevenDayBounds.currentEndsAt),
+          windowDays: 7,
         },
         format: "JSONEachRow",
       }),
@@ -715,7 +732,7 @@ async function loadRevenueScreen(
       } : null,
       insight: hasPaymentData && paymentSuccessPercent != null && revenueChangePercent > 0 && paymentSuccessPercent >= 95 ? {
         kind: "revenue-up-payments-stable",
-        message: "Paid revenue increased while payment collection remained stable.",
+        message: "Gross paid invoice revenue increased while payment collection remained stable.",
         evidence: {
           revenueChangePercent,
           paymentSuccessPercent,

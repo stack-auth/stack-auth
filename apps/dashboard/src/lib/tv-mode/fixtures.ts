@@ -149,7 +149,7 @@ const revenuePaymentsScreen: TvRevenuePaymentsScreen = {
   },
   insight: {
     kind: "revenue-up-payments-stable",
-    message: "Paid revenue increased while payment collection remained stable.",
+    message: "Gross paid invoice revenue increased while payment collection remained stable.",
     evidence: {
       revenueChangePercent: 14.2,
       paymentSuccessPercent: 98.6,

@@ -1,7 +1,6 @@
 import { UrlPrefetcher } from "@/lib/prefetch/url-prefetcher";
 import { AdminAppProvider } from "./use-admin-app";
 import ProjectLayoutClient from "./layout-client";
-export { generateStaticParams } from "@/lib/generate-empty-static-params";
 
 export default function Layout(
   props: { children: React.ReactNode, modal?: React.ReactNode }
