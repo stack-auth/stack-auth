@@ -1,0 +1,35 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/saved-views/page-client.tsx
+  s_dd9eb7a34a9425::t_2211a3511aa936 1-80
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/saved-views/page.tsx
+  s_dd9eb7a34a9425::t_ebe662aaa676c8 1,6
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/query-data-grid.tsx
+  s_dd9eb7a34a9425::t_2b8e026fe92fc6 31,148-153,318-320,709-717
+apps/dashboard/src/lib/apps-utils.test.ts
+  s_dd9eb7a34a9425::t_fdd2322174d8ae 15-19
+packages/dashboard-ui-components/src/components/data-grid/data-grid.test.tsx
+  s_dd9eb7a34a9425::t_d92e1b14261157 228-229,232,235-247,521-526,563-624
+packages/dashboard-ui-components/src/components/data-grid/data-grid.tsx
+  s_dd9eb7a34a9425::t_1218d7848a5756 507,977-996,999,1002-1012,1375-1377,1381,1386-1409
+packages/dashboard-ui-components/src/components/data-grid/types.ts
+  s_dd9eb7a34a9425::t_086aeca5115eaa 260-263
+packages/shared/src/apps/apps-config.test.ts
+  s_dd9eb7a34a9425::t_53d3da206141ec 35-40
+packages/shared/src/apps/apps-config.ts
+  s_dd9eb7a34a9425::t_eb9249147e202a 201-208
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "ab37789c521379a50fb8d58a1c2566242a8c1e60",
+  "prompts": {},
+  "sessions": {
+    "s_dd9eb7a34a9425": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c533dd44-e3b7-4460-8c4c-8c2479b53e37",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
