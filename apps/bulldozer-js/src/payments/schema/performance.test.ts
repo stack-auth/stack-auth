@@ -18,6 +18,8 @@ const ITEM_UPDATES_PER_USER = 10;
 const PREFILL_USER_COUNT = 200;
 const PREFILL_ITEM_UPDATES_PER_USER = 4;
 const PREFILL_SOURCE_FACT_COUNT = PREFILL_USER_COUNT * (2 + PREFILL_ITEM_UPDATES_PER_USER);
+// Local large-store measurements are ~156s for this suite and ~273s for the listing suite.
+// 600s provides practical slower-runner headroom; the low-level close barrier is the race fix.
 const MONTH_MS = 2_592_000_000;
 const tempPaths: string[] = [];
 const databases: Array<ReturnType<typeof declareBulldozerDatabase>> = [];
@@ -116,7 +118,7 @@ const newPaymentsDb = async () => {
 };
 
 describe("payments schema performance", () => {
-  it("runs the comparable schema workload", { timeout: 120_000 }, async () => {
+  it("runs the comparable schema workload", { timeout: 600_000 }, async () => {
     const metrics: Metric[] = [];
     let initialized!: Awaited<ReturnType<typeof newPaymentsDb>>;
 
@@ -212,7 +214,7 @@ describe("transactions listing performance", () => {
     return page;
   };
 
-  it("keeps first-page latency flat as the tenancy grows", { timeout: 120_000 }, async () => {
+  it("keeps first-page latency flat as the tenancy grows", { timeout: 600_000 }, async () => {
     const metrics: Metric[] = [];
     const { db, schema } = await newPaymentsDb();
 

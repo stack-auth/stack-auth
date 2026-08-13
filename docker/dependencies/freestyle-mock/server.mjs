@@ -1184,6 +1184,10 @@ class JobQueue {
         settled: false,
         resolve,
       });
+      requestMetrics.maxQueueDepth = Math.max(
+        requestMetrics.maxQueueDepth,
+        this.queue.length,
+      );
       this.dispatch();
     });
   }

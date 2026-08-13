@@ -140,7 +140,7 @@ jobs:
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         env:
           HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB: "1"
-          HEXCLAVE_BULLDOZER_DIAGNOSTICS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'true' || 'false' }}
+          HEXCLAVE_BULLDOZER_DIAGNOSTICS: "true"
         with:
           run: |
             bulldozer_log="$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
@@ -307,20 +307,23 @@ jobs:
               fi
             '
 
-      # Temporary diagnostic-PR exception: keep collecting both pass snapshots when
-      # the known flaky E2E suite failure occurs; the test failure remains visible.
       - name: Run tests
         id: run_tests_pass1
-        continue-on-error: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' }}
         timeout-minutes: 60
+        continue-on-error: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' }}
         env:
           HEXCLAVE_E2E_DIAGNOSTICS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'true' || 'false' }}
           HEXCLAVE_E2E_DIAGNOSTIC_PASS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'pass1' || '' }}
         run: |
           set -o pipefail
-          pnpm test run --reporter=json --outputFile="$RUNNER_TEMP/e2e-test-results-pass1.untracked.json" 2>&1 |
+          pnpm test run --reporter=default --reporter=json \
+            --outputFile="$RUNNER_TEMP/e2e-test-results-pass1.untracked.json" 2>&1 |
             tee "$RUNNER_TEMP/e2e-test-output-pass1.untracked.log"
-          exit "${PIPESTATUS[0]}"
+          pipeline_status=("${PIPESTATUS[@]}")
+          if [[ "${pipeline_status[1]}" -ne 0 ]]; then
+            echo "::warning::tee failed while capturing pass 1 output; the test result is still used for the step status"
+          fi
+          exit "${pipeline_status[0]}"
 
       - name: Merge E2E diagnostics after pass 1
         if: always()
@@ -380,8 +383,6 @@ jobs:
               fi
             '
 
-      # Temporary diagnostic-PR exception: keep the repeat passes enabled on this branch
-      # so the span and process snapshots can be compared before this change merges.
       - name: Run tests again (attempt 1)
         id: run_tests_pass2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics'
@@ -392,9 +393,14 @@ jobs:
           HEXCLAVE_E2E_DIAGNOSTIC_PASS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'pass2' || '' }}
         run: |
           set -o pipefail
-          pnpm test run --reporter=json --outputFile="$RUNNER_TEMP/e2e-test-results-pass2.untracked.json" 2>&1 |
+          pnpm test run --reporter=default --reporter=json \
+            --outputFile="$RUNNER_TEMP/e2e-test-results-pass2.untracked.json" 2>&1 |
             tee "$RUNNER_TEMP/e2e-test-output-pass2.untracked.log"
-          exit "${PIPESTATUS[0]}"
+          pipeline_status=("${PIPESTATUS[@]}")
+          if [[ "${pipeline_status[1]}" -ne 0 ]]; then
+            echo "::warning::tee failed while capturing pass 2 output; the test result is still used for the step status"
+          fi
+          exit "${pipeline_status[0]}"
 
       - name: Merge E2E diagnostics after pass 2
         if: always() && steps.run_tests_pass2.outcome != 'skipped'
@@ -447,9 +453,14 @@ jobs:
           HEXCLAVE_E2E_DIAGNOSTIC_PASS: ${{ (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics' && 'pass3' || '' }}
         run: |
           set -o pipefail
-          pnpm test run --reporter=json --outputFile="$RUNNER_TEMP/e2e-test-results-pass3.untracked.json" 2>&1 |
+          pnpm test run --reporter=default --reporter=json \
+            --outputFile="$RUNNER_TEMP/e2e-test-results-pass3.untracked.json" 2>&1 |
             tee "$RUNNER_TEMP/e2e-test-output-pass3.untracked.log"
-          exit "${PIPESTATUS[0]}"
+          pipeline_status=("${PIPESTATUS[@]}")
+          if [[ "${pipeline_status[1]}" -ne 0 ]]; then
+            echo "::warning::tee failed while capturing pass 3 output; the test result is still used for the step status"
+          fi
+          exit "${pipeline_status[0]}"
 
       - name: Merge E2E diagnostics after pass 3
         if: always() && steps.run_tests_pass3.outcome != 'skipped'
@@ -510,8 +521,17 @@ jobs:
           fi
           tail -n 2000 "$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
 
+      - name: Upload bulldozer-js logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-api-bulldozer
+          path: ${{ runner.temp }}/hexclave-bulldozer.untracked.log
+          if-no-files-found: warn
+
       - name: Capture bulldozer-js diagnostics
-        if: always() && (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics'
+        if: always()
+        continue-on-error: true
         run: |
           pnpm -C apps/backend run with-env:test bash -c \
             '
@@ -521,26 +541,17 @@ jobs:
                 "http://localhost:${bulldozer_port}/diagnostics" \
                 > "$RUNNER_TEMP/hexclave-bulldozer-diagnostics.untracked.json"
             '
-          printf 'bulldozer-js lmdb diagnostics: ' >> "$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
-          cat "$RUNNER_TEMP/hexclave-bulldozer-diagnostics.untracked.json" >> "$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
 
-      - name: Upload bulldozer-js logs
-        if: always() && (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: e2e-api-bulldozer
-          path: ${{ runner.temp }}/hexclave-bulldozer.untracked.log
-          if-no-files-found: error
       - name: Upload bulldozer-js diagnostics
-        if: always() && (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics'
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-api-bulldozer-diagnostics
           path: ${{ runner.temp }}/hexclave-bulldozer-diagnostics.untracked.json
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Upload E2E timing diagnostics
-        if: always() && (github.head_ref || github.ref_name) == 'devin/1786345250-backend-span-diagnostics'
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-api-test-timing-diagnostics
@@ -550,7 +561,7 @@ jobs:
             ${{ runner.temp }}/e2e-wait-request-diagnostics-pass*.untracked.json
             ${{ runner.temp }}/hexclave-e2e-diagnostics-pass*-*.untracked.json
             ${{ runner.temp }}/freestyle-mock-diagnostics-pass*.untracked.json
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Print Docker Compose logs
         if: always()

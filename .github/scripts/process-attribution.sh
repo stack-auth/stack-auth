@@ -79,7 +79,8 @@ read_process_rss_kb() {
 }
 
 read_host_cpu() {
-  awk '$1 == "cpu" { for (i = 2; i <= 9; i++) total += $i; idle = $5 + $6; printf "%.6f|%.6f", total, idle; exit }' /proc/stat
+  awk -v clock_ticks="$clock_ticks" \
+    '$1 == "cpu" { for (i = 2; i <= 9; i++) total += $i / clock_ticks; idle = ($5 + $6) / clock_ticks; printf "%.6f|%.6f", total, idle; exit }' /proc/stat
 }
 
 read_container_cpu() {
@@ -93,9 +94,6 @@ read_container_cpu() {
     cpu_stat="$(awk '$1 == "usage_usec" { print $2 }' "/sys/fs/cgroup${cgroup_path}/cpu.stat")"
     usage_usec="${cpu_stat:-0}"
     awk -v usage_usec="$usage_usec" 'BEGIN { printf "%.6f", usage_usec / 1000000 }'
-  elif [[ -f "/sys/fs/cgroup${cgroup_path}/cpuacct.usage" ]]; then
-    cpu_stat="$(<"/sys/fs/cgroup${cgroup_path}/cpuacct.usage")"
-    awk -v usage_nanoseconds="${cpu_stat:-0}" 'BEGIN { printf "%.6f", usage_nanoseconds / 1000000000 }'
   else
     return 1
   fi
@@ -151,7 +149,7 @@ if [[ "$1" == snapshot ]]; then
   else
     printf 'host_cpu_total_seconds|0\nhost_cpu_busy_seconds|0\nload_average_1_5_15|%s\n' "$load_average"
   fi
-  printf '%s|%s\n' "$host_cpu" > "${RUNNER_TEMP:-/tmp}/hexclave-host-attribution.state.untracked.tsv"
+  printf '%s\n' "$host_cpu" > "${RUNNER_TEMP:-/tmp}/hexclave-host-attribution.state.untracked.tsv"
   echo
 
   echo "Per-process CPU and RSS"
@@ -186,7 +184,7 @@ while read -r major minor device reads reads_merged sectors_read read_ms writes 
           write_ms - previous_write_ms, weighted_io_ms - previous_weighted_io_ms
       }'
   fi
-done < /proc/diskstats
+done < <(cat /proc/diskstats 2>/dev/null || true)
 mv "$current_disk_state" "$disk_state_file"
 
 for stat_file in /proc/[0-9]*/stat; do
@@ -197,8 +195,10 @@ for stat_file in /proc/[0-9]*/stat; do
   [[ -n "$command_line" ]] || continue
   label="$(read_process_label "$command_line" || true)"
   [[ -n "$label" ]] || continue
-  cpu_seconds="$(read_process_cpu_seconds "$stat_file")"
-  rss_kb="$(read_process_rss_kb "/proc/$pid")"
+  cpu_seconds="$(read_process_cpu_seconds "$stat_file" || true)"
+  [[ -n "$cpu_seconds" ]] || continue
+  rss_kb="$(read_process_rss_kb "/proc/$pid" || true)"
+  [[ -n "$rss_kb" ]] || continue
   previous_cpu="${previous_process_cpu[$pid]:-0}"
   cpu_delta="$(awk -v current="$cpu_seconds" -v previous="$previous_cpu" 'BEGIN { delta = current - previous; printf "%.6f", delta < 0 ? 0 : delta }')"
   printf '%s|%s|%s|%s|%s|%s\n' "$pid" "$label" "$cpu_seconds" "$cpu_delta" "$rss_kb" "$command_line" >> "$current_state"
