@@ -5,7 +5,6 @@ import { niceFetch, STACK_BACKEND_BASE_URL, test } from '../../../../helpers';
 import { withPortPrefix } from '../../../../helpers/ports';
 import { Auth, backendContext, InternalApiKey, Project, User, niceBackendFetch } from '../../../backend-helpers';
 import { randomUUID } from 'node:crypto';
-import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import {
   TEST_TIMEOUT,
   TestDbManager,
