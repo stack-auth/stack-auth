@@ -54,51 +54,60 @@ async function getProjectUsageContext(client: Client, projectId: string): Promis
   };
 }
 
+const syncedCleanupTableConfig = {
+  EmailOutbox: {
+    primaryKey: `jsonb_build_object('tenancyId', "tenancyId", 'id', "id")`,
+  },
+  ProjectUser: {
+    primaryKey: `jsonb_build_object('tenancyId', "tenancyId", 'projectUserId', "projectUserId")`,
+  },
+} as const;
+
+async function deleteSyncedRowsWithTombstones(client: Client, options: {
+  table: keyof typeof syncedCleanupTableConfig,
+  whereClause: string,
+  values: unknown[],
+}): Promise<void> {
+  const tableConfig = syncedCleanupTableConfig[options.table];
+  await client.query(
+    `
+      WITH deleted_rows AS (
+        DELETE FROM "${options.table}"
+        WHERE ${options.whereClause}
+        RETURNING *
+      )
+      INSERT INTO "DeletedRow"
+        ("id", "tenancyId", "tableName", "primaryKey", "data", "deletedAt", "shouldUpdateSequenceId")
+      SELECT
+        gen_random_uuid(),
+        "tenancyId",
+        '${options.table}',
+        ${tableConfig.primaryKey},
+        to_jsonb(deleted_rows),
+        now(),
+        true
+      FROM deleted_rows
+    `,
+    options.values,
+  );
+}
+
 async function clearSeededUsageRows(client: Client, tenancies: readonly ProjectUsageContext[]): Promise<void> {
   const tenancyIds = tenancies.map((tenancy) => tenancy.tenancyId);
   await client.query("BEGIN");
   try {
     await client.query(`DELETE FROM "SessionReplay" WHERE "tenancyId" = ANY($1::uuid[])`, [tenancyIds]);
     // Deletions of synced tables only reach ClickHouse through DeletedRow.
-    await client.query(
-      `
-        INSERT INTO "DeletedRow"
-          ("id", "tenancyId", "tableName", "primaryKey", "data", "deletedAt", "shouldUpdateSequenceId")
-        SELECT
-          gen_random_uuid(),
-          "tenancyId",
-          'EmailOutbox',
-          jsonb_build_object('tenancyId', "tenancyId", 'id', "id"),
-          to_jsonb("EmailOutbox".*),
-          now(),
-          true
-        FROM "EmailOutbox"
-        WHERE "tenancyId" = ANY($1::uuid[])
-        FOR UPDATE
-      `,
-      [tenancyIds],
-    );
-    await client.query(`DELETE FROM "EmailOutbox" WHERE "tenancyId" = ANY($1::uuid[])`, [tenancyIds]);
-    // Deletions of synced tables only reach ClickHouse through DeletedRow.
-    await client.query(
-      `
-        INSERT INTO "DeletedRow"
-          ("id", "tenancyId", "tableName", "primaryKey", "data", "deletedAt", "shouldUpdateSequenceId")
-        SELECT
-          gen_random_uuid(),
-          "tenancyId",
-          'ProjectUser',
-          jsonb_build_object('tenancyId', "tenancyId", 'projectUserId', "projectUserId"),
-          to_jsonb("ProjectUser".*),
-          now(),
-          true
-        FROM "ProjectUser"
-        WHERE "tenancyId" = ANY($1::uuid[])
-        FOR UPDATE
-      `,
-      [tenancyIds],
-    );
-    await client.query(`DELETE FROM "ProjectUser" WHERE "tenancyId" = ANY($1::uuid[])`, [tenancyIds]);
+    await deleteSyncedRowsWithTombstones(client, {
+      table: "EmailOutbox",
+      whereClause: `"tenancyId" = ANY($1::uuid[])`,
+      values: [tenancyIds],
+    });
+    await deleteSyncedRowsWithTombstones(client, {
+      table: "ProjectUser",
+      whereClause: `"tenancyId" = ANY($1::uuid[])`,
+      values: [tenancyIds],
+    });
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -212,29 +221,11 @@ async function deleteIncidentalEmailRows(client: Client, tenancyIds: readonly st
   await client.query("BEGIN");
   try {
     // Deletions of synced tables only reach ClickHouse through DeletedRow.
-    await client.query(
-      `
-        INSERT INTO "DeletedRow"
-          ("id", "tenancyId", "tableName", "primaryKey", "data", "deletedAt", "shouldUpdateSequenceId")
-        SELECT
-          gen_random_uuid(),
-          "tenancyId",
-          'EmailOutbox',
-          jsonb_build_object('tenancyId', "tenancyId", 'id', "id"),
-          to_jsonb("EmailOutbox".*),
-          now(),
-          true
-        FROM "EmailOutbox"
-        WHERE "tenancyId" = ANY($1::uuid[])
-          AND "renderedSubject" IS DISTINCT FROM $2
-        FOR UPDATE
-      `,
-      [tenancyIds, SEEDED_EMAIL_SUBJECT],
-    );
-    await client.query(
-      `DELETE FROM "EmailOutbox" WHERE "tenancyId" = ANY($1::uuid[]) AND "renderedSubject" IS DISTINCT FROM $2`,
-      [tenancyIds, SEEDED_EMAIL_SUBJECT],
-    );
+    await deleteSyncedRowsWithTombstones(client, {
+      table: "EmailOutbox",
+      whereClause: `"tenancyId" = ANY($1::uuid[]) AND "renderedSubject" IS DISTINCT FROM $2`,
+      values: [tenancyIds, SEEDED_EMAIL_SUBJECT],
+    });
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");

@@ -240,8 +240,8 @@ describe.sequential("claimEmailsForSending burst allowance", () => {
           tenancyId: row.tenancyId,
           emailOutboxId: row.id,
         });
+        await tx.emailOutbox.deleteMany({ where: { tenancyId: row.tenancyId, id: row.id } });
       }
-      await tx.emailOutbox.deleteMany({ where: testFilter });
     });
   });
 
