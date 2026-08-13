@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { declareInMemoryLowLevelDatabase } from "../../low-level/implementations/in-memory.js";
-import { declarePiledriverDatabase } from "../../piledriver/index.js";
+import { declareBasePiledriverDatabase } from "../../piledriver/implementations/base.js";
 import { declareBulldozerDatabase, declareGroupByTable, defineMaterializeTable, defineSortTable, defineStoredTable } from "../index.js";
 import { BulldozerDbDump, computeReadModel, restoreBulldozerDatabase } from "./bulldozer-db-fixture-utils.js";
 
@@ -58,7 +58,7 @@ describe("bulldozer whole-database serialization compatibility", () => {
   for (const version of ["db-v0", "db-v1", "db-v2"] as const) {
     it(`reads the entire database from golden fixture ${version} with the current code`, async () => {
       const fixture = loadFixture(version);
-      const db = restoreBulldozerDatabase(fixture);
+      const db = await restoreBulldozerDatabase(fixture);
       const { readModel, unlistableTableIds } = await computeReadModel(db);
       expect(readModel.map(table => table.tableId)).toEqual(expectedReadableTableIds);
       expect(unlistableTableIds).toEqual(expectedUnlistableTableIds);
@@ -72,7 +72,7 @@ describe("bulldozer whole-database serialization compatibility", () => {
 
     it(`mutates a database loaded from golden fixture ${version} into valid current-format state`, async () => {
       const fixture = loadFixture(version);
-      const db = restoreBulldozerDatabase(fixture);
+      const db = await restoreBulldozerDatabase(fixture);
       await db.withSnapshotReplicated(async snapshot =>
         (await snapshot.setOrDeleteRow({
           tableId: "ledgerEntries",
@@ -89,7 +89,7 @@ describe("bulldozer whole-database serialization compatibility", () => {
     });
 
     it(`removes the final GroupBy rows and their group in golden fixture ${version}`, async () => {
-      const db = restoreBulldozerDatabase(loadFixture(version));
+      const db = await restoreBulldozerDatabase(loadFixture(version));
       await db.withSnapshotReplicated(async snapshot => {
         for (const rowIdentifier of ["entry-001", "entry-002", "entry-006"]) {
           snapshot = (await snapshot.setOrDeleteRow({
@@ -123,7 +123,7 @@ describe("computeReadModel", () => {
     // are no groups), so without the nonexistent-group probe it would be misclassified as listable
     // and the read model would depend on whether the table happens to contain data.
     const db = declareBulldozerDatabase(
-      declarePiledriverDatabase(declareInMemoryLowLevelDatabase(`bulldozer-empty-read-model-${crypto.randomUUID()}`)),
+      declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(`bulldozer-empty-read-model-${crypto.randomUUID()}`)),
       {
         migrations: [[
           { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },

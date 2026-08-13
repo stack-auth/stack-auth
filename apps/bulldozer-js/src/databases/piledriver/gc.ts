@@ -122,6 +122,104 @@ export type PiledriverGarbageCollectionResult = {
   gcGeneration: string,
 };
 
+export function zeroPiledriverGarbageCollectionResult(
+  cutoffTimestampMillis: number,
+  processStartedAtMillis: number,
+  maxObjects: number,
+  startedAtMillis: number,
+): PiledriverGarbageCollectionResult {
+  parseNonNegativeInteger(cutoffTimestampMillis, "cutoffTimestampMillis");
+  parseNonNegativeInteger(processStartedAtMillis, "processStartedAtMillis");
+  parseNonNegativeInteger(startedAtMillis, "startedAtMillis");
+  if (!Number.isSafeInteger(maxObjects) || maxObjects <= 0) throw new Error("Piledriver GC maxObjects must be a positive safe integer");
+  const completedAtMillis = startedAtMillis;
+  const elapsedMillis = 0;
+  return {
+    cutoff: {
+      timestampMillis: cutoffTimestampMillis,
+      timestampIso: new Date(cutoffTimestampMillis).toISOString(),
+      processStartedAtMillis,
+      processStartedAtIso: new Date(processStartedAtMillis).toISOString(),
+      ageAtCollectionStartMillis: Math.max(0, startedAtMillis - cutoffTimestampMillis),
+      restartBarrierMarginMillis: processStartedAtMillis - cutoffTimestampMillis,
+      collectionStartedMillisAfterProcessStart: Math.max(0, startedAtMillis - processStartedAtMillis),
+    },
+    limits: { maxObjects, limitReached: false, moreEligibleWorkMayRemain: false, queuedCandidatesRemaining: 0 },
+    objects: {
+      deleted: 0,
+      candidatesExamined: 0,
+      candidatesQueuedFromIndex: 0,
+      candidatesQueuedFromMetadataRepair: 0,
+      candidatesSkipped: 0,
+      metadataEntriesExaminedForRepair: 0,
+      resumedDeletions: 0,
+      childObjectsBecameUnreferenced: 0,
+      maxCascadeDepth: 0,
+      duplicateQueueAttemptsIgnored: 0,
+    },
+    references: {
+      outgoingEdgesProcessed: 0,
+      legacyImmortalEdgesIgnored: 0,
+      referenceCountCompareAndSetAttempts: 0,
+      referenceCountCompareAndSetConflicts: 0,
+    },
+    recovery: {
+      missingCandidateEntriesRepaired: 0,
+      staleCandidatesWithoutMetadataRemoved: 0,
+      staleCandidatesFromInactiveGenerationsRemoved: 0,
+      staleCandidatesWithLiveReferencesRemoved: 0,
+      staleCandidateKeysCorrected: 0,
+      candidatesNoLongerOldEnough: 0,
+      deletionClaimConflicts: 0,
+      deletionProgressCompareAndSetConflicts: 0,
+    },
+    reclaimed: {
+      heapPayloadBytes: 0,
+      heapPayloadMiB: 0,
+      heapKeyBytes: 0,
+      metadataValueBytes: 0,
+      metadataKeyBytes: 0,
+      candidateKeyBytes: 0,
+      knownLogicalBytes: 0,
+      knownLogicalMiB: 0,
+      smallestHeapPayloadBytes: null,
+      largestHeapPayloadBytes: null,
+      averageHeapPayloadBytes: null,
+      physicalFileBytesReduced: null,
+      physicalStorageNote: "In-memory storage has no persistent file to reclaim.",
+    },
+    scanning: {
+      candidateIndexPagesRead: 0,
+      candidateIndexEntriesRead: 0,
+      candidateIndexReachedCutoff: false,
+      candidateIndexScanComplete: true,
+      metadataRepairPagesRead: 0,
+      metadataRepairPassComplete: true,
+    },
+    samples: {
+      limitPerCategory: GC_DIAGNOSTIC_SAMPLE_LIMIT,
+      deletedObjectKeysBase64: [],
+      resumedDeletionObjectKeysBase64: [],
+      repairedMissingCandidateObjectKeysBase64: [],
+      staleCandidateObjectKeysBase64: [],
+      legacyImmortalReferencedObjectKeysBase64: [],
+    },
+    timing: {
+      startedAtMillis,
+      completedAtMillis,
+      elapsedMillis,
+      initializationMillis: 0,
+      candidateIndexReadMillis: 0,
+      metadataRepairMillis: 0,
+      durabilityWaitMillis: 0,
+      activeCollectionMillis: 0,
+      deletedObjectsPerSecond: 0,
+      reclaimedHeapMiBPerSecond: 0,
+    },
+    gcGeneration: "none",
+  };
+}
+
 function encodeJson(value: unknown) {
   return textEncoder.encode(JSON.stringify(value)).buffer;
 }

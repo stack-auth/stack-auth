@@ -16,7 +16,8 @@ import { declareInMemoryLowLevelDatabase } from "./databases/low-level/implement
 import { declareInstantAvailabilityLowLevelDatabase } from "./databases/low-level/implementations/instant-availability.js";
 import { declareLmdbLowLevelDatabase, getLmdbDiagnostics } from "./databases/low-level/implementations/lmdb.js";
 import type { LowLevelDatabase } from "./databases/low-level/index.js";
-import { declarePiledriverDatabase, type PiledriverObject } from "./databases/piledriver/index.js";
+import { declareBasePiledriverDatabase } from "./databases/piledriver/implementations/base.js";
+import type { PiledriverObject } from "./databases/piledriver/index.js";
 import "./load-env.js";
 import { shouldSuppressPeriodicBulldozerLogs } from "./logging.js";
 import { parseManualTransactionsListQuery } from "./manual-transactions-http.js";
@@ -76,7 +77,7 @@ function createLowLevelDatabase(): LowLevelDatabase {
 }
 
 const bulldozerDb = declareBulldozerDatabase(
-  declarePiledriverDatabase(createLowLevelDatabase(), {
+  declareBasePiledriverDatabase(createLowLevelDatabase(), {
     disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
   }),
   { migrations: schema.migrations },

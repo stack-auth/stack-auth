@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { LowLevelDatabase } from "../low-level/index.js";
 import { declareInMemoryLowLevelDatabase } from "../low-level/implementations/in-memory.js";
-import { asHeapObject, declarePiledriverDatabase, isPiledriverHeapObjectSymbol, PiledriverHeapObject, PiledriverObject, piledriverObjectEquals } from "./index.js";
+import { asHeapObject, isPiledriverHeapObjectSymbol, PiledriverHeapObject, PiledriverObject, piledriverObjectEquals } from "./index.js";
+import { declareBasePiledriverDatabase } from "./implementations/base.js";
 
 function wrapWithHeapGetCounter(lowLevel: LowLevelDatabase, onHeapGet: () => void): LowLevelDatabase {
   return {
@@ -97,22 +98,37 @@ async function timestampAfter(value: number) {
 }
 
 function declareAfterRestart(lowLevel: LowLevelDatabase, cutoffTimestampMillis: number) {
-  return declarePiledriverDatabase(lowLevel, {
+  return declareBasePiledriverDatabase(lowLevel, {
     garbageCollectionProcessStartedAtMillis: cutoffTimestampMillis + 1,
   });
 }
 
 describe("PiledriverDatabase", () => {
+  it("round-trips an own __proto__ property", async () => {
+    const key = new TextEncoder().encode("proto").buffer;
+    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const writer = declareBasePiledriverDatabase(lowLevel);
+    const value: PiledriverObject = JSON.parse('{"__proto__":{"marker":"value"}}');
+
+    await writer.setRootObject(key, value);
+
+    const reader = declareBasePiledriverDatabase(lowLevel);
+    const { object } = await reader.getRootObject(key);
+    if (object === null || typeof object !== "object") throw new Error("Expected object root");
+    expect(Object.hasOwn(object, "__proto__")).toBe(true);
+    expect(object).toEqual(value);
+  });
+
   it("deserializes heap references lazily", async () => {
     const key = new TextEncoder().encode("root").buffer;
     let heapGets = 0;
     const lowLevel = wrapWithHeapGetCounter(declareInMemoryLowLevelDatabase(crypto.randomUUID()), () => heapGets++);
 
-    await declarePiledriverDatabase(lowLevel).setRootObject(key, {
+    await declareBasePiledriverDatabase(lowLevel).setRootObject(key, {
       child: asHeapObject({ nested: "value" }),
     });
 
-    const reader = declarePiledriverDatabase(lowLevel);
+    const reader = declareBasePiledriverDatabase(lowLevel);
     const { object } = await reader.getRootObject(key);
     expect(heapGets).toBe(0);
 
@@ -140,7 +156,7 @@ describe("PiledriverDatabase", () => {
         await underlyingLowLevel.waitUntilDurable(seq);
       },
     };
-    const writer = declarePiledriverDatabase(lowLevel);
+    const writer = declareBasePiledriverDatabase(lowLevel);
     const rootKey = new TextEncoder().encode("root").buffer;
     const child = asHeapObject({ value: "child" });
     const parent = asHeapObject({ child });
@@ -190,7 +206,7 @@ describe("PiledriverDatabase", () => {
 
   it("keeps descendants that still have another incoming reference", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
-    const writer = declarePiledriverDatabase(lowLevel);
+    const writer = declareBasePiledriverDatabase(lowLevel);
     const rootKey = new TextEncoder().encode("root").buffer;
     const child = asHeapObject({ value: "shared" });
     const discardedParent = asHeapObject({ child, parent: "discarded" });
@@ -208,7 +224,7 @@ describe("PiledriverDatabase", () => {
 
   it("serializes concurrent mutations of the same root", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
-    const writer = declarePiledriverDatabase(lowLevel);
+    const writer = declareBasePiledriverDatabase(lowLevel);
     const rootKey = new TextEncoder().encode("root").buffer;
     await Promise.all([
       writer.setRootObject(rootKey, { child: asHeapObject({ value: "first" }) }),
@@ -232,7 +248,7 @@ describe("PiledriverDatabase", () => {
       count => metadataSetAllEntryCounts.push(count),
       count => candidateSetAllEntryCounts.push(count),
     );
-    const writer = declarePiledriverDatabase(lowLevel);
+    const writer = declareBasePiledriverDatabase(lowLevel);
     const rootKey = new TextEncoder().encode("root").buffer;
     const created = Object.fromEntries(
       Array.from({ length: 20 }, (_, index) => [`object${index}`, asHeapObject({ index })]),
@@ -246,7 +262,7 @@ describe("PiledriverDatabase", () => {
 
   it("removes the candidate using the original eligibility timestamp", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
-    const writer = declarePiledriverDatabase(lowLevel);
+    const writer = declareBasePiledriverDatabase(lowLevel);
     const rootKey = new TextEncoder().encode("root").buffer;
     const heapObject = asHeapObject({ value: "candidate-transition" });
     const candidateStore = lowLevel.declareKvStore("piledriver-gc-zero-reference-candidates-v3");
@@ -260,7 +276,7 @@ describe("PiledriverDatabase", () => {
 
   it("evicts heap cache entries when creation metadata publication fails", async () => {
     const lowLevel = failNextMetadataSetAll(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
-    const writer = declarePiledriverDatabase(lowLevel);
+    const writer = declareBasePiledriverDatabase(lowLevel);
     const rootKey = new TextEncoder().encode("root").buffer;
     const heapObject = asHeapObject({ value: "retry-me" });
 
@@ -273,7 +289,7 @@ describe("PiledriverDatabase", () => {
 
   it("publishes shared heap creation before another root records its reference", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
-    const writer = declarePiledriverDatabase(lowLevel);
+    const writer = declareBasePiledriverDatabase(lowLevel);
     const sharedHeapObject = asHeapObject({ value: "shared" });
     const firstRoot = new TextEncoder().encode("first").buffer;
     const secondRoot = new TextEncoder().encode("second").buffer;
@@ -292,7 +308,7 @@ describe("PiledriverDatabase", () => {
 
   it("aborts an unfinished batch when heap serialization fails", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
-    const writer = declarePiledriverDatabase(lowLevel);
+    const writer = declareBasePiledriverDatabase(lowLevel);
     const goodHeapObject = asHeapObject({ value: "retry-sibling" });
     const badHeapObject: PiledriverHeapObject = {
       async get() {
@@ -308,7 +324,7 @@ describe("PiledriverDatabase", () => {
 
   it("publishes crossing shared heap objects without a batch wait cycle", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
-    const writer = declarePiledriverDatabase(lowLevel);
+    const writer = declareBasePiledriverDatabase(lowLevel);
     const firstChildHeapObject = asHeapObject({ value: "first-child" });
     const secondChildHeapObject = asHeapObject({ value: "second-child" });
     const firstHeapObject: PiledriverHeapObject = {
@@ -341,7 +357,7 @@ describe("PiledriverDatabase", () => {
 
   it("never collects objects created after the restart barrier", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
-    const initial = declarePiledriverDatabase(lowLevel);
+    const initial = declareBasePiledriverDatabase(lowLevel);
     await initial.setRootObject(new TextEncoder().encode("initial").buffer, { initialized: true });
     const cutoff = await timestampAfter(Date.now());
     await timestampAfter(cutoff);
@@ -377,7 +393,7 @@ describe("PiledriverDatabase", () => {
       },
     };
 
-    await declarePiledriverDatabase(lowLevel).setRootObject(
+    await declareBasePiledriverDatabase(lowLevel).setRootObject(
       new TextEncoder().encode("root").buffer,
       { initialized: true },
     );
@@ -386,8 +402,8 @@ describe("PiledriverDatabase", () => {
 
   it("uses one metadata generation when first-time initialization races", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
-    const first = declarePiledriverDatabase(lowLevel);
-    const second = declarePiledriverDatabase(lowLevel);
+    const first = declareBasePiledriverDatabase(lowLevel);
+    const second = declareBasePiledriverDatabase(lowLevel);
     await Promise.all([
       first.setRootObject(new TextEncoder().encode("first").buffer, { child: asHeapObject({ source: "first" }) }),
       second.setRootObject(new TextEncoder().encode("second").buffer, { child: asHeapObject({ source: "second" }) }),
@@ -411,7 +427,7 @@ describe("PiledriverDatabase", () => {
     let nested: PiledriverObject = "leaf";
     for (let depth = 0; depth <= 1001; depth++) nested = [nested];
 
-    await expect(declarePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID())).setRootObject(
+    await expect(declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID())).setRootObject(
       new TextEncoder().encode("root").buffer,
       nested,
     )).resolves.toEqual({ seq: expect.anything() });
@@ -420,7 +436,7 @@ describe("PiledriverDatabase", () => {
   it("keeps legacy objects immortal while collecting newly created objects", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
     const legacyRootKey = new TextEncoder().encode("legacy-root").buffer;
-    const legacyWriter = declarePiledriverDatabase(lowLevel);
+    const legacyWriter = declareBasePiledriverDatabase(lowLevel);
     await legacyWriter.setRootObject(legacyRootKey, {
       parent: asHeapObject({ child: asHeapObject({ legacy: true }) }),
     });
@@ -435,7 +451,7 @@ describe("PiledriverDatabase", () => {
     }
 
     let heapListCalls = 0;
-    const trackingWriter = declarePiledriverDatabase(wrapWithHeapListCounter(lowLevel, () => heapListCalls++));
+    const trackingWriter = declareBasePiledriverDatabase(wrapWithHeapListCounter(lowLevel, () => heapListCalls++));
     const legacyRoot = (await trackingWriter.getRootObject(legacyRootKey)).object;
     if (typeof legacyRoot !== "object" || legacyRoot === null || Array.isArray(legacyRoot) || !("parent" in legacyRoot)) {
       throw new Error("Expected legacy root to contain its parent reference");
@@ -466,7 +482,7 @@ describe("PiledriverDatabase", () => {
   it("repairs a missing zero-reference candidate", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
     const rootKey = new TextEncoder().encode("root").buffer;
-    const writer = declarePiledriverDatabase(lowLevel);
+    const writer = declareBasePiledriverDatabase(lowLevel);
     await writer.setRootObject(rootKey, { child: asHeapObject({ tracked: true }) });
     await writer.setRootObject(rootKey, { replacement: true });
     const candidateStore = lowLevel.declareKvStore("piledriver-gc-zero-reference-candidates-v3");
@@ -492,7 +508,7 @@ describe("PiledriverDatabase", () => {
   it("does not allow re-instantiation to bypass the process restart barrier", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
     const cutoff = await timestampAfter(Date.now());
-    const sameProcessDatabase = declarePiledriverDatabase(lowLevel);
+    const sameProcessDatabase = declareBasePiledriverDatabase(lowLevel);
     await expect(sameProcessDatabase.collectGarbage(cutoff)).rejects.toThrow("restart the Bulldozer service");
   });
 
@@ -511,7 +527,7 @@ describe("PiledriverDatabase", () => {
       },
       [isPiledriverHeapObjectSymbol]: true,
     };
-    const database = declarePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
+    const database = declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
     await expect(database.setRootObject(new TextEncoder().encode("root").buffer, { first, second })).rejects.toThrow("must not contain cycles");
   });
 });

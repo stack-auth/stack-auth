@@ -19,11 +19,32 @@
  * repo (which the cross-version CI job relies on when running against the base branch).
  */
 import { decodeBase64, encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 import { DatabaseSeq } from "../../index.js";
 import { LowLevelDatabase, LowLevelDatabaseDebugSnapshot, LowLevelKvDump, LowLevelKvStore } from "../../low-level/index.js";
-import { PiledriverObject, declarePiledriverDatabase, isPiledriverHeapObjectSymbol } from "../../piledriver/index.js";
+import { isPiledriverHeapObjectSymbol, type PiledriverDatabase, type PiledriverObject } from "../../piledriver/index.js";
 import { BulldozerDatabase, declareBulldozerDatabase } from "../index.js";
 import { exampleFungibleLedgerMigrations } from "../example-schema.js";
+
+async function declareFixturePiledriverDatabase(lowLevel: LowLevelDatabase): Promise<PiledriverDatabase> {
+  // The compat workflow copies this file verbatim onto the base checkout but only overlays fixture
+  // directories. Remove this shim once the base branch contains the piledriver implementation split.
+  const fixtureDirectory = dirname(fileURLToPath(import.meta.url));
+  const hasSplitImplementation = existsSync(join(fixtureDirectory, "../../piledriver/implementations/base.ts"))
+    || existsSync(join(fixtureDirectory, "../../piledriver/implementations/base.js"));
+  const implementation = hasSplitImplementation
+    ? await import("../../piledriver/implementations/base.js")
+    : await import("../../piledriver/index.js");
+  if ("declareBasePiledriverDatabase" in implementation && typeof implementation.declareBasePiledriverDatabase === "function") {
+    return implementation.declareBasePiledriverDatabase(lowLevel);
+  }
+  if ("declarePiledriverDatabase" in implementation && typeof implementation.declarePiledriverDatabase === "function") {
+    return implementation.declarePiledriverDatabase(lowLevel);
+  }
+  throw new Error("Piledriver implementation factory is unavailable");
+}
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
@@ -62,7 +83,7 @@ const fixtureLedgerRows: Record<string, PiledriverObject> = {
 // Builds a fresh Bulldozer database (example ledger schema) on top of the given low-level backend,
 // applies the migrations, and runs the deterministic workload.
 export async function buildFixtureBulldozerDatabase(lowLevel: LowLevelDatabase): Promise<BulldozerDatabase> {
-  const db = declareBulldozerDatabase(declarePiledriverDatabase(lowLevel), { migrations: exampleFungibleLedgerMigrations });
+  const db = declareBulldozerDatabase(await declareFixturePiledriverDatabase(lowLevel), { migrations: exampleFungibleLedgerMigrations });
   await db.applyRemainingMigrations();
   await db.withSnapshotReplicated(async snapshot => {
     for (const [rowIdentifier, rowData] of Object.entries(fixtureLedgerRows)) {
@@ -264,6 +285,6 @@ function declareSeededLowLevelDatabase(dump: BulldozerDbDump): LowLevelDatabase 
 
 // Restores a Bulldozer database from a whole-database dump, ready to be read (and mutated) by the
 // current code.
-export function restoreBulldozerDatabase(dump: BulldozerDbDump): BulldozerDatabase {
-  return declareBulldozerDatabase(declarePiledriverDatabase(declareSeededLowLevelDatabase(dump)), { migrations: exampleFungibleLedgerMigrations });
+export async function restoreBulldozerDatabase(dump: BulldozerDbDump): Promise<BulldozerDatabase> {
+  return declareBulldozerDatabase(await declareFixturePiledriverDatabase(declareSeededLowLevelDatabase(dump)), { migrations: exampleFungibleLedgerMigrations });
 }

@@ -32,7 +32,7 @@ async function emit(path: string) {
 async function verify(path: string) {
   // Boundary parse of a dump written by this or another code version; mismatches surface below.
   const dump = JSON.parse(readFileSync(path, "utf8")) as BulldozerDbDump;
-  const { readModel: actual, unlistableTableIds } = await computeReadModel(restoreBulldozerDatabase(dump));
+  const { readModel: actual, unlistableTableIds } = await computeReadModel(await restoreBulldozerDatabase(dump));
   // The writer may have observed tables that the reading code cannot list: a dump written while
   // Sort/GroupBy were still materialized contains their row read models, which the current stateless
   // implementations intentionally reject. Exempt exactly the tables the reader *explicitly rejected*
