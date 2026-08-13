@@ -22,9 +22,16 @@ type RequestRecord = {
   serverRequestId?: string,
   file?: string,
   durationMs: number,
+  kind?: "app" | "diagnostic",
   method: string,
   path: string,
   status: number,
+};
+
+type DiagnosticCrawlRecord = {
+  file?: string,
+  name: string,
+  durationMs: number,
 };
 
 type BacklogRecord = {
@@ -36,6 +43,7 @@ type BacklogRecord = {
 
 const waits: WaitRecord[] = [];
 const requests: RequestRecord[] = [];
+const diagnosticCrawls: DiagnosticCrawlRecord[] = [];
 const backlogs: BacklogRecord[] = [];
 const fileStartedAt = performance.now();
 let totalConvergenceSleepMs = 0;
@@ -63,6 +71,11 @@ export function recordClientRequest(record: RequestRecord): void {
   requests.push({ ...record, file: expect.getState().testPath });
 }
 
+export function recordDiagnosticCrawl(record: DiagnosticCrawlRecord): void {
+  if (!enabled) return;
+  diagnosticCrawls.push({ ...record, file: expect.getState().testPath });
+}
+
 export function flushE2eDiagnostics(): void {
   if (!enabled || runnerTemp === undefined) return;
   const testFile = expect.getState().testPath ?? "unknown";
@@ -70,7 +83,8 @@ export function flushE2eDiagnostics(): void {
   const outputPath = join(runnerTemp, `hexclave-e2e-diagnostics-${pass}-${process.pid}-${threadId}-${testFileHash}.untracked.json`);
   mkdirSync(dirname(outputPath), { recursive: true });
   const fileWallDurationMs = performance.now() - fileStartedAt;
-  const httpRequestDurationMs = requests.reduce((total, request) => total + request.durationMs, 0);
+  const httpRequestDurationMs = requests.reduce((total, request) => total + (request.kind === "diagnostic" ? 0 : request.durationMs), 0);
+  const diagnosticCrawlDurationMs = diagnosticCrawls.reduce((total, crawl) => total + crawl.durationMs, 0);
   const convergenceSleepDurationMs = totalConvergenceSleepMs;
   writeFileSync(outputPath, JSON.stringify({
     pass,
@@ -79,12 +93,14 @@ export function flushE2eDiagnostics(): void {
     file: testFile,
     waits,
     requests,
+    diagnosticCrawls,
     backlogs,
     summary: {
       fileWallDurationMs,
       httpRequestDurationMs,
       convergenceSleepDurationMs,
-      residualDurationMs: fileWallDurationMs - httpRequestDurationMs - convergenceSleepDurationMs,
+      diagnosticCrawlDurationMs,
+      residualDurationMs: fileWallDurationMs - httpRequestDurationMs - convergenceSleepDurationMs - diagnosticCrawlDurationMs,
     },
   }));
 }

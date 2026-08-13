@@ -14,7 +14,7 @@ import { createHash, createHmac, randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import { Context, Mailbox, NiceRequestInit, NiceResponse, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_ID, STACK_INTERNAL_PROJECT_SERVER_KEY, STACK_SVIX_SERVER_URL, generatedEmailSuffix, localRedirectUrl, niceFetch, updateCookiesFromResponse } from "../helpers";
 import { localhostUrl, withPortPrefix } from "../helpers/ports";
-import { isE2eDiagnosticsEnabled, recordClientRequest, recordConvergenceWait, recordPipelineBacklog } from "../diagnostics";
+import { isE2eDiagnosticsEnabled, recordClientRequest, recordConvergenceWait, recordDiagnosticCrawl, recordPipelineBacklog } from "../diagnostics";
 
 type BackendContext = {
   readonly projectKeys: ProjectKeys,
@@ -147,6 +147,7 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
   body?: unknown,
   rawBody?: Uint8Array,
   rawContentType?: string,
+  diagnosticTraffic?: boolean,
   headers?: Record<string, string | undefined>,
   omitPublishableClientKey?: boolean,
   userAuth?: {
@@ -154,7 +155,7 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
     refreshToken?: string,
   },
 }): Promise<NiceResponse> {
-  const { body, rawBody, rawContentType, headers, accessType, omitPublishableClientKey, userAuth: userAuthOverride, ...otherOptions } = options ?? {};
+  const { body, rawBody, rawContentType, headers, accessType, diagnosticTraffic, omitPublishableClientKey, userAuth: userAuthOverride, ...otherOptions } = options ?? {};
   if (body !== undefined && rawBody !== undefined) {
     throw new HexclaveAssertionError("niceBackendFetch: pass either body or rawBody, not both");
   }
@@ -238,6 +239,7 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
     recordClientRequest({
       clientRequestId: diagnosticRequestId,
       durationMs: performance.now() - requestStartedAt,
+      kind: diagnosticTraffic ? "diagnostic" : "app",
       method: otherOptions.method ?? "GET",
       path: fullUrl.pathname,
       serverRequestId: res.headers.get("x-hexclave-request-id") ?? res.headers.get("x-stack-request-id") ?? undefined,
@@ -298,6 +300,7 @@ async function sampleEmailOutboxBacklog(): Promise<void> {
   lastEmailOutboxBacklogSampleAt = now;
 
   try {
+    const crawlStartedAt = performance.now();
     let cursor: string | undefined;
     let pendingCount = 0;
     let oldestPendingCreatedAt: number | null = null;
@@ -309,6 +312,7 @@ async function sampleEmailOutboxBacklog(): Promise<void> {
       const response = await niceBackendFetch(url, {
         method: "GET",
         accessType: "server",
+        diagnosticTraffic: true,
       });
       const items: OutboxEmail[] = response.body.items;
       pendingCount += items.length;
@@ -323,6 +327,10 @@ async function sampleEmailOutboxBacklog(): Promise<void> {
       if (typeof nextCursor !== "string" || nextCursor.length === 0) break;
       cursor = nextCursor;
     }
+    recordDiagnosticCrawl({
+      name: "email-outbox-backlog-crawl",
+      durationMs: performance.now() - crawlStartedAt,
+    });
     recordPipelineBacklog({
       pipeline: "email-outbox",
       pendingCount,
