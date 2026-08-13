@@ -95,6 +95,25 @@ describe("BufferedPiledriverDatabase", () => {
     await expect(wrapped.getRootObject(secondKey)).resolves.toMatchObject({ object: "second" });
   });
 
+  it("rejects combined sequences from another buffered database synchronously", async () => {
+    const wrapped = declareInMemoryPiledriverDatabase(crypto.randomUUID());
+    const first = declareBufferedPiledriverDatabase(wrapped, { throttleMs: 50 });
+    const second = declareBufferedPiledriverDatabase(wrapped, { throttleMs: 50 });
+    const { seq } = await first.setRootObject(key("foreign"), "value");
+
+    expect(() => second.combineSeqs(seq)).toThrow("does not belong to this database");
+  });
+
+  it("waits for a single-member combined sequence", async () => {
+    const { wrapped, counted } = countingDatabase();
+    const db = declareBufferedPiledriverDatabase(counted, { throttleMs: 20 });
+    const { seq } = await db.setRootObject(key("single-combined"), "value");
+
+    await db.waitUntilDurable(db.combineSeqs(seq));
+
+    await expect(wrapped.getRootObject(key("single-combined"))).resolves.toMatchObject({ object: "value" });
+  });
+
   it("rejects a durability waiter once without retrying a failed write", async () => {
     const wrapped = declareInMemoryPiledriverDatabase(crypto.randomUUID());
     let attempts = 0;

@@ -116,6 +116,9 @@ export function declareBufferedPiledriverDatabase(
       reject = rejectPromise;
     });
     const record = { flush, resolve, reject };
+    // Background flush failures are already reported through captureError, and real awaiters still observe the rejection.
+    // This handler only prevents an unobserved record rejection from becoming an unhandled process rejection.
+    record.flush.catch(() => undefined);
     seqRecords.set(seq, record);
     return { seq, record };
   };
@@ -140,10 +143,14 @@ export function declareBufferedPiledriverDatabase(
 
   const createCombinedSeq = (seqs: DatabaseSeq[]) => {
     if (seqs.length === 0) return initialSeq;
+    const memberRecords = seqs.map(memberSeq => ({
+      memberSeq,
+      record: getRecord(memberSeq),
+    }));
+    if (memberRecords.length === 1) return memberRecords[0].memberSeq;
     const { seq, record } = createSeq();
     runAsynchronously(async () => {
-      const underlyingSeqs = await Promise.all(seqs.map(memberSeq => {
-        const memberRecord = getRecord(memberSeq);
+      const underlyingSeqs = await Promise.all(memberRecords.map(({ record: memberRecord }) => {
         return memberRecord === null ? Promise.resolve(wrapped.initialSeq) : memberRecord.flush;
       }));
       record.resolve(wrapped.combineSeqs(...underlyingSeqs));
