@@ -183,15 +183,13 @@ describe("enqueueExternalDbSyncBatch (real DB, isolated schema)", () => {
 // skips the ClickHouse path and there is nothing to assert against.
 describe.skipIf(getEnvVariable("STACK_CLICKHOUSE_URL", "") === "")("recordExternalDbSyncDeletion (real DB)", () => {
   it("writes an EmailOutbox tombstone that removes the row from ClickHouse", async () => {
+    const clickhouse = getClickhouseAdminClient();
     const tenancy = await getSoleTenancyFromProjectBranch("internal", "main");
     const id = randomUUID();
-    let clickhouse: ReturnType<typeof getClickhouseAdminClient> | undefined;
 
     try {
-      clickhouse = getClickhouseAdminClient();
       async function waitForClickhouseCount(expectedCount: number) {
         for (let attempt = 0; attempt < 20; attempt += 1) {
-          await syncExternalDatabases(tenancy);
           const rows = await clickhouse.query({
             query: `
               SELECT count() AS count
@@ -280,7 +278,7 @@ describe.skipIf(getEnvVariable("STACK_CLICKHOUSE_URL", "") === "")("recordExtern
           where: { tenancyId: tenancy.id, id },
         });
       });
-      await clickhouse?.close();
+      await clickhouse.close();
     }
   });
 });
