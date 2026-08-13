@@ -7,6 +7,7 @@ import {
   Prisma,
 } from "@/generated/prisma/client";
 import type { Tenancy } from "@/lib/tenancies";
+import { getBillingTeamId } from "@/lib/plan-entitlements";
 import { getPrismaClientForTenancy, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import { createHash, randomUUID } from "node:crypto";
 import type { IssuePriority } from "./issue-lifecycle";
@@ -240,13 +241,25 @@ async function assertProjectUser(tx: PrismaClientTransaction, tenancy: Tenancy, 
   if (user === null) throw new IssueProductInputError(`${fieldName} is not a member of the authenticated branch`);
 }
 
-async function assertTeam(tx: PrismaClientTransaction, tenancy: Tenancy, teamId: string, fieldName: string): Promise<void> {
+/**
+ * Issues belong to the Hexclave project owner team, not a Team row in this
+ * customer tenancy. Looking the id up in `Team(tenancyId, teamId)` is the
+ * identity bug that made the dashboard picker list every team the viewer is
+ * in and then fail to persist the real owner.
+ */
+function projectOwnerTeamId(tenancy: Tenancy): string | null {
+  return getBillingTeamId(tenancy.project);
+}
+
+function assertProjectOwnerTeam(tenancy: Tenancy, teamId: string, fieldName: string): void {
   assertUuid(teamId, fieldName);
-  const team = await tx.team.findUnique({
-    where: { tenancyId_teamId: { tenancyId: tenancy.id, teamId } },
-    select: { teamId: true },
-  });
-  if (team === null) throw new IssueProductInputError(`${fieldName} is not a team in the authenticated branch`);
+  const ownerTeamId = projectOwnerTeamId(tenancy);
+  if (ownerTeamId == null) {
+    throw new IssueProductInputError(`${fieldName} cannot be set because this project has no owner team`);
+  }
+  if (ownerTeamId !== teamId) {
+    throw new IssueProductInputError(`${fieldName} must be this project's owner team`);
+  }
 }
 
 async function appendActivityInTransaction(options: {
@@ -331,34 +344,40 @@ export async function assignIssueToTeam(options: IssueProductScope & {
 }): Promise<IssueTeamMutationResult> {
   assertScope(options);
   const actorUserId = actorId(options.actorUserId);
-  if (options.teamId !== null) assertUuid(options.teamId, "teamId");
+  const ownerTeamId = projectOwnerTeamId(options.tenancy);
+  if (ownerTeamId == null) {
+    throw new IssueProductInputError("This project has no owner team");
+  }
+  // Null means "stamp the owner team", not "unassign". An issue without a
+  // team is a missing identity, not a valid triage state.
+  const teamId = options.teamId ?? ownerTeamId;
+  assertProjectOwnerTeam(options.tenancy, teamId, "teamId");
   const changedAt = assertValidDate(options.changedAt ?? new Date(), "changedAt");
   const prisma = await getPrismaClientForTenancy(options.tenancy);
   return await retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
     if (actorUserId !== null) await assertProjectUser(tx, options.tenancy, actorUserId, "actorUserId");
-    if (options.teamId !== null) await assertTeam(tx, options.tenancy, options.teamId, "teamId");
     const current = await tx.issue.findUniqueOrThrow({
       where: { tenancyId_id: { tenancyId: options.tenancy.id, id: options.issueId } },
       select: { assignedTeamId: true },
     });
-    const changed = current.assignedTeamId !== options.teamId;
+    const changed = current.assignedTeamId !== teamId;
     if (!changed) return {
       tenancyId: options.tenancy.id, issueId: options.issueId, previousTeamId: current.assignedTeamId,
-      teamId: options.teamId, actorUserId, changedAt, changed,
+      teamId, actorUserId, changedAt, changed,
     };
     await tx.issue.update({
       where: { tenancyId_id: { tenancyId: options.tenancy.id, id: options.issueId } },
-      data: { assignedTeamId: options.teamId, updatedAt: changedAt },
+      data: { assignedTeamId: teamId, updatedAt: changedAt },
     });
     await appendActivityInTransaction({
       tx, tenancy: options.tenancy, issueId: options.issueId, actorUserId,
-      type: "team_changed", idempotencyKey: activityKey("team", `${current.assignedTeamId ?? "none"}:${options.teamId ?? "none"}:${changedAt.toISOString()}`),
-      data: { from: current.assignedTeamId, to: options.teamId }, occurredAt: changedAt,
+      type: "team_changed", idempotencyKey: activityKey("team", `${current.assignedTeamId ?? "none"}:${teamId}:${changedAt.toISOString()}`),
+      data: { from: current.assignedTeamId, to: teamId }, occurredAt: changedAt,
     });
     return {
       tenancyId: options.tenancy.id, issueId: options.issueId, previousTeamId: current.assignedTeamId,
-      teamId: options.teamId, actorUserId, changedAt, changed,
+      teamId, actorUserId, changedAt, changed,
     };
   });
 }
@@ -395,7 +414,7 @@ export async function setIssueOwner(options: IssueProductScope & {
     await assertIssueExists(tx, options);
     if (actorUserId !== null) await assertProjectUser(tx, options.tenancy, actorUserId, "actorUserId");
     if (ownerUserId !== null) await assertProjectUser(tx, options.tenancy, ownerUserId, "owner.userId");
-    if (ownerTeamId !== null) await assertTeam(tx, options.tenancy, ownerTeamId, "owner.teamId");
+    if (ownerTeamId !== null) assertProjectOwnerTeam(options.tenancy, ownerTeamId, "owner.teamId");
     const ownerWhere = {
       tenancyId: options.tenancy.id,
       projectId: options.tenancy.project.id,
@@ -489,7 +508,7 @@ export async function setIssueSubscription(options: IssueProductScope & {
     await assertIssueExists(tx, options);
     if (actorUserId !== null) await assertProjectUser(tx, options.tenancy, actorUserId, "actorUserId");
     if (subjectUserId !== null) await assertProjectUser(tx, options.tenancy, subjectUserId, "subject.id");
-    if (subjectTeamId !== null) await assertTeam(tx, options.tenancy, subjectTeamId, "subject.id");
+    if (subjectTeamId !== null) assertProjectOwnerTeam(options.tenancy, subjectTeamId, "subject.id");
     const subscriptionWhere = {
       tenancyId: options.tenancy.id, projectId: options.tenancy.project.id, branchId: options.tenancy.branchId,
       issueId: options.issueId, subjectType, subjectUserId, subjectTeamId,
@@ -613,7 +632,7 @@ export async function loadIssueProductSnapshot(options: IssueProductScope & { li
     prisma.$replica().issueBookmark.findMany({ where: { tenancyId: options.tenancy.id, projectId: options.tenancy.project.id, branchId: options.tenancy.branchId, issueId: options.issueId }, select: { userId: true }, take: limit }),
   ]);
   return {
-    priority: priorityFromPrisma(issue.priority), assigneeUserId: issue.assigneeUserId, teamId: issue.assignedTeamId,
+    priority: priorityFromPrisma(issue.priority), assigneeUserId: issue.assigneeUserId, teamId: projectOwnerTeamId(options.tenancy) ?? issue.assignedTeamId,
     owners: owners.map((row) => ({ id: row.id, type: row.ownerType === PrismaIssueOwnerType.USER ? "user" : "team", userId: row.ownerUserId, teamId: row.ownerTeamId, source: ownerSourceFromPrisma(row.source), context: row.context, createdAt: row.createdAt, updatedAt: row.updatedAt })),
     activities: activities.map((row) => ({ id: row.id, actorUserId: row.actorUserId, type: row.type.toLowerCase(), idempotencyKey: row.idempotencyKey, data: row.data, occurredAt: row.occurredAt, createdAt: row.createdAt })),
     comments: comments.map((row) => ({ id: row.id, authorUserId: row.authorUserId, body: row.body, idempotencyKey: row.idempotencyKey, createdAt: row.createdAt, updatedAt: row.updatedAt })),

@@ -3,6 +3,10 @@ import { Prisma } from "@/generated/prisma/client";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import type { Tenancy } from "@/lib/tenancies";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import {
+  loadOwnerTeamMemberEmailsByUserId,
+  matchOwnerTeamRecipients,
+} from "./owner-team-recipients";
 import { replayIssueAlertWorkflowDelivery } from "./workflow-status";
 import {
   IssueAlertPersistenceInputError,
@@ -179,6 +183,14 @@ export async function assertIssueAlertRecipients(tenancy: Tenancy, rule: IssueAl
   const prisma = await getPrismaClientForTenancy(tenancy);
   if (rule.action.userIds !== undefined) {
     const userIds = [...rule.action.userIds];
+    const ownerTeamEmails = await loadOwnerTeamMemberEmailsByUserId(tenancy);
+    if (ownerTeamEmails != null) {
+      const ownerTeamMatch = matchOwnerTeamRecipients(userIds, ownerTeamEmails);
+      if (ownerTeamMatch.status === "ok") return;
+      if (ownerTeamMatch.status === "missing_email") {
+        throw new StatusError(StatusError.BadRequest, "Issue alert recipients must have a primary email on this project's team");
+      }
+    }
     const users = await prisma.projectUser.findMany({
       where: {
         tenancyId: tenancy.id,
@@ -189,7 +201,7 @@ export async function assertIssueAlertRecipients(tenancy: Tenancy, rule: IssueAl
       select: { projectUserId: true },
     });
     if (users.length !== userIds.length) {
-      throw new StatusError(StatusError.BadRequest, "Issue alert recipients must belong to the authenticated project");
+      throw new StatusError(StatusError.BadRequest, "Issue alert recipients must be members of this project's team");
     }
     return;
   }

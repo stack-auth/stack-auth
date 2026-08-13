@@ -37,6 +37,19 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   await sql`INSERT INTO "IssueBookmark" ("tenancyId", "projectId", "branchId", "issueId", "userId") VALUES (${ctx.primary.tenancyId}::uuid, ${ctx.primary.projectId}, ${ctx.primary.branchId}, ${issueId}::uuid, ${userId}::uuid)`;
   await expect(sql`INSERT INTO "IssueBookmark" ("tenancyId", "projectId", "branchId", "issueId", "userId") VALUES (${ctx.other.tenancyId}::uuid, ${ctx.other.projectId}, ${ctx.other.branchId}, ${issueId}::uuid, ${userId}::uuid)`).rejects.toThrow(/IssueBookmark_issue_fkey|IssueBookmark_user_fkey|IssueBookmark_tenancy_scope_fkey/);
 
+  const ownerTeamId = randomUUID();
+  await sql`UPDATE "Issue" SET "assignedTeamId" = ${ownerTeamId}::uuid WHERE "id" = ${issueId}::uuid`;
+  const assigned = await sql<{ assignedTeamId: string }[]>`SELECT "assignedTeamId" FROM "Issue" WHERE "id" = ${issueId}::uuid`;
+  expect(assigned[0].assignedTeamId).toBe(ownerTeamId);
+  const leakedTeamFks = await sql<{ constraint_name: string }[]>`
+    SELECT constraint_name FROM information_schema.table_constraints
+    WHERE table_schema = 'public'
+      AND constraint_type = 'FOREIGN KEY'
+      AND constraint_name IN ('Issue_assigned_team_fkey', 'IssueOwner_team_fkey', 'IssueSubscription_team_fkey')
+    ORDER BY constraint_name COLLATE "C"
+  `;
+  expect(leakedTeamFks).toEqual([]);
+
   await sql`DELETE FROM "Project" WHERE "id" = ${ctx.primary.projectId}`;
   const remaining = await sql<{ table_name: string, count: number }[]>`
     SELECT table_name, count FROM (

@@ -336,7 +336,17 @@ function occurrenceSelect(): string {
   return `
       SELECT occurrence_id, event_at, body, level, data, error_envelope, error_frames,
              service_name, deployment_environment_name, issue_hash
-      FROM analytics_internal.logs`;
+      FROM analytics_internal.telemetry`;
+}
+
+function occurrenceFilterSql(where: readonly string[]): string {
+  // These first five predicates are always supplied by buildOccurrenceWhere.
+  // Keep the sorting-key/time predicates in PREWHERE so ClickHouse rejects
+  // unrelated granules before reading error envelopes and JSON payloads used by
+  // the remaining public-search filters.
+  const prewhere = where.slice(0, 5);
+  const payloadWhere = where.slice(5);
+  return `PREWHERE ${prewhere.join("\n        AND ")}\n      WHERE ${payloadWhere.join("\n        AND ")}`;
 }
 
 export function buildPublicSearchOccurrencePlan(options: {
@@ -371,7 +381,7 @@ export function buildPublicSearchOccurrencePlan(options: {
 
   return {
     query: `${occurrenceSelect()}
-      WHERE ${where.join("\n        AND ")}
+      ${occurrenceFilterSql(where)}
         ${cursorSql}
       ORDER BY event_at DESC, occurrence_id DESC
       LIMIT {resultLimit:UInt32}`,
@@ -415,8 +425,8 @@ export function buildPublicSearchFacetPlan(options: {
   return {
     query: `
       SELECT {facetName:String} AS facet_key, ${expression} AS facet_value, toUInt64(count()) AS count
-      FROM analytics_internal.logs
-      WHERE ${where.join("\n        AND ")}
+      FROM analytics_internal.telemetry
+      ${occurrenceFilterSql(where)}
         AND ${expression} != ''
       GROUP BY facet_value
       ORDER BY count DESC, facet_value ASC
@@ -448,8 +458,8 @@ export function buildPublicSearchIssueHashPlan(options: {
   return {
     query: `
       SELECT DISTINCT issue_hash AS issueHash
-      FROM analytics_internal.logs
-      WHERE ${where.join("\n        AND ")}
+      FROM analytics_internal.telemetry
+      ${occurrenceFilterSql(where)}
       LIMIT {resultLimit:UInt32}`,
     query_params: params,
     format: "JSONEachRow",

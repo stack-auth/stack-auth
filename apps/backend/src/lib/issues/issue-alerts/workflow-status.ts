@@ -32,6 +32,10 @@ const IDENTIFIER_PATTERN = /^[^\u0000-\u001f\u007f]+$/u;
 const TEXT_ENCODER = new TextEncoder();
 type IssueAlertWorkflowReplayPayload = { [key: string]: ErrorIngestScrubbedValue };
 
+function isMissingReplayPayload(value: unknown): value is null | undefined {
+  return value === null || value === undefined;
+}
+
 export type IssueAlertWorkflowDeliveryRef = {
   id: string,
   scope: IssueAlertRuleScope,
@@ -392,6 +396,7 @@ async function replayIssueAlertWorkflowDeliveryInTransaction(
       state: true,
       replayCount: true,
       workflowEventId: true,
+      workflowPayload: true,
     },
   });
   if (delivery === null) return { status: "not_replayed", reason: "delivery_not_found" };
@@ -403,12 +408,15 @@ async function replayIssueAlertWorkflowDeliveryInTransaction(
     where: { tenancyId_id: { tenancyId: scope.tenancyId, id: delivery.workflowEventId } },
     select: { id: true, type: true, payload: true },
   });
-  if (sourceEvent === null) return { status: "not_replayed", reason: "missing_workflow_event" };
+  const sourcePayload = sourceEvent === null ? delivery.workflowPayload : sourceEvent.payload;
+  if (sourceEvent === null && isMissingReplayPayload(sourcePayload)) {
+    return { status: "not_replayed", reason: "missing_workflow_event" };
+  }
   const plan = buildIssueAlertWorkflowReplayPlan({
     deliveryId: delivery.id,
-    sourceEventId: sourceEvent.id,
-    sourceEventType: sourceEvent.type,
-    sourcePayload: sourceEvent.payload,
+    sourceEventId: sourceEvent?.id ?? delivery.workflowEventId,
+    sourceEventType: sourceEvent?.type ?? ISSUE_ALERT_WORKFLOW_EVENT_TYPE,
+    sourcePayload,
     replayCount: delivery.replayCount,
     scheduledAt: now,
   });

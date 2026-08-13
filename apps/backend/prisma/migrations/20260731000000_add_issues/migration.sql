@@ -45,6 +45,8 @@ CREATE TABLE "Issue" (
     "resolvedAt" TIMESTAMP(3),
     "ignoredUntil" TIMESTAMP(3),
     "assigneeUserId" UUID,
+    -- Internal Hexclave owner-team id, not a Team row in this tenancy. There is
+    -- deliberately no FK: the owner team lives on the internal project.
     "assignedTeamId" UUID,
     "firstSeenAt" TIMESTAMP(3) NOT NULL,
     "lastSeenAt" TIMESTAMP(3) NOT NULL,
@@ -101,7 +103,11 @@ CREATE TABLE "IssueHash" (
 -- left behind by a deleted tenancy.
 CREATE TABLE "IssueMaterialization" (
     "tenancyId" UUID NOT NULL,
-    "batchId" UUID NOT NULL,
+    -- Transport batches are not universally UUIDs: Sentry envelopes and OTLP
+    -- retries use bounded, deterministic string identities. Creating the final
+    -- shape directly avoids a table rewrite and ACCESS EXCLUSIVE lock in the
+    -- follow-up migration when this schema first reaches production.
+    "batchId" VARCHAR(512) NOT NULL,
     "appliedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "IssueMaterialization_pkey" PRIMARY KEY ("tenancyId","batchId")
@@ -397,7 +403,6 @@ CREATE INDEX "IssueSavedSearchView_scope_updatedAt_idx"
 
 -- AddForeignKey
 ALTER TABLE "Issue" ADD CONSTRAINT "Issue_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "Issue" ADD CONSTRAINT "Issue_assigned_team_fkey" FOREIGN KEY ("tenancyId", "assignedTeamId") REFERENCES "Team"("tenancyId", "teamId") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 ALTER TABLE "IssueHash" ADD CONSTRAINT "IssueHash_tenancyId_issueId_fkey" FOREIGN KEY ("tenancyId", "issueId") REFERENCES "Issue"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "IssueHash" ADD CONSTRAINT "IssueHash_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -446,7 +451,6 @@ ALTER TABLE "IssueOwner" ADD CONSTRAINT "IssueOwner_tenancy_scope_fkey" FOREIGN 
 ALTER TABLE "IssueOwner" ADD CONSTRAINT "IssueOwner_project_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "IssueOwner" ADD CONSTRAINT "IssueOwner_issue_fkey" FOREIGN KEY ("tenancyId", "issueId") REFERENCES "Issue"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "IssueOwner" ADD CONSTRAINT "IssueOwner_user_fkey" FOREIGN KEY ("tenancyId", "ownerUserId") REFERENCES "ProjectUser"("tenancyId", "projectUserId") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "IssueOwner" ADD CONSTRAINT "IssueOwner_team_fkey" FOREIGN KEY ("tenancyId", "ownerTeamId") REFERENCES "Team"("tenancyId", "teamId") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "IssueActivity" ADD CONSTRAINT "IssueActivity_tenancy_scope_fkey" FOREIGN KEY ("tenancyId", "projectId", "branchId")
   REFERENCES "Tenancy"("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -464,7 +468,6 @@ ALTER TABLE "IssueSubscription" ADD CONSTRAINT "IssueSubscription_tenancy_scope_
 ALTER TABLE "IssueSubscription" ADD CONSTRAINT "IssueSubscription_project_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "IssueSubscription" ADD CONSTRAINT "IssueSubscription_issue_fkey" FOREIGN KEY ("tenancyId", "issueId") REFERENCES "Issue"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "IssueSubscription" ADD CONSTRAINT "IssueSubscription_user_fkey" FOREIGN KEY ("tenancyId", "subjectUserId") REFERENCES "ProjectUser"("tenancyId", "projectUserId") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "IssueSubscription" ADD CONSTRAINT "IssueSubscription_team_fkey" FOREIGN KEY ("tenancyId", "subjectTeamId") REFERENCES "Team"("tenancyId", "teamId") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 ALTER TABLE "IssueBookmark" ADD CONSTRAINT "IssueBookmark_tenancy_scope_fkey" FOREIGN KEY ("tenancyId", "projectId", "branchId")
   REFERENCES "Tenancy"("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;

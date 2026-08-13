@@ -722,9 +722,15 @@ export function parseErrorIngestEnvelope(
   if (bytes.byteLength === 0) throw new ErrorIngestEnvelopeError("malformed", "Envelope body is empty");
   if (bytes.byteLength > limits.maxEnvelopeBytes) throw new ErrorIngestEnvelopeError("payload_too_large", "Envelope body is too large");
 
-  const batchId = `envelope:${createHash("sha256").update(bytes).digest("hex").slice(0, 32)}`;
   const headerLine = parseJsonLine(bytes, 0, limits.maxEnvelopeHeaderBytes, "Envelope header");
   const header = parseEnvelopeHeader(headerLine.value, limits);
+  // Sentry retries can enrich an event without preserving byte-for-byte
+  // envelope equality. When the envelope has an event identity, use that as
+  // the batch identity so ClickHouse and the Postgres ledger treat the retry as
+  // the same delivery. Envelopes without one retain the content hash fallback.
+  const batchId = header.eventId === null
+    ? `envelope:${createHash("sha256").update(bytes).digest("hex").slice(0, 32)}`
+    : `envelope:event:${header.eventId}`;
   const items: ErrorIngestEnvelopeItem[] = [];
   let offset = headerLine.nextOffset;
 
