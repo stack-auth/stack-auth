@@ -1,0 +1,319 @@
+apps/backend/package.json
+  s_dd9eb7a34a9425::t_baef9e969ea3f8 50
+apps/backend/prisma/migrations/20260810000001_remove_legacy_event_storage/migration.sql
+  s_dd9eb7a34a9425::t_0c28631ec4cd14 1-12
+apps/backend/prisma/migrations/20260810000001_remove_legacy_event_storage/tests/legacy-event-tables-dropped.ts
+  s_dd9eb7a34a9425::t_0716c428322645 1-32
+apps/backend/prisma/migrations/20260811000000_harden_background_jobs/migration.sql
+  s_dd9eb7a34a9425::t_1ac4113451d7f3 1-18
+apps/backend/prisma/migrations/20260811000000_harden_background_jobs/tests/workflow-dead-letter-fields.ts
+  s_dd9eb7a34a9425::t_938fa45b4f0ebe 1-56
+apps/backend/scripts/benchmark-internal-metrics.ts
+  s_dd9eb7a34a9425::t_d6005a8f733f1a 1274,1285,1297,1997,2008,2375-2378
+apps/backend/scripts/clickhouse-migrations.test.ts
+  s_dd9eb7a34a9425::t_7076876723bb59 27,37,49-50,67-87,244-254,300,310,376,380,385,504-637,809,819,826-827,859-920,979,1011,1017
+apps/backend/scripts/clickhouse-migrations.ts
+  s_dd9eb7a34a9425::t_7da4a10c29806f 22-25,29-30,34-35,38,70,90,96-98,101,103,106,109-113,117,132-135,140-141,149-156,158-159,162,186-192,208,259-277,279-281,283-346,348-815,822,826-827,833-834,850-853,885-887,889-890,893,896-899,902,929,936-939,988-994,1001-1021,1024-1025,1027-1050,1057-1087,1089-1093,1099-1103,1111,1113,1121,1125-1126,1131-1134,1136-1139,1145-1150,1196,1206-1207,1467-1495,1530-1531,1570-1592,1707,1946-1947,1968-1970,3003,3045-3046,3055,3061,3094,3097-3112
+apps/backend/scripts/run-cron-jobs.ts
+  s_dd9eb7a34a9425::t_407d4027738a7d 1,7
+apps/backend/src/app/api/latest/analytics/envelope/route.ts
+  s_dd9eb7a34a9425::t_fe8b6802167abf 2,15,22,24,233,240-241,288-289,293
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_dd9eb7a34a9425::t_5e798ac267af8f 1-2,8,17,174-179,182,357-375,454-461,656,667,689-699,705
+apps/backend/src/app/api/latest/analytics/otlp/v1/logs/route.tsx
+  s_dd9eb7a34a9425::t_6b48a7567a88a3 2,5-6,17,84-93,99,135-139,142-144
+apps/backend/src/app/api/latest/analytics/otlp/v1/traces/route.tsx
+  s_dd9eb7a34a9425::t_27c5ccbfddc7a7 2
+apps/backend/src/app/api/latest/integrations/ai-proxy/[[...path]]/route.ts
+  s_dd9eb7a34a9425::t_98ac2eae8f5ca7 44,52,73
+apps/backend/src/app/api/latest/internal/analytics/clickmap/route.ts
+  s_dd9eb7a34a9425::t_7bc9105baecd49 137
+apps/backend/src/app/api/latest/internal/background-jobs/route.ts
+  s_dd9eb7a34a9425::t_9d402d28c693df 1-83
+apps/backend/src/app/api/latest/internal/compliance/access-review/route.tsx
+  s_dd9eb7a34a9425::t_e731b4c38a625d 100
+apps/backend/src/app/api/latest/internal/compliance/security-events/route.test.ts
+  s_dd9eb7a34a9425::t_79378f42bf32c6 1-32
+apps/backend/src/app/api/latest/internal/compliance/security-events/route.tsx
+  s_dd9eb7a34a9425::t_3f2ef27e44c2d8 5,149,171,192,204
+apps/backend/src/app/api/latest/internal/compliance/security-events/security-event-queries.ts
+  s_dd9eb7a34a9425::t_3304d05179ff8b 1-64
+apps/backend/src/app/api/latest/internal/config/override/[level]/route.tsx
+  s_dd9eb7a34a9425::t_9c13dca5b02276 17,282-301,343-360
+apps/backend/src/app/api/latest/internal/external-db-sync/poller/route.ts
+  s_dd9eb7a34a9425::t_30c79ef9c837f4 4,97,181,200,208,226-227,231,242,248,254-255,263-264,272,274,279-280,288,301,311-314,319,325,328-331
+apps/backend/src/app/api/latest/internal/external-db-sync/sequencer/route.ts
+  s_dd9eb7a34a9425::t_ded75c0ef26e56 4,53-54,56,81,85,110,114,138,143,162,187,191,214,218,247,251,275,279,302,306,330,334,358,362,386,390,413,423
+apps/backend/src/app/api/latest/internal/external-db-sync/sync-engine/route.tsx
+  s_dd9eb7a34a9425::t_cb42d66b6b4221 8,55-59,61-71
+apps/backend/src/app/api/latest/internal/issues/reconciler/route.tsx
+  s_dd9eb7a34a9425::t_9f9a1452d97f1c 56,81,98
+apps/backend/src/app/api/latest/internal/metrics/route.test.ts
+  s_dd9eb7a34a9425::t_80af7e6265ebbb 74
+apps/backend/src/app/api/latest/internal/metrics/route.tsx
+  s_dd9eb7a34a9425::t_a288d009a47961 96,181,284,412,464,564,578,700,781,1325,1422,1654
+apps/backend/src/app/api/latest/internal/newly-created-projects/helpers.test.tsx
+  s_dd9eb7a34a9425::t_2222dfe00dd249 3,14-24
+apps/backend/src/app/api/latest/internal/newly-created-projects/helpers.tsx
+  s_dd9eb7a34a9425::t_f5dc81a97dde99 326-330,333,375-376,378-393,396-397,399-406
+apps/backend/src/app/api/latest/internal/platform-analytics/route.tsx
+  s_dd9eb7a34a9425::t_4a8f4744a111ed 257,283,289,324,346,372,382,392-398,400-401,419,428,442,649-650
+apps/backend/src/app/api/latest/internal/sign-up-rules-stats/route.tsx
+  s_dd9eb7a34a9425::t_e3f37462a515d9 66-69,71,73-75,88,108,112,121,126,138-139,141,143
+apps/backend/src/app/api/latest/internal/telemetry/materialize/route.tsx
+  s_dd9eb7a34a9425::t_609f42c508767d 1-68
+apps/backend/src/app/api/latest/internal/user-activity/route.tsx
+  s_dd9eb7a34a9425::t_41adfdde552550 55
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_dd9eb7a34a9425::t_dba99573210793 12,87-91,94,102-108,121-128,238-259,334-353
+apps/backend/src/hexclave.test.tsx
+  s_dd9eb7a34a9425::t_d67f62844d4a49 1-31
+apps/backend/src/lib/analytics-telemetry-writers.test.ts
+  s_dd9eb7a34a9425::t_f2474105e88a52 4,6,92,101-114,190-207,210,215-216,226,231-232
+apps/backend/src/lib/analytics-telemetry-writers.ts
+  s_dd9eb7a34a9425::t_0238869c1e7aa2 7,9,13,41-46,57-59,61-62,67,69-72,92-102,119,122-123,200,250,284,312,319,354-355,402,422-423,434,437,442-443,447-461,463-465,469,471
+apps/backend/src/lib/backend-request-metrics.ts
+  s_dd9eb7a34a9425::t_e5bc9d2545b0c3 1-36
+apps/backend/src/lib/bulldozer-server-client.test.ts
+  s_dd9eb7a34a9425::t_93b3848878587d 171,175-183
+apps/backend/src/lib/bulldozer-server-client.ts
+  s_dd9eb7a34a9425::t_90dbe458a3efc9 62,64-67
+apps/backend/src/lib/clickhouse.tsx
+  s_dd9eb7a34a9425::t_3a84d7bae0c352 94
+apps/backend/src/lib/compliance-events.ts
+  s_dd9eb7a34a9425::t_7feb412e74cacb 4,46,70,93
+apps/backend/src/lib/config/index.tsx
+  s_dd9eb7a34a9425::t_09bb0f1ea17762 769,794-795,877,880-881,891
+apps/backend/src/lib/cron-job-registry.test.ts
+  s_dd9eb7a34a9425::t_5e16d4db1c7dd3 1-24
+apps/backend/src/lib/cron-job-registry.ts
+  s_dd9eb7a34a9425::t_6a43d70b1f6db1 1-48
+apps/backend/src/lib/events.tsx
+  s_dd9eb7a34a9425::t_30710f9410486d 341-344,350-351,353-355,506,555-557
+apps/backend/src/lib/external-db-sync-queue.test.ts
+  s_dd9eb7a34a9425::t_4e9e4a0ba507ae 104-111
+apps/backend/src/lib/external-db-sync-queue.ts
+  s_dd9eb7a34a9425::t_6f44552b2a8423 39-46
+apps/backend/src/lib/external-db-sync.ts
+  s_dd9eb7a34a9425::t_40401a91ea873b 1491,1535,1547
+apps/backend/src/lib/internal-observability.test.ts
+  s_dd9eb7a34a9425::t_90b0cd9bdc4134 21-22,33-36,87,115-119,278-282
+apps/backend/src/lib/internal-observability.ts
+  s_dd9eb7a34a9425::t_35d51405c4fee8 6,110-111,115,130-134
+apps/backend/src/lib/issues/issue-alerts/ingestion.ts
+  s_dd9eb7a34a9425::t_9228567d3aa8fb 16-17,65-80,86-87,90,107,114-133,162,186-187
+apps/backend/src/lib/issues/issue-reconciler.ts
+  s_dd9eb7a34a9425::t_c877a1306a5c31 3-5,7-11,13,37,47,65-66,75,135-136,139-140,157,160,183-185,187-191,215-217,220-221,229-234,240,279-399,401-405,407-408,410-411,413,429,432,452,462-484,516-525
+apps/backend/src/lib/issues/issue-store.test.ts
+  s_dd9eb7a34a9425::t_a827307733f1cd 70,72-73,76,238,285-307
+apps/backend/src/lib/issues/issue-store.ts
+  s_dd9eb7a34a9425::t_3cb6021412b391 2-3,6,48,58-161,174,197,240-242,269,271,319,416,427,430-433,445,461,513-537,544,546,554-556,565-567,579-628,630-642,646,649,651,653-659,663-673,675,679-680,684-689,691-699,701-713,730,734-749,754-766
+apps/backend/src/lib/otlp-log-writer.test.ts
+  s_dd9eb7a34a9425::t_86a3ffe9049740 79-91,286,291-294,296
+apps/backend/src/lib/otlp-log-writer.ts
+  s_dd9eb7a34a9425::t_5cc89b60474b6d 4-5,8-17,61,69,99,112-113,117-120,122,125-130,133,135,168,191,227,235,239,270-271
+apps/backend/src/lib/otlp-metric-query.test.ts
+  s_dd9eb7a34a9425::t_ea86abb6977225 28-29,32,35
+apps/backend/src/lib/otlp-metric-query.ts
+  s_dd9eb7a34a9425::t_0818d6c0f40b12 146-147,149-150,153-154,196-197
+apps/backend/src/lib/otlp-metric-writer.ts
+  s_dd9eb7a34a9425::t_29f866fb5fb1ba 199
+apps/backend/src/lib/otlp-trace-writer.ts
+  s_dd9eb7a34a9425::t_b662f9a73215df 20-21,292
+apps/backend/src/lib/payments/bulldozer-dual-write.ts
+  s_dd9eb7a34a9425::t_050c71c237828a 341,368
+apps/backend/src/lib/payments/customer-data.ts
+  s_dd9eb7a34a9425::t_ad126904cd3c9b 30,53,98
+apps/backend/src/lib/plan-usage.test.ts
+  s_dd9eb7a34a9425::t_ab889298a8565c 123,125-130
+apps/backend/src/lib/plan-usage.ts
+  s_dd9eb7a34a9425::t_5ae377030784fb 350-358,375
+apps/backend/src/lib/qstash-outbox.test.ts
+  s_dd9eb7a34a9425::t_eed71f31e20a33 1-62
+apps/backend/src/lib/qstash-outbox.ts
+  s_dd9eb7a34a9425::t_97cf9572517bb2 1-212
+apps/backend/src/lib/seed-dummy-data.ts
+  s_dd9eb7a34a9425::t_aaa37350e7f9e9 5,1527-1566,1616,1659,1713,1723,1960,1970-1975,1982,1989,1993-1994,1996-2001,2017,2022-2024,2030-2033,2035-2036,2048-2065,2084,2174,2181,2322,2344,2450,2709-2710,2718,2815,3023
+apps/backend/src/lib/spans.test.ts
+  s_dd9eb7a34a9425::t_65896edbc5d59f 2,398-441
+apps/backend/src/lib/spans.tsx
+  s_dd9eb7a34a9425::t_41e8c498efd62a 104-106,357
+apps/backend/src/lib/telemetry-contract.ts
+  s_dd9eb7a34a9425::t_d6037ad696e4bc 1-69
+apps/backend/src/lib/telemetry-ingest/index.ts
+  s_dd9eb7a34a9425::t_7d6d9f329f8790 1-9
+apps/backend/src/lib/telemetry-ingestion-paths.ts
+  s_dd9eb7a34a9425::t_f0b969c2f2a064 12-15
+apps/backend/src/lib/telemetry-write-plan.ts
+  s_dd9eb7a34a9425::t_63b57dd5394575 1-39
+apps/backend/src/lib/workflows/engine.tsx
+  s_dd9eb7a34a9425::t_96940bbd49d4ee 21,301,533,543,599-603,608-610
+apps/backend/src/lib/workflows/event-processing.test.ts
+  s_dd9eb7a34a9425::t_d1ee6b09b164b7 3,57-63
+apps/backend/src/lib/workflows/event-processing.ts
+  s_dd9eb7a34a9425::t_fab49e780fad2b 8-13
+apps/backend/src/server/middleware.ts
+  s_dd9eb7a34a9425::t_b3991befaf4843 36-37,76-81
+apps/bulldozer-js/src/payments/schema/lmdb-compression.test.ts
+  s_dd9eb7a34a9425::t_a7c3b1e382de0b 45
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/funnel-graph/page.tsx
+  s_dd9eb7a34a9425::t_26bfcb14ed6313 1,3-13
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/funnels/page-client.tsx
+  s_dd9eb7a34a9425::t_f22148e97ad2c6 1-108
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/funnels/page.tsx
+  s_dd9eb7a34a9425::t_78bb3b17d4e6f9 1,6
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/retention/page-client.tsx
+  s_dd9eb7a34a9425::t_da6ed0ef2226fd 1-125
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/retention/page.tsx
+  s_dd9eb7a34a9425::t_fe310e0660b436 1,6
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/page-client.tsx
+  s_dd9eb7a34a9425::t_fe42ba13661efd 10,13,15-16,177-195,199,263-267,274-282
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/catalyst/page-client.tsx
+  s_dd9eb7a34a9425::t_827ceb898c58f9 1-93
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/catalyst/page.tsx
+  s_dd9eb7a34a9425::t_76ffb66f67099c 1-7
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/performance/page-client.tsx
+  s_dd9eb7a34a9425::t_5dd12a7fc6e35c 9-11,14,16,19,24-25,29-36,41-42,46-47,49-52,54-55,59-61,95-141,145-162,166-179,182-216,218-226,228-235,240-429,431,433,435,437-451,454-462,464-472,476,480-651,697-699,701,703-704,706,708-716,718-730,732-735,737-773,775,778-816,824-827,829,831-834,842,848,850-868,870,872,875,878,882-885,887-892,895-897,925,934,939,943,946,948-953,956-1028,1030-1072,1075-1079,1081
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/performance/performance-data.ts
+  s_dd9eb7a34a9425::t_e9c2003411c1be 3-4,9,87-131,355-879
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/session-replays/page-client.tsx
+  s_dd9eb7a34a9425::t_42d125ad706ec8 31-32,35,603-605,1511-1525,2048-2052
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/session-replays/replay-url-state.test.ts
+  s_dd9eb7a34a9425::t_1f82988fd3a9c9 1-25
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/session-replays/replay-url-state.ts
+  s_dd9eb7a34a9425::t_51f00d9aed3512 1-28
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/session-replays/session-replay-machine.test.ts
+  s_dd9eb7a34a9425::t_6736da896c9b96 1756
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/session-replays/session-replay-machine.ts
+  s_dd9eb7a34a9425::t_f1efe93cf35212 860-862
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/tv-mode/page-client.tsx
+  s_dd9eb7a34a9425::t_6a462c7d3b94dc 1-94
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/tv-mode/page.tsx
+  s_dd9eb7a34a9425::t_57a1ccd5d8bd7e 1-7
+apps/dashboard/src/lib/apps-frontend.tsx
+  s_dd9eb7a34a9425::t_e0433c6b628c16 329-334,358-363,431-432,441,450,455-456,466-480
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_dd9eb7a34a9425::t_e8ec079e8b1ac3 2541-2561
+apps/e2e/tests/backend/endpoints/api/v1/session-replays.test.ts
+  s_dd9eb7a34a9425::t_791d3eaf7c00e8 11-19,866,2161-2183
+apps/e2e/tests/backend/performance/mock-metric-events.sql
+  s_dd9eb7a34a9425::t_106716849197dc 189-194
+docs-mintlify/guides/apps/analytics/cross-tier-tracing.mdx
+  s_dd9eb7a34a9425::t_1823f90e2df616 180,183-199,201-207,217-220
+docs-mintlify/guides/apps/analytics/overview.mdx
+  s_dd9eb7a34a9425::t_13993984144346 15-17
+docs-mintlify/guides/apps/observability/issues.mdx
+  s_dd9eb7a34a9425::t_3a6fa5652182ed 46-47,72,74,94,124-131,136,154,172
+docs-mintlify/guides/apps/observability/overview.mdx
+  s_dd9eb7a34a9425::t_788aedf758720b 44,103
+docs-mintlify/guides/getting-started/setup.mdx
+  s_dd9eb7a34a9425::t_623ca4ac9525f7 9
+docs-mintlify/guides/other/self-host.mdx
+  s_dd9eb7a34a9425::t_f5014f13cfe9c5 170-171,179-180,183
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_dd9eb7a34a9425::t_213711aac80d57 3
+examples/demo/package.json
+  s_dd9eb7a34a9425::t_5099617a11517d 23,27-28
+examples/demo/src/app/error-tracking-demo/api/observability-lab/prepare/route.test.ts
+  s_dd9eb7a34a9425::t_393a6be72b1c3f 1-61
+examples/demo/src/app/error-tracking-demo/api/observability-lab/prepare/route.ts
+  s_dd9eb7a34a9425::t_c0f8b3fd8f6061 1-45
+examples/demo/src/app/error-tracking-demo/api/server-error/route.ts
+  s_dd9eb7a34a9425::t_dcc1f56b1d0a87 1-9
+examples/demo/src/app/error-tracking-demo/api/telemetry/route.test.ts
+  s_dd9eb7a34a9425::t_f3fb799e7c9a8c 1-85
+examples/demo/src/app/error-tracking-demo/api/telemetry/route.ts
+  s_dd9eb7a34a9425::t_e523a66b28bf91 1-101
+examples/demo/src/app/error-tracking-demo/error-scenarios.test.ts
+  s_dd9eb7a34a9425::t_271cc6f2e3d6eb 1-30
+examples/demo/src/app/error-tracking-demo/error-scenarios.ts
+  s_dd9eb7a34a9425::t_089508570becf5 1-35
+examples/demo/src/app/error-tracking-demo/observability-lab-upload.test.ts
+  s_dd9eb7a34a9425::t_bf281da144eedb 1-120
+examples/demo/src/app/error-tracking-demo/observability-lab-upload.ts
+  s_dd9eb7a34a9425::t_0e8a5b8c6c0ca5 1-227
+examples/demo/src/app/error-tracking-demo/observability-page.tsx
+  s_dd9eb7a34a9425::t_cfbb15828db9ac 1-1090
+examples/demo/src/app/error-tracking-demo/page-client.tsx
+  s_dd9eb7a34a9425::t_480d5efd27bde8 1-3
+examples/demo/src/app/error-tracking-demo/page.tsx
+  s_dd9eb7a34a9425::t_fa5e8858a9e805 1-5
+examples/demo/src/app/error-tracking-demo/server-error.test.ts
+  s_dd9eb7a34a9425::t_f762a432e78c34 1-12
+examples/demo/src/app/error-tracking-demo/server-error.ts
+  s_dd9eb7a34a9425::t_5a6a9a5963b631 1-7
+examples/demo/src/app/error-tracking-demo/symbolicated-bundle.test.ts
+  s_dd9eb7a34a9425::t_b206f63149537d 1-141
+examples/demo/src/app/error-tracking-demo/symbolicated-bundle.ts
+  s_dd9eb7a34a9425::t_960745f76e896d 1-250
+examples/demo/src/app/error-tracking-demo/symbolicated/demo-charge.min.js/route.test.ts
+  s_dd9eb7a34a9425::t_a7a0bc41ddec40 1-19
+examples/demo/src/app/error-tracking-demo/symbolicated/demo-charge.min.js/route.ts
+  s_dd9eb7a34a9425::t_b62977a68f46e9 1-25
+examples/demo/src/components/header.tsx
+  s_dd9eb7a34a9425::t_770e3a01859c9d 32-34
+examples/demo/src/hexclave.tsx
+  s_dd9eb7a34a9425::t_bdacee80b06b81 4-7,24,33-42,46-50
+examples/demo/src/instrumentation.ts
+  s_dd9eb7a34a9425::t_cf8069f5843a0f 3-6,11
+examples/demo/src/observability-lab-contract.ts
+  s_dd9eb7a34a9425::t_bcd1d2abeb3165 1-16
+packages/shared/src/utils/async-local-storage.test.ts
+  s_dd9eb7a34a9425::t_15072213600f01 1-41
+packages/shared/src/utils/async-local-storage.tsx
+  s_dd9eb7a34a9425::t_b49f304372ac73 25-32,63
+packages/template/src/integrations/next.ts
+  s_dd9eb7a34a9425::t_a2b63997e9ed0d 191-196,200-211,237-245
+packages/template/src/integrations/otel-browser.ts
+  s_dd9eb7a34a9425::t_d517c73a5d5df3 10
+packages/template/src/integrations/otel.ts
+  s_dd9eb7a34a9425::t_6228e7687de84b 3-6,13
+packages/template/src/lib/hexclave-app/apps/implementations/browser-http-instrumentation.test.ts
+  s_dd9eb7a34a9425::t_6f51184b87abba 42-54,73,78,91-116,127-141
+packages/template/src/lib/hexclave-app/apps/implementations/browser-otel-sdk.ts
+  s_dd9eb7a34a9425::t_145b6f71eadcc7 19,204-219,272-273,1585-1589,1593-1598,1601,1607,1617,1662
+packages/template/src/lib/hexclave-app/apps/implementations/client-analytics.ts
+  s_dd9eb7a34a9425::t_d523395478b3ea 514-517,528-531
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.analytics.test.ts
+  s_dd9eb7a34a9425::t_70a27dfa4fc241 479-504,517-518,521
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_dd9eb7a34a9425::t_cae20645c3419e 137-138,2097,4519-4521
+packages/template/src/lib/hexclave-app/apps/implementations/otel-http-metrics.test.ts
+  s_dd9eb7a34a9425::t_f21d3df9238bbc 1-117
+packages/template/src/lib/hexclave-app/apps/implementations/otel-http-metrics.ts
+  s_dd9eb7a34a9425::t_9ec6c6204ba080 1-9,13-16,18-23,38-51,53,62-65,67-70,72-78,82,86-88,90-98
+packages/template/src/lib/hexclave-app/apps/implementations/otel-sdk.test.ts
+  s_dd9eb7a34a9425::t_6e0059abf19a88 41-79,202-234
+packages/template/src/lib/hexclave-app/apps/implementations/otel-sdk.ts
+  s_dd9eb7a34a9425::t_e00d3a6313a40d 20,31,116-138,142,177-181,185-189,193,198,208
+packages/template/src/lib/hexclave-app/apps/implementations/otel-span-policy.test.ts
+  s_dd9eb7a34a9425::t_07e236abf70d74 51-54
+packages/template/src/lib/hexclave-app/apps/implementations/otel-span-policy.ts
+  s_dd9eb7a34a9425::t_fa25ec841f83bc 23-26
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.test.ts
+  s_dd9eb7a34a9425::t_4314a504a671be 28-39,184-211
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.ts
+  s_dd9eb7a34a9425::t_50c6b880251a8d 142-146,205-220,461-464,467-469
+pnpm-lock.yaml
+  s_dd9eb7a34a9425::t_10d301f66a302e 351-353,956-958,1024-1026,1063,1180-1182,1195-1197,3618-3620,20167-20168,20388-20393,21871,21874-21877,21977,22019,22041,22083,22105,22107-22109,22207,22209,22211,22239,22241,22243,22271,22273-22274,22344,22346,22379,22381,35125,35127,36289-36297,38646-38673
+scripts/wait-for-dev-package-imports.ts
+  s_dd9eb7a34a9425::t_a8d966c761cd4e 33-37,47,49-51
+sdks/spec/src/apps/analytics.spec.md
+  s_dd9eb7a34a9425::t_355f5f48da9384 268-270,273,330-335,342-344,662-665,865-871
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "75829e1278737ef9ee2ae1d35b22fe90c6e2f3db",
+  "prompts": {},
+  "sessions": {
+    "s_dd9eb7a34a9425": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c533dd44-e3b7-4460-8c4c-8c2479b53e37",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
