@@ -50,8 +50,8 @@ const newDb = (backend: "base" | "in-memory", migrations: Parameters<typeof decl
       : declareInMemoryPiledriverDatabase(crypto.randomUUID()),
     { migrations },
   );
-const initializedSnapshot = async (migrations: Parameters<typeof declareBulldozerDatabase>[1]["migrations"]) => {
-  const db = newDb("base", migrations);
+const initializedSnapshot = async (backend: "base" | "in-memory", migrations: Parameters<typeof declareBulldozerDatabase>[1]["migrations"]) => {
+  const db = newDb(backend, migrations);
   await db.applyRemainingMigrations();
   return (await db.getSnapshot()).snapshot;
 };
@@ -99,93 +99,16 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
     ]);
   });
 
-  it("keeps shutdown behind an in-flight Piledriver garbage collection", async () => {
-    const underlying = declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
-    let markCollectionStarted: (() => void) | undefined;
-    const collectionStarted = new Promise<void>(resolve => {
-      markCollectionStarted = resolve;
-    });
-    let releaseCollection: (() => void) | undefined;
-    const collectionGate = new Promise<void>(resolve => {
-      releaseCollection = resolve;
-    });
-    let closeCalls = 0;
-    const piledriver = {
-      ...underlying,
-      async collectGarbage(cutoffTimestampMillis: number, maxObjects?: number) {
-        if (markCollectionStarted === undefined) throw new Error("Collection-start signal was not initialized");
-        markCollectionStarted();
-        await collectionGate;
-        return await underlying.collectGarbage(cutoffTimestampMillis, maxObjects);
-      },
-      async close() {
-        closeCalls++;
-        await underlying.close();
-      },
-    };
-    const db = declareBulldozerDatabase(piledriver, { migrations: [] });
-
-    const collection = db.collectPiledriverGarbage(0);
-    await collectionStarted;
-    const closing = db.close();
-    await new Promise<void>(resolve => setImmediate(resolve));
-    expect(closeCalls).toBe(0);
-
-    if (releaseCollection === undefined) throw new Error("Collection gate was not initialized");
-    releaseCollection();
-    await Promise.all([collection, closing]);
-    expect(closeCalls).toBe(1);
-  });
-
   it("rejects Piledriver garbage collection once shutdown starts", async () => {
-    const db = newDb("base", []);
+    const db = newDb(backend, []);
     const closing = db.close();
 
     await expect(db.collectPiledriverGarbage(0)).rejects.toThrow("closing");
     await closing;
   });
 
-  it("retains the latest write sequence after instant-availability cache eviction", async () => {
-    const path = await mkdtemp(join(tmpdir(), "bulldozer-durability-barrier-"));
-    const lmdb = declareLmdbLowLevelDatabase({ path, dbId: "durability-barrier" });
-    const instant = declareInstantAvailabilityLowLevelDatabase(lmdb, { dbId: "instant-durability-barrier" });
-    const db = declareBulldozerDatabase(declareBasePiledriverDatabase(instant), {
-      migrations: [[{ type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} }]],
-    });
-    let releaseDurability: (() => void) | undefined;
-    const durabilityGate = new Promise<void>((resolve) => {
-      releaseDurability = resolve;
-    });
-    try {
-      await db.applyRemainingMigrations();
-
-      const originalWaitUntilDurable = lmdb.waitUntilDurable.bind(lmdb);
-      lmdb.waitUntilDurable = async (seq) => {
-        if (seq !== lmdb.initialSeq) await durabilityGate;
-        await originalWaitUntilDurable(seq);
-      };
-
-      const write = await db.withSnapshot(async snapshot => await set(snapshot, "store", "a", 1));
-      await instant.waitUntilUnderlyingAvailable(write.seq);
-
-      const barrier = db.waitUntilCurrentStateDurable();
-      expect(await Promise.race([
-        barrier.then(() => "resolved"),
-        Promise.resolve("pending"),
-      ])).toBe("pending");
-
-      if (releaseDurability === undefined) throw new Error("Durability gate was not initialized");
-      releaseDurability();
-      await barrier;
-    } finally {
-      if (releaseDurability !== undefined) releaseDurability();
-      await db.close();
-      await rm(path, { recursive: true, force: true });
-    }
-  });
-
   it("does not expose stored rows through non-null groups", async () => {
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "mapped", table: defineMapTable(row => row.rowData), inputTables: { input: "store" } },
     ]]);
@@ -227,26 +150,8 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
     expect(db.listTables()[0].debugMetadata).toEqual({ name: "Store", operator: "stored" });
   });
 
-  it("exposes Piledriver and low-level debug snapshots when available", async () => {
-    const db = newDb("base", [[{ type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} }]]);
-    await db.applyRemainingMigrations();
-    await db.withSnapshotReplicated(async snapshot => await set(snapshot, "store", "a", { value: 1 }));
-
-    const piledriver = await db.debugPiledriverSnapshot!();
-    expect(piledriver.roots).toHaveLength(1);
-    expect(piledriver.roots[0].serializedJson).toMatchObject({
-      snapshot: {
-        mostRecentlyCompletedMigrationIndex: 1,
-      },
-    });
-
-    const lowLevel = await db.debugLowLevelSnapshot!();
-    expect(Object.keys(lowLevel.stores)).toEqual(expect.arrayContaining(["root"]));
-    expect(Object.keys(lowLevel.dumps)).toEqual(expect.arrayContaining(["heap"]));
-  });
-
   it("stores, modifies, deletes, and ignores missing deletes", async () => {
-    let snapshot = await initializedSnapshot([[{ type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} }]]);
+    let snapshot = await initializedSnapshot(backend, [[{ type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} }]]);
 
     snapshot = await set(snapshot, "store", "a", { value: 1 });
     snapshot = await set(snapshot, "store", "b", { value: 2 });
@@ -265,7 +170,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
 
   it("asserts stored row changes before applying them", async () => {
     const assertedChanges: unknown[] = [];
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       {
         type: "initTable",
         tableId: "store",
@@ -304,7 +209,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
   });
 
   it("propagates through identity, map, filter, flatMap, sort, and materialize", async () => {
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "identity", table: defineIdentityTable(), inputTables: { input: "store" } },
       { type: "initTable", tableId: "mapped", table: defineMapTable(row => ({ doubled: Number(row.rowData) * 2 })), inputTables: { input: "identity" } },
@@ -348,7 +253,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
   });
 
   it("concatenates multiple inputs without conflating input keys", async () => {
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "left", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "right", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "concat", table: defineConcatTable(), inputTables: { z: "right", a: "left" } },
@@ -373,7 +278,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
         right: right ? (right.rowData as { label: string }).label : null,
       }),
     });
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "left", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "right", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "join", table: join, inputTables: { left: "left", right: "right" } },
@@ -435,7 +340,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
         return { newState: sum, newRowData: sum };
       },
     });
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "sorted", table: defineSortTable({ sortKeyExtractor: row => Number(row.rowData), sortKeyComparator: (a, b) => Number(a) - Number(b) }), inputTables: { input: "store" } },
       { type: "initTable", tableId: "fold", table: fold, inputTables: { input: "sorted" } },
@@ -496,7 +401,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
         };
       },
     });
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "time", table: fold, inputTables: { input: "store" } },
     ]]);
@@ -551,7 +456,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
         return { newState: Number(state) + 100, nextTriggerTime: new Date(secondTrigger) };
       },
     });
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "time", table: fold, inputTables: { input: "store" } },
     ]]);
@@ -640,7 +545,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
       groupKeyExtractor: async row => Number(row.rowData) % 2 === 0 ? "even" : "odd",
       groupKeyComparator: (a, b) => stringCompare(String(a), String(b)),
     });
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "grouped", table: groupByParity, inputTables: { input: "store" } },
       { type: "initTable", tableId: "groupedMaterialized", table: defineMaterializeTable(), inputTables: { input: "grouped" } },
@@ -675,7 +580,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
   });
 
   it("reduces incrementally and suppresses unchanged aggregate outputs", async () => {
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "reduce", table: defineReduceTable({
         valueExtractor: async row => Number(row.rowData),
@@ -713,7 +618,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
       compareGroupKeys: () => 0,
       compareSortKeys: () => 0,
     };
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "reduce", table: defineReduceTable({
         valueExtractor: async row => Number(row.rowData) % 2 === 0,
@@ -733,7 +638,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
   });
 
   it("transduces to stable ConcatTreeList entries and propagates diffs", async () => {
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "transduce", table: defineTransduceTable({
         valueExtractor: async row => ConcatTreeList.fromEntries([[`${row.rowIdentifier}:base`, row.rowData], [`${row.rowIdentifier}:plus`, Number(row.rowData) + 10]]),
@@ -760,7 +665,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
   });
 
   it("supports async reduce and transduce extractors and reducers", async () => {
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "reduce", table: defineReduceTable({
         valueExtractor: async row => Number(row.rowData),
@@ -785,7 +690,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
   });
 
   it("applies row ranges, limits, and reverse consistently across table helpers", async () => {
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "mapped", table: defineMapTable(row => Number(row.rowData) * 10), inputTables: { input: "store" } },
       { type: "initTable", tableId: "flat", table: defineFlatMapTable(row => [row.rowData, Number(row.rowData) + 100]), inputTables: { input: "store" } },
@@ -828,7 +733,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
   });
 
   it("keeps null sort-key range semantics on stored tables", async () => {
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
     ]]);
     snapshot = await set(snapshot, "store", "txn-a", { txnId: "txn-a" });
@@ -850,7 +755,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
   });
 
   it("pages identifier-ordered rows via a materialized sort table over a stored table", async () => {
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "sorted", table: defineSortTable({
         sortKeyExtractor: (row) => row.rowIdentifier,
@@ -881,7 +786,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
   it("does not eagerly evaluate rows beyond requested limits", async () => {
     let mapCalls = 0;
     let flatMapCalls = 0;
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "mapped", table: defineMapTable(row => {
         mapCalls++;
@@ -925,7 +830,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
       rightWasRead = true;
       yield { groupKey: null, rowIdentifier: "right", rowSortKey: null, rowData: "right" };
     };
-    const snapshot = await initializedSnapshot([[
+    const snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "left", table: source("left"), inputTables: {} },
       { type: "initTable", tableId: "right", table: right, inputTables: {} },
       { type: "initTable", tableId: "concat", table: defineConcatTable(), inputTables: { a: "left", b: "right" } },
@@ -953,7 +858,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
   });
 
   it("propagates group creations and deletions even when only groups change", async () => {
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "evens", table: defineFilterTable(row => Number(row.rowData) % 2 === 0), inputTables: { input: "store" } },
       { type: "initTable", tableId: "mat", table: defineMaterializeTable(), inputTables: { input: "evens" } },
@@ -973,7 +878,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
   });
 
   it("propagates group changes through map tables", async () => {
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "mapped", table: defineMapTable(row => Number(row.rowData) * 10), inputTables: { input: "store" } },
       { type: "initTable", tableId: "mat", table: defineMaterializeTable(), inputTables: { input: "mapped" } },
@@ -1001,7 +906,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
       compareGroupKeys: () => 0,
       compareSortKeys: () => 0,
     };
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "reduce", table: defineReduceTable({
         valueExtractor: async row => Number(row.rowData),
@@ -1036,7 +941,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
   });
 
   it("applies flatMap modifications to downstream materialized tables", async () => {
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "flat", table: defineFlatMapTable(row => [row.rowData, Number(row.rowData) + 10]), inputTables: { input: "store" } },
       { type: "initTable", tableId: "mat", table: defineMaterializeTable(), inputTables: { input: "flat" } },
@@ -1054,7 +959,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
   });
 
   it("propagates transduce value changes when entry ids are reused", async () => {
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "transduce", table: defineTransduceTable({
         valueExtractor: async row => ConcatTreeList.fromEntries([[row.rowIdentifier, row.rowData]]),
@@ -1075,7 +980,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
   });
 
   it("lists transduce rows in reverse", async () => {
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "transduce", table: defineTransduceTable({
         valueExtractor: async row => ConcatTreeList.fromEntries([[row.rowIdentifier, row.rowData]]),
@@ -1095,7 +1000,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
   });
 
   it("returns nothing for limit 0 ranges", async () => {
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "filtered", table: defineFilterTable(() => true), inputTables: { input: "store" } },
       { type: "initTable", tableId: "flat", table: defineFlatMapTable(row => [row.rowData]), inputTables: { input: "store" } },
@@ -1169,7 +1074,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
   });
 
   it("treats concat groups as the union of its inputs' groups", async () => {
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "left", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "right", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "concat", table: defineConcatTable(), inputTables: { a: "left", b: "right" } },
@@ -1238,7 +1143,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
       compareGroupKeys: () => 0,
       compareSortKeys: () => 0,
     });
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "source", table: groupPerRowStore(), inputTables: {} },
       { type: "initTable", tableId: "mat", table: defineMaterializeTable(), inputTables: { input: "source" } },
     ]]);
@@ -1293,7 +1198,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
       compareGroupKeys: () => 0,
       compareSortKeys: ({ a, b }: { a: PiledriverObject, b: PiledriverObject }) => Number(a) - Number(b),
     });
-    const snapshot = await initializedSnapshot([[
+    const snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "left", table: source([1, 2, 3], () => leftRowsRead++), inputTables: {} },
       { type: "initTable", tableId: "right", table: source([4, 5, 6], () => rightRowsRead++), inputTables: {} },
       { type: "initTable", tableId: "concat", table: defineConcatTable(), inputTables: { a: "left", b: "right" } },
@@ -1329,7 +1234,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
 
   it("pushes flatMap row ranges down to the input", async () => {
     let mapperCalls = 0;
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "sorted", table: defineSortTable({ sortKeyExtractor: row => Number(row.rowData), sortKeyComparator: (a, b) => Number(a) - Number(b) }), inputTables: { input: "store" } },
       { type: "initTable", tableId: "sortedMaterialized", table: defineMaterializeTable(), inputTables: { input: "sorted" } },
@@ -1372,7 +1277,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
       compareSortKeys: () => 0,
     };
     // element 0 varies with the value, element 1 is constant, elements 2+ exist only for large values
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "flat", table: defineFlatMapTable(row => Number(row.rowData) >= 10 ? [row.rowData, "constant", "extra"] : [row.rowData, "constant"]), inputTables: { input: "store" } },
       { type: "initTable", tableId: "spy", table: spyTable, inputTables: { input: "flat" } },
@@ -1425,7 +1330,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
       groupKeyExtractor: async row => Number(row.rowData) % 2 === 0 ? "even" : "odd",
       groupKeyComparator: (a, b) => stringCompare(String(a), String(b)),
     });
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "flat", table: defineFlatMapTable(row => [Number(row.rowData), Number(row.rowData) + 1]), inputTables: { input: "store" } },
       { type: "initTable", tableId: "grouped", table: parity, inputTables: { input: "flat" } },
@@ -1456,7 +1361,7 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
       groupKeyExtractor: async row => (Number(row.rowData) + 1) % 2 === 0 ? "even" : "odd",
       groupKeyComparator: (a, b) => stringCompare(String(a), String(b)),
     });
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "ga", table: groupByA, inputTables: { input: "store" } },
       { type: "initTable", tableId: "gb", table: groupByB, inputTables: { input: "store" } },
@@ -1499,12 +1404,12 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
       compareSortKeys: () => 0,
     };
 
-    const snapshot = await initializedSnapshot([[{ type: "initTable", tableId: "invalid", table: invalidTable, inputTables: {} }]]);
+    const snapshot = await initializedSnapshot(backend, [[{ type: "initTable", tableId: "invalid", table: invalidTable, inputTables: {} }]]);
     await expect(set(snapshot, "invalid", "trigger", 1)).rejects.toThrow(/group .* was both deleted and added/);
   });
 
   it("compacts rows left-to-right with stable identifiers and output data", async () => {
-    let snapshot = await initializedSnapshot([[
+    let snapshot = await initializedSnapshot(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "sorted", table: defineSortTable({ sortKeyExtractor: row => Number(row.rowData), sortKeyComparator: (a, b) => Number(a) - Number(b) }), inputTables: { input: "store" } },
       { type: "initTable", tableId: "compact", table: defineCompactTable({
@@ -1586,5 +1491,102 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
 
     await db.applyRemainingMigrations();
     expect(observed).toBe(0);
+  });
+});
+
+describe("Bulldozer (base Piledriver only)", () => {
+  it("keeps shutdown behind an in-flight Piledriver garbage collection", async () => {
+    const underlying = declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
+    let markCollectionStarted: (() => void) | undefined;
+    const collectionStarted = new Promise<void>(resolve => {
+      markCollectionStarted = resolve;
+    });
+    let releaseCollection: (() => void) | undefined;
+    const collectionGate = new Promise<void>(resolve => {
+      releaseCollection = resolve;
+    });
+    let closeCalls = 0;
+    const piledriver = {
+      ...underlying,
+      async collectGarbage(cutoffTimestampMillis: number, maxObjects?: number) {
+        if (markCollectionStarted === undefined) throw new Error("Collection-start signal was not initialized");
+        markCollectionStarted();
+        await collectionGate;
+        return await underlying.collectGarbage(cutoffTimestampMillis, maxObjects);
+      },
+      async close() {
+        closeCalls++;
+        await underlying.close();
+      },
+    };
+    const db = declareBulldozerDatabase(piledriver, { migrations: [] });
+
+    const collection = db.collectPiledriverGarbage(0);
+    await collectionStarted;
+    const closing = db.close();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(closeCalls).toBe(0);
+
+    if (releaseCollection === undefined) throw new Error("Collection gate was not initialized");
+    releaseCollection();
+    await Promise.all([collection, closing]);
+    expect(closeCalls).toBe(1);
+  });
+
+  it("retains the latest write sequence after instant-availability cache eviction", async () => {
+    const path = await mkdtemp(join(tmpdir(), "bulldozer-durability-barrier-"));
+    const lmdb = declareLmdbLowLevelDatabase({ path, dbId: "durability-barrier" });
+    const instant = declareInstantAvailabilityLowLevelDatabase(lmdb, { dbId: "instant-durability-barrier" });
+    const db = declareBulldozerDatabase(declareBasePiledriverDatabase(instant), {
+      migrations: [[{ type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} }]],
+    });
+    let releaseDurability: (() => void) | undefined;
+    const durabilityGate = new Promise<void>((resolve) => {
+      releaseDurability = resolve;
+    });
+    try {
+      await db.applyRemainingMigrations();
+
+      const originalWaitUntilDurable = lmdb.waitUntilDurable.bind(lmdb);
+      lmdb.waitUntilDurable = async (seq) => {
+        if (seq !== lmdb.initialSeq) await durabilityGate;
+        await originalWaitUntilDurable(seq);
+      };
+
+      const write = await db.withSnapshot(async snapshot => await set(snapshot, "store", "a", 1));
+      await instant.waitUntilUnderlyingAvailable(write.seq);
+
+      const barrier = db.waitUntilCurrentStateDurable();
+      expect(await Promise.race([
+        barrier.then(() => "resolved"),
+        Promise.resolve("pending"),
+      ])).toBe("pending");
+
+      if (releaseDurability === undefined) throw new Error("Durability gate was not initialized");
+      releaseDurability();
+      await barrier;
+    } finally {
+      if (releaseDurability !== undefined) releaseDurability();
+      await db.close();
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
+  it("exposes Piledriver and low-level debug snapshots when available", async () => {
+    const db = newDb("base", [[{ type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} }]]);
+    await db.applyRemainingMigrations();
+    await db.withSnapshotReplicated(async snapshot => await set(snapshot, "store", "a", { value: 1 }));
+
+    const piledriver = await db.debugPiledriverSnapshot!();
+    expect(piledriver.roots).toHaveLength(1);
+    expect(piledriver.roots[0].serializedJson).toMatchObject({
+      snapshot: {
+        mostRecentlyCompletedMigrationIndex: 1,
+      },
+    });
+
+    const lowLevel = await db.debugLowLevelSnapshot!();
+    expect(Object.keys(lowLevel.stores)).toEqual(expect.arrayContaining(["root"]));
+    expect(Object.keys(lowLevel.dumps)).toEqual(expect.arrayContaining(["heap"]));
   });
 });
