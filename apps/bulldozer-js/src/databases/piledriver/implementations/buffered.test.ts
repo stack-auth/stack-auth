@@ -82,14 +82,15 @@ describe("BufferedPiledriverDatabase", () => {
     const firstKey = key("in-flight-first");
     const secondKey = key("in-flight-second");
 
-    const first = await db.setRootObject(firstKey, "first");
-    const second = await db.setRootObject(secondKey, "second");
+    const first = db.setRootObject(firstKey, "first");
+    const second = db.setRootObject(secondKey, "second");
     await Promise.resolve();
 
+    await expect(db.getRootObject(firstKey)).resolves.toMatchObject({ object: "first" });
     await expect(db.getRootObject(secondKey)).resolves.toMatchObject({ object: "second" });
     gate.resolve();
-    await db.waitUntilDurable(first.seq);
-    await db.waitUntilDurable(second.seq);
+    await db.waitUntilDurable((await first).seq);
+    await db.waitUntilDurable((await second).seq);
   });
 
   it("waits for every member of a combined sequence", async () => {
@@ -159,12 +160,21 @@ describe("BufferedPiledriverDatabase", () => {
   it("wraps sequences returned by fallthrough reads", async () => {
     const wrapped = declareInMemoryPiledriverDatabase(crypto.randomUUID());
     const rootKey = key("fallthrough");
-    await wrapped.setRootObject(rootKey, "value");
-    const db = declareBufferedPiledriverDatabase(wrapped);
+    const { seq: wrappedSeq } = await wrapped.setRootObject(rootKey, "value");
+    const durableSeqs: PiledriverDatabase["initialSeq"][] = [];
+    const observed: PiledriverDatabase = {
+      ...wrapped,
+      async waitUntilDurable(seq) {
+        durableSeqs.push(seq);
+        await wrapped.waitUntilDurable(seq);
+      },
+    };
+    const db = declareBufferedPiledriverDatabase(observed);
 
     const { seq } = await db.getRootObject(rootKey);
     await db.waitUntilDurable(seq);
     await db.waitUntilDurable(db.combineSeqs(seq));
+    expect(durableSeqs).toEqual([wrappedSeq, wrappedSeq]);
   });
 
   it("waits for the scheduled flush before durable completion", async () => {
