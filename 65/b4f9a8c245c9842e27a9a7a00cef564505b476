@@ -1,0 +1,109 @@
+apps/backend/prisma/migrations/20260731000000_add_issues/migration.sql
+  s_dd9eb7a34a9425::t_14228f253a8136 48-49,106-110
+apps/backend/prisma/migrations/20260731000000_add_issues/tests/issue-product-metadata-schema-and-constraints.ts
+  s_dd9eb7a34a9425::t_39ad033fb4535d 40-52
+apps/backend/prisma/migrations/20260812000000_drop_issue_customer_team_fks/migration.sql
+  s_dd9eb7a34a9425::t_099da2dba7fbb2 1-14
+apps/backend/prisma/migrations/20260812000000_drop_issue_customer_team_fks/tests/drops-customer-tenancy-team-fks.ts
+  s_dd9eb7a34a9425::t_c1353743a5b2a8 1-66
+apps/backend/prisma/schema.prisma
+  s_dd9eb7a34a9425::t_5e6aea3f985b57 1925-1927,2066-2068,2456-2457,2604-2607,2718-2721,2725-2734,2786-2787,2882-2883
+apps/backend/src/app/api/latest/releases/recent/route.ts
+  s_dd9eb7a34a9425::t_0fc9cfad82aa9d 1-3
+apps/backend/src/lib/artifacts/artifact-upload-service.ts
+  s_dd9eb7a34a9425::t_8459cb4f89c131 72-74
+apps/backend/src/lib/issues/issue-alerts/api.ts
+  s_dd9eb7a34a9425::t_4555cf9f53b7db 6-9,186-193,204
+apps/backend/src/lib/issues/issue-alerts/destinations.test.ts
+  s_dd9eb7a34a9425::t_e31e1aeca9167b 83-103
+apps/backend/src/lib/issues/issue-alerts/destinations.ts
+  s_dd9eb7a34a9425::t_b5bb2fecc7e267 10-14,44-47,60-63,66,104
+apps/backend/src/lib/issues/issue-alerts/email-template.test.ts
+  s_dd9eb7a34a9425::t_c0c51dc176ecc6 1-33
+apps/backend/src/lib/issues/issue-alerts/email-template.ts
+  s_dd9eb7a34a9425::t_c98e2889318706 1-44
+apps/backend/src/lib/issues/issue-alerts/ingestion.test.ts
+  s_dd9eb7a34a9425::t_962278fd1ddd07 2,34-44
+apps/backend/src/lib/issues/issue-alerts/owner-team-recipients.test.ts
+  s_dd9eb7a34a9425::t_22fa260a9ca88d 1-45
+apps/backend/src/lib/issues/issue-alerts/owner-team-recipients.ts
+  s_dd9eb7a34a9425::t_1876d0540f1d55 1-74
+apps/backend/src/lib/issues/issue-alerts/persistence.ts
+  s_dd9eb7a34a9425::t_10e519053ca1c0 31,103,123,157,187,217,565,756
+apps/backend/src/lib/issues/issue-alerts/signal.ts
+  s_dd9eb7a34a9425::t_e421100e086c68 2-3,43-44,116
+apps/backend/src/lib/issues/issue-alerts/workflow-status.ts
+  s_dd9eb7a34a9425::t_a6bbe076645a2c 35-38,399,411-414,417-419
+apps/backend/src/lib/issues/issue-materialization-contract.ts
+  s_dd9eb7a34a9425::t_0fc9b88641f1bb 1-34
+apps/backend/src/lib/issues/issue-merge.test.ts
+  s_dd9eb7a34a9425::t_5979815e7eb173 6,212,279,606,620,657
+apps/backend/src/lib/issues/issue-merge.ts
+  s_dd9eb7a34a9425::t_e0234f0b2e05cd 2,83,116,717,764,772,793,807
+apps/backend/src/lib/issues/issue-product.test.ts
+  s_dd9eb7a34a9425::t_c9b7c38f996e51 21,24-35,40,45,65,68-69,80,88-92
+apps/backend/src/lib/issues/issue-product.ts
+  s_dd9eb7a34a9425::t_ff93982dddf737 10,244-254,256-262,347-354,364,367,371,375-376,380,417,511,635
+apps/backend/src/lib/issues/issue-queries.ts
+  s_dd9eb7a34a9425::t_89360e3136a99f 530,570,572-573,577
+apps/backend/src/lib/issues/issue-webhooks.ts
+  s_dd9eb7a34a9425::t_68c66c397d4536 7,112,122-126,136,138-139,141,148,170-172
+apps/backend/src/lib/issues/public-issue-api.test.ts
+  s_dd9eb7a34a9425::t_bc7211cc73d6b5 8,53,61-74
+apps/backend/src/lib/issues/public-issue-api.ts
+  s_dd9eb7a34a9425::t_4a3ed40b0679e2 89,725-770,798-804,825,827,865,867-868,872,889
+apps/backend/src/lib/issues/public-search/query.ts
+  s_dd9eb7a34a9425::t_c3123762307009 339-349,384,428-429,461-462
+apps/backend/src/lib/releases/release-route-handlers.test.ts
+  s_dd9eb7a34a9425::t_86a8de24692c81 23,163,169,180-183,191,196,233-279
+apps/backend/src/lib/releases/release-route-handlers.ts
+  s_dd9eb7a34a9425::t_c7897b0bf0b598 77-80,152-156,186-190,251,255-295,550-554,576-583
+apps/backend/src/lib/releases/release-service.test.ts
+  s_dd9eb7a34a9425::t_8892842543d010 129-133,136,142,148,202-287
+apps/backend/src/lib/releases/release-service.ts
+  s_dd9eb7a34a9425::t_0d8f9a28e2c9b5 31-33,72,77,82,160-170,283-328,674,679,684,708-724
+apps/backend/src/lib/symbolication/javascript-symbolication.test.ts
+  s_dd9eb7a34a9425::t_fdd2f4f977b86b 16,294-320
+apps/backend/src/lib/symbolication/javascript-symbolication.ts
+  s_dd9eb7a34a9425::t_15ee1b7376dd71 59-62,386,943-962
+apps/backend/src/lib/workflows/issue-alerts/contract.test.ts
+  s_dd9eb7a34a9425::t_926596cb213f09 41-44,55-56,115-155
+apps/backend/src/lib/workflows/issue-alerts/contract.ts
+  s_dd9eb7a34a9425::t_b47463200e411d 17-24,37-41,193-196,205-264,266,295-300,318,330,382-385,419,421,437,485,490,515-520
+apps/backend/src/lib/workflows/issue-alerts/registration.test.ts
+  s_dd9eb7a34a9425::t_5873951f5ed001 106-129
+apps/backend/src/lib/workflows/issue-alerts/registration.ts
+  s_dd9eb7a34a9425::t_16e52238231942 70-79,91-94,105,138
+apps/backend/src/lib/workflows/issue-alerts/source.test.ts
+  s_dd9eb7a34a9425::t_3bd73cff0dc045 20
+apps/backend/src/lib/workflows/issue-alerts/source.ts
+  s_dd9eb7a34a9425::t_063a7909b914a7 18,133,137,179-187
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/releases/page-client.tsx
+  s_dd9eb7a34a9425::t_c0a2b445badf39 1-601
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/releases/page.tsx
+  s_dd9eb7a34a9425::t_1c232e33c46849 1-7
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/source-maps/page-client.tsx
+  s_dd9eb7a34a9425::t_04dcd81a96682c 1-454
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/source-maps/page.tsx
+  s_dd9eb7a34a9425::t_db85d81e325306 1-7
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/source-maps/upload-source-map.test.ts
+  s_dd9eb7a34a9425::t_f442d61b65183f 1-76
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/source-maps/upload-source-map.ts
+  s_dd9eb7a34a9425::t_aa107b8da7d56c 1-247
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "65b4f9a8c245c9842e27a9a7a00cef564505b476",
+  "prompts": {},
+  "sessions": {
+    "s_dd9eb7a34a9425": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c533dd44-e3b7-4460-8c4c-8c2479b53e37",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
