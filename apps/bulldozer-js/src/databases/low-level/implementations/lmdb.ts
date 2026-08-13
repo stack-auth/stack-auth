@@ -135,20 +135,43 @@ export type LmdbDiagnostics = {
   combinedSeqDurabilityResolvesPerSecond: number,
   averageCombinedSeqAvailabilityResolveMs: number,
   averageCombinedSeqDurabilityResolveMs: number,
+  mapSizes: {
+    seqToAvailability: number,
+    seqToDurability: number,
+    combinedSeqToAvailability: number,
+    combinedSeqToDurability: number,
+    combinedSeqDependencies: number,
+    debugEntriesByStoreId: number,
+  },
   currentVersion: number,
 };
 
 let latestLmdbDiagnostics: LmdbDiagnostics | null = null;
 const bulldozerDiagnosticsEnabled = process.env.HEXCLAVE_BULLDOZER_DIAGNOSTICS === "true";
 
-function getStoreSizeBytes(path: string): number {
+function isExpectedStoreSizeError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = "code" in error ? error.code : undefined;
+  return code === "ENOENT" || code === "EACCES" || code === "EPERM" || code === "ENOTDIR";
+}
+
+function getStoreSizeBytes(path: string): number | undefined {
   try {
-    return readdirSync(path, { withFileTypes: true }).reduce((total, entry) => {
+    let total = 0;
+    for (const entry of readdirSync(path, { withFileTypes: true })) {
       const entryPath = `${path}/${entry.name}`;
-      return total + (entry.isDirectory() ? getStoreSizeBytes(entryPath) : statSync(entryPath).size);
-    }, 0);
-  } catch {
-    return 0;
+      if (entry.isDirectory()) {
+        const nestedSize = getStoreSizeBytes(entryPath);
+        if (nestedSize === undefined) return undefined;
+        total += nestedSize;
+      } else {
+        total += statSync(entryPath).size;
+      }
+    }
+    return total;
+  } catch (error) {
+    if (isExpectedStoreSizeError(error)) return undefined;
+    throw error;
   }
 }
 
@@ -255,9 +278,10 @@ export function declareLmdbLowLevelDatabase(options: {
     const now = performance.now();
     const elapsedMs = now - activityWindowStartedAt;
     const elapsedSeconds = elapsedMs / 1000;
-    const diagnostics = {
+    const storeSizeBytes = bulldozerDiagnosticsEnabled ? getStoreSizeBytes(options.path) : undefined;
+    const diagnostics: LmdbDiagnostics = {
       dbId,
-      ...(bulldozerDiagnosticsEnabled ? { storeSizeBytes: getStoreSizeBytes(options.path) } : {}),
+      ...(storeSizeBytes === undefined ? {} : { storeSizeBytes }),
       elapsedMs,
       putsPerSecond: activityStats.puts / elapsedSeconds,
       averagePutBytes: activityStats.puts === 0 ? 0 : activityStats.putBytes / activityStats.puts,
@@ -676,6 +700,7 @@ export function declareLmdbLowLevelDatabase(options: {
     close() {
       if (closePromise === null) {
         isClosing = true;
+        clearInterval(activityInterval);
         closePromise = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.close", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
           try {
             if (pendingCommitFlushPromise !== null) await pendingCommitFlushPromise;

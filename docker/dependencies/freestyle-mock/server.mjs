@@ -1184,6 +1184,10 @@ class JobQueue {
         settled: false,
         resolve,
       });
+      requestMetrics.maxQueueDepth = Math.max(
+        requestMetrics.maxQueueDepth,
+        this.queue.length,
+      );
       this.dispatch();
     });
   }
@@ -1329,10 +1333,6 @@ const server = createServer(async (request, response) => {
         : {};
     config.nodeModules = normalizeNodeModules(config.nodeModules);
     const timeoutMs = resolveTimeout(config.timeout);
-    requestMetrics.maxQueueDepth = Math.max(
-      requestMetrics.maxQueueDepth,
-      jobQueue.queue.length,
-    );
     const result = await jobQueue.submit(body.script, config, timeoutMs);
     sendJson(response, result.statusCode, result.payload);
   } catch (error) {

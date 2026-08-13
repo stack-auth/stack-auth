@@ -230,7 +230,11 @@ jobs:
           pnpm test run --reporter=default --reporter=json \
             --outputFile="$RUNNER_TEMP/e2e-test-results-pass1.untracked.json" 2>&1 |
             tee "$RUNNER_TEMP/e2e-test-output-pass1.untracked.log"
-          exit "${PIPESTATUS[0]}"
+          pipeline_status=("${PIPESTATUS[@]}")
+          if [[ "${pipeline_status[1]}" -ne 0 ]]; then
+            echo "::warning::tee failed while capturing pass 1 output; the test result is still used for the step status"
+          fi
+          exit "${pipeline_status[0]}"
 
       - name: Snapshot PostgreSQL attribution after pass 1
         if: always()
@@ -259,7 +263,11 @@ jobs:
           pnpm test run --reporter=default --reporter=json \
             --outputFile="$RUNNER_TEMP/e2e-test-results-pass2.untracked.json" 2>&1 |
             tee "$RUNNER_TEMP/e2e-test-output-pass2.untracked.log"
-          exit "${PIPESTATUS[0]}"
+          pipeline_status=("${PIPESTATUS[@]}")
+          if [[ "${pipeline_status[1]}" -ne 0 ]]; then
+            echo "::warning::tee failed while capturing pass 2 output; the test result is still used for the step status"
+          fi
+          exit "${pipeline_status[0]}"
 
       - name: Snapshot PostgreSQL attribution after pass 2
         if: always() && steps.run_tests_pass2.outcome != 'skipped'
@@ -288,7 +296,11 @@ jobs:
           pnpm test run --reporter=default --reporter=json \
             --outputFile="$RUNNER_TEMP/e2e-test-results-pass3.untracked.json" 2>&1 |
             tee "$RUNNER_TEMP/e2e-test-output-pass3.untracked.log"
-          exit "${PIPESTATUS[0]}"
+          pipeline_status=("${PIPESTATUS[@]}")
+          if [[ "${pipeline_status[1]}" -ne 0 ]]; then
+            echo "::warning::tee failed while capturing pass 3 output; the test result is still used for the step status"
+          fi
+          exit "${pipeline_status[0]}"
 
       - name: Snapshot PostgreSQL attribution after pass 3
         if: always() && steps.run_tests_pass3.outcome != 'skipped'
