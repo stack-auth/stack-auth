@@ -56,8 +56,10 @@ export const DEFAULT_JAVASCRIPT_SYMBOLICATION_LIMITS: JavaScriptSymbolicationLim
 
 /**
  * Raw frames use the same one-based line/column convention as the existing
- * issue frame projection. `codeFile` must be the exact emitted artifact path
- * that accompanied the debug image; it is not treated as a fuzzy URL.
+ * issue frame projection. `codeFile` is the stack's `abs_path`: a relative
+ * emitted path in Node, or the served URL in a browser. Lookup is still keyed
+ * by debug ID + release + dist; URL pathnames are then joined onto the CLI
+ * manifest's relative `codeFile` (see `artifactCodeFileMatchesFrame`).
  */
 export type RawJavaScriptFrame = Readonly<{
   codeFile: string,
@@ -381,7 +383,7 @@ export class JavaScriptSymbolicationService {
       lookup.artifact.debugId !== debugId
       || lookup.release !== release
       || lookup.dist !== dist
-      || lookup.artifact.codeFile !== codeFile
+      || !artifactCodeFileMatchesFrame(lookup.artifact.codeFile, codeFile)
       || lookup.artifact.sourceMapInline !== (lookup.sourceMapObjectKey === null)
     ) {
       return {
@@ -936,6 +938,26 @@ function trimContextLine(line: string, column: number, maxBytes: number): string
     result = `${start > 0 ? `${SOURCE_MAP_SNIP_MARKER} ` : ""}${excerpt}${end < codePoints.length ? ` ${SOURCE_MAP_SNIP_MARKER}` : ""}`;
   }
   return result;
+}
+
+/**
+ * The CLI manifest stores a relative emitted path (`static/chunks/app.js`).
+ * Browser stacks name the URL that served that file. After debug-ID lookup has
+ * already selected one artifact, accept either an exact match or a URL whose
+ * pathname is that relative path (or ends with `/${codeFile}` so a CDN prefix
+ * like `/_next/` still joins).
+ */
+export function artifactCodeFileMatchesFrame(artifactCodeFile: string, frameCodeFile: string): boolean {
+  if (artifactCodeFile === frameCodeFile) return true;
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//u.test(frameCodeFile)) return false;
+  let pathname: string;
+  try {
+    pathname = new URL(frameCodeFile).pathname;
+  } catch {
+    return false;
+  }
+  const relative = pathname.startsWith("/") ? pathname.slice(1) : pathname;
+  return relative === artifactCodeFile || relative.endsWith(`/${artifactCodeFile}`);
 }
 
 function frameFailure(raw: RawJavaScriptFrame, diagnostics: readonly SymbolicationDiagnostic[]): SymbolicatedJavaScriptFrame {
