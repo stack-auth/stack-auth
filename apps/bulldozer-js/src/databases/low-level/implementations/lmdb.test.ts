@@ -125,6 +125,61 @@ describe("LMDB low-level database", () => {
     }
   });
 
+  it("drains in-flight reads before closing and rejects reads after close starts", async () => {
+    const path = await tempLmdbPath();
+    const db = declareLmdbLowLevelDatabase({
+      path,
+      dbId: "read-close",
+      simulateReadMissDelayMs: 25,
+    });
+    try {
+      const store = db.declareKvStore("store");
+      const write = await store.setAll([{ key: buffer("key"), value: buffer("value") }]);
+      await db.waitUntilDurable(write.seq);
+
+      const read = store.get(buffer("key"));
+      const closing = db.close();
+
+      await expect(store.get(buffer("key"))).rejects.toThrow("LMDB database is closing");
+      await expect(read).resolves.toMatchObject({ buffer: buffer("value") });
+      await expect(closing).resolves.toBeUndefined();
+    } finally {
+      await db.close();
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
+  it("waits for all reads before surfacing a read failure from close", async () => {
+    const path = await tempLmdbPath();
+    const db = declareLmdbLowLevelDatabase({
+      path,
+      dbId: "read-close-rejection",
+      simulateReadMissDelayMs: 25,
+    });
+    try {
+      const store = db.declareKvStore("store");
+      const write = await store.setAll([{ key: buffer("key"), value: buffer("value") }]);
+      await db.waitUntilDurable(write.seq);
+
+      let pendingReadResolved = false;
+      const pendingRead = store.get(buffer("key")).then(result => {
+        pendingReadResolved = true;
+        return result;
+      });
+      const rejectedRead = store.listEntries({ limit: 0 });
+      const rejectedReadError = rejectedRead.then(() => null, error => error);
+      const closing = db.close();
+
+      await expect(closing).rejects.toThrow("KV store list limit must be a positive integer");
+      expect(pendingReadResolved).toBe(true);
+      await expect(pendingRead).resolves.toMatchObject({ buffer: buffer("value") });
+      expect(await rejectedReadError).toMatchObject({ message: "KV store list limit must be a positive integer" });
+    } finally {
+      await expect(db.close()).rejects.toThrow("KV store list limit must be a positive integer");
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
   it("supports compareAndSetAll without advancing seq on failed comparisons", async () => {
     const path = await tempLmdbPath();
     try {
