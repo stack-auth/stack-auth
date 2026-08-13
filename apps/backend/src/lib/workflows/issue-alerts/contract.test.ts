@@ -38,7 +38,10 @@ function createSignal(): IssueAlertSignal {
   };
 }
 
-function createMatch() {
+function createMatch(actionOverrides: {
+  subject?: string,
+  html?: string,
+} = {}) {
   const rule: IssueAlertRule = {
     schemaVersion: 1,
     id: "notify-on-errors",
@@ -49,8 +52,8 @@ function createMatch() {
     action: {
       type: "email",
       userIds: ["user-1"],
-      subject: "Issue alert",
-      html: "<p>Inspect the issue in the dashboard.</p>",
+      subject: actionOverrides.subject ?? "Issue alert",
+      html: actionOverrides.html ?? "<p>Inspect the issue in the dashboard.</p>",
       notificationCategoryName: "observability",
     },
   };
@@ -107,6 +110,47 @@ describe("issue alert workflow event contract", () => {
       expect(result.payload.summary).not.toContain("eyJ");
       expect(result.payload.summary).toContain("[Filtered]");
     }
+  });
+
+  it("carries owner-team emails next to explicit recipient ids", () => {
+    const result = buildIssueAlertWorkflowPayload(createMatch(), undefined, ["ops@example.com"]);
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.payload.action).toMatchObject({
+        type: "email",
+        user_ids: ["user-1"],
+        emails: ["ops@example.com"],
+      });
+    }
+  });
+
+  it("drops owner-team emails that do not match the explicit recipient list", () => {
+    const result = buildIssueAlertWorkflowPayload(createMatch(), undefined, ["ops@example.com", "second@example.com"]);
+    expect(result.status).toBe("drop");
+    if (result.status === "drop") {
+      expect(result.reason).toBe("invalid_payload");
+    }
+  });
+
+  it("interpolates issue placeholders into the email after privacy scrubbing", () => {
+    const result = buildIssueAlertWorkflowPayload(createMatch({
+      subject: "[{{kind}}] {{short_id}}: {{summary}}",
+      html: "<p>{{type}} {{short_id}}</p><p>{{summary}}</p><a href=\"{{issue_url}}\">open</a>{{unknown}}",
+    }));
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") throw new Error("Expected a rendered issue-alert payload");
+    if (result.payload.action.type !== "email") throw new Error("Expected an email action");
+    expect(result.payload.action.subject).toContain("[New issue] PROJECT-1:");
+    expect(result.payload.action.subject).toContain("[Filtered]");
+    expect(result.payload.action.subject).not.toContain("eyJ");
+    expect(result.payload.action.html).toContain("TypeError PROJECT-1");
+    expect(result.payload.action.html).toContain("[Filtered]");
+    expect(result.payload.action.html).not.toContain("eyJ");
+    expect(result.payload.action.html).toContain("{{unknown}}");
+    expect(result.payload.action.html).not.toContain("{{issue_url}}");
+    expect(result.payload.action.html).not.toContain("{{summary}}");
   });
 
   it("rejects a tenancy mismatch before writing a workflow event", () => {

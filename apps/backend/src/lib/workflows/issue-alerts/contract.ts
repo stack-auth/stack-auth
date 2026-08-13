@@ -14,6 +14,14 @@ import {
   type OwnershipRoutingMetadata,
   type OwnershipRoutingResolution,
 } from "@/lib/issues/ownership/routing-metadata";
+import {
+  interpolateIssueAlertEmailTemplate,
+  type IssueAlertEmailPlaceholderToken,
+} from "@/lib/issues/issue-alerts/email-template";
+import { resolveIssueAlertOwnerTeamEmails } from "@/lib/issues/issue-alerts/owner-team-recipients";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 
 export const ISSUE_ALERT_WORKFLOW_CUSTOM_EVENT_NAME: "hexclave.issue-alert" = "hexclave.issue-alert";
 export const ISSUE_ALERT_WORKFLOW_EVENT_TYPE: "custom.hexclave.issue-alert" = "custom.hexclave.issue-alert";
@@ -26,6 +34,11 @@ export const ISSUE_ALERT_WORKFLOW_MAX_RECIPIENTS = 64;
 export type IssueAlertWorkflowEmailAction = {
   type: "email",
   user_ids?: readonly string[],
+  /**
+   * Owner-team member primary emails. Present when explicit recipients are
+   * dashboard collaborators rather than users of the customer project.
+   */
+  emails?: readonly string[],
   routing_resolution?: OwnershipRoutingMetadata,
   subject: string,
   html: string,
@@ -177,6 +190,10 @@ function isIssueAlertStatus(value: string | null): value is IssueAlertStatus {
   return value === "unresolved" || value === "resolved" || value === "ignored";
 }
 
+function isIssueAlertTenancy(tenancy: Pick<Tenancy, "id">): tenancy is Tenancy {
+  return "project" in tenancy;
+}
+
 function routingMetadataMatches(routing: IssueAlertEmailRouting | undefined, metadata: OwnershipRoutingMetadata): boolean {
   if (routing === undefined) return false;
   if (routing.type === "team") {
@@ -185,8 +202,68 @@ function routingMetadataMatches(routing: IssueAlertEmailRouting | undefined, met
   return metadata.target.type === "issue_owners" && metadata.target.fallthrough === routing.fallthrough;
 }
 
-function buildRawPayload(match: IssueAlertMatch, routingResolution?: OwnershipRoutingResolution): Record<string, unknown> {
+function eventKindLabel(kind: IssueAlertEventKind): string {
+  switch (kind) {
+    case "new": {
+      return "New issue";
+    }
+    case "regression": {
+      return "Regression";
+    }
+    case "occurrence": {
+      return "Frequency threshold";
+    }
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(`Unknown issue alert event kind: ${exhaustive}`);
+    }
+  }
+}
+
+function formatOccurredAt(occurredAt: Date): string {
+  return `${occurredAt.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
+function issueDashboardUrl(projectId: string, issueId: string): string {
+  const dashboardUrl = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_DASHBOARD_URL", "");
+  if (dashboardUrl === "") return "";
+  return urlString`${dashboardUrl}/projects/${projectId}/observability/issues/${issueId}`;
+}
+
+function issueAlertEmailValues(match: IssueAlertMatch): Map<IssueAlertEmailPlaceholderToken, string> {
+  const signal = match.signal;
+  return new Map([
+    ["short_id", signal.issue.shortId],
+    ["type", signal.issue.type],
+    ["summary", signal.issue.value],
+    ["culprit", signal.issue.culprit ?? "—"],
+    ["environment", signal.environment ?? "—"],
+    ["release", signal.release ?? "—"],
+    ["status", signal.issue.status],
+    ["kind", eventKindLabel(match.eventKind)],
+    ["occurred_at", formatOccurredAt(signal.occurrence.occurredAt)],
+    ["issue_url", issueDashboardUrl(signal.projectId, signal.issue.id)],
+  ]);
+}
+
+function renderIssueAlertEmailAction(match: IssueAlertMatch): { subject: string, html: string } {
+  if (match.action.type !== "email") {
+    throw new Error("Issue alert email rendering requires an email action");
+  }
+  const values = issueAlertEmailValues(match);
+  return {
+    subject: interpolateIssueAlertEmailTemplate(match.action.subject, values, { escapeHtml: false }),
+    html: interpolateIssueAlertEmailTemplate(match.action.html, values, { escapeHtml: true }),
+  };
+}
+
+function buildRawPayload(
+  match: IssueAlertMatch,
+  routingResolution?: OwnershipRoutingResolution,
+  recipientEmails?: readonly string[],
+): Record<string, unknown> {
   const signal: IssueAlertSignal = match.signal;
+  const emailAction = match.action.type === "email" ? renderIssueAlertEmailAction(match) : null;
   return {
     schema_version: ISSUE_ALERT_WORKFLOW_PAYLOAD_VERSION,
     kind: "issue_alert",
@@ -215,9 +292,12 @@ function buildRawPayload(match: IssueAlertMatch, routingResolution?: OwnershipRo
             user_ids: routingResolution?.recipients.map((recipient) => recipient.userId) ?? [],
             ...(routingResolution === undefined ? {} : { routing_resolution: routingResolution.metadata }),
           }
-          : { user_ids: match.action.userIds }),
-        subject: match.action.subject,
-        html: match.action.html,
+          : {
+            user_ids: match.action.userIds,
+            ...(recipientEmails === undefined || recipientEmails.length === 0 ? {} : { emails: recipientEmails }),
+          }),
+        subject: emailAction?.subject ?? throwErr("Issue alert email rendering requires an email action"),
+        html: emailAction?.html ?? throwErr("Issue alert email rendering requires an email action"),
         ...(match.action.notificationCategoryName === undefined ? {} : { notification_category_name: match.action.notificationCategoryName }),
       }
       : {
@@ -235,6 +315,7 @@ function buildRawPayload(match: IssueAlertMatch, routingResolution?: OwnershipRo
 export function buildIssueAlertWorkflowPayload(
   match: IssueAlertMatch,
   ownershipResolution?: OwnershipRoutingResolution,
+  recipientEmails?: readonly string[],
 ): IssueAlertWorkflowPayloadResult {
   if (match.action.type === "email"
     && match.action.userIds === undefined
@@ -246,7 +327,7 @@ export function buildIssueAlertWorkflowPayload(
     && ownershipResolution !== undefined) {
     return { status: "drop", reason: "invalid_payload", byteLength: 0, scrubbed: false };
   }
-  const scrubbed = scrubErrorIngestPayload(buildRawPayload(match, ownershipResolution), {
+  const scrubbed = scrubErrorIngestPayload(buildRawPayload(match, ownershipResolution, recipientEmails), {
     maxDepth: 6,
     maxPayloadBytes: ISSUE_ALERT_WORKFLOW_PAYLOAD_MAX_BYTES,
     maxStringBytes: ISSUE_ALERT_WORKFLOW_MAX_STRING_BYTES,
@@ -298,6 +379,10 @@ export function buildIssueAlertWorkflowPayload(
   const userIds = userIdsValue === undefined
     ? undefined
     : getStringArray(actionValue, "user_ids", routingResolutionValue !== undefined);
+  const emailsValue = getField(actionValue, "emails");
+  const emails = emailsValue === undefined
+    ? undefined
+    : getStringArray(actionValue, "emails", false);
   const subject = getRequiredString(actionValue, "subject");
   const html = getRequiredString(actionValue, "html");
   const integrationId = getRequiredString(actionValue, "integration_id");
@@ -331,7 +416,9 @@ export function buildIssueAlertWorkflowPayload(
     if (match.action.type !== "email"
       || userIds === undefined
       || userIds === null
+      || emails === null
       || (routingResolutionValue !== undefined && parsedRoutingResolution === null)
+      || (emails !== undefined && (routingResolutionValue !== undefined || emails.length !== userIds.length))
       || subject === null
       || html === null) {
       return { status: "drop", reason: "invalid_payload", byteLength: scrubbed.byteLength, scrubbed: scrubbed.truncated };
@@ -347,6 +434,7 @@ export function buildIssueAlertWorkflowPayload(
     action = {
       type: "email",
       user_ids: userIds,
+      ...(emails === undefined ? {} : { emails }),
       ...(parsedRoutingResolution === undefined || parsedRoutingResolution === null ? {} : { routing_resolution: parsedRoutingResolution }),
       subject,
       html,
@@ -394,11 +482,12 @@ export function buildIssueAlertWorkflowEventWrite(
   tenancy: Pick<Tenancy, "id">,
   match: IssueAlertMatch,
   routingResolution?: OwnershipRoutingResolution,
+  recipientEmails?: readonly string[],
 ): IssueAlertWorkflowEventWriteResult {
   if (tenancy.id !== match.signal.tenancyId) {
     return { status: "drop", reason: "invalid_tenancy", byteLength: 0, scrubbed: false };
   }
-  const payloadResult = buildIssueAlertWorkflowPayload(match, routingResolution);
+  const payloadResult = buildIssueAlertWorkflowPayload(match, routingResolution, recipientEmails);
   if (payloadResult.status === "ok") {
     const payload = payloadResult.payload;
     return {
@@ -423,7 +512,12 @@ export async function enqueueIssueAlertWorkflowEventWithWriter(
   writer: IssueAlertWorkflowEventWriter,
   routingResolution?: OwnershipRoutingResolution,
 ): Promise<IssueAlertWorkflowEnqueueResult> {
-  const writeResult = buildIssueAlertWorkflowEventWrite(tenancy, match, routingResolution);
+  const recipientEmails = isIssueAlertTenancy(tenancy)
+    && match.action.type === "email"
+    && match.action.userIds !== undefined
+    ? await resolveIssueAlertOwnerTeamEmails(tenancy, match.action.userIds)
+    : undefined;
+  const writeResult = buildIssueAlertWorkflowEventWrite(tenancy, match, routingResolution, recipientEmails);
   if (writeResult.status === "drop") return { status: "dropped", reason: writeResult.reason, byteLength: writeResult.byteLength };
   const result = await writer(writeResult.write);
   if (result === null) return { status: "dropped", reason: "workflow_event_rejected", byteLength: writeResult.byteLength };

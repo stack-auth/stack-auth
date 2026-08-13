@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import type { IssueMaterializationOutcome } from "../issue-store";
-import type { IssueMaterializationInput } from "../../analytics-telemetry-writers";
+import type { IssueBatchApplyOutcome } from "../issue-store";
+import type { IssueBatchDelta } from "../issue-materialization-contract";
 import { scrubErrorIngestPayload } from "@/lib/error-ingest";
 import type { IssueAlertLevel, IssueAlertScalar, IssueAlertSignal, IssueAlertStatus } from "./types";
 
@@ -40,8 +40,8 @@ export type IssueAlertIssueSnapshot = {
 
 export type IssueAlertSignalInput = {
   scope: Pick<IssueAlertSignal, "tenancyId" | "projectId" | "branchId">,
-  outcome: IssueMaterializationOutcome,
-  input: IssueMaterializationInput,
+  outcome: IssueBatchApplyOutcome,
+  input: IssueBatchDelta,
   issue: IssueAlertIssueSnapshot,
   errorEnvelope?: unknown,
   frequencyCounts?: ReadonlyMap<number, number>,
@@ -113,7 +113,7 @@ function signalEnvelope(value: unknown): Record<string, unknown> {
   return isRecord(scrubbed.value) ? scrubbed.value : {};
 }
 
-function eventOccurrenceId(outcome: IssueMaterializationOutcome, input: IssueMaterializationInput): string {
+function eventOccurrenceId(outcome: IssueBatchApplyOutcome, input: IssueBatchDelta): string {
   if (input.occurrenceId !== undefined && input.occurrenceId.length > 0) return input.occurrenceId;
   return createHash("sha256")
     .update(`issue-alert:${outcome.issueId}:${outcome.ownerHash}`, "utf8")

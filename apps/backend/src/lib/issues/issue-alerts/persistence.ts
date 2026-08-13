@@ -28,6 +28,7 @@ import type {
   IssueAlertValueOperator,
 } from "./types";
 import { parseIssueAlertAction } from "./destinations";
+import type { IssueAlertWorkflowEventPayload } from "@/lib/workflows/issue-alerts/contract";
 
 export const ISSUE_ALERT_RULE_CONFIG_MAX_BYTES = 64 * 1024;
 export const ISSUE_ALERT_MAX_ACTIVE_RULES = 1_000;
@@ -99,6 +100,7 @@ export type IssueAlertDeliverySnapshot = {
   state: IssueAlertDeliveryStateValue,
   outcome: IssueAlertDeliveryOutcomeValue,
   workflowEventId: string | null,
+  workflowPayload: unknown,
   attemptCount: number,
   replayCount: number,
   lastAttemptAt: Date | null,
@@ -118,7 +120,7 @@ export type IssueAlertDeliveryClaimResult =
   | { status: "invalid_rule" };
 
 export type IssueAlertWorkflowUpdate =
-  | { kind: "enqueued", workflowEventId: string, at?: Date }
+  | { kind: "enqueued", workflowEventId: string, payload?: IssueAlertWorkflowEventPayload, at?: Date }
   | { kind: "delivered", at?: Date }
   | { kind: "failed", error: string, nextRetryAt: Date | null, at?: Date }
   | { kind: "dropped", error?: string, at?: Date };
@@ -152,6 +154,7 @@ type DeliverySelect = {
   state: true,
   outcome: true,
   workflowEventId: true,
+  workflowPayload: true,
   attemptCount: true,
   replayCount: true,
   lastAttemptAt: true,
@@ -181,6 +184,7 @@ const DELIVERY_SELECT: DeliverySelect = {
   state: true,
   outcome: true,
   workflowEventId: true,
+  workflowPayload: true,
   attemptCount: true,
   replayCount: true,
   lastAttemptAt: true,
@@ -210,6 +214,7 @@ type DeliveryRow = {
   state: IssueAlertDeliveryStateValue,
   outcome: IssueAlertDeliveryOutcomeValue,
   workflowEventId: string | null,
+  workflowPayload: unknown,
   attemptCount: number,
   replayCount: number,
   lastAttemptAt: Date | null,
@@ -557,6 +562,7 @@ function toDeliverySnapshot(row: DeliveryRow): IssueAlertDeliverySnapshot {
     state: row.state,
     outcome: row.outcome,
     workflowEventId: row.workflowEventId,
+    workflowPayload: row.workflowPayload,
     attemptCount: row.attemptCount,
     replayCount: row.replayCount,
     lastAttemptAt: row.lastAttemptAt,
@@ -747,6 +753,7 @@ async function recordWorkflowUpdateInTransaction(
         state: IssueAlertDeliveryState.ENQUEUED,
         outcome: IssueAlertDeliveryOutcome.WORKFLOW_ENQUEUED,
         workflowEventId: update.workflowEventId,
+        ...(update.payload === undefined ? {} : { workflowPayload: update.payload }),
         enqueuedAt: at,
       },
     });
