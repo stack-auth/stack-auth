@@ -1,0 +1,89 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/filters.ts
+  s_dd9eb7a34a9425::t_55a33d541811d1 100-121
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/[issueId]/page-client.tsx
+  s_dd9eb7a34a9425::t_aecc7976872d66 13,18,24,26,47-48,53-54,60-62,69,77-78,129-151,154,156-172,228,278-335,461-519,559-571,620,664,667,674-726,736,741-778,780-834
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/alert-rule-form.test.ts
+  s_dd9eb7a34a9425::t_cfce8881617842 126,136-140
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/alert-rule-form.ts
+  s_dd9eb7a34a9425::t_6167f57b96aefa 1-4,40-41,184-189,191-194,234-235,241
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/issue-alert-email-template.test.ts
+  s_dd9eb7a34a9425::t_8ae0bab3b437d0 1-59
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/issue-alert-email-template.ts
+  s_dd9eb7a34a9425::t_b723df2107b6c0 1-114
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/issue-alerts-data.test.ts
+  s_dd9eb7a34a9425::t_23c78ca7c8e8c1 6,78,113-124
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/issue-alerts-data.ts
+  s_dd9eb7a34a9425::t_825e4b577db094 172,222,225-240
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/page-client.tsx
+  s_dd9eb7a34a9425::t_4fabd6bdc57e9c 3-8,21,36,54,61-64,90-101,122-253,264-269,271,288-292,301,320-340,519,521,526,537,540-541,556-558,560-564,567-576,590-606,610,622,632-633,734-748,753,772-778,898-899,915
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event-search.tsx
+  s_dd9eb7a34a9425::t_0339307fb67b0d 1,3-9,11-16,18-27,29-53,56-62,64-68,70-96
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event-sections.test.tsx
+  s_dd9eb7a34a9425::t_8a265140bd9ee4 6,28-52,62,66-67,70,112-201
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event-sections.tsx
+  s_dd9eb7a34a9425::t_2f89c62098071f 8-9,15,25,33-45,84,108,116-118,120-127,133-134,137-140,147-148,151-158,165-166,169-171,178-179,182-193,195-205,210-220,222-228,233-248,250,256-312,314-372,383-384,387-389,401-402,405-415,417-421,431-432,439,445-446,449,453,464-470,474-475,480-481,504,519-581,584-586,594-596,598,601-617,619-651,653-672,679,688,711-736,745,752,754-776,779-784,786-814
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event.test.ts
+  s_dd9eb7a34a9425::t_8a62af1bcb1490 3,155-196
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event.ts
+  s_dd9eb7a34a9425::t_ef37a173ed6ee6 462-479
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-links.ts
+  s_dd9eb7a34a9425::t_238ed4efafd75a 37
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-release-context.test.tsx
+  s_dd9eb7a34a9425::t_d3a9a9a4bd630f 34,36-37
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-release-context.tsx
+  s_dd9eb7a34a9425::t_e545c035318b47 3,18,82-84
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issues-data.test.ts
+  s_dd9eb7a34a9425::t_c2d82cc1cbad66 20-25,235-294,362-413
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issues-data.ts
+  s_dd9eb7a34a9425::t_98909e3eeef5dd 8-11,19,24,318,424-610
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/page-client.tsx
+  s_dd9eb7a34a9425::t_4c668b15a8e414 3,6,61,69,134-136,281-282,284,300-316,397-411,416,427,438,460,481,576-579,606-641
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/stack-frame-list.tsx
+  s_dd9eb7a34a9425::t_1939e7b92c779f 14,28-55,59-70,77,86,88,97,107,128
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/stack-frames.ts
+  s_dd9eb7a34a9425::t_3ae1497867c77e 3-9,24-25,27,31-32,35,55,57,95,106,116,123
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/logs/log-filters.test.ts
+  s_dd9eb7a34a9425::t_3311016989ffdf 1-24
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/logs/log-filters.ts
+  s_dd9eb7a34a9425::t_87599f47540de4 1-65
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/logs/page-client.tsx
+  s_dd9eb7a34a9425::t_c420c0bbc865e3 8,27,31-38,40,222-224,249-258,287-292,298-301
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/observability-links.test.ts
+  s_dd9eb7a34a9425::t_4edf88abadbf90 1-48
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/observability-links.ts
+  s_dd9eb7a34a9425::t_b165e71cc402fa 1-69
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/telemetry-row-links.tsx
+  s_dd9eb7a34a9425::t_7720d2a19a2af4 1-72
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/page-client.test.ts
+  s_dd9eb7a34a9425::t_54d82457cb5866 205,215-223,306,316
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/page-client.tsx
+  s_dd9eb7a34a9425::t_50a88be07641f2 8,49,51-57,379,392-397,427,430,549-553,570,572-573,575,581-588,590-591,659,661-670,678,741,770,802,808-830,839-840,928,930,977-1003,1029-1032,1106-1110,1175-1196,1220-1222
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/trace-url-state.test.ts
+  s_dd9eb7a34a9425::t_f6d069ccf50d77 2-7,9-11,13-15,18-29,31-35
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/trace-url-state.ts
+  s_dd9eb7a34a9425::t_68f7bd9910c2bd 1-110
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/trace-utils.test.ts
+  s_dd9eb7a34a9425::t_3c4e69746ca50a 2,490-536
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/trace-utils.ts
+  s_dd9eb7a34a9425::t_751abd9a0b6a6a 105-160
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/waterfall.test.ts
+  s_dd9eb7a34a9425::t_300358c76448e8 5,7,11-14,228-288
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/waterfall.tsx
+  s_dd9eb7a34a9425::t_097e8850e90df8 9,15,23,253-275,319,342-347,433-476,715,719-723,776,779-784,789-790
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "2daf5ce870b8acf4c7108b9026466e7cbadb56bc",
+  "prompts": {},
+  "sessions": {
+    "s_dd9eb7a34a9425": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c533dd44-e3b7-4460-8c4c-8c2479b53e37",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
