@@ -1,12 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { PrismaClient } from "@/generated/prisma/client";
+import { EmailOutboxCreatedWith, PrismaClient } from "@/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { globalPrismaClient, globalPrismaSchema, sqlQuoteIdent } from "@/prisma-client";
+import { globalPrismaClient, globalPrismaSchema, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { enqueueExternalDbSync, enqueueExternalDbSyncBatch } from "./external-db-sync-queue";
+import { getClickhouseAdminClient } from "./clickhouse";
+import { recordExternalDbSyncDeletion, syncExternalDatabases } from "./external-db-sync";
+import { getSoleTenancyFromProjectBranch } from "./tenancies";
 
 const DEDUP_PREFIX = "sentinel-sync-key-";
 
@@ -172,6 +175,101 @@ describe("enqueueExternalDbSyncBatch (real DB, isolated schema)", () => {
 
       const rows = await findRowsForTenancies(ids);
       expect(rows).toHaveLength(BATCH_SIZE);
+    }
+  });
+});
+
+// Needs a real ClickHouse: without STACK_CLICKHOUSE_URL, syncExternalDatabases
+// skips the ClickHouse path and there is nothing to assert against.
+describe.skipIf(getEnvVariable("STACK_CLICKHOUSE_URL", "") === "")("recordExternalDbSyncDeletion (real DB)", () => {
+  it("writes an EmailOutbox tombstone that removes the row from ClickHouse", async () => {
+    const tenancy = await getSoleTenancyFromProjectBranch("internal", "main");
+    const id = randomUUID();
+    const clickhouse = getClickhouseAdminClient();
+    async function waitForClickhouseCount(expectedCount: number) {
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const rows = await clickhouse.query({
+          query: `
+            SELECT count() AS count
+            FROM default.email_outboxes
+            WHERE project_id = 'internal' AND branch_id = 'main'
+              AND id = {id:UUID}
+          `,
+          query_params: { id },
+          format: "JSONEachRow",
+        }).then(async result => await result.json<{ count: string }>());
+        if (Number(rows[0]?.count ?? 0) === expectedCount) {
+          return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+      throw new Error(`Timed out waiting for ClickHouse count ${expectedCount}`);
+    }
+
+    await retryTransaction(globalPrismaClient, async (tx) => {
+      await tx.emailOutbox.create({
+        data: {
+          id,
+          tenancyId: tenancy.id,
+          tsxSource: `/* external-db-sync-test-${id} */`,
+          themeId: null,
+          isHighPriority: false,
+          to: { type: "custom-emails", emails: ["external-db-sync-test@example.com"] },
+          extraRenderVariables: {},
+          shouldSkipDeliverabilityCheck: true,
+          createdWith: EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
+          scheduledAt: new Date(),
+          isQueued: true,
+          renderedByWorkerId: "00000000-0000-0000-0000-000000000000",
+          startedRenderingAt: new Date(),
+          finishedRenderingAt: new Date(),
+          renderedHtml: "<p>external DB sync test</p>",
+          renderedText: "external DB sync test",
+          renderedSubject: "external DB sync test",
+          renderedIsTransactional: false,
+          startedSendingAt: null,
+          finishedSendingAt: null,
+          sendRetries: 0,
+          nextSendRetryAt: null,
+          isPaused: true,
+        },
+      });
+    });
+
+    try {
+      await syncExternalDatabases(tenancy);
+      await waitForClickhouseCount(1);
+
+      await retryTransaction(globalPrismaClient, async (tx) => {
+        await recordExternalDbSyncDeletion(tx, {
+          tableName: "EmailOutbox",
+          tenancyId: tenancy.id,
+          emailOutboxId: id,
+        });
+        await tx.emailOutbox.delete({
+          where: { tenancyId_id: { tenancyId: tenancy.id, id } },
+        });
+      });
+
+      const tombstones = await globalPrismaClient.$queryRaw<{ primaryKey: { tenancyId: string, id: string } }[]>`
+        SELECT "primaryKey"
+        FROM "DeletedRow"
+        WHERE "tableName" = 'EmailOutbox'
+          AND "tenancyId" = ${tenancy.id}::uuid
+          AND "primaryKey"->>'id' = ${id}
+        ORDER BY "sequenceId" DESC
+        LIMIT 1
+      `;
+      expect(tombstones).toHaveLength(1);
+      expect(tombstones[0]?.primaryKey).toMatchObject({ tenancyId: tenancy.id, id });
+
+      await syncExternalDatabases(tenancy);
+      await waitForClickhouseCount(0);
+    } finally {
+      await globalPrismaClient.emailOutbox.deleteMany({
+        where: { tenancyId: tenancy.id, id },
+      });
+      await clickhouse.close();
     }
   });
 });

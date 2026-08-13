@@ -56,9 +56,54 @@ async function getProjectUsageContext(client: Client, projectId: string): Promis
 
 async function clearSeededUsageRows(client: Client, tenancies: readonly ProjectUsageContext[]): Promise<void> {
   const tenancyIds = tenancies.map((tenancy) => tenancy.tenancyId);
-  await client.query(`DELETE FROM "SessionReplay" WHERE "tenancyId" = ANY($1::uuid[])`, [tenancyIds]);
-  await client.query(`DELETE FROM "EmailOutbox" WHERE "tenancyId" = ANY($1::uuid[])`, [tenancyIds]);
-  await client.query(`DELETE FROM "ProjectUser" WHERE "tenancyId" = ANY($1::uuid[])`, [tenancyIds]);
+  await client.query("BEGIN");
+  try {
+    await client.query(`DELETE FROM "SessionReplay" WHERE "tenancyId" = ANY($1::uuid[])`, [tenancyIds]);
+    // Deletions of synced tables only reach ClickHouse through DeletedRow.
+    await client.query(
+      `
+        INSERT INTO "DeletedRow"
+          ("id", "tenancyId", "tableName", "primaryKey", "data", "deletedAt", "shouldUpdateSequenceId")
+        SELECT
+          gen_random_uuid(),
+          "tenancyId",
+          'EmailOutbox',
+          jsonb_build_object('tenancyId', "tenancyId", 'id', "id"),
+          to_jsonb("EmailOutbox".*),
+          now(),
+          true
+        FROM "EmailOutbox"
+        WHERE "tenancyId" = ANY($1::uuid[])
+        FOR UPDATE
+      `,
+      [tenancyIds],
+    );
+    await client.query(`DELETE FROM "EmailOutbox" WHERE "tenancyId" = ANY($1::uuid[])`, [tenancyIds]);
+    // Deletions of synced tables only reach ClickHouse through DeletedRow.
+    await client.query(
+      `
+        INSERT INTO "DeletedRow"
+          ("id", "tenancyId", "tableName", "primaryKey", "data", "deletedAt", "shouldUpdateSequenceId")
+        SELECT
+          gen_random_uuid(),
+          "tenancyId",
+          'ProjectUser',
+          jsonb_build_object('tenancyId', "tenancyId", 'projectUserId', "projectUserId"),
+          to_jsonb("ProjectUser".*),
+          now(),
+          true
+        FROM "ProjectUser"
+        WHERE "tenancyId" = ANY($1::uuid[])
+        FOR UPDATE
+      `,
+      [tenancyIds],
+    );
+    await client.query(`DELETE FROM "ProjectUser" WHERE "tenancyId" = ANY($1::uuid[])`, [tenancyIds]);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
 }
 
 async function insertProjectUsers(client: Client, context: ProjectUsageContext, options: {
@@ -164,10 +209,37 @@ async function insertEmailOutboxRow(client: Client, tenancyId: string, startedSe
 // CI shards — locally they settle before seeding). Deleting the non-seeded rows
 // keeps the test measuring exactly the usage it controls.
 async function deleteIncidentalEmailRows(client: Client, tenancyIds: readonly string[]): Promise<void> {
-  await client.query(
-    `DELETE FROM "EmailOutbox" WHERE "tenancyId" = ANY($1::uuid[]) AND "renderedSubject" IS DISTINCT FROM $2`,
-    [tenancyIds, SEEDED_EMAIL_SUBJECT],
-  );
+  await client.query("BEGIN");
+  try {
+    // Deletions of synced tables only reach ClickHouse through DeletedRow.
+    await client.query(
+      `
+        INSERT INTO "DeletedRow"
+          ("id", "tenancyId", "tableName", "primaryKey", "data", "deletedAt", "shouldUpdateSequenceId")
+        SELECT
+          gen_random_uuid(),
+          "tenancyId",
+          'EmailOutbox',
+          jsonb_build_object('tenancyId', "tenancyId", 'id', "id"),
+          to_jsonb("EmailOutbox".*),
+          now(),
+          true
+        FROM "EmailOutbox"
+        WHERE "tenancyId" = ANY($1::uuid[])
+          AND "renderedSubject" IS DISTINCT FROM $2
+        FOR UPDATE
+      `,
+      [tenancyIds, SEEDED_EMAIL_SUBJECT],
+    );
+    await client.query(
+      `DELETE FROM "EmailOutbox" WHERE "tenancyId" = ANY($1::uuid[]) AND "renderedSubject" IS DISTINCT FROM $2`,
+      [tenancyIds, SEEDED_EMAIL_SUBJECT],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
 }
 
 async function insertSessionReplayRow(client: Client, context: ProjectUsageContext, projectUserId: string, startedAt: Date): Promise<void> {
