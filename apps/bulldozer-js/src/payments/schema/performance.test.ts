@@ -3,7 +3,9 @@ import { declareInMemoryLowLevelDatabase } from "../../databases/low-level/imple
 import { declareInstantAvailabilityLowLevelDatabase } from "../../databases/low-level/implementations/instant-availability.js";
 import { declareLmdbLowLevelDatabase } from "../../databases/low-level/implementations/lmdb.js";
 import { declareBulldozerDatabase } from "../../databases/bulldozer/index.js";
-import { declarePiledriverDatabase, PiledriverObject } from "../../databases/piledriver/index.js";
+import { declareBasePiledriverDatabase } from "../../databases/piledriver/implementations/base.js";
+import { declareInMemoryPiledriverDatabase } from "../../databases/piledriver/implementations/in-memory.js";
+import type { PiledriverObject } from "../../databases/piledriver/index.js";
 import { createPaymentsSchema } from "./index.js";
 import type { ProductSnapshot, SubscriptionRow } from "./types.js";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -15,7 +17,7 @@ type Snapshot = Awaited<ReturnType<ReturnType<typeof declareBulldozerDatabase>["
 
 const USER_COUNT = 6;
 const ITEM_UPDATES_PER_USER = 10;
-const PREFILL_USER_COUNT = 200;
+const PREFILL_USER_COUNT = Number.parseInt(process.env.BULLDOZER_PAYMENTS_PERF_PREFILL_USERS ?? "200", 10);
 const PREFILL_ITEM_UPDATES_PER_USER = 4;
 const PREFILL_SOURCE_FACT_COUNT = PREFILL_USER_COUNT * (2 + PREFILL_ITEM_UPDATES_PER_USER);
 // Local large-store measurements are ~156s for this suite and ~273s for the listing suite.
@@ -100,18 +102,20 @@ const measure = async <T>(metrics: Metric[], name: string, count: number, operat
   process.stdout.write(`\n[bulldozer-payments-schema-perf-js] ${name}: ${elapsedMs.toFixed(1)} ms (${count} ops, ${opsPerSecond.toFixed(2)} ops/s)\n`);
   return value;
 };
-const newLowLevelDb = () => {
+const newPiledriverDb = () => {
+  if (perfBackend === "piledriver-in-memory") return declareInMemoryPiledriverDatabase(crypto.randomUUID());
   if (perfBackend === "lmdb" || perfBackend === "lmdb-instant") {
     const path = mkdtempSync(join(tmpdir(), "bulldozer-payments-schema-perf-"));
     tempPaths.push(path);
     const lmdb = declareLmdbLowLevelDatabase({ path, dbId: crypto.randomUUID() });
-    return perfBackend === "lmdb-instant" ? declareInstantAvailabilityLowLevelDatabase(lmdb) : lmdb;
+    const lowLevel = perfBackend === "lmdb-instant" ? declareInstantAvailabilityLowLevelDatabase(lmdb) : lmdb;
+    return declareBasePiledriverDatabase(lowLevel);
   }
-  return declareInMemoryLowLevelDatabase(crypto.randomUUID());
+  return declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
 };
 const newPaymentsDb = async () => {
   const schema = createPaymentsSchema();
-  const db = declareBulldozerDatabase(declarePiledriverDatabase(newLowLevelDb()), { migrations: schema.migrations });
+  const db = declareBulldozerDatabase(newPiledriverDb(), { migrations: schema.migrations });
   databases.push(db);
   await db.applyRemainingMigrations();
   return { db, schema };

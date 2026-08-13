@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { declareInMemoryLowLevelDatabase } from "../low-level/implementations/in-memory.js";
 import { declareInstantAvailabilityLowLevelDatabase } from "../low-level/implementations/instant-availability.js";
 import { declareLmdbLowLevelDatabase } from "../low-level/implementations/lmdb.js";
-import { declarePiledriverDatabase, PiledriverObject } from "../piledriver/index.js";
+import { declareBasePiledriverDatabase } from "../piledriver/implementations/base.js";
+import { declareInMemoryPiledriverDatabase } from "../piledriver/implementations/in-memory.js";
+import type { PiledriverObject } from "../piledriver/index.js";
 import { ConcatTreeList } from "../piledriver/data-structures/concat-tree-list.js";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import {
@@ -41,10 +43,15 @@ const collect = async <T>(iterable: AsyncIterable<T>) => {
   for await (const item of iterable) result.push(item);
   return result;
 };
-const newDb = (migrations: Parameters<typeof declareBulldozerDatabase>[1]["migrations"]) =>
-  declareBulldozerDatabase(declarePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID())), { migrations });
+const newDb = (backend: "base" | "in-memory", migrations: Parameters<typeof declareBulldozerDatabase>[1]["migrations"]) =>
+  declareBulldozerDatabase(
+    backend === "base"
+      ? declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()))
+      : declareInMemoryPiledriverDatabase(crypto.randomUUID()),
+    { migrations },
+  );
 const initializedSnapshot = async (migrations: Parameters<typeof declareBulldozerDatabase>[1]["migrations"]) => {
-  const db = newDb(migrations);
+  const db = newDb("base", migrations);
   await db.applyRemainingMigrations();
   return (await db.getSnapshot()).snapshot;
 };
@@ -53,16 +60,16 @@ const rows = (snapshot: Awaited<ReturnType<typeof initializedSnapshot>>, tableId
 const set = async (snapshot: Awaited<ReturnType<typeof initializedSnapshot>>, tableId: string, rowIdentifier: string, newRowData: PiledriverObject | undefined) =>
   (await snapshot.setOrDeleteRow({ tableId, rowIdentifier, newRowData })).newSnapshot;
 
-describe("Bulldozer", () => {
+describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
   it("persists an empty snapshot for zero migrations", async () => {
-    const db = newDb([]);
+    const db = newDb(backend, []);
     await db.applyRemainingMigrations();
 
     await expect(db.getSnapshot()).resolves.toMatchObject({ snapshot: expect.anything() });
   });
 
   it("serializes overlapping withSnapshot operations", async () => {
-    const db = newDb([[{ type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} }]]);
+    const db = newDb(backend, [[{ type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} }]]);
     await db.applyRemainingMigrations();
 
     let releaseFirst!: () => void;
@@ -93,7 +100,7 @@ describe("Bulldozer", () => {
   });
 
   it("keeps shutdown behind an in-flight Piledriver garbage collection", async () => {
-    const underlying = declarePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
+    const underlying = declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
     let markCollectionStarted: (() => void) | undefined;
     const collectionStarted = new Promise<void>(resolve => {
       markCollectionStarted = resolve;
@@ -131,7 +138,7 @@ describe("Bulldozer", () => {
   });
 
   it("rejects Piledriver garbage collection once shutdown starts", async () => {
-    const db = newDb([]);
+    const db = newDb("base", []);
     const closing = db.close();
 
     await expect(db.collectPiledriverGarbage(0)).rejects.toThrow("closing");
@@ -142,7 +149,7 @@ describe("Bulldozer", () => {
     const path = await mkdtemp(join(tmpdir(), "bulldozer-durability-barrier-"));
     const lmdb = declareLmdbLowLevelDatabase({ path, dbId: "durability-barrier" });
     const instant = declareInstantAvailabilityLowLevelDatabase(lmdb, { dbId: "instant-durability-barrier" });
-    const db = declareBulldozerDatabase(declarePiledriverDatabase(instant), {
+    const db = declareBulldozerDatabase(declareBasePiledriverDatabase(instant), {
       migrations: [[{ type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} }]],
     });
     let releaseDurability: (() => void) | undefined;
@@ -189,7 +196,7 @@ describe("Bulldozer", () => {
   });
 
   it("lists tables with dependency links, capabilities, and debug metadata", async () => {
-    const db = newDb([[
+    const db = newDb(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {}, debugMetadata: { name: "Store", operator: "stored" } },
       { type: "initTable", tableId: "mapped", table: defineMapTable(row => row.rowData), inputTables: { input: "store" }, debugMetadata: { name: "Mapped", operator: "map" } },
     ]]);
@@ -221,7 +228,7 @@ describe("Bulldozer", () => {
   });
 
   it("exposes Piledriver and low-level debug snapshots when available", async () => {
-    const db = newDb([[{ type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} }]]);
+    const db = newDb("base", [[{ type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} }]]);
     await db.applyRemainingMigrations();
     await db.withSnapshotReplicated(async snapshot => await set(snapshot, "store", "a", { value: 1 }));
 
@@ -595,7 +602,7 @@ describe("Bulldozer", () => {
 
   it("ticks all tickable tables from the snapshot object", async () => {
     const trigger = Date.UTC(2026, 0, 1, 0, 0, 1);
-    const db = newDb([[
+    const db = newDb(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "time", table: declareTimeFoldTable({
         initialState: 0,
@@ -933,7 +940,7 @@ describe("Bulldozer", () => {
   });
 
   it("applies later migrations and table deletions", async () => {
-    const db = newDb([
+    const db = newDb(backend, [
       [{ type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} }],
       [{ type: "initTable", tableId: "mapped", table: defineMapTable(row => row.rowData), inputTables: { input: "store" } }],
       [{ type: "deleteTable", tableId: "mapped" }],
@@ -1103,7 +1110,7 @@ describe("Bulldozer", () => {
   });
 
   it("rejects snapshots whose completed migrations do not match the schema", async () => {
-    const piledriver = declarePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
+    const piledriver = declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
     const migrations = [[{ type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} }]] satisfies Parameters<typeof declareBulldozerDatabase>[1]["migrations"];
 
     const behind = declareBulldozerDatabase(piledriver, { migrations: [] });
@@ -1118,7 +1125,7 @@ describe("Bulldozer", () => {
   });
 
   it("backfills stateful tables added by later migrations from existing input data", async () => {
-    const piledriver = declarePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
+    const piledriver = declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
     const migration1 = [{ type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} }] satisfies Parameters<typeof declareBulldozerDatabase>[1]["migrations"][number];
 
     const dbV1 = declareBulldozerDatabase(piledriver, { migrations: [migration1] });
@@ -1252,7 +1259,7 @@ describe("Bulldozer", () => {
   });
 
   it("supports creating and deleting a table within the same migration", async () => {
-    const db = newDb([[
+    const db = newDb(backend, [[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "temp", table: defineMapTable(row => row.rowData), inputTables: { input: "store" } },
       { type: "deleteTable", tableId: "temp" },
@@ -1540,14 +1547,14 @@ describe("Bulldozer", () => {
         compactor: (a, b) => [{ newRowData: Number(a) + Number(b) }],
       }), inputTables: { input: "grouped" } },
     ]];
-    const db1 = declareBulldozerDatabase(declarePiledriverDatabase(declareInMemoryLowLevelDatabase(lowLevelId)), { migrations });
+    const db1 = declareBulldozerDatabase(declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(lowLevelId)), { migrations });
     await db1.applyRemainingMigrations();
     await db1.withSnapshotReplicated(async snapshot => {
       for (const value of [1, 2, 3]) snapshot = await set(snapshot, "store", `r${value}`, value);
       return snapshot;
     });
 
-    const db2 = declareBulldozerDatabase(declarePiledriverDatabase(declareInMemoryLowLevelDatabase(lowLevelId)), { migrations });
+    const db2 = declareBulldozerDatabase(declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(lowLevelId)), { migrations });
     let snapshot = (await db2.getSnapshot()).snapshot;
     snapshot = await set(snapshot, "store", "r4", 4);
 
@@ -1571,7 +1578,7 @@ describe("Bulldozer", () => {
       compareGroupKeys: () => 0,
       compareSortKeys: () => 0,
     };
-    const db = newDb([
+    const db = newDb(backend, [
       [{ type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} }],
       [{ type: "initTable", tableId: "identity", table: defineIdentityTable(), inputTables: { input: "store" } }],
       [{ type: "initTable", tableId: "probe", table: probeTable, inputTables: { input: "identity" } }],

@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { declareInMemoryLowLevelDatabase } from "../../low-level/implementations/in-memory.js";
-import { declarePiledriverDatabase } from "../../piledriver/index.js";
+import { declareBasePiledriverDatabase } from "../../piledriver/implementations/base.js";
 import { declareBulldozerDatabase, declareGroupByTable, defineMaterializeTable, defineSortTable, defineStoredTable } from "../index.js";
 import { BulldozerDbDump, computeReadModel, restoreBulldozerDatabase } from "./bulldozer-db-fixture-utils.js";
 
@@ -123,7 +123,7 @@ describe("computeReadModel", () => {
     // are no groups), so without the nonexistent-group probe it would be misclassified as listable
     // and the read model would depend on whether the table happens to contain data.
     const db = declareBulldozerDatabase(
-      declarePiledriverDatabase(declareInMemoryLowLevelDatabase(`bulldozer-empty-read-model-${crypto.randomUUID()}`)),
+      declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(`bulldozer-empty-read-model-${crypto.randomUUID()}`)),
       {
         migrations: [[
           { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },

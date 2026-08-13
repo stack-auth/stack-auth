@@ -5,7 +5,8 @@ import { afterAll, describe, expect, it } from "vitest";
 import { declareBulldozerDatabase } from "../../databases/bulldozer/index.js";
 import { declareInstantAvailabilityLowLevelDatabase } from "../../databases/low-level/implementations/instant-availability.js";
 import { declareLmdbLowLevelDatabase } from "../../databases/low-level/implementations/lmdb.js";
-import { declarePiledriverDatabase, type PiledriverObject } from "../../databases/piledriver/index.js";
+import { declareBasePiledriverDatabase } from "../../databases/piledriver/implementations/base.js";
+import type { PiledriverObject } from "../../databases/piledriver/index.js";
 import { createPaymentsSchema } from "./index.js";
 import type { ProductSnapshot, SubscriptionRow } from "./types.js";
 
@@ -77,7 +78,7 @@ async function newPaymentsLmdb(compression: boolean) {
   tempPaths.push(path);
   const schema = createPaymentsSchema();
   const low = declareInstantAvailabilityLowLevelDatabase(declareLmdbLowLevelDatabase({ path, compression }));
-  const db = declareBulldozerDatabase(declarePiledriverDatabase(low), { migrations: schema.migrations });
+  const db = declareBulldozerDatabase(declareBasePiledriverDatabase(low), { migrations: schema.migrations });
   await db.applyRemainingMigrations();
   return { path, schema, low, db };
 }
@@ -148,7 +149,7 @@ describe("payments schema on compressed LMDB", () => {
 
     {
       const low = declareInstantAvailabilityLowLevelDatabase(declareLmdbLowLevelDatabase({ path, compression: false }));
-      const db = declareBulldozerDatabase(declarePiledriverDatabase(low), { migrations: schema.migrations });
+      const db = declareBulldozerDatabase(declareBasePiledriverDatabase(low), { migrations: schema.migrations });
       await db.applyRemainingMigrations();
       await db.withSnapshot(async (snapshot) => await snapshot.setOrDeleteRow({
         tableId: schema.subscriptions,
@@ -161,7 +162,7 @@ describe("payments schema on compressed LMDB", () => {
 
     const low2 = declareInstantAvailabilityLowLevelDatabase(declareLmdbLowLevelDatabase({ path, compression: true }));
     try {
-      const db2 = declareBulldozerDatabase(declarePiledriverDatabase(low2), { migrations: schema.migrations });
+      const db2 = declareBulldozerDatabase(declareBasePiledriverDatabase(low2), { migrations: schema.migrations });
       await db2.applyRemainingMigrations();
       const ownedBefore = await collectOwned(db2, schema, group);
       expect(ownedBefore.length).toBe(1);

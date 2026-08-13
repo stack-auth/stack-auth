@@ -6,7 +6,8 @@ import { declareInMemoryLowLevelDatabase } from "../low-level/implementations/in
 import { declareInstantAvailabilityLowLevelDatabase } from "../low-level/implementations/instant-availability.js";
 import { declareLmdbLowLevelDatabase } from "../low-level/implementations/lmdb.js";
 import { ConcatTreeList } from "../piledriver/data-structures/concat-tree-list.js";
-import { declarePiledriverDatabase, PiledriverObject } from "../piledriver/index.js";
+import { declareBasePiledriverDatabase } from "../piledriver/implementations/base.js";
+import type { PiledriverObject } from "../piledriver/index.js";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import {
   declareBulldozerDatabase,
@@ -91,7 +92,7 @@ afterAll(async () => {
   for (const path of lmdbTempPaths) rmSync(path, { recursive: true, force: true });
 });
 const newDb = (migrations: Migration) =>
-  trackDatabase(declareBulldozerDatabase(declarePiledriverDatabase(newLowLevelDb()), { migrations }));
+  trackDatabase(declareBulldozerDatabase(declareBasePiledriverDatabase(newLowLevelDb()), { migrations }));
 const writeSnapshot = async (db: PerfDatabase, updateSnapshot: SnapshotUpdater) =>
   perfSnapshotMode === "plain"
     ? await db.withSnapshot(updateSnapshot)
@@ -193,7 +194,7 @@ async function collectRows(snapshot: Snapshot, tableId: string, groupKey: Piledr
 
 async function createPrefilledOldCompatibleBase(rowCount: number) {
   const lowLevel = newLowLevelDb();
-  const piledriver = declarePiledriverDatabase(lowLevel);
+  const piledriver = declareBasePiledriverDatabase(lowLevel);
   const baseMigration: Migration[number] = [
     { type: "initTable", tableId: "users", table: defineStoredTable(), inputTables: {} },
     { type: "initTable", tableId: "rules", table: defineStoredTable(), inputTables: {} },
@@ -873,7 +874,7 @@ describe("Bulldozer old-compatible performance", () => {
   it("regression: concat queries stay fast after initializing grouped inputs", async () => {
     const rowCount = Math.min(1024, Math.max(...oldCompatibleRowCounts));
     const lowLevel = newLowLevelDb();
-    const piledriver = declarePiledriverDatabase(lowLevel);
+    const piledriver = declareBasePiledriverDatabase(lowLevel);
     const baseMigration: Migration[number] = [
       { type: "initTable", tableId: "usersA", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "usersB", table: defineStoredTable(), inputTables: {} },
