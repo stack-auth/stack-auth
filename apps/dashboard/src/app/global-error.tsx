@@ -54,6 +54,13 @@ export default function GlobalError({ error }: GlobalErrorProps) {
               --error-action-foreground: #0f172a;
             }
           }
+          /*
+           * The app stylesheet can still load when this boundary replaces the root layout.
+           * Keep its ambient pseudo-elements from washing out the recovery UI.
+           */
+          html {
+            background: var(--error-background);
+          }
           body {
             box-sizing: border-box;
             min-height: 100vh;
@@ -61,11 +68,22 @@ export default function GlobalError({ error }: GlobalErrorProps) {
             padding: 24px;
             display: grid;
             place-items: center;
+            position: relative;
+            z-index: 0;
+            isolation: isolate;
             background: var(--error-background);
+            background-image: none;
+            background-blend-mode: normal;
             color: var(--error-foreground);
             font-family: system-ui, sans-serif;
           }
+          body::before,
+          body::after {
+            content: none;
+          }
           .error-card {
+            position: relative;
+            z-index: 1;
             width: min(100%, 440px);
             box-sizing: border-box;
             padding: 32px;

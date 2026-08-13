@@ -14,18 +14,18 @@ function getRecoveryState(): RecoveryState | null {
   }
   try {
     const state: unknown = JSON.parse(value);
-    if (
-      typeof state === "object"
-      && state !== null
-      && "attempts" in state
-      && "lastAttemptAt" in state
-      && typeof state.attempts === "number"
-      && Number.isInteger(state.attempts)
-      && state.attempts >= 0
-      && typeof state.lastAttemptAt === "number"
-      && Number.isFinite(state.lastAttemptAt)
-    ) {
-      return state;
+    if (typeof state === "object" && state !== null) {
+      const attempts = Object.getOwnPropertyDescriptor(state, "attempts")?.value;
+      const lastAttemptAt = Object.getOwnPropertyDescriptor(state, "lastAttemptAt")?.value;
+      if (
+        typeof attempts === "number"
+        && Number.isInteger(attempts)
+        && attempts >= 0
+        && typeof lastAttemptAt === "number"
+        && Number.isFinite(lastAttemptAt)
+      ) {
+        return { attempts, lastAttemptAt };
+      }
     }
   } catch {
     // Invalid state is treated as a fresh recovery window.
