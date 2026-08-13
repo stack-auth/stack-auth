@@ -26,9 +26,11 @@ describe("in-memory Piledriver", () => {
 
   it("shares roots by db id and isolates different ids", async () => {
     const rootKey = key("shared");
-    const first = declareInMemoryPiledriverDatabase("same");
-    const second = declareInMemoryPiledriverDatabase("same");
-    const isolated = declareInMemoryPiledriverDatabase("different");
+    const sharedDbId = crypto.randomUUID();
+    const isolatedDbId = crypto.randomUUID();
+    const first = declareInMemoryPiledriverDatabase(sharedDbId);
+    const second = declareInMemoryPiledriverDatabase(sharedDbId);
+    const isolated = declareInMemoryPiledriverDatabase(isolatedDbId);
     await first.setRootObject(rootKey, "value");
     await expect(second.getRootObject(rootKey)).resolves.toMatchObject({ object: "value" });
     await expect(isolated.getRootObject(rootKey)).rejects.toThrow("Root object not found");

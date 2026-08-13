@@ -128,6 +128,10 @@ export function zeroPiledriverGarbageCollectionResult(
   maxObjects: number,
   startedAtMillis: number,
 ): PiledriverGarbageCollectionResult {
+  parseNonNegativeInteger(cutoffTimestampMillis, "cutoffTimestampMillis");
+  parseNonNegativeInteger(processStartedAtMillis, "processStartedAtMillis");
+  parseNonNegativeInteger(startedAtMillis, "startedAtMillis");
+  if (!Number.isSafeInteger(maxObjects) || maxObjects <= 0) throw new Error("Piledriver GC maxObjects must be a positive safe integer");
   const completedAtMillis = startedAtMillis;
   const elapsedMillis = 0;
   return {

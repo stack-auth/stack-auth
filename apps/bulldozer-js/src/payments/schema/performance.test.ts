@@ -17,7 +17,10 @@ type Snapshot = Awaited<ReturnType<ReturnType<typeof declareBulldozerDatabase>["
 
 const USER_COUNT = 6;
 const ITEM_UPDATES_PER_USER = 10;
-const PREFILL_USER_COUNT = Number.parseInt(process.env.BULLDOZER_PAYMENTS_PERF_PREFILL_USERS ?? "200", 10);
+const prefillUserCountValue = process.env.BULLDOZER_PAYMENTS_PERF_PREFILL_USERS ?? "200";
+if (!/^\d+$/.test(prefillUserCountValue)) throw new Error("BULLDOZER_PAYMENTS_PERF_PREFILL_USERS must be a non-negative integer");
+const PREFILL_USER_COUNT = Number(prefillUserCountValue);
+if (!Number.isSafeInteger(PREFILL_USER_COUNT)) throw new Error("BULLDOZER_PAYMENTS_PERF_PREFILL_USERS must be a non-negative integer");
 const PREFILL_ITEM_UPDATES_PER_USER = 4;
 const PREFILL_SOURCE_FACT_COUNT = PREFILL_USER_COUNT * (2 + PREFILL_ITEM_UPDATES_PER_USER);
 // Local large-store measurements are ~156s for this suite and ~273s for the listing suite.
