@@ -166,9 +166,20 @@ mkdir -p "$WORK_DIR"
 SENTINEL_MARKER="$WORK_DIR/.stack-sentinels-replaced"
 sentinel_env_vars=""
 sentinel_fingerprint=""
+runtime_build_identity=""
 # Keep this list explicit: these values are required by the bundled dashboard,
 # while other discovered sentinels intentionally remain optional at runtime.
 required_sentinel_env_vars="NEXT_PUBLIC_STACK_PROJECT_ID NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY NEXT_PUBLIC_STACK_API_URL NEXT_PUBLIC_SERVER_STACK_API_URL NEXT_PUBLIC_STACK_DASHBOARD_URL NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL USE_INLINE_ENV_VARS"
+get_runtime_build_identity() {
+  local _build_files _identity
+  if ! _build_files=$(find /app -type f -name BUILD_ID -print 2>/dev/null | sort) || [ -z "$_build_files" ]; then
+    return 1
+  fi
+  if ! _identity=$(printf '%s\n' "$_build_files" | xargs sha256sum | sha256sum | cut -d ' ' -f1) || [ -z "$_identity" ]; then
+    return 1
+  fi
+  printf '%s\n' "$_identity"
+}
 rebuild_runtime_tree() {
   if [ "$WORK_DIR" = "/app" ]; then
     echo "ERROR: STACK_RUNTIME_WORK_DIR=/app cannot rebuild changed sentinel values in place. Recreate the container without STACK_RUNTIME_WORK_DIR=/app." >&2
@@ -179,7 +190,7 @@ rebuild_runtime_tree() {
   rm -f "$SENTINEL_MARKER"
 }
 sentinel_values_are_replaced() {
-  local _env_var _value _sentinel _pattern=""
+  local _env_var _value _sentinel _pattern="" _status=0
   for _env_var in $sentinel_env_vars; do
     _value="${!_env_var:-}"
     if [ -n "$_value" ]; then
@@ -187,14 +198,30 @@ sentinel_values_are_replaced() {
       _pattern="${_pattern:+$_pattern|}$_sentinel"
     fi
   done
-  [ -z "$_pattern" ] || ! grep -rl -E "$_pattern" "$WORK_DIR/apps" >/dev/null 2>&1
+  if [ -z "$_pattern" ]; then
+    return 0
+  fi
+  grep -rl -E "$_pattern" "$WORK_DIR/apps" >/dev/null 2>&1 || _status=$?
+  case "$_status" in
+    0) return 1 ;;
+    1) return 0 ;;
+    *) return 2 ;;
+  esac
 }
+if ! runtime_build_identity=$(get_runtime_build_identity); then
+  echo "WARNING: Could not determine the bundled app build identity; the sentinel marker will not be trusted on restart." >&2
+  runtime_build_identity=""
+fi
 if [ -f "$SENTINEL_MARKER" ]; then
   stored_sentinel_fingerprint=$(sed -n '1p' "$SENTINEL_MARKER")
   sentinel_env_vars=$(sed -n '2p' "$SENTINEL_MARKER")
+  stored_runtime_build_identity=$(sed -n '3p' "$SENTINEL_MARKER")
   if [ -n "$stored_sentinel_fingerprint" ] && [ -n "$sentinel_env_vars" ]; then
     current_sentinel_fingerprint=$(printf '%s\n' "$sentinel_env_vars" | tr ' ' '\n' | while IFS= read -r env_var; do printf '%s=%s\n' "$env_var" "${!env_var:-}"; done | sort | sha256sum | cut -d ' ' -f1)
-    if [ "$stored_sentinel_fingerprint" = "$current_sentinel_fingerprint" ] && sentinel_values_are_replaced; then
+    if [ "$stored_sentinel_fingerprint" = "$current_sentinel_fingerprint" ] \
+      && [ -n "$runtime_build_identity" ] \
+      && [ "$stored_runtime_build_identity" = "$runtime_build_identity" ] \
+      && sentinel_values_are_replaced; then
       echo "Sentinel values unchanged on a previous start; skipping scan."
       sentinel_fingerprint=$stored_sentinel_fingerprint
     else
@@ -208,9 +235,9 @@ if [ -f "$SENTINEL_MARKER" ]; then
 fi
 
 if [ ! -f "$SENTINEL_MARKER" ]; then
-  if [ "$WORK_DIR" != "/app" ] && [ ! -d "$WORK_DIR/apps" ]; then
-    echo "Copying files to working directory..."
-    cp -r /app/. "$WORK_DIR"/.
+  if [ "$WORK_DIR" != "/app" ]; then
+    echo "Restoring pristine files to working directory..."
+    rebuild_runtime_tree
   fi
 
   # Find all files in the apps directory that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
@@ -278,7 +305,16 @@ if [ ! -f "$SENTINEL_MARKER" ]; then
       exit 1
     fi
   done
-  if ! sentinel_values_are_replaced; then
+  if sentinel_values_are_replaced; then
+    sentinel_check_status=0
+  else
+    sentinel_check_status=$?
+  fi
+  if [ "$sentinel_check_status" -eq 2 ]; then
+    echo "ERROR: Could not verify sentinel replacement in the runtime tree; refusing to start." >&2
+    exit 1
+  fi
+  if [ "$sentinel_check_status" -eq 1 ]; then
     echo "ERROR: Sentinel replacement was incomplete; refusing to start with unreplaced runtime values." >&2
     exit 1
   fi
@@ -288,6 +324,7 @@ if [ ! -f "$SENTINEL_MARKER" ]; then
   {
     printf '%s\n' "$sentinel_fingerprint"
     printf '%s\n' "$sentinel_env_vars"
+    printf '%s\n' "$runtime_build_identity"
   } > "$marker_tmp"
   mv "$marker_tmp" "$SENTINEL_MARKER"
 fi
