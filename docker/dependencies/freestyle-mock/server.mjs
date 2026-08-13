@@ -51,6 +51,15 @@ const MAX_BRIDGE_RESPONSE_BYTES = 8 * 1024 * 1024;
 // below it, while runtime retirement bounds callbacks that outlive their job.
 const HOST_FETCH_TIMEOUT_MS = 5 * 60_000;
 const MAX_BRIDGE_REDIRECTS = 5;
+const requestMetrics = {
+  requests: 0,
+  completed: 0,
+  active: 0,
+  maxQueueDepth: 0,
+  totalDurationMs: 0,
+  maxDurationMs: 0,
+  durationBuckets: [0, 0, 0, 0, 0, 0],
+};
 const MODULE_CACHE_DIR =
   process.env.HEXCLAVE_FREESTYLE_MOCK_MODULE_CACHE_DIR || "/app/module-cache";
 const DEFAULT_NODE_MODULES_DIR = "/app/guest-node-modules/node_modules";
@@ -136,6 +145,42 @@ class QueueFullError extends ClientError {
   constructor() {
     super(429, "Execution queue is full");
   }
+}
+
+function recordRequestDuration(durationMs) {
+  requestMetrics.completed++;
+  requestMetrics.active--;
+  requestMetrics.totalDurationMs += durationMs;
+  requestMetrics.maxDurationMs = Math.max(requestMetrics.maxDurationMs, durationMs);
+  const bucket = durationMs < 100
+    ? 0
+    : durationMs < 500
+      ? 1
+      : durationMs < 1_000
+        ? 2
+        : durationMs < 5_000
+          ? 3
+          : durationMs < 30_000
+            ? 4
+            : 5;
+  requestMetrics.durationBuckets[bucket]++;
+}
+
+function readRequestMetrics() {
+  return {
+    ...requestMetrics,
+    durationBuckets: [...requestMetrics.durationBuckets],
+    queueDepth: jobQueue.queue.length,
+  };
+}
+
+function resetRequestMetrics() {
+  requestMetrics.requests = 0;
+  requestMetrics.completed = 0;
+  requestMetrics.maxQueueDepth = 0;
+  requestMetrics.totalDurationMs = 0;
+  requestMetrics.maxDurationMs = 0;
+  requestMetrics.durationBuckets.fill(0);
 }
 
 function formatError(error) {
@@ -1244,11 +1289,20 @@ const defaultEntry = await runtimeCache.acquire({
 runtimeCache.release(defaultEntry);
 
 const server = createServer(async (request, response) => {
+  const requestStartedAt = performance.now();
+  let trackedRequest = false;
   try {
     const url = new URL(
       request.url || "/",
       `http://${request.headers.host || "localhost"}`,
     );
+    if (request.method === "GET" && url.pathname === "/diagnostics") {
+      const responseBody = JSON.stringify(readRequestMetrics());
+      if (url.searchParams.get("reset") === "true") resetRequestMetrics();
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(responseBody);
+      return;
+    }
     const isExecutePath =
       request.method === "POST" &&
       /^\/execute\/v[123]\/script$/.test(url.pathname);
@@ -1257,6 +1311,9 @@ const server = createServer(async (request, response) => {
       response.end("Not found");
       return;
     }
+    trackedRequest = true;
+    requestMetrics.requests++;
+    requestMetrics.active++;
     const body = await readRequestBody(request);
     if (
       !body ||
@@ -1272,6 +1329,10 @@ const server = createServer(async (request, response) => {
         : {};
     config.nodeModules = normalizeNodeModules(config.nodeModules);
     const timeoutMs = resolveTimeout(config.timeout);
+    requestMetrics.maxQueueDepth = Math.max(
+      requestMetrics.maxQueueDepth,
+      jobQueue.queue.length,
+    );
     const result = await jobQueue.submit(body.script, config, timeoutMs);
     sendJson(response, result.statusCode, result.payload);
   } catch (error) {
@@ -1281,6 +1342,8 @@ const server = createServer(async (request, response) => {
     }
     logInternalError("request", error);
     sendJson(response, 500, { error: "Internal server error", logs: [] });
+  } finally {
+    if (trackedRequest) recordRequestDuration(performance.now() - requestStartedAt);
   }
 });
 

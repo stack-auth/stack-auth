@@ -2,6 +2,7 @@ import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { createUuidV7Generator } from "@hexclave/shared/dist/utils/uuids";
 import * as lmdb from "lmdb";
+import { readdirSync, statSync } from "node:fs";
 import { shouldSuppressPeriodicBulldozerLogs } from "../../../logging.js";
 import { traceSpanHot } from "../../../otel.js";
 import { DatabaseSeq } from "../../index.js";
@@ -111,6 +112,50 @@ type LmdbActivityStats = {
   combinedSeqDurabilityResolveTotalMs: number,
 };
 
+export type LmdbDiagnostics = {
+  dbId: string,
+  storeSizeBytes?: number,
+  elapsedMs: number,
+  putsPerSecond: number,
+  averagePutBytes: number,
+  averagePutAwaitMs: number,
+  transactionsPerSecond: number,
+  averageTransactionMs: number,
+  averageTransactionQueueWaitMs: number,
+  averageTransactionActionMs: number,
+  averageMetaPutMs: number,
+  averageTransactionCommitTailMs: number,
+  requiredSeqWaitsPerSecond: number,
+  averageRequiredSeqWaitMs: number,
+  waitUntilAvailableResolvesPerSecond: number,
+  waitUntilDurableResolvesPerSecond: number,
+  averageSeqToAvailabilityResolveMs: number,
+  averageSeqToDurabilityResolveMs: number,
+  combinedSeqAvailabilityResolvesPerSecond: number,
+  combinedSeqDurabilityResolvesPerSecond: number,
+  averageCombinedSeqAvailabilityResolveMs: number,
+  averageCombinedSeqDurabilityResolveMs: number,
+  currentVersion: number,
+};
+
+let latestLmdbDiagnostics: LmdbDiagnostics | null = null;
+const bulldozerDiagnosticsEnabled = process.env.HEXCLAVE_BULLDOZER_DIAGNOSTICS === "true";
+
+function getStoreSizeBytes(path: string): number {
+  try {
+    return readdirSync(path, { withFileTypes: true }).reduce((total, entry) => {
+      const entryPath = `${path}/${entry.name}`;
+      return total + (entry.isDirectory() ? getStoreSizeBytes(entryPath) : statSync(entryPath).size);
+    }, 0);
+  } catch {
+    return 0;
+  }
+}
+
+export function getLmdbDiagnostics(): LmdbDiagnostics | null {
+  return latestLmdbDiagnostics == null ? null : { ...latestLmdbDiagnostics };
+}
+
 function emptyActivityStats(): LmdbActivityStats {
   return {
     puts: 0,
@@ -211,8 +256,9 @@ export function declareLmdbLowLevelDatabase(options: {
       const now = performance.now();
       const elapsedMs = now - activityWindowStartedAt;
       const elapsedSeconds = elapsedMs / 1000;
-      console.debug("bulldozer-js low-level lmdb activity", {
+      const diagnostics = {
         dbId,
+        ...(bulldozerDiagnosticsEnabled ? { storeSizeBytes: getStoreSizeBytes(options.path) } : {}),
         elapsedMs,
         putsPerSecond: activityStats.puts / elapsedSeconds,
         averagePutBytes: activityStats.puts === 0 ? 0 : activityStats.putBytes / activityStats.puts,
@@ -242,7 +288,9 @@ export function declareLmdbLowLevelDatabase(options: {
           debugEntriesByStoreId: debugEntriesByStoreId.size,
         },
         currentVersion,
-      });
+      };
+      latestLmdbDiagnostics = diagnostics;
+      console.debug("bulldozer-js low-level lmdb activity", diagnostics);
       activityStats = emptyActivityStats();
       activityWindowStartedAt = now;
     }, 5_000);
