@@ -247,6 +247,7 @@ export function declareLmdbLowLevelDatabase(options: {
   let pendingCommitFlushTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingCommitFlushPromise: Promise<void> | null = null;
   let isClosing = false;
+  let storeSizeDiagnosticsDisabled = false;
   let closePromise: Promise<void> | null = null;
   const inFlightReads = new Set<Promise<unknown>>();
   let readErrorDuringClose: unknown | undefined;
@@ -280,10 +281,12 @@ export function declareLmdbLowLevelDatabase(options: {
     const elapsedMs = now - activityWindowStartedAt;
     const elapsedSeconds = elapsedMs / 1000;
     let storeSizeBytes: number | undefined;
-    if (bulldozerDiagnosticsEnabled) {
+    if (bulldozerDiagnosticsEnabled && !storeSizeDiagnosticsDisabled) {
       try {
         storeSizeBytes = getStoreSizeBytes(options.path);
       } catch (error) {
+        // Disable sizing after the first unexpected failure so a persistent error cannot flood CI logs every 5 seconds.
+        storeSizeDiagnosticsDisabled = true;
         captureError("bulldozer-js:lmdb-diagnostics-store-size", error);
       }
     }
