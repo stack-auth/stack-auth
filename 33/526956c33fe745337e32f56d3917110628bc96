@@ -1,0 +1,22 @@
+examples/demo/src/app/error-tracking-demo/symbolicated-bundle.ts
+  s_dd9eb7a34a9425::t_53105b79af4f67 136-138
+examples/demo/src/app/error-tracking-demo/observability-lab-upload.ts
+  s_dd9eb7a34a9425::t_59a63c6f8a3198 148-153,161,170,176-177
+  s_dd9eb7a34a9425::t_9e6b83c3206702 178-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "33526956c33fe745337e32f56d3917110628bc96",
+  "prompts": {},
+  "sessions": {
+    "s_dd9eb7a34a9425": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c533dd44-e3b7-4460-8c4c-8c2479b53e37",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
