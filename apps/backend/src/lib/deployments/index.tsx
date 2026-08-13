@@ -20,7 +20,7 @@
 //   are never persisted, so the dashboard's secrets page can present a single
 //   unambiguous state — a key either has a stored value or it isn't there.
 //
-// KNOWN GAP — services removed from the config file. The definitions are
+// KNOWN GAP — services removed from the deploy file. The definitions are
 // synced additively: a service that disappears from the `services` export
 // keeps its DeploymentService row (still visible in the dashboard) and its
 // live Marshal service. Deleting infrastructure automatically on a sync would
@@ -206,13 +206,13 @@ export async function getServiceRowOrThrow(prisma: PrismaClientTransaction, tena
     include: { domains: DOMAINS_INCLUDE_ORDER },
   });
   if (row == null) {
-    throw new StatusError(404, `No deployment service with id ${JSON.stringify(serviceId)} exists in this project. Add it to the \`services\` export of your hexclave.config.ts and run \`hexclave deploy\`.`);
+    throw new StatusError(404, `No deployment service with id ${JSON.stringify(serviceId)} exists in this project. Add it to the \`services\` export of your hexclave.deploy.ts and run \`hexclave deploy\`.`);
   }
   return row;
 }
 
 /**
- * Upserts the definitions from a config file's evaluated `services` export
+ * Upserts the definitions from a deploy file's evaluated `services` export
  * into DeploymentService rows. Additive on purpose: rows whose service id is
  * absent from `services` are left untouched (see the KNOWN GAP note at the
  * top of this file).
@@ -653,7 +653,7 @@ const SERVICE_OUTPUT_KEY_TO_MARSHAL = {
  * - secret vars are filled from the project's stored secrets (dashboard →
  *   Project Settings → Secrets), falling back to `secretDefaults` — the
  *   deploy request's transient copy of the `secret(key, default)` defaults
- *   from the config file. Defaults are deliberately NOT part of the stored
+ *   from the deploy file. Defaults are deliberately NOT part of the stored
  *   definition: they are an author-side convenience that the dashboard must
  *   never surface (a stored default would make "this secret has a value"
  *   ambiguous on the secrets page). A secret with neither is a 400 that lists
@@ -766,7 +766,7 @@ export async function resolveEnvVars(options: {
           throw new StatusError(400, `The env var ${JSON.stringify(envVarKey)} connects to the service's own public URL "${raw}", which cannot exist before the service does. Use ${JSON.stringify(`${serviceId}.internalUrl`)} (called, e.g. internalUrl()) for the service's own address.`);
         }
         if (!existingServiceIds.has(normalized.serviceId) && normalized.serviceId !== serviceId) {
-          throw new StatusError(400, `The env var connection "${raw}" points to a service that doesn't exist in this project. Add it to the \`services\` export of your hexclave.config.ts and deploy it first.`);
+          throw new StatusError(400, `The env var connection "${raw}" points to a service that doesn't exist in this project. Add it to the \`services\` export of your hexclave.deploy.ts and deploy it first.`);
         }
         if (!(SERVICE_OUTPUT_KEYS as readonly string[]).includes(normalized.outputKey)) {
           throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. Deployment services expose: ${SERVICE_OUTPUT_KEYS.join(", ")}.`);

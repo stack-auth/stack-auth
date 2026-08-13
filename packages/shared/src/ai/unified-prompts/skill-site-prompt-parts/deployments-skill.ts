@@ -11,21 +11,12 @@ export const deploymentsSkillSection = deindent`
 
   Every service is either a \`"server"\` or a \`"serverless"\`. A \`server\` is a single instance that SUSPENDS when idle and resumes with its memory intact, and it is the only type that may have a persistent disk. A \`serverless\` scales out between \`minInstances\` and \`maxInstances\` and STOPS on scale-down, so each start is a cold start and it can have no disk. Use \`server\` for anything stateful (a database, a queue, anything writing to a volume) and \`serverless\` for stateless web apps and APIs.
 
-  Enable the app by adding \`"deployments-alpha"\` under \`apps.installed\` in your config (quote it — it contains a hyphen). Services themselves are NOT part of the \`config\` export: they are defined by a separate \`deployment\` export in \`hexclave.config.ts\`.
+  Enable the app by adding \`"deployments-alpha"\` under \`apps.installed\` in your config (quote it — it contains a hyphen). Services themselves are NOT part of the \`config\` export: they live in their own file, \`hexclave.deploy.ts\`, next to \`hexclave.config.ts\`.
 
   ## The deployment export
 
-  \`\`\`ts title="hexclave.config.ts"
+  \`\`\`ts title="hexclave.deploy.ts"
   import type { HexclaveDeploymentConfig } from "@hexclave/js";
-
-  export const config = {
-    apps: {
-      installed: {
-        authentication: { enabled: true },
-        "deployments-alpha": { enabled: true },
-      },
-    },
-  };
 
   export const deployment: HexclaveDeploymentConfig = {
     services: ({ isDev, secret, service, hexclave }) => ({
@@ -57,7 +48,7 @@ export const deploymentsSkillSection = deindent`
 
   Always annotate the \`deployment\` export with \`HexclaveDeploymentConfig\`, imported as a type from \`@hexclave/js\` (the same type is re-exported from \`@hexclave/next\`, \`@hexclave/react\` and \`@hexclave/tanstack-start\`, so import from whichever SDK package this project already uses). It gives completion for every field below and catches typos before a deploy.
 
-  \`deployment.services\` is normally a FUNCTION returning a record of services keyed by service id (a plain record works when you need no secrets, connections, or \`hexclave.*\` outputs). \`type\` (required) is \`"server"\` or \`"serverless"\` as above. \`ports\` (required) lists the ports the container listens on, each \`{ port, public?, transport? }\`; use \`ports: []\` for a worker that only dials out, which needs \`type: "server"\` (or \`minInstances\` above zero) since nothing inbound can wake it. \`public\` (default false) gives that port a stable platform URL. A service with a public port may declare ONLY that port: a port is served on every address the service has, so a private sibling would be reachable from the internet too — put private ports on their own service and reach them with \`internalHost\`. \`transport\` (default \`"http"\`) may be \`"tcp"\` for a raw daemon — TCP ports are private-only and a service with no HTTP port cannot have custom domains. \`rootDirectory\` (relative to the config file, default \`./\`) is where the service's code lives; \`dockerfilePath\` (optional, relative to \`rootDirectory\`) selects a Dockerfile to build from — omit it to build with Railpack auto-detection; \`minInstances\`/\`maxInstances\` (serverless only, defaults 0/1, max 5) are the scaling bounds — \`minInstances: 0\` scales to zero and cold-starts on the next connection; \`persistentVolumes\` (server only) attaches a persistent disk; \`devCommand\` is what \`hexclave dev --service-id <id>\` runs.
+  \`deployment.services\` is normally a FUNCTION returning a record of services keyed by service id (a plain record works when you need no secrets, connections, or \`hexclave.*\` outputs). \`type\` (required) is \`"server"\` or \`"serverless"\` as above. \`ports\` (required) lists the ports the container listens on, each \`{ port, public?, transport? }\`; use \`ports: []\` for a worker that only dials out, which needs \`type: "server"\` (or \`minInstances\` above zero) since nothing inbound can wake it. \`public\` (default false) gives that port a stable platform URL. A service with a public port may declare ONLY that port: a port is served on every address the service has, so a private sibling would be reachable from the internet too — put private ports on their own service and reach them with \`internalHost\`. \`transport\` (default \`"http"\`) may be \`"tcp"\` for a raw daemon — TCP ports are private-only and a service with no HTTP port cannot have custom domains. \`rootDirectory\` (relative to the deploy file, default \`./\`) is where the service's code lives; \`dockerfilePath\` (optional, relative to \`rootDirectory\`) selects a Dockerfile to build from — omit it to build with Railpack auto-detection; \`minInstances\`/\`maxInstances\` (serverless only, defaults 0/1, max 5) are the scaling bounds — \`minInstances: 0\` scales to zero and cold-starts on the next connection; \`persistentVolumes\` (server only) attaches a persistent disk; \`devCommand\` is what \`hexclave dev --service-id <id>\` runs.
 
   \`minInstances\` above 0 requires a paid plan. On the Free plan the deploy fails naming the offending services; set \`minInstances: 0\` (or remove it) so they scale to zero, or upgrade.
 
@@ -119,11 +110,11 @@ export const deploymentsSkillSection = deindent`
      await p.setProjectSecret('OPENAI_API_KEY', process.env.OPENAI_API_KEY);"
   \`\`\`
 
-  \`listProjectSecrets()\` returns keys and timestamps only — values can never be read back, and the dashboard lists only keys that have a value. \`defaultValue\` lives purely in the config file: it is sent with the deploy and never stored, so it never shows up as a set secret. A deploy fails up front and names every \`secret()\` without a default that has no stored value. Note that \`exec\` requires a \`hexclave login\` session — a server-key-only environment (typical CI) can DEPLOY using stored secrets but cannot SET them; set secrets beforehand from a logged-in machine or the dashboard.
+  \`listProjectSecrets()\` returns keys and timestamps only — values can never be read back, and the dashboard lists only keys that have a value. \`defaultValue\` lives purely in the deploy file: it is sent with the deploy and never stored, so it never shows up as a set secret. A deploy fails up front and names every \`secret()\` without a default that has no stored value. Note that \`exec\` requires a \`hexclave login\` session — a server-key-only environment (typical CI) can DEPLOY using stored secrets but cannot SET them; set secrets beforehand from a logged-in machine or the dashboard.
 
   ## Agent workflow (do this — do not drive the dashboard UI)
 
-  AI agents must deploy and manage Deployments through the CLI and \`hexclave.config.ts\`, not by clicking around \`app.hexclave.com\` in a browser. The dashboard is a human fallback only.
+  AI agents must deploy and manage Deployments through the CLI and \`hexclave.deploy.ts\`, not by clicking around \`app.hexclave.com\` in a browser. The dashboard is a human fallback only.
 
   1. **Read this skill** and ensure \`deployments-alpha\` is enabled and the \`deployment\` export exists as above.
   2. **Authenticate for cloud deploys** (pick the first that works):
@@ -136,15 +127,15 @@ export const deploymentsSkillSection = deindent`
 
   ## Deploying
 
-  From the directory containing your config file:
+  From the directory containing your deploy file:
 
   \`\`\`sh title="Terminal"
   npx @hexclave/cli@latest deploy
   \`\`\`
 
-  This pushes the config file's \`config\` export to the project (skip with \`--no-config-push\`), syncs the service definitions, then deploys EVERY defined service in dependency order (services connected via \`service(...)\` deploy after their dependencies; circular dependencies fail up front). It packages each service's root directory (respecting \`.gitignore\`/\`.dockerignore\`, always excluding \`node_modules\` and \`.git\`) and uploads it — the container image is built remotely, so Docker is not needed locally. It always targets production, never prompts, and WAITS for the remote builds — per service it prints the run id, build status, and final URL (if the service has one), and exits non-zero if any build fails (dependents of a failed service are skipped). A JSON summary of all services is printed to stdout.
+  This syncs the service definitions, then deploys EVERY defined service in dependency order (services connected via \`service(...)\` deploy after their dependencies; circular dependencies fail up front). It packages each service's root directory (respecting \`.gitignore\`/\`.dockerignore\`, always excluding \`node_modules\` and \`.git\`) and uploads it — the container image is built remotely, so Docker is not needed locally. It always targets production, never prompts, and WAITS for the remote builds — per service it prints the run id, build status, and final URL (if the service has one), and exits non-zero if any build fails (dependents of a failed service are skipped). A JSON summary of all services is printed to stdout.
 
-  Options: \`--service-id <id>\` (deploy just one service; its connections resolve against already-deployed services), \`--config-file <path>\` (default: auto-discover \`hexclave.config.ts\` in the current directory; a config file is required), \`--cloud-project-id <id>\` (default: the \`HEXCLAVE_PROJECT_ID\` env var), \`--no-config-push\`.
+  Options: \`--service-id <id>\` (deploy just one service; its connections resolve against already-deployed services), \`--deploy-file <path>\` (default: auto-discover \`hexclave.deploy.ts\` in the current directory; a deploy file is required), \`--cloud-project-id <id>\` (default: the \`HEXCLAVE_PROJECT_ID\` env var), \`--config-push\` (also push \`hexclave.config.ts\`'s \`config\` export; off by default, since several repositories can deploy into one project and each push replaces the whole config).
 
   GitHub Actions example:
 
@@ -158,7 +149,7 @@ export const deploymentsSkillSection = deindent`
 
   ## Local development
 
-  \`hexclave dev --config-file hexclave.config.ts --service-id web\` runs the service's \`devCommand\` with its env vars injected (plus the development-environment credentials) — services run directly on your machine during development, never in containers. Passing \`-- <command>\` instead (or additionally) overrides the devCommand.
+  \`hexclave dev --config-file hexclave.config.ts --service-id web\` (services come from \`hexclave.deploy.ts\` next to it, or \`--deploy-file <path>\`) runs the service's \`devCommand\` with its env vars injected (plus the development-environment credentials) — services run directly on your machine during development, never in containers. Passing \`-- <command>\` instead (or additionally) overrides the devCommand.
 
   ## Checking status and debugging failures
 

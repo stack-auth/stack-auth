@@ -9,7 +9,7 @@ import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Deploy service",
-    description: "Starts a deployment of a service from a previously uploaded source tarball. The service's STORED definition (as last synced from the config file's `services` export — sync first via PUT /deployments/services) is authoritative: connections are resolved server-side and secret env vars are filled from the project's stored secret values (Project Settings > Secrets), falling back to any `secret_defaults` sent with this request. Defaults are request-scoped and never stored. A secret with neither fails the deploy with the full list of keys that need a value in the dashboard. The request returns a run id once the runtime has accepted the spec; the container build continues remotely, so poll the run endpoint for its final status.",
+    description: "Starts a deployment of a service from a previously uploaded source tarball. The service's STORED definition (as last synced from the deploy file's `services` export — sync first via PUT /deployments/services) is authoritative: connections are resolved server-side and secret env vars are filled from the project's stored secret values (Project Settings > Secrets), falling back to any `secret_defaults` sent with this request. Defaults are request-scoped and never stored. A secret with neither fails the deploy with the full list of keys that need a value in the dashboard. The request returns a run id once the runtime has accepted the spec; the container build continues remotely, so poll the run endpoint for its final status.",
     tags: ["Deployments"],
     hidden: true,
   },
@@ -32,7 +32,7 @@ export const POST = createSmartRouteHandler({
       // to. Optional so a single service can be deployed directly through the
       // API without first creating a group; `hexclave deploy` always sends one.
       deployment_id: yupString().uuid().optional(),
-      // The `secret(key, default)` defaults from the config file, keyed by env
+      // The `secret(key, default)` defaults from the deploy file, keyed by env
       // var key. Request-scoped: used only to fill secrets that have no stored
       // value, and never written to the database.
       secret_defaults: deploymentSecretDefaultsSchema.optional(),
@@ -63,7 +63,7 @@ export const POST = createSmartRouteHandler({
     // Deploying one would run a container with no env vars and no port —
     // refuse until a sync stored the actual definition.
     if (row.definitionSyncedAt == null || row.definitionSyncId == null) {
-      throw new StatusError(400, `The deployment service ${JSON.stringify(params.service_id)} has no synced definition (it predates config-file-defined services). Add it to \`deployment.services\` in your hexclave.config.ts and run \`hexclave deploy\` with an up-to-date CLI.`);
+      throw new StatusError(400, `The deployment service ${JSON.stringify(params.service_id)} has no synced definition (it predates deploy-file-defined services). Add it to \`deployment.services\` in your hexclave.deploy.ts and run \`hexclave deploy\` with an up-to-date CLI.`);
     }
     if (row.definitionSyncId !== body.definition_sync_id) {
       throw new StatusError(409, `The deployment service ${JSON.stringify(params.service_id)} changed after this deploy synced its definitions. Another deploy is using a newer config; restart this deploy so its source and definition come from the same config revision.`);

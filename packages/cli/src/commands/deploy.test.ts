@@ -2,8 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { evaluateDeploymentConfig, type ServicesFunctionContext } from "../lib/deployment-config.js";
-import { collectPublicUrls, collectRequiredSecretKeys, deployService, resolveDeployConfigPath } from "./deploy.js";
+import { evaluateDeploymentConfig, resolveDeployFilePath, type ServicesFunctionContext } from "../lib/deployment-config.js";
+import { collectPublicUrls, collectRequiredSecretKeys, deployService, resolveConfigPushPath } from "./deploy.js";
 
 describe("deploy command helpers", () => {
   const tempDirs: string[] = [];
@@ -20,34 +20,40 @@ describe("deploy command helpers", () => {
     vi.unstubAllGlobals();
   });
 
-  it("prefers an explicit --config-file path", () => {
+  it("prefers an explicit --deploy-file path", () => {
     const dir = makeTempDir();
-    const configPath = path.join(dir, "custom.config.ts");
-    fs.writeFileSync(configPath, "export const config = {};");
-    expect(resolveDeployConfigPath("custom.config.ts", dir)).toBe(configPath);
+    const deployFilePath = path.join(dir, "custom.deploy.ts");
+    fs.writeFileSync(deployFilePath, "export const deployment = { services: {} };");
+    expect(resolveDeployFilePath("custom.deploy.ts", dir)).toBe(deployFilePath);
   });
 
-  it("errors when the explicit path doesn't exist", () => {
+  it("errors when the explicit deploy file doesn't exist", () => {
     const dir = makeTempDir();
-    expect(() => resolveDeployConfigPath("missing.config.ts", dir)).toThrow("Config file not found");
+    expect(() => resolveDeployFilePath("missing.deploy.ts", dir)).toThrow("Deploy file not found");
   });
 
-  it("auto-discovers hexclave.config.ts before stack.config.ts", () => {
+  it("auto-discovers hexclave.deploy.ts", () => {
     const dir = makeTempDir();
-    fs.writeFileSync(path.join(dir, "stack.config.ts"), "export const config = {};");
+    fs.writeFileSync(path.join(dir, "hexclave.deploy.ts"), "export const deployment = { services: {} };");
+    expect(resolveDeployFilePath(undefined, dir)).toBe(path.join(dir, "hexclave.deploy.ts"));
+  });
+
+  // The deploy file is a different document from hexclave.config.ts, so a
+  // project that has only the latter has nothing to deploy.
+  it("errors when no deploy file is found", () => {
+    const dir = makeTempDir();
     fs.writeFileSync(path.join(dir, "hexclave.config.ts"), "export const config = {};");
-    expect(resolveDeployConfigPath(undefined, dir)).toBe(path.join(dir, "hexclave.config.ts"));
+    expect(() => resolveDeployFilePath(undefined, dir)).toThrow("No deploy file found");
   });
 
-  it("falls back to stack.config.ts", () => {
+  it("resolves the config file for --config-push, and returns null when there is none", () => {
     const dir = makeTempDir();
+    expect(resolveConfigPushPath(undefined, dir)).toBe(null);
     fs.writeFileSync(path.join(dir, "stack.config.ts"), "export const config = {};");
-    expect(resolveDeployConfigPath(undefined, dir)).toBe(path.join(dir, "stack.config.ts"));
-  });
-
-  it("errors when no config file is found (a config file is required now)", () => {
-    const dir = makeTempDir();
-    expect(() => resolveDeployConfigPath(undefined, dir)).toThrow("No config file found");
+    expect(resolveConfigPushPath(undefined, dir)).toBe(path.join(dir, "stack.config.ts"));
+    fs.writeFileSync(path.join(dir, "hexclave.config.ts"), "export const config = {};");
+    expect(resolveConfigPushPath(undefined, dir)).toBe(path.join(dir, "hexclave.config.ts"));
+    expect(() => resolveConfigPushPath("missing.config.ts", dir)).toThrow("Config file not found");
   });
 
   it("keeps a ready deployment successful without a follow-up service lookup", async () => {
@@ -55,7 +61,7 @@ describe("deploy command helpers", () => {
     fs.writeFileSync(path.join(dir, "index.html"), "<h1>ready</h1>");
     fs.writeFileSync(path.join(dir, "Dockerfile"), "FROM nginx:alpine\n");
     const service = evaluateDeploymentConfig({
-      configPath: path.join(dir, "hexclave.config.ts"),
+      deployFilePath: path.join(dir, "hexclave.deploy.ts"),
       deploymentExport: { services: () => ({
         web: { type: "serverless", ports: [{ port: 3000, public: true }], dockerfilePath: "Dockerfile" },
       }) },
@@ -127,7 +133,7 @@ describe("deploy command helpers", () => {
 
   it("returns one final URL for each successfully deployed public service", () => {
     const services = evaluateDeploymentConfig({
-      configPath: path.join(os.tmpdir(), "hexclave.config.ts"),
+      deployFilePath: path.join(os.tmpdir(), "hexclave.deploy.ts"),
       deploymentExport: { services: () => ({
         web: { type: "serverless", ports: [{ port: 3000, public: true }] },
         worker: { type: "serverless", ports: [{ port: 3001 }] },
@@ -146,7 +152,7 @@ describe("deploy command helpers", () => {
     const dir = makeTempDir();
     fs.writeFileSync(path.join(dir, "index.html"), "<h1>no dockerfile</h1>");
     const service = evaluateDeploymentConfig({
-      configPath: path.join(dir, "hexclave.config.ts"),
+      deployFilePath: path.join(dir, "hexclave.deploy.ts"),
       deploymentExport: { services: () => ({
         web: { type: "serverless", ports: [{ port: 3000 }], dockerfilePath: "Dockerfile" },
       }) },
@@ -177,7 +183,7 @@ describe("deploy command helpers", () => {
     const dir = makeTempDir();
     fs.writeFileSync(path.join(dir, "Dockerfile"), "FROM nginx:alpine\n");
     const service = evaluateDeploymentConfig({
-      configPath: path.join(dir, "hexclave.config.ts"),
+      deployFilePath: path.join(dir, "hexclave.deploy.ts"),
       deploymentExport: { services: () => ({
         web: { type: "serverless", ports: [{ port: 3000 }] },
       }) },
@@ -209,7 +215,7 @@ describe("deploy command helpers", () => {
 
 describe("collectRequiredSecretKeys", () => {
   const servicesOf = (definition: (ctx: ServicesFunctionContext) => unknown) => [...evaluateDeploymentConfig({
-    configPath: path.join(os.tmpdir(), "hexclave.config.ts"),
+    deployFilePath: path.join(os.tmpdir(), "hexclave.deploy.ts"),
     deploymentExport: { services: definition },
     mode: "deploy",
   }).services.values()];

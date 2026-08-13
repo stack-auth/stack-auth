@@ -177,7 +177,7 @@ export function DeploymentsList({ project, openDeploymentId, onOpenDeployment, o
           <Typography type="h3" className="text-base font-semibold">No deployments yet</Typography>
           <Typography type="p" className="max-w-md text-sm text-muted-foreground">
             Define your services in the <code className="font-mono">deployment</code> export of{" "}
-            <code className="font-mono">hexclave.config.ts</code>, then run{" "}
+            <code className="font-mono">hexclave.deploy.ts</code>, then run{" "}
             <code className="font-mono">hexclave deploy</code>. Each deploy shows up here with the services it shipped.
           </Typography>
         </div>

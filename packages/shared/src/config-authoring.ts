@@ -39,12 +39,12 @@ export function defineHexclaveConfig(config: StrictStackConfig<HexclaveConfig>):
 }
 
 // ============================ deployments ============================
-// The author-facing shape of the config file's `deployment` export. These types
+// The author-facing shape of the deploy file's `deployment` export. These types
 // are camelCase and deliberately NOT the wire shape in ./deployments (which is
 // snake_case): the CLI evaluates this, validates it with precise per-field
 // errors, and serializes it. They exist so `export const deployment:
 // HexclaveDeploymentConfig = { ... }` gets completion and catches typos in the
-// editor — the CLI still re-validates everything at runtime, because the config
+// editor — the CLI still re-validates everything at runtime, because the deploy
 // file is arbitrary user TypeScript that may not be typechecked at all.
 
 /** The value of one env var: a literal, `null` to omit it, or a reference from the context object. */
@@ -159,7 +159,7 @@ type HexclaveServiceBase = {
    * "serverless" with `minInstances` above zero) or it will never run.
    */
   ports: HexclavePort[],
-  /** Source directory, relative to the config file. Defaults to the config file's own directory. */
+  /** Source directory, relative to the deploy file. Defaults to the deploy file's own directory. */
   rootDirectory?: string,
   /** Dockerfile to build, relative to `rootDirectory`. Omit to auto-detect the build with Railpack. */
   dockerfilePath?: string,
@@ -207,8 +207,12 @@ export type HexclaveServerlessService = HexclaveServiceBase & {
 export type HexclaveService = HexclaveServerService | HexclaveServerlessService;
 
 /**
- * The config file's `deployment` export — the services deployed together by one
- * `hexclave deploy`.
+ * The deploy file's (hexclave.deploy.ts) `deployment` export — the services
+ * deployed together by one `hexclave deploy`.
+ *
+ * Deployments live in their own file rather than in hexclave.config.ts, so that
+ * one Hexclave project can be deployed from several repositories, each shipping
+ * the services it owns.
  *
  * `services` is usually a function so it can reach secrets, connections, and
  * the managed backend's outputs; a plain record is accepted when none of those

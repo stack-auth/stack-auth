@@ -16,7 +16,7 @@ import {
 import { STATUS_META, getAccentClasses } from "./variants";
 
 // Note: service definitions (name, build config, env vars) are read-only here
-// — they come from the config file's `services` export and are synced by
+// — they come from the deploy file's `services` export and are synced by
 // `hexclave deploy`. Domains are operational state and stay editable.
 
 type ServiceDetailPaneProps = {

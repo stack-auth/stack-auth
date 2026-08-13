@@ -2,12 +2,12 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { collectSecretDefaults, computeDeploymentLevels, evaluateDeploymentConfig, resolveDevEnv, type ServicesFunctionContext } from "./deployment-config.js";
 
-const CONFIG_PATH = path.join(path.sep, "repo", "hexclave.config.ts");
+const CONFIG_PATH = path.join(path.sep, "repo", "hexclave.deploy.ts");
 
 // Most tests care about the services, not the `deployment` wrapper, so they
 // pass the services member alone and this puts it back in the envelope.
 function evaluate(servicesExport: unknown, mode: "deploy" | "dev" = "deploy") {
-  return evaluateDeploymentConfig({ configPath: CONFIG_PATH, deploymentExport: { services: servicesExport }, mode });
+  return evaluateDeploymentConfig({ deployFilePath: CONFIG_PATH, deploymentExport: { services: servicesExport }, mode });
 }
 
 describe("evaluateDeploymentConfig (deploy mode)", () => {
@@ -313,8 +313,8 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     expect(() => evaluate(() => ({ "-bad": { type: "serverless", ports: [{ port: 3000 }] } }))).toThrow("Invalid service id");
   });
 
-  it("rejects root directories outside the config directory", () => {
-    expect(() => evaluate(() => ({ web: { type: "serverless", ports: [{ port: 3000 }], rootDirectory: "../outside" } }))).toThrow("outside the directory containing the config file");
+  it("rejects root directories outside the deploy file's directory", () => {
+    expect(() => evaluate(() => ({ web: { type: "serverless", ports: [{ port: 3000 }], rootDirectory: "../outside" } }))).toThrow("outside the directory containing the deploy file");
   });
 
   it("omits dockerfile_path when dockerfilePath is not set (Railpack auto-detection)", () => {
@@ -425,7 +425,7 @@ describe("service types", () => {
 describe("the deployment envelope", () => {
   it("accepts a plain services record with no context function", () => {
     const { services } = evaluateDeploymentConfig({
-      configPath: CONFIG_PATH,
+      deployFilePath: CONFIG_PATH,
       deploymentExport: { services: { web: { type: "serverless", ports: [{ port: 3000 }] } } },
       mode: "deploy",
     });
@@ -434,7 +434,7 @@ describe("the deployment envelope", () => {
 
   it("rejects a missing or malformed deployment export", () => {
     const evaluateExport = (deploymentExport: unknown) =>
-      () => evaluateDeploymentConfig({ configPath: CONFIG_PATH, deploymentExport, mode: "deploy" });
+      () => evaluateDeploymentConfig({ deployFilePath: CONFIG_PATH, deploymentExport, mode: "deploy" });
     expect(evaluateExport(undefined)).toThrow("has no `deployment` export");
     expect(evaluateExport({})).toThrow("has no `services`");
     expect(evaluateExport({ services: {}, extra: 1 })).toThrow('unknown field "extra"');

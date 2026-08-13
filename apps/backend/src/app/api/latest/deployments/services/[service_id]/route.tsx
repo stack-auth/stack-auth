@@ -4,7 +4,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
 // Note: services are read-only through this API. Definitions are synced from
-// the config file's `services` export by `hexclave deploy` (see the collection
+// the deploy file's `services` export by `hexclave deploy` (see the collection
 // route's PUT); there is deliberately no PATCH/DELETE — the config file is the
 // single source of truth, and removal/cleanup is handled out-of-band.
 

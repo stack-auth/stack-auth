@@ -11,7 +11,7 @@ import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLoc
 import { CliError, errorMessage } from "../lib/errors.js";
 import { DASHBOARD_PORT_ENV_VAR, dashboardPort, dashboardRequest, dashboardUrl, createRemoteDevelopmentEnvironmentSession, type DashboardSessionResponse } from "../lib/local-dashboard.js";
 import { startProgress } from "../lib/progress.js";
-import { evaluateDeploymentConfig, importConfigModule, resolveDevEnv, type EvaluatedService } from "../lib/deployment-config.js";
+import { evaluateDeploymentConfig, importDeployModule, resolveDeployFilePath, resolveDevEnv, type EvaluatedService } from "../lib/deployment-config.js";
 
 type ChildCommand = {
   command: string,
@@ -23,6 +23,7 @@ type ChildCommand = {
 
 type DevOptions = {
   configFile?: string,
+  deployFile?: string,
   serviceId?: string,
 };
 
@@ -929,9 +930,10 @@ export function registerDevCommand(program: Command) {
   program
     .command("dev")
     .usage("--config-file <path> [--service-id <id>] [-- <command> [args...]]")
-    .description("Run a command with Hexclave development-environment credentials. With --service-id, the service's devCommand from the config file's `deployment.services` is run in the service's rootDirectory and its env vars are injected (secrets resolve to their default values; `service()` returns null, so guard connection values with isDev — reading an output off it, e.g. `service(\"api\").url`, throws).")
+    .description("Run a command with Hexclave development-environment credentials. With --service-id, the service's devCommand from the deploy file's `deployment.services` is run in the service's rootDirectory and its env vars are injected (secrets resolve to their default values; `service()` returns null, so guard connection values with isDev — reading an output off it, e.g. `service(\"api\").url`, throws).")
     .requiredOption("--config-file <path>", "Path to hexclave.config.ts")
-    .option("--service-id <id>", "Run the devCommand of this service from the config file's `deployment.services`, in its rootDirectory and with the service's env vars injected")
+    .option("--service-id <id>", "Run the devCommand of this service from the deploy file's `deployment.services`, in its rootDirectory and with the service's env vars injected")
+    .option("--deploy-file <path>", "Path to the deploy file for --service-id (default: auto-discover hexclave.deploy.ts next to the config file)")
     .argument("[command...]", "Command and arguments to run after -- (overrides the service's devCommand)")
     .action(async (commandArgs: string[], opts: DevOptions) => {
       if (opts.configFile == null) {
@@ -947,21 +949,26 @@ export function registerDevCommand(program: Command) {
       // mistakes fail fast (and without a half-started session).
       let devService: EvaluatedService | undefined;
       if (opts.serviceId != null) {
-        const configModule = await importConfigModule(configFilePath);
+        // Services live in the DEPLOY file, not the config file: --config-file
+        // is what the development-environment session is keyed on, and the two
+        // are separate documents. Default to the deploy file sitting next to
+        // the config file, which is where a single-repo project keeps it.
+        const deployFilePath = resolveDeployFilePath(opts.deployFile, dirname(configFilePath));
+        const deployModule = await importDeployModule(deployFilePath);
         const { services } = evaluateDeploymentConfig({
-          configPath: configFilePath,
-          deploymentExport: configModule.deployment,
+          deployFilePath,
+          deploymentExport: deployModule.deployment,
           mode: "dev",
         });
         devService = services.get(opts.serviceId);
         if (devService == null) {
-          throw new CliError(`No service named ${JSON.stringify(opts.serviceId)} in the config file's deployment.services. Available services: ${[...services.keys()].join(", ")}.`);
+          throw new CliError(`No service named ${JSON.stringify(opts.serviceId)} in the deploy file's deployment.services. Available services: ${[...services.keys()].join(", ")}.`);
         }
         // A BLANK devCommand counts as missing. `shellChildCommand("")` runs `sh -c ""`,
         // which exits 0 immediately — so an empty string would report a successful dev
         // session that never started the service, instead of naming the actual problem.
         if (commandArgs.length === 0 && (devService.devCommand == null || devService.devCommand.trim() === "")) {
-          throw new CliError(`The service ${JSON.stringify(opts.serviceId)} has no devCommand in the config file's deployment.services. Add one (e.g. devCommand: "npm run dev"), or pass a command after --.`);
+          throw new CliError(`The service ${JSON.stringify(opts.serviceId)} has no devCommand in the deploy file's deployment.services. Add one (e.g. devCommand: "npm run dev"), or pass a command after --.`);
         }
         // The service's rootDirectory becomes the child's cwd below, so check it
         // HERE rather than letting spawn fail: spawn reports a bad cwd as an

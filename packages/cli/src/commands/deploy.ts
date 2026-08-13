@@ -6,11 +6,12 @@ import { getInternalUser } from "../lib/app.js";
 import { isProjectAuthWithSecretServerKey, resolveAuth, resolveProjectId, type ProjectAuth } from "../lib/auth.js";
 import { AuthError, CliError, errorMessage } from "../lib/errors.js";
 import { packageSourceDirectory } from "../lib/source-packaging.js";
-import { collectSecretDefaults, computeDeploymentLevels, evaluateDeploymentConfig, importConfigModule, type EvaluatedService } from "../lib/deployment-config.js";
+import { collectSecretDefaults, computeDeploymentLevels, evaluateDeploymentConfig, importConfigModule, importDeployModule, resolveDeployFilePath, type EvaluatedService } from "../lib/deployment-config.js";
 import { buildConfigPushSource, parseConfigOverride, pushConfigToProject } from "./config-file.js";
 
-// The names checked (in order) when --config-file is not passed; same
-// preference order as `hexclave config push`'s pull-side resolution.
+// The names checked (in order) when --config-file is not passed with
+// --config-push; same preference order as `hexclave config push`'s pull-side
+// resolution.
 const CONFIG_FILE_CANDIDATES = ["hexclave.config.ts", "hexclave.config.js", "stack.config.ts", "stack.config.js"];
 
 const RUN_POLL_INTERVAL_MS = 3_000;
@@ -21,19 +22,22 @@ const MAX_CONSECUTIVE_POLL_FAILURES = 5;
 
 export type DeployOptions = {
   serviceId?: string,
+  deployFile?: string,
   configFile?: string,
   cloudProjectId?: string,
-  // commander's --no-config-push flag: true unless --no-config-push is passed.
-  configPush: boolean,
+  // Opt-in: pushing the project's configuration is a separate concern from
+  // deploying this repository's services, and several repositories can deploy
+  // into one project — so a deploy must not silently publish whichever config
+  // file happens to sit next to the deploy file.
+  configPush?: boolean,
 };
 
 /**
- * Resolves the config file path: --config-file wins (and must exist);
- * otherwise the first existing candidate in cwd. Unlike the pre-services CLI,
- * a config file is REQUIRED — service definitions only exist in its `deployment`
- * export. Exported for unit tests.
+ * Resolves the project config file for `--config-push`: --config-file wins (and
+ * must exist); otherwise the first existing candidate in cwd. Returns null when
+ * nothing was passed and no candidate exists. Exported for unit tests.
  */
-export function resolveDeployConfigPath(configOption: string | undefined, cwd: string): string {
+export function resolveConfigPushPath(configOption: string | undefined, cwd: string): string | null {
   if (configOption != null && configOption !== "") {
     const resolved = path.resolve(cwd, configOption);
     if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
@@ -47,7 +51,7 @@ export function resolveDeployConfigPath(configOption: string | undefined, cwd: s
       return resolved;
     }
   }
-  throw new CliError(`No config file found in ${cwd}. \`hexclave deploy\` deploys the services defined by the \`deployment\` export of your hexclave.config.ts — create one, or pass --config-file <path>.`);
+  return null;
 }
 
 /**
@@ -344,21 +348,22 @@ function collectTransitiveDependents(failedServiceId: string, services: Map<stri
 export function registerDeployCommand(program: Command) {
   program
     .command("deploy")
-    .description("Deploy the services defined by the `deployment` export of your hexclave.config.ts. Pushes the config file to the project (unless --no-config-push), syncs the service definitions, then deploys every service in dependency order and waits for the remote builds to finish.")
+    .description("Deploy the services defined by the `deployment` export of your hexclave.deploy.ts. Syncs the service definitions, then deploys every service in dependency order and waits for the remote builds to finish.")
     .option("--service-id <id>", "Deploy only this service (its connections resolve against already-deployed services)")
-    .option("--config-file <path>", "Path to the config file (default: auto-discover hexclave.config.ts in the current directory)")
+    .option("--deploy-file <path>", "Path to the deploy file (default: auto-discover hexclave.deploy.ts in the current directory)")
+    .option("--config-push", "Also push the project config file's `config` export to the project before deploying")
+    .option("--config-file <path>", "Path to the project config file for --config-push (default: auto-discover hexclave.config.ts in the current directory)")
     .option("--cloud-project-id <id>", "Hexclave project ID to deploy to (defaults to the HEXCLAVE_PROJECT_ID env var)")
-    .option("--no-config-push", "Skip pushing the config file's `config` export to the project before deploying")
     .addHelpText("after", "\nAuthentication: uses HEXCLAVE_SECRET_SERVER_KEY if set (recommended for CI), otherwise your `hexclave login` session.\nSecrets: values for secret() env vars are read from the dashboard (Project Settings > Secrets); the deploy fails up front and lists every secret that still needs a value there.")
     .action(async (opts: DeployOptions) => {
       const auth = resolveAuth(resolveProjectId(opts.cloudProjectId));
       const authHeaders = await buildAuthHeadersFactory(auth);
 
-      const configPath = resolveDeployConfigPath(opts.configFile, process.cwd());
-      const configModule = await importConfigModule(configPath);
+      const deployFilePath = resolveDeployFilePath(opts.deployFile, process.cwd());
+      const deployModule = await importDeployModule(deployFilePath);
       const { services } = evaluateDeploymentConfig({
-        configPath,
-        deploymentExport: configModule.deployment,
+        deployFilePath,
+        deploymentExport: deployModule.deployment,
         mode: "deploy",
       });
 
@@ -369,7 +374,7 @@ export function registerDeployCommand(program: Command) {
       if (opts.serviceId != null) {
         const service = services.get(opts.serviceId);
         if (service == null) {
-          throw new CliError(`No service named ${JSON.stringify(opts.serviceId)} in the config file's deployment.services. Available services: ${[...services.keys()].join(", ")}.`);
+          throw new CliError(`No service named ${JSON.stringify(opts.serviceId)} in the deploy file's deployment.services. Available services: ${[...services.keys()].join(", ")}.`);
         }
         levels = [[opts.serviceId]];
       } else {
@@ -405,24 +410,30 @@ export function registerDeployCommand(program: Command) {
         }
       }
 
-      // Config push (default on): the config file is the source of truth for
-      // the project's configuration, so deploying also publishes it.
-      if (opts.configPush) {
-        if (configModule.config === undefined) {
-          console.error("Note: the config file has no `config` export, so there is no project config to push. (Pass --no-config-push to silence this.)");
-        } else {
-          const config = parseConfigOverride(configModule.config);
-          if (config == null) {
-            throw new CliError(`The \`config\` export of ${configPath} must be a plain object (or "show-onboarding"). Fix it, or pass --no-config-push to deploy without pushing the config.`);
-          }
-          console.error("Pushing config...");
-          // The GitHub-Actions auto-detection inside buildConfigPushSource
-          // records this path verbatim as the repo-relative config_file_path,
-          // so pass a cwd-relative posix path, not the resolved absolute one
-          // (which would bake the runner's filesystem layout into the source).
-          const relativeConfigPath = path.relative(process.cwd(), configPath).split(path.sep).join("/");
-          await pushConfigToProject(auth, config, buildConfigPushSource(relativeConfigPath, {}));
+      // Config push is OPT-IN. A project can be deployed from several
+      // repositories, and each push replaces the project's whole configuration —
+      // so a deploy that published it by default would let any of those
+      // repositories silently overwrite the others' config with its own.
+      if (opts.configPush === true) {
+        const configPath = resolveConfigPushPath(opts.configFile, process.cwd());
+        if (configPath == null) {
+          throw new CliError(`--config-push was passed, but no config file was found in ${process.cwd()} (looked for ${CONFIG_FILE_CANDIDATES.join(", ")}). Pass --config-file <path>, or drop --config-push to deploy without publishing the project config.`);
         }
+        const configModule = await importConfigModule(configPath);
+        if (configModule.config === undefined) {
+          throw new CliError(`--config-push was passed, but ${configPath} has no \`config\` export. Add one, or drop --config-push.`);
+        }
+        const config = parseConfigOverride(configModule.config);
+        if (config == null) {
+          throw new CliError(`The \`config\` export of ${configPath} must be a plain object (or "show-onboarding"). Fix it, or drop --config-push to deploy without pushing the config.`);
+        }
+        console.error("Pushing config...");
+        // The GitHub-Actions auto-detection inside buildConfigPushSource
+        // records this path verbatim as the repo-relative config_file_path,
+        // so pass a cwd-relative posix path, not the resolved absolute one
+        // (which would bake the runner's filesystem layout into the source).
+        const relativeConfigPath = path.relative(process.cwd(), configPath).split(path.sep).join("/");
+        await pushConfigToProject(auth, config, buildConfigPushSource(relativeConfigPath, {}));
       }
 
       // Sync ALL definitions (even for a --service-id deploy) so the dashboard
@@ -456,7 +467,7 @@ export function registerDeployCommand(program: Command) {
       // Deploy level by level: services in one level are independent and run
       // concurrently; a failure skips every transitive dependent but lets
       // independent branches finish.
-      const ignoreRootDirectory = path.dirname(configPath);
+      const ignoreRootDirectory = path.dirname(deployFilePath);
       const results = new Map<string, ServiceDeployResult>();
       const skipped = new Set<string>();
       // try/finally around the whole deploy: the deployment row was created

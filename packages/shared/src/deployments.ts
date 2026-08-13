@@ -1,8 +1,8 @@
 // Shared shapes for the Deployments app. Service definitions used to live in
 // the branch config (`deployments-alpha.services`); they now live in the
 // backend database and are synced from the `services` export of
-// hexclave.config.ts by `hexclave deploy`. This module is the single source of
-// truth for the definition shape so the CLI (which evaluates the config file),
+// hexclave.deploy.ts by `hexclave deploy`. This module is the single source of
+// truth for the definition shape so the CLI (which evaluates the deploy file),
 // the backend (which stores and deploys definitions), and the SDK (which reads
 // them) cannot drift.
 //
@@ -24,7 +24,7 @@ export const DEPLOYMENT_ENV_VAR_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
 // The optional `:<port>` suffix belongs to `internalUrl`, which names the port
 // it wants: `api.internalUrl:9090`. It is part of the reference rather than a
 // separate field because references are single opaque strings everywhere they
-// travel — config file, stored definition, and the runtime's own env refs.
+// travel — deploy file, stored definition, and the runtime's own env refs.
 export const DEPLOYMENT_CONNECTION_VALUE_REGEX = /^[a-zA-Z0-9_-]+\.[A-Za-z0-9_]+(?::[0-9]{1,5})?$/;
 
 /**
@@ -154,7 +154,7 @@ export type DeploymentServiceDefinition = {
   // fields are rejected on it unless they spell out exactly that.
   min_instances?: number | undefined,
   max_instances?: number | undefined,
-  // Relative to the directory containing hexclave.config.ts. Only used
+  // Relative to the directory containing hexclave.deploy.ts. Only used
   // client-side (it decides what `hexclave deploy` packages), but stored so
   // the dashboard can display it.
   root_directory?: string | undefined,
@@ -287,7 +287,7 @@ export const deploymentEnvVarSchema = yupObject({
 
 // Fallback values for a service's `secret()` env vars, sent with a DEPLOY
 // request and never stored: they are the second argument of `secret(key,
-// default)` in the config file's `services` export, which is a purely
+// default)` in the deploy file's `services` export, which is a purely
 // author-side convenience. Keyed by ENV VAR key (not secret key) because
 // that's where the default is written — the same secret may be referenced by
 // two env vars with different defaults, and the dashboard must never learn
@@ -431,14 +431,14 @@ export const deploymentServiceDefinitionSchema = yupObject({
         && value.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..")
       )),
   // `devCommand` is a config-file-only field: `hexclave dev --service-id`
-  // reads it straight out of the local config file, and the backend never acts
+  // reads it straight out of the local deploy file, and the backend never acts
   // on it, so it is never sent and never stored. Rejected rather than simply
   // absent because yupRecord re-validates its values in a fresh validation
   // whose path no longer starts with "body" — the route handler's
   // unknown-property check therefore does NOT reach inside `services`, so an
   // omitted field would be silently dropped instead of reported (same reason
   // `default_value` below is spelled out).
-  dev_command: yupString().oneOf([undefined], "deployment service definitions must not carry a dev_command — the dev command stays in your config file and is never sent to the server (upgrade your Hexclave CLI if this came from `hexclave deploy`)"),
+  dev_command: yupString().oneOf([undefined], "deployment service definitions must not carry a dev_command — the dev command stays in your deploy file and is never sent to the server (upgrade your Hexclave CLI if this came from `hexclave deploy`)"),
   env: yupRecord(
     yupString().matches(DEPLOYMENT_ENV_VAR_KEY_REGEX, "deployment env var keys must start with a letter or underscore and contain only letters, digits, and underscores"),
     deploymentEnvVarSchema.defined(),
@@ -662,7 +662,7 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects invalid shap
 });
 
 import.meta.vitest?.test("a service's dev command is not part of its definition", async ({ expect }) => {
-  // The dev command never leaves the config file (see the schema comment), so
+  // The dev command never leaves the deploy file (see the schema comment), so
   // a client sending one is out of date rather than merely verbose — say so
   // instead of dropping the field on the floor.
   await expect(deploymentServiceDefinitionSchema.validate({

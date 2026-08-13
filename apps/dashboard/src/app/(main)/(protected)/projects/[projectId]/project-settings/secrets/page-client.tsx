@@ -1,7 +1,7 @@
 "use client";
 
 // The project's write-only secret store. Deployments are its only consumer
-// today: `secret()` env vars in the config file's `services` export are filled
+// today: `secret()` env vars in the deploy file's `services` export are filled
 // from these at deploy time. Values can be set, overwritten, and deleted here,
 // but never read back — the API doesn't return them, so this page only shows
 // which keys have a value.
@@ -193,7 +193,7 @@ export default function PageClient() {
           </div>
         )}
         {rows != null && rows.length === 0 && (
-          <DesignAlert variant="info" description="No secrets set. Set a value for every secret() key used by the services export of your hexclave.config.ts — hexclave deploy fails and lists any that are still missing." />
+          <DesignAlert variant="info" description="No secrets set. Set a value for every secret() key used by the services export of your hexclave.deploy.ts — hexclave deploy fails and lists any that are still missing." />
         )}
         {rows != null && rows.length > 0 && (
           <div className="divide-y divide-border/60">

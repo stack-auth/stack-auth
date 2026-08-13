@@ -435,8 +435,10 @@ describe("Stack CLI", () => {
       fs.writeFileSync(path.join(deployDir, "web", "Dockerfile"), "FROM nginx:alpine\n");
       fs.mkdirSync(path.join(deployDir, "db"));
       fs.writeFileSync(path.join(deployDir, "db", "index.html"), "<h1>db</h1>");
-      const writeConfigFile = (allowClientTeamCreation: boolean) => fs.writeFileSync(path.join(deployDir, "hexclave.config.ts"), [
-        `export const config = { teams: { allowClientTeamCreation: ${allowClientTeamCreation} } };`,
+      // Two files: the project config, and the deploy file holding the services.
+      const writeConfigFile = (allowClientTeamCreation: boolean) => fs.writeFileSync(path.join(deployDir, "hexclave.config.ts"),
+        `export const config = { teams: { allowClientTeamCreation: ${allowClientTeamCreation} } };\n`);
+      fs.writeFileSync(path.join(deployDir, "hexclave.deploy.ts"), [
         "export const deployment = {",
         "  services: ({ isDev, secret, service, hexclave }: any) => ({",
         "  web: {",
@@ -458,7 +460,7 @@ describe("Stack CLI", () => {
       ].join("\n"));
       writeConfigFile(true);
       const { stdout, stderr, exitCode } = await runCli(
-        ["deploy", "--cloud-project-id", createdProjectId, "--config-file", path.join(deployDir, "hexclave.config.ts")],
+        ["deploy", "--cloud-project-id", createdProjectId, "--deploy-file", path.join(deployDir, "hexclave.deploy.ts"), "--config-push"],
         {},
         deployDir,
         90_000,
@@ -504,7 +506,7 @@ describe("Stack CLI", () => {
 
       // A secret with NO default and no stored value fails before anything is
       // packaged, naming every key that needs a dashboard value.
-      fs.writeFileSync(path.join(deployDir, "missing-secret.config.ts"), [
+      fs.writeFileSync(path.join(deployDir, "missing-secret.deploy.ts"), [
         "export const deployment = {",
         "  services: ({ secret }: any) => ({",
         '    web: { type: "serverless", ports: [{ port: 3000 }], rootDirectory: "./web", env: { A: secret("NEEDS_A_VALUE"), B: secret("ALSO_NEEDED") } },',
@@ -513,7 +515,7 @@ describe("Stack CLI", () => {
         "",
       ].join("\n"));
       const missingSecretRes = await runCli(
-        ["deploy", "--cloud-project-id", createdProjectId, "--config-file", path.join(deployDir, "missing-secret.config.ts"), "--no-config-push"],
+        ["deploy", "--cloud-project-id", createdProjectId, "--deploy-file", path.join(deployDir, "missing-secret.deploy.ts")],
         {},
         deployDir,
       );
@@ -522,7 +524,7 @@ describe("Stack CLI", () => {
       expect(missingSecretRes.stderr).toContain("NEEDS_A_VALUE");
       expect(missingSecretRes.stderr).toContain("Project Settings > Secrets");
 
-      // The config export was pushed to the branch config by default.
+      // The config export was pushed because --config-push was passed.
       const readBranchConfig = async () => {
         const configRes = await runCli([
           "exec", "--cloud-project-id", createdProjectId,
@@ -535,11 +537,11 @@ describe("Stack CLI", () => {
       };
       expect(await readBranchConfig()).toMatchObject({ teams: { allowClientTeamCreation: true } });
 
-      // --service-id deploys just that service, and --no-config-push leaves
-      // the (changed) config export unpushed.
+      // --service-id deploys just that service, and a deploy without
+      // --config-push leaves the (changed) config export unpushed.
       writeConfigFile(false);
       const singleRun = await runCli(
-        ["deploy", "--cloud-project-id", createdProjectId, "--config-file", path.join(deployDir, "hexclave.config.ts"), "--service-id", "db", "--no-config-push"],
+        ["deploy", "--cloud-project-id", createdProjectId, "--deploy-file", path.join(deployDir, "hexclave.deploy.ts"), "--service-id", "db"],
         {},
         deployDir,
         90_000,

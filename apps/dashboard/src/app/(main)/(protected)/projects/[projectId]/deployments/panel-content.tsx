@@ -126,7 +126,7 @@ function CodeSnippet({ code }: { code: string }) {
 
 function DeployCodeHint({ service, project }: { service: BoardService, project: AdminProject }) {
   const deployCommands = [
-    "# from the directory containing your hexclave.config.ts",
+    "# from the directory containing your hexclave.deploy.ts",
     "npx @hexclave/cli@latest login",
     `npx @hexclave/cli@latest deploy --service-id ${service.id} --cloud-project-id ${project.id}`,
   ].join("\n");
@@ -138,7 +138,7 @@ function DeployCodeHint({ service, project }: { service: BoardService, project: 
         Deploy your code
       </div>
       <p className="text-xs text-muted-foreground">
-        This service has no deployment yet. Deploy it with the Hexclave CLI — its configuration comes from the <span className="font-mono">services</span> member of the <span className="font-mono">deployment</span> export of your <span className="font-mono">hexclave.config.ts</span> (omit <span className="font-mono">--service-id</span> to deploy every service):
+        This service has no deployment yet. Deploy it with the Hexclave CLI — its configuration comes from the <span className="font-mono">services</span> member of the <span className="font-mono">deployment</span> export of your <span className="font-mono">hexclave.deploy.ts</span> (omit <span className="font-mono">--service-id</span> to deploy every service):
       </p>
       <CodeSnippet code={deployCommands} />
     </div>
@@ -211,7 +211,7 @@ const ENV_VAR_TYPE_LABELS = new Map<EnvVar["type"], string>([
 ]);
 
 // Read-only on purpose: env var definitions come from the `services` export of
-// hexclave.config.ts and are synced by `hexclave deploy` — the dashboard only
+// hexclave.deploy.ts and are synced by `hexclave deploy` — the dashboard only
 // displays them. Secret VALUES are entered under Project Settings > Secrets.
 export function VariablesContent({ service, services, isHexclave }: {
   service: BoardService,
@@ -231,12 +231,12 @@ export function VariablesContent({ service, services, isHexclave }: {
   return (
     <div className="h-full space-y-3 overflow-y-auto p-4">
       <p className="text-[11px] text-muted-foreground">
-        Variables are defined in the <span className="font-mono">services</span> member of the <span className="font-mono">deployment</span> export of your <span className="font-mono">hexclave.config.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. Secret values are entered under Project Settings &gt; Secrets.
+        Variables are defined in the <span className="font-mono">services</span> member of the <span className="font-mono">deployment</span> export of your <span className="font-mono">hexclave.deploy.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. Secret values are entered under Project Settings &gt; Secrets.
       </p>
 
       {service.envVars.length === 0 && (
         <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
-          No variables. Add them to the service&apos;s <span className="font-mono">env</span> in your config file, then deploy.
+          No variables. Add them to the service&apos;s <span className="font-mono">env</span> in your deploy file, then deploy.
         </div>
       )}
 
@@ -652,7 +652,7 @@ export function DomainsContent({ service, project, isHexclave, refresh }: {
 // -- Settings (build config + danger zone) ----------------------------------
 
 // Read-only on purpose (like the Variables tab): build settings come from the
-// `services` export of hexclave.config.ts and are synced by `hexclave deploy`.
+// `services` export of hexclave.deploy.ts and are synced by `hexclave deploy`.
 export function SettingsContent({ service, isHexclave }: {
   service: BoardService,
   isHexclave: boolean,
@@ -695,7 +695,7 @@ export function SettingsContent({ service, isHexclave }: {
       <div className="space-y-3">
         <SectionLabel>Container</SectionLabel>
         <p className="text-[11px] text-muted-foreground">
-          Container settings are defined in the <span className="font-mono">services</span> member of the <span className="font-mono">deployment</span> export of your <span className="font-mono">hexclave.config.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. The image is built from the service&apos;s Dockerfile when <span className="font-mono">dockerfilePath</span> is set, and auto-detected with Railpack otherwise.
+          Container settings are defined in the <span className="font-mono">services</span> member of the <span className="font-mono">deployment</span> export of your <span className="font-mono">hexclave.deploy.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. The image is built from the service&apos;s Dockerfile when <span className="font-mono">dockerfilePath</span> is set, and auto-detected with Railpack otherwise.
         </p>
         {fields.map((field) => (
           <div key={field.label} className="space-y-1.5">

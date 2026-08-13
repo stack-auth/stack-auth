@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 export const GET = createSmartRouteHandler({
   metadata: {
     summary: "List deployment services",
-    description: "Lists all deployment services as last synced from the config file's `services` export, merged with their operational state (deploy status, env vars, domains).",
+    description: "Lists all deployment services as last synced from the deploy file's `services` export, merged with their operational state (deploy status, env vars, domains).",
     tags: ["Deployments"],
     hidden: true,
   },
@@ -45,7 +45,7 @@ export const GET = createSmartRouteHandler({
 export const PUT = createSmartRouteHandler({
   metadata: {
     summary: "Sync deployment service definitions",
-    description: "Upserts the service definitions evaluated from the config file's `services` export. Called by `hexclave deploy` before deploying. Additive: services absent from the request keep their existing rows (removal/cleanup is deliberately out of scope for now).",
+    description: "Upserts the service definitions evaluated from the deploy file's `services` export. Called by `hexclave deploy` before deploying. Additive: services absent from the request keep their existing rows (removal/cleanup is deliberately out of scope for now).",
     tags: ["Deployments"],
     hidden: true,
   },
@@ -72,7 +72,7 @@ export const PUT = createSmartRouteHandler({
   }),
   handler: async ({ auth, body }) => {
     if (Object.keys(body.services).length === 0) {
-      throw new StatusError(400, "The services record must contain at least one service. (Nothing to sync — the config file's `services` export is empty.)");
+      throw new StatusError(400, "The services record must contain at least one service. (Nothing to sync — the deploy file's `services` export is empty.)");
     }
     await assertMinInstancesAllowedByPlan(auth.tenancy, body.services);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
