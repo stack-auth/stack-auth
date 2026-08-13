@@ -510,7 +510,12 @@ export function declareBasePiledriverDatabase(lowLevelDb: LowLevelDatabase, opti
                 childBranch = stats === undefined ? undefined : serializationBranchStatsByKey(stats, childBranchKey);
                 childBranchDetermined = keyPath.length >= 3;
               }
-              result[k] = build(v, childBranch, childBranchKey, childBranchDetermined);
+              Object.defineProperty(result, k, {
+                value: build(v, childBranch, childBranchKey, childBranchDetermined),
+                enumerable: true,
+                configurable: true,
+                writable: true,
+              });
               if (!branchDetermined) keyPath.pop();
             }
             objectPath.delete(node);
@@ -599,7 +604,12 @@ export function declareBasePiledriverDatabase(lowLevelDb: LowLevelDatabase, opti
         } else {
           const result: Record<string, PiledriverObject> = {};
           for (const [k, v] of Object.entries(jsonableObject)) {
-            result[k] = deserializePiledriverObjectFromJsonableObject(v, enclosingSeq, seqs);
+            Object.defineProperty(result, k, {
+              value: deserializePiledriverObjectFromJsonableObject(v, enclosingSeq, seqs),
+              enumerable: true,
+              configurable: true,
+              writable: true,
+            });
           }
           return result;
         }

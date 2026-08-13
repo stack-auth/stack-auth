@@ -19,6 +19,9 @@
  * repo (which the cross-version CI job relies on when running against the base branch).
  */
 import { decodeBase64, encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 import { DatabaseSeq } from "../../index.js";
 import { LowLevelDatabase, LowLevelDatabaseDebugSnapshot, LowLevelKvDump, LowLevelKvStore } from "../../low-level/index.js";
 import { isPiledriverHeapObjectSymbol, type PiledriverDatabase, type PiledriverObject } from "../../piledriver/index.js";
@@ -26,15 +29,21 @@ import { BulldozerDatabase, declareBulldozerDatabase } from "../index.js";
 import { exampleFungibleLedgerMigrations } from "../example-schema.js";
 
 async function declareFixturePiledriverDatabase(lowLevel: LowLevelDatabase): Promise<PiledriverDatabase> {
-  let implementation: Record<string, unknown>;
-  try {
-    implementation = await import("../../piledriver/implementations/base.js");
-  } catch {
-    implementation = await import("../../piledriver/index.js");
+  // The compat workflow copies this file verbatim onto the base checkout but only overlays fixture
+  // directories. Remove this shim once the base branch contains the piledriver implementation split.
+  const fixtureDirectory = dirname(fileURLToPath(import.meta.url));
+  const hasSplitImplementation = existsSync(join(fixtureDirectory, "../../piledriver/implementations/base.ts"))
+    || existsSync(join(fixtureDirectory, "../../piledriver/implementations/base.js"));
+  const implementation = hasSplitImplementation
+    ? await import("../../piledriver/implementations/base.js")
+    : await import("../../piledriver/index.js");
+  if ("declareBasePiledriverDatabase" in implementation && typeof implementation.declareBasePiledriverDatabase === "function") {
+    return implementation.declareBasePiledriverDatabase(lowLevel);
   }
-  const declare = Reflect.get(implementation, "declareBasePiledriverDatabase") ?? Reflect.get(implementation, "declarePiledriverDatabase");
-  if (typeof declare !== "function") throw new Error("Piledriver implementation factory is unavailable");
-  return declare(lowLevel);
+  if ("declarePiledriverDatabase" in implementation && typeof implementation.declarePiledriverDatabase === "function") {
+    return implementation.declarePiledriverDatabase(lowLevel);
+  }
+  throw new Error("Piledriver implementation factory is unavailable");
 }
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };

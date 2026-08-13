@@ -104,6 +104,21 @@ function declareAfterRestart(lowLevel: LowLevelDatabase, cutoffTimestampMillis: 
 }
 
 describe("PiledriverDatabase", () => {
+  it("round-trips an own __proto__ property", async () => {
+    const key = new TextEncoder().encode("proto").buffer;
+    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const writer = declareBasePiledriverDatabase(lowLevel);
+    const value: PiledriverObject = JSON.parse('{"__proto__":{"marker":"value"}}');
+
+    await writer.setRootObject(key, value);
+
+    const reader = declareBasePiledriverDatabase(lowLevel);
+    const { object } = await reader.getRootObject(key);
+    if (object === null || typeof object !== "object") throw new Error("Expected object root");
+    expect(Object.hasOwn(object, "__proto__")).toBe(true);
+    expect(object).toEqual(value);
+  });
+
   it("deserializes heap references lazily", async () => {
     const key = new TextEncoder().encode("root").buffer;
     let heapGets = 0;
