@@ -56,6 +56,26 @@ export class ErrorAttachmentService {
   public async upload(scopeInput: ErrorAttachmentScope, input: unknown): Promise<ErrorAttachmentUploadResult> {
     const scope = validateErrorAttachmentScope(scopeInput);
     const upload = validateErrorAttachmentUpload(input);
+    return await this.uploadValidated(scope, upload);
+  }
+
+  /**
+   * Internal byte-oriented boundary for already parsed envelopes. Sentry
+   * attachments arrive as bytes; keeping them bytes here avoids a needless
+   * base64 encode/decode cycle before private storage.
+   */
+  public async uploadBytes(
+    scopeInput: ErrorAttachmentScope,
+    upload: ValidatedErrorAttachmentUpload,
+  ): Promise<ErrorAttachmentUploadResult> {
+    const scope = validateErrorAttachmentScope(scopeInput);
+    return await this.uploadValidated(scope, upload);
+  }
+
+  private async uploadValidated(
+    scope: ErrorAttachmentScope,
+    upload: ValidatedErrorAttachmentUpload,
+  ): Promise<ErrorAttachmentUploadResult> {
     const existingByKey = await this.repository.findByIdempotency(scope, upload.idempotencyKey);
     if (existingByKey !== null) {
       assertSameUpload(existingByKey, upload);

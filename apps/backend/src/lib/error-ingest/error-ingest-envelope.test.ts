@@ -88,6 +88,21 @@ describe("Sentry-style error ingest envelope contract", () => {
     expect(parsed.protocolProjection.items.map((item) => item.category)).toEqual(["error", "client_report", "attachment"]);
   });
 
+  it("uses the envelope event identity for retries that change payload metadata", () => {
+    const eventId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const first = parseErrorIngestEnvelope(envelope(
+      { event_id: eventId },
+      [{ header: { type: "event" }, payload: json({ event_id: eventId, message: "first" }) }],
+    ));
+    const retried = parseErrorIngestEnvelope(envelope(
+      { event_id: eventId },
+      [{ header: { type: "event" }, payload: json({ event_id: eventId, message: "enriched on retry" }) }],
+    ));
+
+    expect(retried.batchId).toBe(first.batchId);
+    expect(retried.items[0]?.itemId).toBe(first.items[0]?.itemId);
+  });
+
   it("accepts Relay-compatible event content_type metadata without retaining the hint", () => {
     const eventId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const payload = json({ event_id: eventId, message: "content type is only a wire hint" });
