@@ -930,6 +930,7 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
     while (currentOperation !== null) {
       await currentOperation.catch(() => {});
     }
+    // This includes acquisition overhead; it is meaningful as contention wait only when another operation held the lock.
     writeLockWaitMs += performance.now() - waitStartedAt;
     writeLockAcquisitions++;
     const operationPromise = Promise.resolve().then(operation);

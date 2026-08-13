@@ -207,5 +207,6 @@ describe("BufferedPiledriverDatabase", () => {
     expect(() => declareBufferedPiledriverDatabase(wrapped, { throttleMs: -1 })).toThrow("throttleMs");
     expect(() => declareBufferedPiledriverDatabase(wrapped, { throttleMs: Number.NaN })).toThrow("throttleMs");
     expect(() => declareBufferedPiledriverDatabase(wrapped, { throttleMs: Number.POSITIVE_INFINITY })).toThrow("throttleMs");
+    expect(() => declareBufferedPiledriverDatabase(wrapped, { throttleMs: 2 ** 31 })).toThrow("throttleMs");
   });
 });

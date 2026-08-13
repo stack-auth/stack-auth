@@ -5,6 +5,7 @@ import { DatabaseSeq } from "../../index.js";
 import { PiledriverDatabase, PiledriverObject } from "../index.js";
 
 type PendingEntry = {
+  id: string,
   key: ArrayBuffer,
   state: { type: "set", value: PiledriverObject } | { type: "delete" },
   latestSeq: DatabaseSeq,
@@ -26,7 +27,9 @@ export function declareBufferedPiledriverDatabase(
   options: { throttleMs?: number } = {},
 ): PiledriverDatabase {
   const throttleMs = options.throttleMs ?? 200;
-  if (!Number.isFinite(throttleMs) || throttleMs < 0) throw new Error("throttleMs must be a non-negative finite number");
+  if (!Number.isFinite(throttleMs) || throttleMs < 0 || throttleMs > 2 ** 31 - 1) {
+    throw new Error("throttleMs must be a non-negative finite number no greater than 2^31 - 1");
+  }
 
   const dbId = `buffered-piledriver-${crypto.randomUUID()}`;
   const initialSeq = [dbId, "initial"] as unknown as DatabaseSeq;
@@ -53,17 +56,16 @@ export function declareBufferedPiledriverDatabase(
 
     const batch = [...pending.values()];
     pending.clear();
-    for (const entry of batch) inFlight.set(encodeBase64(new Uint8Array(entry.key)), entry);
+    for (const entry of batch) inFlight.set(entry.id, entry);
     flushPromise = (async () => {
       let combinedSeq = wrapped.initialSeq;
       try {
         for (const entry of batch) {
-          const entryId = encodeBase64(new Uint8Array(entry.key));
           const result = entry.state.type === "delete"
             ? await wrapped.deleteRootObject(entry.key)
             : await wrapped.setRootObject(entry.key, entry.state.value);
           combinedSeq = wrapped.combineSeqs(combinedSeq, result.seq);
-          if (inFlight.get(entryId) === entry && !pending.has(entryId)) inFlight.delete(entryId);
+          if (inFlight.get(entry.id) === entry && !pending.has(entry.id)) inFlight.delete(entry.id);
         }
         for (const entry of batch) for (const record of entry.records) record.resolve(combinedSeq);
         return combinedSeq;
@@ -97,7 +99,7 @@ export function declareBufferedPiledriverDatabase(
       flushTimer = null;
       startBackgroundFlush();
     }, delay);
-    if ("unref" in flushTimer) flushTimer.unref();
+    // This timer carries accepted writes toward durability, so it must keep the process alive until it fires.
   };
 
   const flushImmediately = async () => {
@@ -137,6 +139,7 @@ export function declareBufferedPiledriverDatabase(
     if (isClosing) throw new Error("Buffered Piledriver database is closing and cannot accept writes");
     const pendingKey = getPendingKey(key);
     const entry = pending.get(pendingKey.id) ?? {
+      id: pendingKey.id,
       key: pendingKey.key,
       state,
       latestSeq: initialSeq,
@@ -180,7 +183,7 @@ export function declareBufferedPiledriverDatabase(
 
   return {
     getDebugInfo() {
-      return { backend: "piledriver-buffered", wrapped, pendingBufferSize: pending.size };
+      return { backend: "piledriver-buffered", wrapped, pendingBufferSize: pending.size, inFlightBufferSize: inFlight.size };
     },
     async getRootObject(key) {
       const pendingKey = getPendingKey(key);
