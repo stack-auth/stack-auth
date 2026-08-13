@@ -1,10 +1,12 @@
-import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { afterAll, beforeAll, describe, expect } from 'vitest';
+import { Client } from "pg";
 import { niceFetch, STACK_BACKEND_BASE_URL, test } from '../../../../helpers';
 import { withPortPrefix } from '../../../../helpers/ports';
 import { Auth, backendContext, InternalApiKey, Project, User, niceBackendFetch } from '../../../backend-helpers';
 import { randomUUID } from 'node:crypto';
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import {
   TEST_TIMEOUT,
   TestDbManager,
@@ -97,6 +99,66 @@ async function waitForClickhouseUserDeletion(email: string) {
   }
 
   throw new HexclaveAssertionError(`Timed out waiting for ClickHouse user ${email} to be deleted.`, { response });
+}
+
+async function waitForClickhouseEmailOutboxDeletion(id: string) {
+  await InternalApiKey.createAndSetProjectKeys();
+
+  const timeoutMs = 180_000;
+  const intervalMs = 2_000;
+  const start = performance.now();
+
+  let response;
+  while (performance.now() - start < timeoutMs) {
+    response = await runQueryForCurrentProject({
+      query: "SELECT id FROM email_outboxes WHERE id = {id:UUID}",
+      params: { id },
+    });
+    expect(response.status).toBe(200);
+    if (response.body.result.length === 0) {
+      return response;
+    }
+    await wait(intervalMs);
+  }
+
+  throw new HexclaveAssertionError(`Timed out waiting for ClickHouse email outbox ${id} to be deleted.`, { response });
+}
+
+async function waitForClickhouseEmailOutbox(id: string) {
+  await InternalApiKey.createAndSetProjectKeys();
+
+  const timeoutMs = 180_000;
+  const intervalMs = 2_000;
+  const start = performance.now();
+
+  let response;
+  while (performance.now() - start < timeoutMs) {
+    response = await runQueryForCurrentProject({
+      query: "SELECT id FROM email_outboxes WHERE id = {id:UUID}",
+      params: { id },
+    });
+    expect(response.status).toBe(200);
+    if (response.body.result.length === 1) {
+      return response;
+    }
+    await wait(intervalMs);
+  }
+
+  throw new HexclaveAssertionError(`Timed out waiting for ClickHouse email outbox ${id} to sync.`, { response });
+}
+
+async function withInternalDatabase<T>(fn: (client: Client) => Promise<T>): Promise<T> {
+  const client = new Client({
+    connectionString: getEnvVariable("STACK_DATABASE_CONNECTION_STRING", ""),
+    connectionTimeoutMillis: 10_000,
+    query_timeout: 30_000,
+  });
+  await client.connect();
+  try {
+    return await fn(client);
+  } finally {
+    await client.end();
+  }
 }
 
 // Run tests sequentially to avoid concurrency issues with shared backend state
@@ -1497,6 +1559,108 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     expect(response!.body.result.length).toBeGreaterThanOrEqual(1);
     const row = response!.body.result[0];
     expect(row.created_with).toBe('programmatic-call');
+  }, TEST_TIMEOUT);
+
+  test('Deleted EmailOutbox is removed from ClickHouse', async ({ expect }) => {
+    const connectionString = await dbManager.createDatabase("email_outbox_delete_test");
+    const project = await createProjectWithExternalDb({
+      main: {
+        type: "postgres",
+        connectionString,
+      },
+    }, {
+      config: {
+        magic_link_enabled: true,
+        email_config: {
+          type: "standard",
+          host: "localhost",
+          port: Number(withPortPrefix("29")),
+          username: "test",
+          password: "test",
+          sender_name: "Test Project",
+          sender_email: "test@example.com",
+        },
+      },
+    });
+
+    const createUserResponse = await niceBackendFetch("/api/v1/users", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        primary_email: backendContext.value.mailbox.emailAddress,
+        primary_email_verified: true,
+      },
+    });
+    expect(createUserResponse.status).toBe(201);
+
+    const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        user_ids: [createUserResponse.body.id],
+        html: "<p>ClickHouse deletion test email</p>",
+        subject: "CH Deletion Test Email",
+        notification_category_name: "Transactional",
+      },
+    });
+    expect(sendResponse.status).toBe(200);
+
+    let emailId!: string;
+    await waitForCondition(
+      async () => {
+        const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+          method: "GET",
+          accessType: "server",
+        });
+        if (listResponse.status !== 200 || listResponse.body.items.length === 0) return false;
+        emailId = listResponse.body.items[0].id;
+        return true;
+      },
+      { timeoutMs: 30_000, intervalMs: 500, description: "email to appear in outbox" },
+    );
+
+    await InternalApiKey.createAndSetProjectKeys();
+    await waitForClickhouseEmailOutbox(emailId);
+
+    await withInternalDatabase(async (client) => {
+      const tenancy = await client.query<{ id: string }>(
+        `SELECT "id" FROM "Tenancy" WHERE "projectId" = $1 AND "branchId" = 'main' LIMIT 1`,
+        [project.projectId],
+      );
+      const tenancyId = tenancy.rows[0]?.id ?? throwErr(`No main tenancy found for project ${project.projectId}`);
+
+      await client.query("BEGIN");
+      try {
+        await client.query(
+          `
+            INSERT INTO "DeletedRow"
+              ("id", "tenancyId", "tableName", "primaryKey", "data", "deletedAt", "shouldUpdateSequenceId")
+            SELECT
+              gen_random_uuid(),
+              "tenancyId",
+              'EmailOutbox',
+              jsonb_build_object('tenancyId', "tenancyId", 'id', "id"),
+              to_jsonb("EmailOutbox".*),
+              NOW(),
+              TRUE
+            FROM "EmailOutbox"
+            WHERE "tenancyId" = $1::uuid AND "id" = $2::uuid
+            FOR UPDATE
+          `,
+          [tenancyId, emailId],
+        );
+        await client.query(
+          `DELETE FROM "EmailOutbox" WHERE "tenancyId" = $1::uuid AND "id" = $2::uuid`,
+          [tenancyId, emailId],
+        );
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    });
+
+    await waitForClickhouseEmailOutboxDeletion(emailId);
   }, TEST_TIMEOUT);
 
   /**
