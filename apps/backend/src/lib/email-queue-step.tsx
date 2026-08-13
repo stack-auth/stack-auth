@@ -8,7 +8,7 @@ import { getHexclaveServerApp } from "@/hexclave";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
-import { allPromisesAndWaitUntilEach } from "@/utils/background-tasks";
+import { allPromisesAndWaitUntilEach, runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { withTraceSpan } from "@/utils/telemetry";
 import { groupBy } from "@hexclave/shared/dist/utils/arrays";
 import { getEnvBoolean, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
@@ -785,8 +785,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
       try {
         const app = getHexclaveServerApp();
         const emailItem = await app.getItem({ itemId: ITEM_IDS.emailsPerMonth, teamId: context.billingTeamId });
-        const isDebited = await emailItem.tryDecreaseQuantity(1);
-        if (!isDebited) {
+        if (emailItem.quantity < 1) {
           const errorMessage = "Monthly email sending limit exceeded for your plan. Please upgrade your plan or wait until next month.";
           // Intentionally do NOT increment sendRetries or append to
           // sendAttemptErrors. sendRetries tracks SMTP attempts, and a quota
@@ -822,6 +821,25 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           });
           return;
         }
+
+        // The gate is now a read, so concurrent in-flight sends can overshoot
+        // the monthly quota by a bounded amount. We accept that tradeoff to
+        // keep the potentially slow self-call off the send path; steady-state
+        // enforcement is unchanged.
+        runAsynchronouslyAndWaitUntil(async () => {
+          const isDebited = await emailItem.tryDecreaseQuantity(1);
+          if (!isDebited) {
+            captureError("email-queue-step:monthly-email-quota-debit-after-send", new HexclaveAssertionError(
+              "Email send passed the read-based monthly quota gate but its asynchronous quota debit was rejected",
+              {
+                emailId: row.id,
+                tenancyId: row.tenancyId,
+                billingTeamId: context.billingTeamId,
+                remainingQuotaAtGate: emailItem.quantity,
+              },
+            ));
+          }
+        });
       } catch (error) {
         captureError("email-queue-step:monthly-email-quota-check", error);
       }
