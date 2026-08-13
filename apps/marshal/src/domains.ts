@@ -3,9 +3,9 @@ import { badRequest, conflict, notFound } from "./errors.js";
 import { FlyApiError, flyClientForNamespaceOrg } from "./fly/client.js";
 import { appNameForService } from "./naming.js";
 import { ensurePublicIps, releasePublicIpsIfUnused } from "./public-networking.js";
-import { dnsRecordsForCertificate, specIsPublic } from "./services.js";
+import { assertServiceCanHoldADomain, dnsRecordsForCertificate, specIsPublic } from "./services.js";
 import { claimDomain, readDomainClaim, readDomainClaimVersioned, readSpec, releaseDomainClaim, rewriteDomainClaim } from "./store.js";
-import type { DnsRecord, PortConfig } from "./types.js";
+import type { DnsRecord } from "./types.js";
 
 // Fly does NOT enforce hostname uniqueness across apps (smoke-verified), so the bucket
 // domain registry is the arbiter: a hostname belongs to exactly one (ns, service) claim,
@@ -24,27 +24,6 @@ export function normalizeHostnameOrThrow(hostname: string): string {
   return normalized;
 }
 
-// A custom domain allocates public IPs on the service's app (see ensurePublicIps below), so
-// it makes the service public exactly the way a `public: true` port does — and therefore has
-// to obey the SAME one-port rule that createOrReplaceService enforces there.
-//
-// Fly `services` are the proxy's listener set for the whole app with no per-address scoping,
-// so every declared port answers on every IP the app holds. A service with an HTTP port next
-// to a private 5432 looks legal at sync time (nothing is `public: true`), but attaching a
-// domain to it would put that 5432 on the internet. Two HTTP ports are just as wrong the
-// other way: only one of them can own the hostname's 80/443, so the attach would appear to
-// succeed while binding no route the caller can predict.
-//
-// Refuse both here, at the only other place that allocates public ingress.
-export function assertServiceCanHoldADomain(serviceKey: string, ports: readonly PortConfig[]): void {
-  if (!ports.some((entry) => entry.transport === "http")) {
-    throw badRequest(`custom domains need an HTTP port to route to; service ${JSON.stringify(serviceKey)} declares none`);
-  }
-  if (ports.length > 1) {
-    throw badRequest(`a service holding a custom domain may not declare any other port: the proxy serves every declared port on every address the app has, so the others would be public too. Service ${JSON.stringify(serviceKey)} declares ${ports.length} ports; move the private ones onto their own service and reach them with internalHost`);
-  }
-}
-
 export type AttachDomainResult = {
   hostname: string,
   service_key: string,
@@ -60,7 +39,7 @@ export async function attachDomain(ns: string, hostname: string, serviceKey: str
   if (stored === null) {
     throw notFound(`service ${JSON.stringify(serviceKey)} not found in namespace ${JSON.stringify(ns)}`);
   }
-  assertServiceCanHoldADomain(serviceKey, stored.spec.config.ports);
+  assertServiceCanHoldADomain(serviceKey, stored.spec.config.ports, "Change the service's ports first, then attach the domain.");
 
   const existingClaim = await readDomainClaimVersioned(hostname);
   if (existingClaim === null) {

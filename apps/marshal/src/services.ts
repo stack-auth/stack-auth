@@ -427,6 +427,35 @@ export function standardPortsHolderFor(ports: PortConfig[]): number | null {
 }
 
 /**
+ * The port rule for a service that holds (or is about to hold) a custom domain.
+ *
+ * A custom domain allocates public IPs on the service's app (see ensurePublicIps), so it
+ * makes the service public exactly the way a `public: true` port does — and therefore has to
+ * obey the SAME one-port rule validateServiceSpec enforces there.
+ *
+ * Fly `services` are the proxy's listener set for the whole app with no per-address scoping,
+ * so every declared port answers on every IP the app holds. A service with an HTTP port next
+ * to a private 5432 looks legal at sync time (nothing is `public: true`), but a domain on it
+ * puts that 5432 on the internet. Two HTTP ports are just as wrong the other way: only one of
+ * them can own the hostname's 80/443, so the attach would appear to succeed while binding no
+ * route the caller can predict.
+ *
+ * BOTH places that can bring a domain and this port set together must call this: the attach
+ * (domains.ts) and the spec write (applyServiceSpecWithLease). Checking only the attach
+ * leaves the ports free to move afterwards — attach a domain to a lone HTTP port, then PUT a
+ * private `tcp` sibling, and the spec is legal at every gate while the proxy publishes it.
+ * That is why this is one function and not a rule re-typed at each site.
+ */
+export function assertServiceCanHoldADomain(serviceKey: string, ports: readonly PortConfig[], remedy: string): void {
+  if (!ports.some((entry) => entry.transport === "http")) {
+    throw badRequest(`custom domains need an HTTP port to route to; service ${JSON.stringify(serviceKey)} declares none. ${remedy}`);
+  }
+  if (ports.length > 1) {
+    throw badRequest(`a service holding a custom domain may not declare any other port: the proxy serves every declared port on every address the app has, so the others would be public too. Service ${JSON.stringify(serviceKey)} declares ${ports.length} ports; move the private ones onto their own service and reach them with internalHost. ${remedy}`);
+  }
+}
+
+/**
  * A port's external bindings, deduplicated.
  *
  * The dedupe is load-bearing: a container that listens on 80 or 443 (the default
@@ -715,10 +744,12 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
 async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceSpec, builder: Builder, lease: ReconciliationLeaseGuard): Promise<ApplyResult> {
   const config = getConfig();
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
-  // A custom domain terminates TLS and routes HTTP, so the service needs an HTTP
-  // port to route to.
-  if (!spec.config.ports.some((entry) => entry.transport === "http") && (await listDomainClaimsForService(ns, key)).length > 0) {
-    throw badRequest("a service with custom domains must keep an HTTP port to route to; detach the domains first");
+  // A domain-holding service must satisfy the domain port rule on every spec write, not just
+  // at attach time. The domain's public IPs outlive the attach: a later PUT that adds a
+  // private sibling port would hand it to the proxy on those IPs, so the whole rule is
+  // re-checked here rather than only its HTTP-port half.
+  if ((await listDomainClaimsForService(ns, key)).length > 0) {
+    assertServiceCanHoldADomain(key, spec.config.ports, "Detach the service's custom domains first if this port set is what you want.");
   }
   const revision = computeRevision(spec);
   const now = Date.now();
