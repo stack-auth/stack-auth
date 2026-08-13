@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { InternalSession } from "./sessions";
+import { AccessToken, InternalSession } from "./sessions";
 
 /**
  * Builds a decodable (unsigned) access-token JWT with a valid payload. `refreshTokenId` controls the
@@ -143,5 +143,84 @@ describe("InternalSession#updateAccessToken", () => {
 
     session.updateAccessToken({ accessToken: createAccessTokenString("rtid-2"), refreshToken: "rt-other" });
     expect(currentToken(session)).toBe(initial);
+  });
+});
+
+describe("InternalSession delegated access-token refresh", () => {
+  it("fetches and caches an access token without a Hexclave refresh token", async () => {
+    const accessToken = createAccessTokenString("external-session");
+    let refreshCount = 0;
+    const session = new InternalSession({
+      refreshAccessTokenCallback: async () => null,
+      refreshAccessTokenWithoutRefreshTokenCallback: async () => {
+        refreshCount += 1;
+        return AccessToken.createIfValid(accessToken);
+      },
+      refreshToken: null,
+      accessToken: null,
+      sessionKey: "external-clerk-session",
+    });
+
+    expect(session.isKnownToBeInvalid()).toBe(false);
+    expect(session.sessionKey).toBe("external-clerk-session");
+    expect((await session.getOrFetchLikelyValidTokens(20_000, null))?.accessToken.token).toBe(accessToken);
+    expect((await session.getOrFetchLikelyValidTokens(20_000, null))?.accessToken.token).toBe(accessToken);
+    expect(refreshCount).toBe(1);
+  });
+
+  it("uses the delegated source again after a refresh is suggested", async () => {
+    let refreshCount = 0;
+    const session = new InternalSession({
+      refreshAccessTokenCallback: async () => null,
+      refreshAccessTokenWithoutRefreshTokenCallback: async () => {
+        refreshCount += 1;
+        return AccessToken.createIfValid(createAccessTokenString("external-session", {
+          iatOffsetSeconds: refreshCount,
+        }));
+      },
+      refreshToken: null,
+      accessToken: null,
+      sessionKey: "external-clerk-session",
+    });
+
+    await session.getOrFetchLikelyValidTokens(20_000, null);
+    session.suggestAccessTokenExpired();
+    await session.getOrFetchLikelyValidTokens(20_000, null);
+    expect(refreshCount).toBe(2);
+  });
+
+  it("invalidates the session when the delegated source has signed out", async () => {
+    const session = new InternalSession({
+      refreshAccessTokenCallback: async () => null,
+      refreshAccessTokenWithoutRefreshTokenCallback: async () => null,
+      refreshToken: null,
+      accessToken: null,
+      sessionKey: "external-clerk-session",
+    });
+
+    expect(await session.getOrFetchLikelyValidTokens(20_000, null)).toBeNull();
+    expect(session.isKnownToBeInvalid()).toBe(true);
+  });
+
+  it("retries delegated refresh after a transient failure", async () => {
+    let refreshCount = 0;
+    const accessToken = createAccessTokenString("external-session");
+    const session = new InternalSession({
+      refreshAccessTokenCallback: async () => null,
+      refreshAccessTokenWithoutRefreshTokenCallback: async () => {
+        refreshCount += 1;
+        if (refreshCount === 1) {
+          throw new Error("Temporary provider failure");
+        }
+        return AccessToken.createIfValid(accessToken);
+      },
+      refreshToken: null,
+      accessToken: null,
+      sessionKey: "external-clerk-session",
+    });
+
+    await expect(session.getOrFetchLikelyValidTokens(20_000, null)).rejects.toThrow("Temporary provider failure");
+    expect((await session.getOrFetchLikelyValidTokens(20_000, null))?.accessToken.token).toBe(accessToken);
+    expect(refreshCount).toBe(2);
   });
 });

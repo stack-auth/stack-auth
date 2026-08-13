@@ -1,11 +1,17 @@
 import { Button } from "@hexclave/ui";
+import { useStackApp } from "../../..";
 import { useUser } from "../../../lib/hooks";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
 
 export function SignOutSection(props?: { mockMode?: boolean }) {
   const { t } = useTranslation();
+  const app = useStackApp();
   const user = useUser({ or: props?.mockMode ? "return-null" : "throw" });
+
+  if (app.isExternalAuthApp()) {
+    return null;
+  }
 
   const handleSignOut = async () => {
     if (props?.mockMode) {

@@ -186,6 +186,24 @@ export const ALL_APPS = {
     stage: "alpha",
     softRequirements: [],
   },
+  "clerk-integration": {
+    displayName: "Clerk Integration",
+    subtitle: "Use Clerk sessions to authenticate Hexclave users",
+    tags: ["integration", "auth"],
+    stage: "alpha",
+  },
+  "better-auth-integration": {
+    displayName: "Better Auth Integration",
+    subtitle: "Use Better Auth sessions to authenticate Hexclave users",
+    tags: ["integration", "auth"],
+    stage: "alpha",
+  },
+  "workos-integration": {
+    displayName: "WorkOS Integration",
+    subtitle: "Use WorkOS AuthKit sessions to authenticate Hexclave users",
+    tags: ["integration", "auth"],
+    stage: "alpha",
+  },
   "analytics": {
     displayName: "Analytics",
     subtitle: "View and explore analytics data",

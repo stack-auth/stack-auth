@@ -62,3 +62,4 @@ allowBuilds:
   lmdb: true
   msgpackr-extract: true
   unrs-resolver: false
+  better-sqlite3: true

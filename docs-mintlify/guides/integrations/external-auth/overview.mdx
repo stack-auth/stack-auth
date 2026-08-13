@@ -1,0 +1,50 @@
+---
+title: External authentication
+description: Connect WorkOS, Better Auth, or Clerk to Hexclave
+---
+
+Hexclave can exchange a token issued by WorkOS AuthKit, Better Auth, or Clerk for a Hexclave session. The provider remains the authority for the provider session; Hexclave verifies the token and creates or resumes the corresponding external-auth session.
+
+## Configure a provider
+
+Enable one of the external-auth integrations in the project dashboard and configure its issuer and JWKS settings:
+
+| Provider | Required settings |
+| --- | --- |
+| WorkOS AuthKit | WorkOS client ID. Hexclave derives the issuer and JWKS URL from the client ID; an issuer override is available for compatible deployments. |
+| Better Auth | Issuer, audience, and JWKS URL. |
+| Clerk | Issuer. Hexclave derives the JWKS URL from the issuer. Authorized parties are optional; when configured, the token's `azp` claim must match one of the configured origins. |
+
+The repository includes standalone examples for each provider:
+
+- [`examples/workos-integration-demo`](https://github.com/hexclave/stack-auth/tree/dev/examples/workos-integration-demo)
+- [`examples/better-auth-integration-demo`](https://github.com/hexclave/stack-auth/tree/dev/examples/better-auth-integration-demo)
+- [`examples/clerk-integration-demo`](https://github.com/hexclave/stack-auth/tree/dev/examples/clerk-integration-demo)
+
+## Token claims
+
+Every provider token must contain:
+
+- `sub`: the provider user identifier
+- `sid`: the provider session identifier
+- `exp`: the token expiration time
+
+`email`, `name`, and `email_verified` are optional. Hexclave maps valid `email` and `name` claims when it creates the user. It marks the email verified only when `email_verified` is `true`.
+
+The default claim sets differ by provider:
+
+| Provider | Present by default | Profile claims |
+| --- | --- | --- |
+| WorkOS AuthKit | `sub`, `sid`, `exp` | `email` and `name` are not present in the access token by default. |
+| Better Auth | `sub`, `sid`, `exp` | `email` and `name` are included by default. |
+| Clerk | `sub`, `sid`, `exp` | `email` and `name` are not included by default in the default session token. |
+
+To map Clerk profile data, define a Clerk JWT template that adds the profile claims, for example `email`, `name`, and `email_verified`. The template must preserve the required session claims and use the issuer and signing keys configured in the dashboard.
+
+Claims are mapped only when the Hexclave user is first created. Later exchanges do not overwrite the user's existing display name or email. A provider email is stored as unverified unless the provider asserts `email_verified: true`; it never enables Hexclave password or OTP authentication.
+
+## Sessions and sign-out
+
+A fresh, valid provider JWT can re-establish a revoked Hexclave external session. This allows a provider session that is still active to be exchanged again without creating a second Hexclave user.
+
+External users must sign out through their provider. Calling Hexclave's own `signOut()` for an externally authenticated session throws rather than revoking only the Hexclave session. The prebuilt UI therefore hides the unsupported Hexclave sign-out control for external sessions.
