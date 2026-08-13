@@ -527,6 +527,7 @@ type OccurrenceRow = {
   span_id: string | null,
   page_view_span_id: string | null,
   session_replay_id: string | null,
+  session_replay_segment_id: string | null,
   user_id: string | null,
   service_name: string | null,
   deployment_environment_name: string | null,
@@ -566,14 +567,14 @@ export async function loadOccurrence(options: {
     query: `
       SELECT occurrence_id, event_at, body AS message, level, data, error_envelope,
              issue_grouping_provenance, error_frames,
-             trace_id, span_id, page_view_span_id, session_replay_id, user_id,
+             trace_id, span_id, page_view_span_id, session_replay_id, session_replay_segment_id, user_id,
              service_name, deployment_environment_name
-      FROM analytics_internal.logs
-      WHERE project_id = {projectId:String}
+      FROM analytics_internal.telemetry
+      PREWHERE project_id = {projectId:String}
         AND branch_id = {branchId:String}
         AND event_type = '$error'
-        AND issue_hash IN {hashes:Array(String)}
         ${comparison}
+      WHERE issue_hash IN {hashes:Array(String)}
       ORDER BY event_at ${order}, occurrence_id ${order}
       LIMIT 2
     `,

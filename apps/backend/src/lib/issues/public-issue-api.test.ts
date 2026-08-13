@@ -5,6 +5,7 @@ import type {
 } from "../symbolication";
 import { PublicIssueOccurrenceSchema } from "@/app/api/latest/issues/contract";
 import {
+  projectResolvedOccurrenceReplayIds,
   projectPublicIssueOccurrence,
   type PublicIssueSymbolicator,
   type PublicOccurrenceRow,
@@ -49,6 +50,7 @@ function occurrenceRow(data: Record<string, unknown>): PublicOccurrenceRow {
     span_id: null,
     page_view_span_id: null,
     session_replay_id: null,
+    session_replay_segment_id: null,
     user_id: null,
     service_name: "web",
     deployment_environment_name: "production",
@@ -56,6 +58,20 @@ function occurrenceRow(data: Record<string, unknown>): PublicOccurrenceRow {
 }
 
 describe("public issue occurrence symbolication", () => {
+  it("recovers replay links from retained segment projections without guessing on collisions", () => {
+    const linked = occurrenceRow({});
+    linked.session_replay_segment_id = "segment-1";
+    const ambiguous = occurrenceRow({});
+    ambiguous.occurrence_id = "occurrence-2";
+    ambiguous.session_replay_segment_id = "segment-2";
+
+    expect(projectResolvedOccurrenceReplayIds([linked, ambiguous], [
+      { id: "segment-1", sessionReplayId: "replay-1" },
+      { id: "segment-2", sessionReplayId: "replay-2" },
+      { id: "segment-2", sessionReplayId: "replay-3" },
+    ]).map((row) => row.session_replay_id)).toEqual(["replay-1", null]);
+  });
+
   it("passes exact occurrence metadata to the bounded symbolicator and exposes scrubbed source context", async () => {
     let request: JavaScriptSymbolicationRequest | null = null;
     const symbolicator: PublicIssueSymbolicator = {

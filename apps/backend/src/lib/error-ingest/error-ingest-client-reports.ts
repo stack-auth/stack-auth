@@ -49,10 +49,13 @@ const REPORT_BUCKETS: readonly ErrorIngestClientReportBucket[] = [
 ];
 const MAX_REPORT_ROWS = 100;
 const MAX_REPORT_QUANTITY = 1_000_000_000;
-const MAX_TEXT_BYTES = 256;
+/** Mirrors ErrorIngestClientReport.reason/category VARCHAR(64) columns. */
+export const ERROR_INGEST_CLIENT_REPORT_REASON_CATEGORY_MAX_BYTES = 64;
+/** Mirrors ErrorIngestClientReport.idempotencyKey VARCHAR(256). */
+export const ERROR_INGEST_CLIENT_REPORT_IDEMPOTENCY_KEY_MAX_BYTES = 256;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
-function isBoundedText(value: unknown, maxBytes = MAX_TEXT_BYTES): value is string {
+function isBoundedText(value: unknown, maxBytes: number): value is string {
   return typeof value === "string"
     && value.length > 0
     && !/[\u0000-\u001f\u007f]/u.test(value)
@@ -61,8 +64,8 @@ function isBoundedText(value: unknown, maxBytes = MAX_TEXT_BYTES): value is stri
 
 function validateScope(scope: ErrorIngestClientReportScope): void {
   if (!UUID_PATTERN.test(scope.tenancyId)) throw new Error("Error ingest client report tenancyId must be a UUID");
-  if (!isBoundedText(scope.projectId)) throw new Error("Error ingest client report projectId is invalid");
-  if (!isBoundedText(scope.branchId)) throw new Error("Error ingest client report branchId is invalid");
+  if (!isBoundedText(scope.projectId, ERROR_INGEST_CLIENT_REPORT_IDEMPOTENCY_KEY_MAX_BYTES)) throw new Error("Error ingest client report projectId is invalid");
+  if (!isBoundedText(scope.branchId, ERROR_INGEST_CLIENT_REPORT_IDEMPOTENCY_KEY_MAX_BYTES)) throw new Error("Error ingest client report branchId is invalid");
 }
 
 function validateProtocol(protocol: ErrorIngestClientReportProtocol): void {
@@ -72,7 +75,10 @@ function validateProtocol(protocol: ErrorIngestClientReportProtocol): void {
 }
 
 function validateEntry(entry: ErrorIngestClientReportEntry): void {
-  if (!isBoundedText(entry.reason) || !isBoundedText(entry.category)) {
+  if (
+    !isBoundedText(entry.reason, ERROR_INGEST_CLIENT_REPORT_REASON_CATEGORY_MAX_BYTES)
+    || !isBoundedText(entry.category, ERROR_INGEST_CLIENT_REPORT_REASON_CATEGORY_MAX_BYTES)
+  ) {
     throw new Error("Error ingest client report reason and category must be bounded strings");
   }
   if (!Number.isSafeInteger(entry.quantity) || entry.quantity <= 0 || entry.quantity > MAX_REPORT_QUANTITY) {
@@ -165,7 +171,10 @@ function parseReportEntries(value: unknown, field: string): ErrorIngestClientRep
     // Relay deliberately preserves forward-compatible reason/category strings;
     // validate their size and control characters without freezing this API to
     // today's data-category vocabulary.
-    if (!isBoundedText(reason, 200) || !isBoundedText(category, 200)) {
+    if (
+      !isBoundedText(reason, ERROR_INGEST_CLIENT_REPORT_REASON_CATEGORY_MAX_BYTES)
+      || !isBoundedText(category, ERROR_INGEST_CLIENT_REPORT_REASON_CATEGORY_MAX_BYTES)
+    ) {
       throw new Error(`${field} reason and category are not supported bounded values`);
     }
     if (!isReportQuantity(quantity)) {
@@ -177,7 +186,7 @@ function parseReportEntries(value: unknown, field: string): ErrorIngestClientRep
 
 export function parseErrorIngestClientReportRequest(value: unknown): ErrorIngestClientReportRequest {
   if (!isRecord(value)) throw new Error("Error ingest client report must be an object");
-  if (!isBoundedText(value.idempotency_key)) throw new Error("Error ingest client report idempotency_key is required and must be bounded");
+  if (!isBoundedText(value.idempotency_key, ERROR_INGEST_CLIENT_REPORT_IDEMPOTENCY_KEY_MAX_BYTES)) throw new Error("Error ingest client report idempotency_key is required and must be bounded");
   const timestampMs = parseReportTimestamp(value.timestamp);
   const clientReport = {
     discarded_events: parseReportEntries(value.discarded_events, "discarded_events"),
@@ -206,7 +215,7 @@ export function buildErrorIngestClientReportRows(
   if (!(reportedAt instanceof Date) || Number.isNaN(reportedAt.getTime())) {
     throw new Error("Error ingest client report reportedAt must be a valid date");
   }
-  if (!isBoundedText(projection.idempotencyKey)) throw new Error("Error ingest client report idempotency key is invalid");
+  if (!isBoundedText(projection.idempotencyKey, ERROR_INGEST_CLIENT_REPORT_IDEMPOTENCY_KEY_MAX_BYTES)) throw new Error("Error ingest client report idempotency key is invalid");
 
   const rows: ErrorIngestClientReportRow[] = [];
   for (const bucket of REPORT_BUCKETS) {

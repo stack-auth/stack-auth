@@ -86,6 +86,7 @@ export type PublicOccurrenceRow = {
   span_id: string | null,
   page_view_span_id: string | null,
   session_replay_id: string | null,
+  session_replay_segment_id: string | null,
   user_id: string | null,
   service_name: string | null,
   deployment_environment_name: string | null,
@@ -721,6 +722,52 @@ export async function projectPublicIssueOccurrence(
   };
 }
 
+export function projectResolvedOccurrenceReplayIds(
+  rows: readonly PublicOccurrenceRow[],
+  segments: readonly { id: string, sessionReplayId: string }[],
+): PublicOccurrenceRow[] {
+  const replayIdsBySegment = new Map<string, string | null>();
+  for (const segment of segments) {
+    const existing = replayIdsBySegment.get(segment.id);
+    // Segment IDs are random per-tab UUIDs and rotate with the replay lifecycle.
+    // If corrupt or hand-written data reused one, leave it unlinked instead of
+    // guessing which user's recording belongs to the occurrence.
+    replayIdsBySegment.set(
+      segment.id,
+      existing === undefined || existing === segment.sessionReplayId ? segment.sessionReplayId : null,
+    );
+  }
+  return rows.map((row) => ({
+    ...row,
+    session_replay_id: row.session_replay_id
+      ?? (row.session_replay_segment_id === null
+        ? null
+        : replayIdsBySegment.get(row.session_replay_segment_id) ?? null),
+  }));
+}
+
+async function resolveOccurrenceReplayIds(
+  tenancy: Tenancy,
+  rows: readonly PublicOccurrenceRow[],
+): Promise<PublicOccurrenceRow[]> {
+  const missingSegmentIds = [...new Set(rows.flatMap((row) =>
+    row.session_replay_id === null && row.session_replay_segment_id !== null
+      ? [row.session_replay_segment_id]
+      : [],
+  ))];
+  if (missingSegmentIds.length === 0) return [...rows];
+
+  const prisma = await getPrismaClientForTenancy(tenancy);
+  const segments = await prisma.$replica().sessionReplaySegment.findMany({
+    where: {
+      tenancyId: tenancy.id,
+      id: { in: missingSegmentIds },
+    },
+    select: { id: true, sessionReplayId: true },
+  });
+  return projectResolvedOccurrenceReplayIds(rows, segments);
+}
+
 export async function loadPublicIssueDetail(options: {
   tenancy: Tenancy,
   issueId: string,
@@ -748,10 +795,13 @@ export async function loadPublicIssueDetail(options: {
     cursor: options.occurrence,
     direction: options.direction,
   });
-  const attachmentEventId = occurrence.occurrence === null ? null : getErrorAttachmentEventId({
-    occurrenceId: occurrence.occurrence.occurrence_id,
-    data: occurrence.occurrence.data,
-    errorEnvelope: parsePublicErrorEnvelope(occurrence.occurrence.error_envelope),
+  const [resolvedOccurrence] = occurrence.occurrence === null
+    ? [null]
+    : await resolveOccurrenceReplayIds(options.tenancy, [occurrence.occurrence]);
+  const attachmentEventId = resolvedOccurrence === null ? null : getErrorAttachmentEventId({
+    occurrenceId: resolvedOccurrence.occurrence_id,
+    data: resolvedOccurrence.data,
+    errorEnvelope: parsePublicErrorEnvelope(resolvedOccurrence.error_envelope),
   });
   const attachmentsByEvent = await loadPublicIssueAttachments(
     options.tenancy,
@@ -772,9 +822,9 @@ export async function loadPublicIssueDetail(options: {
     issue: resolved.issue,
     product,
     release_context: releaseContext,
-    occurrence: occurrence.occurrence === null
+    occurrence: resolvedOccurrence === null
       ? null
-      : await projectPublicIssueOccurrence(occurrence.occurrence, resolved.issue.release, {
+      : await projectPublicIssueOccurrence(resolvedOccurrence, resolved.issue.release, {
         scope: {
           tenantId: options.tenancy.id,
           projectId: options.tenancy.project.id,
@@ -812,14 +862,14 @@ export async function loadPublicIssueOccurrences(options: {
     query: `
       SELECT occurrence_id, event_at, body AS message, level, data, error_envelope,
              issue_grouping_provenance, error_frames,
-             trace_id, span_id, page_view_span_id, session_replay_id, user_id,
+             trace_id, span_id, page_view_span_id, session_replay_id, session_replay_segment_id, user_id,
              service_name, deployment_environment_name
-      FROM analytics_internal.logs
-      WHERE project_id = {projectId:String}
+      FROM analytics_internal.telemetry
+      PREWHERE project_id = {projectId:String}
         AND branch_id = {branchId:String}
         AND event_type = '$error'
-        AND issue_hash IN {hashes:Array(String)}
         ${comparison}
+      WHERE issue_hash IN {hashes:Array(String)}
       ORDER BY event_at ${order}, occurrence_id ${order}
       LIMIT ${options.limit + 1}
     `,
@@ -836,7 +886,7 @@ export async function loadPublicIssueOccurrences(options: {
   });
 
   const rows = await resultSet.json<PublicOccurrenceRow>();
-  const page = rows.slice(0, options.limit);
+  const page = await resolveOccurrenceReplayIds(options.tenancy, rows.slice(0, options.limit));
   const attachmentEventIds = page.map((row) => getErrorAttachmentEventId({
     occurrenceId: row.occurrence_id,
     data: row.data,

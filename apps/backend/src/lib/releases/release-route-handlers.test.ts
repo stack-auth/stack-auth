@@ -20,6 +20,7 @@ import {
   createDebugIdAssociationRoute,
   createDebugIdLookupRoute,
   createDeploymentRegistrationRoute,
+  createReleaseListRoute,
   createReleaseLookupRoute,
   createReleaseUpsertRoute,
 } from "./release-route-handlers";
@@ -159,11 +160,13 @@ function debugFor(target: Tenancy = tenancy): ReleaseArtifactDebugId {
 
 function database(options: {
   release?: Release | null,
+  releases?: Release[],
   deployment?: ReleaseDeployment,
   commit?: ReleaseCommit,
   artifact?: ReleaseArtifact,
   debugId?: ReleaseArtifactDebugId,
   lookupRows?: ReleaseArtifactLookupRow[],
+  onReleaseList?: (args: Prisma.ReleaseFindManyArgs) => void,
   onReleaseUpsert?: (args: Prisma.ReleaseUpsertArgs) => void,
   onDebugLookup?: (args: Prisma.ReleaseArtifactDebugIdFindManyArgs) => void,
 } = {}): ReleaseDatabase {
@@ -174,6 +177,10 @@ function database(options: {
   const debugId = options.debugId ?? debugFor();
   return {
     release: {
+      findMany: async (args) => {
+        options.onReleaseList?.(args);
+        return options.releases ?? [];
+      },
       findUnique: async () => release,
       upsert: async (args) => {
         options.onReleaseUpsert?.(args);
@@ -181,10 +188,12 @@ function database(options: {
       },
     },
     releaseDeployment: {
+      findMany: async () => [deployment],
       findUnique: async () => null,
       upsert: async () => deployment,
     },
     releaseCommit: {
+      findMany: async () => [commit],
       upsert: async () => commit,
     },
     releaseArtifact: {
@@ -221,6 +230,53 @@ function request(target: Tenancy, method: SmartRequest["method"], body: unknown,
 }
 
 describe("authenticated release management routes", () => {
+  it("lists recent scoped releases with truncation metadata", async () => {
+    const recent = [
+      releaseFor(),
+      releaseFor(tenancy, {
+        id: "00000000-0000-4000-8000-000000000011",
+        version: "release-2026.08.05",
+      }),
+    ];
+    let listArgs: Prisma.ReleaseFindManyArgs | undefined;
+    const route = createReleaseListRoute(new ReleaseServiceImpl(database({
+      releases: recent,
+      onReleaseList: (args) => { listArgs = args; },
+    })));
+
+    const response = await route.invoke(request(tenancy, "GET", undefined, { limit: "1" }));
+
+    expect(response.body).toMatchObject({
+      items: [{ id: RELEASE_ID, version: "release-2026.08.06" }],
+      truncated: true,
+    });
+    expect(listArgs).toMatchObject({
+      where: {
+        tenancyId: tenancy.id,
+        projectId: tenancy.project.id,
+        branchId: tenancy.branchId,
+      },
+      take: 2,
+    });
+  });
+
+  it("keeps version lookup responses as a single release", async () => {
+    const route = createReleaseLookupRoute(new ReleaseServiceImpl(database()));
+
+    const response = await route.invoke(request(tenancy, "GET", undefined, {
+      version: "release-2026.08.06",
+    }));
+
+    expect(response.body).toMatchObject({
+      id: RELEASE_ID,
+      version: "release-2026.08.06",
+      status: "open",
+      commits: [{ id: "00000000-0000-4000-8000-000000000006", repository: "hexclave" }],
+      deployments: [{ id: "00000000-0000-4000-8000-000000000005", environment: "production" }],
+    });
+    expect("items" in response.body).toBe(false);
+  });
+
   it("upserts a release idempotently and binds the database key to auth scope", async () => {
     const upsertArgs: Prisma.ReleaseUpsertArgs[] = [];
     const service: ReleaseService = new ReleaseServiceImpl(database({

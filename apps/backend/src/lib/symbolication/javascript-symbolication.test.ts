@@ -13,6 +13,7 @@ import type {
 } from "../artifacts/artifact-storage";
 import { ArtifactUploadService, type ArtifactLookup } from "../artifacts/artifact-upload-service";
 import {
+  artifactCodeFileMatchesFrame,
   JavaScriptSymbolicationService,
   parseStandardSourceMap,
   type RawJavaScriptFrame,
@@ -289,5 +290,32 @@ describe("JavaScriptSymbolicationService", () => {
       location: { source: "src/original.ts", line: 2, column: 1, name: "boom" },
       diagnostics: [{ code: "missing_source_content" }],
     });
+  });
+
+  it("joins a browser stack URL onto the relative emitted artifact path", async () => {
+    const fixture = await createFixture();
+    const raw = frame({ codeFile: "https://cdn.example.test/_next/static/chunk.js" });
+    const result = await fixture.service.symbolicate({
+      scope: SCOPE,
+      release: "web@2026.08.06",
+      dist: "production",
+      frames: [raw],
+    });
+    expect(result.frames[0]?.location?.source).toBe("src/original.ts");
+    expect(result.frames[0]?.diagnostics).toEqual([]);
+  });
+});
+
+describe("artifactCodeFileMatchesFrame", () => {
+  it("accepts an exact relative path, a served URL, and a CDN-prefixed pathname", () => {
+    expect(artifactCodeFileMatchesFrame("static/chunk.js", "static/chunk.js")).toBe(true);
+    expect(artifactCodeFileMatchesFrame("static/chunk.js", "https://cdn.example.test/static/chunk.js")).toBe(true);
+    expect(artifactCodeFileMatchesFrame("static/chunk.js", "https://cdn.example.test/_next/static/chunk.js")).toBe(true);
+  });
+
+  it("rejects a different relative path or a URL that does not end at the artifact", () => {
+    expect(artifactCodeFileMatchesFrame("static/chunk.js", "static/other.js")).toBe(false);
+    expect(artifactCodeFileMatchesFrame("static/chunk.js", "https://cdn.example.test/static/other.js")).toBe(false);
+    expect(artifactCodeFileMatchesFrame("static/chunk.js", "https://cdn.example.test/not-static/chunk.js")).toBe(false);
   });
 });

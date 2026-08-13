@@ -74,6 +74,10 @@ const ReleaseLookupQuerySchema = yupObject({
   version: yupString().max(MAX_RELEASE_VERSION_BYTES).defined(),
 }).defined();
 
+const ReleaseListQuerySchema = yupObject({
+  limit: yupString().matches(/^[1-9][0-9]{0,2}$/u).optional(),
+}).defined();
+
 const DeploymentRegistrationBodySchema = yupObject({
   release_id: yupString().uuid().defined(),
   deployment_key: yupString().max(MAX_DEPLOYMENT_KEY_BYTES).defined(),
@@ -145,6 +149,11 @@ const ReleaseResponseSchema = yupObject({
   updated_at: yupString().defined(),
 }).defined();
 
+const ReleaseListResponseSchema = yupObject({
+  items: yupArray(ReleaseResponseSchema).defined(),
+  truncated: yupBoolean().defined(),
+}).defined();
+
 const DeploymentResponseSchema = yupObject({
   id: yupString().uuid().defined(),
   release_id: yupString().uuid().defined(),
@@ -173,6 +182,11 @@ const CommitResponseSchema = yupObject({
   created_at: yupString().defined(),
   updated_at: yupString().defined(),
 }).defined();
+
+const ReleaseDetailResponseSchema = ReleaseResponseSchema.concat(yupObject({
+  commits: yupArray(CommitResponseSchema).defined(),
+  deployments: yupArray(DeploymentResponseSchema).defined(),
+}).defined());
 
 const ArtifactResponseSchema = yupObject({
   id: yupString().uuid().defined(),
@@ -234,13 +248,51 @@ export function createReleaseLookupRoute(service: ReleaseService = releaseServic
     response: yupObject({
       statusCode: yupNumber().oneOf([200]).defined(),
       bodyType: yupString().oneOf(["json"]).defined(),
-      body: ReleaseResponseSchema,
+      body: ReleaseDetailResponseSchema,
     }),
     handler: async ({ auth, query }) => {
       try {
-        const release = await service.getRelease({ tenancy: auth.tenancy }, query.version);
-        if (release === null) throw new StatusError(StatusError.NotFound, "Release not found");
-        return { statusCode: 200, bodyType: "json", body: serializeRelease(release) } as const;
+        const detail = await service.getReleaseDetail({ tenancy: auth.tenancy }, query.version);
+        if (detail === null) throw new StatusError(StatusError.NotFound, "Release not found");
+        return { statusCode: 200, bodyType: "json", body: serializeReleaseDetail(detail) } as const;
+      } catch (error) {
+        throwReleaseRouteError(error);
+      }
+    },
+  });
+}
+
+export function createReleaseListRoute(service: ReleaseService = releaseService) {
+  return createSmartRouteHandler({
+    metadata: {
+      summary: "List recent releases",
+      description: "Returns recent releases for the authenticated tenant, project, and branch scope.",
+      tags: ["Releases"],
+    },
+    request: yupObject({
+      auth: ReleaseAuthSchema,
+      query: ReleaseListQuerySchema,
+      method: yupString().oneOf(["GET"]).defined(),
+    }),
+    response: yupObject({
+      statusCode: yupNumber().oneOf([200]).defined(),
+      bodyType: yupString().oneOf(["json"]).defined(),
+      body: ReleaseListResponseSchema,
+    }),
+    handler: async ({ auth, query }) => {
+      try {
+        const releases = await service.listReleases(
+          { tenancy: auth.tenancy },
+          { limit: parseOptionalReleaseLimit(query.limit) },
+        );
+        return {
+          statusCode: 200,
+          bodyType: "json",
+          body: {
+            items: releases.items.map(serializeRelease),
+            truncated: releases.truncated,
+          },
+        } as const;
       } catch (error) {
         throwReleaseRouteError(error);
       }
@@ -495,6 +547,11 @@ function parseOptionalDate(value: string | undefined): Date | undefined {
   return new Date(value);
 }
 
+function parseOptionalReleaseLimit(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  return Number(value);
+}
+
 function parseNullableDate(value: string | null | undefined): Date | null | undefined {
   if (value === undefined || value === null) return value;
   return new Date(value);
@@ -513,6 +570,14 @@ function serializeRelease(release: RouteRelease) {
     date_released: release.dateReleased?.toISOString() ?? null,
     created_at: release.createdAt.toISOString(),
     updated_at: release.updatedAt.toISOString(),
+  } as const;
+}
+
+function serializeReleaseDetail(detail: { release: RouteRelease, commits: RouteCommit[], deployments: RouteDeployment[] }) {
+  return {
+    ...serializeRelease(detail.release),
+    commits: detail.commits.map(serializeCommit),
+    deployments: detail.deployments.map(serializeDeployment),
   } as const;
 }
 

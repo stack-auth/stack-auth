@@ -32,6 +32,12 @@ describe("app soft requirements", () => {
     ]);
   });
 
+  it("defines softRequirements for every app", () => {
+    for (const [appId, app] of Object.entries(ALL_APPS)) {
+      expect(Array.isArray(app.softRequirements), `${appId} is missing softRequirements`).toBe(true);
+    }
+  });
+
   it("only references standalone apps", () => {
     for (const app of Object.values(ALL_APPS)) {
       for (const requirementId of app.softRequirements) {

@@ -1,7 +1,7 @@
 import {
   parseErrorIngestClientReportRequest,
   persistErrorIngestClientReportRequest,
-} from "@/lib/error-ingest";
+} from "@/lib/telemetry-ingest";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -9,8 +9,8 @@ import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {
-    summary: "Record error-ingest client reports",
-    description: "Records bounded, payload-free client drop reports for error-ingest retries and delivery diagnostics.",
+    summary: "Record telemetry client reports",
+    description: "Records bounded, payload-free client drop reports for telemetry delivery diagnostics.",
     tags: ["Analytics Events"],
     hidden: true,
   },

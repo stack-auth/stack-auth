@@ -12,9 +12,11 @@ describe("app enablement", () => {
     expect(getEnabledAppIds({ analytics: { enabled: true } })).not.toContain("warehouse");
     expect(getEnabledAppIds(installed)).toContain("observability");
     expect(getEnabledAppIds(installed)).toContain("warehouse");
-    expect(getEnabledNavigableAppIds(installed)).toContain("analytics");
-    expect(getEnabledNavigableAppIds(installed)).toContain("warehouse");
-    expect(getEnabledNavigableAppIds(installed)).toContain("observability");
+    expect(getEnabledNavigableAppIds(installed)).toEqual([
+      "analytics",
+      "observability",
+      "warehouse",
+    ]);
   });
 });
 

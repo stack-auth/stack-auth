@@ -1,4 +1,5 @@
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
+import { getBillingTeamId } from "@/lib/plan-entitlements";
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
@@ -79,6 +80,7 @@ type IssueRow = {
   resolvedAt: Date | null,
   ignoredUntil: Date | null,
   assigneeUserId: string | null,
+  assignedTeamId: string | null,
   type: string,
   value: string,
   culprit: string,
@@ -111,7 +113,7 @@ async function readIssuesWithHashes(
     SELECT
       i."id", i."shortId", i."firstSeenAt", i."lastSeenAt", i."timesSeen",
       i."status"::text AS "status", i."statusChangedAt", i."resolvedAt", i."ignoredUntil",
-      i."assigneeUserId", i."type", i."value", i."culprit", i."platform",
+      i."assigneeUserId", i."assignedTeamId", i."type", i."value", i."culprit", i."platform",
       i."handled", i."synthetic",
       i."serviceName", i."deploymentEnvironmentName",
       i."firstSeenRelease", i."lastSeenRelease",
@@ -712,6 +714,7 @@ export async function unmergeIssue(options: {
       source,
       movedHashes,
       lockedHashes,
+      assignedTeamId: source.assignedTeamId ?? getBillingTeamId(tenancy.project),
       // No retained occurrences means the moved hashes have been quiet for the
       // whole window. Zero, seen "now", is the only claim we can actually
       // support; inheriting the source's timestamps would attribute history to
@@ -758,6 +761,7 @@ async function applyUnmerge(
     source: IssueRow,
     movedHashes: readonly string[],
     lockedHashes: readonly string[],
+    assignedTeamId: string | null,
     timesSeen: bigint,
     firstSeenAt: Date,
     lastSeenAt: Date,
@@ -765,7 +769,7 @@ async function applyUnmerge(
     now: Date,
   },
 ): Promise<{ id: string, shortId: bigint }> {
-  const { tenancyId, source, movedHashes, lockedHashes, timesSeen, firstSeenAt, lastSeenAt, countersTruncatedAt, now } = options;
+  const { tenancyId, source, movedHashes, lockedHashes, assignedTeamId, timesSeen, firstSeenAt, lastSeenAt, countersTruncatedAt, now } = options;
   const rows = await prisma.$queryRaw<{ id: string, shortId: bigint, reboundHashes: number }[]>(Prisma.sql`
     WITH lease AS (
       SELECT COUNT(*) = ${lockedHashes.length} AS "held"
@@ -786,7 +790,7 @@ async function applyUnmerge(
       INSERT INTO "Issue" (
         "id", "tenancyId", "shortId", "type", "value", "culprit", "platform",
         "handled", "synthetic",
-        "status", "statusChangedAt", "resolvedAt", "ignoredUntil", "assigneeUserId",
+        "status", "statusChangedAt", "resolvedAt", "ignoredUntil", "assigneeUserId", "assignedTeamId",
         "firstSeenAt", "lastSeenAt", "timesSeen", "countersTruncatedAt",
         "serviceName", "deploymentEnvironmentName", "firstSeenRelease", "lastSeenRelease",
         "updatedAt"
@@ -800,7 +804,7 @@ async function applyUnmerge(
         ${source.handled}::boolean, ${source.synthetic}::boolean,
         ${source.status}::"IssueStatus", ${source.statusChangedAt}::timestamptz,
         ${source.resolvedAt}::timestamptz, ${source.ignoredUntil}::timestamptz,
-        ${source.assigneeUserId}::uuid,
+        ${source.assigneeUserId}::uuid, ${assignedTeamId}::uuid,
         ${firstSeenAt}::timestamptz, ${lastSeenAt}::timestamptz,
         ${timesSeen.toString()}::bigint, ${countersTruncatedAt}::timestamptz,
         ${source.serviceName}, ${source.deploymentEnvironmentName},
