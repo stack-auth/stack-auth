@@ -520,6 +520,7 @@ describe("Stack CLI", () => {
       apps: {
         installed: {
           authentication: { enabled: true },
+          emails: { enabled: true },
           teams: { enabled: true },
         },
       },
@@ -541,6 +542,7 @@ describe("Stack CLI", () => {
       apps: {
         installed: {
           authentication: { enabled: true },
+          emails: { enabled: true },
         },
       },
     });

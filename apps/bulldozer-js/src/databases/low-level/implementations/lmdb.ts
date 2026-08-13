@@ -264,6 +264,15 @@ export function declareLmdbLowLevelDatabase(options: {
   const getDurabilityPromise = (seqId: string) => {
     return seqToDurability.get(seqId) ?? combinedSeqToDurability.get(seqId) ?? Promise.resolve();
   };
+  const combineSeqsForStore = (...seqs: DatabaseSeq[]) => {
+    if (seqs.length === 0) return initialSeq;
+    if (seqs.length === 1) return seqs[0];
+    const seqId = nextSeqId();
+    combinedSeqDependencies.set(seqId, seqs.map(seq => getSeqId(seq)));
+    rememberCombinedAvailability(seqId, Promise.all(seqs.map(seq => getAvailabilityPromise(getSeqId(seq)))));
+    rememberCombinedDurability(seqId, Promise.all(seqs.map(seq => getDurabilityPromise(getSeqId(seq)))));
+    return toSeq(seqId);
+  };
   // LMDB may reject with an opaque "Commit failed" wrapper whose real status
   // lives on `.commitError` (a Promise). LMDB's `committed` value is only a
   // PromiseLike, so normalize it before using native Promise methods.
@@ -521,20 +530,36 @@ export function declareLmdbLowLevelDatabase(options: {
           };
         });
       },
-      async compareAndSet(key, compare, value, casOptions) {
-        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.compareAndSet", attributes }, async () => {
-          validateKey(key);
-          validateValue("compare", compare);
-          validateValue("value", value);
-          await waitUntilAvailable(casOptions?.requiresSeq ?? initialSeq);
-          await waitUntilAllAvailable();
-          const keyBuffer = bufferFromArrayBuffer(key);
-          const existing = db.getEntry(keyBuffer);
-          if (!existing || existing.version === undefined || !arrayBuffersAreEqual(arrayBufferFromUint8Array(existing.value), compare)) {
-            return { wasSet: false, seq: null };
+      async compareAndSetAll(entries, casOptions) {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
+          const keys = new Set<string>();
+          for (const { key, compare, value } of entries) {
+            validateKey(key);
+            validateValue("compare", compare);
+            validateValue("value", value);
+            const keyBase64 = encodeBase64(new Uint8Array(key));
+            const previousSize = keys.size;
+            keys.add(keyBase64);
+            if (keys.size === previousSize) throw new Error("compareAndSetAll entries must not contain duplicate keys");
           }
-          const seq = await commitIfVersion(db, keyBuffer, existing.version, async version => await putWithVersion(db, keyBuffer, bufferFromArrayBuffer(value), version));
-          return seq === null ? { wasSet: false, seq: null } : { wasSet: true, seq };
+          const results = await Promise.all(entries.map(async ({ key, compare, value }) => {
+            await waitUntilAvailable(casOptions?.requiresSeq ?? initialSeq);
+            await waitUntilAllAvailable();
+            const keyBuffer = bufferFromArrayBuffer(key);
+            const existing = db.getEntry(keyBuffer);
+            if (!existing || existing.version === undefined || !arrayBuffersAreEqual(arrayBufferFromUint8Array(existing.value), compare)) {
+              return { wasSet: false as const, seq: null };
+            }
+            const seq = await commitIfVersion(db, keyBuffer, existing.version, async version => await putWithVersion(db, keyBuffer, bufferFromArrayBuffer(value), version));
+            return seq === null ? { wasSet: false as const, seq: null } : { wasSet: true as const, seq };
+          }));
+          const successful = results.filter(result => result.wasSet).map(result => result.seq);
+          return {
+            results,
+            seq: successful.length === 0
+              ? casOptions?.requiresSeq ?? initialSeq
+              : combineSeqsForStore(...successful),
+          };
         });
       },
       async debugEntries() {
@@ -598,13 +623,7 @@ export function declareLmdbLowLevelDatabase(options: {
       });
     },
     combineSeqs(...seqs) {
-      if (seqs.length === 0) return initialSeq;
-      if (seqs.length === 1) return seqs[0];
-      const seqId = nextSeqId();
-      combinedSeqDependencies.set(seqId, seqs.map(seq => getSeqId(seq)));
-      rememberCombinedAvailability(seqId, Promise.all(seqs.map(seq => getAvailabilityPromise(getSeqId(seq)))));
-      rememberCombinedDurability(seqId, Promise.all(seqs.map(seq => getDurabilityPromise(getSeqId(seq)))));
-      return toSeq(seqId);
+      return combineSeqsForStore(...seqs);
     },
     close() {
       if (closePromise === null) {

@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/dashboard",
-  "version": "1.0.85",
+  "version": "1.0.88",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "scripts": {
