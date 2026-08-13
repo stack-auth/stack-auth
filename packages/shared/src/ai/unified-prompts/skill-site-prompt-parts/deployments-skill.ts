@@ -16,6 +16,8 @@ export const deploymentsSkillSection = deindent`
   ## The deployment export
 
   \`\`\`ts title="hexclave.config.ts"
+  import type { HexclaveDeploymentConfig } from "@hexclave/js";
+
   export const config = {
     apps: {
       installed: {
@@ -52,6 +54,8 @@ export const deploymentsSkillSection = deindent`
     }),
   };
   \`\`\`
+
+  Always annotate the \`deployment\` export with \`HexclaveDeploymentConfig\`, imported as a type from \`@hexclave/js\` (the same type is re-exported from \`@hexclave/next\`, \`@hexclave/react\` and \`@hexclave/tanstack-start\`, so import from whichever SDK package this project already uses). It gives completion for every field below and catches typos before a deploy.
 
   \`deployment.services\` is normally a FUNCTION returning a record of services keyed by service id (a plain record works when you need no secrets, connections, or \`hexclave.*\` outputs). \`type\` (required) is \`"server"\` or \`"serverless"\` as above. \`ports\` (required) lists the ports the container listens on, each \`{ port, public?, transport? }\`; use \`ports: []\` for a worker that only dials out, which needs \`type: "server"\` (or \`minInstances\` above zero) since nothing inbound can wake it. \`public\` (default false) gives that port a stable platform URL. A service with a public port may declare ONLY that port: a port is served on every address the service has, so a private sibling would be reachable from the internet too — put private ports on their own service and reach them with \`internalHost\`. \`transport\` (default \`"http"\`) may be \`"tcp"\` for a raw daemon — TCP ports are private-only and a service with no HTTP port cannot have custom domains. \`rootDirectory\` (relative to the config file, default \`./\`) is where the service's code lives; \`dockerfilePath\` (optional, relative to \`rootDirectory\`) selects a Dockerfile to build from — omit it to build with Railpack auto-detection; \`minInstances\`/\`maxInstances\` (serverless only, defaults 0/1, max 5) are the scaling bounds — \`minInstances: 0\` scales to zero and cold-starts on the next connection; \`persistentVolumes\` (server only) attaches a persistent disk; \`devCommand\` is what \`hexclave dev --service-id <id>\` runs.
 
