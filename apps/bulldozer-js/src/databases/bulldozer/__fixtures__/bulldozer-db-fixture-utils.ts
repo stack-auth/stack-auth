@@ -21,10 +21,21 @@
 import { decodeBase64, encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { DatabaseSeq } from "../../index.js";
 import { LowLevelDatabase, LowLevelDatabaseDebugSnapshot, LowLevelKvDump, LowLevelKvStore } from "../../low-level/index.js";
-import { declareBasePiledriverDatabase } from "../../piledriver/implementations/base.js";
-import { isPiledriverHeapObjectSymbol, type PiledriverObject } from "../../piledriver/index.js";
+import { isPiledriverHeapObjectSymbol, type PiledriverDatabase, type PiledriverObject } from "../../piledriver/index.js";
 import { BulldozerDatabase, declareBulldozerDatabase } from "../index.js";
 import { exampleFungibleLedgerMigrations } from "../example-schema.js";
+
+async function declareFixturePiledriverDatabase(lowLevel: LowLevelDatabase): Promise<PiledriverDatabase> {
+  let implementation: Record<string, unknown>;
+  try {
+    implementation = await import("../../piledriver/implementations/base.js");
+  } catch {
+    implementation = await import("../../piledriver/index.js");
+  }
+  const declare = Reflect.get(implementation, "declareBasePiledriverDatabase") ?? Reflect.get(implementation, "declarePiledriverDatabase");
+  if (typeof declare !== "function") throw new Error("Piledriver implementation factory is unavailable");
+  return declare(lowLevel);
+}
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
@@ -63,7 +74,7 @@ const fixtureLedgerRows: Record<string, PiledriverObject> = {
 // Builds a fresh Bulldozer database (example ledger schema) on top of the given low-level backend,
 // applies the migrations, and runs the deterministic workload.
 export async function buildFixtureBulldozerDatabase(lowLevel: LowLevelDatabase): Promise<BulldozerDatabase> {
-  const db = declareBulldozerDatabase(declareBasePiledriverDatabase(lowLevel), { migrations: exampleFungibleLedgerMigrations });
+  const db = declareBulldozerDatabase(await declareFixturePiledriverDatabase(lowLevel), { migrations: exampleFungibleLedgerMigrations });
   await db.applyRemainingMigrations();
   await db.withSnapshotReplicated(async snapshot => {
     for (const [rowIdentifier, rowData] of Object.entries(fixtureLedgerRows)) {
@@ -265,6 +276,6 @@ function declareSeededLowLevelDatabase(dump: BulldozerDbDump): LowLevelDatabase 
 
 // Restores a Bulldozer database from a whole-database dump, ready to be read (and mutated) by the
 // current code.
-export function restoreBulldozerDatabase(dump: BulldozerDbDump): BulldozerDatabase {
-  return declareBulldozerDatabase(declareBasePiledriverDatabase(declareSeededLowLevelDatabase(dump)), { migrations: exampleFungibleLedgerMigrations });
+export async function restoreBulldozerDatabase(dump: BulldozerDbDump): Promise<BulldozerDatabase> {
+  return declareBulldozerDatabase(await declareFixturePiledriverDatabase(declareSeededLowLevelDatabase(dump)), { migrations: exampleFungibleLedgerMigrations });
 }
