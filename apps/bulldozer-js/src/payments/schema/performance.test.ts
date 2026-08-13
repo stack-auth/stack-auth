@@ -29,6 +29,13 @@ type Snapshot = Awaited<ReturnType<ReturnType<typeof declareBulldozerDatabase>["
 
 const USER_COUNT = 6;
 const ITEM_UPDATES_PER_USER = 10;
+// The concurrent phases issue CONCURRENCY writes at once and only then wait for all of them. This is
+// the shape a real request burst has, and unlike the serial phases it actually puts the Bulldozer
+// write lock under contention, so lockWaitMs becomes meaningful instead of pinned near zero.
+const CONCURRENCY = 10;
+const CONCURRENT_SUBSCRIPTION_BATCHES = 6;
+const CONCURRENT_PURCHASE_BATCHES = 6;
+const CONCURRENT_ITEM_UPDATE_BATCHES = 60;
 const prefillUserCountValue = process.env.BULLDOZER_PAYMENTS_PERF_PREFILL_USERS ?? "200";
 if (!/^\d+$/.test(prefillUserCountValue)) throw new Error("BULLDOZER_PAYMENTS_PERF_PREFILL_USERS must be a non-negative integer");
 const PREFILL_USER_COUNT = Number(prefillUserCountValue);
@@ -113,6 +120,13 @@ const rows = async (snapshot: Snapshot, tableId: string, groupKey: PiledriverObj
   return result;
 };
 const emptyLockStats = (): LockStats => ({ heldMs: 0, waitMs: 0, acquisitions: 0 });
+// Runs `batchCount` batches of CONCURRENCY writes; each batch is issued concurrently and fully
+// awaited before the next one starts, so concurrency stays bounded at CONCURRENCY.
+const inConcurrentBatches = async (batchCount: number, write: (batchIndex: number, slotIndex: number) => Promise<unknown>) => {
+  for (let batchIndex = 0; batchIndex < batchCount; batchIndex++) {
+    await Promise.all(Array.from({ length: CONCURRENCY }, async (_unused, slotIndex) => await write(batchIndex, slotIndex)));
+  }
+};
 const measure = async <T>(
   metrics: Metric[],
   name: string,
@@ -191,28 +205,57 @@ describe("payments schema performance", () => {
       }
     }, () => db);
 
+    // The measured write phases replicate, because that is what an HTTP handler waits for before it
+    // can respond; plain withSnapshot only waits for availability and so understates response time.
     await measure(metrics, "write subscriptions", USER_COUNT, async () => {
       for (let i = 0; i < USER_COUNT; i++) {
-        await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.subscriptions, rowIdentifier: `sub-${i}`, newRowData: subscription(i) as unknown as PiledriverObject }));
+        await db.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.subscriptions, rowIdentifier: `sub-${i}`, newRowData: subscription(i) as unknown as PiledriverObject }));
       }
     }, () => db);
 
     await measure(metrics, "write one-time purchases", USER_COUNT, async () => {
       for (let i = 0; i < USER_COUNT; i++) {
-        await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.oneTimePurchases, rowIdentifier: `otp-${i}`, newRowData: oneTimePurchase(i) as unknown as PiledriverObject }));
+        await db.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.oneTimePurchases, rowIdentifier: `otp-${i}`, newRowData: oneTimePurchase(i) as unknown as PiledriverObject }));
       }
     }, () => db);
 
     await measure(metrics, "write manual item quantity changes", USER_COUNT * ITEM_UPDATES_PER_USER, async () => {
       for (let userIndex = 0; userIndex < USER_COUNT; userIndex++) {
         for (let updateIndex = 0; updateIndex < ITEM_UPDATES_PER_USER; updateIndex++) {
-          await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({
+          await db.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({
             tableId: schema.manualItemQuantityChanges,
             rowIdentifier: `miqc-${userIndex}-${updateIndex}`,
             newRowData: manualItemQuantityChange(userIndex, updateIndex),
           }));
         }
       }
+    }, () => db);
+
+    // Same totals of work as above, but issued CONCURRENCY-at-a-time. Rows live in their own
+    // "concurrent-" namespace so they cannot collide with the serial phases' rows or affect the
+    // transaction count asserted at the end.
+    await measure(metrics, "write subscriptions (concurrent)", CONCURRENT_SUBSCRIPTION_BATCHES * CONCURRENCY, async () => {
+      await inConcurrentBatches(CONCURRENT_SUBSCRIPTION_BATCHES, async (batchIndex, slotIndex) => {
+        const i = batchIndex * CONCURRENCY + slotIndex;
+        await db.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.subscriptions, rowIdentifier: `concurrent-sub-${i}`, newRowData: subscription(i, "concurrent-") as unknown as PiledriverObject }));
+      });
+    }, () => db);
+
+    await measure(metrics, "write one-time purchases (concurrent)", CONCURRENT_PURCHASE_BATCHES * CONCURRENCY, async () => {
+      await inConcurrentBatches(CONCURRENT_PURCHASE_BATCHES, async (batchIndex, slotIndex) => {
+        const i = batchIndex * CONCURRENCY + slotIndex;
+        await db.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.oneTimePurchases, rowIdentifier: `concurrent-otp-${i}`, newRowData: oneTimePurchase(i, "concurrent-") as unknown as PiledriverObject }));
+      });
+    }, () => db);
+
+    await measure(metrics, "write manual item quantity changes (concurrent)", CONCURRENT_ITEM_UPDATE_BATCHES * CONCURRENCY, async () => {
+      await inConcurrentBatches(CONCURRENT_ITEM_UPDATE_BATCHES, async (batchIndex, slotIndex) => {
+        await db.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({
+          tableId: schema.manualItemQuantityChanges,
+          rowIdentifier: `concurrent-miqc-${slotIndex}-${batchIndex}`,
+          newRowData: manualItemQuantityChange(slotIndex, batchIndex, "concurrent-"),
+        }));
+      });
     }, () => db);
 
     const { snapshot } = await db.getSnapshot();
