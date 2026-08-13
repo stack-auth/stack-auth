@@ -167,15 +167,14 @@ SENTINEL_MARKER="$WORK_DIR/.stack-sentinels-replaced"
 sentinel_env_vars=""
 sentinel_fingerprint=""
 runtime_build_identity=""
+runtime_tree_trusted=false
+sentinel_marker_present=false
 # Keep this list explicit: these values are required by the bundled dashboard,
 # while other discovered sentinels intentionally remain optional at runtime.
 required_sentinel_env_vars="NEXT_PUBLIC_STACK_PROJECT_ID NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY NEXT_PUBLIC_STACK_API_URL NEXT_PUBLIC_SERVER_STACK_API_URL NEXT_PUBLIC_STACK_DASHBOARD_URL NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL USE_INLINE_ENV_VARS"
 get_runtime_build_identity() {
-  local _build_files _identity
-  if ! _build_files=$(find /app -type f -name BUILD_ID -print 2>/dev/null | sort) || [ -z "$_build_files" ]; then
-    return 1
-  fi
-  if ! _identity=$(printf '%s\n' "$_build_files" | xargs sha256sum | sha256sum | cut -d ' ' -f1) || [ -z "$_identity" ]; then
+  local _identity
+  if ! _identity=$(cat /app/.stack-runtime-build-identity 2>/dev/null) || [ -z "$_identity" ]; then
     return 1
   fi
   printf '%s\n' "$_identity"
@@ -185,7 +184,9 @@ rebuild_runtime_tree() {
     echo "ERROR: STACK_RUNTIME_WORK_DIR=/app cannot rebuild changed sentinel values in place. Recreate the container without STACK_RUNTIME_WORK_DIR=/app." >&2
     exit 1
   fi
-  find "$WORK_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  while IFS= read -r -d '' _runtime_entry; do
+    rm -rf "$WORK_DIR/$_runtime_entry"
+  done < <(find /app -mindepth 1 -maxdepth 1 -printf '%f\0')
   cp -r /app/. "$WORK_DIR"/.
   rm -f "$SENTINEL_MARKER"
 }
@@ -213,6 +214,7 @@ if ! runtime_build_identity=$(get_runtime_build_identity); then
   runtime_build_identity=""
 fi
 if [ -f "$SENTINEL_MARKER" ]; then
+  sentinel_marker_present=true
   stored_sentinel_fingerprint=$(sed -n '1p' "$SENTINEL_MARKER")
   sentinel_env_vars=$(sed -n '2p' "$SENTINEL_MARKER")
   stored_runtime_build_identity=$(sed -n '3p' "$SENTINEL_MARKER")
@@ -224,21 +226,25 @@ if [ -f "$SENTINEL_MARKER" ]; then
       && sentinel_values_are_replaced; then
       echo "Sentinel values unchanged on a previous start; skipping scan."
       sentinel_fingerprint=$stored_sentinel_fingerprint
+      runtime_tree_trusted=true
     else
-      echo "Sentinel marker is stale or incomplete; rebuilding runtime files and rescanning."
-      rebuild_runtime_tree
+      echo "Sentinel marker is stale or incomplete; restoring pristine runtime files and rescanning."
     fi
   else
-    echo "Sentinel marker has no fingerprint; rebuilding runtime files and rescanning."
+    echo "Sentinel marker has no fingerprint; restoring pristine runtime files and rescanning."
+  fi
+fi
+
+if [ "$runtime_tree_trusted" = false ]; then
+  if [ "$WORK_DIR" != "/app" ]; then
+    echo "Restoring pristine files to working directory..."
+    rebuild_runtime_tree
+  elif [ "$sentinel_marker_present" = true ]; then
     rebuild_runtime_tree
   fi
 fi
 
-if [ ! -f "$SENTINEL_MARKER" ]; then
-  if [ "$WORK_DIR" != "/app" ]; then
-    echo "Restoring pristine files to working directory..."
-    rebuild_runtime_tree
-  fi
+if [ "$runtime_tree_trusted" = false ]; then
 
   # Find all files in the apps directory that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
   # Require at least one character after `STACK_ENV_VAR_SENTINEL_` — a bare
