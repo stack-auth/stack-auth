@@ -2,8 +2,8 @@ name: DB migration compat
 
 on:
   push:
-    branches-ignore:
-      - main
+    branches:
+      - dev
   pull_request:
 
 # A concurrency group only ever runs one run at a time, so the sha is part of the group on main/dev:
