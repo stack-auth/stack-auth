@@ -13,7 +13,7 @@ import { ReconciliationLeaseLostError } from "./reconciliation-lock.js";
 import {
   BUILD_ID_REGEX,
   applyServiceSpec,
-  buildLogRedactionValues,
+  buildLogRedactionValuesForBuild,
   completeBuild,
   deleteService,
   getServiceState,
@@ -264,7 +264,7 @@ export function createMarshalApp() {
         instance: checked.builder_machine_id,
         forceNullInstance: true,
       });
-      const redactionValues = buildLogRedactionValues(fly, checked);
+      const redactionValues = await buildLogRedactionValuesForBuild(fly, checked);
       return {
         lines: page.lines.map((line) => ({ ...line, text: redactBuildLogText(line.text, redactionValues) })),
         next_since_millis: page.nextSinceMillis,

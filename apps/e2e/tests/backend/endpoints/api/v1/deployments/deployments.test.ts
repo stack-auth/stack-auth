@@ -634,17 +634,79 @@ describe("deploys against the Marshal runtime", () => {
       expect(machine.metadata.hexclave_key).toBe(serviceId);
     }
 
-    // Build logs stream with the secret value redacted (stage-2 redaction). The mock builder
-    // echoes the resolved env into the log (MARSHAL_MOCK_ENV), so this is a REAL redaction
-    // check: the plain var survives verbatim, the secret's resolved value is scrubbed to
-    // <redacted>, and the raw secret never appears.
+    // Build logs stream with every env VALUE redacted. The mock builder echoes the resolved
+    // env into the log (MARSHAL_MOCK_ENV), standing in for a build step that echoes its own
+    // environment — so this is a REAL redaction check, not a shape assertion.
+    //
+    // The plain var is scrubbed alongside the secret, and deliberately so: env vars reach
+    // the build over a single channel with no marker saying which are sensitive, so Marshal
+    // cannot tell "plain-value" from a database password and treats both as the latter.
     const logsResponse = await niceBackendFetch(`/api/v1/deployments/runs/${runId}/logs`, { accessType: "admin" });
     expect(logsResponse.status).toBe(200);
     const logsText = typeof logsResponse.body === "string" ? logsResponse.body : JSON.stringify(logsResponse.body);
     expect(logsText).toContain("MARSHAL_MOCK_ENV");
-    expect(logsText).toContain("PLAIN_VAR=plain-value"); // non-secret value passes through
-    expect(logsText).toContain("<redacted>"); // the secret was actually redacted, not just absent
+    expect(logsText).toContain("PLAIN_VAR=<redacted>");
+    expect(logsText).toContain("OPENAI_KEY=<redacted>");
     expect(logsText).not.toContain("sk-secret-value-123");
+    expect(logsText).not.toContain("plain-value");
+  });
+
+  it("gives the build every plain env value, and only those", { timeout: 120_000 }, async ({ expect }) => {
+    // Frameworks that inline values (NEXT_PUBLIC_*, VITE_*) need them while they compile,
+    // not just at runtime. There is no build/runtime marker on an env var: everything with
+    // a resolvable value goes to the build, secrets included. A `service(...)` connection
+    // is the one thing that cannot — the target has no address until it is rolled out.
+    await Project.createAndSwitch();
+    await InternalApiKey.createAndSetProjectKeys();
+    const apiServiceId = uniqueServiceId("api");
+    const webServiceId = uniqueServiceId("web");
+    await niceBackendFetch("/api/v1/project-secrets", {
+      method: "POST",
+      accessType: "admin",
+      body: { key: "inline_secret", value: "sk-build-secret-value" },
+    });
+
+    const definitionSyncId = await syncServices({
+      [apiServiceId]: { type: "serverless", ports: [{ port: 8080 }], env: {} },
+      [webServiceId]: {
+        type: "serverless",
+        ports: [{ port: 3000 }],
+        env: {
+          NEXT_PUBLIC_API_URL: { value: "https://api.example.com" },
+          BUILD_SECRET: { type: "secret", key: "inline_secret" },
+          NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: { type: "connection", value: "hexclave.projectId" },
+          // Short enough to fall under the redaction floor, which exists so a log doesn't
+          // become a wall of <redacted> over values like "true" and "5432".
+          PORT: { value: "3000" },
+          // A service connection: resolvable at rollout, unresolvable at build time.
+          API_INTERNAL_URL: { type: "connection", value: `${apiServiceId}.internalUrl` },
+        },
+      },
+    });
+    // The api deploys first: an unnamed internalUrl blocks until its target's spec exists.
+    await pollRunToStatus(await startDeploy(apiServiceId, (await createUpload()).uploadId, definitionSyncId), "ready");
+    const { uploadId } = await createUpload();
+    const runId = await startDeploy(webServiceId, uploadId, definitionSyncId);
+    await pollRunToStatus(runId, "ready");
+
+    const logsResponse = await niceBackendFetch(`/api/v1/deployments/runs/${runId}/logs`, { accessType: "admin" });
+    expect(logsResponse.status).toBe(200);
+    const logsText = typeof logsResponse.body === "string" ? logsResponse.body : JSON.stringify(logsResponse.body);
+    // MARSHAL_BUILD_ENV_KEYS lists the NAMES the build was handed (the mock builder starts
+    // no machine, so this line is the only window onto that selection).
+    expect(logsText).toContain("MARSHAL_BUILD_ENV_KEYS");
+    for (const key of ["NEXT_PUBLIC_API_URL", "BUILD_SECRET", "NEXT_PUBLIC_HEXCLAVE_PROJECT_ID", "PORT"]) {
+      expect(logsText).toContain(key);
+    }
+    expect(logsText).not.toContain("API_INTERNAL_URL");
+
+    // The build value is scrubbed from the log, the short one is not, and the connection
+    // still resolves for the RUNNING container — build-time absence is not runtime absence.
+    expect(logsText).not.toContain("sk-build-secret-value");
+    expect(logsText).toContain("PORT=3000");
+    const webApp = await findMockApp(webServiceId);
+    expect(webApp.machines[0].env.API_INTERNAL_URL).toMatch(/^http:\/\/.*:8080$/);
+    expect(webApp.machines[0].env.BUILD_SECRET).toBe("sk-build-secret-value");
   });
 
   it("provisions a volume and mounts it on the machine", { timeout: 120_000 }, async ({ expect }) => {

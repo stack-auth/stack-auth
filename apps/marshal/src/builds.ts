@@ -1,9 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { BUILDER_GUEST, BUILDER_IMAGE, BUILD_TIMEOUT_SECONDS, RAILPACK_BUILDER_GUEST, RAILPACK_BUILDKIT_TMPFS_SIZE, RAILPACK_CLI_SHA256, RAILPACK_CLI_URL, RAILPACK_FRONTEND_IMAGE, getConfig, resolveNamespaceOrg } from "./config.js";
+import { BUILDER_GUEST, BUILDER_IMAGE, BUILD_ENV_DIR, BUILD_TIMEOUT_SECONDS, RAILPACK_BUILDER_GUEST, RAILPACK_BUILDKIT_TMPFS_SIZE, RAILPACK_CLI_SHA256, RAILPACK_CLI_URL, RAILPACK_FRONTEND_IMAGE, getConfig, resolveNamespaceOrg } from "./config.js";
 import { flyClientForNamespaceOrg } from "./fly/client.js";
 import { builderAppName, builderNetworkName } from "./naming.js";
 import { presignValidatedUploadGet, readSpec } from "./store.js";
 import type { ReconciliationLeaseGuard } from "./reconciliation-lock.js";
+import type { EnvValue } from "./types.js";
 
 // Builders start a build for an uploaded source tarball; completion always flows through
 // the webhook path (POST /internal/builds/:id/complete → services.completeBuild), so the
@@ -21,7 +22,35 @@ export type StartBuildOptions = {
   uploadId: string,
   // Tarball-root-relative Dockerfile to build from; null = Railpack auto-detection.
   dockerfilePath: string | null,
+  // The tenant env the build gets to see (buildTimeEnv of the stored spec).
+  buildEnv: Record<string, string>,
 };
+
+// ONE env channel, Vercel-style: every declared env var goes to both the build and the
+// runtime, secrets included. There is deliberately no build/runtime marker on the wire and
+// no allowlist of which vars qualify — a framework that inlines values (NEXT_PUBLIC_*,
+// VITE_*) has to see them while it compiles, and nothing in a ServiceSpec says which vars
+// those are, so guessing would just be a different way to be wrong.
+//
+// `{ ref }` values are the one exception, and only because they are unresolvable rather
+// than withheld: a ref names an output (internal_url, url) of a service that has not been
+// rolled out yet, so at build time there is nothing to resolve it to. Nothing to flag or
+// reject — it simply isn't there.
+export function buildTimeEnv(env: Record<string, EnvValue>): Record<string, string> {
+  const entries: [string, string][] = [];
+  for (const [key, value] of Object.entries(env)) {
+    if ("value" in value) entries.push([key, value.value]);
+  }
+  return Object.fromEntries(entries);
+}
+
+export function buildEnvByteLength(env: Record<string, string>): number {
+  let total = 0;
+  for (const [key, value] of Object.entries(env)) {
+    total += Buffer.byteLength(key, "utf8") + Buffer.byteLength(value, "utf8");
+  }
+  return total;
+}
 
 export type Builder = {
   name: string,
@@ -42,8 +71,10 @@ export function verifyWebhookToken(token: string, buildId: string, ns: string, k
 }
 
 // The harness: BuildKit plus a small shell wrapper, injected via the machine `files` API.
-// Its stdout doubles as the live build log (Fly logs API). It never receives tenant env
-// values — only the tarball URL, registry credentials, and the webhook callback.
+// Its stdout doubles as the live build log (Fly logs API). The machine's env block carries
+// only Marshal's own credentials (tarball URL, registry auth, webhook callback) — the
+// TENANT's env arrives as files instead, one per var under $BUILD_ENV_DIR, so that a value
+// can never be confused with a credential and `env` in a log dump stays free of both.
 // On success it POSTs buildctl's metadata JSON (which contains containerimage.digest);
 // Marshal falls back to a registry HEAD if that ever comes back unparseable.
 //
@@ -98,10 +129,46 @@ tar xzf /tmp/ctx.tar.gz -C /ctx || fail "the source tarball is not a valid gzipp
 cd /ctx
 mkdir -p /root/.docker
 printf '{"auths":{"%s":{"auth":"%s"}}}' "$REGISTRY_HOST" "$REGISTRY_AUTH_B64" > /root/.docker/config.json
+# Tenant build-time env. One file per var, filename = var name, contents = the exact value.
+# Every var is offered to the build as a BuildKit SECRET whose id is the var name, which is
+# how a value reaches a build step without being written into an image layer. A Dockerfile
+# build additionally gets each one as a --build-arg: an ARG is the only channel a framework
+# that INLINES values (NEXT_PUBLIC_*, VITE_*) can read.
+# Nothing here echoes a value; the two helpers print only names and paths.
+BUILD_ENV_DIR_OK=0
+if [ -n "\${BUILD_ENV_DIR:-}" ] && [ -d "\${BUILD_ENV_DIR:-}" ]; then BUILD_ENV_DIR_OK=1; fi
+# Deliberately unquoted at the call site: word-splitting IS the mechanism, and var names
+# (and the fixed dir) contain no whitespace, so each printf below becomes exactly two words.
+secret_args() {
+  [ "$BUILD_ENV_DIR_OK" = 1 ] || return 0
+  for f in "$BUILD_ENV_DIR"/*; do
+    [ -f "$f" ] || continue
+    printf ' --secret id=%s,src=%s' "\${f##*/}" "$f"
+  done
+}
+# Railpack's frontend keys its layer cache on this: without it, a changed secret would reuse
+# the layer built from the old one. Every builder here is ephemeral so there is no cache to
+# poison today, but the frontend's contract is what it is and the hash is nearly free.
+secrets_hash() {
+  [ "$BUILD_ENV_DIR_OK" = 1 ] || return 0
+  for f in "$BUILD_ENV_DIR"/*; do
+    [ -f "$f" ] || continue
+    printf '%s=' "\${f##*/}"; cat "$f"; printf '\\n'
+  done | sha256sum | cut -d' ' -f1
+}
 if [ -n "\${DOCKERFILE_PATH:-}" ]; then
   [ -f "$DOCKERFILE_PATH" ] || fail "no Dockerfile found at $DOCKERFILE_PATH in the source tarball"
+  set -- $(secret_args)
+  if [ "$BUILD_ENV_DIR_OK" = 1 ]; then
+    for f in "$BUILD_ENV_DIR"/*; do
+      [ -f "$f" ] || continue
+      # \$(cat) drops trailing newlines — a build ARG is a command-line string, so a value
+      # ending in one cannot survive this channel. The secret mount above is byte-exact.
+      set -- "$@" --opt "build-arg:\${f##*/}=$(cat "$f")"
+    done
+  fi
   if ! buildctl build --frontend dockerfile.v0 --local context=. --local dockerfile=. \\
-      --opt "filename=$DOCKERFILE_PATH" \\
+      --opt "filename=$DOCKERFILE_PATH" "$@" \\
       --output "type=image,name=$PUSH_TARGET,push=true" --metadata-file /tmp/md.json 2>&1; then
     fail "docker build failed (see the build log above)"
   fi
@@ -117,11 +184,26 @@ else
   # subshell with the build credentials stripped — unlike Dockerfile RUN steps (sandboxed by
   # buildkit), it executes directly in this harness, and it has no business seeing them.
   mkdir -p /tmp/railpack-plan
-  if ! ( unset REGISTRY_AUTH_B64 WEBHOOK_TOKEN WEBHOOK_URL TARBALL_URL; /tmp/railpack-bin/railpack prepare . --plan-out /tmp/railpack-plan/railpack-plan.json 2>&1 ); then
+  # railpack sees the env twice, for two different reasons. Here, --env is what DETECTION
+  # reads (a NODE_VERSION or a RAILPACK_* knob changes the plan it emits) and what makes it
+  # list each name in the plan's "secrets"; the values themselves never enter the plan file.
+  # Below, buildctl supplies those same names as secret mounts, which the railpack frontend
+  # exposes as environment variables on every build step — that is the channel a "next
+  # build" actually reads NEXT_PUBLIC_* from.
+  set --
+  if [ "$BUILD_ENV_DIR_OK" = 1 ]; then
+    for f in "$BUILD_ENV_DIR"/*; do
+      [ -f "$f" ] || continue
+      set -- "$@" --env "\${f##*/}=$(cat "$f")"
+    done
+  fi
+  if ! ( unset REGISTRY_AUTH_B64 WEBHOOK_TOKEN WEBHOOK_URL TARBALL_URL; /tmp/railpack-bin/railpack prepare . --plan-out /tmp/railpack-plan/railpack-plan.json "$@" 2>&1 ); then
     fail "railpack could not determine how to build this service (see the log above) — add a Dockerfile and set dockerfilePath in your services export, or configure detection with a railpack.json (https://railpack.com)"
   fi
+  set -- $(secret_args)
+  if [ "$#" -gt 0 ]; then set -- "$@" --opt "build-arg:secrets-hash=$(secrets_hash)"; fi
   if ! buildctl build --frontend gateway.v0 --opt "source=$RAILPACK_FRONTEND_IMAGE" \\
-      --local context=. --local dockerfile=/tmp/railpack-plan \\
+      --local context=. --local dockerfile=/tmp/railpack-plan "$@" \\
       --output "type=image,name=$PUSH_TARGET,push=true" --metadata-file /tmp/md.json 2>&1; then
     fail "railpack build failed (see the build log above)"
   fi
@@ -162,12 +244,30 @@ export function createFlyBuilder(): Builder {
           auto_destroy: true,
           restart: { policy: "no" },
           init: { exec: ["/bin/sh", "/marshal-build.sh"] },
-          files: [{
-            guest_path: "/marshal-build.sh",
-            raw_value: Buffer.from(buildHarnessScript()).toString("base64"),
-          }],
+          files: [
+            {
+              guest_path: "/marshal-build.sh",
+              raw_value: Buffer.from(buildHarnessScript()).toString("base64"),
+            },
+            // Tenant env, one file per var. NOT in the env block below: that one holds
+            // Marshal's org token and registry auth, and a tenant value sitting next to
+            // them is one careless `env` away from being logged as a credential — and one
+            // careless credential away from being handed to `railpack prepare`, which runs
+            // unsandboxed in the harness.
+            // An EMPTY value is skipped: it would mean a files entry whose raw_value is the
+            // empty string, which the API is free to read as "no content supplied" rather
+            // than "supplied, and empty". There is nothing to inline either way, and the
+            // runtime env still carries the var — so the ambiguity is simply not worth
+            // entering. The harness's `[ -f "$f" ]` guard makes the absence a non-event.
+            ...Object.entries(options.buildEnv).flatMap(([key, value]) => value === "" ? [] : [{
+              guest_path: `${BUILD_ENV_DIR}/${key}`,
+              raw_value: Buffer.from(value, "utf8").toString("base64"),
+            }]),
+          ],
           metadata: { marshal_build_id: options.buildId },
           env: {
+            // A path, not a value: the harness reads the values out of the files above.
+            BUILD_ENV_DIR,
             TARBALL_URL: tarballUrl,
             PUSH_TARGET: `${config.fly.registryHost}/${options.appName}:${options.revision}`,
             REGISTRY_HOST: config.fly.registryHost,

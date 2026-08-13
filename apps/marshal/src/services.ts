@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { computeWebhookToken, type Builder } from "./builds.js";
-import { BUILD_TIMEOUT_SECONDS, MACHINE_GUEST, MAX_INSTANCES_CAP, MAX_PERSISTENT_VOLUMES_PER_SERVICE, MAX_PORTS_PER_SERVICE, MAX_UPLOAD_BYTES, MAX_VOLUME_ID_LENGTH, MAX_VOLUME_SIZE_GB, MIN_VOLUME_SIZE_GB, SOFT_CONCURRENCY_LIMIT, VOLUME_ID_REGEX, flyVolumeName, getConfig, resolveNamespaceOrg } from "./config.js";
+import { buildEnvByteLength, buildTimeEnv, computeWebhookToken, type Builder } from "./builds.js";
+import { BUILD_TIMEOUT_SECONDS, MACHINE_GUEST, MAX_BUILD_ENV_BYTES, MAX_INSTANCES_CAP, MAX_PERSISTENT_VOLUMES_PER_SERVICE, MAX_PORTS_PER_SERVICE, MAX_UPLOAD_BYTES, MAX_VOLUME_ID_LENGTH, MAX_VOLUME_SIZE_GB, MIN_REDACTED_ENV_VALUE_LENGTH, MIN_VOLUME_SIZE_GB, SOFT_CONCURRENCY_LIMIT, VOLUME_ID_REGEX, flyVolumeName, getConfig, resolveNamespaceOrg } from "./config.js";
 import { MarshalError, badRequest, conflict, notFound } from "./errors.js";
 import { FlyClient, flyClientForNamespaceOrg, type FlyCertificate, type FlyMachine, type FlyVolume } from "./fly/client.js";
 import { fetchAllLogs } from "./logs.js";
@@ -186,6 +186,15 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
     if (hasValue === hasRef) throw badRequest(`env.${key} must be exactly one of { value } or { ref }`);
     if (hasRef && !REF_REGEX.test(envValue.ref as string)) throw badRequest(`env.${key}.ref must look like "<service_key>.<output_key>"`);
     validatedEnv.set(key, hasValue ? { value: envValue.value as string } : { ref: envValue.ref as string });
+  }
+  // Plain values ride to the builder machine inside its machine config (see
+  // createFlyBuilder), so their total size is bounded by what one machine-create call will
+  // accept. Enforced here rather than at build start so an oversized env is a 400 naming
+  // the problem, not an opaque Fly rejection partway into a deploy. Refs don't count: they
+  // resolve to machine env only.
+  const buildEnvBytes = buildEnvByteLength(buildTimeEnv(Object.fromEntries(validatedEnv)));
+  if (buildEnvBytes > MAX_BUILD_ENV_BYTES) {
+    throw badRequest(`the env var values total ${buildEnvBytes} bytes, over the ${MAX_BUILD_ENV_BYTES}-byte limit (they are handed to the remote build, which puts them in the builder machine's configuration)`);
   }
 
   return {
@@ -735,6 +744,15 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
   const buildForRevision = recentBuilds.find(
     (build) => build.revision === revision && build.started_at_millis >= stored.created_at_millis,
   ) ?? null;
+  // FUTURE (build-time env): env values are handed to the builder too (see buildTimeEnv),
+  // because frameworks that inline them (NEXT_PUBLIC_*, VITE_*) need them at BUILD time. So
+  // an env-only change rolls the machines with the new value while the already-built image
+  // keeps the old one baked in. That skew is ACCEPTED for now: the source here is
+  // `{ image }` after a successful build, so this stays false and nothing rebuilds. The fix
+  // is not in this condition but in the product surface: track which build-visible values an
+  // image was built from, report the service as stale in the dashboard, and offer a redeploy
+  // (Vercel makes the redeploy mandatory — an env change never applies to an existing
+  // deployment).
   const needsBuild = "upload_id" in stored.spec.source && buildForRevision === null;
   if (needsBuild && "upload_id" in stored.spec.source) {
     const uploadId = stored.spec.source.upload_id;
@@ -793,6 +811,7 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
         appName: appNameForService(config.envId, ns, key),
         uploadId,
         dockerfilePath: stored.spec.source.dockerfile_path ?? null,
+        buildEnv: buildTimeEnv(stored.spec.env),
       }, lease);
       if (started.builderApp !== null || started.builderMachineId !== null) {
         // Attach the builder coordinates (live-log proxy + stale-build backstop need
@@ -990,20 +1009,29 @@ async function deleteValidatedUploadBestEffort(ns: string, buildId: string): Pro
 // persists JSONL to the bucket — outliving Fly's ~7d retention. The harness stays dumb.
 async function persistBuildLog(fly: FlyClient, build: StoredBuild): Promise<void> {
   if (build.builder_app === null || build.builder_machine_id === null) {
-    // Mock builds: a canned log so the has_logs contract holds in dev/e2e. The MARSHAL_MOCK_ENV
-    // line echoes the resolved plain env values so e2e can verify the backend's stage-2 secret
-    // redaction end to end — a real builder never receives tenant env, so this only exists for
-    // the mock (which is non-prod-guarded).
+    // Mock builds: a canned log so the has_logs contract holds in dev/e2e, and the only
+    // vehicle e2e has for the redaction contract — the mock builder starts no machine, so
+    // there are no real build logs to scrub. Two lines stand in for what a real build could
+    // print: MARSHAL_MOCK_ENV echoes the resolved plain values (a build step echoing its
+    // own env is exactly the leak stage-1 redaction exists to catch), and
+    // MARSHAL_BUILD_ENV_KEYS lists the NAMES the build was given, which is how e2e sees the
+    // buildTimeEnv selection rule (plain values in, refs out) end to end.
     const spec = await readSpec(build.ns, build.key);
     const envEcho = spec === null ? "" : Object.entries(spec.spec.env)
       .flatMap(([envKey, value]) => "value" in value ? [`${envKey}=${value.value}`] : [])
       .join(" ");
+    const buildEnvKeys = spec === null ? "" : Object.keys(buildTimeEnv(spec.spec.env)).sort().join(" ");
     const canned = [
       { at_millis: build.started_at_millis, stream: "stdout" as const, instance: null, text: "MARSHAL_BUILD_START (mock builder)" },
-      { at_millis: build.started_at_millis + 1, stream: "stdout" as const, instance: null, text: `MARSHAL_MOCK_ENV ${envEcho}` },
+      { at_millis: build.started_at_millis + 1, stream: "stdout" as const, instance: null, text: `MARSHAL_BUILD_ENV_KEYS ${buildEnvKeys}` },
+      { at_millis: build.started_at_millis + 2, stream: "stdout" as const, instance: null, text: `MARSHAL_MOCK_ENV ${envEcho}` },
       { at_millis: Date.now(), stream: "stdout" as const, instance: null, text: "MARSHAL_BUILD_DONE (mock builder)" },
     ];
-    await writeBuildLog(build.ns, build.key, build.id, canned.map((line) => JSON.stringify(line)).join("\n"));
+    const redactionValues = await buildLogRedactionValuesForBuild(fly, build);
+    await writeBuildLog(build.ns, build.key, build.id, canned
+      .map((line) => ({ ...line, text: redactBuildLogText(line.text, redactionValues) }))
+      .map((line) => JSON.stringify(line))
+      .join("\n"));
     return;
   }
   try {
@@ -1015,7 +1043,7 @@ async function persistBuildLog(fly: FlyClient, build: StoredBuild): Promise<void
     // ingestion lag) must not freeze `has_logs:true, lines:[], complete:true`. Leaving no
     // object makes the logs route fall back to the live proxy instead.
     if (lines.length === 0) return;
-    const redactionValues = buildLogRedactionValues(fly, build);
+    const redactionValues = await buildLogRedactionValuesForBuild(fly, build);
     const jsonl = lines
       .map((line) => ({ ...line, text: redactBuildLogText(line.text, redactionValues) }))
       .map((line) => JSON.stringify(line))
@@ -1036,6 +1064,27 @@ export function buildLogRedactionValues(fly: FlyClient, build: StoredBuild): str
   const { fly: flyConfig } = getConfig();
   const values = [flyConfig.token, fly.registryAuthBase64(), computeWebhookToken(build.id, build.ns, build.key)];
   if (flyConfig.token.startsWith("FlyV1 ")) values.push(flyConfig.token.slice("FlyV1 ".length));
+  return values;
+}
+
+// The same, plus the tenant's own env values — which now reach the builder, so they can be
+// echoed by a build step, printed by a framework banner, or dumped by railpack's detection
+// output. Every plain value is scrubbed, not a chosen subset: one env channel with no
+// build/runtime marker means Marshal cannot tell a publishable API URL from a database
+// password, and the only safe default is to treat all of them as the latter. That costs
+// some debuggability in the log, which is the honest price of not leaking.
+//
+// Derived from the CURRENT spec rather than from anything recorded on the build, so an env
+// value edited between the build and the log read is no longer scrubbed from that older
+// log. Best-effort by construction: the alternative is storing a copy of every secret next
+// to every build, which is a worse thing to own than an imperfect scrub.
+export async function buildLogRedactionValuesForBuild(fly: FlyClient, build: StoredBuild): Promise<string[]> {
+  const values = buildLogRedactionValues(fly, build);
+  const stored = await readSpec(build.ns, build.key);
+  if (stored === null) return values;
+  for (const value of Object.values(buildTimeEnv(stored.spec.env))) {
+    if (value.length >= MIN_REDACTED_ENV_VALUE_LENGTH) values.push(value);
+  }
   return values;
 }
 

@@ -184,3 +184,18 @@ export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 // check, so it gets an explicit cap rather than inheriting the server default.
 export const MAX_WEBHOOK_BODY_BYTES = 64 * 1024;
 export const SOFT_CONCURRENCY_LIMIT = 25;
+
+// Build-time env (see buildTimeEnv). The values ride to the builder machine inside its
+// machine CONFIG, via the files API — so they are bounded by what the Fly machine-create
+// API will accept as one document, not by anything about env vars. The cap is enforced at
+// spec validation so an oversized env fails the PUT with a precise message instead of
+// surfacing as an opaque machine-create rejection fifteen seconds into a deploy.
+export const MAX_BUILD_ENV_BYTES = 32 * 1024;
+// Where the harness finds those files: one file per var, filename = var name, contents =
+// the exact value.
+export const BUILD_ENV_DIR = "/marshal-build-env";
+// Tenant env now reaches the builder, so its values are scrubbed from build logs alongside
+// Marshal's own credentials. Short values are skipped: "1", "true", "5432" and friends are
+// everywhere in a build log, and redacting them would leave a page of <redacted> with no
+// secret actually protected (nothing that short is a credential worth hiding).
+export const MIN_REDACTED_ENV_VALUE_LENGTH = 8;
