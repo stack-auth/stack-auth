@@ -208,6 +208,21 @@ export function declareBasePiledriverDatabase(lowLevelDb: LowLevelDatabase, opti
   });
   const rootMutationByKey = new Map<string, Promise<unknown>>();
   const rootWriteSeqByKey = new Map<string, DatabaseSeq>();
+  const readPreviousRoot = async (key: ArrayBuffer) => {
+    const keyBase64 = encodeBase64(new Uint8Array(key));
+    const previousRootWriteSeq = rootWriteSeqByKey.get(keyBase64);
+    // rootStore.get carries no requiresSeq. Awaiting this process's prior write prevents raw
+    // LMDB from returning an older root; concurrent writers in another process are out of scope.
+    if (previousRootWriteSeq !== undefined) {
+      try {
+        await lowLevelDb.waitUntilAvailable(previousRootWriteSeq);
+      } catch (error) {
+        if (rootWriteSeqByKey.get(keyBase64) === previousRootWriteSeq) rootWriteSeqByKey.delete(keyBase64);
+        throw error;
+      }
+    }
+    return { keyBase64, previousRoot: await rootStore.get(key) };
+  };
   const withRootMutationLock = async <T>(key: ArrayBuffer, operation: () => Promise<T>) => {
     const keyBase64 = encodeBase64(new Uint8Array(key));
     const previous = rootMutationByKey.get(keyBase64) ?? Promise.resolve();
@@ -762,12 +777,7 @@ export function declareBasePiledriverDatabase(lowLevelDb: LowLevelDatabase, opti
     async setRootObject(key, value): Promise<{ seq: DatabaseSeq }> {
       return await traceSpan("bulldozer-js.piledriver.setRootObject", async () => await withRootMutationLock(key, async () => {
         await garbageCollector.initialize();
-        const keyBase64 = encodeBase64(new Uint8Array(key));
-        const previousRootWriteSeq = rootWriteSeqByKey.get(keyBase64);
-        // rootStore.get carries no requiresSeq. Awaiting this process's prior write prevents raw
-        // LMDB from returning an older root; concurrent writers in another process are out of scope.
-        if (previousRootWriteSeq !== undefined) await lowLevelDb.waitUntilAvailable(previousRootWriteSeq);
-        const previousRoot = await rootStore.get(key);
+        const { keyBase64, previousRoot } = await readPreviousRoot(key);
         const timingStats = emptyPiledriverSerializationTimingStats();
         const startedAt = performance.now();
         const serializeStartedAt = performance.now();
@@ -865,12 +875,7 @@ export function declareBasePiledriverDatabase(lowLevelDb: LowLevelDatabase, opti
     async deleteRootObject(key): Promise<{ seq: DatabaseSeq }> {
       return await traceSpan("bulldozer-js.piledriver.deleteRootObject", async () => await withRootMutationLock(key, async () => {
         await garbageCollector.initialize();
-        const keyBase64 = encodeBase64(new Uint8Array(key));
-        const previousRootWriteSeq = rootWriteSeqByKey.get(keyBase64);
-        // rootStore.get carries no requiresSeq. Awaiting this process's prior write prevents raw
-        // LMDB from returning an older root; concurrent writers in another process are out of scope.
-        if (previousRootWriteSeq !== undefined) await lowLevelDb.waitUntilAvailable(previousRootWriteSeq);
-        const previousRoot = await rootStore.get(key);
+        const { keyBase64, previousRoot } = await readPreviousRoot(key);
         const deleted = await rootStore.deleteAll([key]);
         rootWriteSeqByKey.set(keyBase64, deleted.seq);
         if (previousRoot.buffer === null) return deleted;

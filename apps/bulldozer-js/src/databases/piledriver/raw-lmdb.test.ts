@@ -25,6 +25,7 @@ function wrapDelayedStoreVisibility(lowLevel: LowLevelDatabase, storeId: string)
       if (id !== storeId) return store;
       const availableBuffers = new Map<string, ArrayBuffer | null>();
       const pendingWrites = new Map<string, PendingWrite[]>();
+      const pendingWritesBySeq = new Map<string, PendingWrite[]>();
       const availabilityPromises = new Map<string, Promise<void>>();
       const keyId = (key: ArrayBuffer) => encodeBase64(new Uint8Array(key));
       const seqId = (seq: DatabaseSeq) => JSON.stringify(seq);
@@ -39,12 +40,14 @@ function wrapDelayedStoreVisibility(lowLevel: LowLevelDatabase, storeId: string)
         }
         if (writes.length === 0) pendingWrites.delete(key);
       };
-      const trackAvailability = (seq: DatabaseSeq, writes: PendingWrite[]) => {
+      const trackAvailability = (seq: DatabaseSeq) => {
         const id = seqId(seq);
         let availability = availabilityPromises.get(id);
         if (availability === undefined) {
           availability = lowLevel.waitUntilAvailable(seq).then(() => {
+            const writes = pendingWritesBySeq.get(id) ?? [];
             for (const write of writes) write.resolved = true;
+            pendingWritesBySeq.delete(id);
             for (const [key] of pendingWrites) flushAvailableWrites(key);
           });
           availabilityPromises.set(id, availability);
@@ -72,10 +75,14 @@ function wrapDelayedStoreVisibility(lowLevel: LowLevelDatabase, storeId: string)
             const id = keyId(key);
             const writes = pendingWrites.get(id) ?? [];
             if (writes.length === 0 && !availableBuffers.has(id)) availableBuffers.set(id, existing.buffer);
-            writes.push({ seq: result.seq, buffer: entry.value.slice(0), resolved: false });
+            const write = { seq: result.seq, buffer: entry.value.slice(0), resolved: false };
+            writes.push(write);
             pendingWrites.set(id, writes);
-            trackAvailability(result.seq, writes);
+            const seqWrites = pendingWritesBySeq.get(seqId(result.seq)) ?? [];
+            seqWrites.push(write);
+            pendingWritesBySeq.set(seqId(result.seq), seqWrites);
           }
+          trackAvailability(result.seq);
           return result;
         },
         async deleteAll(keys, options) {
@@ -85,10 +92,14 @@ function wrapDelayedStoreVisibility(lowLevel: LowLevelDatabase, storeId: string)
             const id = keyId(key);
             const writes = pendingWrites.get(id) ?? [];
             if (writes.length === 0 && !availableBuffers.has(id)) availableBuffers.set(id, existing.buffer);
-            writes.push({ seq: result.seq, buffer: null, resolved: false });
+            const write = { seq: result.seq, buffer: null, resolved: false };
+            writes.push(write);
             pendingWrites.set(id, writes);
-            trackAvailability(result.seq, writes);
+            const seqWrites = pendingWritesBySeq.get(seqId(result.seq)) ?? [];
+            seqWrites.push(write);
+            pendingWritesBySeq.set(seqId(result.seq), seqWrites);
           }
+          trackAvailability(result.seq);
           return result;
         },
       };
