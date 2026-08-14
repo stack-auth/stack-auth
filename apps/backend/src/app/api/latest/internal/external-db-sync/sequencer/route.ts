@@ -1,7 +1,7 @@
 import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
 import { enqueueExternalDbSyncBatch } from "@/lib/external-db-sync-queue";
 import { Prisma } from "@/generated/prisma/client";
-import { globalPrismaClient } from "@/prisma-client";
+import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { traceSpan } from "@/utils/telemetry";
 import {
@@ -18,6 +18,95 @@ import { wait } from "@hexclave/shared/dist/utils/promises";
 const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
 const SEQUENCER_BATCH_SIZE_ENV = "STACK_EXTERNAL_DB_SYNC_SEQUENCER_BATCH_SIZE";
 const DEFAULT_BATCH_SIZE = 1000;
+
+/** PostgreSQL advisory-lock namespace for sequence allocation. */
+const SEQUENCE_ALLOCATION_LOCK_CLASS = 178555;
+
+export type SequenceAllocationResult<T> = {
+  locked: boolean,
+  result: T | null,
+};
+
+type EmailOutboxSequenceAllocationScope = {
+  tenancyId: string,
+  id: string,
+};
+
+export type EmailOutboxSequenceAllocation = {
+  tenancyId: string,
+  id: string,
+  sequenceId: bigint,
+};
+
+/**
+ * Runs one set-based sequence allocation while holding the global transaction-scoped lock.
+ * The lock is global because each batch statement can span multiple tenancies.
+ */
+export async function runSequenceAllocationInTransaction<T>(
+  tx: Prisma.TransactionClient,
+  allocation: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<SequenceAllocationResult<T>> {
+  const [{ locked }] = await tx.$queryRaw<{ locked: boolean }[]>`
+    SELECT pg_try_advisory_xact_lock(${SEQUENCE_ALLOCATION_LOCK_CLASS}::int) AS locked
+  `;
+  if (!locked) return { locked: false, result: null };
+  return { locked: true, result: await allocation(tx) };
+}
+
+export async function allocateEmailOutboxSequence(
+  tx: Prisma.TransactionClient,
+  batchSize: number,
+  scope?: EmailOutboxSequenceAllocationScope,
+): Promise<EmailOutboxSequenceAllocation[]> {
+  if (scope != null) {
+    return await tx.$queryRaw<EmailOutboxSequenceAllocation[]>`
+      WITH rows_to_update AS (
+        SELECT "tenancyId", "id"
+        FROM "EmailOutbox"
+        WHERE "tenancyId" = ${scope.tenancyId}::uuid
+          AND "id" = ${scope.id}::uuid
+          AND "shouldUpdateSequenceId" = TRUE
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "EmailOutbox" eo
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE eo."tenancyId" = r."tenancyId"
+          AND eo."id" = r."id"
+        RETURNING eo."tenancyId", eo."id", eo."sequenceId"
+      )
+      SELECT "tenancyId", "id", "sequenceId" FROM updated_rows
+    `;
+  }
+  return await tx.$queryRaw<EmailOutboxSequenceAllocation[]>`
+    WITH rows_to_update AS (
+      SELECT "tenancyId", "id"
+      FROM "EmailOutbox"
+      WHERE "shouldUpdateSequenceId" = TRUE
+      ORDER BY "tenancyId"
+      LIMIT ${batchSize}
+      FOR UPDATE SKIP LOCKED
+    ),
+    updated_rows AS (
+      UPDATE "EmailOutbox" eo
+      SET "sequenceId" = nextval('global_seq_id'),
+          "shouldUpdateSequenceId" = FALSE
+      FROM rows_to_update r
+      WHERE eo."tenancyId" = r."tenancyId"
+        AND eo."id" = r."id"
+      RETURNING eo."tenancyId", eo."id", eo."sequenceId"
+    )
+    SELECT "tenancyId", "id", "sequenceId" FROM updated_rows
+  `;
+}
+
+async function runSequenceAllocation<T>(
+  allocation: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<SequenceAllocationResult<T>> {
+  return await retryTransaction(globalPrismaClient, (tx) => runSequenceAllocationInTransaction(tx, allocation));
+}
 
 function parseMaxDurationMs(value: string | undefined): number {
   if (!value) return DEFAULT_MAX_DURATION_MS;
@@ -52,7 +141,9 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
   }, async (span) => {
     let didUpdate = false;
 
-    const projectUserTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+    // Sequence allocation must commit in allocation order: the sync's `> watermark` filter
+    // permanently skips a lower value if a higher value becomes visible first.
+    const projectUserTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "projectUserId"
         FROM "ProjectUser"
@@ -71,7 +162,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING pu."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `)).result ?? [];
 
     span.setAttribute("stack.external-db-sync.project-user-tenants", projectUserTenants.length);
 
@@ -81,7 +172,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const contactChannelTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+    const contactChannelTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "projectUserId", "id"
         FROM "ContactChannel"
@@ -101,7 +192,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING cc."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `)).result ?? [];
 
     span.setAttribute("stack.external-db-sync.contact-channel-tenants", contactChannelTenants.length);
 
@@ -110,7 +201,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const teamTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string, teamId: string }[]>`
+    const teamTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string, teamId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "teamId"
         FROM "Team"
@@ -129,7 +220,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING t."tenancyId", t."teamId"
       )
       SELECT DISTINCT "tenancyId", "teamId" FROM updated_rows
-    `;
+    `)).result ?? [];
 
     span.setAttribute("stack.external-db-sync.team-tenants", teamTenants.length);
 
@@ -158,7 +249,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       `;
     }
 
-    const teamMemberTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+    const teamMemberTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "projectUserId", "teamId"
         FROM "TeamMember"
@@ -178,7 +269,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING tm."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `)).result ?? [];
 
     span.setAttribute("stack.external-db-sync.team-member-tenants", teamMemberTenants.length);
 
@@ -187,7 +278,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const teamPermissionTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+    const teamPermissionTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "id"
         FROM "TeamMemberDirectPermission"
@@ -205,7 +296,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING tp."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `)).result ?? [];
 
     span.setAttribute("stack.external-db-sync.team-permission-tenants", teamPermissionTenants.length);
 
@@ -214,7 +305,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const teamInvitationTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+    const teamInvitationTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "projectId", "branchId", "id"
         FROM "VerificationCode"
@@ -238,7 +329,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       FROM updated_rows
       JOIN "Tenancy" ON "Tenancy"."projectId" = updated_rows."projectId"
         AND "Tenancy"."branchId" = updated_rows."branchId"
-    `;
+    `)).result ?? [];
 
     span.setAttribute("stack.external-db-sync.team-invitation-tenants", teamInvitationTenants.length);
 
@@ -247,26 +338,9 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const emailOutboxTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
-      WITH rows_to_update AS (
-        SELECT "tenancyId", "id"
-        FROM "EmailOutbox"
-        WHERE "shouldUpdateSequenceId" = TRUE
-        ORDER BY "tenancyId"
-        LIMIT ${batchSize}
-        FOR UPDATE SKIP LOCKED
-      ),
-      updated_rows AS (
-        UPDATE "EmailOutbox" eo
-        SET "sequenceId" = nextval('global_seq_id'),
-            "shouldUpdateSequenceId" = FALSE
-        FROM rows_to_update r
-        WHERE eo."tenancyId" = r."tenancyId"
-          AND eo."id"        = r."id"
-        RETURNING eo."tenancyId"
-      )
-      SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    const emailOutboxRows = (await runSequenceAllocation((tx) => allocateEmailOutboxSequence(tx, batchSize))).result ?? [];
+    const emailOutboxTenants = Array.from(new Set(emailOutboxRows.map(row => row.tenancyId)))
+      .map(tenancyId => ({ tenancyId }));
 
     span.setAttribute("stack.external-db-sync.email-outbox-tenants", emailOutboxTenants.length);
 
@@ -275,7 +349,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const projectPermissionTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+    const projectPermissionTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "id"
         FROM "ProjectUserDirectPermission"
@@ -293,7 +367,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING pp."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `)).result ?? [];
 
     span.setAttribute("stack.external-db-sync.project-permission-tenants", projectPermissionTenants.length);
 
@@ -302,7 +376,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const notificationPreferenceTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+    const notificationPreferenceTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "id"
         FROM "UserNotificationPreference"
@@ -321,7 +395,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING np."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `)).result ?? [];
 
     span.setAttribute("stack.external-db-sync.notification-preference-tenants", notificationPreferenceTenants.length);
 
@@ -330,7 +404,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const refreshTokenTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+    const refreshTokenTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "id"
         FROM "ProjectUserRefreshToken"
@@ -349,7 +423,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING rt."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `)).result ?? [];
 
     span.setAttribute("stack.external-db-sync.refresh-token-tenants", refreshTokenTenants.length);
 
@@ -358,7 +432,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const oauthAccountTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+    const oauthAccountTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "id"
         FROM "ProjectUserOAuthAccount"
@@ -377,7 +451,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING oa."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `)).result ?? [];
 
     span.setAttribute("stack.external-db-sync.oauth-account-tenants", oauthAccountTenants.length);
 
@@ -386,7 +460,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const deletedRowTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+    const deletedRowTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "id", "tenancyId"
         FROM "DeletedRow"
@@ -404,7 +478,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING dr."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `)).result ?? [];
 
     span.setAttribute("stack.external-db-sync.deleted-row-tenants", deletedRowTenants.length);
 

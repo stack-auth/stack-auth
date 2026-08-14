@@ -190,46 +190,75 @@ async function triggerExternalDbSync(tenancyId: string): Promise<void> {
   expect(response.status).toBe(200);
 }
 
-type FuseboxState = {
-  existed: boolean,
-  sequencerEnabled: boolean,
-  pollerEnabled: boolean,
-};
-
-async function disableAutomaticSequencing(): Promise<FuseboxState> {
-  return await withInternalDatabase(async (client) => {
-    const result = await client.query<{ sequencerEnabled: boolean, pollerEnabled: boolean }>(
-      `SELECT "sequencerEnabled", "pollerEnabled" FROM "ExternalDbSyncMetadata" WHERE "singleton" = 'TRUE'::"BooleanTrue"`,
-    );
-    const existing = result.rows.at(0);
-    await client.query(
-      `
-        INSERT INTO "ExternalDbSyncMetadata" ("singleton", "sequencerEnabled", "pollerEnabled", "createdAt", "updatedAt")
-        VALUES ('TRUE'::"BooleanTrue", false, COALESCE($1, true), now(), now())
-        ON CONFLICT ("singleton")
-        DO UPDATE SET "sequencerEnabled" = false
-      `,
-      [existing?.pollerEnabled ?? null],
-    );
-    return {
-      existed: existing != null,
-      sequencerEnabled: existing?.sequencerEnabled ?? true,
-      pollerEnabled: existing?.pollerEnabled ?? true,
-    };
+async function triggerExternalDbSequencer(): Promise<void> {
+  const cronSecret = getEnvVariable("CRON_SECRET", "") || throwErr("Sequence visibility e2e test requires CRON_SECRET");
+  const url = new URL("/api/latest/internal/external-db-sync/sequencer", STACK_BACKEND_BASE_URL);
+  url.searchParams.set("maxDurationMs", "500");
+  const response = await niceFetch(url, {
+    method: "GET",
+    headers: {
+      authorization: `Bearer ${cronSecret}`,
+    },
   });
+  expect(response.status).toBe(200);
 }
 
-async function restoreFusebox(state: FuseboxState): Promise<void> {
-  await withInternalDatabase(async (client) => {
-    if (state.existed) {
-      await client.query(
-        `UPDATE "ExternalDbSyncMetadata" SET "sequencerEnabled" = $1, "pollerEnabled" = $2 WHERE "singleton" = 'TRUE'::"BooleanTrue"`,
-        [state.sequencerEnabled, state.pollerEnabled],
-      );
-    } else {
-      await client.query(`DELETE FROM "ExternalDbSyncMetadata" WHERE "singleton" = 'TRUE'::"BooleanTrue"`);
-    }
-  });
+async function waitForReplicaEmailOutboxSequence(id: string): Promise<bigint> {
+  const connectionString = getEnvVariable(
+    "STACK_DATABASE_REPLICA_CONNECTION_STRING",
+    getEnvVariable("STACK_DATABASE_CONNECTION_STRING", ""),
+  );
+  if (connectionString === "") {
+    throwErr("Sequence visibility e2e test requires a database replica connection string");
+  }
+  const client = new Client({ connectionString });
+  await client.connect();
+  try {
+    let sequenceId: bigint | undefined;
+    await waitForCondition(
+      async () => {
+        const result = await client.query<{ sequenceId: string | null }>(
+          `SELECT "sequenceId" FROM "EmailOutbox" WHERE "id" = $1`,
+          [id],
+        );
+        const value = result.rows[0]?.sequenceId;
+        if (value == null) return false;
+        sequenceId = BigInt(value);
+        return true;
+      },
+      {
+        timeoutMs: 30_000,
+        intervalMs: 250,
+        description: `EmailOutbox ${id} to become visible on the sync reader`,
+      },
+    );
+    return sequenceId ?? throwErr(`Replica did not return a sequence ID for EmailOutbox ${id}`);
+  } finally {
+    await client.end();
+  }
+}
+
+async function waitForPrimaryEmailOutboxSequence(id: string): Promise<bigint> {
+  let sequenceId: bigint | undefined;
+  await waitForCondition(
+    async () => {
+      await withInternalDatabase(async (client) => {
+        const result = await client.query<{ sequenceId: string | null }>(
+          `SELECT "sequenceId" FROM "EmailOutbox" WHERE "id" = $1`,
+          [id],
+        );
+        const value = result.rows[0]?.sequenceId;
+        if (value != null) sequenceId = BigInt(value);
+      });
+      return sequenceId != null;
+    },
+    {
+      timeoutMs: 30_000,
+      intervalMs: 250,
+      description: `EmailOutbox ${id} to receive a sequence ID`,
+    },
+  );
+  return sequenceId ?? throwErr(`Primary did not return a sequence ID for EmailOutbox ${id}`);
 }
 
 async function waitForExternalEmailOutbox(client: Client, id: string, expectedCount: number): Promise<void> {
@@ -1596,15 +1625,10 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     const transactionA = new Client({
       connectionString: internalDatabaseConnectionString,
     });
-    const transactionB = new Client({
-      connectionString: internalDatabaseConnectionString,
-    });
 
     let tenancyId: string | undefined;
     let transactionAStarted = false;
-    let fuseboxState: FuseboxState | undefined;
     try {
-      fuseboxState = await disableAutomaticSequencing();
       await withInternalDatabase(async (client) => {
         const tenancy = await client.query<{ id: string }>(
           `SELECT "id" FROM "Tenancy" WHERE "projectId" = $1 AND "branchId" = 'main' LIMIT 1`,
@@ -1616,12 +1640,12 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       const testTenancyId = tenancyId ?? throwErr("Test project's tenancy was not initialized");
 
       await transactionA.connect();
-      await transactionB.connect();
       await withInternalDatabase(async (client) => {
         await client.query("BEGIN");
         await allocateEmailOutboxSequence(client, testTenancyId, baselineRow);
         await client.query("COMMIT");
       });
+      await waitForReplicaEmailOutboxSequence(baselineRow);
       await triggerExternalDbSync(testTenancyId);
       await waitForExternalEmailOutbox(externalClient, baselineRow, 1);
 
@@ -1632,18 +1656,31 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
       await transactionA.query("BEGIN");
       transactionAStarted = true;
+      await transactionA.query("SET LOCAL lock_timeout = '5000ms'");
+      await transactionA.query("SELECT pg_advisory_xact_lock(178555)");
       const sequenceA = await allocateEmailOutboxSequence(transactionA, testTenancyId, rowA);
 
-      await transactionB.query("BEGIN");
-      const sequenceB = await allocateEmailOutboxSequence(transactionB, testTenancyId, rowB);
-      await transactionB.query("COMMIT");
-
-      // T1 has allocated the lower value but is still uncommitted. T2 commits the higher value first.
+      // T1 holds the production allocation lock after assigning A. A real sequencer invocation
+      // runs while T1 is open and must skip rather than commit a higher value first.
+      await triggerExternalDbSequencer();
+      const rowBSequenceBeforeACommit = await withInternalDatabase(async (client) => {
+        const result = await client.query<{ sequenceId: string | null }>(
+          `SELECT "sequenceId" FROM "EmailOutbox" WHERE "id" = $1`,
+          [rowB],
+        );
+        return result.rows[0]?.sequenceId;
+      });
+      if (rowBSequenceBeforeACommit != null) {
+        await waitForReplicaEmailOutboxSequence(rowB);
+      }
       await triggerExternalDbSync(testTenancyId);
-      await waitForExternalEmailOutbox(externalClient, rowB, 1);
 
       await transactionA.query("COMMIT");
       transactionAStarted = false;
+      await triggerExternalDbSequencer();
+      await waitForPrimaryEmailOutboxSequence(rowB);
+      await waitForReplicaEmailOutboxSequence(rowA);
+      await waitForReplicaEmailOutboxSequence(rowB);
       await triggerExternalDbSync(testTenancyId);
 
       await waitForCondition(
@@ -1651,33 +1688,29 @@ describe.sequential('External DB Sync - Basic Tests', () => {
         {
           timeoutMs: 20_000,
           intervalMs: 500,
-          description: `EmailOutbox ${rowA} to reach the external database after the sequence visibility interleaving (A=${sequenceA}, B=${sequenceB})`,
+          description: `EmailOutbox ${rowA} to reach the external database after serialized sequence allocation (A=${sequenceA})`,
         },
       );
+      await waitForExternalEmailOutbox(externalClient, rowB, 1);
     } finally {
-      try {
-        if (transactionAStarted) await transactionA.query("ROLLBACK");
-        await transactionA.end();
-        await transactionB.end();
+      if (transactionAStarted) await transactionA.query("ROLLBACK");
+      await transactionA.end();
 
-        if (tenancyId != null) {
-          await withInternalDatabase(async (client) => {
-            await client.query("BEGIN");
-            try {
-              await deleteSyncedRowsWithTombstones(client, {
-                table: "EmailOutbox",
-                whereClause: `"tenancyId" = $1::uuid AND "id" = ANY($2::uuid[])`,
-                values: [tenancyId, [baselineRow, rowA, rowB]],
-              });
-              await client.query("COMMIT");
-            } catch (error) {
-              await client.query("ROLLBACK");
-              throw error;
-            }
-          });
-        }
-      } finally {
-        if (fuseboxState != null) await restoreFusebox(fuseboxState);
+      if (tenancyId != null) {
+        await withInternalDatabase(async (client) => {
+          await client.query("BEGIN");
+          try {
+            await deleteSyncedRowsWithTombstones(client, {
+              table: "EmailOutbox",
+              whereClause: `"tenancyId" = $1::uuid AND "id" = ANY($2::uuid[])`,
+              values: [tenancyId, [baselineRow, rowA, rowB]],
+            });
+            await client.query("COMMIT");
+          } catch (error) {
+            await client.query("ROLLBACK");
+            throw error;
+          }
+        });
       }
     }
   }, TEST_TIMEOUT);

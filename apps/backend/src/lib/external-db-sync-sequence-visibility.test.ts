@@ -1,10 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { Client } from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 import { describe, expect, it } from "vitest";
-import { EmailOutboxCreatedWith } from "@/generated/prisma/client";
+import { EmailOutboxCreatedWith, PrismaClient } from "@/generated/prisma/client";
 import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import {
+  allocateEmailOutboxSequence,
+  runSequenceAllocationInTransaction,
+} from "@/app/api/latest/internal/external-db-sync/sequencer/route";
 import { getExternalDbSyncFusebox, updateExternalDbSyncFusebox } from "./external-db-sync-metadata";
 import { getSoleTenancyFromProjectBranch } from "./tenancies";
 import { recordExternalDbSyncDeletion } from "./external-db-sync";
@@ -16,38 +21,6 @@ type SequencedRow = {
   id: string,
   sequenceId: bigint,
 };
-
-type VisibleRow = {
-  id: string,
-  sequenceId: string,
-};
-
-async function allocateEmailOutboxSequence(client: Client, tenancyId: string, id: string): Promise<bigint> {
-  const rows = await client.query<{ sequenceId: string }>(
-    `
-      WITH rows_to_update AS (
-        SELECT "tenancyId", "id"
-        FROM "EmailOutbox"
-        WHERE "tenancyId" = $1::uuid
-          AND "id" = $2::uuid
-          AND "shouldUpdateSequenceId" = TRUE
-        FOR UPDATE SKIP LOCKED
-      ),
-      updated_rows AS (
-        UPDATE "EmailOutbox" eo
-        SET "sequenceId" = nextval('global_seq_id'),
-            "shouldUpdateSequenceId" = FALSE
-        FROM rows_to_update r
-        WHERE eo."tenancyId" = r."tenancyId"
-          AND eo."id" = r."id"
-        RETURNING eo."sequenceId"
-      )
-      SELECT "sequenceId" FROM updated_rows
-    `,
-    [tenancyId, id],
-  );
-  return BigInt(rows.rows[0]?.sequenceId ?? throwErr(`Sequencer did not update EmailOutbox ${id}`));
-}
 
 async function createEmailOutbox(tenancyId: string, id: string): Promise<void> {
   await globalPrismaClient.emailOutbox.create({
@@ -70,7 +43,7 @@ async function createEmailOutbox(tenancyId: string, id: string): Promise<void> {
       renderedText: "sequence visibility test",
       renderedSubject: "sequence visibility test",
       renderedIsTransactional: false,
-      shouldUpdateSequenceId: true,
+      shouldUpdateSequenceId: false,
       startedSendingAt: null,
       finishedSendingAt: null,
       sendRetries: 0,
@@ -85,58 +58,94 @@ describe("external DB sync sequence visibility", () => {
     const tenancyId = (await getSoleTenancyFromProjectBranch("internal", "main")).id;
     const rowA: SequencedRow = { id: randomUUID(), sequenceId: 0n };
     const rowB: SequencedRow = { id: randomUUID(), sequenceId: 0n };
-    const transactionA = new Client({ connectionString: databaseConnectionString });
-    const transactionB = new Client({ connectionString: databaseConnectionString });
-    const reader = new Client({ connectionString: databaseConnectionString });
-    let transactionAStarted = false;
+    const poolA = new Pool({ connectionString: databaseConnectionString });
+    const poolB = new Pool({ connectionString: databaseConnectionString });
+    const poolReader = new Pool({ connectionString: databaseConnectionString });
+    const clientA = new PrismaClient({ adapter: new PrismaPg(poolA) });
+    const clientB = new PrismaClient({ adapter: new PrismaPg(poolB) });
+    const reader = new PrismaClient({ adapter: new PrismaPg(poolReader) });
+    let releaseTransactionA: () => void = () => undefined;
+    let resolveTransactionAAllocated: () => void = () => undefined;
+    const transactionAReleased = new Promise<void>((resolve) => {
+      releaseTransactionA = resolve;
+    });
+    const transactionAAllocated = new Promise<void>((resolve) => {
+      resolveTransactionAAllocated = resolve;
+    });
+    let transactionA: Promise<void> | undefined;
     const originalFusebox = await getExternalDbSyncFusebox();
     await updateExternalDbSyncFusebox({ ...originalFusebox, sequencerEnabled: false });
 
     try {
       await createEmailOutbox(tenancyId, rowA.id);
       await createEmailOutbox(tenancyId, rowB.id);
-      await transactionA.connect();
-      await transactionB.connect();
-      await reader.connect();
+      // eslint-disable-next-line no-restricted-syntax
+      transactionA = clientA.$transaction(async (tx) => {
+        await tx.$executeRaw`
+          UPDATE "EmailOutbox"
+          SET "shouldUpdateSequenceId" = TRUE
+          WHERE "tenancyId" = ${tenancyId}::uuid
+            AND "id" = ${rowA.id}::uuid
+        `;
+        const allocation = await runSequenceAllocationInTransaction(tx, (lockedTx) =>
+          allocateEmailOutboxSequence(lockedTx, 1, { tenancyId, id: rowA.id })
+        );
+        expect(allocation.locked).toBe(true);
+        rowA.sequenceId = allocation.result?.[0]?.sequenceId ?? throwErr(`Sequencer did not update EmailOutbox ${rowA.id}`);
+        resolveTransactionAAllocated();
+        await transactionAReleased;
+      });
+      await transactionAAllocated;
 
-      await transactionA.query("BEGIN");
-      transactionAStarted = true;
-      rowA.sequenceId = await allocateEmailOutboxSequence(transactionA, tenancyId, rowA.id);
-
-      await transactionB.query("BEGIN");
-      rowB.sequenceId = await allocateEmailOutboxSequence(transactionB, tenancyId, rowB.id);
-      await transactionB.query("COMMIT");
-
-      const visibleRows = (await reader.query<VisibleRow>(
-        `
-          SELECT "id", "sequenceId"
-          FROM "EmailOutbox"
-          WHERE "tenancyId" = $1::uuid
-            AND "id" = ANY($2::uuid[])
-            AND "sequenceId" IS NOT NULL
-          ORDER BY "sequenceId"
-        `,
-        [tenancyId, [rowA.id, rowB.id]],
-      )).rows;
-
-      expect(visibleRows).toEqual([{ id: rowB.id, sequenceId: rowB.sequenceId.toString() }]);
-
-      const highestVisibleSequenceId = BigInt(visibleRows.at(-1)?.sequenceId ?? throwErr("No visible sequence ID"));
-      const missingLowerRows = [rowA, rowB]
-        .filter(row => row.sequenceId < highestVisibleSequenceId)
-        .filter(row => !visibleRows.some(visibleRow => visibleRow.id === row.id));
-
+      // eslint-disable-next-line no-restricted-syntax
+      const transactionBAttempt = await clientB.$transaction((tx) =>
+        runSequenceAllocationInTransaction(tx, (lockedTx) =>
+          allocateEmailOutboxSequence(lockedTx, 1, { tenancyId, id: rowB.id })
+        )
+      );
       expect(
-        missingLowerRows,
-        `A visible sequence ID ${highestVisibleSequenceId} skipped lower assigned rows: ${JSON.stringify(missingLowerRows.map(row => ({ id: row.id, sequenceId: row.sequenceId.toString() })))}.`,
-      ).toHaveLength(0);
-    } finally {
-      try {
-        if (transactionAStarted) await transactionA.query("ROLLBACK");
-        await transactionB.end();
-        await reader.end();
-        await transactionA.end();
+        transactionBAttempt.locked,
+        "A second allocation must skip while the first allocation transaction is still open",
+      ).toBe(false);
 
+      releaseTransactionA();
+      await transactionA;
+
+      // eslint-disable-next-line no-restricted-syntax
+      const transactionB = await clientB.$transaction(async (tx) => {
+        await tx.$executeRaw`
+          UPDATE "EmailOutbox"
+          SET "shouldUpdateSequenceId" = TRUE
+          WHERE "tenancyId" = ${tenancyId}::uuid
+            AND "id" = ${rowB.id}::uuid
+        `;
+        return await runSequenceAllocationInTransaction(tx, (lockedTx) =>
+          allocateEmailOutboxSequence(lockedTx, 1, { tenancyId, id: rowB.id })
+        );
+      });
+      expect(transactionB.locked).toBe(true);
+      rowB.sequenceId = transactionB.result?.[0]?.sequenceId ?? throwErr(`Sequencer did not update EmailOutbox ${rowB.id}`);
+
+      const visibleRows = await reader.emailOutbox.findMany({
+        where: { tenancyId, id: { in: [rowA.id, rowB.id] }, sequenceId: { not: null } },
+        select: { id: true, sequenceId: true },
+        orderBy: { sequenceId: "asc" },
+      });
+      expect(visibleRows).toEqual([
+        { id: rowA.id, sequenceId: rowA.sequenceId },
+        { id: rowB.id, sequenceId: rowB.sequenceId },
+      ]);
+    } finally {
+      releaseTransactionA();
+      if (transactionA != null) await transactionA;
+      await clientA.$disconnect();
+      await clientB.$disconnect();
+      await reader.$disconnect();
+      await poolA.end();
+      await poolB.end();
+      await poolReader.end();
+
+      try {
         await retryTransaction(globalPrismaClient, async (tx) => {
           await recordExternalDbSyncDeletion(tx, {
             tableName: "EmailOutbox",
