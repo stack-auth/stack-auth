@@ -17,6 +17,7 @@ import { declareInstantAvailabilityLowLevelDatabase } from "./databases/low-leve
 import { declareLmdbLowLevelDatabase, getLmdbDiagnostics } from "./databases/low-level/implementations/lmdb.js";
 import type { LowLevelDatabase } from "./databases/low-level/index.js";
 import { declareBasePiledriverDatabase } from "./databases/piledriver/implementations/base.js";
+import { declareBufferedPiledriverDatabase } from "./databases/piledriver/implementations/buffered.js";
 import type { PiledriverObject } from "./databases/piledriver/index.js";
 import "./load-env.js";
 import { shouldSuppressPeriodicBulldozerLogs } from "./logging.js";
@@ -76,10 +77,16 @@ function createLowLevelDatabase(): LowLevelDatabase {
   }));
 }
 
+const basePiledriver = declareBasePiledriverDatabase(createLowLevelDatabase(), {
+  disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
+});
+// Buffering keeps availability instant while durability/replication waits for the wrapped root write;
+// it is worthwhile for write-lock occupancy and throughput, not per-call latency.
+const piledriver = process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_BUFFERED_PILEDRIVER === "1"
+  ? basePiledriver
+  : declareBufferedPiledriverDatabase(basePiledriver);
 const bulldozerDb = declareBulldozerDatabase(
-  declareBasePiledriverDatabase(createLowLevelDatabase(), {
-    disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
-  }),
+  piledriver,
   { migrations: schema.migrations },
 );
 (globalThis as any).bulldozerDb = bulldozerDb;
