@@ -346,6 +346,10 @@ export async function bulldozerWriteManualTransaction(
 /**
  * Prisma-then-Bulldozer dual-write for a refund manual transaction. Shared by
  * the subscription and OTP refund handlers so field updates stay in sync.
+ *
+ * Upsert is the retry path for a *reused* `txnId` (see `makeRefundTxnId`):
+ * same-payload retries after Prisma-ok / Bulldozer-fail converge on one row.
+ * A freshly minted random id would create a second Prisma row instead.
  */
 export async function persistRefundManualTransaction(
   prisma: { manualTransaction: { upsert: (args: {
@@ -370,7 +374,7 @@ export async function persistRefundManualTransaction(
       customerType: refundPrismaRow.customerType,
       paymentProvider: refundPrismaRow.paymentProvider,
       effectiveAt: refundPrismaRow.effectiveAt,
-      // Preserve original create time on conflict (idempotent re-refund / retry).
+      // Preserve original create time on conflict (same-txnId retry).
       entries: refundPrismaRow.entries,
     },
   });
