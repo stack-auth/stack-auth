@@ -17,6 +17,7 @@ import { declareInstantAvailabilityLowLevelDatabase } from "./databases/low-leve
 import { declareLmdbLowLevelDatabase, getLmdbDiagnostics } from "./databases/low-level/implementations/lmdb.js";
 import type { LowLevelDatabase } from "./databases/low-level/index.js";
 import { declareBasePiledriverDatabase } from "./databases/piledriver/implementations/base.js";
+import { declareBufferedPiledriverDatabase } from "./databases/piledriver/implementations/buffered.js";
 import type { PiledriverObject } from "./databases/piledriver/index.js";
 import "./load-env.js";
 import { shouldSuppressPeriodicBulldozerLogs } from "./logging.js";
@@ -76,10 +77,15 @@ function createLowLevelDatabase(): LowLevelDatabase {
   }));
 }
 
+const basePiledriver = declareBasePiledriverDatabase(createLowLevelDatabase(), {
+  disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
+});
+// Buffering keeps availability instant while durability/replication waits for the wrapped root write;
+// it is worthwhile for write-lock occupancy and throughput, not per-call latency.
+const bufferedPiledriverEnabled = process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_BUFFERED_PILEDRIVER !== "1";
+const piledriver = bufferedPiledriverEnabled ? declareBufferedPiledriverDatabase(basePiledriver) : basePiledriver;
 const bulldozerDb = declareBulldozerDatabase(
-  declareBasePiledriverDatabase(createLowLevelDatabase(), {
-    disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
-  }),
+  piledriver,
   { migrations: schema.migrations },
 );
 (globalThis as any).bulldozerDb = bulldozerDb;
@@ -1154,6 +1160,7 @@ const startupFields = {
   usingTmpLmdb: process.env.HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB === "1",
   lmdbCompression: process.env.HEXCLAVE_BULLDOZER_JS_LMDB_COMPRESSION === "1",
   disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
+  bufferedPiledriverEnabled,
   gcExposed: globalThis.gc !== undefined,
   heapGcUsageThreshold: HEAP_GC_USAGE_THRESHOLD,
   heapGcMaxPasses: HEAP_GC_MAX_PASSES,
