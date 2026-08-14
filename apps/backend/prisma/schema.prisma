@@ -1762,13 +1762,14 @@ model DeploymentService {
   // only kind that may mount a volume) or "serverless" (scales between the
   // bounds below, stops on scale-down).
   type          String @default("serverless")
-  // The ports the container listens on, as a JSON array of
-  // `{ port, public, transport }` (see DeploymentPortDefinition). There is no
-  // separate visibility column: a service is public exactly when one of its
-  // ports is, so the two cannot drift apart. At most one port may be public and
-  // a "tcp" port may never be — both enforced by CHECK constraints as well as
-  // by the sync route, since this column is the only record of either fact.
-  ports         Json   @default("[]")
+  // The ports the container listens on, as a JSON object keyed by port number
+  // with `{ public?, protocol? }` values (see DeploymentPortDefinition). There
+  // is no separate visibility column: a service is public exactly when one of
+  // its ports is, so the two cannot drift apart. A public port must be the
+  // service's only port and a "tcp" port may never be public — both enforced by
+  // CHECK constraints as well as by the sync route, since this column is the
+  // only record of either fact.
+  ports         Json   @default("{}")
   minInstances  Int?
   maxInstances  Int?
   // Where the service's code lives inside the deployment source's upload, relative to the
