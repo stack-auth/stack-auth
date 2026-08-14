@@ -19,7 +19,7 @@
 //       frontend: {
 //         type: "serverless",
 //         public: true,
-//         ports: { 3000: {} },
+//         ports: { 3000: { protocol: "http" } },
 //         maxInstances: 3,
 //         devCommand: "pnpm dev",
 //         env: {
@@ -362,18 +362,18 @@ const KNOWN_PORT_FIELDS = new Set(["protocol"]);
  * ever misdescribe that.
  *
  * The record IS the wire and stored shape — nothing translates between two
- * spellings of one thing — so this normalizes the values (applying the
- * `protocol` default) and validates the keys.
+ * spellings of one thing — so this validates every explicit protocol and the
+ * keys.
  */
 function evaluatePorts(serviceId: string, isPublic: boolean, portsRaw: unknown): DeploymentPorts {
   // The FIELD stays required even though the record may be empty: an omitted
   // `ports` is far more often a forgotten line than a deliberate worker, and
   // `ports: {}` says the latter out loud.
   if (portsRaw === undefined || portsRaw === null) {
-    throw new CliError(`deployment.services.${serviceId} has no \`ports\`. Every service must declare the ports its container listens on, e.g. \`ports: { 3000: {} }\` — or \`ports: {}\` for a worker that only makes outbound connections.`);
+    throw new CliError(`deployment.services.${serviceId} has no \`ports\`. Every service must declare the ports its container listens on, e.g. \`ports: { 3000: { protocol: "http" } }\` — or \`ports: {}\` for a worker that only makes outbound connections.`);
   }
   if (typeof portsRaw !== "object" || Array.isArray(portsRaw)) {
-    throw new CliError(`deployment.services.${serviceId}.ports must be an object keyed by port number, e.g. \`ports: { 3000: {} }\` (got ${Array.isArray(portsRaw) ? "an array" : JSON.stringify(typeof portsRaw)}).`);
+    throw new CliError(`deployment.services.${serviceId}.ports must be an object keyed by port number, e.g. \`ports: { 3000: { protocol: "http" } }\` (got ${Array.isArray(portsRaw) ? "an array" : JSON.stringify(typeof portsRaw)}).`);
   }
   const portEntries = Object.entries(portsRaw as Record<string, unknown>);
   if (portEntries.length > MAX_PORTS_PER_SERVICE) {
@@ -387,7 +387,7 @@ function evaluatePorts(serviceId: string, isPublic: boolean, portsRaw: unknown):
     // string as one — so the key is validated as a port number here rather than
     // coerced.
     if (!/^[0-9]+$/.test(portKey)) {
-      throw new CliError(`deployment.services.${serviceId}.ports has the key ${JSON.stringify(portKey)}, which is not a port number. Keys are the ports the container listens on, e.g. \`ports: { 3000: {} }\`.`);
+      throw new CliError(`deployment.services.${serviceId}.ports has the key ${JSON.stringify(portKey)}, which is not a port number. Keys are the ports the container listens on, e.g. \`ports: { 3000: { protocol: "http" } }\`.`);
     }
     // A port has ONE canonical spelling, and this is what keeps duplicates
     // impossible. "80" and "080" are different keys of one record but the same
@@ -403,7 +403,7 @@ function evaluatePorts(serviceId: string, isPublic: boolean, portsRaw: unknown):
       throw new CliError(`${at} must be a port between 1 and 65535 (got ${port}).`);
     }
     if (portRaw === null || typeof portRaw !== "object" || Array.isArray(portRaw)) {
-      throw new CliError(`${at} must be an object, e.g. \`{ protocol: "tcp" }\` — or \`{}\` for the default HTTP.`);
+      throw new CliError(`${at} must be an object with an explicit protocol, e.g. \`{ protocol: "http" }\` or \`{ protocol: "tcp" }\`.`);
     }
     const record = portRaw as Record<string, unknown>;
     for (const field of Object.keys(record)) {
@@ -412,13 +412,12 @@ function evaluatePorts(serviceId: string, isPublic: boolean, portsRaw: unknown):
       }
     }
 
-    const protocol = record.protocol === undefined ? "http" : record.protocol;
+    const protocol = record.protocol;
     if (protocol !== "http" && protocol !== "tcp") {
-      throw new CliError(`${at}.protocol must be "http" or "tcp" (got ${JSON.stringify(record.protocol)}).`);
+      throw new CliError(`${at}.protocol is required and must be "http" or "tcp" (got ${JSON.stringify(record.protocol)}).`);
     }
 
-    // Written out rather than passed through, so the stored definition states
-    // every default instead of leaving each reader to apply it.
+    // Written out rather than passing the arbitrary input object through.
     ports[String(port)] = { protocol };
   }
 
@@ -578,7 +577,7 @@ const EXAMPLE_DEPLOYMENT_EXPORT = `  export const id = "my-app";
       web: {
         type: "serverless",
         public: true,
-        ports: { 3000: {} },
+        ports: { 3000: { protocol: "http" } },
         devCommand: "npm run dev",
         env: { API_URL: service("api").url(8080) },
       },

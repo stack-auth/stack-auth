@@ -112,9 +112,9 @@ function parseStoredPorts(ports: Prisma.JsonValue, serviceId: string): Deploymen
     if (!isRecord(definition)) {
       throw new HexclaveAssertionError(`Stored port ${portKey} of deployment service ${JSON.stringify(serviceId)} is not an object`, { ports });
     }
-    const protocol = definition.protocol ?? "http";
+    const protocol = definition.protocol;
     if (protocol !== "http" && protocol !== "tcp") {
-      throw new HexclaveAssertionError(`Stored port ${portKey} of deployment service ${JSON.stringify(serviceId)} has invalid protocol ${JSON.stringify(protocol)}`, { ports });
+      throw new HexclaveAssertionError(`Stored port ${portKey} of deployment service ${JSON.stringify(serviceId)} is missing a valid protocol`, { ports });
     }
     parsed[portKey] = { protocol };
   }

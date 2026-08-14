@@ -1774,7 +1774,7 @@ model DeploymentService {
   // expected to move — public TCP is a dedicated IPv4 away. See the migration.
   isPublic      Boolean @default(false)
   // The ports the container listens on, as a JSON object keyed by port number
-  // with `{ protocol? }` values (see DeploymentPortDefinition). A "tcp" port is
+  // with required `{ protocol }` values (see DeploymentPortDefinition). A "tcp" port is
   // raw and only a private service may declare one.
   ports         Json   @default("{}")
   minInstances  Int?

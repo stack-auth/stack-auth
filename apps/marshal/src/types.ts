@@ -61,7 +61,7 @@ export function portEntries(ports: PortsConfig): PortEntry[] {
     if (!/^[0-9]{1,5}$/.test(portKey)) continue;
     const port = Number(portKey);
     if (port < 1 || port > 65535) continue;
-    entries.push({ port, protocol: config.protocol === "tcp" ? "tcp" : "http" });
+    entries.push({ port, protocol: config.protocol });
   }
   return entries.sort((a, b) => a.port - b.port);
 }

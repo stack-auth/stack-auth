@@ -8,7 +8,7 @@ const TEST_DATA_KEY = Buffer.from("000102030405060708090a0b0c0d0e0f1011121314151
 
 function spec(config: Record<string, unknown>) {
   return {
-    config: { type: "server", min_instances: 0, max_instances: 1, ports: { "3000": {} }, ...config },
+    config: { type: "server", min_instances: 0, max_instances: 1, ports: { "3000": { protocol: "http" } }, ...config },
     source: { image: "example/image" },
     env: {},
   };
@@ -190,7 +190,7 @@ describe("public ingress spec validation", () => {
 
 describe("service type spec validation", () => {
   it("requires a known type", () => {
-    expect(() => validateServiceSpec({ ...spec({}), config: { min_instances: 0, max_instances: 1, ports: { "3000": {} } } }))
+    expect(() => validateServiceSpec({ ...spec({}), config: { min_instances: 0, max_instances: 1, ports: { "3000": { protocol: "http" } } } }))
       .toThrow(/config\.type must be "server" or "serverless"/);
     expect(() => validateServiceSpec(spec({ type: "container" }))).toThrow(/config\.type must be "server" or "serverless"/);
   });

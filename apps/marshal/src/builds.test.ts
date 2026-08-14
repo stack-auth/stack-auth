@@ -330,7 +330,7 @@ describe("createMockBuilder", () => {
 
 describe("validateServiceSpec build env size", () => {
   const specWithEnv = (env: Record<string, unknown>) => ({
-    config: { type: "serverless", min_instances: 0, max_instances: 1, ports: { "3000": {} } },
+    config: { type: "serverless", min_instances: 0, max_instances: 1, ports: { "3000": { protocol: "http" } } },
     source: { image: "registry.example.com/app@sha256:abc" },
     env,
   });
@@ -351,7 +351,7 @@ describe("validateDeploymentRequest paths", () => {
     upload_id: "00000000-0000-4000-8000-000000000001",
     targets: [{
       service_key: "web",
-      spec: { config: { type: "serverless", min_instances: 0, max_instances: 1, ports: { "3000": {} } }, env: {} },
+      spec: { config: { type: "serverless", min_instances: 0, max_instances: 1, ports: { "3000": { protocol: "http" } } }, env: {} },
       ...target,
     }],
     order: [["web"]],
@@ -396,7 +396,7 @@ describe("validateDeploymentRequest paths", () => {
     // A five-minute build that ends in "your ports are invalid" is the failure
     // this exists to prevent.
     expect(() => validateDeploymentRequest(request({
-      spec: { config: { type: "serverless", public: true, min_instances: 0, max_instances: 1, ports: { "3000": {}, "5432": { protocol: "tcp" } } }, env: {} },
+      spec: { config: { type: "serverless", public: true, min_instances: 0, max_instances: 1, ports: { "3000": { protocol: "http" }, "5432": { protocol: "tcp" } } }, env: {} },
     }))).toThrow(/may not declare a "tcp" port/);
   });
 });

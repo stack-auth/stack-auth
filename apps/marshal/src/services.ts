@@ -122,8 +122,8 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
     }
     const portRecord = asRecord(portRaw);
     if (portRecord === null) throw badRequest("each config.ports value must be an object");
-    const protocol = portRecord.protocol ?? "http";
-    if (protocol !== "http" && protocol !== "tcp") throw badRequest('config.ports[].protocol must be "http" or "tcp"');
+    const protocol = portRecord.protocol;
+    if (protocol !== "http" && protocol !== "tcp") throw badRequest('each config.ports value must declare protocol as "http" or "tcp"');
     ports[portKey] = { protocol };
   }
   const portList = portEntries(ports);

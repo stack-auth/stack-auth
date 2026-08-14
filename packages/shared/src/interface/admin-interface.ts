@@ -115,7 +115,7 @@ export type AdminDeploymentServiceJson = {
   public: boolean,
   // The ports the container listens on, keyed by port number — the same shape
   // the deploy file writes. Empty on rows synced before the definition existed.
-  ports: Record<string, { protocol?: "http" | "tcp" }>,
+  ports: Record<string, { protocol: "http" | "tcp" }>,
   // Scaling bounds; null on unsynced rows.
   min_instances: number | null,
   max_instances: number | null,

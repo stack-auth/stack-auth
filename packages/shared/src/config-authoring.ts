@@ -128,12 +128,12 @@ export type HexclavePersistentVolume = {
 /** How one port the container listens on is exposed. */
 export type HexclavePort = {
   /**
-   * "tcp" is a raw port, for databases and other daemons. Only a PRIVATE service
-   * may declare one — a shared public address tells services apart by SNI or
-   * Host, and a raw TCP stream carries neither. Reach them with `hostname()` and
-   * the port number. Defaults to "http".
+   * "http" serves an HTTP endpoint. "tcp" is a raw port, for databases and
+   * other daemons. Only a PRIVATE service may declare TCP — a shared public
+   * address tells services apart by SNI or Host, and a raw TCP stream carries
+   * neither. Reach TCP ports with `hostname()` and the port number.
    */
-  protocol?: "http" | "tcp",
+  protocol: "http" | "tcp",
 };
 
 type HexclaveServiceBase = {
@@ -151,7 +151,7 @@ type HexclaveServiceBase = {
   public?: boolean,
   /**
    * The ports the container listens on, keyed by port number:
-   * `ports: { 3000: {}, 5432: { protocol: "tcp" } }`. Whether they are reachable
+   * `ports: { 3000: { protocol: "http" }, 5432: { protocol: "tcp" } }`. Whether they are reachable
    * from the internet is the SERVICE's `public`, not a per-port flag.
    *
    * Each port is reachable at its own number; the standard-ports holder (the
@@ -237,11 +237,11 @@ export type HexclaveService = HexclaveServerService | HexclaveServerlessService;
  *   services: {
  *     api: {
  *       type: "server",
- *       ports: { 3000: {} },
+ *       ports: { 3000: { protocol: "http" } },
  *       persistentVolumes: { uploads: { path: "/data", sizeGb: 10 } },
  *       env: { DB_URL: service("db").url(5432), PROJECT_ID: hexclave.projectId },
  *     },
- *     web: { type: "serverless", public: true, ports: { 3000: {} }, maxInstances: 3, env: { KEY: secret("API_KEY") } },
+ *     web: { type: "serverless", public: true, ports: { 3000: { protocol: "http" } }, maxInstances: 3, env: { KEY: secret("API_KEY") } },
  *   },
  * });
  * ```

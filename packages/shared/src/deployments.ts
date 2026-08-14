@@ -228,15 +228,15 @@ export type DeploymentServiceDefinition = {
 // DeploymentServiceDefinition.public for why the runtime leaves no other
 // option). A service's ports are all reachable or none of them are.
 //
-// `protocol` (default "http") picks the protocol handler. A "tcp" port is raw:
-// it may only appear on a PRIVATE service, reached over the internal network
-// with hostname() and its port number.
+// `protocol` picks the protocol handler explicitly. A "tcp" port is raw: it may
+// only appear on a PRIVATE service, reached over the internal network with
+// hostname() and its port number.
 export type DeploymentPortDefinition = {
-  protocol?: "http" | "tcp" | undefined,
+  protocol: "http" | "tcp",
 };
 
 // The ports a service listens on, keyed by port NUMBER — the same shape the
-// author writes in the deploy file (`ports: { 3000: {} }`), kept
+// author writes in the deploy file (`ports: { 3000: { protocol: "http" } }`), kept
 // all the way through the wire and the database so nothing has to translate
 // between two spellings of one thing. Keys are decimal port numbers; JSON has no
 // numeric object keys, so they are strings here and parsed at the few points
@@ -253,21 +253,21 @@ export type DeploymentVolumeDefinition = {
 export type DeploymentServiceType = "server" | "serverless";
 export const DEPLOYMENT_SERVICE_TYPES = ["server", "serverless"] as const;
 
-/** A port's protocol, applying the "http" default one place so callers agree. */
+/** A port's explicitly configured protocol. */
 export function portProtocol(port: DeploymentPortDefinition): "http" | "tcp" {
-  return port.protocol ?? "http";
+  return port.protocol;
 }
 
-/** One declared port, with the record's key parsed and every default applied. */
+/** One declared port, with the record's key parsed. */
 export type DeploymentPortEntry = {
   port: number,
   protocol: "http" | "tcp",
 };
 
 /**
- * The ports as a list, ascending by port number, with defaults applied. Every
+ * The ports as a list, ascending by port number. Every
  * consumer that has to compare, count or iterate ports goes through this, so the
- * key parsing and the defaults happen in exactly one place — and so the order is
+ * key parsing happens in exactly one place — and so the order is
  * the same everywhere (object key order would otherwise put "80" after "8080"
  * for one caller and not another).
  *
@@ -352,7 +352,8 @@ export function deploymentPortOwnsStandardPorts(ports: DeploymentPorts, isPublic
  * claiming one external port is a config the runtime cannot serve — it is
  * rejected outright, or routes one of them somewhere the author did not ask for.
  *
- * The cheap example is a public service with `{ 80: {}, 443: {} }`: 80 is the
+ * The cheap example is a public service with
+ * `{ 80: { protocol: "http" }, 443: { protocol: "http" } }`: 80 is the
  * holder, claims 80 and 443, and the declared 443 claims 443 again. This is
  * refused rather than resolved by precedence, because every way of resolving it
  * silently drops or retargets a port the author explicitly declared.
@@ -491,7 +492,7 @@ export const deploymentServiceDefinitionSchema = yupObject({
       .test("port-in-range", "deployment service ports must be between 1 and 65535", (value) =>
         value === undefined || (Number(value) >= 1 && Number(value) <= 65535)),
     yupObject({
-      protocol: yupString().oneOf(["http", "tcp"]).default("http").defined(),
+      protocol: yupString().oneOf(["http", "tcp"]).defined(),
     }).defined()
   ).defined()
     // No lower bound: a service may declare zero ports. That is a worker — a
@@ -609,7 +610,7 @@ export const deploymentServiceDefinitionSchema = yupObject({
 import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts all env var shapes", async ({ expect }) => {
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "serverless",
-    ports: { "3000": {} },
+    ports: { "3000": { protocol: "http" } },
     min_instances: 0,
     max_instances: 2,
     root_directory: "./",
@@ -624,14 +625,16 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts all env var 
   }, { abortEarly: false })).resolves.toBeDefined();
 });
 
-import.meta.vitest?.test("deploymentServiceDefinitionSchema defaults a port to HTTP and a service to private", async ({ expect }) => {
+import.meta.vitest?.test("deploymentServiceDefinitionSchema requires explicit port protocols and defaults a service to private", async ({ expect }) => {
   await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", ports: { "3000": {} }, env: {} }))
+    .rejects.toThrow(/protocol.*defined/);
+  await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", ports: { "3000": { protocol: "http" } }, env: {} }))
     .resolves.toMatchObject({ ports: { "3000": { protocol: "http" } } });
-  await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", public: true, ports: { "3000": {} }, env: {} }))
+  await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", public: true, ports: { "3000": { protocol: "http" } }, env: {} }))
     .resolves.toMatchObject({ public: true, ports: { "3000": { protocol: "http" } } });
   // A PRIVATE service may hold several ports of mixed protocols.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "server", ports: { "8080": {}, "5432": { protocol: "tcp" }, "9090": {} }, env: {},
+    type: "server", ports: { "8080": { protocol: "http" }, "5432": { protocol: "tcp" }, "9090": { protocol: "http" } }, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
 });
 
@@ -648,7 +651,7 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts a public ser
   // Every port of a public service is reachable, so there is no port the author
   // did not ask to publish. Only the lowest additionally owns 80/443.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", public: true, ports: { "3000": {}, "4000": {} }, env: {},
+    type: "serverless", public: true, ports: { "3000": { protocol: "http" }, "4000": { protocol: "http" } }, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
 });
 
@@ -657,10 +660,10 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema refuses a non-canoni
   // impossible to repeat, not a numeric alias, so both entries would be stored
   // and the runtime would declare the port twice.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", public: true, ports: { "80": {}, "080": {} }, env: {},
+    type: "serverless", public: true, ports: { "80": { protocol: "http" }, "080": { protocol: "http" } }, env: {},
   }, { abortEarly: false })).rejects.toThrow(/without a leading zero/);
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "server", ports: { "08080": {} }, env: {},
+    type: "server", ports: { "08080": { protocol: "http" } }, env: {},
   }, { abortEarly: false })).rejects.toThrow(/without a leading zero/);
 });
 
@@ -668,27 +671,27 @@ import.meta.vitest?.test("deploymentPortEntries drops a non-canonical key rather
   // The reader runs on STORED rows and must not throw, but it must also not turn
   // one port into two entries — a row written before this rule existed would
   // otherwise still produce duplicate listeners.
-  expect(deploymentPortEntries({ "80": {}, "080": {} })).toEqual([{ port: 80, protocol: "http" }]);
+  expect(deploymentPortEntries({ "80": { protocol: "http" }, "080": { protocol: "http" } })).toEqual([{ port: 80, protocol: "http" }]);
 });
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema refuses a port that collides with the standard bindings", async ({ expect }) => {
   // The holder claims external 80 and 443 on top of its own number, so a sibling
   // numbered 80 or 443 asks for a listener it has already taken.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", public: true, ports: { "80": {}, "443": {} }, env: {},
+    type: "serverless", public: true, ports: { "80": { protocol: "http" }, "443": { protocol: "http" } }, env: {},
   }, { abortEarly: false })).rejects.toThrow(/no other port may be numbered 80 or 443/);
   // Not only a public-service problem: the sole HTTP port of a PRIVATE service
   // is the holder too, so a raw TCP 443 beside it collides just as hard.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "server", ports: { "8080": {}, "443": { protocol: "tcp" } }, env: {},
+    type: "server", ports: { "8080": { protocol: "http" }, "443": { protocol: "tcp" } }, env: {},
   }, { abortEarly: false })).rejects.toThrow(/no other port may be numbered 80 or 443/);
   // The holder being 80 or 443 itself is fine — it is the one that owns them.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", public: true, ports: { "80": {}, "3000": {} }, env: {},
+    type: "serverless", public: true, ports: { "80": { protocol: "http" }, "3000": { protocol: "http" } }, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
   // Two HTTP ports on a private service leave no holder at all, so nothing is reserved.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "server", ports: { "80": {}, "443": {} }, env: {},
+    type: "server", ports: { "80": { protocol: "http" }, "443": { protocol: "http" } }, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
 });
 
@@ -699,11 +702,11 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema refuses a public ser
     type: "server", public: true, ports: { "5432": { protocol: "tcp" } }, env: {},
   }, { abortEarly: false })).rejects.toThrow(/may not declare a "tcp" port/);
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "server", public: true, ports: { "3000": {}, "5432": { protocol: "tcp" } }, env: {},
+    type: "server", public: true, ports: { "3000": { protocol: "http" }, "5432": { protocol: "tcp" } }, env: {},
   }, { abortEarly: false })).rejects.toThrow(/may not declare a "tcp" port/);
   // A PRIVATE service may declare TCP freely — only public ingress is the problem.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "server", ports: { "3000": {}, "5432": { protocol: "tcp" } }, env: {},
+    type: "server", ports: { "3000": { protocol: "http" }, "5432": { protocol: "tcp" } }, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
   // Public ingress with nothing behind it. Unrepresentable while the flag lived
   // on a port; refused now that it lives on the service.
@@ -718,21 +721,21 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema refuses a public ser
 import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects port sets it could not serve", async ({ expect }) => {
   // A duplicate port needs no rule of its own here: an object cannot hold one
   // key twice, and the canonical-spelling rule rules out the numeric aliases.
-  await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", ports: { "0": {} }, env: {} })).rejects.toThrow();
-  await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", ports: { "70000": {} }, env: {} })).rejects.toThrow();
+  await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", ports: { "0": { protocol: "http" } }, env: {} })).rejects.toThrow();
+  await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", ports: { "70000": { protocol: "http" } }, env: {} })).rejects.toThrow();
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: Object.fromEntries(Array.from({ length: MAX_PORTS_PER_SERVICE + 1 }, (_, index) => [String(3000 + index), {}])), env: {},
+    type: "serverless", ports: Object.fromEntries(Array.from({ length: MAX_PORTS_PER_SERVICE + 1 }, (_, index) => [String(3000 + index), { protocol: "http" }])), env: {},
   }, { abortEarly: false })).rejects.toThrow(/at most/);
 });
 
 import.meta.vitest?.test("port helpers agree with what the schema allows", ({ expect }) => {
-  const mixed = { "3000": {}, "5432": { protocol: "tcp" as const } };
+  const mixed: DeploymentPorts = { "3000": { protocol: "http" }, "5432": { protocol: "tcp" } };
   // The holder of a PRIVATE service is its sole HTTP port; the TCP sibling does
   // not make it ambiguous.
   expect(standardPortsHolderPort(mixed, false)).toBe(3000);
   // The holder of a PUBLIC service is its LOWEST port, by number and not by key
   // order — so "443" wins over "8443" however the record was written.
-  const twoPorts = { "8443": {}, "443": {} };
+  const twoPorts: DeploymentPorts = { "8443": { protocol: "http" }, "443": { protocol: "http" } };
   expect(standardPortsHolderPort(twoPorts, true)).toBe(443);
   expect(deploymentPortOwnsStandardPorts(twoPorts, true, 443)).toBe(true);
   expect(deploymentPortOwnsStandardPorts(twoPorts, true, 8443)).toBe(false);
@@ -740,23 +743,23 @@ import.meta.vitest?.test("port helpers agree with what the schema allows", ({ ex
   // nothing for a certificate to terminate on.
   expect(standardPortsHolderPort(twoPorts, false)).toBe(null);
   // A lone port is always the holder.
-  expect(deploymentPortOwnsStandardPorts({ "3000": {} }, true, 3000)).toBe(true);
+  expect(deploymentPortOwnsStandardPorts({ "3000": { protocol: "http" } }, true, 3000)).toBe(true);
   // Ambiguous references resolve to null so each layer can phrase its own error.
   // url only counts HTTP ports, so the TCP sibling does not make it ambiguous.
   expect(soleHttpDeploymentPort(mixed)).toBe(3000);
-  expect(soleHttpDeploymentPort({ "3000": {}, "4000": {} })).toBe(null);
-  expect(portProtocol({})).toBe("http");
+  expect(soleHttpDeploymentPort({ "3000": { protocol: "http" }, "4000": { protocol: "http" } })).toBe(null);
+  expect(portProtocol({ protocol: "http" })).toBe("http");
   expect(portProtocol({ protocol: "tcp" })).toBe("tcp");
   // Ascending by port NUMBER, not by key order — "80" must not sort after "8080".
-  expect(deploymentPortEntries({ "8080": {}, "80": {} })).toEqual([
+  expect(deploymentPortEntries({ "8080": { protocol: "http" }, "80": { protocol: "http" } })).toEqual([
     { port: 80, protocol: "http" },
     { port: 8080, protocol: "http" },
   ]);
   // A hand-edited row with a key that is not a port is skipped, not thrown on:
   // this runs on stored rows, and one bad entry must not take down a listing.
-  expect(deploymentPortEntries({ web: {}, "3000": {} })).toEqual([{ port: 3000, protocol: "http" }]);
+  expect(deploymentPortEntries({ web: { protocol: "http" }, "3000": { protocol: "http" } })).toEqual([{ port: 3000, protocol: "http" }]);
   expect(deploymentPortEntry({ "3000": { protocol: "tcp" } }, 3000)?.protocol).toBe("tcp");
-  expect(deploymentPortEntry({ "3000": {} }, 4000)).toBe(null);
+  expect(deploymentPortEntry({ "3000": { protocol: "http" } }, 4000)).toBe(null);
 });
 
 import.meta.vitest?.test("connection references round-trip, with and without a port", ({ expect }) => {
@@ -789,68 +792,68 @@ import.meta.vitest?.test("only a public or unnamed port makes a url reference wa
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts a persistent volume on a server service", async ({ expect }) => {
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "server", ports: { "3000": {} }, persistent_volumes: { data: { path: "/data", size_gb: 10 } }, env: {},
+    type: "server", ports: { "3000": { protocol: "http" } }, persistent_volumes: { data: { path: "/data", size_gb: 10 } }, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
   // Spelling out the implied 0/1 bounds is allowed; anything else is not.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "server", ports: { "3000": {} }, min_instances: 0, max_instances: 1,
+    type: "server", ports: { "3000": { protocol: "http" } }, min_instances: 0, max_instances: 1,
     persistent_volumes: { app_state: { path: "/var/lib/app/data", size_gb: 1 } }, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
   // An empty record is the same as having no volume, and stays valid on a
   // serverless service — otherwise `persistent_volumes: {}` written out by a
   // serializer would fail a config that declares no disks at all.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, persistent_volumes: {}, env: {},
+    type: "serverless", ports: { "3000": { protocol: "http" } }, persistent_volumes: {}, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
 });
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema pins a server service to a single instance", async ({ expect }) => {
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "server", ports: { "3000": {} }, max_instances: 2, env: {},
+    type: "server", ports: { "3000": { protocol: "http" } }, max_instances: 2, env: {},
   }, { abortEarly: false })).rejects.toThrow(/max_instances must be 1/);
   // 0 (suspend when idle) and 1 (stay up) are the only meanings a single
   // instance can have; anything above is a fleet, which "server" is not.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "server", ports: { "3000": {} }, min_instances: 1, env: {},
+    type: "server", ports: { "3000": { protocol: "http" } }, min_instances: 1, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "server", ports: { "3000": {} }, min_instances: 0, env: {},
+    type: "server", ports: { "3000": { protocol: "http" } }, min_instances: 0, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "server", ports: { "3000": {} }, min_instances: 2, env: {},
+    type: "server", ports: { "3000": { protocol: "http" } }, min_instances: 2, env: {},
   }, { abortEarly: false })).rejects.toThrow(/min_instances must be 0 \(suspend when idle\) or 1/);
   // Serverless keeps the full range.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, min_instances: 1, max_instances: 10, env: {},
+    type: "serverless", ports: { "3000": { protocol: "http" } }, min_instances: 1, max_instances: 10, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
 });
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects persistent volumes that cannot work", async ({ expect }) => {
   // A serverless fleet cannot share one disk, whatever its bounds are.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, persistent_volumes: { data: { path: "/data", size_gb: 1 } }, env: {},
+    type: "serverless", ports: { "3000": { protocol: "http" } }, persistent_volumes: { data: { path: "/data", size_gb: 1 } }, env: {},
   }, { abortEarly: false })).rejects.toThrow(/only a "server" service may have persistent volumes/);
   // More than one disk on one machine is beyond what Fly can mount today, and
   // must fail loudly rather than silently mounting whichever came first.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "server", ports: { "3000": {} }, env: {},
+    type: "server", ports: { "3000": { protocol: "http" } }, env: {},
     persistent_volumes: { data: { path: "/data", size_gb: 1 }, cache: { path: "/cache", size_gb: 1 } },
   }, { abortEarly: false })).rejects.toThrow(/at most 1 persistent volume/);
   for (const badId of ["Data", "1data", "my-volume", "_data", "x".repeat(MAX_VOLUME_ID_LENGTH + 1)]) {
     await expect(deploymentServiceDefinitionSchema.validate({
-      type: "server", ports: { "3000": {} }, persistent_volumes: { [badId]: { path: "/data", size_gb: 1 } }, env: {},
+      type: "server", ports: { "3000": { protocol: "http" } }, persistent_volumes: { [badId]: { path: "/data", size_gb: 1 } }, env: {},
     }, { abortEarly: false }), `volume id ${JSON.stringify(badId)}`).rejects.toThrow();
   }
   for (const badPath of ["data", "/", "/data/", "/data/../etc", "/data/./x", "/da\\ta", "/da\u0000ta"]) {
     await expect(deploymentServiceDefinitionSchema.validate({
-      type: "server", ports: { "3000": {} }, persistent_volumes: { data: { path: badPath, size_gb: 1 } }, env: {},
+      type: "server", ports: { "3000": { protocol: "http" } }, persistent_volumes: { data: { path: badPath, size_gb: 1 } }, env: {},
     }, { abortEarly: false })).rejects.toThrow(/normalized absolute path/);
   }
   // Anchored to the size field: a bare toThrow() would still pass if the size
   // bounds regressed and some unrelated rule happened to reject the shape.
   for (const badSize of [0, -1, 501, 1.5]) {
     await expect(deploymentServiceDefinitionSchema.validate({
-      type: "server", ports: { "3000": {} }, persistent_volumes: { data: { path: "/data", size_gb: badSize } }, env: {},
+      type: "server", ports: { "3000": { protocol: "http" } }, persistent_volumes: { data: { path: "/data", size_gb: badSize } }, env: {},
     }, { abortEarly: false })).rejects.toThrow(/size_gb/);
   }
 });
@@ -858,27 +861,27 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects persistent v
 import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects invalid shapes", async ({ expect }) => {
   // A secret with an inline value would defeat the whole point of secrets.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, env: { A: { type: "secret", key: "a", value: "leaked" } },
+    type: "serverless", ports: { "3000": { protocol: "http" } }, env: { A: { type: "secret", key: "a", value: "leaked" } },
   }, { abortEarly: false })).rejects.toThrow(/must not have a value/);
   // A secret without a key can never be filled at deploy time.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, env: { A: { type: "secret" } },
+    type: "serverless", ports: { "3000": { protocol: "http" } }, env: { A: { type: "secret" } },
   }, { abortEarly: false })).rejects.toThrow(/key/);
   // Plain values may not carry a secret key.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, env: { A: { value: "x", key: "a" } },
+    type: "serverless", ports: { "3000": { protocol: "http" } }, env: { A: { value: "x", key: "a" } },
   }, { abortEarly: false })).rejects.toThrow(/only have a key/);
   // Connections must point at `<serviceId>.<outputKey>`.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, env: { A: { type: "connection", value: "{hexclave.projectId}" } },
+    type: "serverless", ports: { "3000": { protocol: "http" } }, env: { A: { type: "connection", value: "{hexclave.projectId}" } },
   }, { abortEarly: false })).rejects.toThrow(/service output/);
   // Env var keys must be valid POSIX-ish env var names.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, env: { "1BAD": { value: "x" } },
+    type: "serverless", ports: { "3000": { protocol: "http" } }, env: { "1BAD": { value: "x" } },
   }, { abortEarly: false })).rejects.toThrow(/env var keys/);
   // The service type is required.
   await expect(deploymentServiceDefinitionSchema.validate({
-    ports: { "3000": {} }, env: {},
+    ports: { "3000": { protocol: "http" } }, env: {},
   }, { abortEarly: false })).rejects.toThrow(/type/);
   // Ports are required — there is no sensible default to guess.
   await expect(deploymentServiceDefinitionSchema.validate({
@@ -886,23 +889,23 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects invalid shap
   }, { abortEarly: false })).rejects.toThrow(/ports/);
   // Scaling bounds must be consistent when both are given.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, min_instances: 3, max_instances: 1, env: {},
+    type: "serverless", ports: { "3000": { protocol: "http" } }, min_instances: 3, max_instances: 1, env: {},
   }, { abortEarly: false })).rejects.toThrow(/greater than or equal to min_instances/);
   // min_instances alone is accepted — max defaults up to min so the spec stays consistent
   // (this is the case that previously slipped through validation and 400'd from the runtime).
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, min_instances: 2, env: {},
+    type: "serverless", ports: { "3000": { protocol: "http" } }, min_instances: 2, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
   // Both bounds are capped at MAX_INSTANCES_PER_SERVICE, and the cap itself is
   // accepted — an off-by-one here would refuse the largest legal fleet.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, min_instances: MAX_INSTANCES_PER_SERVICE, max_instances: MAX_INSTANCES_PER_SERVICE, env: {},
+    type: "serverless", ports: { "3000": { protocol: "http" } }, min_instances: MAX_INSTANCES_PER_SERVICE, max_instances: MAX_INSTANCES_PER_SERVICE, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, min_instances: MAX_INSTANCES_PER_SERVICE + 1, env: {},
+    type: "serverless", ports: { "3000": { protocol: "http" } }, min_instances: MAX_INSTANCES_PER_SERVICE + 1, env: {},
   }, { abortEarly: false })).rejects.toThrow(/min_instances/);
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, max_instances: MAX_INSTANCES_PER_SERVICE + 1, env: {},
+    type: "serverless", ports: { "3000": { protocol: "http" } }, max_instances: MAX_INSTANCES_PER_SERVICE + 1, env: {},
   }, { abortEarly: false })).rejects.toThrow(/max_instances/);
   // dockerfile_path must be a normalized relative path inside the packaged
   // source — mirror of Marshal's validateServiceSpec, checked here so invalid
@@ -912,11 +915,11 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects invalid shap
     "docker\\Dockerfile", "Dock\terfile", "x".repeat(513),
   ]) {
     await expect(deploymentServiceDefinitionSchema.validate({
-      type: "serverless", ports: { "3000": {} }, dockerfile_path: invalidDockerfilePath, env: {},
+      type: "serverless", ports: { "3000": { protocol: "http" } }, dockerfile_path: invalidDockerfilePath, env: {},
     }, { abortEarly: false })).rejects.toThrow(/dockerfile_path/);
   }
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, dockerfile_path: "docker/Dockerfile.web", env: {},
+    type: "serverless", ports: { "3000": { protocol: "http" } }, dockerfile_path: "docker/Dockerfile.web", env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
 });
 
@@ -925,7 +928,7 @@ import.meta.vitest?.test("a service's dev command is not part of its definition"
   // a client sending one is out of date rather than merely verbose — say so
   // instead of dropping the field on the floor.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, dev_command: "pnpm dev", env: {},
+    type: "serverless", ports: { "3000": { protocol: "http" } }, dev_command: "pnpm dev", env: {},
   }, { abortEarly: false })).rejects.toThrow(/must not carry a dev_command/);
 });
 
@@ -936,12 +939,12 @@ import.meta.vitest?.test("a secret's default value is not part of its definition
   // answer, which is exactly the three-way badge state this replaced.
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "serverless",
-    ports: { "3000": {} },
+    ports: { "3000": { protocol: "http" } },
     env: { OPENAI_API_KEY: { type: "secret", key: "OPENAI", default_value: "sk-dev" } },
   }, { abortEarly: false })).rejects.toThrow(/must not carry a default_value/);
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "serverless",
-    ports: { "3000": {} },
+    ports: { "3000": { protocol: "http" } },
     env: { PLAIN: { value: "x", default_value: "y" } },
   }, { abortEarly: false })).rejects.toThrow(/must not carry a default_value/);
 });

@@ -85,9 +85,9 @@ describe("a spec write against a service that holds a domain", () => {
   // Step 3 is an ordinary config edit. The whole rule has to be re-checked on every write.
   it("refuses to add a private sibling port after a domain was attached", async () => {
     domainClaims.mockResolvedValue(["app.example.com"]);
-    await expect(apply({ "3000": {}, "5432": { protocol: "tcp" } }))
+    await expect(apply({ "3000": { protocol: "http" }, "5432": { protocol: "tcp" } }))
       .rejects.toThrow(/may not declare more than one port/);
-    await expect(apply({ "3000": {}, "4000": {} }))
+    await expect(apply({ "3000": { protocol: "http" }, "4000": { protocol: "http" } }))
       .rejects.toThrow(/may not declare more than one port/);
   });
 
@@ -99,7 +99,7 @@ describe("a spec write against a service that holds a domain", () => {
 
   it("tells the caller to detach the domains", async () => {
     domainClaims.mockResolvedValue(["app.example.com"]);
-    await expect(apply({ "3000": {}, "5432": { protocol: "tcp" } })).rejects.toThrow(/[Dd]etach/);
+    await expect(apply({ "3000": { protocol: "http" }, "5432": { protocol: "tcp" } })).rejects.toThrow(/[Dd]etach/);
   });
 
   it("leaves a service without domains free to declare several private ports", async () => {
@@ -108,7 +108,7 @@ describe("a spec write against a service that holds a domain", () => {
     // The apply still fails afterwards, on the store calls this test deliberately does not
     // mock — so assert on which error came back rather than on success.
     domainClaims.mockResolvedValue([]);
-    const error = await apply({ "3000": {}, "5432": { protocol: "tcp" } }).then(() => null, (caught: unknown) => caught);
+    const error = await apply({ "3000": { protocol: "http" }, "5432": { protocol: "tcp" } }).then(() => null, (caught: unknown) => caught);
     expect(error).not.toBeNull();
     expect(String(error)).not.toMatch(/may not declare a private port alongside others|need an HTTP port/);
   });

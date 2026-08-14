@@ -69,9 +69,9 @@ describe("deploy command helpers", () => {
       deployFilePath: path.join(os.tmpdir(), "hexclave.deploy.ts"),
       idExport: "test-source",
       deploymentExport: () => ({ services: {
-        web: { type: "serverless", public: true, ports: { 3000: {} } },
-        worker: { type: "serverless", ports: { 3001: {} } },
-        failed: { type: "serverless", public: true, ports: { 3002: {} } },
+        web: { type: "serverless", public: true, ports: { 3000: { protocol: "http" } } },
+        worker: { type: "serverless", ports: { 3001: { protocol: "http" } } },
+        failed: { type: "serverless", public: true, ports: { 3002: { protocol: "http" } } },
       } }),
       mode: "deploy",
     }).services;
@@ -92,7 +92,7 @@ describe("deploy command helpers", () => {
       deploymentExport: () => ({ services: {
         // Declared high-first on purpose: the holder is the lowest port NUMBER,
         // not whichever key was written first.
-        web: { type: "serverless", public: true, ports: { 8443: {}, 3000: {} } },
+        web: { type: "serverless", public: true, ports: { 8443: { protocol: "http" }, 3000: { protocol: "http" } } },
       } }),
       mode: "deploy",
     }).services;
@@ -114,7 +114,7 @@ describe("deploy command helpers", () => {
       deployFilePath: path.join(dir, "hexclave.deploy.ts"),
       idExport: "test-source",
       deploymentExport: () => ({ services: {
-        web: { type: "serverless", ports: { 3000: {} }, dockerfilePath: "Dockerfile" },
+        web: { type: "serverless", ports: { 3000: { protocol: "http" } }, dockerfilePath: "Dockerfile" },
       } }),
       mode: "deploy",
     }).services;
@@ -137,7 +137,7 @@ describe("deploy command helpers", () => {
       deployFilePath: path.join(dir, "hexclave.deploy.ts"),
       idExport: "test-source",
       deploymentExport: () => ({ services: {
-        web: { type: "serverless", ports: { 3000: {} } },
+        web: { type: "serverless", ports: { 3000: { protocol: "http" } } },
       } }),
       mode: "deploy",
     }).services;
@@ -167,7 +167,7 @@ describe("collectRequiredSecretKeys", () => {
   it("collects only secrets without defaults, deduplicated and sorted", () => {
     const services = servicesOf(({ secret }) => ({
       web: {
-        type: "serverless", ports: { 3000: {} },
+        type: "serverless", ports: { 3000: { protocol: "http" } },
         env: {
           A: secret("zebra"),
           B: secret("alpha"),
@@ -177,7 +177,7 @@ describe("collectRequiredSecretKeys", () => {
         },
       },
       api: {
-        type: "serverless", ports: { 3000: {} },
+        type: "serverless", ports: { 3000: { protocol: "http" } },
         env: { F: secret("alpha") },
       },
     }));
@@ -186,7 +186,7 @@ describe("collectRequiredSecretKeys", () => {
 
   it("returns an empty list when every secret has a default", () => {
     const services = servicesOf(({ secret }) => ({
-      web: { type: "serverless", ports: { 3000: {} }, env: { A: secret("k", "v") } },
+      web: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: { A: secret("k", "v") } },
     }));
     expect(collectRequiredSecretKeys(services)).toEqual([]);
   });
