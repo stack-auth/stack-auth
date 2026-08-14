@@ -15,7 +15,6 @@
 - Fixed self-hosted deployments breaking after a container restart because the internal project keys were rotated.
 - Unrecoverable dashboard render errors now show a retryable error screen instead of reloading forever.
 
->>>>>>> origin/dev
 ## 8/7/26
 
 - Apple sign-in now supports key-based credentials (Team ID, Key ID, and private key), with short-lived client secrets generated automatically.
