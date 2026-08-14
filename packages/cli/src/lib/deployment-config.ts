@@ -67,6 +67,7 @@ import {
   connectionRequiresTargetDeployed,
   formatConnectionValue,
   parseConnectionValue,
+  DEPLOYMENT_PORT_KEY_REGEX,
   deploymentPortEntries,
   deploymentPortEntry,
   reservedStandardPortConflicts,
@@ -382,9 +383,18 @@ function evaluatePorts(serviceId: string, portsRaw: unknown): DeploymentPorts {
     const at = `deployment.services.${serviceId}.ports[${portKey}]`;
     // Object keys are strings even when written as numbers, and JS accepts any
     // string as one — so the key is validated as a port number here rather than
-    // coerced. (Duplicates are impossible: an object cannot hold one key twice.)
+    // coerced.
     if (!/^[0-9]+$/.test(portKey)) {
       throw new CliError(`deployment.services.${serviceId}.ports has the key ${JSON.stringify(portKey)}, which is not a port number. Keys are the ports the container listens on, e.g. \`ports: { 3000: {} }\`.`);
+    }
+    // A port has ONE canonical spelling, and this is what keeps duplicates
+    // impossible. "80" and "080" are different keys of one record but the same
+    // port: both survive, and the port would be declared twice. The old claim
+    // that "an object cannot hold one key twice" covers exact keys only.
+    // Normalizing instead of refusing would silently drop one of the two
+    // definitions, which may not even agree with each other.
+    if (!DEPLOYMENT_PORT_KEY_REGEX.test(portKey)) {
+      throw new CliError(`deployment.services.${serviceId}.ports has the key ${JSON.stringify(portKey)}, which has a leading zero. Write the port in plain decimal (${JSON.stringify(String(Number(portKey)))}) — otherwise one port can be declared twice under two spellings.`);
     }
     const port = Number(portKey);
     if (port < 1 || port > 65535) {

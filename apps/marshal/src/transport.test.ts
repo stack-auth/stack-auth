@@ -40,8 +40,9 @@ describe("service ports", () => {
     expect(() => validateServiceSpec(spec({ ports: { web: {} } }))).toThrow(/must be a port number between 1 and 65535/);
     expect(() => validateServiceSpec(spec({ ports: { "3000": { public: "yes" } } }))).toThrow(/must be a boolean/);
     expect(() => validateServiceSpec(spec({ ports: { "3000": { protocol: "udp" } } }))).toThrow(/must be "http" or "tcp"/);
-    // A duplicate port needs no rule: an object cannot hold one key twice, which
-    // is half of why the ports are a record.
+    // A duplicate port needs no rule of its own: an object cannot hold one key
+    // twice, and the canonical-spelling rule below rules out the numeric aliases
+    // that would otherwise sneak one port in under two keys.
     // Raw TCP has no TLS termination or HTTP routing to be public with.
     expect(() => validateServiceSpec(spec({ ports: { "5432": { protocol: "tcp", public: true } } }))).toThrow(/private-only/);
     // Several public ports are ACCEPTED: nothing leaks when every declared port
@@ -55,14 +56,31 @@ describe("service ports", () => {
   });
 
   it("gives 80/443 to the lowest public port, by number and not by key order", () => {
-    // Determinism is the point: every other public port answers only on its own
-    // number, and a shared IPv4 forwards nothing but 80/443 — so an arbitrary
-    // pick would silently move which URL works from an IPv4-only client.
+    // Determinism is the point: the holder is the port the service's bare URL
+    // names and the only one a custom domain can front, so an arbitrary pick
+    // would silently move both.
     const services = machineFor({ ports: { "8443": { public: true }, "443": { public: true } } }).services as { ports: { port: number }[], internal_port: number }[];
     const holder = services.find((service) => service.internal_port === 443);
     const other = services.find((service) => service.internal_port === 8443);
     expect(holder?.ports.map((entry) => entry.port).sort((a, b) => a - b)).toEqual([80, 443]);
     expect(other?.ports.map((entry) => entry.port)).toEqual([8443]);
+  });
+
+  it("refuses a port key that is not the port's canonical spelling", () => {
+    // REGRESSION: "80" and "080" are different keys of one record but the same
+    // port, so both survived and the machine declared two identical external
+    // listeners — [80, 443, 80, 443]. The record shape only makes an EXACT key
+    // impossible to repeat, which is what the old "duplicates are impossible by
+    // construction" claim actually covered.
+    expect(() => validateServiceSpec(spec({ ports: { "80": { public: true }, "080": { public: true } } })))
+      .toThrow(/without a leading zero/);
+    // Private ports had the same hole long before several public ports existed.
+    expect(() => validateServiceSpec(spec({ ports: { "8080": {}, "08080": {} } })))
+      .toThrow(/without a leading zero/);
+    // A single non-canonical key is refused too — accepting it alone would just
+    // move the collision to whichever later sync adds the canonical spelling.
+    expect(() => validateServiceSpec(spec({ ports: { "080": {} } }))).toThrow(/without a leading zero/);
+    expect(() => validateServiceSpec(spec({ ports: { "0": {} } }))).toThrow(/without a leading zero/);
   });
 
   it("never claims one external port from two of the service's ports", () => {

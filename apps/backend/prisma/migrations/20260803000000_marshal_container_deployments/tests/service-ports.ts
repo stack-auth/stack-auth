@@ -45,8 +45,8 @@ export const postMigration = async (sql: Sql, context: Awaited<ReturnType<typeof
   await expect(insertPorts('{}')).resolves.toBeDefined();
 
   // Several PUBLIC ports are a legal port set — the leak needs a port nobody
-  // asked to publish, and there is none. What they cost is IPv4 reachability
-  // (only the lowest gets 80/443), which is reported, not refused.
+  // asked to publish, and there is none. Only the lowest owns the standard
+  // 80/443, which is reported rather than refused.
   await expect(insertPorts('{"3000": {"public": true, "protocol": "http"}, "4000": {"public": true, "protocol": "http"}}'))
     .resolves.toBeDefined();
 
@@ -56,6 +56,15 @@ export const postMigration = async (sql: Sql, context: Awaited<ReturnType<typeof
   // cleanly at the database level. See the note where the check used to be.
   await expect(insertPorts('{"3000": {"public": true, "protocol": "http"}, "9090": {"public": false, "protocol": "http"}}'))
     .resolves.toBeDefined();
+
+  // One port, ONE spelling. "80" and "080" are different keys of one JSON object
+  // but the same port, so both would be stored and the runtime would declare the
+  // port twice — the "duplicates are impossible because an object cannot hold one
+  // key twice" property only ever covered EXACT keys.
+  await expect(insertPorts('{"80": {"public": true, "protocol": "http"}, "080": {"public": true, "protocol": "http"}}'))
+    .rejects.toThrow(/DeploymentService_ports_entries_check/);
+  await expect(insertPorts('{"08080": {"public": false, "protocol": "http"}}'))
+    .rejects.toThrow(/DeploymentService_ports_entries_check/);
 
   // Inputs that must produce a NAMED constraint violation rather than a raw
   // Postgres error. A 20-digit port key overflows a bigint, and a non-boolean
@@ -72,8 +81,9 @@ export const postMigration = async (sql: Sql, context: Awaited<ReturnType<typeof
   // Raw TCP has no TLS termination or HTTP routing to be public with.
   await expect(insertPorts('{"5432": {"public": true, "protocol": "tcp"}}'))
     .rejects.toThrow(/DeploymentService_public_port_is_http_check/);
-  // A duplicate port needs no constraint: an object cannot hold one key twice,
-  // which is half of why this column is an object rather than an array.
+  // A repeated port needs no constraint of its own: an object cannot hold one key
+  // twice, and the canonical-spelling rule above rules out the numeric aliases
+  // that would otherwise smuggle one port in under two keys.
   await expect(insertPorts('[{"port": 3000}]')).rejects.toThrow(/DeploymentService_ports_is_object_check/);
 
   // Entry shape. The absent-key cases are the ones a `<>` comparison would let

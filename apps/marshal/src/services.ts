@@ -110,8 +110,15 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   if (Object.keys(portsRecord).length > MAX_PORTS_PER_SERVICE) throw badRequest(`config.ports may declare at most ${MAX_PORTS_PER_SERVICE} ports`);
   const ports: PortsConfig = {};
   for (const [portKey, portRaw] of Object.entries(portsRecord)) {
-    if (!/^[0-9]{1,5}$/.test(portKey) || Number(portKey) < 1 || Number(portKey) > 65535) {
-      throw badRequest("each config.ports key must be a port number between 1 and 65535");
+    // Decimal, no LEADING ZERO. That spelling rule is what makes a duplicate
+    // port impossible: "80" and "080" are different keys of one record but the
+    // same port, so both would survive and the machine would declare two
+    // identical external listeners. Rejecting the non-canonical spelling beats a
+    // cross-entry duplicate check — it is the same reason ports are a record and
+    // not an array. KEPT IN SYNC WITH DEPLOYMENT_PORT_KEY_REGEX in
+    // @hexclave/shared's deployments.ts.
+    if (!/^[1-9][0-9]{0,4}$/.test(portKey) || Number(portKey) < 1 || Number(portKey) > 65535) {
+      throw badRequest("each config.ports key must be a port number between 1 and 65535, written in decimal without a leading zero");
     }
     const portRecord = asRecord(portRaw);
     if (portRecord === null) throw badRequest("each config.ports value must be an object");

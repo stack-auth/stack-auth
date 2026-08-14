@@ -116,6 +116,11 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     expect(evaluatePorts({ 8080: {}, 443: { protocol: "tcp" } })).toThrow("additionally answers on the standard 80 and 443");
     // The holder itself may be 80 or 443 — it is what owns them.
     expect(evaluatePorts({ 80: { public: true }, 3000: { public: true } })).not.toThrow();
+    // One port, one spelling: "80" and "080" are different keys of one object but
+    // the same port, so both would be declared. The record shape only rules out
+    // an EXACT repeated key.
+    expect(evaluatePorts({ "80": { public: true }, "080": { public: true } })).toThrow("leading zero");
+    expect(evaluatePorts({ "08080": {} })).toThrow("leading zero");
   });
 
   it("accepts a portless worker", () => {

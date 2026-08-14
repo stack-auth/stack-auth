@@ -270,13 +270,28 @@ export type DeploymentPortEntry = {
 export function deploymentPortEntries(ports: DeploymentPorts): DeploymentPortEntry[] {
   const entries: DeploymentPortEntry[] = [];
   for (const [portKey, definition] of Object.entries(ports)) {
-    if (!/^[0-9]{1,5}$/.test(portKey)) continue;
+    if (!DEPLOYMENT_PORT_KEY_REGEX.test(portKey)) continue;
     const port = Number(portKey);
     if (port < 1 || port > 65535) continue;
     entries.push({ port, public: definition.public === true, protocol: portProtocol(definition) });
   }
   return entries.sort((a, b) => a.port - b.port);
 }
+
+// A port key in its ONE canonical spelling: decimal, no leading zero.
+//
+// Leading zeros are what make a "duplicate port" possible in a record keyed by
+// port: "80" and "080" are different object keys but the same port, so both
+// survive as entries and the runtime emits two identical external listeners for
+// them. Rejecting the non-canonical spelling makes that impossible by
+// construction rather than by a cross-entry duplicate check — the same reason
+// the ports are a record and not an array.
+//
+// KEPT IN SYNC WITH the key check in apps/marshal/src/services.ts and the
+// `hexclave_deployment_ports_entries_valid` CHECK function in the deployments
+// migration. Five digits max is the width of 65535; the range is checked
+// separately so an out-of-range port reports as a range error, not a shape one.
+export const DEPLOYMENT_PORT_KEY_REGEX = /^[1-9][0-9]{0,4}$/;
 
 /**
  * The service's LOWEST-NUMBERED public port, or null when it has none.
@@ -447,7 +462,7 @@ export const deploymentServiceDefinitionSchema = yupObject({
   // and duplicates are impossible by construction, which is one rule fewer than
   // the array shape needed.
   ports: yupRecord(
-    yupString().matches(/^[0-9]{1,5}$/, "deployment service port keys must be port numbers")
+    yupString().matches(DEPLOYMENT_PORT_KEY_REGEX, "deployment service port keys must be port numbers written without a leading zero")
       .test("port-in-range", "deployment service ports must be between 1 and 65535", (value) =>
         value === undefined || (Number(value) >= 1 && Number(value) <= 65535)),
     yupObject({
@@ -650,6 +665,27 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts several publ
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "serverless", ports: { "3000": { public: true }, "4000": { public: true } }, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
+});
+
+import.meta.vitest?.test("deploymentServiceDefinitionSchema refuses a non-canonical port key", async ({ expect }) => {
+  // "80" and "080" are one port under two keys: the record makes an exact key
+  // impossible to repeat, not a numeric alias, so both entries would be stored
+  // and the runtime would declare the port twice.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "serverless", ports: { "80": { public: true }, "080": { public: true } }, env: {},
+  }, { abortEarly: false })).rejects.toThrow(/without a leading zero/);
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: { "08080": {} }, env: {},
+  }, { abortEarly: false })).rejects.toThrow(/without a leading zero/);
+});
+
+import.meta.vitest?.test("deploymentPortEntries drops a non-canonical key rather than double-counting it", ({ expect }) => {
+  // The reader runs on STORED rows and must not throw, but it must also not turn
+  // one port into two entries — a row written before this rule existed would
+  // otherwise still produce duplicate listeners.
+  expect(deploymentPortEntries({ "80": { public: true }, "080": { public: true } })).toEqual([
+    { port: 80, public: true, protocol: "http" },
+  ]);
 });
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema refuses a port that collides with the standard bindings", async ({ expect }) => {

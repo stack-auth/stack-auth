@@ -59,11 +59,19 @@ CREATE OR REPLACE FUNCTION "hexclave_deployment_ports_entries_valid"(ports jsonb
   SELECT CASE WHEN jsonb_typeof(ports) <> 'object' THEN true ELSE NOT EXISTS (
     SELECT 1
     FROM jsonb_each(ports) AS entry(port_key, definition)
-    -- The KEY is the port number. Unbounded digits are matched first and the
-    -- range compared as numeric: the regex alone would let a 20-digit key
-    -- through, and a cast to bigint would then raise a raw Postgres error
-    -- instead of the named constraint violation this design exists to produce.
-    WHERE entry.port_key !~ '^[0-9]+$'
+    -- The KEY is the port number, in its ONE canonical spelling: decimal, no
+    -- leading zero. The spelling rule is load-bearing rather than cosmetic —
+    -- "80" and "080" are different keys of one JSON object but the same port,
+    -- so both would be stored and the runtime would declare two identical
+    -- external listeners for it. Refusing the non-canonical spelling makes a
+    -- duplicate port impossible by construction, which is the same reason this
+    -- column is an object keyed by port and not an array.
+    --
+    -- Unbounded digits are matched first and the range compared as numeric: the
+    -- regex alone would let a 20-digit key through, and a cast to bigint would
+    -- then raise a raw Postgres error instead of the named constraint violation
+    -- this design exists to produce.
+    WHERE entry.port_key !~ '^[1-9][0-9]*$'
       OR entry.port_key::numeric < 1
       OR entry.port_key::numeric > 65535
       -- IS DISTINCT FROM, not <>: jsonb_typeof of an ABSENT key is NULL, and
