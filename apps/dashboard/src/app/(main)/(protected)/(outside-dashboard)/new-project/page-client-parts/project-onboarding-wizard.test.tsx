@@ -10,6 +10,15 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 const mockUpdateConfig = vi.hoisted(() => vi.fn(async () => true));
 const mockPublicEnvVars = vi.hoisted(() => new Map<string, string>());
 
+vi.mock("@/components/code-block", () => ({
+  CodeBlock: ({ title, content }: { title: string, content: string }) => (
+    <div>
+      <div>{title}</div>
+      <pre>{content}</pre>
+    </div>
+  ),
+}));
+
 vi.mock("@/components/design-components", () => ({
   DesignCard: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DesignPillToggle: () => <div />,
@@ -118,7 +127,13 @@ vi.mock("./components", () => ({
   DomainSetupTransitionState: () => <div>Domain setup transition</div>,
   ModeNotImplementedCard: () => <div>Mode not implemented</div>,
   OnboardingAppCard: () => <div>App card</div>,
-  OnboardingEmailThemePreview: () => <div>Email theme preview</div>,
+  EmailThemePicker: () => <div>Email theme picker</div>,
+  SetupNewProjectPage: ({ configFile }: { configFile?: string }) => (
+    <div>
+      <h1>Almost done!</h1>
+      {configFile != null && <pre>{configFile}</pre>}
+    </div>
+  ),
   OnboardingPage: ({
     title,
     subtitle,
@@ -176,17 +191,126 @@ function createDeferred<T>() {
 }
 
 describe("ProjectOnboardingWizard", () => {
+  it("offers the new first-time setup and production deployment paths", () => {
+    const testDir = dirname(fileURLToPath(import.meta.url));
+    const source = readFileSync(join(testDir, "project-onboarding-wizard.tsx"), "utf-8");
+    const componentsSource = readFileSync(join(testDir, "components.tsx"), "utf-8");
+
+    expect(componentsSource).toContain("Welcome to Hexclave!");
+    expect(componentsSource).toContain("What would you like to do?");
+    expect(componentsSource).toContain("Add Hexclave to a new project");
+    expect(componentsSource).toContain("What will you use Hexclave for?");
+    expect(componentsSource).toContain("Do you want to install any other apps?");
+    expect(componentsSource).toContain("Not sure / Decide later");
+    expect(componentsSource).toContain("Search products...");
+    expect(componentsSource).toContain("Choose the first app you want to install now");
+    expect(componentsSource).toContain('["authentication", "analytics", "payments"]');
+    expect(componentsSource).toContain("expandAppSoftRequirements([...installableApps, \"analytics\"])");
+    expect(componentsSource).toContain("parseOnboardingAppSearchParam");
+    expect(componentsSource).toContain("getInstallableAppId");
+    expect(componentsSource).toContain("text-amber-500");
+    expect(componentsSource).toContain("Deploy my existing Hexclave project to production");
+    expect(componentsSource).toContain("I just want to look around");
+    expect(componentsSource).toContain("https://preview.hexclave.com");
+    expect(componentsSource).toContain("Where is your project currently?");
+    expect(componentsSource).toContain("Almost done!");
+    expect(componentsSource).toContain("To finish the setup, install Hexclave in your local project.");
+    expect(componentsSource).toContain("On my computer (local)");
+    expect(componentsSource).toContain("On GitHub");
+    expect(componentsSource).toContain("Advanced");
+    expect(componentsSource).toContain("Create plain production project");
+    expect(componentsSource).toContain("Only recommended if you're an expert at using Hexclave");
+    expect(source).toContain('source === "plain-production"');
+    expect(source).toContain('status: "apps_selection"');
+    expect(source).toContain("NewProjectEntryPage");
+    expect(source).toContain("DeploymentChoicePage");
+  });
+
+  it("keeps the development environment start screen separate from deployment choices", () => {
+    const testDir = dirname(fileURLToPath(import.meta.url));
+    const source = readFileSync(join(testDir, "project-onboarding-wizard.tsx"), "utf-8");
+
+    expect(source).toContain("if (isDevelopmentEnvironment)");
+    expect(source).toContain("You are running Hexclave with the local dashboard.");
+    expect(source).toContain("This local project is running locally and ready to get started.");
+  });
+
+  it("uses manual GitHub setup without connecting a GitHub account", () => {
+    const testDir = dirname(fileURLToPath(import.meta.url));
+    const source = readFileSync(join(testDir, "link-existing-onboarding.tsx"), "utf-8");
+
+    expect(source).toContain("No GitHub account connection is required.");
+    expect(source).toContain("Set repository secrets");
+    expect(source).toContain("Generate Hexclave secrets");
+    expect(source).toContain("Create the workflow file");
+    expect(source).toContain("Run the workflow & make sure it completes successfully");
+    expect(source).toContain("Awaiting config");
+    expect(source).toContain("Please run the GitHub workflow before proceeding");
+    expect(source).toContain("Waiting for the GitHub workflow to push your config");
+    expect(source).toContain("AI Prompt");
+    expect(source).toContain("buildGithubWorkflowAiPrompt");
+    expect(source).toContain("getOnboardingRemindersPrompt");
+    expect(source).toContain("OnboardingAiPromptBlock");
+    expect(source).toContain("githubPollingStartedRef");
+    expect(source).not.toContain("Choose the workflow paths");
+    expect(source).not.toContain("I've added the workflow");
+    expect(source).not.toContain("getOrLinkConnectedAccount");
+    expect(source).not.toContain("Connect GitHub account");
+  });
+
+  it("prefixes non-prod API and dashboard URLs into local CLI commands", () => {
+    const testDir = dirname(fileURLToPath(import.meta.url));
+    const source = readFileSync(join(testDir, "link-existing-onboarding.tsx"), "utf-8");
+
+    expect(source).toContain("HEXCLAVE_API_URL=");
+    expect(source).toContain("HEXCLAVE_DASHBOARD_URL=");
+    expect(source).toContain("buildCliCommandEnvPrefix");
+    expect(source).toContain('includeDashboardUrl: true');
+  });
+
+  it("shows an explicit Go back button on the first-time setup screen", () => {
+    const testDir = dirname(fileURLToPath(import.meta.url));
+    const source = readFileSync(join(testDir, "components.tsx"), "utf-8");
+
+    expect(source).toContain('stepKey="setup-new-project"');
+    expect(source).toContain("Go back");
+  });
+
+  it("uses the Mintlify docs setup prompt on the first-time setup screen", () => {
+    const testDir = dirname(fileURLToPath(import.meta.url));
+    const source = readFileSync(join(testDir, "components.tsx"), "utf-8");
+
+    expect(source).toContain("aiSetupPrompt");
+    expect(source).toContain("AI Prompt");
+    expect(source).toContain("Manual Installation");
+    expect(source).toContain("OnboardingAiPromptBlock");
+    expect(source).toContain("formatApproximateTokenCountLabel");
+    expect(source).toContain("ONBOARDING_AI_PROMPT_PREVIEW_HEIGHT_PX");
+    expect(source).toContain("Open Getting Started guide");
+    expect(source).not.toContain("buildCloudSetupPrompt");
+  });
+
   it("keeps the hosted auth preview interactive", () => {
     const testDir = dirname(fileURLToPath(import.meta.url));
     const source = readFileSync(join(testDir, "project-onboarding-wizard.tsx"), "utf-8");
 
-    const previewBlockMatch = source.match(/(<[^>]*HostedAuthMethodPreview[\s\S]*?\/>[\s\S]{0,300})/);
+    const previewBlockMatch = source.match(/(<HostedAuthMethodPreview[^>]*\/>)/);
     expect(previewBlockMatch).not.toBeNull();
     const previewBlock = previewBlockMatch![1];
 
     expect(previewBlock).not.toContain("pointer-events-none");
     expect(previewBlock).not.toContain("inert");
     expect(previewBlock).not.toContain("bg-transparent");
+  });
+
+  it("scales the auth preview without squeezing its internal layout", () => {
+    const testDir = dirname(fileURLToPath(import.meta.url));
+    const source = readFileSync(join(testDir, "project-onboarding-wizard.tsx"), "utf-8");
+
+    expect(source).toContain("scale-[0.6]");
+    expect(source).toContain("origin-center");
+    expect(source).toContain("md:grid-cols-[minmax(260px,2fr)_minmax(0,2fr)]");
+    expect(source).not.toContain("md:w-[60%]");
   });
 
   it("keeps required apps when normalizing persisted onboarding state", () => {
@@ -238,7 +362,7 @@ describe("ProjectOnboardingWizard", () => {
     }
   });
 
-  it("prefetches email themes on early steps without mounting heavy hooks", () => {
+  it("does not call email theme APIs on early onboarding steps", () => {
     const useEmailThemes = vi.fn(() => {
       throw new Error("Email themes should not load on the app selection step.");
     });
@@ -293,7 +417,7 @@ describe("ProjectOnboardingWizard", () => {
       />,
     );
 
-    expect(listEmailThemes).toHaveBeenCalledOnce();
+    expect(listEmailThemes).not.toHaveBeenCalled();
     expect(getEmailPreview).not.toHaveBeenCalled();
     expect(getStripeAccountInfo).not.toHaveBeenCalled();
     expect(useEmailThemes).not.toHaveBeenCalled();
@@ -530,9 +654,7 @@ describe("ProjectOnboardingWizard", () => {
     expect(useStripeAccountInfo).not.toHaveBeenCalled();
   });
 
-  it("shows an email-theme shimmer instead of the page spinner while themes load", () => {
-    const pendingEmailThemes = new Promise<never>(() => {});
-
+  it("renders the static email theme picker without waiting on project theme APIs", () => {
     render(
       <ProjectOnboardingWizard
         project={{
@@ -561,11 +683,7 @@ describe("ProjectOnboardingWizard", () => {
           }),
           app: {
             setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
-            listEmailThemes: vi.fn(async () => []),
             getStripeAccountInfo: vi.fn(async () => null),
-            useEmailThemes: () => {
-              throw pendingEmailThemes;
-            },
             useStripeAccountInfo: () => null,
           },
         } as never}
@@ -579,7 +697,7 @@ describe("ProjectOnboardingWizard", () => {
     );
 
     expect(screen.getByText("Select an email theme")).toBeTruthy();
-    expect(screen.getByTestId("email-theme-step-skeleton")).toBeTruthy();
+    expect(screen.getByText("Email theme picker")).toBeTruthy();
   });
 
   it("shows a payments shimmer instead of the page spinner while Stripe status loads", () => {

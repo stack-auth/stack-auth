@@ -1,25 +1,46 @@
 import { runWorkflowEngineStep, WORKFLOW_INVOCATION_BACKSTOP_TIMEOUT_MS } from "@/lib/workflows/engine";
+import { getRequestContext } from "@/lib/runtime/request-context";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupBoolean, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import { wait } from "@hexclave/shared/dist/utils/promises";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
-// Unlike the other cron routes, the workflow tick awaits sandbox invocations
-// whose per-step timeout can reach 10 minutes, so it needs Vercel's larger
-// function budget (the in-code loop still stops early enough to fit).
-export const maxDuration = 800;
-
 const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
-const FUNCTION_BUDGET_MS = maxDuration * 1000;
+// Keep this operational loop budget aligned with the literal Vercel entrypoint
+// limit in src/index.ts. The entrypoint cannot import a shared value because
+// Vercel's builder statically requires a numeric literal in the config object.
+const FUNCTION_BUDGET_MS = 800 * 1000;
 const FUNCTION_SHUTDOWN_SLACK_MS = 20 * 1000;
 // This is a latest-start budget, not a latest-finish budget. A workflow
 // invocation started at the boundary may consume the full 10-minute step
 // timeout plus its engine backstop, so reserve that time inside Vercel's
 // function duration.
 const HARD_DEADLINE_MS = FUNCTION_BUDGET_MS - WORKFLOW_INVOCATION_BACKSTOP_TIMEOUT_MS - FUNCTION_SHUTDOWN_SLACK_MS;
+
+async function waitForNextStep(milliseconds: number, signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted();
+  await new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+import.meta.vitest?.test("workflow polling delay observes client cancellation", async ({ expect }) => {
+  const controller = new AbortController();
+  const cancellation = new Error("client disconnected");
+  controller.abort(cancellation);
+
+  await expect(waitForNextStep(2000, controller.signal)).rejects.toBe(cancellation);
+});
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -59,15 +80,18 @@ export const GET = createSmartRouteHandler({
     const maxDurationMs = Math.min(requestedMaxDurationMs, HARD_DEADLINE_MS);
     const startTime = performance.now();
     const deadlineMs = Date.now() + maxDurationMs;
+    const signal = getRequestContext().abortSignal;
 
     while (true) {
+      signal.throwIfAborted();
       const { didWork } = await runWorkflowEngineStep({ deadlineMs });
+      signal.throwIfAborted();
       if (query.only_one_step === "true") break;
       if (performance.now() - startTime >= maxDurationMs) break;
       // Idle-wait longer when nothing happened; overlapping ticks (cron
       // fires every minute) keep latency at ~1min worst case anyway, which
       // is the documented precision contract.
-      await wait(didWork ? 200 : 2000);
+      await waitForNextStep(didWork ? 200 : 2000, signal);
     }
 
     return {

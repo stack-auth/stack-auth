@@ -6,7 +6,7 @@ import { Auth, niceBackendFetch, Project, User } from "../../../../backend-helpe
 
 describe("capacity-boost", () => {
   it("should activate capacity boost and increase rate", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     await Project.createAndSwitch({
       display_name: "Test Boost Project",
     }, true);
@@ -42,7 +42,7 @@ describe("capacity-boost", () => {
   });
 
   it("should reject double activation while boost is active", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     await Project.createAndSwitch({
       display_name: "Test Double Boost Project",
     }, true);
@@ -66,7 +66,7 @@ describe("capacity-boost", () => {
   });
 
   it("should require server access type", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     await Project.createAndSwitch({
       display_name: "Test Auth Project",
     }, true);
@@ -82,7 +82,7 @@ describe("capacity-boost", () => {
 
 describe("with valid credentials", () => {
   it("should return zero stats for a new project", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     await Project.createAndSwitch({
       display_name: "Test Stats Project",
     }, true);

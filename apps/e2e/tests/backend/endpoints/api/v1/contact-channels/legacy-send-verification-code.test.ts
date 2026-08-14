@@ -38,7 +38,7 @@ it("doesn't send a verification code if logged out", async ({ expect }) => {
 
 
 it("should send a verification code per e-mail", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ sendVerificationEmail: true });
   const mailbox = backendContext.value.mailbox;
   await niceBackendFetch(`/api/v1/contact-channels/send-verification-code`, {
     method: "POST",

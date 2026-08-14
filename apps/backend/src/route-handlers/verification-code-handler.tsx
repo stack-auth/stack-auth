@@ -1,4 +1,5 @@
 import { recordExternalDbSyncDeletion } from "@/lib/external-db-sync";
+import { logSignInAttemptInBackground } from "@/lib/compliance-events";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { getSoleTenancyFromProjectBranch, getTenancy, Tenancy } from "@/lib/tenancies";
@@ -115,6 +116,7 @@ export function createVerificationCodeHandler<
   requestBody?: yup.ObjectSchema<RequestBody>,
   detailsResponse?: yup.Schema<DetailsResponse>,
   response: yup.Schema<Response>,
+  complianceSignInAttempt?: boolean,
   send?(
     codeObject: CodeObject<Data, Method, string | URL>,
     createOptions: CreateCodeOptions<Data, Method, string | URL>,
@@ -191,6 +193,24 @@ export function createVerificationCodeHandler<
         },
       });
 
+      const logOtpFailure = (failureReason: "invalid_otp" | "expired_otp" | "used_otp" | "max_attempts", method: unknown) => {
+        if (options.complianceSignInAttempt !== true) {
+          return;
+        }
+        const email = typeof method === "object"
+          && method !== null
+          && "email" in method
+          && typeof method.email === "string"
+          ? method.email
+          : null;
+        logSignInAttemptInBackground(auth.tenancy, {
+          outcome: "failed",
+          method: "otp",
+          failureReason,
+          email,
+        });
+      };
+
       // Increment the attempt count for all codes that match except for the first 6 characters
       await globalPrismaClient.verificationCode.updateMany({
         where: {
@@ -205,10 +225,22 @@ export function createVerificationCodeHandler<
         },
       });
 
-      if (!verificationCode) throw new KnownErrors.VerificationCodeNotFound();
-      if (verificationCode.expiresAt < new Date()) throw new KnownErrors.VerificationCodeExpired();
-      if (verificationCode.usedAt) throw new KnownErrors.VerificationCodeAlreadyUsed();
-      if (verificationCode.attemptCount >= MAX_ATTEMPTS_PER_CODE) throw new KnownErrors.VerificationCodeMaxAttemptsReached;
+      if (!verificationCode) {
+        logOtpFailure("invalid_otp", undefined);
+        throw new KnownErrors.VerificationCodeNotFound();
+      }
+      if (verificationCode.expiresAt < new Date()) {
+        logOtpFailure("expired_otp", verificationCode.method);
+        throw new KnownErrors.VerificationCodeExpired();
+      }
+      if (verificationCode.usedAt) {
+        logOtpFailure("used_otp", verificationCode.method);
+        throw new KnownErrors.VerificationCodeAlreadyUsed();
+      }
+      if (verificationCode.attemptCount >= MAX_ATTEMPTS_PER_CODE) {
+        logOtpFailure("max_attempts", verificationCode.method);
+        throw new KnownErrors.VerificationCodeMaxAttemptsReached;
+      }
 
       const validatedMethod = await options.method.validate(verificationCode.method, {
         strict: true,
@@ -224,12 +256,21 @@ export function createVerificationCodeHandler<
       switch (handlerType) {
         case 'post': {
           // Atomic claim — conditional WHERE closes the TOCTOU against the checks above.
-          await claimVerificationCode({
-            projectId: auth.project.id,
-            branchId: auth.branchId,
-            type: options.type,
-            code,
-          });
+          // claimVerificationCode throws VerificationCodeAlreadyUsed if the code was
+          // claimed between the checks above and here; log that race as a used_otp failure.
+          try {
+            await claimVerificationCode({
+              projectId: auth.project.id,
+              branchId: auth.branchId,
+              type: options.type,
+              code,
+            });
+          } catch (error) {
+            if (KnownErrors.VerificationCodeAlreadyUsed.isInstance(error)) {
+              logOtpFailure("used_otp", verificationCode.method);
+            }
+            throw error;
+          }
 
           return await options.handler(auth.tenancy, validatedMethod, validatedData, requestBody as any, auth.user, getApiUrlForRequest(fullReq));
         }

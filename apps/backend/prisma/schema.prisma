@@ -2230,6 +2230,24 @@ model SubscriptionInvoice {
   @@unique([tenancyId, stripeInvoiceId])
 }
 
+// Durable backup of Bulldozer `payments-manual-transactions` (refunds today).
+// Dual-written from the refund routes; also filled by a one-off HTTP export from
+// Bulldozer so history survives an LMDB rebuild/backfill.
+model ManualTransaction {
+  tenancyId       String       @db.Uuid
+  txnId           String
+  type            String
+  customerId      String
+  customerType    CustomerType
+  paymentProvider String?
+  effectiveAt     DateTime
+  createdAt       DateTime
+  entries         Json
+
+  @@id([tenancyId, txnId])
+  @@index([tenancyId, createdAt])
+}
+
 model OutgoingRequest {
   id String @id @default(uuid()) @db.Uuid
 

@@ -88,4 +88,56 @@ describe("internal newly-created projects", () => {
       id: projectId,
     });
   });
+
+  it("identifies Neon projects, exposes owner profile timestamps, and can exclude Neon projects", async ({ expect }) => {
+    const internalUserAuth = await signInAsInternalAdmin();
+    const { projectId } = await Project.createAndSwitch({
+      display_name: "Neon-created project",
+      description: "Created with Neon",
+    }, true);
+
+    backendContext.set({ projectKeys: InternalProjectKeys, userAuth: internalUserAuth });
+    const included = await niceBackendFetch(
+      `${BASE_PATH}?rde=both&onboarding=both&min_users=0&neon=include`,
+      { accessType: "client" },
+    );
+    expect(included.status).toBe(200);
+    const includedRow = included.body.projects.find((project: { id: string }) => project.id === projectId);
+    expect(includedRow).toMatchObject({
+      id: projectId,
+      description: "Created with Neon",
+    });
+    expect(includedRow.owner.members[0]).toMatchObject({
+      created_at: expect.any(String),
+      last_active_at: expect.any(String),
+    });
+
+    const excluded = await niceBackendFetch(
+      `${BASE_PATH}?rde=both&onboarding=both&min_users=0&neon=exclude`,
+      { accessType: "client" },
+    );
+    expect(excluded.status).toBe(200);
+    expect(excluded.body.filters.neon).toBe("exclude");
+    expect(excluded.body.projects.some((project: { id: string }) => project.id === projectId)).toBe(false);
+  });
+
+  it("defaults to both development environments and excludes Neon projects", async ({ expect }) => {
+    const internalUserAuth = await signInAsInternalAdmin();
+    const { projectId } = await Project.createAndSwitch({
+      display_name: "Default Neon-created project",
+      description: "Created with Neon",
+    }, true);
+
+    backendContext.set({ projectKeys: InternalProjectKeys, userAuth: internalUserAuth });
+    const response = await niceBackendFetch(
+      `${BASE_PATH}?onboarding=both&min_users=0`,
+      { accessType: "client" },
+    );
+    expect(response.status).toBe(200);
+    expect(response.body.filters).toMatchObject({
+      rde: "both",
+      neon: "exclude",
+    });
+    expect(response.body.projects.some((project: { id: string }) => project.id === projectId)).toBe(false);
+  });
 });

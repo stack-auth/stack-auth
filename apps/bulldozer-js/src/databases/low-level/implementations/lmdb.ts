@@ -1,6 +1,9 @@
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
+import { createUuidV7Generator } from "@hexclave/shared/dist/utils/uuids";
 import * as lmdb from "lmdb";
+import { readdirSync, statSync } from "node:fs";
 import { shouldSuppressPeriodicBulldozerLogs } from "../../../logging.js";
 import { traceSpanHot } from "../../../otel.js";
 import { DatabaseSeq } from "../../index.js";
@@ -12,6 +15,20 @@ type BinaryDatabase = lmdb.Database<Buffer, Uint8Array>;
 type VersionedBinaryDatabase = BinaryDatabase & {
   getEntry(key: Buffer): { value: Buffer, version?: number } | undefined,
 };
+
+function createDumpKeyGenerator() {
+  const generateUuidV7 = createUuidV7Generator();
+  return () => {
+    const key = new Uint8Array(17);
+    // Timestamp-first UUIDv7 keys cluster dump writes in an advancing range,
+    // reducing LMDB page scatter. The leading byte is a layout-version marker
+    // so future dump-key formats can coexist without migrating legacy 48-byte keys.
+    key[0] = 0x01;
+    key.set(generateUuidV7(), 1);
+    return key.buffer;
+  };
+}
+
 type PendingCommitOperation = {
   seqId: string,
   requiresSeq: DatabaseSeq,
@@ -96,6 +113,73 @@ type LmdbActivityStats = {
   combinedSeqDurabilityResolveTotalMs: number,
 };
 
+export type LmdbDiagnostics = {
+  dbId: string,
+  storeSizeBytes?: number,
+  elapsedMs: number,
+  putsPerSecond: number,
+  averagePutBytes: number,
+  averagePutAwaitMs: number,
+  transactionsPerSecond: number,
+  averageTransactionMs: number,
+  averageTransactionQueueWaitMs: number,
+  averageTransactionActionMs: number,
+  averageMetaPutMs: number,
+  averageTransactionCommitTailMs: number,
+  requiredSeqWaitsPerSecond: number,
+  averageRequiredSeqWaitMs: number,
+  waitUntilAvailableResolvesPerSecond: number,
+  waitUntilDurableResolvesPerSecond: number,
+  averageSeqToAvailabilityResolveMs: number,
+  averageSeqToDurabilityResolveMs: number,
+  combinedSeqAvailabilityResolvesPerSecond: number,
+  combinedSeqDurabilityResolvesPerSecond: number,
+  averageCombinedSeqAvailabilityResolveMs: number,
+  averageCombinedSeqDurabilityResolveMs: number,
+  mapSizes: {
+    seqToAvailability: number,
+    seqToDurability: number,
+    combinedSeqToAvailability: number,
+    combinedSeqToDurability: number,
+    combinedSeqDependencies: number,
+    debugEntriesByStoreId: number,
+  },
+  currentVersion: number,
+};
+
+let latestLmdbDiagnostics: LmdbDiagnostics | null = null;
+const bulldozerDiagnosticsEnabled = process.env.HEXCLAVE_BULLDOZER_DIAGNOSTICS === "true";
+
+function isExpectedStoreSizeError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = "code" in error ? error.code : undefined;
+  return code === "ENOENT" || code === "EACCES" || code === "EPERM" || code === "ENOTDIR";
+}
+
+function getStoreSizeBytes(path: string): number | undefined {
+  try {
+    let total = 0;
+    for (const entry of readdirSync(path, { withFileTypes: true })) {
+      const entryPath = `${path}/${entry.name}`;
+      if (entry.isDirectory()) {
+        const nestedSize = getStoreSizeBytes(entryPath);
+        if (nestedSize === undefined) return undefined;
+        total += nestedSize;
+      } else {
+        total += statSync(entryPath).size;
+      }
+    }
+    return total;
+  } catch (error) {
+    if (isExpectedStoreSizeError(error)) return undefined;
+    throw error;
+  }
+}
+
+export function getLmdbDiagnostics(): LmdbDiagnostics | null {
+  return latestLmdbDiagnostics == null ? null : { ...latestLmdbDiagnostics };
+}
+
 function emptyActivityStats(): LmdbActivityStats {
   return {
     puts: 0,
@@ -129,11 +213,27 @@ function hasActivity(stats: LmdbActivityStats): boolean {
     || stats.combinedSeqDurabilityResolves > 0;
 }
 
-export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: string, simulateReadMissDelayMs?: number }): LowLevelDatabase {
+export function declareLmdbLowLevelDatabase(options: {
+  path: string,
+  dbId?: string,
+  simulateReadMissDelayMs?: number,
+  /**
+   * When true, enable lmdb-js LZ4 compression on values (threshold 1000 bytes by default).
+   * Sticky per on-disk path: once values are written compressed, every subsequent open of
+   * that path must keep compression on (or reads of those values will fail).
+   * Turning this on against an existing uncompressed store does NOT rewrite old values —
+   * new writes compress, old ones stay uncompressed and remain readable.
+   * To ship a fully-compressed store in prod: point HEXCLAVE_BULLDOZER_JS_LMDB_PATH at a
+   * fresh empty directory, set HEXCLAVE_BULLDOZER_JS_LMDB_COMPRESSION=1, start bulldozer-js,
+   * then run db:backfill-bulldozer-from-prisma (after ManualTransaction is in Postgres).
+   */
+  compression?: boolean,
+}): LowLevelDatabase {
   const dbId = options.dbId ?? "default";
   const simulateReadMissDelayMs = options.simulateReadMissDelayMs ?? 0;
   if (!Number.isFinite(simulateReadMissDelayMs) || simulateReadMissDelayMs < 0) throw new Error("simulateReadMissDelayMs must be a non-negative finite number");
-  const root = lmdb.open({ path: options.path, maxDbs: 1024, separateFlushed: true });
+  const compression = options.compression === true;
+  const root = lmdb.open({ path: options.path, maxDbs: 1024, separateFlushed: true, compression });
   const meta = root.openDB<number, string>({ name: `${dbId}:meta`, encoding: "json" });
   let currentVersion = meta.get("seq") ?? 0;
   const initialSeqId = "initial";
@@ -147,52 +247,90 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
   let pendingCommitFlushTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingCommitFlushPromise: Promise<void> | null = null;
   let isClosing = false;
+  let storeSizeDiagnosticsDisabled = false;
   let closePromise: Promise<void> | null = null;
+  const inFlightReads = new Set<Promise<unknown>>();
+  let readErrorDuringClose: unknown | undefined;
+  const trackRead = <T>(read: Promise<T>) => {
+    let trackedRead: Promise<T>;
+    trackedRead = read.catch(error => {
+      if (isClosing && readErrorDuringClose === undefined) readErrorDuringClose = error;
+      throw error;
+    }).finally(() => inFlightReads.delete(trackedRead));
+    inFlightReads.add(trackedRead);
+    return trackedRead;
+  };
+  const assertReadAllowed = () => {
+    if (isClosing) throw new Error("LMDB database is closing");
+  };
+  // A read that rejects after close begins removes itself from inFlightReads in its own `finally`, which can run
+  // before the drain snapshots the set; the retained slot above keeps that error observable so close still surfaces it.
+  const drainInFlightReads = async () => {
+    const results = await Promise.allSettled(inFlightReads);
+    const rejected = results.find(result => result.status === "rejected");
+    const readError = readErrorDuringClose;
+    readErrorDuringClose = undefined;
+    if (rejected?.status === "rejected") throw rejected.reason;
+    if (readError !== undefined) throw readError;
+  };
   let activityStats = emptyActivityStats();
   let activityWindowStartedAt = performance.now();
-  if (!shouldSuppressPeriodicBulldozerLogs) {
-    const activityInterval = setInterval(() => {
-      if (!hasActivity(activityStats)) return;
-      const now = performance.now();
-      const elapsedMs = now - activityWindowStartedAt;
-      const elapsedSeconds = elapsedMs / 1000;
-      console.debug("bulldozer-js low-level lmdb activity", {
-        dbId,
-        elapsedMs,
-        putsPerSecond: activityStats.puts / elapsedSeconds,
-        averagePutBytes: activityStats.puts === 0 ? 0 : activityStats.putBytes / activityStats.puts,
-        averagePutAwaitMs: activityStats.puts === 0 ? 0 : activityStats.putAwaitTotalMs / activityStats.puts,
-        transactionsPerSecond: activityStats.transactions / elapsedSeconds,
-        averageTransactionMs: activityStats.transactions === 0 ? 0 : activityStats.transactionTotalMs / activityStats.transactions,
-        averageTransactionQueueWaitMs: activityStats.transactions === 0 ? 0 : activityStats.transactionQueueWaitTotalMs / activityStats.transactions,
-        averageTransactionActionMs: activityStats.transactions === 0 ? 0 : activityStats.transactionActionTotalMs / activityStats.transactions,
-        averageMetaPutMs: activityStats.transactions === 0 ? 0 : activityStats.metaPutTotalMs / activityStats.transactions,
-        averageTransactionCommitTailMs: activityStats.transactions === 0 ? 0 : activityStats.transactionCommitTailTotalMs / activityStats.transactions,
-        requiredSeqWaitsPerSecond: activityStats.requiredSeqWaits / elapsedSeconds,
-        averageRequiredSeqWaitMs: activityStats.requiredSeqWaits === 0 ? 0 : activityStats.requiredSeqWaitTotalMs / activityStats.requiredSeqWaits,
-        waitUntilAvailableResolvesPerSecond: activityStats.waitUntilAvailableResolves / elapsedSeconds,
-        waitUntilDurableResolvesPerSecond: activityStats.waitUntilDurableResolves / elapsedSeconds,
-        averageSeqToAvailabilityResolveMs: activityStats.waitUntilAvailableResolves === 0 ? 0 : activityStats.waitUntilAvailableResolveTotalMs / activityStats.waitUntilAvailableResolves,
-        averageSeqToDurabilityResolveMs: activityStats.waitUntilDurableResolves === 0 ? 0 : activityStats.waitUntilDurableResolveTotalMs / activityStats.waitUntilDurableResolves,
-        combinedSeqAvailabilityResolvesPerSecond: activityStats.combinedSeqAvailabilityResolves / elapsedSeconds,
-        combinedSeqDurabilityResolvesPerSecond: activityStats.combinedSeqDurabilityResolves / elapsedSeconds,
-        averageCombinedSeqAvailabilityResolveMs: activityStats.combinedSeqAvailabilityResolves === 0 ? 0 : activityStats.combinedSeqAvailabilityResolveTotalMs / activityStats.combinedSeqAvailabilityResolves,
-        averageCombinedSeqDurabilityResolveMs: activityStats.combinedSeqDurabilityResolves === 0 ? 0 : activityStats.combinedSeqDurabilityResolveTotalMs / activityStats.combinedSeqDurabilityResolves,
-        mapSizes: {
-          seqToAvailability: seqToAvailability.size,
-          seqToDurability: seqToDurability.size,
-          combinedSeqToAvailability: combinedSeqToAvailability.size,
-          combinedSeqToDurability: combinedSeqToDurability.size,
-          combinedSeqDependencies: combinedSeqDependencies.size,
-          debugEntriesByStoreId: debugEntriesByStoreId.size,
-        },
-        currentVersion,
-      });
-      activityStats = emptyActivityStats();
-      activityWindowStartedAt = now;
-    }, 5_000);
-    activityInterval.unref();
-  }
+  const activityInterval = setInterval(() => {
+    if (!hasActivity(activityStats)) return;
+    const now = performance.now();
+    const elapsedMs = now - activityWindowStartedAt;
+    const elapsedSeconds = elapsedMs / 1000;
+    let storeSizeBytes: number | undefined;
+    if (bulldozerDiagnosticsEnabled && !storeSizeDiagnosticsDisabled) {
+      try {
+        storeSizeBytes = getStoreSizeBytes(options.path);
+      } catch (error) {
+        // Disable sizing after the first unexpected failure so a persistent error cannot flood CI logs every 5 seconds.
+        storeSizeDiagnosticsDisabled = true;
+        captureError("bulldozer-js:lmdb-diagnostics-store-size", error);
+      }
+    }
+    const diagnostics: LmdbDiagnostics = {
+      dbId,
+      ...(storeSizeBytes === undefined ? {} : { storeSizeBytes }),
+      elapsedMs,
+      putsPerSecond: activityStats.puts / elapsedSeconds,
+      averagePutBytes: activityStats.puts === 0 ? 0 : activityStats.putBytes / activityStats.puts,
+      averagePutAwaitMs: activityStats.puts === 0 ? 0 : activityStats.putAwaitTotalMs / activityStats.puts,
+      transactionsPerSecond: activityStats.transactions / elapsedSeconds,
+      averageTransactionMs: activityStats.transactions === 0 ? 0 : activityStats.transactionTotalMs / activityStats.transactions,
+      averageTransactionQueueWaitMs: activityStats.transactions === 0 ? 0 : activityStats.transactionQueueWaitTotalMs / activityStats.transactions,
+      averageTransactionActionMs: activityStats.transactions === 0 ? 0 : activityStats.transactionActionTotalMs / activityStats.transactions,
+      averageMetaPutMs: activityStats.transactions === 0 ? 0 : activityStats.metaPutTotalMs / activityStats.transactions,
+      averageTransactionCommitTailMs: activityStats.transactions === 0 ? 0 : activityStats.transactionCommitTailTotalMs / activityStats.transactions,
+      requiredSeqWaitsPerSecond: activityStats.requiredSeqWaits / elapsedSeconds,
+      averageRequiredSeqWaitMs: activityStats.requiredSeqWaits === 0 ? 0 : activityStats.requiredSeqWaitTotalMs / activityStats.requiredSeqWaits,
+      waitUntilAvailableResolvesPerSecond: activityStats.waitUntilAvailableResolves / elapsedSeconds,
+      waitUntilDurableResolvesPerSecond: activityStats.waitUntilDurableResolves / elapsedSeconds,
+      averageSeqToAvailabilityResolveMs: activityStats.waitUntilAvailableResolves === 0 ? 0 : activityStats.waitUntilAvailableResolveTotalMs / activityStats.waitUntilAvailableResolves,
+      averageSeqToDurabilityResolveMs: activityStats.waitUntilDurableResolves === 0 ? 0 : activityStats.waitUntilDurableResolveTotalMs / activityStats.waitUntilDurableResolves,
+      combinedSeqAvailabilityResolvesPerSecond: activityStats.combinedSeqAvailabilityResolves / elapsedSeconds,
+      combinedSeqDurabilityResolvesPerSecond: activityStats.combinedSeqDurabilityResolves / elapsedSeconds,
+      averageCombinedSeqAvailabilityResolveMs: activityStats.combinedSeqAvailabilityResolves === 0 ? 0 : activityStats.combinedSeqAvailabilityResolveTotalMs / activityStats.combinedSeqAvailabilityResolves,
+      averageCombinedSeqDurabilityResolveMs: activityStats.combinedSeqDurabilityResolves === 0 ? 0 : activityStats.combinedSeqDurabilityResolveTotalMs / activityStats.combinedSeqDurabilityResolves,
+      mapSizes: {
+        seqToAvailability: seqToAvailability.size,
+        seqToDurability: seqToDurability.size,
+        combinedSeqToAvailability: combinedSeqToAvailability.size,
+        combinedSeqToDurability: combinedSeqToDurability.size,
+        combinedSeqDependencies: combinedSeqDependencies.size,
+        debugEntriesByStoreId: debugEntriesByStoreId.size,
+      },
+      currentVersion,
+    };
+    latestLmdbDiagnostics = diagnostics;
+    if (!shouldSuppressPeriodicBulldozerLogs) {
+      console.debug("bulldozer-js low-level lmdb activity", diagnostics);
+    }
+    activityStats = emptyActivityStats();
+    activityWindowStartedAt = now;
+  }, 5_000);
+  activityInterval.unref();
   const initialSeq = [dbId, initialSeqId] as unknown as LmdbSeq;
   const toSeq = (seqId: string) => [dbId, seqId] as unknown as LmdbSeq;
 
@@ -208,6 +346,15 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
   };
   const getDurabilityPromise = (seqId: string) => {
     return seqToDurability.get(seqId) ?? combinedSeqToDurability.get(seqId) ?? Promise.resolve();
+  };
+  const combineSeqsForStore = (...seqs: DatabaseSeq[]) => {
+    if (seqs.length === 0) return initialSeq;
+    if (seqs.length === 1) return seqs[0];
+    const seqId = nextSeqId();
+    combinedSeqDependencies.set(seqId, seqs.map(seq => getSeqId(seq)));
+    rememberCombinedAvailability(seqId, Promise.all(seqs.map(seq => getAvailabilityPromise(getSeqId(seq)))));
+    rememberCombinedDurability(seqId, Promise.all(seqs.map(seq => getDurabilityPromise(getSeqId(seq)))));
+    return toSeq(seqId);
   };
   // LMDB may reject with an opaque "Commit failed" wrapper whose real status
   // lives on `.commitError` (a Promise). LMDB's `committed` value is only a
@@ -348,7 +495,6 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
     rememberDurability(seqId, Promise.resolve());
     return toSeq(seqId);
   };
-  const dumpKey = () => crypto.getRandomValues(new Uint8Array(48)).buffer;
   const putWithVersion = async (db: BinaryDatabase, key: Buffer, value: Buffer, version: number) => {
     activityStats.puts++;
     activityStats.putBytes += value.byteLength;
@@ -392,10 +538,12 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
       keyEncoding: "binary",
       useVersions: true,
     }) as VersionedBinaryDatabase;
+    const dumpKey = createDumpKeyGenerator();
 
     const result: LowLevelKvStore & LowLevelKvDump = {
       async get(key) {
-        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.get", attributes }, async () => {
+        assertReadAllowed();
+        return await trackRead(traceSpanHot({ description: "bulldozer-js.low-level.lmdb.get", attributes }, async () => {
           validateKey(key);
           if (simulateReadMissDelayMs > 0) await wait(simulateReadMissDelayMs);
           const [buffer] = await db.getMany([bufferFromArrayBuffer(key)]);
@@ -403,7 +551,27 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
             buffer: buffer ? arrayBufferFromUint8Array(buffer) : null,
             seq: initialSeq,
           };
-        });
+        }));
+      },
+      async listEntries(options) {
+        assertReadAllowed();
+        return await trackRead(traceSpanHot({ description: "bulldozer-js.low-level.lmdb.listEntries", attributes }, async () => {
+          const limit = options?.limit ?? 1000;
+          if (!Number.isInteger(limit) || limit <= 0) throw new Error("KV store list limit must be a positive integer");
+          if (options?.startAfter !== undefined) validateKey(options.startAfter);
+          const entries = await (db.getRange({
+            start: options?.startAfter === undefined ? undefined : bufferFromArrayBuffer(options.startAfter),
+            exclusiveStart: options?.startAfter !== undefined,
+            limit: limit + 1,
+          }) as lmdb.RangeIterable<{ key: Uint8Array, value: Buffer }>).map(({ key, value }) => ({
+            key: arrayBufferFromUint8Array(key),
+            value: arrayBufferFromUint8Array(value),
+          })).asArray;
+          return {
+            entries: entries.slice(0, limit),
+            hasMore: entries.length > limit,
+          };
+        }));
       },
       async setAll(entries, setOptions) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.setAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
@@ -421,12 +589,12 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
           };
         });
       },
-      async deleteAll(keys) {
+      async deleteAll(keys, deleteOptions) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.deleteAll", attributes: { ...attributes, "bulldozer.low_level.key_count": keys.length } }, async () => {
           for (const key of keys) validateKey(key);
-          if (keys.length === 0) return { seq: initialSeq };
+          if (keys.length === 0) return { seq: deleteOptions?.requiresSeq ?? initialSeq };
           return {
-            seq: commit(initialSeq, async () => {
+            seq: commit(deleteOptions?.requiresSeq ?? initialSeq, async () => {
               for (const key of keys) await db.remove(bufferFromArrayBuffer(key));
             }),
           };
@@ -445,24 +613,41 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
           };
         });
       },
-      async compareAndSet(key, compare, value, casOptions) {
-        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.compareAndSet", attributes }, async () => {
-          validateKey(key);
-          validateValue("compare", compare);
-          validateValue("value", value);
-          await waitUntilAvailable(casOptions?.requiresSeq ?? initialSeq);
-          await waitUntilAllAvailable();
-          const keyBuffer = bufferFromArrayBuffer(key);
-          const existing = db.getEntry(keyBuffer);
-          if (!existing || existing.version === undefined || !arrayBuffersAreEqual(arrayBufferFromUint8Array(existing.value), compare)) {
-            return { wasSet: false, seq: null };
+      async compareAndSetAll(entries, casOptions) {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
+          const keys = new Set<string>();
+          for (const { key, compare, value } of entries) {
+            validateKey(key);
+            validateValue("compare", compare);
+            validateValue("value", value);
+            const keyBase64 = encodeBase64(new Uint8Array(key));
+            const previousSize = keys.size;
+            keys.add(keyBase64);
+            if (keys.size === previousSize) throw new Error("compareAndSetAll entries must not contain duplicate keys");
           }
-          const seq = await commitIfVersion(db, keyBuffer, existing.version, async version => await putWithVersion(db, keyBuffer, bufferFromArrayBuffer(value), version));
-          return seq === null ? { wasSet: false, seq: null } : { wasSet: true, seq };
+          const results = await Promise.all(entries.map(async ({ key, compare, value }) => {
+            await waitUntilAvailable(casOptions?.requiresSeq ?? initialSeq);
+            await waitUntilAllAvailable();
+            const keyBuffer = bufferFromArrayBuffer(key);
+            const existing = db.getEntry(keyBuffer);
+            if (!existing || existing.version === undefined || !arrayBuffersAreEqual(arrayBufferFromUint8Array(existing.value), compare)) {
+              return { wasSet: false as const, seq: null };
+            }
+            const seq = await commitIfVersion(db, keyBuffer, existing.version, async version => await putWithVersion(db, keyBuffer, bufferFromArrayBuffer(value), version));
+            return seq === null ? { wasSet: false as const, seq: null } : { wasSet: true as const, seq };
+          }));
+          const successful = results.filter(result => result.wasSet).map(result => result.seq);
+          return {
+            results,
+            seq: successful.length === 0
+              ? casOptions?.requiresSeq ?? initialSeq
+              : combineSeqsForStore(...successful),
+          };
         });
       },
       async debugEntries() {
-        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.debugEntries", attributes }, async () => await (db.getRange() as lmdb.RangeIterable<{ key: Uint8Array, value: Buffer }>).map(({ key, value }) => {
+        assertReadAllowed();
+        return await trackRead(traceSpanHot({ description: "bulldozer-js.low-level.lmdb.debugEntries", attributes }, async () => await (db.getRange() as lmdb.RangeIterable<{ key: Uint8Array, value: Buffer }>).map(({ key, value }) => {
           const keyBuffer = Buffer.from(key);
           const valueBuffer = Buffer.from(value);
           return {
@@ -473,7 +658,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
             valueUtf8: decodeUtf8(arrayBufferFromUint8Array(valueBuffer)),
             valueByteLength: valueBuffer.byteLength,
           };
-        }).asArray);
+        }).asArray));
       },
     };
     debugEntriesByStoreId.set(debugStoreId, () => result.debugEntries!());
@@ -521,17 +706,12 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
       });
     },
     combineSeqs(...seqs) {
-      if (seqs.length === 0) return initialSeq;
-      if (seqs.length === 1) return seqs[0];
-      const seqId = nextSeqId();
-      combinedSeqDependencies.set(seqId, seqs.map(seq => getSeqId(seq)));
-      rememberCombinedAvailability(seqId, Promise.all(seqs.map(seq => getAvailabilityPromise(getSeqId(seq)))));
-      rememberCombinedDurability(seqId, Promise.all(seqs.map(seq => getDurabilityPromise(getSeqId(seq)))));
-      return toSeq(seqId);
+      return combineSeqsForStore(...seqs);
     },
     close() {
       if (closePromise === null) {
         isClosing = true;
+        clearInterval(activityInterval);
         closePromise = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.close", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
           try {
             if (pendingCommitFlushPromise !== null) await pendingCommitFlushPromise;
@@ -542,7 +722,14 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
               ...combinedSeqToDurability.values(),
             ]);
           } finally {
-            await root.close();
+            try {
+              // lmdb-js tracks async reads per child handle, but root.close() only drains the root handle's counter.
+              // Drain every read issued by this environment before closing the root so a child prefetch worker
+              // cannot observe the native environment after lmdb-js has nulled it.
+              await drainInFlightReads();
+            } finally {
+              await root.close();
+            }
           }
         });
       }

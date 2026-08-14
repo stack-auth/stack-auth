@@ -3,7 +3,7 @@ import { it } from "../../../../../helpers";
 import { Auth, ContactChannels, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
 it("should verify user's email", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ sendVerificationEmail: true });
   const userResponse1 = await niceBackendFetch("/api/v1/users/me", { accessType: "client" });
   expect(userResponse1.body.primary_email_verified).toBe(false);
   await ContactChannels.verify();
@@ -14,10 +14,8 @@ it("should verify user's email", async ({ expect }) => {
 it("each verification code that was already requested can be used exactly once", async ({ expect }) => {
   // note: send-verification-code checks that you didn't already verify the email when you send the verification code, but if you request multiple at the same time you should be able to use them all
 
-  // Skip the per-email wait in signUpWithEmail — we'll batch-wait for all 3
-  // emails at the end. This avoids 3 sequential email waits (each 5–20s under
-  // CI load), which together can exceed the 60s test timeout.
-  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  // Batch-wait for the signup code and the two explicit verification codes.
+  await Auth.Password.signUpWithEmail({ sendVerificationEmail: true, waitForVerificationEmail: false });
 
   // Fire both send-verification-code requests without waiting for delivery
   const contactChannelId = (await ContactChannels.getTheOnlyContactChannel()).id;
@@ -34,8 +32,6 @@ it("each verification code that was already requested can be used exactly once",
   });
   expect(sendRes2).toMatchObject({ status: 200 });
 
-  // Single batch wait for all 3 verification emails (1 from signup + 2 from
-  // send-verification-code) instead of 3 sequential waits.
   const mailbox = backendContext.value.mailbox;
   const verifyMessages = await mailbox.waitForMessagesWithSubjectCount("Verify your email", 3);
   const verificationCodes = verifyMessages.map((message) => message.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1] ?? throwErr("Verification code not found"));
