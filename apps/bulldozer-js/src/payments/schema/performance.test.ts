@@ -205,6 +205,12 @@ describe("payments schema performance", () => {
       }
     }, () => db);
 
+    // The first replicated write after prefill pays one-off costs (LMDB store growth, the first GC
+    // pass over the prefilled heap). Left unwarmed those all land on whichever phase happens to run
+    // first, which reads as a backend difference rather than the startup artifact it is. The
+    // "warmup-" namespace keeps this row out of the transaction count asserted at the end.
+    await db.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.subscriptions, rowIdentifier: "warmup-sub-0", newRowData: subscription(0, "warmup-") as unknown as PiledriverObject }));
+
     // The measured write phases replicate, because that is what an HTTP handler waits for before it
     // can respond; plain withSnapshot only waits for availability and so understates response time.
     await measure(metrics, "write subscriptions", USER_COUNT, async () => {
