@@ -48,10 +48,6 @@ const MONTH_MS = 2_592_000_000;
 const tempPaths: string[] = [];
 const databases: Array<ReturnType<typeof declareBulldozerDatabase>> = [];
 const perfBackend = process.env.BULLDOZER_PAYMENTS_PERF_BACKEND ?? "lmdb-instant";
-const bufferThrottleMsValue = process.env.BULLDOZER_PAYMENTS_PERF_BUFFER_THROTTLE_MS ?? "200";
-if (!/^\d+$/.test(bufferThrottleMsValue)) throw new Error("BULLDOZER_PAYMENTS_PERF_BUFFER_THROTTLE_MS must be a non-negative integer");
-const BUFFER_THROTTLE_MS = Number(bufferThrottleMsValue);
-if (!Number.isSafeInteger(BUFFER_THROTTLE_MS)) throw new Error("BULLDOZER_PAYMENTS_PERF_BUFFER_THROTTLE_MS must be a non-negative integer");
 
 const product = (includedItems: ProductSnapshot["includedItems"]): ProductSnapshot => ({
   displayName: "Perf Product",
@@ -152,7 +148,7 @@ const measure = async <T>(
 const newPiledriverDb = () => {
   if (perfBackend === "piledriver-in-memory") return declareInMemoryPiledriverDatabase(crypto.randomUUID());
   if (perfBackend === "buffered-piledriver-in-memory") {
-    return declareBufferedPiledriverDatabase(declareInMemoryPiledriverDatabase(crypto.randomUUID()), { throttleMs: BUFFER_THROTTLE_MS });
+    return declareBufferedPiledriverDatabase(declareInMemoryPiledriverDatabase(crypto.randomUUID()));
   }
   if (perfBackend === "lmdb" || perfBackend === "lmdb-instant") {
     const path = mkdtempSync(join(tmpdir(), "bulldozer-payments-schema-perf-"));
@@ -166,7 +162,7 @@ const newPiledriverDb = () => {
     tempPaths.push(path);
     const lmdb = declareLmdbLowLevelDatabase({ path, dbId: crypto.randomUUID() });
     const lowLevel = perfBackend === "buffered-lmdb-instant" ? declareInstantAvailabilityLowLevelDatabase(lmdb) : lmdb;
-    return declareBufferedPiledriverDatabase(declareBasePiledriverDatabase(lowLevel), { throttleMs: BUFFER_THROTTLE_MS });
+    return declareBufferedPiledriverDatabase(declareBasePiledriverDatabase(lowLevel));
   }
   return declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
 };

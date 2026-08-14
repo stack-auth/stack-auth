@@ -22,23 +22,13 @@ const getPendingKey = (key: ArrayBuffer) => ({
   key: key.slice(0),
 });
 
-export function declareBufferedPiledriverDatabase(
-  wrapped: PiledriverDatabase,
-  options: { throttleMs?: number } = {},
-): PiledriverDatabase {
-  const throttleMs = options.throttleMs ?? 200;
-  if (!Number.isFinite(throttleMs) || throttleMs < 0 || throttleMs > 2 ** 31 - 1) {
-    throw new Error("throttleMs must be a non-negative finite number no greater than 2^31 - 1");
-  }
-
+export function declareBufferedPiledriverDatabase(wrapped: PiledriverDatabase): PiledriverDatabase {
   const dbId = `buffered-piledriver-${crypto.randomUUID()}`;
   const initialSeq = [dbId, "initial"] as unknown as DatabaseSeq;
   const seqRecords = new WeakMap<object, SeqRecord>();
   const pending = new Map<string, PendingEntry>();
   const inFlight = new Map<string, PendingEntry>();
-  let flushPromise: Promise<DatabaseSeq> | null = null;
-  let flushTimer: ReturnType<typeof setTimeout> | null = null;
-  let lastFlushAt = -Infinity;
+  let drainPromise: Promise<void> | null = null;
   let closePromise: Promise<void> | null = null;
   let isClosing = false;
 
@@ -50,66 +40,39 @@ export function declareBufferedPiledriverDatabase(
     return record;
   };
 
-  const flushPending = (): Promise<DatabaseSeq> => {
-    if (flushPromise !== null) return flushPromise;
-    if (pending.size === 0) return Promise.resolve(wrapped.initialSeq);
-
-    const batch = [...pending.values()];
-    pending.clear();
-    for (const entry of batch) inFlight.set(entry.id, entry);
-    flushPromise = (async () => {
-      let combinedSeq = wrapped.initialSeq;
+  const drain = async () => {
+    while (pending.size > 0) {
+      const entry = pending.entries().next().value as [string, PendingEntry];
+      pending.delete(entry[0]);
+      inFlight.set(entry[0], entry[1]);
       try {
-        for (const entry of batch) {
-          const result = entry.state.type === "delete"
-            ? await wrapped.deleteRootObject(entry.key)
-            : await wrapped.setRootObject(entry.key, entry.state.value);
-          combinedSeq = wrapped.combineSeqs(combinedSeq, result.seq);
-          if (inFlight.get(entry.id) === entry && !pending.has(entry.id)) inFlight.delete(entry.id);
-        }
-        for (const entry of batch) for (const record of entry.records) record.resolve(combinedSeq);
-        return combinedSeq;
+        const result = entry[1].state.type === "delete"
+          ? await wrapped.deleteRootObject(entry[1].key)
+          : await wrapped.setRootObject(entry[1].key, entry[1].state.value);
+        for (const record of entry[1].records) record.resolve(result.seq);
+        if (inFlight.get(entry[0]) === entry[1] && !pending.has(entry[0])) inFlight.delete(entry[0]);
       } catch (error) {
         // The caller was already told this write succeeded, so rolling back a failed flush could expose stale data
         // without anyone noticing; keep the failed value visible and report the anomaly instead.
-        for (const entry of batch) for (const record of entry.records) record.reject(error);
-        throw error;
-      } finally {
-        lastFlushAt = performance.now();
-        flushPromise = null;
-        if (pending.size > 0) scheduleFlush();
+        for (const record of entry[1].records) record.reject(error);
+        captureError("bulldozer-js:piledriver-buffered-flush", error);
       }
-    })();
-    return flushPromise;
-  };
-
-  const startBackgroundFlush = () => runAsynchronously(flushPending(), {
-    noErrorLogging: true,
-    onError: error => captureError("bulldozer-js:piledriver-buffered-flush", error),
-  });
-
-  const scheduleFlush = () => {
-    if (flushPromise !== null || pending.size === 0 || flushTimer !== null) return;
-    const delay = lastFlushAt === -Infinity ? 0 : Math.max(0, throttleMs - (performance.now() - lastFlushAt));
-    if (delay === 0) {
-      queueMicrotask(startBackgroundFlush);
-      return;
     }
-    flushTimer = setTimeout(() => {
-      flushTimer = null;
-      startBackgroundFlush();
-    }, delay);
-    // This timer carries accepted writes toward durability, so it must keep the process alive until it fires.
   };
 
-  const flushImmediately = async () => {
-    while (pending.size > 0 || flushPromise !== null) {
-      if (flushTimer !== null) {
-        clearTimeout(flushTimer);
-        flushTimer = null;
-      }
-      if (flushPromise !== null) await flushPromise;
-      else await flushPending();
+  const ensureDrain = () => {
+    if (drainPromise === null) {
+      drainPromise = drain().finally(() => {
+        drainPromise = null;
+        if (pending.size > 0) ensureDrain();
+      });
+    }
+  };
+
+  const drainBeforeOperation = async () => {
+    while (drainPromise !== null || pending.size > 0) {
+      if (drainPromise !== null) await drainPromise;
+      else ensureDrain();
     }
   };
 
@@ -150,7 +113,7 @@ export function declareBufferedPiledriverDatabase(
     entry.latestSeq = seq;
     entry.records.push(record);
     pending.set(pendingKey.id, entry);
-    scheduleFlush();
+    ensureDrain();
     return seq;
   };
 
@@ -207,16 +170,16 @@ export function declareBufferedPiledriverDatabase(
       return wrapped.getGarbageCollectionProcessStartedAtMillis();
     },
     async collectGarbage(cutoffTimestampMillis, maxObjects) {
-      await flushImmediately();
+      await drainBeforeOperation();
       return await wrapped.collectGarbage(cutoffTimestampMillis, maxObjects);
     },
     async debugSnapshot() {
-      await flushImmediately();
+      await drainBeforeOperation();
       if (wrapped.debugSnapshot === undefined) return { roots: [], heap: [] };
       return await wrapped.debugSnapshot();
     },
     async debugLowLevelSnapshot() {
-      await flushImmediately();
+      await drainBeforeOperation();
       if (wrapped.debugLowLevelSnapshot === undefined) return { stores: {}, dumps: {} };
       return await wrapped.debugLowLevelSnapshot();
     },
@@ -231,7 +194,7 @@ export function declareBufferedPiledriverDatabase(
         isClosing = true;
         closePromise = (async () => {
           try {
-            await flushImmediately();
+            await drainBeforeOperation();
           } finally {
             await wrapped.close();
           }
