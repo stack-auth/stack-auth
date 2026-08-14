@@ -231,9 +231,10 @@ describe("payments schema performance", () => {
       }
     }, () => db);
 
-    // Same totals of work as above, but issued CONCURRENCY-at-a-time. Rows live in their own
-    // "concurrent-" namespace so they cannot collide with the serial phases' rows or affect the
-    // transaction count asserted at the end.
+    // The same three operations, issued CONCURRENCY-at-a-time with each batch fully awaited before
+    // the next. This exercises write-lock contention that serial phases cannot show; rows use their
+    // own "concurrent-" namespace so they cannot collide with serial rows or affect the transaction
+    // count asserted at the end.
     await measure(metrics, "write subscriptions (concurrent)", CONCURRENT_SUBSCRIPTION_BATCHES * CONCURRENCY, async () => {
       await inConcurrentBatches(CONCURRENT_SUBSCRIPTION_BATCHES, async (batchIndex, slotIndex) => {
         const i = batchIndex * CONCURRENCY + slotIndex;
