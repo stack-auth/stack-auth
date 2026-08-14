@@ -39,6 +39,12 @@ ADD COLUMN "minInstances" INTEGER,
 --
 -- `{}` on rows that predate a synced definition: displayable, not deployable.
 ADD COLUMN "ports" JSONB NOT NULL DEFAULT '{}',
+-- Whether the service takes public ingress. A property of the SERVICE rather
+-- than of a port: Fly's proxy listener set is per-app, not per-address, so every
+-- declared port answers on every address the app holds. "Public 3000, private
+-- 5432" is not something the runtime can do, so the flag lives where the truth
+-- does instead of on each port where it could only lie.
+ADD COLUMN "isPublic" BOOLEAN NOT NULL DEFAULT false,
 ADD COLUMN "provisionedAt" TIMESTAMP(3);
 
 -- The port rules, stated by the database because this column is the ONLY record
@@ -78,7 +84,6 @@ CREATE OR REPLACE FUNCTION "hexclave_deployment_ports_entries_valid"(ports jsonb
       -- `NULL <> 'object'` is NULL rather than true, which would let an entry
       -- missing the key through the filter entirely.
       OR jsonb_typeof(entry.definition) IS DISTINCT FROM 'object'
-      OR jsonb_typeof(entry.definition -> 'public') IS DISTINCT FROM 'boolean'
       -- Spelled out rather than NOT IN, which yields NULL (not true) for a
       -- missing protocol and would let the entry through.
       OR (entry.definition ->> 'protocol') IS NULL
@@ -86,52 +91,35 @@ CREATE OR REPLACE FUNCTION "hexclave_deployment_ports_entries_valid"(ports jsonb
   ) END;
 $fn$ LANGUAGE sql IMMUTABLE;
 
--- Compares against the jsonb `true` rather than casting ->> to boolean: a
--- non-boolean `public` (say the string "maybe") makes that cast raise a raw
--- error, and the string "true" would be silently accepted as public — reporting
--- the wrong constraint for what is really a bad ENTRY. Deferring to
--- entries_valid keeps the diagnostic on the right rule.
-CREATE OR REPLACE FUNCTION "hexclave_deployment_ports_public_is_http"(ports jsonb) RETURNS boolean AS $fn$
-  SELECT CASE WHEN jsonb_typeof(ports) <> 'object' OR NOT "hexclave_deployment_ports_entries_valid"(ports) THEN true ELSE NOT EXISTS (
-    SELECT 1
-    FROM jsonb_each(ports) AS entry(port_key, definition)
-    WHERE entry.definition -> 'public' = 'true'::jsonb AND (entry.definition ->> 'protocol') <> 'http'
-  ) END;
-$fn$ LANGUAGE sql IMMUTABLE;
-
 ALTER TABLE "DeploymentService"
 ADD CONSTRAINT "DeploymentService_ports_is_object_check"
 CHECK (jsonb_typeof("ports") = 'object');
 
--- Each key is a port number in range, and each value is an object with a boolean
--- `public` and a known protocol. Holds vacuously for the empty object.
+-- Each key is a port number in range, and each value is an object with a known
+-- protocol. Holds vacuously for the empty object. Publicness is NOT here — it is
+-- the service's, in isPublic.
 ALTER TABLE "DeploymentService"
 ADD CONSTRAINT "DeploymentService_ports_entries_check"
 CHECK ("hexclave_deployment_ports_entries_valid"("ports"));
 
--- Raw TCP gets no TLS termination and no HTTP routing, so it cannot be the
--- public one.
-ALTER TABLE "DeploymentService"
-ADD CONSTRAINT "DeploymentService_public_port_is_http_check"
-CHECK ("hexclave_deployment_ports_public_is_http"("ports"));
-
--- FLY.IO PLATFORM LIMITATION: a service may not mix public and private ports.
--- Fly's proxy listener set is per-app rather than per-address, so once a public
--- IP exists every declared port answers on it — a "private" sibling of a public
--- port would be on the internet. (Private traffic reaches a port over Flycast,
--- which IS that proxy, so the entry cannot simply be omitted.)
+-- FLY.IO PLATFORM LIMITATIONS, deliberately NOT stated as CHECK constraints:
+-- a public service must be all-HTTP (raw TCP carries no SNI or Host header, so a
+-- shared public IPv4 cannot tell which app a connection is for — verified
+-- against real Fly), and a public service must declare at least one port.
 --
--- Deliberately NOT a CHECK constraint, unlike the port-shape rules above. Those
--- are about what the column may CONTAIN and stay true forever. This one is a
--- fact about the RUNTIME we deploy onto, and it is expected to move: it is a
--- shared IPv4 and an addressing model away from being lifted, and the version of
--- it that shipped first ("a public port may not have siblings") was already
--- wrong about several public ports, which leak nothing. Encoding a platform's
--- current shape as a database invariant buys an unmigratable copy of an opinion.
--- Enforced instead by the `public-and-private-ports-are-not-mixed` rule in
--- @hexclave/shared's deployments.ts, which the sync route, the CLI evaluator and
--- Marshal's validateServiceSpec all sit behind — no writer reaches this column
--- without passing it.
+-- Unlike the port-SHAPE rules above, which say what these columns may contain
+-- and stay true forever, these are facts about the RUNTIME we deploy onto and
+-- are expected to move: public TCP is a dedicated IPv4 per service away, which
+-- is a billing decision. Encoding a platform's current shape as a database
+-- invariant buys an unmigratable copy of an opinion — this branch has already
+-- rewritten this rule twice ("a public port may not have siblings", then "a
+-- service may not mix public and private ports"), and a constraint would have
+-- made each rewrite a migration.
+--
+-- Enforced instead by `public-service-is-all-http` and
+-- `public-service-serves-something` in @hexclave/shared's deployments.ts, which
+-- the sync route, the CLI evaluator and Marshal's validateServiceSpec all sit
+-- behind — no writer reaches these columns without passing them.
 
 -- AlterTable
 ALTER TABLE "DeploymentRun" DROP COLUMN "vercelDeploymentId",

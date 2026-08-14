@@ -251,8 +251,9 @@ describe("definition sync", () => {
     expect(body).toMatchObject({
       id: "api",
       type: "serverless",
-      // Defaults filled in: a bare `{ port }` is a private HTTP port.
-      ports: { 8080: { public: false, protocol: "http" } },
+      // Defaults filled in: a bare `{}` is an HTTP port, and a service is private.
+      public: false,
+      ports: { 8080: { protocol: "http" } },
       min_instances: 0,
       max_instances: 3,
       root_directory: "api",
@@ -290,31 +291,67 @@ describe("definition sync", () => {
     });
     const database = await niceBackendFetch("/api/v1/deployments/services/database", { accessType: "admin" });
     expect(database.status).toBe(200);
-    expect(database.body).toMatchObject({ ports: { 5432: { public: false, protocol: "tcp" } } });
+    expect(database.body).toMatchObject({ public: false, ports: { 5432: { protocol: "tcp" } } });
     const gateway = await niceBackendFetch("/api/v1/deployments/services/gateway", { accessType: "admin" });
     expect((gateway.body as any).ports).toEqual({
-      3000: { public: false, protocol: "http" },
-      9090: { public: false, protocol: "http" },
-      5433: { public: false, protocol: "tcp" },
+      3000: { protocol: "http" },
+      9090: { protocol: "http" },
+      5433: { protocol: "tcp" },
     });
 
-    const rejects = async (ports: unknown, expectedMessage: string) => {
+    const rejects = async (service: Record<string, unknown>, expectedMessage: string) => {
       const response = await niceBackendFetch("/api/v1/deployments/services", {
         method: "PUT",
         accessType: "admin",
-        body: { source_id: "ports-test", services: { svc: { type: "serverless", ports, env: {} } } },
+        body: { source_id: "ports-test", services: { svc: { type: "serverless", env: {}, ...service } } },
       });
-      expect(response.status, `ports ${JSON.stringify(ports)}`).toBe(400);
+      expect(response.status, JSON.stringify(service)).toBe(400);
       expect(JSON.stringify(response.body)).toContain(expectedMessage);
     };
-    // Raw TCP has no TLS termination or HTTP routing to be public with.
-    await rejects({ 5432: { protocol: "tcp", public: true } }, "private-only");
-    // A public port may not sit beside a PRIVATE one: the runtime serves a port on
-    // every address the service has, so the private one would be public too.
-    await rejects({ 3000: { public: true }, 9090: {} }, "may not mix public and private ports");
+    // Raw TCP carries no SNI or Host header, so a shared public address cannot
+    // tell which service a connection is for.
+    await rejects({ public: true, ports: { 5432: { protocol: "tcp" } } }, "raw TCP carries no SNI or Host header");
+    // Public ingress with nothing behind it to serve.
+    await rejects({ public: true, ports: {} }, "must declare at least one port");
     // The old ARRAY shape is refused by the schema itself. A duplicate port needs no rule of
     // its own any more: two entries for one port are impossible in a record keyed by it.
-    await rejects([{ port: 3000, public: true }, { port: 9090 }], "must be a `object` type");
+    await rejects({ ports: [{ port: 3000 }, { port: 9090 }] }, "must be a `object` type");
+  });
+
+  it("accepts a public service with several ports, and reports which owns 80/443", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const response = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: {
+        source_id: "multi-public",
+        services: { web: { type: "serverless", public: true, ports: { 8443: {}, 3000: {} }, env: {} } },
+      },
+    });
+    expect(response.status).toBe(200);
+    const service = await niceBackendFetch("/api/v1/deployments/services/web", { accessType: "admin" });
+    expect(service.status).toBe(200);
+    // Visibility is the SERVICE's, and the ports carry only their protocol.
+    expect((service.body as any).public).toBe(true);
+    expect((service.body as any).ports).toEqual({ 3000: { protocol: "http" }, 8443: { protocol: "http" } });
+  });
+
+  it("lets a public service hold a custom domain on the port that owns 80/443", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const serviceId = uniqueServiceId("multi-domain");
+    await syncServices({ [serviceId]: { type: "serverless", public: true, ports: { 8443: {}, 3000: {} }, env: {} } });
+    const added = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}/domains`, {
+      method: "POST",
+      accessType: "admin",
+      body: { hostname: `${serviceId}.verified.test` },
+    });
+    // A public service is already reachable, so a domain publishes nothing new.
+    // This is the case the PRIVATE multi-port rule refuses — see the domains
+    // suite — and it is accepted here precisely because nothing becomes newly
+    // reachable. (Which port it fronts is stored, not exposed by the API; that
+    // the holder is the lowest port is covered by domainPortForService's tests.)
+    expect(added.status).toBe(201);
+    expect((added.body as any).hostname).toBe(`${serviceId}.verified.test`);
   });
 
   it("rejects always-on instances on the Free plan, naming the offending services", async ({ expect }) => {
@@ -860,21 +897,23 @@ describe("deploys against the Marshal runtime", () => {
     await Project.createAndSwitch();
     const serviceId = uniqueServiceId("public");
 
-    const first = await syncServiceAndUpload(serviceId, { ports: { 3000: { public: true } } });
+    const first = await syncServiceAndUpload(serviceId, { public: true, ports: { 3000: {} } });
     const publicRun = await pollDeploymentToStatus(await startDeploy({ sourceId: first.sourceId, uploadId: first.uploadId, definitionSyncId: first.definitionSyncId, levels: [[serviceId]] }), "deployed");
     expect(serviceOutcome(publicRun, serviceId).url).toMatch(/^https:\/\/hxc-.+\.fly\.dev$/);
     const publicService = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}`, { accessType: "admin" });
-    expect((publicService.body as any).ports).toEqual({ 3000: { public: true, protocol: "http" } });
+    expect((publicService.body as any).public).toBe(true);
+    expect((publicService.body as any).ports).toEqual({ 3000: { protocol: "http" } });
     expect((publicService.body as any).url).toBe(serviceOutcome(publicRun, serviceId).url);
     const publicApp = await findMockApp(serviceId);
     expect(publicApp.sharedIpv4).not.toBeNull();
     expect(publicApp.dedicatedIps.some((ip) => ip.type === "v6")).toBe(true);
 
-    const second = await syncServiceAndUpload(serviceId, { ports: { 3000: { public: false } } }, undefined, first.sourceId);
+    const second = await syncServiceAndUpload(serviceId, { public: false, ports: { 3000: {} } }, undefined, first.sourceId);
     const privateRun = await pollDeploymentToStatus(await startDeploy({ sourceId: second.sourceId, uploadId: second.uploadId, definitionSyncId: second.definitionSyncId, levels: [[serviceId]] }), "deployed");
     expect(serviceOutcome(privateRun, serviceId).url).toBeNull();
     const privateService = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}`, { accessType: "admin" });
-    expect((privateService.body as any).ports).toEqual({ 3000: { public: false, protocol: "http" } });
+    expect((privateService.body as any).public).toBe(false);
+    expect((privateService.body as any).ports).toEqual({ 3000: { protocol: "http" } });
     expect((privateService.body as any).url).toBeNull();
     const privateApp = await findMockApp(serviceId);
     expect(privateApp.sharedIpv4).toBeNull();
@@ -1326,9 +1365,10 @@ describe("domains", () => {
     expect(tcpAdd.status).toBe(400);
     expect(JSON.stringify(tcpAdd.body)).toContain("http");
 
-    // An HTTP port WITH a private sibling. Both are private, so the sync is legal — but
-    // attaching a domain allocates public IPs, and the runtime's proxy serves every declared
-    // port on every address the app holds, which would put the 5432 on the internet.
+    // A PRIVATE service with an HTTP port and a TCP sibling. The sync is legal —
+    // nothing is public — but attaching a domain allocates public IPs, and the
+    // runtime's proxy serves every declared port on every address the app holds,
+    // which would put the 5432 on the internet.
     const siblingId = uniqueServiceId("sibling");
     await syncServices({ [siblingId]: { type: "serverless", ports: { 3000: {}, 5432: { protocol: "tcp" } }, env: {} } });
     const siblingAdd = await niceBackendFetch(`/api/v1/deployments/services/${siblingId}/domains`, {
@@ -1337,7 +1377,7 @@ describe("domains", () => {
       body: { hostname: `${siblingId}.verified.test` },
     });
     expect(siblingAdd.status).toBe(400);
-    expect(JSON.stringify(siblingAdd.body)).toContain("may not declare a private port alongside others");
+    expect(JSON.stringify(siblingAdd.body)).toContain("it is private and declares more than one port");
   });
 
   it("refuses to re-sync a domain-holding service into a port list that cannot hold one", async ({ expect }) => {

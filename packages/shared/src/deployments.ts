@@ -162,24 +162,36 @@ export type DeploymentServiceDefinition = {
   //
   // The field is required so every write path states what it is creating.
   type: DeploymentServiceType,
-  // The ports the container listens on. There is no separate service-level
-  // `visibility`: a service is public exactly when one of its ports says so, so
-  // the two can never disagree.
+  // Whether the service is reachable from the internet. Default false: a service
+  // is private unless it says otherwise, and private services reach each other
+  // over the project's internal network.
+  //
+  // Public is a property of the SERVICE and not of one port, because the runtime
+  // cannot make it anything else. Fly's proxy listener set is per-app rather than
+  // per-address, so every declared port answers on every address the app holds:
+  // the moment one port is public they all are. A per-port flag could express
+  // "public 3000, private 5432" but the runtime would publish both, so the flag
+  // lives where the truth does. (An earlier revision of this branch had the flag
+  // on the port and a rule forbidding the mixture; this is the same rule made
+  // unrepresentable instead of enforced.)
+  //
+  // A public service must therefore be all-HTTP: raw TCP cannot be public,
+  // because Fly's shared IPv4 tells apps apart by SNI (or Host) and a raw TCP
+  // stream carries neither — the edge accepts the connection and then drops it.
+  // Lifting that needs a dedicated IPv4 per service, which is a billing decision.
+  // VERIFIED against real Fly; see the `public-service-is-all-http` rule below.
+  public?: boolean | undefined,
+  // The ports the container listens on.
   //
   // May be EMPTY, for a worker that only makes outbound connections. Such a
   // service has no URL of any kind and can hold no custom domain, and it only
-  // ever runs if it is always-on (see the schema's note on autostart).
+  // ever runs if it is always-on (see the schema's note on autostart). A worker
+  // may not be `public`: there would be nothing to serve on the ingress it
+  // allocates.
   //
-  // Each port is reachable on the private network at its own number, and the
-  // service's single HTTP port is additionally served on 80/443 so `url` and
-  // custom domain certificates work on the standard ports.
-  //
-  // A service's ports are ALL public or ALL private. This is a Fly.io
-  // limitation, not a design preference: Fly's proxy listener set is per-app
-  // rather than per-address, so a private sibling of a public port is reachable
-  // from the internet as well. The `public-and-private-ports-are-not-mixed` rule
-  // below carries the full explanation, including the `.internal` escape hatch
-  // that would lift it.
+  // Each port is reachable at its own number, and the service's standard-ports
+  // holder is additionally served on 80/443 so `url` and custom domain
+  // certificates work on the standard ports.
   ports: DeploymentPorts,
   // Scaling bounds. On a "serverless" the instance count moves between them and
   // min 0 scales to zero; defaults are min 0, max 1. A "server" holds exactly
@@ -211,23 +223,19 @@ export type DeploymentServiceDefinition = {
 
 // How one port the container listens on is exposed.
 //
-// `public` (default false) is what exposes the port to the internet: it
-// allocates Fly ingress and gives the service a platform URL. A public port may
-// not sit beside a PRIVATE one — see the `public-and-private-ports-are-not-mixed`
-// rule below for why. Several public ports are fine; each answers on its own
-// number, and the lowest additionally gets the standard 80/443.
+// There is deliberately no `public` here — it is a property of the SERVICE (see
+// DeploymentServiceDefinition.public for why the runtime leaves no other
+// option). A service's ports are all reachable or none of them are.
 //
-// `protocol` (default "http") picks the protocol handler. A "tcp" port is raw
-// and private-only: it gets no TLS termination and no HTTP routing, so it
-// cannot be the public one — reach it over the private network with hostname()
-// and its port number.
+// `protocol` (default "http") picks the protocol handler. A "tcp" port is raw:
+// it may only appear on a PRIVATE service, reached over the internal network
+// with hostname() and its port number.
 export type DeploymentPortDefinition = {
-  public?: boolean | undefined,
   protocol?: "http" | "tcp" | undefined,
 };
 
 // The ports a service listens on, keyed by port NUMBER — the same shape the
-// author writes in the deploy file (`ports: { 3000: { public: true } }`), kept
+// author writes in the deploy file (`ports: { 3000: {} }`), kept
 // all the way through the wire and the database so nothing has to translate
 // between two spellings of one thing. Keys are decimal port numbers; JSON has no
 // numeric object keys, so they are strings here and parsed at the few points
@@ -252,7 +260,6 @@ export function portProtocol(port: DeploymentPortDefinition): "http" | "tcp" {
 /** One declared port, with the record's key parsed and every default applied. */
 export type DeploymentPortEntry = {
   port: number,
-  public: boolean,
   protocol: "http" | "tcp",
 };
 
@@ -273,7 +280,7 @@ export function deploymentPortEntries(ports: DeploymentPorts): DeploymentPortEnt
     if (!DEPLOYMENT_PORT_KEY_REGEX.test(portKey)) continue;
     const port = Number(portKey);
     if (port < 1 || port > 65535) continue;
-    entries.push({ port, public: definition.public === true, protocol: portProtocol(definition) });
+    entries.push({ port, protocol: portProtocol(definition) });
   }
   return entries.sort((a, b) => a.port - b.port);
 }
@@ -294,33 +301,42 @@ export function deploymentPortEntries(ports: DeploymentPorts): DeploymentPortEnt
 export const DEPLOYMENT_PORT_KEY_REGEX = /^[1-9][0-9]{0,4}$/;
 
 /**
- * The service's LOWEST-NUMBERED public port, or null when it has none.
- *
- * A service may declare several public ports (see the
- * `public-and-private-ports-are-not-mixed` rule), so "the public port" is no
- * longer well defined — but exactly one of them can own the platform hostname's
- * 80/443, and this is it. Lowest-numbered rather than first-encountered:
- * deploymentPortEntries sorts numerically, so which port gets the standard
- * bindings is a property of the port set and not of JSON key ordering. That
- * determinism is the whole point — the holder is the port the service's bare URL
- * names and the only one a custom domain can front, so an arbitrary pick would
- * silently move both.
- */
-export function standardPortsHolderDeploymentPort(ports: DeploymentPorts): DeploymentPortEntry | null {
-  return deploymentPortEntries(ports).find((entry) => entry.public) ?? null;
-}
-
-/**
  * The port number that additionally answers on the standard 80/443, or null when
  * the service has no single obvious one.
  *
- * The lowest public port when the service is public; otherwise its sole HTTP
- * port, because a PRIVATE service gets public IPs the moment a custom domain is
- * attached and that domain terminates TLS on 443. KEPT IN SYNC WITH
- * standardPortsHolderFor in apps/marshal/src/services.ts.
+ * For a PUBLIC service it is the LOWEST-numbered HTTP port. Lowest rather than
+ * first-encountered: deploymentPortEntries sorts numerically, so the holder is a
+ * property of the port set and not of JSON key ordering. That determinism is the
+ * whole point — the holder is the port the service's bare URL names and the only
+ * one a custom domain can front, so an arbitrary pick would silently move both.
+ *
+ * For a PRIVATE service it is the sole HTTP port, because a private service gets
+ * public IPs the moment a custom domain is attached and that domain terminates
+ * TLS on 443. Null when there are several, which is what makes such a service
+ * ineligible to hold a domain at all.
+ *
+ * KEPT IN SYNC WITH standardPortsHolderFor in apps/marshal/src/services.ts.
  */
-export function standardPortsHolderPort(ports: DeploymentPorts): number | null {
-  return standardPortsHolderDeploymentPort(ports)?.port ?? soleHttpDeploymentPort(ports);
+export function standardPortsHolderPort(ports: DeploymentPorts, isPublic: boolean): number | null {
+  if (!isPublic) return soleHttpDeploymentPort(ports);
+  // Filtered to HTTP defensively: a public service may declare no TCP port, so
+  // on any valid definition this is simply the lowest port.
+  const httpPorts = deploymentPortEntries(ports).filter((entry) => entry.protocol === "http");
+  return httpPorts.length === 0 ? null : httpPorts[0].port;
+}
+
+/**
+ * Whether this port is the one that owns the service's standard 80/443, and so
+ * the one whose URL carries no `:port` suffix.
+ *
+ * VERIFIED AGAINST REAL FLY: every other port of a public service is reachable
+ * on its own number over BOTH IPv4 and IPv6 — a shared IPv4 forwards any port,
+ * so long as the traffic carries SNI or a Host header for the proxy to route on.
+ * The difference between the holder and the rest is the URL shape and which port
+ * a custom domain can front, NOT reachability.
+ */
+export function deploymentPortOwnsStandardPorts(ports: DeploymentPorts, isPublic: boolean, port: number): boolean {
+  return standardPortsHolderPort(ports, isPublic) === port;
 }
 
 /**
@@ -335,36 +351,17 @@ export function standardPortsHolderPort(ports: DeploymentPorts): number | null {
  * claiming one external port is a config the runtime cannot serve — it is
  * rejected outright, or routes one of them somewhere the author did not ask for.
  *
- * The cheap example is `{ 80: { public: true }, 443: { public: true } }`: 80 is
- * the holder, claims 80 and 443, and the declared 443 claims 443 again. This is
+ * The cheap example is a public service with `{ 80: {}, 443: {} }`: 80 is the
+ * holder, claims 80 and 443, and the declared 443 claims 443 again. This is
  * refused rather than resolved by precedence, because every way of resolving it
  * silently drops or retargets a port the author explicitly declared.
  */
-export function reservedStandardPortConflicts(ports: DeploymentPorts): number[] {
-  const holder = standardPortsHolderPort(ports);
+export function reservedStandardPortConflicts(ports: DeploymentPorts, isPublic: boolean): number[] {
+  const holder = standardPortsHolderPort(ports, isPublic);
   if (holder === null) return [];
   return deploymentPortEntries(ports)
     .filter((entry) => entry.port !== holder && (entry.port === 80 || entry.port === 443))
     .map((entry) => entry.port);
-}
-
-/** Whether the service is reachable from the internet — the replacement for the old `visibility`. */
-export function deploymentServiceIsPublic(ports: DeploymentPorts): boolean {
-  return standardPortsHolderDeploymentPort(ports) !== null;
-}
-
-/**
- * Whether this port is the one that owns the service's standard 80/443, and so
- * the one whose URL carries no `:port` suffix.
- *
- * VERIFIED AGAINST REAL FLY: a non-holder public port is reachable on its own
- * number over BOTH IPv4 and IPv6 — a shared IPv4 forwards every port in the
- * app's `services` list, not only 80/443, which is what an earlier version of
- * this code assumed. So the difference between the holder and the rest is the
- * URL shape and which port a custom domain can front, NOT reachability.
- */
-export function deploymentPortOwnsStandardPorts(ports: DeploymentPorts, port: number): boolean {
-  return standardPortsHolderDeploymentPort(ports)?.port === port;
 }
 
 /**
@@ -461,18 +458,40 @@ export const deploymentServiceDefinitionSchema = yupObject({
   // are strings, so the key schema is what enforces "this is a port number" —
   // and duplicates are impossible by construction, which is one rule fewer than
   // the array shape needed.
+  // Public is a property of the SERVICE, not of a port: Fly's proxy listener set
+  // is per-app rather than per-address, so every declared port answers on every
+  // address the app holds. A per-port flag could SAY "public 3000, private 5432"
+  // but the runtime would publish both, so the flag lives where the truth does.
+  //
+  // The two rules below are what that costs: with the flag on the port, "public
+  // TCP" and "public worker" were unrepresentable; on the service they have to be
+  // refused instead.
+  public: yupBoolean().optional()
+    // A public service is all-HTTP. Raw TCP cannot be public because Fly's shared
+    // IPv4 tells apps apart by SNI (or Host) and a raw TCP stream carries
+    // neither — VERIFIED against real Fly, where the edge accepts the connection
+    // and then silently drops it. Lifting this needs a dedicated IPv4 per
+    // service, which is a billing decision rather than a code change.
+    .test("public-service-is-all-http", 'a public service may not declare a "tcp" port: raw TCP carries no SNI or Host header, so a shared public address cannot tell which service a connection is for. Keep the service private and reach it with hostname() and its port number', function (value) {
+      if (value !== true) return true;
+      const ports = (this.parent as { ports?: DeploymentPorts }).ports;
+      return ports === undefined || deploymentPortEntries(ports).every((entry) => entry.protocol === "http");
+    })
+    // A worker declares no ports, so there is nothing for public ingress to
+    // serve. Refused rather than ignored: it allocates addresses for a service
+    // that can never answer on them.
+    .test("public-service-serves-something", "a public service must declare at least one port — a service with no ports has nothing to serve on the public address it would be given", function (value) {
+      if (value !== true) return true;
+      const ports = (this.parent as { ports?: DeploymentPorts }).ports;
+      return ports === undefined || deploymentPortEntries(ports).length > 0;
+    }),
   ports: yupRecord(
     yupString().matches(DEPLOYMENT_PORT_KEY_REGEX, "deployment service port keys must be port numbers written without a leading zero")
       .test("port-in-range", "deployment service ports must be between 1 and 65535", (value) =>
         value === undefined || (Number(value) >= 1 && Number(value) <= 65535)),
     yupObject({
-      public: yupBoolean().default(false).defined(),
       protocol: yupString().oneOf(["http", "tcp"]).default("http").defined(),
     }).defined()
-      // Checked per entry so the message can point at the offending port rather
-      // than at the service as a whole.
-      .test("tcp-is-private", 'a "tcp" port is raw and private-only, so it cannot be public — reach it over the private network with hostname() and its port number', (value) =>
-        value.protocol !== "tcp" || !value.public),
   ).defined()
     // No lower bound: a service may declare zero ports. That is a worker — a
     // queue consumer, a cron, anything that only makes outbound connections —
@@ -494,48 +513,13 @@ export const deploymentServiceDefinitionSchema = yupObject({
     .test("ports-within-cap", `a deployment service may declare at most ${MAX_PORTS_PER_SERVICE} ports`, (value) =>
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       value === undefined || Object.keys(value).length <= MAX_PORTS_PER_SERVICE)
-    // FLY.IO PLATFORM LIMITATION. A service may not MIX public and private ports.
-    //
-    // A Fly machine's `services` array is the proxy's listener set for the whole
-    // APP — an entry says "the proxy accepts <external port> and forwards it to
-    // <internal_port>", with no way to scope it to one address. So the proxy
-    // serves every declared port on every IP the app holds. The moment a public
-    // IP is allocated (a public port, or a custom domain), a "private" sibling
-    // port is answering on the public internet: a service with a public web port
-    // and a private 5432 puts its database online.
-    //
-    // Why we are subject to it at all: private service-to-service traffic goes
-    // over Flycast (`<app>.flycast`, see hostnameForService in marshal), which
-    // is itself the Fly proxy. A private port must therefore have a `services`
-    // entry to be reachable — the very entry that the public IP then exposes.
-    //
-    // The escape hatch, not taken: Fly also offers `<app>.internal`, 6PN DNS
-    // straight to the machines' IPv6 addresses, which bypasses the proxy entirely
-    // and needs no `services` entry (and so cannot leak). It costs the proxy
-    // features Flycast provides on private traffic — autostart/autostop (nothing
-    // wakes a stopped machine behind `.internal`), load balancing across slots,
-    // and one stable address independent of instance count. Until that trade is
-    // made, private ports belong on their own service reached via `hostname()`.
-    //
-    // SEVERAL PUBLIC PORTS ARE FINE, and this rule deliberately no longer refuses
-    // them: nothing leaks when every declared port is one the author asked to
-    // publish. Each is reachable on its own number over both IPv4 and IPv6
-    // (verified against real Fly — a shared IPv4 forwards every port in the app's
-    // `services`, not only 80/443). What the extra ports do NOT get is the
-    // standard 80/443 and the custom domain that terminates there; those belong
-    // to the standard-ports holder alone (standardPortsHolderDeploymentPort).
-    .test("public-and-private-ports-are-not-mixed", "a service may not mix public and private ports — the runtime exposes every declared port on every address the service has, so the private ones would be public too. Move them to their own service.", (value) => {
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      if (value === undefined) return true;
-      const entries = Object.values(value);
-      return !entries.some((entry) => entry.public === true) || !entries.some((entry) => entry.public !== true);
-    })
     // The standard-ports holder claims external 80 and 443 for the whole app, so
     // no OTHER declared port may be numbered 80 or 443 — it would ask for a
     // listener the holder already took. See reservedStandardPortConflicts.
-    .test("standard-ports-are-not-claimed-twice", "80 and 443 belong to the port that owns the service's standard bindings (the lowest public port, or the sole HTTP port of a private service), so no other port may be numbered 80 or 443 — the runtime cannot serve one external port from two of them", (value) =>
+    .test("standard-ports-are-not-claimed-twice", "80 and 443 belong to the port that owns the service's standard bindings (the lowest port of a public service, or the sole HTTP port of a private one), so no other port may be numbered 80 or 443 — the runtime cannot serve one external port from two of them", function (value) {
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      value === undefined || reservedStandardPortConflicts(value).length === 0),
+      return value === undefined || reservedStandardPortConflicts(value, (this.parent as { public?: boolean }).public === true).length === 0;
+    }),
   // min is capped at the same MAX_INSTANCES_PER_SERVICE as max — an unbounded
   // min would only ever fail downstream. On a "server" it is the SUSPEND switch
   // rather than a fleet size:
@@ -639,11 +623,11 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts all env var 
   }, { abortEarly: false })).resolves.toBeDefined();
 });
 
-import.meta.vitest?.test("deploymentServiceDefinitionSchema defaults each port to a private HTTP port", async ({ expect }) => {
+import.meta.vitest?.test("deploymentServiceDefinitionSchema defaults a port to HTTP and a service to private", async ({ expect }) => {
   await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", ports: { "3000": {} }, env: {} }))
-    .resolves.toMatchObject({ ports: { "3000": { public: false, protocol: "http" } } });
-  await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", ports: { "3000": { public: true } }, env: {} }))
-    .resolves.toMatchObject({ ports: { "3000": { public: true, protocol: "http" } } });
+    .resolves.toMatchObject({ ports: { "3000": { protocol: "http" } } });
+  await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", public: true, ports: { "3000": {} }, env: {} }))
+    .resolves.toMatchObject({ public: true, ports: { "3000": { protocol: "http" } } });
   // A PRIVATE service may hold several ports of mixed protocols.
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "server", ports: { "8080": {}, "5432": { protocol: "tcp" }, "9090": {} }, env: {},
@@ -659,11 +643,11 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts a portless w
     .resolves.toMatchObject({ ports: {  } });
 });
 
-import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts several public ports", async ({ expect }) => {
-  // Nothing leaks when every port is one the author asked to publish. The cost
-  // is reachability, not exposure: only the lowest gets 80/443 and so IPv4.
+import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts a public service with several ports", async ({ expect }) => {
+  // Every port of a public service is reachable, so there is no port the author
+  // did not ask to publish. Only the lowest additionally owns 80/443.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": { public: true }, "4000": { public: true } }, env: {},
+    type: "serverless", public: true, ports: { "3000": {}, "4000": {} }, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
 });
 
@@ -672,7 +656,7 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema refuses a non-canoni
   // impossible to repeat, not a numeric alias, so both entries would be stored
   // and the runtime would declare the port twice.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "80": { public: true }, "080": { public: true } }, env: {},
+    type: "serverless", public: true, ports: { "80": {}, "080": {} }, env: {},
   }, { abortEarly: false })).rejects.toThrow(/without a leading zero/);
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "server", ports: { "08080": {} }, env: {},
@@ -683,49 +667,56 @@ import.meta.vitest?.test("deploymentPortEntries drops a non-canonical key rather
   // The reader runs on STORED rows and must not throw, but it must also not turn
   // one port into two entries — a row written before this rule existed would
   // otherwise still produce duplicate listeners.
-  expect(deploymentPortEntries({ "80": { public: true }, "080": { public: true } })).toEqual([
-    { port: 80, public: true, protocol: "http" },
-  ]);
+  expect(deploymentPortEntries({ "80": {}, "080": {} })).toEqual([{ port: 80, protocol: "http" }]);
 });
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema refuses a port that collides with the standard bindings", async ({ expect }) => {
   // The holder claims external 80 and 443 on top of its own number, so a sibling
   // numbered 80 or 443 asks for a listener it has already taken.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "80": { public: true }, "443": { public: true } }, env: {},
+    type: "serverless", public: true, ports: { "80": {}, "443": {} }, env: {},
   }, { abortEarly: false })).rejects.toThrow(/no other port may be numbered 80 or 443/);
-  // Not only a public-port problem: the sole HTTP port of a PRIVATE service is
-  // the holder too, so a raw TCP 443 beside it collides just as hard.
+  // Not only a public-service problem: the sole HTTP port of a PRIVATE service
+  // is the holder too, so a raw TCP 443 beside it collides just as hard.
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "server", ports: { "8080": {}, "443": { protocol: "tcp" } }, env: {},
   }, { abortEarly: false })).rejects.toThrow(/no other port may be numbered 80 or 443/);
   // The holder being 80 or 443 itself is fine — it is the one that owns them.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "80": { public: true }, "3000": { public: true } }, env: {},
+    type: "serverless", public: true, ports: { "80": {}, "3000": {} }, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
-  // Two private HTTP ports leave no holder at all, so nothing is reserved.
+  // Two HTTP ports on a private service leave no holder at all, so nothing is reserved.
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "server", ports: { "80": {}, "443": {} }, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
 });
 
+import.meta.vitest?.test("deploymentServiceDefinitionSchema refuses a public service the runtime could not serve", async ({ expect }) => {
+  // Raw TCP carries no SNI or Host, so a shared public address cannot tell which
+  // service a connection is for — VERIFIED against real Fly.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", public: true, ports: { "5432": { protocol: "tcp" } }, env: {},
+  }, { abortEarly: false })).rejects.toThrow(/may not declare a "tcp" port/);
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", public: true, ports: { "3000": {}, "5432": { protocol: "tcp" } }, env: {},
+  }, { abortEarly: false })).rejects.toThrow(/may not declare a "tcp" port/);
+  // A PRIVATE service may declare TCP freely — only public ingress is the problem.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: { "3000": {}, "5432": { protocol: "tcp" } }, env: {},
+  }, { abortEarly: false })).resolves.toBeDefined();
+  // Public ingress with nothing behind it. Unrepresentable while the flag lived
+  // on a port; refused now that it lives on the service.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", public: true, ports: {}, env: {},
+  }, { abortEarly: false })).rejects.toThrow(/must declare at least one port/);
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: {}, env: {},
+  }, { abortEarly: false })).resolves.toBeDefined();
+});
+
 import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects port sets it could not serve", async ({ expect }) => {
-  // Raw TCP has no TLS termination or HTTP routing to make public with.
-  await expect(deploymentServiceDefinitionSchema.validate({
-    type: "server", ports: { "5432": { protocol: "tcp", public: true } }, env: {},
-  }, { abortEarly: false })).rejects.toThrow(/private-only/);
-  // A public port cannot have private siblings: the runtime would serve them on
-  // the public address too, so a "private" database port would be on the internet.
-  await expect(deploymentServiceDefinitionSchema.validate({
-    type: "server", ports: { "3000": { public: true }, "5432": { protocol: "tcp" } }, env: {},
-  }, { abortEarly: false })).rejects.toThrow(/may not mix public and private ports/);
-  // Same rule the other way round — a private HTTP sibling leaks just as well as
-  // a TCP one, and neither is saved by the public port being listed first.
-  await expect(deploymentServiceDefinitionSchema.validate({
-    type: "server", ports: { "3000": { public: true }, "4000": {} }, env: {},
-  }, { abortEarly: false })).rejects.toThrow(/may not mix public and private ports/);
   // A duplicate port needs no rule of its own here: an object cannot hold one
-  // key twice, which is half of why the record shape is the stored one.
+  // key twice, and the canonical-spelling rule rules out the numeric aliases.
   await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", ports: { "0": {} }, env: {} })).rejects.toThrow();
   await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", ports: { "70000": {} }, env: {} })).rejects.toThrow();
   await expect(deploymentServiceDefinitionSchema.validate({
@@ -734,18 +725,21 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects port sets it
 });
 
 import.meta.vitest?.test("port helpers agree with what the schema allows", ({ expect }) => {
-  const mixed = { "3000": { public: true }, "5432": { protocol: "tcp" as const } };
-  expect(deploymentServiceIsPublic(mixed)).toBe(true);
-  expect(standardPortsHolderDeploymentPort(mixed)?.port).toBe(3000);
-  expect(deploymentServiceIsPublic({ "3000": {} })).toBe(false);
-  // The standard-ports holder is the LOWEST public port, by number and not by key
+  const mixed = { "3000": {}, "5432": { protocol: "tcp" as const } };
+  // The holder of a PRIVATE service is its sole HTTP port; the TCP sibling does
+  // not make it ambiguous.
+  expect(standardPortsHolderPort(mixed, false)).toBe(3000);
+  // The holder of a PUBLIC service is its LOWEST port, by number and not by key
   // order — so "443" wins over "8443" however the record was written.
-  const twoPublic = { "8443": { public: true }, "443": { public: true } };
-  expect(standardPortsHolderDeploymentPort(twoPublic)?.port).toBe(443);
-  expect(deploymentPortOwnsStandardPorts(twoPublic, 443)).toBe(true);
-  expect(deploymentPortOwnsStandardPorts(twoPublic, 8443)).toBe(false);
-  // A lone public port is always the holder.
-  expect(deploymentPortOwnsStandardPorts({ "3000": { public: true } }, 3000)).toBe(true);
+  const twoPorts = { "8443": {}, "443": {} };
+  expect(standardPortsHolderPort(twoPorts, true)).toBe(443);
+  expect(deploymentPortOwnsStandardPorts(twoPorts, true, 443)).toBe(true);
+  expect(deploymentPortOwnsStandardPorts(twoPorts, true, 8443)).toBe(false);
+  // The same set on a PRIVATE service has no holder at all: two HTTP ports leave
+  // nothing for a certificate to terminate on.
+  expect(standardPortsHolderPort(twoPorts, false)).toBe(null);
+  // A lone port is always the holder.
+  expect(deploymentPortOwnsStandardPorts({ "3000": {} }, true, 3000)).toBe(true);
   // Ambiguous references resolve to null so each layer can phrase its own error.
   // url only counts HTTP ports, so the TCP sibling does not make it ambiguous.
   expect(soleHttpDeploymentPort(mixed)).toBe(3000);
@@ -753,14 +747,14 @@ import.meta.vitest?.test("port helpers agree with what the schema allows", ({ ex
   expect(portProtocol({})).toBe("http");
   expect(portProtocol({ protocol: "tcp" })).toBe("tcp");
   // Ascending by port NUMBER, not by key order — "80" must not sort after "8080".
-  expect(deploymentPortEntries({ "8080": {}, "80": { public: true } })).toEqual([
-    { port: 80, public: true, protocol: "http" },
-    { port: 8080, public: false, protocol: "http" },
+  expect(deploymentPortEntries({ "8080": {}, "80": {} })).toEqual([
+    { port: 80, protocol: "http" },
+    { port: 8080, protocol: "http" },
   ]);
   // A hand-edited row with a key that is not a port is skipped, not thrown on:
   // this runs on stored rows, and one bad entry must not take down a listing.
-  expect(deploymentPortEntries({ web: {}, "3000": {} })).toEqual([{ port: 3000, public: false, protocol: "http" }]);
-  expect(deploymentPortEntry({ "3000": { public: true } }, 3000)?.public).toBe(true);
+  expect(deploymentPortEntries({ web: {}, "3000": {} })).toEqual([{ port: 3000, protocol: "http" }]);
+  expect(deploymentPortEntry({ "3000": { protocol: "tcp" } }, 3000)?.protocol).toBe("tcp");
   expect(deploymentPortEntry({ "3000": {} }, 4000)).toBe(null);
 });
 

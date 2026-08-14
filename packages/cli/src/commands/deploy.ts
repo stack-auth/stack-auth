@@ -1,4 +1,4 @@
-import { CONFIG_FILE_DEPLOYMENT_SOURCE_ID, connectionRequiresTargetDeployed, deploymentPortEntries, deploymentPortEntry, deploymentPortOwnsStandardPorts, deploymentServiceIsPublic, parseConnectionValue } from "@hexclave/shared/dist/deployments";
+import { CONFIG_FILE_DEPLOYMENT_SOURCE_ID, connectionRequiresTargetDeployed, deploymentPortEntries, deploymentPortEntry, deploymentPortOwnsStandardPorts, parseConnectionValue } from "@hexclave/shared/dist/deployments";
 import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
@@ -175,17 +175,16 @@ export function collectPublicUrls(deploySet: string[], services: Map<string, Eva
     const result = results.get(serviceId) ?? (() => {
       throw new CliError(`Internal error: no deploy result for service ${JSON.stringify(serviceId)}.`);
     })();
-    // A public port is always HTTP (raw TCP cannot be public), so its presence
-    // is the whole condition for the service having a URL to report.
-    if (!deploymentServiceIsPublic(service.definition.ports) || result.status !== "deployed" || result.url === null) return [];
+    // Only a public service has a URL to report, and a public one is all-HTTP,
+    // so every port it declares is one to show.
+    if (service.definition.public !== true || result.status !== "deployed" || result.url === null) return [];
     // `result.url` is the standard-ports holder's URL, which is why it carries no
-    // port. Every OTHER public port answers at its own number on the same host,
-    // so it gets a line of its own — otherwise a second public port would simply
-    // not appear anywhere the author looks.
+    // port. Every OTHER port answers at its own number on the same host, so it
+    // gets a line of its own — otherwise a second port would simply not appear
+    // anywhere the author looks.
     const holderUrl = result.url;
     return deploymentPortEntries(service.definition.ports)
-      .filter((entry) => entry.public)
-      .map((entry) => deploymentPortOwnsStandardPorts(service.definition.ports, entry.port)
+      .map((entry) => deploymentPortOwnsStandardPorts(service.definition.ports, true, entry.port)
         ? { serviceId, url: holderUrl }
         : { serviceId, url: `${holderUrl}:${entry.port}` });
   });
@@ -321,13 +320,13 @@ function collectTransitiveDependents(failedServiceId: string, services: Map<stri
       // they can neither fail in it nor be skipped by it.
       const target = services.get(parsed.serviceId);
       if (target === undefined) continue;
-      const targetPortIsPublic = parsed.port === null
+      const targetIsPublic = parsed.port === null || deploymentPortEntry(target.definition.ports, parsed.port) === null
         ? null
-        : deploymentPortEntry(target.definition.ports, parsed.port)?.public ?? null;
+        : target.definition.public === true;
       // Same rule as computeDeploymentLevels: a deterministic reference is not a
       // dependency, so a failed target must not skip services that never needed
       // it to be deployed.
-      if (!connectionRequiresTargetDeployed(parsed.outputKey, parsed.port, targetPortIsPublic)) continue;
+      if (!connectionRequiresTargetDeployed(parsed.outputKey, parsed.port, targetIsPublic)) continue;
       const dependents = directDependents.get(parsed.serviceId) ?? new Set<string>();
       dependents.add(serviceId);
       directDependents.set(parsed.serviceId, dependents);

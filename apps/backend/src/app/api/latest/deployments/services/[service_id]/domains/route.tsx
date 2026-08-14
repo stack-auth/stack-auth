@@ -45,16 +45,16 @@ export const POST = createSmartRouteHandler({
     // runtime rejection is deliberately swallowed at deploy time), and every later `hexclave
     // deploy` fails the sync until the domain is removed.
     const definition = definitionFromServiceRow(row);
-    const portProblem = domainPortProblem(definition.ports);
+    const portProblem = domainPortProblem(definition.ports, definition.public === true);
     if (portProblem !== null) {
       throw new StatusError(400, `The deployment service ${JSON.stringify(params.service_id)} cannot hold a custom domain because ${portProblem}.`);
     }
-    // The port the hostname fronts. domainPortProblem has just established that
-    // the service declares exactly one HTTP port, so this is that port — stored
-    // rather than re-derived on every read, because a domain names an ENDPOINT
-    // and the row has to keep saying which one it meant even after the service
-    // changes its ports.
-    const domainPort = domainPortForService(definition.ports) ?? throwErr("domainPortProblem passed a service with no sole HTTP port");
+    // The port the hostname fronts: the service's standard-ports holder, which
+    // domainPortProblem has just established is determinate. Stored rather than
+    // re-derived on every read, because a domain names an ENDPOINT and the row
+    // has to keep saying which one it meant even after the service changes its
+    // ports.
+    const domainPort = domainPortForService(definition.ports, definition.public === true) ?? throwErr("domainPortProblem passed a service with no standard-ports holder");
     // Scoped to the whole tenancy, not just this service: the runtime holds ONE claim per
     // hostname, so attaching a hostname that another service in this project already has
     // would repoint the certificate on the runtime while leaving the old service's row

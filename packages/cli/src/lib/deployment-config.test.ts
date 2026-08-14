@@ -30,7 +30,8 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     const { services } = evaluate(({ isDev, secret, service, hexclave }: ServicesFunctionContext) => ({
       frontend: {
         type: "serverless",
-        ports: { 3000: { public: true } },
+        public: true,
+        ports: { 3000: {} },
         minInstances: 1,
         maxInstances: 3,
         devCommand: "pnpm dev",
@@ -53,7 +54,8 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     const frontend = services.get("frontend");
     expect(frontend?.definition).toEqual({
       type: "serverless",
-      ports: { "3000": { public: true, protocol: "http" } },
+      public: true,
+      ports: { "3000": { protocol: "http" } },
       min_instances: 1,
       max_instances: 3,
       root_directory: "apps/web",
@@ -78,18 +80,19 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     expect(services.get("database")?.definition.root_directory).toBe(".");
   });
 
-  it("defaults every port to private HTTP", () => {
+  it("defaults a port to HTTP and a service to private", () => {
     const { services } = evaluate(() => ({ web: { type: "serverless", ports: { 3000: {} } } }));
     // The stored shape is the record the author wrote, with the defaults
     // written out rather than left to each reader.
-    expect(services.get("web")?.definition.ports).toEqual({ "3000": { public: false, protocol: "http" } });
-    const withPublic = evaluate(() => ({ web: { type: "serverless", ports: { 3000: { public: true } } } }));
-    expect(withPublic.services.get("web")?.definition.ports).toEqual({ "3000": { public: true, protocol: "http" } });
-    // Several ports are fine as long as none is public.
+    expect(services.get("web")?.definition.ports).toEqual({ "3000": { protocol: "http" } });
+    expect(services.get("web")?.definition.public).toBe(false);
+    const withPublic = evaluate(() => ({ web: { type: "serverless", public: true, ports: { 3000: {} } } }));
+    expect(withPublic.services.get("web")?.definition.public).toBe(true);
+    // A private service may mix protocols freely.
     const multi = evaluate(() => ({ web: { type: "serverless", ports: { 3000: {}, 9090: { protocol: "tcp" } } } }));
     expect(multi.services.get("web")?.definition.ports).toEqual({
-      "3000": { public: false, protocol: "http" },
-      "9090": { public: false, protocol: "tcp" },
+      "3000": { protocol: "http" },
+      "9090": { protocol: "tcp" },
     });
   });
 
@@ -104,23 +107,35 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     expect(evaluatePorts({ web: {} })).toThrow("is not a port number");
     expect(evaluatePorts({ 70000: {} })).toThrow("between 1 and 65535");
     expect(evaluatePorts({ 3000: "public" })).toThrow("must be an object");
-    expect(evaluatePorts({ 3000: { public: "yes" } })).toThrow("must be true or false");
+    expect(evaluatePorts({ 3000: { public: true } })).toThrow('unknown field "public"');
     expect(evaluatePorts({ 5432: { protocol: "smtp" } })).toThrow('must be "http" or "tcp"');
-    // Raw TCP has no TLS or HTTP routing, so it can never be the public one.
-    expect(evaluatePorts({ 5432: { protocol: "tcp", public: true } })).toThrow("private-only");
-    // Several public ports are accepted: the leak needs a port nobody asked to
-    // publish, and there is none.
-    expect(evaluatePorts({ 3000: { public: true }, 4000: { public: true } })).not.toThrow();
-    // ...but not when one of them is 80 or 443, which the holder already claims.
-    expect(evaluatePorts({ 80: { public: true }, 443: { public: true } })).toThrow("additionally answers on the standard 80 and 443");
+    // A port numbered 80 or 443 beside the standard-ports holder asks for a
+    // listener the holder already claims.
     expect(evaluatePorts({ 8080: {}, 443: { protocol: "tcp" } })).toThrow("additionally answers on the standard 80 and 443");
-    // The holder itself may be 80 or 443 — it is what owns them.
-    expect(evaluatePorts({ 80: { public: true }, 3000: { public: true } })).not.toThrow();
     // One port, one spelling: "80" and "080" are different keys of one object but
     // the same port, so both would be declared. The record shape only rules out
     // an EXACT repeated key.
-    expect(evaluatePorts({ "80": { public: true }, "080": { public: true } })).toThrow("leading zero");
+    expect(evaluatePorts({ "8080": {}, "08080": {} })).toThrow("leading zero");
     expect(evaluatePorts({ "08080": {} })).toThrow("leading zero");
+  });
+
+  it("rejects public services the runtime could not serve", () => {
+    const evaluateService = (service: unknown) => () => evaluate(() => ({ web: service }));
+    // Several ports on a public service are fine — all of them are reachable.
+    expect(evaluateService({ type: "serverless", public: true, ports: { 3000: {}, 4000: {} } })).not.toThrow();
+    // ...but not when one is 80 or 443, which the holder already claims.
+    expect(evaluateService({ type: "serverless", public: true, ports: { 80: {}, 443: {} } }))
+      .toThrow("additionally answers on the standard 80 and 443");
+    // The holder itself may be 80 or 443 — it is what owns them.
+    expect(evaluateService({ type: "serverless", public: true, ports: { 80: {}, 3000: {} } })).not.toThrow();
+    // Raw TCP carries no SNI or Host, so a shared public address cannot route it.
+    expect(evaluateService({ type: "server", public: true, ports: { 5432: { protocol: "tcp" } } }))
+      .toThrow('declares the "tcp" port');
+    // A private service may declare TCP freely.
+    expect(evaluateService({ type: "server", ports: { 5432: { protocol: "tcp" } } })).not.toThrow();
+    // Public ingress with nothing to serve on it.
+    expect(evaluateService({ type: "server", public: true, ports: {} })).toThrow("declares no ports");
+    expect(evaluateService({ type: "serverless", public: "yes", ports: { 3000: {} } })).toThrow("must be true or false");
   });
 
   it("accepts a portless worker", () => {
@@ -164,20 +179,12 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     expect(evaluateEnv(twoHttp, (service) => service("api").hostname(8080))).toThrow("takes no arguments");
   });
 
-  it("rejects a public port that has private siblings", () => {
-    // The runtime's proxy listeners are per-app, not per-address, so a private
-    // sibling of a public port would be served on the public address too.
+  it("splits public and private work across services", () => {
+    // The runtime's proxy listeners are per-app, not per-address, so a service is
+    // public on all of its ports or none. Wanting one of each means two services.
     expect(() => evaluate(() => ({
-      web: { type: "serverless", ports: { 3000: { public: true }, 9090: {} } },
-    }))).toThrow("mixes public and private ports");
-    // Both halves stay legal on their own.
-    expect(() => evaluate(() => ({
-      web: { type: "serverless", ports: { 3000: { public: true } } },
+      web: { type: "serverless", public: true, ports: { 3000: {} } },
       metrics: { type: "serverless", ports: { 9090: {}, 5432: { protocol: "tcp" } } },
-    }))).not.toThrow();
-    // Publishing the sibling too is the other way out, and it is accepted.
-    expect(() => evaluate(() => ({
-      web: { type: "serverless", ports: { 3000: { public: true }, 9090: { public: true } } },
     }))).not.toThrow();
   });
 
@@ -186,7 +193,7 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     // before the target exists — so they must not order or serialize deploys.
     const deterministicallyWired = () => evaluate(({ service }: ServicesFunctionContext) => ({
       web: {
-        type: "serverless", ports: { 3000: { public: true } },
+        type: "serverless", public: true, ports: { 3000: {} },
         env: { API: (service("api") as any).url(8080), DB_HOST: (service("db") as any).hostname() },
       },
       api: { type: "serverless", ports: { 8080: {}, 9090: {} } },
@@ -209,7 +216,7 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     // A `url` reference is still a real dependency.
     const publicUrl = evaluate(({ service }: ServicesFunctionContext) => ({
       web: { type: "serverless", ports: { 3000: {} }, env: { API: (service("api") as any).url() } },
-      api: { type: "serverless", ports: { 8080: { public: true } } },
+      api: { type: "serverless", public: true, ports: { 8080: {} } },
     }));
     expect(computeDeploymentLevels(publicUrl.services)).toEqual([["api"], ["web"]]);
   });
@@ -286,7 +293,7 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     // The public URL only exists once the service is up, which its own first
     // deploy cannot provide.
     expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: { 3000: { public: true } }, env: { SELF: (service("web") as any).url(3000) } },
+      web: { type: "serverless", public: true, ports: { 3000: {} }, env: { SELF: (service("web") as any).url(3000) } },
     }))).toThrow("cannot exist before the service does");
     // A private port's URL is deterministic, so a service may reference its own.
     const { services } = evaluate(({ service }: ServicesFunctionContext) => ({

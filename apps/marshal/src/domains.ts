@@ -39,7 +39,7 @@ export async function attachDomain(ns: string, hostname: string, serviceKey: str
   if (stored === null) {
     throw notFound(`service ${JSON.stringify(serviceKey)} not found in namespace ${JSON.stringify(ns)}`);
   }
-  assertServiceCanHoldADomain(serviceKey, stored.spec.config.ports, "Change the service's ports first, then attach the domain.");
+  assertServiceCanHoldADomain(serviceKey, stored.spec.config.ports, stored.spec.config.public, "Change the service's ports first, then attach the domain.");
 
   const existingClaim = await readDomainClaimVersioned(hostname);
   if (existingClaim === null) {

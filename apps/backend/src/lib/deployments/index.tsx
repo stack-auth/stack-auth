@@ -55,7 +55,6 @@ import {
   SERVICE_OUTPUT_KEYS,
   deploymentPortEntries,
   deploymentPortEntry,
-  deploymentServiceIsPublic,
   formatConnectionValue,
   parseConnectionValue,
   soleHttpDeploymentPort,
@@ -117,7 +116,7 @@ function parseStoredPorts(ports: Prisma.JsonValue, serviceId: string): Deploymen
     if (protocol !== "http" && protocol !== "tcp") {
       throw new HexclaveAssertionError(`Stored port ${portKey} of deployment service ${JSON.stringify(serviceId)} has invalid protocol ${JSON.stringify(protocol)}`, { ports });
     }
-    parsed[portKey] = { public: definition.public === true, protocol };
+    parsed[portKey] = { protocol };
   }
   return parsed;
 }
@@ -183,6 +182,7 @@ function parseStoredEnv(env: Prisma.JsonValue, serviceId: string): Record<string
 export function definitionFromServiceRow(row: {
   serviceId: string,
   type: string,
+  isPublic: boolean,
   ports: Prisma.JsonValue,
   minInstances: number | null,
   maxInstances: number | null,
@@ -195,6 +195,7 @@ export function definitionFromServiceRow(row: {
   }
   return {
     type: row.type,
+    public: row.isPublic,
     // Rows that predate a synced definition have no ports. Callers that build a
     // runtime spec must reject that before it reaches Marshal (the deploy route
     // guards it) — an empty record is not a deployable service, only a
@@ -485,7 +486,7 @@ export async function syncSourceServices(
   });
   for (const domain of domainHolders) {
     if (domain.serviceId === null) continue;
-    const problem = domainPortProblem(services[domain.serviceId].ports);
+    const problem = domainPortProblem(services[domain.serviceId].ports, services[domain.serviceId].public === true);
     if (problem !== null) {
       throw new StatusError(400, `Service ${JSON.stringify(domain.serviceId)} has the custom domain ${domain.hostname}, so ${problem}. Remove the domain first, or fix the service's ports.`);
     }
@@ -506,6 +507,9 @@ export async function syncSourceServices(
       definitionSyncedAt: new Date(),
       definitionSyncId,
       type: definition.type,
+      // Visibility is the SERVICE's own column, not something derivable from
+      // `ports` — the ports record no longer records it at all.
+      isPublic: definition.public === true,
       ports: definition.ports,
       minInstances: definition.min_instances ?? null,
       maxInstances: definition.max_instances ?? null,
@@ -593,36 +597,36 @@ export async function tearDownServices(tenancy: Tenancy, serviceIds: string[]): 
  * KEPT IN SYNC WITH assertServiceCanHoldADomain in apps/marshal/src/domains.ts.
  *
  * Attaching a domain allocates public IPs on the service's Fly app, so it makes
- * the service public exactly the way a `public: true` port does. Fly `services`
- * are the proxy's listener set for the whole app with no per-address scoping, so
- * every declared port answers on every IP the app holds: an HTTP port next to a
- * private 5432 passes the sync (nothing is `public: true`) and then publishes
- * the database the moment a domain is attached.
+ * the service reachable exactly the way `public: true` does. Fly `services` are
+ * the proxy's listener set for the whole app with no per-address scoping, so
+ * every declared port answers on every IP the app holds: a PRIVATE service with
+ * an HTTP port next to a 5432 passes the sync — nothing is public — and then
+ * publishes the database the moment a domain is attached.
  *
- * STRICTER THAN THE SYNC RULE, deliberately. The sync accepts a wholly PRIVATE
+ * STRICTER THAN THE SYNC RULE, deliberately. The sync accepts a wholly private
  * multi-port service — unreachable, so nothing leaks — and a domain is precisely
- * what makes it reachable. So the private siblings that were harmless at sync
- * time are the leak here. The one private port a domain may front is a service's
- * ONLY port: publishing it is what the domain was asked for. An ALL-public
- * service is fine at any port count; the domain fronts the standard-ports holder
- * (the lowest public port, the one that owns 80/443) and the rest keep answering
- * on their own numbers.
+ * what makes it reachable. So the siblings that were harmless at sync time are
+ * the leak here. The one port a private service may front with a domain is its
+ * ONLY port: publishing it is what the domain was asked for. A PUBLIC service is
+ * fine at any port count; it is already reachable, and the domain simply fronts
+ * the standard-ports holder (its lowest port, the one that owns 80/443) while
+ * the rest keep answering on their own numbers.
  *
  * The HTTP requirement is separate: a domain terminates TLS and routes HTTP, so
  * a service declaring only TCP ports (or none at all — a portless worker) has
  * nothing to route to.
  */
-export function domainPortProblem(ports: DeploymentPorts): string | null {
+export function domainPortProblem(ports: DeploymentPorts, isPublic: boolean): string | null {
   const entries = deploymentPortEntries(ports);
   if (!entries.some((entry) => entry.protocol === "http")) {
     return entries.length === 0
       ? 'it must declare a port with protocol: "http" to route to (it declares none)'
       : 'it must declare a port with protocol: "http" to route to (it declares only TCP ports)';
   }
-  if (entries.length > 1 && entries.some((entry) => !entry.public)) {
-    return `it may not declare a private port alongside others (it declares ${entries.length}): a domain allocates public IPs, and the runtime's proxy serves every declared port on every address the app has, so the private ones would be public too. Mark them public: true, or move them onto their own service and reach them with hostname()`;
+  if (!isPublic && entries.length > 1) {
+    return `it is private and declares more than one port (${entries.length}): a domain allocates public IPs, and the runtime's proxy serves every declared port on every address the app has, so the others would be published too. Make the service public: true, or move them onto their own service and reach them with hostname()`;
   }
-  if (domainPortForService(ports) === null) {
+  if (domainPortForService(ports, isPublic) === null) {
     return `it leaves ambiguous which port the domain would front (it declares ${entries.length}): a certificate terminates TLS on one port only`;
   }
   return null;
@@ -653,13 +657,13 @@ export function normalizeHostnameOrThrow(hostname: string): string {
  * certificate terminates TLS there and nowhere else.
  *
  * For a private service that is its sole HTTP port (the domain is what publishes
- * it). For an all-public service it is the standard-ports holder — the lowest
- * public port — and the other public ports keep answering on their own numbers,
+ * it). For a PUBLIC service it is the standard-ports holder — its lowest port —
+ * and the others keep answering on their own numbers,
  * unfronted by the hostname. Null when neither is determinate, which
  * domainPortProblem reports before any caller reaches this.
  */
-export function domainPortForService(ports: DeploymentPorts): number | null {
-  return standardPortsHolderPort(ports);
+export function domainPortForService(ports: DeploymentPorts, isPublic: boolean): number | null {
+  return standardPortsHolderPort(ports, isPublic);
 }
 
 // ---------------------------------------------------------------------------
@@ -847,7 +851,10 @@ export async function resolveEnvVars(options: {
   const env = definition.env;
   const existingServices = await prisma.deploymentService.findMany({
     where: { tenancyId: tenancy.id },
-    select: { serviceId: true, ports: true },
+    // isPublic decides whether a service's own url() is a cycle: a public one
+    // resolves to a platform URL that does not exist yet, a private one to its
+    // deterministic internal address.
+    select: { serviceId: true, isPublic: true, ports: true },
   });
   const existingServicesById = new Map(existingServices.map((row) => [row.serviceId, row]));
 
@@ -938,10 +945,10 @@ export async function resolveEnvVars(options: {
         }
         const targetPorts = parseStoredPorts(target.ports, normalized.serviceId);
         if (normalized.outputKey === "url") {
-          const named = resolveUrlPortOrThrow(raw, normalized.serviceId, targetPorts, normalized.port);
+          resolveUrlPortOrThrow(raw, normalized.serviceId, targetPorts, normalized.port);
           // A service's own PUBLIC url cannot exist before the service does.
           // Its private address is deterministic, so only this case is refused.
-          if (normalized.serviceId === serviceId && named.public) {
+          if (normalized.serviceId === serviceId && target.isPublic) {
             throw new StatusError(400, `The env var ${JSON.stringify(envVarKey)} connects to the service's own public URL "${raw}", which cannot exist before the service does. Use ${JSON.stringify(`${serviceId}.hostname`)} for the service's own address.`);
           }
         }
@@ -974,7 +981,7 @@ export async function resolveEnvVars(options: {
  */
 function resolveUrlPortOrThrow(raw: string, targetServiceId: string, targetPorts: DeploymentPorts, namedPort: number | null): DeploymentPortEntry {
   const entries = deploymentPortEntries(targetPorts);
-  const describePorts = () => entries.map((entry) => `${entry.port} (${entry.protocol}${entry.public ? ", public" : ""})`).join(", ") || "none";
+  const describePorts = () => entries.map((entry) => `${entry.port} (${entry.protocol})`).join(", ") || "none";
   if (namedPort === null) {
     const sole = soleHttpDeploymentPort(targetPorts);
     if (sole === null) {
@@ -1105,6 +1112,7 @@ export function marshalSpecForDefinition(definition: DeploymentServiceDefinition
   return {
     config: {
       type: definition.type,
+      public: definition.public === true,
       min_instances: minInstances,
       // Default max to at least min: a definition with `minInstances` and no
       // `maxInstances` must not synthesize an invalid spec (max < min) that
@@ -1114,7 +1122,7 @@ export function marshalSpecForDefinition(definition: DeploymentServiceDefinition
       // themselves, so there is no separate visibility to keep in step.
       ports: Object.fromEntries(deploymentPortEntries(definition.ports).map((entry) => [
         String(entry.port),
-        { public: entry.public, protocol: entry.protocol },
+        { protocol: entry.protocol },
       ])),
       // Absent = ephemeral container filesystem. Marshal re-validates that a
       // volume implies type "server".
@@ -1466,9 +1474,11 @@ export type DeploymentServiceApiShape = {
   id: string,
   deployment_source_id: string,
   type: DeploymentServiceType,
-  // The declared ports, keyed by port number. A service is public exactly when
-  // one of them is, so the dashboard reads publicness from here rather than
-  // from a separate field.
+  // Whether the service takes public ingress. A property of the SERVICE: the
+  // runtime serves every declared port on every address the service has, so
+  // there is no such thing as a public port with a private sibling.
+  public: boolean,
+  // The declared ports, keyed by port number.
   ports: DeploymentPorts,
   min_instances: number | null,
   max_instances: number | null,
@@ -1612,7 +1622,7 @@ export async function serviceToApiShape(options: {
     ? null
     : verifiedPrimary != null
       ? `https://${verifiedPrimary.hostname}`
-      : deploymentServiceIsPublic(definition.ports) ? lastDeployedUrl : null;
+      : definition.public === true ? lastDeployedUrl : null;
 
   const env: DeploymentServiceApiShape["env"] = [];
   for (const [envVarKey, config] of Object.entries(definition.env)) {
@@ -1644,6 +1654,7 @@ export async function serviceToApiShape(options: {
     id: row.serviceId,
     deployment_source_id: row.source.sourceId,
     type: definition.type,
+    public: definition.public === true,
     ports: definition.ports,
     min_instances: row.minInstances,
     max_instances: row.maxInstances,

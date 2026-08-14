@@ -18,7 +18,8 @@
 //     services: {
 //       frontend: {
 //         type: "serverless",
-//         ports: { 3000: { public: true } },
+//         public: true,
+//         ports: { 3000: {} },
 //         maxInstances: 3,
 //         devCommand: "pnpm dev",
 //         env: {
@@ -320,7 +321,7 @@ export type EvaluatedServices = {
 };
 
 const KNOWN_SERVICE_FIELDS = new Set([
-  "type", "ports", "minInstances", "maxInstances",
+  "type", "public", "ports", "minInstances", "maxInstances",
   "rootDirectory", "dockerfilePath", "devCommand", "persistentVolumes", "env",
 ]);
 const KNOWN_VOLUME_FIELDS = new Set(["path", "sizeGb"]);
@@ -352,26 +353,27 @@ function readOptionalStringField(record: Record<string, unknown>, serviceId: str
  * service's own Fly app. It therefore identifies the disk within a service —
  * the same id under a different service is a DIFFERENT (empty) disk.
  */
-const KNOWN_PORT_FIELDS = new Set(["public", "protocol"]);
+const KNOWN_PORT_FIELDS = new Set(["protocol"]);
 
 /**
- * Evaluates the `ports` record, keyed by port number. There is no service-level
- * visibility: a service is public exactly when one of its ports is, so the only
- * thing to reconcile here is the record itself.
+ * Evaluates the `ports` record, keyed by port number. Visibility is NOT here —
+ * it belongs to the service (`public: true`), because the runtime serves every
+ * declared port on every address the service has and a per-port flag could only
+ * ever misdescribe that.
  *
  * The record IS the wire and stored shape — nothing translates between two
- * spellings of one thing — so this normalizes the values (applying the `public`
- * and `protocol` defaults) and validates the keys.
+ * spellings of one thing — so this normalizes the values (applying the
+ * `protocol` default) and validates the keys.
  */
-function evaluatePorts(serviceId: string, portsRaw: unknown): DeploymentPorts {
+function evaluatePorts(serviceId: string, isPublic: boolean, portsRaw: unknown): DeploymentPorts {
   // The FIELD stays required even though the record may be empty: an omitted
   // `ports` is far more often a forgotten line than a deliberate worker, and
   // `ports: {}` says the latter out loud.
   if (portsRaw === undefined || portsRaw === null) {
-    throw new CliError(`deployment.services.${serviceId} has no \`ports\`. Every service must declare the ports its container listens on, e.g. \`ports: { 3000: { public: true } }\` — or \`ports: {}\` for a worker that only makes outbound connections.`);
+    throw new CliError(`deployment.services.${serviceId} has no \`ports\`. Every service must declare the ports its container listens on, e.g. \`ports: { 3000: {} }\` — or \`ports: {}\` for a worker that only makes outbound connections.`);
   }
   if (typeof portsRaw !== "object" || Array.isArray(portsRaw)) {
-    throw new CliError(`deployment.services.${serviceId}.ports must be an object keyed by port number, e.g. \`ports: { 3000: { public: true } }\` (got ${Array.isArray(portsRaw) ? "an array" : JSON.stringify(typeof portsRaw)}).`);
+    throw new CliError(`deployment.services.${serviceId}.ports must be an object keyed by port number, e.g. \`ports: { 3000: {} }\` (got ${Array.isArray(portsRaw) ? "an array" : JSON.stringify(typeof portsRaw)}).`);
   }
   const portEntries = Object.entries(portsRaw as Record<string, unknown>);
   if (portEntries.length > MAX_PORTS_PER_SERVICE) {
@@ -401,7 +403,7 @@ function evaluatePorts(serviceId: string, portsRaw: unknown): DeploymentPorts {
       throw new CliError(`${at} must be a port between 1 and 65535 (got ${port}).`);
     }
     if (portRaw === null || typeof portRaw !== "object" || Array.isArray(portRaw)) {
-      throw new CliError(`${at} must be an object, e.g. \`{ public: true }\` — or \`{}\` for a private HTTP port.`);
+      throw new CliError(`${at} must be an object, e.g. \`{ protocol: "tcp" }\` — or \`{}\` for the default HTTP.`);
     }
     const record = portRaw as Record<string, unknown>;
     for (const field of Object.keys(record)) {
@@ -410,58 +412,49 @@ function evaluatePorts(serviceId: string, portsRaw: unknown): DeploymentPorts {
       }
     }
 
-    if (record.public !== undefined && typeof record.public !== "boolean") {
-      throw new CliError(`${at}.public must be true or false (got ${JSON.stringify(record.public)}). It defaults to false — ports are private unless you say otherwise.`);
-    }
-    const isPublic = record.public === true;
-
     const protocol = record.protocol === undefined ? "http" : record.protocol;
     if (protocol !== "http" && protocol !== "tcp") {
       throw new CliError(`${at}.protocol must be "http" or "tcp" (got ${JSON.stringify(record.protocol)}).`);
     }
-    if (protocol === "tcp" && isPublic) {
-      throw new CliError(`${at} is a "tcp" port, which is private-only: raw TCP gets no TLS termination and no HTTP routing, so it cannot be served on a public hostname. Drop \`public: true\` and connect with service(${JSON.stringify(serviceId)}).hostname() and port ${port}.`);
-    }
 
     // Written out rather than passed through, so the stored definition states
     // every default instead of leaving each reader to apply it.
-    ports[String(port)] = { public: isPublic, protocol };
+    ports[String(port)] = { protocol };
   }
 
-  // FLY.IO PLATFORM LIMITATION: a service may not MIX public and private ports.
-  // Fly serves its whole listener set on every address the app has, so once a
-  // public IP exists a "private" sibling is on the internet too — publishing,
-  // say, a database. (The entry cannot just be omitted for private ports:
-  // private traffic reaches them over Flycast, which is that same proxy.) See
-  // the `public-and-private-ports-are-not-mixed` rule in @hexclave/shared's
-  // deployments.ts.
-  //
-  // SEVERAL public ports are allowed — nothing leaks when every declared port is
-  // one the author asked to publish. They cost IPv4 reachability instead, which
-  // is warned about below rather than refused.
   const entries = deploymentPortEntries(ports);
-  const publicPorts = entries.filter((entry) => entry.public);
-  const privatePorts = entries.filter((entry) => !entry.public);
-  if (publicPorts.length > 0 && privatePorts.length > 0) {
-    throw new CliError(`deployment.services.${serviceId} mixes public and private ports: ${publicPorts.map((entry) => entry.port).join(", ")} ${publicPorts.length === 1 ? "is" : "are"} public, but ${privatePorts.map((entry) => entry.port).join(", ")} ${privatePorts.length === 1 ? "is" : "are"} not. A service is exposed on every address it has, so those ports would be public too. Either mark them \`public: true\` as well, or move them to their own service and connect with service(${JSON.stringify(serviceId)}).hostname().`);
+
+  // FLY.IO PLATFORM LIMITATION, VERIFIED against real Fly: a public service is
+  // all-HTTP. Fly's shared public IPv4 tells apps apart by SNI (TLS) or Host
+  // (HTTP); a raw TCP stream carries neither, so the edge accepts the connection
+  // and then drops it. Lifting this needs a dedicated IPv4 per service, which is
+  // a billing decision rather than a code change.
+  const tcpPorts = entries.filter((entry) => entry.protocol === "tcp");
+  if (isPublic && tcpPorts.length > 0) {
+    throw new CliError(`deployment.services.${serviceId} is \`public: true\` but declares the "tcp" port${tcpPorts.length === 1 ? "" : "s"} ${tcpPorts.map((entry) => entry.port).join(", ")}. Raw TCP carries no SNI or Host header, so a shared public address cannot tell which service a connection is for. Keep the service private and reach it with service(${JSON.stringify(serviceId)}).hostname() and the port number, or move the TCP ports to their own service.`);
+  }
+
+  // Public ingress with nothing behind it.
+  if (isPublic && entries.length === 0) {
+    throw new CliError(`deployment.services.${serviceId} is \`public: true\` but declares no ports, so there is nothing to serve on the public address it would be given. Drop \`public\`, or declare the port the container listens on.`);
   }
 
   // The port that owns the standard bindings also claims external 80 and 443 for
   // the whole service, so another port numbered 80 or 443 asks for a listener it
   // has already taken and the runtime cannot serve both.
-  const standardConflicts = reservedStandardPortConflicts(ports);
+  const standardConflicts = reservedStandardPortConflicts(ports, isPublic);
   if (standardConflicts.length > 0) {
-    const holder = standardPortsHolderPort(ports);
+    const holder = standardPortsHolderPort(ports, isPublic);
     throw new CliError(`deployment.services.${serviceId} declares port ${standardConflicts.join(" and ")} alongside port ${holder}, which additionally answers on the standard 80 and 443 — so one external port would have to be served from two of them. Keep whichever of the two you actually need, or move it to its own service.`);
   }
 
   // Not an error, but worth saying at evaluation time rather than only in the
-  // docs: every public port is reachable, yet only ONE of them owns the bare
-  // platform URL and can hold a custom domain, and the author has no other way
-  // to learn which.
-  if (publicPorts.length > 1) {
-    const [holder, ...rest] = publicPorts;
-    console.error(`Note: services.${serviceId} declares ${publicPorts.length} public ports. The lowest (${holder.port}) owns the standard 80/443, so it is the one the service's URL points at and the only port a custom domain can front; ${rest.map((entry) => entry.port).join(", ")} ${rest.length === 1 ? "is reachable at its own" : "are reachable at their own"} port number.`);
+  // docs: every port of a public service is reachable, yet only ONE owns the bare
+  // platform URL and can hold a custom domain, and the author has no other way to
+  // learn which.
+  if (isPublic && entries.length > 1) {
+    const [holder, ...rest] = entries;
+    console.error(`Note: services.${serviceId} is public with ${entries.length} ports. The lowest (${holder.port}) owns the standard 80/443, so it is the one the service's URL points at and the only port a custom domain can front; ${rest.map((entry) => entry.port).join(", ")} ${rest.length === 1 ? "is reachable at its own" : "are reachable at their own"} port number.`);
   }
   return ports;
 }
@@ -584,7 +577,8 @@ const EXAMPLE_DEPLOYMENT_EXPORT = `  export const id = "my-app";
     services: {
       web: {
         type: "serverless",
-        ports: { 3000: { public: true } },
+        public: true,
+        ports: { 3000: {} },
         devCommand: "npm run dev",
         env: { API_URL: service("api").url(8080) },
       },
@@ -692,7 +686,14 @@ export function evaluateDeploymentConfig(options: {
         : `deployment.services.${serviceId}.type must be ${DEPLOYMENT_SERVICE_TYPES.map((knownType: string) => JSON.stringify(knownType)).join(" or ")} (got ${JSON.stringify(record.type)}).`);
     }
     const serviceType = record.type as DeploymentServiceType;
-    const ports = evaluatePorts(serviceId, record.ports);
+    // Visibility is the SERVICE's, not a port's: the runtime serves every declared
+    // port on every address the service has, so there is no such thing as a
+    // public port with a private sibling.
+    if (record.public !== undefined && typeof record.public !== "boolean") {
+      throw new CliError(`deployment.services.${serviceId}.public must be true or false (got ${JSON.stringify(record.public)}). It defaults to false — services are private, reachable only by other services in this project.`);
+    }
+    const isPublic = record.public === true;
+    const ports = evaluatePorts(serviceId, isPublic, record.ports);
 
     const rootDirectoryRaw = readOptionalStringField(record, serviceId, "rootDirectory");
     const absoluteRootDirectory = path.resolve(deployFileDirectory, rootDirectoryRaw ?? ".");
@@ -759,6 +760,9 @@ export function evaluateDeploymentConfig(options: {
       serviceId,
       definition: {
         type: serviceType,
+        // Written out rather than left undefined so the stored definition states
+        // the default instead of leaving each reader to apply it.
+        public: isPublic,
         ports,
         // A "server" defaults to 1: it holds one instance, and the interesting
         // choice is whether that instance suspends when idle (0) or stays up.
@@ -830,14 +834,14 @@ export function evaluateDeploymentConfig(options: {
       const targetPorts = deploymentPortEntries(target.definition.ports);
       // "none" rather than an empty string: a portless service is a legal
       // declaration now, so this list really can be empty.
-      const describePorts = () => targetPorts.map((entry) => `${entry.port} (${entry.protocol}${entry.public ? ", public" : ""})`).join(", ") || "none";
+      const describePorts = () => targetPorts.map((entry) => `${entry.port} (${entry.protocol})`).join(", ") || "none";
 
       // A URL names ONE port, and needs something HTTP to serve. A URL to a
       // service that speaks only raw TCP, or listens on nothing at all, could
       // never resolve — and neither could one whose port is ambiguous.
       //
-      // Publicness is NOT a requirement: a private port's URL is its
-      // private-network address, and a public one's is the platform URL.
+      // Publicness is NOT a requirement: a private service's URL is its
+      // internal address, and a public one's is the platform URL.
       if (outputKey === "url") {
         const call = `service(${JSON.stringify(targetServiceId)}).url`;
         if (namedPort === null) {
@@ -874,11 +878,15 @@ export function evaluateDeploymentConfig(options: {
       if (value.kind !== "connection") continue;
       const parsed = parseConnectionValue(value.reference);
       if (parsed === null || parsed.serviceId !== serviceId || parsed.outputKey !== "url") continue;
+      // Only a PUBLIC service's own url() is a cycle: it resolves to the platform
+      // URL, which does not exist until the service is up. A private service's
+      // resolves from its deterministic hostname, so it can name itself.
+      if (service.definition.public !== true) continue;
       const ports = deploymentPortEntries(service.definition.ports);
       const port = parsed.port === null
         ? ports.filter((entry) => entry.protocol === "http")[0]
         : ports.find((entry) => entry.port === parsed.port);
-      if (port?.public !== true) continue;
+      if (port === undefined) continue;
       throw new CliError(`deployment.services.${serviceId}.env.${envVarKey} connects to the service's own public URL (port ${port.port}), which cannot exist before the service does. Use service("${serviceId}").hostname() for its own address.`);
     }
   }
@@ -915,15 +923,18 @@ export function computeDeploymentLevels(services: Map<string, EvaluatedService>)
       // rest would serialize independent deploys and reject mutually-wired
       // services as circular.
       // Publicness decides whether a url() reference has to wait: a private
-      // port's URL is built from the deterministic hostname, so it resolves
+      // service's URL is built from the deterministic hostname, so it resolves
       // before the target exists. A target this file does not define is not part
       // of this deploy either way, so it never becomes an edge.
       const target = services.get(targetServiceId);
       if (target === undefined) continue;
-      const targetPortIsPublic = parsed.port === null
+      // Null when the named port is not one the target declares — the reference
+      // is invalid, and validateConnections reports it with better context than
+      // a dependency edge could.
+      const targetIsPublic = parsed.port === null || deploymentPortEntry(target.definition.ports, parsed.port) === null
         ? null
-        : deploymentPortEntry(target.definition.ports, parsed.port)?.public ?? null;
-      if (!connectionRequiresTargetDeployed(parsed.outputKey, parsed.port, targetPortIsPublic)) continue;
+        : target.definition.public === true;
+      if (!connectionRequiresTargetDeployed(parsed.outputKey, parsed.port, targetIsPublic)) continue;
       if (targetServiceId !== HEXCLAVE_SERVICE_ID && targetServiceId !== serviceId) {
         serviceDependencies.add(targetServiceId);
       }

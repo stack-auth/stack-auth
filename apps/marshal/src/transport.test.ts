@@ -22,10 +22,12 @@ const machineFor = (config: Record<string, unknown>) => machineConfigForSlot({
 });
 
 describe("service ports", () => {
-  it("defaults each port to private HTTP", () => {
-    expect(validateServiceSpec(spec()).config.ports).toEqual({ "5432": { public: false, protocol: "http" } });
+  it("defaults a port to HTTP and a service to private", () => {
+    expect(validateServiceSpec(spec()).config.ports).toEqual({ "5432": { protocol: "http" } });
     expect(specIsPublic(validateServiceSpec(spec()))).toBe(false);
-    expect(specIsPublic(validateServiceSpec(spec({ ports: { "3000": { public: true } } })))).toBe(true);
+    // Visibility is the SERVICE's, so it is read off the container and not
+    // inferred from any port.
+    expect(specIsPublic(validateServiceSpec(spec({ public: true, ports: { "3000": {} } })))).toBe(true);
   });
 
   it("accepts a portless worker and gives it no Fly services entries", () => {
@@ -38,28 +40,39 @@ describe("service ports", () => {
     expect(() => validateServiceSpec(spec({ ports: [] }))).toThrow(/must be an object keyed by port number/);
     expect(() => validateServiceSpec(spec({ ports: { "0": {} } }))).toThrow(/must be a port number between 1 and 65535/);
     expect(() => validateServiceSpec(spec({ ports: { web: {} } }))).toThrow(/must be a port number between 1 and 65535/);
-    expect(() => validateServiceSpec(spec({ ports: { "3000": { public: "yes" } } }))).toThrow(/must be a boolean/);
+    expect(() => validateServiceSpec(spec({ public: "yes" }))).toThrow(/config.public must be a boolean/);
     expect(() => validateServiceSpec(spec({ ports: { "3000": { protocol: "udp" } } }))).toThrow(/must be "http" or "tcp"/);
     // A duplicate port needs no rule of its own: an object cannot hold one key
     // twice, and the canonical-spelling rule below rules out the numeric aliases
     // that would otherwise sneak one port in under two keys.
-    // Raw TCP has no TLS termination or HTTP routing to be public with.
-    expect(() => validateServiceSpec(spec({ ports: { "5432": { protocol: "tcp", public: true } } }))).toThrow(/private-only/);
-    // Several public ports are ACCEPTED: nothing leaks when every declared port
-    // is one the caller asked to publish.
-    expect(() => validateServiceSpec(spec({ ports: { "3000": { public: true }, "4000": { public: true } } })))
+    // Several ports on a public service are ACCEPTED: they are all reachable, so
+    // there is no port the author did not ask to publish.
+    expect(() => validateServiceSpec(spec({ public: true, ports: { "3000": {}, "4000": {} } })))
       .not.toThrow();
-    // Fly's proxy listeners are per-app, not per-address: a private sibling of a
-    // public port would answer on the public IP too.
-    expect(() => validateServiceSpec(spec({ ports: { "3000": { public: true }, "9090": {} } })))
-      .toThrow(/may not mix public and private ports/);
+  });
+
+  it("refuses a public service that the runtime could not serve", () => {
+    // Raw TCP carries no SNI or Host, so a shared public address cannot tell
+    // which service a connection belongs to — VERIFIED against real Fly, where
+    // the edge accepts the connection and then drops it. A private service may
+    // declare TCP freely; only public ingress is the problem.
+    expect(() => validateServiceSpec(spec({ public: true, ports: { "5432": { protocol: "tcp" } } })))
+      .toThrow(/may not declare a "tcp" port/);
+    expect(() => validateServiceSpec(spec({ public: true, ports: { "3000": {}, "5432": { protocol: "tcp" } } })))
+      .toThrow(/may not declare a "tcp" port/);
+    expect(() => validateServiceSpec(spec({ public: false, ports: { "5432": { protocol: "tcp" } } })))
+      .not.toThrow();
+    // A worker has nothing to serve on the addresses public ingress would
+    // allocate. Unrepresentable when the flag lived on a port; refused now.
+    expect(() => validateServiceSpec(spec({ public: true, ports: {} })))
+      .toThrow(/must declare at least one port/);
   });
 
   it("gives 80/443 to the lowest public port, by number and not by key order", () => {
     // Determinism is the point: the holder is the port the service's bare URL
     // names and the only one a custom domain can front, so an arbitrary pick
     // would silently move both.
-    const services = machineFor({ ports: { "8443": { public: true }, "443": { public: true } } }).services as { ports: { port: number }[], internal_port: number }[];
+    const services = machineFor({ public: true, ports: { "8443": {}, "443": {} } }).services as { ports: { port: number }[], internal_port: number }[];
     const holder = services.find((service) => service.internal_port === 443);
     const other = services.find((service) => service.internal_port === 8443);
     expect(holder?.ports.map((entry) => entry.port).sort((a, b) => a - b)).toEqual([80, 443]);
@@ -72,7 +85,7 @@ describe("service ports", () => {
     // listeners — [80, 443, 80, 443]. The record shape only makes an EXACT key
     // impossible to repeat, which is what the old "duplicates are impossible by
     // construction" claim actually covered.
-    expect(() => validateServiceSpec(spec({ ports: { "80": { public: true }, "080": { public: true } } })))
+    expect(() => validateServiceSpec(spec({ public: true, ports: { "80": {}, "080": {} } })))
       .toThrow(/without a leading zero/);
     // Private ports had the same hole long before several public ports existed.
     expect(() => validateServiceSpec(spec({ ports: { "8080": {}, "08080": {} } })))
@@ -89,48 +102,48 @@ describe("service ports", () => {
     // A sibling numbered 80 or 443 therefore asked for a listener the holder had
     // already taken — `{80, 443}` produced external [80, 443, 443]. Every layer
     // passed it and Fly got a config it cannot serve.
-    for (const ports of [
-      { "80": { public: true }, "443": { public: true } },
-      { "8": { public: true }, "80": { public: true } },
-      // Not only a public-port problem: a private HTTP port is the holder when it
-      // is the only one, and a raw TCP 443 beside it collided the same way long
-      // before several public ports were allowed.
-      { "8080": {}, "443": { protocol: "tcp" } },
+    for (const config of [
+      { public: true, ports: { "80": {}, "443": {} } },
+      { public: true, ports: { "8": {}, "80": {} } },
+      // Not only a public-service problem: the sole HTTP port of a PRIVATE
+      // service is the holder too, so a raw TCP 443 beside it collided the same
+      // way long before a service could be public with several ports.
+      { public: false, ports: { "8080": {}, "443": { protocol: "tcp" } } },
     ]) {
-      expect(() => validateServiceSpec(spec({ ports })), JSON.stringify(ports)).toThrow(/would collide with the standard bindings/);
+      expect(() => validateServiceSpec(spec(config)), JSON.stringify(config)).toThrow(/would collide with the standard bindings/);
     }
     // The port sets that DO reach a machine keep every external listener unique.
-    for (const ports of [
-      { "3000": { public: true }, "8443": { public: true } },
-      { "80": { public: true }, "3000": { public: true } },
-      { "443": { public: true }, "3000": { public: true } },
-      { "8080": {}, "9090": {} },
-      { "8080": {}, "5432": { protocol: "tcp" } },
-      { "80": { public: true } },
+    for (const config of [
+      { public: true, ports: { "3000": {}, "8443": {} } },
+      { public: true, ports: { "80": {}, "3000": {} } },
+      { public: true, ports: { "443": {}, "3000": {} } },
+      { public: false, ports: { "8080": {}, "9090": {} } },
+      { public: false, ports: { "8080": {}, "5432": { protocol: "tcp" } } },
+      { public: true, ports: { "80": {} } },
     ]) {
-      const services = machineFor({ ports }).services as { ports: { port: number }[] }[];
+      const services = machineFor(config).services as { ports: { port: number }[] }[];
       const external = services.flatMap((service) => service.ports.map((entry) => entry.port));
-      expect(new Set(external).size, `${JSON.stringify(ports)} -> ${JSON.stringify(external)}`).toBe(external.length);
+      expect(new Set(external).size, `${JSON.stringify(config)} -> ${JSON.stringify(external)}`).toBe(external.length);
     }
   });
 
-  it("terminates TLS on a public port's own number, but not on a private one's", () => {
-    // VERIFIED AGAINST REAL FLY: a non-holder public port is reachable ONLY on
-    // its own number, so a plain `http` handler there publishes it in cleartext
-    // while the URL we report for it says https. A private port is the opposite
-    // case — it is reached over Flycast as http://<host>:<port>, and TLS there
-    // would break every private url().
-    const publicPorts = machineFor({ ports: { "3000": { public: true }, "8443": { public: true } } }).services as { ports: { port: number, handlers?: string[] }[], internal_port: number }[];
+  it("terminates TLS on a public service's own port numbers, but not on a private one's", () => {
+    // VERIFIED AGAINST REAL FLY: a non-holder port of a public service is
+    // reachable ONLY on its own number, so a plain `http` handler there
+    // publishes it in cleartext while the URL we report for it says https. A
+    // private service is the opposite case — its ports are reached over Flycast
+    // as http://<host>:<port>, and TLS there would break every private url().
+    const publicPorts = machineFor({ public: true, ports: { "3000": {}, "8443": {} } }).services as { ports: { port: number, handlers?: string[] }[], internal_port: number }[];
     expect(publicPorts.find((service) => service.internal_port === 8443)?.ports)
       .toEqual([{ port: 8443, handlers: ["tls", "http"] }]);
-    // The holder keeps plain 80 alongside TLS 443, and its own number is public
-    // too, so it terminates TLS as well.
+    // The holder keeps plain 80 alongside TLS 443, and its own number is on a
+    // public service too, so it terminates TLS as well.
     const holder = publicPorts.find((service) => service.internal_port === 3000)?.ports ?? [];
     expect(holder).toContainEqual({ port: 80, handlers: ["http"] });
     expect(holder).toContainEqual({ port: 443, handlers: ["tls", "http"] });
     expect(holder).toContainEqual({ port: 3000, handlers: ["tls", "http"] });
 
-    const privatePorts = machineFor({ ports: { "8080": {}, "9090": {} } }).services as { ports: { port: number, handlers?: string[] }[], internal_port: number }[];
+    const privatePorts = machineFor({ public: false, ports: { "8080": {}, "9090": {} } }).services as { ports: { port: number, handlers?: string[] }[], internal_port: number }[];
     expect(privatePorts.find((service) => service.internal_port === 9090)?.ports)
       .toEqual([{ port: 9090, handlers: ["http"] }]);
   });
@@ -138,14 +151,14 @@ describe("service ports", () => {
   it("never binds the same external port twice, even when the container listens on 80 or 443", () => {
     // The most common Docker default: a web image listening on 80, published.
     // Its own binding and the standard-port binding are the same number.
-    const onPort80 = machineFor({ ports: { "80": { public: true } } });
+    const onPort80 = machineFor({ public: true, ports: { "80": {} } });
     expect((onPort80.services as any[])[0].ports).toEqual([
       { port: 80, handlers: ["http"] },
       { port: 443, handlers: ["tls", "http"] },
     ]);
     // 443 is the dangerous one: its own plain-http binding must not shadow the
     // TLS-terminating one, or the platform URL would serve cleartext.
-    const onPort443 = machineFor({ ports: { "443": { public: true } } });
+    const onPort443 = machineFor({ public: true, ports: { "443": {} } });
     expect((onPort443.services as any[])[0].ports).toEqual([
       { port: 443, handlers: ["tls", "http"] },
       { port: 80, handlers: ["http"] },
@@ -171,10 +184,10 @@ describe("service ports", () => {
         concurrency: { type: "requests" },
       }],
     });
-    // Public HTTP: its own number — terminating TLS, because it is public and
+    // A PUBLIC service's port: its own number — terminating TLS, because it is
     // reachable from the internet there — plus the standard ports so its fly.dev
     // URL and any custom domain certificate work.
-    expect(machineFor({ ports: { "3000": { public: true } } })).toMatchObject({
+    expect(machineFor({ public: true, ports: { "3000": {} } })).toMatchObject({
       services: [{
         internal_port: 3000,
         ports: [
@@ -225,12 +238,12 @@ describe("service ports", () => {
     // Each of these changes the machine's Fly services array or its ingress, so
     // none of them may hash identically to the base.
     expect(revisionOf({ ports: { "5432": { protocol: "tcp" } } })).not.toBe(base);
-    expect(revisionOf({ ports: { "5432": { public: true } } })).not.toBe(base);
+    expect(revisionOf({ public: true, ports: { "5432": {} } })).not.toBe(base);
     expect(revisionOf({ ports: { "6000": {} } })).not.toBe(base);
     expect(revisionOf({ ports: { "5432": {}, "9090": {} } })).not.toBe(base);
     // Same set, restated with its defaults spelled out: identical machines, so
     // the revision must NOT roll (it would restart the fleet for nothing).
-    expect(revisionOf({ ports: { "5432": { public: false, protocol: "http" } } })).toBe(base);
+    expect(revisionOf({ public: false, ports: { "5432": { protocol: "http" } } })).toBe(base);
     // Nor may merely REORDERING the list roll it — same machines, and for a
     // volume-backed server a needless roll is real downtime.
     expect(revisionOf({ ports: { "9090": {}, "5432": {} } }))

@@ -80,13 +80,13 @@ export type MarshalEnvValue = { value: string } | { ref: string };
 export type MarshalServiceSpec = {
   config: {
     type: "server" | "serverless",
-    min_instances: number,
-    max_instances: number,
-    // The ports the container listens on, keyed by port number. There is no
-    // separate visibility: Marshal allocates public ingress exactly when a port
-    // asks for it, and re-validates that at most one does and that it is not
-    // raw TCP.
-    ports: Record<string, { public: boolean, protocol: "http" | "tcp" }>,
+    // Whether Marshal allocates public ingress. A property of the SERVICE: the
+    // Fly proxy serves every declared port on every address the app holds, so
+    // there is no such thing as a public port with a private sibling. Marshal
+    // re-validates that a public service is all-HTTP and declares a port.
+    public: boolean,
+    // The ports the container listens on, keyed by port number.
+    ports: Record<string, { protocol: "http" | "tcp" }>,
     // Persistent disks keyed by volume id; absent = ephemeral filesystem.
     // Marshal requires type "server" when one is set.
     persistent_volumes?: Record<string, { path: string, size_gb: number }>,

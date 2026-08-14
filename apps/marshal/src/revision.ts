@@ -24,8 +24,9 @@ export function computeRevision(spec: ServiceSpec, rootKey: Buffer = getConfig()
       // after "8080", which would make the revision depend on how the ports
       // happened to be written and restart the fleet for nothing (which for a
       // volume-backed "server" means real downtime).
+      public: spec.config.public,
       ports: portEntries(spec.config.ports)
-        .map((entry) => ({ port: entry.port, public: entry.public, protocol: entry.protocol })),
+        .map((entry) => ({ port: entry.port, protocol: entry.protocol })),
       // It MUST be included: without it a volume-only change —
       // adding, resizing, removing, or RE-IDENTIFYING a disk — produces the same revision, so
       // applyServiceSpec takes the unchanged path, keeps the PREVIOUS spec, and silently drops

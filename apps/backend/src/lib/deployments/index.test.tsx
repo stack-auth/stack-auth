@@ -5,7 +5,7 @@ import { autoInjectedEnvVars, definitionFromServiceRow, deploymentToApiShape, ef
 const baseRow = {
   serviceId: "api",
   type: "serverless",
-  ports: { "3000": { public: false, protocol: "http" } },
+  isPublic: false, ports: { "3000": { protocol: "http" } },
   minInstances: 0,
   maxInstances: 1,
   rootDirectory: null,
@@ -23,13 +23,15 @@ describe("stored deployment environment", () => {
   it("continues to read the object database representation", () => {
     const definition = definitionFromServiceRow({
       ...baseRow,
-      ports: { "3000": { public: true, protocol: "http" } },
+      isPublic: true, ports: { "3000": { protocol: "http" } },
       env: { SAFE: { value: "legacy" } },
     });
     expect(definition.env.SAFE).toEqual({ type: undefined, value: "legacy", key: undefined });
     // The ports come back in the shape they were written in — the record the
-    // deploy file declared, not a translation of it.
-    expect(definition.ports).toEqual({ "3000": { public: true, protocol: "http" } });
+    // deploy file declared, not a translation of it. Publicness is NOT in there:
+    // it is the service's, and comes off its own column.
+    expect(definition.ports).toEqual({ "3000": { protocol: "http" } });
+    expect(definition.public).toBe(true);
   });
 });
 
@@ -62,7 +64,8 @@ describe("stored deployment volumes", () => {
       // A server holds one instance; min 0 is what makes it suspend when idle.
       min_instances: 0,
       max_instances: 1,
-      ports: { "3000": { public: false, protocol: "http" } },
+      public: false,
+      ports: { "3000": { protocol: "http" } },
       persistent_volumes: { uploads: { path: "/data", size_gb: 10 } },
     });
     const withoutVolume = marshalSpecForDefinition(definitionFromServiceRow(serverRow, null), {});

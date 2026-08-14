@@ -185,11 +185,10 @@ export function apiStatusToBoardStatus(status: AdminDeploymentServiceJson["statu
  * number (the shape the deploy file writes), and object key order would put
  * "80" after "8080".
  */
-export function portEntriesOf(ports: AdminDeploymentServiceJson["ports"]): { port: number, public: boolean, protocol: "http" | "tcp" }[] {
+export function portEntriesOf(ports: AdminDeploymentServiceJson["ports"]): { port: number, protocol: "http" | "tcp" }[] {
   return Object.entries(ports)
     .map(([portKey, definition]) => ({
       port: Number(portKey),
-      public: definition.public === true,
       protocol: definition.protocol ?? "http" as const,
     }))
     .filter((entry) => Number.isInteger(entry.port))
@@ -350,11 +349,13 @@ export function buildBoardServices(
         x: 520 + Math.floor(index / 4) * 320,
         y: 96 + (index % 4) * 150,
         status: statusByServiceId?.get(apiService.id) ?? apiStatusToBoardStatus(apiService.status),
-        // Names every port, marking the public one — the board node is where a
-        // reader checks what a service actually exposes. Sorted by port NUMBER,
-        // since the ports arrive keyed by it.
+        // Names every port and whether the SERVICE is public — the board node is
+        // where a reader checks what a service actually exposes. Public is stated
+        // once, for the service, because that is where it is true: every port of
+        // a public service is reachable. Sorted by port NUMBER, since the ports
+        // arrive keyed by it.
         source: portEntriesOf(apiService.ports).length > 0
-          ? `Container on ${portEntriesOf(apiService.ports).length === 1 ? "port" : "ports"} ${portEntriesOf(apiService.ports).map((entry) => `${entry.port}${entry.public ? " (public)" : ""}`).join(", ")}`
+          ? `${apiService.public ? "Public" : "Private"} container on ${portEntriesOf(apiService.ports).length === 1 ? "port" : "ports"} ${portEntriesOf(apiService.ports).map((entry) => `${entry.port}${entry.protocol === "tcp" ? " (tcp)" : ""}`).join(", ")}`
           : "Deployed with `hexclave deploy`",
         domain: apiService.domains.find((d) => d.is_primary)?.hostname ?? hostnameOfUrl(apiService.url),
         envVars: apiService.env.map((envVar) => ({

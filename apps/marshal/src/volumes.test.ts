@@ -36,7 +36,7 @@ describe("persistent volume spec validation", () => {
     // redeploy of every existing service.
     expect(computeRevision(validateServiceSpec(spec({})), TEST_DATA_KEY)).toBe(
       computeRevision({
-        config: { type: "server", min_instances: 0, max_instances: 1, ports: { "3000": { public: false, protocol: "http" } } },
+        config: { type: "server", public: false, min_instances: 0, max_instances: 1, ports: { "3000": { protocol: "http" } } },
         source: { image: "example/image" },
         env: {},
       }, TEST_DATA_KEY),
@@ -178,9 +178,9 @@ describe("machine autostop policy", () => {
 });
 
 describe("public ingress spec validation", () => {
-  it("is private until a port says otherwise, and that changes the revision", () => {
+  it("is private until the service says otherwise, and that changes the revision", () => {
     const privateSpec = validateServiceSpec(spec({}));
-    const publicSpec = validateServiceSpec(spec({ ports: { "3000": { public: true } } }));
+    const publicSpec = validateServiceSpec(spec({ public: true }));
     expect(specIsPublic(privateSpec)).toBe(false);
     expect(specIsPublic(publicSpec)).toBe(true);
     // Ingress is machine-visible config, so flipping it must roll the fleet.

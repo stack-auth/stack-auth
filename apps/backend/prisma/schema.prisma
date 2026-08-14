@@ -1762,15 +1762,20 @@ model DeploymentService {
   // only kind that may mount a volume) or "serverless" (scales between the
   // bounds below, stops on scale-down).
   type          String @default("serverless")
+  // Whether the service takes public ingress. A property of the SERVICE rather
+  // than of a port: the runtime's proxy serves every declared port on every
+  // address the app holds, so "public 3000, private 5432" is not a thing it can
+  // do, and a per-port flag could only ever misdescribe it.
+  //
+  // A public service must be all-HTTP (raw TCP carries no SNI or Host, so a
+  // shared public address cannot route it) and must declare at least one port.
+  // Both are enforced in code rather than by a CHECK: they are facts about the
+  // runtime we deploy onto, not about what these columns may contain, and are
+  // expected to move — public TCP is a dedicated IPv4 away. See the migration.
+  isPublic      Boolean @default(false)
   // The ports the container listens on, as a JSON object keyed by port number
-  // with `{ public?, protocol? }` values (see DeploymentPortDefinition). There
-  // is no separate visibility column: a service is public exactly when one of
-  // its ports is, so the two cannot drift apart. A "tcp" port may never be
-  // public — enforced by a CHECK constraint as well as by the sync route, since
-  // this column is the only record of the fact. The rule that a service may not
-  // MIX public and private ports is deliberately code-only: it is a fact about
-  // Fly's addressing model rather than about this column, and it is expected to
-  // move. See the migration for why it is not a constraint.
+  // with `{ protocol? }` values (see DeploymentPortDefinition). A "tcp" port is
+  // raw and only a private service may declare one.
   ports         Json   @default("{}")
   minInstances  Int?
   maxInstances  Int?

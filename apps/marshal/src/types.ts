@@ -32,12 +32,14 @@ export type ServiceKind = "server" | "serverless";
 // How one port the container listens on is exposed. Each becomes its own entry
 // in the machine's Fly `services` array.
 //
-// `public` allocates Fly ingress and gives the service a built-in fly.dev URL.
-// At most one port per service may be public: a hostname's 80/443 reach exactly
-// one of them. A "tcp" port is raw — no TLS termination, no HTTP routing — so it
-// is private-only and reachable over Flycast at its own number.
+// There is deliberately no per-port `public`: Fly's listener set is per-APP, not
+// per-address, so every declared port answers on every address the app holds.
+// Visibility is therefore a property of the whole container (see
+// ContainerConfig.public) and a per-port flag could only ever lie about it.
+//
+// A "tcp" port is raw, and only a PRIVATE service may declare one: a shared
+// public IPv4 tells apps apart by SNI or Host, and raw TCP carries neither.
 export type PortConfig = {
-  public: boolean,
   protocol: "http" | "tcp",
 };
 
@@ -51,7 +53,7 @@ export type PortsConfig = Record<string, PortConfig>;
 // compare, count or iterate ports. Ascending by number, so every caller sees the
 // same order (key order would put "80" after "8080" for one caller and not
 // another).
-export type PortEntry = { port: number, public: boolean, protocol: "http" | "tcp" };
+export type PortEntry = { port: number, protocol: "http" | "tcp" };
 
 export function portEntries(ports: PortsConfig): PortEntry[] {
   const entries: PortEntry[] = [];
@@ -59,7 +61,7 @@ export function portEntries(ports: PortsConfig): PortEntry[] {
     if (!/^[0-9]{1,5}$/.test(portKey)) continue;
     const port = Number(portKey);
     if (port < 1 || port > 65535) continue;
-    entries.push({ port, public: config.public === true, protocol: config.protocol === "tcp" ? "tcp" : "http" });
+    entries.push({ port, protocol: config.protocol === "tcp" ? "tcp" : "http" });
   }
   return entries.sort((a, b) => a.port - b.port);
 }
@@ -68,9 +70,15 @@ export type ContainerConfig = {
   type: ServiceKind,
   min_instances: number,
   max_instances: number, // >= min_instances; v1 cap: 10. Always 0/1 for "server".
-  // May be empty (a worker that only dials out). Readiness = a declared port
-  // accepts connections. There is no service-level visibility: the service is
-  // public exactly when a port is.
+  // Whether the service takes public ingress. The whole container, not one port:
+  // the Fly proxy serves every declared port on every address the app holds, so
+  // there is no such thing as a public port with a private sibling.
+  //
+  // A public service must be all-HTTP and must declare at least one port; both
+  // are enforced in validateServiceSpec.
+  public: boolean,
+  // May be empty (a worker that only dials out; then `public` must be false).
+  // Readiness = a declared port accepts connections.
   ports: PortsConfig,
   // Absent = the container filesystem is entirely ephemeral. Keyed by VOLUME ID, which
   // names the Fly volume (see flyVolumeName): the id, not the service, identifies the

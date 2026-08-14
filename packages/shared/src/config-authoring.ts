@@ -128,32 +128,36 @@ export type HexclavePersistentVolume = {
 /** How one port the container listens on is exposed. */
 export type HexclavePort = {
   /**
-   * Exposes this port to the internet and gives the service a platform URL,
-   * even without a custom domain. Defaults to false.
-   *
-   * A public port must be the service's ONLY port. This is a Fly.io limitation:
-   * its proxy serves every declared port on every address the app has, so a
-   * "private" sibling of a public port would be on the internet too. Put other
-   * ports on their own service and reach them with `hostname()`.
-   */
-  public?: boolean,
-  /**
-   * "tcp" is a raw port — no TLS termination, no HTTP routing — for databases
-   * and other daemons. TCP ports are private-only; reach them with `hostname()`
-   * and the port number. Defaults to "http".
+   * "tcp" is a raw port, for databases and other daemons. Only a PRIVATE service
+   * may declare one — a shared public address tells services apart by SNI or
+   * Host, and a raw TCP stream carries neither. Reach them with `hostname()` and
+   * the port number. Defaults to "http".
    */
   protocol?: "http" | "tcp",
 };
 
 type HexclaveServiceBase = {
   /**
-   * The ports the container listens on, keyed by port number:
-   * `ports: { 3000: { public: true }, 5432: { protocol: "tcp" } }`. The service
-   * is public exactly when one of them is.
+   * Exposes the service to the internet and gives it a platform URL, even
+   * without a custom domain. Defaults to false — services are private and reach
+   * each other over the project's internal network.
    *
-   * Each port is reachable on the private network at its own number; the public
-   * one is additionally served on 80/443. Note that a URL names a single port,
-   * so a service with several needs `url(9090)` rather than a bare `url()`.
+   * It belongs to the SERVICE rather than to a port because the runtime cannot
+   * make it anything else: Fly's proxy serves every declared port on every
+   * address the app holds, so the moment one port is public they all are.
+   *
+   * A public service must therefore be all-HTTP and declare at least one port.
+   */
+  public?: boolean,
+  /**
+   * The ports the container listens on, keyed by port number:
+   * `ports: { 3000: {}, 5432: { protocol: "tcp" } }`. Whether they are reachable
+   * from the internet is the SERVICE's `public`, not a per-port flag.
+   *
+   * Each port is reachable at its own number; the standard-ports holder (the
+   * lowest port of a public service, or the sole HTTP port of a private one) is
+   * additionally served on 80/443. Note that a URL names a single port, so a
+   * service with several needs `url(9090)` rather than a bare `url()`.
    *
    * Use `ports: {}` for a worker that only makes outbound connections. It gets
    * no URL and can hold no custom domain, and since the platform only wakes a
@@ -237,7 +241,7 @@ export type HexclaveService = HexclaveServerService | HexclaveServerlessService;
  *       persistentVolumes: { uploads: { path: "/data", sizeGb: 10 } },
  *       env: { DB_URL: service("db").url(5432), PROJECT_ID: hexclave.projectId },
  *     },
- *     web: { type: "serverless", ports: { 3000: { public: true } }, maxInstances: 3, env: { KEY: secret("API_KEY") } },
+ *     web: { type: "serverless", public: true, ports: { 3000: {} }, maxInstances: 3, env: { KEY: secret("API_KEY") } },
  *   },
  * });
  * ```

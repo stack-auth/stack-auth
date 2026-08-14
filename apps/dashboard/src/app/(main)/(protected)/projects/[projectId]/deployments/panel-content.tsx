@@ -654,20 +654,23 @@ export function SettingsContent({ service, isHexclave }: {
   }
 
   const servicePorts = portEntriesOf(service.api?.ports ?? {});
+  const isPublic = service.api?.public === true;
   const fields: { label: string, value: string | null | undefined, fallback: string }[] = [
     { label: "Root directory", value: service.api?.root_directory, fallback: "./" },
     // A missing dockerfile_path means "Railpack build" only once a definition was actually
     // synced — before that (there are no ports either) it just means "not synced yet".
     { label: "Dockerfile", value: service.api?.dockerfile_path, fallback: servicePorts.length > 0 ? "None (Railpack auto-detected build)" : "Not synced yet" },
-    // Every port, with the public ones called out: which port is exposed is the
-    // thing a reader most often comes here to check. With SEVERAL public ports
-    // the one owning 80/443 is called out too, since it is the port the service's
-    // URL points at and the only one a custom domain can front — not something a
-    // reader can work out from a list of numbers.
+    // Visibility is the SERVICE's, so it gets a row of its own rather than being
+    // repeated on every port.
+    { label: "Visibility", value: service.api == null ? undefined : service.api.public ? "Public" : "Private", fallback: "Not synced yet" },
+    // Every port the container listens on. On a public service with SEVERAL
+    // ports the one owning 80/443 is called out, since it is the port the
+    // service's URL points at and the only one a custom domain can front — not
+    // something a reader can work out from a list of numbers.
     {
       label: servicePorts.length === 1 ? "Container port" : "Container ports",
       value: servicePorts.length > 0
-        ? servicePorts.map((entry) => `${entry.port}${entry.public ? servicePorts.filter((other) => other.public).length > 1 && deploymentPortOwnsStandardPorts(service.api?.ports ?? {}, entry.port) ? " (public · 80/443)" : " (public)" : ""}${entry.protocol === "tcp" ? " · tcp" : ""}`).join(", ")
+        ? servicePorts.map((entry) => `${entry.port}${isPublic && servicePorts.length > 1 && deploymentPortOwnsStandardPorts(service.api?.ports ?? {}, isPublic, entry.port) ? " · 80/443" : ""}${entry.protocol === "tcp" ? " · tcp" : ""}`).join(", ")
         : undefined,
       fallback: "Not synced yet",
     },

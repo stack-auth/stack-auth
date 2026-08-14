@@ -69,9 +69,9 @@ describe("deploy command helpers", () => {
       deployFilePath: path.join(os.tmpdir(), "hexclave.deploy.ts"),
       idExport: "test-source",
       deploymentExport: () => ({ services: {
-        web: { type: "serverless", ports: { 3000: { public: true } } },
+        web: { type: "serverless", public: true, ports: { 3000: {} } },
         worker: { type: "serverless", ports: { 3001: {} } },
-        failed: { type: "serverless", ports: { 3002: { public: true } } },
+        failed: { type: "serverless", public: true, ports: { 3002: {} } },
       } }),
       mode: "deploy",
     }).services;
@@ -92,7 +92,7 @@ describe("deploy command helpers", () => {
       deploymentExport: () => ({ services: {
         // Declared high-first on purpose: the holder is the lowest port NUMBER,
         // not whichever key was written first.
-        web: { type: "serverless", ports: { 8443: { public: true }, 3000: { public: true } } },
+        web: { type: "serverless", public: true, ports: { 8443: {}, 3000: {} } },
       } }),
       mode: "deploy",
     }).services;

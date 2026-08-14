@@ -108,11 +108,14 @@ export type AdminDeploymentServiceJson = {
   // up (1), and the only kind that may hold a persistent volume; "serverless" =
   // scales between the bounds below and stops on scale-down.
   type: "server" | "serverless",
+  // Whether the service takes public ingress. A property of the SERVICE, not of
+  // a port: the runtime serves every declared port on every address the service
+  // has, so a public service is reachable on all of them and a private one on
+  // none. A public service is always all-HTTP.
+  public: boolean,
   // The ports the container listens on, keyed by port number — the same shape
-  // the deploy file writes. There is no separate visibility field: the service
-  // is public exactly when one of these is, and at most one may be. Empty on
-  // rows synced before the definition existed.
-  ports: Record<string, { public?: boolean, protocol?: "http" | "tcp" }>,
+  // the deploy file writes. Empty on rows synced before the definition existed.
+  ports: Record<string, { protocol?: "http" | "tcp" }>,
   // Scaling bounds; null on unsynced rows.
   min_instances: number | null,
   max_instances: number | null,
