@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { expect } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, Payments, Project, niceBackendFetch } from "../../../../backend-helpers";
@@ -13,13 +14,20 @@ const ITEM_UPDATES_PER_USER = 10;
 // products and ITEM_UPDATES_PER_USER item-quantity changes) written into the same tenancy before any
 // measurement happens. The measured workload stays identical at every level, so the only thing that
 // varies between runs is the volume of pre-existing data.
-const PREFILL_CUSTOMERS = Number(process.env.HEXCLAVE_PAYMENTS_PERF_PREFILL ?? "0");
-if (!Number.isInteger(PREFILL_CUSTOMERS) || PREFILL_CUSTOMERS < 0) {
-  throw new Error(`HEXCLAVE_PAYMENTS_PERF_PREFILL must be a non-negative integer, got ${process.env.HEXCLAVE_PAYMENTS_PERF_PREFILL}`);
+const PREFILL_VALUE = process.env.HEXCLAVE_PAYMENTS_PERF_PREFILL;
+if (PREFILL_VALUE != null && !/^\d+$/.test(PREFILL_VALUE)) {
+  throw new Error(`HEXCLAVE_PAYMENTS_PERF_PREFILL must be a non-negative integer, got ${PREFILL_VALUE}`);
+}
+const PREFILL_CUSTOMERS = PREFILL_VALUE == null ? 0 : Number(PREFILL_VALUE);
+if (PREFILL_VALUE != null && !Number.isSafeInteger(PREFILL_CUSTOMERS)) {
+  throw new Error(`HEXCLAVE_PAYMENTS_PERF_PREFILL must be a non-negative integer, got ${PREFILL_VALUE}`);
 }
 // When set, the summary is also written to this path as JSON, so that a sweep over several prefill
 // levels can be aggregated and plotted afterwards.
 const OUTPUT_PATH = process.env.HEXCLAVE_PAYMENTS_PERF_OUTPUT;
+if (OUTPUT_PATH != null && OUTPUT_PATH.trim() === "") {
+  throw new Error(`HEXCLAVE_PAYMENTS_PERF_OUTPUT must be a non-empty path, got ${OUTPUT_PATH}`);
+}
 
 type PerfMetric = {
   name: string,
@@ -75,7 +83,16 @@ async function listAllTransactions() {
 
 // The measured workload alone fits comfortably into the base timeout; prefilling is what can take
 // arbitrarily long, so the budget grows with the requested prefill size.
-const TEST_TIMEOUT_MS = 240_000 + PREFILL_CUSTOMERS * 30_000;
+const BASE_TEST_TIMEOUT_MS = 240_000;
+const PREFILL_TIMEOUT_MS = 30_000;
+const MAX_NODE_TIMER_MS = 2 ** 31 - 1;
+const MAX_PREFILL_CUSTOMERS = Math.floor((MAX_NODE_TIMER_MS - BASE_TEST_TIMEOUT_MS) / PREFILL_TIMEOUT_MS);
+if (PREFILL_CUSTOMERS > MAX_PREFILL_CUSTOMERS) {
+  throw new Error(
+    `HEXCLAVE_PAYMENTS_PERF_PREFILL assumes the derived test timeout stays within Node's maximum timer delay of ${MAX_NODE_TIMER_MS} ms; effective maximum prefill count is ${MAX_PREFILL_CUSTOMERS}, got ${PREFILL_CUSTOMERS}`,
+  );
+}
+const TEST_TIMEOUT_MS = BASE_TEST_TIMEOUT_MS + PREFILL_CUSTOMERS * PREFILL_TIMEOUT_MS;
 
 it("benchmarks backend-level payments flows through the Bulldozer HTTP boundary", { timeout: TEST_TIMEOUT_MS }, async () => {
   const metrics: PerfMetric[] = [];
@@ -155,7 +172,7 @@ it("benchmarks backend-level payments flows through the Bulldozer HTTP boundary"
       expect(oneTimeResponse.status).toBe(200);
 
       for (let grant = 0; grant < 2; grant++) {
-        const grantResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+        const grantResponse = await niceBackendFetch(urlString`/api/v1/payments/products/user/${userId}`, {
           method: "POST",
           accessType: "server",
           body: { product_id: "perf-api-grant", quantity: 1 },
@@ -165,7 +182,7 @@ it("benchmarks backend-level payments flows through the Bulldozer HTTP boundary"
 
       for (let update = 0; update < ITEM_UPDATES_PER_USER; update++) {
         const itemId = update % 2 === 0 ? "credits" : "boosts";
-        const updateResponse = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/${itemId}/update-quantity`, {
+        const updateResponse = await niceBackendFetch(urlString`/api/latest/payments/items/user/${userId}/${itemId}/update-quantity`, {
           method: "POST",
           accessType: "server",
           query: { allow_negative: "false" },
