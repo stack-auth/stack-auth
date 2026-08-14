@@ -39,10 +39,10 @@ export function defineHexclaveConfig(config: StrictStackConfig<HexclaveConfig>):
 }
 
 // ============================ deployments ============================
-// The author-facing shape of the deploy file's `deployment` export. These types
+// The author-facing shape of the deploy file's `deploy` export. These types
 // are camelCase and deliberately NOT the wire shape in ./deployments (which is
 // snake_case): the CLI evaluates this, validates it with precise per-field
-// errors, and serializes it. They exist so `export const deployment:
+// errors, and serializes it. They exist so `export const deploy:
 // HexclaveDeploymentConfig = { ... }` gets completion and catches typos in the
 // editor — the CLI still re-validates everything at runtime, because the deploy
 // file is arbitrary user TypeScript that may not be typechecked at all.
@@ -219,7 +219,7 @@ export type HexclaveServerlessService = HexclaveServiceBase & {
 export type HexclaveService = HexclaveServerService | HexclaveServerlessService;
 
 /**
- * The `deployment` export of a deploy file (hexclave.deploy.ts) — the services
+ * The `deploy` export of a deploy file (hexclave.deploy.ts) — the services
  * deployed together by one `hexclave deploy` — or of hexclave.config.ts.
  *
  * It is a FUNCTION of the deployment context, so it can reach secrets,
@@ -233,7 +233,7 @@ export type HexclaveService = HexclaveServerService | HexclaveServerlessService;
  * // across every deploy file that deploys into the same project.
  * export const id = "backend";
  *
- * export const deployment: HexclaveDeploymentConfig = ({ secret, service, hexclave }) => ({
+ * export const deploy: HexclaveDeploymentConfig = ({ secret, service, hexclave }) => ({
  *   services: {
  *     api: {
  *       type: "server",

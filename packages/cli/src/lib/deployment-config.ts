@@ -1,4 +1,4 @@
-// Evaluates the `deployment` export of hexclave.deploy.ts.
+// Evaluates the `deploy` export of hexclave.deploy.ts.
 //
 // Deployments live in their OWN file, separate from hexclave.config.ts: one
 // Hexclave project can be deployed from several repositories, each shipping the
@@ -14,7 +14,7 @@
 //
 //   export const id = "my-app";
 //
-//   export const deployment: HexclaveDeploymentConfig = ({ isDev, secret, service, hexclave }) => ({
+//   export const deploy: HexclaveDeploymentConfig = ({ isDev, secret, service, hexclave }) => ({
 //     services: {
 //       frontend: {
 //         type: "serverless",
@@ -99,7 +99,7 @@ export function hasDeployFile(cwd: string): boolean {
 /**
  * Resolves the deploy file path: --deploy-file wins (and must exist); otherwise
  * the first existing candidate in `cwd`. A deploy file is REQUIRED — service
- * definitions only exist in its `deployment` export.
+ * definitions only exist in its `deploy` export.
  */
 export function resolveDeployFilePath(deployFileOption: string | undefined, cwd: string): string {
   if (deployFileOption != null && deployFileOption !== "") {
@@ -115,7 +115,7 @@ export function resolveDeployFilePath(deployFileOption: string | undefined, cwd:
       return resolved;
     }
   }
-  throw new CliError(`No deploy file found in ${cwd}. \`hexclave deploy\` deploys the services defined by the \`deployment\` export of your ${DEPLOY_FILE_CANDIDATES[0]} — create one, or pass --deploy-file <path>.`);
+  throw new CliError(`No deploy file found in ${cwd}. \`hexclave deploy\` deploys the services defined by the \`deploy\` export of your ${DEPLOY_FILE_CANDIDATES[0]} — create one, or pass --deploy-file <path>.`);
 }
 
 // Mirrors the backend's userSpecifiedIdSchema so a bad id fails here (with the
@@ -572,7 +572,7 @@ function serializeEnvForWire(env: Record<string, EvaluatedEnvVarValue>): Record<
 
 const EXAMPLE_DEPLOYMENT_EXPORT = `  export const id = "my-app";
 
-  export const deployment: HexclaveDeploymentConfig = ({ isDev, secret, service, hexclave }) => ({
+  export const deploy: HexclaveDeploymentConfig = ({ isDev, secret, service, hexclave }) => ({
     services: {
       web: {
         type: "serverless",
@@ -585,7 +585,7 @@ const EXAMPLE_DEPLOYMENT_EXPORT = `  export const id = "my-app";
   });`;
 
 /**
- * Evaluates a loaded deploy module's `deployment` export. `deployFilePath` must
+ * Evaluates a loaded deploy module's `deploy` export. `deployFilePath` must
  * be the absolute path of the deploy file (root directories resolve relative to
  * its directory).
  */
@@ -595,10 +595,10 @@ export function evaluateDeploymentConfig(options: {
   // file; the caller passes CONFIG_FILE_DEPLOYMENT_SOURCE_ID for deployments
   // declared in hexclave.config.ts, which has no id of its own.
   idExport: unknown,
-  deploymentExport: unknown,
+  deployExport: unknown,
   mode: "deploy" | "dev",
 }): EvaluatedServices {
-  const { deployFilePath, idExport, deploymentExport, mode } = options;
+  const { deployFilePath, idExport, deployExport, mode } = options;
   const deployFileDirectory = path.dirname(deployFilePath);
 
   // The source id names what this file deploys. Everything downstream — the
@@ -616,47 +616,47 @@ export function evaluateDeploymentConfig(options: {
     throw new CliError(`Invalid deployment source id ${JSON.stringify(sourceId)} in ${deployFilePath}. Ids must be at most ${MAX_DEPLOYMENT_SOURCE_ID_LENGTH} characters and contain only letters, numbers, underscores, dots, and hyphens (not starting with a dot or hyphen).`);
   }
 
-  if (deploymentExport === undefined) {
-    throw new CliError(`The deploy file ${deployFilePath} has no \`deployment\` export. Add one, e.g.:\n${EXAMPLE_DEPLOYMENT_EXPORT}`);
+  if (deployExport === undefined) {
+    throw new CliError(`The deploy file ${deployFilePath} has no \`deploy\` export. Add one, e.g.:\n${EXAMPLE_DEPLOYMENT_EXPORT}`);
   }
   // The export is a function OF THE CONTEXT returning `{ services }` — the
   // context is what `secret()`, `service()` and `hexclave.*` come from, so a
   // plain object could never reach them.
-  if (typeof deploymentExport !== "function") {
-    throw new CliError(`The \`deployment\` export of ${deployFilePath} must be a function of the deployment context, e.g.:\n${EXAMPLE_DEPLOYMENT_EXPORT}`);
+  if (typeof deployExport !== "function") {
+    throw new CliError(`The \`deploy\` export of ${deployFilePath} must be a function of the deployment context, e.g.:\n${EXAMPLE_DEPLOYMENT_EXPORT}`);
   }
 
   const { context, referencedServiceIds } = createServicesContext(mode);
-  let deploymentRaw: unknown;
+  let deployRaw: unknown;
   try {
-    deploymentRaw = (deploymentExport as (ctx: ServicesFunctionContext) => unknown)(context);
+    deployRaw = (deployExport as (ctx: ServicesFunctionContext) => unknown)(context);
   } catch (error) {
     if (error instanceof CliError) throw error;
     // The most common dev-mode crash: calling `.url()` on service()'s null
     // return without an isDev guard. Attach the explanation to the TypeError
     // instead of letting a bare "Cannot read properties of null" surface.
     if (mode === "dev" && error instanceof TypeError && /null/.test(error.message)) {
-      throw new CliError(`Failed to evaluate the \`deployment\` export of ${deployFilePath}: ${error.message}\nNote: during \`hexclave dev\`, service() returns null — guard connection values with isDev, e.g. \`isDev ? "http://localhost:5432" : service("database").url(5432)\`.`);
+      throw new CliError(`Failed to evaluate the \`deploy\` export of ${deployFilePath}: ${error.message}\nNote: during \`hexclave dev\`, service() returns null — guard connection values with isDev, e.g. \`isDev ? "http://localhost:5432" : service("database").url(5432)\`.`);
     }
-    throw new CliError(`Failed to evaluate the \`deployment\` export of ${deployFilePath}: ${errorMessage(error)}`);
+    throw new CliError(`Failed to evaluate the \`deploy\` export of ${deployFilePath}: ${errorMessage(error)}`);
   }
   // An async function's Promise would pass the object check below and then die
   // on a misleading "has no services".
-  if (deploymentRaw !== null && typeof deploymentRaw === "object" && "then" in deploymentRaw && typeof (deploymentRaw as { then: unknown }).then === "function") {
-    throw new CliError(`The \`deployment\` export of ${deployFilePath} must be synchronous, but it returned a Promise. Remove the \`async\` keyword — secrets and connections are resolved for you, nothing here needs to be awaited.`);
+  if (deployRaw !== null && typeof deployRaw === "object" && "then" in deployRaw && typeof (deployRaw as { then: unknown }).then === "function") {
+    throw new CliError(`The \`deploy\` export of ${deployFilePath} must be synchronous, but it returned a Promise. Remove the \`async\` keyword — secrets and connections are resolved for you, nothing here needs to be awaited.`);
   }
-  if (deploymentRaw === null || typeof deploymentRaw !== "object" || Array.isArray(deploymentRaw)) {
-    throw new CliError(`The \`deployment\` export of ${deployFilePath} must return an object with a \`services\` member, e.g.:\n${EXAMPLE_DEPLOYMENT_EXPORT}`);
+  if (deployRaw === null || typeof deployRaw !== "object" || Array.isArray(deployRaw)) {
+    throw new CliError(`The \`deploy\` export of ${deployFilePath} must return an object with a \`services\` member, e.g.:\n${EXAMPLE_DEPLOYMENT_EXPORT}`);
   }
-  const deploymentRecord = deploymentRaw as Record<string, unknown>;
-  for (const field of Object.keys(deploymentRecord)) {
+  const deployRecord = deployRaw as Record<string, unknown>;
+  for (const field of Object.keys(deployRecord)) {
     if (field !== "services") {
-      throw new CliError(`The \`deployment\` export of ${deployFilePath} returned an unknown field ${JSON.stringify(field)}. The only supported field is \`services\`.`);
+      throw new CliError(`The \`deploy\` export of ${deployFilePath} returned an unknown field ${JSON.stringify(field)}. The only supported field is \`services\`.`);
     }
   }
-  const servicesRaw = deploymentRecord.services;
+  const servicesRaw = deployRecord.services;
   if (servicesRaw === undefined) {
-    throw new CliError(`The \`deployment\` export of ${deployFilePath} returned no \`services\`. Add them, e.g.:\n${EXAMPLE_DEPLOYMENT_EXPORT}`);
+    throw new CliError(`The \`deploy\` export of ${deployFilePath} returned no \`services\`. Add them, e.g.:\n${EXAMPLE_DEPLOYMENT_EXPORT}`);
   }
   if (servicesRaw === null || typeof servicesRaw !== "object" || Array.isArray(servicesRaw)) {
     throw new CliError(`deployment.services of ${deployFilePath} must be a record of services keyed by service id.`);
@@ -1082,22 +1082,22 @@ async function importModule(filePath: string, description: string): Promise<Reco
 
 /**
  * Loads a deploy file (hexclave.deploy.ts) and returns the two exports that make
- * it one: the deployment source `id`, and the `deployment` itself.
+ * it one: the deployment source `id`, and the `deploy` function.
  */
-export async function importDeployModule(deployFilePath: string): Promise<{ id: unknown, deployment: unknown }> {
+export async function importDeployModule(deployFilePath: string): Promise<{ id: unknown, deploy: unknown }> {
   const module = await importModule(deployFilePath, "deploy file");
-  return { id: module.id, deployment: module.deployment };
+  return { id: module.id, deploy: module.deploy };
 }
 
 /**
  * Loads a config file (hexclave.config.ts) and returns its `config` export, plus
- * a `deployment` export if it has one — a project small enough to keep its
+ * a `deploy` export if it has one — a project small enough to keep its
  * services in the config file may declare them there instead of in a deploy
  * file. Those services belong to a deployment source named after the file (the
  * config file has no `id` export of its own), so they can coexist with the
  * deploy files of other repositories deploying into the same project.
  */
-export async function importConfigModule(configPath: string): Promise<{ config: unknown, deployment: unknown }> {
+export async function importConfigModule(configPath: string): Promise<{ config: unknown, deploy: unknown }> {
   const module = await importModule(configPath, "config file");
-  return { config: module.config, deployment: module.deployment };
+  return { config: module.config, deploy: module.deploy };
 }

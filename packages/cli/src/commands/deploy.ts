@@ -356,7 +356,7 @@ function collectTransitiveDependents(failedServiceId: string, services: Map<stri
 async function resolveDeploySource(deployFileOption: string | undefined, cwd: string): Promise<{
   path: string,
   idExport: unknown,
-  deploymentExport: unknown,
+  deployExport: unknown,
 }> {
   if (deployFileOption == null || deployFileOption === "") {
     const configPath = resolveConfigPushPath(undefined, cwd);
@@ -365,20 +365,20 @@ async function resolveDeploySource(deployFileOption: string | undefined, cwd: st
     // would deploy something other than what the author is editing.
     if (configPath !== null && !hasDeployFile(cwd)) {
       const configModule = await importConfigModule(configPath);
-      if (configModule.deployment !== undefined) {
-        return { path: configPath, idExport: CONFIG_FILE_DEPLOYMENT_SOURCE_ID, deploymentExport: configModule.deployment };
+      if (configModule.deploy !== undefined) {
+        return { path: configPath, idExport: CONFIG_FILE_DEPLOYMENT_SOURCE_ID, deployExport: configModule.deploy };
       }
     }
   }
   const deployFilePath = resolveDeployFilePath(deployFileOption, cwd);
   const deployModule = await importDeployModule(deployFilePath);
-  return { path: deployFilePath, idExport: deployModule.id, deploymentExport: deployModule.deployment };
+  return { path: deployFilePath, idExport: deployModule.id, deployExport: deployModule.deploy };
 }
 
 export function registerDeployCommand(program: Command) {
   program
     .command("deploy")
-    .description("Deploy the services defined by the `deployment` export of your hexclave.deploy.ts. Syncs the service definitions, then deploys every service in dependency order and waits for the remote builds to finish.")
+    .description("Deploy the services defined by the `deploy` export of your hexclave.deploy.ts. Syncs the service definitions, then deploys every service in dependency order and waits for the remote builds to finish.")
     .option("--service-id <id>", "Deploy only this service (its connections resolve against already-deployed services)")
     .option("--deploy-file <path>", "Path to the deploy file (default: auto-discover hexclave.deploy.ts in the current directory)")
     .option("--config-push", "Also push the project config file's `config` export to the project before deploying")
@@ -396,7 +396,7 @@ export function registerDeployCommand(program: Command) {
       const { sourceId, services } = evaluateDeploymentConfig({
         deployFilePath: deploySource.path,
         idExport: deploySource.idExport,
-        deploymentExport: deploySource.deploymentExport,
+        deployExport: deploySource.deployExport,
         mode: "deploy",
       });
 

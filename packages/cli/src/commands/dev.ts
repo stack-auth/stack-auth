@@ -958,12 +958,12 @@ export function registerDevCommand(program: Command) {
         const { services } = evaluateDeploymentConfig({
           deployFilePath,
           idExport: deployModule.id,
-          deploymentExport: deployModule.deployment,
+          deployExport: deployModule.deploy,
           mode: "dev",
         });
         devService = services.get(opts.serviceId);
         if (devService == null) {
-          throw new CliError(`No service named ${JSON.stringify(opts.serviceId)} in the deploy file's deployment.services. Available services: ${[...services.keys()].join(", ")}.`);
+          throw new CliError(`No service named ${JSON.stringify(opts.serviceId)} in the deploy file's \`deploy\` export. Available services: ${[...services.keys()].join(", ")}.`);
         }
         // A BLANK devCommand counts as missing. `shellChildCommand("")` runs `sh -c ""`,
         // which exits 0 immediately — so an empty string would report a successful dev

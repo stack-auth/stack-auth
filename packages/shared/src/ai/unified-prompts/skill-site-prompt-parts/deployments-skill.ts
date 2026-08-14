@@ -13,7 +13,7 @@ export const deploymentsSkillSection = deindent`
 
   Enable the app by adding \`"deployments-alpha"\` under \`apps.installed\` in your config (quote it — it contains a hyphen). Services themselves are NOT part of the \`config\` export: they live in their own file, \`hexclave.deploy.ts\`, next to \`hexclave.config.ts\`.
 
-  ## The deployment export
+  ## The deploy export
 
   \`\`\`ts title="hexclave.deploy.ts"
   import type { HexclaveDeploymentConfig } from "@hexclave/js";
@@ -22,7 +22,7 @@ export const deploymentsSkillSection = deindent`
   // Required, and unique across every deploy file deploying into this project.
   export const id = "my-app";
 
-  export const deployment: HexclaveDeploymentConfig = ({ isDev, secret, service, hexclave }) => ({
+  export const deploy: HexclaveDeploymentConfig = ({ isDev, secret, service, hexclave }) => ({
     services: {
       web: {
         type: "serverless",
@@ -50,9 +50,9 @@ export const deploymentsSkillSection = deindent`
   });
   \`\`\`
 
-  Always annotate the \`deployment\` export with \`HexclaveDeploymentConfig\`, imported as a type from \`@hexclave/js\` (the same type is re-exported from \`@hexclave/next\`, \`@hexclave/react\` and \`@hexclave/tanstack-start\`, so import from whichever SDK package this project already uses). It gives completion for every field below and catches typos before a deploy.
+  Always annotate the \`deploy\` export with \`HexclaveDeploymentConfig\`, imported as a type from \`@hexclave/js\` (the same type is re-exported from \`@hexclave/next\`, \`@hexclave/react\` and \`@hexclave/tanstack-start\`, so import from whichever SDK package this project already uses). It gives completion for every field below and catches typos before a deploy.
 
-  The \`deployment\` export is a FUNCTION of the deployment context returning \`{ services }\`, keyed by service id. \`type\` (required) is \`"server"\` or \`"serverless"\` as above. \`public\` (default false) is what exposes the service to the internet and gives it a stable platform URL; it is a property of the SERVICE, not of a port, because every port a service declares is served on every address it has. \`ports\` (required) is an object KEYED BY PORT NUMBER, and every non-empty entry must explicitly be \`{ protocol: "http" }\` or \`{ protocol: "tcp" }\`; use \`ports: {}\` for a worker that only dials out, which needs an always-on instance since nothing inbound can wake it (and cannot be \`public\`). A public service may declare several ports — each is reachable at its own port number, and the lowest additionally owns the standard 80/443, so it is the port the service's URL points at and the only one a custom domain can front. Only a PRIVATE service may declare TCP ports (a public address cannot route raw TCP), and a service with no HTTP port cannot have custom domains. \`rootDirectory\` (relative to the deploy file, default \`./\`) is where the service's code lives; \`dockerfilePath\` (optional, relative to the deploy file, NOT to \`rootDirectory\`) selects a Dockerfile to build from — omit it to build with Railpack auto-detection; \`minInstances\`/\`maxInstances\` (defaults: 1/1 for a server, 0/1 for a serverless; max 10) are the scaling bounds; \`persistentVolumes\` (server only) attaches a persistent disk; \`devCommand\` is what \`hexclave dev --service-id <id>\` runs.
+  The \`deploy\` export is a FUNCTION of the deployment context returning \`{ services }\`, keyed by service id. \`type\` (required) is \`"server"\` or \`"serverless"\` as above. \`public\` (default false) is what exposes the service to the internet and gives it a stable platform URL; it is a property of the SERVICE, not of a port, because every port a service declares is served on every address it has. \`ports\` (required) is an object KEYED BY PORT NUMBER, and every non-empty entry must explicitly be \`{ protocol: "http" }\` or \`{ protocol: "tcp" }\`; use \`ports: {}\` for a worker that only dials out, which needs an always-on instance since nothing inbound can wake it (and cannot be \`public\`). A public service may declare several ports — each is reachable at its own port number, and the lowest additionally owns the standard 80/443, so it is the port the service's URL points at and the only one a custom domain can front. Only a PRIVATE service may declare TCP ports (a public address cannot route raw TCP), and a service with no HTTP port cannot have custom domains. \`rootDirectory\` (relative to the deploy file, default \`./\`) is where the service's code lives; \`dockerfilePath\` (optional, relative to the deploy file, NOT to \`rootDirectory\`) selects a Dockerfile to build from — omit it to build with Railpack auto-detection; \`minInstances\`/\`maxInstances\` (defaults: 1/1 for a server, 0/1 for a serverless; max 10) are the scaling bounds; \`persistentVolumes\` (server only) attaches a persistent disk; \`devCommand\` is what \`hexclave dev --service-id <id>\` runs.
 
   A \`server\` holds exactly one instance: \`minInstances: 1\` (the default) keeps it up, and \`0\` lets it suspend when idle and resume with its memory intact. \`minInstances\` above 0 requires a paid plan for BOTH types — on the Free plan the deploy fails up front naming the offending services, so write \`minInstances: 0\` (note that a \`server\` needs it written out).
 
@@ -122,7 +122,7 @@ export const deploymentsSkillSection = deindent`
 
   AI agents must deploy and manage Deployments through the CLI and \`hexclave.deploy.ts\`, not by clicking around \`app.hexclave.com\` in a browser. The dashboard is a human fallback only.
 
-  1. **Read this skill** and ensure \`deployments-alpha\` is enabled and the \`deployment\` export exists as above.
+  1. **Read this skill** and ensure \`deployments-alpha\` is enabled and the \`deploy\` export exists as above.
   2. **Authenticate for cloud deploys** (pick the first that works):
      - If \`HEXCLAVE_SECRET_SERVER_KEY\` (or \`STACK_SECRET_SERVER_KEY\`) **and** \`HEXCLAVE_PROJECT_ID\` (or \`STACK_PROJECT_ID\`) are already in the environment, use them. No login step.
      - Else if \`npx @hexclave/cli@latest whoami\` succeeds, you already have a CLI login session — proceed.

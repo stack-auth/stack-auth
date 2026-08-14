@@ -9,10 +9,10 @@ const DEPLOY_FILE_PATH = path.join(path.sep, "repo", "hexclave.deploy.ts");
 function evaluate(servicesExport: unknown, mode: "deploy" | "dev" = "deploy") {
   // Tests pass the services alone; this puts them back in the context-function
   // envelope the real export has.
-  const deploymentExport = (context: ServicesFunctionContext) => ({
+  const deployExport = (context: ServicesFunctionContext) => ({
     services: typeof servicesExport === "function" ? (servicesExport as (ctx: ServicesFunctionContext) => unknown)(context) : servicesExport,
   });
-  return evaluateDeploymentConfig({ deployFilePath: DEPLOY_FILE_PATH, idExport: "test-source", deploymentExport, mode });
+  return evaluateDeploymentConfig({ deployFilePath: DEPLOY_FILE_PATH, idExport: "test-source", deployExport, mode });
 }
 
 describe("evaluateDeploymentConfig (deploy mode)", () => {
@@ -467,22 +467,22 @@ describe("service types", () => {
 });
 
 describe("the deployment envelope", () => {
-  const evaluateExports = (idExport: unknown, deploymentExport: unknown) =>
-    () => evaluateDeploymentConfig({ deployFilePath: DEPLOY_FILE_PATH, idExport, deploymentExport, mode: "deploy" });
+  const evaluateExports = (idExport: unknown, deployExport: unknown) =>
+    () => evaluateDeploymentConfig({ deployFilePath: DEPLOY_FILE_PATH, idExport, deployExport, mode: "deploy" });
 
   it("requires an id export naming the deployment source", () => {
-    const deploymentExport = () => ({ services: { web: { type: "serverless", ports: { 3000: { protocol: "http" } } } } });
-    expect(evaluateExports(undefined, deploymentExport)).toThrow("has no `id` export");
-    expect(evaluateExports(7, deploymentExport)).toThrow("must be a string");
-    expect(evaluateExports("-nope", deploymentExport)).toThrow("Invalid deployment source id");
-    expect(evaluateExports("backend", deploymentExport)().sourceId).toBe("backend");
+    const deployExport = () => ({ services: { web: { type: "serverless", ports: { 3000: { protocol: "http" } } } } });
+    expect(evaluateExports(undefined, deployExport)).toThrow("has no `id` export");
+    expect(evaluateExports(7, deployExport)).toThrow("must be a string");
+    expect(evaluateExports("-nope", deployExport)).toThrow("Invalid deployment source id");
+    expect(evaluateExports("backend", deployExport)().sourceId).toBe("backend");
     // Dots are legal: deployments declared in hexclave.config.ts belong to a
     // source named after the file.
-    expect(evaluateExports("hexclave.config.ts", deploymentExport)().sourceId).toBe("hexclave.config.ts");
+    expect(evaluateExports("hexclave.config.ts", deployExport)().sourceId).toBe("hexclave.config.ts");
   });
 
-  it("rejects a missing or malformed deployment export", () => {
-    expect(evaluateExports("s", undefined)).toThrow("has no `deployment` export");
+  it("rejects a missing or malformed deploy export", () => {
+    expect(evaluateExports("s", undefined)).toThrow("has no `deploy` export");
     // The context is where secret()/service()/hexclave come from, so a plain
     // object could never reach them.
     expect(evaluateExports("s", { services: {} })).toThrow("must be a function of the deployment context");

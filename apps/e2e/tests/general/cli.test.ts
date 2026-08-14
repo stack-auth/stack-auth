@@ -445,7 +445,7 @@ describe("Stack CLI", () => {
         // The `id` export names this deployment source — which deploy file (and
         // so which repository) these services belong to.
         'export const id = "cli-e2e";',
-        "export const deployment = ({ isDev, secret, service, hexclave }: any) => ({",
+        "export const deploy = ({ isDev, secret, service, hexclave }: any) => ({",
         "  services: {",
         "    web: {",
         '      type: "serverless",',
@@ -518,7 +518,7 @@ describe("Stack CLI", () => {
       // packaged, naming every key that needs a dashboard value.
       fs.writeFileSync(path.join(deployDir, "missing-secret.deploy.ts"), [
         'export const id = "cli-e2e-missing-secret";',
-        "export const deployment = ({ secret }: any) => ({",
+        "export const deploy = ({ secret }: any) => ({",
         "  services: {",
         '    web: { type: "serverless", ports: { 3000: { protocol: "http" } }, rootDirectory: "./web", env: { A: secret("NEEDS_A_VALUE"), B: secret("ALSO_NEEDED") } },',
         "  },",

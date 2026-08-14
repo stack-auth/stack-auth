@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { evaluateDeploymentConfig, resolveDeployFilePath, type ServicesFunctionContext } from "../lib/deployment-config.js";
+import { evaluateDeploymentConfig, importConfigModule, importDeployModule, resolveDeployFilePath, type ServicesFunctionContext } from "../lib/deployment-config.js";
 import { collectPublicUrls, collectRequiredSecretKeys, packageAndUploadSource, resolveConfigPushPath } from "./deploy.js";
 
 const TEST_AUTH = {
@@ -31,7 +31,7 @@ describe("deploy command helpers", () => {
   it("prefers an explicit --deploy-file path", () => {
     const dir = makeTempDir();
     const deployFilePath = path.join(dir, "custom.deploy.ts");
-    fs.writeFileSync(deployFilePath, "export const deployment = { services: {} };");
+    fs.writeFileSync(deployFilePath, "export const deploy = { services: {} };");
     expect(resolveDeployFilePath("custom.deploy.ts", dir)).toBe(deployFilePath);
   });
 
@@ -42,8 +42,22 @@ describe("deploy command helpers", () => {
 
   it("auto-discovers hexclave.deploy.ts", () => {
     const dir = makeTempDir();
-    fs.writeFileSync(path.join(dir, "hexclave.deploy.ts"), "export const deployment = { services: {} };");
+    fs.writeFileSync(path.join(dir, "hexclave.deploy.ts"), "export const deploy = { services: {} };");
     expect(resolveDeployFilePath(undefined, dir)).toBe(path.join(dir, "hexclave.deploy.ts"));
+  });
+
+  it("loads the author-facing deploy export from deploy and config files", async () => {
+    const dir = makeTempDir();
+    const deployFilePath = path.join(dir, "hexclave.deploy.ts");
+    const configFilePath = path.join(dir, "hexclave.config.ts");
+    fs.writeFileSync(deployFilePath, 'export const id = "source"; export const deploy = () => ({ services: {} });');
+    fs.writeFileSync(configFilePath, "export const config = {}; export const deploy = () => ({ services: {} });");
+
+    const deployModule = await importDeployModule(deployFilePath);
+    const configModule = await importConfigModule(configFilePath);
+    expect(deployModule.id).toBe("source");
+    expect(deployModule.deploy).toBeTypeOf("function");
+    expect(configModule.deploy).toBeTypeOf("function");
   });
 
   // The deploy file is a different document from hexclave.config.ts, so a
@@ -68,7 +82,7 @@ describe("deploy command helpers", () => {
     const services = evaluateDeploymentConfig({
       deployFilePath: path.join(os.tmpdir(), "hexclave.deploy.ts"),
       idExport: "test-source",
-      deploymentExport: () => ({ services: {
+      deployExport: () => ({ services: {
         web: { type: "serverless", public: true, ports: { 3000: { protocol: "http" } } },
         worker: { type: "serverless", ports: { 3001: { protocol: "http" } } },
         failed: { type: "serverless", public: true, ports: { 3002: { protocol: "http" } } },
@@ -89,7 +103,7 @@ describe("deploy command helpers", () => {
     const services = evaluateDeploymentConfig({
       deployFilePath: path.join(os.tmpdir(), "hexclave.deploy.ts"),
       idExport: "test-source",
-      deploymentExport: () => ({ services: {
+      deployExport: () => ({ services: {
         // Declared high-first on purpose: the holder is the lowest port NUMBER,
         // not whichever key was written first.
         web: { type: "serverless", public: true, ports: { 8443: { protocol: "http" }, 3000: { protocol: "http" } } },
@@ -113,7 +127,7 @@ describe("deploy command helpers", () => {
     const services = evaluateDeploymentConfig({
       deployFilePath: path.join(dir, "hexclave.deploy.ts"),
       idExport: "test-source",
-      deploymentExport: () => ({ services: {
+      deployExport: () => ({ services: {
         web: { type: "serverless", ports: { 3000: { protocol: "http" } }, dockerfilePath: "Dockerfile" },
       } }),
       mode: "deploy",
@@ -136,7 +150,7 @@ describe("deploy command helpers", () => {
     const services = evaluateDeploymentConfig({
       deployFilePath: path.join(dir, "hexclave.deploy.ts"),
       idExport: "test-source",
-      deploymentExport: () => ({ services: {
+      deployExport: () => ({ services: {
         web: { type: "serverless", ports: { 3000: { protocol: "http" } } },
       } }),
       mode: "deploy",
@@ -160,7 +174,7 @@ describe("collectRequiredSecretKeys", () => {
   const servicesOf = (definition: (ctx: ServicesFunctionContext) => unknown) => [...evaluateDeploymentConfig({
     deployFilePath: path.join(os.tmpdir(), "hexclave.deploy.ts"),
     idExport: "test-source",
-    deploymentExport: (ctx: ServicesFunctionContext) => ({ services: definition(ctx) }),
+    deployExport: (ctx: ServicesFunctionContext) => ({ services: definition(ctx) }),
     mode: "deploy",
   }).services.values()];
 
