@@ -503,9 +503,9 @@ it("should give team creator default permissions", async ({ expect }) => {
   const { adminAccessToken } = await Project.createAndGetAdminToken({ config: { magic_link_enabled: true } });
   await InternalApiKey.createAndSetProjectKeys(adminAccessToken);
 
-  const { userId: userId1 } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true, password: 'test1234' });
+  const { userId: userId1 } = await Auth.Password.signUpWithEmail({ password: 'test1234' });
   await bumpEmailAddress();
-  const { userId: userId2 } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true, password: 'test1234' });
+  const { userId: userId2 } = await Auth.Password.signUpWithEmail({ password: 'test1234' });
   const { teamId } = await Team.createWithCurrentAsCreator();
 
   await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${userId1}`, {

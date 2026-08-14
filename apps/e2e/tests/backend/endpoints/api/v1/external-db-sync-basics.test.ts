@@ -1,4 +1,4 @@
-import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { afterAll, beforeAll, describe, expect } from 'vitest';
 import { niceFetch, STACK_BACKEND_BASE_URL, test } from '../../../../helpers';
@@ -34,7 +34,9 @@ import {
   waitForSyncedProjectPermissionDeletion,
   waitForCondition,
   waitForSyncedNotificationPreference,
-  waitForTable
+  waitForTable,
+  deleteSyncedRowsWithTombstones,
+  withInternalDatabase,
 } from './external-db-sync-utils';
 
 async function runQueryForCurrentProject(body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
@@ -97,6 +99,28 @@ async function waitForClickhouseUserDeletion(email: string) {
   }
 
   throw new HexclaveAssertionError(`Timed out waiting for ClickHouse user ${email} to be deleted.`, { response });
+}
+
+async function waitForClickhouseEmailOutbox(id: string, expectedCount: number, deadline: number) {
+  await InternalApiKey.createAndSetProjectKeys();
+
+  const intervalMs = 2_000;
+
+  let response;
+  while (performance.now() < deadline) {
+    response = await runQueryForCurrentProject({
+      query: "SELECT id FROM email_outboxes WHERE id = {id:UUID}",
+      params: { id },
+    });
+    expect(response.status).toBe(200);
+    if (response.body.result.length === expectedCount) {
+      return response;
+    }
+    await wait(intervalMs);
+  }
+
+  const state = expectedCount === 0 ? "to be deleted" : "to sync";
+  throw new HexclaveAssertionError(`Timed out waiting for ClickHouse email outbox ${id} ${state}.`, { response });
 }
 
 // Run tests sequentially to avoid concurrency issues with shared backend state
@@ -1497,6 +1521,87 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     expect(response!.body.result.length).toBeGreaterThanOrEqual(1);
     const row = response!.body.result[0];
     expect(row.created_with).toBe('programmatic-call');
+  }, TEST_TIMEOUT);
+
+  test('Deleted EmailOutbox is removed from ClickHouse', async ({ expect }) => {
+    const connectionString = await dbManager.createDatabase("email_outbox_delete_test");
+    const project = await createProjectWithExternalDb({
+      main: {
+        type: "postgres",
+        connectionString,
+      },
+    }, {
+      config: {
+        magic_link_enabled: true,
+        email_config: {
+          type: "standard",
+          host: "localhost",
+          port: Number(withPortPrefix("29")),
+          username: "test",
+          password: "test",
+          sender_name: "Test Project",
+          sender_email: "test@example.com",
+        },
+      },
+    });
+
+    const createUserResponse = await niceBackendFetch("/api/v1/users", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        primary_email: backendContext.value.mailbox.emailAddress,
+        primary_email_verified: true,
+      },
+    });
+    expect(createUserResponse.status).toBe(201);
+
+    const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        user_ids: [createUserResponse.body.id],
+        html: "<p>ClickHouse deletion test email</p>",
+        subject: "CH Deletion Test Email",
+        notification_category_name: "Transactional",
+      },
+    });
+    expect(sendResponse.status).toBe(200);
+
+    let emailId!: string;
+    await waitForCondition(
+      async () => {
+        const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+          method: "GET",
+          accessType: "server",
+        });
+        if (listResponse.status !== 200 || listResponse.body.items.length === 0) return false;
+        emailId = listResponse.body.items[0].id;
+        return true;
+      },
+      { timeoutMs: 30_000, intervalMs: 500, description: "email to appear in outbox" },
+    );
+
+    // Both ClickHouse assertions share this budget so the helper reports a useful failure before TEST_TIMEOUT.
+    const clickhouseDeadline = performance.now() + 180_000;
+    await InternalApiKey.createAndSetProjectKeys();
+    await waitForClickhouseEmailOutbox(emailId, 1, clickhouseDeadline);
+
+    // No production endpoint deletes EmailOutbox rows, so e2e cannot drive this over HTTP; the tombstone shape is pinned by the backend unit test.
+    await withInternalDatabase(async (client) => {
+      const tenancy = await client.query<{ id: string }>(
+        `SELECT "id" FROM "Tenancy" WHERE "projectId" = $1 AND "branchId" = 'main' LIMIT 1`,
+        [project.projectId],
+      );
+      const tenancyId = tenancy.rows[0]?.id ?? throwErr(`No main tenancy found for project ${project.projectId}`);
+
+      await deleteSyncedRowsWithTombstones(client, {
+        table: "EmailOutbox",
+        whereClause: `"tenancyId" = $1::uuid AND "id" = $2::uuid`,
+        values: [tenancyId, emailId],
+      });
+    });
+
+    await waitForClickhouseEmailOutbox(emailId, 0, clickhouseDeadline);
   }, TEST_TIMEOUT);
 
   /**

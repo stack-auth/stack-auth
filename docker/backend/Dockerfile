@@ -52,9 +52,6 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 COPY --from=pruner /app/out/full/ .
 
-# Docs are required for backend OpenAPI/codegen
-COPY docs ./docs
-
 # Build backend only
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm turbo run docker-build --filter=@hexclave/backend...
 
