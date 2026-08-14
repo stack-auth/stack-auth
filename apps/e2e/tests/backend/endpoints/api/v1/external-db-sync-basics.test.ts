@@ -1,5 +1,6 @@
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
+import { SEQUENCE_ALLOCATION_ADVISORY_LOCK_KEY } from "@hexclave/shared/dist/config/db-sync-mappings";
 import { afterAll, beforeAll, describe, expect } from 'vitest';
 import { niceFetch, STACK_BACKEND_BASE_URL, test } from '../../../../helpers';
 import { withPortPrefix } from '../../../../helpers/ports';
@@ -126,6 +127,8 @@ async function waitForClickhouseEmailOutbox(id: string, expectedCount: number, d
 }
 
 async function allocateEmailOutboxSequence(client: Client, tenancyId: string, id: string): Promise<bigint> {
+  // This mirrors the sequencer's EmailOutbox statement. Its SQL shape is pinned by the
+  // backend sequence-visibility test; this e2e test only drives the real external sync path.
   const rows = await client.query<{ sequenceId: string }>(
     `
       WITH rows_to_update AS (
@@ -203,69 +206,56 @@ async function triggerExternalDbSequencer(): Promise<void> {
   expect(response.status).toBe(200);
 }
 
-async function waitForReplicaEmailOutboxSequence(id: string): Promise<bigint> {
-  const connectionString = getEnvVariable(
-    "STACK_DATABASE_REPLICA_CONNECTION_STRING",
-    getEnvVariable("STACK_DATABASE_CONNECTION_STRING", ""),
-  );
-  if (connectionString === "") {
+async function waitForEmailOutboxSequence(id: string, reader: "primary" | "replica"): Promise<bigint> {
+  const connectionString = reader === "replica"
+    ? getEnvVariable(
+      "STACK_DATABASE_REPLICA_CONNECTION_STRING",
+      // Match prisma-client.tsx: use the primary when no replica is configured.
+      getEnvVariable("STACK_DATABASE_CONNECTION_STRING", ""),
+    )
+    : null;
+  if (reader === "replica" && connectionString === "") {
     throwErr("Sequence visibility e2e test requires a database replica connection string");
   }
-  const client = new Client({ connectionString });
-  await client.connect();
+  const client = connectionString == null ? null : new Client({ connectionString });
+  if (client != null) await client.connect();
   try {
     let sequenceId: bigint | undefined;
-    await waitForCondition(
-      async () => {
-        const result = await client.query<{ sequenceId: string | null }>(
-          `SELECT "sequenceId" FROM "EmailOutbox" WHERE "id" = $1`,
-          [id],
-        );
-        const value = result.rows[0]?.sequenceId;
-        if (value == null) return false;
-        sequenceId = BigInt(value);
-        return true;
-      },
-      {
-        timeoutMs: 30_000,
-        intervalMs: 250,
-        description: `EmailOutbox ${id} to become visible on the sync reader`,
-      },
-    );
-    return sequenceId ?? throwErr(`Replica did not return a sequence ID for EmailOutbox ${id}`);
-  } finally {
-    await client.end();
-  }
-}
-
-async function waitForPrimaryEmailOutboxSequence(id: string): Promise<bigint> {
-  let sequenceId: bigint | undefined;
-  await waitForCondition(
-    async () => {
-      await withInternalDatabase(async (client) => {
+    await waitForCondition(async () => {
+      if (client != null) {
         const result = await client.query<{ sequenceId: string | null }>(
           `SELECT "sequenceId" FROM "EmailOutbox" WHERE "id" = $1`,
           [id],
         );
         const value = result.rows[0]?.sequenceId;
         if (value != null) sequenceId = BigInt(value);
-      });
+      } else {
+        await withInternalDatabase(async (primaryClient) => {
+          const result = await primaryClient.query<{ sequenceId: string | null }>(
+            `SELECT "sequenceId" FROM "EmailOutbox" WHERE "id" = $1`,
+            [id],
+          );
+          const value = result.rows[0]?.sequenceId;
+          if (value != null) sequenceId = BigInt(value);
+        });
+      }
       return sequenceId != null;
-    },
-    {
-      timeoutMs: 30_000,
+    }, {
+      timeoutMs: 15_000,
       intervalMs: 250,
-      description: `EmailOutbox ${id} to receive a sequence ID`,
-    },
-  );
-  return sequenceId ?? throwErr(`Primary did not return a sequence ID for EmailOutbox ${id}`);
+      description: `EmailOutbox ${id} to receive a sequence ID on the ${reader} sync reader`,
+    });
+    return sequenceId ?? throwErr(`The ${reader} sync reader did not return a sequence ID for EmailOutbox ${id}`);
+  } finally {
+    if (client != null) await client.end();
+  }
 }
 
 async function waitForExternalEmailOutbox(client: Client, id: string, expectedCount: number): Promise<void> {
   await waitForCondition(
     async () => (await client.query(`SELECT "id" FROM "email_outboxes" WHERE "id" = $1`, [id])).rows.length === expectedCount,
     {
-      timeoutMs: 30_000,
+      timeoutMs: 20_000,
       intervalMs: 500,
       description: `EmailOutbox ${id} to have external row count ${expectedCount}`,
     },
@@ -1645,7 +1635,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
         await allocateEmailOutboxSequence(client, testTenancyId, baselineRow);
         await client.query("COMMIT");
       });
-      await waitForReplicaEmailOutboxSequence(baselineRow);
+      await waitForEmailOutboxSequence(baselineRow, "replica");
       await triggerExternalDbSync(testTenancyId);
       await waitForExternalEmailOutbox(externalClient, baselineRow, 1);
 
@@ -1657,7 +1647,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       await transactionA.query("BEGIN");
       transactionAStarted = true;
       await transactionA.query("SET LOCAL lock_timeout = '5000ms'");
-      await transactionA.query("SELECT pg_advisory_xact_lock(178555)");
+      await transactionA.query(`SELECT pg_advisory_xact_lock(${SEQUENCE_ALLOCATION_ADVISORY_LOCK_KEY})`);
       const sequenceA = await allocateEmailOutboxSequence(transactionA, testTenancyId, rowA);
 
       // T1 holds the production allocation lock after assigning A. A real sequencer invocation
@@ -1671,27 +1661,29 @@ describe.sequential('External DB Sync - Basic Tests', () => {
         return result.rows[0]?.sequenceId;
       });
       if (rowBSequenceBeforeACommit != null) {
-        await waitForReplicaEmailOutboxSequence(rowB);
+        await waitForEmailOutboxSequence(rowB, "replica");
       }
       await triggerExternalDbSync(testTenancyId);
 
       await transactionA.query("COMMIT");
       transactionAStarted = false;
       await triggerExternalDbSequencer();
-      await waitForPrimaryEmailOutboxSequence(rowB);
-      await waitForReplicaEmailOutboxSequence(rowA);
-      await waitForReplicaEmailOutboxSequence(rowB);
+      const sequenceB = await waitForEmailOutboxSequence(rowB, "primary");
+      await waitForEmailOutboxSequence(rowA, "replica");
+      await waitForEmailOutboxSequence(rowB, "replica");
       await triggerExternalDbSync(testTenancyId);
 
-      await waitForCondition(
-        async () => (await externalClient.query(`SELECT "id" FROM "email_outboxes" WHERE "id" = $1`, [rowA])).rows.length === 1,
-        {
-          timeoutMs: 20_000,
-          intervalMs: 500,
-          description: `EmailOutbox ${rowA} to reach the external database after serialized sequence allocation (A=${sequenceA})`,
-        },
-      );
+      expect(sequenceA).toBeLessThan(sequenceB);
       await waitForExternalEmailOutbox(externalClient, rowB, 1);
+      await waitForExternalEmailOutbox(externalClient, rowA, 1);
+      const externalRows = await externalClient.query<{ id: string }>(
+        `SELECT "id"
+         FROM "email_outboxes"
+         WHERE "id" = ANY($1::uuid[])
+         ORDER BY "id"`,
+        [[rowA, rowB]],
+      );
+      expect(externalRows.rows.map(row => row.id)).toEqual([rowA, rowB].sort());
     } finally {
       if (transactionAStarted) await transactionA.query("ROLLBACK");
       await transactionA.end();

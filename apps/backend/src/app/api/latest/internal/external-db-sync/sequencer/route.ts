@@ -11,100 +11,39 @@ import {
   yupString,
   yupTuple,
 } from "@hexclave/shared/dist/schema-fields";
+import { SEQUENCE_ALLOCATION_ADVISORY_LOCK_KEY } from "@hexclave/shared/dist/config/db-sync-mappings";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
-import { captureError, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 
 const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
 const SEQUENCER_BATCH_SIZE_ENV = "STACK_EXTERNAL_DB_SYNC_SEQUENCER_BATCH_SIZE";
 const DEFAULT_BATCH_SIZE = 1000;
 
-/** PostgreSQL advisory-lock namespace for sequence allocation. */
-const SEQUENCE_ALLOCATION_LOCK_CLASS = 178555;
-
-export type SequenceAllocationResult<T> = {
-  locked: boolean,
-  result: T | null,
-};
-
-type EmailOutboxSequenceAllocationScope = {
-  tenancyId: string,
-  id: string,
-};
-
-export type EmailOutboxSequenceAllocation = {
-  tenancyId: string,
-  id: string,
-  sequenceId: bigint,
-};
-
 /**
  * Runs one set-based sequence allocation while holding the global transaction-scoped lock.
- * The lock is global because each batch statement can span multiple tenancies.
+ *
+ * Sequence allocation must commit in allocation order: the sync's `> watermark` filter
+ * permanently skips a lower value if a higher value becomes visible first. The lock is global
+ * because each batch statement can span multiple tenancies.
  */
 export async function runSequenceAllocationInTransaction<T>(
   tx: Prisma.TransactionClient,
   allocation: (tx: Prisma.TransactionClient) => Promise<T>,
-): Promise<SequenceAllocationResult<T>> {
-  const [{ locked }] = await tx.$queryRaw<{ locked: boolean }[]>`
-    SELECT pg_try_advisory_xact_lock(${SEQUENCE_ALLOCATION_LOCK_CLASS}::int) AS locked
+): Promise<T | null> {
+  const lockRows = await tx.$queryRaw<{ locked: boolean }[]>`
+    SELECT pg_try_advisory_xact_lock(${SEQUENCE_ALLOCATION_ADVISORY_LOCK_KEY}::int) AS locked
   `;
-  if (!locked) return { locked: false, result: null };
-  return { locked: true, result: await allocation(tx) };
-}
-
-export async function allocateEmailOutboxSequence(
-  tx: Prisma.TransactionClient,
-  batchSize: number,
-  scope?: EmailOutboxSequenceAllocationScope,
-): Promise<EmailOutboxSequenceAllocation[]> {
-  if (scope != null) {
-    return await tx.$queryRaw<EmailOutboxSequenceAllocation[]>`
-      WITH rows_to_update AS (
-        SELECT "tenancyId", "id"
-        FROM "EmailOutbox"
-        WHERE "tenancyId" = ${scope.tenancyId}::uuid
-          AND "id" = ${scope.id}::uuid
-          AND "shouldUpdateSequenceId" = TRUE
-        FOR UPDATE SKIP LOCKED
-      ),
-      updated_rows AS (
-        UPDATE "EmailOutbox" eo
-        SET "sequenceId" = nextval('global_seq_id'),
-            "shouldUpdateSequenceId" = FALSE
-        FROM rows_to_update r
-        WHERE eo."tenancyId" = r."tenancyId"
-          AND eo."id" = r."id"
-        RETURNING eo."tenancyId", eo."id", eo."sequenceId"
-      )
-      SELECT "tenancyId", "id", "sequenceId" FROM updated_rows
-    `;
-  }
-  return await tx.$queryRaw<EmailOutboxSequenceAllocation[]>`
-    WITH rows_to_update AS (
-      SELECT "tenancyId", "id"
-      FROM "EmailOutbox"
-      WHERE "shouldUpdateSequenceId" = TRUE
-      ORDER BY "tenancyId"
-      LIMIT ${batchSize}
-      FOR UPDATE SKIP LOCKED
-    ),
-    updated_rows AS (
-      UPDATE "EmailOutbox" eo
-      SET "sequenceId" = nextval('global_seq_id'),
-          "shouldUpdateSequenceId" = FALSE
-      FROM rows_to_update r
-      WHERE eo."tenancyId" = r."tenancyId"
-        AND eo."id" = r."id"
-      RETURNING eo."tenancyId", eo."id", eo."sequenceId"
-    )
-    SELECT "tenancyId", "id", "sequenceId" FROM updated_rows
-  `;
+  const locked = lockRows[0]?.locked ?? throwErr(
+    "Sequence allocation advisory lock query must return exactly one row",
+  );
+  if (!locked) return null;
+  return await allocation(tx);
 }
 
 async function runSequenceAllocation<T>(
   allocation: (tx: Prisma.TransactionClient) => Promise<T>,
-): Promise<SequenceAllocationResult<T>> {
+): Promise<T | null> {
   return await retryTransaction(globalPrismaClient, (tx) => runSequenceAllocationInTransaction(tx, allocation));
 }
 
@@ -141,8 +80,6 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
   }, async (span) => {
     let didUpdate = false;
 
-    // Sequence allocation must commit in allocation order: the sync's `> watermark` filter
-    // permanently skips a lower value if a higher value becomes visible first.
     const projectUserTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "projectUserId"
@@ -162,7 +99,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING pu."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)).result ?? [];
+    `)) ?? [];
 
     span.setAttribute("stack.external-db-sync.project-user-tenants", projectUserTenants.length);
 
@@ -192,7 +129,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING cc."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)).result ?? [];
+    `)) ?? [];
 
     span.setAttribute("stack.external-db-sync.contact-channel-tenants", contactChannelTenants.length);
 
@@ -220,7 +157,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING t."tenancyId", t."teamId"
       )
       SELECT DISTINCT "tenancyId", "teamId" FROM updated_rows
-    `)).result ?? [];
+    `)) ?? [];
 
     span.setAttribute("stack.external-db-sync.team-tenants", teamTenants.length);
 
@@ -269,7 +206,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING tm."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)).result ?? [];
+    `)) ?? [];
 
     span.setAttribute("stack.external-db-sync.team-member-tenants", teamMemberTenants.length);
 
@@ -296,7 +233,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING tp."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)).result ?? [];
+    `)) ?? [];
 
     span.setAttribute("stack.external-db-sync.team-permission-tenants", teamPermissionTenants.length);
 
@@ -329,7 +266,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       FROM updated_rows
       JOIN "Tenancy" ON "Tenancy"."projectId" = updated_rows."projectId"
         AND "Tenancy"."branchId" = updated_rows."branchId"
-    `)).result ?? [];
+    `)) ?? [];
 
     span.setAttribute("stack.external-db-sync.team-invitation-tenants", teamInvitationTenants.length);
 
@@ -338,9 +275,26 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const emailOutboxRows = (await runSequenceAllocation((tx) => allocateEmailOutboxSequence(tx, batchSize))).result ?? [];
-    const emailOutboxTenants = Array.from(new Set(emailOutboxRows.map(row => row.tenancyId)))
-      .map(tenancyId => ({ tenancyId }));
+    const emailOutboxTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
+      WITH rows_to_update AS (
+        SELECT "tenancyId", "id"
+        FROM "EmailOutbox"
+        WHERE "shouldUpdateSequenceId" = TRUE
+        ORDER BY "tenancyId"
+        LIMIT ${batchSize}
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "EmailOutbox" eo
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE eo."tenancyId" = r."tenancyId"
+          AND eo."id"        = r."id"
+        RETURNING eo."tenancyId"
+      )
+      SELECT DISTINCT "tenancyId" FROM updated_rows
+    `)) ?? [];
 
     span.setAttribute("stack.external-db-sync.email-outbox-tenants", emailOutboxTenants.length);
 
@@ -367,7 +321,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING pp."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)).result ?? [];
+    `)) ?? [];
 
     span.setAttribute("stack.external-db-sync.project-permission-tenants", projectPermissionTenants.length);
 
@@ -395,7 +349,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING np."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)).result ?? [];
+    `)) ?? [];
 
     span.setAttribute("stack.external-db-sync.notification-preference-tenants", notificationPreferenceTenants.length);
 
@@ -423,7 +377,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING rt."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)).result ?? [];
+    `)) ?? [];
 
     span.setAttribute("stack.external-db-sync.refresh-token-tenants", refreshTokenTenants.length);
 
@@ -451,7 +405,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING oa."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)).result ?? [];
+    `)) ?? [];
 
     span.setAttribute("stack.external-db-sync.oauth-account-tenants", oauthAccountTenants.length);
 
@@ -478,7 +432,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING dr."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)).result ?? [];
+    `)) ?? [];
 
     span.setAttribute("stack.external-db-sync.deleted-row-tenants", deletedRowTenants.length);
 
