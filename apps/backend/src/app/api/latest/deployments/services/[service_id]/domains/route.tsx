@@ -1,9 +1,9 @@
-import { HOSTNAME_REGEX, definitionFromServiceRow, domainPortProblem, getOrCreateOperationalService, getServiceRowOrThrow, marshalNamespaceForTenancy } from "@/lib/deployments";
+import { HOSTNAME_REGEX, definitionFromServiceRow, domainPortForService, domainPortProblem, getServiceRowOrThrow, marshalNamespaceForTenancy } from "@/lib/deployments";
 import { MarshalApiError, getMarshalClientOrThrow, getMarshalDeploymentsConfigOrNull, sanitizeMarshalError } from "@/lib/deployments/marshal-client";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { randomUUID } from "node:crypto";
 
 export const POST = createSmartRouteHandler({
@@ -44,23 +44,29 @@ export const POST = createSmartRouteHandler({
     // on the request that can act on it: without it the row is created, never verifies (the
     // runtime rejection is deliberately swallowed at deploy time), and every later `hexclave
     // deploy` fails the sync until the domain is removed.
-    const portProblem = domainPortProblem(definitionFromServiceRow(row).ports);
+    const definition = definitionFromServiceRow(row);
+    const portProblem = domainPortProblem(definition.ports);
     if (portProblem !== null) {
       throw new StatusError(400, `The deployment service ${JSON.stringify(params.service_id)} cannot hold a custom domain because ${portProblem}.`);
     }
-    const service = await getOrCreateOperationalService(prisma, auth.tenancy, params.service_id);
+    // The port the hostname fronts. domainPortProblem has just established that
+    // the service declares exactly one HTTP port, so this is that port — stored
+    // rather than re-derived on every read, because a domain names an ENDPOINT
+    // and the row has to keep saying which one it meant even after the service
+    // changes its ports.
+    const domainPort = domainPortForService(definition.ports) ?? throwErr("domainPortProblem passed a service with no sole HTTP port");
     // Scoped to the whole tenancy, not just this service: the runtime holds ONE claim per
     // hostname, so attaching a hostname that another service in this project already has
     // would repoint the certificate on the runtime while leaving the old service's row
     // claiming it is still verified — a row that then advertises a URL routing elsewhere.
-    const existing = await prisma.deploymentServiceDomain.findFirst({
+    const existing = await prisma.deploymentDomain.findFirst({
       where: {
         tenancyId: auth.tenancy.id,
         hostname: body.hostname,
       },
     });
     if (existing != null) {
-      throw new StatusError(400, existing.deploymentServiceId === service.id
+      throw new StatusError(400, existing.serviceId === params.service_id
         ? `The domain ${JSON.stringify(body.hostname)} is already added to this service.`
         : `The domain ${JSON.stringify(body.hostname)} is already added to another service in this project. Remove it there first.`);
     }
@@ -68,11 +74,12 @@ export const POST = createSmartRouteHandler({
     // Reserve tenancy-wide ownership before touching Marshal. The unique index is the
     // concurrency arbiter: only the request that owns the row may attach the runtime claim.
     const domainId = randomUUID();
-    const reservation = await prisma.deploymentServiceDomain.createMany({
+    const reservation = await prisma.deploymentDomain.createMany({
       data: [{
         tenancyId: auth.tenancy.id,
         id: domainId,
-        deploymentServiceId: service.id,
+        serviceId: params.service_id,
+        port: domainPort,
         hostname: body.hostname,
         isPrimary: body.is_primary ?? false,
         verified: false,
@@ -82,7 +89,7 @@ export const POST = createSmartRouteHandler({
     if (reservation.count === 0) {
       // Confirm the intended conflict after ON CONFLICT DO NOTHING. This distinguishes the
       // hostname race from an implausible generated-id collision or a future unique index.
-      const raceWinner = await prisma.deploymentServiceDomain.findUnique({
+      const raceWinner = await prisma.deploymentDomain.findUnique({
         where: {
           tenancyId_hostname: {
             tenancyId: auth.tenancy.id,
@@ -95,14 +102,14 @@ export const POST = createSmartRouteHandler({
       }
       throw new HexclaveAssertionError("A deployment domain reservation was skipped without a hostname conflict");
     }
-    let domain = await prisma.deploymentServiceDomain.findUniqueOrThrow({
+    let domain = await prisma.deploymentDomain.findUniqueOrThrow({
       where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domainId } },
     });
 
     let verified = domain.verified;
-    if (service.provisionedAt != null) {
+    if (row.provisionedAt != null) {
       if (getMarshalDeploymentsConfigOrNull() == null) {
-        await prisma.deploymentServiceDomain.delete({ where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domain.id } } });
+        await prisma.deploymentDomain.delete({ where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domain.id } } });
         throw new StatusError(400, "Deployments are not configured on this Hexclave instance.");
       }
       const client = getMarshalClientOrThrow();
@@ -124,14 +131,14 @@ export const POST = createSmartRouteHandler({
               captureError("deployments-domain-add-runtime-compensation", cleanupError);
             }
           }
-          await prisma.deploymentServiceDomain.delete({ where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domain.id } } });
+          await prisma.deploymentDomain.delete({ where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domain.id } } });
           sanitizeMarshalError(e, "Adding the domain failed");
         }
       }
     }
 
     if (verified !== domain.verified) {
-      domain = await prisma.deploymentServiceDomain.update({
+      domain = await prisma.deploymentDomain.update({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domain.id } },
         data: { verified },
       });

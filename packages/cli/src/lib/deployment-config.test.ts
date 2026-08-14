@@ -2,18 +2,23 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { collectSecretDefaults, computeDeploymentLevels, evaluateDeploymentConfig, resolveDevEnv, type ServicesFunctionContext } from "./deployment-config.js";
 
-const CONFIG_PATH = path.join(path.sep, "repo", "hexclave.deploy.ts");
+const DEPLOY_FILE_PATH = path.join(path.sep, "repo", "hexclave.deploy.ts");
 
 // Most tests care about the services, not the `deployment` wrapper, so they
 // pass the services member alone and this puts it back in the envelope.
 function evaluate(servicesExport: unknown, mode: "deploy" | "dev" = "deploy") {
-  return evaluateDeploymentConfig({ deployFilePath: CONFIG_PATH, deploymentExport: { services: servicesExport }, mode });
+  // Tests pass the services alone; this puts them back in the context-function
+  // envelope the real export has.
+  const deploymentExport = (context: ServicesFunctionContext) => ({
+    services: typeof servicesExport === "function" ? (servicesExport as (ctx: ServicesFunctionContext) => unknown)(context) : servicesExport,
+  });
+  return evaluateDeploymentConfig({ deployFilePath: DEPLOY_FILE_PATH, idExport: "test-source", deploymentExport, mode });
 }
 
 describe("evaluateDeploymentConfig (deploy mode)", () => {
   it("preserves __proto__ as an environment variable instead of mutating the result prototype", () => {
     const { services } = evaluate(() => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { ["__proto__"]: "safe" } },
+      web: { type: "serverless", ports: { 3000: {} }, env: { ["__proto__"]: "safe" } },
     }));
     const definitionEnv = services.get("web")?.definition.env;
     expect(definitionEnv).toBeDefined();
@@ -25,15 +30,15 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     const { services } = evaluate(({ isDev, secret, service, hexclave }: ServicesFunctionContext) => ({
       frontend: {
         type: "serverless",
-        ports: [{ port: 3000, public: true }],
+        ports: { 3000: { public: true } },
         minInstances: 1,
         maxInstances: 3,
         devCommand: "pnpm dev",
         rootDirectory: "./apps/web",
         dockerfilePath: "./docker/Dockerfile.web",
         env: {
-          DB_URL: (service("database") as any).url,
-          DB_INTERNAL: (service("database") as any).internalUrl(),
+          DB_URL: (service("database") as any).url(),
+          DB_INTERNAL: (service("database") as any).url(5432),
           OPENAI: isDev ? null : secret("OPENAI_API_KEY", "some-default"),
           REQUIRED_SECRET: secret("REQUIRED"),
           PROJECT_ID: (hexclave as any).projectId,
@@ -41,14 +46,14 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
           OMITTED: null,
         },
       },
-      database: { type: "serverless", ports: [{ port: 5432 }] },
+      database: { type: "serverless", ports: { 5432: {} } },
     }));
 
     expect([...services.keys()]).toEqual(["frontend", "database"]);
     const frontend = services.get("frontend");
     expect(frontend?.definition).toEqual({
       type: "serverless",
-      ports: [{ port: 3000, public: true, transport: "http" }],
+      ports: { "3000": { public: true, protocol: "http" } },
       min_instances: 1,
       max_instances: 3,
       root_directory: "apps/web",
@@ -56,7 +61,7 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
       dockerfile_path: "docker/Dockerfile.web",
       env: {
         DB_URL: { type: "connection", value: "database.url" },
-        DB_INTERNAL: { type: "connection", value: "database.internalUrl" },
+        DB_INTERNAL: { type: "connection", value: "database.url:5432" },
         // No default_value, even though OPENAI is declared with one: defaults
         // are never synced into a definition (see collectSecretDefaults).
         OPENAI: { type: "secret", key: "OPENAI_API_KEY" },
@@ -74,87 +79,91 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
   });
 
   it("defaults every port to private HTTP", () => {
-    const { services } = evaluate(() => ({ web: { type: "serverless", ports: [{ port: 3000 }] } }));
-    expect(services.get("web")?.definition.ports).toEqual([{ port: 3000, public: false, transport: "http" }]);
-    const withPublic = evaluate(() => ({ web: { type: "serverless", ports: [{ port: 3000, public: true }] } }));
-    expect(withPublic.services.get("web")?.definition.ports).toEqual([{ port: 3000, public: true, transport: "http" }]);
+    const { services } = evaluate(() => ({ web: { type: "serverless", ports: { 3000: {} } } }));
+    // The stored shape is the record the author wrote, with the defaults
+    // written out rather than left to each reader.
+    expect(services.get("web")?.definition.ports).toEqual({ "3000": { public: false, protocol: "http" } });
+    const withPublic = evaluate(() => ({ web: { type: "serverless", ports: { 3000: { public: true } } } }));
+    expect(withPublic.services.get("web")?.definition.ports).toEqual({ "3000": { public: true, protocol: "http" } });
     // Several ports are fine as long as none is public.
-    const multi = evaluate(() => ({ web: { type: "serverless", ports: [{ port: 3000 }, { port: 9090, transport: "tcp" }] } }));
-    expect(multi.services.get("web")?.definition.ports).toEqual([
-      { port: 3000, public: false, transport: "http" },
-      { port: 9090, public: false, transport: "tcp" },
-    ]);
+    const multi = evaluate(() => ({ web: { type: "serverless", ports: { 3000: {}, 9090: { protocol: "tcp" } } } }));
+    expect(multi.services.get("web")?.definition.ports).toEqual({
+      "3000": { public: false, protocol: "http" },
+      "9090": { public: false, protocol: "tcp" },
+    });
   });
 
   it("rejects port lists it could not serve", () => {
     const evaluatePorts = (ports: unknown) => () => evaluate(() => ({ web: { type: "serverless", ports } }));
     // The FIELD is still required — an omitted `ports` is a forgotten line far
-    // more often than a deliberate worker, which writes `ports: []`.
+    // more often than a deliberate worker, which writes `ports: {  }`.
     expect(evaluatePorts(undefined)).toThrow("has no `ports`");
-    expect(evaluatePorts({ port: 3000 })).toThrow("must be an array");
-    expect(evaluatePorts([{ port: 3000, protocol: "http" }])).toThrow("unknown field");
-    expect(evaluatePorts([{ port: "3000" }])).toThrow("must be an integer");
-    expect(evaluatePorts([{ port: 70000 }])).toThrow("between 1 and 65535");
-    expect(evaluatePorts([{ port: 3000 }, { port: 3000 }])).toThrow("already declared");
-    expect(evaluatePorts([{ port: 3000, public: "yes" }])).toThrow("must be true or false");
-    expect(evaluatePorts([{ port: 5432, transport: "smtp" }])).toThrow('must be "http" or "tcp"');
+    expect(evaluatePorts([{ port: 3000 }])).toThrow("must be an object keyed by port number");
+    expect(evaluatePorts({ 3000: { transport: "http" } })).toThrow("unknown field");
+    // The KEY is the port number, so a key that is not one is the error.
+    expect(evaluatePorts({ web: {} })).toThrow("is not a port number");
+    expect(evaluatePorts({ 70000: {} })).toThrow("between 1 and 65535");
+    expect(evaluatePorts({ 3000: "public" })).toThrow("must be an object");
+    expect(evaluatePorts({ 3000: { public: "yes" } })).toThrow("must be true or false");
+    expect(evaluatePorts({ 5432: { protocol: "smtp" } })).toThrow('must be "http" or "tcp"');
     // Raw TCP has no TLS or HTTP routing, so it can never be the public one.
-    expect(evaluatePorts([{ port: 5432, transport: "tcp", public: true }])).toThrow("private-only");
+    expect(evaluatePorts({ 5432: { protocol: "tcp", public: true } })).toThrow("private-only");
     // Several public ports are several ports, so they trip the same rule as a
     // public port with private siblings.
-    expect(evaluatePorts([{ port: 3000, public: true }, { port: 4000, public: true }])).toThrow("may not declare any other port");
+    expect(evaluatePorts({ 3000: { public: true }, 4000: { public: true } })).toThrow("may not declare any other port");
   });
 
   it("accepts a portless worker", () => {
     // A queue consumer or cron that only dials out. It gets no URL of any kind.
-    const { services } = evaluate(() => ({ worker: { type: "server", ports: [], env: {} } }));
-    expect(services.get("worker")?.definition.ports).toEqual([]);
+    const { services } = evaluate(() => ({ worker: { type: "server", ports: {  }, env: {} } }));
+    expect(services.get("worker")?.definition.ports).toEqual({});
   });
 
   it("rejects connections whose target ports cannot satisfy them", () => {
     const evaluateEnv = (target: unknown, read: (service: (id: string) => any) => unknown) => () =>
       evaluate(({ service }: ServicesFunctionContext) => ({
-        web: { type: "serverless", ports: [{ port: 3000 }], env: { X: read(service as any) } },
+        web: { type: "serverless", ports: { 3000: {} }, env: { X: read(service as any) } },
         api: target,
       }));
-    const tcpOnly = { type: "server", ports: [{ port: 5432, transport: "tcp" }] };
-    const twoHttp = { type: "serverless", ports: [{ port: 8080 }, { port: 9090 }] };
-    const httpAndTcp = { type: "serverless", ports: [{ port: 8080 }, { port: 5432, transport: "tcp" }] };
+    const tcpOnly = { type: "server", ports: { 5432: { protocol: "tcp" } } };
+    const twoHttp = { type: "serverless", ports: { 8080: {}, 9090: {} } };
+    const httpAndTcp = { type: "serverless", ports: { 8080: {}, 5432: { protocol: "tcp" } } };
 
     // `url` needs something HTTP to serve. A PRIVATE http service is fine —
     // its URL arrives with a verified custom domain.
-    expect(evaluateEnv(tcpOnly, (service) => service("api").url)).toThrow("only TCP ports");
-    expect(evaluateEnv({ type: "serverless", ports: [{ port: 8080 }] }, (service) => service("api").url)).not.toThrow();
+    expect(evaluateEnv(tcpOnly, (service) => service("api").url())).toThrow("declares only TCP ports");
+    expect(evaluateEnv({ type: "serverless", ports: { 8080: {} } }, (service) => service("api").url())).not.toThrow();
 
-    // A bare internalUrl() needs exactly one HTTP port to be unambiguous.
-    expect(evaluateEnv(tcpOnly, (service) => service("api").internalUrl())).toThrow("declares no HTTP port");
-    expect(evaluateEnv(twoHttp, (service) => service("api").internalUrl())).toThrow("ambiguous");
+    // A bare url() needs exactly one HTTP port to be unambiguous.
+    expect(evaluateEnv(twoHttp, (service) => service("api").url())).toThrow("ambiguous");
     // Naming the port resolves it.
-    expect(evaluateEnv(twoHttp, (service) => service("api").internalUrl(9090))).not.toThrow();
+    expect(evaluateEnv(twoHttp, (service) => service("api").url(9090))).not.toThrow();
     // A TCP sibling does not make the single HTTP port ambiguous.
-    expect(evaluateEnv(httpAndTcp, (service) => service("api").internalUrl())).not.toThrow();
+    expect(evaluateEnv(httpAndTcp, (service) => service("api").url())).not.toThrow();
 
     // A named port must exist on the target and speak HTTP.
-    expect(evaluateEnv(twoHttp, (service) => service("api").internalUrl(1234))).toThrow("does not declare that port");
-    expect(evaluateEnv(httpAndTcp, (service) => service("api").internalUrl(5432))).toThrow("that port is TCP");
-    expect(evaluateEnv(twoHttp, (service) => service("api").internalUrl("8080"))).toThrow("takes a port number");
+    expect(evaluateEnv(twoHttp, (service) => service("api").url(1234))).toThrow("does not declare that port");
+    expect(evaluateEnv(httpAndTcp, (service) => service("api").url(5432))).toThrow("that port is TCP");
+    expect(evaluateEnv(twoHttp, (service) => service("api").url("8080"))).toThrow("takes a port number");
 
-    // `internalPort` is gone: a bare number needs no reference.
+    // There is no port output: a bare number needs no reference.
     expect(evaluateEnv(twoHttp, (service) => service("api").internalPort)).toThrow('has no output named "internalPort"');
     // Forgetting the call is the likely mistake, so it gets its own message.
-    expect(evaluateEnv(twoHttp, (service) => service("api").internalUrl)).toThrow("without calling it");
+    expect(evaluateEnv(twoHttp, (service) => service("api").url)).toThrow("without calling it");
+    // hostname() names no port, so passing one is a mistake worth its own message.
+    expect(evaluateEnv(twoHttp, (service) => service("api").hostname(8080))).toThrow("takes no arguments");
   });
 
   it("rejects a public port that has private siblings", () => {
     // The runtime's proxy listeners are per-app, not per-address, so a private
     // sibling of a public port would be served on the public address too.
     expect(() => evaluate(() => ({
-      web: { type: "serverless", ports: [{ port: 3000, public: true }, { port: 9090 }] },
+      web: { type: "serverless", ports: { 3000: { public: true }, 9090: {} } },
     }))).toThrow("may not declare any other port");
     // Both halves stay legal on their own.
     expect(() => evaluate(() => ({
-      web: { type: "serverless", ports: [{ port: 3000, public: true }] },
-      metrics: { type: "serverless", ports: [{ port: 9090 }, { port: 5432, transport: "tcp" }] },
+      web: { type: "serverless", ports: { 3000: { public: true } } },
+      metrics: { type: "serverless", ports: { 9090: {}, 5432: { protocol: "tcp" } } },
     }))).not.toThrow();
   });
 
@@ -163,11 +172,11 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     // before the target exists — so they must not order or serialize deploys.
     const deterministicallyWired = () => evaluate(({ service }: ServicesFunctionContext) => ({
       web: {
-        type: "serverless", ports: [{ port: 3000, public: true }],
-        env: { API: (service("api") as any).internalUrl(8080), DB_HOST: (service("db") as any).internalHost },
+        type: "serverless", ports: { 3000: { public: true } },
+        env: { API: (service("api") as any).url(8080), DB_HOST: (service("db") as any).hostname() },
       },
-      api: { type: "serverless", ports: [{ port: 8080 }, { port: 9090 }] },
-      db: { type: "server", ports: [{ port: 5432, transport: "tcp" }] },
+      api: { type: "serverless", ports: { 8080: {}, 9090: {} } },
+      db: { type: "server", ports: { 5432: { protocol: "tcp" } } },
     }));
     expect(deterministicallyWired).not.toThrow();
     // One level: nothing waits on anything.
@@ -176,8 +185,8 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     // Mutual wiring through deterministic references is legal, and used to be
     // rejected as a false circular dependency.
     const mutual = () => evaluate(({ service }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { API: (service("api") as any).internalUrl() } },
-      api: { type: "serverless", ports: [{ port: 8080 }], env: { WEB_HOST: (service("web") as any).internalHost } },
+      web: { type: "serverless", ports: { 3000: {} }, env: { API: (service("api") as any).url() } },
+      api: { type: "serverless", ports: { 8080: {} }, env: { WEB_HOST: (service("web") as any).hostname() } },
     }));
     expect(mutual).not.toThrow();
     // `web` still waits on `api`: a bare internalUrl() reads the target's ports.
@@ -185,122 +194,122 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
 
     // A `url` reference is still a real dependency.
     const publicUrl = evaluate(({ service }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { API: (service("api") as any).url } },
-      api: { type: "serverless", ports: [{ port: 8080, public: true }] },
+      web: { type: "serverless", ports: { 3000: {} }, env: { API: (service("api") as any).url() } },
+      api: { type: "serverless", ports: { 8080: { public: true } } },
     }));
     expect(computeDeploymentLevels(publicUrl.services)).toEqual([["api"], ["web"]]);
   });
 
-  it("rejects service() references to undefined services", () => {
-    expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { X: (service("databsae") as any).url } },
-      database: { type: "serverless", ports: [{ port: 3000 }] },
-    }))).toThrow('service("databsae") does not match any defined service. Available services: web, database.');
+  it("leaves references to services of other deployment sources to the backend", () => {
+    // Service ids are unique across the project, so an id this file does not
+    // define may well belong to another repository's deploy file. Only the
+    // backend can tell that apart from a typo, so nothing is rejected here — and
+    // the reference still serializes.
+    const { services } = evaluate(({ service }: ServicesFunctionContext) => ({
+      web: { type: "serverless", ports: { 3000: {} }, env: { X: (service("elsewhere") as any).url(8080) } },
+    }));
+    expect(services.get("web")?.definition.env.X).toEqual({ type: "connection", value: "elsewhere.url:8080" });
   });
 
   it("rejects URL outputs from TCP services and exposes host and port instead", () => {
     expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { DATABASE_URL: (service("database") as any).internalUrl() } },
-      database: { type: "serverless", ports: [{ port: 5432, transport: "tcp" }] },
-    }))).toThrow("internalHost with an explicit port");
+      web: { type: "serverless", ports: { 3000: {} }, env: { DATABASE_URL: (service("database") as any).url() } },
+      database: { type: "serverless", ports: { 5432: { protocol: "tcp" } } },
+    }))).toThrow("hostname() with an explicit port");
 
     const { services } = evaluate(({ service }: ServicesFunctionContext) => ({
       web: {
         type: "serverless",
-        ports: [{ port: 3000 }],
+        ports: { 3000: {} },
         env: {
-          DATABASE_HOST: (service("database") as any).internalHost,
+          DATABASE_HOST: (service("database") as any).hostname(),
           // The port is a literal: the author already wrote 5432 on the target,
           // and a bare number needs no reference to be correct.
           DATABASE_PORT: "5432",
         },
       },
-      database: { type: "serverless", ports: [{ port: 5432, transport: "tcp" }] },
+      database: { type: "serverless", ports: { 5432: { protocol: "tcp" } } },
     }));
     expect(services.get("web")?.definition.env).toMatchObject({
-      DATABASE_HOST: { type: "connection", value: "database.internalHost" },
+      DATABASE_HOST: { type: "connection", value: "database.hostname" },
       DATABASE_PORT: { value: "5432" },
     });
   });
 
   it("rejects unknown outputs on service() with the available outputs", () => {
     expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { X: (service("db") as any).ur } },
-      db: { type: "serverless", ports: [{ port: 3000 }] },
-    }))).toThrow('service("db") has no output named "ur". Available outputs: url, internalUrl, internalHost.');
+      web: { type: "serverless", ports: { 3000: {} }, env: { X: (service("db") as any).ur } },
+      db: { type: "serverless", ports: { 3000: {} } },
+    }))).toThrow('service("db") has no output named "ur". Available outputs: url, hostname.');
   });
 
   it("rejects string interpolation of references", () => {
     expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { API: `${(service("db") as any).url}/api` } },
-      db: { type: "serverless", ports: [{ port: 3000 }] },
+      web: { type: "serverless", ports: { 3000: {} }, env: { API: `${(service("db") as any).url()}/api` } },
+      db: { type: "serverless", ports: { 3000: {} } },
     }))).toThrow("cannot be embedded in a string");
     expect(() => evaluate(({ secret }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { AUTH: `Bearer ${secret("KEY", "v")}` } },
+      web: { type: "serverless", ports: { 3000: {} }, env: { AUTH: `Bearer ${secret("KEY", "v")}` } },
     }))).toThrow("cannot be embedded in a string");
     expect(() => evaluate(({ hexclave }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { P: `id-${(hexclave as any).projectId}` } },
+      web: { type: "serverless", ports: { 3000: {} }, env: { P: `id-${(hexclave as any).projectId}` } },
     }))).toThrow("cannot be embedded in a string");
-  });
-
-  it("rejects an async services function with a clear message", () => {
-    expect(() => evaluate(async () => ({ web: { type: "serverless", ports: [{ port: 3000 }] } }))).toThrow("must be synchronous");
   });
 
   it("rejects unknown outputs on the hexclave context object", () => {
     expect(() => evaluate(({ hexclave }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { X: (hexclave as any).projectid } },
+      web: { type: "serverless", ports: { 3000: {} }, env: { X: (hexclave as any).projectid } },
     }))).toThrow('hexclave has no output named "projectid"');
   });
 
   it("rejects service(\"hexclave\")", () => {
     expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { X: (service("hexclave") as any).url } },
+      web: { type: "serverless", ports: { 3000: {} }, env: { X: (service("hexclave") as any).url() } },
     }))).toThrow("use the `hexclave` context object instead");
   });
 
-  it("rejects self-referential url connections but allows internal ones", () => {
+  it("rejects a self-referential PUBLIC url but allows a private one", () => {
+    // The public URL only exists once the service is up, which its own first
+    // deploy cannot provide.
     expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { SELF: (service("web") as any).url } },
+      web: { type: "serverless", ports: { 3000: { public: true } }, env: { SELF: (service("web") as any).url(3000) } },
     }))).toThrow("cannot exist before the service does");
-    // The internal address is deterministic, so a service may reference its own.
+    // A private port's URL is deterministic, so a service may reference its own.
     const { services } = evaluate(({ service }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { SELF: (service("web") as any).internalUrl() } },
+      web: { type: "serverless", ports: { 3000: {} }, env: { SELF: (service("web") as any).url(3000) } },
     }));
-    expect(services.get("web")?.definition.env.SELF).toEqual({ type: "connection", value: "web.internalUrl" });
+    expect(services.get("web")?.definition.env.SELF).toEqual({ type: "connection", value: "web.url:3000" });
   });
 
   it("rejects assigning the whole service() return instead of an output", () => {
     expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { X: service("db") } },
-      db: { type: "serverless", ports: [{ port: 3000 }] },
+      web: { type: "serverless", ports: { 3000: {} }, env: { X: service("db") } },
+      db: { type: "serverless", ports: { 3000: {} } },
     }))).toThrow("pick one of its outputs");
   });
 
   it("rejects services without type and with unknown types", () => {
-    expect(() => evaluate(() => ({ web: { ports: [{ port: 3000 }] } }))).toThrow('has no `type`');
+    expect(() => evaluate(() => ({ web: { ports: { 3000: {} } } }))).toThrow('has no `type`');
     expect(() => evaluate(() => ({ web: { type: "netlify" } }))).toThrow('type must be "server" or "serverless"');
   });
 
   it("rejects unknown service fields (typo protection)", () => {
-    expect(() => evaluate(() => ({ web: { type: "serverless", ports: [{ port: 3000 }], buildCmd: "x" } }))).toThrow('unknown field "buildCmd"');
+    expect(() => evaluate(() => ({ web: { type: "serverless", ports: { 3000: {} }, buildCmd: "x" } }))).toThrow('unknown field "buildCmd"');
   });
 
   it("rejects non-string env values with the value's type", () => {
-    expect(() => evaluate(() => ({ web: { type: "serverless", ports: [{ port: 3000 }], env: { PORT: 3000 } } }))).toThrow("got number");
+    expect(() => evaluate(() => ({ web: { type: "serverless", ports: { 3000: {} }, env: { PORT: 3000 } } }))).toThrow("got number");
   });
 
   it("rejects invalid env var keys and secret keys", () => {
-    expect(() => evaluate(() => ({ web: { type: "serverless", ports: [{ port: 3000 }], env: { "1BAD": "x" } } }))).toThrow("invalid key");
+    expect(() => evaluate(() => ({ web: { type: "serverless", ports: { 3000: {} }, env: { "1BAD": "x" } } }))).toThrow("invalid key");
     expect(() => evaluate(({ secret }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { X: secret("bad key") } },
+      web: { type: "serverless", ports: { 3000: {} }, env: { X: secret("bad key") } },
     }))).toThrow("secret key");
   });
 
   it("rejects a missing services member", () => {
-    expect(() => evaluate(undefined)).toThrow("has no `services`");
-    // A plain record is no longer an error — it is the context-free spelling.
-    // See "the deployment envelope" below for the accepted case.
+    expect(() => evaluate(undefined)).toThrow("returned no `services`");
   });
 
   it("rejects empty and non-record returns", () => {
@@ -309,32 +318,32 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
   });
 
   it("rejects reserved and invalid service ids", () => {
-    expect(() => evaluate(() => ({ hexclave: { type: "serverless", ports: [{ port: 3000 }] } }))).toThrow("reserved");
-    expect(() => evaluate(() => ({ "-bad": { type: "serverless", ports: [{ port: 3000 }] } }))).toThrow("Invalid service id");
+    expect(() => evaluate(() => ({ hexclave: { type: "serverless", ports: { 3000: {} } } }))).toThrow("reserved");
+    expect(() => evaluate(() => ({ "-bad": { type: "serverless", ports: { 3000: {} } } }))).toThrow("Invalid service id");
   });
 
   it("rejects root directories outside the deploy file's directory", () => {
-    expect(() => evaluate(() => ({ web: { type: "serverless", ports: [{ port: 3000 }], rootDirectory: "../outside" } }))).toThrow("outside the directory containing the deploy file");
+    expect(() => evaluate(() => ({ web: { type: "serverless", ports: { 3000: {} }, rootDirectory: "../outside" } }))).toThrow("outside the directory containing the deploy file");
   });
 
   it("omits dockerfile_path when dockerfilePath is not set (Railpack auto-detection)", () => {
-    const { services } = evaluate(() => ({ web: { type: "serverless", ports: [{ port: 3000 }] } }));
+    const { services } = evaluate(() => ({ web: { type: "serverless", ports: { 3000: {} } } }));
     expect(services.get("web")?.definition.dockerfile_path).toBeUndefined();
   });
 
   it("rejects dockerfilePath values escaping the root directory", () => {
     expect(() => evaluate(() => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], dockerfilePath: "../Dockerfile" },
+      web: { type: "serverless", ports: { 3000: {} }, dockerfilePath: "../Dockerfile" },
     }))).toThrow("services.web.dockerfilePath must point to a file inside the service's root directory");
     expect(() => evaluate(() => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], dockerfilePath: "." },
+      web: { type: "serverless", ports: { 3000: {} }, dockerfilePath: "." },
     }))).toThrow("services.web.dockerfilePath must point to a file inside the service's root directory");
   });
 });
 
 describe("persistent volumes", () => {
   function web(service: Record<string, unknown>) {
-    return () => ({ web: { type: "server", ports: [{ port: 3000 }], env: {}, ...service } });
+    return () => ({ web: { type: "server", ports: { 3000: {} }, env: {}, ...service } });
   }
 
   it("serializes a persistent volume into the wire shape, converting sizeGb to size_gb", () => {
@@ -358,7 +367,7 @@ describe("persistent volumes", () => {
 
   it("rejects a persistent volume on a serverless service", () => {
     expect(() => evaluate(() => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], maxInstances: 2, persistentVolumes: { data: { path: "/data", sizeGb: 1 } } },
+      web: { type: "serverless", ports: { 3000: {} }, maxInstances: 2, persistentVolumes: { data: { path: "/data", sizeGb: 1 } } },
     }))).toThrow('declares persistentVolumes but is a "serverless" service');
   });
 
@@ -372,8 +381,8 @@ describe("persistent volumes", () => {
     // One id names one disk; two claimants would be asking Fly to mount it
     // twice, so this has to fail before anything is uploaded.
     expect(() => evaluate(() => ({
-      web: { type: "server", ports: [{ port: 3000 }], persistentVolumes: { shared: { path: "/data", sizeGb: 1 } } },
-      worker: { type: "server", ports: [{ port: 3001 }], persistentVolumes: { shared: { path: "/data", sizeGb: 1 } } },
+      web: { type: "server", ports: { 3000: {} }, persistentVolumes: { shared: { path: "/data", sizeGb: 1 } } },
+      worker: { type: "server", ports: { 3001: {} }, persistentVolumes: { shared: { path: "/data", sizeGb: 1 } } },
     }))).toThrow('The persistent volume id "shared" is claimed by both');
   });
 
@@ -407,39 +416,48 @@ describe("persistent volumes", () => {
 });
 
 describe("service types", () => {
-  it("pins a server to a single suspending instance", () => {
-    expect(() => evaluate(() => ({ api: { type: "server", ports: [{ port: 3000 }], maxInstances: 2 } })))
+  it("pins a server to a single instance and defaults it to always-on", () => {
+    expect(() => evaluate(() => ({ api: { type: "server", ports: { 3000: {} }, maxInstances: 2 } })))
       .toThrow("maxInstances must be 1");
-    expect(() => evaluate(() => ({ api: { type: "server", ports: [{ port: 3000 }], minInstances: 1 } })))
-      .toThrow("minInstances must be 0");
-    expect(evaluate(() => ({ api: { type: "server", ports: [{ port: 3000 }] } })).services.get("api")?.definition.type).toBe("server");
+    // 0 (suspend when idle) and 1 (stay up) are the only meanings one instance
+    // can have; the default is 1.
+    expect(() => evaluate(() => ({ api: { type: "server", ports: { 3000: {} }, minInstances: 2 } })))
+      .toThrow("minInstances must be 1 (always on, the default) or 0");
+    expect(evaluate(() => ({ api: { type: "server", ports: { 3000: {} }, minInstances: 0 } })).services.get("api")?.definition.min_instances).toBe(0);
+    const defaulted = evaluate(() => ({ api: { type: "server", ports: { 3000: {} } } })).services.get("api")?.definition;
+    expect(defaulted).toMatchObject({ type: "server", min_instances: 1 });
   });
 
   it("leaves serverless bounds alone", () => {
-    const { services } = evaluate(() => ({ web: { type: "serverless", ports: [{ port: 3000 }], minInstances: 1, maxInstances: 5 } }));
+    const { services } = evaluate(() => ({ web: { type: "serverless", ports: { 3000: {} }, minInstances: 1, maxInstances: 5 } }));
     expect(services.get("web")?.definition).toMatchObject({ type: "serverless", min_instances: 1, max_instances: 5 });
   });
 
 });
 
 describe("the deployment envelope", () => {
-  it("accepts a plain services record with no context function", () => {
-    const { services } = evaluateDeploymentConfig({
-      deployFilePath: CONFIG_PATH,
-      deploymentExport: { services: { web: { type: "serverless", ports: [{ port: 3000 }] } } },
-      mode: "deploy",
-    });
-    expect(services.get("web")?.definition.ports).toEqual([{ port: 3000, public: false, transport: "http" }]);
+  const evaluateExports = (idExport: unknown, deploymentExport: unknown) =>
+    () => evaluateDeploymentConfig({ deployFilePath: DEPLOY_FILE_PATH, idExport, deploymentExport, mode: "deploy" });
+
+  it("requires an id export naming the deployment source", () => {
+    const deploymentExport = () => ({ services: { web: { type: "serverless", ports: { 3000: {} } } } });
+    expect(evaluateExports(undefined, deploymentExport)).toThrow("has no `id` export");
+    expect(evaluateExports(7, deploymentExport)).toThrow("must be a string");
+    expect(evaluateExports("-nope", deploymentExport)).toThrow("Invalid deployment source id");
+    expect(evaluateExports("backend", deploymentExport)().sourceId).toBe("backend");
+    // Dots are legal: deployments declared in hexclave.config.ts belong to a
+    // source named after the file.
+    expect(evaluateExports("hexclave.config.ts", deploymentExport)().sourceId).toBe("hexclave.config.ts");
   });
 
   it("rejects a missing or malformed deployment export", () => {
-    const evaluateExport = (deploymentExport: unknown) =>
-      () => evaluateDeploymentConfig({ deployFilePath: CONFIG_PATH, deploymentExport, mode: "deploy" });
-    expect(evaluateExport(undefined)).toThrow("has no `deployment` export");
-    expect(evaluateExport({})).toThrow("has no `services`");
-    expect(evaluateExport({ services: {}, extra: 1 })).toThrow('unknown field "extra"');
-    // The pre-`deployment` spelling was a bare function, so say what to do with it.
-    expect(evaluateExport(() => ({}))).toThrow("must be an object with a `services` member");
+    expect(evaluateExports("s", undefined)).toThrow("has no `deployment` export");
+    // The context is where secret()/service()/hexclave come from, so a plain
+    // object could never reach them.
+    expect(evaluateExports("s", { services: {} })).toThrow("must be a function of the deployment context");
+    expect(evaluateExports("s", () => ({}))).toThrow("returned no `services`");
+    expect(evaluateExports("s", () => ({ services: {}, extra: 1 }))).toThrow('unknown field "extra"');
+    expect(evaluateExports("s", () => Promise.resolve({ services: {} }))).toThrow("must be synchronous");
   });
 });
 
@@ -454,7 +472,7 @@ describe("collectSecretDefaults", () => {
   it("collects only secrets that declare a default, keyed by env var", () => {
     const web = webServiceWithEnv(({ secret, hexclave }: ServicesFunctionContext) => ({
       web: {
-        type: "serverless", ports: [{ port: 3000 }],
+        type: "serverless", ports: { 3000: {} },
         env: {
           WITH_DEFAULT: secret("OPENAI_API_KEY", "some-default"),
           WITHOUT_DEFAULT: secret("REQUIRED"),
@@ -472,7 +490,7 @@ describe("collectSecretDefaults", () => {
     // secret-key-keyed map would silently collapse.
     const web = webServiceWithEnv(({ secret }: ServicesFunctionContext) => ({
       web: {
-        type: "serverless", ports: [{ port: 3000 }],
+        type: "serverless", ports: { 3000: {} },
         env: {
           PRIMARY: secret("SHARED", "primary-default"),
           SECONDARY: secret("SHARED", "secondary-default"),
@@ -484,7 +502,7 @@ describe("collectSecretDefaults", () => {
 
   it("keeps an empty-string default, which is not the same as having none", () => {
     const web = webServiceWithEnv(({ secret }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { EMPTY: secret("MAYBE", ""), NONE: secret("OTHER") } },
+      web: { type: "serverless", ports: { 3000: {} }, env: { EMPTY: secret("MAYBE", ""), NONE: secret("OTHER") } },
     }));
     expect(collectSecretDefaults(web)).toEqual({ EMPTY: "" });
   });
@@ -494,14 +512,14 @@ describe("evaluateDeploymentConfig (dev mode)", () => {
   it("resolves secrets to their default value and omits service() connections", () => {
     const { services } = evaluate(({ isDev, secret, service }: ServicesFunctionContext) => ({
       web: {
-        type: "serverless", ports: [{ port: 3000 }],
+        type: "serverless", ports: { 3000: {} },
         env: {
           OPENAI: secret("OPENAI_API_KEY", "dev-default"),
-          DB_URL: isDev ? null : (service("database") as any).url,
+          DB_URL: isDev ? null : (service("database") as any).url(),
           PLAIN: "x",
         },
       },
-      database: { type: "serverless", ports: [{ port: 3000 }] },
+      database: { type: "serverless", ports: { 3000: {} } },
     }), "dev");
     expect(resolveDevEnv(services.get("web") ?? (() => {
       throw new Error("web service missing");
@@ -515,8 +533,8 @@ describe("evaluateDeploymentConfig (dev mode)", () => {
     // Evaluation itself succeeds — a default-less secret in an UNRELATED
     // service must not block `hexclave dev --service-id` for everything else.
     const { services } = evaluate(({ secret }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { PLAIN: "x" } },
-      worker: { type: "serverless", ports: [{ port: 3000 }], env: { X: secret("NO_DEFAULT") } },
+      web: { type: "serverless", ports: { 3000: {} }, env: { PLAIN: "x" } },
+      worker: { type: "serverless", ports: { 3000: {} }, env: { X: secret("NO_DEFAULT") } },
     }), "dev");
     expect(resolveDevEnv(services.get("web") ?? (() => {
       throw new Error("web service missing");
@@ -530,22 +548,22 @@ describe("evaluateDeploymentConfig (dev mode)", () => {
     // service() returns null in dev (the env var is omitted), but a typo'd id
     // must still fail — not lie dormant until the next deploy.
     expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { X: service("databsae") as never } },
-      database: { type: "serverless", ports: [{ port: 3000 }] },
-    }), "dev")).toThrow('service("databsae") does not match any defined service');
+      web: { type: "serverless", ports: { 3000: {} }, env: { X: service("databsae") as never } },
+      database: { type: "serverless", ports: { 3000: {} } },
+    }), "dev")).not.toThrow();
   });
 
   it("explains the isDev guard when service() output access crashes on null", () => {
     expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { DB_URL: (service("database") as any).url } },
-      database: { type: "serverless", ports: [{ port: 3000 }] },
+      web: { type: "serverless", ports: { 3000: {} }, env: { DB_URL: (service("database") as any).url() } },
+      database: { type: "serverless", ports: { 3000: {} } },
     }), "dev")).toThrow("service() returns null — guard connection values with isDev");
   });
 
   it("resolves hexclave outputs from the session env", () => {
     const { services } = evaluate(({ hexclave }: ServicesFunctionContext) => ({
       web: {
-        type: "serverless", ports: [{ port: 3000 }],
+        type: "serverless", ports: { 3000: {} },
         env: {
           PROJECT_ID: (hexclave as any).projectId,
           API_URL: (hexclave as any).apiUrl,
@@ -574,7 +592,7 @@ describe("evaluateDeploymentConfig (dev mode)", () => {
 
   it("errors when the session env lacks a needed hexclave output", () => {
     const { services } = evaluate(({ hexclave }: ServicesFunctionContext) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { SSK: (hexclave as any).secretServerKey } },
+      web: { type: "serverless", ports: { 3000: {} }, env: { SSK: (hexclave as any).secretServerKey } },
     }), "dev");
     expect(() => resolveDevEnv(services.get("web") ?? (() => {
       throw new Error("web service missing");
@@ -587,17 +605,17 @@ describe("computeDeploymentLevels", () => {
 
   it("orders dependencies before dependents, independent services in one level", () => {
     const services = build(({ service }) => ({
-      frontend: { type: "serverless", ports: [{ port: 3000 }], env: { A: (service("backend") as any).url, B: (service("database") as any).url } },
-      backend: { type: "serverless", ports: [{ port: 3000 }], env: { DB: (service("database") as any).url } },
-      database: { type: "serverless", ports: [{ port: 3000 }] },
-      docs: { type: "serverless", ports: [{ port: 3000 }] },
+      frontend: { type: "serverless", ports: { 3000: {} }, env: { A: (service("backend") as any).url(), B: (service("database") as any).url() } },
+      backend: { type: "serverless", ports: { 3000: {} }, env: { DB: (service("database") as any).url() } },
+      database: { type: "serverless", ports: { 3000: {} } },
+      docs: { type: "serverless", ports: { 3000: {} } },
     }));
     expect(computeDeploymentLevels(services)).toEqual([["database", "docs"], ["backend"], ["frontend"]]);
   });
 
   it("ignores hexclave connections for ordering", () => {
     const services = build(({ hexclave }) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { P: (hexclave as any).projectId } },
+      web: { type: "serverless", ports: { 3000: {} }, env: { P: (hexclave as any).projectId } },
     }));
     expect(computeDeploymentLevels(services)).toEqual([["web"]]);
   });
@@ -606,16 +624,16 @@ describe("computeDeploymentLevels", () => {
     // A self `internalUrl` is deterministic (see evaluateDeploymentConfig), so it must not
     // create a self-edge that computeDeploymentLevels would report as a false cycle.
     const services = build(({ service }) => ({
-      web: { type: "serverless", ports: [{ port: 3000 }], env: { SELF: (service("web") as any).internalUrl() } },
+      web: { type: "serverless", ports: { 3000: {} }, env: { SELF: (service("web") as any).url(3000) } },
     }));
     expect(computeDeploymentLevels(services)).toEqual([["web"]]);
   });
 
   it("names the cycle on circular dependencies", () => {
     const services = build(({ service }) => ({
-      a: { type: "serverless", ports: [{ port: 3000 }], env: { X: (service("b") as any).url } },
-      b: { type: "serverless", ports: [{ port: 3000 }], env: { X: (service("c") as any).url } },
-      c: { type: "serverless", ports: [{ port: 3000 }], env: { X: (service("a") as any).url } },
+      a: { type: "serverless", ports: { 3000: {} }, env: { X: (service("b") as any).url() } },
+      b: { type: "serverless", ports: { 3000: {} }, env: { X: (service("c") as any).url() } },
+      c: { type: "serverless", ports: { 3000: {} }, env: { X: (service("a") as any).url() } },
     }));
     expect(() => computeDeploymentLevels(services)).toThrow(/circular connection dependency: (a -> b -> c -> a|b -> c -> a -> b|c -> a -> b -> c)/);
   });

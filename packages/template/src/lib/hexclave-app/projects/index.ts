@@ -3,11 +3,11 @@ import { AdminUserProjectsCrud, ProjectsCrud } from "@hexclave/shared/dist/inter
 import { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 
 import { CompleteConfig, EnvironmentConfigNormalizedOverride, EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
-import type { AdminDeploymentDomainJson, AdminDeploymentJson, AdminDeploymentRunJson, AdminProjectSecretJson, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
+import type { AdminDeploymentDomainJson, AdminDeploymentJson, AdminDeploymentServiceOutcomeJson, AdminProjectSecretJson, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";
 
-export type { AdminDeploymentDomainJson, AdminDeploymentEnvVarJson, AdminDeploymentJson, AdminDeploymentRunJson, AdminProjectSecretJson, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
+export type { AdminDeploymentDomainJson, AdminDeploymentEnvVarJson, AdminDeploymentJson, AdminDeploymentServiceOutcomeJson, AdminProjectSecretJson, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
 
 /**
  * SDK type for pushed config source (camelCase for SDK).
@@ -177,22 +177,16 @@ export type AdminProject = {
   listDeployments(this: AdminProject, options?: { limit?: number }): Promise<AdminDeploymentJson[]>,
 
   /**
-   * Creates the deployment that a multi-service deploy groups its per-service
-   * runs under. `hexclave deploy` calls this; there is rarely a reason to call
-   * it directly.
+   * Reads one deployment, including what each of its services did.
    */
-  createDeployment(this: AdminProject, options: { plannedServiceIds: string[], triggeredBy?: string }): Promise<{ id: string, number: number }>,
+  getDeployment(this: AdminProject, deploymentId: string): Promise<AdminDeploymentJson>,
 
   /**
-   * Lists the most recent deployment runs of a service, newest first.
+   * Returns the build logs of a deployment collected so far (the server follows
+   * a running build for a while before returning). One deploy is one build, so
+   * one log covers every service it shipped.
    */
-  listDeploymentRuns(this: AdminProject, serviceId: string, options?: { limit?: number }): Promise<AdminDeploymentRunJson[]>,
-
-  /**
-   * Returns the build logs of a deployment run collected so far (the server
-   * follows a running build for a while before returning).
-   */
-  getDeploymentRunLogs(this: AdminProject, runId: string, options?: { signal?: AbortSignal }): Promise<string>,
+  getDeploymentBuildLogs(this: AdminProject, deploymentId: string, options?: { signal?: AbortSignal }): Promise<string>,
 
   /**
    * Adds a custom domain to a deployment service.

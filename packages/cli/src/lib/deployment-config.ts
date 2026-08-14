@@ -5,30 +5,35 @@
 // services it owns, and each of those repositories has a deploy file of its own
 // while only one of them (if any) owns the project's configuration.
 //
-// The export is an object with a `services` member. `services` is normally a
-// FUNCTION, so it can reach secrets, connections, and the managed backend's
-// outputs; a plain record is accepted when a config needs none of them.
+// The export is a FUNCTION of the deployment context returning `{ services }`.
+// The context is where `secret()`, `service()` and `hexclave.*` come from.
 //
-//   export const deployment: HexclaveDeploymentConfig = {
-//     services: ({ isDev, secret, service, hexclave }) => ({
+// The file's `id` export names the DEPLOYMENT SOURCE: which deploy file (and so
+// which repository) these services belong to. Service ids stay unique across the
+// whole project, so a reference never names a source.
+//
+//   export const id = "my-app";
+//
+//   export const deployment: HexclaveDeploymentConfig = ({ isDev, secret, service, hexclave }) => ({
+//     services: {
 //       frontend: {
 //         type: "serverless",
-//         ports: [{ port: 3000, public: true }],
+//         ports: { 3000: { public: true } },
 //         maxInstances: 3,
 //         devCommand: "pnpm dev",
 //         env: {
-//           DB_URL: service("database").internalUrl(),
+//           DB_URL: service("database").url(5432),
 //           OPENAI: isDev ? null : secret("OPENAI_API_KEY", "some-default"),
 //           PROJECT_ID: hexclave.projectId,
 //         },
 //       },
 //       database: {
 //         type: "server",
-//         ports: [{ port: 5432, transport: "tcp" }],
+//         ports: { 5432: { protocol: "tcp" } },
 //         persistentVolumes: { pgdata: { path: "/var/lib/postgresql/data", sizeGb: 10 } },
 //       },
-//     }),
-//   };
+//     },
+//   });
 //
 // `secret()`, `service()` and `hexclave.*` return SENTINEL objects (in deploy
 // mode) that this module serializes into the wire-shape definitions the
@@ -50,6 +55,8 @@ import {
   DEPLOYMENT_VOLUME_ID_REGEX,
   HEXCLAVE_OUTPUT_KEYS,
   HEXCLAVE_SERVICE_ID,
+  DEPLOYMENT_SOURCE_ID_REGEX,
+  MAX_DEPLOYMENT_SOURCE_ID_LENGTH,
   MAX_PERSISTENT_VOLUMES_PER_SERVICE,
   MAX_PORTS_PER_SERVICE,
   MAX_VOLUME_ID_LENGTH,
@@ -59,9 +66,10 @@ import {
   connectionRequiresTargetDeployed,
   formatConnectionValue,
   parseConnectionValue,
-  portTransport,
+  deploymentPortEntries,
+  deploymentPortEntry,
   type DeploymentEnvVarDefinition,
-  type DeploymentPortDefinition,
+  type DeploymentPorts,
   type DeploymentServiceDefinition,
   type DeploymentServiceType,
   type DeploymentVolumeDefinition,
@@ -74,6 +82,14 @@ import { CliError, errorMessage } from "./errors.js";
 
 // The names checked (in order) when --deploy-file is not passed.
 export const DEPLOY_FILE_CANDIDATES = ["hexclave.deploy.ts", "hexclave.deploy.js"];
+
+/** Whether `cwd` contains a deploy file at all. */
+export function hasDeployFile(cwd: string): boolean {
+  return DEPLOY_FILE_CANDIDATES.some((candidate) => {
+    const resolved = path.resolve(cwd, candidate);
+    return fs.existsSync(resolved) && fs.statSync(resolved).isFile();
+  });
+}
 
 /**
  * Resolves the deploy file path: --deploy-file wins (and must exist); otherwise
@@ -212,7 +228,9 @@ function createServicesContext(mode: "deploy" | "dev"): { context: ServicesFunct
       throw new CliError(`service(${JSON.stringify(HEXCLAVE_SERVICE_ID)}) does not exist — use the \`hexclave\` context object instead (e.g. \`hexclave.projectId\`).`);
     }
     // Recorded in BOTH modes so a typo'd id fails during `hexclave dev` too,
-    // not only at deploy time.
+    // not only at deploy time. Service ids are unique across the whole project,
+    // so a service deployed from another deployment source is referenced exactly
+    // like one declared right here — this file just cannot check that it exists.
     referencedServiceIds.add(serviceId);
     if (mode === "dev") {
       // During `hexclave dev` there is nothing meaningful to connect to (the
@@ -228,22 +246,27 @@ function createServicesContext(mode: "deploy" | "dev"): { context: ServicesFunct
       reference: formatConnectionValue(serviceId, outputKey, port),
       hexclaveOutputKey: undefined,
     } satisfies ConnectionRef, description);
+    // Both outputs are CALLS: `url` because a URL names exactly one port, and
+    // `hostname` for symmetry — one shape to remember rather than a rule about
+    // which of two outputs happens to take parentheses.
     return createOutputsProxy(subject, SERVICE_OUTPUT_KEYS, (outputKey) => {
-      // A URL names exactly one port, so `internalUrl` is a CALL rather than a
-      // property: `internalUrl()` when a single HTTP port makes it unambiguous,
-      // `internalUrl(9090)` to pick one otherwise. Everything else is a value.
-      if (outputKey !== "internalUrl") return connectionRef(outputKey, null, `${subject}.${outputKey}`);
-      const internalUrl = (port?: unknown): unknown => {
-        if (port !== undefined && (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535)) {
-          throw new CliError(`${subject}.internalUrl() takes a port number between 1 and 65535 (got ${JSON.stringify(port)}).`);
+      const output = (port?: unknown): unknown => {
+        if (outputKey === "hostname") {
+          if (port !== undefined) {
+            throw new CliError(`${subject}.hostname() takes no arguments — it is the service's address without a port. Use ${subject}.url(${JSON.stringify(port)}) for a URL, or pair the hostname with a literal port number.`);
+          }
+          return connectionRef("hostname", null, `${subject}.hostname()`);
         }
-        return connectionRef("internalUrl", port ?? null, `${subject}.internalUrl(${port ?? ""})`);
+        if (port !== undefined && (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535)) {
+          throw new CliError(`${subject}.url() takes a port number between 1 and 65535 (got ${JSON.stringify(port)}).`);
+        }
+        return connectionRef("url", port ?? null, `${subject}.url(${port ?? ""})`);
       };
       // Coercing the FUNCTION is the mistake to catch here — forgetting the
-      // call, as in `DB: service("db").internalUrl`, would otherwise serialize
-      // as "[object Function]" or throw somewhere far from the cause.
-      Object.defineProperty(internalUrl, UNCALLED_OUTPUT_MARKER, { value: `${subject}.internalUrl` });
-      return preventStringCoercion(internalUrl, `${subject}.internalUrl (call it: \`${subject}.internalUrl()\`)`);
+      // call, as in `DB: service("db").url`, would otherwise serialize as
+      // "[object Function]" or throw somewhere far from the cause.
+      Object.defineProperty(output, UNCALLED_OUTPUT_MARKER, { value: `${subject}.${outputKey}` });
+      return preventStringCoercion(output, `${subject}.${outputKey} (call it: \`${subject}.${outputKey}()\`)`);
     });
   };
 
@@ -285,6 +308,10 @@ export type EvaluatedService = {
 };
 
 export type EvaluatedServices = {
+  // The deployment source this file is: one `hexclave deploy` uploads and builds
+  // exactly these services, and the server treats every service NOT listed here
+  // but previously owned by this source as removed.
+  sourceId: string,
   services: Map<string, EvaluatedService>,
 };
 
@@ -321,33 +348,47 @@ function readOptionalStringField(record: Record<string, unknown>, serviceId: str
  * service's own Fly app. It therefore identifies the disk within a service —
  * the same id under a different service is a DIFFERENT (empty) disk.
  */
-const KNOWN_PORT_FIELDS = new Set(["port", "public", "transport"]);
+const KNOWN_PORT_FIELDS = new Set(["public", "protocol"]);
 
 /**
- * Evaluates the `ports` array. There is no service-level visibility: a service
- * is public exactly when one of its ports is, so the only thing to reconcile
- * here is the port list itself.
+ * Evaluates the `ports` record, keyed by port number. There is no service-level
+ * visibility: a service is public exactly when one of its ports is, so the only
+ * thing to reconcile here is the record itself.
+ *
+ * The record IS the wire and stored shape — nothing translates between two
+ * spellings of one thing — so this normalizes the values (applying the `public`
+ * and `protocol` defaults) and validates the keys.
  */
-function evaluatePorts(serviceId: string, portsRaw: unknown): DeploymentPortDefinition[] {
-  // The FIELD stays required even though the list may be empty: an omitted
+function evaluatePorts(serviceId: string, portsRaw: unknown): DeploymentPorts {
+  // The FIELD stays required even though the record may be empty: an omitted
   // `ports` is far more often a forgotten line than a deliberate worker, and
-  // `ports: []` says the latter out loud.
+  // `ports: {}` says the latter out loud.
   if (portsRaw === undefined || portsRaw === null) {
-    throw new CliError(`deployment.services.${serviceId} has no \`ports\`. Every service must declare the ports its container listens on, e.g. \`ports: [{ port: 3000, public: true }]\` — or \`ports: []\` for a worker that only makes outbound connections.`);
+    throw new CliError(`deployment.services.${serviceId} has no \`ports\`. Every service must declare the ports its container listens on, e.g. \`ports: { 3000: { public: true } }\` — or \`ports: {}\` for a worker that only makes outbound connections.`);
   }
-  if (!Array.isArray(portsRaw)) {
-    throw new CliError(`deployment.services.${serviceId}.ports must be an array, e.g. \`ports: [{ port: 3000, public: true }]\` (got ${JSON.stringify(typeof portsRaw)}).`);
+  if (typeof portsRaw !== "object" || Array.isArray(portsRaw)) {
+    throw new CliError(`deployment.services.${serviceId}.ports must be an object keyed by port number, e.g. \`ports: { 3000: { public: true } }\` (got ${Array.isArray(portsRaw) ? "an array" : JSON.stringify(typeof portsRaw)}).`);
   }
-  if (portsRaw.length > MAX_PORTS_PER_SERVICE) {
-    throw new CliError(`deployment.services.${serviceId}.ports declares ${portsRaw.length} ports, but at most ${MAX_PORTS_PER_SERVICE} per service is supported.`);
+  const portEntries = Object.entries(portsRaw as Record<string, unknown>);
+  if (portEntries.length > MAX_PORTS_PER_SERVICE) {
+    throw new CliError(`deployment.services.${serviceId}.ports declares ${portEntries.length} ports, but at most ${MAX_PORTS_PER_SERVICE} per service is supported.`);
   }
 
-  const ports: DeploymentPortDefinition[] = [];
-  const seenPorts = new Set<number>();
-  for (const [index, portRaw] of portsRaw.entries()) {
-    const at = `deployment.services.${serviceId}.ports[${index}]`;
+  const ports: DeploymentPorts = {};
+  for (const [portKey, portRaw] of portEntries) {
+    const at = `deployment.services.${serviceId}.ports[${portKey}]`;
+    // Object keys are strings even when written as numbers, and JS accepts any
+    // string as one — so the key is validated as a port number here rather than
+    // coerced. (Duplicates are impossible: an object cannot hold one key twice.)
+    if (!/^[0-9]+$/.test(portKey)) {
+      throw new CliError(`deployment.services.${serviceId}.ports has the key ${JSON.stringify(portKey)}, which is not a port number. Keys are the ports the container listens on, e.g. \`ports: { 3000: {} }\`.`);
+    }
+    const port = Number(portKey);
+    if (port < 1 || port > 65535) {
+      throw new CliError(`${at} must be a port between 1 and 65535 (got ${port}).`);
+    }
     if (portRaw === null || typeof portRaw !== "object" || Array.isArray(portRaw)) {
-      throw new CliError(`${at} must be an object, e.g. \`{ port: 3000, public: true }\`.`);
+      throw new CliError(`${at} must be an object, e.g. \`{ public: true }\` — or \`{}\` for a private HTTP port.`);
     }
     const record = portRaw as Record<string, unknown>;
     for (const field of Object.keys(record)) {
@@ -356,32 +397,22 @@ function evaluatePorts(serviceId: string, portsRaw: unknown): DeploymentPortDefi
       }
     }
 
-    const port = record.port;
-    if (typeof port !== "number" || !Number.isInteger(port)) {
-      throw new CliError(`${at}.port is required and must be an integer, e.g. \`{ port: 3000 }\`.`);
-    }
-    if (port < 1 || port > 65535) {
-      throw new CliError(`${at}.port must be between 1 and 65535 (got ${port}).`);
-    }
-    if (seenPorts.has(port)) {
-      throw new CliError(`${at} declares port ${port}, which is already declared on deployment.services.${serviceId}. Each port may only appear once.`);
-    }
-    seenPorts.add(port);
-
     if (record.public !== undefined && typeof record.public !== "boolean") {
       throw new CliError(`${at}.public must be true or false (got ${JSON.stringify(record.public)}). It defaults to false — ports are private unless you say otherwise.`);
     }
     const isPublic = record.public === true;
 
-    const transport = record.transport === undefined ? "http" : record.transport;
-    if (transport !== "http" && transport !== "tcp") {
-      throw new CliError(`${at}.transport must be "http" or "tcp" (got ${JSON.stringify(record.transport)}).`);
+    const protocol = record.protocol === undefined ? "http" : record.protocol;
+    if (protocol !== "http" && protocol !== "tcp") {
+      throw new CliError(`${at}.protocol must be "http" or "tcp" (got ${JSON.stringify(record.protocol)}).`);
     }
-    if (transport === "tcp" && isPublic) {
-      throw new CliError(`${at} is a "tcp" port, which is private-only: raw TCP gets no TLS termination and no HTTP routing, so it cannot be served on a public hostname. Drop \`public: true\` and connect with service(${JSON.stringify(serviceId)}).internalHost and port ${port}.`);
+    if (protocol === "tcp" && isPublic) {
+      throw new CliError(`${at} is a "tcp" port, which is private-only: raw TCP gets no TLS termination and no HTTP routing, so it cannot be served on a public hostname. Drop \`public: true\` and connect with service(${JSON.stringify(serviceId)}).hostname() and port ${port}.`);
     }
 
-    ports.push({ port, public: isPublic, transport });
+    // Written out rather than passed through, so the stored definition states
+    // every default instead of leaving each reader to apply it.
+    ports[String(port)] = { public: isPublic, protocol };
   }
 
   // FLY.IO PLATFORM LIMITATION: a public port must be a service's ONLY port. Fly
@@ -391,13 +422,14 @@ function evaluatePorts(serviceId: string, portsRaw: unknown): DeploymentPortDefi
   // traffic reaches them over Flycast, which is that same proxy.) See the
   // `public-service-has-one-port` rule in @hexclave/shared's deployments.ts.
   //
-  // One rule, not two: this also covers a list marking SEVERAL ports public,
+  // One rule, not two: this also covers a record marking SEVERAL ports public,
   // since those are likewise more than one port, and the remedy is the same
   // either way — one port per service, each getting its own app, IP and 80/443.
-  const publicPorts = ports.filter((entry) => entry.public);
-  if (publicPorts.length >= 1 && ports.length > 1) {
-    const others = ports.filter((entry) => entry.port !== publicPorts[0].port).map((entry) => entry.port);
-    throw new CliError(`deployment.services.${serviceId} has a public port (${publicPorts[0].port}) and may not declare any other port, but also declares ${others.join(", ")}. A service is exposed on every address it has, so those ports would be public too. Move them to their own service and connect with service(${JSON.stringify(serviceId)}).internalHost.`);
+  const entries = deploymentPortEntries(ports);
+  const publicPort = entries.find((entry) => entry.public);
+  if (publicPort !== undefined && entries.length > 1) {
+    const others = entries.filter((entry) => entry.port !== publicPort.port).map((entry) => entry.port);
+    throw new CliError(`deployment.services.${serviceId} has a public port (${publicPort.port}) and may not declare any other port, but also declares ${others.join(", ")}. A service is exposed on every address it has, so those ports would be public too. Move them to their own service and connect with service(${JSON.stringify(serviceId)}).hostname().`);
   }
   return ports;
 }
@@ -514,16 +546,18 @@ function serializeEnvForWire(env: Record<string, EvaluatedEnvVarValue>): Record<
   }));
 }
 
-const EXAMPLE_DEPLOYMENT_EXPORT = `  export const deployment: HexclaveDeploymentConfig = {
-    services: ({ isDev, secret, service, hexclave }) => ({
+const EXAMPLE_DEPLOYMENT_EXPORT = `  export const id = "my-app";
+
+  export const deployment: HexclaveDeploymentConfig = ({ isDev, secret, service, hexclave }) => ({
+    services: {
       web: {
         type: "serverless",
-        ports: [{ port: 3000, public: true }],
+        ports: { 3000: { public: true } },
         devCommand: "npm run dev",
-        env: { HEXCLAVE_PROJECT_ID: hexclave.projectId },
+        env: { API_URL: service("api").url(8080) },
       },
-    }),
-  };`;
+    },
+  });`;
 
 /**
  * Evaluates a loaded deploy module's `deployment` export. `deployFilePath` must
@@ -532,62 +566,75 @@ const EXAMPLE_DEPLOYMENT_EXPORT = `  export const deployment: HexclaveDeployment
  */
 export function evaluateDeploymentConfig(options: {
   deployFilePath: string,
+  // The file's `id` export — the deployment source id. Required in a deploy
+  // file; the caller passes CONFIG_FILE_DEPLOYMENT_SOURCE_ID for deployments
+  // declared in hexclave.config.ts, which has no id of its own.
+  idExport: unknown,
   deploymentExport: unknown,
   mode: "deploy" | "dev",
 }): EvaluatedServices {
-  const { deployFilePath, deploymentExport, mode } = options;
+  const { deployFilePath, idExport, deploymentExport, mode } = options;
   const deployFileDirectory = path.dirname(deployFilePath);
+
+  // The source id names what this file deploys. Everything downstream — the
+  // upload, the build, the teardown of services this file no longer declares —
+  // is scoped to it, which is what lets several repositories deploy into one
+  // project without touching each other's services.
+  if (idExport === undefined) {
+    throw new CliError(`The deploy file ${deployFilePath} has no \`id\` export. Add one naming this deployment source, e.g. \`export const id = "backend";\` — it is how Hexclave tells the deploy files of different repositories apart.`);
+  }
+  if (typeof idExport !== "string") {
+    throw new CliError(`The \`id\` export of ${deployFilePath} must be a string naming this deployment source (got ${typeof idExport}).`);
+  }
+  const sourceId = idExport;
+  if (!DEPLOYMENT_SOURCE_ID_REGEX.test(sourceId) || sourceId.length > MAX_DEPLOYMENT_SOURCE_ID_LENGTH) {
+    throw new CliError(`Invalid deployment source id ${JSON.stringify(sourceId)} in ${deployFilePath}. Ids must be at most ${MAX_DEPLOYMENT_SOURCE_ID_LENGTH} characters and contain only letters, numbers, underscores, dots, and hyphens (not starting with a dot or hyphen).`);
+  }
 
   if (deploymentExport === undefined) {
     throw new CliError(`The deploy file ${deployFilePath} has no \`deployment\` export. Add one, e.g.:\n${EXAMPLE_DEPLOYMENT_EXPORT}`);
   }
-  // The context function belongs on `services`, not on `deployment` itself —
-  // an easy slip, and the resulting shape error is otherwise opaque.
-  if (typeof deploymentExport === "function") {
-    throw new CliError(`The \`deployment\` export of ${deployFilePath} must be an object with a \`services\` member, not a function. The context function goes on \`services\`: \`export const deployment = { services: ({ ... }) => ({ ... }) };\``);
-  }
-  if (deploymentExport === null || typeof deploymentExport !== "object" || Array.isArray(deploymentExport)) {
-    throw new CliError(`The \`deployment\` export of ${deployFilePath} must be an object, e.g.:\n${EXAMPLE_DEPLOYMENT_EXPORT}`);
-  }
-  const deploymentRecord = deploymentExport as Record<string, unknown>;
-  for (const field of Object.keys(deploymentRecord)) {
-    if (field !== "services") {
-      throw new CliError(`The \`deployment\` export of ${deployFilePath} has an unknown field ${JSON.stringify(field)}. The only supported field is \`services\`.`);
-    }
-  }
-  const servicesExport = deploymentRecord.services;
-  if (servicesExport === undefined) {
-    throw new CliError(`The \`deployment\` export of ${deployFilePath} has no \`services\`. Add one, e.g.:\n${EXAMPLE_DEPLOYMENT_EXPORT}`);
+  // The export is a function OF THE CONTEXT returning `{ services }` — the
+  // context is what `secret()`, `service()` and `hexclave.*` come from, so a
+  // plain object could never reach them.
+  if (typeof deploymentExport !== "function") {
+    throw new CliError(`The \`deployment\` export of ${deployFilePath} must be a function of the deployment context, e.g.:\n${EXAMPLE_DEPLOYMENT_EXPORT}`);
   }
 
   const { context, referencedServiceIds } = createServicesContext(mode);
-  let servicesRaw: unknown;
-  if (typeof servicesExport === "function") {
-    try {
-      servicesRaw = (servicesExport as (ctx: ServicesFunctionContext) => unknown)(context);
-    } catch (error) {
-      if (error instanceof CliError) throw error;
-      // The most common dev-mode crash: accessing `.url` on service()'s null
-      // return without an isDev guard. Attach the explanation to the TypeError
-      // instead of letting a bare "Cannot read properties of null" surface.
-      if (mode === "dev" && error instanceof TypeError && /null/.test(error.message)) {
-        throw new CliError(`Failed to evaluate deployment.services of ${deployFilePath}: ${error.message}\nNote: during \`hexclave dev\`, service() returns null — guard connection values with isDev, e.g. \`isDev ? "http://localhost:5432" : service("database").url\`.`);
-      }
-      throw new CliError(`Failed to evaluate deployment.services of ${deployFilePath}: ${errorMessage(error)}`);
+  let deploymentRaw: unknown;
+  try {
+    deploymentRaw = (deploymentExport as (ctx: ServicesFunctionContext) => unknown)(context);
+  } catch (error) {
+    if (error instanceof CliError) throw error;
+    // The most common dev-mode crash: calling `.url()` on service()'s null
+    // return without an isDev guard. Attach the explanation to the TypeError
+    // instead of letting a bare "Cannot read properties of null" surface.
+    if (mode === "dev" && error instanceof TypeError && /null/.test(error.message)) {
+      throw new CliError(`Failed to evaluate the \`deployment\` export of ${deployFilePath}: ${error.message}\nNote: during \`hexclave dev\`, service() returns null — guard connection values with isDev, e.g. \`isDev ? "http://localhost:5432" : service("database").url(5432)\`.`);
     }
-  } else {
-    // A plain record is allowed for configs that reference no secrets,
-    // connections, or managed outputs — there is nothing for the context to
-    // supply, so requiring a function would be ceremony for its own sake.
-    servicesRaw = servicesExport;
+    throw new CliError(`Failed to evaluate the \`deployment\` export of ${deployFilePath}: ${errorMessage(error)}`);
   }
-  // An async function's Promise would pass the plain-object check below with
-  // zero enumerable entries and die on the misleading "returned no services".
-  if (servicesRaw !== null && typeof servicesRaw === "object" && "then" in servicesRaw && typeof (servicesRaw as { then: unknown }).then === "function") {
-    throw new CliError(`deployment.services of ${deployFilePath} must be synchronous, but it returned a Promise. Remove the \`async\` keyword — secrets and connections are resolved for you, nothing in the services export needs to be awaited.`);
+  // An async function's Promise would pass the object check below and then die
+  // on a misleading "has no services".
+  if (deploymentRaw !== null && typeof deploymentRaw === "object" && "then" in deploymentRaw && typeof (deploymentRaw as { then: unknown }).then === "function") {
+    throw new CliError(`The \`deployment\` export of ${deployFilePath} must be synchronous, but it returned a Promise. Remove the \`async\` keyword — secrets and connections are resolved for you, nothing here needs to be awaited.`);
+  }
+  if (deploymentRaw === null || typeof deploymentRaw !== "object" || Array.isArray(deploymentRaw)) {
+    throw new CliError(`The \`deployment\` export of ${deployFilePath} must return an object with a \`services\` member, e.g.:\n${EXAMPLE_DEPLOYMENT_EXPORT}`);
+  }
+  const deploymentRecord = deploymentRaw as Record<string, unknown>;
+  for (const field of Object.keys(deploymentRecord)) {
+    if (field !== "services") {
+      throw new CliError(`The \`deployment\` export of ${deployFilePath} returned an unknown field ${JSON.stringify(field)}. The only supported field is \`services\`.`);
+    }
+  }
+  const servicesRaw = deploymentRecord.services;
+  if (servicesRaw === undefined) {
+    throw new CliError(`The \`deployment\` export of ${deployFilePath} returned no \`services\`. Add them, e.g.:\n${EXAMPLE_DEPLOYMENT_EXPORT}`);
   }
   if (servicesRaw === null || typeof servicesRaw !== "object" || Array.isArray(servicesRaw)) {
-    throw new CliError(`deployment.services of ${deployFilePath} must be a record of services keyed by service id (or a function returning one).`);
+    throw new CliError(`deployment.services of ${deployFilePath} must be a record of services keyed by service id.`);
   }
 
   const services = new Map<string, EvaluatedService>();
@@ -657,8 +704,8 @@ export function evaluateDeploymentConfig(options: {
       if (maxInstances !== undefined && maxInstances !== 1) {
         throw new CliError(`deployment.services.${serviceId} is a "server", which is always a single instance, so maxInstances must be 1 (got ${maxInstances}). Use \`type: "serverless"\` to scale out.`);
       }
-      if (minInstances !== undefined && minInstances !== 0) {
-        throw new CliError(`deployment.services.${serviceId} is a "server", which scales to zero by suspending, so minInstances must be 0 (got ${minInstances}). Use \`type: "serverless"\` with \`minInstances: ${minInstances}\` for always-on instances.`);
+      if (minInstances !== undefined && minInstances !== 0 && minInstances !== 1) {
+        throw new CliError(`deployment.services.${serviceId} is a "server", which holds a single instance, so minInstances must be 1 (always on, the default) or 0 (suspend when idle) — got ${minInstances}. Use \`type: "serverless"\` to run several instances.`);
       }
     }
 
@@ -679,7 +726,10 @@ export function evaluateDeploymentConfig(options: {
       definition: {
         type: serviceType,
         ports,
-        min_instances: minInstances,
+        // A "server" defaults to 1: it holds one instance, and the interesting
+        // choice is whether that instance suspends when idle (0) or stays up.
+        // A "serverless" defaults to 0 (scale to zero) downstream.
+        min_instances: serviceType === "server" ? minInstances ?? 1 : minInstances,
         max_instances: maxInstances,
         // Stored/displayed as a config-directory-relative posix path ("." for
         // the config directory itself) — an absolute local path would be
@@ -717,20 +767,20 @@ export function evaluateDeploymentConfig(options: {
     }
   }
 
-  // Every service("...") call must reference a defined service — a typo'd id
-  // would otherwise only fail server-side at deploy time.
-  for (const referencedServiceId of referencedServiceIds) {
-    if (!services.has(referencedServiceId)) {
-      throw new CliError(`service(${JSON.stringify(referencedServiceId)}) does not match any defined service. Available services: ${[...services.keys()].join(", ")}.`);
-    }
-  }
+  // A service("...") call may reference a service this file does not define:
+  // service ids are unique across the whole project, so it may well belong to
+  // another deployment source (another repository), whose deploy file this one
+  // has never seen. The backend resolves those against the services it has
+  // stored and fails the deploy if the target does not exist — which is also
+  // where a typo'd id is caught, at the cost of one round trip.
+
   // Reject connections the target's ports cannot satisfy, before uploading
   // anything. The backend enforces this too, but config evaluation can name
   // both services and the correct replacement immediately.
   //
-  // `internalUrl` names ONE port, so a service with several only breaks the
-  // reference, not itself — which is why this is checked here, against the
-  // referrer, rather than when the target is parsed.
+  // `url` names ONE port, so a service with several only breaks the reference,
+  // not itself — which is why this is checked here, against the referrer, rather
+  // than when the target is parsed.
   for (const [serviceId, service] of services) {
     for (const [envVarKey, value] of Object.entries(service.env)) {
       if (value.kind !== "connection") continue;
@@ -739,28 +789,29 @@ export function evaluateDeploymentConfig(options: {
       const { serviceId: targetServiceId, outputKey, port: namedPort } = parsed;
       if (targetServiceId === HEXCLAVE_SERVICE_ID) continue;
       const target = services.get(targetServiceId);
-      if (target == null) throw new CliError(`Internal error: validated service reference ${JSON.stringify(value.reference)} has no target definition.`);
+      // A target from another deployment source: its ports are not in this file,
+      // so the rules below can only be enforced server-side.
+      if (target == null) continue;
       const at = `deployment.services.${serviceId}.env.${envVarKey}`;
-      const targetPorts = target.definition.ports;
+      const targetPorts = deploymentPortEntries(target.definition.ports);
       // "none" rather than an empty string: a portless service is a legal
       // declaration now, so this list really can be empty.
-      const describePorts = () => targetPorts.map((entry) => `${entry.port} (${portTransport(entry)}${entry.public ? ", public" : ""})`).join(", ") || "none";
+      const describePorts = () => targetPorts.map((entry) => `${entry.port} (${entry.protocol}${entry.public ? ", public" : ""})`).join(", ") || "none";
 
-      // `url` deliberately does NOT require a public port: a private service
-      // still gets one once a custom domain verifies. What it does require is
-      // something HTTP to serve — a URL to a service that speaks only raw TCP,
-      // or listens on nothing at all, could never resolve.
-      if (outputKey === "url" && !targetPorts.some((entry) => portTransport(entry) === "http")) {
-        const why = targetPorts.length === 0 ? "declares no ports at all" : "declares only TCP ports";
-        throw new CliError(`${at} requests ${JSON.stringify(value.reference)}, but ${JSON.stringify(targetServiceId)} ${why}, so it can never have a URL. Use service(${JSON.stringify(targetServiceId)}).internalHost with an explicit port instead. Its ports: ${describePorts()}.`);
-      }
-      if (outputKey === "internalUrl") {
-        const call = `service(${JSON.stringify(targetServiceId)}).internalUrl`;
+      // A URL names ONE port, and needs something HTTP to serve. A URL to a
+      // service that speaks only raw TCP, or listens on nothing at all, could
+      // never resolve — and neither could one whose port is ambiguous.
+      //
+      // Publicness is NOT a requirement: a private port's URL is its
+      // private-network address, and a public one's is the platform URL.
+      if (outputKey === "url") {
+        const call = `service(${JSON.stringify(targetServiceId)}).url`;
         if (namedPort === null) {
-          // A bare internalUrl() only works when one HTTP port makes it obvious.
-          const httpPorts = targetPorts.filter((entry) => portTransport(entry) === "http");
+          // A bare url() only works when one HTTP port makes it obvious.
+          const httpPorts = targetPorts.filter((entry) => entry.protocol === "http");
           if (httpPorts.length === 0) {
-            throw new CliError(`${at} calls ${call}(), but ${JSON.stringify(targetServiceId)} declares no HTTP port, so there is no URL to build. Use service(${JSON.stringify(targetServiceId)}).internalHost with an explicit port instead. Its ports: ${describePorts()}.`);
+            const why = targetPorts.length === 0 ? "declares no ports at all" : "declares only TCP ports";
+            throw new CliError(`${at} calls ${call}(), but ${JSON.stringify(targetServiceId)} ${why}, so it can never have a URL. Use service(${JSON.stringify(targetServiceId)}).hostname() with an explicit port instead. Its ports: ${describePorts()}.`);
           }
           if (httpPorts.length > 1) {
             throw new CliError(`${at} calls ${call}() on a service with ${httpPorts.length} HTTP ports (${httpPorts.map((entry) => entry.port).join(", ")}), so which one it means is ambiguous. Name the port you want: ${call}(${httpPorts[0].port}).`);
@@ -771,27 +822,34 @@ export function evaluateDeploymentConfig(options: {
           if (match === undefined) {
             throw new CliError(`${at} calls ${call}(${namedPort}), but ${JSON.stringify(targetServiceId)} does not declare that port. Its ports: ${describePorts()}.`);
           }
-          if (portTransport(match) !== "http") {
-            throw new CliError(`${at} calls ${call}(${namedPort}), but that port is TCP, so it has no URL. Use service(${JSON.stringify(targetServiceId)}).internalHost with port ${namedPort} instead.`);
+          if (match.protocol !== "http") {
+            throw new CliError(`${at} calls ${call}(${namedPort}), but that port is TCP, so it has no URL. Use service(${JSON.stringify(targetServiceId)}).hostname() with port ${namedPort} instead.`);
           }
         }
       }
     }
   }
 
-  // A self-referential `url` can never be satisfied (the public URL only
-  // exists once a domain verifies, which the service's own first deploy can't
-  // provide). The internal outputs are deterministic and fine to self-reference.
-  // Mirrors the backend check, but fails before anything is uploaded.
+  // A service referencing its own PUBLIC url can never be satisfied: that URL
+  // only exists once the service is up (or a domain verifies), which its own
+  // first deploy cannot provide. Its private address is deterministic and fine
+  // to self-reference. Mirrors the backend check, but fails before anything is
+  // uploaded.
   for (const [serviceId, service] of services) {
     for (const [envVarKey, value] of Object.entries(service.env)) {
-      if (value.kind === "connection" && value.reference === `${serviceId}.url`) {
-        throw new CliError(`deployment.services.${serviceId}.env.${envVarKey} connects to the service's own public URL "${value.reference}", which cannot exist before the service does. Use service("${serviceId}").internalUrl() for its own address.`);
-      }
+      if (value.kind !== "connection") continue;
+      const parsed = parseConnectionValue(value.reference);
+      if (parsed === null || parsed.serviceId !== serviceId || parsed.outputKey !== "url") continue;
+      const ports = deploymentPortEntries(service.definition.ports);
+      const port = parsed.port === null
+        ? ports.filter((entry) => entry.protocol === "http")[0]
+        : ports.find((entry) => entry.port === parsed.port);
+      if (port?.public !== true) continue;
+      throw new CliError(`deployment.services.${serviceId}.env.${envVarKey} connects to the service's own public URL (port ${port.port}), which cannot exist before the service does. Use service("${serviceId}").hostname() for its own address.`);
     }
   }
 
-  return { services };
+  return { sourceId, services };
 }
 
 /**
@@ -810,8 +868,9 @@ export function computeDeploymentLevels(services: Map<string, EvaluatedService>)
       if (parsed === null) continue;
       const targetServiceId = parsed.serviceId;
       // hexclave.* outputs come from the managed service, which always exists;
-      // connections to services OUTSIDE this config (possible when deploying a
-      // subset in the future) are resolved against already-deployed state.
+      // connections to services of ANOTHER deployment source are resolved
+      // against already-deployed state, since that source deploys on its own
+      // schedule and is not part of this deploy at all.
       // Self-references never create a deploy edge: a self `url` is rejected outright above,
       // and self internal outputs are deterministic from the synced definition (they don't depend on the
       // service having deployed). Adding a self-edge here would make computeDeploymentLevels
@@ -821,8 +880,17 @@ export function computeDeploymentLevels(services: Map<string, EvaluatedService>)
       // `url` and a bare `internalUrl()` need the target deployed. Counting the
       // rest would serialize independent deploys and reject mutually-wired
       // services as circular.
-      if (!connectionRequiresTargetDeployed(parsed.outputKey, parsed.port)) continue;
-      if (targetServiceId !== HEXCLAVE_SERVICE_ID && targetServiceId !== serviceId && services.has(targetServiceId)) {
+      // Publicness decides whether a url() reference has to wait: a private
+      // port's URL is built from the deterministic hostname, so it resolves
+      // before the target exists. A target this file does not define is not part
+      // of this deploy either way, so it never becomes an edge.
+      const target = services.get(targetServiceId);
+      if (target === undefined) continue;
+      const targetPortIsPublic = parsed.port === null
+        ? null
+        : deploymentPortEntry(target.definition.ports, parsed.port)?.public ?? null;
+      if (!connectionRequiresTargetDeployed(parsed.outputKey, parsed.port, targetPortIsPublic)) continue;
+      if (targetServiceId !== HEXCLAVE_SERVICE_ID && targetServiceId !== serviceId) {
         serviceDependencies.add(targetServiceId);
       }
     }
@@ -968,14 +1036,24 @@ async function importModule(filePath: string, description: string): Promise<Reco
   }
 }
 
-/** Loads a deploy file (hexclave.deploy.ts) and returns its `deployment` export. */
-export async function importDeployModule(deployFilePath: string): Promise<{ deployment: unknown }> {
+/**
+ * Loads a deploy file (hexclave.deploy.ts) and returns the two exports that make
+ * it one: the deployment source `id`, and the `deployment` itself.
+ */
+export async function importDeployModule(deployFilePath: string): Promise<{ id: unknown, deployment: unknown }> {
   const module = await importModule(deployFilePath, "deploy file");
-  return { deployment: module.deployment };
+  return { id: module.id, deployment: module.deployment };
 }
 
-/** Loads a config file (hexclave.config.ts) and returns its `config` export. */
-export async function importConfigModule(configPath: string): Promise<{ config: unknown }> {
+/**
+ * Loads a config file (hexclave.config.ts) and returns its `config` export, plus
+ * a `deployment` export if it has one — a project small enough to keep its
+ * services in the config file may declare them there instead of in a deploy
+ * file. Those services belong to a deployment source named after the file (the
+ * config file has no `id` export of its own), so they can coexist with the
+ * deploy files of other repositories deploying into the same project.
+ */
+export async function importConfigModule(configPath: string): Promise<{ config: unknown, deployment: unknown }> {
   const module = await importModule(configPath, "config file");
-  return { config: module.config };
+  return { config: module.config, deployment: module.deployment };
 }

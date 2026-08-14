@@ -30,10 +30,10 @@ async function findDomainRowOrThrow(prisma: PrismaClientTransaction, tenancy: Te
   // Hostnames are unique per tenancy, so the lookup is by (tenancy, hostname) and the row
   // must additionally belong to THIS service — a hostname held by a sibling service is a 404
   // here, not someone else's row to read or delete.
-  const domain = service == null ? null : await prisma.deploymentServiceDomain.findFirst({
+  const domain = service == null ? null : await prisma.deploymentDomain.findFirst({
     where: {
       tenancyId: tenancy.id,
-      deploymentServiceId: service.id,
+      serviceId,
       hostname,
     },
   });
@@ -111,7 +111,7 @@ export const GET = createSmartRouteHandler({
         // detail endpoints read `verified` from the row, so leaving it true would keep them
         // advertising a custom URL that the runtime no longer routes.
         if (domain.verified) {
-          await prisma.deploymentServiceDomain.update({
+          await prisma.deploymentDomain.update({
             where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domain.id } },
             data: { verified: false },
           });
@@ -136,7 +136,7 @@ export const GET = createSmartRouteHandler({
     // per-tenancy uniqueness constraint). This service does not own the certificate in that
     // case, so it must not report the other service's verification state as its own.
     if (result.service_key !== params.service_id) {
-      await prisma.deploymentServiceDomain.update({
+      await prisma.deploymentDomain.update({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domain.id } },
         data: { verified: false },
       });
@@ -153,7 +153,7 @@ export const GET = createSmartRouteHandler({
       } as const;
     }
 
-    await prisma.deploymentServiceDomain.update({
+    await prisma.deploymentDomain.update({
       where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domain.id } },
       data: { verified: result.verified },
     });
@@ -221,7 +221,7 @@ export const DELETE = createSmartRouteHandler({
         }
       }
     }
-    await prisma.deploymentServiceDomain.deleteMany({
+    await prisma.deploymentDomain.deleteMany({
       where: {
         tenancyId: auth.tenancy.id,
         id: domain.id,

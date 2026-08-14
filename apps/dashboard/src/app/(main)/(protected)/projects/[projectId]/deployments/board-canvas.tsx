@@ -59,10 +59,11 @@ export function BoardCanvas({ deployment }: { deployment: AdminDeploymentJson })
   const [apiServices, setApiServices] = useState<AdminDeploymentServiceJson[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // service id → the run THIS deployment gave it (null when it never started one, because a
-  // dependency failed first or the CLI died before creating it).
-  const runsByServiceId = useMemo(
-    () => new Map(deployment.services.map(({ service_id, run }) => [service_id, run])),
+  // service id → what THIS deployment did with it. Read from the deployment
+  // rather than from the service's current state: a board opened on an older
+  // deploy must show what that deploy did, not what has happened since.
+  const outcomeByServiceId = useMemo(
+    () => new Map(deployment.services.map((service) => [service.service_id, service])),
     [deployment],
   );
 
@@ -111,12 +112,12 @@ export function BoardCanvas({ deployment }: { deployment: AdminDeploymentJson })
       // Scoped to what THIS deploy shipped. The managed "hexclave" node is always kept — it
       // is not a deployed service, it is the backend every service talks to, and dropping it
       // would erase the connections drawn to it.
-      .filter((service) => service.type === "hexclave" || runsByServiceId.has(service.id))
+      .filter((service) => service.type === "hexclave" || outcomeByServiceId.has(service.id))
       .map((service) => {
         const override = positionOverrides.get(service.id);
         return override != null ? { ...service, x: override.x, y: override.y } : service;
       });
-  }, [apiServices, hexclaveApiHost, positionOverrides, runsByServiceId]);
+  }, [apiServices, hexclaveApiHost, positionOverrides, outcomeByServiceId]);
 
   const selected = services?.find((s) => s.id === selectedId) ?? null;
   const connections = useMemo(() => deriveConnections(services ?? []), [services]);
@@ -377,10 +378,12 @@ export function BoardCanvas({ deployment }: { deployment: AdminDeploymentJson })
             service={selected}
             services={services}
             project={project}
-            // `?? null` rather than the map lookup alone: the managed hexclave node has no
-            // entry at all, and a service that never started a run has an explicit null. Both
-            // mean "no build logs for this deploy".
-            run={runsByServiceId.get(selected.id) ?? null}
+            // The deploy's own id and this service's outcome in it: the build
+            // log belongs to the DEPLOYMENT (one builder machine builds every
+            // service), and the outcome is what that deploy did with this one.
+            // `?? null` covers the managed hexclave node, which is in no deploy.
+            deploymentId={deployment.id}
+            outcome={outcomeByServiceId.get(selected.id) ?? null}
             onClose={() => setSelectedId(null)}
             refresh={refresh}
           />

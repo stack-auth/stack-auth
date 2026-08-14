@@ -6,17 +6,12 @@ import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 // Runs are loaded with the service id they belong to so the response can report
 // the deployment's services without a second query per run.
-const RUNS_INCLUDE = {
-  runs: {
-    include: { service: { select: { serviceId: true } } },
-    orderBy: { createdAt: "asc" },
-  },
-} as const;
+const DEPLOYMENT_INCLUDE = { source: { select: { sourceId: true } } } as const;
 
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Conclude deployment",
-    description: "Marks a deployment as no longer being worked on by the client that created it. A deployment's status is derived from its runs, and a planned service with no run reads as still in flight — correct while a deploy is progressing, but wrong once the client has given up. `hexclave deploy` calls this when it stops, so a deploy that failed before creating some (or all) of its runs becomes terminal instead of polling forever.",
+    description: "Marks a deployment as no longer being worked on by the client that created it. A deployment the runtime never accepted reads as still in flight — correct while `hexclave deploy` is still packaging and uploading, but wrong once the client has given up. `hexclave deploy` calls this when it stops, so a deploy that died before the upload finished becomes terminal instead of polling forever.",
     tags: ["Deployments"],
     hidden: true,
   },
@@ -48,10 +43,11 @@ export const POST = createSmartRouteHandler({
     }
     // IDEMPOTENT, and the first conclusion wins. A retried CLI request (or a
     // second `hexclave deploy` handed the same id) must not move the timestamp:
-    // it is used as the finish time for a deployment whose runs never started,
+    // it is used as the finish time for a deployment that never reached the
+    // runtime at all,
     // so overwriting it would stretch a finished deploy's duration on every
-    // retry. Runs created after this point still count — the column only says
-    // "the client stopped", never "ignore what arrives later".
+    // retry. Progress reported after this point still counts — the column only
+    // says "the client stopped", never "ignore what arrives later".
     //
     // The null check is part of the WRITE PREDICATE, not a read-then-write: two concurrent
     // concludes both pass a separate `existing.concludedAt === null` check and the second
@@ -63,7 +59,7 @@ export const POST = createSmartRouteHandler({
     });
     const deployment = await prisma.deployment.findUniqueOrThrow({
       where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: params.deployment_id } },
-      include: RUNS_INCLUDE,
+      include: DEPLOYMENT_INCLUDE,
     });
     return {
       statusCode: 200,

@@ -82,18 +82,35 @@ export type MarshalServiceSpec = {
     type: "server" | "serverless",
     min_instances: number,
     max_instances: number,
-    // The ports the container listens on. There is no separate visibility:
-    // Marshal allocates public ingress exactly when a port asks for it, and
-    // re-validates that at most one does and that it is not raw TCP.
-    ports: { port: number, public: boolean, transport: "http" | "tcp" }[],
+    // The ports the container listens on, keyed by port number. There is no
+    // separate visibility: Marshal allocates public ingress exactly when a port
+    // asks for it, and re-validates that at most one does and that it is not
+    // raw TCP.
+    ports: Record<string, { public: boolean, protocol: "http" | "tcp" }>,
     // Persistent disks keyed by volume id; absent = ephemeral filesystem.
     // Marshal requires type "server" when one is set.
     persistent_volumes?: Record<string, { path: string, size_gb: number }>,
   },
-  // dockerfile_path is relative to the tarball root; absent = the builder
-  // auto-detects the build with Railpack.
-  source: { upload_id: string, dockerfile_path?: string } | { image: string },
+  // A spec always names an already-built image: images are produced by the
+  // deployment's single build, which builds every service of the deployment
+  // source from one upload in one builder machine, and the applies follow it.
+  source: { image: string },
   env: Record<string, MarshalEnvValue>,
+};
+
+// One service's slot in a deployment: what to build, and what to run.
+//
+// `dockerfile_path` is relative to the root of the uploaded source (the whole
+// deployment source is uploaded once, so a monorepo service can COPY from above its own
+// directory); absent = the builder auto-detects the build with Railpack.
+// `root_directory` only scopes where that detection starts.
+export type MarshalDeploymentTarget = {
+  service_key: string,
+  root_directory?: string,
+  dockerfile_path?: string,
+  // The spec to apply once this target's image exists. Its `source` is filled in
+  // by the runtime with the image the build produced.
+  spec: Omit<MarshalServiceSpec, "source">,
 };
 
 export type MarshalServiceState = {
@@ -111,14 +128,26 @@ export type MarshalServiceState = {
 
 export type MarshalDnsRecord = { type: string, name: string, value: string };
 
-export type MarshalBuild = {
+export type MarshalDeployment = {
   id: string,
-  revision: string,
-  status: "queued" | "running" | "succeeded" | "failed" | "canceled",
+  source_id: string,
+  // "building" covers the whole batch build; "deploying" is the apply phase.
+  // A build failure fails the WHOLE deployment and applies nothing: one machine
+  // builds every image, so there is no partial success to salvage — and shipping
+  // half a source is not what the author asked for.
+  status: "queued" | "building" | "deploying" | "succeeded" | "failed" | "canceled",
   has_logs: boolean,
   error: string | null,
   started_at_millis: number,
   finished_at_millis: number | null,
+  // One entry per requested target, in the order they were applied.
+  services: {
+    service_key: string,
+    status: "pending" | "building" | "deploying" | "deployed" | "failed" | "skipped",
+    revision: string | null,
+    url: string | null,
+    error: string | null,
+  }[],
 };
 
 export type MarshalLogLine = {
@@ -211,6 +240,38 @@ export class MarshalClient {
     return await this.fetchMarshal(urlString`/v1/namespaces/${ns}/uploads`, { method: "POST" });
   }
 
+  // Starts a whole deployment: one uploaded source, one builder machine
+  // that builds every target's image, then the applies in the given order.
+  //
+  // The runtime owns the entire sequence rather than the backend driving it step
+  // by step, because the runtime is where the reconciliation lease and the build
+  // completion webhook already live — a backend-driven version would have to
+  // hold an HTTP request open across a multi-minute build, or re-derive
+  // "what has been applied so far" on every poll.
+  //
+  // Returns as soon as the deployment is accepted; poll getDeployment.
+  async startSourceDeployment(ns: string, sourceId: string, body: {
+    upload_id: string,
+    targets: MarshalDeploymentTarget[],
+    // Service keys grouped into dependency levels: everything in one level is
+    // applied concurrently, and a level starts only once the previous one has
+    // converged (a `url` ref can only resolve after its target is up).
+    order: string[][],
+  }): Promise<MarshalDeployment> {
+    return await this.fetchMarshal(urlString`/v1/namespaces/${ns}/sources/${sourceId}/deployments`, { method: "POST", body });
+  }
+
+  async getDeployment(ns: string, deploymentId: string): Promise<MarshalDeployment> {
+    return await this.fetchMarshal(urlString`/v1/namespaces/${ns}/deployments/${deploymentId}`);
+  }
+
+  async getDeploymentLogs(ns: string, deploymentId: string, options?: { sinceMillis?: number }): Promise<{ lines: MarshalLogLine[], next_since_millis: number, complete: boolean }> {
+    const params = new URLSearchParams();
+    if (options?.sinceMillis !== undefined) params.set("since_millis", String(options.sinceMillis));
+    const queryString = params.toString();
+    return await this.fetchMarshal(`${urlString`/v1/namespaces/${ns}/deployments/${deploymentId}/logs`}${queryString === "" ? "" : `?${queryString}`}`);
+  }
+
   async putService(ns: string, serviceKey: string, spec: MarshalServiceSpec): Promise<MarshalApplyResult> {
     return await this.fetchMarshal(urlString`/v1/namespaces/${ns}/services/${serviceKey}`, { method: "PUT", body: spec, timeoutMs: APPLY_TIMEOUT_MS });
   }
@@ -242,22 +303,6 @@ export class MarshalClient {
   // this tenancy, Marshal 404s instead of detaching the new owner's live certificate.
   async deleteDomain(ns: string, hostname: string, serviceKey: string): Promise<void> {
     await this.fetchMarshal(`${urlString`/v1/namespaces/${ns}/domains/${hostname}`}?service_key=${encodeURIComponent(serviceKey)}`, { method: "DELETE" });
-  }
-
-  async listBuilds(ns: string, serviceKey: string, options?: { limit?: number, beforeMillis?: number }): Promise<MarshalBuild[]> {
-    const params = new URLSearchParams();
-    if (options?.limit !== undefined) params.set("limit", String(options.limit));
-    if (options?.beforeMillis !== undefined) params.set("before_millis", String(options.beforeMillis));
-    const queryString = params.toString();
-    const result = await this.fetchMarshal<{ builds: MarshalBuild[] }>(`${urlString`/v1/namespaces/${ns}/services/${serviceKey}/builds`}${queryString === "" ? "" : `?${queryString}`}`);
-    return result.builds;
-  }
-
-  async getBuildLogs(ns: string, serviceKey: string, buildId: string, options?: { sinceMillis?: number }): Promise<{ lines: MarshalLogLine[], next_since_millis: number, complete: boolean }> {
-    const params = new URLSearchParams();
-    if (options?.sinceMillis !== undefined) params.set("since_millis", String(options.sinceMillis));
-    const queryString = params.toString();
-    return await this.fetchMarshal(`${urlString`/v1/namespaces/${ns}/services/${serviceKey}/builds/${buildId}/logs`}${queryString === "" ? "" : `?${queryString}`}`);
   }
 
   // NOTE: runtime (service) logs are NOT yet exposed by any backend route. Marshal does not

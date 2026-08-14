@@ -2,7 +2,7 @@
 
 import { DesignBadge, DesignButton } from "@/components/design-components";
 import { Typography, cn } from "@/components/ui";
-import type { AdminDeploymentRunJson, AdminProject } from "@hexclave/next";
+import type { AdminDeploymentServiceOutcomeJson, AdminProject } from "@hexclave/next";
 import { XIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { getServiceTypeMeta, type BoardService } from "./board-model";
@@ -25,7 +25,8 @@ type ServiceDetailPaneProps = {
   project: AdminProject,
   // The run THIS deployment gave this service, or null when it never started one (and for the
   // managed hexclave node, which is not deployed at all). Owns the Build logs tab.
-  run: AdminDeploymentRunJson | null,
+  deploymentId: string | null,
+  outcome: AdminDeploymentServiceOutcomeJson | null,
   onClose: () => void,
   refresh: () => Promise<void>,
 };
@@ -65,7 +66,7 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   const content = (() => {
     switch (tab) {
       case "overview": { return <OverviewContent service={service} project={project} isHexclave={isHexclave} />; }
-      case "build-logs": { return <BuildLogsContent run={props.run} project={project} isHexclave={isHexclave} />; }
+      case "build-logs": { return <BuildLogsContent deploymentId={props.deploymentId} outcome={props.outcome} project={project} isHexclave={isHexclave} />; }
       case "variables": { return <VariablesContent service={service} services={services} isHexclave={isHexclave} />; }
       case "domains": { return <DomainsContent service={service} project={project} isHexclave={isHexclave} refresh={refresh} />; }
       case "settings": { return <SettingsContent service={service} isHexclave={isHexclave} />; }

@@ -2,7 +2,7 @@
 
 import { DesignBadge, DesignButton, DesignInput } from "@/components/design-components";
 import { CopyButton, Label, Spinner, cn } from "@/components/ui";
-import type { AdminDeploymentDomainJson, AdminDeploymentRunJson, AdminProject } from "@hexclave/next";
+import type { AdminDeploymentDomainJson, AdminDeploymentServiceJson, AdminDeploymentServiceOutcomeJson, AdminProject } from "@hexclave/next";
 import { parseConnectionValue } from "@hexclave/shared/dist/deployments";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import {
@@ -26,29 +26,39 @@ import {
   XCircleIcon,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getServiceOutputs, type BoardService, type EnvVar } from "./board-model";
+import { getServiceOutputs, portEntriesOf, type BoardService, type EnvVar } from "./board-model";
 
 type DesignBadgeColor = "blue" | "cyan" | "purple" | "green" | "orange" | "red";
 
 // -- shared bits ------------------------------------------------------------
 
-export function runStatusMeta(status: AdminDeploymentRunJson["status"]): { label: string, color: DesignBadgeColor, icon: React.ElementType, spin: boolean } {
+export function serviceStatusMeta(status: Exclude<AdminDeploymentServiceJson["status"], "not_deployed">): { label: string, color: DesignBadgeColor, icon: React.ElementType, spin: boolean } {
   switch (status) {
-    // `spin` marks the non-terminal "building" state so the CircleNotch icon
-    // animates (via `animate-spin`) instead of sitting frozen mid-notch.
     case "queued": { return { label: "Queued", color: "blue", icon: ClockIcon, spin: false }; }
     case "building": { return { label: "Building", color: "cyan", icon: CircleNotchIcon, spin: true }; }
-    case "ready": { return { label: "Ready", color: "green", icon: CheckCircleIcon, spin: false }; }
-    case "error": { return { label: "Failed", color: "red", icon: XCircleIcon, spin: false }; }
+    case "deploying": { return { label: "Deploying", color: "cyan", icon: CircleNotchIcon, spin: true }; }
+    case "deployed": { return { label: "Deployed", color: "green", icon: CheckCircleIcon, spin: false }; }
+    case "failed": { return { label: "Failed", color: "red", icon: XCircleIcon, spin: false }; }
     case "canceled": { return { label: "Cancelled", color: "orange", icon: ProhibitIcon, spin: false }; }
   }
 }
 
-function isTerminalRun(run: AdminDeploymentRunJson): boolean {
-  return run.status === "ready" || run.status === "error" || run.status === "canceled";
+export function serviceOutcomeMeta(status: AdminDeploymentServiceOutcomeJson["status"]): { label: string, color: DesignBadgeColor, icon: React.ElementType, spin: boolean } {
+  switch (status) {
+    // `spin` marks the non-terminal states so the CircleNotch icon animates (via
+    // `animate-spin`) instead of sitting frozen mid-notch.
+    case "pending": { return { label: "Pending", color: "blue", icon: ClockIcon, spin: false }; }
+    case "building": { return { label: "Building", color: "cyan", icon: CircleNotchIcon, spin: true }; }
+    case "deploying": { return { label: "Deploying", color: "cyan", icon: CircleNotchIcon, spin: true }; }
+    case "deployed": { return { label: "Deployed", color: "green", icon: CheckCircleIcon, spin: false }; }
+    case "failed": { return { label: "Failed", color: "red", icon: XCircleIcon, spin: false }; }
+    // The deploy never reached it — its build failed, or something it depends
+    // on did.
+    case "skipped": { return { label: "Skipped", color: "orange", icon: ProhibitIcon, spin: false }; }
+  }
 }
 
-function formatRunTime(millis: number): string {
+function formatDeployTime(millis: number): string {
   return new Date(millis).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
@@ -152,8 +162,8 @@ export function OverviewContent({ service, project, isHexclave }: {
   project: AdminProject,
   isHexclave: boolean,
 }) {
-  const latestRun = service.api?.latest_run ?? null;
-  const latestMeta = latestRun != null ? runStatusMeta(latestRun.status) : null;
+  const serviceStatus = service.api?.status ?? null;
+  const latestMeta = serviceStatus == null || serviceStatus === "not_deployed" ? null : serviceStatusMeta(serviceStatus);
   const LatestIcon = latestMeta?.icon ?? ClockIcon;
 
   return (
@@ -179,21 +189,23 @@ export function OverviewContent({ service, project, isHexclave }: {
         <DeployCodeHint service={service} project={project} />
       )}
 
-      {latestRun != null && latestMeta != null && (
+      {latestMeta != null && (
         <div className="space-y-1.5">
           <SectionLabel>Latest deployment</SectionLabel>
           <div className="rounded-xl bg-foreground/[0.03] p-3 ring-1 ring-black/[0.04] dark:ring-white/[0.04]">
             <div className="flex items-center gap-2">
               <DesignBadge label={latestMeta.label} color={latestMeta.color} size="sm" icon={LatestIcon} iconClassName={latestMeta.spin ? "animate-spin" : undefined} />
-              <span className="text-[11px] text-muted-foreground">{latestRun.target} · {formatRunTime(latestRun.created_at_millis)} · via {latestRun.triggered_by === "server" ? "CLI" : "dashboard session"}</span>
+              {/* Which deploy file this service came from: with several
+                  repositories deploying into one project, that is the first
+                  thing a reader needs in order to know where to change it. */}
+              {service.api?.deployment_source_id != null && (
+                <span className="font-mono text-[11px] text-muted-foreground">{service.api.deployment_source_id}</span>
+              )}
             </div>
-            {latestRun.url != null && (
+            {service.api?.url != null && (
               <div className="mt-2">
-                <ExternalLink hostname={new URL(latestRun.url).host} />
+                <ExternalLink hostname={new URL(service.api.url).host} />
               </div>
-            )}
-            {latestRun.error != null && (
-              <div className="mt-2 text-xs text-red-600 dark:text-red-400">{latestRun.error}</div>
             )}
           </div>
         </div>
@@ -303,19 +315,14 @@ function ConnectionTarget({ value, services }: { value: string, services: BoardS
 // -- Build logs -------------------------------------------------------------
 //
 // A tab in the service detail pane. The page is scoped to one deployment, so the run shown
-// here is the one THAT deploy gave THIS service — not the service's latest, which would
-// quietly show a newer build's output under an older deploy's heading.
 
-// Poll while the run is still in flight so its status updates live.
-const RUNS_POLL_INTERVAL_MS = 5000;
-
-function useRunLogs(project: AdminProject, runId: string | null) {
+function useDeploymentBuildLogs(project: AdminProject, deploymentId: string | null) {
   const [logs, setLogs] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadCounter, setReloadCounter] = useState(0);
 
   useEffect(() => {
-    if (runId == null) return;
+    if (deploymentId == null) return;
     let cancelled = false;
     const abortController = new AbortController();
     setLogs(null);
@@ -326,7 +333,7 @@ function useRunLogs(project: AdminProject, runId: string | null) {
         // while to resolve — the spinner stays up until the logs are complete.
         // Abort on cleanup so an abandoned view doesn't keep the server
         // following the build for minutes.
-        const text = await project.getDeploymentRunLogs(runId, { signal: abortController.signal });
+        const text = await project.getDeploymentBuildLogs(deploymentId, { signal: abortController.signal });
         if (!cancelled) setLogs(text);
       } catch (loadError) {
         if (!cancelled) setError(errorMessageOf(loadError));
@@ -336,47 +343,24 @@ function useRunLogs(project: AdminProject, runId: string | null) {
       cancelled = true;
       abortController.abort();
     };
-  }, [project, runId, reloadCounter]);
+  }, [project, deploymentId, reloadCounter]);
 
   return { logs, error, reload: () => setReloadCounter((c) => c + 1) };
 }
 
-export function BuildLogsContent({ run: initialRun, project, isHexclave }: {
-  run: AdminDeploymentRunJson | null,
+export function BuildLogsContent({ deploymentId, outcome, project, isHexclave }: {
+  // The deployment whose build produced this service's image. One deploy is one
+  // build — every service of the deployment source is built by the same machine
+  // — so the log below is that build's, not this service's alone.
+  deploymentId: string | null,
+  outcome: AdminDeploymentServiceOutcomeJson | null,
   project: AdminProject,
   isHexclave: boolean,
 }) {
-  // The prop is a snapshot from the deployment; keep refreshing it while the run is in flight
-  // so status/url/error don't freeze at "Building".
-  const [run, setRun] = useState(initialRun);
-  useEffect(() => {
-    setRun(initialRun);
-  }, [initialRun]);
-  useEffect(() => {
-    if (initialRun == null || isTerminalRun(initialRun)) return;
-    let cancelled = false;
-    const interval = setInterval(() => runAsynchronously(async () => {
-      try {
-        const runs = await project.listDeploymentRuns(initialRun.service_id);
-        if (cancelled) return;
-        const updated = runs.find((r) => r.id === initialRun.id);
-        if (updated != null) {
-          setRun(updated);
-          if (isTerminalRun(updated)) clearInterval(interval);
-        }
-      } catch {
-        // Transient refresh failure — keep the interval running and retry.
-      }
-    }), RUNS_POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [project, initialRun]);
-
-  // Hooks first: useRunLogs has to run on every render, so the "no run" cases below are
-  // returned after it rather than short-circuiting above it.
-  const { logs, error, reload } = useRunLogs(project, run?.id ?? null);
+  // Hooks first: useDeploymentBuildLogs has to run on every render, so the
+  // "nothing to show" cases below are returned after it rather than
+  // short-circuiting above it.
+  const { logs, error, reload } = useDeploymentBuildLogs(project, isHexclave ? null : deploymentId);
 
   if (isHexclave) {
     return (
@@ -388,34 +372,36 @@ export function BuildLogsContent({ run: initialRun, project, isHexclave }: {
     );
   }
 
-  if (run == null) {
+  if (deploymentId == null) {
     return (
       <div className="h-full overflow-y-auto p-4">
-        {/* REASON-NEUTRAL. A missing run also happens when packaging or the upload failed
-            locally, or the CLI died — the API records only that no run was created. */}
         <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
-          This deployment never started a build for this service, so there are no logs.
+          This service has not been deployed yet, so there are no build logs.
         </div>
       </div>
     );
   }
 
-  const meta = runStatusMeta(run.status);
-  const Icon = meta.icon;
+  const meta = outcome === null ? null : serviceOutcomeMeta(outcome.status);
+  const Icon = meta?.icon ?? ClockIcon;
 
   return (
     <div className="flex h-full flex-col p-4">
       <div className="mb-3 space-y-2">
-        <div className="flex items-center gap-2">
-          <DesignBadge label={meta.label} color={meta.color} size="sm" icon={Icon} iconClassName={meta.spin ? "animate-spin" : undefined} />
-          <span className="text-[11px] text-muted-foreground">{run.target} · {formatRunTime(run.created_at_millis)}</span>
-        </div>
-        {run.url != null && <ExternalLink hostname={new URL(run.url).host} />}
-        {run.error != null && <div className="text-xs text-red-600 dark:text-red-400">{run.error}</div>}
+        {meta !== null && (
+          <div className="flex items-center gap-2">
+            <DesignBadge label={meta.label} color={meta.color} size="sm" icon={Icon} iconClassName={meta.spin ? "animate-spin" : undefined} />
+            {outcome?.revision != null && <span className="font-mono text-[11px] text-muted-foreground">{outcome.revision}</span>}
+          </div>
+        )}
+        {outcome?.url != null && <ExternalLink hostname={new URL(outcome.url).host} />}
+        {outcome?.error != null && <div className="text-xs text-red-600 dark:text-red-400">{outcome.error}</div>}
       </div>
 
       <div className="mb-1.5 flex items-center justify-between">
-        <SectionLabel>Build logs</SectionLabel>
+        {/* One log for the whole deploy: say so, or a reader looking for this
+            service's lines will think the others leaked in. */}
+        <SectionLabel>Build logs (all services of this deploy)</SectionLabel>
         <DesignButton variant="ghost" size="icon" className="h-6 w-6" onClick={reload} aria-label="Reload logs">
           <ArrowClockwiseIcon className="h-3.5 w-3.5" />
         </DesignButton>
@@ -667,17 +653,18 @@ export function SettingsContent({ service, isHexclave }: {
     );
   }
 
+  const servicePorts = portEntriesOf(service.api?.ports ?? {});
   const fields: { label: string, value: string | null | undefined, fallback: string }[] = [
     { label: "Root directory", value: service.api?.root_directory, fallback: "./" },
     // A missing dockerfile_path means "Railpack build" only once a definition was actually
     // synced — before that (there are no ports either) it just means "not synced yet".
-    { label: "Dockerfile", value: service.api?.dockerfile_path, fallback: (service.api?.ports.length ?? 0) > 0 ? "None (Railpack auto-detected build)" : "Not synced yet" },
+    { label: "Dockerfile", value: service.api?.dockerfile_path, fallback: servicePorts.length > 0 ? "None (Railpack auto-detected build)" : "Not synced yet" },
     // Every port, with the public one called out: which port is exposed is the
     // thing a reader most often comes here to check.
     {
-      label: (service.api?.ports.length ?? 0) === 1 ? "Container port" : "Container ports",
-      value: service.api?.ports.length
-        ? service.api.ports.map((entry) => `${entry.port}${entry.public ? " (public)" : ""}${entry.transport === "tcp" ? " · tcp" : ""}`).join(", ")
+      label: servicePorts.length === 1 ? "Container port" : "Container ports",
+      value: servicePorts.length > 0
+        ? servicePorts.map((entry) => `${entry.port}${entry.public ? " (public)" : ""}${entry.protocol === "tcp" ? " · tcp" : ""}`).join(", ")
         : undefined,
       fallback: "Not synced yet",
     },

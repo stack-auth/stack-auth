@@ -1,63 +1,86 @@
-// Core logic for the Deployments app: service definitions (synced from the
-// config file's `services` export into DeploymentService rows) + operational
-// state (Prisma) + the write-through to Marshal, the Fly.io-backed container
-// runtime (apps/marshal).
+// Core logic for the Deployments app: service definitions (synced from a deploy
+// file's `services` export into DeploymentService rows) + operational state
+// (Prisma) + the write-through to Marshal, the Fly.io-backed container runtime
+// (apps/marshal).
 //
-// Terminology, because it's easy to mix up:
-// - "service id" is the user-facing key of the record returned by the config
-//   file's `services` export (e.g. "api"). It's what the CLI and all API
-//   routes use, and it doubles as the Marshal service key.
+// The shape of the world, because it is easy to mix up:
+//
+// - A DEPLOYMENT SOURCE is one deploy file: hexclave.deploy.ts, named by its own
+//   `id` export (or hexclave.config.ts, whose services belong to a source named
+//   after the file). It is the unit one `hexclave deploy` ships — one upload,
+//   one build — which is what lets several repositories deploy into one project
+//   without touching each other's services.
+// - A "service id" is the user-facing key of the record returned by that file's
+//   `services` export (e.g. "api"). It is unique across the PROJECT, not per
+//   source, so a connection reference never has to name a source; two sources
+//   declaring the same id is a conflict, refused at sync. It doubles as the
+//   Marshal service key.
 // - The Marshal "namespace" is the tenancy id: every runtime resource of a
 //   tenancy lives behind one namespace, and Marshal keeps namespaces
 //   network-isolated from each other.
-// - The DeploymentService Prisma row holds BOTH the definition (as last synced
-//   by `hexclave deploy` — container config and env var definitions; NOT the
-//   config file's `devCommand`, which never leaves the developer's machine) and
-//   the operational state (custom domains, runs). Secret VALUES are never part
-//   of a definition; they live in the project secret store (see
-//   @/lib/project-secrets), envelope-encrypted via KMS. Neither are secret
-//   DEFAULTS (`secret(key, default)`): they travel with the deploy request and
-//   are never persisted, so the dashboard's secrets page can present a single
-//   unambiguous state — a key either has a stored value or it isn't there.
+// - A DEPLOYMENT is one `hexclave deploy` of one source. It owns the build (one
+//   builder machine builds every service of the source), the build's log, the
+//   redaction snapshot for that log, and the per-service outcomes. There is no
+//   per-service run entity: with one build per deploy there would be nothing in
+//   it that an outcome does not already say.
 //
-// KNOWN GAP — services removed from the deploy file. The definitions are
-// synced additively: a service that disappears from the `services` export
-// keeps its DeploymentService row (still visible in the dashboard) and its
-// live Marshal service. Deleting infrastructure automatically on a sync would
-// turn a config typo into a torn-down production deployment, so removal is
-// deliberately out of scope for now; an auto-cleanup layer (or an explicit
-// prune command) is planned to cover it.
+// Two things deliberately OUTLIVE the service that uses them, because the
+// resource behind them does: a persistent VOLUME (a disk with tenant data) is
+// owned by the deployment source and merely mounted by a service, and a custom
+// DOMAIN (a hostname with a certificate) is owned by the project and merely
+// pointed at one. Dropping a service from a deploy file tears the service down
+// and leaves both behind, unattached, until someone deletes them explicitly.
+//
+// Secret VALUES are never part of a definition; they live in the project secret
+// store (see @/lib/project-secrets), envelope-encrypted via KMS. Neither are
+// secret DEFAULTS (`secret(key, default)`): they travel with the deploy request
+// and are never persisted, so the dashboard's secrets page can present a single
+// unambiguous state — a key either has a stored value or it isn't there.
 
 import { getPlanIdForProjectOrNull } from "@/lib/plan-entitlements";
 import { Tenancy } from "@/lib/tenancies";
 import { PrismaClientTransaction, globalPrismaClient } from "@/prisma-client";
-import type { DeploymentRunStatus, Prisma } from "@/generated/prisma/client";
+import type { DeploymentStatus, Prisma } from "@/generated/prisma/client";
 import { readProjectSecretValue } from "@/lib/project-secrets";
-import { DEPLOYMENT_CONNECTION_VALUE_REGEX, DEPLOYMENT_ENV_VAR_KEY_REGEX, DeploymentEnvVarDefinition, DeploymentPortDefinition, DeploymentServiceDefinition, DeploymentServiceType, HEXCLAVE_OUTPUT_KEYS, HEXCLAVE_SERVICE_ID, SERVICE_OUTPUT_KEYS, ServiceOutputKey, deploymentServiceIsPublic, formatConnectionValue, parseConnectionValue, portTransport, soleHttpDeploymentPort } from "@hexclave/shared/dist/deployments";
+import {
+  DEPLOYMENT_CONNECTION_VALUE_REGEX,
+  DEPLOYMENT_ENV_VAR_KEY_REGEX,
+  DeploymentEnvVarDefinition,
+  DeploymentPortEntry,
+  DeploymentPorts,
+  DeploymentServiceDefinition,
+  DeploymentServiceType,
+  HEXCLAVE_OUTPUT_KEYS,
+  HEXCLAVE_SERVICE_ID,
+  SERVICE_OUTPUT_KEYS,
+  deploymentPortEntries,
+  deploymentPortEntry,
+  deploymentServiceIsPublic,
+  formatConnectionValue,
+  parseConnectionValue,
+  soleHttpDeploymentPort,
+} from "@hexclave/shared/dist/deployments";
 import { decryptWithKms, encryptWithKms } from "@hexclave/shared/dist/helpers/vault/server-side";
 import { PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets";
+import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
-import { MarshalApiError, MarshalClient, MarshalDnsRecord, MarshalEnvValue, MarshalBuild, MarshalServiceState, getMarshalClientOrThrow, getMarshalDeploymentsConfigOrNull, sanitizeMarshalError } from "./marshal-client";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
+import { MarshalApiError, MarshalClient, MarshalDeployment, MarshalDeploymentTarget, MarshalDnsRecord, MarshalEnvValue, getMarshalClientOrThrow, getMarshalDeploymentsConfigOrNull, sanitizeMarshalError } from "./marshal-client";
 
 export { HEXCLAVE_SERVICE_ID };
 
 export const ENV_VAR_KEY_REGEX = DEPLOYMENT_ENV_VAR_KEY_REGEX;
 
-// Default scaling bounds when the definition leaves them out: scale-to-zero
-// serverless with a single instance.
+// Default scaling bounds when the definition leaves them out. A "server" holds
+// one instance and defaults to keeping it up; a "serverless" defaults to scaling
+// to zero with a single instance at the top.
+export const DEFAULT_SERVER_MIN_INSTANCES = 1;
 export const DEFAULT_MIN_INSTANCES = 0;
 export const DEFAULT_MAX_INSTANCES = 1;
 
-export type DeploymentServiceRow = Prisma.DeploymentServiceGetPayload<{ include: { domains: true } }>;
-
-// Every read of a service's domains goes through this, because the
-// "primary verified domain, else ANY verified domain" fallback below (and in
-// serializeServiceRow) is order-sensitive: with two verified non-primary
-// domains, an unordered include would let the URL we bake into a consumer's
-// build — and the one the API reports — flip between reads.
-const DOMAINS_INCLUDE_ORDER = { orderBy: { hostname: "asc" } } as const satisfies Prisma.DeploymentService$domainsArgs;
+export type DeploymentServiceRow = Prisma.DeploymentServiceGetPayload<{ include: { source: true } }>;
 
 /** The Marshal namespace of a tenancy. One place so it cannot drift. */
 export function marshalNamespaceForTenancy(tenancy: Tenancy): string {
@@ -69,30 +92,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Parses a DeploymentService row's stored `ports` JSON. Like `env`, the column
- * is only ever written through the sync route (validated against
- * deploymentServiceDefinitionSchema), so a malformed shape is an assertion
- * failure rather than user error. An EMPTY array is legitimate: it is what a row
- * that predates a synced definition holds.
+ * Parses a DeploymentService row's stored `ports` JSON — an object keyed by port
+ * number, the same shape the deploy file writes. Like `env`, the column is only
+ * ever written through the sync route (validated against
+ * deploymentServiceDefinitionSchema), so a malformed TOP-LEVEL shape is an
+ * assertion failure. An EMPTY object is legitimate: it is both a portless worker
+ * and what a row that predates a synced definition holds.
  */
-function parseStoredPorts(ports: Prisma.JsonValue, serviceId: string): DeploymentPortDefinition[] {
+function parseStoredPorts(ports: Prisma.JsonValue, serviceId: string): DeploymentPorts {
   // Prisma types the column as never-undefined, but a partial `select` that
   // omits it hands this function undefined at run time.
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-  if (ports === null || ports === undefined) return [];
-  if (!Array.isArray(ports)) {
-    throw new HexclaveAssertionError(`Stored ports of deployment service ${JSON.stringify(serviceId)} is not an array`, { ports });
+  if (ports === null || ports === undefined) return {};
+  if (!isRecord(ports)) {
+    throw new HexclaveAssertionError(`Stored ports of deployment service ${JSON.stringify(serviceId)} is not an object`, { ports });
   }
-  return ports.map((entry) => {
-    if (!isRecord(entry) || typeof entry.port !== "number") {
-      throw new HexclaveAssertionError(`Stored port entry of deployment service ${JSON.stringify(serviceId)} has no numeric port`, { ports });
+  const parsed: DeploymentPorts = {};
+  for (const [portKey, definition] of Object.entries(ports)) {
+    if (!isRecord(definition)) {
+      throw new HexclaveAssertionError(`Stored port ${portKey} of deployment service ${JSON.stringify(serviceId)} is not an object`, { ports });
     }
-    const transport = entry.transport ?? "http";
-    if (transport !== "http" && transport !== "tcp") {
-      throw new HexclaveAssertionError(`Stored port ${entry.port} of deployment service ${JSON.stringify(serviceId)} has invalid transport ${JSON.stringify(transport)}`, { ports });
+    const protocol = definition.protocol ?? "http";
+    if (protocol !== "http" && protocol !== "tcp") {
+      throw new HexclaveAssertionError(`Stored port ${portKey} of deployment service ${JSON.stringify(serviceId)} has invalid protocol ${JSON.stringify(protocol)}`, { ports });
     }
-    return { port: entry.port, public: entry.public === true, transport };
-  });
+    parsed[portKey] = { public: definition.public === true, protocol };
+  }
+  return parsed;
 }
 
 /**
@@ -104,9 +130,8 @@ function parseStoredPorts(ports: Prisma.JsonValue, serviceId: string): Deploymen
  * down a whole listing.
  */
 function parseStoredEnv(env: Prisma.JsonValue, serviceId: string): Record<string, DeploymentEnvVarDefinition> {
-  // New writes use entry arrays because Prisma's JSON serializer drops special object keys
-  // such as `__proto__`. Keep accepting the original object representation so existing rows
-  // remain readable without a data migration.
+  // Writes use entry arrays because Prisma's JSON serializer drops special object keys such as
+  // `__proto__`. The object representation stays readable so a hand-written row still loads.
   const entries: [string, Prisma.JsonValue][] = [];
   if (Array.isArray(env)) {
     for (const tuple of env) {
@@ -127,7 +152,7 @@ function parseStoredEnv(env: Prisma.JsonValue, serviceId: string): Record<string
       entries.push([envVarKey, entry]);
     }
   } else {
-    throw new HexclaveAssertionError(`Stored env of deployment service ${JSON.stringify(serviceId)} is neither an entry array nor a legacy record`, { env });
+    throw new HexclaveAssertionError(`Stored env of deployment service ${JSON.stringify(serviceId)} is neither an entry array nor a record`, { env });
   }
   const result = new Map<string, DeploymentEnvVarDefinition>();
   for (const [envVarKey, entry] of entries) {
@@ -150,6 +175,10 @@ function parseStoredEnv(env: Prisma.JsonValue, serviceId: string): Record<string
   return Object.fromEntries(result);
 }
 
+/**
+ * The definition as stored, plus the volume the service currently mounts (which
+ * lives on a row of its own, because the disk outlives the service).
+ */
 export function definitionFromServiceRow(row: {
   serviceId: string,
   type: string,
@@ -158,70 +187,75 @@ export function definitionFromServiceRow(row: {
   maxInstances: number | null,
   rootDirectory: string | null,
   dockerfilePath: string | null,
-  volumeId: string | null,
-  volumePath: string | null,
-  volumeSizeGb: number | null,
   env: Prisma.JsonValue,
-}): DeploymentServiceDefinition {
+}, volume: { volumeId: string, path: string | null, sizeGb: number } | null = null): DeploymentServiceDefinition {
   if (row.type !== "server" && row.type !== "serverless") {
     throw new HexclaveAssertionError(`Deployment service ${JSON.stringify(row.serviceId)} has invalid type ${JSON.stringify(row.type)}.`);
   }
   return {
     type: row.type,
-    // Rows that predate a synced definition have an empty port list. Callers that
-    // build a runtime spec must reject that before it reaches Marshal (the deploy
-    // route guards it) — an empty array is not a deployable service, only a
+    // Rows that predate a synced definition have no ports. Callers that build a
+    // runtime spec must reject that before it reaches Marshal (the deploy route
+    // guards it) — an empty record is not a deployable service, only a
     // displayable one.
     ports: parseStoredPorts(row.ports, row.serviceId),
     min_instances: row.minInstances ?? undefined,
     max_instances: row.maxInstances ?? undefined,
     root_directory: row.rootDirectory ?? undefined,
     dockerfile_path: row.dockerfilePath ?? undefined,
-    // The three columns are written as a tuple, so a row with only some of them
-    // set is corrupt rather than merely partial — treat it as "no volume"
-    // instead of synthesizing a definition with a made-up id, path, or size.
-    persistent_volumes: row.volumeId !== null && row.volumePath !== null && row.volumeSizeGb !== null
-      ? { [row.volumeId]: { path: row.volumePath, size_gb: row.volumeSizeGb } }
+    // A volume row with no mount path is unattached — it belongs to the source
+    // rather than to this service, so it is not part of the definition.
+    persistent_volumes: volume !== null && volume.path !== null
+      ? { [volume.volumeId]: { path: volume.path, size_gb: volume.sizeGb } }
       : undefined,
     env: parseStoredEnv(row.env, row.serviceId),
   };
 }
 
-export async function listServiceRows(prisma: PrismaClientTransaction, tenancy: Tenancy): Promise<DeploymentServiceRow[]> {
+// ---------------------------------------------------------------------------
+// Deployment sources
+
+export async function getOrCreateDeploymentSource(prisma: PrismaClientTransaction, tenancy: Tenancy, sourceId: string): Promise<{ id: string, sourceId: string }> {
+  return await prisma.deploymentSource.upsert({
+    where: { tenancyId_sourceId: { tenancyId: tenancy.id, sourceId } },
+    update: {},
+    create: { tenancyId: tenancy.id, sourceId },
+    select: { id: true, sourceId: true },
+  });
+}
+
+export async function listServiceRows(prisma: PrismaClientTransaction, tenancy: Tenancy, options?: { sourceRowId?: string }): Promise<DeploymentServiceRow[]> {
   return await prisma.deploymentService.findMany({
-    where: { tenancyId: tenancy.id },
-    include: { domains: DOMAINS_INCLUDE_ORDER },
+    where: { tenancyId: tenancy.id, ...(options?.sourceRowId !== undefined ? { sourceRowId: options.sourceRowId } : {}) },
+    include: { source: true },
     orderBy: { serviceId: "asc" },
   });
 }
 
 export async function getServiceRowOrThrow(prisma: PrismaClientTransaction, tenancy: Tenancy, serviceId: string): Promise<DeploymentServiceRow> {
   const row = await prisma.deploymentService.findUnique({
-    where: {
-      tenancyId_serviceId: {
-        tenancyId: tenancy.id,
-        serviceId,
-      },
-    },
-    include: { domains: DOMAINS_INCLUDE_ORDER },
+    where: { tenancyId_serviceId: { tenancyId: tenancy.id, serviceId } },
+    include: { source: true },
   });
   if (row == null) {
-    throw new StatusError(404, `No deployment service with id ${JSON.stringify(serviceId)} exists in this project. Add it to the \`services\` export of your hexclave.deploy.ts and run \`hexclave deploy\`.`);
+    throw new StatusError(404, `No deployment service with id ${JSON.stringify(serviceId)} exists in this project. Add it to the \`services\` of your hexclave.deploy.ts and run \`hexclave deploy\`.`);
   }
   return row;
 }
 
+/** The volume a service currently mounts, if any. */
+export async function getServiceVolume(prisma: PrismaClientTransaction, tenancy: Tenancy, serviceId: string) {
+  return await prisma.deploymentVolume.findUnique({
+    where: { tenancyId_serviceId: { tenancyId: tenancy.id, serviceId } },
+  });
+}
+
 /**
- * Upserts the definitions from a deploy file's evaluated `services` export
- * into DeploymentService rows. Additive on purpose: rows whose service id is
- * absent from `services` are left untouched (see the KNOWN GAP note at the
- * top of this file).
- */
-/**
- * Always-on instances (`minInstances > 0`) are a paid capability: they hold a
- * machine up around the clock instead of scaling to zero between requests.
- * Free-plan teams may still deploy — they just have to let their services
- * scale to zero.
+ * Always-on instances are a paid capability: they hold a machine up around the
+ * clock instead of scaling to zero between requests. That is one rule for both
+ * service types — a "server" with `minInstances: 1` (its default!) is as
+ * always-on as a "serverless" with `minInstances: 1`, so a Free project must
+ * write `minInstances: 0` and let its services suspend or stop when idle.
  *
  * Called from BOTH doors, and it has to be:
  *
@@ -229,16 +263,13 @@ export async function getServiceRowOrThrow(prisma: PrismaClientTransaction, tena
  *     checking there fails before any source is packaged or uploaded and puts
  *     the message at the top of the deploy output. That is UX, not a boundary:
  *     the sync is skippable by anyone calling the API directly.
- *   - The deploy POST is the actual entitlement boundary. It accepts any stored
+ *   - The deploy is the actual entitlement boundary. It accepts any stored
  *     definition whose `definition_sync_id` still matches, so without a recheck
  *     a team could sync while paid, downgrade, and keep deploying always-on
- *     machines with the old sync id — and, more mundanely, any Free project
- *     that already had `min_instances > 0` stored before this gate shipped
- *     would keep deploying it forever.
+ *     machines with the old sync id.
  *
- * `volume` is deliberately NOT gated: persistent disks are available on every
- * plan for now. That is a pricing decision, not an oversight — revisit it
- * together with any per-plan storage quota.
+ * `persistentVolumes` is deliberately NOT gated: disks are available on every
+ * plan for now. That is a pricing decision, not an oversight.
  *
  * FUTURE: this gates new DEPLOYS, not machines already running. A team can
  * subscribe, deploy always-on services, cancel, and keep those machines
@@ -248,7 +279,7 @@ export async function getServiceRowOrThrow(prisma: PrismaClientTransaction, tena
  */
 export async function assertMinInstancesAllowedByPlan(tenancy: Tenancy, services: Record<string, DeploymentServiceDefinition>): Promise<void> {
   const offending = Object.entries(services)
-    .filter(([, definition]) => (definition.min_instances ?? 0) > 0)
+    .filter(([, definition]) => effectiveMinInstances(definition) > 0)
     .map(([serviceId]) => serviceId)
     .sort(stringCompare);
   if (offending.length === 0) return;
@@ -266,52 +297,22 @@ export async function assertMinInstancesAllowedByPlan(tenancy: Tenancy, services
     ? `${shown.join(", ")}, and ${offending.length - shown.length} more`
     : shown.join(", ");
   throw new StatusError(400, [
-    `Always-on instances are not available on the Free plan, but ${offending.length === 1 ? `service ${list} sets` : `services ${list} set`} \`minInstances\` above 0.`,
+    `Always-on instances are not available on the Free plan, but ${offending.length === 1 ? `service ${list} keeps` : `services ${list} keep`} an instance running (\`minInstances\` above 0).`,
     "",
     "Either:",
-    `  - set \`minInstances: 0\` (or remove it) on ${offending.length === 1 ? "that service" : "those services"} in your \`services\` export — ${offending.length === 1 ? "it will" : "they will"} scale to zero when idle and cold-start on the next request; or`,
+    `  - set \`minInstances: 0\` on ${offending.length === 1 ? "that service" : "those services"} — a \`server\` then suspends when idle and resumes with its memory intact, and a \`serverless\` scales to zero and cold-starts on the next request. Note that a \`server\` defaults to \`minInstances: 1\`, so this has to be written out; or`,
     "  - upgrade your plan at https://app.hexclave.com to keep instances always on.",
   ].join("\n"));
 }
 
 /**
- * Rejects a sync that would shrink a volume, BEFORE anything is packaged or
- * uploaded.
- *
- * Volumes are grow-only (Fly refuses a shrink, and shrinking would destroy
- * tenant data). Marshal enforces that too, but only at apply time — by then
- * `hexclave deploy` has already built the tarball, consumed an upload slot, and
- * started a run, so the author gets the error at the worst possible moment. The
- * previously synced size is right here in the row, so catch it at the door.
- *
- * Marshal's check stays as the backstop: this column can drift from the disk's
- * real size (a sync that succeeded followed by an apply that never converged),
- * and only the runtime knows what Fly actually has.
+ * The instance floor a definition actually deploys with, applying the per-type
+ * default. A "server" defaults to 1 (stay up) — which is exactly why the plan
+ * gate has to read the EFFECTIVE value rather than the written one.
  */
-async function assertNoVolumeShrink(prisma: PrismaClientTransaction, tenancy: Tenancy, services: Record<string, DeploymentServiceDefinition>): Promise<void> {
-  const existingRows = await prisma.deploymentService.findMany({
-    where: { tenancyId: tenancy.id, serviceId: { in: Object.keys(services) } },
-    select: { serviceId: true, volumeId: true, volumeSizeGb: true },
-  });
-  const previousVolume = new Map(existingRows.map((row) => [row.serviceId, row]));
-  for (const [serviceId, definition] of Object.entries(services)) {
-    const previous = previousVolume.get(serviceId) ?? null;
-    const next = singleVolume(definition);
-    if (previous?.volumeSizeGb == null || next === null || next.sizeGb >= previous.volumeSizeGb) continue;
-    // Only compare sizes for the SAME disk. A different id is a different
-    // volume, not a shrink of this one — rejecting that would block the very
-    // thing volume ids exist for (pointing a service at another disk).
-    if (previous.volumeId !== next.volumeId) continue;
-    throw new StatusError(400, [
-      `Service \`${serviceId}\` already has a ${previous.volumeSizeGb}GB volume, which cannot be shrunk to ${next.sizeGb}GB — disks can only grow.`,
-      "",
-      // Deliberately does NOT suggest detaching and re-adding smaller: the Fly
-      // volume outlives the detach, so that path clears this row's size, slips
-      // past this check, and fails at apply time instead — after the upload has
-      // been consumed. A smaller disk needs a different volume id.
-      `Set its \`sizeGb\` back to at least ${previous.volumeSizeGb}. To start over at a smaller size, give it a new volume id — the existing disk is a separate one and keeps its data.`,
-    ].join("\n"));
-  }
+export function effectiveMinInstances(definition: DeploymentServiceDefinition): number {
+  if (definition.type === "server") return definition.min_instances ?? DEFAULT_SERVER_MIN_INSTANCES;
+  return definition.min_instances ?? DEFAULT_MIN_INSTANCES;
 }
 
 /**
@@ -325,20 +326,45 @@ export function singleVolume(definition: DeploymentServiceDefinition): { volumeI
 }
 
 /**
- * Rejects two services claiming one volume id. A volume id names one disk, so
- * two claimants would ask Fly to mount it on two machines; the loser would come
- * up with an empty disk. The CLI checks this too, but a definition can reach
- * the sync route without passing through it.
+ * Rejects a sync that would shrink a volume, BEFORE anything is packaged or
+ * uploaded.
  *
- * Only the incoming definitions are checked. A row NOT in this sync belongs to a
- * service the config no longer defines — `hexclave deploy` always syncs the whole
- * config, even for `--service-id` — and its id is released by the pass in
- * syncServiceDefinitions. Rejecting on those rows instead would be a dead end:
- * there is no route that deletes a service, so renaming a service that holds a
- * volume would 400 the whole sync forever, telling the user to edit a service
- * their config no longer contains.
+ * Volumes are grow-only (Fly refuses a shrink, and shrinking would destroy
+ * tenant data). Marshal enforces that too, but only at apply time — by then
+ * `hexclave deploy` has already built the tarball and consumed an upload slot,
+ * so the author gets the error at the worst possible moment. The previously
+ * synced size is right here in the row, so catch it at the door.
+ *
+ * Marshal's check stays as the backstop: this column can drift from the disk's
+ * real size (a sync that succeeded followed by an apply that never converged),
+ * and only the runtime knows what Fly actually has.
  */
-function assertNoVolumeIdConflicts(services: Record<string, DeploymentServiceDefinition>): Map<string, string> {
+async function assertNoVolumeShrink(prisma: PrismaClientTransaction, tenancy: Tenancy, sourceRowId: string, services: Record<string, DeploymentServiceDefinition>): Promise<void> {
+  const existing = await prisma.deploymentVolume.findMany({
+    where: { tenancyId: tenancy.id, sourceRowId },
+    select: { volumeId: true, sizeGb: true },
+  });
+  const sizeByVolumeId = new Map(existing.map((row) => [row.volumeId, row.sizeGb]));
+  for (const [serviceId, definition] of Object.entries(services)) {
+    const next = singleVolume(definition);
+    if (next === null) continue;
+    // Compared per DISK, not per service: the disk is owned by the deployment
+    // source, so moving it to another service is not a resize of anything.
+    const previousSize = sizeByVolumeId.get(next.volumeId);
+    if (previousSize === undefined || next.sizeGb >= previousSize) continue;
+    throw new StatusError(400, [
+      `The volume \`${next.volumeId}\` (mounted by service \`${serviceId}\`) is already ${previousSize}GB and cannot be shrunk to ${next.sizeGb}GB — disks can only grow.`,
+      "",
+      // Deliberately does NOT suggest detaching and re-adding smaller: the Fly
+      // volume outlives the detach, so that path would slip past this check and
+      // fail at apply time instead — after the upload has been consumed.
+      `Set its \`sizeGb\` back to at least ${previousSize}. To start over at a smaller size, give it a new volume id — the existing disk is a separate one and keeps its data.`,
+    ].join("\n"));
+  }
+}
+
+/** Rejects two services of one sync claiming the same volume id. */
+function assertNoVolumeIdConflicts(services: Record<string, DeploymentServiceDefinition>): void {
   const claimedBy = new Map<string, string>();
   for (const [serviceId, definition] of Object.entries(services)) {
     const volume = singleVolume(definition);
@@ -349,69 +375,76 @@ function assertNoVolumeIdConflicts(services: Record<string, DeploymentServiceDef
     }
     claimedBy.set(volume.volumeId, serviceId);
   }
-  return claimedBy;
 }
 
-export async function syncServiceDefinitions(prisma: PrismaClientTransaction, tenancy: Tenancy, services: Record<string, DeploymentServiceDefinition>, definitionSyncId: string): Promise<void> {
-  await assertNoVolumeShrink(prisma, tenancy, services);
-  const claimedVolumeIds = assertNoVolumeIdConflicts(services);
-  // A custom domain makes the service publicly reachable exactly the way a public port does,
-  // so a service that HOLDS one has to satisfy the same port rules a public service does:
-  // exactly one port, speaking HTTP. See domainPortProblem for why each half matters.
-  const serviceIdsThatCannotHoldADomain = Object.entries(services)
-    .filter(([, definition]) => domainPortProblem(definition.ports) !== null)
-    .map(([serviceId]) => serviceId);
-  if (serviceIdsThatCannotHoldADomain.length > 0) {
-    const serviceWithDomain = await prisma.deploymentService.findFirst({
-      where: {
-        tenancyId: tenancy.id,
-        serviceId: { in: serviceIdsThatCannotHoldADomain },
-        domains: { some: {} },
-      },
-      select: { serviceId: true },
-    });
-    if (serviceWithDomain !== null) {
-      const problem = domainPortProblem(services[serviceWithDomain.serviceId].ports);
-      throw new StatusError(400, `Service ${JSON.stringify(serviceWithDomain.serviceId)} has a custom domain, so ${problem}. Remove the domain first, or fix the service's ports.`);
+export type SyncSourceServicesResult = {
+  // Services this source used to declare and no longer does. Their rows are
+  // gone; the caller tears the runtime side down (see tearDownServices).
+  removedServiceIds: string[],
+};
+
+/**
+ * Upserts the definitions of ONE deployment source, and removes the services it
+ * no longer declares.
+ *
+ * The source is what makes removal safe to do at all: a deploy file is the whole
+ * truth about its own services, and says nothing about anybody else's. Rows
+ * belonging to other sources are never touched here, which is what lets several
+ * repositories deploy into one project.
+ */
+export async function syncSourceServices(
+  prisma: PrismaClientTransaction,
+  tenancy: Tenancy,
+  source: { id: string, sourceId: string },
+  services: Record<string, DeploymentServiceDefinition>,
+  definitionSyncId: string,
+): Promise<SyncSourceServicesResult> {
+  await assertNoVolumeShrink(prisma, tenancy, source.id, services);
+  assertNoVolumeIdConflicts(services);
+
+  // Service ids are unique across the PROJECT, so a sync that claims one owned
+  // by another source is refused rather than silently taking it over — the two
+  // deploy files would otherwise overwrite each other's definition on every
+  // deploy, and the loser's author would have no way to see why.
+  const conflicting = await prisma.deploymentService.findMany({
+    where: { tenancyId: tenancy.id, serviceId: { in: Object.keys(services) }, sourceRowId: { not: source.id } },
+    include: { source: { select: { sourceId: true } } },
+  });
+  if (conflicting.length > 0) {
+    const [first] = conflicting;
+    throw new StatusError(409, [
+      `The service id \`${first.serviceId}\` is already deployed by the deployment source \`${first.source.sourceId}\`${conflicting.length > 1 ? ` (and ${conflicting.length - 1} more of this deploy's services are too)` : ""}.`,
+      "",
+      "Service ids are unique across a project, so that a connection like `service(\"api\")` means one thing everywhere. Rename this service, or remove it from the other deploy file first.",
+    ].join("\n"));
+  }
+
+  // A custom domain makes a service publicly reachable exactly the way a public
+  // port does, so a service that HOLDS one has to satisfy the same port rules.
+  const domainHolders = await prisma.deploymentDomain.findMany({
+    where: { tenancyId: tenancy.id, serviceId: { in: Object.keys(services) } },
+    select: { serviceId: true, hostname: true },
+  });
+  for (const domain of domainHolders) {
+    if (domain.serviceId === null) continue;
+    const problem = domainPortProblem(services[domain.serviceId].ports);
+    if (problem !== null) {
+      throw new StatusError(400, `Service ${JSON.stringify(domain.serviceId)} has the custom domain ${domain.hostname}, so ${problem}. Remove the domain first, or fix the service's ports.`);
     }
   }
-  // Release volume ids BEFORE any upsert writes them. The per-service upserts
-  // below run in an arbitrary order within the sync transaction, so moving a volume
-  // service B would hit the (tenancyId, volumeId) unique index whenever B
-  // happens to be written before A — a move that is valid overall failing on
-  // iteration order. Clearing first makes the order irrelevant.
-  //
-  // Two kinds of row are released: one in this sync whose declared id changed
-  // (or went away), and any row — including one this sync does not define —
-  // still holding an id that a service here now claims. The second is what makes
-  // a service RENAME work: the old service id keeps its row forever (nothing
-  // deletes services), so without this its stale claim would block the new name.
-  const retainedVolumeIdByService = new Map(Object.entries(services).map(([serviceId, definition]) => [serviceId, singleVolume(definition)?.volumeId ?? null]));
-  const heldRows = await prisma.deploymentService.findMany({
-    where: {
-      tenancyId: tenancy.id,
-      volumeId: { not: null },
-      OR: [
-        { serviceId: { in: [...retainedVolumeIdByService.keys()] } },
-        ...(claimedVolumeIds.size > 0 ? [{ volumeId: { in: [...claimedVolumeIds.keys()] } }] : []),
-      ],
-    },
-    select: { serviceId: true, volumeId: true },
+
+  const previousRows = await prisma.deploymentService.findMany({
+    where: { tenancyId: tenancy.id, sourceRowId: source.id },
+    select: { serviceId: true },
   });
-  const releasedServiceIds = heldRows
-    .filter((row) => row.volumeId !== retainedVolumeIdByService.get(row.serviceId))
-    .map((row) => row.serviceId);
-  if (releasedServiceIds.length > 0) {
-    await prisma.deploymentService.updateMany({
-      where: { tenancyId: tenancy.id, serviceId: { in: releasedServiceIds } },
-      // The path and size go too: all three are one tuple, and the CHECK
-      // constraint refuses an id-less disk paired with a path from another one.
-      data: { volumeId: null, volumePath: null, volumeSizeGb: null },
-    });
-  }
+  const removedServiceIds = previousRows
+    .map((row) => row.serviceId)
+    .filter((serviceId) => !Object.hasOwn(services, serviceId))
+    .sort(stringCompare);
 
   for (const [serviceId, definition] of Object.entries(services)) {
     const definitionColumns = {
+      sourceRowId: source.id,
       definitionSyncedAt: new Date(),
       definitionSyncId,
       type: definition.type,
@@ -420,17 +453,11 @@ export async function syncServiceDefinitions(prisma: PrismaClientTransaction, te
       maxInstances: definition.max_instances ?? null,
       rootDirectory: definition.root_directory ?? null,
       dockerfilePath: definition.dockerfile_path ?? null,
-      // Written as a tuple: a definition that drops its volume must clear ALL
-      // THREE columns, or a stale remnant would keep mounting a disk the config
-      // no longer declares.
-      volumeId: singleVolume(definition)?.volumeId ?? null,
-      volumePath: singleVolume(definition)?.path ?? null,
-      volumeSizeGb: singleVolume(definition)?.sizeGb ?? null,
       // The yup-validated env may contain explicit `undefined` fields, which
       // aren't valid JSON values; filter each entry at this boundary. Spelled
       // out field-by-field so the result is a Prisma-storable entry array
-      // without any type assertions. The entry-array representation also preserves
-      // object-prototype names through Prisma's JSON serializer.
+      // without any type assertions. The entry-array representation also
+      // preserves object-prototype names through Prisma's JSON serializer.
       env: Object.entries(definition.env).map(([envVarKey, entry]): [string, Record<string, string>] => {
         const stored: Record<string, string> = {};
         if (entry.type !== undefined) stored.type = entry.type;
@@ -440,67 +467,96 @@ export async function syncServiceDefinitions(prisma: PrismaClientTransaction, te
       }),
     };
     await prisma.deploymentService.upsert({
-      where: {
-        tenancyId_serviceId: {
-          tenancyId: tenancy.id,
-          serviceId,
-        },
-      },
+      where: { tenancyId_serviceId: { tenancyId: tenancy.id, serviceId } },
       update: definitionColumns,
-      create: {
-        tenancyId: tenancy.id,
-        serviceId,
-        ...definitionColumns,
-      },
+      create: { tenancyId: tenancy.id, serviceId, ...definitionColumns },
     });
   }
-}
 
-export async function getOrCreateOperationalService(prisma: PrismaClientTransaction, tenancy: Tenancy, serviceId: string) {
-  return await prisma.deploymentService.upsert({
-    where: {
-      tenancyId_serviceId: {
-        tenancyId: tenancy.id,
-        serviceId,
-      },
-    },
-    update: {},
-    create: {
-      tenancyId: tenancy.id,
-      serviceId,
-    },
+  // Volumes, after the services exist. Detach FIRST: a disk moving from one
+  // service to another within this source would otherwise hit the one-disk-
+  // per-service unique index depending on which service happened to be written
+  // first, failing a sync that is perfectly valid as a whole.
+  await prisma.deploymentVolume.updateMany({
+    where: { tenancyId: tenancy.id, sourceRowId: source.id },
+    data: { serviceId: null, path: null },
   });
+  for (const [serviceId, definition] of Object.entries(services)) {
+    const volume = singleVolume(definition);
+    if (volume === null) continue;
+    await prisma.deploymentVolume.upsert({
+      where: { tenancyId_sourceRowId_volumeId: { tenancyId: tenancy.id, sourceRowId: source.id, volumeId: volume.volumeId } },
+      // Grow-only, enforced above: take the larger of the two so a stale row
+      // can never shrink the record of a disk Fly has already grown.
+      update: { serviceId, path: volume.path, sizeGb: { set: volume.sizeGb } },
+      create: { tenancyId: tenancy.id, sourceRowId: source.id, volumeId: volume.volumeId, serviceId, path: volume.path, sizeGb: volume.sizeGb },
+    });
+  }
+
+  if (removedServiceIds.length > 0) {
+    // The rows go; the DISK and the DOMAIN do not. Both are unattached instead,
+    // because destroying tenant data (or releasing a certificate) on a config
+    // edit is not something a deploy should ever do implicitly.
+    await prisma.deploymentDomain.updateMany({
+      where: { tenancyId: tenancy.id, serviceId: { in: removedServiceIds } },
+      data: { serviceId: null, port: null },
+    });
+    await prisma.deploymentService.deleteMany({
+      where: { tenancyId: tenancy.id, sourceRowId: source.id, serviceId: { in: removedServiceIds } },
+    });
+  }
+
+  return { removedServiceIds };
 }
 
 /**
- * Why a service's port list cannot hold a custom domain, or null when it can. The message is
- * a clause that reads after "so ..." / "because it ...".
+ * Tears down services the deploy file no longer declares. Best-effort per
+ * service: their rows are already gone, so a runtime hiccup must not fail the
+ * sync that removed them — it would leave the caller unable to retry (the second
+ * sync sees nothing to remove).
+ */
+export async function tearDownServices(tenancy: Tenancy, serviceIds: string[]): Promise<void> {
+  if (serviceIds.length === 0 || getMarshalDeploymentsConfigOrNull() == null) return;
+  const client = getMarshalClientOrThrow();
+  const ns = marshalNamespaceForTenancy(tenancy);
+  for (const serviceId of serviceIds) {
+    try {
+      await client.deleteService(ns, serviceId);
+    } catch (error) {
+      captureError("deployments-teardown-removed-service", error);
+    }
+  }
+}
+
+/**
+ * Why a service's ports cannot hold a custom domain, or null when they can. The
+ * message is a clause that reads after "so ..." / "because it ...".
  *
  * KEPT IN SYNC WITH assertServiceCanHoldADomain in apps/marshal/src/domains.ts.
  *
- * Attaching a domain allocates public IPs on the service's Fly app, so it makes the service
- * public exactly the way a `public: true` port does — and therefore has to obey the same
- * one-port rule the `public-service-has-one-port` config rule enforces there. Fly `services`
- * are the proxy's listener set for the whole app with no per-address scoping, so every
- * declared port answers on every IP the app holds: an HTTP port next to a private 5432 passes
- * the sync (nothing is `public: true`) and then publishes the database the moment a domain is
- * attached. Two HTTP ports fail for a different reason — only one of them can own the
- * hostname's 80/443, so the attach appears to succeed while binding no predictable route.
+ * Attaching a domain allocates public IPs on the service's Fly app, so it makes
+ * the service public exactly the way a `public: true` port does — and therefore
+ * has to obey the same one-port rule. Fly `services` are the proxy's listener
+ * set for the whole app with no per-address scoping, so every declared port
+ * answers on every IP the app holds: an HTTP port next to a private 5432 passes
+ * the sync (nothing is `public: true`) and then publishes the database the
+ * moment a domain is attached. Two HTTP ports fail for a different reason — only
+ * one of them can own the hostname's 80/443, so the attach appears to succeed
+ * while binding no predictable route.
  *
- * The HTTP requirement is separate: a domain terminates TLS and routes HTTP, so a service
- * declaring only TCP ports (or none at all — a portless worker) has nothing to route to.
- * Enforced here rather than only at deploy time so the 400 lands on the request that can act
- * on it; the runtime's own rejection is deliberately swallowed during a deploy, which would
- * otherwise leave a domain silently stuck pending forever.
+ * The HTTP requirement is separate: a domain terminates TLS and routes HTTP, so
+ * a service declaring only TCP ports (or none at all — a portless worker) has
+ * nothing to route to.
  */
-export function domainPortProblem(ports: DeploymentServiceDefinition["ports"]): string | null {
-  if (!ports.some((entry) => portTransport(entry) === "http")) {
-    return ports.length === 0
-      ? 'it must declare a port with transport: "http" to route to (it declares none)'
-      : 'it must declare a port with transport: "http" to route to (it declares only TCP ports)';
+export function domainPortProblem(ports: DeploymentPorts): string | null {
+  const entries = deploymentPortEntries(ports);
+  if (!entries.some((entry) => entry.protocol === "http")) {
+    return entries.length === 0
+      ? 'it must declare a port with protocol: "http" to route to (it declares none)'
+      : 'it must declare a port with protocol: "http" to route to (it declares only TCP ports)';
   }
-  if (ports.length > 1) {
-    return `it may not declare any other port (it declares ${ports.length}): the runtime's proxy serves every declared port on every address the app has, so the others would be public too. Move the private ports onto their own service and reach them with internalHost`;
+  if (entries.length > 1) {
+    return `it may not declare any other port (it declares ${entries.length}): the runtime's proxy serves every declared port on every address the app has, so the others would be public too. Move the private ports onto their own service and reach them with hostname()`;
   }
   return null;
 }
@@ -514,13 +570,6 @@ export function domainPortProblem(ports: DeploymentServiceDefinition["ports"]): 
 // Marshal later rejects is stored as a domain row that can never be attached and
 // never verifies, and the runtime's rejection is deliberately swallowed at deploy
 // time — so it sits permanently pending with nothing reporting why.
-//
-// Hence the DNS limits, which the previous pattern left off: 4–253 characters
-// overall, labels of at most 63, and a TLD of at least two characters starting
-// with a letter (so `a.1` and `a.b` are refused rather than stored). Stricter
-// than Marshal in one place — Marshal strips a trailing dot before matching and
-// this rejects it — which is the safe direction, since it only ever refuses at
-// the request that can still act on the error.
 export const HOSTNAME_REGEX = /^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
 
 /** Lowercases and validates a user-supplied hostname, or throws a clean 400. */
@@ -532,61 +581,16 @@ export function normalizeHostnameOrThrow(hostname: string): string {
   return normalized;
 }
 
-export function mapMarshalBuildStatus(status: string): DeploymentRunStatus {
-  switch (status) {
-    case "queued": {
-      return "QUEUED";
-    }
-    case "running": {
-      return "BUILDING";
-    }
-    case "succeeded": {
-      return "READY";
-    }
-    case "failed": {
-      return "ERROR";
-    }
-    case "canceled": {
-      return "CANCELED";
-    }
-    default: {
-      // Marshal added a state we don't know; treat it as still-building so
-      // polling continues instead of wrongly finalizing the run.
-      return "BUILDING";
-    }
-  }
+/**
+ * The port a domain fronts on its service: the service's sole HTTP port, which
+ * domainPortProblem has already established is the only port it declares.
+ */
+export function domainPortForService(ports: DeploymentPorts): number | null {
+  return soleHttpDeploymentPort(ports);
 }
 
-export function deploymentRunStatusFromMarshal(build: MarshalBuild, state: MarshalServiceState, revision: string): {
-  status: DeploymentRunStatus,
-  error: string | null,
-} {
-  const buildStatus = mapMarshalBuildStatus(build.status);
-  if (buildStatus !== "READY") return { status: buildStatus, error: buildStatus === "ERROR" ? (build.error ?? "Deployment failed") : null };
-
-  const converged = state.revision === revision
-    && state.target_revision === null
-    && (state.status === "running" || state.status === "idle");
-  if (converged) return { status: "READY", error: null };
-
-  // A later desired revision owns the service. This run can never converge, even though its
-  // image build succeeded, so terminalize it instead of polling forever.
-  if (marshalRevisionIsSuperseded(state, revision)) return { status: "CANCELED", error: null };
-
-  if (state.status === "failed" || state.status === "degraded" || state.status === "stopped" || state.status === "blocked") {
-    return { status: "ERROR", error: state.error ?? "The image built successfully, but the service rollout failed." };
-  }
-  return { status: "BUILDING", error: null };
-}
-
-function marshalRevisionIsSuperseded(state: MarshalServiceState, revision: string): boolean {
-  return (state.target_revision !== null && state.target_revision !== revision)
-    || (state.target_revision === null && state.revision !== null && state.revision !== revision);
-}
-
-export function isTerminalRunStatus(status: DeploymentRunStatus): boolean {
-  return status === "READY" || status === "ERROR" || status === "CANCELED";
-}
+// ---------------------------------------------------------------------------
+// Env vars
 
 // A definition env var narrowed into its three valid shapes. The stored
 // definition type leaves `type`/`value`/`key` independently optional, so this
@@ -594,8 +598,8 @@ export function isTerminalRunStatus(status: DeploymentRunStatus): boolean {
 export type NormalizedDeploymentEnvVar =
   | { type: "plain", value: string }
   | { type: "secret", secretKey: string }
-  // `port` is the optional `:<port>` suffix of an `internalUrl` reference,
-  // naming which port the URL means on a multi-port service.
+  // `port` is the optional `:<port>` suffix of a `url` reference, naming which
+  // port the URL means on a multi-port service.
   | { type: "connection", serviceId: string, outputKey: string, port: number | null };
 
 /**
@@ -635,53 +639,130 @@ export function normalizeEnvVarConfig(envVarKey: string, config: DeploymentEnvVa
   }
 }
 
-// The config-file output keys (camelCase, what `service("api").internalUrl` produces) mapped
-// to the Marshal runtime's snake_case output keys. `satisfies Record<ServiceOutputKey, …>`
-// makes adding a key to SERVICE_OUTPUT_KEYS without a mapping here a compile error — otherwise
-// the lookup would yield `undefined` and emit `{ ref: "api.undefined" }`, a run that blocks
-// forever with an unactionable message.
+/**
+ * The Hexclave credentials every deployed service gets without asking, and the
+ * framework-prefixed copies of the public ones.
+ *
+ * The prefixes exist because a framework that INLINES values at build time
+ * (Next's NEXT_PUBLIC_*, Vite's VITE_*) only reads its own; an unprefixed
+ * variable is invisible to the client bundle no matter what the build does. A
+ * service that wants a different name still writes it in `env` — an explicit
+ * entry always wins over these.
+ *
+ * The secret server key gets NO prefixed copies: a prefixed name is a request to
+ * publish the value to the browser, which for a server key would be a credential
+ * leak rather than a convenience.
+ */
+export function autoInjectedEnvVars(options: {
+  projectId: string,
+  apiUrl: string,
+  publishableClientKey: string,
+  secretServerKey: string,
+}): Record<string, { value: string, secret: boolean }> {
+  const publicValues = {
+    HEXCLAVE_PROJECT_ID: options.projectId,
+    HEXCLAVE_API_URL: options.apiUrl,
+    HEXCLAVE_PUBLISHABLE_CLIENT_KEY: options.publishableClientKey,
+  };
+  const injected: Record<string, { value: string, secret: boolean }> = {
+    HEXCLAVE_SECRET_SERVER_KEY: { value: options.secretServerKey, secret: true },
+  };
+  for (const [key, value] of Object.entries(publicValues)) {
+    injected[key] = { value, secret: false };
+    for (const prefix of ["NEXT_PUBLIC_", "VITE_"]) {
+      injected[`${prefix}${key}`] = { value, secret: false };
+    }
+  }
+  return injected;
+}
+
+/**
+ * The project's API keys for the injected env vars, creating a key set if the
+ * project has none.
+ *
+ * Deploying is exactly the moment a project needs these, and a deploy that
+ * failed because nobody had clicked "create API key" first would be a pointless
+ * step. The set is created with a publishable client key and a secret server key
+ * only — never a super-secret admin key, which nothing in a deployed service
+ * should hold.
+ */
+async function getOrCreateDeploymentApiKeys(tenancy: Tenancy): Promise<{ publishableClientKey: string, secretServerKey: string }> {
+  const existing = await globalPrismaClient.apiKeySet.findFirst({
+    where: {
+      projectId: tenancy.project.id,
+      manuallyRevokedAt: null,
+      expiresAt: { gt: new Date() },
+      publishableClientKey: { not: null },
+      secretServerKey: { not: null },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (existing?.publishableClientKey != null && existing.secretServerKey != null) {
+    return { publishableClientKey: existing.publishableClientKey, secretServerKey: existing.secretServerKey };
+  }
+  // Far enough out that a long-lived deployment does not silently lose its
+  // credentials; the dashboard can revoke it like any other key set.
+  const expiresAt = new Date(Date.now() + 200 * 365 * 24 * 60 * 60 * 1000);
+  const created = await globalPrismaClient.apiKeySet.create({
+    data: {
+      id: generateUuid(),
+      projectId: tenancy.project.id,
+      description: "Created automatically for deployed services",
+      expiresAt,
+      publishableClientKey: `pck_${generateSecureRandomString()}`,
+      secretServerKey: `ssk_${generateSecureRandomString()}`,
+    },
+  });
+  return {
+    publishableClientKey: created.publishableClientKey ?? throwErr("publishableClientKey is null on a key set that was just created with one"),
+    secretServerKey: created.secretServerKey ?? throwErr("secretServerKey is null on a key set that was just created with one"),
+  };
+}
+
+// The deploy-file output keys mapped to the runtime's own. They happen to
+// coincide today; `satisfies Record<ServiceOutputKey, …>` is what makes adding
+// an output without deciding how the runtime spells it a compile error, rather
+// than a `{ ref: "api.undefined" }` that blocks a deploy with no explanation.
 const SERVICE_OUTPUT_KEY_TO_MARSHAL = {
   url: "url",
-  internalUrl: "internal_url",
-  internalHost: "internal_host",
-} satisfies Record<ServiceOutputKey, string>;
+  hostname: "hostname",
+} satisfies Record<typeof SERVICE_OUTPUT_KEYS[number], string>;
 
 /**
  * Resolves a service's definition env vars into the EnvValue map sent to
  * Marshal:
+ * - the Hexclave credentials are injected first, so a service can reach its own
+ *   project with no configuration — and any explicitly declared var of the same
+ *   name overrides them,
  * - plain vars pass through as literal `{ value }`s,
  * - secret vars are filled from the project's stored secrets (dashboard →
- *   Project Settings → Secrets), falling back to `secretDefaults` — the
- *   deploy request's transient copy of the `secret(key, default)` defaults
- *   from the deploy file. Defaults are deliberately NOT part of the stored
- *   definition: they are an author-side convenience that the dashboard must
- *   never surface (a stored default would make "this secret has a value"
- *   ambiguous on the secrets page). A secret with neither is a 400 that lists
- *   every missing key at once — failing loud beats silently deploying without
- *   them,
+ *   Project Settings → Secrets), falling back to `secretDefaults` — the deploy
+ *   request's transient copy of the `secret(key, default)` defaults from the
+ *   deploy file. Defaults are deliberately NOT part of the stored definition:
+ *   they are an author-side convenience that the dashboard must never surface
+ *   (a stored default would make "this secret has a value" ambiguous on the
+ *   secrets page). A secret with neither is a 400 that lists every missing key
+ *   at once — failing loud beats silently deploying without them,
  * - `hexclave.*` connections resolve the managed Hexclave service's outputs
  *   server-side (they are backend state, not runtime state),
- * - deployment-service outputs become Marshal `{ ref }`s, validated here first
- *   against the synced target definition (a URL must name a port that exists
- *   and speaks HTTP). `internalUrl`/`internalHost` are deterministic and never block. `url` is immediate for
- *   a public target, while a private target needs a verified custom domain;
- *   if neither exists yet, Marshal reports the service
- *   `blocked` and the RUN FAILS (refreshRunFromMarshal finalizes it ERROR).
- *   There is no automatic re-apply when the target's domain later verifies —
- *   the user must re-deploy. (Marshal's `needsBuild` is keyed to make such a
- *   re-apply a no-op-safe convergence point; wiring a domain-verify → re-PUT
- *   trigger is a tracked follow-up.) Prefer `internalUrl` for service wiring.
+ * - service outputs become Marshal `{ ref }`s, validated here first against the
+ *   synced target definition (a URL must name a port that exists and speaks
+ *   HTTP). `hostname()` and a private `url(<port>)` are deterministic and never
+ *   block. A PUBLIC `url` needs the target to be up (or a verified domain); if
+ *   it never resolves, Marshal reports the service blocked and the deployment
+ *   fails.
+ *
  * Error messages only ever contain reference tokens (pointers), never any
  * resolved value.
  */
 export async function resolveEnvVars(options: {
   tenancy: Tenancy,
   prisma: PrismaClientTransaction,
-  // The service these env vars belong to; used to reject self-referential
-  // `url` connections (a service whose public URL feeds its own env could
-  // never bootstrap; the internal outputs are deterministic and fine).
+  // The service these env vars belong to; used to reject a self-referential
+  // PUBLIC `url` (a service whose own public URL feeds its env could never
+  // bootstrap; its private address is deterministic and fine).
   serviceId: string,
-  env: Record<string, DeploymentEnvVarDefinition>,
+  definition: DeploymentServiceDefinition,
   // Deploy-request-only fallbacks for `secret()` env vars, keyed by ENV VAR
   // key (see deploymentSecretDefaultsSchema). Never read from the database.
   secretDefaults: Record<string, string>,
@@ -689,13 +770,29 @@ export async function resolveEnvVars(options: {
   resolvedEnv: Record<string, MarshalEnvValue>,
   redactionSecrets: string[],
 }> {
-  const { tenancy, prisma, serviceId, env, secretDefaults } = options;
+  const { tenancy, prisma, serviceId, definition, secretDefaults } = options;
+  const env = definition.env;
   const existingServices = await prisma.deploymentService.findMany({
     where: { tenancyId: tenancy.id },
     select: { serviceId: true, ports: true },
   });
-  const existingServiceIds = new Set(existingServices.map((row) => row.serviceId));
   const existingServicesById = new Map(existingServices.map((row) => [row.serviceId, row]));
+
+  const resolvedEnv = new Map<string, MarshalEnvValue>();
+  const redactionSecrets = new Set<string>();
+
+  // Injected FIRST so a declared var of the same name simply overwrites it
+  // below: the author's own value is what they meant.
+  const apiKeys = await getOrCreateDeploymentApiKeys(tenancy);
+  for (const [envVarKey, injected] of Object.entries(autoInjectedEnvVars({
+    projectId: tenancy.project.id,
+    apiUrl: getEnvVariable("NEXT_PUBLIC_STACK_API_URL"),
+    publishableClientKey: apiKeys.publishableClientKey,
+    secretServerKey: apiKeys.secretServerKey,
+  }))) {
+    resolvedEnv.set(envVarKey, { value: injected.value });
+    if (injected.secret) redactionSecrets.add(injected.value);
+  }
 
   // Cache per-secret reads so N env vars filled from the same secret don't
   // repeat KMS decryptions, and per-output resolution for hexclave.* outputs.
@@ -717,8 +814,6 @@ export async function resolveEnvVars(options: {
   };
 
   const missingSecretKeys: string[] = [];
-  const resolvedEnv = new Map<string, MarshalEnvValue>();
-  const redactionSecrets = new Set<string>();
   for (const [envVarKey, config] of Object.entries(env)) {
     if (!ENV_VAR_KEY_REGEX.test(envVarKey)) {
       throw new StatusError(400, `Invalid env var key: ${JSON.stringify(envVarKey)}. Keys must match ${ENV_VAR_KEY_REGEX.toString()}.`);
@@ -749,8 +844,8 @@ export async function resolveEnvVars(options: {
         // Checked before anything else, including hexclave.* outputs: only a URL
         // names a port, and anywhere else the runtime would silently discard the
         // suffix rather than resolve what the author asked for.
-        if (normalized.port !== null && normalized.outputKey !== "internalUrl") {
-          throw new StatusError(400, `The env var connection "${raw}" names a port, but only "internalUrl" takes one. Drop the ":${normalized.port}".`);
+        if (normalized.port !== null && normalized.outputKey !== "url") {
+          throw new StatusError(400, `The env var connection "${raw}" names a port, but only "url" takes one. Drop the ":${normalized.port}".`);
         }
         if (normalized.serviceId === HEXCLAVE_SERVICE_ID) {
           if (!(HEXCLAVE_OUTPUT_KEYS as readonly string[]).includes(normalized.outputKey)) {
@@ -761,51 +856,24 @@ export async function resolveEnvVars(options: {
           if (output.secret && output.value.length > 0) redactionSecrets.add(output.value);
           break;
         }
-        // Static validation first — these can never become resolvable later.
-        if (normalized.serviceId === serviceId && normalized.outputKey === "url") {
-          throw new StatusError(400, `The env var ${JSON.stringify(envVarKey)} connects to the service's own public URL "${raw}", which cannot exist before the service does. Use ${JSON.stringify(`${serviceId}.internalUrl`)} (called, e.g. internalUrl()) for the service's own address.`);
-        }
-        if (!existingServiceIds.has(normalized.serviceId) && normalized.serviceId !== serviceId) {
-          throw new StatusError(400, `The env var connection "${raw}" points to a service that doesn't exist in this project. Add it to the \`services\` export of your hexclave.deploy.ts and deploy it first.`);
-        }
         if (!(SERVICE_OUTPUT_KEYS as readonly string[]).includes(normalized.outputKey)) {
           throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. Deployment services expose: ${SERVICE_OUTPUT_KEYS.join(", ")}.`);
         }
         const target = existingServicesById.get(normalized.serviceId);
-        const targetPorts = target === undefined ? [] : parseStoredPorts(target.ports, normalized.serviceId);
-        // A URL names ONE port. The CLI rejects these at config-eval time with
-        // better messages; this is the boundary that makes it true regardless of
-        // which client synced the definition.
-        if (normalized.outputKey === "internalUrl") {
-          if (normalized.port === null) {
-            if (soleHttpDeploymentPort(targetPorts) === null) {
-              throw new StatusError(400, `The env var connection "${raw}" needs exactly one HTTP port on ${JSON.stringify(normalized.serviceId)} to build a URL from, but it declares ${targetPorts.filter((entry) => portTransport(entry) === "http").length}. Name the port you want, or connect with ${JSON.stringify(`${normalized.serviceId}.internalHost`)} and an explicit port.`);
-            }
-          } else {
-            const match = targetPorts.find((entry) => entry.port === normalized.port);
-            if (match === undefined) {
-              throw new StatusError(400, `The env var connection "${raw}" names port ${normalized.port}, which ${JSON.stringify(normalized.serviceId)} does not declare. Its ports: ${targetPorts.map((entry) => entry.port).join(", ") || "none"}.`);
-            }
-            if (portTransport(match) !== "http") {
-              throw new StatusError(400, `The env var connection "${raw}" names port ${normalized.port}, which is TCP and therefore has no URL. Connect with ${JSON.stringify(`${normalized.serviceId}.internalHost`)} and port ${normalized.port} instead.`);
-            }
+        if (target === undefined) {
+          throw new StatusError(400, `The env var connection "${raw}" points to a service that doesn't exist in this project. Add it to a deploy file's \`services\` and deploy it first — service ids are unique across the project, so it may live in another repository's hexclave.deploy.ts.`);
+        }
+        const targetPorts = parseStoredPorts(target.ports, normalized.serviceId);
+        if (normalized.outputKey === "url") {
+          const named = resolveUrlPortOrThrow(raw, normalized.serviceId, targetPorts, normalized.port);
+          // A service's own PUBLIC url cannot exist before the service does.
+          // Its private address is deterministic, so only this case is refused.
+          if (normalized.serviceId === serviceId && named.public) {
+            throw new StatusError(400, `The env var ${JSON.stringify(envVarKey)} connects to the service's own public URL "${raw}", which cannot exist before the service does. Use ${JSON.stringify(`${serviceId}.hostname`)} for the service's own address.`);
           }
         }
-        // No `length > 0` guard: an empty list used to mean only "no definition
-        // synced yet", but it is now also a legitimate portless worker — and
-        // neither can ever have a URL, so both belong here rather than blocking
-        // later on an unresolvable ref.
-        if (normalized.outputKey === "url" && !targetPorts.some((entry) => portTransport(entry) === "http")) {
-          const why = targetPorts.length === 0 ? "declares no ports at all" : "declares only TCP ports";
-          throw new StatusError(400, `The env var connection "${raw}" requests a URL from a service that ${why}. Connect with ${JSON.stringify(`${normalized.serviceId}.internalHost`)} and an explicit port instead.`);
-        }
         // Narrowed by the includes() check above; the map is `satisfies Record<ServiceOutputKey,…>`.
-        const marshalOutputKey = SERVICE_OUTPUT_KEY_TO_MARSHAL[normalized.outputKey as ServiceOutputKey];
-        // The runtime resolves service-to-service refs itself: internal addresses are
-        // deterministic there. A `url` whose private target has no verified domain yet makes
-        // the service `blocked` — the run then fails (there is no backend re-apply on domain
-        // verification yet; see startDeployment / refreshRunFromMarshal). Prefer internalUrl
-        // for service-to-service wiring.
+        const marshalOutputKey = SERVICE_OUTPUT_KEY_TO_MARSHAL[normalized.outputKey as typeof SERVICE_OUTPUT_KEYS[number]];
         resolvedEnv.set(envVarKey, { ref: formatConnectionValue(normalized.serviceId, marshalOutputKey, normalized.port) });
         break;
       }
@@ -823,6 +891,37 @@ export async function resolveEnvVars(options: {
   };
 }
 
+/**
+ * The port a `url` reference resolves to on its target, or a clean 400. A URL
+ * names ONE port: named explicitly, or implied when the target declares exactly
+ * one HTTP port. The CLI rejects these at evaluation time with better messages;
+ * this is the boundary that makes it true regardless of which client synced the
+ * definition — and it is where a reference into another deployment source is
+ * checked at all, since that file was never on this machine.
+ */
+function resolveUrlPortOrThrow(raw: string, targetServiceId: string, targetPorts: DeploymentPorts, namedPort: number | null): DeploymentPortEntry {
+  const entries = deploymentPortEntries(targetPorts);
+  const describePorts = () => entries.map((entry) => `${entry.port} (${entry.protocol}${entry.public ? ", public" : ""})`).join(", ") || "none";
+  if (namedPort === null) {
+    const sole = soleHttpDeploymentPort(targetPorts);
+    if (sole === null) {
+      const httpCount = entries.filter((entry) => entry.protocol === "http").length;
+      throw new StatusError(400, httpCount === 0
+        ? `The env var connection "${raw}" requests a URL from a service that ${entries.length === 0 ? "declares no ports at all" : "declares only TCP ports"}. Connect with ${JSON.stringify(`${targetServiceId}.hostname`)} and an explicit port instead.`
+        : `The env var connection "${raw}" needs exactly one HTTP port on ${JSON.stringify(targetServiceId)} to build a URL from, but it declares ${httpCount}. Name the port you want. Its ports: ${describePorts()}.`);
+    }
+    return deploymentPortEntry(targetPorts, sole) ?? throwErr("soleHttpDeploymentPort returned a port the record does not contain");
+  }
+  const match = deploymentPortEntry(targetPorts, namedPort);
+  if (match === null) {
+    throw new StatusError(400, `The env var connection "${raw}" names port ${namedPort}, which ${JSON.stringify(targetServiceId)} does not declare. Its ports: ${describePorts()}.`);
+  }
+  if (match.protocol !== "http") {
+    throw new StatusError(400, `The env var connection "${raw}" names port ${namedPort}, which is TCP and therefore has no URL. Connect with ${JSON.stringify(`${targetServiceId}.hostname`)} and port ${namedPort} instead.`);
+  }
+  return match;
+}
+
 async function resolveHexclaveOutput(tenancy: Tenancy, outputKey: string, raw: string): Promise<{ value: string, secret: boolean }> {
   const apiUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
   switch (outputKey) {
@@ -837,22 +936,13 @@ async function resolveHexclaveOutput(tenancy: Tenancy, outputKey: string, raw: s
     }
     case "publishableClientKey":
     case "secretServerKey": {
-      const keySet = await globalPrismaClient.apiKeySet.findFirst({
-        where: {
-          projectId: tenancy.project.id,
-          manuallyRevokedAt: null,
-          expiresAt: { gt: new Date() },
-          ...(outputKey === "publishableClientKey" ? { publishableClientKey: { not: null } } : { secretServerKey: { not: null } }),
-        },
-        orderBy: { createdAt: "desc" },
-      });
-      if (keySet == null) {
-        throw new StatusError(400, `The env var connection "${raw}" can't be resolved because the project has no active API key of that kind. Create one in the dashboard under "API Keys" first.`);
-      }
-      if (outputKey === "publishableClientKey") {
-        return { value: keySet.publishableClientKey ?? throwErr("publishableClientKey is null despite filter; this should never happen"), secret: false };
-      }
-      return { value: keySet.secretServerKey ?? throwErr("secretServerKey is null despite filter; this should never happen"), secret: true };
+      // The same key set the injected env vars use, created on demand — so an
+      // explicit `hexclave.secretServerKey` and the automatic
+      // HEXCLAVE_SECRET_SERVER_KEY are always the same credential.
+      const keys = await getOrCreateDeploymentApiKeys(tenancy);
+      return outputKey === "publishableClientKey"
+        ? { value: keys.publishableClientKey, secret: false }
+        : { value: keys.secretServerKey, secret: true };
     }
     default: {
       throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. The hexclave service exposes: ${HEXCLAVE_OUTPUT_KEYS.join(", ")}.`);
@@ -860,16 +950,19 @@ async function resolveHexclaveOutput(tenancy: Tenancy, outputKey: string, raw: s
   }
 }
 
+// ---------------------------------------------------------------------------
+// Build-log redaction
+
 export type EncryptedDeploymentRedactionSecrets = {
   edkBase64: string,
   ciphertextBase64: string,
 };
 
 /**
- * Encrypts the exact sensitive values injected into one run. The snapshot is
- * run-scoped rather than project-scoped: request-only defaults never enter the
- * project secret store, and rotating/deleting a stored secret must not make its
- * earlier build logs unsafe to read.
+ * Encrypts the exact sensitive values injected into one deployment. The snapshot
+ * is deployment-scoped rather than project-scoped: request-only defaults never
+ * enter the project secret store, and rotating/deleting a stored secret must not
+ * make its earlier build logs unsafe to read.
  */
 export async function encryptDeploymentRedactionSecrets(secretValues: string[]): Promise<EncryptedDeploymentRedactionSecrets> {
   const uniqueNonEmptyValues = [...new Set(secretValues)].filter((value) => value.length > 0);
@@ -877,16 +970,16 @@ export async function encryptDeploymentRedactionSecrets(secretValues: string[]):
 }
 
 /**
- * Decrypts a run's complete redaction set. Missing or malformed material fails
- * closed: returning a partial set would turn a KMS/data problem into plaintext
- * credential disclosure through the logs endpoint.
+ * Decrypts a deployment's complete redaction set. Missing or malformed material
+ * fails closed: returning a partial set would turn a KMS/data problem into
+ * plaintext credential disclosure through the logs endpoint.
  */
 export async function decryptDeploymentRedactionSecrets(encrypted: Prisma.JsonValue | null): Promise<string[]> {
   if (encrypted == null) {
-    throw new StatusError(409, "Build logs for this deployment are unavailable because it predates secure per-run secret redaction.");
+    throw new StatusError(409, "Build logs for this deployment are unavailable because it has no stored redaction material.");
   }
   if (!isRecord(encrypted) || typeof encrypted.edkBase64 !== "string" || typeof encrypted.ciphertextBase64 !== "string") {
-    throw new HexclaveAssertionError("Stored deployment-run redaction material has an invalid encrypted payload; the deploy route should have written { edkBase64, ciphertextBase64 }");
+    throw new HexclaveAssertionError("Stored deployment redaction material has an invalid encrypted payload; the deploy route should have written { edkBase64, ciphertextBase64 }");
   }
   const decrypted = await decryptWithKms({
     edkBase64: encrypted.edkBase64,
@@ -896,15 +989,15 @@ export async function decryptDeploymentRedactionSecrets(encrypted: Prisma.JsonVa
   try {
     parsed = JSON.parse(decrypted);
   } catch (error) {
-    throw new HexclaveAssertionError("Stored deployment-run redaction material did not decrypt to valid JSON", { cause: error });
+    throw new HexclaveAssertionError("Stored deployment redaction material did not decrypt to valid JSON", { cause: error });
   }
   if (!Array.isArray(parsed)) {
-    throw new HexclaveAssertionError("Stored deployment-run redaction material did not decrypt to an array");
+    throw new HexclaveAssertionError("Stored deployment redaction material did not decrypt to an array");
   }
   const result = new Set<string>();
   for (const value of parsed) {
     if (typeof value !== "string") {
-      throw new HexclaveAssertionError("Stored deployment-run redaction material contains a non-string value");
+      throw new HexclaveAssertionError("Stored deployment redaction material contains a non-string value");
     }
     if (value.length > 0) result.add(value);
   }
@@ -925,142 +1018,306 @@ export function redactSecrets(text: string, secretValues: string[]): string {
   return result;
 }
 
-/** Assembles the Marshal service spec for a service's stored definition. */
-export function marshalSpecForDefinition(definition: DeploymentServiceDefinition, source: { upload_id: string } | { image: string }, resolvedEnv: Record<string, MarshalEnvValue>) {
-  // A "server" is always 0/1 whatever the definition says; the schema and the
-  // CLI both reject other bounds, so this only normalizes the defaults rather
-  // than overriding a stated intent, and it keeps the spec self-consistent with
-  // the type Marshal re-validates against.
+// ---------------------------------------------------------------------------
+// Deploying
+
+/** Assembles the Marshal spec for a service's stored definition. */
+export function marshalSpecForDefinition(definition: DeploymentServiceDefinition, resolvedEnv: Record<string, MarshalEnvValue>) {
+  // A "server" is always a single instance whatever the definition says; the
+  // schema and the CLI both reject other bounds, so this only applies the
+  // defaults rather than overriding a stated intent, and it keeps the spec
+  // self-consistent with the type Marshal re-validates against.
   const isServer = definition.type === "server";
-  const minInstances = isServer ? 0 : definition.min_instances ?? DEFAULT_MIN_INSTANCES;
+  const minInstances = effectiveMinInstances(definition);
   return {
     config: {
       type: definition.type,
       min_instances: minInstances,
-      // Default max to at least min: a definition with `minInstances` and no `maxInstances`
-      // must not synthesize an invalid spec (max < min) that Marshal 400s after the upload is
-      // already consumed. Validation (CLI + schema) also rejects it up front now, but this
-      // keeps the spec self-consistent regardless.
+      // Default max to at least min: a definition with `minInstances` and no
+      // `maxInstances` must not synthesize an invalid spec (max < min) that
+      // Marshal 400s after the upload is already consumed.
       max_instances: isServer ? 1 : definition.max_instances ?? Math.max(minInstances, DEFAULT_MAX_INSTANCES),
       // Passed through verbatim: the runtime derives its ingress from the ports
       // themselves, so there is no separate visibility to keep in step.
-      ports: definition.ports.map((entry) => ({ port: entry.port, public: entry.public === true, transport: portTransport(entry) })),
+      ports: Object.fromEntries(deploymentPortEntries(definition.ports).map((entry) => [
+        String(entry.port),
+        { public: entry.public, protocol: entry.protocol },
+      ])),
       // Absent = ephemeral container filesystem. Marshal re-validates that a
       // volume implies type "server".
       ...(definition.persistent_volumes !== undefined && Object.keys(definition.persistent_volumes).length > 0
         ? { persistent_volumes: definition.persistent_volumes }
         : {}),
     },
-    // dockerfile_path only matters when there is something to build; absent =
-    // the builder auto-detects the build with Railpack.
-    source: "upload_id" in source
-      ? { ...source, ...(definition.dockerfile_path !== undefined ? { dockerfile_path: definition.dockerfile_path } : {}) }
-      : source,
     env: resolvedEnv,
   };
 }
 
-export type StartDeploymentResult = {
-  runId: string,
+/**
+ * Creates the deployment row for one `hexclave deploy`. The number is `max + 1`
+ * within the tenancy; the caller must supply a transaction (see the route) so
+ * the read and the insert are atomic, and the (tenancyId, number) unique index
+ * makes the residual race a retry rather than two deployments that print as the
+ * same "#47".
+ */
+export async function createDeployment(prisma: PrismaClientTransaction, tenancy: Tenancy, options: {
+  sourceRowId: string,
+  triggeredBy: string,
+  plannedServiceIds: string[],
+}): Promise<{ id: string, number: number }> {
+  const latest = await prisma.deployment.findFirst({
+    where: { tenancyId: tenancy.id },
+    orderBy: { number: "desc" },
+    select: { number: true },
+  });
+  return await prisma.deployment.create({
+    data: {
+      tenancyId: tenancy.id,
+      sourceRowId: options.sourceRowId,
+      number: (latest?.number ?? 0) + 1,
+      triggeredBy: options.triggeredBy,
+      plannedServiceIds: options.plannedServiceIds,
+      services: Object.fromEntries(options.plannedServiceIds.map((serviceId) => [serviceId, { status: "pending" }])),
+    },
+    select: { id: true, number: true },
+  });
+}
+
+/** One service's outcome within a deployment, as stored in `Deployment.services`. */
+export type DeploymentServiceOutcome = {
+  status: "pending" | "building" | "deploying" | "deployed" | "failed" | "skipped",
+  url?: string | null,
+  revision?: string | null,
+  error?: string | null,
 };
 
+/**
+ * Returns a Map rather than a record so a lookup is typed `| undefined`: these
+ * keys come from stored JSON, so "this service has no outcome" is a real answer
+ * that callers must handle, and a record index would type it away.
+ */
+function parseStoredOutcomes(services: Prisma.JsonValue): Map<string, DeploymentServiceOutcome> {
+  const parsed = new Map<string, DeploymentServiceOutcome>();
+  if (!isRecord(services)) return parsed;
+  for (const [serviceId, outcome] of Object.entries(services)) {
+    if (!isRecord(outcome)) continue;
+    const status = outcome.status;
+    parsed.set(serviceId, {
+      // An unknown status reads as pending rather than throwing: this renders a
+      // list, and one odd row must not take the page down.
+      status: status === "building" || status === "deploying" || status === "deployed" || status === "failed" || status === "skipped" ? status : "pending",
+      url: typeof outcome.url === "string" ? outcome.url : null,
+      revision: typeof outcome.revision === "string" ? outcome.revision : null,
+      error: typeof outcome.error === "string" ? outcome.error : null,
+    });
+  }
+  return parsed;
+}
+
+export type StartDeploymentResult = { deploymentId: string, number: number };
+
+/**
+ * Hands a whole deployment to the runtime: one uploaded source tree, one build
+ * of every service, then the applies in dependency order.
+ *
+ * The runtime owns that sequence rather than this function driving it step by
+ * step, because the runtime is where the reconciliation lease and the build
+ * completion webhook already live. What comes back immediately is only "the
+ * deployment was accepted"; refreshDeploymentFromMarshal mirrors its progress.
+ */
 export async function startDeployment(options: {
   tenancy: Tenancy,
   prisma: PrismaClientTransaction,
-  serviceId: string,
-  // The stored definition of the service (from its DeploymentService row).
-  definition: DeploymentServiceDefinition,
-  // Already resolved by the caller (via resolveEnvVars) BEFORE the upload was
-  // consumed, so a missing secret or dangling connection fails the request
-  // without spending the upload.
-  resolvedEnv: Record<string, MarshalEnvValue>,
-  redactionSecretsEncrypted: EncryptedDeploymentRedactionSecrets,
-  // The Marshal upload slot id holding the source tarball.
+  deploymentId: string,
+  source: { id: string, sourceId: string },
+  // In dependency order: every service in one level is applied concurrently,
+  // and a level starts only once the previous one has converged.
+  levels: string[][],
+  definitionsByServiceId: Map<string, DeploymentServiceDefinition>,
+  resolvedEnvByServiceId: Map<string, Record<string, MarshalEnvValue>>,
   marshalUploadId: string,
-  triggeredBy: string,
-  // The `hexclave deploy` this run belongs to, when the caller grouped its
-  // services into one (see createDeployment). Null for a standalone deploy of a
-  // single service; the dashboard renders those as one-service deployments.
-  deploymentId?: string | null,
-}): Promise<StartDeploymentResult> {
-  const { tenancy, prisma, serviceId, definition, resolvedEnv, redactionSecretsEncrypted, marshalUploadId, triggeredBy } = options;
+}): Promise<void> {
+  const { tenancy, prisma, deploymentId, source, levels, definitionsByServiceId, resolvedEnvByServiceId, marshalUploadId } = options;
   const client = getMarshalClientOrThrow();
   const ns = marshalNamespaceForTenancy(tenancy);
 
-  const service = await getOrCreateOperationalService(prisma, tenancy, serviceId);
+  const targets: MarshalDeploymentTarget[] = levels.flat().map((serviceId) => {
+    const definition = definitionsByServiceId.get(serviceId) ?? throwErr(`No definition for planned service ${serviceId}`);
+    const resolvedEnv = resolvedEnvByServiceId.get(serviceId) ?? throwErr(`No resolved env for planned service ${serviceId}`);
+    return {
+      service_key: serviceId,
+      ...(definition.root_directory !== undefined ? { root_directory: definition.root_directory } : {}),
+      ...(definition.dockerfile_path !== undefined ? { dockerfile_path: definition.dockerfile_path } : {}),
+      spec: marshalSpecForDefinition(definition, resolvedEnv),
+    };
+  });
 
-  let result;
+  let result: MarshalDeployment;
   try {
-    result = await client.putService(ns, serviceId, marshalSpecForDefinition(definition, { upload_id: marshalUploadId }, resolvedEnv));
+    result = await client.startSourceDeployment(ns, source.sourceId, {
+      upload_id: marshalUploadId,
+      targets,
+      order: levels,
+    });
   } catch (e) {
     sanitizeMarshalError(e, "Starting the deployment failed");
   }
 
-  // Only mark provisioned once Marshal has actually created the Fly app. A blocked apply
-  // (an unresolved `<svc>.url` ref) only persists the spec — no app, no IPs — so setting
-  // provisionedAt then would make the domain routes attempt IP allocation on a nonexistent
-  // app and 500. `internal_host` is present exactly when the app exists.
-  const provisioned = result.state.status !== "blocked" && result.state.outputs.internal_host != null;
-  if (service.provisionedAt == null && provisioned) {
-    await prisma.deploymentService.update({
-      where: { tenancyId_id: { tenancyId: tenancy.id, id: service.id } },
-      data: { provisionedAt: new Date() },
-    });
-  }
-
-  // Find the build backing this apply. Marshal writes the build record before
-  // the PUT returns, so the newest build with our revision is ours; an
-  // UNCHANGED re-apply reuses the already-completed build of that revision,
-  // which correctly makes the run terminal immediately.
-  let build = null;
-  try {
-    const builds = await client.listBuilds(ns, serviceId, { limit: 10 });
-    build = builds.find((candidate) => candidate.revision === result.revision) ?? null;
-  } catch (e) {
-    // The run row can still be created; refreshRunFromMarshal keeps trying to
-    // attach status by revision on subsequent reads via the build id below.
-    captureError("deployments-find-build-after-put", e);
-  }
-
-  const runState = build != null
-    ? deploymentRunStatusFromMarshal(build, result.state, result.revision)
-    : { status: "QUEUED" as const, error: null };
-  const run = await prisma.deploymentRun.create({
+  await prisma.deployment.update({
+    where: { tenancyId_id: { tenancyId: tenancy.id, id: deploymentId } },
     data: {
-      tenancyId: tenancy.id,
-      deploymentServiceId: service.id,
-      deploymentId: options.deploymentId ?? null,
-      marshalBuildId: build?.id ?? null,
-      revision: result.revision,
-      serviceUrl: result.state.outputs.url ?? null,
-      status: runState.status,
-      error: runState.error,
-      finishedAt: isTerminalRunStatus(runState.status) ? new Date() : null,
-      target: "production",
-      triggeredBy,
-      redactionSecretsEncrypted,
+      marshalBuildId: result.id,
+      status: marshalDeploymentStatus(result),
+      services: outcomesFromMarshal(result, levels.flat()),
     },
   });
 
-  // Write-through for the service's domains. Failures here must not fail the
-  // deploy itself (the run row already exists and the build is running), so a DB/Marshal
-  // blip in domain sync must not throw out of startDeployment and lose the run id — the
-  // Domains tab surfaces per-domain problems on its own reads.
+  // Write-through for the domains of every service in this deploy. Failures
+  // here must not fail the deployment itself (the build is already running), so
+  // a DB/Marshal blip in domain sync must not throw — the Domains tab surfaces
+  // per-domain problems on its own reads.
   try {
-    await syncServiceDomainsToMarshal({ tenancy, prisma, serviceDbId: service.id, serviceId, client });
+    await syncServiceDomainsToMarshal({ tenancy, prisma, serviceIds: levels.flat(), client });
   } catch (e) {
     captureError("deployments-domain-sync-after-deploy", e);
   }
+}
 
-  return { runId: run.id };
+function marshalDeploymentStatus(deployment: MarshalDeployment): DeploymentStatus {
+  switch (deployment.status) {
+    case "queued": {
+      return "QUEUED";
+    }
+    case "building": {
+      return "BUILDING";
+    }
+    case "deploying": {
+      return "DEPLOYING";
+    }
+    case "succeeded": {
+      return "SUCCEEDED";
+    }
+    case "failed": {
+      return "FAILED";
+    }
+    case "canceled": {
+      return "CANCELED";
+    }
+    default: {
+      // The runtime added a state this build doesn't know; treat it as still
+      // going so polling continues rather than wrongly finalizing the deploy.
+      return "BUILDING";
+    }
+  }
+}
+
+function outcomesFromMarshal(deployment: MarshalDeployment, plannedServiceIds: string[]): Record<string, DeploymentServiceOutcome> {
+  const byKey = new Map(deployment.services.map((service) => [service.service_key, service]));
+  const outcomes: Record<string, DeploymentServiceOutcome> = {};
+  for (const serviceId of plannedServiceIds) {
+    const reported = byKey.get(serviceId);
+    if (reported === undefined) {
+      // The runtime is not reporting on it (yet). While the deployment is still
+      // going that is simply "not started"; once it is terminal the service was
+      // never reached, which is what "skipped" says.
+      outcomes[serviceId] = { status: deployment.finished_at_millis === null ? "pending" : "skipped" };
+      continue;
+    }
+    outcomes[serviceId] = {
+      status: reported.status,
+      url: reported.url,
+      revision: reported.revision,
+      error: reported.error,
+    };
+  }
+  return outcomes;
+}
+
+export function isTerminalDeploymentStatus(status: DeploymentStatus): boolean {
+  return status === "SUCCEEDED" || status === "FAILED" || status === "CANCELED";
 }
 
 /**
- * Ensures every domain row of the service is attached in Marshal and mirrors
- * the verification state back into the rows. Domains added in the dashboard
- * before the first deploy only exist as rows (Marshal has no spec to attach
- * them to yet), so this runs on every deploy to push them once the service is
- * provisioned — and it self-heals rows that drifted afterwards.
+ * Refreshes a non-terminal deployment from the runtime (poll-on-read — there is
+ * no background poller). No-op when it is already terminal, or when the runtime
+ * never accepted it.
+ */
+export async function refreshDeploymentFromMarshal(prisma: PrismaClientTransaction, tenancy: Tenancy, deployment: {
+  id: string,
+  status: DeploymentStatus,
+  marshalBuildId: string | null,
+  plannedServiceIds: Prisma.JsonValue,
+  createdAt: Date,
+  concludedAt: Date | null,
+}): Promise<void> {
+  if (isTerminalDeploymentStatus(deployment.status)) return;
+  const plannedServiceIds = parsePlannedServiceIds(deployment.plannedServiceIds);
+
+  if (deployment.marshalBuildId === null) {
+    // The client died between creating this row and handing the deploy to the
+    // runtime (packaging, upload, a crash). `concludedAt` is the client saying
+    // it has stopped; without it the row would read as in-flight forever and
+    // the dashboard would poll it for eternity.
+    if (deployment.concludedAt !== null) {
+      await prisma.deployment.update({
+        where: { tenancyId_id: { tenancyId: tenancy.id, id: deployment.id } },
+        data: {
+          status: "FAILED",
+          error: "The deploy stopped before the runtime accepted it — the source was never uploaded.",
+          finishedAt: new Date(),
+          services: Object.fromEntries(plannedServiceIds.map((serviceId) => [serviceId, { status: "skipped" }])),
+        },
+      });
+    }
+    return;
+  }
+
+  const client = getMarshalClientOrThrow();
+  const ns = marshalNamespaceForTenancy(tenancy);
+  let state: MarshalDeployment;
+  try {
+    state = await client.getDeployment(ns, deployment.marshalBuildId);
+  } catch (e) {
+    sanitizeMarshalError(e, "Fetching the deployment status failed");
+  }
+
+  const status = marshalDeploymentStatus(state);
+  await prisma.deployment.update({
+    where: { tenancyId_id: { tenancyId: tenancy.id, id: deployment.id } },
+    data: {
+      status,
+      error: state.error,
+      services: outcomesFromMarshal(state, plannedServiceIds),
+      finishedAt: isTerminalDeploymentStatus(status) ? new Date(state.finished_at_millis ?? Date.now()) : null,
+    },
+  });
+
+  // A deployed service is provisioned in the runtime, which is what the domain
+  // routes need before they can allocate IPs.
+  const deployedServiceIds = state.services.filter((service) => service.status === "deployed").map((service) => service.service_key);
+  if (deployedServiceIds.length > 0) {
+    await prisma.deploymentService.updateMany({
+      where: { tenancyId: tenancy.id, serviceId: { in: deployedServiceIds }, provisionedAt: null },
+      data: { provisionedAt: new Date() },
+    });
+  }
+}
+
+function parsePlannedServiceIds(plannedServiceIds: Prisma.JsonValue): string[] {
+  // Planned ids come from JSON, so a hand-edited row could hold anything. An
+  // empty list is better than a listing that throws.
+  return Array.isArray(plannedServiceIds) && plannedServiceIds.every((id) => typeof id === "string")
+    ? plannedServiceIds as string[]
+    : [];
+}
+
+/**
+ * Ensures every attached domain of these services is attached in Marshal and
+ * mirrors the verification state back into the rows. Domains added in the
+ * dashboard before the first deploy only exist as rows (Marshal has no spec to
+ * attach them to yet), so this runs on every deploy to push them once the
+ * service is provisioned — and it self-heals rows that drifted afterwards.
+ *
  * Intentionally tolerant: a domain Marshal rejects (e.g. claimed by another
  * namespace) is recorded as unverified rather than failing the caller — the
  * Domains tab shows per-domain state and errors.
@@ -1068,26 +1325,24 @@ export async function startDeployment(options: {
 export async function syncServiceDomainsToMarshal(options: {
   tenancy: Tenancy,
   prisma: PrismaClientTransaction,
-  serviceDbId: string,
-  serviceId: string,
+  serviceIds: string[],
   client: MarshalClient,
 }): Promise<void> {
-  const { tenancy, prisma, serviceDbId, serviceId, client } = options;
+  const { tenancy, prisma, serviceIds, client } = options;
+  if (serviceIds.length === 0) return;
   const ns = marshalNamespaceForTenancy(tenancy);
-  const domains = await prisma.deploymentServiceDomain.findMany({
-    where: {
-      tenancyId: tenancy.id,
-      deploymentServiceId: serviceDbId,
-    },
+  const domains = await prisma.deploymentDomain.findMany({
+    where: { tenancyId: tenancy.id, serviceId: { in: serviceIds } },
   });
   for (const domain of domains) {
+    if (domain.serviceId === null) continue;
     // null = the check didn't complete; the row is left untouched then, so a
     // transient Marshal/network error during a deploy can't clobber a
     // previously-verified domain back to unverified (which would also make
     // `<service>.url` connections resolve to the wrong URL until re-checked).
     let verified: boolean | null = null;
     try {
-      const result = await client.putDomain(ns, domain.hostname, serviceId);
+      const result = await client.putDomain(ns, domain.hostname, domain.serviceId);
       verified = result.verified;
     } catch (e) {
       // NOTHING here may fail the caller — the build is already running, so a domain hiccup
@@ -1102,7 +1357,7 @@ export async function syncServiceDomainsToMarshal(options: {
       }
     }
     if (verified != null) {
-      await prisma.deploymentServiceDomain.update({
+      await prisma.deploymentDomain.update({
         where: { tenancyId_id: { tenancyId: tenancy.id, id: domain.id } },
         data: { verified },
       });
@@ -1110,127 +1365,38 @@ export async function syncServiceDomainsToMarshal(options: {
   }
 }
 
-/**
- * Refreshes a non-terminal run from Marshal (poll-on-read — there is no
- * background poller). No-op when the run is already terminal. The run is
- * considered READY only once both the image build and the machine rollout converge.
- */
-export async function refreshRunFromMarshal(prisma: PrismaClientTransaction, tenancy: Tenancy, run: {
-  id: string,
-  status: DeploymentRunStatus,
-  marshalBuildId: string | null,
-  revision: string | null,
-  createdAt: Date,
-}, serviceId: string): Promise<void> {
-  if (isTerminalRunStatus(run.status)) {
-    return;
-  }
-  const client = getMarshalClientOrThrow();
-  const ns = marshalNamespaceForTenancy(tenancy);
-  // Backstop so a run whose build never materialized (blocked-then-abandoned, or its build
-  // record vanished with a delete+recreate) can't stay non-terminal forever — which would
-  // also make every runs-list read re-poll it indefinitely.
-  const runAgeMs = Date.now() - run.createdAt.getTime();
-  const STUCK_RUN_GRACE_MS = 30 * 60 * 1000;
-  const finalizeStuck = async (error: string): Promise<void> => {
-    if (runAgeMs < STUCK_RUN_GRACE_MS) return;
-    await prisma.deploymentRun.update({
-      where: { tenancyId_id: { tenancyId: tenancy.id, id: run.id } },
-      data: { status: "ERROR", error, finishedAt: new Date() },
-    });
-  };
-  let build;
-  try {
-    const builds = await client.listBuilds(ns, serviceId, { limit: 50 });
-    // A run without an attached build id means no build had started when the
-    // deploy was accepted (the service was blocked on an unresolved ref, or the
-    // post-deploy lookup failed): try to attach by revision — convergence
-    // re-applies may have started it since.
-    build = run.marshalBuildId != null
-      ? builds.find((candidate) => candidate.id === run.marshalBuildId) ?? null
-      : builds.find((candidate) => candidate.revision === run.revision) ?? null;
-  } catch (e) {
-    sanitizeMarshalError(e, "Fetching the deployment status failed");
-  }
-  if (build == null && run.marshalBuildId == null) {
-    // Still no build. If the service is blocked, surface the blocker as the
-    // run's failure instead of letting pollers hang on QUEUED forever.
-    try {
-      const state = await client.getService(ns, serviceId);
-      if (run.revision !== null && marshalRevisionIsSuperseded(state, run.revision)) {
-        // A racing PUT may replace the desired spec before this request creates a build.
-        // There will never be a build to attach in that case, so waiting for the generic
-        // stuck-run timeout would leave an accepted deploy queued for 30 minutes.
-        await prisma.deploymentRun.update({
-          where: { tenancyId_id: { tenancyId: tenancy.id, id: run.id } },
-          data: { status: "CANCELED", error: null, finishedAt: new Date() },
-        });
-        return;
-      }
-      if (state.status === "blocked") {
-        await prisma.deploymentRun.update({
-          where: { tenancyId_id: { tenancyId: tenancy.id, id: run.id } },
-          data: {
-            status: "ERROR",
-            error: state.error ?? "The service is blocked on an unresolved connection (e.g. a `url` output that needs a verified domain). Fix the blocker and deploy again.",
-            finishedAt: new Date(),
-          },
-        });
-        return;
-      }
-    } catch (e) {
-      captureError("deployments-run-refresh-blocked-check", e);
-    }
-    // Not blocked, yet no build ever appeared for this revision — give up once it's clearly
-    // stale rather than re-polling it on every future read.
-    await finalizeStuck("The runtime never started a build for this deploy.");
-    return;
-  }
-  if (build == null) {
-    // The build record is gone (e.g. the service was deleted and recreated) — leave a fresh
-    // run alone, but stop re-polling one that's been stuck this way past the grace window.
-    await finalizeStuck("The build for this deploy is no longer available on the runtime.");
-    return;
-  }
-  if (run.marshalBuildId == null) {
-    await prisma.deploymentRun.update({
-      where: { tenancyId_id: { tenancyId: tenancy.id, id: run.id } },
-      data: { marshalBuildId: build.id },
-    });
-  }
-  let runState = { status: mapMarshalBuildStatus(build.status), error: build.error };
-  let serviceUrl: string | null | undefined = undefined;
-  if (build.status === "succeeded") {
-    try {
-      const state = await client.getService(ns, serviceId);
-      runState = deploymentRunStatusFromMarshal(build, state, run.revision ?? build.revision);
-      if (runState.status === "READY") serviceUrl = state.outputs.url ?? null;
-    } catch (e) {
-      // Keep polling while Marshal's service state is temporarily unavailable. Build success
-      // alone is not enough to mark the run READY.
-      captureError("deployments-run-refresh-service-state", e);
-      runState = { status: "BUILDING", error: null };
-    }
-  }
-  await prisma.deploymentRun.update({
-    where: { tenancyId_id: { tenancyId: tenancy.id, id: run.id } },
-    data: {
-      status: runState.status,
-      ...(serviceUrl !== undefined ? { serviceUrl } : {}),
-      error: runState.error,
-      finishedAt: isTerminalRunStatus(runState.status) ? new Date() : null,
-    },
-  });
-}
+// ---------------------------------------------------------------------------
+// API shapes
 
 export type DnsRecord = MarshalDnsRecord;
 
+export type DeploymentApiShape = {
+  id: string,
+  number: number,
+  deployment_source_id: string,
+  status: "queued" | "building" | "deploying" | "deployed" | "failed" | "canceled",
+  triggered_by: string,
+  created_at_millis: number,
+  finished_at_millis: number | null,
+  error: string | null,
+  has_build_logs: boolean,
+  services: {
+    service_id: string,
+    status: DeploymentServiceOutcome["status"],
+    url: string | null,
+    revision: string | null,
+    error: string | null,
+  }[],
+};
+
 export type DeploymentServiceApiShape = {
   id: string,
+  deployment_source_id: string,
   type: DeploymentServiceType,
-  // The declared ports. A service is public exactly when one of them is, so the
-  // dashboard reads publicness from here rather than from a separate field.
-  ports: DeploymentPortDefinition[],
+  // The declared ports, keyed by port number. A service is public exactly when
+  // one of them is, so the dashboard reads publicness from here rather than
+  // from a separate field.
+  ports: DeploymentPorts,
   min_instances: number | null,
   max_instances: number | null,
   root_directory: string | null,
@@ -1240,208 +1406,67 @@ export type DeploymentServiceApiShape = {
   // single-entry record keyed by volume id.
   persistent_volumes: Record<string, { path: string, size_gb: number }> | null,
   provisioned: boolean,
-  status: "not_deployed" | "queued" | "building" | "deployed" | "failed" | "canceled",
-  // Whether any run ever reached READY; the dashboard keeps its "deploy your
-  // code" CLI instructions visible until this flips to true.
+  status: "not_deployed" | "queued" | "building" | "deploying" | "deployed" | "failed" | "canceled",
   has_successful_deploy: boolean,
   url: string | null,
   // The definition's env vars, normalized: `value` is the literal value for
   // plain vars and the "serviceId.outputKey" reference for connections;
   // `secret_key` names the secret for secret vars (their values are
-  // write-only, so there is nothing else to show — in particular, a
-  // `secret(key, default)` fallback never reaches the server outside the
-  // deploy request, so there is nothing here to report about it either).
+  // write-only, so there is nothing else to show).
   env: { key: string, type: "plain" | "secret" | "connection", value: string | null, secret_key: string | null }[],
-  domains: { hostname: string, is_primary: boolean, verified: boolean }[],
-  latest_run: DeploymentRunApiShape | null,
+  domains: { hostname: string, port: number | null, is_primary: boolean, verified: boolean }[],
+  latest_deployment_id: string | null,
 };
 
-export type DeploymentRunApiShape = {
-  id: string,
-  service_id: string,
-  status: "queued" | "building" | "ready" | "error" | "canceled",
-  target: string,
-  triggered_by: string,
-  url: string | null,
-  error: string | null,
-  created_at_millis: number,
-  finished_at_millis: number | null,
-};
-
-// ---------------------------------------------------------------------------
-// Deployments: one `hexclave deploy`, holding the per-service runs it triggered.
-
-export type DeploymentApiShape = {
-  id: string,
-  // The user-facing "#47", monotonic per project.
-  number: number,
-  // Derived from the runs, never stored: see deploymentStatusFromRuns.
-  status: "queued" | "building" | "deployed" | "failed" | "canceled",
-  target: string,
-  triggered_by: string,
-  created_at_millis: number,
-  finished_at_millis: number | null,
-  // Every service this deploy intended to deploy. A service whose dependency
-  // failed never gets a run, so `run` is null for it and the dashboard shows it
-  // as skipped rather than omitting it.
-  services: { service_id: string, run: DeploymentRunApiShape | null }[],
-};
-
-/**
- * A deployment's status, derived from its runs rather than stored, so there is
- * no second copy of the truth to drift.
- *
- * `plannedCount` is what makes this correct mid-deploy. `hexclave deploy`
- * creates the deployment first and then deploys service by service, so a deploy
- * of three services whose first run has just gone READY has one READY run and
- * nothing else. Reading only the runs would call that whole deployment
- * "deployed" and hand it a finish time, then flip it back to "building" — so a
- * deployment with runs still missing is only terminal once something has
- * already failed (the rest are then skipped and will never run).
- *
- * Order matters among the runs themselves: a still-building run outranks an
- * already-failed one, because "still going" is what the reader needs in order to
- * decide whether to wait.
- */
-export function deploymentStatusFromRuns(runStatuses: DeploymentRunStatus[], plannedCount: number, concluded: boolean = false): DeploymentApiShape["status"] {
-  const awaitingRuns = plannedCount > runStatuses.length;
-  if (runStatuses.some((status) => status === "BUILDING")) return "building";
-  if (runStatuses.some((status) => status === "QUEUED")) return "queued";
-  if (runStatuses.some((status) => status === "ERROR")) return "failed";
-  if (runStatuses.some((status) => status === "CANCELED")) return "canceled";
-  // Every run so far succeeded, but services are still missing runs.
-  if (awaitingRuns) {
-    // `concluded` is the client saying it has stopped: the missing runs are
-    // never coming, because it failed before it could create them (packaging, an
-    // upload error, a crash). Those services did not deploy, so neither did this
-    // deployment. Without this the row is read as still-in-flight forever —
-    // "queued" when nothing ever ran, "building" when a sibling succeeded — and
-    // the dashboard polls it for eternity.
-    if (concluded) return "failed";
-    return runStatuses.length === 0 ? "queued" : "building";
-  }
-  return "deployed";
-}
-
-/**
- * Creates the deployment that a multi-service `hexclave deploy` groups its runs
- * under. The number is `max + 1` within the tenancy; the caller must supply a
- * transaction (see the route) so the read and the insert are atomic, and the
- * (tenancyId, number) unique index makes the residual race a retry rather than
- * two deployments that print as the same "#47".
- */
-export async function createDeployment(prisma: PrismaClientTransaction, tenancy: Tenancy, options: {
-  target: string,
-  triggeredBy: string,
-  plannedServiceIds: string[],
-}): Promise<{ id: string, number: number }> {
-  const latest = await prisma.deployment.findFirst({
-    where: { tenancyId: tenancy.id },
-    orderBy: { number: "desc" },
-    select: { number: true },
-  });
-  const created = await prisma.deployment.create({
-    data: {
-      tenancyId: tenancy.id,
-      number: (latest?.number ?? 0) + 1,
-      target: options.target,
-      triggeredBy: options.triggeredBy,
-      plannedServiceIds: options.plannedServiceIds,
-    },
-    select: { id: true, number: true },
-  });
-  return created;
-}
+const DEPLOYMENT_STATUS_TO_API = {
+  QUEUED: "queued",
+  BUILDING: "building",
+  DEPLOYING: "deploying",
+  SUCCEEDED: "deployed",
+  FAILED: "failed",
+  CANCELED: "canceled",
+} satisfies Record<DeploymentStatus, DeploymentApiShape["status"]>;
 
 export function deploymentToApiShape(deployment: {
   id: string,
   number: number,
-  target: string,
+  status: DeploymentStatus,
   triggeredBy: string,
   createdAt: Date,
+  finishedAt: Date | null,
+  error: string | null,
+  marshalBuildId: string | null,
   plannedServiceIds: Prisma.JsonValue,
-  concludedAt: Date | null,
-  runs: {
-    id: string,
-    status: DeploymentRunStatus,
-    target: string,
-    triggeredBy: string,
-    serviceUrl: string | null,
-    error: string | null,
-    createdAt: Date,
-    finishedAt: Date | null,
-    service: { serviceId: string },
-  }[],
+  services: Prisma.JsonValue,
+  source: { sourceId: string },
 }): DeploymentApiShape {
-  const runByServiceId = new Map(deployment.runs.map((run) => [run.service.serviceId, run]));
-  // Planned ids come from JSON, so a hand-edited row could hold anything.
-  // Fall back to the ids that actually have runs rather than throwing: a
-  // deployment that cannot be listed is worse than one listing only its runs.
-  const plannedServiceIds = Array.isArray(deployment.plannedServiceIds) && deployment.plannedServiceIds.every((id) => typeof id === "string")
-    ? deployment.plannedServiceIds as string[]
-    : [...runByServiceId.keys()];
-  // Union, planned order first: a run whose service is missing from the plan
-  // (the service was renamed mid-deploy, or the row was hand-edited) must still show.
-  const serviceIds = [...plannedServiceIds, ...[...runByServiceId.keys()].filter((serviceId) => !plannedServiceIds.includes(serviceId))];
-  // Status is computed over the LATEST run per service, matching what `services`
-  // below reports. Feeding every run in would let a superseded failure outrank
-  // the successful retry that replaced it.
-  const latestRuns = [...runByServiceId.values()];
-  const status = deploymentStatusFromRuns(latestRuns.map((run) => run.status), serviceIds.length, deployment.concludedAt !== null);
-  const finishedAtMillis = latestRuns.map((run) => run.finishedAt?.getTime() ?? null);
-  // A concluded deploy that never started some of its runs has no run finish
-  // time to take the maximum of — for an all-local failure, no runs at all. The
-  // moment the client concluded it is when it stopped, so use that rather than
-  // reporting a terminal deployment with no duration.
-  const concludedAtMillis = deployment.concludedAt?.getTime() ?? null;
-  const awaitingRuns = serviceIds.length > latestRuns.length;
+  const outcomes = parseStoredOutcomes(deployment.services);
+  const plannedServiceIds = parsePlannedServiceIds(deployment.plannedServiceIds);
+  // Union, planned order first: an outcome whose service is missing from the
+  // plan (a hand-edited row) must still show rather than vanish.
+  const serviceIds = [...plannedServiceIds, ...[...outcomes.keys()].filter((serviceId) => !plannedServiceIds.includes(serviceId))];
   return {
     id: deployment.id,
     number: deployment.number,
-    status,
-    target: deployment.target,
+    deployment_source_id: deployment.source.sourceId,
+    status: DEPLOYMENT_STATUS_TO_API[deployment.status],
     triggered_by: deployment.triggeredBy,
     created_at_millis: deployment.createdAt.getTime(),
-    // Only finished once the deployment itself is terminal AND every run it has
-    // is finished: a deployment is done when its slowest service is. A deploy
-    // still waiting on runs it never started reports null rather than handing
-    // back an earlier service's finish time as the whole deploy's.
-    finished_at_millis: status === "queued" || status === "building"
-      ? null
-      : awaitingRuns || finishedAtMillis.length === 0
-        // Terminal with runs it never started: only `concludedAt` marks the end.
-        ? concludedAtMillis
-        : finishedAtMillis.every((millis) => millis !== null)
-          ? Math.max(...finishedAtMillis as number[])
-          : concludedAtMillis,
+    finished_at_millis: deployment.finishedAt?.getTime() ?? null,
+    error: deployment.error,
+    // The build is what produces a log, so a deployment the runtime never
+    // accepted has none to offer.
+    has_build_logs: deployment.marshalBuildId !== null,
     services: serviceIds.map((serviceId) => {
-      const run = runByServiceId.get(serviceId);
-      return { service_id: serviceId, run: run === undefined ? null : runToApiShape(run, serviceId) };
+      const outcome = outcomes.get(serviceId) ?? { status: "pending" as const };
+      return {
+        service_id: serviceId,
+        status: outcome.status,
+        url: outcome.url ?? null,
+        revision: outcome.revision ?? null,
+        error: outcome.error ?? null,
+      };
     }),
-  };
-}
-
-export function runToApiShape(run: {
-  id: string,
-  status: DeploymentRunStatus,
-  target: string,
-  triggeredBy: string,
-  serviceUrl: string | null,
-  error: string | null,
-  createdAt: Date,
-  finishedAt: Date | null,
-}, serviceId: string): DeploymentRunApiShape {
-  return {
-    id: run.id,
-    service_id: serviceId,
-    status: run.status.toLowerCase() as DeploymentRunApiShape["status"],
-    target: run.target,
-    triggered_by: run.triggeredBy,
-    // Marshal reports full URLs (or null for private services).
-    url: run.serviceUrl,
-    error: run.error,
-    created_at_millis: run.createdAt.getTime(),
-    finished_at_millis: run.finishedAt?.getTime() ?? null,
   };
 }
 
@@ -1451,105 +1476,75 @@ export async function serviceToApiShape(options: {
   row: DeploymentServiceRow,
 }): Promise<DeploymentServiceApiShape> {
   const { prisma, tenancy, row } = options;
-  const definition = definitionFromServiceRow(row);
-  let latestRun = await prisma.deploymentRun.findFirst({
-    where: {
-      tenancyId: tenancy.id,
-      deploymentServiceId: row.id,
-    },
+  const volume = await getServiceVolume(prisma, tenancy, row.serviceId);
+  const definition = definitionFromServiceRow(row, volume);
+
+  // The newest deployment that PLANNED this service, whatever became of it.
+  // Read from the deployments themselves rather than from a column on the
+  // service, so there is no second copy of the truth to drift.
+  const recentDeployments = await prisma.deployment.findMany({
+    where: { tenancyId: tenancy.id, sourceRowId: row.sourceRowId },
     orderBy: { createdAt: "desc" },
+    take: 20,
+    select: { id: true, status: true, services: true, plannedServiceIds: true },
   });
-  // Poll-on-read, like the run endpoints: the dashboard's board only calls the
-  // list/read service endpoints, so without this an in-flight deploy would
-  // stay "building" on the board forever. Skipped when Marshal isn't
-  // configured so listing still works on unconfigured instances.
-  if (latestRun != null && !isTerminalRunStatus(latestRun.status) && getMarshalDeploymentsConfigOrNull() != null) {
-    try {
-      await refreshRunFromMarshal(prisma, tenancy, latestRun, row.serviceId);
-      latestRun = await prisma.deploymentRun.findUnique({
-        where: { tenancyId_id: { tenancyId: tenancy.id, id: latestRun.id } },
-      });
-    } catch (e) {
-      // A Marshal hiccup must not take down the whole services list; the board
-      // just shows the last known status until the next poll.
-      captureError("deployments-list-run-refresh", e);
-    }
-  }
-  const hasSuccessfulDeploy = latestRun?.status === "READY" || await prisma.deploymentRun.findFirst({
-    where: {
-      tenancyId: tenancy.id,
-      deploymentServiceId: row.id,
-      status: "READY",
-    },
-    select: { id: true },
-  }) != null;
+  const involving = recentDeployments.filter((deployment) => parsePlannedServiceIds(deployment.plannedServiceIds).includes(row.serviceId));
+  // `.at`, not `[0]`: an index is typed as always-present without
+  // noUncheckedIndexedAccess, which would type away the empty case this
+  // function exists to handle (a service that has never been deployed).
+  const latest = involving.at(0) ?? null;
+  const latestOutcome = latest === null ? null : parseStoredOutcomes(latest.services).get(row.serviceId) ?? null;
+  const hasSuccessfulDeploy = involving.some((deployment) => parseStoredOutcomes(deployment.services).get(row.serviceId)?.status === "deployed");
 
   const status = ((): DeploymentServiceApiShape["status"] => {
-    switch (latestRun?.status) {
-      case undefined: {
-        return "not_deployed";
-      }
-      case "QUEUED": {
+    if (latestOutcome === null) return "not_deployed";
+    switch (latestOutcome.status) {
+      case "pending": {
         return "queued";
       }
-      case "BUILDING": {
+      case "building": {
         return "building";
       }
-      case "READY": {
+      case "deploying": {
+        return "deploying";
+      }
+      case "deployed": {
         return "deployed";
       }
-      case "ERROR": {
+      case "failed": {
         return "failed";
       }
-      case "CANCELED": {
+      case "skipped": {
         return "canceled";
       }
     }
   })();
 
-  // Verified custom domains remain the preferred user-facing URL. Public services fall back
-  // to Marshal's stable Fly platform URL. Keep using the most recent successful run after a
-  // later failed deploy: the previous machines (and their endpoint) can still be serving.
-  // A URL needs an HTTP port to route to; the PLATFORM url additionally needs a
-  // public one (a private service only gets a URL once its domain verifies).
-  const servesHttp = definition.ports.some((entry) => portTransport(entry) === "http");
-  const hasPublicPort = deploymentServiceIsPublic(definition.ports);
-  const verifiedPrimary = row.domains.find((d) => d.isPrimary && d.verified) ?? row.domains.find((d) => d.verified);
-  const latestSuccessfulPublicUrl = servesHttp && hasPublicPort && verifiedPrimary == null && latestRun?.serviceUrl == null
-    ? (await prisma.deploymentRun.findFirst({
-      where: { tenancyId: tenancy.id, deploymentServiceId: row.id, status: "READY", serviceUrl: { not: null } },
-      orderBy: { createdAt: "desc" },
-      select: { serviceUrl: true },
-    }))?.serviceUrl ?? null
-    : null;
+  const domainRows = await prisma.deploymentDomain.findMany({
+    where: { tenancyId: tenancy.id, serviceId: row.serviceId },
+    orderBy: { hostname: "asc" },
+  });
+
+  // A verified custom domain remains the preferred user-facing URL; a public
+  // service falls back to the platform URL from the last deploy that produced
+  // one. Keep using an older successful deploy's URL after a later failure: the
+  // previous machines (and their endpoint) can still be serving.
+  const entries = deploymentPortEntries(definition.ports);
+  const servesHttp = entries.some((entry) => entry.protocol === "http");
+  const verifiedPrimary = domainRows.find((domain) => domain.isPrimary && domain.verified) ?? domainRows.find((domain) => domain.verified);
+  const lastDeployedUrl = involving
+    .map((deployment) => parseStoredOutcomes(deployment.services).get(row.serviceId)?.url ?? null)
+    .find((url) => url != null) ?? null;
   const url = !servesHttp
     ? null
     : verifiedPrimary != null
       ? `https://${verifiedPrimary.hostname}`
-      : hasPublicPort ? latestRun?.serviceUrl ?? latestSuccessfulPublicUrl : null;
-
-  // KNOWN GAP — `status`/`has_successful_deploy` are derived purely from the build record, so a
-  // service whose image builds fine but crash-loops on boot still reports "deployed". Marshal
-  // knows the real runtime state (getService returns failed/degraded/idle), but surfacing it
-  // here would add a getService round-trip to every board poll (the list endpoint reconciles N
-  // services on each read). Similarly, domain `verified` is only refreshed at deploy time and
-  // via the per-domain GET, so a cert that issues minutes after deploy leaves `url` null until
-  // the user opens the domain panel. Both want a bounded backend↔Marshal reconcile cadence
-  // (mirror runtime status + domain verified into the row on a timer / observed_at staleness)
-  // rather than an inline call per read. Tracked for a follow-up.
-
-  const domains = row.domains
-    .map((domainRow) => ({
-      hostname: domainRow.hostname,
-      is_primary: domainRow.isPrimary,
-      verified: domainRow.verified,
-    }))
-    .sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || stringCompare(a.hostname, b.hostname));
+      : deploymentServiceIsPublic(definition.ports) ? lastDeployedUrl : null;
 
   const env: DeploymentServiceApiShape["env"] = [];
   for (const [envVarKey, config] of Object.entries(definition.env)) {
-    // Tolerate incomplete entries (possible in legacy or hand-edited rows —
-    // see normalizeEnvVarConfig): one bad entry must not take down the whole
+    // Tolerate incomplete entries (possible in hand-edited rows — see
+    // normalizeEnvVarConfig): one bad entry must not take down the whole
     // service list. Deploys of this service still fail loudly on it.
     let normalized;
     try {
@@ -1563,31 +1558,38 @@ export async function serviceToApiShape(options: {
       key: envVarKey,
       type: normalized.type,
       // formatConnectionValue, not hand-concatenation: dropping the `:port`
-      // reports a DIFFERENT reference than the one stored — `api.internalUrl`
-      // instead of `api.internalUrl:9090` — which on a multi-port target is not
-      // merely lossy but invalid, and is what the dashboard renders.
+      // reports a DIFFERENT reference than the one stored — `api.url` instead
+      // of `api.url:9090` — which on a multi-port target is not merely lossy
+      // but invalid, and is what the dashboard renders.
       value: normalized.type === "plain" ? normalized.value : normalized.type === "connection" ? formatConnectionValue(normalized.serviceId, normalized.outputKey, normalized.port) : null,
       secret_key: normalized.type === "secret" ? normalized.secretKey : null,
     });
   }
   env.sort((a, b) => stringCompare(a.key, b.key));
 
-  const volume = singleVolume(definition);
   return {
     id: row.serviceId,
+    deployment_source_id: row.source.sourceId,
     type: definition.type,
     ports: definition.ports,
     min_instances: row.minInstances,
     max_instances: row.maxInstances,
     root_directory: row.rootDirectory,
     dockerfile_path: row.dockerfilePath,
-    persistent_volumes: volume === null ? null : { [volume.volumeId]: { path: volume.path, size_gb: volume.sizeGb } },
+    persistent_volumes: definition.persistent_volumes ?? null,
     provisioned: row.provisionedAt != null,
     status,
     has_successful_deploy: hasSuccessfulDeploy,
     url,
     env,
-    domains,
-    latest_run: latestRun == null ? null : runToApiShape(latestRun, row.serviceId),
+    domains: domainRows
+      .map((domain) => ({
+        hostname: domain.hostname,
+        port: domain.port,
+        is_primary: domain.isPrimary,
+        verified: domain.verified,
+      }))
+      .sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || stringCompare(a.hostname, b.hostname)),
+    latest_deployment_id: latest?.id ?? null,
   };
 }

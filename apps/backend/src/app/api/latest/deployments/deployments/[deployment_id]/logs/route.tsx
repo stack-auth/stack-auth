@@ -1,4 +1,4 @@
-import { decryptDeploymentRedactionSecrets, isTerminalRunStatus, marshalNamespaceForTenancy, redactSecrets, refreshRunFromMarshal } from "@/lib/deployments";
+import { decryptDeploymentRedactionSecrets, isTerminalDeploymentStatus, marshalNamespaceForTenancy, redactSecrets, refreshDeploymentFromMarshal } from "@/lib/deployments";
 import { getMarshalClientOrThrow } from "@/lib/deployments/marshal-client";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { SmartResponse } from "@/route-handlers/smart-response";
@@ -16,8 +16,8 @@ const MAX_STREAM_MS = 4 * 60 * 1000;
 
 export const GET = createSmartRouteHandler({
   metadata: {
-    summary: "Stream deployment run logs",
-    description: "Streams the build logs of a deployment run as chunked plain text. Replays all logs from the start, then follows until the run reaches a terminal state (or a few minutes pass — re-request to continue following).",
+    summary: "Stream deployment build logs",
+    description: "Streams a deployment's build logs as chunked plain text. One deploy is one build — every service of the deployment source is built by the same machine — so this is one log covering all of them. Replays from the start, then follows until the deployment reaches a terminal state (or a few minutes pass — re-request to continue following).",
     tags: ["Deployments"],
     hidden: true,
   },
@@ -27,56 +27,51 @@ export const GET = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     params: yupObject({
-      run_id: yupString().uuid().defined(),
+      deployment_id: yupString().uuid().defined(),
     }).defined(),
   }),
   response: yupMixed<SmartResponse>().defined(),
   handler: async ({ auth, params }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const run = await prisma.deploymentRun.findUnique({
-      where: {
-        tenancyId_id: {
-          tenancyId: auth.tenancy.id,
-          id: params.run_id,
-        },
-      },
-      include: { service: true },
+    const deployment = await prisma.deployment.findUnique({
+      where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: params.deployment_id } },
     });
-    if (run == null) {
-      throw new StatusError(404, "No deployment run found with the given id.");
+    if (deployment == null) {
+      throw new StatusError(404, "No deployment found with the given id.");
     }
-    // Refresh first: a run created before its build started (blocked, or a post-PUT lookup
-    // failure) has marshalBuildId=null even though a build may be running now —
-    // refreshRunFromMarshal attaches it by revision. Without this, an actively-building run
-    // would get a bare 400 "no build logs" until the caller happened to hit GET /runs first.
+    // Refresh first: a deployment whose build id had not been attached yet
+    // would otherwise get a bare "no build logs" until the caller happened to
+    // read the deployment endpoint first.
     try {
-      await refreshRunFromMarshal(prisma, auth.tenancy, run, run.service.serviceId);
+      await refreshDeploymentFromMarshal(prisma, auth.tenancy, deployment);
     } catch (e) {
-      captureError("deployments-run-logs-refresh", e);
+      captureError("deployments-build-logs-refresh", e);
     }
-    const refreshedRun = await prisma.deploymentRun.findUnique({
-      where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: params.run_id } },
+    const refreshed = await prisma.deployment.findUnique({
+      where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: params.deployment_id } },
     });
-    const marshalBuildId = refreshedRun?.marshalBuildId ?? null;
+    const marshalBuildId = refreshed?.marshalBuildId ?? deployment.marshalBuildId;
     if (marshalBuildId == null) {
-      // A blocked/errored run that never produced a build gets a clearer message than a
-      // still-building one.
-      throw new StatusError(400, isTerminalRunStatus(refreshedRun?.status ?? run.status)
-        ? "This run produced no build (it failed before a build started, e.g. blocked on an unresolved connection)."
-        : "This run has no build logs yet.");
+      // A deployment the runtime never accepted gets a clearer message than one
+      // that simply has not started building yet.
+      throw new StatusError(400, isTerminalDeploymentStatus(refreshed?.status ?? deployment.status)
+        ? "This deployment produced no build (it stopped before the runtime accepted it)."
+        : "This deployment has no build logs yet.");
     }
-    const serviceId = run.service.serviceId;
     const client = getMarshalClientOrThrow();
     const ns = marshalNamespaceForTenancy(auth.tenancy);
 
     // Builds run user code that may print env values. Use the exact encrypted
-    // snapshot captured for THIS run: current project secrets cannot cover
-    // request-only defaults or values that were rotated/deleted afterwards.
-    // Decryption and validation happen before the response starts, so any
-    // failure closes the endpoint rather than serving partially-redacted logs.
-    // (Marshal applies its own stage-1 redaction of runtime credentials; this
-    // is stage 2, covering the backend's secrets.)
-    const secretValues = await decryptDeploymentRedactionSecrets(run.redactionSecretsEncrypted);
+    // snapshot captured for THIS deployment: current project secrets cannot
+    // cover request-only defaults or values that were rotated/deleted
+    // afterwards. Decryption and validation happen before the response starts,
+    // so any failure closes the endpoint rather than serving partially-redacted
+    // logs. (Marshal applies its own stage-1 redaction of runtime credentials;
+    // this is stage 2, covering the backend's secrets.)
+    //
+    // The snapshot covers EVERY service of the deploy, which is right: they all
+    // built in one machine, so any of their values could appear in this log.
+    const secretValues = await decryptDeploymentRedactionSecrets(deployment.redactionSecretsEncrypted);
 
     const encoder = new TextEncoder();
     // Flipped by cancel() when the client disconnects: the poll loop must stop
@@ -88,7 +83,7 @@ export const GET = createSmartRouteHandler({
           const startedAt = performance.now();
           let sinceMillis: number | undefined = undefined;
           while (!clientCancelled) {
-            const page = await client.getBuildLogs(ns, serviceId, marshalBuildId, { sinceMillis });
+            const page = await client.getDeploymentLogs(ns, marshalBuildId, { sinceMillis });
             for (const line of page.lines) {
               const text = redactSecrets(line.text, secretValues);
               controller.enqueue(encoder.encode(text.endsWith("\n") ? text : `${text}\n`));
@@ -133,7 +128,7 @@ export const GET = createSmartRouteHandler({
           // The stream has already started (status 200 is out the door), so
           // all we can do is log server-side and end the stream with a
           // generic marker that leaks nothing.
-          captureError("deployment-run-log-stream", error);
+          captureError("deployment-build-log-stream", error);
           try {
             controller.enqueue(encoder.encode("[hexclave] Log stream ended unexpectedly.\n"));
             controller.close();

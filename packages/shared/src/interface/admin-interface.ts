@@ -46,24 +46,26 @@ export type ChatContent = Array<
   | { type: "tool-call", toolName: string, toolCallId: string, args: any, argsText: string, result: any }
 >;
 
-export type AdminDeploymentRunJson = {
-  id: string,
+// What ONE service did in one deployment. There is no separate run entity: a
+// deploy builds every service of its deployment source in a single builder
+// machine, so the build belongs to the deployment and this is only the outcome
+// of applying that service.
+export type AdminDeploymentServiceOutcomeJson = {
   service_id: string,
-  status: "queued" | "building" | "ready" | "error" | "canceled",
-  target: string,
-  triggered_by: string,
+  // "skipped" = the deploy never got to it, because something it depends on
+  // failed first (or the build did).
+  status: "pending" | "building" | "deploying" | "deployed" | "failed" | "skipped",
   url: string | null,
+  revision: string | null,
   error: string | null,
-  created_at_millis: number,
-  finished_at_millis: number | null,
 };
 
 // One env var of a deployment service, normalized from the definition (as
-// synced from the config file's `services` export): "plain" vars carry their
+// synced from the deploy file's `services` export): "plain" vars carry their
 // literal `value`, "connection" vars carry the "serviceId.outputKey" reference
 // they resolve to at deploy time, and "secret" vars carry only the
 // `secret_key` naming a per-project secret (values are write-only). Any
-// `secret(key, default)` fallback from the config file is deliberately absent:
+// `secret(key, default)` fallback from the deploy file is deliberately absent:
 // defaults never leave the deploy request, so nothing server-side or in the
 // dashboard can report on them.
 export type AdminDeploymentEnvVarJson = {
@@ -73,58 +75,66 @@ export type AdminDeploymentEnvVarJson = {
   secret_key: string | null,
 };
 
-// One `hexclave deploy`, holding the per-service runs it triggered. Mirrors
-// DeploymentApiShape in apps/backend/src/lib/deployments — the two are
-// hand-maintained duplicates, so they must be edited together.
+// One `hexclave deploy`: one deployment source, one source upload, one build,
+// and the services that build shipped. Mirrors DeploymentApiShape in
+// apps/backend/src/lib/deployments — the two are hand-maintained duplicates, so
+// they must be edited together.
 export type AdminDeploymentJson = {
   id: string,
   // The user-facing "#47", monotonic per project.
   number: number,
-  // Derived from the runs rather than stored.
-  status: "queued" | "building" | "deployed" | "failed" | "canceled",
-  target: string,
+  // WHICH deploy file this came from: the `id` export of the hexclave.deploy.ts
+  // that ran, or "hexclave.config.ts" for deployments declared there. A project
+  // deployed from several repositories has one source per repository, and this
+  // is what tells their deployments apart in a single list.
+  deployment_source_id: string,
+  status: "queued" | "building" | "deploying" | "deployed" | "failed" | "canceled",
   triggered_by: string,
   created_at_millis: number,
-  // Null until every run has finished.
+  // Null until the deployment is terminal.
   finished_at_millis: number | null,
-  // Every service the deploy intended to deploy. `run` is null for a service
-  // that never started one (typically because a dependency failed first).
-  services: { service_id: string, run: AdminDeploymentRunJson | null }[],
+  error: string | null,
+  // Whether the build produced a log to read (see getDeploymentBuildLogs).
+  has_build_logs: boolean,
+  // Every service the deploy intended to ship, in the order it applied them.
+  services: AdminDeploymentServiceOutcomeJson[],
 };
 
 export type AdminDeploymentServiceJson = {
   id: string,
-  // "server" = one instance that suspends when idle and may hold a persistent
-  // volume; "serverless" = scales between the bounds below and stops on
-  // scale-down.
+  // Which deploy file declares this service.
+  deployment_source_id: string,
+  // "server" = one instance that suspends when idle (minInstances 0) or stays
+  // up (1), and the only kind that may hold a persistent volume; "serverless" =
+  // scales between the bounds below and stops on scale-down.
   type: "server" | "serverless",
-  // The ports the container listens on. There is no separate visibility field:
-  // the service is public exactly when one of these is, and at most one may be.
-  // Empty on rows synced before the definition existed.
-  ports: { port: number, public?: boolean, transport?: "http" | "tcp" }[],
-  // Serverless scaling bounds (min 0 scales to zero); null on unsynced rows.
+  // The ports the container listens on, keyed by port number — the same shape
+  // the deploy file writes. There is no separate visibility field: the service
+  // is public exactly when one of these is, and at most one may be. Empty on
+  // rows synced before the definition existed.
+  ports: Record<string, { public?: boolean, protocol?: "http" | "tcp" }>,
+  // Scaling bounds; null on unsynced rows.
   min_instances: number | null,
   max_instances: number | null,
   root_directory: string | null,
   // Null = built with Railpack auto-detection rather than a Dockerfile.
   dockerfile_path: string | null,
   // Null = no persistent disk (an ephemeral container filesystem). Otherwise a
-  // single-entry record keyed by volume id, which names the disk within this
-  // service — the same id under another service is a different disk. Mirrors
+  // single-entry record keyed by volume id, which names a disk owned by the
+  // deployment source — it outlives the service that mounts it. Mirrors
   // DeploymentServiceApiShape in apps/backend/src/lib/deployments — the two are
   // hand-maintained duplicates, so they must be edited together.
   persistent_volumes: Record<string, { path: string, size_gb: number }> | null,
   provisioned: boolean,
-  status: "not_deployed" | "queued" | "building" | "deployed" | "failed" | "canceled",
+  status: "not_deployed" | "queued" | "building" | "deploying" | "deployed" | "failed" | "canceled",
   has_successful_deploy: boolean,
   url: string | null,
   env: AdminDeploymentEnvVarJson[],
-  domains: { hostname: string, is_primary: boolean, verified: boolean }[],
-  latest_run: AdminDeploymentRunJson | null,
+  domains: { hostname: string, port: number | null, is_primary: boolean, verified: boolean }[],
+  // The deployment that last shipped this service, if any.
+  latest_deployment_id: string | null,
 };
 
-// A stored project secret. Values are write-only and never part of any
-// response shape.
 export type AdminProjectSecretJson = {
   key: string,
   created_at_millis: number,
@@ -1476,38 +1486,22 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     return (await response.json()).items;
   }
 
-  async createDeployment(options: { plannedServiceIds: string[], triggeredBy?: string }): Promise<{ id: string, number: number }> {
+  async getDeployment(deploymentId: string): Promise<AdminDeploymentJson> {
     const response = await this.sendAdminRequest(
-      `/deployments/deployments`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          planned_service_ids: options.plannedServiceIds,
-          ...(options.triggeredBy !== undefined ? { triggered_by: options.triggeredBy } : {}),
-        }),
-      },
+      urlString`/deployments/deployments/${deploymentId}`,
+      { method: "GET" },
       null,
     );
     return await response.json();
   }
 
-  async listDeploymentRuns(serviceId: string, options?: { limit?: number }): Promise<AdminDeploymentRunJson[]> {
+  async getDeploymentBuildLogs(deploymentId: string, options?: { signal?: AbortSignal }): Promise<string> {
+    // One build per deployment, so one log: the endpoint streams chunked plain
+    // text until the deployment is terminal (or a server-side cap), and reading
+    // the full body gives "the logs so far". Pass a signal so an abandoned view
+    // can abort — otherwise the server keeps following the build for minutes.
     const response = await this.sendAdminRequest(
-      urlString`/deployments/services/${serviceId}/runs` + (options?.limit !== undefined ? `?limit=${options.limit}` : ""),
-      { method: "GET" },
-      null,
-    );
-    return (await response.json()).items;
-  }
-
-  async getDeploymentRunLogs(runId: string, options?: { signal?: AbortSignal }): Promise<string> {
-    // The endpoint streams chunked plain text until the run is terminal (or a
-    // server-side cap); reading the full body gives "the logs so far". Pass a
-    // signal so an abandoned view can abort — otherwise the server keeps
-    // following the build for minutes.
-    const response = await this.sendAdminRequest(
-      urlString`/deployments/runs/${runId}/logs`,
+      urlString`/deployments/deployments/${deploymentId}/logs`,
       { method: "GET", signal: options?.signal },
       null,
     );

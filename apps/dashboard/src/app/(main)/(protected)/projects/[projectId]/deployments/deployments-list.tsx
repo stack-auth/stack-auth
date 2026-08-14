@@ -7,10 +7,16 @@
 // and each service had a "Deployments" tab listing its runs. A deploy ships
 // several services together, so "what shipped, and did all of it land?" is the
 // question the list answers first; the map is one level down.
+//
+// The list is flat across DEPLOYMENT SOURCES rather than grouped by them: a
+// project deployed from several repositories has one source per repository, and
+// what a reader wants first is the newest deploy of any of them. Each row
+// therefore carries its source id, which is the only thing distinguishing two
+// otherwise identical deploys of different repositories.
 
 import { DesignBadge, DesignButton } from "@/components/design-components";
 import { Skeleton, Typography, cn } from "@/components/ui";
-import type { AdminDeploymentJson, AdminDeploymentRunJson, AdminProject } from "@hexclave/next";
+import type { AdminDeploymentJson, AdminProject } from "@hexclave/next";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { ArrowClockwiseIcon, CaretRightIcon, CheckCircleIcon, CircleNotchIcon, ClockIcon, ProhibitIcon, RocketLaunchIcon, XCircleIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -23,6 +29,7 @@ function deploymentStatusMeta(status: AdminDeploymentJson["status"]): StatusMeta
   switch (status) {
     case "queued": { return { label: "Queued", color: "blue", icon: ClockIcon, spin: false }; }
     case "building": { return { label: "Building", color: "cyan", icon: CircleNotchIcon, spin: true }; }
+    case "deploying": { return { label: "Deploying", color: "cyan", icon: CircleNotchIcon, spin: true }; }
     case "deployed": { return { label: "Deployed", color: "green", icon: CheckCircleIcon, spin: false }; }
     case "failed": { return { label: "Failed", color: "red", icon: XCircleIcon, spin: false }; }
     case "canceled": { return { label: "Cancelled", color: "orange", icon: ProhibitIcon, spin: false }; }
@@ -33,7 +40,7 @@ function deploymentStatusMeta(status: AdminDeploymentJson["status"]): StatusMeta
 }
 
 function isTerminalDeployment(deployment: AdminDeploymentJson): boolean {
-  return deployment.status !== "queued" && deployment.status !== "building";
+  return deployment.status !== "queued" && deployment.status !== "building" && deployment.status !== "deploying";
 }
 
 function formatTime(millis: number): string {
@@ -70,8 +77,18 @@ function DeploymentCard({ deployment, onOpen }: {
         <Icon className={cn("h-4 w-4", meta.spin && "animate-spin")} />
         <DesignBadge label={meta.label} color={meta.color} size="sm" />
       </span>
+      {/* Which deploy file shipped this. Given its own column rather than folded
+          into the summary line: with several repositories deploying into one
+          project it is the first thing that tells two rows apart, and it must
+          stay readable when the service count and duration truncate. */}
+      <span
+        className="max-w-[14rem] shrink-0 truncate font-mono text-xs text-foreground/80"
+        title={`Deployment source: ${deployment.deployment_source_id}`}
+      >
+        {deployment.deployment_source_id}
+      </span>
       <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-        {serviceCount} service{serviceCount === 1 ? "" : "s"}
+        #{deployment.number} · {serviceCount} service{serviceCount === 1 ? "" : "s"}
         {duration != null && ` · ${duration}`}
       </span>
       <span className="shrink-0 text-xs text-muted-foreground">{formatTime(deployment.created_at_millis)}</span>
@@ -177,8 +194,9 @@ export function DeploymentsList({ project, openDeploymentId, onOpenDeployment, o
           <Typography type="h3" className="text-base font-semibold">No deployments yet</Typography>
           <Typography type="p" className="max-w-md text-sm text-muted-foreground">
             Define your services in the <code className="font-mono">deployment</code> export of{" "}
-            <code className="font-mono">hexclave.deploy.ts</code>, then run{" "}
-            <code className="font-mono">hexclave deploy</code>. Each deploy shows up here with the services it shipped.
+            <code className="font-mono">hexclave.deploy.ts</code>, give the file an{" "}
+            <code className="font-mono">id</code>, then run <code className="font-mono">hexclave deploy</code>.
+            Each deploy shows up here with the services it shipped, tagged with the id of the deploy file it came from.
           </Typography>
         </div>
       </div>

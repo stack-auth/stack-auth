@@ -2629,14 +2629,16 @@ async function seedDummySessionReplays({
 }
 
 // Services for the demo project's Deployments app, mirroring what a small
-// three-service `deployment` export would sync: a public serverless frontend, a
-// private serverless API, and a stateful `server` database holding the only
-// persistent volume (only a `server` may have one).
+// three-service deploy file would sync: a public serverless frontend, a private
+// serverless API, and a stateful `server` database holding the only persistent
+// volume (only a `server` may have one).
+const DUMMY_DEPLOYMENT_SOURCE_ID = 'demo-app';
+
 const DUMMY_DEPLOYMENT_SERVICES = [
   {
     serviceId: 'web',
     type: 'serverless',
-    ports: [{ port: 3000, public: true, transport: 'http' }],
+    ports: { '3000': { public: true, protocol: 'http' } },
     minInstances: 0,
     maxInstances: 3,
     rootDirectory: './apps/web',
@@ -2644,15 +2646,14 @@ const DUMMY_DEPLOYMENT_SERVICES = [
     volume: null,
     url: 'https://demo-web.hexclave.app',
     env: [
-      ['NEXT_PUBLIC_HEXCLAVE_PROJECT_ID', { type: 'connection', value: 'hexclave.projectId' }],
-      ['API_URL', { type: 'connection', value: 'api.internalUrl' }],
       ['NEXT_PUBLIC_SITE_NAME', { value: 'Demo' }],
+      ['API_URL', { type: 'connection', value: 'api.url:8080' }],
     ],
   },
   {
     serviceId: 'api',
     type: 'serverless',
-    ports: [{ port: 8080, public: false, transport: 'http' }],
+    ports: { '8080': { public: false, protocol: 'http' } },
     minInstances: 0,
     maxInstances: 2,
     rootDirectory: './apps/api',
@@ -2660,7 +2661,7 @@ const DUMMY_DEPLOYMENT_SERVICES = [
     volume: null,
     url: null,
     env: [
-      ['DATABASE_HOST', { type: 'connection', value: 'db.internalHost' }],
+      ['DATABASE_HOST', { type: 'connection', value: 'db.hostname' }],
       ['DATABASE_PORT', { value: '5432' }],
       ['OPENAI_API_KEY', { type: 'secret', key: 'OPENAI_API_KEY' }],
     ],
@@ -2668,8 +2669,10 @@ const DUMMY_DEPLOYMENT_SERVICES = [
   {
     serviceId: 'db',
     type: 'server',
-    ports: [{ port: 5432, public: false, transport: 'tcp' }],
-    minInstances: 0,
+    ports: { '5432': { public: false, protocol: 'tcp' } },
+    // A database is the case for an always-on server: suspended, nothing could
+    // wake it, since its clients reach it over a raw TCP port.
+    minInstances: 1,
     maxInstances: 1,
     rootDirectory: './database',
     dockerfilePath: 'Dockerfile',
@@ -2679,26 +2682,23 @@ const DUMMY_DEPLOYMENT_SERVICES = [
   },
 ] as const;
 
-// Deployments, newest last. Each entry is one `hexclave deploy`: the services it
-// planned, and the outcome per service. A service with no run at all was planned
-// but never started one — that is what a dependency failure looks like, and the
-// dashboard renders it as "Skipped".
+// Deployments, newest last. Each entry is one `hexclave deploy` of the source
+// above: the services it planned, and the outcome of each. A service marked
+// `skipped` was planned but never reached — that is what a dependency failure
+// looks like, and the dashboard renders it as such.
 //
-// Every run is TERMINAL on purpose. The deployments list refreshes non-terminal
-// runs from Marshal on read, which a demo project has no runtime for; a seeded
-// "building" run would poll forever and log an error each time.
-//
-// No CANCELED run either: nothing in the product cancels a deploy. That status
-// only arises when a newer deploy supersedes a run mid-rollout, which is not a
-// state worth teaching a demo reader to expect.
+// Every deployment is TERMINAL on purpose. The list refreshes non-terminal
+// deployments from the runtime on read, which a demo project has no runtime for;
+// a seeded "building" deployment would poll forever and log an error each time.
 const DUMMY_DEPLOYMENTS = [
-  { minutesAgo: 60 * 26, runs: { db: 'READY', api: 'READY', web: 'READY' } },
-  { minutesAgo: 60 * 6, runs: { db: 'READY', api: 'ERROR', web: null } },
-  { minutesAgo: 42, runs: { db: 'READY', api: 'READY', web: 'READY' } },
+  { minutesAgo: 60 * 26, status: 'SUCCEEDED', services: { db: 'deployed', api: 'deployed', web: 'deployed' } },
+  { minutesAgo: 60 * 6, status: 'FAILED', services: { db: 'deployed', api: 'failed', web: 'skipped' } },
+  { minutesAgo: 42, status: 'SUCCEEDED', services: { db: 'deployed', api: 'deployed', web: 'deployed' } },
 ] as const;
 
 /**
- * Seeds the Deployments app: service definitions plus a short deploy history.
+ * Seeds the Deployments app: a deployment source, its service definitions, and a
+ * short deploy history.
  *
  * Without this the app renders its empty state, which shows none of the states
  * the page exists to display — a partially failed deploy, a skipped service, a
@@ -2712,24 +2712,25 @@ async function seedDummyDeployments(options: {
   const now = Date.now();
   const firstDeployedAt = new Date(now - DUMMY_DEPLOYMENTS[0].minutesAgo * 60_000);
 
-  const serviceDbIdByServiceId = new Map<string, string>();
+  const sourceRowId = deterministicUuid(`deployment-source:${tenancyId}:${DUMMY_DEPLOYMENT_SOURCE_ID}`);
+  await prisma.deploymentSource.upsert({
+    where: { tenancyId_sourceId: { tenancyId, sourceId: DUMMY_DEPLOYMENT_SOURCE_ID } },
+    create: { tenancyId, id: sourceRowId, sourceId: DUMMY_DEPLOYMENT_SOURCE_ID },
+    update: {},
+  });
+
   for (const service of DUMMY_DEPLOYMENT_SERVICES) {
     const id = deterministicUuid(`deployment-service:${tenancyId}:${service.serviceId}`);
-    serviceDbIdByServiceId.set(service.serviceId, id);
     const definitionColumns = {
+      sourceRowId,
       definitionSyncedAt: firstDeployedAt,
       definitionSyncId: deterministicUuid(`deployment-sync:${tenancyId}:${service.serviceId}`),
       type: service.type,
-      ports: service.ports,
+      ports: service.ports as unknown as Prisma.InputJsonValue,
       minInstances: service.minInstances,
       maxInstances: service.maxInstances,
       rootDirectory: service.rootDirectory,
       dockerfilePath: service.dockerfilePath,
-      // All three volume columns move together — a partial tuple is refused by a
-      // CHECK constraint, and only a `server` may carry one at all.
-      volumeId: service.volume?.id ?? null,
-      volumePath: service.volume?.path ?? null,
-      volumeSizeGb: service.volume?.sizeGb ?? null,
       env: service.env as unknown as Prisma.InputJsonValue,
       provisionedAt: firstDeployedAt,
     };
@@ -2738,6 +2739,16 @@ async function seedDummyDeployments(options: {
       create: { tenancyId, id, serviceId: service.serviceId, ...definitionColumns },
       update: definitionColumns,
     });
+    // The disk is owned by the deployment source and merely mounted here, so it
+    // is a row of its own rather than a column on the service.
+    if (service.volume !== null) {
+      const volumeColumns = { serviceId: service.serviceId, path: service.volume.path, sizeGb: service.volume.sizeGb };
+      await prisma.deploymentVolume.upsert({
+        where: { tenancyId_sourceRowId_volumeId: { tenancyId, sourceRowId, volumeId: service.volume.id } },
+        create: { tenancyId, id: deterministicUuid(`deployment-volume:${tenancyId}:${service.volume.id}`), sourceRowId, volumeId: service.volume.id, ...volumeColumns },
+        update: volumeColumns,
+      });
+    }
   }
 
   for (const [index, deployment] of DUMMY_DEPLOYMENTS.entries()) {
@@ -2747,48 +2758,31 @@ async function seedDummyDeployments(options: {
     // connects to it, then the frontend that connects to the API.
     const plannedServiceIds = ['db', 'api', 'web'];
     const deploymentColumns = {
+      sourceRowId,
       number: index + 1,
-      target: 'production',
       triggeredBy: 'cli',
+      status: deployment.status,
+      error: deployment.status === 'FAILED' ? 'The build of `api` failed, so nothing was rolled out.' : null,
+      marshalBuildId: `bld_${createHash('sha256').update(deploymentId).digest('hex').slice(0, 16)}`,
       plannedServiceIds,
+      services: Object.fromEntries(plannedServiceIds.map((serviceId) => {
+        const status = deployment.services[serviceId as keyof typeof deployment.services];
+        const service = DUMMY_DEPLOYMENT_SERVICES.find((candidate) => candidate.serviceId === serviceId) ?? throwErr(`unknown dummy service ${serviceId}`);
+        return [serviceId, {
+          status,
+          url: status === 'deployed' ? service.url : null,
+          revision: createHash('sha256').update(`${deploymentId}:${serviceId}`).digest('hex').slice(0, 12),
+          error: status === 'failed' ? 'Build failed: `pnpm build` exited with code 1' : null,
+        }];
+      })) as unknown as Prisma.InputJsonValue,
       createdAt,
+      finishedAt: new Date(createdAt.getTime() + 140_000),
     };
     await prisma.deployment.upsert({
       where: { tenancyId_id: { tenancyId, id: deploymentId } },
       create: { tenancyId, id: deploymentId, ...deploymentColumns },
       update: deploymentColumns,
     });
-
-    for (const [serviceIndex, serviceId] of plannedServiceIds.entries()) {
-      const status = deployment.runs[serviceId as keyof typeof deployment.runs];
-      if (status === null) continue; // planned but never started — renders as "Skipped"
-      const runId = deterministicUuid(`deployment-run:${tenancyId}:${index}:${serviceId}`);
-      // Stagger the runs so a deployment's services read as sequential, and give
-      // the whole deploy a plausible duration.
-      const startedAt = new Date(createdAt.getTime() + serviceIndex * 40_000);
-      const service = DUMMY_DEPLOYMENT_SERVICES.find((candidate) => candidate.serviceId === serviceId) ?? throwErr(`unknown dummy service ${serviceId}`);
-      const runColumns = {
-        deploymentId,
-        marshalBuildId: null,
-        revision: createHash('sha256').update(`${deploymentId}:${serviceId}`).digest('hex').slice(0, 12),
-        serviceUrl: status === 'READY' ? service.url : null,
-        status,
-        target: 'production',
-        triggeredBy: 'cli',
-        error: status === 'ERROR' ? 'Build failed: `pnpm build` exited with code 1' : null,
-        createdAt: startedAt,
-        finishedAt: new Date(startedAt.getTime() + 35_000),
-      };
-      await prisma.deploymentRun.upsert({
-        where: { tenancyId_id: { tenancyId, id: runId } },
-        create: {
-          tenancyId,
-          id: runId,
-          deploymentServiceId: serviceDbIdByServiceId.get(serviceId) ?? throwErr(`missing dummy service row for ${serviceId}`),
-          ...runColumns,
-        },
-        update: runColumns,
-      });
-    }
   }
+
 }

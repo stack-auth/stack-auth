@@ -63,25 +63,25 @@ export type HexclaveDeploymentReference = { readonly [hexclaveDeploymentReferenc
 
 /** The outputs another service exposes to `service("id").<output>`. */
 export type HexclaveServiceOutputs = {
-  /** The public URL. Only resolves once the service has a public port or a custom domain verifies. */
-  url: HexclaveDeploymentReference,
   /**
-   * The private-network URL, including the port — a URL names ONE port, which is
-   * why this is a call rather than a value.
+   * The URL of one of the service's ports, with the scheme taken from that
+   * port's `protocol` — a URL names ONE port, which is why this is a call.
    *
-   * `internalUrl()` requires the target to declare exactly one HTTP port.
-   * `internalUrl(9090)` names one when it declares several; the port must exist
-   * on the target and speak HTTP.
+   * `url()` requires the target to declare exactly one HTTP port; `url(9090)`
+   * names one when it declares several. A PUBLIC port resolves to the service's
+   * public URL (its platform URL, or a verified custom domain); a private one
+   * resolves to its private-network address.
    */
-  internalUrl: (port?: number) => HexclaveDeploymentReference,
+  url: (port?: number) => HexclaveDeploymentReference,
   /**
-   * The private-network host, without a port. Always available.
+   * The service's private-network hostname, without a port. Always available,
+   * including before the target has ever been deployed.
    *
-   * There is deliberately no `internalPort`: its value is a number you already
+   * There is deliberately no port output: its value is a number you already
    * wrote in the target's `ports`, so pair this with a literal (e.g.
    * `DATABASE_PORT: "5432"`) for raw TCP clients.
    */
-  internalHost: HexclaveDeploymentReference,
+  hostname: () => HexclaveDeploymentReference,
 };
 
 /** The context object passed to the `services` function. */
@@ -101,7 +101,11 @@ export type HexclaveDeploymentContext = {
    * real secret to be set, omit the default.
    */
   secret: (key: string, defaultValue?: string) => HexclaveDeploymentReference,
-  /** References another service in this deployment. Returns null during `hexclave dev`. */
+  /**
+   * References another service of this PROJECT — service ids are unique across
+   * every deployment source, so a service deployed from another repository is
+   * referenced exactly like one next door. Returns null during `hexclave dev`.
+   */
   service: (serviceId: string) => HexclaveServiceOutputs,
   /** The managed Hexclave backend's outputs. */
   hexclave: {
@@ -121,10 +125,8 @@ export type HexclavePersistentVolume = {
   sizeGb: number,
 };
 
-/** One port the container listens on. */
+/** How one port the container listens on is exposed. */
 export type HexclavePort = {
-  /** The port number the container listens on. */
-  port: number,
   /**
    * Exposes this port to the internet and gives the service a platform URL,
    * even without a custom domain. Defaults to false.
@@ -132,33 +134,33 @@ export type HexclavePort = {
    * A public port must be the service's ONLY port. This is a Fly.io limitation:
    * its proxy serves every declared port on every address the app has, so a
    * "private" sibling of a public port would be on the internet too. Put other
-   * ports on their own service and reach them with `internalHost`.
+   * ports on their own service and reach them with `hostname()`.
    */
   public?: boolean,
   /**
    * "tcp" is a raw port — no TLS termination, no HTTP routing — for databases
-   * and other daemons. TCP ports are private-only; reach them with
-   * `internalHost` and the port number. Defaults to "http".
+   * and other daemons. TCP ports are private-only; reach them with `hostname()`
+   * and the port number. Defaults to "http".
    */
-  transport?: "http" | "tcp",
+  protocol?: "http" | "tcp",
 };
 
 type HexclaveServiceBase = {
   /**
-   * The ports the container listens on. The service is public exactly when one
-   * of these is.
+   * The ports the container listens on, keyed by port number:
+   * `ports: { 3000: { public: true }, 5432: { protocol: "tcp" } }`. The service
+   * is public exactly when one of them is.
    *
    * Each port is reachable on the private network at its own number; the public
    * one is additionally served on 80/443. Note that a URL names a single port,
-   * so a service with several needs `internalUrl(9090)` rather than a bare
-   * `internalUrl()`.
+   * so a service with several needs `url(9090)` rather than a bare `url()`.
    *
-   * Use `ports: []` for a worker that only makes outbound connections. It gets
+   * Use `ports: {}` for a worker that only makes outbound connections. It gets
    * no URL and can hold no custom domain, and since the platform only wakes a
    * stopped machine on inbound traffic, it should be `type: "server"` (or a
    * "serverless" with `minInstances` above zero) or it will never run.
    */
-  ports: HexclavePort[],
+  ports: Record<number, HexclavePort>,
   /** Source directory, relative to the deploy file. Defaults to the deploy file's own directory. */
   rootDirectory?: string,
   /** Dockerfile to build, relative to `rootDirectory`. Omit to auto-detect the build with Railpack. */
@@ -170,9 +172,8 @@ type HexclaveServiceBase = {
 };
 
 /**
- * A single always-one-instance service. It SUSPENDS when idle rather than
- * stopping, so it resumes with its memory intact, and it is the only kind of
- * service that may hold a persistent volume.
+ * A single always-one-instance service, and the only kind that may hold a
+ * persistent volume.
  */
 export type HexclaveServerService = HexclaveServiceBase & {
   type: "server",
@@ -185,8 +186,15 @@ export type HexclaveServerService = HexclaveServiceBase & {
    * out and back if you need to move it.
    */
   persistentVolumes?: Record<string, HexclavePersistentVolume>,
-  /** Always 0 for a server; it holds one instance that suspends when idle. */
-  minInstances?: 0,
+  /**
+   * 1 (the default) keeps the single instance up. 0 lets it SUSPEND when idle,
+   * so it resumes with its memory intact and without a cold start on the next
+   * connection — but a suspended service can only be woken by inbound traffic,
+   * so a worker (`ports: {}`) needs 1.
+   *
+   * The Free plan requires 0.
+   */
+  minInstances?: 0 | 1,
   /** Always 1 for a server. Use `type: "serverless"` to scale out. */
   maxInstances?: 1,
 };
@@ -207,33 +215,39 @@ export type HexclaveServerlessService = HexclaveServiceBase & {
 export type HexclaveService = HexclaveServerService | HexclaveServerlessService;
 
 /**
- * The deploy file's (hexclave.deploy.ts) `deployment` export — the services
- * deployed together by one `hexclave deploy`.
+ * The `deployment` export of a deploy file (hexclave.deploy.ts) — the services
+ * deployed together by one `hexclave deploy` — or of hexclave.config.ts.
  *
- * Deployments live in their own file rather than in hexclave.config.ts, so that
- * one Hexclave project can be deployed from several repositories, each shipping
- * the services it owns.
- *
- * `services` is usually a function so it can reach secrets, connections, and
- * the managed backend's outputs; a plain record is accepted when none of those
- * are needed.
+ * It is a FUNCTION of the deployment context, so it can reach secrets,
+ * connections and the managed backend's outputs:
  *
  * ```ts
- * export const deployment: HexclaveDeploymentConfig = {
- *   services: ({ secret, service, hexclave }) => ({
+ * // hexclave.deploy.ts
+ * import type { HexclaveDeploymentConfig } from "@hexclave/js";
+ *
+ * // Identifies this file as a deployment source. Required here, and unique
+ * // across every deploy file that deploys into the same project.
+ * export const id = "backend";
+ *
+ * export const deployment: HexclaveDeploymentConfig = ({ secret, service, hexclave }) => ({
+ *   services: {
  *     api: {
  *       type: "server",
- *       ports: [{ port: 3000 }],
+ *       ports: { 3000: {} },
  *       persistentVolumes: { uploads: { path: "/data", sizeGb: 10 } },
- *       env: { DB_URL: service("db").internalUrl(), PROJECT_ID: hexclave.projectId },
+ *       env: { DB_URL: service("db").url(5432), PROJECT_ID: hexclave.projectId },
  *     },
- *     web: { type: "serverless", ports: [{ port: 3000, public: true }], maxInstances: 3, env: { KEY: secret("API_KEY") } },
- *   }),
- * };
+ *     web: { type: "serverless", ports: { 3000: { public: true } }, maxInstances: 3, env: { KEY: secret("API_KEY") } },
+ *   },
+ * });
  * ```
+ *
+ * Deployments normally live in their own file so that one Hexclave project can
+ * be deployed from several repositories, each shipping the services it owns and
+ * each deploying on its own schedule. The same export is accepted in
+ * hexclave.config.ts for a project that has only one; those services belong to a
+ * deployment source named after that file.
  */
-export type HexclaveDeploymentConfig = {
-  services:
-    | Record<string, HexclaveService>
-    | ((context: HexclaveDeploymentContext) => Record<string, HexclaveService>),
+export type HexclaveDeploymentConfig = (context: HexclaveDeploymentContext) => {
+  services: Record<string, HexclaveService>,
 };

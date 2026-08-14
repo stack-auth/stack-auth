@@ -177,7 +177,10 @@ model Tenancy {
   conversations       Conversation[]
   conversationEntryPoints ConversationEntryPoint[]
   conversationMessages ConversationMessage[]
+  deploymentSources   DeploymentSource[]
   deploymentServices  DeploymentService[]
+  deploymentVolumes   DeploymentVolume[]
+  deploymentDomains   DeploymentDomain[]
   deployments         Deployment[]
   deploymentSourceUploads DeploymentSourceUpload[]
   workflowDefinitions WorkflowDefinition[]
@@ -1678,13 +1681,51 @@ model ProjectSecret {
 }
 
 // ================== Deployments ==================
-// State for the Deployments app. Service definitions come from the `services`
-// export of hexclave.config.ts: `hexclave deploy` evaluates it and syncs the
-// parts the server needs (build config, env var definitions) into
-// DeploymentService rows, which are the authoritative server-side copy — the
-// dashboard renders services from these rows and cannot edit them. Secret
-// VALUES are never part of a definition: env vars of type "secret" only name a
-// key in the ProjectSecret store above.
+// State for the Deployments app.
+//
+// A project owns DEPLOYMENT SOURCES; a source is deployed one or more times;
+// each deployment ships a set of SERVICES. A source is one deploy file
+// (hexclave.deploy.ts, named by its own `id` export) and what one
+// `hexclave deploy` ships — one upload, one build — so a project deployed from
+// several repositories gives each of them a source of its own. Service ids stay
+// unique per PROJECT, so a reference never has to name a source.
+//
+// Service definitions come from the `services` export of the deploy file:
+// `hexclave deploy` evaluates it and syncs the parts the server needs (build
+// config, env var definitions) into DeploymentService rows, which are the
+// authoritative server-side copy — the dashboard renders services from these
+// rows and cannot edit them. Secret VALUES are never part of a definition: env
+// vars of type "secret" only name a key in the ProjectSecret store above.
+//
+// Two things deliberately OUTLIVE the service that uses them, because the
+// resource behind them does: a persistent volume (a disk with tenant data) is
+// owned by the CLUSTER and merely mounted by a service, and a custom domain (a
+// hostname with a certificate) is owned by the PROJECT and merely pointed at a
+// service. Dropping a service from a deploy file tears the service down and
+// leaves both behind, unattached, until someone deletes them explicitly.
+
+model DeploymentSource {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // The deploy file's own `id` export — which deploy file (and so which
+  // repository) these services were deployed from. Deployments declared in
+  // hexclave.config.ts, which has no id of its own, belong to a source named
+  // after that file. Created implicitly by the first deploy that names it.
+  sourceId String
+
+  tenancy     Tenancy             @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  services    DeploymentService[]
+  deployments Deployment[]
+  volumes     DeploymentVolume[]
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, sourceId])
+}
 
 model DeploymentService {
   tenancyId String @db.Uuid
@@ -1694,31 +1735,32 @@ model DeploymentService {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // The user-facing service id — the key of the record returned by the
-  // config file's `services` export (e.g. "api"). Doubles as the Marshal
-  // service key (the runtime namespace is the tenancy id).
+  // Which deployment source last declared this service. A service belongs to
+  // exactly one: the deploy file that declares it owns it, and a sync from
+  // another source claiming the same id is refused rather than silently taking
+  // it over.
+  sourceRowId String @db.Uuid
+
+  // The user-facing service id — the key of the record returned by the deploy
+  // file's `services` export (e.g. "api"). Unique across the whole PROJECT, not
+  // per source, which is what lets a reference name a service without naming
+  // its source. It doubles as the Marshal service key.
   serviceId String
 
   // Set when the service's spec was first successfully applied to Marshal
-  // (the Fly-backed runtime). Replaces the old lazily-provisioned Vercel
-  // project id — Marshal apps are deterministic names, so there is no foreign
-  // id to store, only the fact that provisioning happened.
+  // (the Fly-backed runtime). Marshal apps have deterministic names, so there
+  // is no foreign id to store, only the fact that provisioning happened.
   provisionedAt DateTime?
 
-  // The definition as last synced from the config file's `services` export.
-  // Both fields are null only for rows that predate the services-export rework
-  // (their definitions lived in the branch config, which was dropped without
-  // backfill). `definitionSyncId` is regenerated once per whole-definition
-  // sync and fenced by every subsequent deploy request, so two CLIs cannot
-  // silently combine one checkout's source/defaults with another checkout's
-  // stored build settings and env definition.
+  // The definition as last synced from the deploy file's `services` export.
+  // `definitionSyncId` is regenerated once per source sync and fenced by the
+  // deploy that follows it, so two CLIs cannot silently combine one checkout's
+  // source with another checkout's stored build settings and env definition.
   definitionSyncedAt DateTime?
   definitionSyncId   String?   @db.Uuid
   // How the service runs: "server" (one instance that suspends when idle, the
-  // only kind that may hold a volume) or "serverless" (scales between the
-  // bounds below, stops on scale-down). The default exists only so the NOT NULL
-  // column could be added to a table that already had rows; every writer sets
-  // it explicitly.
+  // only kind that may mount a volume) or "serverless" (scales between the
+  // bounds below, stops on scale-down).
   type          String @default("serverless")
   // The ports the container listens on, as a JSON array of
   // `{ port, public, transport }` (see DeploymentPortDefinition). There is no
@@ -1726,61 +1768,42 @@ model DeploymentService {
   // ports is, so the two cannot drift apart. At most one port may be public and
   // a "tcp" port may never be — both enforced by CHECK constraints as well as
   // by the sync route, since this column is the only record of either fact.
-  //
-  // `[]` on rows that predate a synced definition: displayable, not deployable.
   ports         Json   @default("[]")
   minInstances  Int?
   maxInstances  Int?
+  // Where the service's code lives inside the deployment source's upload, relative to the
+  // deploy file. The build CONTEXT is the whole upload (a monorepo service
+  // usually has to reach shared code above its own directory); this only scopes
+  // where build detection starts.
   rootDirectory String?
-  // The Dockerfile to build from, relative to rootDirectory. Null = no
-  // Dockerfile: the remote builder auto-detects the build with Railpack.
+  // The Dockerfile to build from, relative to the root of the uploaded source.
+  // Null = no Dockerfile: the remote builder auto-detects the build with Railpack.
   dockerfilePath String?
-  // Persistent disk. All three null = no volume, i.e. an entirely ephemeral
-  // container filesystem (the default). Only a `type: "server"` service may
-  // have one: the underlying Fly volume is local NVMe on one host and attaches
-  // to at most one machine. volumeSizeGb is grow-only — Fly rejects a shrink,
-  // and shrinking would mean destroying tenant data.
-  //
-  // volumeId is the caller-chosen id (the key of `persistentVolumes` in the
-  // config file). It names the Fly volume within the service's own Fly app, so
-  // it identifies the disk WITHIN a service — the same id under a different
-  // service is a different disk, and moving it does not move the data. A unique
-  // index still keeps two services from holding one id at a time.
-  //
-  // These three are a TUPLE and are always written together. CHECK constraints
-  // enforce that in the database (all three null or all three set, and size
-  // within Fly's 1–500 GB range) — see the
-  // 20260806000000_deployment_service_volumes and
-  // 20260810000000_deployment_service_types_and_volume_ids migrations. Prisma
-  // cannot express CHECK constraints, so they live only in the migration SQL
-  // and are invisible here; a `prisma db push` would drop them.
-  volumeId     String?
-  volumePath   String?
-  volumeSizeGb Int?
-  // Note there is deliberately no dev command here: `devCommand` in the config
+  // Note there is deliberately no dev command here: `devCommand` in the deploy
   // file's `services` export is consumed locally by `hexclave dev
   // --service-id`, and the backend never acts on it, so storing it would only
   // buy a display row in the dashboard at the price of a column that can drift
-  // from the config file.
+  // from the deploy file.
+  //
   // Array of [env var key, DeploymentEnvVarDefinition] entries (see
   // @hexclave/shared/dist/deployments). An entry array, rather than a JSON object, preserves
-  // special keys such as `__proto__` through Prisma's JSON serializer. Legacy object rows
-  // remain readable: { value } for plain vars,
+  // special keys such as `__proto__` through Prisma's JSON serializer:
+  // { value } for plain vars,
   // { type: "secret", key } for secrets (never their values, and never their
   // `secret(key, default)` fallbacks — those travel with the deploy request
   // and are rejected by deploymentEnvVarSchema on every write path),
   // { type: "connection", value } for service-output references.
   env Json @default("{}")
 
-  tenancy Tenancy                   @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
-  domains DeploymentServiceDomain[]
-  runs    DeploymentRun[]
+  tenancy Tenancy           @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  source DeploymentSource @relation(fields: [tenancyId, sourceRowId], references: [tenancyId, id], onDelete: Cascade)
 
   @@id([tenancyId, id])
   @@unique([tenancyId, serviceId])
+  @@index([tenancyId, sourceRowId])
 }
 
-model DeploymentServiceDomain {
+model DeploymentVolume {
   tenancyId String @db.Uuid
 
   id String @default(uuid()) @db.Uuid
@@ -1788,30 +1811,82 @@ model DeploymentServiceDomain {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  deploymentServiceId String @db.Uuid
+  sourceRowId String @db.Uuid
 
-  hostname  String
+  // The author-chosen id (the key of `persistentVolumes` in the deploy file),
+  // which names the underlying Fly volume. Unique within the deployment source, which is
+  // what OWNS the disk: a service that stops being declared is torn down, and
+  // its disk survives here for a later deploy to mount again.
+  volumeId String
+  // Provisioned size in whole gigabytes. Grow-only — Fly rejects a shrink, and
+  // shrinking would mean destroying tenant data.
+  sizeGb Int
+
+  // The service currently mounting it, and where. Both null = unattached: the
+  // disk exists (and is still billed) but no service declares it. They are a
+  // pair and are always written together.
+  serviceId String?
+  path      String?
+
+  tenancy Tenancy           @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  source DeploymentSource @relation(fields: [tenancyId, sourceRowId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, sourceRowId, volumeId])
+  // One disk, one holder: two services asking to mount the same volume would
+  // ask Fly to attach it to two machines. Project-wide rather than per source,
+  // because service ids are.
+  @@unique([tenancyId, serviceId])
+}
+
+model DeploymentDomain {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Per-TENANCY, not per-service: the deployments runtime holds exactly one
+  // claim per hostname, so two services both holding a row for one hostname
+  // would leave the loser advertising a verified URL that routes to the winner.
+  hostname String
+
+  // What the hostname points at: a service (ids are unique across the project,
+  // so it needs no deployment source to disambiguate) and one of its ports.
+  // Both null = unattached, which is what a domain becomes when its service
+  // stops being declared — the certificate is kept rather than silently
+  // released, and the row waits for someone to re-point or delete it.
+  //
+  // The port must be the target service's sole HTTP port. It is stated anyway
+  // because a domain names an endpoint, not a machine, and the day a service may
+  // hold several public ports this row must already say which one it meant.
+  //
+  // Deliberately NOT a foreign key to DeploymentService: a domain OUTLIVES the
+  // service it points at, which is the whole reason it is a table of its own.
+  serviceId String?
+  port      Int?
+
   isPrimary Boolean @default(false)
   // Runtime-reported (Marshal) verification state, refreshed whenever the domain is read.
   verified Boolean @default(false)
 
-  service DeploymentService @relation(fields: [tenancyId, deploymentServiceId], references: [tenancyId, id], onDelete: Cascade)
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
   @@id([tenancyId, id])
-  // Per-TENANCY, not per-service: the deployments runtime holds exactly one claim per
-  // hostname, so two services in one project both holding a row for the same hostname would
-  // leave the loser advertising a verified URL that routes to the winner.
   @@unique([tenancyId, hostname])
+  @@index([tenancyId, serviceId])
 }
 
-// One `hexclave deploy` invocation: the unit the dashboard lists, holding the
-// per-service runs it triggered. A deploy of N services is one Deployment with
-// N DeploymentRuns, so "what shipped together" is a fact in the database rather
-// than something reconstructed from run timestamps.
-//
-// A deployment has no status column of its own: it is derived from its runs
-// (any run building → building, any error → failed, all ready → deployed), so
-// there is no second copy of the truth to drift from the runs themselves.
+enum DeploymentStatus {
+  QUEUED
+  BUILDING
+  DEPLOYING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
 model Deployment {
   tenancyId String @db.Uuid
 
@@ -1820,111 +1895,65 @@ model Deployment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  sourceRowId String @db.Uuid
+
   // Monotonic per tenancy, so the dashboard and CLI can say "deployment #47"
   // instead of showing a uuid. Assigned inside the same transaction that
   // creates the row (see createDeployment), which the unique constraint below
   // makes safe against two concurrent deploys picking the same number.
   number Int
 
-  // "production" | "preview" — mirrors DeploymentRun.target, which every run in
-  // one deployment shares.
-  target String
   // Free-form descriptor of what triggered the deploy (e.g. "cli").
   triggeredBy String
 
-  // The service ids this deploy INTENDED to deploy, in dependency order, as a
-  // JSON string array. Kept alongside the runs because a service whose
-  // dependency failed never gets a run at all, and the dashboard still has to
-  // show it as skipped rather than silently omitting it.
+  status DeploymentStatus @default(QUEUED)
+  error  String?
+
+  // ONE build per deployment: the source's whole tree is uploaded once and
+  // every service's image is built by one builder machine, so the build (and
+  // its log) belongs to the deployment rather than to any single service.
+  // Null until the runtime has accepted the batch build.
+  marshalBuildId String?
+
+  // The service ids this deploy INTENDED to ship, in dependency order, as a
+  // JSON string array — kept separately from the outcomes below because a
+  // service can fail before it has an outcome at all.
   plannedServiceIds Json @default("[]")
 
+  // What each service actually did in THIS deploy, as a JSON object keyed by
+  // service id: `{ status, url, revision, error }` (see DeploymentServiceOutcome).
+  // A deployment is the unit of history, so the outcomes live on it rather than
+  // in rows of their own — nothing queries a single service's timeline except
+  // through the deployments of its source.
+  services Json @default("{}")
+
+  // `{ edkBase64, ciphertextBase64 }`, encrypting a JSON string array of the
+  // exact sensitive values injected into this deploy. Build logs are fetched
+  // from the runtime (Marshal) on demand, potentially after a project secret was
+  // rotated or deleted; keeping the encrypted snapshot here lets those
+  // historical logs stay redacted without retaining the old value in ProjectSecret.
+  redactionSecretsEncrypted Json?
+
+  finishedAt DateTime?
+
   // Set when the client owning this deploy reports that it has stopped working
-  // on it (see the conclude route). Status is derived from the runs, and a
-  // planned service with no run normally reads as "still going" — but a client
-  // can fail before creating any run at all (packaging, upload, a crash), which
-  // leaves nothing to derive a terminal state from. This column is what says
-  // "no further runs are coming"; without it such a deployment stays queued or
-  // building forever and the dashboard polls it indefinitely.
+  // on it (see the conclude route). A planned service with no outcome normally
+  // reads as "still going" — but a client can fail before reporting anything at
+  // all (packaging, upload, a crash), which leaves nothing to derive a terminal
+  // state from. This column is what says "nothing further is coming"; without it
+  // such a deployment stays queued forever and the dashboard polls it
+  // indefinitely.
   concludedAt DateTime?
 
-  runs DeploymentRun[]
-
-  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  tenancy Tenancy           @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  source DeploymentSource @relation(fields: [tenancyId, sourceRowId], references: [tenancyId, id], onDelete: Cascade)
 
   @@id([tenancyId, id])
   @@unique([tenancyId, number])
   @@index([tenancyId, createdAt(sort: Desc)])
+  @@index([tenancyId, sourceRowId, createdAt(sort: Desc)])
 }
 
-enum DeploymentRunStatus {
-  QUEUED
-  BUILDING
-  READY
-  ERROR
-  CANCELED
-}
-
-model DeploymentRun {
-  tenancyId String @db.Uuid
-
-  id String @default(uuid()) @db.Uuid
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  deploymentServiceId String @db.Uuid
-
-  // The deploy this run was part of. Null on runs created before deployments were
-  // grouped, and on direct API deploys that sent no deployment_id. Such runs are only
-  // reachable per service — the deployments list reads Deployment rows, so it does not
-  // show them. `hexclave deploy` always creates a Deployment, so this is currently only
-  // reachable by hand-driving the API.
-  deploymentId String? @db.Uuid
-
-  // The Marshal build backing this run (ULID) and the revision it built.
-  // Null for no-build runs (should not happen in practice — every deploy
-  // creates a build record, immediate for no-artifact revisions).
-  marshalBuildId String?
-  revision       String?
-  // The service's public URL observed when the run completed (null when the
-  // service has no verified domain — container services are private by
-  // default).
-  serviceUrl String?
-
-  status DeploymentRunStatus @default(QUEUED)
-  // "production" | "preview" (kept a string for compatibility; Marshal only
-  // has production deploys today, so "preview" is rejected at the route)
-  target String
-  // Free-form descriptor of what triggered the run (e.g. "cli").
-  triggeredBy String
-
-  error      String?
-  finishedAt DateTime?
-
-  // `{ edkBase64, ciphertextBase64 }`, encrypting a JSON string array of the
-  // exact sensitive values injected into this run. Build logs are fetched from
-  // the runtime (Marshal) on demand, potentially after the project secret was
-  // rotated or deleted; keeping the encrypted snapshot on the run lets those
-  // historical logs remain redacted without retaining the old value in ProjectSecret.
-  // Null only for runs created before this column existed; their logs fail
-  // closed because there is no complete redaction set.
-  redactionSecretsEncrypted Json?
-
-  service DeploymentService @relation(fields: [tenancyId, deploymentServiceId], references: [tenancyId, id], onDelete: Cascade)
-  // SetNull, not Cascade: deleting a deployment must never delete the run
-  // history of services that are still live.
-  deployment Deployment? @relation(fields: [tenancyId, deploymentId], references: [tenancyId, id], onDelete: SetNull)
-
-  @@id([tenancyId, id])
-  @@index([tenancyId, deploymentServiceId, createdAt(sort: Desc)])
-  @@index([tenancyId, deploymentId])
-}
-
-// Short-lived upload references for `hexclave deploy`: the CLI requests an
-// upload slot (proxied from Marshal, which presigns a PUT into ITS bucket),
-// uploads directly to object storage, then references this row in the deploy
-// request. The row is what makes an upload consumable exactly once; Marshal's
-// bucket lifecycle rule cleans up abandoned objects.
 model DeploymentSourceUpload {
   tenancyId String @db.Uuid
 
@@ -1942,6 +1971,7 @@ model DeploymentSourceUpload {
   @@id([tenancyId, id])
   @@index([expiresAt])
 }
+
 
 // ─── Workflows ──────────────────────────────────────────────────────────────
 //
