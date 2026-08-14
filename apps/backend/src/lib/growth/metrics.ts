@@ -6,7 +6,7 @@ import {
   loadPaymentsOverview,
   loadTotalUsers,
   METRICS_WINDOW_DAYS,
-} from "@/lib/metrics/loaders";
+} from "./metrics-loaders";
 import type { Tenancy } from "@/lib/tenancies";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import type { GrowthMetricId } from "./action-item-types";

@@ -5,7 +5,7 @@ import {
   getMetricsWindowBounds,
   loadAnalyticsOverview,
   METRICS_REVENUE_INVOICE_STATUSES,
-} from "@/lib/metrics/loaders";
+} from "./metrics-loaders";
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import type { MetricsDataPoint } from "@hexclave/shared/dist/interface/admin-metrics";
@@ -33,7 +33,7 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // ClickHouse DateTime params are passed as "YYYY-MM-DDTHH:MM:SS" (no timezone); treat them as UTC.
-// (Same convention as the private helper in lib/metrics/loaders.tsx.)
+// (Same convention as the private helper in the internal metrics route.)
 function formatClickhouseDateTimeParam(date: Date): string {
   return date.toISOString().slice(0, 19);
 }
@@ -266,7 +266,7 @@ export async function insertGrowthDailyMetricRows(rows: GrowthDailyMetricRow[]):
 
 const BACKFILL_WINDOW_DAYS = 365;
 
-// Same literal-list idiom as METRICS_REVENUE_INVOICE_STATUSES_SQL in lib/metrics/loaders.tsx
+// Same literal-list idiom as METRICS_REVENUE_INVOICE_STATUSES_SQL in the internal metrics route
 // (which is module-private there); safe to Prisma.raw because the statuses are a hardcoded const.
 const REVENUE_STATUSES_SQL = Prisma.raw(METRICS_REVENUE_INVOICE_STATUSES.map((status) => `'${status}'`).join(", "));
 

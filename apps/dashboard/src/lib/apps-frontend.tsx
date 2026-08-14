@@ -45,8 +45,6 @@ export type AppFrontend = {
   documentationHref?: string,
   screenshots: (string | StaticImageData)[],
   storeDescription: JSX.Element,
-  /** Retains the AppId/config contract while removing a retired frontend from discovery and navigation. */
-  hidden?: boolean,
 } & (
   | {
     navigationItems: AppNavigationItem[],
@@ -62,10 +60,6 @@ export type NavigableAppFrontend = Extract<AppFrontend, { navigationItems: AppNa
 
 export function hasNavigationItems(appFrontend: AppFrontend): appFrontend is NavigableAppFrontend {
   return "navigationItems" in appFrontend;
-}
-
-export function isAppFrontendHidden(appFrontend: AppFrontend): boolean {
-  return appFrontend.hidden === true;
 }
 
 export function getDocumentationHref(appFrontend: AppFrontend): string | null {

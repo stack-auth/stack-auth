@@ -4,9 +4,9 @@ import {
   getMetricsWindowBounds,
   isMetricsRevenueInvoiceStatus,
   normalizeAnalyticsOverviewFilters,
-} from "./loaders";
+} from "./route";
 
-describe("metrics loader helpers", () => {
+describe("internal metrics helpers", () => {
   it("only counts paid and succeeded invoices as revenue", () => {
     expect(isMetricsRevenueInvoiceStatus("paid")).toBe(true);
     expect(isMetricsRevenueInvoiceStatus("succeeded")).toBe(true);
