@@ -123,9 +123,9 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
     ports[portKey] = { public: isPublic, protocol };
   }
   const portList = portEntries(ports);
-  // FLY.IO PLATFORM LIMITATION — see the `public-service-has-one-port` rule in
-  // @hexclave/shared's deployments.ts for the full write-up and the `.internal`
-  // escape hatch that would lift it.
+  // FLY.IO PLATFORM LIMITATION — see the `public-and-private-ports-are-not-mixed`
+  // rule in @hexclave/shared's deployments.ts for the full write-up and the
+  // `.internal` escape hatch that would lift it.
   //
   // Fly `services` are the proxy's listener set for the WHOLE app, not per-IP:
   // an entry cannot be scoped to one address, so every listed port answers on
@@ -135,10 +135,13 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   // Flycast, which IS this proxy, so the entry is what makes them reachable at
   // all. Refuse rather than publish a database.
   //
-  // Subsumes the old "at most one public port" rule: two public ports are two
-  // ports, so they fail here.
-  if (portList.length > 1 && portList.some((entry) => entry.public)) {
-    throw badRequest("a service with a public port may not declare any other port: the proxy serves every declared port on every address the app has, so the others would be public too");
+  // SEVERAL public ports are fine and deliberately not refused: the leak above
+  // needs a port the author did NOT ask to publish, and there is none. Each is
+  // reachable at its own number over both IPv4 and IPv6 (verified against real
+  // Fly). What the extras do not get is the standard 80/443 and the custom domain
+  // that terminates there — those belong to standardPortsHolderFor alone.
+  if (portList.some((entry) => entry.public) && portList.some((entry) => !entry.public)) {
+    throw badRequest("a service may not mix public and private ports: the proxy serves every declared port on every address the app has, so the private ones would be public too");
   }
   // A "server" is a SINGLE instance by definition, so its ceiling is 1 — but its floor is
   // the caller's choice: 0 suspends the machine when idle (it resumes with its memory
@@ -322,7 +325,13 @@ async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvVal
         if (url === null) {
           blockedRefs.push(value.ref);
         } else {
-          resolved.set(key, url);
+          // computeServiceUrl answers for the port that owns 80/443. Any OTHER
+          // public port of a multi-port service is reachable on its own number
+          // and nowhere else, so the ref has to carry it — otherwise every
+          // public port of one service would resolve to the same URL and quietly
+          // point at whichever one happened to be lowest.
+          const holder = standardPortsHolderFor(ports);
+          resolved.set(key, port.port === holder ? url : `${url}:${port.port}`);
         }
         break;
       }
@@ -454,6 +463,15 @@ export function soleHttpPort(ports: PortsConfig): number | null {
  * custom domain is attached (see attachDomain), and that domain terminates TLS
  * on 443 — so a private service with one HTTP port must bind the standard ports
  * too, or its verified domain would resolve and then refuse the connection.
+ *
+ * With SEVERAL public ports exactly one can hold 80/443, and it is the
+ * LOWEST-NUMBERED — portEntries sorts numerically, so the winner is a property
+ * of the port set rather than of JSON key ordering. Determinism is the point:
+ * the holder is the port the service's bare URL names and the only one a custom
+ * domain can front, so an arbitrary pick would silently move both. KEPT IN SYNC
+ * WITH
+ * standardPortsHolderDeploymentPort in @hexclave/shared's deployments.ts, which
+ * is what the backend reports to the CLI and dashboard from.
  */
 export function standardPortsHolderFor(ports: PortsConfig): number | null {
   const publicPort = portEntries(ports).find((entry) => entry.public);
@@ -466,14 +484,19 @@ export function standardPortsHolderFor(ports: PortsConfig): number | null {
  *
  * A custom domain allocates public IPs on the service's app (see ensurePublicIps), so it
  * makes the service public exactly the way a `public: true` port does — and therefore has to
- * obey the SAME one-port rule validateServiceSpec enforces there.
+ * obey the same no-mixing rule validateServiceSpec enforces there, plus one of its own.
  *
  * Fly `services` are the proxy's listener set for the whole app with no per-address scoping,
  * so every declared port answers on every IP the app holds. A service with an HTTP port next
  * to a private 5432 looks legal at sync time (nothing is `public: true`), but a domain on it
- * puts that 5432 on the internet. Two HTTP ports are just as wrong the other way: only one of
- * them can own the hostname's 80/443, so the attach would appear to succeed while binding no
- * route the caller can predict.
+ * puts that 5432 on the internet.
+ *
+ * STRICTER THAN validateServiceSpec, and deliberately: that rule passes a wholly PRIVATE
+ * multi-port service, because a service nobody can reach leaks nothing. A domain is exactly
+ * what makes it reachable, so at attach time those same private siblings become the leak. The
+ * one private port a domain may front is a service's ONLY port — publishing it is what the
+ * author asked the domain for. An all-public service is fine at any count: the domain fronts
+ * the standard-ports holder and nothing else changes.
  *
  * BOTH places that can bring a domain and this port set together must call this: the attach
  * (domains.ts) and the spec write (applyServiceSpecWithLease). Checking only the attach
@@ -486,8 +509,13 @@ export function assertServiceCanHoldADomain(serviceKey: string, ports: PortsConf
   if (!entries.some((entry) => entry.protocol === "http")) {
     throw badRequest(`custom domains need an HTTP port to route to; service ${JSON.stringify(serviceKey)} declares none. ${remedy}`);
   }
-  if (entries.length > 1) {
-    throw badRequest(`a service holding a custom domain may not declare any other port: the proxy serves every declared port on every address the app has, so the others would be public too. Service ${JSON.stringify(serviceKey)} declares ${entries.length} ports; move the private ones onto their own service and reach them with hostname(). ${remedy}`);
+  if (entries.length > 1 && entries.some((entry) => !entry.public)) {
+    throw badRequest(`a service holding a custom domain may not declare a private port alongside others: the domain allocates public IPs, and the proxy serves every declared port on every address the app has, so the private ones would be public too. Service ${JSON.stringify(serviceKey)} declares ${entries.length} ports; mark them public: true, or move them onto their own service and reach them with hostname(). ${remedy}`);
+  }
+  // An all-public service can hold a domain, but only over the port that owns
+  // 80/443 — a certificate terminates TLS there and nowhere else.
+  if (standardPortsHolderFor(ports) === null) {
+    throw badRequest(`a custom domain needs one HTTP port to front, and service ${JSON.stringify(serviceKey)} leaves it ambiguous. ${remedy}`);
   }
 }
 
@@ -503,7 +531,15 @@ export function externalPortsFor(entry: PortEntry, standardPortsHolder: number |
   if (entry.protocol !== "http") return [{ port: entry.port }];
   const bindings = new Map<number, { port: number, handlers?: string[] }>();
   // Its own number first, so a second HTTP port stays addressable privately...
-  bindings.set(entry.port, { port: entry.port, handlers: ["http"] });
+  //
+  // A PUBLIC port terminates TLS on that number, a private one does not. The
+  // distinction is not cosmetic: a public port's own number is the ONLY way to
+  // reach it (the standard 80/443 belong to the holder), so leaving it plain
+  // would put a port the author asked to publish on the internet in cleartext —
+  // and the URL we hand back for it says https. A private port is reached over
+  // Flycast as `http://<host>:<port>`, and adding TLS there would break every
+  // private url() instead.
+  bindings.set(entry.port, { port: entry.port, handlers: entry.public ? ["tls", "http"] : ["http"] });
   if (entry.port === standardPortsHolder) {
     // ...but the standard ports win the collision: 443 must terminate TLS, and
     // 80 stays plain HTTP (no force_https) because a private url() is http.

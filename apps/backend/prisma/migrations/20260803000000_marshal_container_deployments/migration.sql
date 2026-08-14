@@ -83,22 +83,6 @@ $fn$ LANGUAGE sql IMMUTABLE;
 -- error, and the string "true" would be silently accepted as public — reporting
 -- the wrong constraint for what is really a bad ENTRY. Deferring to
 -- entries_valid keeps the diagnostic on the right rule.
-CREATE OR REPLACE FUNCTION "hexclave_deployment_ports_public_count"(ports jsonb) RETURNS bigint AS $fn$
-  SELECT CASE WHEN jsonb_typeof(ports) <> 'object' OR NOT "hexclave_deployment_ports_entries_valid"(ports) THEN 0 ELSE (
-    SELECT count(*)
-    FROM jsonb_each(ports) AS entry(port_key, definition)
-    WHERE entry.definition -> 'public' = 'true'::jsonb
-  ) END;
-$fn$ LANGUAGE sql IMMUTABLE;
-
--- A CHECK constraint may not contain a subquery, and counting an object's keys
--- is one — hence a function for what would otherwise be an inline count.
-CREATE OR REPLACE FUNCTION "hexclave_deployment_ports_count"(ports jsonb) RETURNS bigint AS $fn$
-  SELECT CASE WHEN jsonb_typeof(ports) <> 'object' THEN 0 ELSE (
-    SELECT count(*) FROM jsonb_object_keys(ports)
-  ) END;
-$fn$ LANGUAGE sql IMMUTABLE;
-
 CREATE OR REPLACE FUNCTION "hexclave_deployment_ports_public_is_http"(ports jsonb) RETURNS boolean AS $fn$
   SELECT CASE WHEN jsonb_typeof(ports) <> 'object' OR NOT "hexclave_deployment_ports_entries_valid"(ports) THEN true ELSE NOT EXISTS (
     SELECT 1
@@ -123,21 +107,23 @@ ALTER TABLE "DeploymentService"
 ADD CONSTRAINT "DeploymentService_public_port_is_http_check"
 CHECK ("hexclave_deployment_ports_public_is_http"("ports"));
 
--- FLY.IO PLATFORM LIMITATION: a public port may not have siblings. Fly's proxy
--- listener set is per-app rather than per-address, so once a public IP exists
--- every declared port answers on it — a "private" sibling of a public port would
--- be on the internet. (Private traffic reaches a port over Flycast, which IS
--- that proxy, so the entry cannot simply be omitted.) Stated here as well as in
--- the sync route because this column is the only record of which ports a service
--- exposes. See the `public-service-has-one-port` rule in @hexclave/shared's
--- deployments.ts for the full write-up.
+-- FLY.IO PLATFORM LIMITATION: a service may not mix public and private ports.
+-- Fly's proxy listener set is per-app rather than per-address, so once a public
+-- IP exists every declared port answers on it — a "private" sibling of a public
+-- port would be on the internet. (Private traffic reaches a port over Flycast,
+-- which IS that proxy, so the entry cannot simply be omitted.)
 --
--- This also subsumes "at most one public port": two public ports are two ports,
--- so the count of keys already fails them. public_count is still what
--- distinguishes a lone public port from a lone private one.
-ALTER TABLE "DeploymentService"
-ADD CONSTRAINT "DeploymentService_public_port_is_alone_check"
-CHECK (jsonb_typeof("ports") <> 'object' OR "hexclave_deployment_ports_count"("ports") <= 1 OR "hexclave_deployment_ports_public_count"("ports") = 0);
+-- Deliberately NOT a CHECK constraint, unlike the port-shape rules above. Those
+-- are about what the column may CONTAIN and stay true forever. This one is a
+-- fact about the RUNTIME we deploy onto, and it is expected to move: it is a
+-- shared IPv4 and an addressing model away from being lifted, and the version of
+-- it that shipped first ("a public port may not have siblings") was already
+-- wrong about several public ports, which leak nothing. Encoding a platform's
+-- current shape as a database invariant buys an unmigratable copy of an opinion.
+-- Enforced instead by the `public-and-private-ports-are-not-mixed` rule in
+-- @hexclave/shared's deployments.ts, which the sync route, the CLI evaluator and
+-- Marshal's validateServiceSpec all sit behind — no writer reaches this column
+-- without passing it.
 
 -- AlterTable
 ALTER TABLE "DeploymentRun" DROP COLUMN "vercelDeploymentId",

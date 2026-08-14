@@ -108,9 +108,9 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     expect(evaluatePorts({ 5432: { protocol: "smtp" } })).toThrow('must be "http" or "tcp"');
     // Raw TCP has no TLS or HTTP routing, so it can never be the public one.
     expect(evaluatePorts({ 5432: { protocol: "tcp", public: true } })).toThrow("private-only");
-    // Several public ports are several ports, so they trip the same rule as a
-    // public port with private siblings.
-    expect(evaluatePorts({ 3000: { public: true }, 4000: { public: true } })).toThrow("may not declare any other port");
+    // Several public ports are accepted: the leak needs a port nobody asked to
+    // publish, and there is none.
+    expect(evaluatePorts({ 3000: { public: true }, 4000: { public: true } })).not.toThrow();
   });
 
   it("accepts a portless worker", () => {
@@ -159,11 +159,15 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     // sibling of a public port would be served on the public address too.
     expect(() => evaluate(() => ({
       web: { type: "serverless", ports: { 3000: { public: true }, 9090: {} } },
-    }))).toThrow("may not declare any other port");
+    }))).toThrow("mixes public and private ports");
     // Both halves stay legal on their own.
     expect(() => evaluate(() => ({
       web: { type: "serverless", ports: { 3000: { public: true } } },
       metrics: { type: "serverless", ports: { 9090: {}, 5432: { protocol: "tcp" } } },
+    }))).not.toThrow();
+    // Publishing the sibling too is the other way out, and it is accepted.
+    expect(() => evaluate(() => ({
+      web: { type: "serverless", ports: { 3000: { public: true }, 9090: { public: true } } },
     }))).not.toThrow();
   });
 

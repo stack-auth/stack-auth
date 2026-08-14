@@ -50,15 +50,20 @@ describe("the domain port rule", () => {
     // catastrophic for one with a domain, because the proxy would serve 5432 on the public IPs
     // the domain allocated.
     expect(() => assertServiceCanHoldADomain("web", { "3000": { public: false, protocol: "http" }, "5432": { public: false, protocol: "tcp" } }, "remedy"))
-      .toThrow(/may not declare any other port/);
-    // Two HTTP ports: only one can own the hostname's 80/443, so the binding would be
-    // unpredictable rather than merely over-exposed.
+      .toThrow(/may not declare a private port alongside others/);
+    // Two PRIVATE HTTP ports fail for the same reason, and this is where the domain
+    // rule is stricter than validateServiceSpec: that spec is legal precisely because
+    // nothing can reach it, and the domain is what makes it reachable.
     expect(() => assertServiceCanHoldADomain("web", { "3000": { public: false, protocol: "http" }, "4000": { public: false, protocol: "http" } }, "remedy"))
-      .toThrow(/may not declare any other port/);
+      .toThrow(/may not declare a private port alongside others/);
     expect(() => assertServiceCanHoldADomain("web", { "5432": { public: false, protocol: "tcp" } }, "remedy"))
       .toThrow(/need an HTTP port/);
     expect(() => assertServiceCanHoldADomain("web", {}, "remedy")).toThrow(/need an HTTP port/);
     expect(() => assertServiceCanHoldADomain("web", { "3000": { public: false, protocol: "http" } }, "remedy")).not.toThrow();
+    // An ALL-public service can hold a domain at any port count: there is no private
+    // sibling to publish, and the domain fronts the standard-ports holder (3000).
+    expect(() => assertServiceCanHoldADomain("web", { "3000": { public: true, protocol: "http" }, "4000": { public: true, protocol: "http" } }, "remedy"))
+      .not.toThrow();
   });
 
   it("carries the caller's remedy, so each site says what to do about it", () => {
@@ -81,9 +86,9 @@ describe("a spec write against a service that holds a domain", () => {
   it("refuses to add a private sibling port after a domain was attached", async () => {
     domainClaims.mockResolvedValue(["app.example.com"]);
     await expect(apply({ "3000": {}, "5432": { protocol: "tcp" } }))
-      .rejects.toThrow(/may not declare any other port/);
+      .rejects.toThrow(/may not declare a private port alongside others/);
     await expect(apply({ "3000": {}, "4000": {} }))
-      .rejects.toThrow(/may not declare any other port/);
+      .rejects.toThrow(/may not declare a private port alongside others/);
   });
 
   it("still refuses to drop the HTTP port the domain routes to", async () => {
@@ -105,6 +110,6 @@ describe("a spec write against a service that holds a domain", () => {
     domainClaims.mockResolvedValue([]);
     const error = await apply({ "3000": {}, "5432": { protocol: "tcp" } }).then(() => null, (caught: unknown) => caught);
     expect(error).not.toBeNull();
-    expect(String(error)).not.toMatch(/may not declare any other port|need an HTTP port/);
+    expect(String(error)).not.toMatch(/may not declare a private port alongside others|need an HTTP port/);
   });
 });

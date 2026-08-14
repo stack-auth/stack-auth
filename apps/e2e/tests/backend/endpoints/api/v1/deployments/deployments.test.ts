@@ -309,10 +309,9 @@ describe("definition sync", () => {
     };
     // Raw TCP has no TLS termination or HTTP routing to be public with.
     await rejects({ 5432: { protocol: "tcp", public: true } }, "private-only");
-    // A public port may not have siblings of any kind: the runtime serves a port
-    // on every address the service has, so they would be public too. Several
-    // public ports are just another case of that.
-    await rejects({ 3000: { public: true }, 4000: { public: true } }, "may not declare any other port");
+    // A public port may not sit beside a PRIVATE one: the runtime serves a port on
+    // every address the service has, so the private one would be public too.
+    await rejects({ 3000: { public: true }, 9090: {} }, "may not mix public and private ports");
     // The old ARRAY shape is refused by the schema itself. A duplicate port needs no rule of
     // its own any more: two entries for one port are impossible in a record keyed by it.
     await rejects([{ port: 3000, public: true }, { port: 9090 }], "must be a `object` type");
@@ -1338,7 +1337,7 @@ describe("domains", () => {
       body: { hostname: `${siblingId}.verified.test` },
     });
     expect(siblingAdd.status).toBe(400);
-    expect(JSON.stringify(siblingAdd.body)).toContain("may not declare any other port");
+    expect(JSON.stringify(siblingAdd.body)).toContain("may not declare a private port alongside others");
   });
 
   it("refuses to re-sync a domain-holding service into a port list that cannot hold one", async ({ expect }) => {

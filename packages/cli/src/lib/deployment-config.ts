@@ -416,21 +416,31 @@ function evaluatePorts(serviceId: string, portsRaw: unknown): DeploymentPorts {
     ports[String(port)] = { public: isPublic, protocol };
   }
 
-  // FLY.IO PLATFORM LIMITATION: a public port must be a service's ONLY port. Fly
-  // serves its whole listener set on every address the app has, so once a public
-  // IP exists a "private" sibling is on the internet too — publishing, say, a
-  // database. (The entry cannot just be omitted for private ports: private
-  // traffic reaches them over Flycast, which is that same proxy.) See the
-  // `public-service-has-one-port` rule in @hexclave/shared's deployments.ts.
+  // FLY.IO PLATFORM LIMITATION: a service may not MIX public and private ports.
+  // Fly serves its whole listener set on every address the app has, so once a
+  // public IP exists a "private" sibling is on the internet too — publishing,
+  // say, a database. (The entry cannot just be omitted for private ports:
+  // private traffic reaches them over Flycast, which is that same proxy.) See
+  // the `public-and-private-ports-are-not-mixed` rule in @hexclave/shared's
+  // deployments.ts.
   //
-  // One rule, not two: this also covers a record marking SEVERAL ports public,
-  // since those are likewise more than one port, and the remedy is the same
-  // either way — one port per service, each getting its own app, IP and 80/443.
+  // SEVERAL public ports are allowed — nothing leaks when every declared port is
+  // one the author asked to publish. They cost IPv4 reachability instead, which
+  // is warned about below rather than refused.
   const entries = deploymentPortEntries(ports);
-  const publicPort = entries.find((entry) => entry.public);
-  if (publicPort !== undefined && entries.length > 1) {
-    const others = entries.filter((entry) => entry.port !== publicPort.port).map((entry) => entry.port);
-    throw new CliError(`deployment.services.${serviceId} has a public port (${publicPort.port}) and may not declare any other port, but also declares ${others.join(", ")}. A service is exposed on every address it has, so those ports would be public too. Move them to their own service and connect with service(${JSON.stringify(serviceId)}).hostname().`);
+  const publicPorts = entries.filter((entry) => entry.public);
+  const privatePorts = entries.filter((entry) => !entry.public);
+  if (publicPorts.length > 0 && privatePorts.length > 0) {
+    throw new CliError(`deployment.services.${serviceId} mixes public and private ports: ${publicPorts.map((entry) => entry.port).join(", ")} ${publicPorts.length === 1 ? "is" : "are"} public, but ${privatePorts.map((entry) => entry.port).join(", ")} ${privatePorts.length === 1 ? "is" : "are"} not. A service is exposed on every address it has, so those ports would be public too. Either mark them \`public: true\` as well, or move them to their own service and connect with service(${JSON.stringify(serviceId)}).hostname().`);
+  }
+
+  // Not an error, but worth saying at evaluation time rather than only in the
+  // docs: every public port is reachable, yet only ONE of them owns the bare
+  // platform URL and can hold a custom domain, and the author has no other way
+  // to learn which.
+  if (publicPorts.length > 1) {
+    const [holder, ...rest] = publicPorts;
+    console.error(`Note: services.${serviceId} declares ${publicPorts.length} public ports. The lowest (${holder.port}) owns the standard 80/443, so it is the one the service's URL points at and the only port a custom domain can front; ${rest.map((entry) => entry.port).join(", ")} ${rest.length === 1 ? "is reachable at its own" : "are reachable at their own"} port number.`);
   }
   return ports;
 }

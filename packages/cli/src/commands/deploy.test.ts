@@ -82,6 +82,28 @@ describe("deploy command helpers", () => {
     ]))).toEqual([{ serviceId: "web", url: "https://web.fly.dev" }]);
   });
 
+  it("reports every public port of a multi-port service", () => {
+    // The runtime returns ONE url for the service — the standard-ports holder's,
+    // which is why it carries no port. Every other public port hangs off it by
+    // number, and would otherwise appear nowhere the author looks.
+    const services = evaluateDeploymentConfig({
+      deployFilePath: path.join(os.tmpdir(), "hexclave.deploy.ts"),
+      idExport: "test-source",
+      deploymentExport: () => ({ services: {
+        // Declared high-first on purpose: the holder is the lowest port NUMBER,
+        // not whichever key was written first.
+        web: { type: "serverless", ports: { 8443: { public: true }, 3000: { public: true } } },
+      } }),
+      mode: "deploy",
+    }).services;
+    expect(collectPublicUrls(["web"], services, new Map([
+      ["web", { serviceId: "web", status: "deployed", url: "https://web.fly.dev", error: null }],
+    ]))).toEqual([
+      { serviceId: "web", url: "https://web.fly.dev" },
+      { serviceId: "web", url: "https://web.fly.dev:8443" },
+    ]);
+  });
+
   it("fails before upload when a declared dockerfilePath is not in the packaged source", async () => {
     // The pre-flight reads the actual TAR contents rather than the filesystem,
     // so a .dockerignore mistake fails here in seconds instead of minutes later

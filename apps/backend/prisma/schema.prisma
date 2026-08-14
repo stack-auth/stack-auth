@@ -1765,10 +1765,12 @@ model DeploymentService {
   // The ports the container listens on, as a JSON object keyed by port number
   // with `{ public?, protocol? }` values (see DeploymentPortDefinition). There
   // is no separate visibility column: a service is public exactly when one of
-  // its ports is, so the two cannot drift apart. A public port must be the
-  // service's only port and a "tcp" port may never be public — both enforced by
-  // CHECK constraints as well as by the sync route, since this column is the
-  // only record of either fact.
+  // its ports is, so the two cannot drift apart. A "tcp" port may never be
+  // public — enforced by a CHECK constraint as well as by the sync route, since
+  // this column is the only record of the fact. The rule that a service may not
+  // MIX public and private ports is deliberately code-only: it is a fact about
+  // Fly's addressing model rather than about this column, and it is expected to
+  // move. See the migration for why it is not a constraint.
   ports         Json   @default("{}")
   minInstances  Int?
   maxInstances  Int?

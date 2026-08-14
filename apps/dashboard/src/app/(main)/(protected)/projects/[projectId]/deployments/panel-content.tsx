@@ -3,7 +3,7 @@
 import { DesignBadge, DesignButton, DesignInput } from "@/components/design-components";
 import { CopyButton, Label, Spinner, cn } from "@/components/ui";
 import type { AdminDeploymentDomainJson, AdminDeploymentServiceJson, AdminDeploymentServiceOutcomeJson, AdminProject } from "@hexclave/next";
-import { parseConnectionValue } from "@hexclave/shared/dist/deployments";
+import { deploymentPortOwnsStandardPorts, parseConnectionValue } from "@hexclave/shared/dist/deployments";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import {
   ArrowClockwiseIcon,
@@ -659,12 +659,15 @@ export function SettingsContent({ service, isHexclave }: {
     // A missing dockerfile_path means "Railpack build" only once a definition was actually
     // synced — before that (there are no ports either) it just means "not synced yet".
     { label: "Dockerfile", value: service.api?.dockerfile_path, fallback: servicePorts.length > 0 ? "None (Railpack auto-detected build)" : "Not synced yet" },
-    // Every port, with the public one called out: which port is exposed is the
-    // thing a reader most often comes here to check.
+    // Every port, with the public ones called out: which port is exposed is the
+    // thing a reader most often comes here to check. With SEVERAL public ports
+    // the one owning 80/443 is called out too, since it is the port the service's
+    // URL points at and the only one a custom domain can front — not something a
+    // reader can work out from a list of numbers.
     {
       label: servicePorts.length === 1 ? "Container port" : "Container ports",
       value: servicePorts.length > 0
-        ? servicePorts.map((entry) => `${entry.port}${entry.public ? " (public)" : ""}${entry.protocol === "tcp" ? " · tcp" : ""}`).join(", ")
+        ? servicePorts.map((entry) => `${entry.port}${entry.public ? servicePorts.filter((other) => other.public).length > 1 && deploymentPortOwnsStandardPorts(service.api?.ports ?? {}, entry.port) ? " (public · 80/443)" : " (public)" : ""}${entry.protocol === "tcp" ? " · tcp" : ""}`).join(", ")
         : undefined,
       fallback: "Not synced yet",
     },

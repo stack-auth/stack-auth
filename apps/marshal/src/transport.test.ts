@@ -44,14 +44,46 @@ describe("service ports", () => {
     // is half of why the ports are a record.
     // Raw TCP has no TLS termination or HTTP routing to be public with.
     expect(() => validateServiceSpec(spec({ ports: { "5432": { protocol: "tcp", public: true } } }))).toThrow(/private-only/);
-    // Several public ports are several ports, so they trip the one rule below
-    // rather than a separate "at most one public" one.
+    // Several public ports are ACCEPTED: nothing leaks when every declared port
+    // is one the caller asked to publish.
     expect(() => validateServiceSpec(spec({ ports: { "3000": { public: true }, "4000": { public: true } } })))
-      .toThrow(/may not declare any other port/);
+      .not.toThrow();
     // Fly's proxy listeners are per-app, not per-address: a private sibling of a
     // public port would answer on the public IP too.
     expect(() => validateServiceSpec(spec({ ports: { "3000": { public: true }, "9090": {} } })))
-      .toThrow(/may not declare any other port/);
+      .toThrow(/may not mix public and private ports/);
+  });
+
+  it("gives 80/443 to the lowest public port, by number and not by key order", () => {
+    // Determinism is the point: every other public port answers only on its own
+    // number, and a shared IPv4 forwards nothing but 80/443 — so an arbitrary
+    // pick would silently move which URL works from an IPv4-only client.
+    const services = machineFor({ ports: { "8443": { public: true }, "443": { public: true } } }).services as { ports: { port: number }[], internal_port: number }[];
+    const holder = services.find((service) => service.internal_port === 443);
+    const other = services.find((service) => service.internal_port === 8443);
+    expect(holder?.ports.map((entry) => entry.port).sort((a, b) => a - b)).toEqual([80, 443]);
+    expect(other?.ports.map((entry) => entry.port)).toEqual([8443]);
+  });
+
+  it("terminates TLS on a public port's own number, but not on a private one's", () => {
+    // VERIFIED AGAINST REAL FLY: a non-holder public port is reachable ONLY on
+    // its own number, so a plain `http` handler there publishes it in cleartext
+    // while the URL we report for it says https. A private port is the opposite
+    // case — it is reached over Flycast as http://<host>:<port>, and TLS there
+    // would break every private url().
+    const publicPorts = machineFor({ ports: { "3000": { public: true }, "8443": { public: true } } }).services as { ports: { port: number, handlers?: string[] }[], internal_port: number }[];
+    expect(publicPorts.find((service) => service.internal_port === 8443)?.ports)
+      .toEqual([{ port: 8443, handlers: ["tls", "http"] }]);
+    // The holder keeps plain 80 alongside TLS 443, and its own number is public
+    // too, so it terminates TLS as well.
+    const holder = publicPorts.find((service) => service.internal_port === 3000)?.ports ?? [];
+    expect(holder).toContainEqual({ port: 80, handlers: ["http"] });
+    expect(holder).toContainEqual({ port: 443, handlers: ["tls", "http"] });
+    expect(holder).toContainEqual({ port: 3000, handlers: ["tls", "http"] });
+
+    const privatePorts = machineFor({ ports: { "8080": {}, "9090": {} } }).services as { ports: { port: number, handlers?: string[] }[], internal_port: number }[];
+    expect(privatePorts.find((service) => service.internal_port === 9090)?.ports)
+      .toEqual([{ port: 9090, handlers: ["http"] }]);
   });
 
   it("never binds the same external port twice, even when the container listens on 80 or 443", () => {
@@ -90,13 +122,14 @@ describe("service ports", () => {
         concurrency: { type: "requests" },
       }],
     });
-    // Public HTTP: its own number, plus the standard ports so its fly.dev URL
-    // and any custom domain certificate work.
+    // Public HTTP: its own number — terminating TLS, because it is public and
+    // reachable from the internet there — plus the standard ports so its fly.dev
+    // URL and any custom domain certificate work.
     expect(machineFor({ ports: { "3000": { public: true } } })).toMatchObject({
       services: [{
         internal_port: 3000,
         ports: [
-          { port: 3000, handlers: ["http"] },
+          { port: 3000, handlers: ["tls", "http"] },
           { port: 80, handlers: ["http"] },
           { port: 443, handlers: ["tls", "http"] },
         ],

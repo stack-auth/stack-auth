@@ -59,6 +59,7 @@ import {
   formatConnectionValue,
   parseConnectionValue,
   soleHttpDeploymentPort,
+  standardPortsHolderDeploymentPort,
 } from "@hexclave/shared/dist/deployments";
 import { decryptWithKms, encryptWithKms } from "@hexclave/shared/dist/helpers/vault/server-side";
 import { PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets";
@@ -592,14 +593,20 @@ export async function tearDownServices(tenancy: Tenancy, serviceIds: string[]): 
  * KEPT IN SYNC WITH assertServiceCanHoldADomain in apps/marshal/src/domains.ts.
  *
  * Attaching a domain allocates public IPs on the service's Fly app, so it makes
- * the service public exactly the way a `public: true` port does — and therefore
- * has to obey the same one-port rule. Fly `services` are the proxy's listener
- * set for the whole app with no per-address scoping, so every declared port
- * answers on every IP the app holds: an HTTP port next to a private 5432 passes
- * the sync (nothing is `public: true`) and then publishes the database the
- * moment a domain is attached. Two HTTP ports fail for a different reason — only
- * one of them can own the hostname's 80/443, so the attach appears to succeed
- * while binding no predictable route.
+ * the service public exactly the way a `public: true` port does. Fly `services`
+ * are the proxy's listener set for the whole app with no per-address scoping, so
+ * every declared port answers on every IP the app holds: an HTTP port next to a
+ * private 5432 passes the sync (nothing is `public: true`) and then publishes
+ * the database the moment a domain is attached.
+ *
+ * STRICTER THAN THE SYNC RULE, deliberately. The sync accepts a wholly PRIVATE
+ * multi-port service — unreachable, so nothing leaks — and a domain is precisely
+ * what makes it reachable. So the private siblings that were harmless at sync
+ * time are the leak here. The one private port a domain may front is a service's
+ * ONLY port: publishing it is what the domain was asked for. An ALL-public
+ * service is fine at any port count; the domain fronts the standard-ports holder
+ * (the lowest public port, the one that owns 80/443) and the rest keep answering
+ * on their own numbers.
  *
  * The HTTP requirement is separate: a domain terminates TLS and routes HTTP, so
  * a service declaring only TCP ports (or none at all — a portless worker) has
@@ -612,8 +619,11 @@ export function domainPortProblem(ports: DeploymentPorts): string | null {
       ? 'it must declare a port with protocol: "http" to route to (it declares none)'
       : 'it must declare a port with protocol: "http" to route to (it declares only TCP ports)';
   }
-  if (entries.length > 1) {
-    return `it may not declare any other port (it declares ${entries.length}): the runtime's proxy serves every declared port on every address the app has, so the others would be public too. Move the private ports onto their own service and reach them with hostname()`;
+  if (entries.length > 1 && entries.some((entry) => !entry.public)) {
+    return `it may not declare a private port alongside others (it declares ${entries.length}): a domain allocates public IPs, and the runtime's proxy serves every declared port on every address the app has, so the private ones would be public too. Mark them public: true, or move them onto their own service and reach them with hostname()`;
+  }
+  if (domainPortForService(ports) === null) {
+    return `it leaves ambiguous which port the domain would front (it declares ${entries.length}): a certificate terminates TLS on one port only`;
   }
   return null;
 }
@@ -639,11 +649,17 @@ export function normalizeHostnameOrThrow(hostname: string): string {
 }
 
 /**
- * The port a domain fronts on its service: the service's sole HTTP port, which
- * domainPortProblem has already established is the only port it declares.
+ * The port a domain fronts on its service: the one that owns 80/443, since a
+ * certificate terminates TLS there and nowhere else.
+ *
+ * For a private service that is its sole HTTP port (the domain is what publishes
+ * it). For an all-public service it is the standard-ports holder — the lowest
+ * public port — and the other public ports keep answering on their own numbers,
+ * unfronted by the hostname. Null when neither is determinate, which
+ * domainPortProblem reports before any caller reaches this.
  */
 export function domainPortForService(ports: DeploymentPorts): number | null {
-  return soleHttpDeploymentPort(ports);
+  return standardPortsHolderDeploymentPort(ports)?.port ?? soleHttpDeploymentPort(ports);
 }
 
 // ---------------------------------------------------------------------------
