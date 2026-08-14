@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { MAX_BUILD_ENV_BYTES } from "./config.js";
 import { buildEnvByteLength, buildHarnessScript, buildTimeEnv, createFlyBuilder } from "./builds.js";
-import { validateServiceSpec } from "./services.js";
+import { validateDeploymentRequest, validateServiceSpec } from "./services.js";
 
 // startBuild reaches for Marshal's Fly client, config, and object store through module
 // singletons, so the machine-config assertions below need all three stubbed. Only getConfig
@@ -36,13 +36,32 @@ vi.mock("./store.js", () => ({
 describe("buildHarnessScript", () => {
   const script = buildHarnessScript();
 
-  it("branches on DOCKERFILE_PATH with an unset-tolerant default", () => {
+  it("loops over the target manifest and branches per target on its Dockerfile", () => {
+    // One machine builds every service of the deployment, reading a tab-separated
+    // manifest — /bin/sh with no jq is why it is not JSON.
+    expect(script).toContain('while IFS="\\t" read -r SERVICE_KEY PUSH_TARGET DOCKERFILE_PATH ROOT_DIRECTORY; do');
+    expect(script).toContain("done < /marshal-targets.tsv");
+    expect(script).toContain('if [ -n "$DOCKERFILE_PATH" ]; then');
+    expect(script).toContain('--opt "filename=$DOCKERFILE_PATH"');
     // ${VAR:-} rather than $VAR: if the env var is ever dropped (empty values are the most
     // likely casualty of a serializer), `set -u` must not kill the script before fail()
     // can report — that failure mode is a silent 20-minute hang.
-    expect(script).toContain('[ -n "${DOCKERFILE_PATH:-}" ]');
     expect(script).toContain('[ -n "${BUILDKIT_TMPFS_SIZE:-}" ]');
-    expect(script).toContain('--opt "filename=$DOCKERFILE_PATH"');
+  });
+
+  it("names the failing target and stops the whole build there", () => {
+    // The deployment fails as a unit: the services after this one depend on it,
+    // and the caller needs to know WHICH target died in a shared log.
+    expect(script).toContain('fail "$SERVICE_KEY: docker build failed (see the build log above)"');
+    expect(script).toContain('fail "$SERVICE_KEY: railpack build failed (see the build log above)"');
+    // fail() exits, so nothing after it in the loop runs.
+    expect(script).toMatch(/fail\(\) \{[\s\S]*exit 1/);
+  });
+
+  it("reports one digest per target so the applies know which image is whose", () => {
+    expect(script).toContain('DIGESTS="$DIGESTS\\"$SERVICE_KEY\\":\\"$DIGEST\\""');
+    expect(script).toContain(`printf '{"targets":{%s}}' "$DIGESTS" > /tmp/result.json`);
+    expect(script).toContain('fail "$SERVICE_KEY: the build produced no image digest"');
   });
 
   it("verifies the railpack CLI checksum before executing it", () => {
@@ -69,7 +88,9 @@ describe("buildHarnessScript build-time env", () => {
     // A secret mount is the channel that does NOT write the value into an image layer, so
     // it is the one every var gets in both build modes.
     expect(script).toContain("printf ' --secret id=%s,src=%s'");
-    expect(script).toContain("set -- $(secret_args)");
+    // Per target: the directory is the argument, so one service's values are never
+    // offered to another's build.
+    expect(script).toContain('set -- $(secret_args "$ENV_DIR")');
   });
 
   it("additionally passes build args for a Dockerfile build", () => {
@@ -81,14 +102,14 @@ describe("buildHarnessScript build-time env", () => {
     expect(script).toContain('set -- "$@" --env "${f##*/}=$(cat "$f")"');
     // The frontend keys its layer cache on this build arg; without it a changed secret
     // would silently reuse the layer built from the previous one.
-    expect(script).toContain('--opt "build-arg:secrets-hash=$(secrets_hash)"');
+    expect(script).toContain('--opt "build-arg:secrets-hash=$(secrets_hash "$ENV_DIR")"');
   });
 
   it("tolerates a build with no env at all", () => {
     // Absent var, absent directory, and present-but-empty directory all have to reach
     // buildctl with an empty argument list rather than an unbound-variable death under
     // `set -u` or a literal "dir/*" glob argument.
-    expect(script).toContain('if [ -n "${BUILD_ENV_DIR:-}" ] && [ -d "${BUILD_ENV_DIR:-}" ]; then BUILD_ENV_DIR_OK=1; fi');
+    expect(script).toContain('[ -d "$1" ] || return 0');
     expect(script).toContain('[ -f "$f" ] || continue');
     expect(script).toContain('if [ "$#" -gt 0 ]; then');
   });
@@ -103,13 +124,15 @@ describe("buildHarnessScript build-time env", () => {
 describe("createFlyBuilder machine configuration", () => {
   const startOptions = {
     ns: "ns",
-    key: "web",
-    buildId: "01HZZZZZZZZZZZZZZZZZZZZZZZ",
-    revision: "abc123",
-    appName: "hx-test-ns-web",
+    deploymentId: "01HZZZZZZZZZZZZZZZZZZZZZZZ",
     uploadId: "00000000-0000-4000-8000-000000000001",
-    dockerfilePath: null,
-    buildEnv: { NEXT_PUBLIC_API_URL: "https://api.example.com", OPENAI_API_KEY: "sk-secret" },
+    targets: [{
+      serviceKey: "web",
+      pushTarget: "registry.fly.io/hx-test-ns-web:01hzzzzzzzzzzzzzzzzzzzzzzz",
+      dockerfilePath: null,
+      rootDirectory: null,
+      buildEnv: { NEXT_PUBLIC_API_URL: "https://api.example.com", OPENAI_API_KEY: "sk-secret" },
+    }],
   };
   const lease = { assertOwned: async () => {} } as any;
 
@@ -119,9 +142,13 @@ describe("createFlyBuilder machine configuration", () => {
     const config = (createMachine.mock.calls[0] as any)[1].config;
 
     const files = Object.fromEntries(config.files.map((file: any) => [file.guest_path, Buffer.from(file.raw_value, "base64").toString("utf8")]));
-    expect(files["/marshal-build-env/NEXT_PUBLIC_API_URL"]).toBe("https://api.example.com");
-    expect(files["/marshal-build-env/OPENAI_API_KEY"]).toBe("sk-secret");
+    // Per TARGET, because one machine builds every service of the deployment: a
+    // value belonging to one service must not be offered to another's build.
+    expect(files["/marshal-build-env/web/NEXT_PUBLIC_API_URL"]).toBe("https://api.example.com");
+    expect(files["/marshal-build-env/web/OPENAI_API_KEY"]).toBe("sk-secret");
     expect(files["/marshal-build.sh"]).toContain("MARSHAL_BUILD_START");
+    // The manifest the harness loops over, one tab-separated line per target.
+    expect(files["/marshal-targets.tsv"]).toBe("web\tregistry.fly.io/hx-test-ns-web:01hzzzzzzzzzzzzzzzzzzzzzzz\t\t\n");
 
     // The env block is Marshal's own credentials plus pointers. A tenant value landing
     // here would sit next to the org token and reach `railpack prepare`, which runs
@@ -134,11 +161,60 @@ describe("createFlyBuilder machine configuration", () => {
 
   it("skips an empty value rather than sending an ambiguous empty file", async () => {
     createMachine.mockClear();
-    await createFlyBuilder().startBuild({ ...startOptions, buildEnv: { SET: "x", UNSET: "" } }, lease);
+    await createFlyBuilder().startBuild({
+      ...startOptions,
+      targets: [{ ...startOptions.targets[0], buildEnv: { SET: "x", UNSET: "" } }],
+    }, lease);
     const config = (createMachine.mock.calls[0] as any)[1].config;
     const paths = config.files.map((file: any) => file.guest_path);
-    expect(paths).toContain("/marshal-build-env/SET");
-    expect(paths).not.toContain("/marshal-build-env/UNSET");
+    expect(paths).toContain("/marshal-build-env/web/SET");
+    expect(paths).not.toContain("/marshal-build-env/web/UNSET");
+  });
+});
+
+describe("a deployment with several targets", () => {
+  const lease = { assertOwned: async () => {} } as any;
+
+  it("gives every target its own env directory and one manifest line", async () => {
+    createMachine.mockClear();
+    await createFlyBuilder().startBuild({
+      ns: "ns",
+      deploymentId: "01HZZZZZZZZZZZZZZZZZZZZZZZ",
+      uploadId: "00000000-0000-4000-8000-000000000001",
+      targets: [
+        { serviceKey: "web", pushTarget: "registry.fly.io/web:rev", dockerfilePath: "apps/web/Dockerfile", rootDirectory: "apps/web", buildEnv: { WEB_ONLY: "w" } },
+        { serviceKey: "api", pushTarget: "registry.fly.io/api:rev", dockerfilePath: null, rootDirectory: "apps/api", buildEnv: { API_ONLY: "a" } },
+      ],
+    }, lease);
+    const config = (createMachine.mock.calls[0] as any)[1].config;
+    const files = Object.fromEntries(config.files.map((file: any) => [file.guest_path, Buffer.from(file.raw_value, "base64").toString("utf8")]));
+    expect(files["/marshal-targets.tsv"]).toBe([
+      "web\tregistry.fly.io/web:rev\tapps/web/Dockerfile\tapps/web",
+      "api\tregistry.fly.io/api:rev\t\tapps/api",
+      "",
+    ].join("\n"));
+    // Neither target can see the other's values.
+    expect(files["/marshal-build-env/web/WEB_ONLY"]).toBe("w");
+    expect(files["/marshal-build-env/api/API_ONLY"]).toBe("a");
+    expect(files["/marshal-build-env/web/API_ONLY"]).toBeUndefined();
+    expect(files["/marshal-build-env/api/WEB_ONLY"]).toBeUndefined();
+  });
+
+  it("sizes the machine for Railpack when ANY target auto-detects", async () => {
+    // One machine builds them all, so the largest requirement wins: a
+    // Dockerfile-only guest would time out the railpack target's build.
+    createMachine.mockClear();
+    await createFlyBuilder().startBuild({
+      ns: "ns",
+      deploymentId: "01HZZZZZZZZZZZZZZZZZZZZZZZ",
+      uploadId: "00000000-0000-4000-8000-000000000001",
+      targets: [
+        { serviceKey: "web", pushTarget: "registry.fly.io/web:rev", dockerfilePath: "Dockerfile", rootDirectory: null, buildEnv: {} },
+        { serviceKey: "api", pushTarget: "registry.fly.io/api:rev", dockerfilePath: null, rootDirectory: null, buildEnv: {} },
+      ],
+    }, lease);
+    const config = (createMachine.mock.calls[0] as any)[1].config;
+    expect(config.env.BUILDKIT_TMPFS_SIZE).toBeDefined();
   });
 });
 
@@ -160,8 +236,8 @@ describe("buildTimeEnv", () => {
 
 describe("validateServiceSpec build env size", () => {
   const specWithEnv = (env: Record<string, unknown>) => ({
-    config: { type: "serverless", min_instances: 0, max_instances: 1, ports: [{ port: 3000 }] },
-    source: { upload_id: "00000000-0000-4000-8000-000000000001" },
+    config: { type: "serverless", min_instances: 0, max_instances: 1, ports: { "3000": {} } },
+    source: { image: "registry.example.com/app@sha256:abc" },
     env,
   });
 
@@ -171,43 +247,62 @@ describe("validateServiceSpec build env size", () => {
 
   it("does not count refs, which never reach the builder", () => {
     const env: Record<string, unknown> = { BLOB: { value: "x".repeat(MAX_BUILD_ENV_BYTES - 100) } };
-    for (let index = 0; index < 50; index++) env[`REF_${index}`] = { ref: "api.internal_url" };
+    for (let index = 0; index < 50; index++) env[`REF_${index}`] = { ref: "api.url:8080" };
     expect(() => validateServiceSpec(specWithEnv(env))).not.toThrow();
   });
 });
 
-describe("validateServiceSpec dockerfile_path", () => {
-  const baseSpec = {
-    config: { type: "serverless", min_instances: 0, max_instances: 1, ports: [{ port: 3000 }] },
-    source: { upload_id: "00000000-0000-4000-8000-000000000001" },
-    env: {},
-  };
-  const withDockerfilePath = (dockerfilePath: unknown) => ({
-    ...baseSpec,
-    source: { ...baseSpec.source, dockerfile_path: dockerfilePath },
+describe("validateDeploymentRequest paths", () => {
+  const request = (target: Record<string, unknown>) => ({
+    upload_id: "00000000-0000-4000-8000-000000000001",
+    targets: [{
+      service_key: "web",
+      spec: { config: { type: "serverless", min_instances: 0, max_instances: 1, ports: { "3000": {} } }, env: {} },
+      ...target,
+    }],
+    order: [["web"]],
   });
 
-  it("accepts a normalized relative path and keeps it on the spec", () => {
-    const spec = validateServiceSpec(withDockerfilePath("docker/Dockerfile.web"));
-    expect(spec.source).toEqual({ upload_id: "00000000-0000-4000-8000-000000000001", dockerfile_path: "docker/Dockerfile.web" });
+  it("keeps a normalized relative dockerfile path and root directory", () => {
+    const parsed = validateDeploymentRequest(request({ dockerfile_path: "docker/Dockerfile.web", root_directory: "apps/web" }));
+    expect(parsed.targets[0]).toMatchObject({ dockerfile_path: "docker/Dockerfile.web", root_directory: "apps/web" });
   });
 
-  it("omits the field entirely when not provided (Railpack mode)", () => {
-    const spec = validateServiceSpec(baseSpec);
-    expect(spec.source).toEqual({ upload_id: "00000000-0000-4000-8000-000000000001" });
-    expect("dockerfile_path" in spec.source).toBe(false);
+  it("omits both when not provided (Railpack mode, upload root)", () => {
+    const parsed = validateDeploymentRequest(request({}));
+    expect("dockerfile_path" in parsed.targets[0]).toBe(false);
+    expect("root_directory" in parsed.targets[0]).toBe(false);
+    // "." is the upload root written out, which is the same as saying nothing.
+    expect("root_directory" in validateDeploymentRequest(request({ root_directory: "." })).targets[0]).toBe(false);
   });
 
-  it("rejects non-normalized and unsafe paths", () => {
-    for (const invalid of ["", "/abs/Dockerfile", "../Dockerfile", "a/../b", ".", "./Dockerfile", "a//b", "back\\slash", "tab\tchar", "x".repeat(513), 42]) {
-      expect(() => validateServiceSpec(withDockerfilePath(invalid))).toThrow(/dockerfile_path/);
+  it("rejects paths that could escape or break the builder's manifest", () => {
+    // Both fields reach the harness as TAB-separated manifest fields and as shell
+    // variables, so a tab or a traversal segment is refused rather than escaped.
+    for (const invalid of ["/abs/Dockerfile", "../Dockerfile", "a/../b", "a//b", "back\\slash", "tab\tchar", "x".repeat(513), 42]) {
+      expect(() => validateDeploymentRequest(request({ dockerfile_path: invalid })), String(invalid)).toThrow(/dockerfile_path/);
+      expect(() => validateDeploymentRequest(request({ root_directory: invalid })), String(invalid)).toThrow(/root_directory/);
     }
   });
 
-  it("rejects dockerfile_path on an image source", () => {
-    expect(() => validateServiceSpec({
-      ...baseSpec,
-      source: { image: "registry.example.com/app@sha256:abc", dockerfile_path: "Dockerfile" },
-    })).toThrow(/only valid together with source.upload_id/);
+  it("requires the order to list every target exactly once", () => {
+    const base = request({});
+    expect(() => validateDeploymentRequest({ ...base, order: [[]] })).toThrow(/every target exactly once/);
+    expect(() => validateDeploymentRequest({ ...base, order: [["web"], ["web"]] })).toThrow(/every target exactly once/);
+    expect(() => validateDeploymentRequest({ ...base, order: [["other"]] })).toThrow(/every target exactly once/);
+  });
+
+  it("rejects two targets naming one service", () => {
+    const base = request({});
+    expect(() => validateDeploymentRequest({ ...base, targets: [base.targets[0], base.targets[0]], order: [["web"]] }))
+      .toThrow(/same service twice/);
+  });
+
+  it("validates each target's spec on THIS request rather than after the build", () => {
+    // A five-minute build that ends in "your ports are invalid" is the failure
+    // this exists to prevent.
+    expect(() => validateDeploymentRequest(request({
+      spec: { config: { type: "serverless", min_instances: 0, max_instances: 1, ports: { "3000": { public: true }, "5432": {} } }, env: {} },
+    }))).toThrow(/may not declare any other port/);
   });
 });

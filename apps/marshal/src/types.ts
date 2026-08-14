@@ -12,7 +12,8 @@ export type ServiceType = string;
 // the backend re-applies when the blocking output appears.
 export type EnvValue =
   | { value: string }
-  | { ref: string }; // "<service_key>.<output_key>"
+  // "<service_key>.<output_key>", with an optional ":<port>" on `url`.
+  | { ref: string };
 
 // A persistent disk mounted into the container. Fly volumes are a slice of local NVMe on
 // ONE host: a volume attaches to at most one machine and a machine mounts at most one
@@ -28,26 +29,49 @@ export type VolumeConfig = {
 // "serverless" → scales between bounds, autostop "stop": every start is cold, no volume.
 export type ServiceKind = "server" | "serverless";
 
-// One port the container listens on. Each becomes its own entry in the machine's
-// Fly `services` array.
+// How one port the container listens on is exposed. Each becomes its own entry
+// in the machine's Fly `services` array.
 //
 // `public` allocates Fly ingress and gives the service a built-in fly.dev URL.
 // At most one port per service may be public: a hostname's 80/443 reach exactly
 // one of them. A "tcp" port is raw — no TLS termination, no HTTP routing — so it
 // is private-only and reachable over Flycast at its own number.
 export type PortConfig = {
-  port: number,
   public: boolean,
-  transport: "http" | "tcp",
+  protocol: "http" | "tcp",
 };
+
+// The ports a service listens on, KEYED BY PORT NUMBER (as a decimal string —
+// JSON has no numeric keys). The same shape the deploy file writes, kept
+// unchanged through the backend so nothing translates between two spellings of
+// one thing, and so a duplicate port is impossible by construction.
+export type PortsConfig = Record<string, PortConfig>;
+
+// One declared port with its number parsed out, for the many places that have to
+// compare, count or iterate ports. Ascending by number, so every caller sees the
+// same order (key order would put "80" after "8080" for one caller and not
+// another).
+export type PortEntry = { port: number, public: boolean, protocol: "http" | "tcp" };
+
+export function portEntries(ports: PortsConfig): PortEntry[] {
+  const entries: PortEntry[] = [];
+  for (const [portKey, config] of Object.entries(ports)) {
+    if (!/^[0-9]{1,5}$/.test(portKey)) continue;
+    const port = Number(portKey);
+    if (port < 1 || port > 65535) continue;
+    entries.push({ port, public: config.public === true, protocol: config.protocol === "tcp" ? "tcp" : "http" });
+  }
+  return entries.sort((a, b) => a.port - b.port);
+}
 
 export type ContainerConfig = {
   type: ServiceKind,
   min_instances: number,
-  max_instances: number, // >= min_instances; v1 cap: 5. Always 0/1 for "server".
-  // At least one. Readiness = a declared port accepts connections. There is no
-  // service-level visibility: the service is public exactly when a port is.
-  ports: PortConfig[],
+  max_instances: number, // >= min_instances; v1 cap: 10. Always 0/1 for "server".
+  // May be empty (a worker that only dials out). Readiness = a declared port
+  // accepts connections. There is no service-level visibility: the service is
+  // public exactly when a port is.
+  ports: PortsConfig,
   // Absent = the container filesystem is entirely ephemeral. Keyed by VOLUME ID, which
   // names the Fly volume (see flyVolumeName): the id, not the service, identifies the
   // disk, so the same id under a different service moves the mount there. At most one
@@ -57,12 +81,55 @@ export type ContainerConfig = {
 
 export type ServiceSpec = {
   config: ContainerConfig,
-  // { upload_id } is the INPUT form; the stored spec is rewritten to { image } on build success.
-  // dockerfile_path (tarball-root-relative) selects the Dockerfile to build from; absent =
-  // the builder auto-detects the build with Railpack (https://railpack.com).
-  source: { upload_id: string, dockerfile_path?: string } | { image: string },
+  // Always an already-built image. Images are produced by a DEPLOYMENT, which
+  // builds every service of a deployment source from one uploaded tree in one
+  // builder machine (see startSourceDeployment); the applies follow the build.
+  source: { image: string },
   env: Record<string, EnvValue>,
   // No `domains` field — hostnames attach via the domain routes.
+};
+
+// ---------------------------------------------------------------------------
+// Deployments: one `hexclave deploy` of one deployment source.
+
+// What to build for one service, and what to run once its image exists.
+export type DeploymentTarget = {
+  service_key: string,
+  // Where the service's code lives inside the uploaded tree. The build CONTEXT
+  // is the whole upload (a monorepo service usually has to reach shared code
+  // above its own directory); this only scopes where detection starts.
+  root_directory?: string,
+  // Relative to the ROOT of the upload; absent = the builder auto-detects the
+  // build with Railpack (https://railpack.com).
+  dockerfile_path?: string,
+  // The spec to apply once the image exists; its `source` is filled in with what
+  // the build produced.
+  spec: Omit<ServiceSpec, "source">,
+};
+
+export type DeploymentStatus = "queued" | "building" | "deploying" | "succeeded" | "failed" | "canceled";
+
+// "skipped" = the deployment stopped before reaching it (the build failed, or an
+// earlier level did).
+export type DeploymentServiceStatus = "pending" | "building" | "deploying" | "deployed" | "failed" | "skipped";
+
+export type DeploymentServiceState = {
+  service_key: string,
+  status: DeploymentServiceStatus,
+  revision: string | null,
+  url: string | null,
+  error: string | null,
+};
+
+export type Deployment = {
+  id: string, // ULID (time-ordered)
+  source_id: string,
+  status: DeploymentStatus,
+  has_logs: boolean,
+  error: string | null,
+  started_at_millis: number,
+  finished_at_millis: number | null,
+  services: DeploymentServiceState[],
 };
 
 export type DnsRecord = { type: string, name: string, value: string };
@@ -85,7 +152,8 @@ export type ServiceState = {
   instances: number, // currently running; 0 while idle; serverful is 0 or 1
   revision: string | null, // currently running
   target_revision: string | null, // converging toward, when different
-  // internal_host, internal_url — known at creation, always present. url — null until a domain verifies.
+  // `hostname` — a pure function of the service identity, so always present.
+  // `url` — the public URL, null until the service is up (or a domain verifies).
   outputs: Record<string, string | null>,
   domains: ServiceDomainState[],
   error: string | null,
@@ -97,18 +165,6 @@ export type LogLine = {
   stream: "stdout" | "stderr" | "system",
   instance: string | null, // null for build logs and platform "system" events
   text: string,
-};
-
-export type BuildStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
-
-export type Build = {
-  id: string, // ULID (time-ordered)
-  revision: string,
-  status: BuildStatus,
-  has_logs: boolean, // false for no-artifact revisions (rescale, env edit, { image } deploy)
-  error: string | null,
-  started_at_millis: number,
-  finished_at_millis: number | null,
 };
 
 // ---------------------------------------------------------------------------
@@ -127,18 +183,25 @@ export type StoredSpec = {
   last_apply_error: string | null,
 };
 
-export type StoredBuild = Build & {
+export type StoredDeployment = Omit<Deployment, "services"> & {
   ns: string,
-  key: string,
+  // Dependency levels of service keys: everything in one level is applied
+  // concurrently, and a level starts only once the previous one has converged.
+  order: string[][],
+  targets: DeploymentTarget[],
+  // Per-target state, keyed by service key.
+  services: Record<string, DeploymentServiceState>,
+  // The image each target's build pushed, keyed by service key; filled in by the
+  // build-completion webhook.
+  images: Record<string, string>,
   // Set for real Fly builds so live logs can be proxied from the builder machine and the
-  // lazy backstop can detect a dead builder. Null for mock/no-artifact builds.
+  // lazy backstop can detect a dead builder. Null for mock builds.
   builder_app: string | null,
   builder_machine_id: string | null,
-  // The pushed image ref (registry.fly.io/<app>@sha256:...) once succeeded.
-  image: string | null,
-  // The consumed upload slot, so the object can be deleted once the build succeeds
-  // (the bucket lifecycle rule on uploads/ is the backstop). Null for no-artifact builds.
-  upload_id: string | null,
+  // The upload the build consumed, kept for diagnostics; the bytes themselves are
+  // copied to a deployment-specific object and the original is deleted once the
+  // build owns its copy.
+  upload_id: string,
 };
 
 export type ReconciliationLease = {

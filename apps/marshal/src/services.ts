@@ -4,22 +4,41 @@ import { BUILD_TIMEOUT_SECONDS, MACHINE_GUEST, MAX_BUILD_ENV_BYTES, MAX_INSTANCE
 import { MarshalError, badRequest, conflict, notFound } from "./errors.js";
 import { FlyClient, flyClientForNamespaceOrg, type FlyCertificate, type FlyMachine, type FlyVolume } from "./fly/client.js";
 import { fetchAllLogs } from "./logs.js";
-import { appNameForService, internalHostForService, networkForNamespace } from "./naming.js";
-import { MutationOutcomeUnknownError } from "./mutation-safety.js";
+import { appNameForService, hostnameForService, networkForNamespace } from "./naming.js";
+import { MutationOutcomeUnknownError, RECONCILIATION_TAKEOVER_GRACE_MS } from "./mutation-safety.js";
 import { redactSecrets } from "./redact.js";
 import { ReconciliationLeaseLostError, withReconciliationLease, type ReconciliationLeaseGuard } from "./reconciliation-lock.js";
 import { computeRevision } from "./revision.js";
 import { reconcilePublicIps } from "./public-networking.js";
-import { createBuild, deleteSpecConditionally, deleteUpload, deleteValidatedUpload, listBuilds, listDomainClaimsForService, listSpecKeys, readBuild, readBuildVersioned, readDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, replaceBuild, statUpload, writeBuildLog, writeSpec, writeValidatedUpload } from "./store.js";
+import { createDeployment, deleteSpecConditionally, deleteUpload, deleteValidatedUpload, listDomainClaimsForService, listSpecKeys, readDeployment, readDeploymentVersioned, readDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, replaceDeployment, statUpload, writeDeploymentLog, writeSpec, writeValidatedUpload } from "./store.js";
 import { validateSourceArchive } from "./source-archive.js";
-import type { DnsRecord, EnvValue, PortConfig, ServiceDomainState, ServiceSpec, ServiceState, StoredBuild, StoredSpec, VolumeConfig } from "./types.js";
+import { portEntries, type Deployment, type DeploymentServiceState, type DeploymentTarget, type DnsRecord, type EnvValue, type PortEntry, type PortsConfig, type ServiceDomainState, type ServiceSpec, type ServiceState, type StoredDeployment, type StoredSpec, type VolumeConfig } from "./types.js";
 import { ulid } from "./ulid.js";
 
 const ENV_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
-// The optional `:<port>` suffix belongs to `internal_url`, which names the port
-// it means on a service that declares several.
+// The optional `:<port>` suffix belongs to `url`, which names the port it means
+// on a service that declares several.
 const REF_REGEX = /^([a-zA-Z0-9_][a-zA-Z0-9_-]*)\.([A-Za-z0-9_]+)(?::([0-9]{1,5}))?$/;
 const SERVICE_KEY_REGEX = /^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,62}$/;
+const SOURCE_ID_REGEX = /^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,62}$/;
+// A bound on one deployment, not a platform limit: a deploy file declaring more
+// services than this is far likelier to be a mistake than a real source, and every
+// target is an image built serially in one machine.
+const MAX_TARGETS_PER_DEPLOYMENT = 20;
+// The `source` a target's spec is validated with. A target has no image until its
+// build finishes, but validating the rest of the spec on the REQUEST is what makes
+// a bad port list a 400 now rather than a failure after a five-minute build.
+const PLACEHOLDER_IMAGE = "marshal-placeholder:pending-build";
+// Advancing a deployment must not queue behind a busy source: if another request
+// holds the lease it is already doing this work, so give up quickly and report
+// what is stored (see advanceDeployment).
+const DEPLOYMENT_ADVANCE_TIMINGS = {
+  durationMs: 2 * 60 * 1000,
+  renewIntervalMs: 20 * 1000,
+  contendedPollMs: 250,
+  takeoverGraceMs: RECONCILIATION_TAKEOVER_GRACE_MS,
+  acquireTimeoutMs: 1000,
+};
 const NAMESPACE_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
 // upload_id flows into an S3 object key (uploads/<ns>/<id>.tar.gz); validate it so a
 // path-traversal id can't escape the prefix. The backend mints these as randomUUIDs.
@@ -28,6 +47,9 @@ const UPLOAD_ID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-
 export const BUILD_ID_REGEX = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 // Grace on top of the harness's own watchdog before the lazy backstop declares a build dead.
 const BUILD_STALE_GRACE_MS = 5 * 60 * 1000;
+// Errors are surfaced to the caller and stored, so they are bounded: a build can
+// print a great deal before it dies.
+const MAX_ERROR_LENGTH = 2000;
 
 function isReconciliationFencingError(error: unknown): boolean {
   return error instanceof ReconciliationLeaseLostError || error instanceof MutationOutcomeUnknownError;
@@ -36,6 +58,17 @@ function isReconciliationFencingError(error: unknown): boolean {
 export function validateNamespace(ns: string): string {
   if (!NAMESPACE_REGEX.test(ns)) throw badRequest(`invalid namespace ${JSON.stringify(ns)}`);
   return ns;
+}
+
+/**
+ * A deployment source id. Looser than a service key because the backend's ids
+ * may contain dots (deployments declared in hexclave.config.ts belong to a
+ * source named after the file), and it reaches an S3 key prefix only through the
+ * lease, so traversal characters are what matter.
+ */
+export function validateSourceId(sourceId: string): string {
+  if (!SOURCE_ID_REGEX.test(sourceId)) throw badRequest(`invalid deployment source id ${JSON.stringify(sourceId)}`);
+  return sourceId;
 }
 
 export function validateServiceKey(key: string): string {
@@ -67,21 +100,29 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   // An EMPTY array is legal: a worker with nothing listening, which gets an empty
   // Fly `services` array. It only ever runs while pinned, since autostart lives on
   // a `services` entry — that is the caller's call to make, not ours to refuse.
-  if (!Array.isArray(config.ports)) throw badRequest("config.ports must be an array");
-  if (config.ports.length > MAX_PORTS_PER_SERVICE) throw badRequest(`config.ports may declare at most ${MAX_PORTS_PER_SERVICE} ports`);
-  const ports: PortConfig[] = config.ports.map((portRaw) => {
+  // Keyed by port number, exactly as the deploy file writes it — so a duplicate
+  // port is impossible by construction and the key is what has to be validated.
+  // Arrays are excluded explicitly: asRecord accepts them (an array IS an
+  // object), so the previous array shape would otherwise be read as "no ports"
+  // — silently deploying a service that listens on nothing.
+  const portsRecord = Array.isArray(config.ports) ? null : asRecord(config.ports);
+  if (portsRecord === null) throw badRequest("config.ports must be an object keyed by port number");
+  if (Object.keys(portsRecord).length > MAX_PORTS_PER_SERVICE) throw badRequest(`config.ports may declare at most ${MAX_PORTS_PER_SERVICE} ports`);
+  const ports: PortsConfig = {};
+  for (const [portKey, portRaw] of Object.entries(portsRecord)) {
+    if (!/^[0-9]{1,5}$/.test(portKey) || Number(portKey) < 1 || Number(portKey) > 65535) {
+      throw badRequest("each config.ports key must be a port number between 1 and 65535");
+    }
     const portRecord = asRecord(portRaw);
-    if (portRecord === null) throw badRequest("each config.ports entry must be an object");
-    const port = portRecord.port;
-    if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) throw badRequest("each config.ports entry must have a valid port number");
+    if (portRecord === null) throw badRequest("each config.ports value must be an object");
     const isPublic = portRecord.public ?? false;
     if (typeof isPublic !== "boolean") throw badRequest("config.ports[].public must be a boolean");
-    const transport = portRecord.transport ?? "http";
-    if (transport !== "http" && transport !== "tcp") throw badRequest('config.ports[].transport must be "http" or "tcp"');
-    if (transport === "tcp" && isPublic) throw badRequest('a "tcp" port is private-only and cannot be public');
-    return { port, public: isPublic, transport };
-  });
-  if (new Set(ports.map((entry) => entry.port)).size !== ports.length) throw badRequest("config.ports must not declare the same port twice");
+    const protocol = portRecord.protocol ?? "http";
+    if (protocol !== "http" && protocol !== "tcp") throw badRequest('config.ports[].protocol must be "http" or "tcp"');
+    if (protocol === "tcp" && isPublic) throw badRequest('a "tcp" port is private-only and cannot be public');
+    ports[portKey] = { public: isPublic, protocol };
+  }
+  const portList = portEntries(ports);
   // FLY.IO PLATFORM LIMITATION — see the `public-service-has-one-port` rule in
   // @hexclave/shared's deployments.ts for the full write-up and the `.internal`
   // escape hatch that would lift it.
@@ -96,7 +137,7 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   //
   // Subsumes the old "at most one public port" rule: two public ports are two
   // ports, so they fail here.
-  if (ports.length > 1 && ports.some((entry) => entry.public)) {
+  if (portList.length > 1 && portList.some((entry) => entry.public)) {
     throw badRequest("a service with a public port may not declare any other port: the proxy serves every declared port on every address the app has, so the others would be public too");
   }
   // A "server" is one suspending instance by definition. Reject rather than coerce: the
@@ -149,30 +190,14 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
     if (validatedVolumes.size > 0) persistentVolumes = Object.fromEntries(validatedVolumes);
   }
 
+  // A spec always names an already-built image. Building belongs to a DEPLOYMENT
+  // (see startSourceDeployment), which builds every service of a deployment
+  // source from one uploaded tree in one builder machine — so by the time a spec
+  // is applied, its image exists.
   const source = asRecord(record.source);
   if (source === null) throw badRequest("source is required");
-  const hasUploadId = typeof source.upload_id === "string" && source.upload_id !== "";
-  const hasImage = typeof source.image === "string" && source.image !== "";
-  if (hasUploadId === hasImage) throw badRequest("source must be exactly one of { upload_id } or { image }");
-  if (hasUploadId && !UPLOAD_ID_REGEX.test(source.upload_id as string)) throw badRequest("source.upload_id must be a UUID");
-  // Optional Dockerfile location within the tarball. It flows into the builder harness (as
-  // a quoted shell env var and a buildctl --opt), so reject anything that isn't a plain
-  // NORMALIZED relative path: absolute paths, traversal, "."/empty segments, backslashes,
-  // control chars. Normalization matters beyond safety: dockerfile_path is part of the
-  // revision hash, so "./Dockerfile" and "Dockerfile" would otherwise be two different
-  // revisions of an identical build.
-  let dockerfilePath: string | undefined;
-  if (hasUploadId && source.dockerfile_path !== undefined) {
-    const value = source.dockerfile_path;
-    if (typeof value !== "string" || value === "" || value.length > 512) throw badRequest("source.dockerfile_path must be a non-empty string of at most 512 characters");
-    // eslint-disable-next-line no-control-regex
-    if (value.startsWith("/") || value.includes("\\") || value.split("/").some((segment) => segment === "" || segment === "." || segment === "..") || /[\x00-\x1f]/.test(value)) {
-      throw badRequest("source.dockerfile_path must be a normalized relative path inside the source tarball (no leading \"/\", no \".\" or \"..\" segments, no backslashes or control characters)");
-    }
-    dockerfilePath = value;
-  } else if (source.dockerfile_path !== undefined) {
-    throw badRequest("source.dockerfile_path is only valid together with source.upload_id");
-  }
+  const image = source.image;
+  if (typeof image !== "string" || image === "") throw badRequest("source.image is required (a spec names an already-built image; builds run as part of a deployment)");
 
   const env = asRecord(record.env);
   if (env === null) throw badRequest("env is required (use {} for no env vars)");
@@ -203,9 +228,7 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
     config: { type: serviceKind, min_instances: minInstances, max_instances: maxInstances, ports, ...(persistentVolumes !== undefined ? { persistent_volumes: persistentVolumes } : {}) },
     // Key order is fixed here on purpose: computeRevision hashes the JSON serialization of
     // this object, so construction must stay canonical.
-    source: hasUploadId
-      ? { upload_id: source.upload_id as string, ...(dockerfilePath !== undefined ? { dockerfile_path: dockerfilePath } : {}) }
-      : { image: source.image as string },
+    source: { image },
     env: Object.fromEntries(validatedEnv),
   };
 }
@@ -217,18 +240,25 @@ type ResolvedEnv =
   | { ok: true, env: Record<string, string> }
   | { ok: false, blockedRefs: string[] };
 
-// internal_host is a pure function of the service name. Port-dependent outputs
-// need the target spec: a URL carries the port, so `internal_url` either names
-// one in the ref or requires the target to declare exactly one HTTP port.
-async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvValue>): Promise<ResolvedEnv> {
+// `hostname` is a pure function of the service name. `url` names ONE port, so it
+// needs to know that port's protocol and whether it is public — from the
+// deployment's own targets when the target is part of this deploy (which is what
+// keeps a private url() from depending on deploy ORDER), and otherwise from the
+// target's stored spec.
+async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvValue>, knownPorts?: Map<string, PortsConfig>): Promise<ResolvedEnv> {
   const { envId } = getConfig();
   const resolved = new Map<string, string>();
   const blockedRefs: string[] = [];
   const urlCache = new Map<string, string | null>();
-  const targetSpecCache = new Map<string, StoredSpec | null>();
-  const targetSpec = async (targetKey: string): Promise<StoredSpec | null> => {
-    if (!targetSpecCache.has(targetKey)) targetSpecCache.set(targetKey, await readSpec(ns, targetKey));
-    return targetSpecCache.get(targetKey) ?? null;
+  const targetPortsCache = new Map<string, PortsConfig | null>();
+  const targetPorts = async (targetKey: string): Promise<PortsConfig | null> => {
+    const known = knownPorts?.get(targetKey);
+    if (known !== undefined) return known;
+    if (!targetPortsCache.has(targetKey)) {
+      const spec = await readSpec(ns, targetKey);
+      targetPortsCache.set(targetKey, spec === null ? null : spec.spec.config.ports);
+    }
+    return targetPortsCache.get(targetKey) ?? null;
   };
 
   for (const [key, value] of Object.entries(env)) {
@@ -246,40 +276,41 @@ async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvVal
     // `string` even though it is undefined at run time when it did not match.
     const namedPort = namedPortText ? Number(namedPortText) : null;
     switch (outputKey) {
-      case "internal_host": {
-        resolved.set(key, internalHostForService(envId, ns, targetKey));
-        break;
-      }
-      case "internal_url": {
-        // Each port answers on its OWN number on the private network, so the URL
-        // carries the port. A named port must exist on the target and speak
-        // HTTP; an unnamed one needs a single HTTP port to be unambiguous. The
-        // backend rejects both failures up front — this blocks rather than
-        // guessing, so a spec that somehow arrives unresolvable never deploys a
-        // container pointed at the wrong port.
-        // A NAMED port needs no lookup at all: the host is a pure function of
-        // the service identity and the port is right there in the ref, so the
-        // URL is fully determined. That deliberately makes `internalUrl(9090)`
-        // immune to deploy ORDER — it resolves before the target has ever been
-        // deployed, the same way internal_host does. (The backend has already
-        // checked the port exists and speaks HTTP against the synced
-        // definition, which is the authority on that.)
-        if (namedPort !== null) {
-          resolved.set(key, `http://${internalHostForService(envId, ns, targetKey)}:${namedPort}`);
-          break;
-        }
-        // An unnamed one has to ask the target which single HTTP port it means,
-        // so it blocks until the target's spec exists.
-        const target = await targetSpec(targetKey);
-        const httpPort = target === null ? null : soleHttpPort(target.spec.config.ports);
-        if (httpPort === null) {
-          blockedRefs.push(value.ref);
-        } else {
-          resolved.set(key, `http://${internalHostForService(envId, ns, targetKey)}:${httpPort}`);
-        }
+      case "hostname": {
+        resolved.set(key, hostnameForService(envId, ns, targetKey));
         break;
       }
       case "url": {
+        // Which port the URL means, and what it looks like:
+        //  - a PUBLIC port resolves to the service's public URL (its platform
+        //    URL, or a verified custom domain), which exists only once the
+        //    service is up — so it blocks until then;
+        //  - a PRIVATE port resolves to its private-network address, built from
+        //    the deterministic hostname and the port itself.
+        const ports = await targetPorts(targetKey);
+        if (ports === null) {
+          // Nothing known about the target: it may not have been deployed yet.
+          blockedRefs.push(value.ref);
+          break;
+        }
+        const port = namedPort === null
+          ? (() => {
+            const sole = soleHttpPort(ports);
+            return sole === null ? null : portEntries(ports).find((entry) => entry.port === sole) ?? null;
+          })()
+          : portEntries(ports).find((entry) => entry.port === namedPort) ?? null;
+        if (port === null || port.protocol !== "http") {
+          // The backend rejects both of these up front against the synced
+          // definition; blocking rather than guessing means a spec that somehow
+          // arrives unresolvable never deploys a container pointed at the wrong
+          // port.
+          blockedRefs.push(value.ref);
+          break;
+        }
+        if (!port.public) {
+          resolved.set(key, `http://${hostnameForService(envId, ns, targetKey)}:${port.port}`);
+          break;
+        }
         if (!urlCache.has(targetKey)) {
           urlCache.set(targetKey, await computeServiceUrl(fly, ns, targetKey));
         }
@@ -367,7 +398,7 @@ export function machineConfigForSlot(options: {
     // OWN number (that is what makes several ports addressable at all), and the
     // service's single HTTP port additionally answers on 80/443 so its fly.dev
     // URL and any custom domain certificate work on the standard ports.
-    services: options.spec.config.ports.map((entry) => ({
+    services: portEntries(options.spec.config.ports).map((entry) => ({
       protocol: "tcp",
       internal_port: entry.port,
       // Pinned machines never autostop; the rest scale to zero and Fly Proxy autostarts
@@ -383,7 +414,7 @@ export function machineConfigForSlot(options: {
       autostart: true,
       ports: externalPortsFor(entry, standardPortsHolder),
       concurrency: {
-        type: entry.transport === "http" ? "requests" : "connections",
+        type: entry.protocol === "http" ? "requests" : "connections",
         soft_limit: SOFT_CONCURRENCY_LIMIT,
       },
     })),
@@ -399,15 +430,15 @@ export function machineConfigForSlot(options: {
 // consumer wants exactly this.
 /** Whether the spec asks for public ingress — the replacement for the old service-level visibility. */
 export function specIsPublic(spec: ServiceSpec): boolean {
-  return spec.config.ports.some((entry) => entry.public);
+  return portEntries(spec.config.ports).some((entry) => entry.public);
 }
 
 /**
- * The one HTTP port an `internal_url` can name, or null when the service leaves
- * it ambiguous (several HTTP ports) or impossible (none).
+ * The one HTTP port a bare `url` can name, or null when the service leaves it
+ * ambiguous (several HTTP ports) or impossible (none).
  */
-export function soleHttpPort(ports: PortConfig[]): number | null {
-  const httpPorts = ports.filter((entry) => entry.transport === "http");
+export function soleHttpPort(ports: PortsConfig): number | null {
+  const httpPorts = portEntries(ports).filter((entry) => entry.protocol === "http");
   return httpPorts.length === 1 ? httpPorts[0].port : null;
 }
 
@@ -420,8 +451,8 @@ export function soleHttpPort(ports: PortConfig[]): number | null {
  * on 443 — so a private service with one HTTP port must bind the standard ports
  * too, or its verified domain would resolve and then refuse the connection.
  */
-export function standardPortsHolderFor(ports: PortConfig[]): number | null {
-  const publicPort = ports.find((entry) => entry.public);
+export function standardPortsHolderFor(ports: PortsConfig): number | null {
+  const publicPort = portEntries(ports).find((entry) => entry.public);
   if (publicPort !== undefined) return publicPort.port;
   return soleHttpPort(ports);
 }
@@ -446,12 +477,13 @@ export function standardPortsHolderFor(ports: PortConfig[]): number | null {
  * private `tcp` sibling, and the spec is legal at every gate while the proxy publishes it.
  * That is why this is one function and not a rule re-typed at each site.
  */
-export function assertServiceCanHoldADomain(serviceKey: string, ports: readonly PortConfig[], remedy: string): void {
-  if (!ports.some((entry) => entry.transport === "http")) {
+export function assertServiceCanHoldADomain(serviceKey: string, ports: PortsConfig, remedy: string): void {
+  const entries = portEntries(ports);
+  if (!entries.some((entry) => entry.protocol === "http")) {
     throw badRequest(`custom domains need an HTTP port to route to; service ${JSON.stringify(serviceKey)} declares none. ${remedy}`);
   }
-  if (ports.length > 1) {
-    throw badRequest(`a service holding a custom domain may not declare any other port: the proxy serves every declared port on every address the app has, so the others would be public too. Service ${JSON.stringify(serviceKey)} declares ${ports.length} ports; move the private ones onto their own service and reach them with internalHost. ${remedy}`);
+  if (entries.length > 1) {
+    throw badRequest(`a service holding a custom domain may not declare any other port: the proxy serves every declared port on every address the app has, so the others would be public too. Service ${JSON.stringify(serviceKey)} declares ${entries.length} ports; move the private ones onto their own service and reach them with hostname(). ${remedy}`);
   }
 }
 
@@ -463,14 +495,14 @@ export function assertServiceCanHoldADomain(serviceKey: string, ports: readonly 
  * for 443 with CONFLICTING handlers — plain `http` from its own binding and
  * `tls,http` from the standard one — leaving which wins up to Fly.
  */
-export function externalPortsFor(entry: PortConfig, standardPortsHolder: number | null): { port: number, handlers?: string[] }[] {
-  if (entry.transport !== "http") return [{ port: entry.port }];
+export function externalPortsFor(entry: PortEntry, standardPortsHolder: number | null): { port: number, handlers?: string[] }[] {
+  if (entry.protocol !== "http") return [{ port: entry.port }];
   const bindings = new Map<number, { port: number, handlers?: string[] }>();
   // Its own number first, so a second HTTP port stays addressable privately...
   bindings.set(entry.port, { port: entry.port, handlers: ["http"] });
   if (entry.port === standardPortsHolder) {
     // ...but the standard ports win the collision: 443 must terminate TLS, and
-    // 80 stays plain HTTP (no force_https) because flycast's internal_url is http.
+    // 80 stays plain HTTP (no force_https) because a private url() is http.
     bindings.set(80, { port: 80, handlers: ["http"] });
     bindings.set(443, { port: 443, handlers: ["tls", "http"] });
   }
@@ -688,9 +720,7 @@ async function claimDesiredSpec(ns: string, key: string, spec: ServiceSpec, revi
   stored: StoredSpec,
   changed: boolean,
   etag: string,
-  archive: Uint8Array | null,
 }> {
-  const validatedArchives = new Map<string, Uint8Array>();
   for (let attempt = 0; attempt < 10; attempt++) {
     const previousVersion = await readSpecVersioned(ns, key);
     const previous = previousVersion?.value ?? null;
@@ -698,30 +728,14 @@ async function claimDesiredSpec(ns: string, key: string, spec: ServiceSpec, revi
     const stored: StoredSpec = {
       ns,
       key,
-      // Unchanged re-PUTs keep the stored source: it may already be rewritten to { image }
-      // by a completed build, and reverting it to { upload_id } would orphan the deploy.
       spec: changed ? spec : previous.spec,
       revision,
       created_at_millis: previous?.created_at_millis ?? now,
       updated_at_millis: Date.now(),
       last_apply_error: changed ? null : previous.last_apply_error,
     };
-    let archive: Uint8Array | null = null;
-    if ("upload_id" in stored.spec.source) {
-      const uploadId = stored.spec.source.upload_id;
-      archive = validatedArchives.get(uploadId) ?? null;
-      if (archive === null) {
-        const upload = await statUpload(ns, uploadId);
-        if (upload === null) throw badRequest(`upload ${JSON.stringify(uploadId)} does not exist (expired, already consumed, or never uploaded)`);
-        if (upload.sizeBytes > MAX_UPLOAD_BYTES) throw badRequest(`upload is ${upload.sizeBytes} bytes; the maximum is ${MAX_UPLOAD_BYTES}`);
-        archive = await readUpload(ns, uploadId);
-        if (archive === null) throw badRequest(`upload ${JSON.stringify(uploadId)} disappeared before it could be consumed`);
-        await validateSourceArchive(archive);
-        validatedArchives.set(uploadId, archive);
-      }
-    }
     const etag = await writeSpec(stored, previousVersion === null ? { ifNoneMatch: true } : { ifMatch: previousVersion.etag });
-    if (etag !== null) return { stored, changed, etag, archive };
+    if (etag !== null) return { stored, changed, etag };
   }
   throw conflict(`service ${JSON.stringify(key)} was updated too frequently; retry the request`);
 }
@@ -737,11 +751,17 @@ async function specIsStillOwned(ns: string, key: string, etag: string): Promise<
   return (await readSpecVersioned(ns, key))?.etag === etag;
 }
 
-export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpec, builder: Builder): Promise<ApplyResult> {
-  return await withReconciliationLease(ns, key, async (lease) => await applyServiceSpecWithLease(ns, key, spec, builder, lease));
+export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpec, options?: { knownPorts?: Map<string, PortsConfig>, lease?: ReconciliationLeaseGuard }): Promise<ApplyResult> {
+  // A deployment already holds the lease for its whole source, so it passes its
+  // own rather than taking a second one per service — the lease is not
+  // re-entrant, and waiting on itself is a deadlock.
+  if (options?.lease !== undefined) {
+    return await applyServiceSpecWithLease(ns, key, spec, options.lease, options.knownPorts);
+  }
+  return await withReconciliationLease(ns, key, async (lease) => await applyServiceSpecWithLease(ns, key, spec, lease, options?.knownPorts));
 }
 
-async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceSpec, builder: Builder, lease: ReconciliationLeaseGuard): Promise<ApplyResult> {
+async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceSpec, lease: ReconciliationLeaseGuard, knownPorts?: Map<string, PortsConfig>): Promise<ApplyResult> {
   const config = getConfig();
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
   // A domain-holding service must satisfy the domain port rule on every spec write, not just
@@ -759,362 +779,568 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
 
   // Unresolvable refs: persist the spec and report blocked WITHOUT touching machines or
   // starting builds — the backend re-applies when the blocking output appears.
-  const resolved = await resolveEnv(fly, ns, stored.spec.env);
+  const resolved = await resolveEnv(fly, ns, stored.spec.env, knownPorts);
   if (!resolved.ok) {
     return { revision, changed, state: await getServiceState(ns, key, stored) };
   }
 
-  // A build starts whenever the stored source is still an upload and no build exists for
-  // this revision yet — NOT merely when the revision changed: a spec that arrived blocked
-  // starts its build on the unblocking re-apply (changed === false there). A failed build
-  // of the same revision is deliberately not retried (retries come with a fresh upload and
-  // therefore a new revision). Builds started BEFORE this spec's creation don't count: a
-  // delete+recreate resets created_at, so a stale record from a previous incarnation (or a
-  // failed pre-delete build) must not suppress the fresh service's build.
-  const recentBuilds = await listBuilds(ns, key, { limit: 10 });
-  const buildForRevision = recentBuilds.find(
-    (build) => build.revision === revision && build.started_at_millis >= stored.created_at_millis,
-  ) ?? null;
+  // The app must exist before machines can be created into it, and its IPs must
+  // match what the ports ask for.
+  const appName = appNameForService(config.envId, ns, key);
+  const network = networkForNamespace(config.envId, ns);
+  await lease.assertOwned();
+  await fly.ensureApp(appName, network);
+  await lease.assertOwned();
+  await fly.ensureFlycastIp(appName, network);
+  await lease.assertOwned();
+  await reconcilePublicIps(fly, appName, specIsPublic(stored.spec) ? "public" : "private");
+
   // FUTURE (build-time env): env values are handed to the builder too (see buildTimeEnv),
   // because frameworks that inline them (NEXT_PUBLIC_*, VITE_*) need them at BUILD time. So
   // an env-only change rolls the machines with the new value while the already-built image
-  // keeps the old one baked in. That skew is ACCEPTED for now: the source here is
-  // `{ image }` after a successful build, so this stays false and nothing rebuilds. The fix
-  // is not in this condition but in the product surface: track which build-visible values an
-  // image was built from, report the service as stale in the dashboard, and offer a redeploy
-  // (Vercel makes the redeploy mandatory — an env change never applies to an existing
-  // deployment).
-  const needsBuild = "upload_id" in stored.spec.source && buildForRevision === null;
-  if (needsBuild && "upload_id" in stored.spec.source) {
-    const uploadId = stored.spec.source.upload_id;
-    const archive = claimed.archive;
-    if (archive === null) throw new Error("claimed upload-sourced spec was not validated");
-    if (!await specIsStillOwned(ns, key, ownedSpecEtag)) {
-      return { revision, changed, state: await getServiceState(ns, key) };
-    }
+  // keeps the old one baked in. That skew is ACCEPTED for now: a spec names an image that
+  // has already been built, so nothing here can rebuild it. The fix is not in this function
+  // but in the product surface: track which build-visible values an image was built from,
+  // report the service as stale in the dashboard, and offer a redeploy (Vercel makes the
+  // redeploy mandatory — an env change never applies to an existing deployment).
 
-    // The service app must exist BEFORE the build: registry.fly.io only
-    // accepts pushes to repositories of existing apps (real-Fly-verified —
-    // pushing first fails with "app repository not found").
-    const appName = appNameForService(config.envId, ns, key);
-    const network = networkForNamespace(config.envId, ns);
-    await lease.assertOwned();
-    await fly.ensureApp(appName, network);
-    await lease.assertOwned();
-    await fly.ensureFlycastIp(appName, network);
-    await lease.assertOwned();
-    await reconcilePublicIps(fly, appName, specIsPublic(stored.spec) ? "public" : "private");
-
-    // The record is written as "running" BEFORE the builder starts: completion (webhook or
-    // mock) may land at any moment after startBuild, and a blind write here afterwards
-    // could clobber a terminal record.
-    const build: StoredBuild = {
-      // Minted from `now` (not the current clock): `now` is what lands in started_at_millis,
-      // and listBuilds' ULID prefilter requires the id time never to run ahead of it.
-      id: ulid(now),
-      ns,
-      key,
-      revision,
-      status: "running",
-      has_logs: true,
-      error: null,
-      started_at_millis: now,
-      finished_at_millis: null,
-      builder_app: null,
-      builder_machine_id: null,
-      image: null,
-      upload_id: uploadId,
-    };
-    // Copy the validated bytes to a build-specific key that the client cannot overwrite.
-    // The original presigned PUT remains valid until expiry, so building from it would leave
-    // a validation-to-extraction race even after strict tar validation.
-    await lease.assertOwned();
-    await writeValidatedUpload(ns, build.id, archive);
-    await lease.assertOwned();
-    if (await createBuild(build) === null) throw new Error(`build id collision for ${build.id}`);
-    try {
-      await lease.assertOwned();
-      const started = await builder.startBuild({
-        ns,
-        key,
-        buildId: build.id,
-        revision,
-        appName: appNameForService(config.envId, ns, key),
-        uploadId,
-        dockerfilePath: stored.spec.source.dockerfile_path ?? null,
-        buildEnv: buildTimeEnv(stored.spec.env),
-      }, lease);
-      if (started.builderApp !== null || started.builderMachineId !== null) {
-        // Attach the builder coordinates (live-log proxy + stale-build backstop need
-        // them) — but only if the build hasn't already reached a terminal state.
-        const current = await readBuildVersioned(ns, key, build.id);
-        if (current !== null && (current.value.status === "queued" || current.value.status === "running")) {
-          await lease.assertOwned();
-          await replaceBuild({ ...current.value, builder_app: started.builderApp, builder_machine_id: started.builderMachineId }, current.etag);
-        }
-      }
-    } catch (error) {
-      if (isReconciliationFencingError(error)) throw error;
-      const current = await readBuildVersioned(ns, key, build.id);
-      if (current !== null && (current.value.status === "queued" || current.value.status === "running")) {
-        await lease.assertOwned();
-        await replaceBuild({ ...current.value, status: "failed", error: "starting the build failed", finished_at_millis: Date.now() }, current.etag);
-      }
-      await deleteValidatedUploadBestEffort(ns, build.id);
-      throw error;
-    }
-    return { revision, changed, state: await getServiceState(ns, key, stored) };
+  if (!await specIsStillOwned(ns, key, ownedSpecEtag)) {
+    return { revision, changed, state: await getServiceState(ns, key) };
   }
-
-  // The stored source may still be { upload_id } even though its build already succeeded —
-  // if completeBuild crashed before rewriting the spec, or a concurrent apply clobbered it
-  // (see the CAS note on writeSpec). Adopt the built image so the service still converges
-  // instead of no-oping forever. needsBuild was false here, so buildForRevision is set when
-  // the source is an upload.
-  if ("upload_id" in stored.spec.source && buildForRevision?.status === "succeeded" && buildForRevision.image !== null) {
-    stored.spec = { ...stored.spec, source: { image: buildForRevision.image } };
-  }
-
-  if (changed && "image" in spec.source) {
-    // No-artifact revision (rescale / env edit / direct { image } deploy): record an
-    // immediate succeeded build with has_logs: false so the build history stays complete.
-    const directBuild: StoredBuild = {
-      id: ulid(now),
-      ns,
-      key,
-      revision,
-      status: "succeeded",
-      has_logs: false,
-      error: null,
-      started_at_millis: now,
-      finished_at_millis: now,
-      builder_app: null,
-      builder_machine_id: null,
-      image: spec.source.image,
-      upload_id: null,
-    };
-    await lease.assertOwned();
-    if (await createBuild(directBuild) === null) throw new Error(`build id collision for ${directBuild.id}`);
-  }
-
-  // Reaching here means the effective source is an image (either given directly, or an
-  // unchanged spec whose build already completed). A still-building unchanged spec has an
-  // { upload_id } source — nothing to apply yet.
-  const source = stored.spec.source;
-  if ("image" in source) {
-    if (!await specIsStillOwned(ns, key, ownedSpecEtag)) {
-      return { revision, changed, state: await getServiceState(ns, key) };
-    }
-    try {
-      await applyMachines(fly, stored, source.image, resolved.env, lease);
-      stored.last_apply_error = null;
-    } catch (error) {
-      if (isReconciliationFencingError(error)) throw error;
-      stored.last_apply_error = error instanceof Error ? `deploy failed: ${error.message}` : "deploy failed";
-    }
+  try {
+    await applyMachines(fly, stored, stored.spec.source.image, resolved.env, lease);
+    stored.last_apply_error = null;
+  } catch (error) {
+    if (isReconciliationFencingError(error)) throw error;
+    stored.last_apply_error = error instanceof Error ? `deploy failed: ${error.message}` : "deploy failed";
   }
   return { revision, changed, state: await stateAfterSpecWrite(ns, key, stored, ownedSpecEtag) };
 }
 
 // ---------------------------------------------------------------------------
-// Build completion (webhook + mock builder both land here)
+// Deployments: one `hexclave deploy` of one deployment source.
+//
+// The runtime owns the WHOLE sequence — build every target in one machine, then
+// apply them level by level — rather than the backend driving it step by step,
+// because the lease, the build-completion webhook and the specs all live here.
+//
+// Progress is made on READ. There is no background worker (Marshal is a
+// stateless HTTP service that also runs on a serverless host), so each poll of
+// GET /deployments/:id advances the deployment by at most one service. The
+// backend polls every few seconds while a deploy is in flight, which is what
+// turns a series of cheap reads into a rollout.
 
+/**
+ * A lookup into a stored JSON record, typed as possibly-absent.
+ *
+ * A plain index is typed as always-present without noUncheckedIndexedAccess,
+ * which would type away the case every caller here has to handle: these records
+ * come from the bucket, keyed by service keys that may not be in them.
+ * `Object.hasOwn` also keeps a key like "constructor" from resolving to
+ * something off the prototype.
+ */
+function lookup<T>(record: Record<string, T>, key: string): T | undefined {
+  return Object.hasOwn(record, key) ? record[key] : undefined;
+}
+
+/** The lease key that serializes everything belonging to one deployment source. */
+function sourceLeaseKey(sourceId: string): string {
+  return `source:${sourceId}`;
+}
+
+export function validateDeploymentRequest(body: unknown): { uploadId: string, targets: DeploymentTarget[], order: string[][] } {
+  const record = asRecord(body);
+  if (record === null) throw badRequest("request body must be an object");
+  const uploadId = record.upload_id;
+  if (typeof uploadId !== "string" || !UPLOAD_ID_REGEX.test(uploadId)) throw badRequest("upload_id must be a UUID");
+  if (!Array.isArray(record.targets) || record.targets.length === 0) throw badRequest("targets must be a non-empty array");
+  if (record.targets.length > MAX_TARGETS_PER_DEPLOYMENT) throw badRequest(`a deployment may declare at most ${MAX_TARGETS_PER_DEPLOYMENT} targets`);
+
+  const targets: DeploymentTarget[] = record.targets.map((targetRaw) => {
+    const target = asRecord(targetRaw);
+    if (target === null) throw badRequest("each target must be an object");
+    const serviceKey = validateServiceKey(typeof target.service_key === "string" ? target.service_key : "");
+    // Both paths flow into the builder harness as TAB-separated manifest fields
+    // and as shell variables, so anything that could break a line or escape a
+    // field is refused rather than escaped.
+    const rootDirectory = validateOptionalRelativePath(target.root_directory, `target ${serviceKey} root_directory`);
+    const dockerfilePath = validateOptionalRelativePath(target.dockerfile_path, `target ${serviceKey} dockerfile_path`);
+    // The spec arrives without a source: the image does not exist yet. It is
+    // validated in full anyway (ports, bounds, env, volumes) so a bad spec is a
+    // 400 on THIS request rather than a failure after a five-minute build.
+    const specRecord = asRecord(target.spec);
+    if (specRecord === null) throw badRequest(`target ${serviceKey} must have a spec`);
+    const spec = validateServiceSpec({ ...specRecord, source: { image: PLACEHOLDER_IMAGE } });
+    return {
+      service_key: serviceKey,
+      ...(rootDirectory !== undefined ? { root_directory: rootDirectory } : {}),
+      ...(dockerfilePath !== undefined ? { dockerfile_path: dockerfilePath } : {}),
+      spec: { config: spec.config, env: spec.env },
+    };
+  });
+  const keys = targets.map((target) => target.service_key);
+  if (new Set(keys).size !== keys.length) throw badRequest("targets must not name the same service twice");
+
+  if (!Array.isArray(record.order) || record.order.length === 0) throw badRequest("order must be a non-empty array of dependency levels");
+  const order: string[][] = record.order.map((levelRaw) => {
+    if (!Array.isArray(levelRaw)) throw badRequest("each order level must be an array of service keys");
+    return levelRaw.map((keyRaw) => validateServiceKey(typeof keyRaw === "string" ? keyRaw : ""));
+  });
+  const ordered = order.flat();
+  if (ordered.length !== keys.length || ordered.some((key) => !keys.includes(key)) || new Set(ordered).size !== ordered.length) {
+    throw badRequest("order must list every target exactly once");
+  }
+  return { uploadId, targets, order };
+}
+
+// A relative path with nothing that could break the harness's TSV manifest or
+// escape its own directory. Kept in one place so root_directory and
+// dockerfile_path cannot drift apart.
+function validateOptionalRelativePath(value: unknown, label: string): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || value.length > 512) throw badRequest(`${label} must be a string of at most 512 characters`);
+  if (value === ".") return undefined;
+  const normalized = value.replace(/^\.\//, "").replace(/\/$/, "");
+  if (
+    normalized.startsWith("/")
+    || normalized.includes("\\")
+    // eslint-disable-next-line no-control-regex
+    || /[\x00-\x1f\t]/.test(normalized)
+    || normalized.split("/").some((segment) => segment === "" || segment === "." || segment === "..")
+  ) {
+    throw badRequest(`${label} must be a normalized relative path inside the uploaded source (no leading "/", no "." or ".." segments, no backslashes, tabs or control characters)`);
+  }
+  return normalized;
+}
+
+/**
+ * Accepts a deployment: validates it, consumes the upload, and starts the build.
+ * Returns as soon as the builder is running — the applies follow, driven by
+ * reads (see advanceDeployment).
+ */
+export async function startSourceDeployment(ns: string, sourceId: string, body: unknown, builder: Builder): Promise<Deployment> {
+  const { uploadId, targets, order } = validateDeploymentRequest(body);
+  const config = getConfig();
+  return await withReconciliationLease(ns, sourceLeaseKey(sourceId), async (lease) => {
+    const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
+
+    // Validate the archive before anything else touches it: the presigned PUT the
+    // client used stays valid until it expires, so building from it directly would
+    // leave a validation-to-extraction race even after strict tar validation.
+    const upload = await statUpload(ns, uploadId);
+    if (upload === null) throw badRequest(`upload ${JSON.stringify(uploadId)} does not exist (expired, already consumed, or never uploaded)`);
+    if (upload.sizeBytes > MAX_UPLOAD_BYTES) throw badRequest(`upload is ${upload.sizeBytes} bytes; the maximum is ${MAX_UPLOAD_BYTES}`);
+    const archive = await readUpload(ns, uploadId);
+    if (archive === null) throw badRequest(`upload ${JSON.stringify(uploadId)} disappeared before it could be consumed`);
+    await validateSourceArchive(archive);
+
+    const now = Date.now();
+    // Minted from `now` so the id's embedded time never runs ahead of
+    // started_at_millis.
+    const deploymentId = ulid(now);
+    const deployment: StoredDeployment = {
+      id: deploymentId,
+      ns,
+      source_id: sourceId,
+      status: "building",
+      has_logs: true,
+      error: null,
+      started_at_millis: now,
+      finished_at_millis: null,
+      order,
+      targets,
+      services: Object.fromEntries(targets.map((target) => [target.service_key, {
+        service_key: target.service_key,
+        status: "building" as const,
+        revision: null,
+        url: null,
+        error: null,
+      }])),
+      images: {},
+      builder_app: null,
+      builder_machine_id: null,
+      upload_id: uploadId,
+    };
+
+    // Every target's app must exist BEFORE the build: registry.fly.io only accepts
+    // pushes to repositories of existing apps (real-Fly-verified — pushing first
+    // fails with "app repository not found").
+    const network = networkForNamespace(config.envId, ns);
+    for (const target of targets) {
+      await lease.assertOwned();
+      await fly.ensureApp(appNameForService(config.envId, ns, target.service_key), network);
+    }
+
+    // Copy the validated bytes to a deployment-specific key the client cannot
+    // overwrite, then record the deployment BEFORE starting the builder:
+    // completion may land at any moment after startBuild, and a blind write
+    // afterwards could clobber a terminal record.
+    await lease.assertOwned();
+    await writeValidatedUpload(ns, deploymentId, archive);
+    await lease.assertOwned();
+    if (await createDeployment(deployment) === null) throw new Error(`deployment id collision for ${deploymentId}`);
+
+    try {
+      await lease.assertOwned();
+      const started = await builder.startBuild({
+        ns,
+        deploymentId,
+        uploadId,
+        targets: targets.map((target) => ({
+          serviceKey: target.service_key,
+          pushTarget: `${config.fly.registryHost}/${appNameForService(config.envId, ns, target.service_key)}:${deploymentId.toLowerCase()}`,
+          dockerfilePath: target.dockerfile_path ?? null,
+          rootDirectory: target.root_directory ?? null,
+          buildEnv: buildTimeEnv(target.spec.env),
+        })),
+      }, lease);
+      if (started.builderApp !== null || started.builderMachineId !== null) {
+        // Attach the builder coordinates (live-log proxy + stale-build backstop need
+        // them) — but only if the build hasn't already reached a terminal state.
+        const current = await readDeploymentVersioned(ns, deploymentId);
+        if (current !== null && current.value.status === "building") {
+          await lease.assertOwned();
+          await replaceDeployment({ ...current.value, builder_app: started.builderApp, builder_machine_id: started.builderMachineId }, current.etag);
+        }
+      }
+    } catch (error) {
+      if (isReconciliationFencingError(error)) throw error;
+      const current = await readDeploymentVersioned(ns, deploymentId);
+      if (current !== null && current.value.status === "building") {
+        await lease.assertOwned();
+        await replaceDeployment(failDeployment(current.value, "starting the build failed"), current.etag);
+      }
+      await deleteValidatedUploadBestEffort(ns, deploymentId);
+      throw error;
+    }
+    // Consume the upload only once the build owns its own copy of the bytes.
+    await deleteUploadBestEffort(ns, uploadId);
+    return deploymentToApiShape(await readDeployment(ns, deploymentId) ?? deployment);
+  });
+}
+
+/** Marks a deployment failed, and everything it had not finished as skipped. */
+function failDeployment(deployment: StoredDeployment, error: string): StoredDeployment {
+  return {
+    ...deployment,
+    status: "failed",
+    error: truncateError(error),
+    finished_at_millis: deployment.finished_at_millis ?? Date.now(),
+    services: Object.fromEntries(Object.entries(deployment.services).map(([key, service]) => [
+      key,
+      service.status === "deployed" || service.status === "failed" ? service : { ...service, status: "skipped" as const },
+    ])),
+  };
+}
+
+/**
+ * Build completion — the webhook and the mock builder both land here.
+ *
+ * A build either produced every image or the deployment fails: one machine
+ * builds them all in order, so a failure means the rest never ran. There is no
+ * half-built source to salvage, and shipping the targets that happened to be
+ * first is not what the author asked for.
+ */
 export async function completeBuild(options: {
   ns: string,
-  key: string,
-  buildId: string,
+  deploymentId: string,
   status: "succeeded" | "failed",
   metadataJson: string | null,
   errorText: string | null,
 }): Promise<void> {
-  await withReconciliationLease(options.ns, options.key, async (lease) => await completeBuildWithLease(options, lease));
+  const existing = await readDeployment(options.ns, options.deploymentId);
+  if (existing === null) return;
+  await withReconciliationLease(options.ns, sourceLeaseKey(existing.source_id), async (lease) => {
+    const current = await readDeploymentVersioned(options.ns, options.deploymentId);
+    // Terminal already (a retried webhook, or the stale-build backstop got there
+    // first): the first outcome wins.
+    if (current === null || current.value.status !== "building") return;
+    await lease.assertOwned();
+
+    if (options.status === "failed") {
+      await replaceDeployment(failDeployment(current.value, options.errorText ?? "the build failed"), current.etag);
+      await persistDeploymentLog(flyClientForNamespaceOrg(resolveNamespaceOrg(options.ns)), current.value);
+      await deleteValidatedUploadBestEffort(options.ns, options.deploymentId);
+      return;
+    }
+
+    const images = parseBuildImages(options.metadataJson, current.value);
+    const missing = current.value.targets.filter((target) => lookup(images, target.service_key) === undefined).map((target) => target.service_key);
+    if (missing.length > 0) {
+      // The harness reports a digest per target; a missing one means the build
+      // ended in a state Marshal cannot map to images, which is a failure rather
+      // than something to half-apply.
+      await replaceDeployment(failDeployment(current.value, `the build reported no image for ${missing.join(", ")}`), current.etag);
+      await persistDeploymentLog(flyClientForNamespaceOrg(resolveNamespaceOrg(options.ns)), current.value);
+      await deleteValidatedUploadBestEffort(options.ns, options.deploymentId);
+      return;
+    }
+
+    await replaceDeployment({
+      ...current.value,
+      status: "deploying",
+      images,
+      services: Object.fromEntries(Object.entries(current.value.services).map(([key, service]) => [key, { ...service, status: "pending" as const }])),
+    }, current.etag);
+    await persistDeploymentLog(flyClientForNamespaceOrg(resolveNamespaceOrg(options.ns)), current.value);
+    await deleteValidatedUploadBestEffort(options.ns, options.deploymentId);
+  });
 }
 
-async function completeBuildWithLease(options: {
-  ns: string,
-  key: string,
-  buildId: string,
-  status: "succeeded" | "failed",
-  metadataJson: string | null,
-  errorText: string | null,
-}, lease: ReconciliationLeaseGuard): Promise<void> {
+/**
+ * The images a completed build produced, keyed by service key.
+ *
+ * Digests are resolved into fully-qualified image refs here rather than in the
+ * harness: the registry host and app name are Marshal's to know, and a harness
+ * that composed them would have to be trusted about which app it pushed to.
+ */
+function parseBuildImages(metadataJson: string | null, deployment: StoredDeployment): Record<string, string> {
   const config = getConfig();
-  const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(options.ns));
-  const buildVersion = await readBuildVersioned(options.ns, options.key, options.buildId);
-  if (buildVersion === null) throw notFound(`build ${options.buildId} not found`);
-  const build = buildVersion.value;
-  if (build.status !== "queued" && build.status !== "running") return; // idempotent replay
-
-  const appName = appNameForService(config.envId, options.ns, options.key);
-
-  if (options.status === "failed") {
-    // Persist the durable log BEFORE the terminal record: the logs route serves the bucket
-    // object once the record is terminal, so writing the record first opens a window where
-    // it reports complete:true with no lines yet.
-    const failed: StoredBuild = { ...build, status: "failed", error: truncateError(options.errorText) ?? "build failed", finished_at_millis: Date.now() };
-    await persistBuildLog(fly, failed);
-    await lease.assertOwned();
-    if (await replaceBuild(failed, buildVersion.etag) === null) return;
-    await deleteValidatedUploadBestEffort(options.ns, build.id);
-    // The upload is deliberately kept on failure (a retry of the identical spec can reuse
-    // it); the bucket lifecycle rule on uploads/ reclaims it.
-    return;
+  const images: Record<string, string> = {};
+  let parsed: unknown;
+  try {
+    parsed = metadataJson === null ? null : JSON.parse(metadataJson);
+  } catch {
+    parsed = null;
   }
+  const targets = asRecord(asRecord(parsed)?.targets ?? null);
+  if (targets === null) return images;
+  for (const target of deployment.targets) {
+    const digest = targets[target.service_key];
+    if (typeof digest !== "string" || !/^sha256:[a-f0-9]{64}$/.test(digest)) continue;
+    images[target.service_key] = `${config.fly.registryHost}/${appNameForService(config.envId, deployment.ns, target.service_key)}@${digest}`;
+  }
+  return images;
+}
 
-  let digest: string | null = null;
-  if (options.metadataJson !== null) {
-    try {
-      const metadata = JSON.parse(options.metadataJson) as Record<string, unknown>;
-      const candidate = metadata["containerimage.digest"];
-      if (typeof candidate === "string" && /^sha256:[0-9a-f]{64}$/.test(candidate)) digest = candidate;
-    } catch {
-      // fall through to the registry lookup
+/**
+ * Moves a deploying deployment forward by AT MOST ONE service, and returns its
+ * current state.
+ *
+ * One service per call rather than a whole level: an apply rolls machines and
+ * waits for them, so a call that drained a level could outlive the caller's
+ * timeout — and the backend polls, so a bounded step per poll converges just as
+ * fast while keeping every request short enough to answer.
+ *
+ * Contention is not an error here: if another request holds the source lease,
+ * it is already doing this work, so this one simply reports what it can see.
+ */
+export async function advanceDeployment(ns: string, deploymentId: string): Promise<Deployment> {
+  const deployment = await readDeployment(ns, deploymentId);
+  if (deployment === null) throw notFound(`deployment ${JSON.stringify(deploymentId)} not found in namespace ${JSON.stringify(ns)}`);
+  if (deployment.status === "building") {
+    return deploymentToApiShape(await maybeFinalizeStaleDeployment(deployment));
+  }
+  if (deployment.status !== "deploying") return deploymentToApiShape(deployment);
+
+  let advanced: StoredDeployment | null = null;
+  try {
+    advanced = await withReconciliationLease(ns, sourceLeaseKey(deployment.source_id), async (lease) => {
+      const current = await readDeploymentVersioned(ns, deploymentId);
+      if (current === null || current.value.status !== "deploying") return current?.value ?? null;
+      return await applyNextService(ns, current.value, lease);
+    }, DEPLOYMENT_ADVANCE_TIMINGS);
+  } catch (error) {
+    if (error instanceof ReconciliationLeaseLostError) {
+      // Somebody else is advancing this source right now. Report what is
+      // stored rather than failing a read that asked a perfectly good question.
+      return deploymentToApiShape(await readDeployment(ns, deploymentId) ?? deployment);
     }
+    throw error;
   }
-  if (digest === null) {
-    digest = await fly.resolveImageDigest(appName, build.revision);
-  }
-  if (digest === null) {
-    const failed: StoredBuild = { ...build, status: "failed", error: "build reported success but the built image digest could not be resolved", finished_at_millis: Date.now() };
-    await persistBuildLog(fly, failed);
-    await lease.assertOwned();
-    if (await replaceBuild(failed, buildVersion.etag) === null) return;
-    await deleteValidatedUploadBestEffort(options.ns, build.id);
-    return;
-  }
+  return deploymentToApiShape(advanced ?? deployment);
+}
 
-  const imageRef = `${config.fly.registryHost}/${appName}@${digest}`;
-  const succeeded: StoredBuild = { ...build, status: "succeeded", image: imageRef, finished_at_millis: Date.now() };
-  await persistBuildLog(fly, succeeded);
-  await lease.assertOwned();
-  if (await replaceBuild(succeeded, buildVersion.etag) === null) return;
-  await deleteValidatedUploadBestEffort(options.ns, build.id);
+/**
+ * Applies the next pending service of the current level, or closes the
+ * deployment when everything has been applied.
+ */
+async function applyNextService(ns: string, deployment: StoredDeployment, lease: ReconciliationLeaseGuard): Promise<StoredDeployment> {
+  // Ports of every target in this deployment, so a reference to one of them
+  // resolves without waiting for it to be applied first — which is what keeps a
+  // private `url(5432)` independent of deploy order.
+  const knownPorts = new Map(deployment.targets.map((target) => [target.service_key, target.spec.config.ports]));
 
-  const storedVersion = await readSpecVersioned(options.ns, options.key);
-  // Only roll machines if this build is still the target — a newer PUT supersedes it.
-  if (storedVersion !== null && storedVersion.value.revision === build.revision) {
-    const stored = storedVersion.value;
-    stored.spec = { ...stored.spec, source: { image: imageRef } };
-    stored.updated_at_millis = Date.now();
-    const resolved = await resolveEnv(fly, options.ns, stored.spec.env);
-    if (resolved.ok && await specIsStillOwned(options.ns, options.key, storedVersion.etag)) {
-      try {
-        await applyMachines(fly, stored, imageRef, resolved.env, lease);
-        stored.last_apply_error = null;
-      } catch (error) {
-        if (isReconciliationFencingError(error)) throw error;
-        stored.last_apply_error = error instanceof Error ? `deploy failed: ${error.message}` : "deploy failed";
-      }
+  for (const level of deployment.order) {
+    const levelStates = level.flatMap((key) => {
+      const state = lookup(deployment.services, key);
+      return state === undefined ? [] : [state];
+    });
+    // A failure anywhere fails the whole deployment: the services after it
+    // depend on this level having converged, and shipping them against a
+    // half-rolled-out dependency is worse than stopping.
+    if (levelStates.some((state) => state.status === "failed")) {
+      return await writeDeployment(ns, deployment, failDeployment(deployment, deployment.error ?? "a service failed to deploy"));
     }
-    // Drop the write if a newer apply took ownership while the rollout was in flight.
-    await writeSpec(stored, { ifMatch: storedVersion.etag });
-  }
-  // Success consumed the upload; deleting it here is an optimization — the bucket
-  // lifecycle rule on uploads/ owns correctness for every other path.
-  if (build.upload_id !== null) {
+    const next = levelStates.find((state) => state.status === "pending");
+    if (next === undefined) continue; // this level is done; look at the next one
+
+    const target = deployment.targets.find((candidate) => candidate.service_key === next.service_key);
+    const image = lookup(deployment.images, next.service_key);
+    if (target === undefined || image === undefined) {
+      return await writeDeployment(ns, deployment, failDeployment(deployment, `no image was built for ${next.service_key}`));
+    }
+    await lease.assertOwned();
+    let state: DeploymentServiceState;
     try {
-      await deleteUpload(options.ns, build.upload_id);
+      const applied = await applyServiceSpec(ns, next.service_key, { ...target.spec, source: { image } }, { knownPorts });
+      state = applied.state.status === "blocked"
+        // A blocked apply means a ref could not resolve — a `url` of a service
+        // that never came up. It will not resolve by itself, so it is a failure
+        // rather than something to keep polling.
+        ? { service_key: next.service_key, status: "failed", revision: applied.revision, url: null, error: applied.state.error ?? "a connection could not be resolved" }
+        : { service_key: next.service_key, status: "deployed", revision: applied.revision, url: applied.state.outputs.url ?? null, error: applied.state.error };
     } catch (error) {
-      console.error(`deleting consumed upload ${build.upload_id} failed`, error);
+      if (isReconciliationFencingError(error)) throw error;
+      state = { service_key: next.service_key, status: "failed", revision: null, url: null, error: truncateError(error instanceof Error ? error.message : "the deploy failed") };
     }
+    const updated: StoredDeployment = { ...deployment, services: { ...deployment.services, [next.service_key]: state } };
+    if (state.status === "failed") {
+      return await writeDeployment(ns, deployment, failDeployment(updated, state.error ?? `${next.service_key} failed to deploy`));
+    }
+    return await writeDeployment(ns, deployment, updated);
   }
+
+  // Nothing left pending: every service of every level is deployed.
+  return await writeDeployment(ns, deployment, {
+    ...deployment,
+    status: "succeeded",
+    finished_at_millis: deployment.finished_at_millis ?? Date.now(),
+  });
+}
+
+async function writeDeployment(ns: string, previous: StoredDeployment, next: StoredDeployment): Promise<StoredDeployment> {
+  const current = await readDeploymentVersioned(ns, previous.id);
+  if (current === null) return next;
+  const etag = await replaceDeployment(next, current.etag);
+  // Losing the CAS means another request advanced it first; its view is the one
+  // that counts.
+  return etag === null ? (await readDeployment(ns, previous.id)) ?? next : next;
+}
+
+export function deploymentToApiShape(deployment: StoredDeployment): Deployment {
+  return {
+    id: deployment.id,
+    source_id: deployment.source_id,
+    status: deployment.status,
+    has_logs: deployment.has_logs,
+    error: deployment.error,
+    started_at_millis: deployment.started_at_millis,
+    finished_at_millis: deployment.finished_at_millis,
+    // In the order the deployment applies them, which is the order a reader
+    // wants to see progress in.
+    services: deployment.order.flat().flatMap((key) => {
+      const state = lookup(deployment.services, key);
+      return state === undefined ? [] : [state];
+    }),
+  };
 }
 
 function truncateError(text: string | null): string | null {
-  if (text === null || text.trim() === "") return null;
-  return text.length > 2000 ? `${text.slice(0, 2000)}…` : text;
+  if (text === null) return null;
+  const trimmed = text.trim();
+  if (trimmed === "") return null;
+  return trimmed.length > MAX_ERROR_LENGTH ? `${trimmed.slice(0, MAX_ERROR_LENGTH)}…` : trimmed;
 }
 
-async function deleteValidatedUploadBestEffort(ns: string, buildId: string): Promise<void> {
+async function deleteValidatedUploadBestEffort(ns: string, deploymentId: string): Promise<void> {
   try {
-    await deleteValidatedUpload(ns, buildId);
+    await deleteValidatedUpload(ns, deploymentId);
   } catch (error) {
     // The object contains already-validated source and expires with the bucket lifecycle;
-    // cleanup must never prevent a terminal build record or its rollout from completing.
-    console.error(`deleting validated source for build ${ns}/${buildId} failed`, error);
+    // cleanup must never prevent a terminal deployment record or its rollout from completing.
+    console.error(`deleting validated source for deployment ${ns}/${deploymentId} failed`, error);
+  }
+}
+
+async function deleteUploadBestEffort(ns: string, uploadId: string): Promise<void> {
+  try {
+    await deleteUpload(ns, uploadId);
+  } catch (error) {
+    console.error(`deleting consumed upload ${ns}/${uploadId} failed`, error);
   }
 }
 
 // Durable build log: Marshal (not the harness) drains the builder machine's logs from the
 // Fly logs API at terminal state, scrubs every credential it handed to the build, and
 // persists JSONL to the bucket — outliving Fly's ~7d retention. The harness stays dumb.
-async function persistBuildLog(fly: FlyClient, build: StoredBuild): Promise<void> {
-  if (build.builder_app === null || build.builder_machine_id === null) {
+//
+// One log per DEPLOYMENT, covering every service it built: they shared a machine,
+// so their output is interleaved in one stream and there is nothing to split.
+async function persistDeploymentLog(fly: FlyClient, deployment: StoredDeployment): Promise<void> {
+  if (deployment.builder_app === null || deployment.builder_machine_id === null) {
     // Mock builds: a canned log so the has_logs contract holds in dev/e2e, and the only
     // vehicle e2e has for the redaction contract — the mock builder starts no machine, so
-    // there are no real build logs to scrub. Two lines stand in for what a real build could
-    // print: MARSHAL_MOCK_ENV echoes the resolved plain values (a build step echoing its
-    // own env is exactly the leak stage-1 redaction exists to catch), and
-    // MARSHAL_BUILD_ENV_KEYS lists the NAMES the build was given, which is how e2e sees the
-    // buildTimeEnv selection rule (plain values in, refs out) end to end.
-    const spec = await readSpec(build.ns, build.key);
-    const envEcho = spec === null ? "" : Object.entries(spec.spec.env)
-      .flatMap(([envKey, value]) => "value" in value ? [`${envKey}=${value.value}`] : [])
-      .join(" ");
-    const buildEnvKeys = spec === null ? "" : Object.keys(buildTimeEnv(spec.spec.env)).sort().join(" ");
-    const canned = [
-      { at_millis: build.started_at_millis, stream: "stdout" as const, instance: null, text: "MARSHAL_BUILD_START (mock builder)" },
-      { at_millis: build.started_at_millis + 1, stream: "stdout" as const, instance: null, text: `MARSHAL_BUILD_ENV_KEYS ${buildEnvKeys}` },
-      { at_millis: build.started_at_millis + 2, stream: "stdout" as const, instance: null, text: `MARSHAL_MOCK_ENV ${envEcho}` },
+    // there are no real build logs to scrub. The lines stand in for what a real build could
+    // print: MARSHAL_MOCK_ENV echoes each target's resolved plain values (a build step
+    // echoing its own env is exactly the leak stage-1 redaction exists to catch), and
+    // MARSHAL_BUILD_ENV_KEYS lists the NAMES that target's build was given, which is how
+    // e2e sees the buildTimeEnv selection rule (plain values in, refs out) end to end.
+    const lines = [
+      { at_millis: deployment.started_at_millis, stream: "stdout" as const, instance: null, text: "MARSHAL_BUILD_START (mock builder)" },
+      ...deployment.targets.flatMap((target, index) => {
+        const buildEnv = buildTimeEnv(target.spec.env);
+        return [
+          { at_millis: deployment.started_at_millis + index * 2 + 1, stream: "stdout" as const, instance: null, text: `MARSHAL_TARGET_START ${target.service_key}` },
+          { at_millis: deployment.started_at_millis + index * 2 + 2, stream: "stdout" as const, instance: null, text: `MARSHAL_BUILD_ENV_KEYS ${target.service_key} ${Object.keys(buildEnv).sort().join(" ")}` },
+          { at_millis: deployment.started_at_millis + index * 2 + 3, stream: "stdout" as const, instance: null, text: `MARSHAL_MOCK_ENV ${target.service_key} ${Object.entries(buildEnv).map(([envKey, value]) => `${envKey}=${value}`).join(" ")}` },
+        ];
+      }),
       { at_millis: Date.now(), stream: "stdout" as const, instance: null, text: "MARSHAL_BUILD_DONE (mock builder)" },
     ];
-    const redactionValues = await buildLogRedactionValuesForBuild(fly, build);
-    await writeBuildLog(build.ns, build.key, build.id, canned
+    const redactionValues = deploymentLogRedactionValues(fly, deployment);
+    await writeDeploymentLog(deployment.ns, deployment.id, lines
       .map((line) => ({ ...line, text: redactBuildLogText(line.text, redactionValues) }))
       .map((line) => JSON.stringify(line))
       .join("\n"));
     return;
   }
   try {
-    const lines = await fetchAllLogs(fly, build.builder_app, {
-      sinceMillis: build.started_at_millis - 60 * 1000,
-      instance: build.builder_machine_id,
+    const lines = await fetchAllLogs(fly, deployment.builder_app, {
+      sinceMillis: deployment.started_at_millis - 60 * 1000,
+      instance: deployment.builder_machine_id,
     });
     // Skip persisting an empty log object: a transient logs-API failure (rate limit,
     // ingestion lag) must not freeze `has_logs:true, lines:[], complete:true`. Leaving no
     // object makes the logs route fall back to the live proxy instead.
     if (lines.length === 0) return;
-    const redactionValues = await buildLogRedactionValuesForBuild(fly, build);
+    const redactionValues = deploymentLogRedactionValues(fly, deployment);
     const jsonl = lines
       .map((line) => ({ ...line, text: redactBuildLogText(line.text, redactionValues) }))
       .map((line) => JSON.stringify(line))
       .join("\n");
-    await writeBuildLog(build.ns, build.key, build.id, jsonl);
+    await writeDeploymentLog(deployment.ns, deployment.id, jsonl);
   } catch (error) {
     // Log persistence is best-effort — the record's terminal status must not be blocked
     // on the logs API. The live proxy already served these lines during the build.
-    console.error(`persisting build log for ${build.ns}/${build.key}/${build.id} failed`, error);
+    console.error(`persisting build log for ${deployment.ns}/${deployment.id} failed`, error);
   }
 }
 
-// Stage-1 redaction values: every credential Marshal handed the build. The org token (with
-// and without its "FlyV1 " scheme), the registry basic-auth blob, and the per-build webhook
-// token (recomputed, since it's derived, not stored). The presigned tarball URL isn't
-// recomputable, so its signature is scrubbed by shape in redactBuildLogText.
-export function buildLogRedactionValues(fly: FlyClient, build: StoredBuild): string[] {
+/**
+ * Stage-1 redaction values: every credential Marshal handed the build, plus the
+ * tenant's own build-time env values.
+ *
+ * The credentials are the org token (with and without its "FlyV1 " scheme), the
+ * registry basic-auth blob, and the per-deployment webhook token (recomputed,
+ * since it's derived, not stored). The presigned tarball URL isn't recomputable,
+ * so its signature is scrubbed by shape in redactBuildLogText.
+ *
+ * Every plain env value of every target is scrubbed, not a chosen subset: one env
+ * channel with no build/runtime marker means Marshal cannot tell a publishable
+ * API URL from a database password, and the only safe default is to treat all of
+ * them as the latter. They come from the deployment's own targets rather than
+ * from current specs, so a value edited after the build is still scrubbed from
+ * that build's log.
+ */
+export function deploymentLogRedactionValues(fly: FlyClient, deployment: StoredDeployment): string[] {
   const { fly: flyConfig } = getConfig();
-  const values = [flyConfig.token, fly.registryAuthBase64(), computeWebhookToken(build.id, build.ns, build.key)];
+  const values = [flyConfig.token, fly.registryAuthBase64(), computeWebhookToken(deployment.id, deployment.ns)];
   if (flyConfig.token.startsWith("FlyV1 ")) values.push(flyConfig.token.slice("FlyV1 ".length));
-  return values;
-}
-
-// The same, plus the tenant's own env values — which now reach the builder, so they can be
-// echoed by a build step, printed by a framework banner, or dumped by railpack's detection
-// output. Every plain value is scrubbed, not a chosen subset: one env channel with no
-// build/runtime marker means Marshal cannot tell a publishable API URL from a database
-// password, and the only safe default is to treat all of them as the latter. That costs
-// some debuggability in the log, which is the honest price of not leaking.
-//
-// Derived from the CURRENT spec rather than from anything recorded on the build, so an env
-// value edited between the build and the log read is no longer scrubbed from that older
-// log. Best-effort by construction: the alternative is storing a copy of every secret next
-// to every build, which is a worse thing to own than an imperfect scrub.
-export async function buildLogRedactionValuesForBuild(fly: FlyClient, build: StoredBuild): Promise<string[]> {
-  const values = buildLogRedactionValues(fly, build);
-  const stored = await readSpec(build.ns, build.key);
-  if (stored === null) return values;
-  for (const value of Object.values(buildTimeEnv(stored.spec.env))) {
-    if (value.length >= MIN_REDACTED_ENV_VALUE_LENGTH) values.push(value);
+  for (const target of deployment.targets) {
+    for (const value of Object.values(buildTimeEnv(target.spec.env))) {
+      if (value.length >= MIN_REDACTED_ENV_VALUE_LENGTH) values.push(value);
+    }
   }
   return values;
 }
@@ -1127,42 +1353,34 @@ export function redactBuildLogText(text: string, values: string[]): string {
     .replace(/X-Amz-Credential=[A-Za-z0-9%/]+/gi, "X-Amz-Credential=<redacted>");
 }
 
-// Lazy backstop for lost webhooks: a build still "running" long after the harness watchdog
-// must have fired gets finalized as failed on the next read.
-export async function maybeFinalizeStaleBuild(build: StoredBuild): Promise<StoredBuild> {
-  if (build.status !== "queued" && build.status !== "running") return build;
-  const staleAfterMillis = build.started_at_millis + BUILD_TIMEOUT_SECONDS * 1000 + BUILD_STALE_GRACE_MS;
-  if (Date.now() < staleAfterMillis) return build;
-  const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(build.ns));
-  if (build.builder_app !== null && build.builder_machine_id !== null) {
+/**
+ * Lazy backstop for lost webhooks: a deployment still building long after the
+ * harness watchdog must have fired gets finalized as failed on the next read.
+ */
+export async function maybeFinalizeStaleDeployment(deployment: StoredDeployment): Promise<StoredDeployment> {
+  if (deployment.status !== "building") return deployment;
+  const staleAfterMillis = deployment.started_at_millis + BUILD_TIMEOUT_SECONDS * 1000 + BUILD_STALE_GRACE_MS;
+  if (Date.now() < staleAfterMillis) return deployment;
+  const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(deployment.ns));
+  if (deployment.builder_app !== null && deployment.builder_machine_id !== null) {
     let machine;
     try {
-      machine = await fly.getMachine(build.builder_app, build.builder_machine_id);
+      machine = await fly.getMachine(deployment.builder_app, deployment.builder_machine_id);
     } catch (error) {
-      // A transient Fly error here must not turn a read (getServiceState/listServiceBuilds/
-      // the logs route all call this) into a 502 — leave the build as-is until the next read.
-      console.error(`stale-build liveness check for ${build.ns}/${build.key}/${build.id} failed`, error);
-      return build;
+      // A transient Fly error here must not turn a read into a 502 — leave the
+      // deployment as-is until the next read.
+      console.error(`stale-build liveness check for ${deployment.ns}/${deployment.id} failed`, error);
+      return deployment;
     }
-    if (machine !== null && (machine.state === "started" || machine.state === "starting" || machine.state === "created")) {
-      // Builder still alive (clock skew or an unusually slow pull) — leave it alone.
-      return build;
-    }
+    // Still running: the watchdog has not fired yet (a clock skew, a long
+    // machine start), so leave it alone.
+    if (machine !== null && (machine.state === "started" || machine.state === "created" || machine.state === "starting")) return deployment;
   }
-  // Compare-and-swap on the record as it is NOW, not on the copy this call was handed.
-  // Everything above — the staleness arithmetic and a Fly round-trip — happened against a
-  // stale read, and a completion (webhook or mock) can land in that window. A blind write
-  // would then bury a terminal success under this "never reported completion" failure.
-  const current = await readBuildVersioned(build.ns, build.key, build.id);
-  if (current === null) return build;
-  if (current.value.status !== "queued" && current.value.status !== "running") return current.value;
-  const finalized: StoredBuild = { ...current.value, status: "failed", error: "the build never reported completion (builder died or the completion webhook was lost)", finished_at_millis: Date.now() };
-  if (await replaceBuild(finalized, current.etag) === null) {
-    // Someone else wrote first; theirs wins. Report what actually landed.
-    return (await readBuildVersioned(build.ns, build.key, build.id))?.value ?? build;
-  }
-  await persistBuildLog(fly, finalized);
-  return finalized;
+  const current = await readDeploymentVersioned(deployment.ns, deployment.id);
+  if (current === null || current.value.status !== "building") return current?.value ?? deployment;
+  const failed = failDeployment(current.value, "the build did not report a result before its timeout");
+  const etag = await replaceDeployment(failed, current.etag);
+  return etag === null ? (await readDeployment(deployment.ns, deployment.id)) ?? failed : failed;
 }
 
 // ---------------------------------------------------------------------------
@@ -1175,14 +1393,14 @@ export async function getServiceState(ns: string, key: string, preloadedSpec?: S
   if (stored === null) throw notFound(`service ${JSON.stringify(key)} not found in namespace ${JSON.stringify(ns)}`);
   const appName = appNameForService(config.envId, ns, key);
 
-  const [machines, certificates, recentBuilds, resolved] = await Promise.all([
+  // No build lookup: a spec always names an image that has already been built,
+  // so a service is never "building". Building belongs to the DEPLOYMENT that
+  // produced the image, which reports it (see advanceDeployment).
+  const [machines, certificates, resolved] = await Promise.all([
     fly.listMachines(appName),
     fly.listCertificates(appName),
-    listBuilds(ns, key, { limit: 5 }),
     resolveEnv(fly, ns, stored.spec.env),
   ]);
-  const latestForRevision = recentBuilds.find((build) => build.revision === stored.revision) ?? null;
-  const checkedBuild = latestForRevision === null ? null : await maybeFinalizeStaleBuild(latestForRevision);
 
   const domains = await computeDomainStates(fly, appName, certificates);
   const verifiedHostnames = certificates.filter(certificateIsVerified).map((certificate) => certificate.hostname).sort();
@@ -1194,20 +1412,12 @@ export async function getServiceState(ns: string, key: string, preloadedSpec?: S
 
   const status = ((): ServiceState["status"] => {
     if (!resolved.ok) return "blocked";
-    if (checkedBuild !== null && (checkedBuild.status === "queued" || checkedBuild.status === "running")) return "building";
     // Checked BEFORE the no-machine branch: an apply that failed before it created anything
     // (ensureApp/ensureFlycastIp/the first createMachine) leaves zero machines and a terminal
     // last_apply_error, and reporting that as "pending" tells callers to keep waiting for a
     // deploy that is already over. `error` below has always surfaced it — only status lied.
     if (stored.last_apply_error !== null) return startedCount > 0 ? "degraded" : "failed";
-    if (machines.length === 0) {
-      if (checkedBuild !== null && checkedBuild.status === "failed") return "failed";
-      return "pending";
-    }
-    // A failed build for the target revision, with machines still on a stale revision, is a
-    // terminal failure — not perpetual "deploying". Nothing is in flight and the failed build
-    // is deliberately not retried, so the old machines keep serving in a degraded state.
-    if (checkedBuild !== null && checkedBuild.status === "failed" && !allAtTarget) return startedCount > 0 ? "degraded" : "failed";
+    if (machines.length === 0) return "pending";
     if (!allAtTarget || machines.length !== desiredMachineCount(stored.spec)) return "deploying";
     if (startedCount === 0) {
       if (isServerful(stored.spec) || pinnedMachineCount(stored.spec) > 0) return "stopped";
@@ -1220,7 +1430,6 @@ export async function getServiceState(ns: string, key: string, preloadedSpec?: S
   const error = ((): string | null => {
     if (!resolved.ok) return `blocked on unresolved refs: ${resolved.blockedRefs.join(", ")}`;
     if (stored.last_apply_error !== null) return stored.last_apply_error;
-    if (checkedBuild !== null && checkedBuild.status === "failed") return checkedBuild.error;
     return null;
   })();
 
@@ -1234,14 +1443,15 @@ export async function getServiceState(ns: string, key: string, preloadedSpec?: S
     revision: runningRevision,
     target_revision: runningRevision === stored.revision && allAtTarget ? null : stored.revision,
     outputs: {
-      internal_host: internalHostForService(config.envId, ns, key),
-      // Null when the service declares several HTTP ports and so leaves the URL
-      // ambiguous — a ref that names its port resolves independently of this.
-      internal_url: ((httpPort) => httpPort === null ? null : `http://${internalHostForService(config.envId, ns, key)}:${httpPort}`)(soleHttpPort(stored.spec.config.ports)),
+      hostname: hostnameForService(config.envId, ns, key),
+      // The private address of the service's sole HTTP port. Null when it
+      // declares several and so leaves a bare `url()` ambiguous — a ref that
+      // names its port resolves independently of this.
+      internal_url: ((httpPort) => httpPort === null ? null : `http://${hostnameForService(config.envId, ns, key)}:${httpPort}`)(soleHttpPort(stored.spec.config.ports)),
       // Keep a public service's platform URL stable even while custom domains are added or
       // removed. The backend prefers a verified custom domain for display, then falls back
       // to this value; private services continue to expose only a verified custom domain.
-      url: !stored.spec.config.ports.some((entry) => entry.transport === "http")
+      url: !portEntries(stored.spec.config.ports).some((entry) => entry.protocol === "http")
         ? null
         : specIsPublic(stored.spec)
           ? `https://${appName}.fly.dev`
@@ -1335,12 +1545,4 @@ async function deleteServiceWithLease(ns: string, key: string, lease: Reconcilia
   if (storedVersion !== null) await deleteSpecConditionally(ns, key, storedVersion.etag);
 }
 
-// ---------------------------------------------------------------------------
-// Builds listing (used by routes; applies the stale-build backstop)
-
-export async function listServiceBuilds(ns: string, key: string, options: { limit: number, beforeMillis?: number }): Promise<StoredBuild[]> {
-  const builds = await listBuilds(ns, key, options);
-  return await Promise.all(builds.map(async (build) => await maybeFinalizeStaleBuild(build)));
-}
-
-export { readBuild, readSpec };
+export { readDeployment, readSpec };

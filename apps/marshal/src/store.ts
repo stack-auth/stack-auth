@@ -2,8 +2,7 @@ import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getConfig, MAX_UPLOAD_BYTES, UPLOAD_EXPIRY_SECONDS } from "./config.js";
 import { decryptString, encryptString } from "./spec-crypto.js";
-import type { DomainClaim, EnvValue, ReconciliationLease, ServiceSpec, StoredBuild, StoredSpec } from "./types.js";
-import { ulidTimeMillis } from "./ulid.js";
+import type { DomainClaim, EnvValue, ReconciliationLease, ServiceSpec, StoredDeployment, StoredSpec } from "./types.js";
 
 // The bucket is Marshal's only state. Layout:
 //   specs/<ns>/<key>.json                 — current desired spec + revision; env is AES-GCM encrypted
@@ -385,74 +384,52 @@ export async function deleteUpload(ns: string, id: string): Promise<void> {
 export { MAX_UPLOAD_BYTES };
 
 // ---------------------------------------------------------------------------
-// Build records + logs
+// Deployment records + build logs
+//
+// A deployment is the unit that builds: one uploaded tree, one builder machine,
+// every service of a deployment source. Its record therefore holds both the
+// build's state and what each target did with the image it produced.
 
-function buildRecordKey(ns: string, key: string, id: string): string {
-  return `builds/${ns}/${key}/rec/${id}.json`;
+function deploymentRecordKey(ns: string, id: string): string {
+  return `deployments/${ns}/rec/${id}.json`;
 }
 
-function buildLogKey(ns: string, key: string, id: string): string {
-  return `builds/${ns}/${key}/log/${id}.jsonl`;
+function deploymentLogKey(ns: string, id: string): string {
+  return `deployments/${ns}/log/${id}.jsonl`;
 }
 
-export async function readBuild(ns: string, key: string, id: string): Promise<StoredBuild | null> {
-  return await getJson<StoredBuild>(buildRecordKey(ns, key, id));
+export async function readDeployment(ns: string, id: string): Promise<StoredDeployment | null> {
+  return await getJson<StoredDeployment>(deploymentRecordKey(ns, id));
 }
 
-export async function readBuildVersioned(ns: string, key: string, id: string): Promise<Versioned<StoredBuild> | null> {
-  return await getJsonVersioned<StoredBuild>(buildRecordKey(ns, key, id));
+export async function readDeploymentVersioned(ns: string, id: string): Promise<Versioned<StoredDeployment> | null> {
+  return await getJsonVersioned<StoredDeployment>(deploymentRecordKey(ns, id));
 }
 
-// No unconditional build write on purpose: every writer of a build record races the
-// completion webhook, so they all go through createBuild (ifNoneMatch) or replaceBuild
-// (ifMatch) and handle losing.
-export async function createBuild(build: StoredBuild): Promise<string | null> {
-  return await putJsonConditionally(buildRecordKey(build.ns, build.key, build.id), build, { ifNoneMatch: true });
+// No unconditional deployment write on purpose: every writer races the completion
+// webhook, so they all go through createDeployment (ifNoneMatch) or
+// replaceDeployment (ifMatch) and handle losing.
+export async function createDeployment(deployment: StoredDeployment): Promise<string | null> {
+  return await putJsonConditionally(deploymentRecordKey(deployment.ns, deployment.id), deployment, { ifNoneMatch: true });
 }
 
-export async function replaceBuild(build: StoredBuild, previousEtag: string): Promise<string | null> {
-  return await putJsonConditionally(buildRecordKey(build.ns, build.key, build.id), build, { ifMatch: previousEtag });
+export async function replaceDeployment(deployment: StoredDeployment, previousEtag: string): Promise<string | null> {
+  return await putJsonConditionally(deploymentRecordKey(deployment.ns, deployment.id), deployment, { ifMatch: previousEtag });
 }
 
-// Newest-first. ULIDs sort ascending by time, so reverse the (paginated, complete) key
-// list and filter by the id-embedded timestamp BEFORE fetching record bodies — otherwise a
-// service with thousands of builds would GET every record just to return `limit` of them.
-export async function listBuilds(ns: string, key: string, options: { limit: number, beforeMillis?: number }): Promise<StoredBuild[]> {
-  const prefix = `builds/${ns}/${key}/rec/`;
-  const ids = (await listKeys(prefix))
-    .map((objectKey) => objectKey.slice(prefix.length, -".json".length))
-    .sort()
-    .reverse()
-    // The ULID's own timestamp bounds the before_millis window without a body read; the
-    // record's started_at_millis is re-checked below as the authority. This prefilter is
-    // only sound because the id time NEVER runs ahead of started_at_millis — callers must
-    // mint build ids with `ulid(startedAtMillis)`, not a bare `ulid()` some awaits later,
-    // or a record whose started_at is inside the window gets silently dropped from the page.
-    .filter((id) => options.beforeMillis === undefined || ulidTimeMillis(id) < options.beforeMillis);
-  const builds: StoredBuild[] = [];
-  for (const id of ids) {
-    if (builds.length >= options.limit) break;
-    const build = await readBuild(ns, key, id);
-    if (build === null) continue;
-    if (options.beforeMillis !== undefined && build.started_at_millis >= options.beforeMillis) continue;
-    builds.push(build);
-  }
-  return builds;
-}
-
-export async function writeBuildLog(ns: string, key: string, id: string, jsonlBody: string): Promise<void> {
+export async function writeDeploymentLog(ns: string, id: string, jsonlBody: string): Promise<void> {
   await withTransientRetry(async () => await s3().send(new PutObjectCommand({
     Bucket: bucket(),
-    Key: buildLogKey(ns, key, id),
+    Key: deploymentLogKey(ns, id),
     Body: jsonlBody,
     ContentType: "application/jsonl",
   })));
 }
 
-export async function readBuildLog(ns: string, key: string, id: string): Promise<string | null> {
+export async function readDeploymentLog(ns: string, id: string): Promise<string | null> {
   try {
     return await withTransientRetry(async () => {
-      const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: buildLogKey(ns, key, id) }));
+      const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: deploymentLogKey(ns, id) }));
       return (await result.Body?.transformToString()) ?? null;
     });
   } catch (error) {

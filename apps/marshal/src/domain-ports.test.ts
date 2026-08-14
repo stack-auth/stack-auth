@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Builder } from "./builds.js";
 
 // The service under test throws inside the domain guard, which is the FIRST thing
 // applyServiceSpecWithLease does after reading config. Everything mocked here exists to let
@@ -34,9 +33,8 @@ vi.mock("./store.js", async (importOriginal) => ({
 
 import { applyServiceSpec, assertServiceCanHoldADomain, validateServiceSpec } from "./services.js";
 
-const NO_BUILDER = { name: "none", startBuild: async () => ({ builderApp: null, builderMachineId: null }) } satisfies Builder;
 
-function spec(ports: unknown[]) {
+function spec(ports: unknown) {
   return validateServiceSpec({
     config: { type: "serverless", min_instances: 0, max_instances: 1, ports },
     source: { image: "registry.fly.io/example@sha256:abc" },
@@ -44,27 +42,27 @@ function spec(ports: unknown[]) {
   });
 }
 
-const apply = async (ports: unknown[]) => await applyServiceSpec("namespace", "web", spec(ports), NO_BUILDER);
+const apply = async (ports: unknown) => await applyServiceSpec("namespace", "web", spec(ports));
 
 describe("the domain port rule", () => {
   it("refuses a port set that a domain would publish", () => {
     // An HTTP port beside a private database port: legal for a service with no domain,
     // catastrophic for one with a domain, because the proxy would serve 5432 on the public IPs
     // the domain allocated.
-    expect(() => assertServiceCanHoldADomain("web", [{ port: 3000, public: false, transport: "http" }, { port: 5432, public: false, transport: "tcp" }], "remedy"))
+    expect(() => assertServiceCanHoldADomain("web", { "3000": { public: false, protocol: "http" }, "5432": { public: false, protocol: "tcp" } }, "remedy"))
       .toThrow(/may not declare any other port/);
     // Two HTTP ports: only one can own the hostname's 80/443, so the binding would be
     // unpredictable rather than merely over-exposed.
-    expect(() => assertServiceCanHoldADomain("web", [{ port: 3000, public: false, transport: "http" }, { port: 4000, public: false, transport: "http" }], "remedy"))
+    expect(() => assertServiceCanHoldADomain("web", { "3000": { public: false, protocol: "http" }, "4000": { public: false, protocol: "http" } }, "remedy"))
       .toThrow(/may not declare any other port/);
-    expect(() => assertServiceCanHoldADomain("web", [{ port: 5432, public: false, transport: "tcp" }], "remedy"))
+    expect(() => assertServiceCanHoldADomain("web", { "5432": { public: false, protocol: "tcp" } }, "remedy"))
       .toThrow(/need an HTTP port/);
-    expect(() => assertServiceCanHoldADomain("web", [], "remedy")).toThrow(/need an HTTP port/);
-    expect(() => assertServiceCanHoldADomain("web", [{ port: 3000, public: false, transport: "http" }], "remedy")).not.toThrow();
+    expect(() => assertServiceCanHoldADomain("web", {}, "remedy")).toThrow(/need an HTTP port/);
+    expect(() => assertServiceCanHoldADomain("web", { "3000": { public: false, protocol: "http" } }, "remedy")).not.toThrow();
   });
 
   it("carries the caller's remedy, so each site says what to do about it", () => {
-    expect(() => assertServiceCanHoldADomain("web", [], "Detach the domains.")).toThrow(/Detach the domains\./);
+    expect(() => assertServiceCanHoldADomain("web", {}, "Detach the domains.")).toThrow(/Detach the domains\./);
   });
 });
 
@@ -82,21 +80,21 @@ describe("a spec write against a service that holds a domain", () => {
   // Step 3 is an ordinary config edit. The whole rule has to be re-checked on every write.
   it("refuses to add a private sibling port after a domain was attached", async () => {
     domainClaims.mockResolvedValue(["app.example.com"]);
-    await expect(apply([{ port: 3000 }, { port: 5432, transport: "tcp" }]))
+    await expect(apply({ "3000": {}, "5432": { protocol: "tcp" } }))
       .rejects.toThrow(/may not declare any other port/);
-    await expect(apply([{ port: 3000 }, { port: 4000 }]))
+    await expect(apply({ "3000": {}, "4000": {} }))
       .rejects.toThrow(/may not declare any other port/);
   });
 
   it("still refuses to drop the HTTP port the domain routes to", async () => {
     domainClaims.mockResolvedValue(["app.example.com"]);
-    await expect(apply([{ port: 5432, transport: "tcp" }])).rejects.toThrow(/need an HTTP port/);
-    await expect(apply([])).rejects.toThrow(/need an HTTP port/);
+    await expect(apply({ "5432": { protocol: "tcp" } })).rejects.toThrow(/need an HTTP port/);
+    await expect(apply({  })).rejects.toThrow(/need an HTTP port/);
   });
 
   it("tells the caller to detach the domains", async () => {
     domainClaims.mockResolvedValue(["app.example.com"]);
-    await expect(apply([{ port: 3000 }, { port: 5432, transport: "tcp" }])).rejects.toThrow(/[Dd]etach/);
+    await expect(apply({ "3000": {}, "5432": { protocol: "tcp" } })).rejects.toThrow(/[Dd]etach/);
   });
 
   it("leaves a service without domains free to declare several private ports", async () => {
@@ -105,7 +103,7 @@ describe("a spec write against a service that holds a domain", () => {
     // The apply still fails afterwards, on the store calls this test deliberately does not
     // mock — so assert on which error came back rather than on success.
     domainClaims.mockResolvedValue([]);
-    const error = await apply([{ port: 3000 }, { port: 5432, transport: "tcp" }]).then(() => null, (caught: unknown) => caught);
+    const error = await apply({ "3000": {}, "5432": { protocol: "tcp" } }).then(() => null, (caught: unknown) => caught);
     expect(error).not.toBeNull();
     expect(String(error)).not.toMatch(/may not declare any other port|need an HTTP port/);
   });

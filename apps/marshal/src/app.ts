@@ -12,21 +12,23 @@ import { appNameForService } from "./naming.js";
 import { ReconciliationLeaseLostError } from "./reconciliation-lock.js";
 import {
   BUILD_ID_REGEX,
+  advanceDeployment,
   applyServiceSpec,
-  buildLogRedactionValuesForBuild,
   completeBuild,
   deleteService,
+  deploymentLogRedactionValues,
   getServiceState,
-  listServiceBuilds,
   listServices,
-  maybeFinalizeStaleBuild,
+  maybeFinalizeStaleDeployment,
   redactBuildLogText,
+  startSourceDeployment,
   validateNamespace,
   validateServiceKey,
   validateServiceSpec,
+  validateSourceId,
 } from "./services.js";
-import { createUploadSlot, readBuild, readBuildLog } from "./store.js";
-import type { Build, LogLine, StoredBuild } from "./types.js";
+import { createUploadSlot, readDeployment, readDeploymentLog } from "./store.js";
+import type { LogLine } from "./types.js";
 
 // How long after a build goes terminal its durable log object may still be missing before
 // the logs route stops pretending the build is live. persistBuildLog runs BEFORE the terminal
@@ -84,17 +86,6 @@ function isAuthorized(header: string | null, apiKey: string): boolean {
   return provided.length === wanted.length && timingSafeEqual(provided, wanted);
 }
 
-function buildToApi(build: StoredBuild): Build {
-  return {
-    id: build.id,
-    revision: build.revision,
-    status: build.status,
-    has_logs: build.has_logs,
-    error: build.error,
-    started_at_millis: build.started_at_millis,
-    finished_at_millis: build.finished_at_millis,
-  };
-}
 
 // Bounded at a safe integer AND at ~year 2255 in millis: the value is multiplied by 1e6 to
 // form a nanosecond log cursor, so an unbounded number would produce exponential-notation
@@ -149,8 +140,7 @@ export function createMarshalApp() {
         }
         const token = (request.headers.get("authorization") ?? "").replace(/^Bearer /, "");
         const ns = url.searchParams.get("ns") ?? "";
-        const key = url.searchParams.get("key") ?? "";
-        if (ns === "" || key === "" || !verifyWebhookToken(token, completeMatch[1], ns, key)) {
+        if (ns === "" || !verifyWebhookToken(token, completeMatch[1], ns)) {
           return jsonResponse(401, { error: "unauthenticated", message: "invalid webhook token" });
         }
         return;
@@ -183,7 +173,7 @@ export function createMarshalApp() {
       const ns = validateNamespace(params.ns);
       const key = validateServiceKey(params.key);
       const spec = validateServiceSpec(body);
-      const result = await applyServiceSpec(ns, key, spec, builder);
+      const result = await applyServiceSpec(ns, key, spec);
       return { revision: result.revision, changed: result.changed, state: result.state };
     }))
 
@@ -200,38 +190,48 @@ export function createMarshalApp() {
       return { deleted: true };
     }))
 
-    .get("/v1/namespaces/:ns/services/:key/builds", ({ params, query }) => handle(async () => {
+    // One `hexclave deploy` of one deployment source: build every target in one
+    // machine, then apply them in the given dependency order.
+    .post("/v1/namespaces/:ns/sources/:sourceId/deployments", ({ params, body }) => handle(async () => {
       const ns = validateNamespace(params.ns);
-      const key = validateServiceKey(params.key);
-      const limit = Math.max(1, Math.min(100, Number(typeof query.limit === "string" && query.limit !== "" ? query.limit : "20") || 20));
-      const builds = await listServiceBuilds(ns, key, { limit, beforeMillis: parseOptionalMillis(query.before_millis) });
-      return { builds: builds.map(buildToApi) };
+      const sourceId = validateSourceId(params.sourceId);
+      return await startSourceDeployment(ns, sourceId, body, builder) as unknown as Record<string, unknown>;
     }))
 
-    .get("/v1/namespaces/:ns/services/:key/builds/:id/logs", ({ params, query }) => handle(async () => {
+    // Reading a deployment is also what ADVANCES it: there is no background
+    // worker here, so each poll applies at most one more service (see
+    // advanceDeployment).
+    .get("/v1/namespaces/:ns/deployments/:id", ({ params }) => handle(async () => {
       const ns = validateNamespace(params.ns);
-      const key = validateServiceKey(params.key);
-      // Validate the build id: it flows into an S3 object key, so a traversal id must not
-      // escape the builds/ prefix (defense in depth — the only caller passes a DB ULID).
-      if (!BUILD_ID_REGEX.test(params.id)) throw new MarshalError(400, "bad_request", "build id must be a ULID");
-      const build = await readBuild(ns, key, params.id);
-      if (build === null) throw new MarshalError(404, "not_found", `build ${JSON.stringify(params.id)} not found`);
-      const checked = await maybeFinalizeStaleBuild(build);
+      if (!BUILD_ID_REGEX.test(params.id)) throw new MarshalError(400, "bad_request", "deployment id must be a ULID");
+      return await advanceDeployment(ns, params.id) as unknown as Record<string, unknown>;
+    }))
+
+    .get("/v1/namespaces/:ns/deployments/:id/logs", ({ params, query }) => handle(async () => {
+      const ns = validateNamespace(params.ns);
+      // Validate the id: it flows into an S3 object key, so a traversal id must not escape
+      // the deployments/ prefix (defense in depth — the only caller passes a stored ULID).
+      if (!BUILD_ID_REGEX.test(params.id)) throw new MarshalError(400, "bad_request", "deployment id must be a ULID");
+      const deployment = await readDeployment(ns, params.id);
+      if (deployment === null) throw new MarshalError(404, "not_found", `deployment ${JSON.stringify(params.id)} not found`);
+      const checked = await maybeFinalizeStaleDeployment(deployment);
       const sinceMillis = parseOptionalMillis(query.since_millis);
-      const terminal = checked.status !== "queued" && checked.status !== "running";
+      // The BUILD is what produces the log, so the log is complete once the build
+      // is — not once the applies are, which follow it and print nothing here.
+      const terminal = checked.status !== "building";
 
       if (!checked.has_logs) {
         return { lines: [], next_since_millis: sinceMillis ?? Date.now(), complete: true };
       }
-      // A terminal build whose durable object never showed up must still end its stream: the
-      // live proxy below is a best-effort last look, not an open-ended follow. Without this
-      // the caller polls a finished build until its own timeout (4 minutes, backend-side) and
-      // is told the build is "still running" the whole way.
-      const liveIsFinal = terminal && Date.now() - (checked.finished_at_millis ?? 0) > DURABLE_LOG_GRACE_MS;
+      // A terminal deployment whose durable object never showed up must still end its
+      // stream: the live proxy below is a best-effort last look, not an open-ended follow.
+      // Without this the caller polls a finished build until its own timeout and is told the
+      // build is "still running" the whole way.
+      const liveIsFinal = terminal && Date.now() - (checked.finished_at_millis ?? checked.started_at_millis) > DURABLE_LOG_GRACE_MS;
 
       if (terminal) {
         // Durable path: the bucket log object written at finalization.
-        const raw = await readBuildLog(ns, key, params.id);
+        const raw = await readDeploymentLog(ns, params.id);
         // No durable object yet (persist skipped an empty drain, or it's still being written
         // in the window right after the terminal record): fall through to the live proxy
         // rather than claiming a complete-but-empty log.
@@ -264,7 +264,7 @@ export function createMarshalApp() {
         instance: checked.builder_machine_id,
         forceNullInstance: true,
       });
-      const redactionValues = await buildLogRedactionValuesForBuild(fly, checked);
+      const redactionValues = deploymentLogRedactionValues(fly, checked);
       return {
         lines: page.lines.map((line) => ({ ...line, text: redactBuildLogText(line.text, redactionValues) })),
         next_since_millis: page.nextSinceMillis,
@@ -315,29 +315,26 @@ export function createMarshalApp() {
     // `parse: "text"` so a malformed/empty JSON body still reaches the handler (Elysia's
     // default JSON parser would 400 before it, making the registry-HEAD digest fallback
     // unreachable) — the handler parses defensively.
-    .post("/internal/builds/:buildId/complete", ({ params, query, body, request }) => handle(async () => {
+    .post("/internal/deployments/:deploymentId/complete", ({ params, query, body, request }) => handle(async () => {
       const ns = typeof query.ns === "string" ? query.ns : "";
-      const key = typeof query.key === "string" ? query.key : "";
       const status = query.status === "succeeded" ? "succeeded" : query.status === "failed" ? "failed" : null;
       const token = (request.headers.get("authorization") ?? "").replace(/^Bearer /, "");
-      if (ns === "" || key === "" || status === null) throw new MarshalError(400, "bad_request", "ns, key, and status query params are required");
-      // Validate ns/key BEFORE trusting them: they flow into S3 keys inside completeBuild, and
+      if (ns === "" || status === null) throw new MarshalError(400, "bad_request", "ns and status query params are required");
+      // Validate ns BEFORE trusting it: it flows into S3 keys inside completeBuild, and
       // possession of the webhook secret (which defaults to the API key) must not become an
       // arbitrary-key write primitive.
       validateNamespace(ns);
-      validateServiceKey(key);
       // Re-verified here as well as in onRequest: onRequest is what stops an unauthenticated
-      // body from being buffered, but this check is the one tied to the ns/key that
-      // completeBuild actually writes with, after the validators above have run on them.
-      if (!verifyWebhookToken(token, params.buildId, ns, key)) {
+      // body from being buffered, but this check is the one tied to the ns that completeBuild
+      // actually writes with, after the validator above has run on it.
+      if (!verifyWebhookToken(token, params.deploymentId, ns)) {
         return jsonResponse(401, { error: "unauthenticated", message: "invalid webhook token" });
       }
-      if (!BUILD_ID_REGEX.test(params.buildId)) throw new MarshalError(400, "bad_request", "build id must be a ULID");
+      if (!BUILD_ID_REGEX.test(params.deploymentId)) throw new MarshalError(400, "bad_request", "deployment id must be a ULID");
       const bodyText = typeof body === "string" ? body : body === null || body === undefined ? null : JSON.stringify(body);
       await completeBuild({
         ns,
-        key,
-        buildId: params.buildId,
+        deploymentId: params.deploymentId,
         status,
         metadataJson: status === "succeeded" ? bodyText : null,
         errorText: status === "failed" ? bodyText : null,

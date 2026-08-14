@@ -34,6 +34,9 @@ export function builderNetworkName(envId: string): string {
   return `hxcn-b-${sanitize(envId, 4)}-${hashHex([envId, "builder-network"], 12)}`;
 }
 
-export function internalHostForService(envId: string, ns: string, key: string): string {
+// The service's private DNS name, which resolves to the stable private IPv6
+// (Flycast) address of its app. A pure function of the service identity, so it
+// answers before the service has ever been deployed.
+export function hostnameForService(envId: string, ns: string, key: string): string {
   return `${appNameForService(envId, ns, key)}.flycast`;
 }
