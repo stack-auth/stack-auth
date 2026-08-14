@@ -82,9 +82,8 @@ const basePiledriver = declareBasePiledriverDatabase(createLowLevelDatabase(), {
 });
 // Buffering keeps availability instant while durability/replication waits for the wrapped root write;
 // it is worthwhile for write-lock occupancy and throughput, not per-call latency.
-const piledriver = process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_BUFFERED_PILEDRIVER === "1"
-  ? basePiledriver
-  : declareBufferedPiledriverDatabase(basePiledriver);
+const bufferedPiledriverEnabled = process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_BUFFERED_PILEDRIVER !== "1";
+const piledriver = bufferedPiledriverEnabled ? declareBufferedPiledriverDatabase(basePiledriver) : basePiledriver;
 const bulldozerDb = declareBulldozerDatabase(
   piledriver,
   { migrations: schema.migrations },
@@ -1161,6 +1160,7 @@ const startupFields = {
   usingTmpLmdb: process.env.HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB === "1",
   lmdbCompression: process.env.HEXCLAVE_BULLDOZER_JS_LMDB_COMPRESSION === "1",
   disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
+  bufferedPiledriverEnabled,
   gcExposed: globalThis.gc !== undefined,
   heapGcUsageThreshold: HEAP_GC_USAGE_THRESHOLD,
   heapGcMaxPasses: HEAP_GC_MAX_PASSES,
