@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/example-supabase",
-  "version": "1.0.88",
+  "version": "1.0.89",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "scripts": {
