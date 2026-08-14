@@ -3,7 +3,19 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordLocalDashboardProcess } from "../lib/dev-env-state.js";
-import { composeDevChildEnv, configErrorLogPrefix, dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, runChildProcess, shellChildCommand, shouldRestartDashboard } from "./dev.js";
+import { composeDevChildEnv, configErrorLogPrefix, dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, runChildProcess, shellChildCommand, shouldRestartDashboard, validateDevCommandSelection } from "./dev.js";
+
+describe("validateDevCommandSelection", () => {
+  it("rejects combining --service-id with a positional command", () => {
+    expect(() => validateDevCommandSelection("web", ["pnpm", "dev"]))
+      .toThrow("Cannot combine --service-id <id> with a positional command after --");
+  });
+
+  it("preserves service-only and command-only modes", () => {
+    expect(() => validateDevCommandSelection("web", [])).not.toThrow();
+    expect(() => validateDevCommandSelection(undefined, ["pnpm", "dev"])).not.toThrow();
+  });
+});
 
 describe("shellChildCommand", () => {
   it("wraps the command line in /bin/sh on POSIX platforms", () => {

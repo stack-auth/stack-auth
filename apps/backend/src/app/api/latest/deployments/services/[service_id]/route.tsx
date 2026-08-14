@@ -12,7 +12,7 @@ export const GET = createSmartRouteHandler({
   metadata: {
     summary: "Get deployment service",
     description: "Returns a deployment service definition (as last synced from the config file) merged with its operational state.",
-    tags: ["Deployments"],
+    tags: ["Deploy"],
     hidden: true,
   },
   request: yupObject({

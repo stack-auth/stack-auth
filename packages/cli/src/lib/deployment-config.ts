@@ -330,7 +330,7 @@ function readOptionalIntegerField(record: Record<string, unknown>, serviceId: st
   const value = record[field];
   if (value === undefined) return undefined;
   if (typeof value !== "number" || !Number.isInteger(value)) {
-    throw new CliError(`deployment.services.${serviceId}.${field} must be an integer.`);
+    throw new CliError(`deploy.services.${serviceId}.${field} must be an integer.`);
   }
   return value;
 }
@@ -339,7 +339,7 @@ function readOptionalStringField(record: Record<string, unknown>, serviceId: str
   const value = record[field];
   if (value === undefined) return undefined;
   if (typeof value !== "string") {
-    throw new CliError(`deployment.services.${serviceId}.${field} must be a string.`);
+    throw new CliError(`deploy.services.${serviceId}.${field} must be a string.`);
   }
   return value;
 }
@@ -370,24 +370,24 @@ function evaluatePorts(serviceId: string, isPublic: boolean, portsRaw: unknown):
   // `ports` is far more often a forgotten line than a deliberate worker, and
   // `ports: {}` says the latter out loud.
   if (portsRaw === undefined || portsRaw === null) {
-    throw new CliError(`deployment.services.${serviceId} has no \`ports\`. Every service must declare the ports its container listens on, e.g. \`ports: { 3000: { protocol: "http" } }\` — or \`ports: {}\` for a worker that only makes outbound connections.`);
+    throw new CliError(`deploy.services.${serviceId} has no \`ports\`. Every service must declare the ports its container listens on, e.g. \`ports: { 3000: { protocol: "http" } }\` — or \`ports: {}\` for a worker that only makes outbound connections.`);
   }
   if (typeof portsRaw !== "object" || Array.isArray(portsRaw)) {
-    throw new CliError(`deployment.services.${serviceId}.ports must be an object keyed by port number, e.g. \`ports: { 3000: { protocol: "http" } }\` (got ${Array.isArray(portsRaw) ? "an array" : JSON.stringify(typeof portsRaw)}).`);
+    throw new CliError(`deploy.services.${serviceId}.ports must be an object keyed by port number, e.g. \`ports: { 3000: { protocol: "http" } }\` (got ${Array.isArray(portsRaw) ? "an array" : JSON.stringify(typeof portsRaw)}).`);
   }
   const portEntries = Object.entries(portsRaw as Record<string, unknown>);
   if (portEntries.length > MAX_PORTS_PER_SERVICE) {
-    throw new CliError(`deployment.services.${serviceId}.ports declares ${portEntries.length} ports, but at most ${MAX_PORTS_PER_SERVICE} per service is supported.`);
+    throw new CliError(`deploy.services.${serviceId}.ports declares ${portEntries.length} ports, but at most ${MAX_PORTS_PER_SERVICE} per service is supported.`);
   }
 
   const ports: DeploymentPorts = {};
   for (const [portKey, portRaw] of portEntries) {
-    const at = `deployment.services.${serviceId}.ports[${portKey}]`;
+    const at = `deploy.services.${serviceId}.ports[${portKey}]`;
     // Object keys are strings even when written as numbers, and JS accepts any
     // string as one — so the key is validated as a port number here rather than
     // coerced.
     if (!/^[0-9]+$/.test(portKey)) {
-      throw new CliError(`deployment.services.${serviceId}.ports has the key ${JSON.stringify(portKey)}, which is not a port number. Keys are the ports the container listens on, e.g. \`ports: { 3000: { protocol: "http" } }\`.`);
+      throw new CliError(`deploy.services.${serviceId}.ports has the key ${JSON.stringify(portKey)}, which is not a port number. Keys are the ports the container listens on, e.g. \`ports: { 3000: { protocol: "http" } }\`.`);
     }
     // A port has ONE canonical spelling, and this is what keeps duplicates
     // impossible. "80" and "080" are different keys of one record but the same
@@ -396,7 +396,7 @@ function evaluatePorts(serviceId: string, isPublic: boolean, portsRaw: unknown):
     // Normalizing instead of refusing would silently drop one of the two
     // definitions, which may not even agree with each other.
     if (!DEPLOYMENT_PORT_KEY_REGEX.test(portKey)) {
-      throw new CliError(`deployment.services.${serviceId}.ports has the key ${JSON.stringify(portKey)}, which has a leading zero. Write the port in plain decimal (${JSON.stringify(String(Number(portKey)))}) — otherwise one port can be declared twice under two spellings.`);
+      throw new CliError(`deploy.services.${serviceId}.ports has the key ${JSON.stringify(portKey)}, which has a leading zero. Write the port in plain decimal (${JSON.stringify(String(Number(portKey)))}) — otherwise one port can be declared twice under two spellings.`);
     }
     const port = Number(portKey);
     if (port < 1 || port > 65535) {
@@ -430,12 +430,12 @@ function evaluatePorts(serviceId: string, isPublic: boolean, portsRaw: unknown):
   // a billing decision rather than a code change.
   const tcpPorts = entries.filter((entry) => entry.protocol === "tcp");
   if (isPublic && tcpPorts.length > 0) {
-    throw new CliError(`deployment.services.${serviceId} is \`public: true\` but declares the "tcp" port${tcpPorts.length === 1 ? "" : "s"} ${tcpPorts.map((entry) => entry.port).join(", ")}. Raw TCP carries no SNI or Host header, so a shared public address cannot tell which service a connection is for. Keep the service private and reach it with service(${JSON.stringify(serviceId)}).hostname() and the port number, or move the TCP ports to their own service.`);
+    throw new CliError(`deploy.services.${serviceId} is \`public: true\` but declares the "tcp" port${tcpPorts.length === 1 ? "" : "s"} ${tcpPorts.map((entry) => entry.port).join(", ")}. Raw TCP carries no SNI or Host header, so a shared public address cannot tell which service a connection is for. Keep the service private and reach it with service(${JSON.stringify(serviceId)}).hostname() and the port number, or move the TCP ports to their own service.`);
   }
 
   // Public ingress with nothing behind it.
   if (isPublic && entries.length === 0) {
-    throw new CliError(`deployment.services.${serviceId} is \`public: true\` but declares no ports, so there is nothing to serve on the public address it would be given. Drop \`public\`, or declare the port the container listens on.`);
+    throw new CliError(`deploy.services.${serviceId} is \`public: true\` but declares no ports, so there is nothing to serve on the public address it would be given. Drop \`public\`, or declare the port the container listens on.`);
   }
 
   // The port that owns the standard bindings also claims external 80 and 443 for
@@ -444,7 +444,7 @@ function evaluatePorts(serviceId: string, isPublic: boolean, portsRaw: unknown):
   const standardConflicts = reservedStandardPortConflicts(ports, isPublic);
   if (standardConflicts.length > 0) {
     const holder = standardPortsHolderPort(ports, isPublic);
-    throw new CliError(`deployment.services.${serviceId} declares port ${standardConflicts.join(" and ")} alongside port ${holder}, which additionally answers on the standard 80 and 443 — so one external port would have to be served from two of them. Keep whichever of the two you actually need, or move it to its own service.`);
+    throw new CliError(`deploy.services.${serviceId} declares port ${standardConflicts.join(" and ")} alongside port ${holder}, which additionally answers on the standard 80 and 443 — so one external port would have to be served from two of them. Keep whichever of the two you actually need, or move it to its own service.`);
   }
 
   // Not an error, but worth saying at evaluation time rather than only in the
@@ -461,7 +461,7 @@ function evaluatePorts(serviceId: string, isPublic: boolean, portsRaw: unknown):
 function evaluatePersistentVolumes(serviceId: string, volumesRaw: unknown): Record<string, DeploymentVolumeDefinition> | undefined {
   if (volumesRaw === undefined || volumesRaw === null) return undefined;
   if (typeof volumesRaw !== "object" || Array.isArray(volumesRaw)) {
-    throw new CliError(`deployment.services.${serviceId}.persistentVolumes must be an object keyed by volume id, e.g. \`persistentVolumes: { data: { path: "/data", sizeGb: 10 } }\`.`);
+    throw new CliError(`deploy.services.${serviceId}.persistentVolumes must be an object keyed by volume id, e.g. \`persistentVolumes: { data: { path: "/data", sizeGb: 10 } }\`.`);
   }
   const volumesRecord = volumesRaw as Record<string, unknown>;
   const volumeIds = Object.keys(volumesRecord);
@@ -469,28 +469,28 @@ function evaluatePersistentVolumes(serviceId: string, volumesRaw: unknown): Reco
   // Fly mounts at most one volume per machine, so a second entry could not be
   // honoured. Refuse it outright rather than silently mounting the first.
   if (volumeIds.length > MAX_PERSISTENT_VOLUMES_PER_SERVICE) {
-    throw new CliError(`deployment.services.${serviceId}.persistentVolumes declares ${volumeIds.length} volumes (${volumeIds.join(", ")}), but only ${MAX_PERSISTENT_VOLUMES_PER_SERVICE} per service is supported right now. Keep one volume and put the rest on separate services.`);
+    throw new CliError(`deploy.services.${serviceId}.persistentVolumes declares ${volumeIds.length} volumes (${volumeIds.join(", ")}), but only ${MAX_PERSISTENT_VOLUMES_PER_SERVICE} per service is supported right now. Keep one volume and put the rest on separate services.`);
   }
 
   const volumes = new Map<string, DeploymentVolumeDefinition>();
   for (const [volumeId, volumeRaw] of Object.entries(volumesRecord)) {
     // The id becomes the Fly volume name, which is alphanumeric + underscore.
     if (!DEPLOYMENT_VOLUME_ID_REGEX.test(volumeId) || volumeId.length > MAX_VOLUME_ID_LENGTH) {
-      throw new CliError(`Invalid persistent volume id ${JSON.stringify(volumeId)} on deployment.services.${serviceId}. Volume ids must start with a lowercase letter, contain only lowercase letters, digits, and underscores, and be at most ${MAX_VOLUME_ID_LENGTH} characters.`);
+      throw new CliError(`Invalid persistent volume id ${JSON.stringify(volumeId)} on deploy.services.${serviceId}. Volume ids must start with a lowercase letter, contain only lowercase letters, digits, and underscores, and be at most ${MAX_VOLUME_ID_LENGTH} characters.`);
     }
     if (volumeRaw === null || typeof volumeRaw !== "object" || Array.isArray(volumeRaw)) {
-      throw new CliError(`deployment.services.${serviceId}.persistentVolumes.${volumeId} must be an object, e.g. \`{ path: "/data", sizeGb: 10 }\`.`);
+      throw new CliError(`deploy.services.${serviceId}.persistentVolumes.${volumeId} must be an object, e.g. \`{ path: "/data", sizeGb: 10 }\`.`);
     }
     const record = volumeRaw as Record<string, unknown>;
     for (const field of Object.keys(record)) {
       if (!KNOWN_VOLUME_FIELDS.has(field)) {
-        throw new CliError(`deployment.services.${serviceId}.persistentVolumes.${volumeId} has an unknown field ${JSON.stringify(field)}. Known fields: ${[...KNOWN_VOLUME_FIELDS].join(", ")}.`);
+        throw new CliError(`deploy.services.${serviceId}.persistentVolumes.${volumeId} has an unknown field ${JSON.stringify(field)}. Known fields: ${[...KNOWN_VOLUME_FIELDS].join(", ")}.`);
       }
     }
 
     const volumePath = record.path;
     if (typeof volumePath !== "string" || volumePath === "") {
-      throw new CliError(`deployment.services.${serviceId}.persistentVolumes.${volumeId}.path is required and must be the absolute path the disk is mounted at inside the container, e.g. "/data".`);
+      throw new CliError(`deploy.services.${serviceId}.persistentVolumes.${volumeId}.path is required and must be the absolute path the disk is mounted at inside the container, e.g. "/data".`);
     }
     if (volumePath.length > 512
       || !volumePath.startsWith("/")
@@ -500,15 +500,15 @@ function evaluatePersistentVolumes(serviceId: string, volumesRaw: unknown): Reco
       // eslint-disable-next-line no-control-regex
       || /[\x00-\x1f]/.test(volumePath)
       || volumePath.split("/").slice(1).some((segment) => segment === "" || segment === "." || segment === "..")) {
-      throw new CliError(`deployment.services.${serviceId}.persistentVolumes.${volumeId}.path must be a normalized absolute path inside the container (got ${JSON.stringify(volumePath)}). Use something like "/data" — no trailing slash, no "." or ".." segments.`);
+      throw new CliError(`deploy.services.${serviceId}.persistentVolumes.${volumeId}.path must be a normalized absolute path inside the container (got ${JSON.stringify(volumePath)}). Use something like "/data" — no trailing slash, no "." or ".." segments.`);
     }
 
     const sizeGb = record.sizeGb;
     if (typeof sizeGb !== "number" || !Number.isInteger(sizeGb)) {
-      throw new CliError(`deployment.services.${serviceId}.persistentVolumes.${volumeId}.sizeGb is required and must be a whole number of gigabytes, e.g. \`sizeGb: 10\`.`);
+      throw new CliError(`deploy.services.${serviceId}.persistentVolumes.${volumeId}.sizeGb is required and must be a whole number of gigabytes, e.g. \`sizeGb: 10\`.`);
     }
     if (sizeGb < MIN_VOLUME_SIZE_GB || sizeGb > MAX_VOLUME_SIZE_GB) {
-      throw new CliError(`deployment.services.${serviceId}.persistentVolumes.${volumeId}.sizeGb must be between ${MIN_VOLUME_SIZE_GB} and ${MAX_VOLUME_SIZE_GB} GB (got ${sizeGb}).`);
+      throw new CliError(`deploy.services.${serviceId}.persistentVolumes.${volumeId}.sizeGb must be between ${MIN_VOLUME_SIZE_GB} and ${MAX_VOLUME_SIZE_GB} GB (got ${sizeGb}).`);
     }
     volumes.set(volumeId, { path: volumePath, size_gb: sizeGb });
   }
@@ -518,12 +518,12 @@ function evaluatePersistentVolumes(serviceId: string, volumesRaw: unknown): Reco
 function evaluateEnvRecord(serviceId: string, envRaw: unknown): Record<string, EvaluatedEnvVarValue> {
   if (envRaw === undefined) return {};
   if (envRaw === null || typeof envRaw !== "object" || Array.isArray(envRaw)) {
-    throw new CliError(`deployment.services.${serviceId}.env must be a record of env var values.`);
+    throw new CliError(`deploy.services.${serviceId}.env must be a record of env var values.`);
   }
   const env = new Map<string, EvaluatedEnvVarValue>();
   for (const [envVarKey, value] of Object.entries(envRaw as Record<string, unknown>)) {
     if (!DEPLOYMENT_ENV_VAR_KEY_REGEX.test(envVarKey)) {
-      throw new CliError(`deployment.services.${serviceId}.env has an invalid key ${JSON.stringify(envVarKey)}. Env var keys must start with a letter or underscore and contain only letters, digits, and underscores.`);
+      throw new CliError(`deploy.services.${serviceId}.env has an invalid key ${JSON.stringify(envVarKey)}. Env var keys must start with a letter or underscore and contain only letters, digits, and underscores.`);
     }
     if (value === null || value === undefined) {
       // null means "omit this env var" — the isDev-branching idiom
@@ -540,12 +540,12 @@ function evaluateEnvRecord(serviceId: string, envRaw: unknown): Record<string, E
       // `internalUrl` is a call, so the bare property is a function. Say so
       // rather than reporting an unhelpful "got function".
       const call = (value as Record<symbol, string>)[UNCALLED_OUTPUT_MARKER];
-      throw new CliError(`deployment.services.${serviceId}.env.${envVarKey} is ${call} without calling it. A URL names one port — write \`${call}()\` when the service has a single HTTP port, or \`${call}(9090)\` to pick one.`);
+      throw new CliError(`deploy.services.${serviceId}.env.${envVarKey} is ${call} without calling it. A URL names one port — write \`${call}()\` when the service has a single HTTP port, or \`${call}(9090)\` to pick one.`);
     } else if (typeof value === "object" && (SERVICE_OUTPUT_KEYS as readonly string[]).some((outputKey) => outputKey in (value as object))) {
       // The whole outputs object was assigned instead of one of its outputs.
-      throw new CliError(`deployment.services.${serviceId}.env.${envVarKey} is a service returned by service() — pick one of its outputs instead (e.g. service("...").url).`);
+      throw new CliError(`deploy.services.${serviceId}.env.${envVarKey} is a service returned by service() — pick one of its outputs instead (e.g. service("...").url).`);
     } else {
-      throw new CliError(`deployment.services.${serviceId}.env.${envVarKey} must be a string, null, secret(...), service(...).<output>, or hexclave.<output> (got ${typeof value}).`);
+      throw new CliError(`deploy.services.${serviceId}.env.${envVarKey} must be a string, null, secret(...), service(...).<output>, or hexclave.<output> (got ${typeof value}).`);
     }
   }
   return Object.fromEntries(env);
@@ -659,7 +659,7 @@ export function evaluateDeploymentConfig(options: {
     throw new CliError(`The \`deploy\` export of ${deployFilePath} returned no \`services\`. Add them, e.g.:\n${EXAMPLE_DEPLOYMENT_EXPORT}`);
   }
   if (servicesRaw === null || typeof servicesRaw !== "object" || Array.isArray(servicesRaw)) {
-    throw new CliError(`deployment.services of ${deployFilePath} must be a record of services keyed by service id.`);
+    throw new CliError(`deploy.services of ${deployFilePath} must be a record of services keyed by service id.`);
   }
 
   const services = new Map<string, EvaluatedService>();
@@ -671,25 +671,25 @@ export function evaluateDeploymentConfig(options: {
       throw new CliError(`The service id ${JSON.stringify(HEXCLAVE_SERVICE_ID)} is reserved for the managed Hexclave service.`);
     }
     if (serviceRaw === null || typeof serviceRaw !== "object" || Array.isArray(serviceRaw)) {
-      throw new CliError(`deployment.services.${serviceId} must be an object.`);
+      throw new CliError(`deploy.services.${serviceId} must be an object.`);
     }
     const record = serviceRaw as Record<string, unknown>;
     for (const field of Object.keys(record)) {
       if (!KNOWN_SERVICE_FIELDS.has(field)) {
-        throw new CliError(`deployment.services.${serviceId} has an unknown field ${JSON.stringify(field)}. Known fields: ${[...KNOWN_SERVICE_FIELDS].join(", ")}.`);
+        throw new CliError(`deploy.services.${serviceId} has an unknown field ${JSON.stringify(field)}. Known fields: ${[...KNOWN_SERVICE_FIELDS].join(", ")}.`);
       }
     }
     if (!(DEPLOYMENT_SERVICE_TYPES as readonly unknown[]).includes(record.type)) {
       throw new CliError(record.type === undefined
-        ? `deployment.services.${serviceId} has no \`type\`. Add \`type: "server"\` (single suspending instance, may have persistentVolumes) or \`type: "serverless"\` (scales out, stops on scale-down).`
-        : `deployment.services.${serviceId}.type must be ${DEPLOYMENT_SERVICE_TYPES.map((knownType: string) => JSON.stringify(knownType)).join(" or ")} (got ${JSON.stringify(record.type)}).`);
+        ? `deploy.services.${serviceId} has no \`type\`. Add \`type: "server"\` (single suspending instance, may have persistentVolumes) or \`type: "serverless"\` (scales out, stops on scale-down).`
+        : `deploy.services.${serviceId}.type must be ${DEPLOYMENT_SERVICE_TYPES.map((knownType: string) => JSON.stringify(knownType)).join(" or ")} (got ${JSON.stringify(record.type)}).`);
     }
     const serviceType = record.type as DeploymentServiceType;
     // Visibility is the SERVICE's, not a port's: the runtime serves every declared
     // port on every address the service has, so there is no such thing as a
     // public port with a private sibling.
     if (record.public !== undefined && typeof record.public !== "boolean") {
-      throw new CliError(`deployment.services.${serviceId}.public must be true or false (got ${JSON.stringify(record.public)}). It defaults to false — services are private, reachable only by other services in this project.`);
+      throw new CliError(`deploy.services.${serviceId}.public must be true or false (got ${JSON.stringify(record.public)}). It defaults to false — services are private, reachable only by other services in this project.`);
     }
     const isPublic = record.public === true;
     const ports = evaluatePorts(serviceId, isPublic, record.ports);
@@ -698,7 +698,7 @@ export function evaluateDeploymentConfig(options: {
     const absoluteRootDirectory = path.resolve(deployFileDirectory, rootDirectoryRaw ?? ".");
     const relativeRootDirectory = path.relative(deployFileDirectory, absoluteRootDirectory);
     if (relativeRootDirectory === ".." || relativeRootDirectory.startsWith(`..${path.sep}`) || path.isAbsolute(relativeRootDirectory)) {
-      throw new CliError(`deployment.services.${serviceId}.rootDirectory resolves to ${absoluteRootDirectory}, which is outside the directory containing the deploy file (${deployFileDirectory}). Root directories must be inside it.`);
+      throw new CliError(`deploy.services.${serviceId}.rootDirectory resolves to ${absoluteRootDirectory}, which is outside the directory containing the deploy file (${deployFileDirectory}). Root directories must be inside it.`);
     }
 
     // Optional Dockerfile location, relative to the root directory. When it is
@@ -711,7 +711,7 @@ export function evaluateDeploymentConfig(options: {
       const absoluteDockerfilePath = path.resolve(absoluteRootDirectory, dockerfilePathRaw);
       const relativeDockerfilePath = path.relative(absoluteRootDirectory, absoluteDockerfilePath);
       if (relativeDockerfilePath === "" || relativeDockerfilePath === ".." || relativeDockerfilePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativeDockerfilePath)) {
-        throw new CliError(`deployment.services.${serviceId}.dockerfilePath must point to a file inside the service's root directory (got ${JSON.stringify(dockerfilePathRaw)}).`);
+        throw new CliError(`deploy.services.${serviceId}.dockerfilePath must point to a file inside the service's root directory (got ${JSON.stringify(dockerfilePathRaw)}).`);
       }
       dockerfilePath = relativeDockerfilePath.split(path.sep).join("/");
     }
@@ -719,27 +719,27 @@ export function evaluateDeploymentConfig(options: {
     const minInstances = readOptionalIntegerField(record, serviceId, "minInstances");
     const maxInstances = readOptionalIntegerField(record, serviceId, "maxInstances");
     if (minInstances !== undefined && (minInstances < 0 || minInstances > MAX_INSTANCES_PER_SERVICE)) {
-      throw new CliError(`deployment.services.${serviceId}.minInstances must be between 0 and ${MAX_INSTANCES_PER_SERVICE} (got ${minInstances}).`);
+      throw new CliError(`deploy.services.${serviceId}.minInstances must be between 0 and ${MAX_INSTANCES_PER_SERVICE} (got ${minInstances}).`);
     }
     if (maxInstances !== undefined && (maxInstances < 1 || maxInstances > MAX_INSTANCES_PER_SERVICE)) {
       // Caught here rather than server-side so a typo'd fleet size fails in
       // seconds, before anything is packaged or uploaded.
-      throw new CliError(`deployment.services.${serviceId}.maxInstances must be between 1 and ${MAX_INSTANCES_PER_SERVICE} (got ${maxInstances}). A service may scale to at most ${MAX_INSTANCES_PER_SERVICE} instances.`);
+      throw new CliError(`deploy.services.${serviceId}.maxInstances must be between 1 and ${MAX_INSTANCES_PER_SERVICE} (got ${maxInstances}). A service may scale to at most ${MAX_INSTANCES_PER_SERVICE} instances.`);
     }
     // Only reject when max is explicitly below min. min-only is fine: max defaults up to min
     // downstream, so the spec stays consistent (this used to slip through and 400 from the runtime).
     if (minInstances !== undefined && maxInstances !== undefined && maxInstances < minInstances) {
-      throw new CliError(`deployment.services.${serviceId}.maxInstances (${maxInstances}) must be at least minInstances (${minInstances}).`);
+      throw new CliError(`deploy.services.${serviceId}.maxInstances (${maxInstances}) must be at least minInstances (${minInstances}).`);
     }
     // A "server" is exactly one instance that suspends when idle, so scaling
     // bounds may only ever restate that. Anything else is a type mismatch, not
     // a bounds error, so point at the type the author probably wanted.
     if (serviceType === "server") {
       if (maxInstances !== undefined && maxInstances !== 1) {
-        throw new CliError(`deployment.services.${serviceId} is a "server", which is always a single instance, so maxInstances must be 1 (got ${maxInstances}). Use \`type: "serverless"\` to scale out.`);
+        throw new CliError(`deploy.services.${serviceId} is a "server", which is always a single instance, so maxInstances must be 1 (got ${maxInstances}). Use \`type: "serverless"\` to scale out.`);
       }
       if (minInstances !== undefined && minInstances !== 0 && minInstances !== 1) {
-        throw new CliError(`deployment.services.${serviceId} is a "server", which holds a single instance, so minInstances must be 1 (always on, the default) or 0 (suspend when idle) — got ${minInstances}. Use \`type: "serverless"\` to run several instances.`);
+        throw new CliError(`deploy.services.${serviceId} is a "server", which holds a single instance, so minInstances must be 1 (always on, the default) or 0 (suspend when idle) — got ${minInstances}. Use \`type: "serverless"\` to run several instances.`);
       }
     }
 
@@ -747,7 +747,7 @@ export function evaluateDeploymentConfig(options: {
     // instance, so only a "server" can hold one.
     const persistentVolumes = evaluatePersistentVolumes(serviceId, record.persistentVolumes);
     if (persistentVolumes !== undefined && serviceType !== "server") {
-      throw new CliError(`deployment.services.${serviceId} declares persistentVolumes but is a "serverless" service. A volume is a disk on one machine — it cannot be shared between instances, so each one would get its own separate copy. Change it to \`type: "server"\`, or drop the volume and keep state in a database or object storage instead.`);
+      throw new CliError(`deploy.services.${serviceId} declares persistentVolumes but is a "serverless" service. A volume is a disk on one machine — it cannot be shared between instances, so each one would get its own separate copy. Change it to \`type: "server"\`, or drop the volume and keep state in a database or object storage instead.`);
     }
 
     const env = evaluateEnvRecord(serviceId, record.env);
@@ -798,7 +798,7 @@ export function evaluateDeploymentConfig(options: {
     for (const volumeId of Object.keys(service.definition.persistent_volumes ?? {})) {
       const existingOwner = volumeIdOwners.get(volumeId);
       if (existingOwner !== undefined) {
-        throw new CliError(`The persistent volume id ${JSON.stringify(volumeId)} is claimed by both deployment.services.${existingOwner} and deployment.services.${serviceId}. A volume is one disk and can only be mounted by one service — give one of them a different id.`);
+        throw new CliError(`The persistent volume id ${JSON.stringify(volumeId)} is claimed by both deploy.services.${existingOwner} and deploy.services.${serviceId}. A volume is one disk and can only be mounted by one service — give one of them a different id.`);
       }
       volumeIdOwners.set(volumeId, serviceId);
     }
@@ -829,7 +829,7 @@ export function evaluateDeploymentConfig(options: {
       // A target from another deployment source: its ports are not in this file,
       // so the rules below can only be enforced server-side.
       if (target == null) continue;
-      const at = `deployment.services.${serviceId}.env.${envVarKey}`;
+      const at = `deploy.services.${serviceId}.env.${envVarKey}`;
       const targetPorts = deploymentPortEntries(target.definition.ports);
       // "none" rather than an empty string: a portless service is a legal
       // declaration now, so this list really can be empty.
@@ -886,7 +886,7 @@ export function evaluateDeploymentConfig(options: {
         ? ports.filter((entry) => entry.protocol === "http")[0]
         : ports.find((entry) => entry.port === parsed.port);
       if (port === undefined) continue;
-      throw new CliError(`deployment.services.${serviceId}.env.${envVarKey} connects to the service's own public URL (port ${port.port}), which cannot exist before the service does. Use service("${serviceId}").hostname() for its own address.`);
+      throw new CliError(`deploy.services.${serviceId}.env.${envVarKey} connects to the service's own public URL (port ${port.port}), which cannot exist before the service does. Use service("${serviceId}").hostname() for its own address.`);
     }
   }
 

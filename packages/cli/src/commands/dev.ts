@@ -926,21 +926,28 @@ async function closeSession(sessionId: string, secret: string, port: number): Pr
   }
 }
 
+export function validateDevCommandSelection(serviceId: string | undefined, commandArgs: string[]): void {
+  if (serviceId != null && commandArgs.length > 0) {
+    throw new CliError("Cannot combine --service-id <id> with a positional command after --. Choose the service's devCommand or run an explicit command, but not both.");
+  }
+  if (serviceId == null && commandArgs.length === 0) {
+    throw new CliError("Missing command. Pass --service-id <id> to run a service's devCommand from the deploy file, or a command after --: hexclave dev --config-file <path> -- <command> [args...]");
+  }
+}
+
 export function registerDevCommand(program: Command) {
   program
     .command("dev")
     .usage("--config-file <path> [--service-id <id>] [-- <command> [args...]]")
-    .description("Run a command with Hexclave development-environment credentials. With --service-id, the service's devCommand from the deploy file's `deployment.services` is run in the service's rootDirectory and its env vars are injected (secrets resolve to their default values; `service()` returns null, so guard connection values with isDev — reading an output off it, e.g. `service(\"api\").url`, throws).")
+    .description("Run a command with Hexclave development-environment credentials. With --service-id, the service's devCommand from the deploy file's `deploy` export is run in the service's rootDirectory and its env vars are injected (secrets resolve to their default values; `service()` returns null, so guard connection values with isDev — reading an output off it, e.g. `service(\"api\").url`, throws).")
     .requiredOption("--config-file <path>", "Path to hexclave.config.ts")
-    .option("--service-id <id>", "Run the devCommand of this service from the deploy file's `deployment.services`, in its rootDirectory and with the service's env vars injected")
+    .option("--service-id <id>", "Run the devCommand of this service from the deploy file's `deploy` export, in its rootDirectory and with the service's env vars injected")
     .option("--deploy-file <path>", "Path to the deploy file for --service-id (default: auto-discover hexclave.deploy.ts next to the config file)")
-    .argument("[command...]", "Command and arguments to run after -- (overrides the service's devCommand)")
+    .argument("[command...]", "Command and arguments to run after --")
     .action(async (commandArgs: string[], opts: DevOptions) => {
+      validateDevCommandSelection(opts.serviceId, commandArgs);
       if (opts.configFile == null) {
         throw new CliError("--config-file is required.");
-      }
-      if (opts.serviceId == null && commandArgs.length === 0) {
-        throw new CliError("Missing command. Pass --service-id <id> to run a service's devCommand from the config file, or a command after --: hexclave dev --config-file <path> -- <command> [args...]");
       }
 
       const configFilePath = resolveConfigFilePathOption(opts.configFile, { mustExist: opts.serviceId != null });
@@ -969,7 +976,7 @@ export function registerDevCommand(program: Command) {
         // which exits 0 immediately — so an empty string would report a successful dev
         // session that never started the service, instead of naming the actual problem.
         if (commandArgs.length === 0 && (devService.devCommand == null || devService.devCommand.trim() === "")) {
-          throw new CliError(`The service ${JSON.stringify(opts.serviceId)} has no devCommand in the deploy file's deployment.services. Add one (e.g. devCommand: "npm run dev"), or pass a command after --.`);
+          throw new CliError(`The service ${JSON.stringify(opts.serviceId)} has no devCommand in the deploy file's \`deploy\` export. Add one (e.g. devCommand: "npm run dev"), or pass a command after --.`);
         }
         // The service's rootDirectory becomes the child's cwd below, so check it
         // HERE rather than letting spawn fail: spawn reports a bad cwd as an
@@ -987,7 +994,7 @@ export function registerDevCommand(program: Command) {
           throw new CliError(`The rootDirectory of the service ${JSON.stringify(opts.serviceId)} is ${devService.absoluteRootDirectory}, which ${rootDirectoryStats == null ? "does not exist" : "is not a directory"}. Fix \`rootDirectory\` in the config file's services export — it is where the service's devCommand runs.`);
         }
       }
-      // An explicit `-- <command>` always overrides the service's devCommand.
+      // The selection guard above makes these modes mutually exclusive.
       const childCommand = commandArgs.length > 0
         ? splitDevCommandArgs(commandArgs)
         : shellChildCommand(devService?.devCommand ?? (() => {

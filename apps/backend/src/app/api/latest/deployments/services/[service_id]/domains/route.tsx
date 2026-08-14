@@ -10,7 +10,7 @@ export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Add domain to deployment service",
     description: "Adds a custom domain to a deployment service and, if the service has been provisioned, attaches it on the runtime (which allocates public IPs and requests a certificate). Domains are operational state (not part of the config-managed service definition), so they can be managed here regardless of where the project's configuration comes from. Read the domain endpoint afterwards for the DNS records to create.",
-    tags: ["Deployments"],
+    tags: ["Deploy"],
     hidden: true,
   },
   request: yupObject({
@@ -110,7 +110,7 @@ export const POST = createSmartRouteHandler({
     if (row.provisionedAt != null) {
       if (getMarshalDeploymentsConfigOrNull() == null) {
         await prisma.deploymentDomain.delete({ where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domain.id } } });
-        throw new StatusError(400, "Deployments are not configured on this Hexclave instance.");
+        throw new StatusError(400, "Deploy is not configured on this Hexclave instance.");
       }
       const client = getMarshalClientOrThrow();
       try {

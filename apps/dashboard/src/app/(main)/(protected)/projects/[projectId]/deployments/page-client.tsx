@@ -12,7 +12,7 @@ import { useAdminApp } from "../use-admin-app";
 import { BoardCanvas } from "./board-canvas";
 import { DeploymentsList } from "./deployments-list";
 
-const stageLabel = getAppStageLabel("deployments-alpha");
+const stageLabel = getAppStageLabel("deploy");
 
 function formatDeploymentTime(millis: number): string {
   return new Date(millis).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -37,10 +37,10 @@ export default function PageClient() {
   const isOpen = openDeploymentId !== null && openDeployment !== null;
 
   return (
-    <AppEnabledGuard appId="deployments-alpha">
+    <AppEnabledGuard appId="deploy">
       <PageLayout
         fillWidth
-        title="Deployments"
+        title="Deploy"
         // No prose subheader — the list says what it is. The stage badge stays
         // because it is the only thing marking the app as alpha.
         description={stageLabel == null ? undefined : <DesignBadge label={stageLabel} color="purple" size="sm" />}

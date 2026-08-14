@@ -1,17 +1,17 @@
 import { deindent } from "../../../utils/strings";
 
-// The Deployments-specific addendum served at https://skill.hexclave.com/deployments.
+// The Deploy-specific addendum served at https://skill.hexclave.com/deployments.
 // It is appended verbatim after the full base skill, so this section assumes the
 // reader already has the general Hexclave skill (CLI auth, config format, SDKs) in
-// context and only teaches what is specific to the Deployments app.
+// context and only teaches what is specific to the Deploy app.
 export const deploymentsSkillSection = deindent`
-  # Hexclave Deployments
+  # Hexclave Deploy
 
-  The Deployments app runs your services as containers built remotely from your source — by default the build is auto-detected with Railpack (https://railpack.com), or you can point a service at your own Dockerfile. You can define multiple services per Hexclave project (e.g. a backend and a frontend). Services are private by default and reach each other over an internal network. Mark a service \`public: true\` to give it a built-in public URL without requiring a custom domain.
+  The Deploy app runs your services as containers built remotely from your source — by default the build is auto-detected with Railpack (https://railpack.com), or you can point a service at your own Dockerfile. You can define multiple services per Hexclave project (e.g. a backend and a frontend). Services are private by default and reach each other over an internal network. Mark a service \`public: true\` to give it a built-in public URL without requiring a custom domain.
 
   Every service is either a \`"server"\` or a \`"serverless"\`. A \`server\` is a single instance that SUSPENDS when idle and resumes with its memory intact, and it is the only type that may have a persistent disk. A \`serverless\` scales out between \`minInstances\` and \`maxInstances\` and STOPS on scale-down, so each start is a cold start and it can have no disk. Use \`server\` for anything stateful (a database, a queue, anything writing to a volume) and \`serverless\` for stateless web apps and APIs.
 
-  Enable the app by adding \`"deployments-alpha"\` under \`apps.installed\` in your config (quote it — it contains a hyphen). Services themselves are NOT part of the \`config\` export: they live in their own file, \`hexclave.deploy.ts\`, next to \`hexclave.config.ts\`.
+  Enable the app by adding \`"deploy"\` under \`apps.installed\` in your config (quote it — it contains a hyphen). Services themselves are NOT part of the \`config\` export: they live in their own file, \`hexclave.deploy.ts\`, next to \`hexclave.config.ts\`.
 
   ## The deploy export
 
@@ -120,13 +120,13 @@ export const deploymentsSkillSection = deindent`
 
   ## Agent workflow (do this — do not drive the dashboard UI)
 
-  AI agents must deploy and manage Deployments through the CLI and \`hexclave.deploy.ts\`, not by clicking around \`app.hexclave.com\` in a browser. The dashboard is a human fallback only.
+  AI agents must deploy and manage Deploy through the CLI and \`hexclave.deploy.ts\`, not by clicking around \`app.hexclave.com\` in a browser. The dashboard is a human fallback only.
 
-  1. **Read this skill** and ensure \`deployments-alpha\` is enabled and the \`deploy\` export exists as above.
+  1. **Read this skill** and ensure \`deploy\` is enabled and the \`deploy\` export exists as above.
   2. **Authenticate for cloud deploys** (pick the first that works):
      - If \`HEXCLAVE_SECRET_SERVER_KEY\` (or \`STACK_SECRET_SERVER_KEY\`) **and** \`HEXCLAVE_PROJECT_ID\` (or \`STACK_PROJECT_ID\`) are already in the environment, use them. No login step.
      - Else if \`npx @hexclave/cli@latest whoami\` succeeds, you already have a CLI login session — proceed.
-     - Else confirm with the user first, then run \`npx @hexclave/cli@latest login\` yourself. It does not open a browser — it prints a one-time confirmation URL (\`https://app.hexclave.com/handler/cli-auth-confirm?login_code=...\`) and waits. Either open that URL in the user's browser or hand it to them to open, but either way tell them to complete the login themselves; you can't do it for them. Once the command returns successfully, continue immediately with the CLI. Do **not** use the browser yourself to open the Deployments dashboard or configure anything in the UI.
+     - Else confirm with the user first, then run \`npx @hexclave/cli@latest login\` yourself. It does not open a browser — it prints a one-time confirmation URL (\`https://app.hexclave.com/handler/cli-auth-confirm?login_code=...\`) and waits. Either open that URL in the user's browser or hand it to them to open, but either way tell them to complete the login themselves; you can't do it for them. Once the command returns successfully, continue immediately with the CLI. Do **not** use the browser yourself to open the Deploy dashboard or configure anything in the UI.
   3. **Set any needed secrets** (previous section), then **deploy** (next section).
 
   \`deploy\` auth: \`HEXCLAVE_SECRET_SERVER_KEY\` if set, otherwise the \`hexclave login\` session. \`exec --cloud-project-id\` needs the login session (not the secret server key alone).

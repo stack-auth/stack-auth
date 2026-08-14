@@ -12,7 +12,7 @@ export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Conclude deployment",
     description: "Marks a deployment as no longer being worked on by the client that created it. A deployment the runtime never accepted reads as still in flight — correct while `hexclave deploy` is still packaging and uploading, but wrong once the client has given up. `hexclave deploy` calls this when it stops, so a deploy that died before the upload finished becomes terminal instead of polling forever.",
-    tags: ["Deployments"],
+    tags: ["Deploy"],
     hidden: true,
   },
   request: yupObject({

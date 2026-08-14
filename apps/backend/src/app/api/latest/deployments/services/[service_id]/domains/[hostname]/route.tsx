@@ -47,7 +47,7 @@ export const GET = createSmartRouteHandler({
   metadata: {
     summary: "Get deployment service domain",
     description: "Returns the verification state of a domain and the DNS records the user must create. Re-checks verification with the runtime on every read, so polling this endpoint picks up DNS changes.",
-    tags: ["Deployments"],
+    tags: ["Deploy"],
     hidden: true,
   },
   request: yupObject({
@@ -178,7 +178,7 @@ export const DELETE = createSmartRouteHandler({
   metadata: {
     summary: "Remove domain from deployment service",
     description: "Removes a domain from a deployment service (runtime and operational state). The service stays running and internally reachable; its public IPs are released when the last domain is removed.",
-    tags: ["Deployments"],
+    tags: ["Deploy"],
     hidden: true,
   },
   request: yupObject({

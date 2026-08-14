@@ -10,7 +10,7 @@ export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Create deployment source upload",
     description: "Creates a short-lived upload slot for a deployment source tarball. PUT the gzipped tarball directly to the returned object-storage URL with the required content type, then reference the upload id in the deploy request.",
-    tags: ["Deployments"],
+    tags: ["Deploy"],
     hidden: true,
   },
   request: yupObject({

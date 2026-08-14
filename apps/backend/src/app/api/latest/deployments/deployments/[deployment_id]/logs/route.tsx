@@ -18,7 +18,7 @@ export const GET = createSmartRouteHandler({
   metadata: {
     summary: "Stream deployment build logs",
     description: "Streams a deployment's build logs as chunked plain text. One deploy is one build — every service of the deployment source is built by the same machine — so this is one log covering all of them. Replays from the start, then follows until the deployment reaches a terminal state (or a few minutes pass — re-request to continue following).",
-    tags: ["Deployments"],
+    tags: ["Deploy"],
     hidden: true,
   },
   request: yupObject({

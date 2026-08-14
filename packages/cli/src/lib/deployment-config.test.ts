@@ -428,11 +428,11 @@ describe("persistent volumes", () => {
   });
 
   it("rejects a missing path or size, and unknown volume fields", () => {
-    expect(() => evaluate(web({ persistentVolumes: { data: { sizeGb: 1 } } }))).toThrow("deployment.services.web.persistentVolumes.data.path is required");
-    expect(() => evaluate(web({ persistentVolumes: { data: { path: "/data" } } }))).toThrow("deployment.services.web.persistentVolumes.data.sizeGb is required");
+    expect(() => evaluate(web({ persistentVolumes: { data: { sizeGb: 1 } } }))).toThrow("deploy.services.web.persistentVolumes.data.path is required");
+    expect(() => evaluate(web({ persistentVolumes: { data: { path: "/data" } } }))).toThrow("deploy.services.web.persistentVolumes.data.sizeGb is required");
     expect(() => evaluate(web({ persistentVolumes: { data: { path: "/data", sizeGb: 1, size: 2 } } }))).toThrow('unknown field "size"');
-    expect(() => evaluate(web({ persistentVolumes: "10gb" }))).toThrow("deployment.services.web.persistentVolumes must be an object");
-    expect(() => evaluate(web({ persistentVolumes: { data: "10gb" } }))).toThrow("deployment.services.web.persistentVolumes.data must be an object");
+    expect(() => evaluate(web({ persistentVolumes: "10gb" }))).toThrow("deploy.services.web.persistentVolumes must be an object");
+    expect(() => evaluate(web({ persistentVolumes: { data: "10gb" } }))).toThrow("deploy.services.web.persistentVolumes.data must be an object");
   });
 });
 

@@ -14,7 +14,7 @@ export const GET = createSmartRouteHandler({
   metadata: {
     summary: "List deployments",
     description: "Lists deployments (one per `hexclave deploy`) newest first, across every deployment source, each reporting the source it came from and what each of its services did. Deployments still in flight are refreshed from the runtime on read.",
-    tags: ["Deployments"],
+    tags: ["Deploy"],
     hidden: true,
   },
   request: yupObject({
@@ -80,7 +80,7 @@ export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Deploy a deployment source",
     description: "Deploys one deployment source from a previously uploaded source tree: every service the deploy file declares is built by ONE builder machine and then rolled out in dependency order. The services' STORED definitions (as last synced via PUT /deployments/services) are authoritative — connections are resolved server-side and secret env vars are filled from the project's stored secret values (Project Settings > Secrets), falling back to any `secret_defaults` sent with this request. Defaults are request-scoped and never stored. A secret with neither fails the deploy with the full list of keys that need a value. Returns as soon as the runtime has accepted the deployment; the build continues remotely, so poll the deployment endpoint for its status.",
-    tags: ["Deployments"],
+    tags: ["Deploy"],
     hidden: true,
   },
   request: yupObject({
@@ -120,7 +120,7 @@ export const POST = createSmartRouteHandler({
     // Checked up front: a deploy on an unconfigured instance can never succeed,
     // so it must not consume the upload.
     if (getMarshalDeploymentsConfigOrNull() == null) {
-      throw new StatusError(400, "Deployments are not configured on this Hexclave instance. Configure HEXCLAVE_MARSHAL_API_KEY (and HEXCLAVE_MARSHAL_URL) first.");
+      throw new StatusError(400, "Deploy is not configured on this Hexclave instance. Configure HEXCLAVE_MARSHAL_API_KEY (and HEXCLAVE_MARSHAL_URL) first.");
     }
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 

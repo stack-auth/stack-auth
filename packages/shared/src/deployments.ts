@@ -1,6 +1,6 @@
-// Shared shapes for the Deployments app. Service definitions used to live in
+// Shared shapes for the Deploy app. Service definitions used to live in
 // the branch config (`deployments-alpha.services`); they now live in the
-// backend database and are synced from the `services` export of
+// backend database and are synced from the `deploy` export of
 // hexclave.deploy.ts by `hexclave deploy`. This module is the single source of
 // truth for the definition shape so the CLI (which evaluates the deploy file),
 // the backend (which stores and deploys definitions), and the SDK (which reads

@@ -327,7 +327,7 @@ export class MarshalClient {
 export function getMarshalClientOrThrow(): MarshalClient {
   const config = getMarshalDeploymentsConfigOrNull();
   if (config == null) {
-    throw new StatusError(400, "Deployments are not configured on this Hexclave instance. Configure HEXCLAVE_MARSHAL_API_KEY (and HEXCLAVE_MARSHAL_URL if Marshal is not on the default local port) first.");
+    throw new StatusError(400, "Deploy is not configured on this Hexclave instance. Configure HEXCLAVE_MARSHAL_API_KEY (and HEXCLAVE_MARSHAL_URL if Marshal is not on the default local port) first.");
   }
   return new MarshalClient(config);
 }

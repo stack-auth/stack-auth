@@ -9,7 +9,7 @@ export const GET = createSmartRouteHandler({
   metadata: {
     summary: "Get deployment",
     description: "Reads one deployment: which deployment source it came from, its build status, and what each of its services did. Refreshed from the runtime on read while it is still in flight — this is what `hexclave deploy` polls.",
-    tags: ["Deployments"],
+    tags: ["Deploy"],
     hidden: true,
   },
   request: yupObject({

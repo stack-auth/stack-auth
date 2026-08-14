@@ -624,16 +624,24 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // END
 
   // BEGIN 2026-07-28: deployment service definitions moved out of the config
-  // entirely — they now come from the `services` export of hexclave.config.ts
-  // and are stored in the backend database, synced by `hexclave deploy`. The
+  // entirely — they now come from the `deploy` export and are stored in the
+  // backend database, synced by `hexclave deploy`. The
   // stored config section is dropped, which in particular removes every
   // config-era service: they were all `type: "vercel"`, a service type that no
   // longer exists (containers on Marshal replaced it). The
-  // `apps.installed.deployments-alpha` entry stays — the app itself still
-  // exists. This runs after the 2026-07-24 rename above, so pre-rename
-  // `deployments` sections are covered too.
+  // `apps.installed.deployments-alpha` entry stays for the later app-key
+  // migration — the app itself still exists. This runs after the 2026-07-24
+  // rename above, so pre-rename `deployments` sections are covered too.
   if (isBranchOrHigher) {
     res = removeProperty(res, p => p[0] === "deployments-alpha");
+  }
+  // END
+
+  // BEGIN 2026-08-14: the Deploy app's author-facing config key is now `deploy`.
+  // Only the installed-app entry remains in current configs; the legacy top-level
+  // deployment service section was removed by the migration immediately above.
+  if (isBranchOrHigher) {
+    res = renameProperty(res, "apps.installed.deployments-alpha", "deploy");
   }
   // END
 
@@ -682,11 +690,12 @@ import.meta.vitest?.test("migrateConfigOverride removes legacy deployments confi
   expect(migrateConfigOverride("branch", {
     deployments: { services: { web: { type: "vercel" } } },
   })).toEqual({});
-  // The app-installation entry must survive — only the config section is gone.
+  // The app-installation entry must survive and receive its current name — only
+  // the legacy service config section is gone.
   expect(migrateConfigOverride("branch", {
     "apps.installed.deployments-alpha": { enabled: true },
     "deployments-alpha": { services: {} },
-  })).toEqual({ "apps.installed.deployments-alpha": { enabled: true } });
+  })).toEqual({ "apps.installed.deploy": { enabled: true } });
 });
 
 import.meta.vitest?.test("migrateConfigOverride removes legacy branch-level dbSync overrides", ({ expect }) => {
@@ -703,7 +712,7 @@ import.meta.vitest?.test("migrateConfigOverride removes legacy branch-level dbSy
   expect(migrateConfigOverride("environment", { dbSync })).toEqual({ dbSync });
 });
 
-import.meta.vitest?.test("migrateConfigOverride renames the deployments app to deployments-alpha", ({ expect }) => {
+import.meta.vitest?.test("migrateConfigOverride renames legacy deployments app keys to deploy", ({ expect }) => {
   const services = { web: { type: "vercel", rootDirectory: "./" } };
 
   // The renamed CONFIG SECTION is subsequently dropped by the 2026-07-28
@@ -713,7 +722,7 @@ import.meta.vitest?.test("migrateConfigOverride renames the deployments app to d
     deployments: { services },
     apps: { installed: { deployments: { enabled: true } } },
   })).toEqual({
-    apps: { installed: { "deployments-alpha": { enabled: true } } },
+    apps: { installed: { deploy: { enabled: true } } },
   });
 
   // Dot-notation overrides, which is how the dashboard used to write single
@@ -724,11 +733,29 @@ import.meta.vitest?.test("migrateConfigOverride renames the deployments app to d
     "deployments.services.web.buildCommand": "pnpm build",
     "apps.installed.deployments.enabled": true,
   })).toEqual({
-    "apps.installed.deployments-alpha.enabled": true,
+    "apps.installed.deploy.enabled": true,
   });
 
   // Project level is not branch-or-higher, so nothing is renamed there.
   expect(migrateConfigOverride("project", { deployments: { services } })).toEqual({ deployments: { services } });
+});
+
+import.meta.vitest?.test("migrateConfigOverride renames deployments-alpha app installations to deploy", ({ expect }) => {
+  expect(migrateConfigOverride("branch", {
+    apps: { installed: { "deployments-alpha": { enabled: true } } },
+  })).toEqual({
+    apps: { installed: { deploy: { enabled: true } } },
+  });
+  expect(migrateConfigOverride("branch", {
+    "apps.installed.deployments-alpha.enabled": true,
+  })).toEqual({
+    "apps.installed.deploy.enabled": true,
+  });
+  expect(migrateConfigOverride("branch", {
+    "apps.installed.deploy.enabled": false,
+  })).toEqual({
+    "apps.installed.deploy.enabled": false,
+  });
 });
 
 function removeProperty(obj: Record<string, any>, pathCond: (path: (string | symbol)[]) => boolean): any {

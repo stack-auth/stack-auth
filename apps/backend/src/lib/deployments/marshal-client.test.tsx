@@ -49,7 +49,7 @@ describe("marshal deployments configuration", () => {
     }
     expect(thrown).toBeInstanceOf(StatusError);
     expect((thrown as StatusError).statusCode).toBe(400);
-    expect((thrown as StatusError).message).toMatchInlineSnapshot(`"Deployments are not configured on this Hexclave instance. Configure HEXCLAVE_MARSHAL_API_KEY (and HEXCLAVE_MARSHAL_URL if Marshal is not on the default local port) first."`);
+    expect((thrown as StatusError).message).toMatchInlineSnapshot(`"Deploy is not configured on this Hexclave instance. Configure HEXCLAVE_MARSHAL_API_KEY (and HEXCLAVE_MARSHAL_URL if Marshal is not on the default local port) first."`);
   });
 
   it("uses the configured URL for real keys and the local dev port for the mock key", () => {

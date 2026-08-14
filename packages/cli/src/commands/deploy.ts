@@ -407,7 +407,7 @@ export function registerDeployCommand(program: Command) {
       if (opts.serviceId != null) {
         const service = services.get(opts.serviceId);
         if (service == null) {
-          throw new CliError(`No service named ${JSON.stringify(opts.serviceId)} in the deploy file's deployment.services. Available services: ${[...services.keys()].join(", ")}.`);
+          throw new CliError(`No service named ${JSON.stringify(opts.serviceId)} in the deploy file's \`deploy\` export. Available services: ${[...services.keys()].join(", ")}.`);
         }
         levels = [[opts.serviceId]];
       } else {
