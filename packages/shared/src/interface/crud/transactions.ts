@@ -121,7 +121,7 @@ export const transactionSchema = yupObject({
   // Populated only for subscription-renewal rows (Hexclave subscription id to
   // pass as refund `id` alongside this row's invoice id). Null elsewhere /
   // when missing on older materialized index rows.
-  renewal_target_subscription_id: yupString().nullable().defined(),
+  renewal_target_subscription_id: yupString().nullable().optional(),
   entries: yupArray(transactionEntrySchema).defined(),
   adjusted_by: yupArray(
     yupObject({
