@@ -105,9 +105,19 @@ describe("external DB sync sequence visibility", () => {
           WHERE "tenancyId" = ${tenancyId}::uuid
             AND "id" = ${rowA.id}::uuid
         `;
-        const allocation = await allocateEmailOutboxSequence(tx, rowA);
-        allocationASkipped = allocation == null;
-        allocationA = allocation?.[0]?.sequenceId;
+        const allocationDeadline = performance.now() + 10_000;
+        let allocation: { sequenceId: bigint }[] | null = null;
+        while (allocation == null && performance.now() < allocationDeadline) {
+          allocation = await allocateEmailOutboxSequence(tx, rowA);
+          if (allocation == null) await wait(50);
+        }
+        if (allocation == null) {
+          throwErr(
+            "Sequence allocation lock remained unavailable while acquiring row A in the regression test",
+          );
+        }
+        allocationASkipped = false;
+        allocationA = allocation[0]?.sequenceId;
         resolveTransactionAAllocated();
         await transactionAReleased;
       }, { maxWait: 10_000, timeout: 60_000 });
