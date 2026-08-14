@@ -22,10 +22,9 @@ async function main() {
   // Turbopack's persistent cache can reach a state where the emitted runtime chunk lacks the
   // async-module helper that the generated PostCSS config loader calls, which fails the build with
   // `TypeError: __turbopack_context__.a is not a function`. Start every build from clean output.
-  const configuredDistDir = process.env.HEXCLAVE_DASHBOARD_NEXT_DIST_DIR ?? '.next';
-  const distDirs = new Set([configuredDistDir, '.next-development-environment']);
-
-  await Promise.all([...distDirs].map(cleanDistDir));
+  // Only the dist dir this build actually writes to: a development environment running in parallel
+  // owns its own output directory, and wiping it would break that session mid-flight.
+  await cleanDistDir(process.env.HEXCLAVE_DASHBOARD_NEXT_DIST_DIR ?? '.next');
 }
 
 main().catch((error) => {
