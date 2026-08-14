@@ -5,6 +5,8 @@ import { niceFetch, STACK_BACKEND_BASE_URL, test } from '../../../../helpers';
 import { withPortPrefix } from '../../../../helpers/ports';
 import { Auth, backendContext, InternalApiKey, Project, User, niceBackendFetch } from '../../../backend-helpers';
 import { randomUUID } from 'node:crypto';
+import { Client } from 'pg';
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import {
   TEST_TIMEOUT,
   TestDbManager,
@@ -121,6 +123,124 @@ async function waitForClickhouseEmailOutbox(id: string, expectedCount: number, d
 
   const state = expectedCount === 0 ? "to be deleted" : "to sync";
   throw new HexclaveAssertionError(`Timed out waiting for ClickHouse email outbox ${id} ${state}.`, { response });
+}
+
+async function allocateEmailOutboxSequence(client: Client, tenancyId: string, id: string): Promise<bigint> {
+  const rows = await client.query<{ sequenceId: string }>(
+    `
+      WITH rows_to_update AS (
+        SELECT "tenancyId", "id"
+        FROM "EmailOutbox"
+        WHERE "tenancyId" = $1::uuid
+          AND "id" = $2::uuid
+          AND "shouldUpdateSequenceId" = TRUE
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "EmailOutbox" eo
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE eo."tenancyId" = r."tenancyId"
+          AND eo."id" = r."id"
+        RETURNING eo."sequenceId"
+      )
+      SELECT "sequenceId" FROM updated_rows
+    `,
+    [tenancyId, id],
+  );
+  return BigInt(rows.rows[0]?.sequenceId ?? throwErr(`Sequencer did not update EmailOutbox ${id}`));
+}
+
+async function insertSequenceVisibilityEmail(client: Client, tenancyId: string, id: string, subject: string): Promise<void> {
+  const renderedAt = new Date();
+  await client.query(
+    `
+      INSERT INTO "EmailOutbox"
+        ("tenancyId", "id", "createdAt", "updatedAt", "tsxSource", "isHighPriority", "to", "extraRenderVariables",
+         "shouldSkipDeliverabilityCheck", "createdWith", "renderedByWorkerId", "startedRenderingAt",
+         "finishedRenderingAt", "renderedHtml", "renderedSubject", "renderedIsTransactional",
+         "scheduledAt", "isQueued", "isPaused", "startedSendingAt", "finishedSendingAt", "canHaveDeliveryInfo",
+         "shouldUpdateSequenceId")
+      VALUES
+        ($1::uuid, $2::uuid, $3, $3, '', false, $4::jsonb, '{}'::jsonb,
+         true, 'PROGRAMMATIC_CALL', $5::uuid, $3, $3, '<p>sequence visibility test</p>',
+         $6, true, $3, false, true, null, null, null, true)
+    `,
+    [
+      tenancyId,
+      id,
+      renderedAt,
+      JSON.stringify({ type: "custom-emails", emails: [`sequence-visibility-${id}@example.com`] }),
+      randomUUID(),
+      subject,
+    ],
+  );
+}
+
+async function triggerExternalDbSync(tenancyId: string): Promise<void> {
+  const response = await niceFetch(new URL("/api/latest/internal/external-db-sync/sync-engine", STACK_BACKEND_BASE_URL), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "upstash-signature": "test-bypass",
+    },
+    body: JSON.stringify({ tenancyId }),
+  });
+  expect(response.status).toBe(200);
+}
+
+type FuseboxState = {
+  existed: boolean,
+  sequencerEnabled: boolean,
+  pollerEnabled: boolean,
+};
+
+async function disableAutomaticSequencing(): Promise<FuseboxState> {
+  return await withInternalDatabase(async (client) => {
+    const result = await client.query<{ sequencerEnabled: boolean, pollerEnabled: boolean }>(
+      `SELECT "sequencerEnabled", "pollerEnabled" FROM "ExternalDbSyncMetadata" WHERE "singleton" = 'TRUE'::"BooleanTrue"`,
+    );
+    const existing = result.rows.at(0);
+    await client.query(
+      `
+        INSERT INTO "ExternalDbSyncMetadata" ("singleton", "sequencerEnabled", "pollerEnabled", "createdAt", "updatedAt")
+        VALUES ('TRUE'::"BooleanTrue", false, COALESCE($1, true), now(), now())
+        ON CONFLICT ("singleton")
+        DO UPDATE SET "sequencerEnabled" = false
+      `,
+      [existing?.pollerEnabled ?? null],
+    );
+    return {
+      existed: existing != null,
+      sequencerEnabled: existing?.sequencerEnabled ?? true,
+      pollerEnabled: existing?.pollerEnabled ?? true,
+    };
+  });
+}
+
+async function restoreFusebox(state: FuseboxState): Promise<void> {
+  await withInternalDatabase(async (client) => {
+    if (state.existed) {
+      await client.query(
+        `UPDATE "ExternalDbSyncMetadata" SET "sequencerEnabled" = $1, "pollerEnabled" = $2 WHERE "singleton" = 'TRUE'::"BooleanTrue"`,
+        [state.sequencerEnabled, state.pollerEnabled],
+      );
+    } else {
+      await client.query(`DELETE FROM "ExternalDbSyncMetadata" WHERE "singleton" = 'TRUE'::"BooleanTrue"`);
+    }
+  });
+}
+
+async function waitForExternalEmailOutbox(client: Client, id: string, expectedCount: number): Promise<void> {
+  await waitForCondition(
+    async () => (await client.query(`SELECT "id" FROM "email_outboxes" WHERE "id" = $1`, [id])).rows.length === expectedCount,
+    {
+      timeoutMs: 30_000,
+      intervalMs: 500,
+      description: `EmailOutbox ${id} to have external row count ${expectedCount}`,
+    },
+  );
 }
 
 // Run tests sequentially to avoid concurrency issues with shared backend state
@@ -1451,6 +1571,115 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     expect(row.created_with).toBe('PROGRAMMATIC_CALL');
     expect(row.is_high_priority).toBe(false);
     expect(row.is_paused).toBe(false);
+  }, TEST_TIMEOUT);
+
+  test("Sequence allocation visibility does not permanently skip an EmailOutbox row", async () => {
+    const dbName = "sequence_visibility_race_test";
+    const connectionString = await dbManager.createDatabase(dbName);
+    const project = await createProjectWithExternalDb({
+      main: {
+        type: "postgres",
+        connectionString,
+      },
+    });
+    const externalClient = dbManager.getClient(dbName);
+    const rowA = randomUUID();
+    const rowB = randomUUID();
+    const baselineRow = randomUUID();
+    const internalDatabaseConnectionString = getEnvVariable(
+      "HEXCLAVE_DATABASE_CONNECTION_STRING",
+      getEnvVariable("STACK_DATABASE_CONNECTION_STRING", ""),
+    );
+    if (internalDatabaseConnectionString === "") {
+      throwErr("Sequence visibility e2e test requires an internal database connection string");
+    }
+    const transactionA = new Client({
+      connectionString: internalDatabaseConnectionString,
+    });
+    const transactionB = new Client({
+      connectionString: internalDatabaseConnectionString,
+    });
+
+    let tenancyId: string | undefined;
+    let transactionAStarted = false;
+    let fuseboxState: FuseboxState | undefined;
+    try {
+      fuseboxState = await disableAutomaticSequencing();
+      await withInternalDatabase(async (client) => {
+        const tenancy = await client.query<{ id: string }>(
+          `SELECT "id" FROM "Tenancy" WHERE "projectId" = $1 AND "branchId" = 'main' LIMIT 1`,
+          [project.projectId],
+        );
+        tenancyId = tenancy.rows[0]?.id ?? throwErr("Could not find the test project's main tenancy");
+        await insertSequenceVisibilityEmail(client, tenancyId, baselineRow, "Sequence visibility baseline");
+      });
+      const testTenancyId = tenancyId ?? throwErr("Test project's tenancy was not initialized");
+
+      await transactionA.connect();
+      await transactionB.connect();
+      await withInternalDatabase(async (client) => {
+        await client.query("BEGIN");
+        await allocateEmailOutboxSequence(client, testTenancyId, baselineRow);
+        await client.query("COMMIT");
+      });
+      await triggerExternalDbSync(testTenancyId);
+      await waitForExternalEmailOutbox(externalClient, baselineRow, 1);
+
+      await withInternalDatabase(async (client) => {
+        await insertSequenceVisibilityEmail(client, testTenancyId, rowA, "Sequence visibility row A");
+        await insertSequenceVisibilityEmail(client, testTenancyId, rowB, "Sequence visibility row B");
+      });
+
+      await transactionA.query("BEGIN");
+      transactionAStarted = true;
+      const sequenceA = await allocateEmailOutboxSequence(transactionA, testTenancyId, rowA);
+
+      await transactionB.query("BEGIN");
+      const sequenceB = await allocateEmailOutboxSequence(transactionB, testTenancyId, rowB);
+      await transactionB.query("COMMIT");
+
+      // T1 has allocated the lower value but is still uncommitted. T2 commits the higher value first.
+      await triggerExternalDbSync(testTenancyId);
+      await waitForExternalEmailOutbox(externalClient, rowB, 1);
+
+      await transactionA.query("COMMIT");
+      transactionAStarted = false;
+      await triggerExternalDbSync(testTenancyId);
+
+      await waitForCondition(
+        async () => (await externalClient.query(`SELECT "id" FROM "email_outboxes" WHERE "id" = $1`, [rowA])).rows.length === 1,
+        {
+          timeoutMs: 20_000,
+          intervalMs: 500,
+          description: `EmailOutbox ${rowA} to reach the external database after the sequence visibility interleaving (A=${sequenceA}, B=${sequenceB})`,
+        },
+      );
+    } finally {
+      try {
+        if (transactionAStarted) await transactionA.query("ROLLBACK");
+        await transactionA.end();
+        await transactionB.end();
+
+        if (tenancyId != null) {
+          await withInternalDatabase(async (client) => {
+            await client.query("BEGIN");
+            try {
+              await deleteSyncedRowsWithTombstones(client, {
+                table: "EmailOutbox",
+                whereClause: `"tenancyId" = $1::uuid AND "id" = ANY($2::uuid[])`,
+                values: [tenancyId, [baselineRow, rowA, rowB]],
+              });
+              await client.query("COMMIT");
+            } catch (error) {
+              await client.query("ROLLBACK");
+              throw error;
+            }
+          });
+        }
+      } finally {
+        if (fuseboxState != null) await restoreFusebox(fuseboxState);
+      }
+    }
   }, TEST_TIMEOUT);
 
   /**
