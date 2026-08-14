@@ -53,6 +53,7 @@ fi
 
 read_process_label() {
   local command_line="$1"
+  local working_directory="$2"
   case "$command_line" in
     *"bulldozer"*|*"start:bulldozer"*) printf '%s' "bulldozer" ;;
     *"run-cron-jobs"*) printf '%s' "cron-jobs" ;;
@@ -60,7 +61,17 @@ read_process_label() {
     *"apps/mcp"*|*"start:mcp"*) printf '%s' "mcp" ;;
     *"apps/dashboard"*|*"start:dashboard"*) printf '%s' "dashboard" ;;
     *"stack-backend"*|*"apps/backend"*|*"dist/server.mjs"*) printf '%s' "backend" ;;
-    *) return 1 ;;
+    *)
+      # tsx re-spawns the actual server as a node child whose cmdline is just
+      # "node --require .../tsx/preflight.cjs --import .../tsx/loader.mjs src/index.ts",
+      # with no app name in it. The Bulldozer server (the process doing all the real
+      # work) was therefore invisible to the cmdline patterns above and its CPU went
+      # unattributed. Fall back to the process working directory for that case.
+      case "$working_directory" in
+        */apps/bulldozer-js*) printf '%s' "bulldozer" ;;
+        *) return 1 ;;
+      esac
+      ;;
   esac
 }
 
@@ -193,7 +204,8 @@ for stat_file in /proc/[0-9]*/stat; do
   pid="${pid%/stat}"
   command_line="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
   [[ -n "$command_line" ]] || continue
-  label="$(read_process_label "$command_line" || true)"
+  working_directory="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
+  label="$(read_process_label "$command_line" "$working_directory" || true)"
   [[ -n "$label" ]] || continue
   cpu_seconds="$(read_process_cpu_seconds "$stat_file" || true)"
   [[ -n "$cpu_seconds" ]] || continue
