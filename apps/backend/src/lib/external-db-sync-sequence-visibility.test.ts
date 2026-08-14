@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { EmailOutboxCreatedWith, Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { runSequenceAllocationInTransaction } from "@/lib/external-db-sync-sequencing";
 import { getSoleTenancyFromProjectBranch } from "./tenancies";
 import { recordExternalDbSyncDeletion } from "./external-db-sync";
@@ -89,6 +90,7 @@ describe("external DB sync sequence visibility", () => {
     let allocationA: bigint | undefined;
     let allocationASkipped: boolean | undefined;
     let testError: unknown;
+    let cleanupError: unknown;
 
     try {
       await createEmailOutbox(tenancyId, rowA.id);
@@ -135,13 +137,31 @@ describe("external DB sync sequence visibility", () => {
       releaseTransactionA();
       await transactionA;
 
-      const transactionB = await retryTransaction(
-        globalPrismaClient,
-        async (tx) => await allocateEmailOutboxSequence(tx, rowB),
-        { timeout: 10_000 },
-      );
+      const sequenceBDeadline = performance.now() + 10_000;
+      let sequenceB: bigint | undefined;
+      while (sequenceB == null && performance.now() < sequenceBDeadline) {
+        sequenceB = await retryTransaction(
+          globalPrismaClient,
+          async (tx) => {
+            const existingRow = await tx.emailOutbox.findUnique({
+              where: { tenancyId_id: { tenancyId, id: rowB.id } },
+              select: { sequenceId: true },
+            });
+            if (existingRow?.sequenceId != null) return existingRow.sequenceId;
+
+            await allocateEmailOutboxSequence(tx, rowB);
+            const allocatedRow = await tx.emailOutbox.findUnique({
+              where: { tenancyId_id: { tenancyId, id: rowB.id } },
+              select: { sequenceId: true },
+            });
+            return allocatedRow?.sequenceId;
+          },
+          { timeout: 10_000 },
+        ) ?? undefined;
+        if (sequenceB == null) await wait(50);
+      }
       rowA.sequenceId = allocationA ?? throwErr(`Sequencer did not update EmailOutbox ${rowA.id}`);
-      rowB.sequenceId = transactionB?.[0]?.sequenceId ?? throwErr(`Sequencer did not update EmailOutbox ${rowB.id}`);
+      rowB.sequenceId = sequenceB ?? throwErr(`Sequencer did not update EmailOutbox ${rowB.id}`);
       expect(rowA.sequenceId).toBeLessThan(rowB.sequenceId);
 
       const visibleRows = await globalPrismaClient.emailOutbox.findMany({
@@ -155,11 +175,9 @@ describe("external DB sync sequence visibility", () => {
       ]);
     } catch (error) {
       testError = error;
-      throw error;
     } finally {
-      releaseTransactionA();
-      let cleanupError: unknown;
       try {
+        releaseTransactionA();
         if (transactionA != null) await transactionA;
 
         await retryTransaction(globalPrismaClient, async (tx) => {
@@ -180,7 +198,8 @@ describe("external DB sync sequence visibility", () => {
       } catch (error) {
         cleanupError = error;
       }
-      if (testError == null && cleanupError != null) throw cleanupError;
     }
+    if (testError != null) throw testError;
+    if (cleanupError != null) throw cleanupError;
   });
 });
