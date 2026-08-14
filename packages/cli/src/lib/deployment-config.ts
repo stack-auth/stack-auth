@@ -57,6 +57,7 @@ import {
   HEXCLAVE_SERVICE_ID,
   DEPLOYMENT_SOURCE_ID_REGEX,
   MAX_DEPLOYMENT_SOURCE_ID_LENGTH,
+  MAX_INSTANCES_PER_SERVICE,
   MAX_PERSISTENT_VOLUMES_PER_SERVICE,
   MAX_PORTS_PER_SERVICE,
   MAX_VOLUME_ID_LENGTH,
@@ -686,11 +687,13 @@ export function evaluateDeploymentConfig(options: {
 
     const minInstances = readOptionalIntegerField(record, serviceId, "minInstances");
     const maxInstances = readOptionalIntegerField(record, serviceId, "maxInstances");
-    if (minInstances !== undefined && (minInstances < 0 || minInstances > 5)) {
-      throw new CliError(`deployment.services.${serviceId}.minInstances must be between 0 and 5.`);
+    if (minInstances !== undefined && (minInstances < 0 || minInstances > MAX_INSTANCES_PER_SERVICE)) {
+      throw new CliError(`deployment.services.${serviceId}.minInstances must be between 0 and ${MAX_INSTANCES_PER_SERVICE} (got ${minInstances}).`);
     }
-    if (maxInstances !== undefined && (maxInstances < 1 || maxInstances > 5)) {
-      throw new CliError(`deployment.services.${serviceId}.maxInstances must be between 1 and 5.`);
+    if (maxInstances !== undefined && (maxInstances < 1 || maxInstances > MAX_INSTANCES_PER_SERVICE)) {
+      // Caught here rather than server-side so a typo'd fleet size fails in
+      // seconds, before anything is packaged or uploaded.
+      throw new CliError(`deployment.services.${serviceId}.maxInstances must be between 1 and ${MAX_INSTANCES_PER_SERVICE} (got ${maxInstances}). A service may scale to at most ${MAX_INSTANCES_PER_SERVICE} instances.`);
     }
     // Only reject when max is explicitly below min. min-only is fine: max defaults up to min
     // downstream, so the spec stays consistent (this used to slip through and 400 from the runtime).

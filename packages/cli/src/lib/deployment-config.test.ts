@@ -428,6 +428,16 @@ describe("service types", () => {
     expect(defaulted).toMatchObject({ type: "server", min_instances: 1 });
   });
 
+  it("rejects a fleet larger than the cap, before anything is packaged", () => {
+    expect(() => evaluate(() => ({ web: { type: "serverless", ports: { 3000: {} }, maxInstances: 11 } })))
+      .toThrow("maxInstances must be between 1 and 10 (got 11)");
+    expect(() => evaluate(() => ({ web: { type: "serverless", ports: { 3000: {} }, minInstances: 11 } })))
+      .toThrow("minInstances must be between 0 and 10 (got 11)");
+    // The cap itself is legal — an off-by-one here would refuse the largest
+    // fleet the platform allows.
+    expect(evaluate(() => ({ web: { type: "serverless", ports: { 3000: {} }, maxInstances: 10 } })).services.get("web")?.definition.max_instances).toBe(10);
+  });
+
   it("leaves serverless bounds alone", () => {
     const { services } = evaluate(() => ({ web: { type: "serverless", ports: { 3000: {} }, minInstances: 1, maxInstances: 5 } }));
     expect(services.get("web")?.definition).toMatchObject({ type: "serverless", min_instances: 1, max_instances: 5 });

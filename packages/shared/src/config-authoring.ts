@@ -206,9 +206,9 @@ export type HexclaveServerService = HexclaveServiceBase & {
  */
 export type HexclaveServerlessService = HexclaveServiceBase & {
   type: "serverless",
-  /** Lower scaling bound, 0–5. Defaults to 0 (scales to zero). */
+  /** Lower scaling bound, 0–10. Defaults to 0 (scales to zero). Above 0 needs a paid plan. */
   minInstances?: number,
-  /** Upper scaling bound, 1–5. Defaults to 1. */
+  /** Upper scaling bound, 1–10. Defaults to 1. */
   maxInstances?: number,
 };
 

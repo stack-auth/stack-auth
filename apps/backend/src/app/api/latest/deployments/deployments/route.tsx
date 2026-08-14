@@ -1,4 +1,4 @@
-import { assertMinInstancesAllowedByPlan, createDeployment, definitionFromServiceRow, deploymentToApiShape, encryptDeploymentRedactionSecrets, getServiceVolume, isTerminalDeploymentStatus, refreshDeploymentFromMarshal, resolveEnvVars, startDeployment } from "@/lib/deployments";
+import { assertGlobalDeploymentCapacity, assertMinInstancesAllowedByPlan, createDeployment, definitionFromServiceRow, deploymentToApiShape, encryptDeploymentRedactionSecrets, getServiceVolume, isTerminalDeploymentStatus, refreshDeploymentFromMarshal, resolveEnvVars, startDeployment } from "@/lib/deployments";
 import { getMarshalDeploymentsConfigOrNull } from "@/lib/deployments/marshal-client";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -167,6 +167,15 @@ export const POST = createSmartRouteHandler({
     // only as CLI UX — this is the actual entitlement boundary, since a stored
     // definition can outlive the plan that was allowed to create it.
     await assertMinInstancesAllowedByPlan(auth.tenancy, Object.fromEntries(definitionsByServiceId));
+
+    // Platform capacity, before the upload is consumed and before anything is
+    // handed to the runtime. Only services that do not yet hold a Fly app count:
+    // re-deploying what is already running provisions nothing new, so it must
+    // keep working even at the ceiling.
+    await assertGlobalDeploymentCapacity(
+      auth.tenancy,
+      plannedServiceIds.filter((serviceId) => rowsByServiceId.get(serviceId)?.provisionedAt == null).length,
+    );
 
     // Resolve every service's env BEFORE consuming the upload: a missing secret
     // or a dangling connection must not spend it. One redaction snapshot covers

@@ -311,6 +311,13 @@ export function deploymentPortEntry(ports: DeploymentPorts, port: number): Deplo
 // than a real fleet, and an unbounded record would be sent to Fly verbatim.
 export const MAX_PORTS_PER_SERVICE = 10;
 
+// The most instances one service may scale to. A bound on the spec rather than
+// a platform limit: a fleet larger than this is far likelier to be a typo (or a
+// misunderstanding of what a Hexclave service is for) than a real intent, and
+// each instance is a machine somebody pays for. Both bounds share it — a floor
+// above the ceiling could never be satisfied.
+export const MAX_INSTANCES_PER_SERVICE = 10;
+
 export const MIN_VOLUME_SIZE_GB = 1;
 export const MAX_VOLUME_SIZE_GB = 500;
 
@@ -441,15 +448,16 @@ export const deploymentServiceDefinitionSchema = yupObject({
     .test("public-service-has-one-port", "a service with a public port may not declare any other port — the runtime exposes a port on every address the service has, so the others would be public too. Move them to their own service.", (value) =>
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       value === undefined || Object.keys(value).length <= 1 || !Object.values(value).some((entry) => entry.public === true)),
-  // min is capped at the same MAX_INSTANCES_CAP (5) as max — an unbounded min would only
-  // ever fail downstream. On a "server" it is the SUSPEND switch rather than a fleet size:
+  // min is capped at the same MAX_INSTANCES_PER_SERVICE as max — an unbounded
+  // min would only ever fail downstream. On a "server" it is the SUSPEND switch
+  // rather than a fleet size:
   // 1 (the default) keeps its single instance up, and 0 lets it suspend when idle and
   // resume with its memory intact on the next connection.
-  min_instances: yupNumber().integer().min(0).max(5).optional()
+  min_instances: yupNumber().integer().min(0).max(MAX_INSTANCES_PER_SERVICE).optional()
     .test("server-is-single-instance-min", 'a "server" service holds a single instance, so min_instances must be 0 (suspend when idle) or 1 (always on) — use type "serverless" to scale out', function (value) {
       return (this.parent as { type?: string }).type !== "server" || value === undefined || value === 0 || value === 1;
     }),
-  max_instances: yupNumber().integer().min(1).max(5).optional()
+  max_instances: yupNumber().integer().min(1).max(MAX_INSTANCES_PER_SERVICE).optional()
     // Compare EFFECTIVE bounds, not just when both are present: `min_instances` alone (no
     // max) defaults max to 1 downstream, so `min: 2` with no max is an invalid spec that
     // must be caught here — otherwise Marshal 400s it after the upload is consumed.
@@ -672,7 +680,7 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema pins a server servic
   }, { abortEarly: false })).rejects.toThrow(/min_instances must be 0 \(suspend when idle\) or 1/);
   // Serverless keeps the full range.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, min_instances: 1, max_instances: 5, env: {},
+    type: "serverless", ports: { "3000": {} }, min_instances: 1, max_instances: 10, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
 });
 
@@ -744,12 +752,16 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects invalid shap
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "serverless", ports: { "3000": {} }, min_instances: 2, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
-  // Both bounds are capped at 5.
+  // Both bounds are capped at MAX_INSTANCES_PER_SERVICE, and the cap itself is
+  // accepted — an off-by-one here would refuse the largest legal fleet.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, min_instances: 6, env: {},
+    type: "serverless", ports: { "3000": {} }, min_instances: MAX_INSTANCES_PER_SERVICE, max_instances: MAX_INSTANCES_PER_SERVICE, env: {},
+  }, { abortEarly: false })).resolves.toBeDefined();
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "serverless", ports: { "3000": {} }, min_instances: MAX_INSTANCES_PER_SERVICE + 1, env: {},
   }, { abortEarly: false })).rejects.toThrow(/min_instances/);
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "serverless", ports: { "3000": {} }, max_instances: 6, env: {},
+    type: "serverless", ports: { "3000": {} }, max_instances: MAX_INSTANCES_PER_SERVICE + 1, env: {},
   }, { abortEarly: false })).rejects.toThrow(/max_instances/);
   // dockerfile_path must be a normalized relative path inside the packaged
   // source — mirror of Marshal's validateServiceSpec, checked here so invalid

@@ -306,6 +306,63 @@ export async function assertMinInstancesAllowedByPlan(tenancy: Tenancy, services
 }
 
 /**
+ * The platform-wide ceiling on live services, and so on Fly apps: every
+ * provisioned service holds one.
+ *
+ * This is Hexclave's own capacity guard, not a per-project quota. Fly org limits
+ * (app count, IP allocations, API rate) are shared by every project on this
+ * instance, and hitting them does not fail politely — it fails somewhere in the
+ * middle of a rollout, for whoever happens to deploy next. Refusing at the door
+ * instead means the operator finds out from Sentry rather than from a stream of
+ * half-deployed tenants.
+ *
+ * Overridable because a self-hosted instance runs against its own Fly org, where
+ * this number is somebody else's to choose.
+ */
+export const MAX_GLOBAL_DEPLOYED_SERVICES = Number(getEnvVariable("HEXCLAVE_MAX_DEPLOYED_SERVICES", "1000"));
+
+/**
+ * Refuses a deploy that would take this Hexclave instance past its Fly capacity,
+ * and tells the operator about it.
+ *
+ * Counts SERVICES rather than deployments: a deployment is a point in time,
+ * while each provisioned service is a Fly app that goes on existing. Only
+ * services this deploy would newly provision count against the ceiling — a
+ * re-deploy of something already running consumes no additional app.
+ *
+ * The count is over the whole database, across every tenancy, which is what
+ * makes it a platform guard rather than a per-project one.
+ */
+export async function assertGlobalDeploymentCapacity(tenancy: Tenancy, newlyProvisioningServiceCount: number): Promise<void> {
+  if (newlyProvisioningServiceCount <= 0) return;
+  // A non-numeric override would otherwise disable the guard silently, which is
+  // the one failure mode a capacity guard must not have.
+  if (!Number.isFinite(MAX_GLOBAL_DEPLOYED_SERVICES) || MAX_GLOBAL_DEPLOYED_SERVICES <= 0) {
+    captureError("deployments-global-capacity-misconfigured", new HexclaveAssertionError(`HEXCLAVE_MAX_DEPLOYED_SERVICES is not a positive number (got ${JSON.stringify(getEnvVariable("HEXCLAVE_MAX_DEPLOYED_SERVICES", "1000"))}); refusing to deploy rather than deploying without a capacity guard.`));
+    throw new StatusError(503, "Deployments are temporarily unavailable on this Hexclave instance because its capacity limit is misconfigured. This has been reported; please try again later.");
+  }
+  const provisionedServiceCount = await globalPrismaClient.deploymentService.count({
+    where: { provisionedAt: { not: null } },
+  });
+  if (provisionedServiceCount + newlyProvisioningServiceCount <= MAX_GLOBAL_DEPLOYED_SERVICES) return;
+
+  // Reported as an ERROR rather than a warning: nobody can deploy a new service
+  // until an operator acts, so this is a page-worthy state for the platform even
+  // though the individual request failed cleanly.
+  captureError("deployments-global-capacity-exhausted", new HexclaveAssertionError(
+    `Hexclave is at its global deployment capacity: ${provisionedServiceCount} of ${MAX_GLOBAL_DEPLOYED_SERVICES} services are provisioned, and a deploy asked for ${newlyProvisioningServiceCount} more. New services cannot be deployed until capacity is raised (HEXCLAVE_MAX_DEPLOYED_SERVICES) or unused ones are torn down.`,
+    { projectId: tenancy.project.id, provisionedServiceCount, requested: newlyProvisioningServiceCount, limit: MAX_GLOBAL_DEPLOYED_SERVICES },
+  ));
+  throw new StatusError(503, [
+    "Hexclave has reached its limit on the number of deployed services and cannot create new ones right now.",
+    "",
+    // Says what the user CAN do — re-deploying what they already run still
+    // works, since it provisions nothing new.
+    "This is a platform-wide limit, not a limit on your project, and it has been reported to the Hexclave team automatically. Deploys of services you are already running are unaffected; please try again later, or contact support if this is blocking you.",
+  ].join("\n"));
+}
+
+/**
  * The instance floor a definition actually deploys with, applying the per-type
  * default. A "server" defaults to 1 (stay up) — which is exactly why the plan
  * gate has to read the EFFECTIVE value rather than the written one.
