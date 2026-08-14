@@ -35,13 +35,6 @@ function copyIfExists(src, dest) {
   cpSync(src, dest, { recursive: true });
 }
 
-// Same reason as in the `build` script: a stale Turbopack persistent cache can make `next build`
-// fail with `TypeError: __turbopack_context__.a is not a function`, so start from clean output.
-runOrExit("pnpm", ["exec", "tsx", "scripts/clean-next-output.ts"], {
-  env: {
-    HEXCLAVE_DASHBOARD_NEXT_DIST_DIR: distDir,
-  },
-});
 runOrExit("pnpm", ["run", "bundle-type-definitions"]);
 runOrExit("pnpm", ["exec", "next", "build"], {
   env: {
