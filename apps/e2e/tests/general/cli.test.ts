@@ -429,7 +429,10 @@ describe("Stack CLI", () => {
     const deployDir = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-deploy-"));
     try {
       // web builds from an explicit Dockerfile (dockerfilePath + pre-flight);
-      // db has none, covering the Railpack auto-detection default.
+      // db has none, covering the Railpack auto-detection default. The path is
+      // relative to the UPLOAD root, not to the service — the whole deployment
+      // source is uploaded once, so a service can reach shared code above its
+      // own directory.
       fs.mkdirSync(path.join(deployDir, "web"));
       fs.writeFileSync(path.join(deployDir, "web", "index.html"), "<h1>web</h1>");
       fs.writeFileSync(path.join(deployDir, "web", "Dockerfile"), "FROM nginx:alpine\n");
@@ -439,23 +442,26 @@ describe("Stack CLI", () => {
       const writeConfigFile = (allowClientTeamCreation: boolean) => fs.writeFileSync(path.join(deployDir, "hexclave.config.ts"),
         `export const config = { teams: { allowClientTeamCreation: ${allowClientTeamCreation} } };\n`);
       fs.writeFileSync(path.join(deployDir, "hexclave.deploy.ts"), [
-        "export const deployment = {",
-        "  services: ({ isDev, secret, service, hexclave }: any) => ({",
-        "  web: {",
-        '    type: "serverless",',
-        "    ports: [{ port: 3000 }],",
-        '    rootDirectory: "./web",',
-        '    dockerfilePath: "Dockerfile",',
-        '    devCommand: "npm run dev",',
-        "    env: {",
-        '      DB_URL: service("db").internalUrl(),',
-        "      PROJECT_ID: hexclave.projectId,",
-        '      OPENAI: isDev ? null : secret("OPENAI_KEY", "sk-default"),',
+        // The `id` export names this deployment source — which deploy file (and
+        // so which repository) these services belong to.
+        'export const id = "cli-e2e";',
+        "export const deployment = ({ isDev, secret, service, hexclave }: any) => ({",
+        "  services: {",
+        "    web: {",
+        '      type: "serverless",',
+        "      ports: { 3000: {} },",
+        '      rootDirectory: "./web",',
+        '      dockerfilePath: "web/Dockerfile",',
+        '      devCommand: "npm run dev",',
+        "      env: {",
+        '        DB_URL: service("db").url(5432),',
+        "        PROJECT_ID: hexclave.projectId,",
+        '        OPENAI: isDev ? null : secret("OPENAI_KEY", "sk-default"),',
+        "      },",
         "    },",
+        '    db: { type: "serverless", ports: { 5432: {} }, rootDirectory: "./db" },',
         "  },",
-        '  db: { type: "serverless", ports: [{ port: 5432 }], rootDirectory: "./db" },',
-        "  }),",
-        "};",
+        "});",
         "",
       ].join("\n"));
       writeConfigFile(true);
@@ -472,14 +478,14 @@ describe("Stack CLI", () => {
       // to ready. Container services are private by default, so neither has a
       // public URL until a custom domain is attached.
       const summary = JSON.parse(stdout);
-      expect(summary.services.db.status).toBe("ready");
-      expect(summary.services.web.status).toBe("ready");
+      expect(summary.deploymentSourceId).toBe("cli-e2e");
+      expect(summary.status).toBe("deployed");
+      expect(summary.services.db.status).toBe("deployed");
+      expect(summary.services.web.status).toBe("deployed");
       expect(summary.services.db.url).toBeNull();
       expect(summary.services.web.url).toBeNull();
-      // web's env connects to db.internalUrl, so db must have finished deploying
-      // before web even started (topological order, not just start order).
-      expect(stderr.indexOf("[db] Deployment succeeded")).toBeGreaterThanOrEqual(0);
-      expect(stderr.indexOf("[db] Deployment succeeded")).toBeLessThan(stderr.indexOf("[web] Starting deployment"));
+      // Both services shipped from ONE deploy — one upload, one build.
+      expect(stderr).toContain("Building every service in one builder");
       // The definitions were synced server-side — but NOT the config file's
       // `devCommand`, which `hexclave dev` runs locally and the CLI therefore
       // never sends (the config above sets one, so this also covers that a
@@ -507,11 +513,12 @@ describe("Stack CLI", () => {
       // A secret with NO default and no stored value fails before anything is
       // packaged, naming every key that needs a dashboard value.
       fs.writeFileSync(path.join(deployDir, "missing-secret.deploy.ts"), [
-        "export const deployment = {",
-        "  services: ({ secret }: any) => ({",
-        '    web: { type: "serverless", ports: [{ port: 3000 }], rootDirectory: "./web", env: { A: secret("NEEDS_A_VALUE"), B: secret("ALSO_NEEDED") } },',
-        "  }),",
-        "};",
+        'export const id = "cli-e2e-missing-secret";',
+        "export const deployment = ({ secret }: any) => ({",
+        "  services: {",
+        '    web: { type: "serverless", ports: { 3000: {} }, rootDirectory: "./web", env: { A: secret("NEEDS_A_VALUE"), B: secret("ALSO_NEEDED") } },',
+        "  },",
+        "});",
         "",
       ].join("\n"));
       const missingSecretRes = await runCli(
@@ -551,7 +558,7 @@ describe("Stack CLI", () => {
       }
       const singleSummary = JSON.parse(singleRun.stdout);
       expect(Object.keys(singleSummary.services)).toEqual(["db"]);
-      expect(singleSummary.services.db.status).toBe("ready");
+      expect(singleSummary.services.db.status).toBe("deployed");
       expect(await readBranchConfig()).toMatchObject({ teams: { allowClientTeamCreation: true } });
     } finally {
       fs.rmSync(deployDir, { recursive: true, force: true });

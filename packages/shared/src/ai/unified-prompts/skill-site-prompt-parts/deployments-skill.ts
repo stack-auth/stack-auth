@@ -18,45 +18,50 @@ export const deploymentsSkillSection = deindent`
   \`\`\`ts title="hexclave.deploy.ts"
   import type { HexclaveDeploymentConfig } from "@hexclave/js";
 
-  export const deployment: HexclaveDeploymentConfig = {
-    services: ({ isDev, secret, service, hexclave }) => ({
+  // Names this DEPLOYMENT SOURCE: which deploy file these services come from.
+  // Required, and unique across every deploy file deploying into this project.
+  export const id = "my-app";
+
+  export const deployment: HexclaveDeploymentConfig = ({ isDev, secret, service, hexclave }) => ({
+    services: {
       web: {
         type: "serverless",
-        ports: [{ port: 3000, public: true }],
+        ports: { 3000: { public: true } },
         devCommand: "pnpm dev",
         env: {
           MY_ENV_VAR: "true",
           OPENAI_API_KEY: isDev ? null : secret("OPENAI_API_KEY"),
-          API_URL: isDev ? "http://localhost:3001" : service("api").internalUrl(),
-          DATABASE_HOST: isDev ? "localhost" : service("database").internalHost,
+          API_URL: isDev ? "http://localhost:3001" : service("api").url(8080),
+          DATABASE_HOST: isDev ? "localhost" : service("database").hostname(),
           DATABASE_PORT: "5432",
-          NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: hexclave.projectId,
         },
       },
-      api: { type: "serverless", ports: [{ port: 8080 }], rootDirectory: "./api" },
+      api: { type: "serverless", ports: { 8080: {} }, rootDirectory: "./api" },
       database: {
         type: "server",
-        ports: [{ port: 5432, transport: "tcp" }],
+        ports: { 5432: { protocol: "tcp" } },
         rootDirectory: "./database",
-        dockerfilePath: "Dockerfile",
+        dockerfilePath: "database/Dockerfile",
         persistentVolumes: { pgdata: { path: "/data", sizeGb: 10 } },
         env: { POSTGRES_PASSWORD: secret("POSTGRES_PASSWORD") },
       },
-    }),
-  };
+    },
+  });
   \`\`\`
 
   Always annotate the \`deployment\` export with \`HexclaveDeploymentConfig\`, imported as a type from \`@hexclave/js\` (the same type is re-exported from \`@hexclave/next\`, \`@hexclave/react\` and \`@hexclave/tanstack-start\`, so import from whichever SDK package this project already uses). It gives completion for every field below and catches typos before a deploy.
 
-  \`deployment.services\` is normally a FUNCTION returning a record of services keyed by service id (a plain record works when you need no secrets, connections, or \`hexclave.*\` outputs). \`type\` (required) is \`"server"\` or \`"serverless"\` as above. \`ports\` (required) lists the ports the container listens on, each \`{ port, public?, transport? }\`; use \`ports: []\` for a worker that only dials out, which needs \`type: "server"\` (or \`minInstances\` above zero) since nothing inbound can wake it. \`public\` (default false) gives that port a stable platform URL. A service with a public port may declare ONLY that port: a port is served on every address the service has, so a private sibling would be reachable from the internet too — put private ports on their own service and reach them with \`internalHost\`. \`transport\` (default \`"http"\`) may be \`"tcp"\` for a raw daemon — TCP ports are private-only and a service with no HTTP port cannot have custom domains. \`rootDirectory\` (relative to the deploy file, default \`./\`) is where the service's code lives; \`dockerfilePath\` (optional, relative to \`rootDirectory\`) selects a Dockerfile to build from — omit it to build with Railpack auto-detection; \`minInstances\`/\`maxInstances\` (serverless only, defaults 0/1, max 5) are the scaling bounds — \`minInstances: 0\` scales to zero and cold-starts on the next connection; \`persistentVolumes\` (server only) attaches a persistent disk; \`devCommand\` is what \`hexclave dev --service-id <id>\` runs.
+  The \`deployment\` export is a FUNCTION of the deployment context returning \`{ services }\`, keyed by service id. \`type\` (required) is \`"server"\` or \`"serverless"\` as above. \`ports\` (required) is an object KEYED BY PORT NUMBER, each value \`{ public?, protocol? }\`; use \`ports: {}\` for a worker that only dials out, which needs an always-on instance since nothing inbound can wake it. \`public\` (default false) gives that port a stable platform URL. A service with a public port may declare ONLY that port: a port is served on every address the service has, so a private sibling would be reachable from the internet too — put private ports on their own service and reach them with \`hostname()\`. \`protocol\` (default \`"http"\`) may be \`"tcp"\` for a raw daemon — TCP ports are private-only and a service with no HTTP port cannot have custom domains. \`rootDirectory\` (relative to the deploy file, default \`./\`) is where the service's code lives; \`dockerfilePath\` (optional, relative to the deploy file, NOT to \`rootDirectory\`) selects a Dockerfile to build from — omit it to build with Railpack auto-detection; \`minInstances\`/\`maxInstances\` (defaults: 1/1 for a server, 0/1 for a serverless; max 10) are the scaling bounds; \`persistentVolumes\` (server only) attaches a persistent disk; \`devCommand\` is what \`hexclave dev --service-id <id>\` runs.
 
-  \`minInstances\` above 0 requires a paid plan. On the Free plan the deploy fails naming the offending services; set \`minInstances: 0\` (or remove it) so they scale to zero, or upgrade.
+  A \`server\` holds exactly one instance: \`minInstances: 1\` (the default) keeps it up, and \`0\` lets it suspend when idle and resume with its memory intact. \`minInstances\` above 0 requires a paid plan for BOTH types — on the Free plan the deploy fails up front naming the offending services, so write \`minInstances: 0\` (note that a \`server\` needs it written out).
+
+  Every service automatically receives \`HEXCLAVE_PROJECT_ID\`, \`HEXCLAVE_API_URL\`, \`HEXCLAVE_PUBLISHABLE_CLIENT_KEY\` and \`HEXCLAVE_SECRET_SERVER_KEY\`, plus \`NEXT_PUBLIC_\`/\`VITE_\` copies of the first three so client bundles can read them. An API key set is created for the project if it has none. Declaring an env var of the same name overrides the injected one.
 
   ## Network model: HTTP and private TCP
 
-  Use the default HTTP transport for web applications and APIs. \`internalUrl()\` gives the private URL including the port, and requires exactly one HTTP port so it is unambiguous; \`internalUrl(9090)\` names one when there are several. \`internalHost\` always works. There is no \`internalPort\` — write the number (e.g. \`DATABASE_PORT: "5432"\`), which you already declared in the target's \`ports\`. A \`public: true\` port additionally gets a public platform URL. The process must listen on each configured port and bind to \`0.0.0.0\`.
+  Use the default HTTP protocol for web applications and APIs. \`service("api").url(8080)\` gives that port's URL — the service's PUBLIC url when the port is public, and its private address otherwise — and a bare \`url()\` requires exactly one HTTP port so it is unambiguous. \`service("api").hostname()\` is the private hostname without a port, and always works. There is no port output — write the number (e.g. \`DATABASE_PORT: "5432"\`), which you already declared in the target's \`ports\`. Service ids are unique across the whole project, so a service deployed from another repository is referenced exactly the same way. The process must listen on each configured port and bind to \`0.0.0.0\`.
 
-  Use \`transport: "tcp"\` on a port for a database, cache, queue, SMTP server, or other raw TCP daemon such as PostgreSQL, MySQL, Redis, or RabbitMQ. TCP ports are reachable only from other services in the same project: pass \`service("database").internalHost\` and the port as a literal, as separate env vars. A TCP port cannot be public, and a service with no HTTP port exposes no \`url\` or \`internalUrl\` and cannot take custom domains. The daemon must bind to \`0.0.0.0\`, not only localhost. Do not manually change generated Fly infrastructure; Hexclave reconciliation owns it and can replace out-of-band changes.
+  Use \`protocol: "tcp"\` on a port for a database, cache, queue, SMTP server, or other raw TCP daemon such as PostgreSQL, MySQL, Redis, or RabbitMQ. TCP ports are reachable only from other services in the same project: pass \`service("database").hostname()\` and the port as a literal, as separate env vars. A TCP port cannot be public, and a service with no HTTP port exposes no \`url\` and cannot take custom domains. The daemon must bind to \`0.0.0.0\`, not only localhost. Do not manually change generated Fly infrastructure; Hexclave reconciliation owns it and can replace out-of-band changes.
 
   A service with \`minInstances: 0\` autostarts when a connection reaches its Flycast host and port. Make clients retry initial DNS/connect/auth failures with a bounded backoff: an HTTP app and its TCP dependency may be cold-starting simultaneously. If startup latency is unacceptable, use \`minInstances: 1\` on a paid plan.
 
@@ -86,11 +91,11 @@ export const deploymentsSkillSection = deindent`
 
   Disks only grow: raising \`sizeGb\` expands them in place, but LOWERING it fails the deploy rather than silently ignoring you. Removing a volume from a service detaches the disk without deleting it — the data stays (re-declaring the same id remounts it) and so does the billing, so a disk you truly want gone has to be deleted deliberately. \`hexclave dev\` ignores \`persistentVolumes\` entirely; locally your app just writes to your own filesystem.
 
-  Env var values may be: a plain string; \`null\` (omit the var — useful with \`isDev\`); \`secret(key, defaultValue?)\` — the value is stored per project in the dashboard (Project Settings > Secrets), never in the config; \`service("<id>").internalUrl()\` for an HTTP target (or \`.internalUrl(9090)\` to name a port); \`.internalHost\` for either transport (pair it with a literal port for TCP clients); \`service("<id>").url\` — an HTTP target's PUBLIC URL, available immediately for a service with a public port or once a custom domain verifies otherwise (until then the depending service is \`blocked\` and its deploy FAILS — make the target public, verify its domain first, or prefer \`internalUrl\`); or \`hexclave.projectId\` / \`.apiUrl\` / \`.jwksUrl\` / \`.publishableClientKey\` / \`.secretServerKey\` for the managed Hexclave backend. A target with no HTTP port has no URL, so \`.url\` or \`.internalUrl()\` on it fails with guidance to use host and port, as does a bare \`.internalUrl()\` on a target whose several HTTP ports make it ambiguous. References must be the WHOLE value — string interpolation with them throws. During \`hexclave dev\`, \`secret()\` resolves to its default value (error if it has none and isn't guarded by \`isDev\`) and \`service()\` returns \`null\`.
+  Env var values may be: a plain string; \`null\` (omit the var — useful with \`isDev\`); \`secret(key, defaultValue?)\` — the value is stored per project in the dashboard (Project Settings > Secrets), never in the config; \`service("<id>").url(8080)\` for an HTTP port — a PRIVATE port resolves to the private-network URL, which is available immediately, while a PUBLIC one resolves to the platform URL (or a verified custom domain) and so waits for the target to be up; \`service("<id>").hostname()\` for either protocol, always available (pair it with a literal port for TCP clients); or \`hexclave.projectId\` / \`.apiUrl\` / \`.jwksUrl\` / \`.publishableClientKey\` / \`.secretServerKey\` for the managed Hexclave backend. A target with no HTTP port has no URL, so \`url()\` on it fails with guidance to use hostname and port, as does a bare \`url()\` on a target whose several HTTP ports make it ambiguous. References must be the WHOLE value — string interpolation with them throws. During \`hexclave dev\`, \`secret()\` resolves to its default value (error if it has none and isn't guarded by \`isDev\`) and \`service()\` returns \`null\`.
 
   ## How services are built
 
-  Each service is built remotely — Docker is never required locally. By default (no \`dockerfilePath\`) the build is auto-detected with [Railpack](https://railpack.com), which handles Node, Python, Go, PHP, Java, Ruby, and more out of the box; either way, the image's default command must start a server listening on each configured port on \`0.0.0.0\` and speaking that port's transport. Set \`dockerfilePath\` to build from your own Dockerfile instead — a Dockerfile in the source is deliberately NOT picked up unless \`dockerfilePath\` names it. Stateful third-party server images should generally use a small explicit Dockerfile so their runtime user and child data path are unambiguous. To adjust Railpack's detection (custom install/build/start commands, static output dirs), add a \`railpack.json\` to the service's source, or set the equivalent \`RAILPACK_*\` env var on the service. If detection can't work at all, add a Dockerfile and set \`dockerfilePath\`; the remote build's logs are available if a build fails.
+  Each service is built remotely — Docker is never required locally. By default (no \`dockerfilePath\`) the build is auto-detected with [Railpack](https://railpack.com), which handles Node, Python, Go, PHP, Java, Ruby, and more out of the box; either way, the image's default command must start a server listening on each configured port on \`0.0.0.0\` and speaking that port's protocol. Set \`dockerfilePath\` to build from your own Dockerfile instead — a Dockerfile in the source is deliberately NOT picked up unless \`dockerfilePath\` names it. Stateful third-party server images should generally use a small explicit Dockerfile so their runtime user and child data path are unambiguous. To adjust Railpack's detection (custom install/build/start commands, static output dirs), add a \`railpack.json\` to the service's source, or set the equivalent \`RAILPACK_*\` env var on the service. If detection can't work at all, add a Dockerfile and set \`dockerfilePath\`; the remote build's logs are available if a build fails.
 
   ## Env vars during the build
 
@@ -133,7 +138,9 @@ export const deploymentsSkillSection = deindent`
   npx @hexclave/cli@latest deploy
   \`\`\`
 
-  This syncs the service definitions, then deploys EVERY defined service in dependency order (services connected via \`service(...)\` deploy after their dependencies; circular dependencies fail up front). It packages each service's root directory (respecting \`.gitignore\`/\`.dockerignore\`, always excluding \`node_modules\` and \`.git\`) and uploads it — the container image is built remotely, so Docker is not needed locally. It always targets production, never prompts, and WAITS for the remote builds — per service it prints the run id, build status, and final URL (if the service has one), and exits non-zero if any build fails (dependents of a failed service are skipped). A JSON summary of all services is printed to stdout.
+  This syncs the service definitions, uploads the deploy file's directory ONCE (respecting \`.gitignore\`/\`.dockerignore\`, always excluding \`node_modules\` and \`.git\`), builds every service from it in a single remote builder — so Docker is not needed locally — and then rolls them out in dependency order (services connected via \`service(...)\` deploy after their dependencies; circular dependencies fail up front). A build failure fails the whole deploy and ships nothing: one machine builds every image, so there is no half-built source to salvage. It always targets production, never prompts, and WAITS — printing each service's status and final URL as it lands — and exits non-zero if the deploy fails. A JSON summary is printed to stdout.
+
+  A sync is the whole truth about its own deploy file: a service you REMOVE from \`services\` is torn down on the next deploy, keeping its persistent volume and any custom domain (unattached) so a config edit can never destroy data. Services of other deployment sources are never touched.
 
   Options: \`--service-id <id>\` (deploy just one service; its connections resolve against already-deployed services), \`--deploy-file <path>\` (default: auto-discover \`hexclave.deploy.ts\` in the current directory; a deploy file is required), \`--cloud-project-id <id>\` (default: the \`HEXCLAVE_PROJECT_ID\` env var), \`--config-push\` (also push \`hexclave.config.ts\`'s \`config\` export; off by default, since several repositories can deploy into one project and each push replaces the whole config).
 
@@ -174,7 +181,7 @@ export const deploymentsSkillSection = deindent`
 
   ## Domains
 
-  Services with a public port already have a platform URL; a verified custom domain becomes their preferred user-facing URL. A custom domain is also how a private HTTP service can expose a public URL. A service with no HTTP port rejects domains. Internal HTTP traffic uses \`service("<id>").internalUrl()\`; internal TCP traffic uses \`.internalHost\` plus a literal port. Prefer the CLI to attach an HTTP domain:
+  Services with a public port already have a platform URL; a verified custom domain becomes their preferred user-facing URL. A custom domain is also how a private HTTP service can expose a public URL. A service with no HTTP port rejects domains. Internal HTTP traffic uses \`service("<id>").url(<port>)\`; internal TCP traffic uses \`.hostname()\` plus a literal port. Prefer the CLI to attach an HTTP domain:
 
   \`\`\`sh title="Terminal"
   npx @hexclave/cli@latest exec --cloud-project-id <project-id> \\
