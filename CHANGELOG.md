@@ -2,6 +2,10 @@
 
 ---
 
+## 8/21/26
+
+- _(entries added throughout the week)_
+
 ## 8/7/26
 
 - Apple sign-in now supports key-based credentials (Team ID, Key ID, and private key), with short-lived client secrets generated automatically.
