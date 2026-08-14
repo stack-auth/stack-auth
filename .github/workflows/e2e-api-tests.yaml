@@ -258,8 +258,45 @@ jobs:
         id: sync_barrier_pass1
         if: always() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && steps.run_tests_pass1.outcome != 'skipped'
         timeout-minutes: 35
+        run: pnpm -C apps/backend run with-env:test tsx scripts/wait-for-external-db-sync-idle.ts
+
+      - name: Stop Bulldozer before pass 2
+        id: stop_bulldozer_pass1
+        if: always() && steps.sync_barrier_pass1.outcome == 'success'
+        run: bash .github/scripts/stop-bulldozer.sh
+
+      - name: Restart Bulldozer before pass 2
+        id: restart_bulldozer_pass1
+        if: always() && steps.stop_bulldozer_pass1.outcome == 'success'
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        env:
+          HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB: "1"
+          HEXCLAVE_BULLDOZER_DIAGNOSTICS: "true"
+        with:
+          run: |
+            bulldozer_log="$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
+            rm -f "$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt"
+            (
+              set +e
+              echo "----- Bulldozer restart before pass 2 -----" >>"$bulldozer_log"
+              pnpm run start:bulldozer 2>&1 | TZ=UTC awk '{ print strftime("%Y-%m-%dT%H:%M:%SZ"), $0; fflush() }' >>"$bulldozer_log"
+              echo "${PIPESTATUS[0]}" > "$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt"
+            ) &
+          wait-on: |
+            tcp:localhost:8146
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      - name: Backfill restarted Bulldozer before pass 2
+        id: backfill_bulldozer_pass1
+        if: always() && steps.restart_bulldozer_pass1.outcome == 'success'
+        run: pnpm run db:backfill-bulldozer-from-prisma
+
+      - name: Reset attribution after Bulldozer restart before pass 2
+        id: reset_attribution_pass1
+        if: always() && steps.backfill_bulldozer_pass1.outcome == 'success'
         run: |
-          pnpm -C apps/backend run with-env:test tsx scripts/wait-for-external-db-sync-idle.ts
           .github/scripts/postgres-attribution.sh reset || true
           .github/scripts/process-attribution.sh reset || true
           pnpm -C apps/backend run with-env:test bash -c \
@@ -272,7 +309,7 @@ jobs:
 
       - name: Run tests again (attempt 1)
         id: run_tests_pass2
-        if: always() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && steps.sync_barrier_pass1.outcome == 'success'
+        if: always() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && steps.reset_attribution_pass1.outcome == 'success'
         timeout-minutes: 75
         run: |
           set -o pipefail
@@ -307,8 +344,45 @@ jobs:
         id: sync_barrier_pass2
         if: always() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && steps.run_tests_pass2.outcome != 'skipped'
         timeout-minutes: 35
+        run: pnpm -C apps/backend run with-env:test tsx scripts/wait-for-external-db-sync-idle.ts
+
+      - name: Stop Bulldozer before pass 3
+        id: stop_bulldozer_pass2
+        if: always() && steps.sync_barrier_pass2.outcome == 'success'
+        run: bash .github/scripts/stop-bulldozer.sh
+
+      - name: Restart Bulldozer before pass 3
+        id: restart_bulldozer_pass2
+        if: always() && steps.stop_bulldozer_pass2.outcome == 'success'
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        env:
+          HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB: "1"
+          HEXCLAVE_BULLDOZER_DIAGNOSTICS: "true"
+        with:
+          run: |
+            bulldozer_log="$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
+            rm -f "$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt"
+            (
+              set +e
+              echo "----- Bulldozer restart before pass 3 -----" >>"$bulldozer_log"
+              pnpm run start:bulldozer 2>&1 | TZ=UTC awk '{ print strftime("%Y-%m-%dT%H:%M:%SZ"), $0; fflush() }' >>"$bulldozer_log"
+              echo "${PIPESTATUS[0]}" > "$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt"
+            ) &
+          wait-on: |
+            tcp:localhost:8146
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      - name: Backfill restarted Bulldozer before pass 3
+        id: backfill_bulldozer_pass2
+        if: always() && steps.restart_bulldozer_pass2.outcome == 'success'
+        run: pnpm run db:backfill-bulldozer-from-prisma
+
+      - name: Reset attribution after Bulldozer restart before pass 3
+        id: reset_attribution_pass2
+        if: always() && steps.backfill_bulldozer_pass2.outcome == 'success'
         run: |
-          pnpm -C apps/backend run with-env:test tsx scripts/wait-for-external-db-sync-idle.ts
           .github/scripts/postgres-attribution.sh reset || true
           .github/scripts/process-attribution.sh reset || true
           pnpm -C apps/backend run with-env:test bash -c \
@@ -321,7 +395,7 @@ jobs:
 
       - name: Run tests again (attempt 2)
         id: run_tests_pass3
-        if: always() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && steps.sync_barrier_pass2.outcome == 'success'
+        if: always() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && steps.reset_attribution_pass2.outcome == 'success'
         timeout-minutes: 105
         run: |
           set -o pipefail
