@@ -18,7 +18,8 @@ import { declareLmdbLowLevelDatabase, getLmdbDiagnostics } from "./databases/low
 import type { LowLevelDatabase } from "./databases/low-level/index.js";
 import { declareBasePiledriverDatabase } from "./databases/piledriver/implementations/base.js";
 import { declareBufferedPiledriverDatabase } from "./databases/piledriver/implementations/buffered.js";
-import type { PiledriverObject } from "./databases/piledriver/index.js";
+import { declareInMemoryPiledriverDatabase } from "./databases/piledriver/implementations/in-memory.js";
+import type { PiledriverDatabase, PiledriverObject } from "./databases/piledriver/index.js";
 import "./load-env.js";
 import { shouldSuppressPeriodicBulldozerLogs } from "./logging.js";
 import { parseManualTransactionsListQuery } from "./manual-transactions-http.js";
@@ -77,13 +78,32 @@ function createLowLevelDatabase(): LowLevelDatabase {
   }));
 }
 
-const basePiledriver = declareBasePiledriverDatabase(createLowLevelDatabase(), {
-  disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
-});
+// The in-memory Piledriver keeps the object graph as live JS values: no hashing, no serialization,
+// no low-level store and no garbage collection. It is only useful for benchmarking (it isolates how
+// much of a flow's cost is Piledriver's stored form rather than the schema above it) and for
+// throwaway embedders, since nothing is durable and dead objects are never reclaimed.
+function createPiledriverDatabase(): { piledriver: PiledriverDatabase, backend: string } {
+  const configured = process.env.HEXCLAVE_BULLDOZER_JS_PILEDRIVER_BACKEND ?? "";
+  if (configured === "in-memory") {
+    return { piledriver: declareInMemoryPiledriverDatabase(crypto.randomUUID()), backend: "in-memory" };
+  }
+  if (configured !== "" && configured !== "base") {
+    throw new Error(`HEXCLAVE_BULLDOZER_JS_PILEDRIVER_BACKEND must be "base", "in-memory", or unset, got ${configured}`);
+  }
+  return {
+    piledriver: declareBasePiledriverDatabase(createLowLevelDatabase(), {
+      disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
+    }),
+    backend: "base",
+  };
+}
+
+const { piledriver: unbufferedPiledriver, backend: piledriverBackend } = createPiledriverDatabase();
 // Buffering keeps availability instant while durability/replication waits for the wrapped root write;
 // it is worthwhile for write-lock occupancy and throughput, not per-call latency.
 const bufferedPiledriverEnabled = process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_BUFFERED_PILEDRIVER !== "1";
-const piledriver = bufferedPiledriverEnabled ? declareBufferedPiledriverDatabase(basePiledriver) : basePiledriver;
+const piledriver = bufferedPiledriverEnabled ? declareBufferedPiledriverDatabase(unbufferedPiledriver) : unbufferedPiledriver;
+console.log(JSON.stringify({ component: "bulldozer-js", event: "piledriver-backend-selected", backend: piledriverBackend, buffered: bufferedPiledriverEnabled }));
 const bulldozerDb = declareBulldozerDatabase(
   piledriver,
   { migrations: schema.migrations },
