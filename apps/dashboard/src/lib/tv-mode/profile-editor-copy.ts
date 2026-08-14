@@ -12,8 +12,9 @@ export const TV_EVENT_PREVIEW_GROUPS = [
   {
     title: "Incident Previews",
     previews: [
+      { fixture: "payment-incident-takeover", label: "Incident Screen · Payment Degradation" },
       { fixture: "incident-takeover", label: "Incident Screen · Email Degradation" },
-      { fixture: "incident-highlight", label: "Incident Highlight · Email Degradation" },
+      { fixture: "incident-highlight", label: "Incident Highlight" },
       { fixture: "incident-recovery", label: "Incident Recovery Screen" },
       { fixture: "incident-recovery-highlight", label: "Incident Recovery Highlight" },
     ],
@@ -67,7 +68,8 @@ export function getTvProfileOverviewAction(origin: TvProfileResource["origin"]):
 export function getTvProfileEventCoverageLabel(
   preferences: TvProfileResource["configuration"]["interruptionPreferences"],
 ): "Incidents + Milestones" | "Incidents" | "Milestones" | "None" {
-  const incidentsEnabled = preferences.incidentTypes.emailDeliveryDegradation;
+  const incidentsEnabled = preferences.incidentTypes.emailDeliveryDegradation
+    || preferences.incidentTypes.subscriptionCollectionDegradation;
   const milestonesEnabled = preferences.celebrations.userMilestone
     || preferences.celebrations.revenueMilestone;
   if (incidentsEnabled && milestonesEnabled) return "Incidents + Milestones";

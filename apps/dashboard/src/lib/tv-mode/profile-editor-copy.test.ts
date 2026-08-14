@@ -15,7 +15,7 @@ describe("TV profile customization copy", () => {
     [false, false, false, "None"],
   ] as const)("summarizes profile event coverage", (incident, userMilestone, revenueMilestone, expected) => {
     expect(getTvProfileEventCoverageLabel({
-      incidentTypes: { emailDeliveryDegradation: incident },
+      incidentTypes: { emailDeliveryDegradation: incident, subscriptionCollectionDegradation: incident },
       celebrations: { userMilestone, revenueMilestone },
       timing: {
         celebration: { takeoverSeconds: 60, animationSeconds: 3600, highlightSeconds: 21600 },
@@ -83,12 +83,16 @@ describe("TV profile customization copy", () => {
         {
           "previews": [
             {
+              "fixture": "payment-incident-takeover",
+              "label": "Incident Screen · Payment Degradation",
+            },
+            {
               "fixture": "incident-takeover",
               "label": "Incident Screen · Email Degradation",
             },
             {
               "fixture": "incident-highlight",
-              "label": "Incident Highlight · Email Degradation",
+              "label": "Incident Highlight",
             },
             {
               "fixture": "incident-recovery",

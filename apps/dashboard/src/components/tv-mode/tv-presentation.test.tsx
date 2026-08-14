@@ -137,15 +137,18 @@ describe("TV metric semantics", () => {
 
     const audienceRender = render(renderTvScreen(audience));
     screen.getByText("12.8% growth over the last 7 days");
-    screen.getByText("Signed-In Visitors · 7d");
-    screen.getByText("Identified Session Avg · 7d");
+    screen.getByText("Total Users * 7d");
+    screen.getByText("Monthly Active");
+    screen.getByText("Signed-In Visitors");
+    screen.getByText("Session Avg * 7d");
     screen.getByText("91.6% users verified");
     screen.getByText("214 Sessions");
     audienceRender.unmount();
 
     const revenueRender = render(renderTvScreen(revenue));
-    screen.getByText("Gross Paid Revenue · 30d");
-    screen.getByText("30-Day Gross Revenue Proxy");
+    screen.getByText("Gross Collected Revenue · 30d");
+    screen.getByText("30-Day Gross Revenue");
+    screen.getByText("Payment Success");
     screen.getByText("Refunds Excluded");
     revenueRender.unmount();
 
@@ -256,6 +259,18 @@ describe("TV interruption presentation", () => {
     expect(screen.getByText("Critical Incident")).toBeDefined();
     expect(screen.getByRole("heading", { name: "Email Delivery Degraded" })).toBeDefined();
     expect(screen.queryByRole("heading", { name: "Live Pulse" })).toBeNull();
+  });
+
+  it("renders the payment degradation Incident preview with production-facing copy", () => {
+    const snapshot = getTvFixtureSnapshot("project-a", "company-pulse", "payment-incident-takeover");
+    if (snapshot == null) throw new Error("Missing payment Incident fixture");
+
+    render(<TvPresentation snapshot={snapshot} onExit={() => undefined} />);
+
+    expect(screen.getByText("Incident")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Subscription Payments Degraded" })).toBeDefined();
+    expect(screen.getByText("Payment Success")).toBeDefined();
+    expect(screen.getByText("82%")).toBeDefined();
   });
 
   it("treats escalation and recovery as new phases of the same occurrence", async () => {
@@ -416,7 +431,7 @@ describe("TV insight area", () => {
   });
 
   it.each([
-    ["revenue-payments", "At least 10 applicable payment attempts are required before payment health can be assessed."],
+    ["revenue-payments", "At least 10 completed payment outcomes are required before Payment Success can be assessed."],
     ["email-health", "At least 20 finished sends are required before delivery health can be assessed."],
   ] as const)("explains the evidence threshold for %s", (screenId, message) => {
     expect(getTvInsightPresentation({
@@ -445,6 +460,6 @@ describe("TV insight area", () => {
 
     render(renderTvScreen(revenue));
 
-    screen.getByText("At least 10 applicable payment attempts are required before payment health can be assessed.");
+    screen.getByText("At least 10 completed payment outcomes are required before Payment Success can be assessed.");
   });
 });

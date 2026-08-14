@@ -262,7 +262,7 @@ export const TvScreenSnapshotSchema = yupUnion(
 
 const TvEventSchema = yupObject({
   id: yupString().defined(),
-  type: yupString().oneOf(["email-delivery-degradation", "user-milestone"]).defined(),
+  type: yupString().oneOf(["email-delivery-degradation", "subscription-collection-degradation", "user-milestone"]).defined(),
   presentationClass: yupString().oneOf(["celebration", "incident", "critical-incident"]).defined(),
   status: yupString().oneOf(["active", "resolved"]).defined(),
   title: yupString().defined(),
@@ -418,6 +418,7 @@ export const TV_EVENT_HIGHLIGHT_DURATION_SECONDS = [3600, 21600, 43200, 86400] a
 export const TvInterruptionPreferencesSchema = yupObject({
   incidentTypes: yupObject({
     emailDeliveryDegradation: yupBoolean().defined(),
+    subscriptionCollectionDegradation: yupBoolean().defined(),
   }).noUnknown().defined(),
   celebrations: yupObject({
     userMilestone: yupBoolean().defined(),
@@ -499,7 +500,7 @@ export type TvProfileResource = yup.InferType<typeof TvProfileResourceSchema>;
 export type TvBuiltInProfile = TvBuiltInProfileResource;
 
 const defaultInterruptionPreferences: TvInterruptionPreferences = {
-  incidentTypes: { emailDeliveryDegradation: true },
+  incidentTypes: { emailDeliveryDegradation: true, subscriptionCollectionDegradation: true },
   celebrations: { userMilestone: true, revenueMilestone: false },
   timing: {
     celebration: { takeoverSeconds: 60, animationSeconds: 3600, highlightSeconds: 21600 },

@@ -3,7 +3,7 @@ import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
 export type TvDurableEventOccurrence = {
   id: string,
-  type: "email-delivery-degradation" | "user-milestone",
+  type: "email-delivery-degradation" | "subscription-collection-degradation" | "user-milestone",
   presentationClass: "celebration" | "incident" | "critical-incident",
   lifecycle: "occurred" | "active" | "resolved",
   occurredAt: Date,
@@ -86,7 +86,8 @@ function occurrenceRank(occurrence: TvDurableEventOccurrence): number {
 }
 
 function eventTypeRank(occurrence: TvDurableEventOccurrence): number {
-  return occurrence.type === "email-delivery-degradation" ? 1 : 0;
+  if (occurrence.type === "email-delivery-degradation") return 2;
+  return occurrence.type === "subscription-collection-degradation" ? 1 : 0;
 }
 
 function selectOutrankingOccurrence(

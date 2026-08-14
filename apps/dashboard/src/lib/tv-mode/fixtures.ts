@@ -211,7 +211,7 @@ export const TV_PROFILE_FIXTURES = [
       { screenId: "revenue-payments", enabled: engineeringProfile.configuration.playlist.some((entry) => entry.screenId === "revenue-payments"), durationSecondsOverride: 18 },
       { screenId: "email-health", enabled: engineeringProfile.configuration.playlist.some((entry) => entry.screenId === "email-health"), durationSecondsOverride: 18 },
     ],
-    incidentTypes: { emailDeliveryDegradation: true },
+    incidentTypes: { emailDeliveryDegradation: true, subscriptionCollectionDegradation: true },
     celebrations: { userMilestone: true, revenueMilestone: false },
     interruptionTiming: engineeringProfile.configuration.interruptionPreferences.timing,
     showExactFinancialValues: false,
@@ -228,7 +228,7 @@ export const TV_PROFILE_FIXTURES = [
       { screenId: "revenue-payments", enabled: companyPulseProfile.configuration.playlist.some((entry) => entry.screenId === "revenue-payments"), durationSecondsOverride: 18 },
       { screenId: "email-health", enabled: companyPulseProfile.configuration.playlist.some((entry) => entry.screenId === "email-health"), durationSecondsOverride: 18 },
     ],
-    incidentTypes: { emailDeliveryDegradation: true },
+    incidentTypes: { emailDeliveryDegradation: true, subscriptionCollectionDegradation: true },
     celebrations: { userMilestone: true, revenueMilestone: true },
     interruptionTiming: companyPulseProfile.configuration.interruptionPreferences.timing,
     showExactFinancialValues: true,
@@ -285,6 +285,21 @@ const ordinaryEmailIncidentEvent: TvEvent = {
   id: "fixture-email-delivery-incident",
   presentationClass: "incident",
   metricValue: "92.1%",
+};
+
+const paymentDegradationEvent: TvEvent = {
+  id: "fixture-subscription-collection-degradation",
+  type: "subscription-collection-degradation",
+  presentationClass: "incident",
+  status: "active",
+  title: "Subscription Payments Degraded",
+  summary: "Subscription collection is below the expected range. We’re monitoring recovery.",
+  metricLabel: "Payment Success",
+  metricValue: "82%",
+  expectedRange: "Expected collection range",
+  sourceLabel: "Hexclave payments",
+  occurredAt: "2026-07-23T14:28:00.000Z",
+  updatedAt: FIXTURE_NOW,
 };
 
 const resolvedEmailEvent: TvEvent = {
@@ -408,32 +423,36 @@ export function createTvFixtureSnapshot(projectId: string, profile: TvProfileFix
         ? celebrationHighlightWith({ event: newerUserMilestoneEvent })
         : variant === "event-long-content"
           ? celebrationHighlightWith({ event: longContentMilestoneEvent })
-          : variant === "incident-highlight" || variant === "incident-takeover"
-            ? incidentHighlight(ordinaryEmailIncidentEvent, "active-incident", null)
-            : variant === "critical-highlight" || variant === "critical-takeover"
-              ? incidentHighlight(emailDegradationEvent, "active-incident", null)
-              : variant === "incident-recovery-highlight"
-                ? incidentHighlight({
-                  ...resolvedEmailEvent,
-                  id: "fixture-resolved-email-highlight",
-                  presentationClass: "incident",
-                }, "resolved-incident", "2026-07-23T20:30:00.000Z")
-                : null;
+          : variant === "payment-incident-takeover"
+            ? incidentHighlight(paymentDegradationEvent, "active-incident", null)
+            : variant === "incident-highlight" || variant === "incident-takeover"
+              ? incidentHighlight(ordinaryEmailIncidentEvent, "active-incident", null)
+              : variant === "critical-highlight" || variant === "critical-takeover"
+                ? incidentHighlight(emailDegradationEvent, "active-incident", null)
+                : variant === "incident-recovery-highlight"
+                  ? incidentHighlight({
+                    ...resolvedEmailEvent,
+                    id: "fixture-resolved-email-highlight",
+                    presentationClass: "incident",
+                  }, "resolved-incident", "2026-07-23T20:30:00.000Z")
+                  : null;
   const takeover = variant === "celebration-takeover"
     ? presentedTakeover(userMilestoneEvent, "celebration", "2026-07-23T14:33:00.000Z")
-    : variant === "celebration-suspended" || variant === "incident-takeover"
-      ? presentedTakeover(ordinaryEmailIncidentEvent, "incident", "2026-07-23T14:33:00.000Z")
-      : variant === "critical-takeover"
-        ? presentedTakeover(emailDegradationEvent, "critical-incident", "2026-07-23T14:34:00.000Z")
-        : variant === "incident-recovery"
-          ? presentedTakeover({
-            ...resolvedEmailEvent,
-            id: "fixture-resolved-email-incident",
-            presentationClass: "incident",
-          }, "recovery-confirmation", "2026-07-23T14:32:30.000Z")
-          : variant === "critical-recovery"
-            ? presentedTakeover(resolvedEmailEvent, "recovery-confirmation", "2026-07-23T14:32:30.000Z")
-            : null;
+    : variant === "payment-incident-takeover"
+      ? presentedTakeover(paymentDegradationEvent, "incident", "2026-07-23T14:33:00.000Z")
+      : variant === "celebration-suspended" || variant === "incident-takeover"
+        ? presentedTakeover(ordinaryEmailIncidentEvent, "incident", "2026-07-23T14:33:00.000Z")
+        : variant === "critical-takeover"
+          ? presentedTakeover(emailDegradationEvent, "critical-incident", "2026-07-23T14:34:00.000Z")
+          : variant === "incident-recovery"
+            ? presentedTakeover({
+              ...resolvedEmailEvent,
+              id: "fixture-resolved-email-incident",
+              presentationClass: "incident",
+            }, "recovery-confirmation", "2026-07-23T14:32:30.000Z")
+            : variant === "critical-recovery"
+              ? presentedTakeover(resolvedEmailEvent, "recovery-confirmation", "2026-07-23T14:32:30.000Z")
+              : null;
   const configuredPlaylist = profile.playlist.filter((entry) => entry.enabled).map((entry) => entry.screenId);
   const playlist: TvProfileFixture["playlist"][number]["screenId"][] = variant === "partial-failure" && configuredPlaylist.includes("email-health")
     ? ["email-health", ...configuredPlaylist.filter((id) => id !== "email-health")]

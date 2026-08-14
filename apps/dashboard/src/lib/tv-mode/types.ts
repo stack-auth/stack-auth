@@ -44,6 +44,7 @@ export const TV_FIXTURE_VARIANTS = defineTvFixtureVariants([
   "event-long-content",
   "incident-highlight",
   "critical-highlight",
+  "payment-incident-takeover",
   "incident-takeover",
   "critical-takeover",
   "incident-recovery",
@@ -76,6 +77,7 @@ export type TvProfileFixture = {
   }>,
   incidentTypes: {
     emailDeliveryDegradation: boolean,
+    subscriptionCollectionDegradation: boolean,
   },
   celebrations: {
     userMilestone: boolean,

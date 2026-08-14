@@ -75,16 +75,55 @@ const PreviousTvInterruptionPreferencesSchema = yupObject({
   }).noUnknown().defined(),
 }).noUnknown().defined();
 
+const TvRecoveryTimingSchema = yupObject({
+  celebration: yupObject({
+    takeoverSeconds: yupNumber().integer().oneOf(TV_TAKEOVER_DURATION_SECONDS).defined(),
+    animationSeconds: yupNumber().integer().oneOf(TV_CELEBRATION_ANIMATION_DURATION_SECONDS).defined(),
+    highlightSeconds: yupNumber().integer().oneOf(TV_EVENT_HIGHLIGHT_DURATION_SECONDS).defined(),
+  }).noUnknown().defined(),
+  incident: yupObject({
+    takeoverSeconds: yupNumber().integer().oneOf(TV_TAKEOVER_DURATION_SECONDS).defined(),
+    recoveryTakeoverSeconds: yupNumber().integer().oneOf(TV_TAKEOVER_DURATION_SECONDS).defined(),
+    resolvedHighlightSeconds: yupNumber().integer().oneOf(TV_EVENT_HIGHLIGHT_DURATION_SECONDS).defined(),
+  }).noUnknown().defined(),
+  criticalIncident: yupObject({
+    takeoverSeconds: yupNumber().integer().oneOf(TV_TAKEOVER_DURATION_SECONDS).defined(),
+    recoveryTakeoverSeconds: yupNumber().integer().oneOf(TV_TAKEOVER_DURATION_SECONDS).defined(),
+    resolvedHighlightSeconds: yupNumber().integer().oneOf(TV_EVENT_HIGHLIGHT_DURATION_SECONDS).defined(),
+  }).noUnknown().defined(),
+}).noUnknown().defined();
+
+// Recovery timing shipped before subscription collection incidents. Profiles
+// saved during that interval already have the final timing shape, but only the
+// original email incident toggle.
+const PreSubscriptionTvInterruptionPreferencesSchema = yupObject({
+  incidentTypes: yupObject({
+    emailDeliveryDegradation: yupBoolean().defined(),
+  }).noUnknown().defined(),
+  celebrations: yupObject({
+    userMilestone: yupBoolean().defined(),
+    revenueMilestone: yupBoolean().defined(),
+  }).noUnknown().defined(),
+  timing: TvRecoveryTimingSchema,
+}).noUnknown().defined();
+
 export async function normalizeTvInterruptionPreferences(
   input: unknown,
 ): Promise<TvInterruptionPreferences> {
   if (await TvInterruptionPreferencesSchema.isValid(input, { strict: true })) {
     return await TvInterruptionPreferencesSchema.validate(input, { strict: true });
   }
+  if (await PreSubscriptionTvInterruptionPreferencesSchema.isValid(input, { strict: true })) {
+    const previous = await PreSubscriptionTvInterruptionPreferencesSchema.validate(input, { strict: true });
+    return {
+      ...previous,
+      incidentTypes: { ...previous.incidentTypes, subscriptionCollectionDegradation: true },
+    };
+  }
   if (await PreviousTvInterruptionPreferencesSchema.isValid(input, { strict: true })) {
     const previous = await PreviousTvInterruptionPreferencesSchema.validate(input, { strict: true });
     return {
-      incidentTypes: previous.incidentTypes,
+      incidentTypes: { ...previous.incidentTypes, subscriptionCollectionDegradation: true },
       celebrations: previous.celebrations,
       timing: {
         celebration: previous.timing.celebration,
@@ -105,6 +144,7 @@ export async function normalizeTvInterruptionPreferences(
   return {
     incidentTypes: {
       emailDeliveryDegradation: legacy.incidentTypes.emailDeliveryDegradation && anyIncidentLevelEnabled,
+      subscriptionCollectionDegradation: anyIncidentLevelEnabled,
     },
     celebrations: legacy.celebrations,
     timing: {

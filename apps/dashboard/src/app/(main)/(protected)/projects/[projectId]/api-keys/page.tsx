@@ -2,10 +2,11 @@
 // Redirecting to the new location
 import { redirect } from 'next/navigation';
 
-export default function Page({
+export default async function Page({
   params,
 }: {
-  params: { projectId: string },
+  params: Promise<{ projectId: string }>,
 }) {
-  redirect(`/projects/${params.projectId}/project-keys`);
+  const { projectId } = await params;
+  redirect(`/projects/${projectId}/project-keys`);
 }

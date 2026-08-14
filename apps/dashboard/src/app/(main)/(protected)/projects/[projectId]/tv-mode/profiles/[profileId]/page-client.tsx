@@ -684,8 +684,16 @@ export default function PageClient() {
                   description: "Bounded Incident and Critical takeovers followed by persistent active Highlights until recovery.",
                   control: <Switch checked={draft.incidentTypes.emailDeliveryDegradation} onCheckedChange={(emailDeliveryDegradation) => setDraft({
                     ...draft,
-                    incidentTypes: { emailDeliveryDegradation },
+                    incidentTypes: { ...draft.incidentTypes, emailDeliveryDegradation },
                   })} aria-label="Enable email delivery degradation interruptions" />,
+                })}
+                {settingRow({
+                  title: "Subscription Collection Degradation",
+                  description: "Bounded interruptions when subscription collection falls below its expected range.",
+                  control: <Switch checked={draft.incidentTypes.subscriptionCollectionDegradation} onCheckedChange={(subscriptionCollectionDegradation) => setDraft({
+                    ...draft,
+                    incidentTypes: { ...draft.incidentTypes, subscriptionCollectionDegradation },
+                  })} aria-label="Enable subscription collection degradation interruptions" />,
                 })}
               </div>
             </DesignCard>

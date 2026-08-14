@@ -304,7 +304,7 @@ const TV_INSIGHT_FALLBACKS = new Map<TvScreenId, {
   }],
   ["revenue-payments", {
     ready: "No evidence-qualified revenue or payment insight was identified for this 30-day window.",
-    insufficient: "At least 10 applicable payment attempts are required before payment health can be assessed.",
+    insufficient: "At least 10 completed payment outcomes are required before Payment Success can be assessed.",
   }],
   ["email-health", {
     ready: "No evidence-qualified email delivery insight was identified for this seven-day window.",
@@ -485,12 +485,12 @@ function AudienceMomentumScreen({
       <div className="grid h-full min-h-0 grid-cols-[0.72fr_1.28fr] gap-[clamp(2rem,5vw,12rem)]">
         <GlassPanel tone="violet" className="h-full">
           <div className="flex h-full min-h-0 flex-col justify-between p-[clamp(1.5rem,2.3vw,5.5rem)]">
-            <TvMetric label="Total users" value={data.totalUsers.toLocaleString()} detail={`${data.userGrowthPercent}% growth over the last 7 days`} hero />
+            <TvMetric label="Total Users * 7d" value={data.totalUsers.toLocaleString()} detail={`${data.userGrowthPercent}% growth over the last 7 days`} hero />
             <div className="grid grid-cols-2 gap-x-6 gap-y-5">
               <TvMetric label="New users · 7d" value={`+${data.newUsers}`} detail={`${data.verificationRatePercent}% users verified`} />
-              <TvMetric label="Monthly active · 30d" value={formatCompact(data.monthlyActiveUsers)} />
-              <TvMetric label="Signed-In Visitors · 7d" value={visitorsValue} detail={visitorsDetail} />
-              <TvMetric label="Identified Session Avg · 7d" value={sessionValue} detail={sessionDetail} />
+              <TvMetric label="Monthly Active" value={formatCompact(data.monthlyActiveUsers)} />
+              <TvMetric label="Signed-In Visitors" value={visitorsValue} detail={visitorsDetail} />
+              <TvMetric label="Session Avg * 7d" value={sessionValue} detail={sessionDetail} />
             </div>
             <TvInsightArea screenId="audience-momentum" sourceStatus={sourceStatus} insight={insight} tone="violet" />
           </div>
@@ -524,14 +524,14 @@ function RevenuePaymentsScreen({
   const financials = data.financials;
   const trend = financials.visibility === "exact" ? financials.revenueTrend : financials.normalizedRevenueTrend;
   return (
-    <TvScreenFrame eyebrow="Trailing 30 Days" title="Revenue & Payments" description="Gross paid invoice momentum and whether applicable payments are collecting." icon={<CurrencyDollarIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-emerald-300" headerAccessory={headerAccessory}>
+    <TvScreenFrame eyebrow="Trailing 30 Days" title="Revenue & Payments" description="Gross collected revenue and subscription collection health." icon={<CurrencyDollarIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-emerald-300" headerAccessory={headerAccessory}>
       <div className="grid h-full min-h-0 grid-cols-[0.78fr_1.22fr] gap-[clamp(2rem,5vw,12rem)]">
         <GlassPanel tone="emerald" className="h-full">
           <div className="flex h-full min-h-0 flex-col justify-between p-[clamp(1.5rem,2.3vw,5.5rem)]">
-            <TvMetric label="Gross Paid Revenue · 30d" value={financials.visibility === "exact" ? formatUsd(financials.paidRevenueCents) : "Hidden"} detail={`${data.revenueChangePercent >= 0 ? "↑" : "↓"} ${Math.abs(data.revenueChangePercent)}% vs previous 30 days${financials.visibility === "exact" ? "" : " · exact values off"}`} hero />
+            <TvMetric label="Gross Collected Revenue · 30d" value={financials.visibility === "exact" ? formatUsd(financials.paidRevenueCents) : "Hidden"} detail={`${data.revenueChangePercent >= 0 ? "↑" : "↓"} ${Math.abs(data.revenueChangePercent)}% vs previous 30 days${financials.visibility === "exact" ? "" : " · exact values off"}`} hero />
             <div className="grid grid-cols-2 gap-6">
-              <TvMetric label="30-Day Gross Revenue Proxy" value={financials.visibility === "exact" ? formatUsd(financials.mrrProxyCents) : "Hidden"} detail="Refunds Excluded" />
-              <TvMetric label="Payment success" value={data.paymentSuccess.percent == null ? "Insufficient data" : `${data.paymentSuccess.percent}%`} detail={`${data.paymentSuccess.applicableAttempts} applicable attempts`} />
+              <TvMetric label="30-Day Gross Revenue" value={financials.visibility === "exact" ? formatUsd(financials.mrrProxyCents) : "Hidden"} detail="Refunds Excluded" />
+              <TvMetric label="Payment Success" value={data.paymentSuccess.percent == null ? "Insufficient Data" : `${data.paymentSuccess.percent}%`} detail={`${data.paymentSuccess.applicableAttempts} terminal outcomes`} />
               <TvMetric label="Active subscriptions" value={data.activeSubscriptions.toLocaleString()} />
               <TvMetric label="New subscriptions" value={`+${data.newSubscriptions}`} detail={`${data.pastDueSubscriptions} past due`} />
             </div>

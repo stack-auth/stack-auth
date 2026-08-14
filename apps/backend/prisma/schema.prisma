@@ -229,6 +229,7 @@ model TvPresentationProfile {
 
 enum TvEventType {
   EMAIL_DELIVERY_DEGRADATION
+  SUBSCRIPTION_COLLECTION_DEGRADATION
   USER_MILESTONE
 }
 
@@ -1628,6 +1629,9 @@ model OneTimePurchase {
   product               Json
   quantity              Int
   stripePaymentIntentId String?
+  amountReceived        Int?
+  currency              String?
+  paidAt                DateTime?
   createdAt             DateTime               @default(now())
   revokedAt             DateTime?
   refundedAt            DateTime?
@@ -1672,6 +1676,11 @@ model SubscriptionInvoice {
   status                        String?
   amountTotal                   Int?
   hostedInvoiceUrl              String?
+  paidAt                        DateTime?
+  markedUncollectibleAt         DateTime?
+  voidedAt                      DateTime?
+  currency                      String?
+  amountPaid                    Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

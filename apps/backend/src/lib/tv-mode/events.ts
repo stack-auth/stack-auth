@@ -13,10 +13,18 @@ import {
   TV_EMAIL_MATURITY_DELAY_MINUTES,
   TV_EMAIL_RECOVERY_TITLE,
   TV_EMAIL_RULE_VERSION,
+  TV_PAYMENT_BASELINE_REFRESH_MS,
+  TV_PAYMENT_RECOVERY_TITLE,
+  TV_PAYMENT_RULE_VERSION,
+  createTvPaymentEvaluatorState,
+  evaluateTvSubscriptionCollection,
   type TvEmailBaseline,
   type TvEmailEvidenceWindow,
   type TvEmailEvaluationSample,
   type TvEmailEvaluatorState,
+  type TvPaymentBaseline,
+  type TvPaymentEvaluatorState,
+  type TvPaymentSample,
 } from "@/lib/tv-mode/event-evaluators";
 import {
   deriveTvPresentation,
@@ -55,7 +63,7 @@ export type EvaluatorClaimRow = {
 
 export type TvEventOccurrenceRow = {
   id: string,
-  eventType: "EMAIL_DELIVERY_DEGRADATION" | "USER_MILESTONE",
+  eventType: "EMAIL_DELIVERY_DEGRADATION" | "SUBSCRIPTION_COLLECTION_DEGRADATION" | "USER_MILESTONE",
   presentationClass: "CELEBRATION" | "INCIDENT" | "CRITICAL_INCIDENT",
   lifecycle: "OCCURRED" | "ACTIVE" | "RESOLVED",
   title: string,
@@ -540,11 +548,11 @@ export async function persistEmailEvaluation(options: {
     const roundedRate = currentRate == null ? null : Math.round(currentRate * 10) / 10;
     const qualificationEvidence = rulePath === "recovery"
       ? {
-          requiredPersistenceMs: (options.previousState.recovery?.window === "low-volume" ? 15 : 5) * MINUTE_MS,
-          thresholds: options.sample.baseline?.medianDeliveryRatePercent == null
-            ? { minimumDeliveryRatePercent: 97, maximumExplicitFailureRatePercent: 3 }
-            : { minimumDeliveryRatePercent: Math.max(90, options.sample.baseline.medianDeliveryRatePercent - 2) },
-        }
+        requiredPersistenceMs: (options.previousState.recovery?.window === "low-volume" ? 15 : 5) * MINUTE_MS,
+        thresholds: options.sample.baseline?.medianDeliveryRatePercent == null
+          ? { minimumDeliveryRatePercent: 97, maximumExplicitFailureRatePercent: 3 }
+          : { minimumDeliveryRatePercent: Math.max(90, options.sample.baseline.medianDeliveryRatePercent - 2) },
+      }
       : emailQualificationEvidence(rulePath);
     const observationEvidence = {
       evaluatedAt: options.sample.evaluatedAt,
@@ -556,7 +564,7 @@ export async function persistEmailEvaluation(options: {
         ? qualificationEvidence?.requiredPersistenceMs ?? 0
         : result.action.type === "resolve"
           ? qualificationEvidence?.requiredPersistenceMs ?? 0
-        : result.state.candidate?.accumulatedMs ?? result.state.recovery?.accumulatedMs ?? 0,
+          : result.state.candidate?.accumulatedMs ?? result.state.recovery?.accumulatedMs ?? 0,
       current: options.sample.current,
       lowVolume: options.sample.lowVolume,
       baseline: options.sample.baseline,
@@ -689,6 +697,166 @@ async function evaluateEmailIfDue(tenancy: Tenancy, now: Date): Promise<void> {
   await persistEmailEvaluation({ tenancy, claim, previousState: state, sample, now });
 }
 
+function readTvPaymentState(value: unknown, activeClass: TvPaymentEvaluatorState["activeClass"]): TvPaymentEvaluatorState {
+  if (!isObject(value) || readNumber(value, "ruleVersion") !== TV_PAYMENT_RULE_VERSION) {
+    return createTvPaymentEvaluatorState({ activeClass });
+  }
+  // Evaluator state is written exclusively by evaluateTvSubscriptionCollection;
+  // validate the stable outer contract and reset safely on incompatible versions.
+  const baselineValue = "baseline" in value && isObject(value.baseline) ? value.baseline : null;
+  const medianRate = baselineValue == null || !("medianSuccessRatePercent" in baselineValue) || baselineValue.medianSuccessRatePercent == null
+    ? null
+    : readNumber(baselineValue, "medianSuccessRatePercent");
+  const baseline: TvPaymentBaseline | null = baselineValue == null ? null : {
+    computedAt: readString(baselineValue, "computedAt") ?? "",
+    qualifiedWeeks: readNumber(baselineValue, "qualifiedWeeks") ?? 0,
+    assessableOutcomes: readNumber(baselineValue, "assessableOutcomes") ?? 0,
+    medianSuccessRatePercent: medianRate,
+  };
+  const freshAt = !("lastFreshEvaluatedAt" in value) || value.lastFreshEvaluatedAt == null ? null : readString(value, "lastFreshEvaluatedAt");
+  let candidate: TvPaymentEvaluatorState["candidate"] = null;
+  if ("candidate" in value && isObject(value.candidate)) {
+    const rulePath = readString(value.candidate, "rulePath");
+    const presentationClass = readString(value.candidate, "presentationClass");
+    const accumulatedMs = readNumber(value.candidate, "accumulatedMs");
+    if (
+      (rulePath === "standard" || rulePath === "low-volume" || rulePath === "strict" || rulePath === "critical" || rulePath === "strict-critical")
+      && (presentationClass === "incident" || presentationClass === "critical-incident")
+      && accumulatedMs != null
+    ) candidate = { rulePath, presentationClass, accumulatedMs };
+  }
+  let recovery: TvPaymentEvaluatorState["recovery"] = null;
+  if ("recovery" in value && isObject(value.recovery)) {
+    const window = readString(value.recovery, "window");
+    const accumulatedMs = readNumber(value.recovery, "accumulatedMs");
+    if ((window === "current" || window === "low-volume") && accumulatedMs != null) recovery = { window, accumulatedMs };
+  }
+  return { ruleVersion: TV_PAYMENT_RULE_VERSION, activeClass, baseline, lastFreshEvaluatedAt: freshAt, candidate, recovery };
+}
+
+async function loadPaymentOutcomes(tenancy: Tenancy, startsAt: Date, endsAt: Date): Promise<Array<{ outcomeAt: Date, success: boolean }>> {
+  const schema = await getPrismaSchemaForTenancy(tenancy);
+  const prisma = await getPrismaClientForTenancy(tenancy);
+  return await prisma.$replica().$queryRaw<Array<{ outcomeAt: Date, success: boolean }>>`
+    WITH raw_candidates AS (
+      SELECT "id", "paidAt", "markedUncollectibleAt", "voidedAt"
+      FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
+      WHERE "tenancyId" = ${tenancy.id}::UUID AND "paidAt" >= ${startsAt} AND "paidAt" < ${endsAt}
+      UNION ALL
+      SELECT "id", "paidAt", "markedUncollectibleAt", "voidedAt"
+      FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
+      WHERE "tenancyId" = ${tenancy.id}::UUID
+        AND "markedUncollectibleAt" >= ${startsAt} AND "markedUncollectibleAt" < ${endsAt}
+    ), candidates AS (
+      -- Both branches read the same current invoice row. Deduplicating only by ID
+      -- keeps one contribution without widening the candidate index scans.
+      SELECT DISTINCT ON ("id") *
+      FROM raw_candidates
+      ORDER BY "id"
+    ), selected AS (
+      SELECT *, GREATEST("paidAt", "markedUncollectibleAt", "voidedAt") AS "outcomeAt"
+      FROM candidates
+    )
+    SELECT "outcomeAt", ("paidAt" = "outcomeAt") AS success
+    FROM selected
+    WHERE "outcomeAt" >= ${startsAt} AND "outcomeAt" < ${endsAt}
+      AND (
+        "paidAt" = "outcomeAt"
+        OR (
+          "voidedAt" IS DISTINCT FROM "outcomeAt"
+          AND "markedUncollectibleAt" = "outcomeAt"
+        )
+      )
+  `;
+}
+
+function paymentWindow(startsAt: Date, endsAt: Date, rows: Array<{ outcomeAt: Date, success: boolean }>) {
+  const successes = rows.filter((row) => row.success).length;
+  const outcomes = rows.length;
+  return {
+    startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), outcomes, successes,
+    failures: outcomes - successes,
+    successRatePercent: outcomes === 0 ? null : Math.round(successes / outcomes * 1000) / 10,
+  };
+}
+
+async function loadPaymentBaseline(tenancy: Tenancy, now: Date): Promise<TvPaymentBaseline> {
+  const endsAt = new Date(now.getTime() - 14 * 24 * 60 * MINUTE_MS);
+  const startsAt = new Date(endsAt.getTime() - 12 * 7 * 24 * 60 * MINUTE_MS);
+  const rows = await loadPaymentOutcomes(tenancy, startsAt, endsAt);
+  const weeks = Array.from({ length: 12 }, (_, index) => {
+    const weekStartsAt = new Date(startsAt.getTime() + index * 7 * 24 * 60 * MINUTE_MS);
+    const weekEndsAt = new Date(weekStartsAt.getTime() + 7 * 24 * 60 * MINUTE_MS);
+    return paymentWindow(weekStartsAt, weekEndsAt, rows.filter((row) => row.outcomeAt >= weekStartsAt && row.outcomeAt < weekEndsAt));
+  }).filter((week) => week.outcomes >= 5 && week.successRatePercent != null);
+  const assessableOutcomes = weeks.reduce((total, week) => total + week.outcomes, 0);
+  return {
+    computedAt: now.toISOString(), qualifiedWeeks: weeks.length, assessableOutcomes,
+    medianSuccessRatePercent: weeks.length >= 4 && assessableOutcomes >= 40
+      ? median(weeks.map((week) => week.successRatePercent ?? 0))
+      : null,
+  };
+}
+
+async function persistPaymentEvaluation(options: { tenancy: Tenancy, claim: EvaluatorClaimRow, state: TvPaymentEvaluatorState, sample: TvPaymentSample, now: Date }) {
+  const result = evaluateTvSubscriptionCollection(options.state, options.sample);
+  const schema = await getPrismaSchemaForTenancy(options.tenancy);
+  const prisma = await getPrismaClientForTenancy(options.tenancy);
+  await retryTransaction(prisma, async (transaction) => {
+    let activeOccurrenceId = options.claim.activeOccurrenceId;
+    const window = result.qualification === "low-volume" || result.qualification?.startsWith("strict") ? options.sample.lowVolume : options.sample.current;
+    const metricValue = window?.successRatePercent == null ? "Unavailable" : `${window.successRatePercent}%`;
+    const evidence = { ruleVersion: TV_PAYMENT_RULE_VERSION, evaluatedAt: options.sample.evaluatedAt, qualification: result.qualification, current: options.sample.current, lowVolume: options.sample.lowVolume, baseline: options.sample.baseline };
+    const previousEvidence = isObject(options.claim.activeAggregateEvidence) ? options.claim.activeAggregateEvidence : {};
+    if (result.action.type === "activate") {
+      activeOccurrenceId = generateUuid();
+      await transaction.$executeRaw`
+        INSERT INTO ${sqlQuoteIdent(schema)}."TvEventOccurrence" (
+          "id", "tenancyId", "eventType", "presentationClass", "lifecycle", "deduplicationKey",
+          "title", "summary", "metricLabel", "metricValue", "expectedRange", "sourceLabel",
+          "aggregateEvidence", "occurredAt", "detectedAt", "activatedAt", "updatedAt"
+        ) VALUES (
+          ${activeOccurrenceId}::UUID, ${options.tenancy.id}::UUID,
+          'SUBSCRIPTION_COLLECTION_DEGRADATION'::${sqlQuoteIdent(schema)}."TvEventType",
+          ${result.action.presentationClass === "critical-incident" ? "CRITICAL_INCIDENT" : "INCIDENT"}::${sqlQuoteIdent(schema)}."TvEventPresentationClass",
+          'ACTIVE'::${sqlQuoteIdent(schema)}."TvEventOccurrenceLifecycle", ${`subscription-collection:${activeOccurrenceId}`},
+          'Subscription Payments Degraded', 'Subscription collection is below the expected range. We’re monitoring recovery.',
+          'Payment Success', ${metricValue}, 'Expected collection range', 'Hexclave payments',
+          ${JSON.stringify({ activation: evidence, latestActiveObservation: evidence })}::JSONB,
+          ${options.now}, ${options.now}, ${options.now}, ${options.now}
+        )
+      `;
+    } else if (activeOccurrenceId != null && result.action.type === "escalate") {
+      await transaction.$executeRaw`UPDATE ${sqlQuoteIdent(schema)}."TvEventOccurrence" SET "presentationClass" = 'CRITICAL_INCIDENT'::${sqlQuoteIdent(schema)}."TvEventPresentationClass", "escalatedAt" = ${options.now}, "metricValue" = ${metricValue}, "aggregateEvidence" = ${JSON.stringify({ ...previousEvidence, escalation: evidence, latestActiveObservation: evidence })}::JSONB, "updatedAt" = ${options.now} WHERE "tenancyId" = ${options.tenancy.id}::UUID AND "id" = ${activeOccurrenceId}::UUID`;
+    } else if (activeOccurrenceId != null && result.action.type === "resolve") {
+      await transaction.$executeRaw`UPDATE ${sqlQuoteIdent(schema)}."TvEventOccurrence" SET "lifecycle" = 'RESOLVED'::${sqlQuoteIdent(schema)}."TvEventOccurrenceLifecycle", "resolvedAt" = ${options.now}, "title" = ${TV_PAYMENT_RECOVERY_TITLE}, "summary" = 'Subscription collection is back within the expected range.', "metricValue" = ${metricValue}, "aggregateEvidence" = ${JSON.stringify({ ...previousEvidence, resolution: evidence })}::JSONB, "updatedAt" = ${options.now} WHERE "tenancyId" = ${options.tenancy.id}::UUID AND "id" = ${activeOccurrenceId}::UUID`;
+      activeOccurrenceId = null;
+    } else if (activeOccurrenceId != null) {
+      await transaction.$executeRaw`UPDATE ${sqlQuoteIdent(schema)}."TvEventOccurrence" SET "metricValue" = ${metricValue}, "aggregateEvidence" = ${JSON.stringify({ ...previousEvidence, latestActiveObservation: evidence })}::JSONB, "updatedAt" = ${options.now} WHERE "tenancyId" = ${options.tenancy.id}::UUID AND "id" = ${activeOccurrenceId}::UUID`;
+    }
+    await transaction.$executeRaw`UPDATE ${sqlQuoteIdent(schema)}."TvEventEvaluatorState" SET "typedState" = ${JSON.stringify(result.state)}::JSONB, "activeOccurrenceId" = ${activeOccurrenceId}::UUID, "updatedAt" = ${options.now} WHERE "tenancyId" = ${options.tenancy.id}::UUID AND "evaluatorKey" = 'subscription-collection'`;
+  });
+}
+
+async function evaluatePaymentIfDue(tenancy: Tenancy, now: Date): Promise<void> {
+  if (!(tenancy.config.apps.installed.payments?.enabled ?? false)) return;
+  const claim = await claimEvaluator(tenancy, "subscription-collection", now);
+  if (claim == null) return;
+  const state = readTvPaymentState(claim.typedState, activeClassFromClaim(claim));
+  let baseline = state.baseline;
+  if (baseline == null || now.getTime() - new Date(baseline.computedAt).getTime() >= TV_PAYMENT_BASELINE_REFRESH_MS) {
+    baseline = await loadPaymentBaseline(tenancy, now).catch((cause: unknown) => {
+      captureError("tv-payment-baseline-refresh-failed", new HexclaveAssertionError("TV payment baseline refresh failed; strict fallback remains active.", { cause, tenancyId: tenancy.id }));
+      return baseline;
+    });
+  }
+  const lowStartsAt = new Date(now.getTime() - 14 * 24 * 60 * MINUTE_MS);
+  const currentStartsAt = new Date(now.getTime() - 24 * 60 * MINUTE_MS);
+  const outcomes = await loadPaymentOutcomes(tenancy, lowStartsAt, now);
+  const sample: TvPaymentSample = { status: "fresh", evaluatedAt: now.toISOString(), observedAt: now.toISOString(), current: paymentWindow(currentStartsAt, now, outcomes.filter((row) => row.outcomeAt >= currentStartsAt)), lowVolume: paymentWindow(lowStartsAt, now, outcomes), baseline };
+  await persistPaymentEvaluation({ tenancy, claim, state: { ...state, baseline }, sample, now });
+}
+
 async function evaluateMilestoneIfDue(
   tenancy: Tenancy,
   now: Date,
@@ -770,6 +938,14 @@ export async function evaluateTvEventsIfDue(options: {
       { cause, tenancyId: options.tenancy.id },
     ));
   }
+  try {
+    await evaluatePaymentIfDue(options.tenancy, options.now);
+  } catch (cause) {
+    captureError("tv-payment-event-evaluator-failed", new HexclaveAssertionError(
+      "The TV payment event evaluator failed without affecting the operational snapshot.",
+      { cause, tenancyId: options.tenancy.id },
+    ));
+  }
   if (options.totalUsers == null) return;
   try {
     await evaluateMilestoneIfDue(options.tenancy, options.now, options.totalUsers);
@@ -798,15 +974,19 @@ function occurrenceLifecycle(occurrence: TvEventOccurrenceRow): TvDurableEventOc
 }
 
 function occurrenceType(occurrence: TvEventOccurrenceRow): TvDurableEventOccurrence["type"] {
-  return occurrence.eventType === "USER_MILESTONE" ? "user-milestone" : "email-delivery-degradation";
+  if (occurrence.eventType === "USER_MILESTONE") return "user-milestone";
+  return occurrence.eventType === "SUBSCRIPTION_COLLECTION_DEGRADATION"
+    ? "subscription-collection-degradation"
+    : "email-delivery-degradation";
 }
 
 function isEligible(
   occurrence: TvEventOccurrenceRow,
   preferences: TvInterruptionPreferences,
 ): boolean {
-  return occurrence.eventType === "USER_MILESTONE"
-    ? preferences.celebrations.userMilestone
+  if (occurrence.eventType === "USER_MILESTONE") return preferences.celebrations.userMilestone;
+  return occurrence.eventType === "SUBSCRIPTION_COLLECTION_DEGRADATION"
+    ? preferences.incidentTypes.subscriptionCollectionDegradation
     : preferences.incidentTypes.emailDeliveryDegradation;
 }
 
@@ -1078,7 +1258,9 @@ async function loadAssignments(
 function snapshotEvent(occurrence: TvEventOccurrenceRow): TvEvent {
   const title = occurrence.eventType === "EMAIL_DELIVERY_DEGRADATION"
     ? occurrence.lifecycle === "RESOLVED" ? TV_EMAIL_RECOVERY_TITLE : "Email Delivery Degraded"
-    : occurrence.title.replace(/ users$/i, " Users");
+    : occurrence.eventType === "SUBSCRIPTION_COLLECTION_DEGRADATION"
+      ? occurrence.lifecycle === "RESOLVED" ? TV_PAYMENT_RECOVERY_TITLE : "Subscription Payments Degraded"
+      : occurrence.title.replace(/ users$/i, " Users");
   return {
     id: occurrence.id,
     type: occurrenceType(occurrence),

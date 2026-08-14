@@ -14,7 +14,7 @@ const legacyPreferences = {
 describe("TV profile interruption preference normalization", () => {
   it("normalizes legacy preferences into the single final shape", async () => {
     await expect(normalizeTvInterruptionPreferences(legacyPreferences)).resolves.toEqual({
-      incidentTypes: { emailDeliveryDegradation: true },
+      incidentTypes: { emailDeliveryDegradation: true, subscriptionCollectionDegradation: true },
       celebrations: { userMilestone: true, revenueMilestone: false },
       timing: {
         celebration: { takeoverSeconds: 60, animationSeconds: 3600, highlightSeconds: 21600 },
@@ -33,7 +33,7 @@ describe("TV profile interruption preference normalization", () => {
         medium: "disabled",
       },
     })).resolves.toMatchObject({
-      incidentTypes: { emailDeliveryDegradation: false },
+      incidentTypes: { emailDeliveryDegradation: false, subscriptionCollectionDegradation: false },
     });
   });
 
@@ -65,7 +65,7 @@ describe("TV profile interruption preference normalization", () => {
 
   it("passes final preferences through without rewriting configured timing", async () => {
     const finalPreferences = {
-      incidentTypes: { emailDeliveryDegradation: false },
+      incidentTypes: { emailDeliveryDegradation: false, subscriptionCollectionDegradation: false },
       celebrations: { userMilestone: false, revenueMilestone: false },
       timing: {
         celebration: { takeoverSeconds: 90, animationSeconds: 1800, highlightSeconds: 43200 },
@@ -86,13 +86,30 @@ describe("TV profile interruption preference normalization", () => {
         criticalIncident: { resolvedHighlightSeconds: 86400 },
       },
     })).resolves.toEqual({
-      incidentTypes: { emailDeliveryDegradation: true },
+      incidentTypes: { emailDeliveryDegradation: true, subscriptionCollectionDegradation: true },
       celebrations: { userMilestone: false, revenueMilestone: false },
       timing: {
         celebration: { takeoverSeconds: 90, animationSeconds: 1800, highlightSeconds: 43200 },
         incident: { takeoverSeconds: 120, recoveryTakeoverSeconds: 30, resolvedHighlightSeconds: 21600 },
         criticalIncident: { takeoverSeconds: 120, recoveryTakeoverSeconds: 60, resolvedHighlightSeconds: 86400 },
       },
+    });
+  });
+
+  it("preserves recovery timing saved before subscription collection incidents were added", async () => {
+    const preSubscriptionPreferences = {
+      incidentTypes: { emailDeliveryDegradation: true },
+      celebrations: { userMilestone: true, revenueMilestone: false },
+      timing: {
+        celebration: { takeoverSeconds: 60, animationSeconds: 3600, highlightSeconds: 21600 },
+        incident: { takeoverSeconds: 60, recoveryTakeoverSeconds: 30, resolvedHighlightSeconds: 3600 },
+        criticalIncident: { takeoverSeconds: 120, recoveryTakeoverSeconds: 60, resolvedHighlightSeconds: 21600 },
+      },
+    };
+
+    await expect(normalizeTvInterruptionPreferences(preSubscriptionPreferences)).resolves.toEqual({
+      ...preSubscriptionPreferences,
+      incidentTypes: { emailDeliveryDegradation: true, subscriptionCollectionDegradation: true },
     });
   });
 });

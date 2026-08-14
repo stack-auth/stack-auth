@@ -46,6 +46,7 @@ const HEARTBEAT_INTERVAL_MS = 1_000;
 const HEARTBEAT_STOP_POLL_MS = 100;
 const DASHBOARD_RESTART_MIN_UPTIME_MS = 5_000;
 const DASHBOARD_START_TIMEOUT_MS = 60_000;
+const CUSTOM_DASHBOARD_START_TIMEOUT_MS = 10 * 60_000;
 const DASHBOARD_STOP_TIMEOUT_MS = 10_000;
 const DASHBOARD_FORCE_STOP_TIMEOUT_MS = 2_000;
 const DASHBOARD_HEALTH_PATH = "/api/development-environment/health";
@@ -450,15 +451,25 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     HOSTNAME: "0.0.0.0",
     [DEV_DASHBOARD_DIST_DIR_ENV_VAR]: process.env[DEV_DASHBOARD_DIST_DIR_ENV_VAR] ?? ".next-development-environment",
     STACK_API_URL: options.apiBaseUrl,
+    NEXT_PUBLIC_HEXCLAVE_API_URL: options.apiBaseUrl,
     NEXT_PUBLIC_STACK_API_URL: options.apiBaseUrl,
+    NEXT_PUBLIC_BROWSER_HEXCLAVE_API_URL: options.apiBaseUrl,
     NEXT_PUBLIC_BROWSER_STACK_API_URL: options.apiBaseUrl,
+    NEXT_PUBLIC_SERVER_HEXCLAVE_API_URL: options.apiBaseUrl,
     NEXT_PUBLIC_SERVER_STACK_API_URL: options.apiBaseUrl,
+    NEXT_PUBLIC_HEXCLAVE_DASHBOARD_URL: url,
     NEXT_PUBLIC_STACK_DASHBOARD_URL: url,
+    NEXT_PUBLIC_BROWSER_HEXCLAVE_DASHBOARD_URL: url,
     NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL: url,
+    NEXT_PUBLIC_SERVER_HEXCLAVE_DASHBOARD_URL: url,
     NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL: url,
+    NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: "internal",
     NEXT_PUBLIC_STACK_PROJECT_ID: "internal",
+    NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY: DEFAULT_PUBLISHABLE_CLIENT_KEY,
     NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: DEFAULT_PUBLISHABLE_CLIENT_KEY,
+    NEXT_PUBLIC_HEXCLAVE_IS_REMOTE_DEVELOPMENT_ENVIRONMENT: "true",
     NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT: "true",
+    NEXT_PUBLIC_HEXCLAVE_IS_PREVIEW: "false",
     NEXT_PUBLIC_STACK_IS_PREVIEW: "false",
     [DASHBOARD_PORT_ENV_VAR]: String(options.port),
     [RDE_DASHBOARD_LOG_PATH_ENV_VAR]: dashboardLogPath(options.port),
@@ -519,7 +530,14 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     }
 
     const startedAt = performance.now();
-    while (performance.now() - startedAt < DASHBOARD_START_TIMEOUT_MS) {
+    // A repository-local dashboard command may need to compile the dashboard
+    // before it can listen. Keep the shorter release-runtime deadline, but do
+    // not let that deadline spawn overlapping local builds through the demo's
+    // retry wrapper.
+    const startTimeoutMs = devDashboardCommand == null
+      ? DASHBOARD_START_TIMEOUT_MS
+      : CUSTOM_DASHBOARD_START_TIMEOUT_MS;
+    while (performance.now() - startedAt < startTimeoutMs) {
       if (await isDashboardReachable(url, options.secret)) {
         progress.stop(`Started Hexclave dashboard`);
         return;

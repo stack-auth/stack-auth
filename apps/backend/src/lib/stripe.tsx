@@ -367,6 +367,10 @@ export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: strin
   const isSubscriptionCreationInvoice = invoice.billing_reason === "subscription_create";
   const tenancy = await getTenancyFromStripeAccountIdOrThrow(stripe, stripeAccountId);
   const prisma = await getPrismaClientForTenancy(tenancy);
+  const transitionTimestamp = (timestamp: number | null | undefined) => timestamp == null ? null : new Date(timestamp * 1000);
+  const paidAt = transitionTimestamp(invoice.status_transitions.paid_at);
+  const markedUncollectibleAt = transitionTimestamp(invoice.status_transitions.marked_uncollectible_at);
+  const voidedAt = transitionTimestamp(invoice.status_transitions.voided_at);
 
   // dual write - prisma and bulldozer
   const upsertedInvoice = await prisma.subscriptionInvoice.upsert({
@@ -393,5 +397,43 @@ export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: strin
       hostedInvoiceUrl: invoice.hosted_invoice_url,
     },
   });
-  await bulldozerWriteSubscriptionInvoice(upsertedInvoice);
+  // Stripe does not guarantee webhook ordering. Preserve the newest authoritative
+  // transition atomically so a delayed invoice.created/updated payload cannot
+  // erase or regress a terminal outcome learned from a newer event.
+  await prisma.$executeRaw`
+    UPDATE "SubscriptionInvoice"
+    SET
+      "paidAt" = CASE
+        WHEN ${paidAt}::TIMESTAMP IS NULL THEN "paidAt"
+        ELSE GREATEST("paidAt", ${paidAt}::TIMESTAMP)
+      END,
+      "markedUncollectibleAt" = CASE
+        WHEN ${markedUncollectibleAt}::TIMESTAMP IS NULL THEN "markedUncollectibleAt"
+        ELSE GREATEST("markedUncollectibleAt", ${markedUncollectibleAt}::TIMESTAMP)
+      END,
+      "voidedAt" = CASE
+        WHEN ${voidedAt}::TIMESTAMP IS NULL THEN "voidedAt"
+        ELSE GREATEST("voidedAt", ${voidedAt}::TIMESTAMP)
+      END,
+      "currency" = COALESCE(UPPER(${invoice.currency}), "currency"),
+      "amountPaid" = CASE
+        WHEN ${paidAt}::TIMESTAMP IS NOT NULL
+          AND ("paidAt" IS NULL OR ${paidAt}::TIMESTAMP >= "paidAt")
+          THEN ${invoice.amount_paid}
+        ELSE "amountPaid"
+      END
+    WHERE "tenancyId" = ${tenancy.id}::UUID
+      AND "id" = ${upsertedInvoice.id}::UUID
+  `;
+  const normalizedInvoice = (await prisma.$queryRaw<Array<typeof upsertedInvoice & {
+    paidAt: Date | null,
+    markedUncollectibleAt: Date | null,
+    voidedAt: Date | null,
+    currency: string | null,
+    amountPaid: number | null,
+  }>>`
+    SELECT * FROM "SubscriptionInvoice"
+    WHERE "tenancyId" = ${tenancy.id}::UUID AND "id" = ${upsertedInvoice.id}::UUID
+  `).at(0) ?? throwErr("Normalized subscription invoice disappeared after update");
+  await bulldozerWriteSubscriptionInvoice(normalizedInvoice);
 }

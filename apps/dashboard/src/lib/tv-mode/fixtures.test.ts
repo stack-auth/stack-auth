@@ -205,6 +205,7 @@ describe("TV Mode centralized fixtures", () => {
       "celebration-takeover",
       "incident-highlight",
       "critical-highlight",
+      "payment-incident-takeover",
       "incident-takeover",
       "critical-takeover",
       "incident-recovery-highlight",
@@ -219,6 +220,7 @@ describe("TV Mode centralized fixtures", () => {
       "active-incident",
       "active-incident",
       "incident",
+      "incident",
       "critical-incident",
       "resolved-incident",
       "recovery-confirmation",
@@ -227,6 +229,7 @@ describe("TV Mode centralized fixtures", () => {
 
   it("keeps the active Incident Highlight assigned throughout bounded takeover previews", () => {
     const incident = createTvFixtureSnapshot("project-fixture", getProfile(), "incident-takeover");
+    const paymentIncident = createTvFixtureSnapshot("project-fixture", getProfile(), "payment-incident-takeover");
     const critical = createTvFixtureSnapshot("project-fixture", getProfile(), "critical-takeover");
 
     expect(incident.presentation).toMatchObject({
@@ -241,6 +244,13 @@ describe("TV Mode centralized fixtures", () => {
       highlight: {
         variant: "active-incident",
         event: { id: critical.presentation.takeover?.event.id },
+      },
+    });
+    expect(paymentIncident.presentation).toMatchObject({
+      takeover: { variant: "incident" },
+      highlight: {
+        variant: "active-incident",
+        event: { id: paymentIncident.presentation.takeover?.event.id },
       },
     });
   });

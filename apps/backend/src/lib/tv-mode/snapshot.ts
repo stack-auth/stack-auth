@@ -728,50 +728,208 @@ async function loadRevenueScreen(
         active_subscriptions: number,
         new_subscriptions: number,
         past_due_subscriptions: number,
+        unsupported_currencies: number,
+        invalid_normalized_facts: number,
       }]>`
+        WITH normalized_subscription_revenue AS (
+          SELECT "paidAt" AS occurred_at, "amountPaid"::BIGINT AS amount
+          FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "paidAt" >= ${bounds.comparisonStartsAt}
+            AND "paidAt" < ${bounds.currentEndsAt}
+            AND "amountPaid" IS NOT NULL
+            AND "currency" = 'USD'
+        ), legacy_subscription_revenue AS (
+          SELECT "createdAt" AS occurred_at, COALESCE("amountTotal", 0)::BIGINT AS amount
+          FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "paidAt" IS NULL
+            AND "status" IN (${successfulStatuses[0]}, ${successfulStatuses[1]})
+            AND "createdAt" >= ${bounds.comparisonStartsAt}
+            AND "createdAt" < ${bounds.currentEndsAt}
+            AND COALESCE("currency", 'USD') = 'USD'
+        ), normalized_purchase_revenue AS (
+          SELECT "paidAt" AS occurred_at, "amountReceived"::BIGINT AS amount
+          FROM ${sqlQuoteIdent(schema)}."OneTimePurchase"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+            AND "paidAt" >= ${bounds.comparisonStartsAt}
+            AND "paidAt" < ${bounds.currentEndsAt}
+            AND "amountReceived" IS NOT NULL
+            AND "currency" = 'USD'
+        ), legacy_purchase_revenue AS (
+          SELECT "createdAt" AS occurred_at,
+            ROUND((("product"->'prices'->"priceId"->>'USD')::NUMERIC) * "quantity" * 100)::BIGINT AS amount
+          FROM ${sqlQuoteIdent(schema)}."OneTimePurchase"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+            AND "paidAt" IS NULL
+            AND "createdAt" >= ${bounds.comparisonStartsAt}
+            AND "createdAt" < ${bounds.currentEndsAt}
+            AND COALESCE("currency", 'USD') = 'USD'
+            AND ("product"->'prices'->"priceId"->>'USD') ~ '^[0-9]+(\.[0-9]+)?$'
+        ), revenue_events AS (
+          SELECT * FROM normalized_subscription_revenue
+          UNION ALL
+          SELECT * FROM legacy_subscription_revenue
+          UNION ALL
+          SELECT * FROM normalized_purchase_revenue
+          UNION ALL
+          SELECT * FROM legacy_purchase_revenue
+        ), raw_health_candidates AS (
+          SELECT "id", "paidAt", "markedUncollectibleAt", "voidedAt", "amountPaid", "amountTotal"
+          FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "paidAt" >= ${bounds.currentStartsAt}
+            AND "paidAt" < ${bounds.currentEndsAt}
+          UNION ALL
+          SELECT "id", "paidAt", "markedUncollectibleAt", "voidedAt", "amountPaid", "amountTotal"
+          FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "markedUncollectibleAt" >= ${bounds.currentStartsAt}
+            AND "markedUncollectibleAt" < ${bounds.currentEndsAt}
+        ), normalized_health_candidates AS (
+          SELECT DISTINCT ON ("id") *
+          FROM raw_health_candidates
+          ORDER BY "id"
+        ), selected_health AS (
+          SELECT *, GREATEST("paidAt", "markedUncollectibleAt", "voidedAt") AS outcome_at
+          FROM normalized_health_candidates
+        ), invoice_health AS (
+          SELECT ("paidAt" = outcome_at) AS success
+          FROM selected_health
+          WHERE outcome_at >= ${bounds.currentStartsAt}
+            AND outcome_at < ${bounds.currentEndsAt}
+            AND COALESCE("amountPaid", "amountTotal", 0) > 0
+            AND (
+              "paidAt" = outcome_at
+              OR (
+                "voidedAt" IS DISTINCT FROM outcome_at
+                AND "markedUncollectibleAt" = outcome_at
+              )
+            )
+          UNION ALL
+          SELECT ("status" IN (${successfulStatuses[0]}, ${successfulStatuses[1]})) AS success
+          FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "paidAt" IS NULL
+            AND "markedUncollectibleAt" IS NULL
+            AND "voidedAt" IS NULL
+            AND "createdAt" >= ${bounds.currentStartsAt}
+            AND "createdAt" < ${bounds.currentEndsAt}
+            AND "status" IN (${successfulStatuses[0]}, ${successfulStatuses[1]}, 'uncollectible')
+            AND COALESCE("amountTotal", 0) > 0
+        ), unsupported_currency_events AS (
+          SELECT 1
+          FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "paidAt" >= ${bounds.comparisonStartsAt}
+            AND "paidAt" < ${bounds.currentEndsAt}
+            AND "currency" IS NOT NULL
+            AND "currency" <> 'USD'
+          UNION ALL
+          SELECT 1
+          FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "paidAt" IS NULL
+            AND "status" IN (${successfulStatuses[0]}, ${successfulStatuses[1]})
+            AND "createdAt" >= ${bounds.comparisonStartsAt}
+            AND "createdAt" < ${bounds.currentEndsAt}
+            AND "currency" IS NOT NULL
+            AND "currency" <> 'USD'
+          UNION ALL
+          SELECT 1
+          FROM ${sqlQuoteIdent(schema)}."OneTimePurchase"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+            AND "paidAt" >= ${bounds.comparisonStartsAt}
+            AND "paidAt" < ${bounds.currentEndsAt}
+            AND "currency" IS NOT NULL
+            AND "currency" <> 'USD'
+          UNION ALL
+          SELECT 1
+          FROM ${sqlQuoteIdent(schema)}."OneTimePurchase"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+            AND "paidAt" IS NULL
+            AND "createdAt" >= ${bounds.comparisonStartsAt}
+            AND "createdAt" < ${bounds.currentEndsAt}
+            AND "currency" IS NOT NULL
+            AND "currency" <> 'USD'
+        ), invalid_normalized_events AS (
+          SELECT 1
+          FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "paidAt" >= ${bounds.comparisonStartsAt}
+            AND "paidAt" < ${bounds.currentEndsAt}
+            AND ("amountPaid" IS NULL OR "currency" IS NULL)
+          UNION ALL
+          SELECT 1
+          FROM ${sqlQuoteIdent(schema)}."OneTimePurchase"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+            AND "paidAt" >= ${bounds.comparisonStartsAt}
+            AND "paidAt" < ${bounds.currentEndsAt}
+            AND ("amountReceived" IS NULL OR "currency" IS NULL)
+        )
         SELECT
-          COALESCE(SUM("amountTotal") FILTER (
-            WHERE "createdAt" >= ${bounds.currentStartsAt}
-              AND "status" IN (${successfulStatuses[0]}, ${successfulStatuses[1]})
-          ), 0)::bigint AS current_revenue,
-          COALESCE(SUM("amountTotal") FILTER (
-            WHERE "createdAt" >= ${bounds.comparisonStartsAt}
-              AND "createdAt" < ${bounds.comparisonEndsAt}
-              AND "status" IN (${successfulStatuses[0]}, ${successfulStatuses[1]})
-          ), 0)::bigint AS previous_revenue,
-          COUNT(*) FILTER (
-            WHERE "createdAt" >= ${bounds.currentStartsAt}
-              AND COALESCE("amountTotal", 0) > 0
-          )::int AS applicable_attempts,
-          COUNT(*) FILTER (
-            WHERE "createdAt" >= ${bounds.currentStartsAt}
-              AND COALESCE("amountTotal", 0) > 0
-              AND "status" IN (${successfulStatuses[0]}, ${successfulStatuses[1]})
-          )::int AS successful_attempts,
+          (SELECT COALESCE(SUM(amount), 0)::BIGINT FROM revenue_events
+            WHERE occurred_at >= ${bounds.currentStartsAt} AND occurred_at < ${bounds.currentEndsAt}) AS current_revenue,
+          (SELECT COALESCE(SUM(amount), 0)::BIGINT FROM revenue_events
+            WHERE occurred_at >= ${bounds.comparisonStartsAt} AND occurred_at < ${bounds.comparisonEndsAt}) AS previous_revenue,
+          (SELECT COUNT(*)::int FROM invoice_health) AS applicable_attempts,
+          (SELECT COUNT(*) FILTER (WHERE success)::int FROM invoice_health) AS successful_attempts,
           (SELECT COUNT(*)::int FROM ${sqlQuoteIdent(schema)}."Subscription"
             WHERE "tenancyId" = ${tenancy.id}::UUID AND "status" = 'active'::"SubscriptionStatus") AS active_subscriptions,
           (SELECT COUNT(*)::int FROM ${sqlQuoteIdent(schema)}."Subscription"
             WHERE "tenancyId" = ${tenancy.id}::UUID AND "createdAt" >= ${bounds.currentStartsAt}) AS new_subscriptions,
           (SELECT COUNT(*)::int FROM ${sqlQuoteIdent(schema)}."Subscription"
             WHERE "tenancyId" = ${tenancy.id}::UUID AND "status" = 'past_due'::"SubscriptionStatus") AS past_due_subscriptions
-        FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
-        WHERE "tenancyId" = ${tenancy.id}::UUID
-          AND "createdAt" >= ${bounds.comparisonStartsAt}
-          AND "createdAt" < ${bounds.currentEndsAt}
+          ,(SELECT COUNT(*)::int FROM unsupported_currency_events) AS unsupported_currencies,
+          (SELECT COUNT(*)::int FROM invalid_normalized_events) AS invalid_normalized_facts
       `,
       metricsPrisma.$queryRaw<{ day: string, revenue: bigint }[]>`
-        SELECT TO_CHAR("createdAt"::date, 'YYYY-MM-DD') AS day,
-          COALESCE(SUM("amountTotal"), 0)::bigint AS revenue
-        FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
-        WHERE "tenancyId" = ${tenancy.id}::UUID
-          AND "createdAt" >= ${bounds.currentStartsAt}
-          AND "createdAt" < ${bounds.currentEndsAt}
-          AND "status" IN (${successfulStatuses[0]}, ${successfulStatuses[1]})
+        WITH revenue_events AS (
+          SELECT "paidAt" AS occurred_at, "amountPaid"::BIGINT AS amount
+          FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "paidAt" >= ${bounds.currentStartsAt} AND "paidAt" < ${bounds.currentEndsAt}
+            AND "amountPaid" IS NOT NULL AND "currency" = 'USD'
+          UNION ALL
+          SELECT "createdAt", COALESCE("amountTotal", 0)::BIGINT
+          FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
+          WHERE "tenancyId" = ${tenancy.id}::UUID AND "paidAt" IS NULL
+            AND "status" IN (${successfulStatuses[0]}, ${successfulStatuses[1]})
+            AND "createdAt" >= ${bounds.currentStartsAt} AND "createdAt" < ${bounds.currentEndsAt}
+            AND COALESCE("currency", 'USD') = 'USD'
+          UNION ALL
+          SELECT "paidAt", "amountReceived"::BIGINT
+          FROM ${sqlQuoteIdent(schema)}."OneTimePurchase"
+          WHERE "tenancyId" = ${tenancy.id}::UUID AND "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+            AND "paidAt" >= ${bounds.currentStartsAt} AND "paidAt" < ${bounds.currentEndsAt}
+            AND "amountReceived" IS NOT NULL AND "currency" = 'USD'
+          UNION ALL
+          SELECT "createdAt", ROUND((("product"->'prices'->"priceId"->>'USD')::NUMERIC) * "quantity" * 100)::BIGINT
+          FROM ${sqlQuoteIdent(schema)}."OneTimePurchase"
+          WHERE "tenancyId" = ${tenancy.id}::UUID AND "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+            AND "paidAt" IS NULL
+            AND "createdAt" >= ${bounds.currentStartsAt} AND "createdAt" < ${bounds.currentEndsAt}
+            AND COALESCE("currency", 'USD') = 'USD'
+            AND ("product"->'prices'->"priceId"->>'USD') ~ '^[0-9]+(\.[0-9]+)?$'
+        )
+        SELECT TO_CHAR(occurred_at::date, 'YYYY-MM-DD') AS day, COALESCE(SUM(amount), 0)::BIGINT AS revenue
+        FROM revenue_events
         GROUP BY day
         ORDER BY day
       `,
     ]);
     const summary = summaryRows[0];
+    if (Number(summary.unsupported_currencies) > 0) {
+      throw new Error("TV gross collected revenue cannot combine multiple currencies without an explicit conversion policy.");
+    }
+    if (Number(summary.invalid_normalized_facts) > 0) {
+      throw new Error("TV gross collected revenue encountered incomplete authoritative payment facts.");
+    }
     const currentRevenue = Number(summary.current_revenue);
     const previousRevenue = Number(summary.previous_revenue);
     const attempts = Number(summary.applicable_attempts);
@@ -810,7 +968,7 @@ async function loadRevenueScreen(
       } : null,
       insight: hasPaymentData && paymentSuccessPercent != null && revenueChangePercent > 0 && paymentSuccessPercent >= 95 ? {
         kind: "revenue-up-payments-stable",
-        message: "Gross paid invoice revenue increased while payment collection remained stable.",
+        message: "Gross collected revenue increased while subscription collection remained stable.",
         evidence: {
           revenueChangePercent,
           paymentSuccessPercent,
