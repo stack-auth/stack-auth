@@ -1368,6 +1368,8 @@ async function syncPostgresMapping(
       mappingId,
     );
 
+    // This watermark relies on sequencer allocation committing in sequence order; a visible
+    // higher value must imply that every lower value is already visible to the source reader.
     let maxSeqInBatch = lastSequenceId;
     for (const row of rows) {
       const seqNum = parseSequenceId(row.sequence_id, mappingId);
@@ -1446,6 +1448,8 @@ async function syncClickhouseMapping(
       mappingId,
     );
 
+    // This watermark relies on sequencer allocation committing in sequence order; a visible
+    // higher value must imply that every lower value is already visible to the source reader.
     let maxSeqInBatch = lastSequenceId;
     for (const row of rows) {
       const seqNum = parseSequenceId(row.sync_sequence_id, mappingId);
