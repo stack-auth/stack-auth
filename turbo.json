@@ -39,6 +39,7 @@
       "outputs": [
         ".next/**",
         "!.next/cache/**",
+        "!.next/dev/**",
         "dist/**",
         "lib/**",
         "*.js",
@@ -63,6 +64,7 @@
       "outputs": [
         ".next/**",
         "!.next/cache/**",
+        "!.next/dev/**",
         "src/generated/bundled-type-definitions.ts"
       ],
       "outputLogs": "new-only"
@@ -83,6 +85,7 @@
       "outputs": [
         ".next/**",
         "!.next/cache/**",
+        "!.next/dev/**",
         "dist/**",
         "lib/**",
         "*.js",
