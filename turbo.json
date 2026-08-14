@@ -37,7 +37,8 @@
         "^build"
       ],
       "outputs": [
-        ".next",
+        ".next/**",
+        "!.next/cache/**",
         "dist/**",
         "lib/**",
         "*.js",
