@@ -161,6 +161,18 @@ describe("Piledriver over raw LMDB", () => {
       await lowLevel.waitUntilAvailable(firstWrite.seq);
     });
   });
+
+  it("dereferences heap references when deleting a pending root write", { timeout: 30_000 }, async () => {
+    await withDatabase("root", async (database, lowLevel) => {
+      const rootKey = new TextEncoder().encode("root-delete-pending").buffer;
+      const firstChildren = [asHeapObject({ value: "first-1" }), asHeapObject({ value: "first-2" })];
+      const firstWrite = await database.setRootObject(rootKey, { children: firstChildren });
+      const deleteWrite = await database.deleteRootObject(rootKey);
+      await database.waitUntilAvailable(deleteWrite.seq);
+      expect(await countNonZeroReferenceMetadata(lowLevel)).toBe(0);
+      await lowLevel.waitUntilAvailable(firstWrite.seq);
+    });
+  });
 });
 
 afterEach(async () => {
