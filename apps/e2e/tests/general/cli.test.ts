@@ -449,7 +449,7 @@ describe("Stack CLI", () => {
         "  services: {",
         "    web: {",
         '      type: "serverless",',
-        "      ports: { 3000: { protocol: "http" } },",
+        '      ports: { 3000: { protocol: "http" } },',
         '      rootDirectory: "./web",',
         '      dockerfilePath: "web/Dockerfile",',
         '      devCommand: "npm run dev",',

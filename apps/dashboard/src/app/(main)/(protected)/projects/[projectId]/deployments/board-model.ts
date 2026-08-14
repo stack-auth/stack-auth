@@ -189,7 +189,7 @@ export function portEntriesOf(ports: AdminDeploymentServiceJson["ports"]): { por
   return Object.entries(ports)
     .map(([portKey, definition]) => ({
       port: Number(portKey),
-      protocol: definition.protocol ?? "http" as const,
+      protocol: definition.protocol,
     }))
     .filter((entry) => Number.isInteger(entry.port))
     .sort((a, b) => a.port - b.port);
