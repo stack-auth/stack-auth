@@ -14,9 +14,26 @@ echo "Stopping Bulldozer listener(s) on TCP port $port: ${listener_pids[*]}"
 kill -TERM "${listener_pids[@]}"
 
 deadline=$((SECONDS + 30))
-while lsof -n -P -t -iTCP:"$port" -sTCP:LISTEN >/dev/null; do
+while true; do
+  listener_still_present=false
+  if lsof -n -P -t -iTCP:"$port" -sTCP:LISTEN >/dev/null; then
+    listener_still_present=true
+  fi
+
+  process_still_present=false
+  for pid in "${listener_pids[@]}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      process_still_present=true
+      break
+    fi
+  done
+
+  if [[ "$listener_still_present" == false && "$process_still_present" == false ]]; then
+    break
+  fi
+
   if (( SECONDS >= deadline )); then
-    echo "Bulldozer did not stop within 30 seconds." >&2
+    echo "Bulldozer did not fully exit within 30 seconds." >&2
     exit 1
   fi
   sleep 0.5
