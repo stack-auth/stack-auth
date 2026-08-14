@@ -443,6 +443,13 @@ export function declarePiledriverGarbageCollector(options: {
     return options.lowLevelDb.combineSeqs(...unique);
   };
 
+  // get carries no requiresSeq, so on non-instant backends an unbarriered read can make a
+  // freshly created tracked object look legacy-immortal; its matching decrement then goes negative.
+  const readReferenceMetadata = async (key: ArrayBuffer, requiresSeq: DatabaseSeq) => {
+    await options.lowLevelDb.waitUntilAvailable(requiresSeq);
+    return await metadataStore.get(key);
+  };
+
   const changeReferenceCount = async (
     key: ArrayBuffer,
     delta: number,
@@ -460,7 +467,7 @@ export function declarePiledriverGarbageCollector(options: {
     let compareAndSetAttempts = 0;
     let compareAndSetConflicts = 0;
     while (true) {
-      const existing = await metadataStore.get(key);
+      const existing = await readReferenceMetadata(key, requiresSeq);
       if (existing.buffer === null) {
         // No metadata means the object predates this GC generation. Legacy objects are
         // intentionally immortal, including when newly tracked objects reference them.
@@ -563,7 +570,7 @@ export function declarePiledriverGarbageCollector(options: {
       const reads = await Promise.all(
         pending.map(async delta => ({
           ...delta,
-          existing: await metadataStore.get(delta.key),
+          existing: await readReferenceMetadata(delta.key, requiresSeq),
         })),
       );
       const retry: typeof pending = [];
@@ -734,8 +741,9 @@ export function declarePiledriverGarbageCollector(options: {
     return await replaceMetadata(key, existingBuffer, replacement, options.lowLevelDb.initialSeq);
   };
 
-  const advanceDeletion = async (key: ArrayBuffer, expectedIndex: number) => {
+  const advanceDeletion = async (key: ArrayBuffer, expectedIndex: number, requiresSeq: DatabaseSeq) => {
     let compareAndSetConflicts = 0;
+    await options.lowLevelDb.waitUntilAvailable(requiresSeq);
     while (true) {
       const existing = await metadataStore.get(key);
       if (existing.buffer === null) throw new Error("Piledriver GC deletion metadata disappeared");
@@ -984,7 +992,7 @@ export function declarePiledriverGarbageCollector(options: {
             continue;
           }
           recordMutation(claimSeq);
-          metadataRead = await metadataStore.get(key);
+          metadataRead = await readReferenceMetadata(key, latestMutationSeq);
           if (metadataRead.buffer === null) throw new Error("Piledriver GC deletion claim disappeared");
           metadata = parseReferenceMetadata(metadataRead.buffer);
         } else {
@@ -1004,7 +1012,7 @@ export function declarePiledriverGarbageCollector(options: {
         for (let referenceIndex = deletion.nextReferenceIndex; referenceIndex < deletion.totalReferences; referenceIndex++) {
           // Persist progress first. A crash between this write and the decrement can leak one
           // reference, but can never undercount and delete live data when the job is resumed.
-          const progress = await advanceDeletion(key, referenceIndex);
+          const progress = await advanceDeletion(key, referenceIndex, latestMutationSeq);
           recordMutation(progress.seq);
           deletionProgressCompareAndSetConflicts += progress.compareAndSetConflicts;
           metadata = progress.metadata;
