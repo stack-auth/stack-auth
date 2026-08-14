@@ -13,7 +13,7 @@ export const POSTGRES_PASSWORD = process.env.EXTERNAL_DB_TEST_PASSWORD || 'PASSW
 export const TEST_TIMEOUT = 240000;
 export const HIGH_VOLUME_TIMEOUT = 600000; // 10 minutes for 1500+ users
 
-function getInternalDatabaseConnectionString(): string {
+export function getInternalDatabaseConnectionString(): string {
   const connectionString = getEnvVariable(
     "HEXCLAVE_DATABASE_CONNECTION_STRING",
     getEnvVariable("STACK_DATABASE_CONNECTION_STRING", ""),

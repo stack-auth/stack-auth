@@ -1,5 +1,6 @@
 import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
 import { enqueueExternalDbSyncBatch } from "@/lib/external-db-sync-queue";
+import { runSequenceAllocationInTransaction } from "@/lib/external-db-sync-sequencing";
 import { Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -11,7 +12,6 @@ import {
   yupString,
   yupTuple,
 } from "@hexclave/shared/dist/schema-fields";
-import { SEQUENCE_ALLOCATION_ADVISORY_LOCK_KEY } from "@hexclave/shared/dist/config/db-sync-mappings";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
@@ -20,31 +20,20 @@ const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
 const SEQUENCER_BATCH_SIZE_ENV = "STACK_EXTERNAL_DB_SYNC_SEQUENCER_BATCH_SIZE";
 const DEFAULT_BATCH_SIZE = 1000;
 
-/**
- * Runs one set-based sequence allocation while holding the global transaction-scoped lock.
- *
- * Sequence allocation must commit in allocation order: the sync's `> watermark` filter
- * permanently skips a lower value if a higher value becomes visible first. The lock is global
- * because each batch statement can span multiple tenancies.
- */
-export async function runSequenceAllocationInTransaction<T>(
-  tx: Prisma.TransactionClient,
-  allocation: (tx: Prisma.TransactionClient) => Promise<T>,
-): Promise<T | null> {
-  const lockRows = await tx.$queryRaw<{ locked: boolean }[]>`
-    SELECT pg_try_advisory_xact_lock(${SEQUENCE_ALLOCATION_ADVISORY_LOCK_KEY}::int) AS locked
-  `;
-  const locked = lockRows[0]?.locked ?? throwErr(
-    "Sequence allocation advisory lock query must return exactly one row",
-  );
-  if (!locked) return null;
-  return await allocation(tx);
-}
-
 async function runSequenceAllocation<T>(
   allocation: (tx: Prisma.TransactionClient) => Promise<T>,
+  onSkipped: () => void = () => undefined,
 ): Promise<T | null> {
-  return await retryTransaction(globalPrismaClient, (tx) => runSequenceAllocationInTransaction(tx, allocation));
+  // Allocation batches can contain up to 1,000 rows; allow substantial headroom above
+  // the normal sub-second case while keeping the globally locked transaction bounded.
+  return await retryTransaction(
+    globalPrismaClient,
+    (tx) => runSequenceAllocationInTransaction(tx, allocation),
+    { timeout: 30_000 },
+  ).then((result) => {
+    if (result == null) onSkipped();
+    return result;
+  });
 }
 
 function parseMaxDurationMs(value: string | undefined): number {
@@ -80,7 +69,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
   }, async (span) => {
     let didUpdate = false;
 
-    const projectUserTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
+    const projectUserTenants = (await runSequenceAllocation((tx) => (tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "projectUserId"
         FROM "ProjectUser"
@@ -99,7 +88,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING pu."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)) ?? [];
+    `), () => span.setAttribute("stack.external-db-sync.sequence-allocation-skipped", true))) ?? [];
 
     span.setAttribute("stack.external-db-sync.project-user-tenants", projectUserTenants.length);
 
@@ -109,7 +98,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const contactChannelTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
+    const contactChannelTenants = (await runSequenceAllocation((tx) => (tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "projectUserId", "id"
         FROM "ContactChannel"
@@ -129,7 +118,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING cc."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)) ?? [];
+    `), () => span.setAttribute("stack.external-db-sync.sequence-allocation-skipped", true))) ?? [];
 
     span.setAttribute("stack.external-db-sync.contact-channel-tenants", contactChannelTenants.length);
 
@@ -138,7 +127,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const teamTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string, teamId: string }[]>`
+    const teamTenants = (await runSequenceAllocation((tx) => (tx.$queryRaw<{ tenancyId: string, teamId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "teamId"
         FROM "Team"
@@ -157,7 +146,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING t."tenancyId", t."teamId"
       )
       SELECT DISTINCT "tenancyId", "teamId" FROM updated_rows
-    `)) ?? [];
+    `), () => span.setAttribute("stack.external-db-sync.sequence-allocation-skipped", true))) ?? [];
 
     span.setAttribute("stack.external-db-sync.team-tenants", teamTenants.length);
 
@@ -186,7 +175,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       `;
     }
 
-    const teamMemberTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
+    const teamMemberTenants = (await runSequenceAllocation((tx) => (tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "projectUserId", "teamId"
         FROM "TeamMember"
@@ -206,7 +195,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING tm."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)) ?? [];
+    `), () => span.setAttribute("stack.external-db-sync.sequence-allocation-skipped", true))) ?? [];
 
     span.setAttribute("stack.external-db-sync.team-member-tenants", teamMemberTenants.length);
 
@@ -215,7 +204,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const teamPermissionTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
+    const teamPermissionTenants = (await runSequenceAllocation((tx) => (tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "id"
         FROM "TeamMemberDirectPermission"
@@ -233,7 +222,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING tp."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)) ?? [];
+    `), () => span.setAttribute("stack.external-db-sync.sequence-allocation-skipped", true))) ?? [];
 
     span.setAttribute("stack.external-db-sync.team-permission-tenants", teamPermissionTenants.length);
 
@@ -242,7 +231,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const teamInvitationTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
+    const teamInvitationTenants = (await runSequenceAllocation((tx) => (tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "projectId", "branchId", "id"
         FROM "VerificationCode"
@@ -266,7 +255,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       FROM updated_rows
       JOIN "Tenancy" ON "Tenancy"."projectId" = updated_rows."projectId"
         AND "Tenancy"."branchId" = updated_rows."branchId"
-    `)) ?? [];
+    `), () => span.setAttribute("stack.external-db-sync.sequence-allocation-skipped", true))) ?? [];
 
     span.setAttribute("stack.external-db-sync.team-invitation-tenants", teamInvitationTenants.length);
 
@@ -275,7 +264,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const emailOutboxTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
+    const emailOutboxTenants = (await runSequenceAllocation((tx) => (tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "id"
         FROM "EmailOutbox"
@@ -294,7 +283,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING eo."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)) ?? [];
+    `), () => span.setAttribute("stack.external-db-sync.sequence-allocation-skipped", true))) ?? [];
 
     span.setAttribute("stack.external-db-sync.email-outbox-tenants", emailOutboxTenants.length);
 
@@ -303,7 +292,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const projectPermissionTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
+    const projectPermissionTenants = (await runSequenceAllocation((tx) => (tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "id"
         FROM "ProjectUserDirectPermission"
@@ -321,7 +310,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING pp."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)) ?? [];
+    `), () => span.setAttribute("stack.external-db-sync.sequence-allocation-skipped", true))) ?? [];
 
     span.setAttribute("stack.external-db-sync.project-permission-tenants", projectPermissionTenants.length);
 
@@ -330,7 +319,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const notificationPreferenceTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
+    const notificationPreferenceTenants = (await runSequenceAllocation((tx) => (tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "id"
         FROM "UserNotificationPreference"
@@ -349,7 +338,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING np."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)) ?? [];
+    `), () => span.setAttribute("stack.external-db-sync.sequence-allocation-skipped", true))) ?? [];
 
     span.setAttribute("stack.external-db-sync.notification-preference-tenants", notificationPreferenceTenants.length);
 
@@ -358,7 +347,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const refreshTokenTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
+    const refreshTokenTenants = (await runSequenceAllocation((tx) => (tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "id"
         FROM "ProjectUserRefreshToken"
@@ -377,7 +366,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING rt."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)) ?? [];
+    `), () => span.setAttribute("stack.external-db-sync.sequence-allocation-skipped", true))) ?? [];
 
     span.setAttribute("stack.external-db-sync.refresh-token-tenants", refreshTokenTenants.length);
 
@@ -386,7 +375,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const oauthAccountTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
+    const oauthAccountTenants = (await runSequenceAllocation((tx) => (tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "id"
         FROM "ProjectUserOAuthAccount"
@@ -405,7 +394,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING oa."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)) ?? [];
+    `), () => span.setAttribute("stack.external-db-sync.sequence-allocation-skipped", true))) ?? [];
 
     span.setAttribute("stack.external-db-sync.oauth-account-tenants", oauthAccountTenants.length);
 
@@ -414,7 +403,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const deletedRowTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
+    const deletedRowTenants = (await runSequenceAllocation((tx) => (tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "id", "tenancyId"
         FROM "DeletedRow"
@@ -432,7 +421,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING dr."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `)) ?? [];
+    `), () => span.setAttribute("stack.external-db-sync.sequence-allocation-skipped", true))) ?? [];
 
     span.setAttribute("stack.external-db-sync.deleted-row-tenants", deletedRowTenants.length);
 
