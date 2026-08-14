@@ -143,6 +143,24 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   if (portList.some((entry) => entry.public) && portList.some((entry) => !entry.public)) {
     throw badRequest("a service may not mix public and private ports: the proxy serves every declared port on every address the app has, so the private ones would be public too");
   }
+  // The standard-ports holder claims external 80 and 443 in ADDITION to its own
+  // number (see externalPortsFor), and `services` entries are listeners on the
+  // whole app. So a different port that is itself numbered 80 or 443 asks for an
+  // external listener the holder has already taken — `{80: public, 443: public}`
+  // makes 80 the holder, which claims 80 and 443, and the declared 443 claims
+  // 443 a second time. Fly cannot serve one external port from two entries.
+  //
+  // Refused rather than resolved by precedence: dropping the holder's standard
+  // binding costs the platform URL and the certificate, and dropping the
+  // sibling's own binding silently unpublishes a port the caller declared.
+  // KEPT IN SYNC WITH reservedStandardPortConflicts in @hexclave/shared.
+  const standardHolder = standardPortsHolderFor(ports);
+  if (standardHolder !== null) {
+    const conflicting = portList.filter((entry) => entry.port !== standardHolder && (entry.port === 80 || entry.port === 443));
+    if (conflicting.length > 0) {
+      throw badRequest(`port ${conflicting.map((entry) => entry.port).join(" and ")} would collide with the standard bindings of port ${standardHolder}, which additionally answers on 80 and 443: one external port cannot be served from two ports of one service`);
+    }
+  }
   // A "server" is a SINGLE instance by definition, so its ceiling is 1 — but its floor is
   // the caller's choice: 0 suspends the machine when idle (it resumes with its memory
   // intact) and 1 keeps it up. Rejecting min_instances 1 here would reject the default

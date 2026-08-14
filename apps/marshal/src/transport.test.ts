@@ -65,6 +65,37 @@ describe("service ports", () => {
     expect(other?.ports.map((entry) => entry.port)).toEqual([8443]);
   });
 
+  it("never claims one external port from two of the service's ports", () => {
+    // REGRESSION: externalPortsFor dedupes WITHIN one entry, but the holder also
+    // claims 80 and 443, and `services` entries are listeners on the whole app.
+    // A sibling numbered 80 or 443 therefore asked for a listener the holder had
+    // already taken — `{80, 443}` produced external [80, 443, 443]. Every layer
+    // passed it and Fly got a config it cannot serve.
+    for (const ports of [
+      { "80": { public: true }, "443": { public: true } },
+      { "8": { public: true }, "80": { public: true } },
+      // Not only a public-port problem: a private HTTP port is the holder when it
+      // is the only one, and a raw TCP 443 beside it collided the same way long
+      // before several public ports were allowed.
+      { "8080": {}, "443": { protocol: "tcp" } },
+    ]) {
+      expect(() => validateServiceSpec(spec({ ports })), JSON.stringify(ports)).toThrow(/would collide with the standard bindings/);
+    }
+    // The port sets that DO reach a machine keep every external listener unique.
+    for (const ports of [
+      { "3000": { public: true }, "8443": { public: true } },
+      { "80": { public: true }, "3000": { public: true } },
+      { "443": { public: true }, "3000": { public: true } },
+      { "8080": {}, "9090": {} },
+      { "8080": {}, "5432": { protocol: "tcp" } },
+      { "80": { public: true } },
+    ]) {
+      const services = machineFor({ ports }).services as { ports: { port: number }[] }[];
+      const external = services.flatMap((service) => service.ports.map((entry) => entry.port));
+      expect(new Set(external).size, `${JSON.stringify(ports)} -> ${JSON.stringify(external)}`).toBe(external.length);
+    }
+  });
+
   it("terminates TLS on a public port's own number, but not on a private one's", () => {
     // VERIFIED AGAINST REAL FLY: a non-holder public port is reachable ONLY on
     // its own number, so a plain `http` handler there publishes it in cleartext

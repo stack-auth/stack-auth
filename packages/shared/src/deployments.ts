@@ -287,12 +287,50 @@ export function deploymentPortEntries(ports: DeploymentPorts): DeploymentPortEnt
  * 80/443, and this is it. Lowest-numbered rather than first-encountered:
  * deploymentPortEntries sorts numerically, so which port gets the standard
  * bindings is a property of the port set and not of JSON key ordering. That
- * determinism is the whole point — every other public port is reachable only on
- * its own number, so an arbitrary pick would silently move which of a service's
- * URLs works from an IPv4-only client.
+ * determinism is the whole point — the holder is the port the service's bare URL
+ * names and the only one a custom domain can front, so an arbitrary pick would
+ * silently move both.
  */
 export function standardPortsHolderDeploymentPort(ports: DeploymentPorts): DeploymentPortEntry | null {
   return deploymentPortEntries(ports).find((entry) => entry.public) ?? null;
+}
+
+/**
+ * The port number that additionally answers on the standard 80/443, or null when
+ * the service has no single obvious one.
+ *
+ * The lowest public port when the service is public; otherwise its sole HTTP
+ * port, because a PRIVATE service gets public IPs the moment a custom domain is
+ * attached and that domain terminates TLS on 443. KEPT IN SYNC WITH
+ * standardPortsHolderFor in apps/marshal/src/services.ts.
+ */
+export function standardPortsHolderPort(ports: DeploymentPorts): number | null {
+  return standardPortsHolderDeploymentPort(ports)?.port ?? soleHttpDeploymentPort(ports);
+}
+
+/**
+ * Declared ports that collide with the external listeners the standard-ports
+ * holder reserves, as a sorted list (empty when there is no conflict).
+ *
+ * The holder does not only answer on its own number — it also claims external 80
+ * and 443, which is what makes the platform URL and any custom domain
+ * certificate work. Those are listeners on the WHOLE app: the runtime emits one
+ * entry per declared port, so a *different* port that is itself numbered 80 or
+ * 443 asks for an external listener the holder has already taken. Two entries
+ * claiming one external port is a config the runtime cannot serve — it is
+ * rejected outright, or routes one of them somewhere the author did not ask for.
+ *
+ * The cheap example is `{ 80: { public: true }, 443: { public: true } }`: 80 is
+ * the holder, claims 80 and 443, and the declared 443 claims 443 again. This is
+ * refused rather than resolved by precedence, because every way of resolving it
+ * silently drops or retargets a port the author explicitly declared.
+ */
+export function reservedStandardPortConflicts(ports: DeploymentPorts): number[] {
+  const holder = standardPortsHolderPort(ports);
+  if (holder === null) return [];
+  return deploymentPortEntries(ports)
+    .filter((entry) => entry.port !== holder && (entry.port === 80 || entry.port === 443))
+    .map((entry) => entry.port);
 }
 
 /** Whether the service is reachable from the internet — the replacement for the old `visibility`. */
@@ -476,7 +514,13 @@ export const deploymentServiceDefinitionSchema = yupObject({
       if (value === undefined) return true;
       const entries = Object.values(value);
       return !entries.some((entry) => entry.public === true) || !entries.some((entry) => entry.public !== true);
-    }),
+    })
+    // The standard-ports holder claims external 80 and 443 for the whole app, so
+    // no OTHER declared port may be numbered 80 or 443 — it would ask for a
+    // listener the holder already took. See reservedStandardPortConflicts.
+    .test("standard-ports-are-not-claimed-twice", "80 and 443 belong to the port that owns the service's standard bindings (the lowest public port, or the sole HTTP port of a private service), so no other port may be numbered 80 or 443 — the runtime cannot serve one external port from two of them", (value) =>
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      value === undefined || reservedStandardPortConflicts(value).length === 0),
   // min is capped at the same MAX_INSTANCES_PER_SERVICE as max — an unbounded
   // min would only ever fail downstream. On a "server" it is the SUSPEND switch
   // rather than a fleet size:
@@ -605,6 +649,27 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts several publ
   // is reachability, not exposure: only the lowest gets 80/443 and so IPv4.
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "serverless", ports: { "3000": { public: true }, "4000": { public: true } }, env: {},
+  }, { abortEarly: false })).resolves.toBeDefined();
+});
+
+import.meta.vitest?.test("deploymentServiceDefinitionSchema refuses a port that collides with the standard bindings", async ({ expect }) => {
+  // The holder claims external 80 and 443 on top of its own number, so a sibling
+  // numbered 80 or 443 asks for a listener it has already taken.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "serverless", ports: { "80": { public: true }, "443": { public: true } }, env: {},
+  }, { abortEarly: false })).rejects.toThrow(/no other port may be numbered 80 or 443/);
+  // Not only a public-port problem: the sole HTTP port of a PRIVATE service is
+  // the holder too, so a raw TCP 443 beside it collides just as hard.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: { "8080": {}, "443": { protocol: "tcp" } }, env: {},
+  }, { abortEarly: false })).rejects.toThrow(/no other port may be numbered 80 or 443/);
+  // The holder being 80 or 443 itself is fine — it is the one that owns them.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "serverless", ports: { "80": { public: true }, "3000": { public: true } }, env: {},
+  }, { abortEarly: false })).resolves.toBeDefined();
+  // Two private HTTP ports leave no holder at all, so nothing is reserved.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: { "80": {}, "443": {} }, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
 });
 

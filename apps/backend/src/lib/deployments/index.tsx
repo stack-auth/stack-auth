@@ -59,7 +59,7 @@ import {
   formatConnectionValue,
   parseConnectionValue,
   soleHttpDeploymentPort,
-  standardPortsHolderDeploymentPort,
+  standardPortsHolderPort,
 } from "@hexclave/shared/dist/deployments";
 import { decryptWithKms, encryptWithKms } from "@hexclave/shared/dist/helpers/vault/server-side";
 import { PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets";
@@ -659,7 +659,7 @@ export function normalizeHostnameOrThrow(hostname: string): string {
  * domainPortProblem reports before any caller reaches this.
  */
 export function domainPortForService(ports: DeploymentPorts): number | null {
-  return standardPortsHolderDeploymentPort(ports)?.port ?? soleHttpDeploymentPort(ports);
+  return standardPortsHolderPort(ports);
 }
 
 // ---------------------------------------------------------------------------

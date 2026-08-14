@@ -69,6 +69,8 @@ import {
   parseConnectionValue,
   deploymentPortEntries,
   deploymentPortEntry,
+  reservedStandardPortConflicts,
+  standardPortsHolderPort,
   type DeploymentEnvVarDefinition,
   type DeploymentPorts,
   type DeploymentServiceDefinition,
@@ -432,6 +434,15 @@ function evaluatePorts(serviceId: string, portsRaw: unknown): DeploymentPorts {
   const privatePorts = entries.filter((entry) => !entry.public);
   if (publicPorts.length > 0 && privatePorts.length > 0) {
     throw new CliError(`deployment.services.${serviceId} mixes public and private ports: ${publicPorts.map((entry) => entry.port).join(", ")} ${publicPorts.length === 1 ? "is" : "are"} public, but ${privatePorts.map((entry) => entry.port).join(", ")} ${privatePorts.length === 1 ? "is" : "are"} not. A service is exposed on every address it has, so those ports would be public too. Either mark them \`public: true\` as well, or move them to their own service and connect with service(${JSON.stringify(serviceId)}).hostname().`);
+  }
+
+  // The port that owns the standard bindings also claims external 80 and 443 for
+  // the whole service, so another port numbered 80 or 443 asks for a listener it
+  // has already taken and the runtime cannot serve both.
+  const standardConflicts = reservedStandardPortConflicts(ports);
+  if (standardConflicts.length > 0) {
+    const holder = standardPortsHolderPort(ports);
+    throw new CliError(`deployment.services.${serviceId} declares port ${standardConflicts.join(" and ")} alongside port ${holder}, which additionally answers on the standard 80 and 443 — so one external port would have to be served from two of them. Keep whichever of the two you actually need, or move it to its own service.`);
   }
 
   // Not an error, but worth saying at evaluation time rather than only in the

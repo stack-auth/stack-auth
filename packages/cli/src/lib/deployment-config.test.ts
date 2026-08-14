@@ -111,6 +111,11 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     // Several public ports are accepted: the leak needs a port nobody asked to
     // publish, and there is none.
     expect(evaluatePorts({ 3000: { public: true }, 4000: { public: true } })).not.toThrow();
+    // ...but not when one of them is 80 or 443, which the holder already claims.
+    expect(evaluatePorts({ 80: { public: true }, 443: { public: true } })).toThrow("additionally answers on the standard 80 and 443");
+    expect(evaluatePorts({ 8080: {}, 443: { protocol: "tcp" } })).toThrow("additionally answers on the standard 80 and 443");
+    // The holder itself may be 80 or 443 — it is what owns them.
+    expect(evaluatePorts({ 80: { public: true }, 3000: { public: true } })).not.toThrow();
   });
 
   it("accepts a portless worker", () => {
