@@ -8,6 +8,8 @@
 
 - Revamped onboarding with a welcome step to set up a new project, deploy an existing config, or just look around.
 - The CLI docs page is now an install guide plus a full command reference.
+- Fixed self-hosted deployments breaking after a container restart because the internal project keys were rotated.
+- Unrecoverable dashboard render errors now show a retryable error screen instead of reloading forever.
 
 ## 7/31/26
 
