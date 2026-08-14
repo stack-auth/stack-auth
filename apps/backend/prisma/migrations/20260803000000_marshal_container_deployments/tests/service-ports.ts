@@ -37,8 +37,8 @@ export const postMigration = async (sql: Sql, context: Awaited<ReturnType<typeof
     VALUES (${context.tenancyId}::uuid, ${randomUUID()}::uuid, NOW(), ${`svc-${randomUUID().slice(0, 8)}`}, ${ports}::text::jsonb)
   `;
 
-  // The shapes that must work: a single public HTTP port, several PRIVATE ports
-  // of mixed protocols, and no ports at all.
+  // The shapes that must work: one HTTP port, several ports of mixed protocols,
+  // and no ports at all. None of them records visibility — that is isPublic.
   await expect(insertPorts('{"3000": {"protocol": "http"}}')).resolves.toBeDefined();
   await expect(insertPorts('{"8080": {"protocol": "http"}, "5432": {"protocol": "tcp"}, "9090": {"protocol": "http"}}'))
     .resolves.toBeDefined();
@@ -92,7 +92,7 @@ export const postMigration = async (sql: Sql, context: Awaited<ReturnType<typeof
     '{"70000": {"protocol": "http"}}',
     '{"3000.5": {"protocol": "http"}}',
     '{"web": {"protocol": "http"}}',
-    '{"3000": {"public": false, "protocol": "smtp"}}',
+    '{"3000": {"protocol": "smtp"}}',
     '{"3000": {}}',
     '{"3000": "http"}',
     '{"3000": null}',

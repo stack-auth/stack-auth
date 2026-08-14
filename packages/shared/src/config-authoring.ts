@@ -68,9 +68,9 @@ export type HexclaveServiceOutputs = {
    * port's `protocol` — a URL names ONE port, which is why this is a call.
    *
    * `url()` requires the target to declare exactly one HTTP port; `url(9090)`
-   * names one when it declares several. A PUBLIC port resolves to the service's
-   * public URL (its platform URL, or a verified custom domain); a private one
-   * resolves to its private-network address.
+   * names one when it declares several. A PUBLIC service resolves to its public
+   * URL (its platform URL, or a verified custom domain); a private one resolves
+   * to its internal address.
    */
   url: (port?: number) => HexclaveDeploymentReference,
   /**

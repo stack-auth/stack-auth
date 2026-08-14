@@ -267,6 +267,11 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
 // ---------------------------------------------------------------------------
 // Env ref resolution
 
+// What a `url` reference needs to know about its target: which ports it declares
+// and whether the SERVICE is public. Kept as one value so the two can never be
+// sourced from different places — see targetOf.
+export type KnownTarget = { ports: PortsConfig, public: boolean };
+
 type ResolvedEnv =
   | { ok: true, env: Record<string, string> }
   | { ok: false, blockedRefs: string[] };
@@ -276,20 +281,24 @@ type ResolvedEnv =
 // deployment's own targets when the target is part of this deploy (which is what
 // keeps a private url() from depending on deploy ORDER), and otherwise from the
 // target's stored spec.
-async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvValue>, knownPorts?: Map<string, PortsConfig>): Promise<ResolvedEnv> {
+export async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvValue>, knownTargets?: Map<string, KnownTarget>): Promise<ResolvedEnv> {
   const { envId } = getConfig();
   const resolved = new Map<string, string>();
   const blockedRefs: string[] = [];
   const urlCache = new Map<string, string | null>();
-  const targetPortsCache = new Map<string, PortsConfig | null>();
-  const targetPorts = async (targetKey: string): Promise<PortsConfig | null> => {
-    const known = knownPorts?.get(targetKey);
+  const targetCache = new Map<string, KnownTarget | null>();
+  // Ports AND visibility together: they are two halves of one decision (which
+  // address a `url` resolves to), so reading them from different places lets a
+  // service being flipped public→private in this very deploy resolve as public
+  // for a sibling applied before it.
+  const targetOf = async (targetKey: string): Promise<KnownTarget | null> => {
+    const known = knownTargets?.get(targetKey);
     if (known !== undefined) return known;
-    if (!targetPortsCache.has(targetKey)) {
+    if (!targetCache.has(targetKey)) {
       const spec = await readSpec(ns, targetKey);
-      targetPortsCache.set(targetKey, spec === null ? null : spec.spec.config.ports);
+      targetCache.set(targetKey, spec === null ? null : { ports: spec.spec.config.ports, public: spec.spec.config.public });
     }
-    return targetPortsCache.get(targetKey) ?? null;
+    return targetCache.get(targetKey) ?? null;
   };
 
   for (const [key, value] of Object.entries(env)) {
@@ -312,18 +321,20 @@ async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvVal
         break;
       }
       case "url": {
-        // Which port the URL means, and what it looks like:
-        //  - a PUBLIC port resolves to the service's public URL (its platform
-        //    URL, or a verified custom domain), which exists only once the
-        //    service is up — so it blocks until then;
-        //  - a PRIVATE port resolves to its private-network address, built from
-        //    the deterministic hostname and the port itself.
-        const ports = await targetPorts(targetKey);
-        if (ports === null) {
+        // Which port the URL means, and what it looks like. The port picks the
+        // number; the TARGET SERVICE's visibility picks the address:
+        //  - a PUBLIC service resolves to its public URL (the platform URL, or a
+        //    verified custom domain), which exists only once the service is up —
+        //    so it blocks until then;
+        //  - a PRIVATE service resolves to its internal address, built from the
+        //    deterministic hostname and the port itself.
+        const target = await targetOf(targetKey);
+        if (target === null) {
           // Nothing known about the target: it may not have been deployed yet.
           blockedRefs.push(value.ref);
           break;
         }
+        const ports = target.ports;
         const port = namedPort === null
           ? (() => {
             const sole = soleHttpPort(ports);
@@ -340,8 +351,10 @@ async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvVal
         }
         // Visibility is the TARGET SERVICE's, not the port's: a private service
         // resolves to its internal address, a public one to its platform URL.
-        const targetSpec = await readSpec(ns, targetKey);
-        if (targetSpec === null || !targetSpec.spec.config.public) {
+        // Read from `target`, which prefers this deployment's own specs — see
+        // targetOf. Reading it from the STORED spec instead reintroduced exactly
+        // the deploy-order dependence knownTargets exists to remove.
+        if (!target.public) {
           resolved.set(key, `http://${hostnameForService(envId, ns, targetKey)}:${port.port}`);
           break;
         }
@@ -357,7 +370,7 @@ async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvVal
           // and nowhere else, so the ref has to carry it — otherwise every
           // public port of one service would resolve to the same URL and quietly
           // point at whichever one happened to be lowest.
-          const holder = standardPortsHolderFor(ports, true);
+          const holder = standardPortsHolderFor(ports, target.public);
           resolved.set(key, port.port === holder ? url : `${url}:${port.port}`);
         }
         break;
@@ -403,6 +416,26 @@ function pinnedMachineCount(spec: ServiceSpec): number {
   return isServerful(spec) ? 1 : spec.config.min_instances;
 }
 
+// The parts of a Fly machine config this module actually produces. Named rather
+// than left as `Record<string, unknown>` so callers — the tests especially — can
+// read `.services[].ports[].handlers` without a cast to get at it. Fly accepts
+// far more than this; only what we send is described.
+export type MachineConfig = {
+  image: string,
+  env: Record<string, string>,
+  mounts?: { volume: string, path: string }[],
+  metadata: Record<string, string>,
+  services: {
+    protocol: string,
+    internal_port: number,
+    autostop: string,
+    autostart: boolean,
+    ports: { port: number, handlers?: string[] }[],
+    concurrency: { type: string, soft_limit: number },
+  }[],
+  [key: string]: unknown,
+};
+
 export function machineConfigForSlot(options: {
   imageRef: string,
   spec: ServiceSpec,
@@ -412,7 +445,7 @@ export function machineConfigForSlot(options: {
   slot: number,
   env: Record<string, string>,
   volumeId: string | null,
-}): Record<string, unknown> {
+}): MachineConfig {
   const pinned = options.slot < pinnedMachineCount(options.spec);
   const volume = specVolume(options.spec)?.volume;
   const standardPortsHolder = standardPortsHolderFor(options.spec.config.ports, options.spec.config.public);
@@ -468,9 +501,18 @@ export function machineConfigForSlot(options: {
 // The spec's single persistent volume, or null. `persistent_volumes` is a record so the
 // volume ID is a first-class key, but validateServiceSpec caps it at one entry, so every
 // consumer wants exactly this.
-/** Whether the spec asks for public ingress. A property of the container, not of any port. */
+/**
+ * Whether the spec asks for public ingress. A property of the container, not of
+ * any port.
+ *
+ * Compared against `true` rather than returned directly, despite the type: specs
+ * live in the bucket, which no reset clears, and one written before `public`
+ * existed has no such field. Such a spec reads as PRIVATE — the safe direction,
+ * and it self-corrects on the next apply, which rewrites the spec from the
+ * backend's definition.
+ */
 export function specIsPublic(spec: ServiceSpec): boolean {
-  return spec.config.public;
+  return spec.config.public === true;
 }
 
 /**
@@ -486,12 +528,13 @@ export function soleHttpPort(ports: PortsConfig): number | null {
  * The port that additionally answers on 80/443, or null when there is no single
  * obvious one.
  *
- * NOT only the public port: a PRIVATE service gets public IPs the moment a
- * custom domain is attached (see attachDomain), and that domain terminates TLS
- * on 443 — so a private service with one HTTP port must bind the standard ports
- * too, or its verified domain would resolve and then refuse the connection.
+ * Defined for PRIVATE services too, not just public ones: a private service
+ * gets public IPs the moment a custom domain is attached (see attachDomain), and
+ * that domain terminates TLS on 443 — so a private service with one HTTP port
+ * must bind the standard ports too, or its verified domain would resolve and
+ * then refuse the connection.
  *
- * With SEVERAL public ports exactly one can hold 80/443, and it is the
+ * When a public service declares SEVERAL ports exactly one can hold 80/443, and it is the
  * LOWEST-NUMBERED — portEntries sorts numerically, so the winner is a property
  * of the port set rather than of JSON key ordering. Determinism is the point:
  * the holder is the port the service's bare URL names and the only one a custom
@@ -560,15 +603,15 @@ export function assertServiceCanHoldADomain(serviceKey: string, ports: PortsConf
 export function externalPortsFor(entry: PortEntry, standardPortsHolder: number | null, isPublic: boolean): { port: number, handlers?: string[] }[] {
   if (entry.protocol !== "http") return [{ port: entry.port }];
   const bindings = new Map<number, { port: number, handlers?: string[] }>();
-  // Its own number first, so a second HTTP port stays addressable privately...
+  // Its own number first, so a second HTTP port stays addressable...
   //
-  // A PUBLIC port terminates TLS on that number, a private one does not. The
-  // distinction is not cosmetic: a public port's own number is the ONLY way to
-  // reach it (the standard 80/443 belong to the holder), so leaving it plain
-  // would put a port the author asked to publish on the internet in cleartext —
-  // and the URL we hand back for it says https. A private port is reached over
-  // Flycast as `http://<host>:<port>`, and adding TLS there would break every
-  // private url() instead.
+  // A PUBLIC SERVICE terminates TLS on that number, a private one does not. The
+  // distinction is not cosmetic: on a public service a non-holder port's own
+  // number is the ONLY way to reach it (the standard 80/443 belong to the
+  // holder), so leaving it plain would put a port the author asked to publish on
+  // the internet in cleartext — and the URL we hand back for it says https. A
+  // private service is reached over Flycast as `http://<host>:<port>`, and
+  // adding TLS there would break every private url() instead.
   bindings.set(entry.port, { port: entry.port, handlers: isPublic ? ["tls", "http"] : ["http"] });
   if (entry.port === standardPortsHolder) {
     // ...but the standard ports win the collision: 443 must terminate TLS, and
@@ -810,28 +853,28 @@ async function claimDesiredSpec(ns: string, key: string, spec: ServiceSpec, revi
   throw conflict(`service ${JSON.stringify(key)} was updated too frequently; retry the request`);
 }
 
-async function stateAfterSpecWrite(ns: string, key: string, stored: StoredSpec, previousEtag: string, knownPorts?: Map<string, PortsConfig>): Promise<ServiceState> {
+async function stateAfterSpecWrite(ns: string, key: string, stored: StoredSpec, previousEtag: string, knownTargets?: Map<string, KnownTarget>): Promise<ServiceState> {
   const etag = await writeSpec(stored, { ifMatch: previousEtag });
-  if (etag !== null) return await getServiceState(ns, key, stored, knownPorts);
+  if (etag !== null) return await getServiceState(ns, key, stored, knownTargets);
   // Another request (or a delete) owns the desired state now. Never resurrect/overwrite it.
-  return await getServiceState(ns, key, undefined, knownPorts);
+  return await getServiceState(ns, key, undefined, knownTargets);
 }
 
 async function specIsStillOwned(ns: string, key: string, etag: string): Promise<boolean> {
   return (await readSpecVersioned(ns, key))?.etag === etag;
 }
 
-export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpec, options?: { knownPorts?: Map<string, PortsConfig>, lease?: ReconciliationLeaseGuard }): Promise<ApplyResult> {
+export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpec, options?: { knownTargets?: Map<string, KnownTarget>, lease?: ReconciliationLeaseGuard }): Promise<ApplyResult> {
   // A deployment already holds the lease for its whole source, so it passes its
   // own rather than taking a second one per service — the lease is not
   // re-entrant, and waiting on itself is a deadlock.
   if (options?.lease !== undefined) {
-    return await applyServiceSpecWithLease(ns, key, spec, options.lease, options.knownPorts);
+    return await applyServiceSpecWithLease(ns, key, spec, options.lease, options.knownTargets);
   }
-  return await withReconciliationLease(ns, key, async (lease) => await applyServiceSpecWithLease(ns, key, spec, lease, options?.knownPorts));
+  return await withReconciliationLease(ns, key, async (lease) => await applyServiceSpecWithLease(ns, key, spec, lease, options?.knownTargets));
 }
 
-async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceSpec, lease: ReconciliationLeaseGuard, knownPorts?: Map<string, PortsConfig>): Promise<ApplyResult> {
+async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceSpec, lease: ReconciliationLeaseGuard, knownTargets?: Map<string, KnownTarget>): Promise<ApplyResult> {
   const config = getConfig();
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
   // A domain-holding service must satisfy the domain port rule on every spec write, not just
@@ -849,9 +892,9 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
 
   // Unresolvable refs: persist the spec and report blocked WITHOUT touching machines or
   // starting builds — the backend re-applies when the blocking output appears.
-  const resolved = await resolveEnv(fly, ns, stored.spec.env, knownPorts);
+  const resolved = await resolveEnv(fly, ns, stored.spec.env, knownTargets);
   if (!resolved.ok) {
-    return { revision, changed, state: await getServiceState(ns, key, stored, knownPorts) };
+    return { revision, changed, state: await getServiceState(ns, key, stored, knownTargets) };
   }
 
   // The app must exist before machines can be created into it, and its IPs must
@@ -875,7 +918,7 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
   // redeploy mandatory — an env change never applies to an existing deployment).
 
   if (!await specIsStillOwned(ns, key, ownedSpecEtag)) {
-    // Deliberately WITHOUT knownPorts: the spec being reported now belongs to whoever won the
+    // Deliberately WITHOUT knownTargets: the spec being reported now belongs to whoever won the
     // race, and resolving someone else's refs against this deployment's targets would report
     // a state their own reads never agree with.
     return { revision, changed, state: await getServiceState(ns, key) };
@@ -887,7 +930,7 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
     if (isReconciliationFencingError(error)) throw error;
     stored.last_apply_error = error instanceof Error ? `deploy failed: ${error.message}` : "deploy failed";
   }
-  return { revision, changed, state: await stateAfterSpecWrite(ns, key, stored, ownedSpecEtag, knownPorts) };
+  return { revision, changed, state: await stateAfterSpecWrite(ns, key, stored, ownedSpecEtag, knownTargets) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1092,6 +1135,45 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
   });
 }
 
+/**
+ * The deployment-level outcome for one service, from the state its apply reported.
+ *
+ * REGRESSION GUARD: this used to special-case only "blocked" and call everything
+ * else "deployed", so a machine apply that FAILED was recorded as a success and
+ * the deployment went on to report "succeeded" over it.
+ *
+ * Three things mean the apply did not converge and never will on its own:
+ *
+ *   - "blocked": a ref could not resolve — a `url` of a service that never came
+ *     up. Nothing later in this deployment makes it resolvable.
+ *   - "failed": the apply threw and left zero started machines. That error is
+ *     caught INSIDE applyServiceSpec and stored as last_apply_error rather than
+ *     rethrown, so it reaches callers only through the reported state — never
+ *     through their own catch.
+ *   - a non-null error under any other status ("degraded", when the same stored
+ *     error left some machines up): partially rolled, still broken.
+ *
+ * `error` is the load-bearing signal rather than the status: getServiceState
+ * sets it only for unresolved refs or a stored last_apply_error, and
+ * last_apply_error is cleared on every successful apply and on every spec change
+ * — so it is never stale. That is also what keeps a "degraded" caused merely by
+ * under-pinned machines (which carries no error) counted as deployed, instead of
+ * failing deploys for a transient scale-up.
+ */
+export function deploymentStateForApply(serviceKey: string, applied: { revision: string, state: ServiceState }): DeploymentServiceState {
+  const failed = applied.state.status === "blocked" || applied.state.status === "failed" || applied.state.error !== null;
+  if (!failed) {
+    return { service_key: serviceKey, status: "deployed", revision: applied.revision, url: applied.state.outputs.url ?? null, error: null };
+  }
+  return {
+    service_key: serviceKey,
+    status: "failed",
+    revision: applied.revision,
+    url: null,
+    error: applied.state.error ?? (applied.state.status === "blocked" ? "a connection could not be resolved" : `${serviceKey} failed to deploy`),
+  };
+}
+
 /** Marks a deployment failed, and everything it had not finished as skipped. */
 function failDeployment(deployment: StoredDeployment, error: string): StoredDeployment {
   return {
@@ -1229,10 +1311,20 @@ export async function advanceDeployment(ns: string, deploymentId: string): Promi
  * deployment when everything has been applied.
  */
 async function applyNextService(ns: string, deployment: StoredDeployment, lease: ReconciliationLeaseGuard): Promise<StoredDeployment> {
-  // Ports of every target in this deployment, so a reference to one of them
-  // resolves without waiting for it to be applied first — which is what keeps a
-  // private `url(5432)` independent of deploy order.
-  const knownPorts = new Map(deployment.targets.map((target) => [target.service_key, target.spec.config.ports]));
+  // The PORTS AND VISIBILITY of every target in this deployment, so a reference
+  // to one of them resolves without waiting for it to be applied first — which is
+  // what keeps a private `url(5432)` independent of deploy order.
+  //
+  // Both halves have to come from here, not just the ports. They are two halves
+  // of ONE decision (which address a `url` resolves to), and reading visibility
+  // from the target's STORED spec while reading its ports from this deployment
+  // lets the two disagree: a service being flipped public→private in this very
+  // deploy still reads as public until its own apply lands, so a sibling applied
+  // first bakes in a platform URL that the flip is about to take away.
+  const knownTargets = new Map(deployment.targets.map((target) => [target.service_key, {
+    ports: target.spec.config.ports,
+    public: target.spec.config.public,
+  }]));
 
   for (const level of deployment.order) {
     const levelStates = level.flatMap((key) => {
@@ -1256,13 +1348,8 @@ async function applyNextService(ns: string, deployment: StoredDeployment, lease:
     await lease.assertOwned();
     let state: DeploymentServiceState;
     try {
-      const applied = await applyServiceSpec(ns, next.service_key, { ...target.spec, source: { image } }, { knownPorts });
-      state = applied.state.status === "blocked"
-        // A blocked apply means a ref could not resolve — a `url` of a service
-        // that never came up. It will not resolve by itself, so it is a failure
-        // rather than something to keep polling.
-        ? { service_key: next.service_key, status: "failed", revision: applied.revision, url: null, error: applied.state.error ?? "a connection could not be resolved" }
-        : { service_key: next.service_key, status: "deployed", revision: applied.revision, url: applied.state.outputs.url ?? null, error: applied.state.error };
+      const applied = await applyServiceSpec(ns, next.service_key, { ...target.spec, source: { image } }, { knownTargets });
+      state = deploymentStateForApply(next.service_key, applied);
     } catch (error) {
       if (isReconciliationFencingError(error)) throw error;
       state = { service_key: next.service_key, status: "failed", revision: null, url: null, error: truncateError(error instanceof Error ? error.message : "the deploy failed") };
@@ -1459,7 +1546,7 @@ export async function maybeFinalizeStaleDeployment(deployment: StoredDeployment)
 // ---------------------------------------------------------------------------
 // Reads
 
-export async function getServiceState(ns: string, key: string, preloadedSpec?: StoredSpec | null, knownPorts?: Map<string, PortsConfig>): Promise<ServiceState> {
+export async function getServiceState(ns: string, key: string, preloadedSpec?: StoredSpec | null, knownTargets?: Map<string, KnownTarget>): Promise<ServiceState> {
   const config = getConfig();
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
   const stored = preloadedSpec !== undefined ? preloadedSpec : await readSpec(ns, key);
@@ -1472,11 +1559,11 @@ export async function getServiceState(ns: string, key: string, preloadedSpec?: S
   const [machines, certificates, resolved] = await Promise.all([
     fly.listMachines(appName),
     fly.listCertificates(appName),
-    // The SAME knownPorts the apply resolved with. Without it this read would re-resolve
+    // The SAME knownTargets the apply resolved with. Without it this read would re-resolve
     // from stored specs alone and report `blocked` for a private `url(port)` naming a target
     // of this deployment that has not been applied yet — failing the deployment over the
-    // very ordering independence knownPorts exists to provide.
-    resolveEnv(fly, ns, stored.spec.env, knownPorts),
+    // very ordering independence knownTargets exists to provide.
+    resolveEnv(fly, ns, stored.spec.env, knownTargets),
   ]);
 
   const domains = await computeDomainStates(fly, appName, certificates);

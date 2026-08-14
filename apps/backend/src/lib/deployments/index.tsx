@@ -594,7 +594,8 @@ export async function tearDownServices(tenancy: Tenancy, serviceIds: string[]): 
  * Why a service's ports cannot hold a custom domain, or null when they can. The
  * message is a clause that reads after "so ..." / "because it ...".
  *
- * KEPT IN SYNC WITH assertServiceCanHoldADomain in apps/marshal/src/domains.ts.
+ * KEPT IN SYNC WITH assertServiceCanHoldADomain in apps/marshal/src/services.ts
+ * (which apps/marshal/src/domains.ts calls on every attach).
  *
  * Attaching a domain allocates public IPs on the service's Fly app, so it makes
  * the service reachable exactly the way `public: true` does. Fly `services` are
@@ -1118,8 +1119,9 @@ export function marshalSpecForDefinition(definition: DeploymentServiceDefinition
       // `maxInstances` must not synthesize an invalid spec (max < min) that
       // Marshal 400s after the upload is already consumed.
       max_instances: isServer ? 1 : definition.max_instances ?? Math.max(minInstances, DEFAULT_MAX_INSTANCES),
-      // Passed through verbatim: the runtime derives its ingress from the ports
-      // themselves, so there is no separate visibility to keep in step.
+      // Passed through verbatim, minus the defaults deploymentPortEntries has
+      // already applied. Visibility is NOT in here — it is `public` above, which
+      // the runtime reads off the container.
       ports: Object.fromEntries(deploymentPortEntries(definition.ports).map((entry) => [
         String(entry.port),
         { protocol: entry.protocol },

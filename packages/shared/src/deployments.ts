@@ -101,25 +101,26 @@ export function parseConnectionValue(value: string): { serviceId: string, output
  * Whether a reference actually requires its target to have DEPLOYED.
  *
  * `hostname()` never does: it is a pure function of the service identity and
- * resolves before the target exists. `url()` depends on which port it names:
+ * resolves before the target exists. `url()` depends on the TARGET SERVICE:
  *
- *  - a PUBLIC port's URL is the platform URL (or a verified custom domain),
+ *  - a PUBLIC service's URL is the platform URL (or a verified custom domain),
  *    which only exists once the service has been provisioned;
- *  - a PRIVATE port's URL is built from the deterministic hostname and the port
- *    written in the reference, so it resolves just as early as hostname();
+ *  - a PRIVATE service's URL is built from the deterministic hostname and the
+ *    port written in the reference, so it resolves just as early as hostname();
  *  - a bare `url()` has to read the target's synced definition to learn its sole
  *    HTTP port, so it waits regardless.
  *
- * `targetPortIsPublic` is null when the caller cannot see the target's ports
- * (a reference into a source this deploy file does not contain), in which case
- * the conservative answer is that it waits. Getting this wrong in the other
- * direction would serialize independent deploys, cascade false "skipped" results
- * when the target fails, and reject mutually-wired services as circular.
+ * `targetIsPublic` is null when the caller cannot answer — a reference into a
+ * source this deploy file does not contain, or one naming a port the target does
+ * not declare — in which case the conservative answer is that it waits. Getting
+ * this wrong in the other direction would serialize independent deploys, cascade
+ * false "skipped" results when the target fails, and reject mutually-wired
+ * services as circular.
  */
-export function connectionRequiresTargetDeployed(outputKey: string, port: number | null, targetPortIsPublic: boolean | null = null): boolean {
+export function connectionRequiresTargetDeployed(outputKey: string, port: number | null, targetIsPublic: boolean | null = null): boolean {
   if (outputKey !== "url") return false;
   if (port === null) return true;
-  return targetPortIsPublic !== false;
+  return targetIsPublic !== false;
 }
 
 /** Formats a connection reference. The inverse of parseConnectionValue. */

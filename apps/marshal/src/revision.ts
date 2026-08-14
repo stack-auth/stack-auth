@@ -16,15 +16,17 @@ export function computeRevision(spec: ServiceSpec, rootKey: Buffer = getConfig()
       type: spec.config.type,
       min_instances: spec.config.min_instances,
       max_instances: spec.config.max_instances,
-      // Normalized rather than taken verbatim: the ports decide the machine's
-      // Fly services array AND its public ingress, so any change to one must
-      // roll the machines. Field order is fixed here so two equivalent specs
-      // that merely serialized their keys differently still hash the same, and
-      // the list is sorted by port NUMBER — object key order would put "80"
-      // after "8080", which would make the revision depend on how the ports
-      // happened to be written and restart the fleet for nothing (which for a
-      // volume-backed "server" means real downtime).
+      // Ingress: flipping it rolls every machine, since it changes both the
+      // handlers on each port and the addresses the app holds.
       public: spec.config.public,
+      // Normalized rather than taken verbatim: the ports decide the machine's
+      // Fly services array, so any change to one must roll the machines. Field
+      // order is fixed here so two equivalent specs that merely serialized their
+      // keys differently still hash the same, and the list is sorted by port
+      // NUMBER — object key order would put "80" after "8080", which would make
+      // the revision depend on how the ports happened to be written and restart
+      // the fleet for nothing (which for a volume-backed "server" means real
+      // downtime).
       ports: portEntries(spec.config.ports)
         .map((entry) => ({ port: entry.port, protocol: entry.protocol })),
       // It MUST be included: without it a volume-only change —

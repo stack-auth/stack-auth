@@ -1866,9 +1866,11 @@ model DeploymentDomain {
   // stops being declared — the certificate is kept rather than silently
   // released, and the row waits for someone to re-point or delete it.
   //
-  // The port must be the target service's sole HTTP port. It is stated anyway
-  // because a domain names an endpoint, not a machine, and the day a service may
-  // hold several public ports this row must already say which one it meant.
+  // The port is the target service's standard-ports holder — the one that owns
+  // 80/443, which is where a certificate terminates. Stated rather than derived
+  // because a domain names an ENDPOINT, not a machine: a public service may
+  // declare several ports, and this row has to keep saying which one it meant
+  // even after the service changes them.
   //
   // Deliberately NOT a foreign key to DeploymentService: a domain OUTLIVES the
   // service it points at, which is the whole reason it is a table of its own.

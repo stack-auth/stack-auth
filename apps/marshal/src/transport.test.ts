@@ -72,7 +72,7 @@ describe("service ports", () => {
     // Determinism is the point: the holder is the port the service's bare URL
     // names and the only one a custom domain can front, so an arbitrary pick
     // would silently move both.
-    const services = machineFor({ public: true, ports: { "8443": {}, "443": {} } }).services as { ports: { port: number }[], internal_port: number }[];
+    const services = machineFor({ public: true, ports: { "8443": {}, "443": {} } }).services;
     const holder = services.find((service) => service.internal_port === 443);
     const other = services.find((service) => service.internal_port === 8443);
     expect(holder?.ports.map((entry) => entry.port).sort((a, b) => a - b)).toEqual([80, 443]);
@@ -121,7 +121,7 @@ describe("service ports", () => {
       { public: false, ports: { "8080": {}, "5432": { protocol: "tcp" } } },
       { public: true, ports: { "80": {} } },
     ]) {
-      const services = machineFor(config).services as { ports: { port: number }[] }[];
+      const services = machineFor(config).services;
       const external = services.flatMap((service) => service.ports.map((entry) => entry.port));
       expect(new Set(external).size, `${JSON.stringify(config)} -> ${JSON.stringify(external)}`).toBe(external.length);
     }
@@ -133,7 +133,7 @@ describe("service ports", () => {
     // publishes it in cleartext while the URL we report for it says https. A
     // private service is the opposite case — its ports are reached over Flycast
     // as http://<host>:<port>, and TLS there would break every private url().
-    const publicPorts = machineFor({ public: true, ports: { "3000": {}, "8443": {} } }).services as { ports: { port: number, handlers?: string[] }[], internal_port: number }[];
+    const publicPorts = machineFor({ public: true, ports: { "3000": {}, "8443": {} } }).services;
     expect(publicPorts.find((service) => service.internal_port === 8443)?.ports)
       .toEqual([{ port: 8443, handlers: ["tls", "http"] }]);
     // The holder keeps plain 80 alongside TLS 443, and its own number is on a
@@ -143,7 +143,7 @@ describe("service ports", () => {
     expect(holder).toContainEqual({ port: 443, handlers: ["tls", "http"] });
     expect(holder).toContainEqual({ port: 3000, handlers: ["tls", "http"] });
 
-    const privatePorts = machineFor({ public: false, ports: { "8080": {}, "9090": {} } }).services as { ports: { port: number, handlers?: string[] }[], internal_port: number }[];
+    const privatePorts = machineFor({ public: false, ports: { "8080": {}, "9090": {} } }).services;
     expect(privatePorts.find((service) => service.internal_port === 9090)?.ports)
       .toEqual([{ port: 9090, handlers: ["http"] }]);
   });
@@ -152,19 +152,19 @@ describe("service ports", () => {
     // The most common Docker default: a web image listening on 80, published.
     // Its own binding and the standard-port binding are the same number.
     const onPort80 = machineFor({ public: true, ports: { "80": {} } });
-    expect((onPort80.services as any[])[0].ports).toEqual([
+    expect(onPort80.services[0].ports).toEqual([
       { port: 80, handlers: ["http"] },
       { port: 443, handlers: ["tls", "http"] },
     ]);
     // 443 is the dangerous one: its own plain-http binding must not shadow the
     // TLS-terminating one, or the platform URL would serve cleartext.
     const onPort443 = machineFor({ public: true, ports: { "443": {} } });
-    expect((onPort443.services as any[])[0].ports).toEqual([
+    expect(onPort443.services[0].ports).toEqual([
       { port: 443, handlers: ["tls", "http"] },
       { port: 80, handlers: ["http"] },
     ]);
     for (const machine of [onPort80, onPort443]) {
-      const bound = (machine.services as any[]).flatMap((service) => service.ports.map((entry: any) => entry.port));
+      const bound = machine.services.flatMap((service) => service.ports.map((entry) => entry.port));
       expect(new Set(bound).size).toBe(bound.length);
     }
   });
@@ -212,7 +212,7 @@ describe("service ports", () => {
       type: "server",
       ports: { "3000": {}, "5432": { protocol: "tcp" }, "9090": {} },
     });
-    const services = machine.services as { internal_port: number, ports: { port: number }[] }[];
+    const services = machine.services;
     expect(services).toHaveLength(3);
     expect(services.map((service) => service.internal_port)).toEqual([3000, 5432, 9090]);
     // With two HTTP ports there is no single obvious holder, so NOTHING binds

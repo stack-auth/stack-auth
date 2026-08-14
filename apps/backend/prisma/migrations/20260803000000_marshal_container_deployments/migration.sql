@@ -116,10 +116,13 @@ CHECK ("hexclave_deployment_ports_entries_valid"("ports"));
 -- service may not mix public and private ports"), and a constraint would have
 -- made each rewrite a migration.
 --
--- Enforced instead by `public-service-is-all-http` and
--- `public-service-serves-something` in @hexclave/shared's deployments.ts, which
--- the sync route, the CLI evaluator and Marshal's validateServiceSpec all sit
--- behind — no writer reaches these columns without passing them.
+-- Enforced instead in code, on every path that reaches these columns: the sync
+-- route validates against `public-service-is-all-http` and
+-- `public-service-serves-something` in @hexclave/shared's deployments.ts, and the
+-- CLI evaluator and Marshal's validateServiceSpec each state the same two rules
+-- again. Three copies rather than one shared check, because the CLI wants a
+-- config-file diagnostic and Marshal deliberately takes no dependency on
+-- @hexclave/shared — the rules are cross-referenced in all three places.
 
 -- AlterTable
 ALTER TABLE "DeploymentRun" DROP COLUMN "vercelDeploymentId",
