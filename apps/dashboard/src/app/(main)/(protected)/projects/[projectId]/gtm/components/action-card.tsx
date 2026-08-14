@@ -71,7 +71,7 @@ export function GrowthActionCard(props: { action: GrowthActionItem }) {
   const TypeIcon = typeMeta.icon;
   return (
     <Link
-      href={withQuery(`/projects/${projectId}/growth/actions/${action.id}`)}
+      href={withQuery(`/projects/${projectId}/gtm/actions/${action.id}`)}
       className="group block h-full rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <DesignCard className="h-full transition-shadow duration-150 hover:shadow-md hover:transition-none">

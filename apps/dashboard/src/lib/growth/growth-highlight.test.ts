@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getUnreadGrowthReport, selectGrowthHighlight } from "@/app/(main)/(protected)/projects/[projectId]/growth/components/workspace-overview";
+import { getUnreadGrowthReport, selectGrowthHighlight } from "@/app/(main)/(protected)/projects/[projectId]/gtm/components/workspace-overview";
 import { buildGrowthDemoOverview, buildGrowthDemoStatus, GROWTH_DEMO_NOW_MILLIS } from "./growth-demo-data";
 
 const PROJECT_ID = "11111111-2222-3333-4444-555555555555";
@@ -13,7 +13,7 @@ describe("selectGrowthHighlight", () => {
       kind: "brief",
       summary: brief.summary,
       createdAtMillis: brief.createdAtMillis,
-      href: `/projects/${PROJECT_ID}/growth/briefs/${brief.id}`,
+      href: `/projects/${PROJECT_ID}/gtm/briefs/${brief.id}`,
     });
   });
 
@@ -29,7 +29,7 @@ describe("selectGrowthHighlight", () => {
       summary: report.summary,
       createdAtMillis: report.createdAtMillis,
       // No report id in the path: the report page always renders the latest report.
-      href: `/projects/${PROJECT_ID}/growth/report`,
+      href: `/projects/${PROJECT_ID}/gtm/report`,
     });
   });
 
@@ -42,7 +42,7 @@ describe("selectGrowthHighlight", () => {
     const withBrief = buildGrowthDemoOverview(GROWTH_DEMO_NOW_MILLIS);
     const withReportOnly = { ...withBrief, latestBrief: null };
     for (const overview of [withBrief, withReportOnly]) {
-      expect(selectGrowthHighlight(overview, "other-project")?.href).toMatch(/^\/projects\/other-project\/growth\//);
+      expect(selectGrowthHighlight(overview, "other-project")?.href).toMatch(/^\/projects\/other-project\/gtm\//);
     }
   });
 });

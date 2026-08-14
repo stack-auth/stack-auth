@@ -37,7 +37,7 @@ describe("internal growth chat (no mock Eve)", () => {
     const disabledDetail = await niceBackendFetch(`${ADMIN_BASE}/chat/conversations/${randomUUID()}`, { accessType: "admin" });
     expect(disabledDetail.status).toBe(400);
 
-    await Project.updateConfig({ "apps.installed.growth.enabled": true });
+    await Project.updateConfig({ "apps.installed.gtm.enabled": true });
 
     // Client access is never allowed on the admin chat surface.
     const clientChat = await niceBackendFetch(`${ADMIN_BASE}/chat`, { accessType: "client", method: "POST", body: { message: "hello" } });

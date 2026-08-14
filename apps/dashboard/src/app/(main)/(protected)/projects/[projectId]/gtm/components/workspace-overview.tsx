@@ -129,8 +129,8 @@ function SuggestionRow(props: { item: { kind: "finding", value: GrowthOverviewFi
   const withQuery = useGrowthHref();
   const value = props.item.value;
   const href = props.item.kind === "action"
-    ? `/projects/${props.projectId}/growth/actions/${value.id}`
-    : `/projects/${props.projectId}/growth/findings/${value.id}`;
+    ? `/projects/${props.projectId}/gtm/actions/${value.id}`
+    : `/projects/${props.projectId}/gtm/findings/${value.id}`;
   const body = props.item.kind === "action" ? props.item.value.description : props.item.value.body;
   const content = (
     <article className="grid gap-3 border-b border-foreground/[0.08] px-1 py-5 text-left last:border-0 sm:grid-cols-[7rem_minmax(0,1fr)_auto] sm:items-start">
@@ -168,12 +168,12 @@ export type GrowthHighlight = {
 export function selectGrowthHighlight(overview: GrowthOverview, projectId: string): GrowthHighlight | null {
   const brief = overview.latestBrief;
   if (brief != null) {
-    return { kind: "brief", summary: brief.summary, createdAtMillis: brief.createdAtMillis, href: `/projects/${projectId}/growth/briefs/${brief.id}` };
+    return { kind: "brief", summary: brief.summary, createdAtMillis: brief.createdAtMillis, href: `/projects/${projectId}/gtm/briefs/${brief.id}` };
   }
   const report = overview.latestReport;
   if (report != null) {
     // The report page always renders the latest report, so it needs no id in the path.
-    return { kind: "report", summary: report.summary, createdAtMillis: report.createdAtMillis, href: `/projects/${projectId}/growth/report` };
+    return { kind: "report", summary: report.summary, createdAtMillis: report.createdAtMillis, href: `/projects/${projectId}/gtm/report` };
   }
   return null;
 }
@@ -220,7 +220,7 @@ export function GrowthWorkspaceContent(props: {
       )}
       {unreadReport != null && (
         <div className="flex justify-end">
-          <Link href={withQuery(`/projects/${props.projectId}/growth/report`)}>
+          <Link href={withQuery(`/projects/${props.projectId}/gtm/report`)}>
             <DesignButton variant="outline" size="sm">
               <FileTextIcon className="size-4" />
               Read your report

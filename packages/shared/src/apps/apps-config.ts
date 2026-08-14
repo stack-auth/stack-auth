@@ -209,8 +209,8 @@ export const ALL_APPS = {
     softRequirements: ["analytics"],
     parentAppId: "analytics",
   },
-  "growth": {
-    displayName: "Growth",
+  "gtm": {
+    displayName: "GTM",
     subtitle: "AI-driven growth analysis, actionable items, and daily briefs",
     tags: ["gtm", "operations"],
     stage: "alpha",

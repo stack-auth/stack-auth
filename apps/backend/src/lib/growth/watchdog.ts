@@ -141,7 +141,7 @@ async function findGrowthTenancy(cache: Map<string, Tenancy | null>, projectId: 
     return null;
   }
   // Disabled app: nothing growth-related should run for the branch anymore.
-  const result = tenancy.config.apps.installed["growth"]?.enabled === true ? tenancy : null;
+  const result = tenancy.config.apps.installed["gtm"]?.enabled === true ? tenancy : null;
   cache.set(cacheKey, result);
   return result;
 }

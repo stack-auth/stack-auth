@@ -26,24 +26,24 @@ describe("growth navigation matching", () => {
   const chat = { displayName: "Chat", href: "chat" };
   // const adAccounts = { displayName: "Ad accounts", href: "ad-accounts" };
   const settings = { displayName: "Settings", href: "settings" };
-  const growth = appWith([overview, chat, /* adAccounts, */ settings], "growth");
+  const growth = appWith([overview, chat, /* adAccounts, */ settings], "gtm");
 
   it("highlights Overview on lifecycle and detail pages", () => {
     for (const page of ["interview", "report", "actions/some-action-id", "briefs/some-brief-id", "ad-accounts"]) {
-      expect(testItemPath(PROJECT_ID, growth, overview, urlFor(`/projects/demo-project/growth/${page}`))).toBe(true);
+      expect(testItemPath(PROJECT_ID, growth, overview, urlFor(`/projects/demo-project/gtm/${page}`))).toBe(true);
     }
   });
 
   it("highlights each top-level page's own item, deselecting Overview", () => {
     for (const item of [chat, settings]) {
-      expect(testItemPath(PROJECT_ID, growth, item, urlFor(`/projects/demo-project/growth/${item.href}`))).toBe(true);
-      expect(testItemPath(PROJECT_ID, growth, overview, urlFor(`/projects/demo-project/growth/${item.href}`))).toBe(false);
+      expect(testItemPath(PROJECT_ID, growth, item, urlFor(`/projects/demo-project/gtm/${item.href}`))).toBe(true);
+      expect(testItemPath(PROJECT_ID, growth, overview, urlFor(`/projects/demo-project/gtm/${item.href}`))).toBe(false);
     }
   });
 
   it("does not highlight sibling items on another item's page", () => {
-    expect(testItemPath(PROJECT_ID, growth, chat, urlFor("/projects/demo-project/growth/settings"))).toBe(false);
-    expect(testItemPath(PROJECT_ID, growth, settings, urlFor("/projects/demo-project/growth/chat"))).toBe(false);
+    expect(testItemPath(PROJECT_ID, growth, chat, urlFor("/projects/demo-project/gtm/settings"))).toBe(false);
+    expect(testItemPath(PROJECT_ID, growth, settings, urlFor("/projects/demo-project/gtm/chat"))).toBe(false);
   });
 });
 

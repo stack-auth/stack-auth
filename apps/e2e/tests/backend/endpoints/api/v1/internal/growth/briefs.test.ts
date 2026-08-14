@@ -193,7 +193,7 @@ describe("internal growth briefs", () => {
     expect(clientRead.status).toBe(401);
 
     // Disabling the app cuts off the whole surface, even for admins and existing data.
-    await Project.updateConfig({ "apps.installed.growth.enabled": false });
+    await Project.updateConfig({ "apps.installed.gtm.enabled": false });
     const disabledList = await niceBackendFetch(`${ADMIN_BASE}/briefs`, { accessType: "admin" });
     expect(disabledList.status).toBe(400);
     const disabledGet = await niceBackendFetch(`${ADMIN_BASE}/briefs/${briefId}`, { accessType: "admin" });

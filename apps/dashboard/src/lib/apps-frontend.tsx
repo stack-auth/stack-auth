@@ -451,9 +451,9 @@ export const ALL_APPS_FRONTEND = {
       </>
     ),
   },
-  growth: {
+  gtm: {
     icon: TrendUpIcon,
-    href: "growth",
+    href: "gtm",
     navigationItems: [
       // Lifecycle and detail pages are deliberately not nav items. They are reached from the
       // overview, and the most-specific-wins matching below highlights "Overview" for them.

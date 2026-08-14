@@ -441,7 +441,7 @@ export function IntegrationsStep(props: { status: GrowthStatus, state: GrowthTim
                     // their position in onboarding and has to find their way back. In a separate tab the
                     // run stays on screen and they can answer here when they return.
                     // noopener/noreferrer: the opened tab must not get a handle on this one.
-                    window.open(withQuery(`/projects/${projectId}/growth/ad-accounts`), "_blank", "noopener,noreferrer");
+                    window.open(withQuery(`/projects/${projectId}/gtm/ad-accounts`), "_blank", "noopener,noreferrer");
                   }}
                 >
                   Connect Meta ads
@@ -518,7 +518,7 @@ function EmbeddedInterviewCard(props: { status: GrowthStatus }) {
           </p>
         )}
         <div>
-          <GoToButton href={withQuery(`/projects/${projectId}/growth/interview`)}>
+          <GoToButton href={withQuery(`/projects/${projectId}/gtm/interview`)}>
             {inProgress ? "Continue the interview" : "Take the interview"}
           </GoToButton>
         </div>
@@ -636,7 +636,7 @@ function InterviewStep(props: { status: GrowthStatus, state: GrowthTimelineStepS
             <>
               {interview.answeredCount > 0 ? `${interview.answeredCount} answers` : "Skipped"}
               {" · "}
-              <QuietLink href={withQuery(`/projects/${projectId}/growth/interview`)}>Review</QuietLink>
+              <QuietLink href={withQuery(`/projects/${projectId}/gtm/interview`)}>Review</QuietLink>
             </>
           }
         />
@@ -693,7 +693,7 @@ function ReportStep(props: { status: GrowthStatus, state: GrowthTimelineStepStat
             <>
               {report != null ? `Created ${new Date(report.createdAtMillis).toLocaleDateString()}` : null}
               {report != null && " · "}
-              <QuietLink href={withQuery(`/projects/${projectId}/growth/report`)}>Read</QuietLink>
+              <QuietLink href={withQuery(`/projects/${projectId}/gtm/report`)}>Read</QuietLink>
             </>
           }
         />
@@ -738,7 +738,7 @@ function ReportStep(props: { status: GrowthStatus, state: GrowthTimelineStepStat
                   <> It came with {status.counts.suggestedActions} suggested {status.counts.suggestedActions === 1 ? "action" : "actions"}.</>
                 )}
               </p>
-              <div><GoToButton href={withQuery(`/projects/${projectId}/growth/report`)}>Read the report</GoToButton></div>
+              <div><GoToButton href={withQuery(`/projects/${projectId}/gtm/report`)}>Read the report</GoToButton></div>
             </div>
           </DesignCard>
         </GrowthTimelineStep>
@@ -802,7 +802,7 @@ function OngoingStep(props: { status: GrowthStatus, state: GrowthTimelineStepSta
               measured against the day before (UTC).
             </p>
             <div>
-              <GoToButton href={withQuery(`/projects/${projectId}/growth/briefs/${brief.id}`)}>Read the brief</GoToButton>
+              <GoToButton href={withQuery(`/projects/${projectId}/gtm/briefs/${brief.id}`)}>Read the brief</GoToButton>
             </div>
           </div>
         </DesignCard>
@@ -851,7 +851,7 @@ function GrowthPipelineHealthLine(props: { status: GrowthStatus }) {
     <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
       <WarningCircleIcon className="size-3.5 text-amber-600 dark:text-amber-400" />
       <span>Pipeline needs attention: {issues.join("; ")}.</span>
-      <QuietLink href={withQuery(`/projects/${projectId}/growth/settings`)}>Review in settings</QuietLink>
+      <QuietLink href={withQuery(`/projects/${projectId}/gtm/settings`)}>Review in settings</QuietLink>
     </p>
   );
 }

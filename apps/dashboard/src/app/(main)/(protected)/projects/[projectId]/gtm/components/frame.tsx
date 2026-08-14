@@ -27,7 +27,7 @@ export function GrowthAppFrame(props: { children: ReactNode }) {
   const demo = isGrowthDemoMode(projectId, searchParams.get("demo"));
   const demoPhase = getGrowthDemoPhase(projectId, searchParams.get("demoPhase"));
   return (
-    <AppEnabledGuard appId="growth">
+    <AppEnabledGuard appId="gtm">
       <GrowthStatusProvider demo={demo} demoPhase={demoPhase} app={app}>
         {props.children}
       </GrowthStatusProvider>

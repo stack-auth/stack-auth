@@ -2,7 +2,7 @@ import Loading from "@/app/loading";
 import { Suspense } from "react";
 import PageClient from "./page-client";
 
-export const metadata = { title: "Growth" };
+export const metadata = { title: "GTM" };
 // The page depends on the authenticated project provider in the parent layout,
 // so it cannot render an independently validated instant shell.
 export const instant = false;

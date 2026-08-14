@@ -16,7 +16,7 @@ describe("internal growth lifecycle", () => {
     const disabled = await niceBackendFetch(`${BASE_PATH}/status`, { accessType: "admin" });
     expect(disabled.status).toBe(400);
 
-    await Project.updateConfig({ "apps.installed.growth.enabled": true });
+    await Project.updateConfig({ "apps.installed.gtm.enabled": true });
     // Enabled, but only admin access may read the growth workspace.
     const clientAccess = await niceBackendFetch(`${BASE_PATH}/status`, { accessType: "client" });
     expect(clientAccess.status).toBe(401);

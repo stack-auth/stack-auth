@@ -26,7 +26,7 @@ import { ensureGrowthWorkflows, getGrowthAnalysisLegRunKeys, getGrowthWorkflowSt
 const DEFAULT_ESTIMATED_INTERVIEW_QUESTIONS = 8;
 
 export function requireGrowthAppEnabled(tenancy: Tenancy): void {
-  if (tenancy.config.apps.installed["growth"]?.enabled !== true) {
+  if (tenancy.config.apps.installed["gtm"]?.enabled !== true) {
     throw new StatusError(400, "The Growth app is not enabled for this project.");
   }
 }

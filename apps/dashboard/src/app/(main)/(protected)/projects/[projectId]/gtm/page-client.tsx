@@ -10,7 +10,7 @@ export default function PageClient() {
   return (
     <GrowthAppFrame>
       <PageLayout
-        title="Growth"
+        title="GTM"
         description="AI-driven analysis, actionable items, and daily briefs for growing your product"
       >
         <GrowthDemoToolbar />

@@ -46,7 +46,7 @@ function ChatLocked(props: { status: GrowthStatus }) {
   const projectId = useProjectId();
   const withQuery = useGrowthHref();
   const overviewLink = (
-    <Link href={withQuery(`/projects/${projectId}/growth`)}>
+    <Link href={withQuery(`/projects/${projectId}/gtm`)}>
       <DesignButton variant="outline" size="sm">Go to the Growth overview</DesignButton>
     </Link>
   );

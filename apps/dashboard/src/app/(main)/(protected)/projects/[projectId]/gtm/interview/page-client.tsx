@@ -72,7 +72,7 @@ function useGrowthHref() {
   const searchParams = useSearchParams();
   return (subPath: string) => {
     const query = searchParams.toString();
-    return `/projects/${projectId}/growth${subPath}${query.length === 0 ? "" : `?${query}`}`;
+    return `/projects/${projectId}/gtm${subPath}${query.length === 0 ? "" : `?${query}`}`;
   };
 }
 
