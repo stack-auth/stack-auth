@@ -100,6 +100,8 @@ const statusSchema = z.object({
   latest_report: z.object({
     id: z.string(),
     created_at_millis: z.number(),
+    // Optional while a development dashboard may still be connected to an older backend.
+    read_at_millis: z.number().nullable().optional(),
     trigger: z.enum(GROWTH_RUN_TRIGGERS),
     milestone_label: z.string().nullable(),
   }).nullable(),
@@ -188,6 +190,7 @@ export function mapGrowthStatus(value: z.infer<typeof statusSchema>): GrowthStat
     latestReport: value.latest_report == null ? null : {
       id: value.latest_report.id,
       createdAtMillis: value.latest_report.created_at_millis,
+      readAtMillis: value.latest_report.read_at_millis ?? null,
       trigger: value.latest_report.trigger,
       milestoneLabel: value.latest_report.milestone_label,
     },
@@ -577,6 +580,10 @@ export async function retakeGrowthInterview(app: object): Promise<{ status: Grow
 
 export async function getGrowthReport(app: object, reportId: string | "latest"): Promise<GrowthReport> {
   return mapGrowthReport(reportSchema.parse(await requestJson(app, urlString`/reports/${reportId}`)));
+}
+
+export async function markGrowthReportRead(app: object, reportId: string): Promise<{ id: string }> {
+  return z.object({ id: z.string() }).parse(await requestJson(app, urlString`/reports/${reportId}/read`, { method: "POST" }));
 }
 
 const overviewFindingSchema = z.object({

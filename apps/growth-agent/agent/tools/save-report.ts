@@ -2,7 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { actionItemPayloadSchema } from "#lib/json-payload.ts";
 import { growthCategorySchema, growthTagsSchema } from "#lib/growth-taxonomy.ts";
-import { GROWTH_DOCUMENT_AUTHORING_GUIDE, growthDocumentInputSchema } from "#lib/growth-document.ts";
+import { GROWTH_ACTION_DOCUMENT_AUTHORING_GUIDE, GROWTH_DOCUMENT_AUTHORING_GUIDE, growthActionDocumentInputSchema, growthDocumentInputSchema } from "#lib/growth-document.ts";
 import { saveReport } from "#lib/hexclave-client.ts";
 import { readGrowthRunContextWithRunId } from "#lib/run-context.ts";
 
@@ -22,7 +22,7 @@ const workflowSchema = z.object({
 // type_id is duplicated across this file, create-action-item.ts, the report-composer subagent's
 // copy of this file, and the backend's action item type registry — keep all four in sync.
 export default defineTool({
-  description: `Save the final growth report and action items. The document is the primary customer UI. ${GROWTH_DOCUMENT_AUTHORING_GUIDE} Every action also needs its own document covering evidence, hypothesis, experiment, metrics, and the exact proposed change. Keep titles and descriptions in simple English. Put ready-to-paste coding prompts or blog ideas in payload. Attach workflows only after validate-workflow succeeds; nothing is activated until the customer reviews it.`,
+  description: `Save the final growth report and action items. The report document is the primary customer UI. ${GROWTH_DOCUMENT_AUTHORING_GUIDE} For every action document: ${GROWTH_ACTION_DOCUMENT_AUTHORING_GUIDE} Keep titles and descriptions in simple English. Put ready-to-paste coding prompts or blog ideas in payload. Attach workflows only after validate-workflow succeeds; nothing is activated until the customer reviews it.`,
   inputSchema: z.object({
     title: z.string().min(1).max(500).optional(),
     summary: z.string().min(1),
@@ -39,7 +39,7 @@ export default defineTool({
       tags: growthTagsSchema,
       title: z.string().min(1).max(500),
       description: z.string().min(1),
-      document: growthDocumentInputSchema,
+      document: growthActionDocumentInputSchema,
       payload: actionItemPayloadSchema.optional(),
       watched_metrics: z.array(watchedMetricSchema).max(10).optional(),
       workflow: workflowSchema.optional(),

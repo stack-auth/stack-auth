@@ -2,13 +2,13 @@
 
 import { DesignAlert, DesignButton } from "@/components/design-components";
 import { Link } from "@/components/link";
-import { GrowthApiError, getGrowthReport } from "@/lib/growth/growth-api";
+import { GrowthApiError, getGrowthReport, markGrowthReportRead } from "@/lib/growth/growth-api";
 import { type GrowthLoadable, useGrowthStatus } from "@/lib/growth/growth-data";
 import { GROWTH_DEMO_NOW_MILLIS, buildGrowthDemoReport } from "@/lib/growth/growth-demo-data";
-import type { GrowthReport } from "@/lib/growth/growth-types";
+import type { GrowthReport, GrowthStatus } from "@/lib/growth/growth-types";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { GrowthActionCard, useGrowthHref } from "../components/action-card";
@@ -24,7 +24,7 @@ export default function PageClient() {
         <GrowthStatusGate>
           {(status) => (
             <ReportBody
-              hasReport={status.latestReport != null}
+              latestReport={status.latestReport}
               // "Your report is being prepared" vs "run an analysis first" — the difference matters,
               // because this page is most likely to be opened during exactly the window where the
               // wrong one of those reads as "nothing is happening".
@@ -67,14 +67,16 @@ function ReportEmptyState(props: { held: boolean }) {
 // `value: null` means "no report is readable yet" — either none has been written, or one has been
 // written and not yet released to this customer. Both are valid loaded states, not errors, and the
 // backend deliberately 404s them identically (see getGrowthReportBody's publishedOnly option).
-function ReportBody(props: { hasReport: boolean, held: boolean }) {
+function ReportBody(props: { latestReport: GrowthStatus["latestReport"], held: boolean }) {
   const app = useAdminApp();
-  const { demo } = useGrowthStatus();
+  const { demo, refresh: refreshStatus } = useGrowthStatus();
   const [data, setData] = useState<GrowthLoadable<GrowthReport | null>>({ status: "loading" });
+  const markedReadReportIdRef = useRef<string | null>(null);
+  const hasReport = props.latestReport != null;
 
   const load = useCallback(async () => {
     if (demo) {
-      setData({ status: "loaded", value: props.hasReport ? buildGrowthDemoReport(GROWTH_DEMO_NOW_MILLIS) : null });
+      setData({ status: "loaded", value: hasReport ? buildGrowthDemoReport(GROWTH_DEMO_NOW_MILLIS) : null });
       return;
     }
     try {
@@ -88,12 +90,33 @@ function ReportBody(props: { hasReport: boolean, held: boolean }) {
       captureError("growth-report-load", error);
       setData({ status: "error", message: error instanceof Error ? error.message : String(error) });
     }
-  }, [app, demo, props.hasReport]);
+  }, [app, demo, hasReport]);
 
   useEffect(() => {
     setData({ status: "loading" });
     runAsynchronously(load());
   }, [load]);
+
+  const reportId = data.status === "loaded" ? data.value?.id ?? null : null;
+  const shouldMarkRead = !demo
+    && reportId != null
+    && props.latestReport?.id === reportId
+    && props.latestReport.readAtMillis == null
+    && markedReadReportIdRef.current !== reportId;
+  useEffect(() => {
+    if (!shouldMarkRead) return;
+    markedReadReportIdRef.current = reportId;
+    // The receipt only controls a reminder on the overview. Never delay the report itself for this
+    // cosmetic write; capture a failure so it is diagnosable, and leave the reminder visible.
+    runAsynchronously(async () => {
+      try {
+        await markGrowthReportRead(app, reportId);
+        await refreshStatus();
+      } catch (error) {
+        captureError("growth-report-mark-read", error);
+      }
+    });
+  }, [app, refreshStatus, reportId, shouldMarkRead]);
 
   if (data.status === "loading") {
     return (

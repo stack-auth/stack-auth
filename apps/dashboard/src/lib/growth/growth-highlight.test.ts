@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { selectGrowthHighlight } from "@/app/(main)/(protected)/projects/[projectId]/growth/components/workspace-overview";
-import { buildGrowthDemoOverview, GROWTH_DEMO_NOW_MILLIS } from "./growth-demo-data";
+import { getUnreadGrowthReport, selectGrowthHighlight } from "@/app/(main)/(protected)/projects/[projectId]/growth/components/workspace-overview";
+import { buildGrowthDemoOverview, buildGrowthDemoStatus, GROWTH_DEMO_NOW_MILLIS } from "./growth-demo-data";
 
 const PROJECT_ID = "11111111-2222-3333-4444-555555555555";
 
@@ -44,5 +44,25 @@ describe("selectGrowthHighlight", () => {
     for (const overview of [withBrief, withReportOnly]) {
       expect(selectGrowthHighlight(overview, "other-project")?.href).toMatch(/^\/projects\/other-project\/growth\//);
     }
+  });
+});
+
+describe("getUnreadGrowthReport", () => {
+  it("returns the published report until it has been opened", () => {
+    const status = buildGrowthDemoStatus("steady-state", GROWTH_DEMO_NOW_MILLIS);
+    expect(getUnreadGrowthReport(status)?.id).toBe(status.latestReport?.id);
+  });
+
+  it("hides the prompt after that report is read", () => {
+    const status = buildGrowthDemoStatus("steady-state", GROWTH_DEMO_NOW_MILLIS);
+    if (status.latestReport == null) expect.fail("The steady-state fixture must include a report.");
+    status.latestReport.readAtMillis = GROWTH_DEMO_NOW_MILLIS;
+    expect(getUnreadGrowthReport(status)).toBeNull();
+  });
+
+  it("renders no prompt before a report is published", () => {
+    const status = buildGrowthDemoStatus("report-ready", GROWTH_DEMO_NOW_MILLIS);
+    expect(status.latestReport).toBeNull();
+    expect(getUnreadGrowthReport(status)).toBeNull();
   });
 });

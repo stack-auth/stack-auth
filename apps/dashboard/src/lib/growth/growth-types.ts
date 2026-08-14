@@ -126,6 +126,7 @@ export type GrowthStatus = {
   latestReport: {
     id: string,
     createdAtMillis: number,
+    readAtMillis: number | null,
     trigger: GrowthRunTrigger,
     milestoneLabel: string | null,
   } | null,

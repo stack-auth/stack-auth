@@ -471,6 +471,12 @@ model GrowthReport {
   publishedAt       DateTime?
   publishedByUserId String?
 
+  // Customer read receipt. This belongs to the report row (rather than browser storage) so the
+  // unread prompt is consistent across devices, and every newly published report starts unread.
+  // Like GrowthBrief.readAt, this is branch-wide: Growth is currently a shared project workspace,
+  // not a per-member inbox.
+  readAt DateTime?
+
   run GrowthAnalysisRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@index([projectId, branchId, createdAt(sort: Desc), id(sort: Desc)])

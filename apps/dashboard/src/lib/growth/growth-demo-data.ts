@@ -102,6 +102,7 @@ export function buildGrowthDemoStatus(phase: GrowthPhase, nowMillis: number): Gr
     latestReport: {
       id: "00000000-0000-4000-8000-000000000301",
       createdAtMillis: onboardedAt + 4 * HOUR,
+      readAtMillis: null,
       trigger: "initial",
       milestoneLabel: null,
     },

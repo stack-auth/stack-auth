@@ -11,7 +11,7 @@ import { useGrowthStatus } from "@/lib/growth/growth-data";
 import { GROWTH_CATEGORIES, type GrowthActionItem, type GrowthCategory, type GrowthOverview, type GrowthOverviewFinding, type GrowthStatus } from "@/lib/growth/growth-types";
 import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { ArrowRightIcon, /* CaretDownIcon, */ CoinsIcon, CubeIcon, CursorClickIcon, FlagBannerIcon, UsersThreeIcon } from "@phosphor-icons/react";
+import { ArrowRightIcon, /* CaretDownIcon, */ CoinsIcon, CubeIcon, CursorClickIcon, FileTextIcon, FlagBannerIcon, UsersThreeIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { useGrowthHref } from "./action-card";
@@ -178,6 +178,12 @@ export function selectGrowthHighlight(overview: GrowthOverview, projectId: strin
   return null;
 }
 
+/** The newest published report stays highlighted until this shared project workspace has opened it. */
+export function getUnreadGrowthReport(status: GrowthStatus | undefined): GrowthStatus["latestReport"] {
+  const report = status?.latestReport ?? null;
+  return report?.readAtMillis == null ? report : null;
+}
+
 export function GrowthWorkspaceContent(props: {
   overview: GrowthOverview,
   status?: GrowthStatus,
@@ -191,6 +197,7 @@ export function GrowthWorkspaceContent(props: {
    */
   quizBanner?: ReactNode,
 }) {
+  const withQuery = useGrowthHref();
   const [selected, setSelected] = useState<GrowthCategory>("conversion");
   const [lane, setLane] = useState<"suggestions" | "notes">("suggestions");
   const category = props.overview.categories.find((item) => item.category === selected)
@@ -202,6 +209,7 @@ export function GrowthWorkspaceContent(props: {
   const notes = props.overview.notes.filter((item) => item.category === selected);
   // const highlight = selectGrowthHighlight(props.overview, props.projectId);
   const rerunActive = props.status?.latestReport != null && props.status.analysis.state === "running";
+  const unreadReport = getUnreadGrowthReport(props.status);
 
   return (
     <div className="space-y-8 lg:space-y-12">
@@ -209,6 +217,17 @@ export function GrowthWorkspaceContent(props: {
         <DesignAlert variant="info">
           A fresh analysis is running in the background. This workspace stays available and will update when the run completes.
         </DesignAlert>
+      )}
+      {unreadReport != null && (
+        <div className="flex justify-end">
+          <Link href={withQuery(`/projects/${props.projectId}/growth/report`)}>
+            <DesignButton variant="outline" size="sm">
+              <FileTextIcon className="size-4" />
+              Read your report
+              <ArrowRightIcon className="size-3.5" />
+            </DesignButton>
+          </Link>
+        </div>
       )}
       {/* <article className="overflow-hidden rounded-2xl border border-foreground/[0.08] bg-background p-4 sm:p-6">
         <header className="relative overflow-hidden rounded-[1.5rem] border border-foreground/[0.08] bg-[radial-gradient(circle_at_8%_10%,rgba(252,211,77,0.18),transparent_34%),radial-gradient(circle_at_92%_0%,rgba(125,211,252,0.18),transparent_40%),radial-gradient(circle_at_62%_110%,rgba(216,180,254,0.14),transparent_42%)] px-6 py-8 sm:px-10 sm:py-10 dark:bg-[radial-gradient(circle_at_8%_10%,rgba(161,98,7,0.14),transparent_34%),radial-gradient(circle_at_92%_0%,rgba(14,116,144,0.15),transparent_40%),radial-gradient(circle_at_62%_110%,rgba(107,33,168,0.13),transparent_42%)]">

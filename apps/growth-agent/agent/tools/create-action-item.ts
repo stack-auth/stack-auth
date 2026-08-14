@@ -2,7 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { actionItemPayloadSchema } from "#lib/json-payload.ts";
 import { growthCategorySchema, growthTagsSchema } from "#lib/growth-taxonomy.ts";
-import { GROWTH_DOCUMENT_AUTHORING_GUIDE, growthDocumentInputSchema } from "#lib/growth-document.ts";
+import { GROWTH_ACTION_DOCUMENT_AUTHORING_GUIDE, growthActionDocumentInputSchema } from "#lib/growth-document.ts";
 import { createActionItem } from "#lib/hexclave-client.ts";
 import { readGrowthRunContext } from "#lib/run-context.ts";
 
@@ -25,14 +25,14 @@ const workflowSchema = z.object({
 // them to the report atomically); this tool is for standalone items created
 // outside report composition — daily briefs and chat.
 export default defineTool({
-  description: `Create a standalone action for customer review. Its document must make the evidence, hypothesis, experiment, success metrics, and proposed change easy to scan. ${GROWTH_DOCUMENT_AUTHORING_GUIDE} Nothing runs until the customer reviews and activates it.`,
+  description: `Create a standalone action for customer review. ${GROWTH_ACTION_DOCUMENT_AUTHORING_GUIDE} Nothing runs until the customer reviews and activates it.`,
   inputSchema: z.object({
     type_id: z.enum(["run_ads", "publish_blog", "custom"]),
     category: growthCategorySchema,
     tags: growthTagsSchema,
     title: z.string().min(1).max(500),
     description: z.string().min(1),
-    document: growthDocumentInputSchema,
+    document: growthActionDocumentInputSchema,
     payload: actionItemPayloadSchema.optional(),
     watched_metrics: z.array(watchedMetricSchema).max(10).optional(),
     workflow: workflowSchema.optional(),

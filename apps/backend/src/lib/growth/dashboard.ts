@@ -231,6 +231,7 @@ export async function getGrowthStatusBody(tenancy: Tenancy) {
     latest_report: latestReport == null ? null : {
       id: latestReport.id,
       created_at_millis: latestReport.createdAt.getTime(),
+      read_at_millis: latestReport.readAt == null ? null : latestReport.readAt.getTime(),
       trigger: assertTriggerIsValid(latestReport.run.trigger),
       // Populated once milestones land (the milestone's metric/threshold render as the label); until then
       // milestone-triggered reports simply show a generic badge in the dashboard.

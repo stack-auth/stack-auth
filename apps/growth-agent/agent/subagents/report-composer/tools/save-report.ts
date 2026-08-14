@@ -2,7 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { actionItemPayloadSchema } from "#lib/json-payload.ts";
 import { growthCategorySchema, growthTagsSchema } from "#lib/growth-taxonomy.ts";
-import { GROWTH_DOCUMENT_AUTHORING_GUIDE, growthDocumentInputSchema } from "#lib/growth-document.ts";
+import { GROWTH_ACTION_DOCUMENT_AUTHORING_GUIDE, GROWTH_DOCUMENT_AUTHORING_GUIDE, growthActionDocumentInputSchema, growthDocumentInputSchema } from "#lib/growth-document.ts";
 import { saveReport } from "#lib/hexclave-client.ts";
 
 const watchedMetricSchema = z.object({
@@ -25,7 +25,7 @@ const workflowSchema = z.object({
 // because it is the product's quality bar: fewer reads as lazy, more dilutes
 // the recommendations.
 export default defineTool({
-  description: `Save the final report and 2-5 actions. The report document is the primary customer UI. ${GROWTH_DOCUMENT_AUTHORING_GUIDE} Give every action its own scan-friendly document with evidence, hypothesis, experiment, success metrics, and the exact proposed change. Nothing runs until customer review and activation.`,
+  description: `Save the final report and 2-5 actions. The report document is the primary customer UI. ${GROWTH_DOCUMENT_AUTHORING_GUIDE} For every action document: ${GROWTH_ACTION_DOCUMENT_AUTHORING_GUIDE} Nothing runs until customer review and activation.`,
   inputSchema: z.object({
     project_id: z.string().min(1),
     branch_id: z.string().min(1),
@@ -45,7 +45,7 @@ export default defineTool({
       tags: growthTagsSchema,
       title: z.string().min(1).max(500),
       description: z.string().min(1),
-      document: growthDocumentInputSchema,
+      document: growthActionDocumentInputSchema,
       payload: actionItemPayloadSchema.optional(),
       watched_metrics: z.array(watchedMetricSchema).max(10).optional(),
       workflow: workflowSchema.optional(),

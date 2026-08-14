@@ -91,7 +91,7 @@ describe("internal Growth report release", () => {
     await publishGrowthReportAsStaff(projectId, reportId);
 
     const status = await niceBackendFetch(`${GROWTH_BASE}/status`, { accessType: "admin" });
-    expect(status.body).toMatchObject({ release: { state: "released" }, latest_report: { id: reportId } });
+    expect(status.body).toMatchObject({ release: { state: "released" }, latest_report: { id: reportId, read_at_millis: null } });
 
     const overview = await niceBackendFetch(`${GROWTH_BASE}/overview`, { accessType: "admin" });
     expect(overview.status).toBe(200);
@@ -102,6 +102,30 @@ describe("internal Growth report release", () => {
 
     const report = await niceBackendFetch(`${GROWTH_BASE}/reports/latest`, { accessType: "admin" });
     expect(report).toMatchObject({ status: 200, body: { id: reportId, title: "Growth analysis for the fixture" } });
+  });
+
+  it("marks a published report read once and exposes the receipt on status", async ({ expect }) => {
+    const { projectId, reportId } = await seedHeldReport();
+
+    // Held and malformed ids have the same miss shape as the report GET. A customer cannot use the
+    // receipt endpoint to discover a report that staff have not released.
+    const held = await niceBackendFetch(`${GROWTH_BASE}/reports/${reportId}/read`, { accessType: "admin", method: "POST" });
+    expect(held.status).toBe(404);
+    const malformed = await niceBackendFetch(`${GROWTH_BASE}/reports/not-a-uuid/read`, { accessType: "admin", method: "POST" });
+    expect(malformed.status).toBe(404);
+
+    await publishGrowthReportAsStaff(projectId, reportId);
+    const first = await niceBackendFetch(`${GROWTH_BASE}/reports/${reportId}/read`, { accessType: "admin", method: "POST" });
+    expect(first).toMatchObject({ status: 200, body: { id: reportId } });
+    const afterFirst = await niceBackendFetch(`${GROWTH_BASE}/status`, { accessType: "admin" });
+    const firstReadAt = (afterFirst.body as { latest_report: { read_at_millis: number | null } }).latest_report.read_at_millis;
+    expect(firstReadAt).toEqual(expect.any(Number));
+
+    // Opening the report in another tab is idempotent and preserves the original first-read time.
+    const second = await niceBackendFetch(`${GROWTH_BASE}/reports/${reportId}/read`, { accessType: "admin", method: "POST" });
+    expect(second).toMatchObject({ status: 200, body: { id: reportId } });
+    const afterSecond = await niceBackendFetch(`${GROWTH_BASE}/status`, { accessType: "admin" });
+    expect((afterSecond.body as { latest_report: { read_at_millis: number | null } }).latest_report.read_at_millis).toBe(firstReadAt);
   });
 
   it("locks the workspace again only for the report, not for the customer, when staff unpublish", async ({ expect }) => {

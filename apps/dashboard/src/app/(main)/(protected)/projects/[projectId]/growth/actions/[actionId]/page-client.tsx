@@ -10,17 +10,16 @@ import {
 } from "@/components/design-components";
 import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
-import { activateGrowthAction, dismissGrowthAction, generateGrowthActionBlogDraft, getGrowthActionMetrics, listGrowthActions } from "@/lib/growth/growth-api";
+import { activateGrowthAction, dismissGrowthAction, generateGrowthActionBlogDraft, listGrowthActions } from "@/lib/growth/growth-api";
+import { getGrowthActionNarrativeSections } from "@/lib/growth/growth-action-document";
 import { type GrowthLoadable, useGrowthStatus } from "@/lib/growth/growth-data";
 import { GROWTH_DEMO_NOW_MILLIS, buildGrowthDemoActions, buildGrowthDemoAdsBodyForAction } from "@/lib/growth/growth-demo-data";
-import type { GrowthDocument, GrowthDocumentBlock, GrowthDocumentInline, GrowthEvidenceDatum } from "@/lib/growth/growth-document";
-import { formatGrowthAdSpend, formatGrowthMetricValue } from "@/lib/growth/growth-format";
-import type { GrowthActionItem, GrowthActionMetricSeries, GrowthActionWorkflow } from "@/lib/growth/growth-types";
+import type { GrowthDocument, GrowthDocumentBlock } from "@/lib/growth/growth-document";
+import type { GrowthActionItem, GrowthActionWorkflow } from "@/lib/growth/growth-types";
 import { humanizeGrowthWorkflowTriggers, splitGrowthWorkflowWarnings } from "@/lib/growth/growth-workflow-format";
-import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { CopyPromptButton } from "@/components/ui/copy-button";
-import { ArrowLeftIcon, ArrowSquareOutIcon, ArticleIcon, CheckCircleIcon, EyeIcon, LightningIcon, ProhibitIcon, SparkleIcon, TreeStructureIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, ArrowSquareOutIcon, ArticleIcon, CheckCircleIcon, LightningIcon, ProhibitIcon, TreeStructureIcon } from "@phosphor-icons/react";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
@@ -29,7 +28,6 @@ import { useAdminApp, useProjectId } from "../../../use-admin-app";
 import { WorkflowRunsGrid, WorkflowTriggers } from "../../../workflows/shared";
 import { GROWTH_ACTION_TYPE_META, GrowthActionStatusBadge, useGrowthHref } from "../../components/action-card";
 import { GrowthAppFrame } from "../../components/frame";
-import { buildGrowthDemoActionMetrics, getGrowthMetricLabel, sumMetricSeries } from "../../components/metric-comparison";
 import { GrowthMarkdown } from "../../components/report-sections";
 import { GrowthWorkflowSourceViewer } from "../../components/workflow-source-viewer";
 import { GrowthDocumentFragment } from "../../components/growth-document";
@@ -38,7 +36,7 @@ import { RunAdsPayloadSection } from "./ads-panel";
 export default function PageClient() {
   return (
     <GrowthAppFrame>
-      <PageLayout title="Growth Action" description="Experiment details and watched metrics" allowContentOverflow>
+      <PageLayout title="Growth Action" description="Hypothesis, evidence, and experiment" allowContentOverflow>
         <ActionDetailBody />
       </PageLayout>
     </GrowthAppFrame>
@@ -48,7 +46,6 @@ export default function PageClient() {
 type ActionDetail = {
   /** `null` = the id doesn't exist in this workspace (not-found state, not an error). */
   action: GrowthActionItem | null,
-  metrics: GrowthActionMetricSeries[],
 };
 
 // There is no single-action GET endpoint (deliberate: the list endpoint is the only read surface for
@@ -84,15 +81,13 @@ function ActionDetailBody() {
         status: "loaded",
         value: {
           action,
-          metrics: action == null ? [] : buildGrowthDemoActionMetrics(action, GROWTH_DEMO_NOW_MILLIS),
         },
       });
       return;
     }
     try {
       const action = await findActionById(app, actionId);
-      const metrics = action == null ? [] : await getGrowthActionMetrics(app, actionId);
-      setData({ status: "loaded", value: { action, metrics } });
+      setData({ status: "loaded", value: { action } });
     } catch (error) {
       captureError("growth-action-detail-load", error);
       setData({ status: "error", message: error instanceof Error ? error.message : String(error) });
@@ -161,7 +156,6 @@ function ActionDetailBody() {
       {backLink}
       <ActionNarrative
         action={data.value.action}
-        metrics={data.value.metrics}
         onChanged={load}
       />
       <ActionPayloadSection action={data.value.action} demo={demo} onChanged={load} />
@@ -244,101 +238,6 @@ function ConfirmActionButton(props: {
   );
 }
 
-function inlineText(nodes: GrowthDocumentInline[]): string {
-  return nodes.map((node) => {
-    switch (node.type) {
-      case "text":
-      case "code": {
-        return node.value;
-      }
-      case "break": {
-        return " ";
-      }
-      case "strong":
-      case "emphasis":
-      case "delete":
-      case "link": {
-        return inlineText(node.children);
-      }
-    }
-  }).join("");
-}
-
-type ActionDocumentSections = {
-  main: GrowthDocumentBlock[],
-  success: GrowthDocumentBlock[],
-  action: GrowthDocumentBlock[],
-};
-
-function reorderEvidenceAfterHypothesis(blocks: GrowthDocumentBlock[]): GrowthDocumentBlock[] {
-  const chunks: GrowthDocumentBlock[][] = [];
-  for (const block of blocks) {
-    if (block.type === "heading" || chunks.length === 0) {
-      chunks.push([block]);
-    } else {
-      (chunks.at(-1) ?? throwErr("The action document section list must have a current chunk.")).push(block);
-    }
-  }
-  const headingFor = (chunk: GrowthDocumentBlock[]) => {
-    const first = chunk.at(0);
-    return first?.type === "heading" ? inlineText(first.children).trim().toLocaleLowerCase() : null;
-  };
-  const evidenceIndex = chunks.findIndex((chunk) => headingFor(chunk) === "evidence");
-  const hypothesisIndex = chunks.findIndex((chunk) => headingFor(chunk) === "hypothesis");
-  if (evidenceIndex < 0 || hypothesisIndex < 0 || evidenceIndex > hypothesisIndex) return blocks;
-  const evidence = chunks.splice(evidenceIndex, 1).at(0) ?? throwErr("The Evidence section disappeared while reordering the action document.");
-  const updatedHypothesisIndex = chunks.findIndex((chunk) => headingFor(chunk) === "hypothesis");
-  chunks.splice(updatedHypothesisIndex + 1, 0, evidence);
-  return chunks.flat();
-}
-
-/**
- * The analysis document predates this page's operational controls, so its success/action sections
- * arrive as prose. Pull those two sections into purpose-built UI while leaving every other block in
- * source order. Unknown headings return rendering to the main document instead of being swallowed.
- */
-function splitActionDocument(document: GrowthDocument, actionTitle: string): ActionDocumentSections {
-  const sections: ActionDocumentSections = { main: [], success: [], action: [] };
-  let destination: keyof ActionDocumentSections = "main";
-  for (const block of document.blocks) {
-    if (block.type === "heading") {
-      const heading = inlineText(block.children).trim();
-      const normalized = heading.toLocaleLowerCase();
-      if (normalized === actionTitle.trim().toLocaleLowerCase()) continue;
-      if (normalized === "success metric" || normalized === "success metrics" || normalized === "watch metrics") {
-        destination = "success";
-        continue;
-      }
-      if (normalized === "action") {
-        destination = "action";
-        continue;
-      }
-      destination = "main";
-    }
-    sections[destination].push(block);
-  }
-  return { ...sections, main: reorderEvidenceAfterHypothesis(sections.main) };
-}
-
-function collectMetricDataIds(blocks: GrowthDocumentBlock[]): string[] {
-  const ids: string[] = [];
-  for (const block of blocks) {
-    if (block.type === "component") {
-      if (block.name === "Metric" && block.dataId != null) ids.push(block.dataId);
-      ids.push(...collectMetricDataIds(block.children));
-    } else if (block.type === "list") {
-      for (const item of block.items) ids.push(...collectMetricDataIds(item));
-    }
-  }
-  return ids;
-}
-
-function formatEvidenceMetric(value: number, datum: Extract<GrowthEvidenceDatum, { kind: "metric" }>): string {
-  return datum.unit === "minor_units"
-    ? formatGrowthAdSpend(value, datum.currency ?? "")
-    : formatGrowthMetricValue(value, datum.unit);
-}
-
 function ActionHeading(props: { action: GrowthActionItem }) {
   const { action } = props;
   const typeMeta = GROWTH_ACTION_TYPE_META.get(action.typeId) ?? { label: action.typeId, icon: LightningIcon };
@@ -358,85 +257,6 @@ function ActionHeading(props: { action: GrowthActionItem }) {
       </div>
       <GrowthActionStatusBadge status={action.status} size="md" />
     </header>
-  );
-}
-
-type WatchedMetricRow = {
-  id: string,
-  label: string,
-  before: string,
-  beforeLabel: string,
-  goal: string,
-  goalLabel: string,
-};
-
-function buildWatchedMetricRows(document: GrowthDocument | null, successBlocks: GrowthDocumentBlock[], metrics: GrowthActionMetricSeries[]): WatchedMetricRow[] {
-  const targets = document == null
-    ? []
-    : collectMetricDataIds(successBlocks).flatMap((id) => {
-      const datum = document.data.find((candidate) => candidate.id === id);
-      return datum?.kind === "metric" ? [datum] : [];
-    });
-  const hasTextualGoal = successBlocks.length > 0 && targets.length === 0;
-  const rowCount = Math.max(targets.length, metrics.length);
-  return Array.from({ length: rowCount }, (_, index) => {
-    const target = targets.at(index);
-    const series = metrics.at(index);
-    const beforeTotal = series == null ? null : sumMetricSeries(series.before);
-    return {
-      id: target?.id ?? series?.metricId ?? `watched-metric-${index}`,
-      label: target?.title.replace(/^Target:\s*/i, "") ?? (series == null ? "Watched metric" : getGrowthMetricLabel(series.metricId)),
-      before: target?.comparisonValue != null
-        ? formatEvidenceMetric(target.comparisonValue, target)
-        : beforeTotal == null ? "Not captured" : beforeTotal.toLocaleString(),
-      beforeLabel: target?.comparisonLabel ?? (series == null ? "Baseline before activation" : `${series.windowDays}-day baseline before activation`),
-      goal: target == null ? (hasTextualGoal ? "Defined below" : "Not set") : formatEvidenceMetric(target.value, target),
-      goalLabel: target?.takeaway ?? (hasTextualGoal ? "Use the experiment's success criteria below." : "Set a measurable target before activating this experiment."),
-    };
-  });
-}
-
-function WatchMetricsSection(props: { action: GrowthActionItem, document: GrowthDocument | null, successBlocks: GrowthDocumentBlock[], metrics: GrowthActionMetricSeries[] }) {
-  const rows = buildWatchedMetricRows(props.document, props.successBlocks, props.metrics);
-  const hasStructuredTarget = collectMetricDataIds(props.successBlocks).length > 0;
-  const hasTextualGoal = props.document != null && props.successBlocks.length > 0 && !hasStructuredTarget;
-  const trackingCopy = props.action.activatedAtMillis == null
-    ? "When you activate this experiment, Hexclave captures the before window and starts watching the same metrics after activation."
-    : "Hexclave is comparing the same metrics after activation against the captured before window.";
-  return (
-    <div className="mt-7">
-      <DesignCard title="Watch metrics" subtitle={trackingCopy} icon={EyeIcon} gradient="cyan">
-        {rows.length === 0 ? (
-          <DesignAlert variant="default">This experiment does not have any watched metrics yet.</DesignAlert>
-        ) : (
-          <div className="divide-y divide-foreground/[0.08]">
-            {rows.map((row) => (
-              <div key={row.id} className="py-4 first:pt-0 last:pb-0">
-                <p className="mb-3 text-sm font-medium text-foreground">{row.label}</p>
-                <div className="grid overflow-hidden rounded-xl ring-1 ring-foreground/[0.08] sm:grid-cols-2 sm:divide-x sm:divide-foreground/[0.08]">
-                  <div className="bg-foreground/[0.025] p-4">
-                    <p className="text-xs font-semibold text-muted-foreground">Before</p>
-                    <p className="mt-2 font-mono text-2xl font-semibold tracking-tight tabular-nums">{row.before}</p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{row.beforeLabel}</p>
-                  </div>
-                  <div className="border-t border-foreground/[0.08] bg-cyan-500/[0.05] p-4 sm:border-t-0">
-                    <p className="text-xs font-semibold text-cyan-700 dark:text-cyan-300">Goal</p>
-                    <p className="mt-2 font-mono text-2xl font-semibold tracking-tight tabular-nums">{row.goal}</p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{row.goalLabel}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {hasTextualGoal && props.document != null && (
-              <div className="pt-4">
-                <p className="mb-2 text-xs font-semibold text-muted-foreground">Goal criteria</p>
-                <GrowthDocumentFragment document={props.document} blocks={props.successBlocks} className="[&>ol:last-child]:mb-0 [&>p:last-child]:mb-0 [&>ul:last-child]:mb-0" />
-              </div>
-            )}
-          </div>
-        )}
-      </DesignCard>
-    </div>
   );
 }
 
@@ -484,40 +304,36 @@ function ActionMutationControls(props: { action: GrowthActionItem, onChanged: ()
   );
 }
 
-function ActionExecutionCard(props: { action: GrowthActionItem, document: GrowthDocument | null, actionBlocks: GrowthDocumentBlock[], onChanged: () => Promise<void> }) {
-  const { action } = props;
+function ActionNarrativeSection(props: { title: "Hypothesis" | "Evidence" | "Experiment", document: GrowthDocument | null, blocks: GrowthDocumentBlock[], children?: React.ReactNode }) {
   return (
-    <div className="mt-7">
-      <DesignCard
-        title="Action"
-        subtitle="The execution plan and everything to review before activation"
-        icon={LightningIcon}
-        gradient="green"
-      >
-        <div className="flex flex-col gap-4">
-          {props.document != null && props.actionBlocks.length > 0
-            ? <GrowthDocumentFragment document={props.document} blocks={props.actionBlocks} className="[&>p:last-child]:mb-0" />
-            : <p className="text-sm leading-7 text-muted-foreground">{action.description}</p>}
-          {action.workflow != null && <ActionAutomationPreview action={action} workflow={action.workflow} />}
-          <CodingAgentPromptPreview payload={action.payload} />
-          <ActionMutationControls action={action} onChanged={props.onChanged} />
-        </div>
-      </DesignCard>
-    </div>
+    <section aria-labelledby={`action-${props.title.toLocaleLowerCase()}`}>
+      <h2 id={`action-${props.title.toLocaleLowerCase()}`} className="mb-4 text-xl font-semibold tracking-tight">{props.title}</h2>
+      {props.document != null && props.blocks.length > 0
+        ? <GrowthDocumentFragment document={props.document} blocks={props.blocks} className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0" />
+        : <DesignAlert variant="warning">This suggestion does not include {props.title.toLocaleLowerCase()} content.</DesignAlert>}
+      {props.children}
+    </section>
   );
 }
 
-function ActionNarrative(props: { action: GrowthActionItem, metrics: GrowthActionMetricSeries[], onChanged: () => Promise<void> }) {
+function ActionNarrative(props: { action: GrowthActionItem, onChanged: () => Promise<void> }) {
   const { action } = props;
   const document = action.document ?? null;
-  const sections = document == null ? { main: [], success: [], action: [] } : splitActionDocument(document, action.title);
+  const sections = document == null
+    ? { hypothesis: [], evidence: [], experiment: [] }
+    : getGrowthActionNarrativeSections(document);
   return (
     <section className="border-y border-foreground/[0.08] py-7">
       <article className="mx-auto w-full max-w-4xl">
         <ActionHeading action={action} />
-        {document != null && sections.main.length > 0 && <GrowthDocumentFragment document={document} blocks={sections.main} />}
-        <WatchMetricsSection action={action} document={document} successBlocks={sections.success} metrics={props.metrics} />
-        <ActionExecutionCard action={action} document={document} actionBlocks={sections.action} onChanged={props.onChanged} />
+        <div className="flex flex-col gap-10">
+          <ActionNarrativeSection title="Hypothesis" document={document} blocks={sections.hypothesis} />
+          <ActionNarrativeSection title="Evidence" document={document} blocks={sections.evidence} />
+          <ActionNarrativeSection title="Experiment" document={document} blocks={sections.experiment}>
+            {action.workflow != null && <div className="mt-5"><ActionAutomationPreview action={action} workflow={action.workflow} /></div>}
+            <div className="mt-5"><ActionMutationControls action={action} onChanged={props.onChanged} /></div>
+          </ActionNarrativeSection>
+        </div>
       </article>
     </section>
   );
@@ -698,36 +514,6 @@ const blogIdeaPayloadSchema = z.object({
     outline_summary: z.string().nullish(),
   }),
 });
-
-// Actions that need a code or config change carry a self-contained prompt the reader pastes
-// straight into their own coding agent — so "what do I actually type" is never left as an exercise.
-const codingAgentPromptSchema = z.object({ coding_agent_prompt: z.string().min(1) });
-
-/**
- * The copy-paste prompt for a code-change action. Rendered for ANY action type (a blog, an ad, or a
- * custom item can all need a code change), directly above the type-specific payload panel.
- */
-function CodingAgentPromptPreview(props: { payload: unknown }) {
-  const parsed = codingAgentPromptSchema.safeParse(props.payload);
-  if (!parsed.success) return null;
-  const prompt = parsed.data.coding_agent_prompt;
-  return (
-    <div className="flex flex-col gap-3 border-t border-foreground/[0.08] pt-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="inline-flex items-center gap-1.5 text-sm font-semibold"><SparkleIcon className="size-4" />Prompt preview</p>
-          <p className="mt-1 text-xs text-muted-foreground">Review the implementation prompt before copying it to your coding agent.</p>
-        </div>
-        <CopyPromptButton size="sm" content={prompt}>Copy prompt</CopyPromptButton>
-      </div>
-      {/* Pre-wrapped rather than markdown-rendered: this is text to be copied verbatim, and
-        * rendering it would hide the exact characters the reader is about to paste. */}
-      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-foreground/[0.04] p-4 text-sm leading-relaxed">
-        {prompt}
-      </pre>
-    </div>
-  );
-}
 
 /** One labelled line of the proposed idea; omitted entirely when the run didn't ground that field. */
 function BlogIdeaRow(props: { label: string, value: string | null | undefined }) {

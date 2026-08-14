@@ -231,6 +231,32 @@ export async function getGrowthReportBody(tenancy: Tenancy, reportId: string | "
   };
 }
 
+/**
+ * Marks a published report read once. The published-only lookup preserves the release gate: a
+ * customer cannot acknowledge (or probe for) a held report id. The CAS keeps the first-read time
+ * stable when the report page is opened in more than one tab.
+ */
+export async function markGrowthReportReadBody(tenancy: Tenancy, reportId: string): Promise<{ id: string }> {
+  if (!isUuid(reportId)) throw new StatusError(404, "Report not found.");
+  const report = await globalPrismaClient.growthReport.findFirst({
+    where: {
+      id: reportId,
+      projectId: tenancy.project.id,
+      branchId: tenancy.branchId,
+      publishedAt: { not: null },
+    },
+    select: { id: true, readAt: true },
+  });
+  if (report == null) throw new StatusError(404, "Report not found.");
+  if (report.readAt == null) {
+    await globalPrismaClient.growthReport.updateMany({
+      where: { id: report.id, readAt: null },
+      data: { readAt: new Date() },
+    });
+  }
+  return { id: report.id };
+}
+
 // ---------------------------------------------------------------------------
 // Actions list
 // ---------------------------------------------------------------------------
