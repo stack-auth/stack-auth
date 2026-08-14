@@ -5,7 +5,7 @@ import { Link } from "@/components/link";
 import { getGrowthOverview } from "@/lib/growth/growth-api";
 import { type GrowthLoadable, useGrowthStatus } from "@/lib/growth/growth-data";
 import { buildGrowthDemoOverview, GROWTH_DEMO_NOW_MILLIS } from "@/lib/growth/growth-demo-data";
-import type { GrowthOverviewFinding } from "@/lib/growth/growth-types";
+import type { GrowthOverviewFinding, GrowthStatus } from "@/lib/growth/growth-types";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
@@ -14,23 +14,57 @@ import { useCallback, useEffect, useState } from "react";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
 import { useGrowthHref } from "../../components/action-card";
-import { GrowthAppFrame } from "../../components/frame";
+import { GrowthAppFrame, GrowthStatusGate } from "../../components/frame";
 import { GrowthDocumentRenderer } from "../../components/growth-document";
+import { GrowthReportHoldPanel } from "../../components/report-hold";
 
 export default function PageClient() {
   return (
     <GrowthAppFrame>
       <PageLayout title="Growth Evidence" description="Finding detail and supporting evidence" allowContentOverflow>
-        <FindingDetailBody />
+        <GrowthStatusGate>
+          {(status) => <FindingDetailContent releaseState={status.release.state} />}
+        </GrowthStatusGate>
       </PageLayout>
     </GrowthAppFrame>
   );
 }
 
-function FindingDetailBody() {
-  const app = useAdminApp();
+function GrowthOverviewLink() {
   const projectId = useProjectId();
   const withQuery = useGrowthHref();
+  return (
+    <Link
+      href={withQuery(`/projects/${projectId}/growth`)}
+      className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground hover:transition-none"
+    >
+      <ArrowLeftIcon className="size-4" />
+      Growth overview
+    </Link>
+  );
+}
+
+/**
+ * The detail URL can survive in browser history after the workspace becomes locked. Check the
+ * server-owned release state before mounting the data loader so an expected hold never fires the
+ * gated overview request and turns its 409 into a retryable-looking error.
+ */
+export function FindingDetailContent(props: { releaseState: GrowthStatus["release"]["state"] }) {
+  if (props.releaseState === "released") return <FindingDetailBody />;
+  const reportHasStarted = props.releaseState === "preparing";
+  return (
+    <div className="flex flex-col gap-4">
+      <GrowthOverviewLink />
+      <GrowthReportHoldPanel
+        title={reportHasStarted ? undefined : "Your Growth report isn't ready yet"}
+        detail={reportHasStarted ? undefined : "Complete your first Growth analysis. This evidence will be available when your report is ready."}
+      />
+    </div>
+  );
+}
+
+function FindingDetailBody() {
+  const app = useAdminApp();
   const { demo } = useGrowthStatus();
   const params = useParams<{ findingId: string }>();
   const findingId = params.findingId;
@@ -54,15 +88,7 @@ function FindingDetailBody() {
     runAsynchronously(load());
   }, [load]);
 
-  const backLink = (
-    <Link
-      href={withQuery(`/projects/${projectId}/growth`)}
-      className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground hover:transition-none"
-    >
-      <ArrowLeftIcon className="size-4" />
-      Growth overview
-    </Link>
-  );
+  const backLink = <GrowthOverviewLink />;
 
   if (data.status === "loading") {
     return (

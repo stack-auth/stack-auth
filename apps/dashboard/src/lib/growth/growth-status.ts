@@ -29,20 +29,13 @@ export function getGrowthPhase(status: GrowthStatus): GrowthPhase {
 }
 
 /**
- * Whether the snapshot is expected to change without the user doing anything — the condition under
- * which the overview polls. Only the analysis phases qualify: they advance every few seconds and
- * the checklist is meant to be watched.
- *
- * This USED to also poll through `report-ready && latestReport == null`, back when that window was
- * the few minutes the report phase spent composing. It no longer is: a report is now withheld until
- * a Hexclave reviewer publishes it, and the customer is told to come back in about 24 hours — so
- * that same condition would now mean a request every 7 seconds for a day, to watch for a change
- * that needs a human on the other side. The hold updates on the next page load instead, which is
- * exactly what its copy promises.
- *
- * Everything else is user-driven (fill the form, answer the interview, read the report) or arrives on
- * tomorrow's cron, so polling there would be wasted requests.
+ * Poll quickly while backend analysis phases advance, then slowly after the interview while the
+ * report is composed and held for publication. The latter keeps the loading state tied to the real
+ * admin release without making a request every seven seconds for roughly a day. An unfinished
+ * interview is user-driven, so it does not poll in the background.
  */
-export function isGrowthStatusSelfAdvancing(status: GrowthStatus): boolean {
-  return getGrowthPhase(status) === "analyzing";
+export function getGrowthStatusPollIntervalMillis(status: GrowthStatus): number | null {
+  if (getGrowthPhase(status) === "analyzing") return 7_000;
+  if (status.release.state === "preparing" && status.interview.state === "completed") return 60_000;
+  return null;
 }

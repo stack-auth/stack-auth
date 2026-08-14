@@ -5,10 +5,8 @@ import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getGrowthStatus } from "./growth-api";
 import { buildGrowthDemoStatus, GROWTH_DEMO_NOW_MILLIS } from "./growth-demo-data";
-import { isGrowthStatusSelfAdvancing, type GrowthPhase } from "./growth-status";
+import { getGrowthStatusPollIntervalMillis, type GrowthPhase } from "./growth-status";
 import type { GrowthStatus } from "./growth-types";
-
-const ANALYZING_POLL_INTERVAL_MILLIS = 7_000;
 
 export type GrowthLoadable<T> = { status: "loading" } | { status: "error", message: string } | { status: "loaded", value: T };
 
@@ -29,7 +27,7 @@ function errorMessage(error: unknown): string {
  * `app` must be the project's own admin app (see `growth-api.ts` for the authorization story). In demo mode
  * the provider short-circuits to fixtures for `demoPhase` and never hits the network.
  *
- * While the snapshot is still advancing on its own (see isGrowthStatusSelfAdvancing) the provider re-polls
+ * While the snapshot is still advancing on its own, the provider re-polls
  * on an interval; everywhere else the next change needs the user, so polling there would be wasted requests.
  */
 export function GrowthStatusProvider(props: { demo: boolean, demoPhase: GrowthPhase, app: object, children: React.ReactNode }) {
@@ -59,14 +57,12 @@ export function GrowthStatusProvider(props: { demo: boolean, demoPhase: GrowthPh
     runAsynchronously(refresh());
   }, [refresh, demo]);
 
-  // Not `phase === "analyzing"`: the report is composed after the interview, while the phase already
-  // reads `report-ready`. See isGrowthStatusSelfAdvancing for why both windows count.
-  const selfAdvancing = data.status === "loaded" && isGrowthStatusSelfAdvancing(data.value);
+  const pollIntervalMillis = data.status === "loaded" ? getGrowthStatusPollIntervalMillis(data.value) : null;
   useEffect(() => {
-    if (demo || !selfAdvancing) return;
-    const interval = setInterval(() => runAsynchronously(refresh()), ANALYZING_POLL_INTERVAL_MILLIS);
+    if (demo || pollIntervalMillis == null) return;
+    const interval = setInterval(() => runAsynchronously(refresh()), pollIntervalMillis);
     return () => clearInterval(interval);
-  }, [selfAdvancing, demo, refresh]);
+  }, [pollIntervalMillis, demo, refresh]);
 
   /**
    * Refresh the moment this tab regains focus, on top of the interval above.
@@ -76,15 +72,15 @@ export function GrowthStatusProvider(props: { demo: boolean, demoPhase: GrowthPh
    * page look like it did not notice — which is exactly the moment they are checking whether it
    * worked. Focus is the cheap, accurate signal that they came back.
    *
-   * Gated on the same self-advancing window as the interval: a settled run has nothing to re-poll,
+   * Gated on the same polling window as the interval: a settled run has nothing to re-poll,
    * and refreshing on every tab switch forever would be a pointless request on every growth page.
    */
   useEffect(() => {
-    if (demo || !selfAdvancing) return;
+    if (demo || pollIntervalMillis == null) return;
     const onFocus = () => runAsynchronously(refresh());
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [selfAdvancing, demo, refresh]);
+  }, [pollIntervalMillis, demo, refresh]);
 
   const value = useMemo(() => ({ data, demo, refresh }), [data, demo, refresh]);
   return <GrowthStatusContext.Provider value={value}>{props.children}</GrowthStatusContext.Provider>;

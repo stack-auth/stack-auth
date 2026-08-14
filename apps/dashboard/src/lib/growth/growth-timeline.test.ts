@@ -21,7 +21,17 @@ describe("getGrowthTimelineStepStates", () => {
   });
 
   it("makes computing metrics the current step while it runs, holding the analysis back", () => {
-    const states = getGrowthTimelineStepStates(buildGrowthDemoStatus("analyzing", GROWTH_DEMO_NOW_MILLIS));
+    const base = buildGrowthDemoStatus("analyzing", GROWTH_DEMO_NOW_MILLIS);
+    const status: GrowthStatus = {
+      ...base,
+      analysis: {
+        ...base.analysis,
+        computeMetrics: { state: "running", metricLabels: ["Daily active users"] },
+        integrations: { state: "pending" },
+      },
+      release: { state: "not_ready" },
+    };
+    const states = getGrowthTimelineStepStates(status);
     expect([...states.entries()]).toEqual([
       ["set-up", "done"],
       ["compute-metrics", "current"],
@@ -109,28 +119,28 @@ describe("getGrowthTimelineStepStates", () => {
     ]);
   });
 
-  it("marks the interview current once the analysis completes", () => {
+  it("keeps deep analysis current and folds the generated interview into it", () => {
     const states = getGrowthTimelineStepStates(buildGrowthDemoStatus("interview", GROWTH_DEMO_NOW_MILLIS));
     expect([...states.entries()]).toEqual([
       ["set-up", "done"],
       ["compute-metrics", "done"],
       ["integrations", "done"],
-      ["analysis", "done"],
-      ["interview", "current"],
+      ["analysis", "current"],
+      ["interview", "hidden"],
       ["report", "upcoming"],
       ["ongoing", "upcoming"],
     ]);
   });
 
-  it("marks the report current after the interview until the first brief", () => {
+  it("keeps deep analysis current after the interview until the report is published", () => {
     const states = getGrowthTimelineStepStates(buildGrowthDemoStatus("report-ready", GROWTH_DEMO_NOW_MILLIS));
     expect([...states.entries()]).toEqual([
       ["set-up", "done"],
       ["compute-metrics", "done"],
       ["integrations", "done"],
-      ["analysis", "done"],
-      ["interview", "done"],
-      ["report", "current"],
+      ["analysis", "current"],
+      ["interview", "hidden"],
+      ["report", "upcoming"],
       ["ongoing", "upcoming"],
     ]);
   });

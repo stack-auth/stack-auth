@@ -136,10 +136,10 @@ function CompletionPanel(props: { skipped: boolean, answeredCount: number, total
           />
           {!props.skipped && <span>Thanks — that context makes the report much sharper.</span>}
         </div>
-        {/* This panel is the first thing shown after submitting, so it is where the wait actually
-          * begins — saying nothing here would leave people refreshing the overview. Only shown while
-          * the report is genuinely being prepared; a later interview retake on an already-released
-          * workspace must not promise another day of waiting. */}
+        {/* The customer entered the loading state when deep analysis began. Repeat its expectation
+          * here after submission so the handoff back to the overview does not look like the process
+          * stopped. A later interview retake on an already-released workspace must not promise
+          * another day of waiting. */}
         {!reportAvailable && held && <p className="text-sm text-muted-foreground">{GROWTH_HOLD_BODY}</p>}
         <div className="flex flex-wrap gap-2">
           {reportAvailable ? (

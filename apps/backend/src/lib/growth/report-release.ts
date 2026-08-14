@@ -74,22 +74,21 @@ export type GrowthReleaseState = typeof GROWTH_RELEASE_STATES[number];
  * The single release signal on the status wire, which the dashboard uses to decide between the
  * "come back in about 24 hours" hold and the live workspace.
  *
- * `preparing` deliberately covers BOTH "the report phase is still composing" and "written, waiting
- * for a human to publish it". The customer cannot tell those apart and should not be able to: the
- * copy they see is the same either way, and a wire value named after the review step would announce
- * in devtools something the product does not say out loud.
+ * `preparing` covers the whole customer-visible analysis window: deep analysis has started, the
+ * interview may still be generated or awaiting answers, the report may still be composing, or the
+ * finished report may be waiting for a human to publish it. The customer sees that as one continuous
+ * operation, and the dashboard keeps its analysis progress open until release.
  *
- * `not_ready` is everything before that — no onboarding, no run, a failed run, or an interview still
- * outstanding. The timeline is already showing an earlier step in those cases, so the hold copy
- * would be premature.
+ * `not_ready` is everything before deep analysis starts, plus failed analysis. A failure must win
+ * over the hold so the retry action remains visible instead of promising a report that is not coming.
  */
 export function getGrowthReleaseState(options: {
   released: boolean,
-  interviewSettled: boolean,
+  deepAnalysisStarted: boolean,
   analysisFailed: boolean,
 }): GrowthReleaseState {
   if (options.released) return "released";
-  if (options.analysisFailed || !options.interviewSettled) return "not_ready";
+  if (options.analysisFailed || !options.deepAnalysisStarted) return "not_ready";
   return "preparing";
 }
 

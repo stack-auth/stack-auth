@@ -42,7 +42,9 @@ describe("buildGrowthDemoStatus", () => {
       expect(status.analysis.computeMetrics == null).toBe(status.analysis.steps == null);
     }
     const analyzing = buildGrowthDemoStatus("analyzing", NOW);
-    expect(analyzing.analysis.computeMetrics?.state).toBe("running");
+    // The analyzing demo now starts at deep analysis so it showcases the long-lived loading state;
+    // the standalone metrics block has therefore already settled.
+    expect(analyzing.analysis.computeMetrics?.state).toBe("done");
     expect(analyzing.analysis.computeMetrics?.metricLabels.length ?? 0).toBeGreaterThanOrEqual(8);
     expect(buildGrowthDemoStatus("steady-state", NOW).analysis.computeMetrics?.state).toBe("done");
   });
@@ -55,9 +57,8 @@ describe("buildGrowthDemoStatus", () => {
       expect((status.analysis.steps ?? []).some((step) => step.id === "integrations")).toBe(false);
       expect(status.analysis.integrations == null).toBe(status.analysis.steps == null);
     }
-    // While analyzing, compute-metrics is still running, so the step must honestly be "pending"
-    // (the backend only derives "waiting" once metrics settle); settled fixtures show "connected".
-    expect(buildGrowthDemoStatus("analyzing", NOW).analysis.integrations?.state).toBe("pending");
+    // The analyzing fixture begins after setup, at deep analysis, so integrations is settled there.
+    expect(buildGrowthDemoStatus("analyzing", NOW).analysis.integrations?.state).toBe("connected");
     const steady = buildGrowthDemoStatus("steady-state", NOW).analysis.integrations;
     expect(steady?.state).toBe("connected");
   });
@@ -147,9 +148,8 @@ describe("buildGrowthDemoInterview", () => {
 });
 
 describe("buildGrowthDemoStatus release states", () => {
-  // The hold is the state a real customer spends most of a day in, so demo mode has to be able to
-  // show it — it is the only fixture that exercises the "check back in about 24 hours" copy on the
-  // timeline, the report page, the interview completion panel and the chat lock.
+  // The hold is the state a real customer spends most of a day in, so demo mode has to exercise it
+  // throughout deep analysis, the generated interview, and final report preparation.
   it("makes report-ready the hold: nothing released, no report to open", () => {
     const status = buildGrowthDemoStatus("report-ready", NOW);
     expect(status.release.state).toBe("preparing");
@@ -163,9 +163,15 @@ describe("buildGrowthDemoStatus release states", () => {
     expect(status.latestReport).not.toBe(null);
   });
 
-  it("keeps every pre-interview phase out of the hold copy", () => {
-    for (const phase of ["not-onboarded", "analyzing", "analysis-failed", "interview"] as const) {
+  it("keeps setup and failures out of the hold copy", () => {
+    for (const phase of ["not-onboarded", "analysis-failed"] as const) {
       expect(buildGrowthDemoStatus(phase, NOW).release.state).toBe("not_ready");
+    }
+  });
+
+  it("keeps deep analysis and the generated interview inside the hold", () => {
+    for (const phase of ["analyzing", "interview"] as const) {
+      expect(buildGrowthDemoStatus(phase, NOW).release.state).toBe("preparing");
     }
   });
 });

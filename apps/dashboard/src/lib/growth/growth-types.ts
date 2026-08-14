@@ -92,13 +92,11 @@ export type GrowthIntegrations = {
 /**
  * Whether the customer's workspace has been released to them.
  *
- * `preparing` is the hold: the interview is in, and the report is being written and reviewed. The
- * customer is shown "check back in about 24 hours" and nothing else — no insights, no journey, no
- * notes or suggestions. It deliberately does not distinguish "still composing" from "waiting for a
- * Hexclave reviewer", because the customer sees identical copy either way.
+ * `preparing` is the initial hold from the moment deep analysis starts until the first report is
+ * published. The generated interview is presented inside that loading state when it becomes ready;
+ * after the customer answers, the same state continues through report composition and release.
  *
- * `not_ready` is everything earlier (no onboarding, no run, a failed run, an unfinished interview),
- * where the timeline is already showing a step of its own and the hold copy would be premature.
+ * `not_ready` is everything earlier (no onboarding, no run, or pre-analysis setup) plus failed runs.
  */
 export const GROWTH_RELEASE_STATES = ["not_ready", "preparing", "released"] as const;
 export type GrowthReleaseState = typeof GROWTH_RELEASE_STATES[number];

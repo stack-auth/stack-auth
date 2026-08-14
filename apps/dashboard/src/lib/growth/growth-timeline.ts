@@ -82,5 +82,19 @@ export function getGrowthTimelineStepStates(status: GrowthStatus): Map<GrowthTim
       states.set("analysis", "upcoming");
     }
   }
+
+  // The first deep analysis is one continuous customer-visible operation. Once it begins, keep its
+  // checklist expanded while the backend generates the interview, waits for those answers, composes
+  // the report, and holds it for publication. The interview remains actionable inside AnalysisStep;
+  // hiding its old standalone row prevents two competing "current" steps. A previously released
+  // workspace never enters this branch during a later run, so reruns cannot lock the workspace again.
+  const deepAnalysisIsCurrent = states.get("analysis") === "current";
+  const analysisHasMovedPastDeepWork = phase === "interview" || phase === "report-ready";
+  if (status.release.state === "preparing" && (deepAnalysisIsCurrent || analysisHasMovedPastDeepWork)) {
+    states.set("analysis", "current");
+    states.set("interview", "hidden");
+    states.set("report", "upcoming");
+    states.set("ongoing", "upcoming");
+  }
   return states;
 }

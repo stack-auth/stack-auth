@@ -11,24 +11,22 @@ describe("getGrowthReleaseState", () => {
   it("is released once anything has been published, whatever else is happening", () => {
     // Notably true even mid-re-run: a second analysis that is still awaiting review must not take a
     // customer's already-published workspace away from them.
-    expect(getGrowthReleaseState({ released: true, interviewSettled: true, analysisFailed: false })).toBe("released");
-    expect(getGrowthReleaseState({ released: true, interviewSettled: false, analysisFailed: false })).toBe("released");
-    expect(getGrowthReleaseState({ released: true, interviewSettled: true, analysisFailed: true })).toBe("released");
+    expect(getGrowthReleaseState({ released: true, deepAnalysisStarted: true, analysisFailed: false })).toBe("released");
+    expect(getGrowthReleaseState({ released: true, deepAnalysisStarted: false, analysisFailed: false })).toBe("released");
+    expect(getGrowthReleaseState({ released: true, deepAnalysisStarted: true, analysisFailed: true })).toBe("released");
   });
 
-  it("holds once the interview is in and nothing has been published yet", () => {
-    expect(getGrowthReleaseState({ released: false, interviewSettled: true, analysisFailed: false })).toBe("preparing");
+  it("holds from the moment deep analysis starts until publication", () => {
+    expect(getGrowthReleaseState({ released: false, deepAnalysisStarted: true, analysisFailed: false })).toBe("preparing");
   });
 
-  it("is not_ready before the interview is settled", () => {
-    // The timeline is still showing an earlier step here, so promising a report tomorrow would be
-    // premature — the customer has not given us the answers it is written from.
-    expect(getGrowthReleaseState({ released: false, interviewSettled: false, analysisFailed: false })).toBe("not_ready");
+  it("is not_ready before deep analysis starts", () => {
+    expect(getGrowthReleaseState({ released: false, deepAnalysisStarted: false, analysisFailed: false })).toBe("not_ready");
   });
 
   it("is not_ready when the run failed, rather than promising a report that is not coming", () => {
     // The analysis step owns the retry affordance in this state; a cheerful "check back tomorrow"
     // next to a failed run would send someone away from the one button that fixes it.
-    expect(getGrowthReleaseState({ released: false, interviewSettled: true, analysisFailed: true })).toBe("not_ready");
+    expect(getGrowthReleaseState({ released: false, deepAnalysisStarted: true, analysisFailed: true })).toBe("not_ready");
   });
 });

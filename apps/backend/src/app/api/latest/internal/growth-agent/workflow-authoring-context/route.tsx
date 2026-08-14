@@ -5,8 +5,8 @@ import {
   getWorkflowPlatformEventTypes,
   listExistingGrowthWorkflowIds,
 } from "@/lib/growth/workflow-authoring";
+import { GROWTH_WORKFLOWS_EDITOR_AMBIENT_DTS, GROWTH_WORKFLOWS_EDITOR_DTS } from "@/lib/growth/workflow-authoring-dts";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { WORKFLOWS_EDITOR_AMBIENT_DTS, WORKFLOWS_EDITOR_DTS } from "@hexclave/shared/dist/interface/workflows-editor-dts";
 import { yupMixed, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
 
 // Growth-agent machine route; see sql-query/route.tsx for the auth-opt-out rationale. One-stop
@@ -42,8 +42,9 @@ export const GET = createSmartRouteHandler({
       bodyType: "json",
       body: {
         // Both DTS blobs concatenated: the module contract plus the ambient stdlib declarations,
-        // exactly what the dashboard's Monaco editor loads.
-        dts: `${WORKFLOWS_EDITOR_DTS}\n${WORKFLOWS_EDITOR_AMBIENT_DTS}`,
+        // mirroring what the dashboard's Monaco editor loads (growth keeps its own copy; see
+        // lib/growth/workflow-authoring-dts.ts for why).
+        dts: `${GROWTH_WORKFLOWS_EDITOR_DTS}\n${GROWTH_WORKFLOWS_EDITOR_AMBIENT_DTS}`,
         guide: getGrowthWorkflowAuthoringGuide(),
         growth_rules: getGrowthWorkflowRules(),
         existing_growth_workflow_ids: await listExistingGrowthWorkflowIds(tenancy),

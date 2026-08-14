@@ -163,7 +163,9 @@ export async function getGrowthStatusBody(tenancy: Tenancy) {
   // has had a report released" — no second query needed for the release state.
   const releaseState = getGrowthReleaseState({
     released: latestReport != null,
-    interviewSettled: interviewState === "completed",
+    // The hold starts with the first real deep-analysis phase, not with run creation: computing
+    // metrics and the optional integrations gate still have their own explicit setup states.
+    deepAnalysisStarted: steps?.some((step) => step.state === "running" || step.state === "done") ?? false,
     analysisFailed: analysisState === "failed",
   });
 

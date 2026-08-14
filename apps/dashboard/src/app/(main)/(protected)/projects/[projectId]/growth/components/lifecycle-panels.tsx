@@ -27,7 +27,7 @@ import { useEffect, useState } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { useGrowthHref } from "./action-card";
 import { GrowthStatusGate } from "./frame";
-import { GROWTH_HOLD_BODY } from "./report-hold";
+import { GROWTH_HOLD_BODY, GROWTH_HOLD_SHORT } from "./report-hold";
 import { GrowthTimeline, GrowthTimelineStep } from "./timeline";
 
 /**
@@ -497,6 +497,58 @@ function AnalysisFailedContent(props: { status: GrowthStatus }) {
   );
 }
 
+function EmbeddedInterviewCard(props: { status: GrowthStatus }) {
+  const projectId = useProjectId();
+  const withQuery = useGrowthHref();
+  const interview = props.status.interview;
+  if (interview.state !== "ready" && interview.state !== "in_progress") return null;
+  const inProgress = interview.state === "in_progress";
+  return (
+    <DesignCard>
+      <div className="flex flex-col gap-4">
+        <div>
+          <p className="text-sm font-medium text-foreground">Your interview is ready</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Answer a few questions while the analysis continues so the report fits your business.
+          </p>
+        </div>
+        {inProgress && (
+          <p className="text-sm text-muted-foreground">
+            You have answered {interview.answeredCount} of about {interview.estimatedTotal} so far.
+          </p>
+        )}
+        <div>
+          <GoToButton href={withQuery(`/projects/${projectId}/growth/interview`)}>
+            {inProgress ? "Continue the interview" : "Take the interview"}
+          </GoToButton>
+        </div>
+      </div>
+    </DesignCard>
+  );
+}
+
+/** Customer-facing steps that keep the initial analysis visibly active through publication. */
+function analysisLoadingSteps(status: GrowthStatus): GrowthAnalysisStep[] | null {
+  const steps = status.analysis.steps;
+  if (steps == null || status.release.state !== "preparing") return steps;
+  const interviewState = status.interview.state === "completed" ? "done" : status.interview.state === "ready" || status.interview.state === "in_progress" ? "running" : "pending";
+  return [
+    ...steps,
+    {
+      id: "customer-interview",
+      label: "Your interview",
+      description: "A short set of questions generated from the analysis. Your answers give the final report context that product data and website research cannot provide.",
+      state: interviewState,
+    },
+    {
+      id: "report-release",
+      label: "Preparing your report",
+      description: "Combines the analysis and your answers into the report that opens the Growth workspace.",
+      state: status.interview.state === "completed" ? "running" : "pending",
+    },
+  ];
+}
+
 function AnalysisStep(props: { status: GrowthStatus, state: GrowthTimelineStepState }) {
   const { status, state } = props;
   switch (state) {
@@ -518,12 +570,13 @@ function AnalysisStep(props: { status: GrowthStatus, state: GrowthTimelineStepSt
       );
     }
     case "current": {
-      const steps = status.analysis.steps;
+      const steps = analysisLoadingSteps(status);
+      const holdActive = status.release.state === "preparing";
       return (
         <GrowthTimelineStep
           state="current"
           title="Deep analysis"
-          subtitle="This usually takes a little while — feel free to come back later"
+          subtitle={holdActive ? GROWTH_HOLD_SHORT : "This usually takes a little while — feel free to come back later"}
           badge={<DesignBadge label="In progress" color="cyan" size="sm" />}
         >
           <DesignCard>
@@ -531,6 +584,7 @@ function AnalysisStep(props: { status: GrowthStatus, state: GrowthTimelineStepSt
               <p className="text-sm text-muted-foreground">Your analysis is queued and will start any moment now.</p>
             ) : (
               <div className="flex flex-col">
+                {holdActive && <p className="pb-3 text-sm text-muted-foreground">{GROWTH_HOLD_BODY}</p>}
                 {/*
                   Every row still pending means the run exists and this step is "current", but the
                   orchestrator has not dispatched a single phase yet — so the card renders as a
@@ -546,6 +600,7 @@ function AnalysisStep(props: { status: GrowthStatus, state: GrowthTimelineStepSt
               </div>
             )}
           </DesignCard>
+          {holdActive && <EmbeddedInterviewCard status={status} />}
         </GrowthTimelineStep>
       );
     }
@@ -588,34 +643,14 @@ function InterviewStep(props: { status: GrowthStatus, state: GrowthTimelineStepS
       );
     }
     case "current": {
-      const inProgress = interview.state === "in_progress";
       return (
         <GrowthTimelineStep
           state="current"
           title="Interview"
           subtitle="Answer a few questions so the report fits your business"
-          badge={inProgress ? <DesignBadge label={`${interview.answeredCount} of ~${interview.estimatedTotal} answered`} color="purple" size="sm" /> : undefined}
+          badge={interview.state === "in_progress" ? <DesignBadge label={`${interview.answeredCount} of ~${interview.estimatedTotal} answered`} color="purple" size="sm" /> : undefined}
         >
-          <DesignCard>
-            <div className="flex flex-col gap-4">
-              <p className="text-sm text-muted-foreground">
-                We looked through your website, competitors, and project data. Before we write your report, we
-                have about {interview.estimatedTotal} questions — most are multiple choice, and you can always
-                type your own answer.
-              </p>
-              {inProgress && (
-                <p className="text-sm text-muted-foreground">
-                  You have answered {interview.answeredCount} of about {interview.estimatedTotal} so far — pick
-                  up right where you left off.
-                </p>
-              )}
-              <div>
-                <GoToButton href={withQuery(`/projects/${projectId}/growth/interview`)}>
-                  {inProgress ? "Continue the interview" : "Take the interview"}
-                </GoToButton>
-              </div>
-            </div>
-          </DesignCard>
+          <EmbeddedInterviewCard status={status} />
         </GrowthTimelineStep>
       );
     }
@@ -630,9 +665,9 @@ function InterviewStep(props: { status: GrowthStatus, state: GrowthTimelineStepS
         />
       );
     }
-    // Only the two phase-backed steps (computing metrics, integrations) can be hidden.
+    // Hidden only while the interview is embedded in the initial Deep analysis loading state.
     case "hidden": {
-      return throwErr("The interview timeline step is never hidden");
+      return null;
     }
   }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildGrowthDemoStatus, GROWTH_DEMO_NOW_MILLIS } from "./growth-demo-data";
-import { getGrowthPhase, isGrowthStatusSelfAdvancing } from "./growth-status";
+import { getGrowthPhase, getGrowthStatusPollIntervalMillis } from "./growth-status";
 import type { GrowthStatus } from "./growth-types";
 
 function baseStatus(): GrowthStatus {
@@ -68,36 +68,32 @@ describe("getGrowthPhase", () => {
   });
 });
 
-describe("isGrowthStatusSelfAdvancing", () => {
+describe("getGrowthStatusPollIntervalMillis", () => {
   it("polls through the analysis", () => {
     const status = baseStatus();
     status.analysis = { ...status.analysis, state: "running", completedAtMillis: null };
-    expect(isGrowthStatusSelfAdvancing(status)).toBe(true);
+    expect(getGrowthStatusPollIntervalMillis(status)).toBe(7_000);
   });
 
-  // This window USED to poll, back when "no report yet" meant the report phase was composing and
-  // would land within minutes. A report is now withheld until a Hexclave reviewer publishes it and
-  // the customer is told to come back in about 24 hours — so polling here would be a request every
-  // 7 seconds for a day, waiting on a human. The hold updates on the next page load instead.
-  it("does not poll through the hold, even though the report step is still current", () => {
+  it("polls slowly through the post-interview hold so publication ends the loading state", () => {
     const status = baseStatus();
     status.latestReport = null;
     status.release = { state: "preparing" };
     expect(getGrowthPhase(status)).toBe("report-ready");
-    expect(isGrowthStatusSelfAdvancing(status)).toBe(false);
+    expect(getGrowthStatusPollIntervalMillis(status)).toBe(60_000);
   });
 
   it("stops once the report exists", () => {
     const status = baseStatus();
     status.latestBrief = null;
     expect(getGrowthPhase(status)).toBe("report-ready");
-    expect(isGrowthStatusSelfAdvancing(status)).toBe(false);
+    expect(getGrowthStatusPollIntervalMillis(status)).toBe(null);
   });
 
   it("does not poll a settled workspace or one waiting on the human", () => {
-    expect(isGrowthStatusSelfAdvancing(baseStatus())).toBe(false);
+    expect(getGrowthStatusPollIntervalMillis(baseStatus())).toBe(null);
     const interviewing = baseStatus();
     interviewing.interview = { state: "ready", answeredCount: 0, estimatedTotal: 8 };
-    expect(isGrowthStatusSelfAdvancing(interviewing)).toBe(false);
+    expect(getGrowthStatusPollIntervalMillis(interviewing)).toBe(null);
   });
 });

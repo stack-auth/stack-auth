@@ -1,5 +1,5 @@
-import { executeProjectScopedAnalyticsQuery } from "@/lib/analytics-sql";
 import { authenticateGrowthAgentRequest } from "@/lib/growth/agent-auth";
+import { executeGrowthAnalyticsQuery } from "@/lib/growth/analytics-sql";
 import { buildIdentifyingColumnsError, findIdentifyingColumns } from "@/lib/growth/sql-privacy";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupMixed, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
@@ -35,7 +35,7 @@ export const POST = createSmartRouteHandler({
       projectId: body.project_id,
       branchId: body.branch_id,
     });
-    const result = await executeProjectScopedAnalyticsQuery({
+    const result = await executeGrowthAnalyticsQuery({
       query: body.query,
       projectId: body.project_id,
       branchId: body.branch_id,
@@ -57,7 +57,7 @@ export const POST = createSmartRouteHandler({
     }
     // Query failures (syntax errors, too-large results, ...) are agent feedback, not HTTP failures:
     // the agent reads the error string and adjusts its query, so both variants are a 200. Field
-    // names are the snake_case mirror of ProjectScopedAnalyticsQueryResult.
+    // names are the snake_case mirror of GrowthAnalyticsQueryResult.
     return {
       statusCode: 200,
       bodyType: "json",

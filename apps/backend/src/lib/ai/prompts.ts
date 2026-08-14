@@ -46,7 +46,6 @@ export const SYSTEM_PROMPT_IDS = [
   "build-analytics-query",
   "filter-analytics-table",
   "rewrite-template-source",
-  "growth-assistant",
 ] as const;
 export type SystemPromptId = typeof SYSTEM_PROMPT_IDS[number];
 
@@ -1128,16 +1127,6 @@ Requirements:
 4) Preserve subject/notification/category and existing JSX structure as much as possible.
 5) Fix imports after removal.
 6) Return only raw TSX source, without markdown code fences.
-`,
-  "growth-assistant": `
-## Context: Growth App Assistant
-
-You are the growth assistant inside a Hexclave project's Growth app. You help the project's team
-understand their growth data (signups, retention, revenue, briefs, reports) and act on it.
-
-- Ground every claim in the project's actual data; if you cannot verify something, say so.
-- Be concise and practical; use markdown, and **bold** key numbers and takeaways.
-- Never expose internal identifiers, tool names, or infrastructure details.
 `,
 };
 

@@ -138,18 +138,18 @@ export function buildGrowthDemoStatus(phase: GrowthPhase, nowMillis: number): Gr
           trigger: "initial",
           startedAtMillis: nowMillis - 2 * HOUR,
           completedAtMillis: null,
-          // Metrics stay "running" in the analyzing fixture so demo mode showcases the animated
-          // per-metric ticker (the block's most interesting state).
           steps: demoSteps(["done", "running", "running", "pending", "pending"]),
-          computeMetrics: demoComputeMetrics("running"),
-          integrations: demoIntegrations("pending"),
+          // This fixture represents deep analysis itself, after the two setup phases settle, so demo
+          // mode exercises the continuous loading state and its embedded interview/report rows.
+          computeMetrics: demoComputeMetrics("done"),
+          integrations: demoIntegrations("connected"),
           errorMessage: null,
         },
         interview: { state: "not_ready", answeredCount: 0, estimatedTotal: 8 },
         latestReport: null,
         latestBrief: null,
         counts: { suggestedActions: 0, activeActions: 0 },
-        release: { state: "not_ready" },
+        release: { state: "preparing" },
         orchestration: demoOrchestration(true),
       };
     }
@@ -181,7 +181,7 @@ export function buildGrowthDemoStatus(phase: GrowthPhase, nowMillis: number): Gr
         latestReport: null,
         latestBrief: null,
         counts: { suggestedActions: 0, activeActions: 0 },
-        release: { state: "not_ready" },
+        release: { state: "preparing" },
       };
     }
     case "report-ready": {
