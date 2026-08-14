@@ -115,7 +115,9 @@ describe("external DB sync sequence visibility", () => {
             "Sequence allocation lock remained unavailable while acquiring row A in the regression test",
           );
         }
-        allocationA = allocation[0]?.sequenceId;
+        allocationA = allocation[0]?.sequenceId ?? throwErr(
+          `Sequence allocation must return row A's sequence ID for EmailOutbox ${rowA.id}`,
+        );
         resolveTransactionAAllocated();
         await transactionAReleased;
       }, { maxWait: 10_000, timeout: 60_000 });
