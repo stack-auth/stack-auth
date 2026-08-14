@@ -1,7 +1,7 @@
 import { node } from "@elysiajs/node";
 import { Elysia } from "elysia";
 import { randomUUID, timingSafeEqual } from "node:crypto";
-import { createFlyBuilder, createMockBuilder, verifyWebhookToken, type Builder } from "./builds.js";
+import { INTERNAL_COMPLETE_PATH_PREFIX, createFlyBuilder, createMockBuilder, verifyWebhookToken, type Builder } from "./builds.js";
 import { MAX_UPLOAD_BYTES, MAX_WEBHOOK_BODY_BYTES, getConfig, resolveNamespaceOrg } from "./config.js";
 import { attachDomain, detachDomain, normalizeHostnameOrThrow, readDomain } from "./domains.js";
 import { MarshalError } from "./errors.js";
@@ -36,6 +36,12 @@ import type { LogLine } from "./types.js";
 // (which writes the record first); past that, a missing object means the drain was empty or
 // failed and no further lines are ever coming.
 const DURABLE_LOG_GRACE_MS = 30 * 1000;
+
+// Derived from the path the builder is actually given (buildCompletionPath) so the
+// pre-handler auth gate and the route can never disagree — a mismatch rejects every real
+// build's completion with a 404 that no test using the in-process mock builder would see.
+// The prefix is path characters only, so it needs no regex escaping.
+const INTERNAL_COMPLETE_PATH_REGEX = new RegExp(`^${INTERNAL_COMPLETE_PATH_PREFIX}([^/]+)/complete$`);
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -108,14 +114,18 @@ export function createMarshalApp() {
       const url = new URL(request.url);
       // /health is the only unauthenticated surface.
       if (url.pathname === "/health") return;
-      // /internal/builds/* carries its own per-build HMAC token (the builder machine never
-      // holds the backend credential), and it is authenticated HERE rather than in the
-      // handler. Everything the token covers — build id, ns, key — is in the URL, and the
-      // token is in a header, so nothing about this needs the body. Verifying inside the
-      // handler instead meant Elysia had already buffered and parsed an arbitrary body from
-      // an unauthenticated Internet client before the first credential check ran.
+      // /internal/deployments/* carries its own per-deployment HMAC token (the builder
+      // machine never holds the backend credential), and it is authenticated HERE rather
+      // than in the handler. Everything the token covers — deployment id, ns — is in the
+      // URL, and the token is in a header, so nothing about this needs the body. Verifying
+      // inside the handler instead meant Elysia had already buffered and parsed an arbitrary
+      // body from an unauthenticated Internet client before the first credential check ran.
+      //
+      // KEPT IN SYNC WITH the route below and with the webhook URL the builder harness is
+      // given (buildWebhookUrl in builds.ts): a path this matcher does not recognize is
+      // rejected here, so the handler never runs and no build can ever complete.
       if (url.pathname.startsWith("/internal/")) {
-        const completeMatch = /^\/internal\/builds\/([^/]+)\/complete$/.exec(url.pathname);
+        const completeMatch = INTERNAL_COMPLETE_PATH_REGEX.exec(url.pathname);
         if (completeMatch === null) {
           // No other /internal route exists. Anything else under the prefix would otherwise
           // inherit the auth bypass without carrying a token of its own.

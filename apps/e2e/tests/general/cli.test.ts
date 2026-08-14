@@ -506,7 +506,11 @@ describe("Stack CLI", () => {
         hasDevCommand: false,
         keys: ["DB_URL", "OPENAI", "PROJECT_ID"],
         openai: { key: "OPENAI", type: "secret", value: null, secret_key: "OPENAI_KEY" },
-        webDockerfile: "Dockerfile",
+        // Stored relative to the UPLOAD ROOT, not to the service's rootDirectory: the build
+        // context is the whole upload (that is what lets a monorepo service COPY shared code
+        // from above its own directory), so this is the path the builder opens.
+        webDockerfile: "web/Dockerfile",
+        // No dockerfilePath at all: db is built by Railpack auto-detection.
         dbDockerfile: null,
       });
 

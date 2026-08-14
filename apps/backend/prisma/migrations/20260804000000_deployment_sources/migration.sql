@@ -60,9 +60,13 @@ CHECK ("sourceId" ~ '^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,62}$');
 -- tenancy that has any: those definitions predate deploy files, so the config
 -- file is where they came from. gen_random_uuid() is fine for a backfill —
 -- nothing reads these ids back through Prisma's client-side generator.
+-- The DISTINCT is in a subquery, and gen_random_uuid() is applied to its OUTPUT. Selecting
+-- them together would not deduplicate anything: the uuid is volatile and evaluated per input
+-- row, so every row would be distinct from every other and a tenancy with two services would
+-- insert two sources — violating the unique index above.
 INSERT INTO "DeploymentSource" ("tenancyId", "id", "createdAt", "updatedAt", "sourceId")
-SELECT DISTINCT "tenancyId", gen_random_uuid(), NOW(), NOW(), 'hexclave.config.ts'
-FROM "DeploymentService";
+SELECT tenancies."tenancyId", gen_random_uuid(), NOW(), NOW(), 'hexclave.config.ts'
+FROM (SELECT DISTINCT "tenancyId" FROM "DeploymentService") AS tenancies;
 
 ALTER TABLE "DeploymentService" ADD COLUMN "sourceRowId" UUID;
 

@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { BUILDER_GUEST, BUILDER_IMAGE, BUILD_ENV_DIR, BUILD_TIMEOUT_SECONDS, RAILPACK_BUILDER_GUEST, RAILPACK_BUILDKIT_TMPFS_SIZE, RAILPACK_CLI_SHA256, RAILPACK_CLI_URL, RAILPACK_FRONTEND_IMAGE, getConfig, resolveNamespaceOrg } from "./config.js";
 import { flyClientForNamespaceOrg } from "./fly/client.js";
 import { builderAppName, builderNetworkName } from "./naming.js";
@@ -6,9 +6,20 @@ import { presignValidatedUploadGet } from "./store.js";
 import type { ReconciliationLeaseGuard } from "./reconciliation-lock.js";
 import type { EnvValue } from "./types.js";
 
+// The completion webhook's path, in one place. app.ts authenticates /internal/* in
+// onRequest, BEFORE any handler runs, by matching this prefix — so a path that only the
+// route below knows about is rejected as an unknown internal route and no build can ever
+// complete. Both sides derive from this constant rather than re-typing the path.
+export const INTERNAL_COMPLETE_PATH_PREFIX = "/internal/deployments/";
+
+/** Where the builder harness POSTs its completion for `deploymentId`. */
+export function buildCompletionPath(deploymentId: string): string {
+  return `${INTERNAL_COMPLETE_PATH_PREFIX}${deploymentId}/complete`;
+}
+
 // Builders start a build for an uploaded source tarball; completion always flows through
-// the webhook path (POST /internal/builds/:id/complete → services.completeBuild), so the
-// two implementations stay behaviorally identical:
+// the webhook path (POST /internal/deployments/:deploymentId/complete →
+// services.completeBuild), so the two implementations stay behaviorally identical:
 //  - fly:  ephemeral per-build Machine running BuildKit; the machine calls the webhook.
 //  - mock: dev/e2e only; "completes" in-process on the next tick with a deterministic
 //          fake digest (the fly-mock accepts any image ref).
@@ -179,7 +190,11 @@ secrets_hash() {
 # Empty dockerfile_path selects Railpack auto-detection; empty root_directory means the
 # upload root.
 DIGESTS=""
-while IFS="\\t" read -r SERVICE_KEY PUSH_TARGET DOCKERFILE_PATH ROOT_DIRECTORY; do
+# IFS is set from printf rather than written as "\\t": POSIX sh does NOT expand backslash
+# escapes inside double quotes, so IFS="\\t" would split on backslash and the letter "t"
+# instead of on tabs — quietly mangling every field of every target.
+TAB="$(printf '\\t')"
+while IFS="$TAB" read -r SERVICE_KEY PUSH_TARGET DOCKERFILE_PATH ROOT_DIRECTORY; do
   [ -n "$SERVICE_KEY" ] || continue
   echo "MARSHAL_TARGET_START $SERVICE_KEY"
   ENV_DIR="$(target_env_dir "$SERVICE_KEY")"
@@ -275,7 +290,7 @@ export function createFlyBuilder(): Builder {
 
       const tarballUrl = await presignValidatedUploadGet(options.ns, options.deploymentId, BUILD_TIMEOUT_SECONDS + 60);
       const webhookToken = computeWebhookToken(options.deploymentId, options.ns);
-      const webhookUrl = `${config.publicUrl}/internal/deployments/${options.deploymentId}/complete?ns=${encodeURIComponent(options.ns)}`;
+      const webhookUrl = `${config.publicUrl}${buildCompletionPath(options.deploymentId)}?ns=${encodeURIComponent(options.ns)}`;
 
       // The tab-separated manifest the harness loops over. Every field has been
       // validated (service keys, image refs and paths contain no tabs, newlines
@@ -367,10 +382,13 @@ export function createMockBuilder(completeBuild: CompleteBuildFn): Builder {
       const shouldFail = options.targets.some((target) => Object.hasOwn(target.buildEnv, "MARSHAL_MOCK_FAIL_BUILD"));
       // Deterministic fake digests so e2e assertions and image mapping are stable. Derived
       // per target from the deployment id, since one build now produces several images.
-      const digests = Object.fromEntries(options.targets.map((target) => {
-        const seed = `${options.deploymentId}-${target.serviceKey}`.toLowerCase().replace(/[^a-z0-9]/g, "");
-        return [target.serviceKey, `sha256:${seed.slice(0, 64).padEnd(64, "0")}`];
-      }));
+      // Hashed rather than assembled from the ids themselves: a digest must be 64 HEX
+      // characters to survive parseBuildImages, and a service key is free to contain
+      // letters that hex does not have.
+      const digests = Object.fromEntries(options.targets.map((target) => [
+        target.serviceKey,
+        `sha256:${createHash("sha256").update(`${options.deploymentId}-${target.serviceKey}`).digest("hex")}`,
+      ]));
       // Complete on the next tick, mirroring the real flow's asynchrony without making the
       // request wait on the rollout.
       setTimeout(() => {

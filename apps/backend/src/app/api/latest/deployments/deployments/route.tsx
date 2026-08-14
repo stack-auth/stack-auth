@@ -180,7 +180,7 @@ export const POST = createSmartRouteHandler({
     // Resolve every service's env BEFORE consuming the upload: a missing secret
     // or a dangling connection must not spend it. One redaction snapshot covers
     // the whole deploy, because one build log does.
-    const secretDefaults = parseSecretDefaults(body.secret_defaults);
+    const secretDefaults = await parseSecretDefaults(body.secret_defaults);
     const resolvedEnvByServiceId = new Map<string, Record<string, MarshalEnvValue>>();
     const redactionSecrets = new Set<string>();
     for (const [serviceId, definition] of definitionsByServiceId) {
@@ -279,14 +279,25 @@ export const POST = createSmartRouteHandler({
  * express "any service id" and a nested record at once without duplicating the
  * env-var-key rules; the inner shape is the same one the deploy file writes.
  */
-function parseSecretDefaults(raw: unknown): Record<string, Record<string, string>> {
+async function parseSecretDefaults(raw: unknown): Promise<Record<string, Record<string, string>>> {
   if (raw === undefined || raw === null) return {};
   if (typeof raw !== "object" || Array.isArray(raw)) {
     throw new StatusError(400, "secret_defaults must be an object keyed by service id.");
   }
   const parsed: Record<string, Record<string, string>> = {};
   for (const [serviceId, defaults] of Object.entries(raw as Record<string, unknown>)) {
-    const validated = deploymentSecretDefaultsSchema.validateSync(defaults, { strict: true });
+    // AWAITED, not validateSync: yupRecord validates its entries in an async test, and Yup
+    // throws outright ("returned a Promise during a synchronous validate") rather than
+    // failing validation — which would 500 every deploy, since the CLI always sends this
+    // object with one entry per deployed service.
+    let validated: unknown;
+    try {
+      validated = await deploymentSecretDefaultsSchema.validate(defaults, { strict: true });
+    } catch (error) {
+      // A malformed default is the caller's mistake, so it reads as a 400 naming the
+      // service rather than as an unhandled schema error.
+      throw new StatusError(400, `secret_defaults for service ${JSON.stringify(serviceId)} is not a record of string values: ${error instanceof Error ? error.message : "invalid value"}`);
+    }
     parsed[serviceId] = validated as Record<string, string>;
   }
   return parsed;

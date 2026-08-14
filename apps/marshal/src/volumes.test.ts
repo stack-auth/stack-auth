@@ -198,7 +198,18 @@ describe("service type spec validation", () => {
   it("rejects a server whose bounds contradict its type", () => {
     // Coercing instead would leave the stored spec disagreeing with what the caller asked for.
     expect(() => validateServiceSpec(spec({ type: "server", max_instances: 2 }))).toThrow(/config\.type is "server"/);
-    expect(() => validateServiceSpec(spec({ type: "server", min_instances: 1, max_instances: 1 }))).toThrow(/config\.type is "server"/);
+    expect(() => validateServiceSpec(spec({ type: "server", min_instances: 2, max_instances: 2 }))).toThrow(/config\.type is "server"/);
+  });
+
+  it("accepts both instance floors a server can have", () => {
+    // A server is one instance, but whether that instance is PINNED is the caller's choice:
+    // 0 suspends when idle, 1 stays up — and 1 is the floor every `server` deploys with by
+    // default, so rejecting it here would 400 every default deploy after the upload was
+    // already consumed.
+    for (const minInstances of [0, 1]) {
+      expect(validateServiceSpec(spec({ type: "server", min_instances: minInstances, max_instances: 1 })).config)
+        .toMatchObject({ type: "server", min_instances: minInstances, max_instances: 1 });
+    }
   });
 
   it("leaves serverless bounds alone", () => {

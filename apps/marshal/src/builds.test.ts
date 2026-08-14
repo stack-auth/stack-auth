@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { MAX_BUILD_ENV_BYTES } from "./config.js";
-import { buildEnvByteLength, buildHarnessScript, buildTimeEnv, createFlyBuilder } from "./builds.js";
+import { INTERNAL_COMPLETE_PATH_PREFIX, buildEnvByteLength, buildHarnessScript, buildTimeEnv, createFlyBuilder, createMockBuilder } from "./builds.js";
 import { validateDeploymentRequest, validateServiceSpec } from "./services.js";
 
 // startBuild reaches for Marshal's Fly client, config, and object store through module
@@ -39,7 +39,11 @@ describe("buildHarnessScript", () => {
   it("loops over the target manifest and branches per target on its Dockerfile", () => {
     // One machine builds every service of the deployment, reading a tab-separated
     // manifest — /bin/sh with no jq is why it is not JSON.
-    expect(script).toContain('while IFS="\\t" read -r SERVICE_KEY PUSH_TARGET DOCKERFILE_PATH ROOT_DIRECTORY; do');
+    // IFS comes from printf: POSIX sh does not expand \t inside double quotes, so a literal
+    // IFS="\t" would split every line on backslash and the letter "t" instead of on tabs.
+    expect(script).toContain(`TAB="$(printf '\\t')"`);
+    expect(script).toContain('while IFS="$TAB" read -r SERVICE_KEY PUSH_TARGET DOCKERFILE_PATH ROOT_DIRECTORY; do');
+    expect(script).not.toContain('while IFS="\\t"');
     expect(script).toContain("done < /marshal-targets.tsv");
     expect(script).toContain('if [ -n "$DOCKERFILE_PATH" ]; then');
     expect(script).toContain('--opt "filename=$DOCKERFILE_PATH"');
@@ -231,6 +235,59 @@ describe("buildTimeEnv", () => {
 
   it("measures keys and values in utf-8 bytes", () => {
     expect(buildEnvByteLength({ K: "é" })).toBe(3);
+  });
+});
+
+describe("the build completion webhook", () => {
+  // The gate in app.ts authenticates /internal/* BEFORE any handler runs and 404s a path it
+  // does not recognize, so a webhook URL the gate cannot match means no real Fly build can
+  // ever complete — and nothing in e2e notices, because the mock builder completes in
+  // process without crossing HTTP. Both sides derive from buildCompletionPath; this pins
+  // that they still agree.
+  const INTERNAL_COMPLETE_PATH_REGEX = new RegExp(`^${INTERNAL_COMPLETE_PATH_PREFIX}([^/]+)/complete$`);
+
+  it("posts to a path the app's pre-handler auth gate accepts", async () => {
+    createMachine.mockClear();
+    await createFlyBuilder().startBuild({
+      ns: "ns",
+      deploymentId: "01HZZZZZZZZZZZZZZZZZZZZZZZ",
+      uploadId: "00000000-0000-4000-8000-000000000001",
+      targets: [{ serviceKey: "web", pushTarget: "registry.fly.io/hx-test-ns-web:tag", dockerfilePath: null, rootDirectory: null, buildEnv: {} }],
+    }, { assertOwned: async () => {} } as any);
+    const webhookUrl = new URL((createMachine.mock.calls[0] as any)[1].config.env.WEBHOOK_URL);
+
+    const match = INTERNAL_COMPLETE_PATH_REGEX.exec(webhookUrl.pathname);
+    expect(match).not.toBeNull();
+    // The gate verifies the token against the id it reads out of the path, so the captured
+    // group has to BE the deployment id, not merely match something.
+    expect(match?.[1]).toBe("01HZZZZZZZZZZZZZZZZZZZZZZZ");
+    expect(webhookUrl.searchParams.get("ns")).toBe("ns");
+  });
+});
+
+describe("createMockBuilder", () => {
+  it("reports a hexadecimal digest per target, whatever the service is called", async () => {
+    // parseBuildImages requires /^sha256:[a-f0-9]{64}$/, and a service key is free to
+    // contain letters hex does not have — a digest built by pasting ids together fails
+    // every mock deployment with "the build reported no image for <service>".
+    const completions: { metadataJson: string | null }[] = [];
+    const builder = createMockBuilder(async (options) => void completions.push(options));
+    await builder.startBuild({
+      ns: "ns",
+      deploymentId: "01HZZZZZZZZZZZZZZZZZZZZZZZ",
+      uploadId: "00000000-0000-4000-8000-000000000001",
+      targets: ["web", "api", "worker-queue"].map((serviceKey) => ({
+        serviceKey, pushTarget: `registry.fly.io/hx-test-ns-${serviceKey}:tag`, dockerfilePath: null, rootDirectory: null, buildEnv: {},
+      })),
+    }, { assertOwned: async () => {} } as any);
+    await vi.waitFor(() => expect(completions.length).toBe(1));
+
+    const digests = JSON.parse(completions[0].metadataJson ?? "{}").targets as Record<string, string>;
+    expect(Object.keys(digests).sort()).toEqual(["api", "web", "worker-queue"]);
+    for (const digest of Object.values(digests)) expect(digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+    // Deterministic and distinct: e2e asserts on stored image refs, and two services
+    // sharing a digest would hide a mix-up in which image was applied where.
+    expect(new Set(Object.values(digests)).size).toBe(3);
   });
 });
 

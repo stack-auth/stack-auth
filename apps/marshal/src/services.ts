@@ -140,10 +140,14 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   if (portList.length > 1 && portList.some((entry) => entry.public)) {
     throw badRequest("a service with a public port may not declare any other port: the proxy serves every declared port on every address the app has, so the others would be public too");
   }
-  // A "server" is one suspending instance by definition. Reject rather than coerce: the
-  // caller's stated bounds and its stated type would otherwise disagree in the stored spec.
-  if (serviceKind === "server" && (minInstances !== 0 || maxInstances !== 1)) {
-    throw badRequest('config.min_instances must be 0 and config.max_instances must be 1 when config.type is "server"');
+  // A "server" is a SINGLE instance by definition, so its ceiling is 1 — but its floor is
+  // the caller's choice: 0 suspends the machine when idle (it resumes with its memory
+  // intact) and 1 keeps it up. Rejecting min_instances 1 here would reject the default
+  // every `server` deploys with, and it is exactly the pinning that isServerful() below
+  // reads. Reject rather than coerce: the caller's stated bounds and its stated type would
+  // otherwise disagree in the stored spec.
+  if (serviceKind === "server" && (minInstances > 1 || maxInstances !== 1)) {
+    throw badRequest('config.min_instances must be 0 or 1 and config.max_instances must be 1 when config.type is "server"');
   }
 
   // A Fly volume attaches to at most one machine, and a machine mounts at most one volume,
@@ -740,11 +744,11 @@ async function claimDesiredSpec(ns: string, key: string, spec: ServiceSpec, revi
   throw conflict(`service ${JSON.stringify(key)} was updated too frequently; retry the request`);
 }
 
-async function stateAfterSpecWrite(ns: string, key: string, stored: StoredSpec, previousEtag: string): Promise<ServiceState> {
+async function stateAfterSpecWrite(ns: string, key: string, stored: StoredSpec, previousEtag: string, knownPorts?: Map<string, PortsConfig>): Promise<ServiceState> {
   const etag = await writeSpec(stored, { ifMatch: previousEtag });
-  if (etag !== null) return await getServiceState(ns, key, stored);
+  if (etag !== null) return await getServiceState(ns, key, stored, knownPorts);
   // Another request (or a delete) owns the desired state now. Never resurrect/overwrite it.
-  return await getServiceState(ns, key);
+  return await getServiceState(ns, key, undefined, knownPorts);
 }
 
 async function specIsStillOwned(ns: string, key: string, etag: string): Promise<boolean> {
@@ -781,7 +785,7 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
   // starting builds — the backend re-applies when the blocking output appears.
   const resolved = await resolveEnv(fly, ns, stored.spec.env, knownPorts);
   if (!resolved.ok) {
-    return { revision, changed, state: await getServiceState(ns, key, stored) };
+    return { revision, changed, state: await getServiceState(ns, key, stored, knownPorts) };
   }
 
   // The app must exist before machines can be created into it, and its IPs must
@@ -805,7 +809,7 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
   // redeploy mandatory — an env change never applies to an existing deployment).
 
   if (!await specIsStillOwned(ns, key, ownedSpecEtag)) {
-    return { revision, changed, state: await getServiceState(ns, key) };
+    return { revision, changed, state: await getServiceState(ns, key, undefined, knownPorts) };
   }
   try {
     await applyMachines(fly, stored, stored.spec.source.image, resolved.env, lease);
@@ -814,7 +818,7 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
     if (isReconciliationFencingError(error)) throw error;
     stored.last_apply_error = error instanceof Error ? `deploy failed: ${error.message}` : "deploy failed";
   }
-  return { revision, changed, state: await stateAfterSpecWrite(ns, key, stored, ownedSpecEtag) };
+  return { revision, changed, state: await stateAfterSpecWrite(ns, key, stored, ownedSpecEtag, knownPorts) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1386,7 +1390,7 @@ export async function maybeFinalizeStaleDeployment(deployment: StoredDeployment)
 // ---------------------------------------------------------------------------
 // Reads
 
-export async function getServiceState(ns: string, key: string, preloadedSpec?: StoredSpec | null): Promise<ServiceState> {
+export async function getServiceState(ns: string, key: string, preloadedSpec?: StoredSpec | null, knownPorts?: Map<string, PortsConfig>): Promise<ServiceState> {
   const config = getConfig();
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
   const stored = preloadedSpec !== undefined ? preloadedSpec : await readSpec(ns, key);
@@ -1399,7 +1403,11 @@ export async function getServiceState(ns: string, key: string, preloadedSpec?: S
   const [machines, certificates, resolved] = await Promise.all([
     fly.listMachines(appName),
     fly.listCertificates(appName),
-    resolveEnv(fly, ns, stored.spec.env),
+    // The SAME knownPorts the apply resolved with. Without it this read would re-resolve
+    // from stored specs alone and report `blocked` for a private `url(port)` naming a target
+    // of this deployment that has not been applied yet — failing the deployment over the
+    // very ordering independence knownPorts exists to provide.
+    resolveEnv(fly, ns, stored.spec.env, knownPorts),
   ]);
 
   const domains = await computeDomainStates(fly, appName, certificates);
@@ -1521,26 +1529,45 @@ async function deleteServiceWithLease(ns: string, key: string, lease: Reconcilia
   const appName = appNameForService(config.envId, ns, key);
   const storedVersion = await readSpecVersioned(ns, key);
 
-  // Release hostname claims first — certs die with the app, but the bucket registry would
-  // otherwise block the hostname forever.
+  // Release hostname claims first — the bucket registry would otherwise block the hostname
+  // forever. The certificate goes with it on BOTH paths below: on the destroy path certs die
+  // with the app, and on the detach path the app outlives the service, so a cert left behind
+  // would keep a hostname pointing at a machine-less app that nothing can serve — and would
+  // make Fly refuse the same hostname when it is re-attached elsewhere.
   for (const hostname of await listDomainClaimsForService(ns, key)) {
     const claim = await readDomainClaimVersioned(hostname);
     if (claim !== null && claim.value.ns === ns && claim.value.service_key === key) {
+      await lease.assertOwned();
+      await fly.deleteCertificate(appName, hostname);
       await releaseDomainClaim(claim);
     }
   }
-  // force=true kills machines and releases IPs in one call. Build history is intentionally
-  // kept (it's namespaced under builds/<ns>/<key>/).
+
+  // Destroying a Fly app destroys its VOLUMES with it (smoke-verified against real Fly), so a
+  // volume-backed service is torn down by DETACHING instead: kill the machines and the public
+  // ingress, drop the spec, and leave the app holding its disks. That is what makes removing a
+  // service from a deploy file survivable — the contract is that the volume outlives the
+  // service and needs an explicit delete — and re-syncing the same service id adopts the disk
+  // again by name (ensureVolume selects it deterministically).
   //
-  // DANGER: this is NO LONGER fully recoverable by re-applying the spec. Destroying the app
-  // destroys its VOLUMES with it (smoke-verified against real Fly), so deleting a
-  // volume-backed service is irreversible tenant-data loss. Nothing reaches this today — the
-  // backend exposes no service-delete route, and MarshalClient.deleteService has no callers —
-  // but before any delete path ships, this must either detach and keep the volume (destroy the
-  // machines and release the claims without destroying the app) or require an explicit
-  // destructive-delete acknowledgement from the caller.
-  await lease.assertOwned();
-  await fly.deleteApp(appName);
+  // Only a service with no volumes takes the destroy path, where nothing is lost and leaving
+  // an empty app behind would burn the org's app-count limit instead.
+  const volumes = await fly.listVolumes(appName);
+  if (volumes.length > 0) {
+    for (const machine of await fly.listMachines(appName)) {
+      await lease.assertOwned();
+      await fly.destroyMachine(appName, machine.id);
+    }
+    // Nothing serves this app any more, so its public IPs must go: the certificates above are
+    // already gone, which is what lets this release rather than no-op.
+    await lease.assertOwned();
+    await reconcilePublicIps(fly, appName, "private");
+  } else {
+    // force=true kills machines and releases IPs in one call. Build history is intentionally
+    // kept (it's namespaced under builds/<ns>/<key>/).
+    await lease.assertOwned();
+    await fly.deleteApp(appName);
+  }
   await lease.assertOwned();
   if (storedVersion !== null) await deleteSpecConditionally(ns, key, storedVersion.etag);
 }
