@@ -88,7 +88,6 @@ describe("external DB sync sequence visibility", () => {
     });
     let transactionA: Promise<void> | undefined;
     let allocationA: bigint | undefined;
-    let allocationASkipped: boolean | undefined;
     let testError: unknown;
     let cleanupError: unknown;
 
@@ -116,7 +115,6 @@ describe("external DB sync sequence visibility", () => {
             "Sequence allocation lock remained unavailable while acquiring row A in the regression test",
           );
         }
-        allocationASkipped = false;
         allocationA = allocation[0]?.sequenceId;
         resolveTransactionAAllocated();
         await transactionAReleased;
@@ -135,10 +133,6 @@ describe("external DB sync sequence visibility", () => {
         `;
         return await allocateEmailOutboxSequence(tx, rowB);
       }, { timeout: 5_000 });
-      expect(
-        allocationASkipped,
-        "The first allocation must acquire the sequence lock",
-      ).toBe(false);
       expect(
         transactionBAttempt,
         "A second allocation must skip while the first allocation transaction is still open",
