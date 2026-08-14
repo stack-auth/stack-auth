@@ -97,7 +97,7 @@ function DeploymentCard({ deployment, onOpen }: {
   );
 }
 
-export function DeploymentsList({ project, openDeploymentId, onOpenDeployment, onOpenDeploymentChange }: {
+export function DeploymentsList({ project, openDeploymentId, onOpenDeployment, onOpenDeploymentChange, onDeploymentsLoaded }: {
   project: AdminProject,
   // The deployment the caller currently has open, if any. This component keeps
   // polling while that view is up (it is hidden, not unmounted), and hands the
@@ -106,6 +106,10 @@ export function DeploymentsList({ project, openDeploymentId, onOpenDeployment, o
   openDeploymentId: string | null,
   onOpenDeployment: (deployment: AdminDeploymentJson) => void,
   onOpenDeploymentChange: (deployment: AdminDeploymentJson) => void,
+  // Every deployment this list holds, of every source, on each poll. The open
+  // deployment's map needs them: it shows what the OTHER sources had running at
+  // that moment, which is read from their own deployments.
+  onDeploymentsLoaded: (deployments: AdminDeploymentJson[]) => void,
 }) {
   const [deployments, setDeployments] = useState<AdminDeploymentJson[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,11 +121,14 @@ export function DeploymentsList({ project, openDeploymentId, onOpenDeployment, o
   openDeploymentIdRef.current = openDeploymentId;
   const onOpenDeploymentChangeRef = useRef(onOpenDeploymentChange);
   onOpenDeploymentChangeRef.current = onOpenDeploymentChange;
+  const onDeploymentsLoadedRef = useRef(onDeploymentsLoaded);
+  onDeploymentsLoadedRef.current = onDeploymentsLoaded;
 
   const load = useCallback(async () => {
     try {
       const loaded = await project.listDeployments({ limit: 20 });
       setDeployments(loaded);
+      onDeploymentsLoadedRef.current(loaded);
       setError(null);
       const openId = openDeploymentIdRef.current;
       if (openId !== null) {

@@ -2628,14 +2628,21 @@ async function seedDummySessionReplays({
   console.log(`Seeded ${targetSessionReplayCount} session replays (${shouldSeedClickhouse ? clickhouseRows.length : 0} analytics events)`);
 }
 
-// Services for the demo project's Deployments app, mirroring what a small
-// three-service deploy file would sync: a public serverless frontend, a private
-// serverless API, and a stateful `server` database holding the only persistent
-// volume (only a `server` may have one).
-const DUMMY_DEPLOYMENT_SOURCE_ID = 'demo-app';
+// Services for the demo project's Deployments app, across TWO deployment
+// sources — the shape a project deployed from two repositories has, which is
+// what the board's per-source colouring and its cross-source connections exist
+// for. `storefront` is one repo holding a public serverless frontend;
+// `platform` is another holding the private API it calls and the stateful
+// `server` database behind that (only a `server` may hold a persistent volume).
+//
+// The interesting part is `web`'s API_URL: a connection into a service that
+// another deploy file declares. Service ids are unique per PROJECT, so the
+// reference names no source — and a map scoped to one source could not draw it.
+const DUMMY_DEPLOYMENT_SOURCE_IDS = { storefront: 'storefront', platform: 'platform' } as const;
 
 const DUMMY_DEPLOYMENT_SERVICES = [
   {
+    sourceId: DUMMY_DEPLOYMENT_SOURCE_IDS.storefront,
     serviceId: 'web',
     type: 'serverless',
     ports: { '3000': { public: true, protocol: 'http' } },
@@ -2651,6 +2658,7 @@ const DUMMY_DEPLOYMENT_SERVICES = [
     ],
   },
   {
+    sourceId: DUMMY_DEPLOYMENT_SOURCE_IDS.platform,
     serviceId: 'api',
     type: 'serverless',
     ports: { '8080': { public: false, protocol: 'http' } },
@@ -2667,6 +2675,7 @@ const DUMMY_DEPLOYMENT_SERVICES = [
     ],
   },
   {
+    sourceId: DUMMY_DEPLOYMENT_SOURCE_IDS.platform,
     serviceId: 'db',
     type: 'server',
     ports: { '5432': { public: false, protocol: 'tcp' } },
@@ -2682,27 +2691,36 @@ const DUMMY_DEPLOYMENT_SERVICES = [
   },
 ] as const;
 
-// Deployments, newest last. Each entry is one `hexclave deploy` of the source
-// above: the services it planned, and the outcome of each. A service marked
-// `skipped` was planned but never reached — that is what a dependency failure
-// looks like, and the dashboard renders it as such.
+// Deployments, newest last. Each entry is one `hexclave deploy` of ONE source:
+// the services it planned, in dependency order, and the outcome of each. A
+// service marked `skipped` was planned but never reached — that is what a
+// dependency failure looks like, and the dashboard renders it as such.
+//
+// The two sources deploy INDEPENDENTLY and interleaved, which is the point of
+// the fixture: opening a deployment shows everything running at that moment, so
+// each entry below is a different answer. Opening #1 (the first `platform`
+// deploy) predates `storefront` entirely, so `web` is absent — it had not been
+// deployed yet. Opening #4 shows `web` as that deploy shipped it alongside the
+// FAILED `api` from #3, which is what was actually running underneath it.
 //
 // Every deployment is TERMINAL on purpose. The list refreshes non-terminal
 // deployments from the runtime on read, which a demo project has no runtime for;
 // a seeded "building" deployment would poll forever and log an error each time.
 const DUMMY_DEPLOYMENTS = [
-  { minutesAgo: 60 * 26, status: 'SUCCEEDED', services: { db: 'deployed', api: 'deployed', web: 'deployed' } },
-  { minutesAgo: 60 * 6, status: 'FAILED', services: { db: 'deployed', api: 'failed', web: 'skipped' } },
-  { minutesAgo: 42, status: 'SUCCEEDED', services: { db: 'deployed', api: 'deployed', web: 'deployed' } },
+  { minutesAgo: 60 * 26, sourceId: DUMMY_DEPLOYMENT_SOURCE_IDS.platform, status: 'SUCCEEDED', services: { db: 'deployed', api: 'deployed' } },
+  { minutesAgo: 60 * 25, sourceId: DUMMY_DEPLOYMENT_SOURCE_IDS.storefront, status: 'SUCCEEDED', services: { web: 'deployed' } },
+  { minutesAgo: 60 * 6, sourceId: DUMMY_DEPLOYMENT_SOURCE_IDS.platform, status: 'FAILED', services: { db: 'deployed', api: 'failed' } },
+  { minutesAgo: 42, sourceId: DUMMY_DEPLOYMENT_SOURCE_IDS.storefront, status: 'SUCCEEDED', services: { web: 'deployed' } },
 ] as const;
 
 /**
- * Seeds the Deployments app: a deployment source, its service definitions, and a
- * short deploy history.
+ * Seeds the Deployments app: two deployment sources, their service definitions,
+ * and a short deploy history that interleaves them.
  *
  * Without this the app renders its empty state, which shows none of the states
  * the page exists to display — a partially failed deploy, a skipped service, a
- * service with a persistent volume.
+ * service with a persistent volume, and a connection that crosses from one
+ * repository's service into another's.
  */
 async function seedDummyDeployments(options: {
   prisma: PrismaClientTransaction,
@@ -2712,15 +2730,27 @@ async function seedDummyDeployments(options: {
   const now = Date.now();
   const firstDeployedAt = new Date(now - DUMMY_DEPLOYMENTS[0].minutesAgo * 60_000);
 
-  const sourceRowId = deterministicUuid(`deployment-source:${tenancyId}:${DUMMY_DEPLOYMENT_SOURCE_ID}`);
-  await prisma.deploymentSource.upsert({
-    where: { tenancyId_sourceId: { tenancyId, sourceId: DUMMY_DEPLOYMENT_SOURCE_ID } },
-    create: { tenancyId, id: sourceRowId, sourceId: DUMMY_DEPLOYMENT_SOURCE_ID },
-    update: {},
-  });
+  // An earlier version of this fixture put all three services under a single
+  // `demo-app` source. Drop it before seeding the two that replace it: the
+  // upserts below re-point the services and deployments by their deterministic
+  // ids, but the volume is keyed by (source, volumeId) and would collide with
+  // its own old row, and the emptied source would still show up as a
+  // repository the demo project no longer deploys from. Cascades to whatever
+  // of it survives.
+  await prisma.deploymentSource.deleteMany({ where: { tenancyId, sourceId: 'demo-app' } });
+
+  const sourceRowIdOf = (sourceId: string) => deterministicUuid(`deployment-source:${tenancyId}:${sourceId}`);
+  for (const sourceId of Object.values(DUMMY_DEPLOYMENT_SOURCE_IDS)) {
+    await prisma.deploymentSource.upsert({
+      where: { tenancyId_sourceId: { tenancyId, sourceId } },
+      create: { tenancyId, id: sourceRowIdOf(sourceId), sourceId },
+      update: {},
+    });
+  }
 
   for (const service of DUMMY_DEPLOYMENT_SERVICES) {
     const id = deterministicUuid(`deployment-service:${tenancyId}:${service.serviceId}`);
+    const sourceRowId = sourceRowIdOf(service.sourceId);
     const definitionColumns = {
       sourceRowId,
       definitionSyncedAt: firstDeployedAt,
@@ -2754,11 +2784,13 @@ async function seedDummyDeployments(options: {
   for (const [index, deployment] of DUMMY_DEPLOYMENTS.entries()) {
     const deploymentId = deterministicUuid(`deployment:${tenancyId}:${index}`);
     const createdAt = new Date(now - deployment.minutesAgo * 60_000);
-    // Deploy order is dependency order: the database first, then the API that
-    // connects to it, then the frontend that connects to the API.
-    const plannedServiceIds = ['db', 'api', 'web'];
+    // A deploy ships one SOURCE's services, in dependency order: within
+    // `platform`, the database before the API that connects to it.
+    const plannedServiceIds = ['db', 'api', 'web'].filter((serviceId) => serviceId in deployment.services);
     const deploymentColumns = {
-      sourceRowId,
+      sourceRowId: sourceRowIdOf(deployment.sourceId),
+      // Monotonic per TENANCY, not per source — the number counts deploys of
+      // the whole project, which is why two sources share one sequence.
       number: index + 1,
       triggeredBy: 'cli',
       status: deployment.status,
@@ -2766,7 +2798,9 @@ async function seedDummyDeployments(options: {
       marshalBuildId: `bld_${createHash('sha256').update(deploymentId).digest('hex').slice(0, 16)}`,
       plannedServiceIds,
       services: Object.fromEntries(plannedServiceIds.map((serviceId) => {
-        const status = deployment.services[serviceId as keyof typeof deployment.services];
+        // The per-entry `services` records have different keys, so the union's
+        // index type is narrower than the ids being looked up here.
+        const status = (deployment.services as Record<string, string>)[serviceId];
         const service = DUMMY_DEPLOYMENT_SERVICES.find((candidate) => candidate.serviceId === serviceId) ?? throwErr(`unknown dummy service ${serviceId}`);
         return [serviceId, {
           status,

@@ -31,6 +31,9 @@ export default function PageClient() {
   // reopened it. The list now stays mounted (hidden) and reports the fresh copy back.
   const [openDeploymentId, setOpenDeploymentId] = useState<string | null>(null);
   const [openDeployment, setOpenDeployment] = useState<AdminDeploymentJson | null>(null);
+  // Held here rather than only inside the list, because the open deployment's map is scoped
+  // to a moment in time across EVERY source and needs their deployments to resolve it.
+  const [deployments, setDeployments] = useState<AdminDeploymentJson[]>([]);
   const isOpen = openDeploymentId !== null && openDeployment !== null;
 
   return (
@@ -70,6 +73,7 @@ export default function PageClient() {
               setOpenDeployment(deployment);
             }}
             onOpenDeploymentChange={setOpenDeployment}
+            onDeploymentsLoaded={setDeployments}
           />
         </div>
 
@@ -77,7 +81,7 @@ export default function PageClient() {
             contents are absolutely positioned, so it has to be a direct child of PageLayout's
             flex column — inside a plain block wrapper the `flex-1` resolves against nothing
             and the board collapses to zero height. */}
-        {isOpen && <BoardCanvas deployment={openDeployment} />}
+        {isOpen && <BoardCanvas deployment={openDeployment} deployments={deployments} />}
       </PageLayout>
     </AppEnabledGuard>
   );
