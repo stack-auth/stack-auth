@@ -113,11 +113,22 @@ const MAX_JOBS_PER_WORKER = 50;
 
 // Per-job timeout. Without this, a hung user script (infinite loop, unresolved
 // await) would keep slot.busy=true forever, the pool would silently shrink,
-// and we'd reproduce the original starvation problem. 30s is far longer than
-// any legitimate email render but short enough to bound damage. Note: this
-// also implicitly bounds the queue (queue length <= rps * timeout), so we
-// don't add a separate queue cap.
-const JOB_TIMEOUT_MS = 30_000;
+// and we'd reproduce the original starvation problem. Note: this also
+// implicitly bounds the queue (queue length <= rps * timeout), so we don't add
+// a separate queue cap.
+//
+// Sized against WORKFLOW STEPS, not email renders. This started at 30s, which
+// was ample for the react-email rendering this mock was first built for — but
+// workflow invocations run through the same endpoint, and a workflow step may
+// legitimately block for minutes (the growth-analysis workflow long-polls its
+// orchestration API for up to 4 minutes at a time inside a single step). At 30s
+// every such invocation was killed mid-step and surfaced to the user as a
+// generic "a platform error occurred" run failure, with nothing wrong in the
+// workflow itself. This must stay ABOVE the backend's own backstop
+// (WORKFLOW_INVOCATION_BACKSTOP_TIMEOUT_MS = maxStepTimeoutMs + 30s, currently
+// 10.5 min) so the engine's timer is the authoritative cutoff and the mock is
+// only the last-resort backstop for a script that ignores it.
+const JOB_TIMEOUT_MS = 11 * 60 * 1000;
 
 // Worker pool. Each slot owns one Worker that handles at most one job at a time;
 // concurrency comes from running many slots in parallel, not from interleaving

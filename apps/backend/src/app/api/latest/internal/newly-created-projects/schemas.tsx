@@ -29,7 +29,7 @@ export const FeaturedAppsSchema = yupObject({
   payments: AppTickLevelSchema,
   analytics: AppTickLevelSchema,
   "deployments-alpha": AppTickLevelSchema,
-  gtm: AppTickLevelSchema,
+  growth: AppTickLevelSchema,
 }).defined();
 
 export const ProjectRowSchema = yupObject({

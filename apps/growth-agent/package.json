@@ -1,0 +1,34 @@
+{
+  "name": "@hexclave/growth-agent",
+  "version": "1.0.77",
+  "repository": "https://github.com/hexclave/hexclave",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "imports": {
+    "#*": "./agent/*"
+  },
+  "scripts": {
+    "dev": "eve dev --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}47",
+    "build": "eve build",
+    "start": "eve start",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint --ext .ts .",
+    "clean": "rimraf node_modules"
+  },
+  "dependencies": {
+    "@agent-browser/sandbox": "0.32.4",
+    "@vercel/sandbox": "2.8.0",
+    "ai": "7.0.34",
+    "eve": "0.27.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "6.0.3"
+  },
+  "packageManager": "pnpm@11.5.0"
+}

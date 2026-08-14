@@ -186,9 +186,9 @@ export const ALL_APPS = {
     stage: "stable",
     parentAppId: "analytics",
   },
-  "gtm": {
-    displayName: "GTM",
-    subtitle: "Internal go-to-market workspace",
+  "growth": {
+    displayName: "Growth",
+    subtitle: "AI-driven growth analysis, actionable items, and daily briefs",
     tags: ["gtm", "operations"],
     stage: "alpha",
   },
