@@ -105,7 +105,6 @@ describe("BufferedPiledriverDatabase", () => {
   });
 
   it("never has more than one underlying write in flight", async () => {
-    const gate = deferred<void>();
     const wrapped = declareInMemoryPiledriverDatabase(crypto.randomUUID());
     let inFlight = 0;
     let maxInFlight = 0;
@@ -115,7 +114,7 @@ describe("BufferedPiledriverDatabase", () => {
         inFlight++;
         maxInFlight = Math.max(maxInFlight, inFlight);
         try {
-          await gate.promise;
+          await Promise.resolve();
           return await wrapped.setRootObject(rootKey, value);
         } finally {
           inFlight--;
@@ -123,12 +122,12 @@ describe("BufferedPiledriverDatabase", () => {
       },
     };
     const db = declareBufferedPiledriverDatabase(observed);
-    const writes = await Promise.all(["one", "two", "three"].map(async value => await db.setRootObject(key(value), value)));
-
-    await Promise.resolve();
-    expect(maxInFlight).toBe(1);
-    gate.resolve();
+    const values = ["one", "two", "three"];
+    const writes = await Promise.all(values.map(async value => await db.setRootObject(key(value), value)));
     await Promise.all(writes.map(async ({ seq }) => await db.waitUntilDurable(seq)));
+
+    expect(maxInFlight).toBe(1);
+    for (const value of values) await expect(wrapped.getRootObject(key(value))).resolves.toMatchObject({ object: value });
   });
 
   it("waits for every member of a combined sequence", async () => {

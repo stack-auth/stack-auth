@@ -1,4 +1,4 @@
-import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { DatabaseSeq } from "../../index.js";
@@ -42,19 +42,19 @@ export function declareBufferedPiledriverDatabase(wrapped: PiledriverDatabase): 
 
   const drain = async () => {
     while (pending.size > 0) {
-      const entry = pending.entries().next().value as [string, PendingEntry];
-      pending.delete(entry[0]);
-      inFlight.set(entry[0], entry[1]);
+      const entry = pending.values().next().value ?? throwErr("Buffered Piledriver drain expected a pending entry");
+      pending.delete(entry.id);
+      inFlight.set(entry.id, entry);
       try {
-        const result = entry[1].state.type === "delete"
-          ? await wrapped.deleteRootObject(entry[1].key)
-          : await wrapped.setRootObject(entry[1].key, entry[1].state.value);
-        for (const record of entry[1].records) record.resolve(result.seq);
-        if (inFlight.get(entry[0]) === entry[1] && !pending.has(entry[0])) inFlight.delete(entry[0]);
+        const result = entry.state.type === "delete"
+          ? await wrapped.deleteRootObject(entry.key)
+          : await wrapped.setRootObject(entry.key, entry.state.value);
+        for (const record of entry.records) record.resolve(result.seq);
+        if (inFlight.get(entry.id) === entry && !pending.has(entry.id)) inFlight.delete(entry.id);
       } catch (error) {
         // The caller was already told this write succeeded, so rolling back a failed flush could expose stale data
         // without anyone noticing; keep the failed value visible and report the anomaly instead.
-        for (const record of entry[1].records) record.reject(error);
+        for (const record of entry.records) record.reject(error);
         captureError("bulldozer-js:piledriver-buffered-flush", error);
       }
     }
@@ -101,14 +101,14 @@ export function declareBufferedPiledriverDatabase(wrapped: PiledriverDatabase): 
   const write = (key: ArrayBuffer, state: PendingEntry["state"]) => {
     if (isClosing) throw new Error("Buffered Piledriver database is closing and cannot accept writes");
     const pendingKey = getPendingKey(key);
+    const { seq, record } = createSeq();
     const entry = pending.get(pendingKey.id) ?? {
       id: pendingKey.id,
       key: pendingKey.key,
       state,
-      latestSeq: initialSeq,
+      latestSeq: seq,
       records: [],
     };
-    const { seq, record } = createSeq();
     entry.state = state;
     entry.latestSeq = seq;
     entry.records.push(record);
