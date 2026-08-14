@@ -6,6 +6,16 @@
 
 - _(entries added throughout the week)_
 
+## 8/14/26
+
+![Onboarding welcome step](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-onboarding-welcome.webp)
+
+- Revamped onboarding with a welcome step to set up a new project, deploy an existing config, or just look around.
+- The CLI docs page is now an install guide plus a full command reference.
+- Fixed self-hosted deployments breaking after a container restart because the internal project keys were rotated.
+- Unrecoverable dashboard render errors now show a retryable error screen instead of reloading forever.
+
+>>>>>>> origin/dev
 ## 8/7/26
 
 - Apple sign-in now supports key-based credentials (Team ID, Key ID, and private key), with short-lived client secrets generated automatically.

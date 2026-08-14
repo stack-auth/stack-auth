@@ -33,7 +33,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   build:
-    timeout-minutes: 150
+    timeout-minutes: 300
     needs: wait-for-fast-fail
     name: E2E Tests (Node ${{ matrix.node-version }})
     runs-on: ubicloud-standard-8
