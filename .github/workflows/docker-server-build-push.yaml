@@ -30,6 +30,7 @@ jobs:
             arch: arm64
             runner: ubicloud-standard-8-arm
             timeout: 45
+    # Both matrix legs compute the same value, so whichever leg writes this output last is equivalent.
     outputs:
       should_push: ${{ steps.push-condition.outputs.should_push }}
     steps:
@@ -74,7 +75,6 @@ jobs:
         with:
           context: .
           file: ./docker/server/Dockerfile
-          push: ${{ steps.push-condition.outputs.should_push }}
           platforms: ${{ matrix.platform }}
           outputs: ${{ steps.push-condition.outputs.should_push == 'true' && format('type=image,name={0}/server,push-by-digest=true,name-canonical=true,push=true', secrets.DOCKER_REPO) || '' }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -83,7 +83,7 @@ jobs:
         if: steps.push-condition.outputs.should_push == 'true'
         run: |
           mkdir -p digest
-          printf '%s\n' '${{ steps.build-platform-image.outputs.digest }}' > "digest/${{ matrix.arch }}"
+          printf '%s\n' '${{ steps.build-platform.outputs.digest }}' > "digest/${{ matrix.arch }}"
 
       - name: Upload image digest
         if: steps.push-condition.outputs.should_push == 'true'
@@ -96,7 +96,7 @@ jobs:
     if: needs.build-server.result == 'success' && needs.build-server.outputs.should_push == 'true'
     needs: build-server
     name: Merge and tag server images
-    runs-on: ubicloud-standard-2
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Docker meta
@@ -137,8 +137,17 @@ jobs:
           sources=()
           while IFS= read -r digest_file; do
             digest="$(cat "$digest_file")"
+            if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "Invalid or empty image digest in $digest_file: '$digest'" >&2
+              exit 1
+            fi
             sources+=("${IMAGE}@${digest}")
-          done < <(find digests -type f -maxdepth 1 -print | sort)
+          done < <(find digests -maxdepth 1 -type f -print | sort)
+
+          if [ "${#sources[@]}" -ne 2 ]; then
+            echo "Expected 2 platform image digests, found ${#sources[@]}" >&2
+            exit 1
+          fi
 
           while IFS= read -r tag; do
             [ -n "$tag" ] || continue
