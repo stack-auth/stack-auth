@@ -190,11 +190,23 @@ secrets_hash() {
 # Empty dockerfile_path selects Railpack auto-detection; empty root_directory means the
 # upload root.
 DIGESTS=""
-# IFS is set from printf rather than written as "\\t": POSIX sh does NOT expand backslash
-# escapes inside double quotes, so IFS="\\t" would split on backslash and the letter "t"
-# instead of on tabs — quietly mangling every field of every target.
+# The tab comes from printf: POSIX sh does not expand backslash escapes inside double quotes,
+# so a literal "\\t" here would be the two characters backslash and t.
 TAB="$(printf '\\t')"
-while IFS="$TAB" read -r SERVICE_KEY PUSH_TARGET DOCKERFILE_PATH ROOT_DIRECTORY; do
+# Read the WHOLE line (IFS= disables splitting and trimming) and cut the fields by hand.
+# A four-variable "read" with IFS set to a tab cannot do this: a tab is IFS WHITE SPACE, so a
+# run of them collapses into one delimiter — and an empty dockerfile_path (Railpack
+# auto-detection) would silently shift root_directory into DOCKERFILE_PATH, building a
+# Dockerfile at a directory path. Both fields are optional, so both empties are the common
+# case, not an edge one.
+while IFS= read -r TARGET_LINE; do
+  [ -n "$TARGET_LINE" ] || continue
+  SERVICE_KEY="\${TARGET_LINE%%"$TAB"*}"
+  TARGET_REST="\${TARGET_LINE#*"$TAB"}"
+  PUSH_TARGET="\${TARGET_REST%%"$TAB"*}"
+  TARGET_REST="\${TARGET_REST#*"$TAB"}"
+  DOCKERFILE_PATH="\${TARGET_REST%%"$TAB"*}"
+  ROOT_DIRECTORY="\${TARGET_REST#*"$TAB"}"
   [ -n "$SERVICE_KEY" ] || continue
   echo "MARSHAL_TARGET_START $SERVICE_KEY"
   ENV_DIR="$(target_env_dir "$SERVICE_KEY")"

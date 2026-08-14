@@ -121,8 +121,8 @@ export function createMarshalApp() {
       // inside the handler instead meant Elysia had already buffered and parsed an arbitrary
       // body from an unauthenticated Internet client before the first credential check ran.
       //
-      // KEPT IN SYNC WITH the route below and with the webhook URL the builder harness is
-      // given (buildWebhookUrl in builds.ts): a path this matcher does not recognize is
+      // The matcher, the route below and the URL the builder harness is given all derive
+      // from INTERNAL_COMPLETE_PATH_PREFIX: a path this matcher does not recognize is
       // rejected here, so the handler never runs and no build can ever complete.
       if (url.pathname.startsWith("/internal/")) {
         const completeMatch = INTERNAL_COMPLETE_PATH_REGEX.exec(url.pathname);
@@ -325,7 +325,7 @@ export function createMarshalApp() {
     // `parse: "text"` so a malformed/empty JSON body still reaches the handler (Elysia's
     // default JSON parser would 400 before it, making the registry-HEAD digest fallback
     // unreachable) — the handler parses defensively.
-    .post("/internal/deployments/:deploymentId/complete", ({ params, query, body, request }) => handle(async () => {
+    .post(`${INTERNAL_COMPLETE_PATH_PREFIX}:deploymentId/complete`, ({ params, query, body, request }) => handle(async () => {
       const ns = typeof query.ns === "string" ? query.ns : "";
       const status = query.status === "succeeded" ? "succeeded" : query.status === "failed" ? "failed" : null;
       const token = (request.headers.get("authorization") ?? "").replace(/^Bearer /, "");

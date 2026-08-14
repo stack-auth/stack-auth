@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { MAX_BUILD_ENV_BYTES } from "./config.js";
 import { INTERNAL_COMPLETE_PATH_PREFIX, buildEnvByteLength, buildHarnessScript, buildTimeEnv, createFlyBuilder, createMockBuilder } from "./builds.js";
@@ -39,11 +43,12 @@ describe("buildHarnessScript", () => {
   it("loops over the target manifest and branches per target on its Dockerfile", () => {
     // One machine builds every service of the deployment, reading a tab-separated
     // manifest — /bin/sh with no jq is why it is not JSON.
-    // IFS comes from printf: POSIX sh does not expand \t inside double quotes, so a literal
-    // IFS="\t" would split every line on backslash and the letter "t" instead of on tabs.
+    // The tab comes from printf: POSIX sh does not expand \t inside double quotes, so a
+    // literal IFS="\t" would split on backslash and the letter "t" instead of on tabs.
     expect(script).toContain(`TAB="$(printf '\\t')"`);
-    expect(script).toContain('while IFS="$TAB" read -r SERVICE_KEY PUSH_TARGET DOCKERFILE_PATH ROOT_DIRECTORY; do');
-    expect(script).not.toContain('while IFS="\\t"');
+    expect(script).not.toContain('IFS="\\t"');
+    // The line is read whole and cut by hand; the executed test below is what pins WHY.
+    expect(script).toContain("while IFS= read -r TARGET_LINE; do");
     expect(script).toContain("done < /marshal-targets.tsv");
     expect(script).toContain('if [ -n "$DOCKERFILE_PATH" ]; then');
     expect(script).toContain('--opt "filename=$DOCKERFILE_PATH"');
@@ -60,6 +65,38 @@ describe("buildHarnessScript", () => {
     expect(script).toContain('fail "$SERVICE_KEY: railpack build failed (see the build log above)"');
     // fail() exits, so nothing after it in the loop runs.
     expect(script).toMatch(/fail\(\) \{[\s\S]*exit 1/);
+  });
+
+  it("parses a manifest whose optional fields are empty, in a real /bin/sh", () => {
+    // Executed rather than pattern-matched: the failure this guards against is a shell
+    // semantic (a tab is IFS WHITE SPACE, so `read -r a b c d` collapses a run of tabs and
+    // shifts every later field), which no assertion about the script's text would catch.
+    // The parsing lines are lifted out of the REAL script, so a regression there fails here.
+    const parseStart = script.indexOf(`TAB="$(printf`);
+    const parseEnd = script.indexOf("[ -n \"$SERVICE_KEY\" ] || continue");
+    expect(parseStart).toBeGreaterThan(-1);
+    expect(parseEnd).toBeGreaterThan(parseStart);
+    const parser = script.slice(parseStart, parseEnd);
+
+    const manifestPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "marshal-manifest-")), "targets.tsv");
+    fs.writeFileSync(manifestPath, [
+      // Both optional fields set, then BOTH empty (Railpack from the upload root), then only
+      // root_directory set — the case that shifted fields.
+      "web\tregistry.fly.io/web:tag\tweb/Dockerfile\tapps/web",
+      "api\tregistry.fly.io/api:tag\t\t",
+      "db\tregistry.fly.io/db:tag\t\tservices/db",
+      "",
+    ].join("\n"));
+
+    const output = execFileSync("/bin/sh", ["-c", `${parser}
+  echo "[$SERVICE_KEY][$PUSH_TARGET][$DOCKERFILE_PATH][$ROOT_DIRECTORY]"
+done < ${JSON.stringify(manifestPath)}`], { encoding: "utf8" });
+
+    expect(output.trim().split("\n")).toEqual([
+      "[web][registry.fly.io/web:tag][web/Dockerfile][apps/web]",
+      "[api][registry.fly.io/api:tag][][]",
+      "[db][registry.fly.io/db:tag][][services/db]",
+    ]);
   });
 
   it("reports one digest per target so the applies know which image is whose", () => {

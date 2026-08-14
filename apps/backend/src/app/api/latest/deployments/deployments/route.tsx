@@ -6,6 +6,7 @@ import { DEPLOYMENT_SOURCE_ID_REGEX, MAX_DEPLOYMENT_SOURCE_ID_LENGTH, deployment
 import type { MarshalEnvValue } from "@/lib/deployments/marshal-client";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
+import * as yup from "yup";
 
 const DEPLOYMENT_INCLUDE = { source: { select: { sourceId: true } } } as const;
 
@@ -294,9 +295,11 @@ async function parseSecretDefaults(raw: unknown): Promise<Record<string, Record<
     try {
       validated = await deploymentSecretDefaultsSchema.validate(defaults, { strict: true });
     } catch (error) {
-      // A malformed default is the caller's mistake, so it reads as a 400 naming the
-      // service rather than as an unhandled schema error.
-      throw new StatusError(400, `secret_defaults for service ${JSON.stringify(serviceId)} is not a record of string values: ${error instanceof Error ? error.message : "invalid value"}`);
+      // ONLY a validation failure becomes a 400: anything else thrown out of validate() is
+      // our bug, and dressing it up as the caller's mistake would hide it behind a message
+      // saying their input was malformed.
+      if (!(error instanceof yup.ValidationError)) throw error;
+      throw new StatusError(400, `secret_defaults for service ${JSON.stringify(serviceId)} is not a record of string values: ${error.message}`);
     }
     parsed[serviceId] = validated as Record<string, string>;
   }

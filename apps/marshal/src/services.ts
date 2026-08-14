@@ -809,7 +809,10 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
   // redeploy mandatory — an env change never applies to an existing deployment).
 
   if (!await specIsStillOwned(ns, key, ownedSpecEtag)) {
-    return { revision, changed, state: await getServiceState(ns, key, undefined, knownPorts) };
+    // Deliberately WITHOUT knownPorts: the spec being reported now belongs to whoever won the
+    // race, and resolving someone else's refs against this deployment's targets would report
+    // a state their own reads never agree with.
+    return { revision, changed, state: await getServiceState(ns, key) };
   }
   try {
     await applyMachines(fly, stored, stored.spec.source.image, resolved.env, lease);
