@@ -9,7 +9,7 @@ export const GROWTH_AGENT_AUTH = { "authorization": "Bearer mock_growth_agent_se
 
 export async function createGrowthProject() {
   await Project.createAndSwitch();
-  await Project.updateConfig({ "apps.installed.growth.enabled": true });
+  await Project.updateConfig({ "apps.installed.gtm.enabled": true });
   return backendContext.value.projectKeys;
 }
 

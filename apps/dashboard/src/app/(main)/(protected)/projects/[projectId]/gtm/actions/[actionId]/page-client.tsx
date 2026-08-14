@@ -101,7 +101,7 @@ function ActionDetailBody() {
 
   const backLink = (
     <Link
-      href={withQuery(`/projects/${projectId}/growth`)}
+      href={withQuery(`/projects/${projectId}/gtm`)}
       className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground hover:transition-none"
     >
       <ArrowLeftIcon className="size-4" />

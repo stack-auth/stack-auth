@@ -208,7 +208,7 @@ describe("internal growth milestones", () => {
     const disabledApp = await niceBackendFetch(`${ADMIN_BASE}/milestones`, { accessType: "admin" });
     expect(disabledApp.status).toBe(400);
 
-    await Project.updateConfig({ "apps.installed.growth.enabled": true });
+    await Project.updateConfig({ "apps.installed.gtm.enabled": true });
     const clientAccess = await niceBackendFetch(`${ADMIN_BASE}/milestones`, { accessType: "client" });
     expect(clientAccess.status).toBe(401);
   });

@@ -363,7 +363,7 @@ describe("growth agent simulation", () => {
     const runId = await completeOnboarding();
     // Disable the app again: the agent secret alone must not grant access to a project that never
     // opted into growth.
-    await Project.updateConfig({ "apps.installed.growth.enabled": false });
+    await Project.updateConfig({ "apps.installed.gtm.enabled": false });
     const disabled = await niceBackendFetch(`${AGENT_BASE}/runs/${runId}/phases/website-research/start`, {
       method: "POST",
       headers: GROWTH_AGENT_AUTH,

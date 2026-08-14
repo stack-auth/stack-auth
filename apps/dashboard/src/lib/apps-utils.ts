@@ -1,6 +1,6 @@
 "use client";
 
-import { ALL_APPS_FRONTEND, hasNavigationItems, isAppFrontendHidden } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, hasNavigationItems } from "@/lib/apps-frontend";
 import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 
 type InstalledAppConfig = {
@@ -27,7 +27,7 @@ export function getAppStageLabel(appId: AppId): string | null {
  * Get all available app IDs, filtering out alpha apps in production
  */
 export function getAllAvailableAppIds(): AppId[] {
-  let apps = (Object.keys(ALL_APPS) as AppId[]).filter((appId) => !isAppFrontendHidden(ALL_APPS_FRONTEND[appId]));
+  let apps = Object.keys(ALL_APPS) as AppId[];
 
   // Filter out alpha apps in production
   if (process.env.NODE_ENV !== "development") {
@@ -65,7 +65,7 @@ export function getEnabledAppIds(installedApps: InstalledAppsMap): AppId[] {
  * Get enabled apps that expose sidebar/cmdk navigation items.
  */
 export function getEnabledNavigableAppIds(installedApps: InstalledAppsMap): AppId[] {
-  return getEnabledAppIds(installedApps).filter((appId) => !isAppFrontendHidden(ALL_APPS_FRONTEND[appId]) && hasNavigationItems(ALL_APPS_FRONTEND[appId]));
+  return getEnabledAppIds(installedApps).filter((appId) => hasNavigationItems(ALL_APPS_FRONTEND[appId]));
 }
 
 /**

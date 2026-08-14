@@ -128,7 +128,7 @@ function BriefDetail(props: { briefId: string }) {
     <PageLayout
       title="Daily Brief"
       description={headline}
-      actions={<StyledLink href={`/projects/${projectId}/growth`} className="text-sm no-underline hover:underline">← Growth overview</StyledLink>}
+      actions={<StyledLink href={`/projects/${projectId}/gtm`} className="text-sm no-underline hover:underline">← Growth overview</StyledLink>}
     >
       {state.status === "loading" && (
         <div className="flex flex-col gap-4" aria-busy="true" aria-label="Loading brief">

@@ -38,7 +38,7 @@ const FEATURED_APP_IDS = [
   "payments",
   "analytics",
   "deployments-alpha",
-  "growth",
+  "gtm",
 ] as const satisfies readonly AppId[];
 
 type FeaturedAppId = (typeof FEATURED_APP_IDS)[number];

@@ -49,8 +49,8 @@ function ToolCardView(props: { card: GrowthChatToolCard }) {
     : card.kind === "create-action-item" ? {
       label: card.hasWorkflow ? "Review & activate" : "View action",
       href: withQuery(card.createdActionItemId == null
-        ? `/projects/${projectId}/growth`
-        : `/projects/${projectId}/growth/actions/${card.createdActionItemId}`),
+        ? `/projects/${projectId}/gtm`
+        : `/projects/${projectId}/gtm/actions/${card.createdActionItemId}`),
     }
       : card.kind === "create-scheduled-task" ? { label: "View workflow", href: `/projects/${projectId}/workflows` }
         : null;

@@ -192,7 +192,7 @@ describe("internal growth interview (no mock Eve)", () => {
     const disabled = await niceBackendFetch(`${ADMIN_BASE}/interview`, { accessType: "admin" });
     expect(disabled.status).toBe(400);
 
-    await Project.updateConfig({ "apps.installed.growth.enabled": true });
+    await Project.updateConfig({ "apps.installed.gtm.enabled": true });
     const clientAccess = await niceBackendFetch(`${ADMIN_BASE}/interview`, { accessType: "client" });
     expect(clientAccess.status).toBe(401);
     const clientSkip = await niceBackendFetch(`${ADMIN_BASE}/interview/skip`, { accessType: "client", method: "POST" });
@@ -401,7 +401,7 @@ describe("internal growth interview (no mock Eve)", () => {
 
   it("retakes the interview: clears the plan, re-arms the question phase, and keeps the run's findings", { timeout: 300_000 }, async ({ expect }) => {
     await Project.createAndSwitch();
-    await Project.updateConfig({ "apps.installed.growth.enabled": true });
+    await Project.updateConfig({ "apps.installed.gtm.enabled": true });
     const clientRetake = await niceBackendFetch(`${ADMIN_BASE}/interview/retake`, { accessType: "client", method: "POST" });
     expect(clientRetake.status).toBe(401);
     // No interview resource yet -> 404, same as the other interview routes.

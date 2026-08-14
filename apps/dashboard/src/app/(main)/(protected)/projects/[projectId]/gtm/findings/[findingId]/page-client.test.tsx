@@ -34,7 +34,7 @@ describe("FindingDetailContent", () => {
 
     expect(screen.getByText("We're putting your report together")).toBeTruthy();
     expect(screen.getByText(/check back in about 24 hours/i)).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Growth overview" }).getAttribute("href")).toBe("/projects/project-1/growth");
+    expect(screen.getByRole("link", { name: "Growth overview" }).getAttribute("href")).toBe("/projects/project-1/gtm");
     expect(getGrowthOverview).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
