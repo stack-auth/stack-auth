@@ -87,9 +87,13 @@ type PerfMetric = {
 };
 
 type RequestUserAuth = {
-  accessToken: string,
-  refreshToken: string,
+  accessToken?: string,
+  refreshToken?: string,
 };
+
+// Prefill requests use server/admin access and explicit customer IDs, so an empty override avoids
+// pinning a 60-second user token while also suppressing the shared ambient auth state.
+const PREFILL_NO_USER_AUTH: RequestUserAuth = {};
 
 async function measure<T>(name: string, count: number, fn: () => Promise<T>, metrics: PerfMetric[]): Promise<T> {
   const startedAt = performance.now();
@@ -157,20 +161,19 @@ const TEST_TIMEOUT_MS = BASE_TEST_TIMEOUT_MS * PREFILL_STAGES.length
   + MAX_PREFILL_CUSTOMERS * PREFILL_TIMEOUT_MS;
 
 async function prefillOne(index: number): Promise<void> {
-  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
-  const userAuth = { accessToken, refreshToken };
+  const { userId } = await Auth.fastSignUp();
 
   const subscriptionCode = await createPurchaseCode({
     customerType: "user",
     customerId: userId,
     productId: "perf-sub",
-    userAuth,
+    userAuth: PREFILL_NO_USER_AUTH,
   });
   const subscriptionResponse = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
     accessType: "admin",
     method: "POST",
     body: { full_code: subscriptionCode, price_id: "monthly", quantity: 1 },
-    userAuth,
+    userAuth: PREFILL_NO_USER_AUTH,
   });
   expect(subscriptionResponse.status).toBe(200);
 
@@ -178,13 +181,13 @@ async function prefillOne(index: number): Promise<void> {
     customerType: "user",
     customerId: userId,
     productId: "perf-otp",
-    userAuth,
+    userAuth: PREFILL_NO_USER_AUTH,
   });
   const oneTimeResponse = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
     accessType: "admin",
     method: "POST",
     body: { full_code: oneTimeCode, price_id: "single", quantity: 2 },
-    userAuth,
+    userAuth: PREFILL_NO_USER_AUTH,
   });
   expect(oneTimeResponse.status).toBe(200);
 
@@ -193,7 +196,7 @@ async function prefillOne(index: number): Promise<void> {
       method: "POST",
       accessType: "server",
       body: { product_id: "perf-api-grant", quantity: 1 },
-      userAuth,
+      userAuth: PREFILL_NO_USER_AUTH,
     });
     expect(grantResponse.status).toBe(200);
   }
@@ -205,7 +208,7 @@ async function prefillOne(index: number): Promise<void> {
       accessType: "server",
       query: { allow_negative: "false" },
       body: { delta: update + 1, description: `prefill-${index}-${update}` },
-      userAuth,
+      userAuth: PREFILL_NO_USER_AUTH,
     });
     expect(updateResponse.status).toBe(200);
   }
@@ -431,9 +434,7 @@ it("benchmarks backend-level payments flows through the Bulldozer HTTP boundary"
 
     const summary = await runMeasuredWorkload(prefillCustomers, delta, PREFILL_CONCURRENCY, metricsBeforeWorkload);
     if (OUTPUT_PATH != null) {
-      const outputPath = PREFILL_STAGES.length > 1
-        ? OUTPUT_PATH.replace(/\{prefill\}/g, String(prefillCustomers))
-        : OUTPUT_PATH;
+      const outputPath = OUTPUT_PATH.replace(/\{prefill\}/g, String(prefillCustomers));
       writeSummary(summary, outputPath);
     }
     previousPrefillCustomers = prefillCustomers;
