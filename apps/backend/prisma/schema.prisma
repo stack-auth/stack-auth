@@ -180,6 +180,7 @@ model Tenancy {
   tvEventOccurrences TvEventOccurrence[]
   tvEventEvaluatorStates TvEventEvaluatorState[]
   tvProfileEventPresentations TvProfileEventPresentation[]
+  tvDisplays TvDisplay[]
   deploymentServices  DeploymentService[]
   deploymentSourceUploads DeploymentSourceUpload[]
   workflowDefinitions WorkflowDefinition[]
@@ -225,6 +226,94 @@ model TvPresentationProfile {
 
   @@unique([tenancyId, normalizedDisplayName], name: "TvPresentationProfile_tenancy_name_key")
   @@index([tenancyId, updatedAt(sort: Desc), id], name: "TvPresentationProfile_tenancy_updatedAt_id_idx")
+}
+
+enum TvDisplayPairingState {
+  PENDING
+  APPROVED
+  CONSUMED
+  REJECTED
+}
+
+model TvDisplay {
+  id        String  @id @default(uuid()) @db.Uuid
+  tenancyId String  @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  profileId            String @db.VarChar(128)
+  displayName          String @db.VarChar(80)
+
+  pairedByAdminUserId String @db.Uuid
+  pairedAt             DateTime @default(now())
+  lastSeenAt           DateTime?
+  revokedAt            DateTime?
+  revokedReason        String? @db.VarChar(120)
+  credentialVersion    Int @default(1)
+
+  financialVisibilityAcknowledgedAt DateTime?
+  financialVisibilityAcknowledgedByAdminUserId String? @db.Uuid
+
+  credentials TvDisplayCredential[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenancyId, revokedAt, updatedAt(sort: Desc), id], name: "TvDisplay_tenancy_active_idx")
+  @@index([tenancyId, profileId, revokedAt], name: "TvDisplay_profile_assignment_idx")
+}
+
+model TvDisplayPairingChallenge {
+  id               String @id @default(uuid()) @db.Uuid
+  pairingCode      String @unique @db.VarChar(8)
+  deviceSecretHash String @unique @db.VarChar(64)
+  state            TvDisplayPairingState @default(PENDING)
+
+  expiresAt       DateTime
+  lastPolledAt    DateTime?
+  invalidAttempts Int @default(0)
+
+  approvedTenancyId String? @db.Uuid
+  approvedProfileId String? @db.VarChar(128)
+  approvedDisplayName String? @db.VarChar(80)
+  approvedByAdminUserId String? @db.Uuid
+  approvedAt DateTime?
+  financialVisibilityAcknowledgedAt DateTime?
+  consumedAt DateTime?
+  rejectedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([expiresAt], name: "TvDisplayPairingChallenge_expiresAt_idx")
+}
+
+model TvDisplayCredential {
+  id        String @id @default(uuid()) @db.Uuid
+  displayId String @db.Uuid
+  display   TvDisplay @relation(fields: [displayId], references: [id], onDelete: Cascade)
+
+  familyId        String @db.Uuid
+  tokenHash       String @unique @db.VarChar(64)
+  parentId        String? @db.Uuid
+  issuedAt        DateTime @default(now())
+  expiresAt       DateTime
+  usedAt          DateTime?
+  revokedAt       DateTime?
+  replacementId  String? @db.Uuid
+
+  @@index([displayId, familyId, revokedAt], name: "TvDisplayCredential_family_idx")
+  @@index([expiresAt], name: "TvDisplayCredential_expiresAt_idx")
+}
+
+model TvDisplayPairingRateLimitBucket {
+  keyHash   String @db.VarChar(64)
+  operation String @db.VarChar(40)
+  windowStart DateTime
+  attempts  Int @default(0)
+  expiresAt DateTime
+
+  @@id([keyHash, operation, windowStart])
+  @@index([expiresAt], name: "TvDisplayPairingRateLimitBucket_expiresAt_idx")
 }
 
 enum TvEventType {

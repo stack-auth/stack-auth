@@ -275,7 +275,7 @@ export default function PageClient() {
 
   if (loadError || draft == null || saved == null || resource == null) {
     return (
-      <PageLayout title="TV Profile Not Found" description="The requested fixture profile does not exist.">
+      <PageLayout title="TV Profile Not Found" description="The requested TV profile does not exist.">
         <DesignAlert variant="error" title="Unknown Profile" description={`No TV presentation profile exists for "${profileId}", or it could not be loaded.`} />
         <Link href={`/projects/${projectId}/tv-mode`} className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
           <ArrowLeftIcon className="h-4 w-4" />
@@ -702,7 +702,7 @@ export default function PageClient() {
               <div>
                 {settingRow({
                   title: "User Milestones",
-                  description: "500, 1K, 10K, and future growth moments.",
+                  description: "User growth milestones worth celebrating.",
                   control: <Switch checked={draft.celebrations.userMilestone} onCheckedChange={(userMilestone) => setDraft({
                     ...draft,
                     celebrations: { ...draft.celebrations, userMilestone },

@@ -187,6 +187,34 @@ describe("TV event presentation orchestration", () => {
     });
   });
 
+  it("uses a stable event-type tie-break when Email and Subscription incidents have equal severity", () => {
+    const email = occurrence("email", "incident");
+    const subscription: TvDurableEventOccurrence = {
+      ...occurrence("subscription", "incident"),
+      type: "subscription-collection-degradation",
+      activatedAt: new Date("2026-07-29T09:59:00.000Z"),
+    };
+    const emailAssignment = createTvPresentationAssignment({
+      occurrence: email,
+      preferences: preferences(),
+      takeoverStartedAt: email.activatedAt,
+    });
+    const subscriptionAssignment = createTvPresentationAssignment({
+      occurrence: subscription,
+      preferences: preferences(),
+      takeoverStartedAt: subscription.activatedAt,
+    });
+
+    expect(deriveTvPresentation({
+      now: new Date("2026-07-29T10:00:10.000Z"),
+      occurrences: [subscription, email],
+      assignments: [subscriptionAssignment, emailAssignment],
+    })).toMatchObject({
+      takeover: { occurrenceId: "email", variant: "incident" },
+      highlight: { occurrenceId: "email", variant: "active-incident" },
+    });
+  });
+
   it("starts a fresh bounded Critical phase at the authoritative escalation time", () => {
     const escalatedAt = new Date("2026-07-29T10:03:00.000Z");
     const critical = occurrence("incident", "critical-incident");

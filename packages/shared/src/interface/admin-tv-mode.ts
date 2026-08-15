@@ -16,7 +16,7 @@ export const TV_SCREEN_IDS = [
 ] as const;
 
 export const TV_MINIMUM_PAYMENT_ATTEMPTS = 10;
-export const TV_MINIMUM_FINISHED_SENDS = 20;
+export const TV_MINIMUM_EMAIL_OUTCOMES = 20;
 export const TV_SNAPSHOT_POLL_INTERVAL_MS = 15_000;
 export const TV_SNAPSHOT_STALE_AFTER_MS = 45_000;
 
@@ -26,16 +26,16 @@ export function calculateTvPaymentSuccessPercent(applicableAttempts: number, suc
 }
 
 export function calculateTvEmailRates(
-  finishedSends: number,
+  assessableSends: number,
   delivered: number,
   bounced: number,
 ): { deliveryRatePercent: number | null, bounceRatePercent: number | null } {
-  if (finishedSends < TV_MINIMUM_FINISHED_SENDS) {
+  if (assessableSends < TV_MINIMUM_EMAIL_OUTCOMES) {
     return { deliveryRatePercent: null, bounceRatePercent: null };
   }
   return {
-    deliveryRatePercent: Math.round(Math.min(delivered / finishedSends, 1) * 1000) / 10,
-    bounceRatePercent: Math.round(Math.min(bounced / finishedSends, 1) * 1000) / 10,
+    deliveryRatePercent: Math.round(Math.min(delivered / assessableSends, 1) * 1000) / 10,
+    bounceRatePercent: Math.round(Math.min(bounced / assessableSends, 1) * 1000) / 10,
   };
 }
 
@@ -171,7 +171,6 @@ export const TvAudienceMomentumScreenSchema = yupObject({
 const TvExactFinancialsSchema = yupObject({
   visibility: yupString().oneOf(["exact"]).defined(),
   paidRevenueCents: yupNumber().integer().defined(),
-  mrrProxyCents: yupNumber().integer().defined(),
   revenueTrend: yupArray(TvTrendPointSchema).defined(),
 }).noUnknown().defined();
 
@@ -220,6 +219,7 @@ export const TvEmailHealthScreenSchema = yupObject({
   ...TvScreenEnvelopeSchema,
   data: yupObject({
     sent: yupNumber().integer().min(0).defined(),
+    assessableSends: yupNumber().integer().min(0).defined(),
     delivered: yupNumber().integer().min(0).defined(),
     bounced: yupNumber().integer().min(0).defined(),
     errors: yupNumber().integer().min(0).defined(),
@@ -240,9 +240,14 @@ export const TvEmailHealthScreenSchema = yupObject({
   }).noUnknown().nullable().defined(),
 }).noUnknown().defined()
   .test("source-data-state", "TV source state is inconsistent with its data", isTvScreenDataStateConsistent)
+  .test("email-outcome-counts", "TV email outcome counts are inconsistent", (screen) => {
+    if (screen.data == null) return true;
+    return screen.data.assessableSends === screen.data.delivered + screen.data.bounced + screen.data.errors
+      && screen.data.sent >= screen.data.assessableSends;
+  })
   .test("email-sample-threshold", "TV email sample threshold is inconsistent", (screen) => {
     if (screen.data == null) return true;
-    if (screen.data.sent < TV_MINIMUM_FINISHED_SENDS) {
+    if (screen.data.assessableSends < TV_MINIMUM_EMAIL_OUTCOMES) {
       return screen.sourceStatus === "insufficient-data"
         && screen.data.deliveryRatePercent === null
         && screen.data.bounceRatePercent === null
@@ -496,6 +501,48 @@ export type TvProfileConfiguration = yup.InferType<typeof TvProfileConfiguration
 export type TvBuiltInProfileResource = yup.InferType<typeof TvBuiltInProfileResourceSchema>;
 export type TvSavedProfileResource = yup.InferType<typeof TvSavedProfileResourceSchema>;
 export type TvProfileResource = yup.InferType<typeof TvProfileResourceSchema>;
+
+export const TvDisplayResourceSchema = yupObject({
+  id: yupString().uuid().defined(),
+  displayName: yupString().defined(),
+  profileId: yupString().defined(),
+  profileDisplayName: yupString().defined(),
+  profileFinancialVisibility: yupString().oneOf(["redacted", "exact"]).defined(),
+  state: yupString().oneOf(["online", "offline", "never-connected", "revoked"]).defined(),
+  pairedAt: yupString().defined(),
+  lastSeenAt: yupString().nullable().defined(),
+  revokedAt: yupString().nullable().defined(),
+  exactFinancialsAcknowledged: yupBoolean().defined(),
+}).noUnknown().defined();
+
+export const TV_DISPLAY_PAIRING_CODE_PATTERN = /^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/;
+
+export const TvDisplayPairingChallengeSchema = yupObject({
+  challengeId: yupString().uuid().defined(),
+  pairingCode: yupString().matches(TV_DISPLAY_PAIRING_CODE_PATTERN).defined(),
+  deviceSecret: yupString().min(32).defined(),
+  expiresAt: yupString().defined(),
+  pollingIntervalSeconds: yupNumber().integer().min(1).defined(),
+}).noUnknown().defined();
+
+export const TvDisplayPairingStatusSchema = yupUnion(
+  yupObject({
+    status: yupString().oneOf(["waiting"]).defined(),
+    retryAfterSeconds: yupNumber().integer().min(1).defined(),
+  }).noUnknown().defined(),
+  yupObject({
+    status: yupString().oneOf(["paired"]).defined(),
+    accessToken: yupString().defined(),
+    display: TvDisplayResourceSchema,
+  }).noUnknown().defined(),
+  yupObject({
+    status: yupString().oneOf(["expired", "rejected", "used"]).defined(),
+  }).noUnknown().defined(),
+).defined();
+
+export type TvDisplayResource = yup.InferType<typeof TvDisplayResourceSchema>;
+export type TvDisplayPairingChallenge = yup.InferType<typeof TvDisplayPairingChallengeSchema>;
+export type TvDisplayPairingStatus = yup.InferType<typeof TvDisplayPairingStatusSchema>;
 
 export type TvBuiltInProfile = TvBuiltInProfileResource;
 

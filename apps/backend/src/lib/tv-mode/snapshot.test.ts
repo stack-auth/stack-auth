@@ -8,6 +8,8 @@ import type {
 import { getTvBuiltInProfile } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import {
   addTvSourceHealth,
+  assertTvRevenueFactsAreTrustworthy,
+  applyTvDisplayFinancialPolicy,
   applyTvAudienceAnalytics,
   assembleTvSnapshot,
   createReadyTvLivePulseScreen,
@@ -69,6 +71,7 @@ const screens = {
     diagnosticCode: null,
     data: {
       sent: 5,
+      assessableSends: 5,
       delivered: 5,
       bounced: 0,
       errors: 0,
@@ -88,6 +91,28 @@ if (companyPulseProfile == null) {
 }
 
 describe("assembleTvSnapshot", () => {
+  it("forces exact display profiles through the server-side redaction policy", () => {
+    const exactFinancialVisibility: "exact" = "exact";
+    const exactProfile = {
+      ...companyPulseProfile,
+      configuration: {
+        ...companyPulseProfile.configuration,
+        financialVisibility: exactFinancialVisibility,
+        interruptionPreferences: {
+          ...companyPulseProfile.configuration.interruptionPreferences,
+          celebrations: {
+            ...companyPulseProfile.configuration.interruptionPreferences.celebrations,
+            revenueMilestone: true,
+          },
+        },
+      },
+    };
+    const effective = applyTvDisplayFinancialPolicy(exactProfile, true);
+    expect(effective.configuration.financialVisibility).toBe("redacted");
+    expect(effective.configuration.interruptionPreferences.celebrations.revenueMilestone).toBe(false);
+    expect(exactProfile.configuration.financialVisibility).toBe("exact");
+  });
+
   it("keeps each source state isolated in one authoritative snapshot", () => {
     const snapshot = assembleTvSnapshot({
       project: { id: "project-a", displayName: "Project A" },
@@ -172,7 +197,6 @@ describe("assembleTvSnapshot", () => {
             financials: {
               visibility: "exact",
               paidRevenueCents: 100,
-              mrrProxyCents: 100,
               revenueTrend: [],
             },
             revenueChangePercent: 0,
@@ -373,6 +397,19 @@ describe("TV payment activity qualification", () => {
 
   it("recognizes a truly empty project", () => {
     expect(hasTvPaymentData(emptyMetrics)).toBe(false);
+  });
+
+  it("fails closed for malformed legacy revenue instead of understating the total", () => {
+    const trustworthy = {
+      unsupportedCurrencies: 0,
+      invalidNormalizedFacts: 0,
+      invalidLegacyFacts: 0,
+    };
+    expect(() => assertTvRevenueFactsAreTrustworthy(trustworthy)).not.toThrow();
+    expect(() => assertTvRevenueFactsAreTrustworthy({
+      ...trustworthy,
+      invalidLegacyFacts: 1,
+    })).toThrow("incomplete legacy payment facts");
   });
 });
 

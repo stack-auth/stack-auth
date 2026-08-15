@@ -22,6 +22,7 @@ import { getTvScreenDefinition } from "@/components/tv-mode/screen-registry";
 import { getTvProfileEventCoverageLabel, getTvProfileOverviewAction } from "@/lib/tv-mode/profile-editor-copy";
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from "../use-admin-app";
+import { TvDisplayManagement } from "./display-management";
 
 function actionLinkClass(variant: "primary" | "secondary"): string {
   return variant === "primary"
@@ -173,6 +174,7 @@ export default function PageClient() {
           );
         })}
       </div>
+      {profiles == null || loadError ? null : <TvDisplayManagement adminApp={adminApp} profiles={profiles} />}
     </PageLayout>
   );
 }

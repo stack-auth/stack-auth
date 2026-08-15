@@ -17,6 +17,14 @@ afterEach(() => {
 });
 
 describe("TvPresentation rotation", () => {
+  it("can render without dashboard exit navigation for an independent display", () => {
+    const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
+    if (snapshot == null) throw new Error("Missing company-pulse fixture");
+    render(<TvPresentation snapshot={snapshot} />);
+    expect(screen.queryByRole("button", { name: "Exit TV Mode" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Pause rotation" })).toBeDefined();
+  });
+
   it("does not restart rotation or reset the current screen when polling replaces the snapshot", async () => {
     vi.useFakeTimers();
     const fixtureSnapshot = getTvFixtureSnapshot("project-a", "company-pulse");
@@ -110,7 +118,7 @@ describe("TV chart headers", () => {
   it.each([
     ["live-pulse", "Today’s Activity", "Current UTC day"],
     ["audience-momentum", "Audience Lifecycle", "Daily activity · trailing 7 days"],
-    ["revenue-payments", "Gross Paid Revenue Momentum", "Cumulative daily trend · trailing 30 days"],
+    ["revenue-payments", "Gross Collected Revenue Momentum", "Cumulative daily trend · trailing 30 days"],
     ["email-health", "Email Delivery Volume", "Daily send status · trailing 7 days"],
   ] as const)("labels the %s chart and its reporting window", (screenId, title, subtitle) => {
     const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
@@ -126,7 +134,7 @@ describe("TV chart headers", () => {
 });
 
 describe("TV metric semantics", () => {
-  it("uses precise Audience, revenue-proxy, and delivered-series wording", () => {
+  it("uses precise Audience, gross-revenue, and delivered-series wording", () => {
     const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
     if (snapshot == null) throw new Error("Missing company-pulse fixture");
 
@@ -147,13 +155,13 @@ describe("TV metric semantics", () => {
 
     const revenueRender = render(renderTvScreen(revenue));
     screen.getByText("Gross Collected Revenue · 30d");
-    screen.getByText("30-Day Gross Revenue");
     screen.getByText("Payment Success");
-    screen.getByText("Refunds Excluded");
+    screen.getByText("Past Due");
     revenueRender.unmount();
 
     render(renderTvScreen(email));
     expect(screen.getAllByText("Delivered").length).toBeGreaterThan(0);
+    screen.getByText("12,640 confirmed outcomes");
     expect(screen.queryByText("Completed Successfully")).toBeNull();
   });
 
@@ -432,7 +440,7 @@ describe("TV insight area", () => {
 
   it.each([
     ["revenue-payments", "At least 10 completed payment outcomes are required before Payment Success can be assessed."],
-    ["email-health", "At least 20 finished sends are required before delivery health can be assessed."],
+    ["email-health", "At least 20 confirmed delivery outcomes are required before delivery health can be assessed."],
   ] as const)("explains the evidence threshold for %s", (screenId, message) => {
     expect(getTvInsightPresentation({
       screenId,

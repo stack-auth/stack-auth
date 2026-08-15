@@ -47,7 +47,7 @@ export const TV_SCREEN_REGISTRY = new Map<TvScreenId, TvScreenDefinition>([
   }],
   ["revenue-payments", {
     id: "revenue-payments", displayName: "Revenue & Payments",
-    description: "Thirty-day gross paid invoice revenue and payment collection.",
+    description: "Thirty-day gross collected revenue and payment collection.",
     sourceLabel: "Hexclave payments", defaultDurationSeconds: 18,
     icon: CurrencyDollarIcon, accentClassName: "text-emerald-300",
   }],
@@ -308,7 +308,7 @@ const TV_INSIGHT_FALLBACKS = new Map<TvScreenId, {
   }],
   ["email-health", {
     ready: "No evidence-qualified email delivery insight was identified for this seven-day window.",
-    insufficient: "At least 20 finished sends are required before delivery health can be assessed.",
+    insufficient: "At least 20 confirmed delivery outcomes are required before delivery health can be assessed.",
   }],
 ]);
 
@@ -530,10 +530,10 @@ function RevenuePaymentsScreen({
           <div className="flex h-full min-h-0 flex-col justify-between p-[clamp(1.5rem,2.3vw,5.5rem)]">
             <TvMetric label="Gross Collected Revenue · 30d" value={financials.visibility === "exact" ? formatUsd(financials.paidRevenueCents) : "Hidden"} detail={`${data.revenueChangePercent >= 0 ? "↑" : "↓"} ${Math.abs(data.revenueChangePercent)}% vs previous 30 days${financials.visibility === "exact" ? "" : " · exact values off"}`} hero />
             <div className="grid grid-cols-2 gap-6">
-              <TvMetric label="30-Day Gross Revenue" value={financials.visibility === "exact" ? formatUsd(financials.mrrProxyCents) : "Hidden"} detail="Refunds Excluded" />
               <TvMetric label="Payment Success" value={data.paymentSuccess.percent == null ? "Insufficient Data" : `${data.paymentSuccess.percent}%`} detail={`${data.paymentSuccess.applicableAttempts} terminal outcomes`} />
               <TvMetric label="Active subscriptions" value={data.activeSubscriptions.toLocaleString()} />
-              <TvMetric label="New subscriptions" value={`+${data.newSubscriptions}`} detail={`${data.pastDueSubscriptions} past due`} />
+              <TvMetric label="New subscriptions" value={`+${data.newSubscriptions}`} />
+              <TvMetric label="Past Due" value={data.pastDueSubscriptions.toLocaleString()} />
             </div>
             <TvInsightArea screenId="revenue-payments" sourceStatus={sourceStatus} insight={insight} tone="emerald" />
           </div>
@@ -541,11 +541,11 @@ function RevenuePaymentsScreen({
         <GlassPanel tone="emerald" className="h-full">
           <div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-[clamp(1rem,2vh,2.5rem)] p-[clamp(1.25rem,2vw,5rem)]">
             <TvChartHeader
-              title="Gross Paid Revenue Momentum"
+              title="Gross Collected Revenue Momentum"
               subtitle="Cumulative daily trend · trailing 30 days"
               accentClassName="text-emerald-200/55"
             />
-            <TvLineChart points={trend} color="#6ee7b7" label={financials.visibility === "exact" ? "Daily gross paid revenue" : "Normalized gross paid revenue direction"} />
+            <TvLineChart points={trend} color="#6ee7b7" label={financials.visibility === "exact" ? "Daily gross collected revenue" : "Normalized gross collected revenue direction"} />
           </div>
         </GlassPanel>
       </div>
@@ -569,7 +569,7 @@ function EmailHealthScreen({
       <div className="grid h-full min-h-0 grid-cols-[0.76fr_1.24fr] gap-[clamp(2rem,5vw,12rem)]">
         <GlassPanel tone="amber" className="h-full">
           <div className="flex h-full min-h-0 flex-col justify-between p-[clamp(1.5rem,2.3vw,5.5rem)]">
-            <TvMetric label="Delivery rate · 7d" value={data.deliveryRatePercent == null ? "Insufficient data" : `${data.deliveryRatePercent}%`} detail={data.deliveryRatePercent == null ? "At least 20 finished sends required" : `${data.sent.toLocaleString()} finished sends`} hero />
+            <TvMetric label="Delivery rate · 7d" value={data.deliveryRatePercent == null ? "Insufficient data" : `${data.deliveryRatePercent}%`} detail={data.deliveryRatePercent == null ? "At least 20 confirmed outcomes required" : `${data.assessableSends.toLocaleString()} confirmed outcomes`} hero />
             <div className="grid grid-cols-2 gap-x-8 gap-y-5">
               <TvMetric label="Delivered" value={formatCompact(data.delivered)} />
               <TvMetric label="Bounced" value={formatCompact(data.bounced)} />

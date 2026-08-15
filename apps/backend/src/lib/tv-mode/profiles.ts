@@ -1,5 +1,5 @@
 import { type Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
+import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { type Prisma } from "@/generated/prisma/client";
 import {
   getTvBuiltInProfile,
@@ -16,6 +16,7 @@ import {
   type TvSavedProfileResource,
 } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 
 type TvProfileDatabaseRow = Prisma.TvPresentationProfileGetPayload<{}>;
@@ -30,6 +31,28 @@ export class TvProfileNameConflictError extends Error {
 
 export class TvBuiltInProfileMutationError extends Error {
   override name = "TvBuiltInProfileMutationError";
+}
+
+export class TvProfileAssignedToDisplaysError extends Error {
+  override name = "TvProfileAssignedToDisplaysError";
+  constructor(readonly displayCount: number) {
+    super("TV profile is assigned to an active display or approved pairing.");
+  }
+}
+
+export async function lockTvProfileDisplayAssignment(
+  transaction: Prisma.TransactionClient,
+  tenancyId: string,
+  profileId: string,
+): Promise<void> {
+  // Saved profiles and display assignments cannot use a normal foreign key because
+  // built-in profiles are virtual. This transaction lock supplies the missing
+  // serialization boundary for assignment and deletion without coupling the models.
+  await transaction.$executeRaw`
+    SELECT pg_advisory_xact_lock(
+      hashtextextended(${`tv-profile-display-assignment:${tenancyId}:${profileId}`}, 0)
+    )
+  `;
 }
 
 export function normalizeTvProfileName(displayName: string): string {
@@ -321,8 +344,26 @@ export async function deleteTvProfile(
   if (getTvBuiltInProfile(profileId) != null) throw new TvBuiltInProfileMutationError();
   if (!(await profileTableIsReady(tenancy))) return null;
   const schema = await getPrismaSchemaForTenancy(tenancy);
-  const prisma = await getPrismaClientForTenancy(tenancy);
-  const deleted = await retryTransaction(prisma, async (transaction) => {
+  const deleted = await retryTransaction(globalPrismaClient, async (transaction) => {
+    await lockTvProfileDisplayAssignment(transaction, tenancy.id, profileId);
+    const assignedRows = await transaction.$queryRaw<Array<{ count: bigint }>>`
+      SELECT (
+        SELECT COUNT(*) FROM "TvDisplay"
+        WHERE "tenancyId" = ${tenancy.id}::UUID
+          AND "profileId" = ${profileId}
+          AND "revokedAt" IS NULL
+      ) + (
+        SELECT COUNT(*) FROM "TvDisplayPairingChallenge"
+        WHERE "approvedTenancyId" = ${tenancy.id}::UUID
+          AND "approvedProfileId" = ${profileId}
+          AND "state" = 'APPROVED'::"TvDisplayPairingState"
+          AND "expiresAt" > NOW()
+      ) AS "count"
+    `;
+    const assignedDisplayCount = Number(
+      (assignedRows.at(0) ?? throwErr("TV profile display-assignment count returned no row.")).count,
+    );
+    if (assignedDisplayCount > 0) throw new TvProfileAssignedToDisplaysError(assignedDisplayCount);
     const rows = await transaction.$queryRaw<Array<{ id: string }>>`
       DELETE FROM ${sqlQuoteIdent(schema)}."TvPresentationProfile"
       WHERE "tenancyId" = ${tenancy.id}::UUID

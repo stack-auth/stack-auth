@@ -33,19 +33,35 @@ export function useTvLiveSnapshot(options: {
   profileId: string,
   enabled: boolean,
 }): TvLiveSnapshotState {
+  const loadSnapshot = useCallback(async () => {
+    return await fetchTvSnapshotOrThrow(options.adminApp, options.profileId);
+  }, [options.adminApp, options.profileId]);
+  return useTvSnapshotPolling({
+    loadSnapshot,
+    enabled: options.enabled,
+    failureProfileId: options.profileId,
+  });
+}
+
+export function useTvSnapshotPolling(options: {
+  loadSnapshot: () => Promise<TvSnapshot>,
+  enabled: boolean,
+  failureProfileId?: string,
+}): TvLiveSnapshotState {
+  const { enabled, failureProfileId, loadSnapshot } = options;
   const [snapshot, setSnapshot] = useState<TvSnapshot | null>(null);
-  const [loading, setLoading] = useState(options.enabled);
+  const [loading, setLoading] = useState(enabled);
   const [unavailableReason, setUnavailableReason] = useState<"offline" | "error" | null>(null);
   const inFlightRef = useRef(false);
   const requestIdRef = useRef(0);
   const snapshotRef = useRef<TvSnapshot | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!options.enabled || inFlightRef.current) return;
+    if (!enabled || inFlightRef.current) return;
     inFlightRef.current = true;
     const requestId = ++requestIdRef.current;
     try {
-      const nextSnapshot = await fetchTvSnapshotOrThrow(options.adminApp, options.profileId);
+      const nextSnapshot = await loadSnapshot();
       if (requestId !== requestIdRef.current) return;
       snapshotRef.current = nextSnapshot;
       setSnapshot(nextSnapshot);
@@ -54,7 +70,7 @@ export function useTvLiveSnapshot(options: {
       if (requestId !== requestIdRef.current) return;
       captureError("tv-snapshot-refresh-failed", new HexclaveAssertionError(
         "Failed to refresh the TV presentation snapshot.",
-        { cause, profileId: options.profileId },
+        { cause, profileId: failureProfileId },
       ));
       const retained = snapshotRef.current;
       if (retained == null) {
@@ -70,17 +86,17 @@ export function useTvLiveSnapshot(options: {
         setLoading(false);
       }
     }
-  }, [options.adminApp, options.enabled, options.profileId]);
+  }, [enabled, failureProfileId, loadSnapshot]);
 
   useEffect(() => {
-    // Route changes can reuse this client component. Invalidate any request from
-    // the previous profile so its response cannot cross the snapshot boundary.
+    // Route or display-principal changes can reuse this client component.
+    // Invalidate the previous source so its response cannot cross boundaries.
     requestIdRef.current += 1;
     inFlightRef.current = false;
     snapshotRef.current = null;
     setSnapshot(null);
     setUnavailableReason(null);
-    if (!options.enabled) {
+    if (!enabled) {
       setLoading(false);
       return;
     }
@@ -125,7 +141,7 @@ export function useTvLiveSnapshot(options: {
       window.removeEventListener("online", updateConnectionState);
       window.removeEventListener("offline", updateConnectionState);
     };
-  }, [options.enabled, refresh]);
+  }, [enabled, refresh]);
 
   return { snapshot, loading, unavailableReason };
 }

@@ -22,6 +22,7 @@ import { WrongAddressScreen } from "./wrong-address-screen";
 
 const DEV_ENVIRONMENT_HEALTHCHECK_INTERVAL_MS = 2_000;
 const TV_PRESENTATION_PATH = /^\/projects\/[^/]+\/tv-mode\/present\/[^/]+\/?$/;
+const INDEPENDENT_TV_DISPLAY_PATH = /^\/tv\/?$/;
 
 type DevEnvironmentHealthSnapshot =
   | { status: "checking" | "healthy" }
@@ -190,6 +191,9 @@ export function LayoutClient(props: {
   const pathname = usePathname();
   const isBrowserSecretAuthorizationPage = pathname === "/development-environment/browser-secret";
   const isTvPresentationPage = TV_PRESENTATION_PATH.test(pathname);
+  const isIndependentTvDisplayPage = INDEPENDENT_TV_DISPLAY_PATH.test(pathname);
+  const isTvViewingPage = isTvPresentationPage || isIndependentTvDisplayPage;
+  const bypassDevelopmentEnvironmentGates = isBrowserSecretAuthorizationPage || isIndependentTvDisplayPage;
 
   return (
     <>
@@ -197,14 +201,14 @@ export function LayoutClient(props: {
         <StackTheme>
           <TooltipProvider>
             <ClientPolyfill />
-            <DevEnvironmentHealthGate disabled={isBrowserSecretAuthorizationPage}>
-              <RemoteDevelopmentEnvironmentAuthGate disabled={isBrowserSecretAuthorizationPage}>
+            <DevEnvironmentHealthGate disabled={bypassDevelopmentEnvironmentGates}>
+              <RemoteDevelopmentEnvironmentAuthGate disabled={bypassDevelopmentEnvironmentGates}>
                 <RouterProvider>
-                  <UserIdentity />
-                  {isTvPresentationPage ? null : <VersionAlerter />}
-                  {isTvPresentationPage ? null : <BackgroundShine />}
+                  {isIndependentTvDisplayPage ? null : <UserIdentity />}
+                  {isTvViewingPage ? null : <VersionAlerter />}
+                  {isTvViewingPage ? null : <BackgroundShine />}
                   {props.children}
-                  {isTvPresentationPage ? null : <DevelopmentPortDisplay />}
+                  {isTvViewingPage ? null : <DevelopmentPortDisplay />}
                 </RouterProvider>
               </RemoteDevelopmentEnvironmentAuthGate>
             </DevEnvironmentHealthGate>

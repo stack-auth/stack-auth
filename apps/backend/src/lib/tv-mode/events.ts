@@ -210,6 +210,8 @@ async function loadEmailEvaluatorSample(
         WHERE "createdAt" >= ${bounds.currentStartsAt}
           AND "createdAt" < ${bounds.currentEndsAt}
           AND "deliveredAt" IS NOT NULL
+          AND "bouncedAt" IS NULL
+          AND "sendServerErrorExternalMessage" IS NULL
       )::INT AS "currentDelivered",
       COUNT(*) FILTER (
         WHERE "createdAt" >= ${bounds.currentStartsAt}
@@ -235,6 +237,8 @@ async function loadEmailEvaluatorSample(
         WHERE "createdAt" >= ${bounds.lowVolumeStartsAt}
           AND "createdAt" < ${bounds.lowVolumeEndsAt}
           AND "deliveredAt" IS NOT NULL
+          AND "bouncedAt" IS NULL
+          AND "sendServerErrorExternalMessage" IS NULL
       )::INT AS "lowVolumeDelivered",
       COUNT(*) FILTER (
         WHERE "createdAt" >= ${bounds.lowVolumeStartsAt}
@@ -429,7 +433,11 @@ async function loadTvEmailBaseline(tenancy: Tenancy, now: Date): Promise<TvEmail
     WITH daily AS (
       SELECT
         date_trunc('day', "createdAt") AS day,
-        COUNT(*) FILTER (WHERE "deliveredAt" IS NOT NULL)::INT AS delivered,
+        COUNT(*) FILTER (
+          WHERE "deliveredAt" IS NOT NULL
+            AND "bouncedAt" IS NULL
+            AND "sendServerErrorExternalMessage" IS NULL
+        )::INT AS delivered,
         COUNT(*) FILTER (
           WHERE "bouncedAt" IS NOT NULL
             OR ("bouncedAt" IS NULL AND "sendServerErrorExternalMessage" IS NOT NULL)
@@ -962,32 +970,74 @@ function addSeconds(timestamp: Date, seconds: number): Date {
 }
 
 function presentationClass(occurrence: TvEventOccurrenceRow): TvDurableEventOccurrence["presentationClass"] {
-  if (occurrence.presentationClass === "CELEBRATION") return "celebration";
-  if (occurrence.presentationClass === "INCIDENT") return "incident";
-  return "critical-incident";
+  switch (occurrence.presentationClass) {
+    case "CELEBRATION": {
+      return "celebration";
+    }
+    case "INCIDENT": {
+      return "incident";
+    }
+    case "CRITICAL_INCIDENT": {
+      return "critical-incident";
+    }
+    default: {
+      throw new HexclaveAssertionError("TV event occurrence has an unsupported presentation class.");
+    }
+  }
 }
 
 function occurrenceLifecycle(occurrence: TvEventOccurrenceRow): TvDurableEventOccurrence["lifecycle"] {
-  if (occurrence.lifecycle === "OCCURRED") return "occurred";
-  if (occurrence.lifecycle === "ACTIVE") return "active";
-  return "resolved";
+  switch (occurrence.lifecycle) {
+    case "OCCURRED": {
+      return "occurred";
+    }
+    case "ACTIVE": {
+      return "active";
+    }
+    case "RESOLVED": {
+      return "resolved";
+    }
+    default: {
+      throw new HexclaveAssertionError("TV event occurrence has an unsupported lifecycle.");
+    }
+  }
 }
 
 function occurrenceType(occurrence: TvEventOccurrenceRow): TvDurableEventOccurrence["type"] {
-  if (occurrence.eventType === "USER_MILESTONE") return "user-milestone";
-  return occurrence.eventType === "SUBSCRIPTION_COLLECTION_DEGRADATION"
-    ? "subscription-collection-degradation"
-    : "email-delivery-degradation";
+  switch (occurrence.eventType) {
+    case "EMAIL_DELIVERY_DEGRADATION": {
+      return "email-delivery-degradation";
+    }
+    case "SUBSCRIPTION_COLLECTION_DEGRADATION": {
+      return "subscription-collection-degradation";
+    }
+    case "USER_MILESTONE": {
+      return "user-milestone";
+    }
+    default: {
+      throw new HexclaveAssertionError("TV event occurrence has an unsupported event type.");
+    }
+  }
 }
 
 function isEligible(
   occurrence: TvEventOccurrenceRow,
   preferences: TvInterruptionPreferences,
 ): boolean {
-  if (occurrence.eventType === "USER_MILESTONE") return preferences.celebrations.userMilestone;
-  return occurrence.eventType === "SUBSCRIPTION_COLLECTION_DEGRADATION"
-    ? preferences.incidentTypes.subscriptionCollectionDegradation
-    : preferences.incidentTypes.emailDeliveryDegradation;
+  switch (occurrence.eventType) {
+    case "EMAIL_DELIVERY_DEGRADATION": {
+      return preferences.incidentTypes.emailDeliveryDegradation;
+    }
+    case "SUBSCRIPTION_COLLECTION_DEGRADATION": {
+      return preferences.incidentTypes.subscriptionCollectionDegradation;
+    }
+    case "USER_MILESTONE": {
+      return preferences.celebrations.userMilestone;
+    }
+    default: {
+      throw new HexclaveAssertionError("TV event occurrence has an unsupported event type.");
+    }
+  }
 }
 
 async function loadOccurrences(

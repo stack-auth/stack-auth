@@ -5,6 +5,9 @@ import {
   getTvBuiltInProfile,
   TV_SCREEN_IDS,
   TvAudienceMomentumScreenSchema,
+  TvDisplayPairingChallengeSchema,
+  TvDisplayResourceSchema,
+  TvEmailHealthScreenSchema,
   TvProfileConfigurationSchema,
   TvSnapshotSchema,
 } from "./admin-tv-mode";
@@ -92,6 +95,7 @@ function validSnapshot(sourceHealthStatus: "healthy" | "ready" | "limited" | "em
         diagnosticCode: null,
         data: {
           sent: 0,
+          assessableSends: 0,
           delivered: 0,
           bounced: 0,
           errors: 0,
@@ -114,6 +118,15 @@ describe("TvSnapshotSchema", () => {
     await expect(TvSnapshotSchema.validate(validSnapshot(), { strict: true })).resolves.toMatchObject({
       profile: { id: "company-pulse" },
     });
+  });
+
+  it("rejects contradictory Email Health outcome counts", async () => {
+    const snapshot = validSnapshot();
+    const email = snapshot.screens[3];
+    await expect(TvEmailHealthScreenSchema.validate({
+      ...email,
+      data: { ...email.data, sent: 20, assessableSends: 20, delivered: 19, bounced: 0, errors: 0 },
+    }, { strict: true })).rejects.toThrow("email outcome counts are inconsistent");
   });
 
   it.each(["healthy", "ready", "limited", "empty", "insufficient-data", "unavailable", "error", "stale"] as const)(
@@ -317,7 +330,40 @@ describe("TV sample thresholds", () => {
     [19, 18, null],
     [20, 19, 95],
     [21, 20, 95.2],
-  ])("applies the email threshold at %i finished sends", (finished, delivered, expectedDelivery) => {
-    expect(calculateTvEmailRates(finished, delivered, 0).deliveryRatePercent).toBe(expectedDelivery);
+  ])("applies the email threshold at %i assessable outcomes", (assessable, delivered, expectedDelivery) => {
+    expect(calculateTvEmailRates(assessable, delivered, 0).deliveryRatePercent).toBe(expectedDelivery);
+  });
+});
+
+describe("independent TV display contracts", () => {
+  it("accepts only bounded pairing challenge fields", async () => {
+    await expect(TvDisplayPairingChallengeSchema.validate({
+      challengeId: "3af6ca2f-20eb-4c6b-a8b2-8f93d940f037",
+      pairingCode: "A2BC3DEF",
+      deviceSecret: "high-entropy-device-secret-with-safe-length",
+      expiresAt: "2026-08-14T12:10:00.000Z",
+      pollingIntervalSeconds: 5,
+    }, { strict: true })).resolves.toBeDefined();
+    await expect(TvDisplayPairingChallengeSchema.validate({
+      challengeId: "3af6ca2f-20eb-4c6b-a8b2-8f93d940f037",
+      pairingCode: "SHORT",
+      deviceSecret: "secret",
+      expiresAt: "2026-08-14T12:10:00.000Z",
+      pollingIntervalSeconds: 5,
+    }, { strict: true })).rejects.toThrow();
+  });
+
+  it("requires explicit financial-acknowledgement state on display resources", async () => {
+    await expect(TvDisplayResourceSchema.validate({
+      id: "3af6ca2f-20eb-4c6b-a8b2-8f93d940f037",
+      displayName: "Lobby",
+      profileId: "company-pulse",
+      profileDisplayName: "Company Pulse",
+      profileFinancialVisibility: "redacted",
+      state: "online",
+      pairedAt: "2026-08-14T12:00:00.000Z",
+      lastSeenAt: "2026-08-14T12:01:00.000Z",
+      revokedAt: null,
+    }, { strict: true })).rejects.toThrow();
   });
 });

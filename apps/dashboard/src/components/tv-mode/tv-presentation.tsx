@@ -509,7 +509,7 @@ export function TvPresentation({
   snapshot: TvSnapshot | null,
   loading?: boolean,
   unavailableReason?: "offline" | "error" | null,
-  onExit: () => void,
+  onExit?: () => void,
   initialScreenId?: TvScreenId,
   previewData?: boolean,
 }) {
@@ -718,12 +718,14 @@ export function TvPresentation({
         </footer>
       ) : null}
 
-      <div className={`absolute left-5 top-5 z-40 transition-opacity duration-200 hover:transition-none motion-reduce:transition-none ${controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}>
-        <button type="button" onClick={onExit} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/55 px-4 py-2 text-sm font-medium text-white/75 backdrop-blur-xl hover:bg-black/75">
-          <ArrowLeftIcon className="h-4 w-4" weight="bold" />
-          Exit TV Mode
-        </button>
-      </div>
+      {onExit == null ? null : (
+        <div className={`absolute left-5 top-5 z-40 transition-opacity duration-200 hover:transition-none motion-reduce:transition-none ${controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}>
+          <button type="button" onClick={onExit} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/55 px-4 py-2 text-sm font-medium text-white/75 backdrop-blur-xl hover:bg-black/75">
+            <ArrowLeftIcon className="h-4 w-4" weight="bold" />
+            Exit TV Mode
+          </button>
+        </div>
+      )}
 
       {view.type === "screen" ? (
         <div className={`absolute bottom-[clamp(3.5rem,7vh,6rem)] left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-2xl border border-white/10 bg-black/65 p-1.5 shadow-2xl backdrop-blur-xl transition-opacity duration-200 hover:transition-none motion-reduce:transition-none ${controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}>

@@ -11,10 +11,12 @@ import {
   TvProfileResourceSchema,
   TvSavedProfileResourceSchema,
   TvSnapshotSchema,
+  TvDisplayResourceSchema,
   type TvProfileConfiguration,
   type TvProfileResource,
   type TvSavedProfileResource,
   type TvSnapshot,
+  type TvDisplayResource,
 } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { yupArray, yupBoolean, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
@@ -282,6 +284,44 @@ export async function fetchTvProfileOrThrow(adminApp: object, profileId: string)
     { strict: true },
   );
   return response.profile;
+}
+
+const TvDisplayListResponseSchema = yupObject({
+  displays: yupArray(TvDisplayResourceSchema).defined(),
+}).noUnknown().defined();
+
+export async function fetchTvDisplaysOrThrow(adminApp: object): Promise<TvDisplayResource[]> {
+  const response = await requestTvProfileJsonOrThrow(adminApp, "/internal/tv-mode/displays", { method: "GET" });
+  return (await TvDisplayListResponseSchema.validate(response, { strict: true })).displays;
+}
+
+export async function approveTvDisplayOrThrow(adminApp: object, input: {
+  pairingCode: string,
+  profileId: string,
+  displayName: string,
+  acknowledgeExactFinancials: boolean,
+}): Promise<void> {
+  await requestTvProfileJsonOrThrow(adminApp, "/internal/tv-mode/displays", jsonRequest("POST", input));
+}
+
+export async function updateTvDisplayOrThrow(adminApp: object, displayId: string, input: {
+  profileId: string,
+  displayName: string,
+  acknowledgeExactFinancials: boolean,
+}): Promise<void> {
+  await requestTvProfileJsonOrThrow(
+    adminApp,
+    `/internal/tv-mode/displays/${encodeURIComponent(displayId)}`,
+    jsonRequest("PATCH", input),
+  );
+}
+
+export async function revokeTvDisplayOrThrow(adminApp: object, displayId: string): Promise<void> {
+  await requestTvProfileJsonOrThrow(
+    adminApp,
+    `/internal/tv-mode/displays/${encodeURIComponent(displayId)}`,
+    { method: "DELETE" },
+  );
 }
 
 export async function createTvProfileOrThrow(

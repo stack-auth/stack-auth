@@ -3,7 +3,7 @@ import {
   calculateTvEmailRates,
   calculateTvPaymentSuccessPercent,
   getTvBuiltInProfile,
-  TV_MINIMUM_FINISHED_SENDS,
+  TV_MINIMUM_EMAIL_OUTCOMES,
   TV_MINIMUM_PAYMENT_ATTEMPTS,
 } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import type {
@@ -23,7 +23,7 @@ import type {
 const FIXTURE_NOW = "2026-07-23T14:32:00.000Z";
 const FIXTURE_STALE_AFTER = "2026-07-23T14:32:45.000Z";
 const DAY = 24 * 60 * 60 * 1000;
-export { TV_MINIMUM_FINISHED_SENDS, TV_MINIMUM_PAYMENT_ATTEMPTS };
+export { TV_MINIMUM_EMAIL_OUTCOMES, TV_MINIMUM_PAYMENT_ATTEMPTS };
 const engineeringProfile = getTvBuiltInProfile("engineering-office") ?? throwErr("Missing shared engineering-office TV profile");
 const companyPulseProfile = getTvBuiltInProfile("company-pulse") ?? throwErr("Missing shared company-pulse TV profile");
 
@@ -31,8 +31,8 @@ export function calculateFixturePaymentSuccess(applicableAttempts: number, succe
   return calculateTvPaymentSuccessPercent(applicableAttempts, successfulAttempts);
 }
 
-export function calculateFixtureEmailRates(finishedSends: number, delivered: number, bounced: number) {
-  return calculateTvEmailRates(finishedSends, delivered, bounced);
+export function calculateFixtureEmailRates(assessableSends: number, delivered: number, bounced: number) {
+  return calculateTvEmailRates(assessableSends, delivered, bounced);
 }
 
 function windowFrom(days: number, comparison = true) {
@@ -146,7 +146,6 @@ const revenuePaymentsScreen: TvRevenuePaymentsScreen = {
     financials: {
       visibility: "exact",
       paidRevenueCents: 4823100,
-      mrrProxyCents: 3128000,
       revenueTrend: exactRevenueTrend,
     },
     revenueChangePercent: 14.2,
@@ -157,7 +156,7 @@ const revenuePaymentsScreen: TvRevenuePaymentsScreen = {
   },
   insight: {
     kind: "revenue-up-payments-stable",
-    message: "Gross paid invoice revenue increased while payment collection remained stable.",
+    message: "Gross collected revenue increased while payment collection remained stable.",
     evidence: {
       revenueChangePercent: 14.2,
       paymentSuccessPercent: 98.6,
@@ -175,6 +174,7 @@ const emailHealthScreen: TvEmailHealthScreen = {
   diagnosticCode: null,
   data: {
     sent: 12640,
+    assessableSends: 12640,
     delivered: 12539,
     bounced: 63,
     errors: 38,
@@ -407,7 +407,10 @@ export function createTvFixtureSnapshot(projectId: string, profile: TvProfileFix
     email.insight = null;
     if (email.data != null) {
       email.data.sent = 19;
+      email.data.assessableSends = 19;
       email.data.delivered = 19;
+      email.data.bounced = 0;
+      email.data.errors = 0;
       Object.assign(email.data, calculateFixtureEmailRates(19, 19, 0));
     }
   }

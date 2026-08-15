@@ -3,6 +3,7 @@ import {
   resolveTvProfile,
   TvBuiltInProfileMutationError,
   TvProfileNameConflictError,
+  TvProfileAssignedToDisplaysError,
   TvProfileVersionConflictError,
   updateTvProfile,
 } from "@/lib/tv-mode/profiles";
@@ -36,6 +37,9 @@ function mapMutationError(error: unknown): never {
   }
   if (error instanceof TvBuiltInProfileMutationError) {
     throw new StatusError(StatusError.Conflict, "tv_profile_is_builtin");
+  }
+  if (error instanceof TvProfileAssignedToDisplaysError) {
+    throw new StatusError(StatusError.Conflict, `tv_profile_assigned_to_displays:${error.displayCount}`);
   }
   throw error;
 }

@@ -10,7 +10,7 @@ import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } f
 import {
   calculateTvEmailRates,
   calculateTvPaymentSuccessPercent,
-  TV_MINIMUM_FINISHED_SENDS,
+  TV_MINIMUM_EMAIL_OUTCOMES,
   TV_MINIMUM_PAYMENT_ATTEMPTS,
   TV_SNAPSHOT_STALE_AFTER_MS,
   type TvAudienceMomentumScreen,
@@ -730,6 +730,7 @@ async function loadRevenueScreen(
         past_due_subscriptions: number,
         unsupported_currencies: number,
         invalid_normalized_facts: number,
+        invalid_legacy_facts: number,
       }]>`
         WITH normalized_subscription_revenue AS (
           SELECT "paidAt" AS occurred_at, "amountPaid"::BIGINT AS amount
@@ -871,6 +872,27 @@ async function loadRevenueScreen(
             AND "paidAt" >= ${bounds.comparisonStartsAt}
             AND "paidAt" < ${bounds.currentEndsAt}
             AND ("amountReceived" IS NULL OR "currency" IS NULL)
+        ), invalid_legacy_events AS (
+          SELECT 1
+          FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "paidAt" IS NULL
+            AND "status" IN (${successfulStatuses[0]}, ${successfulStatuses[1]})
+            AND "createdAt" >= ${bounds.comparisonStartsAt}
+            AND "createdAt" < ${bounds.currentEndsAt}
+            AND "amountTotal" IS NULL
+          UNION ALL
+          SELECT 1
+          FROM ${sqlQuoteIdent(schema)}."OneTimePurchase"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+            AND "paidAt" IS NULL
+            AND "createdAt" >= ${bounds.comparisonStartsAt}
+            AND "createdAt" < ${bounds.currentEndsAt}
+            AND (
+              ("product"->'prices'->"priceId"->>'USD') IS NULL
+              OR ("product"->'prices'->"priceId"->>'USD') !~ '^[0-9]+(\.[0-9]+)?$'
+            )
         )
         SELECT
           (SELECT COALESCE(SUM(amount), 0)::BIGINT FROM revenue_events
@@ -886,7 +908,8 @@ async function loadRevenueScreen(
           (SELECT COUNT(*)::int FROM ${sqlQuoteIdent(schema)}."Subscription"
             WHERE "tenancyId" = ${tenancy.id}::UUID AND "status" = 'past_due'::"SubscriptionStatus") AS past_due_subscriptions
           ,(SELECT COUNT(*)::int FROM unsupported_currency_events) AS unsupported_currencies,
-          (SELECT COUNT(*)::int FROM invalid_normalized_events) AS invalid_normalized_facts
+          (SELECT COUNT(*)::int FROM invalid_normalized_events) AS invalid_normalized_facts,
+          (SELECT COUNT(*)::int FROM invalid_legacy_events) AS invalid_legacy_facts
       `,
       metricsPrisma.$queryRaw<{ day: string, revenue: bigint }[]>`
         WITH revenue_events AS (
@@ -924,12 +947,11 @@ async function loadRevenueScreen(
       `,
     ]);
     const summary = summaryRows[0];
-    if (Number(summary.unsupported_currencies) > 0) {
-      throw new Error("TV gross collected revenue cannot combine multiple currencies without an explicit conversion policy.");
-    }
-    if (Number(summary.invalid_normalized_facts) > 0) {
-      throw new Error("TV gross collected revenue encountered incomplete authoritative payment facts.");
-    }
+    assertTvRevenueFactsAreTrustworthy({
+      unsupportedCurrencies: Number(summary.unsupported_currencies),
+      invalidNormalizedFacts: Number(summary.invalid_normalized_facts),
+      invalidLegacyFacts: Number(summary.invalid_legacy_facts),
+    });
     const currentRevenue = Number(summary.current_revenue);
     const previousRevenue = Number(summary.previous_revenue);
     const attempts = Number(summary.applicable_attempts);
@@ -953,7 +975,6 @@ async function loadRevenueScreen(
         financials: financialVisibility === "exact" ? {
           visibility: "exact",
           paidRevenueCents: currentRevenue,
-          mrrProxyCents: currentRevenue,
           revenueTrend,
         } : {
           visibility: "redacted",
@@ -1029,6 +1050,8 @@ async function loadEmailScreen(tenancy: Tenancy, now: Date): Promise<TvAdapterRe
           COUNT(*) FILTER (
             WHERE "createdAt" >= ${bounds.currentStartsAt}
               AND "deliveredAt" IS NOT NULL
+              AND "bouncedAt" IS NULL
+              AND "sendServerErrorExternalMessage" IS NULL
           )::int AS delivered,
           COUNT(*) FILTER (
             WHERE "createdAt" >= ${bounds.currentStartsAt}
@@ -1036,7 +1059,8 @@ async function loadEmailScreen(tenancy: Tenancy, now: Date): Promise<TvAdapterRe
           )::int AS bounced,
           COUNT(*) FILTER (
             WHERE "createdAt" >= ${bounds.currentStartsAt}
-              AND "simpleStatus" = 'ERROR'::"EmailOutboxSimpleStatus"
+              AND "bouncedAt" IS NULL
+              AND "sendServerErrorExternalMessage" IS NOT NULL
           )::int AS errors,
           COUNT(*) FILTER (
             WHERE "simpleStatus" = 'IN_PROGRESS'::"EmailOutboxSimpleStatus"
@@ -1051,8 +1075,15 @@ async function loadEmailScreen(tenancy: Tenancy, now: Date): Promise<TvAdapterRe
       metricsPrisma.$queryRaw<{ day: string, delivered: number, error: number, in_progress: number }[]>`
         SELECT
           TO_CHAR("createdAt"::date, 'YYYY-MM-DD') AS day,
-          COUNT(*) FILTER (WHERE "deliveredAt" IS NOT NULL)::int AS delivered,
-          COUNT(*) FILTER (WHERE "simpleStatus" = 'ERROR'::"EmailOutboxSimpleStatus")::int AS error,
+          COUNT(*) FILTER (
+            WHERE "deliveredAt" IS NOT NULL
+              AND "bouncedAt" IS NULL
+              AND "sendServerErrorExternalMessage" IS NULL
+          )::int AS delivered,
+          COUNT(*) FILTER (
+            WHERE "bouncedAt" IS NOT NULL
+              OR ("bouncedAt" IS NULL AND "sendServerErrorExternalMessage" IS NOT NULL)
+          )::int AS error,
           COUNT(*) FILTER (WHERE "simpleStatus" = 'IN_PROGRESS'::"EmailOutboxSimpleStatus")::int AS in_progress
         FROM ${sqlQuoteIdent(schema)}."EmailOutbox"
         WHERE "tenancyId" = ${tenancy.id}::UUID
@@ -1066,9 +1097,11 @@ async function loadEmailScreen(tenancy: Tenancy, now: Date): Promise<TvAdapterRe
     const sent = Number(summary.current_finished);
     const delivered = Number(summary.delivered);
     const bounced = Number(summary.bounced);
+    const errors = Number(summary.errors);
+    const assessableSends = delivered + bounced + errors;
     const previousSent = Number(summary.previous_finished);
-    const qualifies = sent >= TV_MINIMUM_FINISHED_SENDS;
-    const { deliveryRatePercent, bounceRatePercent } = calculateTvEmailRates(sent, delivered, bounced);
+    const qualifies = assessableSends >= TV_MINIMUM_EMAIL_OUTCOMES;
+    const { deliveryRatePercent, bounceRatePercent } = calculateTvEmailRates(assessableSends, delivered, bounced);
     const volumeChangePercent = percentChange(sent, previousSent);
     const trendByDay = new Map(trendRows.map((row) => [row.day, row]));
     const statusTrend = dateKeys(bounds, 7).map((date): TvStackedTrendPoint => {
@@ -1087,9 +1120,10 @@ async function loadEmailScreen(tenancy: Tenancy, now: Date): Promise<TvAdapterRe
       diagnosticCode: null,
       data: hasEmailData ? {
         sent,
+        assessableSends,
         delivered,
         bounced,
-        errors: Number(summary.errors),
+        errors,
         inProgress: Number(summary.in_progress),
         deliveryRatePercent,
         bounceRatePercent,
@@ -1121,6 +1155,22 @@ export function hasTvPaymentData(metrics: {
     || metrics.activeSubscriptions > 0
     || metrics.newSubscriptions > 0
     || metrics.pastDueSubscriptions > 0;
+}
+
+export function assertTvRevenueFactsAreTrustworthy(facts: {
+  unsupportedCurrencies: number,
+  invalidNormalizedFacts: number,
+  invalidLegacyFacts: number,
+}): void {
+  if (facts.unsupportedCurrencies > 0) {
+    throw new Error("TV gross collected revenue cannot combine multiple currencies without an explicit conversion policy.");
+  }
+  if (facts.invalidNormalizedFacts > 0) {
+    throw new Error("TV gross collected revenue encountered incomplete authoritative payment facts.");
+  }
+  if (facts.invalidLegacyFacts > 0) {
+    throw new Error("TV gross collected revenue encountered incomplete legacy payment facts.");
+  }
 }
 
 export function sourceHealthFact(
@@ -1252,10 +1302,12 @@ export async function buildLiveTvSnapshot(options: {
   profileId: string,
   now?: Date,
   includeScreenDurations?: boolean,
+  forceFinancialRedaction?: boolean,
 }): Promise<TvSnapshot | null> {
   const now = options.now ?? new Date();
-  const profile = await resolveTvProfile(options.tenancy, options.profileId);
-  if (profile == null) return null;
+  const resolvedProfile = await resolveTvProfile(options.tenancy, options.profileId);
+  if (resolvedProfile == null) return null;
+  const profile = applyTvDisplayFinancialPolicy(resolvedProfile, options.forceFinancialRedaction === true);
 
   const [activity, revenue, email] = await Promise.all([
     loadActivityScreens(options.tenancy, now),
@@ -1303,4 +1355,27 @@ export async function buildLiveTvSnapshot(options: {
       email: email.screen,
     },
   });
+}
+
+export function applyTvDisplayFinancialPolicy(
+  profile: TvProfileResource,
+  forceFinancialRedaction: boolean,
+): TvProfileResource {
+  const redactedFinancialVisibility: "redacted" = "redacted";
+  return forceFinancialRedaction && profile.configuration.financialVisibility === "exact"
+    ? {
+      ...profile,
+      configuration: {
+        ...profile.configuration,
+        financialVisibility: redactedFinancialVisibility,
+        interruptionPreferences: {
+          ...profile.configuration.interruptionPreferences,
+          celebrations: {
+            ...profile.configuration.interruptionPreferences.celebrations,
+            revenueMilestone: false,
+          },
+        },
+      },
+    }
+    : profile;
 }

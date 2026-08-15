@@ -9,6 +9,7 @@ export const TV_EMAIL_RECOVERY_TITLE = "Email Delivery Restored";
 export const TV_EMAIL_RULE_VERSION = 2;
 export const TV_PAYMENT_RULE_VERSION = 1;
 export const TV_PAYMENT_BASELINE_REFRESH_MS = 6 * 60 * 60 * 1000;
+export const TV_PAYMENT_BASELINE_STALE_MS = 12 * 60 * 60 * 1000;
 export const TV_PAYMENT_RECOVERY_TITLE = "Subscription Payments Restored";
 export const TV_USER_MILESTONES = [
   100,
@@ -171,6 +172,7 @@ function paymentBaselineRate(sample: TvPaymentSample): number | null {
   return baseline != null
     && baseline.qualifiedWeeks >= 4
     && baseline.assessableOutcomes >= 40
+    && new Date(sample.evaluatedAt).getTime() - new Date(baseline.computedAt).getTime() <= TV_PAYMENT_BASELINE_STALE_MS
     ? baseline.medianSuccessRatePercent
     : null;
 }
@@ -221,7 +223,12 @@ export function evaluateTvSubscriptionCollection(
   }
   const elapsed = previous.lastFreshEvaluatedAt == null
     ? 0
-    : Math.max(0, new Date(sample.evaluatedAt).getTime() - new Date(previous.lastFreshEvaluatedAt).getTime());
+    // An evaluator can only credit one scheduled observation. Otherwise an
+    // outage would be mistaken for continuously observed degradation/recovery.
+    : Math.max(0, Math.min(
+      new Date(sample.evaluatedAt).getTime() - new Date(previous.lastFreshEvaluatedAt).getTime(),
+      TV_EVENT_EVALUATION_INTERVAL_MS,
+    ));
   const baseState = { ...previous, baseline, lastFreshEvaluatedAt: sample.evaluatedAt };
   const breach = paymentBreach({ ...sample, baseline });
   if (previous.activeClass != null) {
