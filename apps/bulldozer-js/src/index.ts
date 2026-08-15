@@ -14,14 +14,17 @@ import { isBulldozerRequestAuthorized } from "./auth.js";
 import { declareBulldozerDatabase, type BulldozerDatabase } from "./databases/bulldozer/index.js";
 import { declareInMemoryLowLevelDatabase } from "./databases/low-level/implementations/in-memory.js";
 import { declareInstantAvailabilityLowLevelDatabase } from "./databases/low-level/implementations/instant-availability.js";
-import { declareLmdbLowLevelDatabase } from "./databases/low-level/implementations/lmdb.js";
+import { declareLmdbLowLevelDatabase, getLmdbDiagnostics } from "./databases/low-level/implementations/lmdb.js";
 import type { LowLevelDatabase } from "./databases/low-level/index.js";
-import { declarePiledriverDatabase, type PiledriverObject } from "./databases/piledriver/index.js";
+import { declareBasePiledriverDatabase } from "./databases/piledriver/implementations/base.js";
+import { declareBufferedPiledriverDatabase } from "./databases/piledriver/implementations/buffered.js";
+import type { PiledriverObject } from "./databases/piledriver/index.js";
 import "./load-env.js";
 import { shouldSuppressPeriodicBulldozerLogs } from "./logging.js";
+import { parseManualTransactionsListQuery } from "./manual-transactions-http.js";
 import { instrumentation, traceSpan } from "./otel.js";
 import { createPaymentsSchema, itemQuantitiesLedgerUpperBoundAsOf } from "./payments/schema/index.js";
-import type { CustomerType, Json, SubscriptionRow, TransactionRow } from "./payments/schema/types.js";
+import type { CustomerType, Json, ManualTransactionRow, SubscriptionRow, TransactionRow } from "./payments/schema/types.js";
 import { initSentry, resolveBulldozerSentryEnvironment } from "./sentry.js";
 
 const sentryEnabled = initSentry();
@@ -67,14 +70,22 @@ function createLowLevelDatabase(): LowLevelDatabase {
   mkdirSync(lmdbPath, { recursive: true });
   return declareInstantAvailabilityLowLevelDatabase(declareLmdbLowLevelDatabase({
     path: lmdbPath,
+    // Sticky per path: once a store has compressed values, keep this set on every open.
+    // Enabling on an existing uncompressed store is safe (old values still read; new writes compress).
+    compression: process.env.HEXCLAVE_BULLDOZER_JS_LMDB_COMPRESSION === "1",
     simulateReadMissDelayMs: readOptionalNonNegativeNumberEnv("HEXCLAVE_BULLDOZER_JS_SIMULATE_READ_MISS_DELAY_MS"),
   }));
 }
 
+const basePiledriver = declareBasePiledriverDatabase(createLowLevelDatabase(), {
+  disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
+});
+// Buffering keeps availability instant while durability/replication waits for the wrapped root write;
+// it is worthwhile for write-lock occupancy and throughput, not per-call latency.
+const bufferedPiledriverEnabled = process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_BUFFERED_PILEDRIVER !== "1";
+const piledriver = bufferedPiledriverEnabled ? declareBufferedPiledriverDatabase(basePiledriver) : basePiledriver;
 const bulldozerDb = declareBulldozerDatabase(
-  declarePiledriverDatabase(createLowLevelDatabase(), {
-    disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
-  }),
+  piledriver,
   { migrations: schema.migrations },
 );
 (globalThis as any).bulldozerDb = bulldozerDb;
@@ -363,6 +374,22 @@ function readObjectBody(body: unknown): Record<string, unknown> {
 function readStringField(body: Record<string, unknown>, fieldName: string): string {
   const value = body[fieldName];
   if (typeof value !== "string" || value.length === 0) throw new StatusError(StatusError.BadRequest, `Expected non-empty string field: ${fieldName}`);
+  return value;
+}
+
+function readPositiveSafeIntegerField(body: Record<string, unknown>, fieldName: string) {
+  const value = body[fieldName];
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
+    throw new StatusError(StatusError.BadRequest, `Expected positive safe integer field: ${fieldName}`);
+  }
+  return value;
+}
+
+function readNonNegativeSafeIntegerField(body: Record<string, unknown>, fieldName: string) {
+  const value = body[fieldName];
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new StatusError(StatusError.BadRequest, `Expected non-negative safe integer field: ${fieldName}`);
+  }
   return value;
 }
 
@@ -903,6 +930,30 @@ async function readOutstandingItemGrants(options: { tenancyId: string, customerT
   return computeOutstandingItemGrants(rows);
 }
 
+async function listManualTransactions(options: { limit: number, cursor: string | undefined }): Promise<{ rows: ManualTransactionRow[], nextCursor: string | null }> {
+  const { snapshot } = await bulldozerDb.getSnapshot();
+  // Page the identifier-sorted derived table (sort key === rowIdentifier). Stored
+  // tables keep a null sort key, so Range stays sort-key-only everywhere.
+  const range = options.cursor !== undefined
+    ? { gt: options.cursor, limit: options.limit + 1 }
+    : { limit: options.limit + 1 };
+  const rows: ManualTransactionRow[] = [];
+  let lastReturnedRowIdentifier: string | undefined = undefined;
+  for await (const row of snapshot.listRowsInGroup({ tableId: schema.manualTransactionsSorted, groupKey: null, range })) {
+    rows.push(row.rowData as unknown as ManualTransactionRow);
+    // Stop after the peek row, but do not treat it as the page cursor — `gt` must
+    // resume after the last *returned* rowIdentifier or we skip that row.
+    if (rows.length > options.limit) break;
+    lastReturnedRowIdentifier = row.rowIdentifier;
+  }
+  const hasMore = rows.length > options.limit;
+  if (hasMore) rows.pop();
+  return {
+    rows,
+    nextCursor: hasMore && lastReturnedRowIdentifier !== undefined ? lastReturnedRowIdentifier : null,
+  };
+}
+
 function ok() {
   return { success: true };
 }
@@ -928,9 +979,30 @@ const app = new Elysia({ adapter: node() })
     }
   })
   .get("/health", () => ({ ok: true }))
+  .get("/diagnostics", () => getLmdbDiagnostics() ?? { available: false })
+  .get("/v1/manual-transactions", ({ query }) => handler("list-manual-transactions", async () => {
+    // Cross-instance export surface: backend pages this to back up refunds into Prisma.
+    const { limit, cursor } = parseManualTransactionsListQuery(query);
+    const result = await listManualTransactions({ limit, cursor });
+    return { rows: result.rows, next_cursor: result.nextCursor };
+  }))
   .post("/internal/wait-until-durable", () => handler("wait-until-durable", async () => {
     await bulldozerDb.waitUntilCurrentStateDurable();
     return ok();
+  }))
+  .post("/internal/piledriver-gc", ({ body }) => handler("piledriver-gc", async () => {
+    const request = readObjectBody(body);
+    const cutoffTimestampMillis = readNonNegativeSafeIntegerField(request, "cutoffTimestampMillis");
+    if (cutoffTimestampMillis >= bulldozerDb.getPiledriverGarbageCollectionProcessStartedAtMillis()) {
+      throw new StatusError(
+        StatusError.BadRequest,
+        "GC cutoff must be older than this Bulldozer process. Record the cutoff, then fully restart the singleton Bulldozer service before running GC.",
+      );
+    }
+    return await bulldozerDb.collectPiledriverGarbage(
+      cutoffTimestampMillis,
+      request.maxObjects === undefined ? undefined : readPositiveSafeIntegerField(request, "maxObjects"),
+    );
   }))
   .post("/internal/payments/verify-data-integrity", () => handler("verify-data-integrity", async () => ok()))
   .get("/v1/:tenancyId/transactions", ({ params, query }) => handler("list-transactions", async () => {
@@ -1086,7 +1158,9 @@ const startupFields = {
   sentryEnvironment: resolveBulldozerSentryEnvironment(),
   lowLevelBackend: process.env.HEXCLAVE_BULLDOZER_JS_LOW_LEVEL_BACKEND ?? "lmdb",
   usingTmpLmdb: process.env.HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB === "1",
+  lmdbCompression: process.env.HEXCLAVE_BULLDOZER_JS_LMDB_COMPRESSION === "1",
   disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
+  bufferedPiledriverEnabled,
   gcExposed: globalThis.gc !== undefined,
   heapGcUsageThreshold: HEAP_GC_USAGE_THRESHOLD,
   heapGcMaxPasses: HEAP_GC_MAX_PASSES,
