@@ -2,7 +2,7 @@
 // src/vercel.ts instead, which exports the same app without binding a port. This file is
 // what `pnpm start` / `pnpm dev` / the e2e workflows run.
 import "./load-env.js";
-import { createMarshalApp } from "./app.js";
+import { createMarshalApp } from "./marshal-app.js";
 import { getConfig } from "./config.js";
 
 const config = getConfig();

@@ -7,7 +7,7 @@
 // dev/mock defaults that must never be a fallback for a production process. Configuration is
 // read at import time (createMarshalApp calls getConfig), so a missing or unsafe variable
 // fails the function's cold start with marshal's own message instead of failing per request.
-import { createMarshalApp } from "./app.js";
+import { createMarshalApp } from "./marshal-app.js";
 
 const { app } = createMarshalApp();
 

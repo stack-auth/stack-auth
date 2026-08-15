@@ -1,3 +1,9 @@
+// NOT named app.ts, and must not be renamed back: Vercel's Elysia preset detects the
+// function entrypoint by scanning known paths — src/index.ts and src/app.ts among them —
+// for a file that imports `elysia`. This file does, so as src/app.ts it tied with the real
+// entrypoint and won ("Multiple entrypoints found: src/app.ts, src/index.ts. Using
+// src/app.ts."), which builds a function out of a module that default-exports nothing and
+// drops the maxDuration declared in src/index.ts.
 import { node } from "@elysiajs/node";
 import { Elysia } from "elysia";
 import { randomUUID, timingSafeEqual } from "node:crypto";
