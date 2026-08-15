@@ -1,0 +1,23 @@
+apps/e2e/tests/backend/endpoints/api/v1/analytics-config.test.ts
+  s_2c57837bf795b2::t_9ea082badd84a8 50,61,73,82,91,96,108,117,126,138,147,151,156,167,177,186,198,207,215,223,239,253,262,274,292-293,297,302-303,311,329-331,335,340,351,365,374,382,409-410,421,432-433,441,450,461-462,472,487-488,497,511,518,527-528,535,540,549-550,560,570,579-580
+packages/shared/src/config/schema-fuzzer.test.ts
+  s_2c57837bf795b2::t_d06715ad229994 309-325,327,330
+packages/shared/src/config/schema.ts
+  s_2c57837bf795b2::t_e20635b81e8e44 31-35,40-58,61-64,66-68,70-71,74-75,541,549,561-562,710-733,867-890,896,900-908,1000-1002,1007,1014,1029-1063,1379
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "cd6750889b3699d9c2365d2bb5808e1af96b5791",
+  "prompts": {},
+  "sessions": {
+    "s_2c57837bf795b2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "534f3379-be72-4057-9a7d-40cac2df6f1a",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
