@@ -35,7 +35,7 @@ CREATE UNIQUE INDEX "GrowthCategoryScore_projectId_branchId_category_key"
 CREATE INDEX "GrowthCategoryScore_projectId_branchId_updatedAt_idx"
   ON "GrowthCategoryScore"("projectId", "branchId", "updatedAt" DESC);
 
-CREATE INDEX "GrowthActionItem_projectId_branchId_category_status_createdAt_idx"
+CREATE INDEX "GrowthActionItem_projectId_branchId_category_status_created_idx"
   ON "GrowthActionItem"("projectId", "branchId", "category", "status", "createdAt" DESC);
 
 ALTER TABLE "GrowthCategoryScore"
