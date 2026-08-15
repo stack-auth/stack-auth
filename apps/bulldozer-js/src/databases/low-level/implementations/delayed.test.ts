@@ -65,6 +65,36 @@ function createConcurrencyTrackingDatabase(): { database: LowLevelDatabase, getM
   };
 }
 
+// Records whether `close()` was reached before the wrapped write it was racing against had finished,
+// which a wrapper that closes without draining its writer queue would do.
+function createCloseOrderTrackingDatabase(): { database: LowLevelDatabase, wasClosedBeforeWriteFinished: () => boolean } {
+  const inner = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+  let writeFinished = false;
+  let closedBeforeWriteFinished = false;
+  return {
+    wasClosedBeforeWriteFinished: () => closedBeforeWriteFinished,
+    database: {
+      ...inner,
+      declareKvStore(id) {
+        const store = inner.declareKvStore(id);
+        return {
+          ...store,
+          async setAll(entries, options) {
+            await new Promise<void>(resolve => setImmediate(resolve));
+            const result = await store.setAll(entries, options);
+            writeFinished = true;
+            return result;
+          },
+        };
+      },
+      async close() {
+        if (!writeFinished) closedBeforeWriteFinished = true;
+        await inner.close();
+      },
+    },
+  };
+}
+
 describe("delayed low-level database", () => {
   it("rejects invalid delays", () => {
     const inMemory = declareInMemoryLowLevelDatabase(crypto.randomUUID());
@@ -180,27 +210,33 @@ describe("delayed low-level database", () => {
     const database = declareDelayedLowLevelDatabase(createFailingFirstWriteDatabase(), { readDelayMs: 0, writeDelayMs });
     const store = database.declareKvStore("store");
 
-    await expect(store.setAll([{ key: buffer("a"), value: buffer("1") }])).rejects.toThrow("simulated write failure");
-
-    // The failed write must neither leave the emulated device permanently occupied nor have consumed
-    // service time for a write that never happened.
+    // Both writes are queued before either is awaited, so the timing covers the failed write's own
+    // slot: a regression that paid the service delay before rejecting would push the second write
+    // past two intervals instead of one. The failed write must also neither leave the emulated device
+    // permanently occupied nor count as a write that happened.
     const beforeMs = performance.now();
-    await store.setAll([{ key: buffer("b"), value: buffer("2") }]);
+    const failedWrite = store.setAll([{ key: buffer("a"), value: buffer("1") }]);
+    const succeedingWrite = store.setAll([{ key: buffer("b"), value: buffer("2") }]);
+    await expect(failedWrite).rejects.toThrow("simulated write failure");
+    await succeedingWrite;
     const elapsedMs = performance.now() - beforeMs;
     expect(elapsedMs).toBeGreaterThanOrEqual(writeDelayMs);
-    expect(elapsedMs).toBeLessThan(writeDelayMs * 3);
+    expect(elapsedMs).toBeLessThan(writeDelayMs * 2);
+    expect(database.getDebugInfo().writeOperations).toBe(1);
     expect(text((await store.get(buffer("b"))).buffer)).toBe("2");
   });
 
   it("waits for queued writes before closing the wrapped database", async () => {
     const writeDelayMs = 50;
-    const database = createDelayedDatabase({ readDelayMs: 0, writeDelayMs });
+    const { database: wrapped, wasClosedBeforeWriteFinished } = createCloseOrderTrackingDatabase();
+    const database = declareDelayedLowLevelDatabase(wrapped, { readDelayMs: 0, writeDelayMs });
     const store = database.declareKvStore("store");
 
     const pendingWrite = store.setAll([{ key: buffer("a"), value: buffer("1") }]);
     const beforeCloseMs = performance.now();
     await database.close();
     expect(performance.now() - beforeCloseMs).toBeGreaterThanOrEqual(writeDelayMs);
+    expect(wasClosedBeforeWriteFinished()).toBe(false);
     await pendingWrite;
   });
 

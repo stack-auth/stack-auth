@@ -228,15 +228,21 @@ async function prefillCustomersInRange(startIndex: number, count: number, stage:
       if (failed) return;
       const offset = nextIndex++;
       if (offset >= count) return;
+      let completed = false;
       try {
         await prefillOne(startIndex + offset, stage);
-      } catch (error) {
-        failed = true;
-        throw error;
+        completed = true;
+      } finally {
+        if (!completed) failed = true;
       }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(PREFILL_CONCURRENCY, count) }, worker));
+  // Every worker has to settle before the failure propagates: `Promise.all` would reject while the
+  // other workers still had a customer in flight, so their mutating requests would land in the middle
+  // of the caller's teardown.
+  const results = await Promise.allSettled(Array.from({ length: Math.min(PREFILL_CONCURRENCY, count) }, worker));
+  const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (failure !== undefined) throw failure.reason;
 }
 
 async function setupPayments(): Promise<void> {
