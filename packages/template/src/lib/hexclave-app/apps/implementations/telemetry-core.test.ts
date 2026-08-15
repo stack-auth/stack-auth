@@ -204,4 +204,38 @@ describe("resolveSpanParent", () => {
     expect(resolveSpanParent({ links: [{ traceId: generateW3cTraceId(), spanId: "nope" }] }))
       .toEqual({ error: expect.stringContaining("Invalid link spanId") });
   });
+
+  it("errors when the CALLER declares more links than the cap", () => {
+    const links = Array.from({ length: 33 }, () => ctx());
+    expect(resolveSpanParent({ links }))
+      .toEqual({ error: expect.stringContaining("at most 32") });
+  });
+
+  it("caps DEMOTED ambient links instead of failing the span, keeping the nearest", () => {
+    // The global-span registries soft-cap at 1000 entries — far above the
+    // 32-link wire cap — so a surplus of unrelated global spans must degrade
+    // to "farthest provenance links dropped", never to every startSpan()/
+    // trackEvent() call erroring.
+    const ambient = Array.from({ length: 40 }, () => ctx());
+    const result = resolved(resolveSpanParent({ ambient }));
+    const nearest = ambient.at(-1) ?? (() => {
+      throw new Error("test fixture must have ambient entries");
+    })();
+    expect(result.parentSpanId).toBe(nearest.spanId);
+    expect(result.links).toHaveLength(32);
+    // Nearest-first retention: the 32 kept links are the ones closest to the
+    // chosen parent (the ambient list is outermost-first, parent excluded).
+    expect(result.links).toEqual(ambient.slice(7, 39));
+  });
+
+  it("caller-declared links keep priority over demoted ambient ones under the cap", () => {
+    const declared = Array.from({ length: 30 }, () => ctx());
+    const ambient = Array.from({ length: 10 }, () => ctx());
+    const result = resolved(resolveSpanParent({ ambient, links: declared }));
+    expect(result.links).toHaveLength(32);
+    expect(result.links.slice(0, 30)).toEqual(declared);
+    // Only 2 slots remain for demoted ambient context — the nearest two that
+    // are not the parent itself.
+    expect(result.links.slice(30)).toEqual(ambient.slice(7, 9));
+  });
 });

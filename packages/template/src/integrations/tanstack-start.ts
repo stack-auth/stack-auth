@@ -13,8 +13,8 @@ import { AdapterServerApp, AdapterTelemetryOptions, AdapterUser, HexclaveRequest
  * We deliberately wrap handlers instead of shipping a `createMiddleware(...)`
  * instance: TanStack's middleware generics are version-sensitive across our
  * supported peer range, while a handler wrapper never touches their API — and,
- * like the Elysia adapter, wrapping the handler is the only honest way to put
- * it INSIDE the span's async extent.
+ * like the Elysia adapter, wrapping the handler is the only way to put it
+ * inside the span's async extent.
  *
  * ```ts
  * const hexclave = createHexclaveTanStackStart(stackServerApp);

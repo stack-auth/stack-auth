@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { getHexclaveOtlpLogContractError, normalizeOtlpJsonLogsRequest } from "./otlp-logs";
-import { OTLP_LOG_REQUEST_FIXTURE } from "./otlp-logs.test-fixtures";
+import { getHexclaveOtlpLogContractError, normalizeOtlpJsonLogsRequest } from "./logs";
+import { OTLP_LOG_REQUEST_FIXTURE } from "./logs.test-fixtures";
 
 describe("OTLP JSON logs normalization", () => {
   it("preserves resources, scopes, body AnyValue, severity, flags, and trace correlation", () => {
@@ -142,6 +142,19 @@ describe("OTLP JSON logs normalization", () => {
 
     expect(getHexclaveOtlpLogContractError(errorRecord("not-an-event-id", "not-an-event-id"), "client")).toMatch(/32-character hexadecimal/);
     expect(getHexclaveOtlpLogContractError(errorRecord("0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210"), "client")).toMatch(/must match/);
+  });
+
+  it("canonicalizes zero-padded timestamps so the required-timestamp check cannot be bypassed", () => {
+    const log = OTLP_LOG_REQUEST_FIXTURE.resourceLogs[0].scopeLogs[0].logRecords[0];
+    // "00" is numerically zero: it must behave exactly like "0", not slip past
+    // the literal comparisons and persist a record at epoch 1970.
+    expect(() => normalizeOtlpJsonLogsRequest({
+      resourceLogs: [{ scopeLogs: [{ logRecords: [{ ...log, timeUnixNano: "00", observedTimeUnixNano: "0" }] }] }],
+    })).toThrow(/timeUnixNano or observedTimeUnixNano/);
+    const [normalized] = normalizeOtlpJsonLogsRequest({
+      resourceLogs: [{ scopeLogs: [{ logRecords: [{ ...log, timeUnixNano: "00", observedTimeUnixNano: "1785888000001000002" }] }] }],
+    });
+    expect(normalized.timeUnixNano).toBe("0");
   });
 
   it("treats an empty body object as an unset AnyValue", () => {

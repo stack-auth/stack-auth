@@ -42,6 +42,14 @@ type RawSeriesRow = {
 export type OtlpMetricQueryRequest = {
   hours?: number,
   metricName?: string,
+  /**
+   * OTLP allows one metric NAME to exist with several metric types, and each
+   * (name, type) pair is a separate catalog entry with its own series. Without
+   * this, selecting such an entry could silently return a sibling type's data.
+   * Optional for compatibility: name-only requests resolve to the pair with
+   * the most points, exactly like the catalog ordering the selector shows.
+   */
+  metricType?: string,
 };
 
 export type OtlpMetricCatalogEntry = {
@@ -94,6 +102,14 @@ export function parseOtlpMetricQueryHours(raw: number | undefined): OtlpMetricQu
 
 function isOtlpMetricQueryHours(value: number): value is OtlpMetricQueryHours {
   return OTLP_METRIC_QUERY_HOURS_SET.has(value);
+}
+
+export function parseOtlpMetricQueryType(raw: string | undefined): OtlpMetricType | null {
+  if (raw == null) return null;
+  if (!isOtlpMetricType(raw)) {
+    throw new StatusError(StatusError.BadRequest, `metric_type must be one of ${OTLP_METRIC_TYPES.join(", ")}`);
+  }
+  return raw;
 }
 
 function isOtlpMetricType(value: string): value is OtlpMetricType {
@@ -157,6 +173,38 @@ PREWHERE project_id = {projectId:String}
 GROUP BY metric_name, metric_type
 ORDER BY point_count DESC, metric_name ASC, metric_type ASC
 LIMIT ${MAX_CATALOG_ROWS}
+`;
+}
+
+/**
+ * Targeted catalog lookup for one requested metric name. The bounded catalog
+ * above is a top-N by point count, so a metric the dashboard has pinned or
+ * deep-linked can fall out of it while its rows are still present — a named
+ * query must then resolve the entry directly instead of returning an empty
+ * series. The name filter keeps this scan on the same time-bounded PREWHERE
+ * as the top-N query, and the LIMIT covers the (bounded) set of OTLP metric
+ * types one name can carry.
+ */
+export function buildOtlpMetricCatalogEntryQuery(withMetricType: boolean): string {
+  return `
+SELECT
+  metric_name,
+  argMax(metric_description, (time_unix_nano, created_at, point_id)) AS metric_description,
+  argMax(metric_unit, (time_unix_nano, created_at, point_id)) AS metric_unit,
+  metric_type,
+  argMax(aggregation_temporality, (time_unix_nano, created_at, point_id)) AS aggregation_temporality,
+  argMax(is_monotonic, (time_unix_nano, created_at, point_id)) AS is_monotonic,
+  count() AS point_count,
+  toString(max(time_unix_nano)) AS latest_time_unix_nano
+FROM analytics_internal.metrics FINAL
+PREWHERE project_id = {projectId:String}
+  AND branch_id = {branchId:String}
+  AND metric_name = {metricName:String}
+  ${withMetricType ? "AND metric_type = {metricType:String}" : ""}
+  AND time_unix_nano >= toUnixTimestamp64Nano(now64(9) - INTERVAL {hours:UInt32} HOUR)
+GROUP BY metric_name, metric_type
+ORDER BY point_count DESC, metric_name ASC, metric_type ASC
+LIMIT ${OTLP_METRIC_TYPES.length}
 `;
 }
 
@@ -269,9 +317,28 @@ export async function queryOtlpMetrics(options: {
     format: "JSONEachRow",
   });
   const catalog = parseOtlpMetricCatalogRows(await catalogResult.json<RawCatalogRow>());
-  const selected = options.request.metricName == null
+  const requestedType = parseOtlpMetricQueryType(options.request.metricType);
+  let selected = options.request.metricName == null
     ? catalog[0]
-    : catalog.find((entry) => entry.metric_name === options.request.metricName);
+    : catalog.find((entry) => entry.metric_name === options.request.metricName
+      && (requestedType === null || entry.metric_type === requestedType));
+  if (selected === undefined && options.request.metricName != null) {
+    // The requested metric may simply have fallen below the top-N catalog (or
+    // the requested (name, type) pair may not be its busiest type). Resolve it
+    // directly and surface it in the returned catalog so the selector stays
+    // faithful to what is actually charted.
+    const entryResult = await client.query({
+      query: buildOtlpMetricCatalogEntryQuery(requestedType !== null),
+      query_params: {
+        ...query_params,
+        metricName: options.request.metricName,
+        ...requestedType === null ? {} : { metricType: requestedType },
+      },
+      format: "JSONEachRow",
+    });
+    selected = parseOtlpMetricCatalogRows(await entryResult.json<RawCatalogRow>()).at(0);
+    if (selected !== undefined) catalog.push(selected);
+  }
   const window = queryWindow(hours);
   const unsupportedMetricTypes = [...new Set(catalog.filter((entry) => !entry.supports_numeric_aggregation).map((entry) => entry.metric_type))];
   if (selected === undefined) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { normalizeOtlpJsonMetricsRequest } from "./otlp-metrics";
-import { buildOtlpMetricRows, getOtlpMetricsDeduplicationToken } from "./otlp-metric-writer";
+import { normalizeOtlpJsonMetricsRequest } from "./metrics";
+import { buildOtlpMetricRows, getOtlpMetricsDeduplicationToken } from "./metric-writer";
 
 const tenant = {
   projectId: "project-1",
@@ -79,6 +79,44 @@ describe("OTLP metric writer", () => {
     });
     expect(rows[0].data_point).toContain("17200000000000000001");
     expect(rows[0].resource_attributes).toContain("service.name");
+  });
+
+  it("scrubs caller-supplied attribute maps inside the raw data_point JSON", () => {
+    const scrubberRequest = normalizeOtlpJsonMetricsRequest({
+      resourceMetrics: [{
+        scopeMetrics: [{
+          metrics: [{ name: "checkout.requests", sum: {
+            aggregationTemporality: 2,
+            isMonotonic: true,
+            dataPoints: [{
+              timeUnixNano: "17200000000000000001",
+              attributes: [
+                { key: "route", value: { stringValue: "/checkout" } },
+                { key: "password", value: { stringValue: "hidden-secret" } },
+              ],
+              asInt: "42",
+              exemplars: [{
+                timeUnixNano: "17200000000000000001",
+                asInt: "1",
+                filteredAttributes: [{ key: "api_key", value: { stringValue: "hidden-secret" } }],
+              }],
+            }],
+          } }],
+        }],
+      }],
+    });
+    const [row] = buildOtlpMetricRows(scrubberRequest, tenant);
+    // The scrubbed `attributes` column must not be bypassable through the raw
+    // point JSON: the same maps are embedded there (point attributes and
+    // exemplar filteredAttributes) and must be scrubbed identically.
+    expect(row.attributes).not.toContain("hidden-secret");
+    expect(row.data_point).not.toContain("hidden-secret");
+    // The numeric structure and the surviving attribute stay verbatim so the
+    // series query keeps reading `value`, `count`, `sum`, `min`, `max`.
+    expect(JSON.parse(row.data_point)).toMatchObject({
+      value: { type: "int", value: "42" },
+      attributes: { route: { type: "string", value: "/checkout" } },
+    });
   });
 
   it("uses deterministic point identity and batch tokens when attribute order changes", () => {

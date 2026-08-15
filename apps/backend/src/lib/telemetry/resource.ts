@@ -1,5 +1,5 @@
 import type { TelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
-import { stripLoneSurrogates } from "./clickhouse";
+import { stripLoneSurrogates } from "@/lib/clickhouse";
 
 /**
  * Maps the SDK's immutable resource identity onto the shared ClickHouse

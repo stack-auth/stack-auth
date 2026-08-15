@@ -1,8 +1,8 @@
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
-import { createOtlpHttpResponse, decodeOtlpHttpRequest, getOtlpHttpEncoding, OtlpHttpError, scrubOtlpErrorMessage } from "@/lib/otlp-http";
-import { OtlpProtobufError } from "@/lib/otlp-protobuf";
-import { buildOtlpMetricRows, insertOtlpMetrics } from "@/lib/otlp-metric-writer";
-import { normalizeOtlpJsonMetricsRequest, OtlpMetricsRequestError } from "@/lib/otlp-metrics";
+import { createOtlpHttpResponse, decodeOtlpHttpRequest, getOtlpHttpEncoding, OtlpHttpError, scrubOtlpErrorMessage } from "@/lib/otlp/http";
+import { OtlpProtobufError } from "@/lib/otlp/protobuf";
+import { buildOtlpMetricRows, insertOtlpMetrics } from "@/lib/otlp/metric-writer";
+import { normalizeOtlpJsonMetricsRequest, OtlpMetricsRequestError } from "@/lib/otlp/metrics";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";

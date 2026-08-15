@@ -294,10 +294,17 @@ function safeText(value: string, maxBytes: number): string {
 
 function safeUrlPath(value: string | undefined, maxBytes: number): string | undefined {
   if (value === undefined || value === "") return undefined;
-  if (value.startsWith("data:")) return "<data-url>";
 
   try {
     const parsed = new URL(value, "https://hexclave.invalid");
+    // Only http(s) pathnames are structural route information. For every other
+    // scheme, `pathname` IS the URL's payload — a data: URL's inlined content,
+    // a blob: URL's inner origin, a file: URL's local path, javascript: code —
+    // so classify by the PARSED protocol (a startsWith("data:") check would
+    // miss "DATA:" and all the other schemes) and emit a fixed scheme marker.
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return truncateUtf8Bytes(`<${parsed.protocol.slice(0, -1)}-url>`, maxBytes);
+    }
     return truncateUtf8Bytes(parsed.pathname || "/", maxBytes);
   } catch {
     const queryStart = value.search(/[?#]/);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createOtlpHttpResponse, decodeOtlpHttpRequest, getOtlpHttpEncoding, OtlpHttpError } from "./otlp-http";
-import { decodeOtlpProtobufResponse, encodeOtlpProtobufRequest } from "./otlp-protobuf";
+import { createOtlpHttpResponse, decodeOtlpHttpRequest, getOtlpHttpEncoding, OtlpHttpError } from "./http";
+import { decodeOtlpProtobufResponse, encodeOtlpProtobufRequest } from "./protobuf";
 
 describe("OTLP/HTTP content negotiation", () => {
   it("recognizes only the two standard OTLP/HTTP media types", () => {

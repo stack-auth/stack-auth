@@ -92,6 +92,58 @@ describe("browser analytics startup", () => {
     expect(startSpan).not.toHaveBeenCalled();
   });
 
+  it("spanPropagation.enabled=false strips correlation baggage from manual propagation headers", () => {
+    const makeApp = (spanPropagationEnabled: boolean | undefined) => new StackClientApp({
+      projectId: "00000000-0000-4000-8000-000000000005",
+      publishableClientKey: "pck_test",
+      baseUrl: "https://api.example.test",
+      tokenStore: null,
+      noAutomaticPrefetch: true,
+      // No automatic hooks: this unit only exercises the manual header API,
+      // and eagerly-installed console-capture sinks would leak into the
+      // console-mirroring tests below (multi-identity registration disables
+      // the shared console sink).
+      automaticSideEffects: false,
+      devTool: false,
+      observability: {
+        openTelemetry: { provider: "existing-provider" },
+        ...spanPropagationEnabled === undefined ? {} : { spanPropagation: { enabled: spanPropagationEnabled } },
+      },
+      telemetry: TEST_TELEMETRY,
+    });
+
+    // Default: the segment id always exists, so correlation baggage is built.
+    expect("baggage" in makeApp(undefined).getSpanPropagationHeaders()).toBe(true);
+    // Disabled: correlation baggage is gone; W3C trace context is unaffected
+    // (there is simply no sampled ambient parent here to serialize).
+    expect(makeApp(false).getSpanPropagationHeaders()).toEqual({});
+  });
+
+  it("preserves an explicitly-unsampled parent on the inert span handle", () => {
+    const app = new StackClientApp({
+      projectId: "00000000-0000-4000-8000-000000000002",
+      publishableClientKey: "pck_test",
+      baseUrl: "https://api.example.test",
+      tokenStore: null,
+      noAutomaticPrefetch: true,
+      devTool: false,
+      observability: { enabled: false },
+      telemetry: TEST_TELEMETRY,
+    });
+
+    const span = app.startSpan("db.query", {
+      parent: { traceId: "c".repeat(32), spanId: "d".repeat(16), traceFlags: 0, traceState: "vendor=value" },
+    });
+    // Omitted flags mean "sampled" per the SpanContext contract, so dropping
+    // them here would let downstream parent-based samplers record a trace the
+    // upstream explicitly dropped.
+    expect(span.spanContext()).toMatchObject({
+      traceId: "c".repeat(32),
+      traceFlags: 0,
+      traceState: "vendor=value",
+    });
+  });
+
   it("lazily starts replay and event capture for an SSR app with tokenStore null", async () => {
     const replayStart = vi.spyOn(SessionRecorder.prototype, "start").mockImplementation(() => {});
     const eventStart = vi.spyOn(EventTracker.prototype, "start").mockImplementation(() => {});
@@ -141,7 +193,7 @@ describe("browser analytics startup", () => {
       getSessionRootContext: async () => await sessionRootPromise,
       replayOptions: { enabled: false },
       productAnalyticsEnabled: true,
-      getPropagationPolicy: () => ({ selfOrigin: null, allowedOrigins: [], allowLocalhost: false }),
+      getPropagationPolicy: () => ({ selfOrigin: null, allowedOrigins: [], allowLocalhost: false, correlationBaggage: true }),
       integritySignals: false,
       networkCapture: normalizeNetworkCaptureOptions(undefined),
       traceSampleRate: 1,
@@ -212,7 +264,7 @@ describe("browser analytics startup", () => {
       getCachedSessionRootContext,
       replayOptions: { enabled: false },
       productAnalyticsEnabled: true,
-      getPropagationPolicy: () => ({ selfOrigin: null, allowedOrigins: [], allowLocalhost: false }),
+      getPropagationPolicy: () => ({ selfOrigin: null, allowedOrigins: [], allowLocalhost: false, correlationBaggage: true }),
       integritySignals: false,
       networkCapture: normalizeNetworkCaptureOptions(undefined),
       traceSampleRate: 1,
@@ -369,6 +421,123 @@ describe("browser analytics startup", () => {
     expect(analytics.getErrorCapture()).toBeNull();
   });
 
+  it("lazily registers the managed provider for explicit telemetry when automatic side effects are deferred", async () => {
+    const makeAnalytics = () => new ClientAnalytics({
+      projectId: "00000000-0000-4000-8000-000000000001",
+      resource: TEST_TELEMETRY.resource,
+      sendReplayBatch: async () => Result.ok(new Response()),
+      getSessionRootContext: async () => ({ traceId: "a".repeat(32), spanId: "b".repeat(16) }),
+      replayOptions: { enabled: false },
+      productAnalyticsEnabled: true,
+      getPropagationPolicy: () => ({ selfOrigin: null, allowedOrigins: [], allowLocalhost: false, correlationBaggage: true }),
+      integritySignals: false,
+      networkCapture: normalizeNetworkCaptureOptions(undefined),
+      traceSampleRate: 1,
+      errorCapture: { enabled: true, ignoreErrors: [] },
+      release: null,
+      environment: null,
+      sdkVersion: "0.0.0-test",
+      analyticsBaseUrl: "https://api.example.test",
+      openTelemetryProvider: "managed",
+      automaticSideEffects: false,
+      getOtlpRequestHeaders: async () => ({}),
+    });
+
+    // trackEvent: the managed provider must come up lazily, or the record
+    // would silently hit the no-op global providers.
+    const tracked = makeAnalytics();
+    expect(Reflect.get(tracked, "_browserOtelRegistration")).toBeNull();
+    const forceFlush = vi.fn(async () => {});
+    Reflect.set(tracked, "_registerManagedBrowserOtel", () => ({ forceFlush }));
+    await tracked.trackCustomEvent("explicit_event", { n: 1 });
+    expect(Reflect.get(tracked, "_browserOtelRegistration")).not.toBeNull();
+    expect(forceFlush).toHaveBeenCalled();
+
+    // startSpan: same contract for explicit spans.
+    const spanning = makeAnalytics();
+    expect(Reflect.get(spanning, "_browserOtelRegistration")).toBeNull();
+    Reflect.set(spanning, "_registerManagedBrowserOtel", () => ({ forceFlush: async () => {} }));
+    spanning.startSpan("db.query");
+    expect(Reflect.get(spanning, "_browserOtelRegistration")).not.toBeNull();
+  });
+
+  it("routes console.error promotion through the shared capture policy (dedupe + ignores)", async () => {
+    installExistingProvider();
+    const exporter = new InMemoryLogRecordExporter();
+    const loggerProvider = new LoggerProvider({ processors: [new SimpleLogRecordProcessor({ exporter })] });
+    loggerProviders.push(loggerProvider);
+    logs.setGlobalLoggerProvider(loggerProvider);
+
+    const analytics = new ClientAnalytics({
+      projectId: "00000000-0000-4000-8000-000000000001",
+      resource: TEST_TELEMETRY.resource,
+      sendReplayBatch: async () => Result.ok(new Response()),
+      getSessionRootContext: async () => ({ traceId: "a".repeat(32), spanId: "b".repeat(16) }),
+      replayOptions: { enabled: false },
+      productAnalyticsEnabled: true,
+      getPropagationPolicy: () => ({ selfOrigin: null, allowedOrigins: [], allowLocalhost: false, correlationBaggage: true }),
+      integritySignals: false,
+      networkCapture: normalizeNetworkCaptureOptions(undefined),
+      traceSampleRate: 1,
+      errorCapture: { enabled: true, ignoreErrors: ["ResizeObserver loop"] },
+      release: null,
+      environment: null,
+      sdkVersion: "0.0.0-test",
+      analyticsBaseUrl: "https://api.example.test",
+      openTelemetryProvider: "existing-provider",
+      automaticSideEffects: false,
+      getOtlpRequestHeaders: async () => ({}),
+    });
+
+    const error = new Error("console-promoted boom");
+    analytics.captureConsoleError(error);
+    // Same OBJECT again: the captured marker must dedupe the promotion.
+    analytics.captureConsoleError(error);
+    // Ignore substrings apply to promotions exactly like to global captures.
+    analytics.captureConsoleError(new Error("ResizeObserver loop limit exceeded"));
+    await loggerProvider.forceFlush();
+
+    const records = exporter.getFinishedLogRecords().filter((record) => record.eventName === "$error");
+    expect(records).toHaveLength(1);
+    const data = records[0]?.attributes["hexclave.data"];
+    expect(data).toMatchObject({ mechanism_type: "console.error", message: "console-promoted boom", handled: true });
+  });
+
+  it("keeps console log mirroring installed when global error capture is disabled", async () => {
+    installExistingProvider();
+    const exporter = new InMemoryLogRecordExporter();
+    const loggerProvider = new LoggerProvider({ processors: [new SimpleLogRecordProcessor({ exporter })] });
+    loggerProviders.push(loggerProvider);
+    logs.setGlobalLoggerProvider(loggerProvider);
+
+    const app = new StackClientApp({
+      projectId: "00000000-0000-4000-8000-000000000004",
+      publishableClientKey: "pck_test",
+      baseUrl: "https://api.example.test",
+      tokenStore: null,
+      noAutomaticPrefetch: true,
+      devTool: false,
+      observability: {
+        openTelemetry: { provider: "existing-provider" },
+        errorCapture: { enabled: false },
+        logs: { captureConsole: ["warn"] },
+      },
+      telemetry: TEST_TELEMETRY,
+    });
+    const analytics = Reflect.get(app, "_clientAnalytics");
+    if (!(analytics instanceof ClientAnalytics)) throw new Error("Expected the browser telemetry facade");
+    // Error-side hooks stay off...
+    expect(analytics.getErrorCapture()).toBeNull();
+
+    // ...but `logs.captureConsole` is separate policy and must keep mirroring.
+    console.warn("mirrored while error capture is off");
+    await loggerProvider.forceFlush();
+    const logRecord = exporter.getFinishedLogRecords().find((record) => record.eventName === "$log");
+    expect(String(logRecord?.body ?? "")).toContain("mirrored while error capture is off");
+
+    analytics.uninstallErrorIntegrations();
+  });
+
   it("bridges the existing console hook into bounded error breadcrumbs", async () => {
     installExistingProvider();
     const exporter = new InMemoryLogRecordExporter();
@@ -458,6 +627,78 @@ describe("browser analytics startup", () => {
         "hexclave.data": { event_id: eventId, message: "processed before delivery" },
       },
     }]);
+  });
+
+  it("drains attachment deliveries scheduled during processing before clearBuffer returns", async () => {
+    installExistingProvider();
+    const uploads: string[] = [];
+    let releaseBeforeSend: () => void = () => {
+      throw new Error("beforeSend release was used before initialization");
+    };
+    const beforeSendGate = new Promise<void>((resolve) => {
+      releaseBeforeSend = resolve;
+    });
+    const analytics = new ClientAnalytics({
+      projectId: "00000000-0000-4000-8000-000000000001",
+      resource: TEST_TELEMETRY.resource,
+      sendReplayBatch: async () => Result.ok(new Response()),
+      getSessionRootContext: async () => ({ traceId: "a".repeat(32), spanId: "b".repeat(16) }),
+      replayOptions: { enabled: false },
+      productAnalyticsEnabled: true,
+      getPropagationPolicy: () => ({ selfOrigin: null, allowedOrigins: [], allowLocalhost: false, correlationBaggage: true }),
+      integritySignals: false,
+      networkCapture: normalizeNetworkCaptureOptions(undefined),
+      traceSampleRate: 1,
+      errorCapture: {
+        enabled: true,
+        ignoreErrors: [],
+        beforeSend: async (event) => {
+          await beforeSendGate;
+          return event;
+        },
+      },
+      release: null,
+      environment: null,
+      sdkVersion: "0.0.0-test",
+      analyticsBaseUrl: "https://api.example.test",
+      openTelemetryProvider: "existing-provider",
+      automaticSideEffects: false,
+      getOtlpRequestHeaders: async () => ({}),
+      errorAttachmentTransport: {
+        upload: async (request) => {
+          // A macrotask so the upload cannot complete on the same microtask
+          // turn that scheduled it — the exact window the drain must cover.
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          uploads.push(request.attachment.filename);
+          return {
+            status: "uploaded",
+            attachment: {
+              id: "11111111-1111-4111-8111-111111111111",
+              eventId: request.eventId,
+              occurrenceId: null,
+              filename: request.attachment.filename,
+              contentType: "application/octet-stream",
+              attachmentType: "event.attachment",
+              byteLength: 5,
+              sha256: "a".repeat(64),
+              createdAt: "2026-08-06T00:00:00.000Z",
+              status: "uploaded",
+            },
+          };
+        },
+      },
+    });
+
+    analytics.captureException(new Error("with attachment"), undefined, {
+      attachments: [{ data: "bytes", filename: "dump.txt" }],
+    });
+    const cleared = analytics.clearBuffer();
+    releaseBeforeSend();
+    await cleared;
+    // The attachment delivery was only SCHEDULED once beforeSend accepted the
+    // event (i.e. while clearBuffer was already waiting); it must still finish
+    // before clearBuffer resolves, or it would upload under the next identity.
+    expect(uploads).toEqual(["dump.txt"]);
   });
 
   it("fails loudly when manual error capture is disabled", () => {

@@ -7,10 +7,10 @@ import { readGroupingFingerprint } from "./issues/grouping-fingerprint";
 import { resolveGroupingConfig, type GroupingConfigResolution, type GroupingRuntimeConfig } from "./issues/grouping-config";
 import { serializeGroupingProvenance } from "./issues/grouping-provenance";
 import type { IssueBatchDelta } from "./issues/issue-materialization-contract";
-import { buildTelemetryResourceFields } from "./telemetry-resource";
+import { buildTelemetryResourceFields } from "./telemetry/resource";
 import { scrubErrorIngestPayload } from "./error-ingest";
 import { normalizeErrorEnvelope } from "@hexclave/shared/dist/utils/error-envelope";
-import { writeTelemetryDestinations, type TelemetryWritePlan } from "./telemetry-write-plan";
+import { writeTelemetryDestinations, type TelemetryWritePlan } from "./telemetry/write-plan";
 
 export type BatchEventWireItem = {
   event_type: string,
@@ -101,16 +101,8 @@ function getOccurrenceId(event: BatchEventWireItem, batchId: string, ordinal: nu
 }
 
 /**
- * What the background materializer needs in order to create/advance an Issue,
- * already coalesced per owning hash by `normalizeBatchEvents`. Coalescing here
- * rather than per event is what keeps a 500-error batch down to a handful of
- * Postgres rows: the SDK's own flood control caps 10 per fingerprint per page
- * view, so N is typically 1–5.
- */
-/**
- * Protocol-neutral normalized event batch. The current native SDK wire
- * normalizer produces this shape; a future standards-complete OTLP normalizer
- * can target the same boundary without adding another ingestion/storage path.
+ * Native SDK event batch after protocol-specific fields have been normalized
+ * into the shared telemetry, log, and issue write inputs.
  */
 export type NormalizedEventBatch = {
   productEvents: ReturnType<typeof buildBaseEventRow>[],
@@ -137,6 +129,21 @@ function scrubBatchEvent(event: BatchEventWireItem): BatchEventWireItem {
   const result = scrubErrorIngestPayload(event.data);
   if (result.value === undefined) throw new Error("Telemetry event data could not be normalized for durable storage");
   return { ...event, data: result.value };
+}
+
+/**
+ * The telemetry `data` column is typed ClickHouse JSON, which only stores
+ * objects — but the released pre-versioned wire contract accepted ANY JSON
+ * value as `data` (the legacy Postgres/String storage kept it verbatim), and
+ * old SDKs embedded in customer apps keep that contract forever. Wrapping is
+ * the leniency-preserving projection into the typed column: the original value
+ * survives losslessly under a reserved key instead of 400ing the whole batch
+ * or silently dropping the item. Versioned batches are validated to be plain
+ * objects up front, so this is a no-op for them.
+ */
+function toStorableTelemetryData(data: unknown): unknown {
+  if (data !== null && typeof data === "object" && !Array.isArray(data)) return data;
+  return { "$value": data };
 }
 
 function scrubBatchMessage(message: string): string {
@@ -278,7 +285,7 @@ function buildBaseEventRow(event: BatchEventWireItem, context: BatchSignalContex
     return {
       event_type: event.event_type,
       event_at: new Date(event.event_at_ms),
-      data: stripLoneSurrogates(event.data),
+      data: stripLoneSurrogates(toStorableTelemetryData(event.data)),
       producer: context.producer,
       runtime: context.runtime,
       ...(context.resource === null ? {} : buildTelemetryResourceFields(context.resource)),
@@ -324,7 +331,7 @@ function buildLogRow(
     body: JSON.stringify(event.event_type === "$log"
       ? { type: "string", value: stripLoneSurrogates(scrubBatchMessage(requireLogMessage(event))) }
       : { type: "null", value: null }),
-    data: stripLoneSurrogates(event.data),
+    data: stripLoneSurrogates(toStorableTelemetryData(event.data)),
     level: event.event_type === "$log" ? event.level : "",
     error_envelope: "{}",
     ...errorFields?.columns ?? {},
@@ -413,17 +420,22 @@ export function normalizeBatchEvents(
 ): NormalizedEventBatch {
   const groupingConfig = resolveGroupingConfig(context.groupingConfig);
   const grouped: GroupedErrorOccurrence[] = [];
-  const scrubbedEvents = events.map(scrubBatchEvent);
 
   const productEvents: ReturnType<typeof buildBaseEventRow>[] = [];
   const logOccurrences: ReturnType<typeof buildLogRow>[] = [];
 
-  scrubbedEvents.forEach((event, ordinal) => {
-    const occurrenceId = getOccurrenceId(event, batchId, ordinal);
-    if (getTelemetryLens(event.event_type) === "product") {
-      productEvents.push(buildBaseEventRow(event, context));
+  events.forEach((rawEvent, ordinal) => {
+    // Scrubbing is an error-pipeline control and must not touch product
+    // analytics: customers expect $page-view/$click/custom-event data to be
+    // stored byte-identical to what the SDK captured (e.g. exact-match URL
+    // queries), and only durable-storage normalization (lone-surrogate
+    // stripping, object wrapping) may be applied to it below.
+    if (getTelemetryLens(rawEvent.event_type) === "product") {
+      productEvents.push(buildBaseEventRow(rawEvent, context));
       return;
     }
+    const event = scrubBatchEvent(rawEvent);
+    const occurrenceId = getOccurrenceId(event, batchId, ordinal);
     const errorFields = event.event_type === "$error"
       ? buildErrorGroupingFields(event, context, groupingConfig)
       : null;

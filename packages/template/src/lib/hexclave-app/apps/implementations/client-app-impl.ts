@@ -1758,10 +1758,14 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return "browser";
   }
 
-  protected _getPropagationOriginPolicy(): { allowedOrigins: readonly string[], allowLocalhost: boolean } {
+  protected _getPropagationOriginPolicy(): { allowedOrigins: readonly string[], allowLocalhost: boolean, correlationBaggage: boolean } {
+    // `spanPropagation.enabled: false` gates ONLY the Hexclave correlation
+    // baggage half of propagation (see the option's doc): standard W3C trace
+    // context (traceparent/tracestate) keeps flowing independently.
+    const correlationBaggage = this._observabilityOptions?.spanPropagation?.enabled !== false;
     const explicit = this._observabilityOptions?.spanPropagation?.allowedOrigins ?? [];
     if (this._observabilityOptions?.spanPropagation?.useTrustedDomains === false) {
-      return { allowedOrigins: explicit, allowLocalhost: false };
+      return { allowedOrigins: explicit, allowLocalhost: false, correlationBaggage };
     }
     this._trustedPropagationOriginsPromise ??= (async () => {
       try {
@@ -1781,6 +1785,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return {
       allowedOrigins: this._trustedPropagationOrigins.length === 0 ? explicit : [...explicit, ...this._trustedPropagationOrigins],
       allowLocalhost: this._trustedPropagationAllowLocalhost,
+      correlationBaggage,
     };
   }
 
@@ -4594,6 +4599,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
    */
   protected _emitLog(item: LogEmitItem): "ok" | "unavailable" {
     if (this._observabilityOptions?.enabled === false || this._clientAnalytics === null) return "unavailable";
+    // An explicit logger call must land on a recording provider even when
+    // `automaticSideEffects: false` deferred the eager managed registration —
+    // otherwise the record would silently hit the no-op global LoggerProvider.
+    this._clientAnalytics.ensureProviderForExplicitSignal();
     emitHexclaveOtelLog(item, clientVersion);
     return "ok";
   }
@@ -4687,6 +4696,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       startedAtMs: options?.startedAtMs ?? Date.now(),
       parentSpanId: resolved.parentSpanId,
       initialData: { ...options?.data ?? {} },
+      // Thread the resolved parent's sampling decision through: omitting these
+      // means "sampled" per the SpanContext contract, so an explicitly
+      // UNSAMPLED upstream parent would be silently upgraded and downstream
+      // parent-based samplers would start recording a trace the origin dropped.
+      ...resolved.traceFlags === undefined ? {} : { traceFlags: resolved.traceFlags },
+      ...resolved.traceState === undefined ? {} : { traceState: resolved.traceState },
     });
   }
 
@@ -4742,6 +4757,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   protected _getSpanPropagationContext(): SpanPropagationContext | null {
     const tracker = this._clientAnalytics;
     if (!tracker) return null;
+    // Read the option directly instead of _getPropagationOriginPolicy(): the
+    // policy getter lazily kicks off the trusted-domains fetch, which a
+    // disabled-baggage check must not trigger as a side effect.
+    if (this._observabilityOptions?.spanPropagation?.enabled === false) return null;
     const segmentId = tracker.getSessionReplaySegmentId();
     const pageViewSpanId = tracker.getCurrentPageViewSpanId();
     return {

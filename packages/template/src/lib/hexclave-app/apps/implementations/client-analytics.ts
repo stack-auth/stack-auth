@@ -2,7 +2,7 @@ import { trace as otelTrace, type Context } from "@opentelemetry/api";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import type { AnalyticsReplayOptions } from "./analytics-config";
-import { buildCapturedEventData, buildErrorEventData, generateErrorEventId, installClientErrorCapture, type ClientErrorCapture, type NormalizedErrorCaptureOptions } from "./error-capture";
+import { buildCapturedEventData, buildErrorEventData, buildErrorEventDataFromNormalized, buildLinkedExceptionValues, createClientErrorCapturePolicy, generateErrorEventId, installClientErrorCapture, type ClientErrorCapture, type ClientErrorCapturePolicy, type NormalizedErrorCaptureOptions } from "./error-capture";
 import type { CapturedErrorEvent, CaptureEvent, CaptureExceptionOptions, CaptureMessageOptions, ErrorAttachmentInput, ErrorAttachmentTransport, ErrorBreadcrumb, ErrorEventId, ErrorScopeData, PendingErrorAttachment } from "../interfaces/error-capture";
 import type { EventTracker } from "./event-tracker";
 import type { TelemetryResource } from "./telemetry-config";
@@ -78,7 +78,7 @@ export type ClientAnalyticsDeps = {
   /** Enables product autocapture independently from the shared telemetry transport. */
   productAnalyticsEnabled: boolean,
   registerBackgroundTask?: (promise: Promise<unknown>) => void,
-  getPropagationPolicy: () => { selfOrigin: string | null, allowedOrigins: readonly string[], allowLocalhost: boolean },
+  getPropagationPolicy: () => { selfOrigin: string | null, allowedOrigins: readonly string[], allowLocalhost: boolean, correlationBaggage: boolean },
   integritySignals: boolean,
   /** Normalized URL policy for the official browser HTTP instrumentations. */
   networkCapture: NetworkCaptureConfig,
@@ -200,11 +200,29 @@ export class ClientAnalytics {
     // EAGERLY (here, not in the lazily-loaded tracker): errors thrown before
     // the tracker module arrives — often the most interesting ones, e.g. a
     // broken hydration — must still capture. Both remain gated by the explicit
-    // automatic-side-effects switch.
-    if (deps.automaticSideEffects !== false && deps.errorCapture.enabled) {
+    // automatic-side-effects switch; the finer gates live INSIDE the two
+    // installers, because `errorCapture.enabled` only governs the error-side
+    // hooks — console $log mirroring is `logs.captureConsole` policy and must
+    // survive error capture being turned off.
+    if (deps.automaticSideEffects !== false) {
       this._installClientErrorCapture();
       this._installErrorIntegrations();
     }
+  }
+
+  // ONE admission-policy instance per facade, shared between the global
+  // handlers and console.error promotion (see createClientErrorCapturePolicy):
+  // both sources must dedupe and flood-cap as a single stream. Owned here (not
+  // by the installer) so it survives uninstall/reinstall of the hooks and
+  // exists even when only console promotion runs.
+  private _errorCapturePolicy: ClientErrorCapturePolicy | null = null;
+
+  private _getErrorCapturePolicy(): ClientErrorCapturePolicy {
+    this._errorCapturePolicy ??= createClientErrorCapturePolicy({
+      ignoreErrors: this._deps.errorCapture.ignoreErrors,
+      getCurrentPageViewSpanId: () => this.getCurrentPageViewSpanId(),
+    });
+    return this._errorCapturePolicy;
   }
 
   private _installClientErrorCapture(): void {
@@ -217,24 +235,28 @@ export class ClientAnalytics {
       environment: this._deps.environment,
       sdkVersion: this._deps.sdkVersion,
       getCurrentPageViewSpanId: () => this.getCurrentPageViewSpanId(),
+      policy: this._getErrorCapturePolicy(),
     });
   }
 
   private _createErrorIntegrationRuntime(): ErrorIntegrationRuntime | null {
     const levels = this._deps.consoleCaptureLevels;
     const emitLog = this._deps.emitLog;
-    if (
-      this._deps.openTelemetryProvider === "disabled"
-      || !this._deps.errorCapture.enabled
-    ) {
+    if (this._deps.openTelemetryProvider === "disabled") {
       return null;
     }
+    // `errorCapture.enabled` gates only the ERROR-side hooks (resource-error
+    // capture, console.error promotion). Console mirroring into $log rows is
+    // configured separately via `logs.captureConsole` and must keep working
+    // when a user disables global error capture.
+    const errorCaptureEnabled = this._deps.errorCapture.enabled;
 
-    const browser: NonNullable<ErrorIntegrationRuntime["browser"]> = {
-      onResourceError: (handler) => installBrowserResourceErrorCapture(handler, {
+    const browser: NonNullable<ErrorIntegrationRuntime["browser"]> = {};
+    if (errorCaptureEnabled) {
+      browser.onResourceError = (handler) => installBrowserResourceErrorCapture(handler, {
         networkCapture: this._deps.networkCapture,
-      }),
-    };
+      });
+    }
     if (levels !== undefined && levels.length > 0 && emitLog !== undefined) {
       browser.onConsole = (handler) => installConsoleCapture({
         levels,
@@ -256,8 +278,13 @@ export class ClientAnalytics {
         }),
         projectId: this._deps.projectId,
         serviceName: this._deps.resource.service.name,
-        captureError: (error) => this.captureConsoleError(error),
+        // Promoting console.error(Error) to a $error event is error-capture
+        // behavior; the mirrored $log row itself is not.
+        ...errorCaptureEnabled ? { captureError: (error: Error) => this.captureConsoleError(error) } : {},
       });
+    }
+    if (browser.onConsole === undefined && browser.onResourceError === undefined) {
+      return null;
     }
 
     return {
@@ -306,7 +333,7 @@ export class ClientAnalytics {
       networkCapture: deps.networkCapture,
       getPropagationPolicy: () => {
         const policy = deps.getPropagationPolicy();
-        return { allowedOrigins: policy.allowedOrigins, allowLocalhost: policy.allowLocalhost };
+        return { allowedOrigins: policy.allowedOrigins, allowLocalhost: policy.allowLocalhost, correlationBaggage: policy.correlationBaggage };
       },
       installHttpInstrumentationImmediately: this._resolvedSessionRoot !== null,
       // Late-bound through `this`: the tracker only exists once the lazy
@@ -519,9 +546,22 @@ export class ClientAnalytics {
     this._integrationBreadcrumbs.length = 0;
     this._tracker?.clearBuffer();
     this._recorder?.clearBuffer();
-    await Promise.all([...this._pendingErrorProcessing]);
+    await this._drainPendingErrorProcessing();
     if (this._browserOtelRegistration !== null) {
       this._browserOtelRegistration = await this._browserOtelRegistration.flushBeforeAuthenticationChange();
+    }
+  }
+
+  /**
+   * Awaits the pending error-processing set until it is QUIESCENT, not just a
+   * snapshot of it: an accepted event's processing task schedules its
+   * attachment delivery as a NEW set entry, so a single Promise.all over the
+   * initial members would return while that upload still runs — and, on the
+   * sign-out path, let it authenticate as the next user.
+   */
+  private async _drainPendingErrorProcessing(): Promise<void> {
+    while (this._pendingErrorProcessing.size > 0) {
+      await Promise.all([...this._pendingErrorProcessing]);
     }
   }
 
@@ -536,6 +576,7 @@ export class ClientAnalytics {
     if (dataError) return rejectedPreCaught(dataError);
     const enclosing = this._resolvePreloadEnclosingSpan(options);
     if ("error" in enclosing) return rejectedPreCaught(enclosing.error);
+    this.ensureProviderForExplicitSignal();
     const pageViewSpanId = this.getCurrentPageViewSpanId();
     emitHexclaveOtelEvent({
       eventName: eventType,
@@ -615,10 +656,22 @@ export class ClientAnalytics {
     }
   }
 
-  private _ensureManualErrorProvider(): void {
+  /**
+   * Lazily registers the managed provider so an EXPLICIT signal call
+   * (trackEvent / startSpan / logger / capture*) always lands on a recording
+   * provider, even when `automaticSideEffects: false` skipped the eager
+   * registration at construction. Only the provider comes up — automatic
+   * hooks (page views, HTTP instrumentation, global handlers) stay off, so
+   * the side-effects switch keeps its meaning.
+   */
+  ensureProviderForExplicitSignal(): void {
     if (this._deps.openTelemetryProvider === "managed" && this._browserOtelRegistration === null) {
       this._browserOtelRegistration = this._registerManagedBrowserOtel();
     }
+  }
+
+  private _ensureManualErrorProvider(): void {
+    this.ensureProviderForExplicitSignal();
     this._installClientErrorCapture();
     this._installErrorIntegrations();
   }
@@ -711,13 +764,25 @@ export class ClientAnalytics {
 
   /** Promotes a real console.error(Error) call while retaining its $log row. */
   captureConsoleError(error: Error): void {
-    this.trackErrorEvent(buildErrorEventData(error, {
+    // Routed through the SAME admission policy as the global handlers (shared
+    // instance — see _getErrorCapturePolicy): without it, a render loop that
+    // console.errors every frame would emit unbounded $error rows past the
+    // per-page-view flood caps, ignoreErrors would not apply, and the same
+    // Error object surfacing at window.onerror afterwards would double-capture.
+    const admission = this._getErrorCapturePolicy().admit(error);
+    if (admission === null) return;
+    // Build from the ADMITTED normalization (never re-normalize) and attach the
+    // active scope, exactly like the automatic global-handler path does.
+    const scope = getActiveErrorScope()?.snapshot();
+    this.trackErrorEvent(buildErrorEventDataFromNormalized(admission.normalized, {
       mechanismType: "console.error",
       handled: true,
       release: this._deps.release,
       environment: this._deps.environment,
       sdkVersion: this._deps.sdkVersion,
-    }));
+      scope,
+      exceptionValues: buildLinkedExceptionValues(error, admission.normalized),
+    }), scope, error);
   }
 
   startSpan(spanType: string, options?: StartSpanOptions): Span {
@@ -740,6 +805,7 @@ export class ClientAnalytics {
         ...resolved.traceFlags === undefined ? {} : { traceFlags: resolved.traceFlags },
         ...resolved.traceState === undefined ? {} : { traceState: resolved.traceState },
       };
+    this.ensureProviderForExplicitSignal();
     const pageViewSpanId = this.getCurrentPageViewSpanId();
     const span = createOtelSpanFacade({
       tracer: otelTrace.getTracer("@hexclave/sdk-browser", this._deps.sdkVersion),
@@ -749,6 +815,7 @@ export class ClientAnalytics {
         ...parent === undefined ? { root: true } : { parent, root: false },
         links: resolved.links,
       },
+      correlationBaggage: this._deps.getPropagationPolicy().correlationBaggage,
       correlationAttributes: {
         "hexclave.session_replay.segment.id": this.getSessionReplaySegmentId(),
         ...pageViewSpanId === null ? {} : { "hexclave.page_view.span_id": pageViewSpanId },
@@ -768,6 +835,9 @@ export class ClientAnalytics {
   // Preserve the useful correlation claim but never promise the span as a
   // remote parent, even if the runtime finishes loading while the handle lives.
   private _preloadSpanPropagationHeaders(_span: Span): Record<string, string> {
+    // These headers are correlation-only (traceparent stays null pre-load), so
+    // spanPropagation.enabled=false means there is nothing left to build.
+    if (!this._deps.getPropagationPolicy().correlationBaggage) return {};
     const segmentId = this.getSessionReplaySegmentId();
     return buildPropagationHeaderValues({
       traceparent: null,
@@ -821,7 +891,7 @@ export class ClientAnalytics {
    */
   async flush(): Promise<void> {
     const tracker = await preCaught(this._ensureLoaded());
-    await Promise.all([...this._pendingErrorProcessing]);
+    await this._drainPendingErrorProcessing();
     await Promise.all([
       tracker.flush(),
       this._browserOtelRegistration?.forceFlush() ?? Promise.resolve(),

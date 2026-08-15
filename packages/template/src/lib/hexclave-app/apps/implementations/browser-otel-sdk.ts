@@ -150,7 +150,7 @@ export type BrowserManagedOtelOptions = {
   shutdownDeadlineMs?: number,
   metricExportIntervalMillis?: number,
   networkCapture: NetworkCaptureConfig,
-  getPropagationPolicy: () => { allowedOrigins: readonly string[], allowLocalhost: boolean },
+  getPropagationPolicy: () => { allowedOrigins: readonly string[], allowLocalhost: boolean, correlationBaggage: boolean },
   /**
    * Install Fetch/XHR instrumentation immediately. Browser callers that must
    * resolve an authenticated session root first can set this to false and
@@ -242,6 +242,10 @@ export type HexclaveBrowserOtelExporterOptions = {
 };
 
 export type BrowserOtlpOfflineQueueOptions = {
+  /**
+   * IndexedDB database name PREFIX. Each signal (traces/logs/metrics) stores
+   * its queue in its own `${dbName}-${signal}` database.
+   */
   dbName?: string,
   maxQueueSize?: number,
   maxQueueBytes?: number,
@@ -374,7 +378,12 @@ function queueOptionsForExporter(options: HexclaveBrowserOtelExporterOptions, si
 } {
   const projectKey = encodeURIComponent(options.projectId);
   return {
-    dbName: options.offlineQueue?.dbName ?? `hexclave-otlp-offline-${projectKey}-${signal}`,
+    // A configured dbName is a PREFIX — one database per signal. All three
+    // signal queues sharing one literal database would break: IndexedDB runs
+    // onupgradeneeded only once per version, so whichever signal opened the
+    // shared database first would create only its own object stores and the
+    // other signals' transactions would fail with NotFoundError.
+    dbName: `${options.offlineQueue?.dbName ?? `hexclave-otlp-offline-${projectKey}`}-${signal}`,
     storeName: `batches-${signal}`,
     maxQueueSize: normalizedPositiveInteger(options.offlineQueue?.maxQueueSize, OTLP_OFFLINE_QUEUE_MAX_SIZE),
     maxQueueBytes: normalizedPositiveInteger(options.offlineQueue?.maxQueueBytes, OTLP_OFFLINE_QUEUE_MAX_BYTES),
@@ -1347,11 +1356,16 @@ class HexclaveBrowserOtlpJsonExporter<Payload> implements BrowserOtlpExporterCon
         ? parsed.partial_success
         : undefined;
     if (partialSuccessValue === null || typeof partialSuccessValue !== "object") return null;
+    // One field per signal: logs, traces, and metrics (the backend emits
+    // `rejectedDataPoints` for metric partial successes — see the OTLP
+    // ExportMetricsPartialSuccess message).
     const rejectedItemValue = "rejectedLogRecords" in partialSuccessValue
       ? partialSuccessValue.rejectedLogRecords
       : "rejectedSpans" in partialSuccessValue
         ? partialSuccessValue.rejectedSpans
-        : undefined;
+        : "rejectedDataPoints" in partialSuccessValue
+          ? partialSuccessValue.rejectedDataPoints
+          : undefined;
     const rejectedItemCount = typeof rejectedItemValue === "number"
       ? rejectedItemValue
       : typeof rejectedItemValue === "string" ? Number.parseInt(rejectedItemValue, 10) : NaN;
@@ -1610,8 +1624,17 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
     contextManager.disable();
     throw new Error("Hexclave installed its browser tracer provider but could not install its OTel context manager");
   }
+  // The baggage half is `spanPropagation.enabled` (static config, so reading
+  // the policy once at registration is sound — only the ORIGIN half of the
+  // policy is late-bound). In the managed browser every baggage entry is
+  // Hexclave-minted correlation (ambient session anchor + span facades), so
+  // disabling correlation baggage means the whole W3CBaggagePropagator has
+  // nothing legitimate left to inject. Trace context always stays installed.
   const propagator = new CompositePropagator({
-    propagators: [new W3CTraceContextPropagator(), new W3CBaggagePropagator()],
+    propagators: [
+      new W3CTraceContextPropagator(),
+      ...options.getPropagationPolicy().correlationBaggage ? [new W3CBaggagePropagator()] : [],
+    ],
   });
   if (!propagation.setGlobalPropagator(propagator)) {
     ignoreUnhandledRejection(meterProvider.shutdown());

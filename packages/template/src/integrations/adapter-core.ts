@@ -121,7 +121,7 @@ export async function runRequestSpan<T>(
     defaultSpanType: string,
     data: Record<string, unknown>,
     telemetry: AdapterTelemetryOptions | undefined,
-    /** See runAdapterSpan. */
+    /** Backdated span start — for hook-based adapters that materialize the span at response time. */
     startedAtMs?: number,
   },
   fn: (span: Span | null) => Promise<T>,
@@ -176,7 +176,7 @@ export type GuardedHandlerInfo = {
   factoryUnauthorized: UnauthorizedFactory | undefined,
   /** Names the surface in the default rejection message, e.g. "route" / "server action". */
   surface: string,
-  /** See runAdapterSpan. */
+  /** Backdated span start — for hook-based adapters that materialize the span at response time. */
   startedAtMs?: number,
 };
 

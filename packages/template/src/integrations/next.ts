@@ -212,22 +212,20 @@ function nextRequestToRequestLike(request: HexclaveNextRequestErrorRequest): Req
  * ```
  *
  * `register()` installs the managed OTel provider, official Undici
- * instrumentation, authenticated exporters, and the
- * uncaught-exception monitor (`$error` events via
- * `process.on("uncaughtExceptionMonitor")` — observation-only, never changes
- * crash behavior) — both also self-install at app construction now, so
- * register() keeping them is redundancy, not a requirement — and, Next-only,
- * the AMBIENT REQUEST PROVIDER: bare `trackEvent` / `withSpan` / logger calls
- * inside a request scope attribute to the caller's session via `next/headers`
- * without passing `{ request }`. Safe under HMR: installs are idempotent per
- * app instance and replace-keyed per project on globalThis. `onRequestError`
- * records every uncaught server-side error as a `$error` event linked (via
- * the request's headers) to the caller's client session.
+ * instrumentation, authenticated exporters, and the uncaught-exception monitor
+ * (`$error` events via `process.on("uncaughtExceptionMonitor")` —
+ * observation-only, never changes crash behavior). Both also self-install at
+ * app construction, so keeping them here is redundancy, not a requirement.
+ * Next-only, it also installs the ambient request provider: bare `trackEvent` /
+ * `withSpan` / logger calls inside a request scope attribute to the caller's
+ * session via `next/headers` without passing `{ request }`. Safe under HMR:
+ * installs are idempotent per app instance and replace-keyed per project on
+ * globalThis. A pre-existing global provider is an explicit conflict instead
+ * of a silent fallback; existing-provider applications wire the Hexclave
+ * exporter into their provider directly. `onRequestError` records every
+ * uncaught server-side error as a `$error` event linked (via the request's
+ * headers) to the caller's client session.
  *
- * `register()` installs Hexclave's managed OpenTelemetry Node SDK and
- * authenticated OTLP exporter. A pre-existing global provider is an explicit
- * conflict instead of a silent fallback; existing-provider applications wire
- * the Hexclave exporter into their provider directly.
  * Libraries using the global API directly (Drizzle's OTel support, the
  * Vercel AI SDK's `experimental_telemetry`) need nothing at all; libraries
  * that ship an instrumentation CLASS plug in via the options:
@@ -245,9 +243,9 @@ function nextRequestToRequestLike(request: HexclaveNextRequestErrorRequest): Req
  * }
  * ```
  *
- * Honest limit: this does NOT create per-route server spans — Next.js has no
- * hook that wraps a route's async extent. Per-route auto-spans still require
- * the adapter wrappers (`routeHandler` / `serverAction` above).
+ * This does not create per-route server spans — Next.js has no hook that wraps
+ * a route's async extent. Per-route auto-spans still require the adapter
+ * wrappers (`routeHandler` / `serverAction` above).
  */
 export function hexclaveInstrumentation(app: AdapterServerApp, options?: HexclaveNextInstrumentationOptions): HexclaveNextInstrumentation {
   // Fail at setup time, not at error time: a structurally-wrong `app` (or a
@@ -258,16 +256,25 @@ export function hexclaveInstrumentation(app: AdapterServerApp, options?: Hexclav
   }
   return {
     runWithTelemetrySuppressed: async (fn) => await instrumentation.runWithTelemetrySuppressed(fn),
-    captureHandledError: async (error, info) => {
-      await instrumentation.captureServerRequestError(error, {
-        mechanism: "captured",
+    // Returned directly (not wrapped in async/await): captureServerRequestError
+    // returns a PRE-CAUGHT promise, and an async wrapper would mint a new,
+    // un-caught promise whose rejection becomes an unhandled rejection for
+    // fire-and-forget callers. Callers that await it still observe failures.
+    captureHandledError: (error, info) => instrumentation.captureServerRequestError(error, {
+      mechanism: "captured",
+      handled: true,
+      data: {
+        ...info?.data ?? {},
+        ...info?.location === undefined ? {} : { location: info.location },
+        // Re-asserted AFTER the user-data spread: captureServerRequestError
+        // merges `data` over the flattened $error payload, so without this a
+        // caller passing `data: { handled: false }` (or a custom
+        // mechanism_type) could flip the handled/unhandled classification
+        // that this API guarantees.
+        mechanism_type: "captured",
         handled: true,
-        data: {
-          ...info?.data ?? {},
-          ...info?.location === undefined ? {} : { location: info.location },
-        },
-      });
-    },
+      },
+    }),
     register: async () => {
       instrumentation.ensureOpenTelemetryProvider();
       instrumentation.installServerErrorMonitor();

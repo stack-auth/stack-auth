@@ -542,6 +542,15 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
           projectId: this.projectId,
           serviceName: this._telemetryResource.service.name,
           captureError: (error) => {
+            // Deliberately NOT routed through the browser admission policy
+            // (createClientErrorCapturePolicy): its dedupe/flood caps are
+            // keyed to $page-view rollover, which has no server equivalent —
+            // a long-lived process would hit the cap once and then silently
+            // drop every later console.error forever. Server captures instead
+            // go through the processor pipeline (_processServerError), where
+            // beforeSend/eventProcessors provide the filtering seam; a
+            // server-appropriate local rate limit (e.g. time-windowed) can be
+            // added to _captureServerRequestError if flooding shows up.
             ignoreUnhandledRejection(this._captureServerRequestError(error, { mechanism: "console.error", handled: true }));
           },
         });
@@ -2186,6 +2195,10 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         ...parent === undefined ? { root: true } : { parent, root: false },
         links: resolved.links,
       },
+      // Read the option directly (like _getSpanPropagationContext): the policy
+      // getter's trusted-domains latch must not start as a side effect of
+      // merely starting a span.
+      correlationBaggage: this._observabilityOptions?.spanPropagation?.enabled !== false,
       correlationAttributes: {
         ...batchContext.sessionReplayId === null ? {} : { "hexclave.session_replay.id": batchContext.sessionReplayId },
         ...batchContext.sessionReplaySegmentId === null ? {} : { "hexclave.session_replay.segment.id": batchContext.sessionReplaySegmentId },
@@ -2195,10 +2208,11 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         trackEvent: (eventType, data, trackOptions) => this._trackServerEvent(eventType, data, trackOptions, userId),
         onEnded: (endedSpan) => this._serverGlobalSpans.delete(endedSpan),
         // Hierarchy comes exclusively from the registered OTel propagator in
-        // createOtelSpanFacade. This callback contributes only product baggage;
+        // createOtelSpanFacade. This callback contributes only product baggage
+        // (and therefore returns nothing when correlation baggage is disabled);
         // rebuilding traceparent here would lose the provider's real flags and
         // tracestate (especially for a non-recording inherited span).
-        getSpanPropagationHeaders: () => buildPropagationHeaderValues({
+        getSpanPropagationHeaders: () => this._observabilityOptions?.spanPropagation?.enabled === false ? {} : buildPropagationHeaderValues({
           traceparent: null,
           context: {
             ...batchContext.sessionReplayId ? { sessionReplayId: batchContext.sessionReplayId } : {},
@@ -2309,7 +2323,12 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   async _registerOpenTelemetry(instrumentations: Instrumentation[]): Promise<ManagedOtelRegistration | null> {
-    if (this._managedOtelRegistration !== null) return this._managedOtelRegistration;
+    // Only short-circuit on the cached registration when there is nothing new
+    // to install: app construction registers eagerly with NO instrumentations,
+    // so a later framework register() call supplying e.g. PrismaInstrumentation
+    // must still reach registerManagedOtel, which installs late arrivals on the
+    // cached provider (deduped by instrumentationName — see otel-sdk.ts).
+    if (this._managedOtelRegistration !== null && instrumentations.length === 0) return this._managedOtelRegistration;
     const options = this._buildManagedOtelOptions(instrumentations);
     if (options === null) return null;
     const registration = await registerManagedOtelAsync(options);
@@ -2478,6 +2497,11 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     // bounded to 8KB, flattened mechanism_type/handled scalars, local
     // fingerprint for grouping, release/environment stamps.
     const data: CapturedErrorEvent = {
+      // Adapter-supplied extras spread FIRST so capture metadata stays
+      // authoritative: `data: { handled: false }` (or an event_id /
+      // mechanism_type / fingerprint collision) must never reclassify the
+      // event — `info.handled` at this seam is what crash-free rates trust.
+      ...info.data ?? {},
       ...buildErrorEventData(error, {
         mechanismType: info.mechanism,
         // Handledness is explicit at the capture seam. Inferring it from the
@@ -2489,7 +2513,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         sdkVersion: clientVersion,
         scope,
       }),
-      ...info.data ?? {},
     };
     const eventId = data.event_id;
     if (typeof eventId === "string") this._recordErrorEventId(eventId);
@@ -2620,8 +2643,54 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (this._observabilityOptions?.enabled === false) return "unavailable";
     if (this._clientAnalytics) return super._emitLog(item);
     this._registerOpenTelemetryNow([]);
+    const requestContext = getServerRequestContext();
+    if (requestContext !== null) {
+      this._emitServerLogWithRequestContext(item, requestContext);
+      return "ok";
+    }
+    if (this._ambientRequestProvider !== null) {
+      // A bare logger call in a route handler should attribute to the
+      // framework's ambient request exactly like bare trackEvent/withSpan do.
+      // The resolution is async (session lookup) while this sink is sync, so
+      // it runs fire-and-forget — the record is emitted once (and only once)
+      // from inside the resolved scope, or unattributed when resolution
+      // degrades (see _runWithAmbientRequestScope's failure contract).
+      runAsynchronously(this._runWithAmbientRequestScope(null, async () => {
+        const resolved = getServerRequestContext();
+        if (resolved !== null) {
+          this._emitServerLogWithRequestContext(item, resolved);
+        } else {
+          emitHexclaveOtelLog(item, clientVersion);
+        }
+      }));
+      return "ok";
+    }
     emitHexclaveOtelLog(item, clientVersion);
     return "ok";
+  }
+
+  /**
+   * Emits one logger record with the same request attribution
+   * _trackServerEvent/_trackServerError stamp on events and errors: the
+   * `hexclave.*` correlation scalars from the resolved request context, plus —
+   * only when no OTel span is already active (a logger call inside
+   * `withSpan({ request })` should stay parented under THAT span via the
+   * active context) — the request's incoming W3C parent, so a bare logger call
+   * still joins the caller's trace.
+   */
+  private _emitServerLogWithRequestContext(item: LogEmitItem, requestContext: ServerRequestSpanContext): void {
+    emitHexclaveOtelLog(item, clientVersion, {
+      ...getActiveOtelSpanContext() !== null || requestContext.incomingParent === null
+        ? {}
+        : { parent: requestContext.incomingParent },
+      correlationAttributes: {
+        ...requestContext.userId === null ? {} : { "hexclave.user.id": requestContext.userId },
+        ...requestContext.refreshTokenId === null ? {} : { "hexclave.refresh_token.id": requestContext.refreshTokenId },
+        ...requestContext.sessionReplayId === null ? {} : { "hexclave.session_replay.id": requestContext.sessionReplayId },
+        ...requestContext.sessionReplaySegmentId === null ? {} : { "hexclave.session_replay.segment.id": requestContext.sessionReplaySegmentId },
+        ...requestContext.pageViewSpanId === null ? {} : { "hexclave.page_view.span_id": requestContext.pageViewSpanId },
+      },
+    });
   }
 }
 

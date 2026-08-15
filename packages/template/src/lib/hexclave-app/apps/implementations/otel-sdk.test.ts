@@ -58,6 +58,43 @@ describe("Hexclave managed OTel SDK", () => {
     expect(serverRegistration).toBe(instrumentationRegistration);
   });
 
+  it("installs late-supplied instrumentations on the cached registration exactly once", () => {
+    // App construction registers eagerly with NO instrumentations; the
+    // framework register() call that carries e.g. PrismaInstrumentation runs
+    // afterwards and hits the cache. Its instrumentations must still install
+    // — and repeated register() calls (HMR constructs fresh instances of the
+    // same instrumentation) must not double-patch the library.
+    const fakeInstrumentation = (name: string) => ({
+      instrumentationName: name,
+      instrumentationVersion: "1.0.0",
+      enable: vi.fn(),
+      disable: vi.fn(),
+      setTracerProvider: vi.fn(),
+      setMeterProvider: vi.fn(),
+      setConfig: vi.fn(),
+      getConfig: vi.fn(() => ({})),
+    });
+    const options = {
+      analyticsBaseUrl: "http://127.0.0.1:8102",
+      projectId: "project",
+      secretServerKey: "secret",
+      clientVersion: "test",
+      traceSampleRate: 1,
+      resource: { serviceName: "checkout" },
+    };
+    const eager = registerManagedOtel(options);
+
+    const prisma = fakeInstrumentation("@prisma/instrumentation");
+    const late = registerManagedOtel({ ...options, instrumentations: [prisma] });
+    expect(late).toBe(eager);
+    expect(prisma.setTracerProvider).toHaveBeenCalledTimes(1);
+
+    const prismaAgain = fakeInstrumentation("@prisma/instrumentation");
+    registerManagedOtel({ ...options, instrumentations: [prismaAgain] });
+    expect(prismaAgain.setTracerProvider).not.toHaveBeenCalled();
+    expect(prismaAgain.enable).not.toHaveBeenCalled();
+  });
+
   it("still rejects a different project in the same process", () => {
     const options = {
       analyticsBaseUrl: "http://127.0.0.1:8102",

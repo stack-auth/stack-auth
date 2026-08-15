@@ -1,4 +1,4 @@
-import type { ClickHouseClient } from "./clickhouse";
+import type { ClickHouseClient } from "@/lib/clickhouse";
 
 export type TelemetryWriteDestination = {
   table: "analytics_internal.telemetry";

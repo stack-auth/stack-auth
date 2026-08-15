@@ -74,15 +74,6 @@ function getReplayListItems(value: unknown) {
   return Array.isArray(value) ? value.filter(isReplayListItem) : [];
 }
 
-/**
- * Response bodies come back as `any` from the fetch helper; this narrows a list
- * of them to something indexable so the tests can read fields without casts.
- */
-function asObjects(value: unknown): Record<string, unknown>[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null);
-}
-
 async function uploadBatch(options: {
   browserSessionId: string,
   batchId: string,

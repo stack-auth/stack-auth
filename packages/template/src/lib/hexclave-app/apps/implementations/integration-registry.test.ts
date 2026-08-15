@@ -368,6 +368,26 @@ describe("error integration registry", () => {
     ]);
   });
 
+  it("collapses non-HTTP(S) URLs to scheme markers instead of leaking their payloads", () => {
+    const fixture = makeRuntime();
+    const registry = createDefaultErrorIntegrationRegistry(fixture.runtime);
+    registry.install("browser.xhr-breadcrumbs");
+
+    // For non-HTTP(S) schemes, URL#pathname IS the payload (data: content,
+    // blob:'s inner origin, file:'s local path) — all of it must stay local.
+    fixture.xhrBreadcrumb?.handler({ method: "get", url: "data:text/plain;base64,c2VjcmV0", statusCode: 200 });
+    fixture.xhrBreadcrumb?.handler({ method: "post", url: "DATA:text/plain,secret", statusCode: 201 });
+    fixture.xhrBreadcrumb?.handler({ method: "put", url: "blob:https://private.example.test/some-uuid", statusCode: 202 });
+    fixture.xhrBreadcrumb?.handler({ method: "patch", url: "file:///Users/private/secret.txt", statusCode: 203 });
+
+    expect(fixture.breadcrumbs).toEqual([
+      { category: "xhr", level: "info", data: { method: "GET", url: "<data-url>", status_code: 200 } },
+      { category: "xhr", level: "info", data: { method: "POST", url: "<data-url>", status_code: 201 } },
+      { category: "xhr", level: "info", data: { method: "PUT", url: "<blob-url>", status_code: 202 } },
+      { category: "xhr", level: "info", data: { method: "PATCH", url: "<file-url>", status_code: 203 } },
+    ]);
+  });
+
   it("captures Node process, request, and library failures without changing process semantics", () => {
     const fixture = makeRuntime();
     const registry = createDefaultErrorIntegrationRegistry(fixture.runtime);

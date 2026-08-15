@@ -18,16 +18,15 @@ import { AdapterServerApp, AdapterTelemetryOptions, AdapterUser, createRequestCo
  *   }), { beforeHandle: hexclave.requireUser });
  * ```
  *
- * Plugin vs. handler wrapper — what each honestly covers: Elysia has no
+ * Plugin vs. handler wrapper — what each covers: Elysia has no
  * around-middleware, so the hook-based plugin cannot wrap the handler's async
- * extent. The plugin's span interval is still honest — it runs from request
- * receipt (onRequest) to response completion (onAfterResponse/onError), which
- * CONTAINS the handler — but the span is only materialized retroactively when
- * the terminal hook fires, so telemetry created INSIDE the handler cannot
- * ambiently nest under it. The `handler()` wrapper remains the full-fidelity
- * path: it puts the handler inside the span's async extent, so child
- * spans/events nest automatically (the plugin detects wrapped handlers and
- * skips its own span — no double recording).
+ * extent. The plugin's span still runs from request receipt (onRequest) to
+ * response completion (onAfterResponse/onError), which contains the handler —
+ * but the span is only materialized retroactively when the terminal hook fires,
+ * so telemetry created inside the handler cannot ambiently nest under it. The
+ * `handler()` wrapper remains the full-fidelity path: it puts the handler inside
+ * the span's async extent, so child spans/events nest automatically (the plugin
+ * detects wrapped handlers and skips its own span — no double recording).
  */
 
 /** What `resolveUser` adds to the Elysia context. */

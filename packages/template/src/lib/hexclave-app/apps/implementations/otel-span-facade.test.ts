@@ -102,6 +102,31 @@ describe("OTel Span facade", () => {
     expect(failed?.attributes["hexclave.data"]).toBe(JSON.stringify({ error: "connection lost" }));
   });
 
+  it("announces EVERY facade (children included) through onStarted, before use", async () => {
+    const { provider, capabilities } = fixture();
+    // The tracker registers live spans for its sign-out inert sweep from this
+    // hook; children minted through the recursive startSpan/withSpan would
+    // otherwise never reach a registry.
+    const started: { spanType: string, spanId: string, isEnded: boolean }[] = [];
+    const root = createOtelSpanFacade({
+      tracer: provider.getTracer("facade-test"),
+      spanType: "checkout",
+      capabilities: {
+        ...capabilities,
+        onStarted: (span) => started.push({ spanType: span.spanType, spanId: span.spanId, isEnded: span.isEnded }),
+      },
+    });
+    const child = root.startSpan("charge");
+    await root.withSpan("refund", async () => {});
+    await child.end();
+    await root.end();
+
+    expect(started.map((entry) => entry.spanType)).toEqual(["checkout", "charge", "refund"]);
+    // The handle is fully constructed and still live when announced.
+    expect(started.every((entry) => !entry.isEnded)).toBe(true);
+    expect(started[1]?.spanId).toBe(child.spanId);
+  });
+
   it("lets the official propagator preserve an upstream tracestate", async () => {
     const { provider, capabilities } = fixture();
     const span = createOtelSpanFacade({

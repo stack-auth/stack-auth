@@ -1,7 +1,7 @@
 import { isW3cSpanId, isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
-import { OtlpJsonRequestError as OtlpTraceRequestError, otlpArray as array, otlpAttributes as attributes, otlpRecord as record, otlpString as string, otlpUint as uint, otlpUint32 as uint32, otlpUnixNano as unixNano, otlpUnixNanoOrOpen as unixNanoOrOpen, type OtlpAttributes } from "./otlp-json";
-export { OtlpJsonRequestError as OtlpTraceRequestError } from "./otlp-json";
-export type { OtlpAttributeValue, OtlpAttributes } from "./otlp-json";
+import { OtlpJsonRequestError as OtlpTraceRequestError, otlpArray as array, otlpAttributes as attributes, otlpRecord as record, otlpString as string, otlpUint as uint, otlpUint32 as uint32, otlpUnixNano as unixNano, otlpUnixNanoOrOpen as unixNanoOrOpen, type OtlpAttributes } from "./json";
+export { OtlpJsonRequestError as OtlpTraceRequestError } from "./json";
+export type { OtlpAttributeValue, OtlpAttributes } from "./json";
 
 export type CanonicalOtlpSpanEvent = {
   name: string,
@@ -112,6 +112,10 @@ export function normalizeOtlpJsonTraceRequest(value: unknown): CanonicalOtlpSpan
         if (!isW3cTraceId(traceId)) throw new OtlpTraceRequestError(`${spanPath}.traceId must be a valid W3C trace id`);
         if (!isW3cSpanId(spanId)) throw new OtlpTraceRequestError(`${spanPath}.spanId must be a valid W3C span id`);
         if (parentSpanId !== "" && !isW3cSpanId(parentSpanId)) throw new OtlpTraceRequestError(`${spanPath}.parentSpanId must be empty or a valid W3C span id`);
+        // Mirrors the batch ingestion rule ("A span must not name itself as its
+        // parent_span_id"): a self-parented span is a cyclic trace edge that no
+        // tree renderer can place, so reject it at the wire instead of storing it.
+        if (parentSpanId === spanId) throw new OtlpTraceRequestError(`${spanPath}.parentSpanId must not equal spanId`);
         const rawStatus = record(span.status ?? {}, `${spanPath}.status`);
         result.push({
           traceId,

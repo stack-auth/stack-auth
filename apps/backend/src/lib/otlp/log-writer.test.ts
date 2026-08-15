@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildOtlpIssueInputs, buildOtlpLogInsertPlan, buildOtlpLogRows, buildOtlpProductEventRows, getOtlpIssueBatchId, getOtlpLogPolicyData, getOtlpLogsDeduplicationToken } from "./otlp-log-writer";
-import { normalizeOtlpJsonLogsRequest } from "./otlp-logs";
-import { OTLP_LOG_REQUEST_FIXTURE } from "./otlp-logs.test-fixtures";
-import { decodeOtlpProtobufRequest, encodeOtlpProtobufRequest } from "./otlp-protobuf";
-import { createErrorIngestPolicyStateStore, evaluateErrorIngestPolicy } from "./error-ingest";
+import { buildOtlpIssueInputs, buildOtlpLogInsertPlan, buildOtlpLogRows, buildOtlpProductEventRows, getOtlpIssueBatchId, getOtlpLogBillingDebits, getOtlpLogPolicyData, getOtlpLogsDeduplicationToken } from "./log-writer";
+import { normalizeOtlpJsonLogsRequest } from "./logs";
+import { OTLP_LOG_REQUEST_FIXTURE } from "./logs.test-fixtures";
+import { decodeOtlpProtobufRequest, encodeOtlpProtobufRequest } from "./protobuf";
+import { createErrorIngestPolicyStateStore, evaluateErrorIngestPolicy } from "@/lib/error-ingest";
 
 const EVENT_ID = "0123456789abcdef0123456789abcdef";
 const OTHER_EVENT_ID = "fedcba9876543210fedcba9876543210";
@@ -297,6 +297,41 @@ describe("OTLP log storage mapping", () => {
     ]);
   });
 
+  it("derives retry-stable analytics_events billing debits for every record class", () => {
+    const mixed = normalizeOtlpJsonLogsRequest({
+      resourceLogs: [{ scopeLogs: [{ logRecords: [
+        // $error with a client event id (Relay-compatible identity).
+        ...flatErrorRequest(EVENT_ID).resourceLogs[0].scopeLogs[0].logRecords,
+        // Product event.
+        {
+          timeUnixNano: "1785888000000000002",
+          eventName: "checkout_completed",
+          attributes: [
+            { key: "hexclave.signal.type", value: { stringValue: "event" } },
+            { key: "hexclave.data", value: { kvlistValue: { values: [] } } },
+          ],
+        },
+        // Vanilla OTel log record (no Hexclave marker) — projected as $log.
+        { observedTimeUnixNano: "1785888000000000003", severityNumber: 9, body: { stringValue: "plain log" } },
+      ] }] }],
+    });
+
+    const debits = getOtlpLogBillingDebits(mixed, TENANT);
+    // Every accepted record class is a billable analytics_events occurrence,
+    // matching the legacy events/batch metering rule — OTLP is not a bypass.
+    expect(debits).toHaveLength(3);
+    expect(debits[0].occurrenceId).toBe(EVENT_ID);
+    expect(debits.map((debit) => debit.eventAt.toISOString())).toEqual([
+      "2026-08-05T00:00:00.000Z",
+      "2026-08-05T00:00:00.000Z",
+      "2026-08-05T00:00:00.000Z",
+    ]);
+    // Identical retry content produces identical occurrence ids, so billing
+    // idempotency keys collapse instead of double-debiting.
+    expect(getOtlpLogBillingDebits(mixed, TENANT).map((debit) => debit.occurrenceId))
+      .toEqual(debits.map((debit) => debit.occurrenceId));
+  });
+
   it("applies the server policy projection without bypassing the typed writer scrub", () => {
     const canonical = normalizeOtlpJsonLogsRequest({
       resourceLogs: [{ scopeLogs: [{ logRecords: [{
@@ -315,7 +350,7 @@ describe("OTLP log storage mapping", () => {
       config: {
         observability: {
           errorIngest: {
-            finalScrub: { dropKeys: { "user.email": true }, urlKeys: { url: true } },
+            finalScrub: { dropKeys: { dropEmail: "user.email" }, urlKeys: { pathOnlyUrl: "url" } },
           },
         },
       },

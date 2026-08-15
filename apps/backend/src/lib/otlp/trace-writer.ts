@@ -1,10 +1,10 @@
 import { isW3cSpanId, TELEMETRY_UUID_RE, type TelemetrySpanKind, type TelemetrySpanStatusCode } from "@hexclave/shared/dist/utils/analytics-wire";
 import { createHash } from "crypto";
-import { stripLoneSurrogates, type ClickHouseClient } from "./clickhouse";
-import { type CanonicalOtlpSpan, type OtlpAttributes, type OtlpAttributeValue } from "./otlp-traces";
-import { insertSpanLinks, insertSpans, type SpanInsertRow, type SpanLinkInsertRow } from "./spans";
-import type { GroupingRuntimeConfig } from "./issues/grouping-config";
-import { scrubErrorIngestPayload } from "./error-ingest";
+import { stripLoneSurrogates, type ClickHouseClient } from "@/lib/clickhouse";
+import { type CanonicalOtlpSpan, type OtlpAttributes, type OtlpAttributeValue } from "./traces";
+import { insertSpanLinks, insertSpans, type SpanInsertRow, type SpanLinkInsertRow } from "@/lib/spans";
+import type { GroupingRuntimeConfig } from "@/lib/issues/grouping-config";
+import { scrubErrorIngestPayload } from "@/lib/error-ingest";
 
 // The product read model predates an explicit "unspecified" kind. OTel kind 0
 // is projected as internal while the canonical numeric meaning remains
@@ -28,7 +28,7 @@ type SpanEventInsertRow = {
   event_at: Date,
   data: unknown,
   producer: "sdk",
-  runtime: "server",
+  runtime: "server" | "browser",
   project_id: string,
   branch_id: string,
   user_id: string | null,
@@ -214,7 +214,11 @@ export function buildOtlpTraceRows(spans: CanonicalOtlpSpan[], tenant: OtlpTenan
       event_at: dateFromUnixNano(event.timeUnixNano, "event.timeUnixNano"),
       data: stripLoneSurrogates(scrubOtlpValue(productAttributes(event.attributes), "OTLP span event data")),
       producer: "sdk" as const,
-      runtime: "server" as const,
+      // Mirrors the OTLP log/metric writers: browser exports authenticate with
+      // a client session (so the tenant carries a user), server exporters use
+      // a server key with no user. Resource attributes must not decide this —
+      // they are caller-supplied.
+      runtime: tenant.userId === null ? "server" as const : "browser" as const,
       project_id: tenant.projectId,
       branch_id: tenant.branchId,
       user_id: tenant.userId,
@@ -258,10 +262,18 @@ export function buildOtlpTraceRows(spans: CanonicalOtlpSpan[], tenant: OtlpTenan
 }
 
 export function getOtlpTraceDeduplicationToken(canonicalSpans: CanonicalOtlpSpan[], tenant: OtlpTenantContext): string {
-  const rows = buildOtlpTraceRows(canonicalSpans, tenant);
   // Rollout policy is server-owned interpretation state, not a property of the
   // OTLP batch. It must not change the ClickHouse retry token while a policy is
   // being rolled out; otherwise the same exporter retry can be inserted twice.
+  // That covers BOTH policy inputs: the tenant subset below excludes the
+  // grouping config, and the spans are hashed with their server-side
+  // `policyScrubbedData` projection removed — the rows' `data` column embeds
+  // it, so hashing the projected rows directly would mint a fresh token the
+  // moment a scrub-policy rollout lands between an insert and its retry.
+  const rows = buildOtlpTraceRows(
+    canonicalSpans.map(({ policyScrubbedData: _policyScrubbedData, ...span }) => span),
+    tenant,
+  );
   const stableTenant = {
     projectId: tenant.projectId,
     branchId: tenant.branchId,

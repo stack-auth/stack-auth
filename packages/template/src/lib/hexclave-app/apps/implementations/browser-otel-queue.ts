@@ -141,7 +141,13 @@ function readStoredBatch(value: unknown, id: IDBValidKey): BrowserOtlpQueueEntry
   };
 }
 
-function readStoredBatchSummary(value: unknown): BrowserOtlpQueueDropSummary {
+// Byte accounting and drop-OUTCOME accounting are different concerns: client
+// reports are excluded from drop summaries (a report about drops must never
+// manufacture another drop report), but their bytes WERE reserved against the
+// queue capacity at enqueue, so removal must always release `storedBodyBytes`
+// — otherwise every delivered client report would leak reserved capacity until
+// the queue falsely reports queue_overflow.
+function readStoredBatchAccounting(value: unknown): { dropSummary: BrowserOtlpQueueDropSummary, storedBodyBytes: number } {
   if (
     typeof value !== "object"
     || value === null
@@ -162,14 +168,21 @@ function readStoredBatchSummary(value: unknown): BrowserOtlpQueueDropSummary {
     throw new Error("IndexedDB contained an invalid browser OTLP queue item kind");
   }
   if (kind === "client_report") {
-    return { queueEntryCount: 0, itemCount: 0, bodyBytes: 0 };
+    return { dropSummary: { queueEntryCount: 0, itemCount: 0, bodyBytes: 0 }, storedBodyBytes: value.bodyBytes };
   }
 
   return {
-    queueEntryCount: 1,
-    itemCount: value.itemCount,
-    bodyBytes: value.bodyBytes,
+    dropSummary: {
+      queueEntryCount: 1,
+      itemCount: value.itemCount,
+      bodyBytes: value.bodyBytes,
+    },
+    storedBodyBytes: value.bodyBytes,
   };
+}
+
+function readStoredBatchSummary(value: unknown): BrowserOtlpQueueDropSummary {
+  return readStoredBatchAccounting(value).dropSummary;
 }
 
 function readMetaNumber(value: unknown, fallback: number): number {
@@ -374,9 +387,11 @@ class IndexedDbBrowserOtlpOfflineQueue implements BrowserOtlpOfflineQueue {
       getRequest.onsuccess = () => {
         stored = getRequest.result;
         if (stored === undefined) return;
-        let summary: BrowserOtlpQueueDropSummary;
+        let storedBodyBytes: number;
         try {
-          summary = readStoredBatchSummary(stored);
+          // The full stored bytes, NOT the drop summary's: client reports have
+          // an all-zero drop summary but still reserved real queue bytes.
+          storedBodyBytes = readStoredBatchAccounting(stored).storedBodyBytes;
         } catch (error) {
           fail(error);
           return;
@@ -385,7 +400,7 @@ class IndexedDbBrowserOtlpOfflineQueue implements BrowserOtlpOfflineQueue {
         bytesRequest.onerror = () => fail(bytesRequest.error);
         bytesRequest.onsuccess = () => {
           const currentBytes = readMetaNumber(bytesRequest.result, 0);
-          const nextBytes = Math.max(0, currentBytes - summary.bodyBytes);
+          const nextBytes = Math.max(0, currentBytes - storedBodyBytes);
           const updateBytesRequest = meta.put(nextBytes, QUEUE_BYTES_KEY);
           updateBytesRequest.onerror = () => fail(updateBytesRequest.error);
           const deleteRequest = store.delete(id);

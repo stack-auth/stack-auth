@@ -5,7 +5,7 @@ import {
   encodeOtlpProtobufRequest,
   encodeOtlpProtobufResponse,
   OtlpProtobufError,
-} from "./otlp-protobuf";
+} from "./protobuf";
 
 const traceId = Uint8Array.from({ length: 16 }, (_, index) => index + 1);
 const spanId = Uint8Array.from({ length: 8 }, (_, index) => index + 17);

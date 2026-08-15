@@ -121,6 +121,30 @@ describe("server lifecycle integration", () => {
     expect(host.count("SIGINT")).toBe(0);
   });
 
+  it("keeps the shutdown deadline timer referenced (the only guaranteed event-loop handle)", async () => {
+    // Deliberately NOT unref'd — see settleWithinDeadline: an unref'd deadline
+    // timer would let an otherwise-idle process exit with code 0 before
+    // delivery settles or handoffFatal/handoffSignal runs, silently masking
+    // the crash the integration exists to report.
+    const unref = vi.fn();
+    const fakeTimers: unknown[] = [];
+    vi.stubGlobal("setTimeout", (_callback: () => void, _ms?: number) => {
+      const timer = { unref };
+      fakeTimers.push(timer);
+      return timer;
+    });
+    vi.stubGlobal("clearTimeout", () => {});
+
+    const host = new FakeHost();
+    const { handle, outcomes } = install(host);
+    host.emit("uncaughtException", new Error("boom"));
+    await handle.waitForIdle();
+
+    expect(outcomes).toMatchObject([{ outcome: "accepted" }]);
+    expect(fakeTimers.length).toBeGreaterThan(0);
+    expect(unref).not.toHaveBeenCalled();
+  });
+
   it("captures, flushes, and reports an accepted fatal event", async () => {
     const host = new FakeHost();
     const captured: { error: unknown, signal: string }[] = [];

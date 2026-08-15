@@ -1,5 +1,5 @@
-import { decodeOtlpProtobufRequest, encodeOtlpProtobufResponse, type OtlpSignal } from "./otlp-protobuf";
-import { scrubErrorIngestPayload } from "./error-ingest";
+import { decodeOtlpProtobufRequest, encodeOtlpProtobufResponse, type OtlpSignal } from "./protobuf";
+import { scrubErrorIngestPayload } from "@/lib/error-ingest";
 import type { Json } from "@hexclave/shared/dist/utils/json";
 
 export type OtlpHttpEncoding = "json" | "protobuf";

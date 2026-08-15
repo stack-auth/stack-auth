@@ -2714,6 +2714,11 @@ async function seedDummyIssues(options: {
     await prisma.$executeRaw`DELETE FROM "Issue" WHERE "tenancyId" = ${tenancy.id}::uuid`;
     await prisma.$executeRaw`DELETE FROM "IssueMaterialization" WHERE "tenancyId" = ${tenancy.id}::uuid`;
     await prisma.$executeRaw`DELETE FROM "IssueCounter" WHERE "tenancyId" = ${tenancy.id}::uuid`;
+    // These lightweight DELETEs are synchronous: ClickHouse's default
+    // `lightweight_deletes_sync = 2` makes the statement wait until the delete
+    // has been applied (and our client sets no overriding setting), so by the
+    // time each `await` resolves the old rows are gone and the inserts below
+    // cannot interleave with a still-running mutation.
     await clickhouseClient.command({
       query: `DELETE FROM analytics_internal.telemetry WHERE project_id = {projectId:String} AND event_type = '$error'`,
       query_params: { projectId },

@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { stripLoneSurrogates, type ClickHouseClient } from "./clickhouse";
+import { stripLoneSurrogates, type ClickHouseClient } from "@/lib/clickhouse";
 import {
   type CanonicalOtlpExemplar,
   type CanonicalOtlpExponentialHistogramDataPoint,
@@ -11,9 +11,9 @@ import {
   type CanonicalOtlpResourceMetrics,
   type CanonicalOtlpScopeMetrics,
   type CanonicalOtlpSummaryDataPoint,
-} from "./otlp-metrics";
-import { attributesJson, type OtlpTenantContext } from "./otlp-trace-writer";
-import type { OtlpAttributeValue, OtlpAttributes } from "./otlp-json";
+} from "./metrics";
+import { attributesJson, scrubOtlpValue, type OtlpTenantContext } from "./trace-writer";
+import type { OtlpAttributeValue, OtlpAttributes } from "./json";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
 export type OtlpMetricInsertRow = {
@@ -75,6 +75,27 @@ function stableValue(value: unknown): unknown {
 
 function stableJson(value: unknown): string {
   return JSON.stringify(stripLoneSurrogates(stableValue(value)));
+}
+
+/**
+ * The durable raw-point JSON must not become a scrubber bypass: the sibling
+ * `attributes` column runs the error-ingest scrubber, and the same
+ * caller-supplied maps are embedded in the point itself (`attributes` plus
+ * every exemplar's `filteredAttributes`). Scrub exactly those maps and keep
+ * the numeric structure verbatim — the scrubber's collection caps must never
+ * truncate legitimate histogram buckets, which carry no free-form strings.
+ */
+function scrubbedStablePoint(point: MetricPoint): unknown {
+  return stableValue({
+    ...point,
+    attributes: scrubOtlpValue(stableAttributes(point.attributes), "OTLP metric point attributes"),
+    ..."exemplars" in point ? {
+      exemplars: point.exemplars.map((pointExemplar) => ({
+        ...pointExemplar,
+        filteredAttributes: scrubOtlpValue(stableAttributes(pointExemplar.filteredAttributes), "OTLP metric exemplar attributes"),
+      })),
+    } : {},
+  });
 }
 
 function firstExemplar(point: MetricPoint): CanonicalOtlpExemplar | null {
@@ -151,7 +172,7 @@ function rowForPoint(
     scope_dropped_attributes: scopeMetric.scope.droppedAttributesCount,
     scope_schema_url: scopeMetric.schemaUrl,
     attributes: attributesJson(point.attributes),
-    data_point: stableJson(point),
+    data_point: stableJson(scrubbedStablePoint(point)),
     start_time_unix_nano: point.startTimeUnixNano,
     time_unix_nano: point.timeUnixNano,
     point_flags: point.flags,

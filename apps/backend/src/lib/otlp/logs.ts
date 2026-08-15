@@ -1,5 +1,5 @@
 import { CUSTOM_TELEMETRY_NAME_RE, canWriteTelemetrySignal, isAnalyticsSystemEvent, isW3cSpanId, isW3cTraceId, type TelemetryWriterOrigin } from "@hexclave/shared/dist/utils/analytics-wire";
-import { OtlpJsonRequestError, otlpAnyValue, otlpArray, otlpAttributes, otlpRecord, otlpString, otlpUint, otlpUint32, type OtlpAttributes, type OtlpAttributeValue } from "./otlp-json";
+import { OtlpJsonRequestError, otlpAnyValue, otlpArray, otlpAttributes, otlpCanonicalUint64String, otlpRecord, otlpString, otlpUint, otlpUint32, type OtlpAttributes, type OtlpAttributeValue } from "./json";
 
 export type CanonicalOtlpLogRecord = {
   timeUnixNano: string,
@@ -117,9 +117,10 @@ function nullToAbsent(value: OtlpAttributeValue): OtlpAttributeValue | null {
 
 function unixNanoOrZero(value: unknown, path: string): string {
   if (value === undefined) return "0";
-  const result = otlpString(value, path);
-  if (!/^\d+$/.test(result) || BigInt(result) > 18446744073709551615n) throw new OtlpJsonRequestError(`${path} must be a uint64 string`);
-  return result;
+  // Canonicalized (BigInt round-trip) so a zero-padded zero like "00" cannot
+  // slip past the literal `=== "0"` checks below and persist a timestamp-less
+  // record at epoch 1970 instead of falling back to observedTimeUnixNano.
+  return otlpCanonicalUint64String(value, path);
 }
 
 /** Normalizes an OTLP/HTTP JSON ExportLogsServiceRequest without flattening its OTel model. */

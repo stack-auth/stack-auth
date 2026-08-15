@@ -1,11 +1,11 @@
-import { CUSTOM_TELEMETRY_NAME_RE, isAnalyticsSystemEvent, isW3cSpanId, TELEMETRY_UUID_RE } from "@hexclave/shared/dist/utils/analytics-wire";
+import { classifyTelemetrySignal, CUSTOM_TELEMETRY_NAME_RE, isAnalyticsSystemEvent, isW3cSpanId, TELEMETRY_UUID_RE } from "@hexclave/shared/dist/utils/analytics-wire";
 import { createHash } from "crypto";
-import { stripLoneSurrogates, type ClickHouseClient } from "./clickhouse";
-import { computeOccurrenceId, normalizeErrorOccurrence } from "./analytics-telemetry-writers";
-import type { IssueBatchDelta } from "./issues/issue-materialization-contract";
-import { attributesJson, dateFromUnixNano, productAttributes, scrubOtlpValue, stringAttribute, taggedValue, type OtlpTenantContext } from "./otlp-trace-writer";
-import type { CanonicalOtlpLogRecord } from "./otlp-logs";
-import { writeTelemetryDestinations, type TelemetryWriteDestination } from "./telemetry-write-plan";
+import { stripLoneSurrogates, type ClickHouseClient } from "@/lib/clickhouse";
+import { computeOccurrenceId, normalizeErrorOccurrence } from "@/lib/analytics-telemetry-writers";
+import type { IssueBatchDelta } from "@/lib/issues/issue-materialization-contract";
+import { attributesJson, dateFromUnixNano, productAttributes, scrubOtlpValue, stringAttribute, taggedValue, type OtlpTenantContext } from "./trace-writer";
+import type { CanonicalOtlpLogRecord } from "./logs";
+import { writeTelemetryDestinations, type TelemetryWriteDestination } from "@/lib/telemetry/write-plan";
 
 /**
  * Log records carry the server-resolved rolling replay context. Keep this
@@ -221,6 +221,39 @@ export function buildOtlpLogRows(logs: CanonicalOtlpLogRecord[], tenant: OtlpLog
       scope_schema_url: log.scope.schemaUrl,
       ...error === null ? {} : error.columns,
     };
+  });
+}
+
+export type OtlpLogBillingDebit = {
+  occurrenceId: string,
+  eventAt: Date,
+};
+
+/**
+ * Metering inputs for one accepted OTLP logs request, using the same taxonomy
+ * rule as the legacy events/batch route: a record is billed when its projected
+ * event type carries the `analytics_events` billing item (which covers product
+ * events, `$log`, and `$error` alike — OTLP must not be a quota bypass for any
+ * of them). Keyed by occurrence id so an OTLP exporter retry (same content →
+ * same batch id → same occurrence ids) collapses onto the same metering rows
+ * instead of double-debiting.
+ */
+export function getOtlpLogBillingDebits(logs: CanonicalOtlpLogRecord[], tenant: OtlpLogTenantContext): OtlpLogBillingDebit[] {
+  const batchId = getOtlpLogsBatchId(logs, tenant);
+  return logs.flatMap((log, ordinal) => {
+    const signalType = stringAttribute(log.attributes, "hexclave.signal.type");
+    // Billing-wise only the projected event TYPE matters, so the (expensive)
+    // error grouping projection is not computed here: a `$error`-classified
+    // record and the `$log` fallback carry the same billing item.
+    const eventType = signalType === "event" && isProductEventName(log.eventName)
+      ? log.eventName
+      : signalType === "error" && log.eventName === "$error" ? "$error" : "$log";
+    if (classifyTelemetrySignal(eventType, "event").billingItem !== "analytics_events") return [];
+    const eventNano = log.timeUnixNano === "0" ? log.observedTimeUnixNano : log.timeUnixNano;
+    return [{
+      occurrenceId: getOtlpLogOccurrenceId(log, batchId, ordinal),
+      eventAt: dateFromUnixNano(eventNano, "log time"),
+    }];
   });
 }
 

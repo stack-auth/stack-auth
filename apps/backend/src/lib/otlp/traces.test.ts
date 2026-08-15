@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeOtlpJsonTraceRequest } from "./otlp-traces";
+import { normalizeOtlpJsonTraceRequest } from "./traces";
 
 describe("OTLP JSON trace normalization", () => {
   it("preserves canonical resource, scope, span, event, link, flags, and trace state", () => {
@@ -132,5 +132,38 @@ describe("OTLP JSON trace normalization", () => {
     });
     expect(normalizeOtlpJsonTraceRequest(requestWithEnd("0"))[0]).toMatchObject({ endTimeUnixNano: "0" });
     expect(() => normalizeOtlpJsonTraceRequest(requestWithEnd("1785887999999999999"))).toThrow(/must not precede/);
+    // Zero-padded spellings canonicalize to the same open-span marker so the
+    // literal `=== "0"` comparisons downstream cannot be bypassed.
+    expect(normalizeOtlpJsonTraceRequest(requestWithEnd("00"))[0]).toMatchObject({ endTimeUnixNano: "0" });
+  });
+
+  it("rejects self-parented spans, mirroring batch ingestion", () => {
+    expect(() => normalizeOtlpJsonTraceRequest({
+      resourceSpans: [{ scopeSpans: [{ spans: [{
+        traceId: "11111111111111111111111111111111",
+        spanId: "2222222222222222",
+        parentSpanId: "2222222222222222",
+        name: "cycle",
+        startTimeUnixNano: "1",
+        endTimeUnixNano: "2",
+      }] }] }],
+    })).toThrow(/parentSpanId must not equal spanId/);
+  });
+
+  it("rejects attribute nesting beyond the shared depth limit instead of overflowing the stack", () => {
+    let value: Record<string, unknown> = { stringValue: "leaf" };
+    for (let index = 0; index < 100; index++) {
+      value = { kvlistValue: { values: [{ key: "nested", value }] } };
+    }
+    expect(() => normalizeOtlpJsonTraceRequest({
+      resourceSpans: [{ scopeSpans: [{ spans: [{
+        traceId: "11111111111111111111111111111111",
+        spanId: "2222222222222222",
+        name: "deep",
+        startTimeUnixNano: "1",
+        endTimeUnixNano: "2",
+        attributes: [{ key: "deep", value }],
+      }] }] }],
+    })).toThrow(/maximum attribute depth/);
   });
 });

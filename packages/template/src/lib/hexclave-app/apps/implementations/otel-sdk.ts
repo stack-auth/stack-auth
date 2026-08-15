@@ -111,7 +111,12 @@ export function createHexclaveCorrelationSpanProcessor(): SpanProcessor {
   return new HexclaveCorrelationSpanProcessor();
 }
 
-let managedRegistration: { signature: string, value: ManagedOtelRegistration } | null = null;
+let managedRegistration: {
+  signature: string,
+  value: ManagedOtelRegistration,
+  /** Installs instrumentations that were not part of an earlier registration call. */
+  installInstrumentations: (instrumentations: NonNullable<ManagedOtelOptions["instrumentations"]>) => void,
+} | null = null;
 
 /**
  * Next can compile the instrumentation and SSR graphs with different local
@@ -159,6 +164,11 @@ export function registerManagedOtel(options: ManagedOtelOptions): ManagedOtelReg
     if (managedRegistration.signature !== signature) {
       throw new Error("Hexclave OpenTelemetry is already configured for a different project or service in this process");
     }
+    // App construction registers eagerly with NO instrumentations, so by the
+    // time a framework register() call supplies e.g. PrismaInstrumentation the
+    // provider is already cached. Install the late arrivals on the cached
+    // provider instead of silently ignoring them.
+    managedRegistration.installInstrumentations(options.instrumentations ?? []);
     return managedRegistration.value;
   }
 
@@ -189,6 +199,12 @@ export function registerManagedOtel(options: ManagedOtelOptions): ManagedOtelReg
     ],
   });
 
+  // The rollback paths below only ever disable globals THIS call successfully
+  // installed: a pre-existing host-owned global makes the corresponding set*
+  // call return false (the OTel API refuses to overwrite), which throws BEFORE
+  // the matching disable() is ever reached. disable() resets a slot to the
+  // API's noop default — exactly the pre-install state, since our install
+  // succeeding proves nothing else was registered in that slot.
   if (!trace.setGlobalTracerProvider(provider)) {
     ignoreUnhandledRejection(meterProvider.shutdown());
     throw new Error("Hexclave could not install its managed OpenTelemetry provider because another global tracer provider is already registered. Configure that provider with Hexclave's OTLP endpoint instead of enabling managed mode.");
@@ -242,10 +258,23 @@ export function registerManagedOtel(options: ManagedOtelOptions): ManagedOtelReg
   const httpInstrumentation = new UndiciInstrumentation({
     ignoreRequestHook: (request) => options.shouldInstrumentOutboundRequest?.(new URL(request.path, request.origin).toString()) === false,
   });
-  const disableInstrumentations = registerInstrumentations({
-    instrumentations: [httpInstrumentation, ...options.instrumentations ?? []],
-    tracerProvider: provider,
-  });
+  // Deduped by instrumentationName: repeated register() calls (HMR re-runs the
+  // customer's instrumentation.ts and constructs NEW instrumentation
+  // instances) must not patch the same library twice — a second enable would
+  // wrap the first wrapper and duplicate every span. Names are unique per
+  // instrumentation package, so they are the stable identity across instances.
+  const installedInstrumentationNames = new Set<string>();
+  const instrumentationDisposers: (() => void)[] = [];
+  const installInstrumentations = (instrumentations: NonNullable<ManagedOtelOptions["instrumentations"]>): void => {
+    const missing = instrumentations.filter((instrumentation) => !installedInstrumentationNames.has(instrumentation.instrumentationName));
+    if (missing.length === 0) return;
+    for (const instrumentation of missing) installedInstrumentationNames.add(instrumentation.instrumentationName);
+    instrumentationDisposers.push(registerInstrumentations({
+      instrumentations: missing,
+      tracerProvider: provider,
+    }));
+  };
+  installInstrumentations([httpInstrumentation, ...options.instrumentations ?? []]);
   const value: ManagedOtelRegistration = {
     provider,
     loggerProvider,
@@ -254,12 +283,13 @@ export function registerManagedOtel(options: ManagedOtelOptions): ManagedOtelReg
       await Promise.all([provider.forceFlush(), loggerProvider.forceFlush(), meterProvider.forceFlush(), metricExporter.forceFlush()]);
     },
     shutdown: async () => {
-      disableInstrumentations();
+      for (const dispose of instrumentationDisposers) dispose();
+      instrumentationDisposers.length = 0;
       await Promise.all([provider.shutdown(), loggerProvider.shutdown(), meterProvider.shutdown()]);
       contextManager.disable();
     },
   };
-  managedRegistration = { signature, value };
+  managedRegistration = { signature, value, installInstrumentations };
   return value;
 }
 

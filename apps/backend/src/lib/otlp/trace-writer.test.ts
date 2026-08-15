@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildOtlpTraceRows, getOtlpTraceDeduplicationToken } from "./otlp-trace-writer";
-import { normalizeOtlpJsonTraceRequest } from "./otlp-traces";
+import { buildOtlpTraceRows, getOtlpTraceDeduplicationToken } from "./trace-writer";
+import { normalizeOtlpJsonTraceRequest } from "./traces";
 
 describe("OTLP trace storage mapping", () => {
   it("preserves canonical fields and stamps authenticated tenancy", () => {
@@ -123,6 +123,44 @@ describe("OTLP trace storage mapping", () => {
       ...tenant,
       groupingConfig: { activeConfigId: "hexclave-js:2026-08-01" },
     })).toBe(getOtlpTraceDeduplicationToken(canonical, tenant));
+    // A scrub-policy rollout between an insert and its exporter retry must not
+    // mint a fresh ClickHouse retry token: the token hashes the spans WITHOUT
+    // their server-side policy projection.
+    expect(getOtlpTraceDeduplicationToken(
+      canonical.map((span) => ({ ...span, policyScrubbedData: { scrubbed: true } })),
+      tenant,
+    )).toBe(getOtlpTraceDeduplicationToken(canonical, tenant));
+  });
+
+  it("stamps span-event runtime from the authenticated tenant, not a hardcoded server", () => {
+    const canonicalWithEvent = (traceId: string) => normalizeOtlpJsonTraceRequest({
+      resourceSpans: [{
+        scopeSpans: [{
+          spans: [{
+            traceId,
+            spanId: "2222222222222222",
+            name: "request",
+            startTimeUnixNano: "1785888000000000001",
+            endTimeUnixNano: "1785888000001000002",
+            events: [{ name: "exception", timeUnixNano: "1785888000000500003" }],
+          }],
+        }],
+      }],
+    });
+    const tenantBase = { projectId: "p", branchId: "b", refreshTokenId: null };
+    // Browser exports authenticate with a client session (user present).
+    const [browserEvent] = buildOtlpTraceRows(canonicalWithEvent("11111111111111111111111111111111"), {
+      ...tenantBase,
+      userId: "11111111-1111-4111-8111-111111111111",
+      refreshTokenId: "22222222-2222-4222-8222-222222222222",
+    }).events;
+    expect(browserEvent.runtime).toBe("browser");
+    // Server exporters use a server key with no user.
+    const [serverEvent] = buildOtlpTraceRows(canonicalWithEvent("33333333333333333333333333333333"), {
+      ...tenantBase,
+      userId: null,
+    }).events;
+    expect(serverEvent.runtime).toBe("server");
   });
 
   it("derives billing only from the Hexclave custom-span marker", () => {

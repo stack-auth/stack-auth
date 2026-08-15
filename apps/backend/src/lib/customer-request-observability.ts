@@ -7,7 +7,7 @@ import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { getSharedClickhouseAdminClient } from "./clickhouse";
 import { insertSpans, type SpanInsertRow } from "./spans";
-import { isTelemetryIngestionPath } from "./telemetry-ingestion-paths";
+import { isTelemetryIngestionPath } from "./telemetry/ingestion-paths";
 
 const idGenerator = new RandomIdGenerator();
 const traceContextPropagator = new W3CTraceContextPropagator();
@@ -49,10 +49,17 @@ const customerRequestStorage = new AsyncLocalStorage<CustomerRequestObservabilit
 function mergeTrustedIdentity(
   current: string | null,
   incoming: string | null,
-  field: "userId" | "refreshTokenId",
 ): string | null {
   if (current !== null && incoming !== null && current !== incoming) {
-    throw new Error(`Customer request observability ${field} changed within one request`);
+    // NOT an invariant violation: auth endpoints can mint tokens for a
+    // DIFFERENT principal than the (incidental) session that authenticated
+    // the request — e.g. signing in user B while user A's access token is
+    // still attached, which is exactly what SDK sign-in flows do. The request
+    // span belongs to the authenticated caller, so the identity resolved
+    // first wins and the conflicting enrichment is dropped. This used to
+    // throw, which killed the whole logEvent pipeline mid-loop and silently
+    // lost the second principal's $token-refresh telemetry row.
+    return current;
   }
   return incoming ?? current;
 }
@@ -88,8 +95,8 @@ export function resolveCustomerRequestObservability(options: {
   holder.tenancy = {
     projectId: options.projectId,
     branchId: options.branchId,
-    userId: mergeTrustedIdentity(current?.userId ?? null, options.userId, "userId"),
-    refreshTokenId: mergeTrustedIdentity(current?.refreshTokenId ?? null, options.refreshTokenId, "refreshTokenId"),
+    userId: mergeTrustedIdentity(current?.userId ?? null, options.userId),
+    refreshTokenId: mergeTrustedIdentity(current?.refreshTokenId ?? null, options.refreshTokenId),
     sessionReplayId: current?.sessionReplayId ?? labels?.sessionReplayId ?? null,
     sessionReplaySegmentId: current?.sessionReplaySegmentId ?? labels?.sessionReplaySegmentId ?? null,
     pageViewSpanId: current?.pageViewSpanId ?? labels?.pageViewSpanId ?? null,

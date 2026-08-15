@@ -49,9 +49,22 @@ export function otlpUint32(value: unknown, path: string, fallback = 0): number {
   return result;
 }
 
+/**
+ * Canonicalizes an already-validated decimal string through BigInt so
+ * zero-padded spellings ("00", "007") cannot bypass downstream sentinel
+ * comparisons: "0" is the open-span / missing-timestamp marker and is always
+ * compared literally, so a non-canonical zero must never survive parsing.
+ */
+function canonicalUint64(result: string, path: string, message: string): string {
+  if (!/^\d+$/.test(result)) throw new OtlpJsonRequestError(message);
+  const parsed = BigInt(result);
+  if (parsed > 18446744073709551615n) throw new OtlpJsonRequestError(message);
+  return parsed.toString();
+}
+
 export function otlpUnixNano(value: unknown, path: string): string {
-  const result = otlpString(value, path);
-  if (!/^\d+$/.test(result) || BigInt(result) <= 0n || BigInt(result) > 18446744073709551615n) throw new OtlpJsonRequestError(`${path} must be a positive uint64 string`);
+  const result = canonicalUint64(otlpString(value, path), path, `${path} must be a positive uint64 string`);
+  if (result === "0") throw new OtlpJsonRequestError(`${path} must be a positive uint64 string`);
   return result;
 }
 
@@ -62,12 +75,25 @@ export function otlpUnixNano(value: unknown, path: string): string {
  * START or event time would just be a missing timestamp and stays rejected.
  */
 export function otlpUnixNanoOrOpen(value: unknown, path: string): string {
-  const result = otlpString(value, path);
-  if (!/^\d+$/.test(result) || BigInt(result) > 18446744073709551615n) throw new OtlpJsonRequestError(`${path} must be a uint64 string`);
-  return result;
+  return canonicalUint64(otlpString(value, path), path, `${path} must be a uint64 string`);
 }
 
-export function otlpAnyValue(value: unknown, path: string): OtlpAttributeValue {
+export function otlpCanonicalUint64String(value: unknown, path: string): string {
+  return canonicalUint64(otlpString(value, path), path, `${path} must be a uint64 string`);
+}
+
+// Structural bounds for the recursive AnyValue parser, mirroring the metrics
+// ingest boundary (metrics.ts DEFAULT_OTLP_METRICS_NORMALIZATION_LIMITS).
+// Without a depth cap, a deeply nested arrayValue/kvlistValue chain exhausts
+// the call stack, and the resulting RangeError is not an OtlpJsonRequestError —
+// so it would bypass the routes' 400 handling and surface as a 500. The
+// collection caps bound CPU/allocation before any per-record limit can run.
+const MAX_OTLP_ANY_VALUE_DEPTH = 16;
+const MAX_OTLP_ATTRIBUTES_PER_LIST = 256;
+const MAX_OTLP_ATTRIBUTE_ARRAY_VALUES = 256;
+
+export function otlpAnyValue(value: unknown, path: string, depth = 0): OtlpAttributeValue {
+  if (depth > MAX_OTLP_ANY_VALUE_DEPTH) throw new OtlpJsonRequestError(`${path} exceeds the maximum attribute depth of ${MAX_OTLP_ANY_VALUE_DEPTH}`);
   const item = otlpRecord(value, path);
   const present = ["stringValue", "boolValue", "intValue", "doubleValue", "arrayValue", "kvlistValue", "bytesValue"].filter((key) => item[key] !== undefined);
   if (present.length === 0) return { type: "null", value: null };
@@ -92,21 +118,25 @@ export function otlpAnyValue(value: unknown, path: string): OtlpAttributeValue {
   if (field === "bytesValue") return { type: "bytes", value: otlpString(item.bytesValue, `${path}.bytesValue`) };
   if (field === "arrayValue") {
     const arrayValue = otlpRecord(item.arrayValue, `${path}.arrayValue`);
-    return { type: "array", value: otlpArray(arrayValue.values ?? [], `${path}.arrayValue.values`).map((entry, index) => otlpAnyValue(entry, `${path}.arrayValue.values[${index}]`)) };
+    const values = otlpArray(arrayValue.values ?? [], `${path}.arrayValue.values`);
+    if (values.length > MAX_OTLP_ATTRIBUTE_ARRAY_VALUES) throw new OtlpJsonRequestError(`${path}.arrayValue.values must contain at most ${MAX_OTLP_ATTRIBUTE_ARRAY_VALUES} entries`);
+    return { type: "array", value: values.map((entry, index) => otlpAnyValue(entry, `${path}.arrayValue.values[${index}]`, depth + 1)) };
   }
   const kvlistValue = otlpRecord(item.kvlistValue, `${path}.kvlistValue`);
-  return { type: "kvlist", value: otlpAttributes(kvlistValue.values ?? [], `${path}.kvlistValue.values`) };
+  return { type: "kvlist", value: otlpAttributes(kvlistValue.values ?? [], `${path}.kvlistValue.values`, depth + 1) };
 }
 
-export function otlpAttributes(value: unknown, path: string): OtlpAttributes {
+export function otlpAttributes(value: unknown, path: string, depth = 0): OtlpAttributes {
   const result = new Map<string, OtlpAttributeValue>();
-  for (const [index, rawEntry] of otlpArray(value, path).entries()) {
+  const entries = otlpArray(value, path);
+  if (entries.length > MAX_OTLP_ATTRIBUTES_PER_LIST) throw new OtlpJsonRequestError(`${path} must contain at most ${MAX_OTLP_ATTRIBUTES_PER_LIST} entries`);
+  for (const [index, rawEntry] of entries.entries()) {
     const entryPath = `${path}[${index}]`;
     const entry = otlpRecord(rawEntry, entryPath);
     const key = otlpString(entry.key, `${entryPath}.key`);
     if (key.length === 0) throw new OtlpJsonRequestError(`${entryPath}.key must not be empty`);
     if (result.has(key)) throw new OtlpJsonRequestError(`${path} contains duplicate key ${JSON.stringify(key)}`);
-    result.set(key, otlpAnyValue(entry.value, `${entryPath}.value`));
+    result.set(key, otlpAnyValue(entry.value, `${entryPath}.value`, depth));
   }
   return result;
 }

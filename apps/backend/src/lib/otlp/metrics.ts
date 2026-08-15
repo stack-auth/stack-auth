@@ -6,10 +6,10 @@ import {
   otlpString,
   type OtlpAttributeValue,
   type OtlpAttributes,
-} from "./otlp-json";
+} from "./json";
 
-export { OtlpJsonRequestError as OtlpMetricsRequestError } from "./otlp-json";
-export type { OtlpAttributeValue, OtlpAttributes } from "./otlp-json";
+export { OtlpJsonRequestError as OtlpMetricsRequestError } from "./json";
+export type { OtlpAttributeValue, OtlpAttributes } from "./json";
 
 const MAX_UINT64 = 18_446_744_073_709_551_615n;
 const MAX_INT64 = 9_223_372_036_854_775_807n;
@@ -19,10 +19,9 @@ const MIN_INT32 = -2_147_483_648;
 const MAX_INT32 = 2_147_483_647;
 
 /**
- * Structural limits keep an accepted request bounded before a writer or
- * queryable representation exists. They are deliberately separate from
- * telemetry cardinality policy: these limits protect the ingest boundary and
- * do not decide which valid time series a future storage layer retains.
+ * Structural limits keep an accepted request bounded. They are deliberately
+ * separate from telemetry cardinality policy: these limits protect the ingest
+ * boundary and do not decide which valid time series storage retains.
  */
 export type OtlpMetricsNormalizationLimits = {
   maxResourceMetrics: number,

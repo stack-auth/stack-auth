@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_OTLP_METRICS_NORMALIZATION_LIMITS,
   normalizeOtlpJsonMetricsRequest,
-} from "./otlp-metrics";
+} from "./metrics";
 
 const START_TIME = "1785888000000000000";
 const END_TIME = "1785888000001000000";
