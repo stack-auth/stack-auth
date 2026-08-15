@@ -18,6 +18,13 @@
 -- SessionReplay and (tenancyId) from Tenancy) are prefixes of the primary key,
 -- as is the upsert's conflict target.
 
+-- The FK adds below take a brief SHARE ROW EXCLUSIVE lock on the hot referenced
+-- tables (SessionReplay, Tenancy). Fail fast instead of queueing an exclusive
+-- lock request behind long-running production queries for the lifetime of the
+-- deploy transaction.
+SET LOCAL lock_timeout = '2s';
+SET LOCAL statement_timeout = '5min';
+
 -- CreateTable
 CREATE TABLE "SessionReplaySegment" (
     "id" TEXT NOT NULL,

@@ -86,6 +86,6 @@ export const postMigration = async (
     FROM "ErrorIngestClientReport"
     WHERE "tenancyId" = ${ctx.primary.tenancyId}::uuid
   `;
-  if (remaining.length !== 1) throw new Error(`Expected one aggregate row, got ${remaining.length}`);
+  // count(*) without GROUP BY always yields exactly one row, so indexing [0] is safe.
   expect(remaining[0].count).toBe(0);
 };

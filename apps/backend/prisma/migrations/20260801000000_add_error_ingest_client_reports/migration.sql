@@ -10,6 +10,12 @@
 -- concurrently by 20260726000000_add_releases.
 
 
+-- The FK adds below take brief SHARE ROW EXCLUSIVE locks on the hot referenced
+-- tables (Tenancy, Project). Fail fast instead of queueing an exclusive lock
+-- request behind long-running production queries.
+SET LOCAL lock_timeout = '2s';
+SET LOCAL statement_timeout = '5min';
+
 CREATE TABLE "ErrorIngestClientReport" (
     "tenancyId" UUID NOT NULL,
     "projectId" TEXT NOT NULL,

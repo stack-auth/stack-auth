@@ -13,6 +13,13 @@
 SET LOCAL lock_timeout = '2s';
 SET LOCAL statement_timeout = '5min';
 
+-- The DO block below must be its own single statement: the migration runner
+-- wraps non-single-statement chunks in its own dollar-quoted DO envelope, and
+-- a nested dollar-quote delimiter would terminate the outer quoting and break
+-- parsing. (Same reason this comment spells it out instead of writing the
+-- delimiter.)
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
 DO $$
 BEGIN
   IF EXISTS (
