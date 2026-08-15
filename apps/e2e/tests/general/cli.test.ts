@@ -484,8 +484,15 @@ describe("Stack CLI", () => {
       expect(summary.services.web.status).toBe("deployed");
       expect(summary.services.db.url).toBeNull();
       expect(summary.services.web.url).toBeNull();
-      // Both services shipped from ONE deploy — one upload, one build.
-      expect(stderr).toContain("Building every service in one builder");
+      // Both services shipped from ONE deploy — one upload, one build. Assert
+      // this on the terminal output, which is always emitted; the in-progress
+      // "Building every service in one builder" line is not, because a fast
+      // build can go from queued to deploying between two 3s polls.
+      const occurrencesOf = (needle: string) => stderr.split(needle).length - 1;
+      expect(occurrencesOf("Uploading source...")).toBe(1);
+      expect(occurrencesOf("Waiting for the remote build...")).toBe(1);
+      expect(stderr).toContain("[web] deployed");
+      expect(stderr).toContain("[db] deployed");
       // The definitions were synced server-side — but NOT the config file's
       // `devCommand`, which `hexclave dev` runs locally and the CLI therefore
       // never sends (the config above sets one, so this also covers that a
