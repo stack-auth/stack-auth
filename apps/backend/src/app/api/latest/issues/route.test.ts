@@ -4,6 +4,7 @@ import { encodeIssueCursor, encodeOccurrenceCursor } from "@/lib/issues/issue-qu
 import {
   PublicIssueSchema,
   parsePublicIssueDetailQuery,
+  parsePublicIssueHours,
   parsePublicIssueListQuery,
   parsePublicIssueOccurrencesQuery,
   toPublicIssue,
@@ -138,5 +139,23 @@ describe("public issue read routes", () => {
 
     expect(publicIssue.value).toBe("Authorization: Bearer [Filtered]");
     expect(publicIssue.culprit).toBe("https://example.test/path?token=[Filtered]");
+  });
+});
+
+describe("parsePublicIssueHours", () => {
+  // The internal detail route threads `?hours=` through this parser so the
+  // detail header's window counts can match the list's selected range.
+  it("accepts every allowlisted range and defaults to 24h when omitted", () => {
+    expect(parsePublicIssueHours(undefined)).toBe(24);
+    expect(parsePublicIssueHours("1")).toBe(1);
+    expect(parsePublicIssueHours("24")).toBe(24);
+    expect(parsePublicIssueHours("168")).toBe(168);
+    expect(parsePublicIssueHours("720")).toBe(720);
+  });
+
+  it("rejects anything off the allowlist with a 400 instead of silently defaulting", () => {
+    for (const raw of ["0", "-24", "25", "9999", "banana", ""]) {
+      expect(() => parsePublicIssueHours(raw)).toThrowError(/hours must be one of/);
+    }
   });
 });

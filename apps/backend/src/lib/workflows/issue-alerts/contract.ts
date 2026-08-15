@@ -251,6 +251,14 @@ function renderIssueAlertEmailAction(match: IssueAlertMatch): { subject: string,
     throw new Error("Issue alert email rendering requires an email action");
   }
   const values = issueAlertEmailValues(match);
+  // The subject becomes a single mail header line downstream, so it must never
+  // contain CR/LF. That invariant already holds by construction: an
+  // IssueAlertMatch can only be produced by evaluateIssueAlertRule, whose
+  // validateSignal/parseIssueAlertAction reject control characters in every
+  // interpolated issue field AND in the subject template itself (isBoundedText
+  // tests SAFE_TEXT_PATTERN), and the derived values (kind label, timestamp,
+  // dashboard URL) are control-character-free formats. See the contract test
+  // "drops signals with control characters" for the enforced boundary.
   return {
     subject: interpolateIssueAlertEmailTemplate(match.action.subject, values, { escapeHtml: false }),
     html: interpolateIssueAlertEmailTemplate(match.action.html, values, { escapeHtml: true }),

@@ -12,13 +12,16 @@ import { Auth, Project, flushBackgroundTasks, niceBackendFetch } from "../../../
  *
  * Three things about this file are load-bearing and easy to break:
  *
- *  1. Issue materialization runs off the request path inside
- *     `runAsynchronouslyAndWaitUntil`, so every assertion about Issue state must
- *     be preceded by `flushBackgroundTasks()`. Without it these tests are
- *     timing-dependent and will pass locally and fail in CI (or vice versa).
- *  2. The `/internal/issues*` routes gate on `apps.installed.observability`,
- *     while the ingest route gates on `apps.installed.analytics`. Both have to be
- *     on, or one half of every test 400s with `ANALYTICS_NOT_ENABLED`.
+ *  1. Issue materialization runs off the request path through the transactional
+ *     outbox and QStash (with a debounce delay), so every assertion about Issue
+ *     state must be preceded by `postBatch`'s ledger-row wait — an in-process
+ *     flush alone cannot see that pipeline. The ClickHouse occurrence insert IS
+ *     still in-process background work, which is what `flushBackgroundTasks()`
+ *     covers.
+ *  2. The `/internal/issues*` routes gate on `apps.installed.observability`
+ *     (`OBSERVABILITY_NOT_ENABLED`), while the ingest route gates on
+ *     `apps.installed.analytics` (`ANALYTICS_NOT_ENABLED`). Both have to be on,
+ *     or one half of every test 400s.
  *  3. Grouping hashes are deterministic but are NOT asserted literally anywhere
  *     here. They are an implementation detail of `lib/issues/grouping.ts`, and
  *     pinning them in a snapshot would turn every legitimate grouping change
@@ -142,10 +145,43 @@ async function postBatch(options: { events: BatchEvent[], batchId?: string, sent
   if (response.status !== 200) {
     throw new HexclaveAssertionError("Telemetry batch upload failed", { response });
   }
-  // Issue materialization is fire-and-forget via `runAsynchronouslyAndWaitUntil`.
-  // Every Issue assertion in this file depends on this line.
+  // The ClickHouse insert still runs behind `runAsynchronouslyAndWaitUntil`, so
+  // this flush is what makes the occurrence rows queryable below.
   await flushBackgroundTasks();
+  // Issue materialization, however, is NOT in-process work anymore: the batch
+  // route enqueues it into the transactional outbox, the poller publishes it to
+  // QStash with a deliberate debounce delay, and a signed delivery applies it.
+  // `flushBackgroundTasks()` cannot see any of that, so the only reliable
+  // "this batch was applied" signal is the batch's exactly-once ledger row.
+  if (options.events.some((event) => event.event_type === "$error")) {
+    await waitForIssueMaterialization(batchId);
+  }
   return { batchId, response };
+}
+
+/**
+ * Polls the primary for the batch's `IssueMaterialization` ledger row. The row
+ * is written in the same transaction as the Issue mutations, and the backend's
+ * replication-wait strategy gives read-your-writes on the replica afterwards,
+ * so once the row exists the API surface reflects the batch. `batchId` is a
+ * fresh UUID per batch, so no tenancy filter is needed. The generous deadline
+ * covers the outbox poller cadence plus QStash's delivery delay.
+ */
+async function waitForIssueMaterialization(batchId: string): Promise<void> {
+  await withInternalDatabase(async (client) => {
+    // Generous: the delivery path is outbox poller cadence + QStash's debounce
+    // delay, and in dev the cron runner can additionally pause for a few
+    // seconds when its watcher restarts it.
+    const deadline = performance.now() + 120_000;
+    while (true) {
+      const result = await client.query(`SELECT 1 FROM "IssueMaterialization" WHERE "batchId" = $1 LIMIT 1`, [batchId]);
+      if ((result.rowCount ?? 0) > 0) return;
+      if (performance.now() > deadline) {
+        throw new HexclaveAssertionError(`Issue materialization for batch ${batchId} did not complete within 120s`, { batchId });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  });
 }
 
 function issuesUrl(query: Record<string, string> = {}) {
@@ -290,7 +326,7 @@ async function withInternalDatabase<T>(fn: (client: Client) => Promise<T>): Prom
 
 // ─── Gating and access control ──────────────────────────────────────────────
 
-it("returns ANALYTICS_NOT_ENABLED when the observability app is not installed", async ({ expect }) => {
+it("returns OBSERVABILITY_NOT_ENABLED when the observability app is not installed", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   // Analytics on, observability off: the ingest half would work, the read half must not.
   await Project.updateConfig({ "apps.installed.analytics.enabled": true });
@@ -300,11 +336,11 @@ it("returns ANALYTICS_NOT_ENABLED when the observability app is not installed", 
     NiceResponse {
       "status": 400,
       "body": {
-        "code": "ANALYTICS_NOT_ENABLED",
-        "error": "Analytics is not enabled for this project.",
+        "code": "OBSERVABILITY_NOT_ENABLED",
+        "error": "Observability is not enabled for this project.",
       },
       "headers": Headers {
-        "x-stack-known-error": "ANALYTICS_NOT_ENABLED",
+        "x-stack-known-error": "OBSERVABILITY_NOT_ENABLED",
         <some fields may have been hidden>,
       },
     }
@@ -347,7 +383,7 @@ it("stamps grouping columns and a deterministic occurrence_id onto ingested $err
   const { batchId } = await postBatch({ events: [checkoutTypeError(now)] });
 
   const rows = analyticsRows(await queryAnalytics(
-    `SELECT occurrence_id, batch_id, event_type, error_type, error_culprit, message, level,
+    `SELECT occurrence_id, batch_id, event_type, error_type, error_culprit, data.message AS message, level,
             issue_hash, length(issue_hashes) AS owned_hash_count, issue_grouping_config, issue_variant, grouping_degraded
      FROM errors
      WHERE batch_id = {batchId:String}`,
@@ -365,8 +401,10 @@ it("stamps grouping columns and a deterministic occurrence_id onto ingested $err
     event_type: row.event_type,
     error_type: row.error_type,
     error_culprit: row.error_culprit,
-    // `message`/`level` are promoted out of `data` SERVER-side for `$error`; the
-    // wire schema forbids the client from sending them on anything but `$log`.
+    // `level` is promoted out of `data` server-side for `$error`; `message`
+    // stays inside the `data` JSON (the consolidated telemetry table has no
+    // message column). The wire schema forbids the client from sending
+    // `message`/`level` on anything but `$log`.
     message: row.message,
     level: row.level,
     owned_hash_count: row.owned_hash_count,
@@ -400,6 +438,20 @@ it("stamps grouping columns and a deterministic occurrence_id onto ingested $err
         "in_app": true,
         "lineno": 22,
         "module": "static/checkout",
+        "symbolication": {
+          "context": null,
+          "diagnostics": [
+            {
+              "code": "missing_release_metadata",
+              "message": "The occurrence projection and canonical error envelope do not contain an exact release value, so source-map lookup was not attempted.",
+            },
+          ],
+          "name": null,
+          "original_column": null,
+          "original_line": null,
+          "source_file": null,
+          "status": "not_attempted",
+        },
       },
       {
         "abs_path": "https://app.example.com/static/checkout.js",
@@ -409,6 +461,20 @@ it("stamps grouping columns and a deterministic occurrence_id onto ingested $err
         "in_app": true,
         "lineno": 10,
         "module": "static/checkout",
+        "symbolication": {
+          "context": null,
+          "diagnostics": [
+            {
+              "code": "missing_release_metadata",
+              "message": "The occurrence projection and canonical error envelope do not contain an exact release value, so source-map lookup was not attempted.",
+            },
+          ],
+          "name": null,
+          "original_column": null,
+          "original_line": null,
+          "source_file": null,
+          "status": "not_attempted",
+        },
       },
     ]
   `);
@@ -553,7 +619,7 @@ it("increments times_seen exactly once when the same batch_id is posted twice", 
   // Exactly one ledger row for the batch, which is what made the second run a no-op.
   const ledgerRows = await withInternalDatabase(async (client) => {
     return await client.query<{ count: string }>(
-      `SELECT count(*)::text AS count FROM "IssueMaterialization" WHERE "batchId" = $1::uuid`,
+      `SELECT count(*)::text AS count FROM "IssueMaterialization" WHERE "batchId" = $1`,
       [batchId],
     );
   });
@@ -814,7 +880,16 @@ it("resolves the detail route by uuid, by numeric short id, and through an Issue
     );
   });
 
-  const byRedirect = await getIssue(mergedAwayIssueId);
+  // The redirect row went straight into the primary above, which bypasses the
+  // backend's replication-wait strategy — so the replica-reading detail route
+  // may briefly not see it. Retry bounded; a real merge (which writes through
+  // the backend) does not have this window.
+  let byRedirect = await getIssue(mergedAwayIssueId);
+  const redirectDeadline = performance.now() + 15_000;
+  while (byRedirect.status === 404 && performance.now() < redirectDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    byRedirect = await getIssue(mergedAwayIssueId);
+  }
   expect(byRedirect.status).toBe(200);
   expect(byRedirect.body?.issue?.id).toBe(issue.id);
   expect(byRedirect.body?.redirected_from_issue_id).toBe(mergedAwayIssueId);

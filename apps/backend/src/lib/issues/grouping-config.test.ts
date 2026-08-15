@@ -27,8 +27,8 @@ describe("grouping config registry", () => {
 
   it("snapshots the registry, so retiring a config is never silent", () => {
     // Removing an id from this list is what strands every issue hashed under it.
-    // The plan requires a durable migration job to report zero remaining hashes
-    // BEFORE that happens; a diff here is the reminder.
+    // A durable migration job must report zero remaining hashes BEFORE that
+    // happens; a diff here is the reminder.
     expect([...GROUPING_CONFIG_IDS]).toMatchInlineSnapshot(`
       [
         "hexclave-js:2026-08-01",

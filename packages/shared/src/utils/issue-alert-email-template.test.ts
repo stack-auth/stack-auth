@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   interpolateIssueAlertEmailTemplate,
   type IssueAlertEmailPlaceholderToken,
-} from "./email-template";
+} from "./issue-alert-email-template";
 
 describe("issue-alert email template interpolation", () => {
   it("substitutes known placeholders, escapes HTML in the body, and leaves unknown tokens", () => {

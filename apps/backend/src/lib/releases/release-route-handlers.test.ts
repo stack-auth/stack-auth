@@ -15,11 +15,11 @@ import type {
 } from "@/generated/prisma/client";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
-  createArtifactRegistrationRoute,
   createCommitRegistrationRoute,
   createDebugIdAssociationRoute,
   createDebugIdLookupRoute,
   createDeploymentRegistrationRoute,
+  createReleaseArtifactRegistrationRoute,
   createReleaseListRoute,
   createReleaseLookupRoute,
   createReleaseUpsertRoute,
@@ -27,7 +27,6 @@ import {
 import type {
   ReleaseArtifactLookupRow,
   ReleaseDatabase,
-  ReleaseScope,
   ReleaseService,
 } from "./release-service";
 import { ReleaseService as ReleaseServiceImpl } from "./release-service";
@@ -47,16 +46,6 @@ beforeAll(async () => {
   if (resolved === null) throw new Error("Release route test tenancy could not be resolved.");
   tenancy = resolved;
 });
-
-function scopeFor(target: Tenancy = tenancy): ReleaseScope {
-  return {
-    tenancy: {
-      id: target.id,
-      branchId: target.branchId,
-      project: { id: target.project.id },
-    },
-  };
-}
 
 function releaseFor(target: Tenancy = tenancy, overrides: Partial<Release> = {}): Release {
   return {
@@ -260,6 +249,15 @@ describe("authenticated release management routes", () => {
     });
   });
 
+  it("rejects list limits above the service maximum at the schema boundary", async () => {
+    const route = createReleaseListRoute(new ReleaseServiceImpl(database()));
+
+    // 101-999 used to pass the query schema and only fail inside the service
+    // with a generic 400; the schema now mirrors the service cap of 100.
+    await expect(route.invoke(request(tenancy, "GET", undefined, { limit: "101" })))
+      .rejects.toMatchObject({ name: "HexclaveAssertionError" });
+  });
+
   it("keeps version lookup responses as a single release", async () => {
     const route = createReleaseLookupRoute(new ReleaseServiceImpl(database()));
 
@@ -328,7 +326,7 @@ describe("authenticated release management routes", () => {
     const service: ReleaseService = new ReleaseServiceImpl(database());
     const deploymentRoute = createDeploymentRegistrationRoute(service);
     const commitRoute = createCommitRegistrationRoute(service);
-    const artifactRoute = createArtifactRegistrationRoute(service);
+    const artifactRoute = createReleaseArtifactRegistrationRoute(service);
     const debugRoute = createDebugIdAssociationRoute(service);
 
     const deployment = await deploymentRoute.invoke(request(tenancy, "POST", {
@@ -398,6 +396,18 @@ describe("authenticated release management routes", () => {
         projectId: tenancy.project.id,
         branchId: tenancy.branchId,
         debugId: DEBUG_ID,
+        // The named release/dist/environment filters must reach the query, or
+        // a lookup would silently return artifacts from other scopes.
+        releaseArtifact: {
+          is: {
+            tenancyId: tenancy.id,
+            projectId: tenancy.project.id,
+            branchId: tenancy.branchId,
+            dist: "web",
+            environment: "production",
+            release: { is: { tenancyId: tenancy.id, version: release.version } },
+          },
+        },
       },
     });
   });

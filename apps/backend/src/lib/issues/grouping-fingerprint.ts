@@ -50,11 +50,28 @@ function readField(data: unknown, key: string): unknown {
   return isRecord(data) ? data[key] : undefined;
 }
 
+/**
+ * Wire bounds for a custom fingerprint. These exist because the durable
+ * provenance projection is READ back under hard caps (32 tokens per array and
+ * 64 KiB serialized, see `occurrence-projection.ts`): an unbounded fingerprint
+ * would be accepted, hashed, and persisted, and then silently VANISH from
+ * every occurrence API response — grouping the project by evidence nobody can
+ * inspect. An input outside these bounds is therefore ignored outright (the
+ * occurrence falls back to default grouping), which is at least observable in
+ * the provenance, instead of truncated (which would group on an arbitrary
+ * prefix of what the customer asked for).
+ */
+export const MAX_GROUPING_FINGERPRINT_TOKENS = 32;
+export const MAX_GROUPING_FINGERPRINT_TOKEN_BYTES = 512;
+const FINGERPRINT_TEXT_ENCODER = new TextEncoder();
+
 function readStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
+  if (value.length > MAX_GROUPING_FINGERPRINT_TOKENS) return undefined;
   const result: string[] = [];
   for (const item of value) {
     if (typeof item !== "string") return undefined;
+    if (FINGERPRINT_TEXT_ENCODER.encode(item).byteLength > MAX_GROUPING_FINGERPRINT_TOKEN_BYTES) return undefined;
     result.push(item);
   }
   return result;

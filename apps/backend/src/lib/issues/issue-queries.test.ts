@@ -6,6 +6,7 @@ import {
   deriveSubstatus,
   encodeIssueCursor,
   encodeOccurrenceCursor,
+  rollupRangeStartSeconds,
 } from "./issue-queries";
 
 const ISSUE_A = "00000000-0000-4000-8000-000000000001";
@@ -61,6 +62,15 @@ describe("occurrence cursors", () => {
     expect(decodeOccurrenceCursor(negative)).toBe(null);
     expect(decodeOccurrenceCursor(tooLarge)).toBe(null);
     expect(decodeOccurrenceCursor(emptyId)).toBe(null);
+  });
+});
+
+describe("rollup range alignment", () => {
+  it("aligns an arbitrary range start DOWN to the containing hourly bucket", () => {
+    // The rollup's bucket_start is hour-truncated; comparing it with a raw
+    // wall-clock range start would silently drop the whole partial bucket.
+    expect(rollupRangeStartSeconds(new Date("2026-08-13T12:30:45.123Z"))).toBe(Date.parse("2026-08-13T12:00:00.000Z") / 1000);
+    expect(rollupRangeStartSeconds(new Date("2026-08-13T12:00:00.000Z"))).toBe(Date.parse("2026-08-13T12:00:00.000Z") / 1000);
   });
 });
 

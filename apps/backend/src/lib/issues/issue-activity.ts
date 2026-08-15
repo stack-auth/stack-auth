@@ -136,10 +136,9 @@ function validateActivityInput(input: IssueActivityInput): void {
 }
 
 /**
- * Builds the future durable activity shape without pretending that the current
- * schema can store it. The explicit idempotency key follows Sentry's activity
- * `ident`/action-idempotency boundary and lets a later persistence layer make
- * retries exactly-once instead of deduplicating by timestamp.
+ * Validates and stamps an activity command. The explicit idempotency key follows
+ * Sentry's activity `ident`/action-idempotency boundary so retries stay
+ * exactly-once instead of being deduplicated by timestamp.
  */
 export function buildIssueActivity(options: IssueScope & IssueActivityInput): IssueActivityCommand {
   validateIssueScope(options);

@@ -8,7 +8,8 @@ import {
 } from "@/generated/prisma/client";
 import type { Tenancy } from "@/lib/tenancies";
 import { getBillingTeamId } from "@/lib/plan-entitlements";
-import { getPrismaClientForTenancy, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy, isPrismaError, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
+import { deepPlainEquals } from "@hexclave/shared/dist/utils/objects";
 import { createHash, randomUUID } from "node:crypto";
 import type { IssuePriority } from "./issue-lifecycle";
 import type { IssueActivitySubject } from "./issue-activity";
@@ -242,6 +243,37 @@ async function assertProjectUser(tx: PrismaClientTransaction, tenancy: Tenancy, 
 }
 
 /**
+ * Exported for `issue-lifecycle.ts`'s assignee validation, which must run
+ * inside ITS locked transaction — any well-formed UUID would otherwise become
+ * a dangling `assigneeUserId` that no route could ever have created on
+ * purpose. Kept here rather than duplicated so "is this a project user?" is
+ * answered by exactly one query shape.
+ */
+export async function assertIssueProjectUserInTransaction(tx: PrismaClientTransaction, tenancy: Tenancy, userId: string, fieldName: string): Promise<void> {
+  await assertProjectUser(tx, tenancy, userId, fieldName);
+}
+
+/**
+ * Retries `run` once when its transaction lost a unique-constraint race.
+ *
+ * The IssueOwner/IssueSubscription natural keys are enforced NULLS NOT
+ * DISTINCT (migration 20260814000000_enforce_issue_subject_natural_keys), so
+ * two concurrent "first" mutations for the same subject now surface as one
+ * winner and one P2002 loser instead of silently creating duplicates. A P2002
+ * aborts the loser's whole interactive transaction, so recovery has to re-run
+ * the transaction from the top — the fresh `findFirst` then sees the winner's
+ * committed row and takes the update path, which is the idempotent outcome.
+ */
+async function retryOnceOnUniqueConstraintRace<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (!isPrismaError(error, "UNIQUE_CONSTRAINT_VIOLATION")) throw error;
+    return await run();
+  }
+}
+
+/**
  * Issues belong to the Hexclave project owner team, not a Team row in this
  * customer tenancy. Looking the id up in `Team(tenancyId, teamId)` is the
  * identity bug that made the dashboard picker list every team the viewer is
@@ -274,7 +306,7 @@ async function appendActivityInTransaction(options: {
 }): Promise<void> {
   assertBoundedString(options.idempotencyKey, "idempotencyKey", 128);
   assertJsonBounded(options.data, "activity data");
-  await options.tx.issueActivity.upsert({
+  const row = await options.tx.issueActivity.upsert({
     where: {
       tenancyId_projectId_branchId_issueId_idempotencyKey: {
         tenancyId: options.tenancy.id,
@@ -297,6 +329,18 @@ async function appendActivityInTransaction(options: {
     },
     update: {},
   });
+  // A reused key must describe the SAME action, mirroring `addIssueComment`'s
+  // body check: without this, a client reusing a key with different inputs
+  // would still apply its (different) surrounding mutation while the audit
+  // trail silently kept the old record — exactly-once in the ledger, twice in
+  // reality. Throwing here rolls the surrounding transaction (and thus the
+  // conflicting mutation) back. `occurredAt` is deliberately NOT compared:
+  // retries of the same request may legitimately re-derive the server-side
+  // timestamp. `deepPlainEquals` rather than JSON.stringify because jsonb does
+  // not preserve object key order.
+  if (row.type !== activityTypeToPrisma(options.type) || row.actorUserId !== options.actorUserId || !deepPlainEquals(row.data, options.data)) {
+    throw new IssueProductInputError("idempotencyKey was already used for a different activity");
+  }
 }
 
 export async function setIssuePriority(options: IssueProductScope & {
@@ -410,7 +454,7 @@ export async function setIssueOwner(options: IssueProductScope & {
     }
   }
   const prisma = await getPrismaClientForTenancy(options.tenancy);
-  return await retryTransaction(prisma, async (tx) => {
+  return await retryOnceOnUniqueConstraintRace(() => retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
     if (actorUserId !== null) await assertProjectUser(tx, options.tenancy, actorUserId, "actorUserId");
     if (ownerUserId !== null) await assertProjectUser(tx, options.tenancy, ownerUserId, "owner.userId");
@@ -439,7 +483,7 @@ export async function setIssueOwner(options: IssueProductScope & {
       userId: owner.ownerUserId, teamId: owner.ownerTeamId, source: ownerSourceFromPrisma(owner.source),
       context: owner.context, createdAt: owner.createdAt, updatedAt: owner.updatedAt,
     };
-  });
+  }));
 }
 
 export async function addIssueComment(options: IssueProductScope & {
@@ -504,7 +548,7 @@ export async function setIssueSubscription(options: IssueProductScope & {
   const subjectUserId = options.subject.type === "user" ? options.subject.id : null;
   const subjectTeamId = options.subject.type === "team" ? options.subject.id : null;
   const prisma = await getPrismaClientForTenancy(options.tenancy);
-  return await retryTransaction(prisma, async (tx) => {
+  return await retryOnceOnUniqueConstraintRace(() => retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
     if (actorUserId !== null) await assertProjectUser(tx, options.tenancy, actorUserId, "actorUserId");
     if (subjectUserId !== null) await assertProjectUser(tx, options.tenancy, subjectUserId, "subject.id");
@@ -528,7 +572,7 @@ export async function setIssueSubscription(options: IssueProductScope & {
       isActive: subscription.isActive, reason: subscription.reason,
       createdAt: subscription.createdAt, updatedAt: subscription.updatedAt,
     };
-  });
+  }));
 }
 
 export async function setIssueBookmark(options: IssueProductScope & {
@@ -548,17 +592,23 @@ export async function setIssueBookmark(options: IssueProductScope & {
     await assertIssueExists(tx, options);
     await assertProjectUser(tx, options.tenancy, options.userId, "userId");
     if (actorUserId !== null) await assertProjectUser(tx, options.tenancy, actorUserId, "actorUserId");
-    const existing = await tx.issueBookmark.findUnique({
-      where: { tenancyId_issueId_userId: { tenancyId: options.tenancy.id, issueId: options.issueId, userId: options.userId } },
-      select: { userId: true },
-    });
-    const changed = options.bookmarked ? existing === null : existing !== null;
-    if (options.bookmarked && existing === null) {
-      await tx.issueBookmark.create({
+    // Atomic create-if-absent / delete-if-present, with `changed` derived from
+    // the affected-row count. A read-then-decide-then-write here would let two
+    // overlapping requests that observed the same pre-state race each other
+    // into a unique violation (create/create) or a P2025 (delete/delete)
+    // instead of both settling on the idempotent outcome.
+    let changed: boolean;
+    if (options.bookmarked) {
+      const created = await tx.issueBookmark.createMany({
         data: { tenancyId: options.tenancy.id, projectId: options.tenancy.project.id, branchId: options.tenancy.branchId, issueId: options.issueId, userId: options.userId, createdAt: occurredAt },
+        skipDuplicates: true,
       });
-    } else if (!options.bookmarked && existing !== null) {
-      await tx.issueBookmark.delete({ where: { tenancyId_issueId_userId: { tenancyId: options.tenancy.id, issueId: options.issueId, userId: options.userId } } });
+      changed = created.count > 0;
+    } else {
+      const deleted = await tx.issueBookmark.deleteMany({
+        where: { tenancyId: options.tenancy.id, issueId: options.issueId, userId: options.userId },
+      });
+      changed = deleted.count > 0;
     }
     if (changed) await appendActivityInTransaction({
       tx, tenancy: options.tenancy, issueId: options.issueId, actorUserId,

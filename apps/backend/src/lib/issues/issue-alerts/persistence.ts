@@ -839,27 +839,24 @@ export class IssueAlertPersistenceService implements IssueAlertRuleRepository {
 
   async listActiveRuleRecords(scope: IssueAlertRuleScope): Promise<readonly IssueAlertRuleRecord[]> {
     validateScope(scope);
-    const rows: StoredRuleRow[] = await this.client.$replica().issueAlertRule.findMany({
-      where: {
-        tenancyId: scope.tenancyId,
-        projectId: scope.projectId,
-        branchId: scope.branchId,
-        enabled: true,
-      },
-      orderBy: [{ ruleKey: "asc" }, { version: "desc" }],
-      take: ISSUE_ALERT_MAX_ACTIVE_RULES + 1,
-      select: {
-        id: true,
-        tenancyId: true,
-        projectId: true,
-        branchId: true,
-        ruleKey: true,
-        version: true,
-        schemaVersion: true,
-        enabled: true,
-        config: true,
-      },
-    });
+    // `DISTINCT ON ("ruleKey")` in SQL, not a Prisma `take` over raw version
+    // rows: several enabled versions of one rule key can coexist, and a row
+    // limit applied BEFORE version deduplication would let one heavily
+    // versioned rule consume the whole budget and silently push every rule
+    // key sorting after it out of listing and evaluation. (Prisma's `distinct`
+    // is applied in memory — after `take` — so it cannot express this.)
+    const rows = await this.client.$replica().$queryRaw<StoredRuleRow[]>(Prisma.sql`
+      SELECT DISTINCT ON ("ruleKey")
+        "id", "tenancyId", "projectId", "branchId", "ruleKey",
+        "version", "schemaVersion", "enabled", "config"
+      FROM "IssueAlertRule"
+      WHERE "tenancyId" = ${scope.tenancyId}::uuid
+        AND "projectId" = ${scope.projectId}
+        AND "branchId" = ${scope.branchId}
+        AND "enabled" = true
+      ORDER BY "ruleKey" ASC, "version" DESC
+      LIMIT ${ISSUE_ALERT_MAX_ACTIVE_RULES + 1}
+    `);
 
     const records: IssueAlertRuleRecord[] = [];
     const seenRuleKeys = new Set<string>();

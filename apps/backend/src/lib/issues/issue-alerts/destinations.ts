@@ -1,6 +1,5 @@
 /**
- * Alert destinations are references, not provider credentials. Provider
- * configuration belongs to a future integration registry; keeping only an
+ * Alert destinations are references, not provider credentials. Keeping only an
  * opaque id in the rule prevents secrets and arbitrary URLs from entering
  * the durable rule or Workflows payload.
  */
@@ -39,7 +38,14 @@ export type IssueAlertAction = IssueAlertEmailAction | IssueAlertWebhookAction;
 
 const MAX_IDENTIFIER_BYTES = 256;
 const MAX_RECIPIENTS = 64;
-const MAX_TEXT_BYTES = 16 * 1024;
+// Must not exceed `ISSUE_ALERT_WORKFLOW_MAX_STRING_BYTES` (8 KiB) in
+// `@/lib/workflows/issue-alerts/contract`: every action string crosses the
+// durable workflow boundary through a scrubber that silently TRUNCATES longer
+// strings, so accepting more here would let a subject/html template pass rule
+// validation and then arrive cut off in the actual email. Stated as a literal
+// rather than imported because this module is the lower-level one — the
+// workflow contract imports from `issue-alerts`, not the other way around.
+const MAX_TEXT_BYTES = 8 * 1024;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
 // HTML bodies are authored in a textarea, so tab/LF/CR have to survive. Other
 // control characters still fail closed — they are not valid in email HTML and

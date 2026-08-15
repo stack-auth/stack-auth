@@ -7,9 +7,8 @@ import type { GroupingInput } from "../types";
  * the shapes webpack and Turbopack actually emit; they were NOT produced by
  * building a real app twice. A real two-build corpus — a fixture Next app built
  * twice under each bundler, with the emitted chunk names captured verbatim — is
- * still owed, and the plan gates the rebuild-stability *claim* on it. Until then
- * these fixtures prove the normalizer handles the shapes we believe exist; they
- * cannot prove those are the only shapes.
+ * still owed. Until then these fixtures prove the normalizer handles the shapes
+ * we believe exist; they cannot prove those are the only shapes.
  *
  * The property under test: the same logical error, from the same source file,
  * in two builds whose content hashes differ, must produce the SAME `ownerHash`.

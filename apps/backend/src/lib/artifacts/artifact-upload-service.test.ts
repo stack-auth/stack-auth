@@ -186,13 +186,94 @@ describe("artifact upload service", () => {
     await expect(missingService.finalizeManifest(SCOPE, { manifestSha256: missingRegistration.manifestSha256 }))
       .rejects.toMatchObject({ code: "artifact_not_found" });
 
+    // Same byte length as BUNDLE so the sha256 comparison (not the earlier
+    // length check) is the branch that rejects the upload.
     const wrongStorage = new MemoryArtifactStorage();
     const wrongService = new ArtifactUploadService(wrongStorage);
     const wrongRegistration = await register(wrongService, wrongStorage);
     const descriptor = wrongRegistration.artifacts[0];
     if (descriptor.sourceMapObjectKey === null) throw new Error("Expected an external source map object.");
-    wrongStorage.upload(descriptor.bundleObjectKey, new TextEncoder().encode("different bundle"));
+    const wrongDigestBundle = new TextEncoder().encode("console.log('MINIFIED');\n");
+    if (wrongDigestBundle.byteLength !== BUNDLE.byteLength) throw new Error("Fixture bundles must have equal byte lengths to exercise the digest branch.");
+    wrongStorage.upload(descriptor.bundleObjectKey, wrongDigestBundle);
     await expect(wrongService.finalizeManifest(SCOPE, { manifestSha256: wrongRegistration.manifestSha256 }))
-      .rejects.toMatchObject({ code: "integrity_mismatch" });
+      .rejects.toMatchObject({ code: "integrity_mismatch", message: expect.stringContaining("digest") });
+
+    const lengthStorage = new MemoryArtifactStorage();
+    const lengthService = new ArtifactUploadService(lengthStorage);
+    const lengthRegistration = await register(lengthService, lengthStorage);
+    lengthStorage.upload(lengthRegistration.artifacts[0].bundleObjectKey, new TextEncoder().encode("different bundle"));
+    await expect(lengthService.finalizeManifest(SCOPE, { manifestSha256: lengthRegistration.manifestSha256 }))
+      .rejects.toMatchObject({ code: "integrity_mismatch", message: expect.stringContaining("byte length") });
+  });
+
+  it("rejects indexed (sections) source maps at finalization", async () => {
+    const storage = new MemoryArtifactStorage();
+    const service = new ArtifactUploadService(storage);
+    const sectionsMap = new TextEncoder().encode(JSON.stringify({ version: 3, sections: [] }));
+    const sectionsMapGzip = gzipSync(sectionsMap);
+    const manifest = createManifest({
+      artifacts: [{
+        debugId: DEBUG_ID,
+        codeFile: "static/chunk.js",
+        sourceMapFile: "static/chunk.js.map",
+        sourceMapInline: false,
+        bundleSha256: sha256Hex(BUNDLE),
+        bundleBytes: BUNDLE.byteLength,
+        sourceMapSha256: sha256Hex(sectionsMap),
+        sourceMapBytes: sectionsMap.byteLength,
+        sourceMapGzippedBytes: sectionsMapGzip.byteLength,
+      }],
+    });
+    const registered = await service.registerManifest(SCOPE, { manifest, manifestSha256: manifestDigest(manifest) });
+    const descriptor = registered.artifacts[0];
+    if (descriptor.sourceMapObjectKey === null) throw new Error("Expected an external source map object.");
+    storage.upload(descriptor.bundleObjectKey, BUNDLE);
+    storage.upload(descriptor.sourceMapObjectKey, sectionsMapGzip);
+    await expect(service.finalizeManifest(SCOPE, { manifestSha256: registered.manifestSha256 }))
+      .rejects.toMatchObject({ code: "unsupported_source_map" });
+  });
+
+  it("verifies inline source-map bytes against the manifest digest at finalization", async () => {
+    const inlineMap = new TextEncoder().encode(JSON.stringify({
+      version: 3,
+      sources: ["src/index.ts"],
+      names: [],
+      mappings: "AAAA",
+    }));
+    const inlineBundle = new TextEncoder().encode(
+      `console.log('inline');\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(inlineMap).toString("base64")}\n`,
+    );
+    const createInlineManifest = (sourceMapSha256: string, sourceMapBytes: number): ArtifactManifest => createManifest({
+      artifacts: [{
+        debugId: DEBUG_ID,
+        codeFile: "static/inline.js",
+        sourceMapFile: null,
+        sourceMapInline: true,
+        bundleSha256: sha256Hex(inlineBundle),
+        bundleBytes: inlineBundle.byteLength,
+        sourceMapSha256,
+        sourceMapBytes,
+        sourceMapGzippedBytes: gzipSync(inlineMap).byteLength,
+      }],
+    });
+
+    const goodStorage = new MemoryArtifactStorage();
+    const goodService = new ArtifactUploadService(goodStorage);
+    const goodManifest = createInlineManifest(sha256Hex(inlineMap), inlineMap.byteLength);
+    const goodRegistration = await goodService.registerManifest(SCOPE, { manifest: goodManifest, manifestSha256: manifestDigest(goodManifest) });
+    goodStorage.upload(goodRegistration.artifacts[0].bundleObjectKey, inlineBundle);
+    await expect(goodService.finalizeManifest(SCOPE, { manifestSha256: goodRegistration.manifestSha256 }))
+      .resolves.toMatchObject({ status: "finalized" });
+
+    // A manifest that declares a wrong inline digest must fail finalization
+    // (previously it finalized "successfully" and then failed every lookup).
+    const badStorage = new MemoryArtifactStorage();
+    const badService = new ArtifactUploadService(badStorage);
+    const badManifest = createInlineManifest(sha256Hex(new TextEncoder().encode("not the inline map")), inlineMap.byteLength);
+    const badRegistration = await badService.registerManifest(SCOPE, { manifest: badManifest, manifestSha256: manifestDigest(badManifest) });
+    badStorage.upload(badRegistration.artifacts[0].bundleObjectKey, inlineBundle);
+    await expect(badService.finalizeManifest(SCOPE, { manifestSha256: badRegistration.manifestSha256 }))
+      .rejects.toMatchObject({ code: "integrity_mismatch", message: expect.stringContaining("inline source map does not match") });
   });
 });

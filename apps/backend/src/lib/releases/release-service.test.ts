@@ -225,7 +225,7 @@ describe("release graph persistence", () => {
         projectId: "project-release-test",
         branchId: "main",
       },
-      orderBy: { dateAdded: "desc" },
+      orderBy: [{ dateAdded: "desc" }, { id: "desc" }],
       take: 51,
     });
   });
@@ -280,7 +280,7 @@ describe("release graph persistence", () => {
     });
     expect(deploymentArgs).toMatchObject({
       where: { tenancyId, releaseId },
-      orderBy: { finishedAt: "desc" },
+      orderBy: [{ finishedAt: "desc" }, { id: "desc" }],
       take: 50,
     });
   });
@@ -353,6 +353,57 @@ describe("release graph persistence", () => {
     });
   });
 
+  it("rejects a deployment whose upsert landed on a different release (concurrent key reuse)", async () => {
+    // Simulates losing the deploymentKey TOCTOU race: the pre-upsert ownership
+    // check saw no row, but by upsert time another request attached the key to
+    // a different release. The returned row exposes that, and the service must
+    // fail instead of reporting success against the wrong release.
+    const otherRelease = { ...deployment, releaseId: "00000000-0000-4000-8000-000000000099" };
+    const db = fakeDatabase({
+      releaseDeployment: {
+        findUnique: async () => null,
+        upsert: async () => otherRelease,
+      },
+    });
+
+    await expect(new ReleaseService(db).upsertDeployment(scope, {
+      releaseId,
+      deploymentKey: deployment.deploymentKey,
+      environment: deployment.environment,
+    })).rejects.toThrow("already attached to a different release scope");
+  });
+
+  it("accepts multi-line commit messages but rejects other control characters", async () => {
+    let captured: Prisma.ReleaseCommitUpsertArgs | undefined;
+    const db = fakeDatabase({
+      releaseCommit: {
+        upsert: async (args) => {
+          captured = args;
+          return commit;
+        },
+      },
+    });
+    const service = new ReleaseService(db);
+    const message = "fix: subject line\n\nLonger body with\ttabs and\r\nCRLF paragraphs.";
+
+    await service.upsertCommit(scope, {
+      releaseId,
+      repository: commit.repository,
+      commitSha: commit.commitSha,
+      position: 0,
+      message,
+    });
+    expect(captured?.create).toMatchObject({ message });
+
+    await expect(service.upsertCommit(scope, {
+      releaseId,
+      repository: commit.repository,
+      commitSha: commit.commitSha,
+      position: 0,
+      message: "bad\u0000message",
+    })).rejects.toThrow(ReleaseInputError);
+  });
+
   it("upserts ordered release commits by repository and SHA", async () => {
     let captured: Prisma.ReleaseCommitUpsertArgs | undefined;
     const db = fakeDatabase({
@@ -402,7 +453,34 @@ describe("release graph persistence", () => {
       status: PrismaReleaseArtifactStatus.REGISTERED,
     });
 
-    expect(captured?.update).toMatchObject({ status: PrismaReleaseArtifactStatus.FINALIZED });
+    // A REGISTERED retry must not touch the stored status at all — writing it
+    // based on a pre-upsert read would let a concurrent retry downgrade a row
+    // another request just finalized.
+    expect(captured?.update).not.toHaveProperty("status");
+    expect(captured?.create).toMatchObject({ status: PrismaReleaseArtifactStatus.REGISTERED });
+  });
+
+  it("upgrades an artifact to finalized through the update clause", async () => {
+    let captured: Prisma.ReleaseArtifactUpsertArgs | undefined;
+    const db = fakeDatabase({
+      releaseArtifact: {
+        findUnique: async () => artifact,
+        upsert: async (args) => {
+          captured = args;
+          return artifact;
+        },
+      },
+    });
+
+    await new ReleaseService(db).upsertArtifact(scope, {
+      releaseId,
+      manifestSha256: artifact.manifestSha256,
+      status: PrismaReleaseArtifactStatus.FINALIZED,
+      finalizedAt: now,
+    });
+
+    expect(captured?.update).toMatchObject({ status: PrismaReleaseArtifactStatus.FINALIZED, finalizedAt: now });
+    expect(captured?.create).toMatchObject({ status: PrismaReleaseArtifactStatus.FINALIZED });
   });
 
   it("upserts debug-ID metadata under the artifact and scope identities", async () => {

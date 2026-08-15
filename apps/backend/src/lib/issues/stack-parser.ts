@@ -102,8 +102,15 @@ const WEBPACK_ERROR_WRAPPER_RE = /\(error: (.*)\)/;
  * Applied to the first line only — Gecko and Safari stacks have no header line
  * and their first line is a real frame. Bounded on both sides, so it cannot
  * backtrack.
+ *
+ * The optional bracketed group is for Node's coded errors
+ * (`Error [ERR_MODULE_NOT_FOUND]: …`): without it the header falls through to
+ * the Gecko fallback, which happily matches a filesystem path *inside the
+ * message* and emits it as a synthetic frame — and since ERR_MODULE_NOT_FOUND
+ * messages embed the importing file's path, that fake frame would split the
+ * issue per call site.
  */
-const HEADER_LINE_RE = /^[\w$. ]{0,64}(?:Error|Exception|Violation|Failure)[\w$.]{0,64}\s*:\s/;
+const HEADER_LINE_RE = /^[\w$. ]{0,64}(?:Error|Exception|Violation|Failure)[\w$.]{0,64}(?: \[[\w$. \-]{1,64}\])?\s*:\s/;
 const FRAME_LINE_PREFIX_RE = /^\s*at\s/;
 
 // --- Path / module normalization -------------------------------------------

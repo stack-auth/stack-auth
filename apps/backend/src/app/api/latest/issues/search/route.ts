@@ -1,4 +1,4 @@
-import { assertPublicIssueReadEnabled } from "@/lib/issues/public-issue-api";
+import { assertObservabilityEnabled } from "@/lib/issues/observability-gate";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -34,7 +34,7 @@ export const GET = createSmartRouteHandler({
     body: PublicSearchResponseSchema,
   }),
   async handler({ auth, query }) {
-    assertPublicIssueReadEnabled(auth.tenancy);
+    assertObservabilityEnabled(auth.tenancy);
     const filters = parsePublicSearchQuery(query);
     const body = await searchPublicRecords({
       tenancy: auth.tenancy,

@@ -296,6 +296,27 @@ async function dispatchMaterializationSideEffects(options: {
 }): Promise<void> {
   if (options.result.status === "deferred_locked") return;
 
+  // Alerts BEFORE webhooks, deliberately: alert dispatch only writes Postgres
+  // rows (the workflow owns actual delivery) while webhook emission calls Svix
+  // over the network. In the reverse order a Svix outage would throw before
+  // alert rows were ever written, so a webhook outage lasting the whole QStash
+  // retry budget would take the alert emails down with it. Each side effect is
+  // individually marked in the ledger, so a webhook failure here still leaves
+  // only the webhook half to be retried.
+  if (options.result.sideEffects.alertsDispatchedAt === null) {
+    await dispatchIssueAlertsForMaterialization({
+      tenancy: options.tenancy,
+      outcomes: options.result.outcomes,
+      inputs: options.inputs,
+      receivedAt: options.receivedAt,
+    });
+    await markIssueMaterializationSideEffect({
+      tenancy: options.tenancy,
+      batchId: options.batchId,
+      sideEffect: "alerts",
+    });
+  }
+
   if (options.result.sideEffects.webhooksDispatchedAt === null) {
     await emitIssueWebhooks({
       tenancy: options.tenancy,
@@ -308,20 +329,6 @@ async function dispatchMaterializationSideEffects(options: {
       tenancy: options.tenancy,
       batchId: options.batchId,
       sideEffect: "webhooks",
-    });
-  }
-
-  if (options.result.sideEffects.alertsDispatchedAt === null) {
-    await dispatchIssueAlertsForMaterialization({
-      tenancy: options.tenancy,
-      outcomes: options.result.outcomes,
-      inputs: options.inputs,
-      receivedAt: options.receivedAt,
-    });
-    await markIssueMaterializationSideEffect({
-      tenancy: options.tenancy,
-      batchId: options.batchId,
-      sideEffect: "alerts",
     });
   }
 }

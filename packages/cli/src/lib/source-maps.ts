@@ -36,12 +36,11 @@ const SKIPPED_DIRECTORY_NAMES = new Set(["node_modules", ".git", "cache"]);
 const DEBUG_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /**
- * Returns whether a value is a canonical lower-case UUID debug id.
+ * Canonical lower-case UUID debug id.
  *
  * Sentry normalizes debug ids before indexing them, while Symbolicator uses
  * the exact id to select a JavaScript module. Keeping the CLI manifest
- * canonical prevents two spellings of one artifact becoming two records in a
- * future artifact registry.
+ * canonical prevents two spellings of one artifact becoming two records.
  */
 export function isDebugId(value: string): boolean {
   return DEBUG_ID_RE.test(value);
@@ -189,6 +188,41 @@ export function appendDebugIdSnippet(source: string, debugId: string): string {
   return `${stripped.slice(0, sourceMappingUrl.lineStart)}${block}${stripped.slice(sourceMappingUrl.lineStart)}`;
 }
 
+/**
+ * The bundle as it was BEFORE any debug-id injection, normalized so that
+ * `stripDebugIdSnippet(appendDebugIdSnippet(x, id))` round-trips exactly.
+ *
+ * `appendDebugIdSnippet` adds a trailing newline before its block only in the
+ * EOF branch (a bundle with no `//# sourceMappingURL=` comment). Reproducing
+ * that one normalization here is what lets `deriveBundleDebugId` derive the SAME
+ * id on the first run and on every unchanged rerun — the derivation basis is
+ * identical whether or not a previous run already injected a block.
+ */
+function canonicalCleanSource(source: string): string {
+  const stripped = source.replace(SNIPPET_BLOCK_RE, "");
+  const hasSourceMappingUrl = findLastSourceMappingUrlMatch(stripped) !== null;
+  if (!hasSourceMappingUrl && stripped !== "" && !stripped.endsWith("\n")) return `${stripped}\n`;
+  return stripped;
+}
+
+/**
+ * Derives the debug id for a (bundle, map) pair from the bundle's ORIGINAL
+ * bytes (any previous injection stripped) and the current map text.
+ *
+ * Deriving from the clean bundle — rather than trusting whatever id a previous
+ * run embedded — keeps a rerun on unchanged output a true no-op while still
+ * minting a fresh id when the MAP changed under an otherwise-identical bundle
+ * (a map-only rebuild or replacement). Trusting the embedded id there would
+ * upload the new map under a stale id and leave symbolication on the old map.
+ *
+ * Hashing the utf-8 re-encoding of the decoded text rather than the raw file
+ * bytes: JS sources are utf-8 by definition, so the round trip is lossless and —
+ * the property that matters — deterministic, which is all a derived id needs.
+ */
+export function deriveBundleDebugId(source: string, mapText: string): string {
+  return deriveDebugId(Buffer.from(canonicalCleanSource(source), "utf-8"), Buffer.from(mapText, "utf-8"));
+}
+
 // ---------------------------------------------------------------------------
 // Source map discovery
 // ---------------------------------------------------------------------------
@@ -239,6 +273,34 @@ function isExistingFile(candidate: string): boolean {
 }
 
 /**
+ * Returns the candidate iff it is an existing file whose REAL path (symlinks
+ * resolved) is contained in `containingDir`, else null.
+ *
+ * The lexical `isInside` check is necessary but not sufficient: an in-root
+ * symlink can pass it while its target escapes the build directory, and the
+ * subsequent `readFileSync`/`statSync` follow the link — so a dependency that
+ * emits a crafted `//# sourceMappingURL=` (or drops a `<bundle>.map` symlink)
+ * could smuggle arbitrary external JSON, including attacker-chosen
+ * `sourcesContent`, into a prepared upload. Comparing resolved real paths
+ * closes that hole. `containingDir` is realpath'd too so a symlinked build root
+ * (e.g. macOS `os.tmpdir()`) is not falsely rejected.
+ */
+function resolveContainedFile(candidate: string, containingDir: string): string | null {
+  if (!isExistingFile(candidate)) return null;
+  let realCandidate: string;
+  let realContaining: string;
+  try {
+    realCandidate = fs.realpathSync(candidate);
+    realContaining = fs.realpathSync(containingDir);
+  } catch {
+    // A broken symlink or a vanished directory: treat as "not a usable file"
+    // rather than trusting the unresolved path.
+    return null;
+  }
+  return isInside(realCandidate, realContaining) ? candidate : null;
+}
+
+/**
  * Resolves the `.map` file for a bundle: first whatever its
  * `//# sourceMappingURL=` points at, then the `<bundle>.map` fallback.
  *
@@ -269,7 +331,10 @@ export function determineSourceMapPathFromBundle(bundlePath: string, source: str
   searchLocations.push(`${path.resolve(bundlePath)}.map`);
 
   for (const location of searchLocations) {
-    if (isExistingFile(location)) return location;
+    // Real-path containment, not just the lexical `isInside` above: the file is
+    // about to be read and uploaded, and a symlink target must not escape.
+    const contained = resolveContainedFile(location, containingDir);
+    if (contained !== null) return contained;
   }
   return null;
 }
@@ -341,8 +406,15 @@ function validateSourceMapObject(map: Record<string, unknown>, what: string): vo
     }
     for (const [index, section] of map.sections.entries()) {
       const sectionObject = asJsonObject(section, `${what}.sections[${index}]`);
-      if (typeof sectionObject.offset !== "object" || sectionObject.offset === null || Array.isArray(sectionObject.offset)) {
-        throw new CliError(`${what}.sections[${index}].offset must be an object.`);
+      const offset = asJsonObject(sectionObject.offset, `${what}.sections[${index}].offset`);
+      // The offset locates the section within the generated file; Symbolicator
+      // rejects or misreads a section whose line/column are missing, negative, or
+      // non-integer, so validate them here rather than upload a map it will choke on.
+      if (
+        typeof offset.line !== "number" || !Number.isInteger(offset.line) || offset.line < 0
+        || typeof offset.column !== "number" || !Number.isInteger(offset.column) || offset.column < 0
+      ) {
+        throw new CliError(`${what}.sections[${index}].offset must contain non-negative integer \`line\` and \`column\` fields.`);
       }
       const nestedMap = asJsonObject(sectionObject.map, `${what}.sections[${index}].map`);
       validateSourceMapObject(nestedMap, `${what}.sections[${index}].map`);
@@ -428,7 +500,7 @@ function toPosix(value: string): string {
  *
  * Manifest paths are identifiers, not filesystem locations. They must be
  * relative and must not contain traversal segments: accepting an absolute or
- * ambiguous path would let a future zip/object-storage adapter disagree with
+ * ambiguous path would let a zip/object-storage adapter disagree with
  * the path the CLI displayed and the path Symbolicator indexes.
  */
 export function normalizeArtifactRelativePath(value: string, label = "Artifact path"): string {
@@ -578,7 +650,14 @@ export function collectArtifacts(dirs: readonly string[]): SourceMapArtifactCand
 // ---------------------------------------------------------------------------
 
 const MANIFEST_FILE_RE = /manifest.*\.(?:json|js)$/i;
-const INTEGRITY_FIELD_RE = /"integrity"\s*:\s*"/;
+// Matches an `integrity` field with a string value in either JSON (`"integrity":"…"`)
+// or JavaScript-object-literal form (`integrity:'…'`, `'integrity':"…"`). The
+// key/value quotes are independently optional because `.js` manifests are
+// explicitly scanned too, and a JS bundler can emit an unquoted or single-quoted
+// key that a JSON-only pattern would miss — letting us silently rewrite a bundle
+// and invalidate its SRI hash. Over-detection here is safe: the caller hard-stops
+// with an actionable message rather than shipping a broken build.
+const INTEGRITY_FIELD_RE = /["']?integrity["']?\s*:\s*["']/;
 
 /**
  * Finds build manifests that carry subresource-integrity hashes.

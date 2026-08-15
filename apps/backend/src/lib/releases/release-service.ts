@@ -88,7 +88,11 @@ export type ReleaseDatabase = {
   },
     releaseArtifactDebugId: {
       upsert(args: Prisma.ReleaseArtifactDebugIdUpsertArgs): Promise<ReleaseArtifactDebugId>,
-      findMany(args: Prisma.ReleaseArtifactDebugIdFindManyArgs): Promise<ReleaseArtifactLookupRow[]>,
+      // `include` is excluded from the args on purpose: the return type
+      // promises the ReleaseArtifactLookupRow relation shape, so the adapter
+      // is the single owner of the matching `include` — callers cannot pass a
+      // competing one that the adapter would silently overwrite.
+      findMany(args: Omit<Prisma.ReleaseArtifactDebugIdFindManyArgs, "include">): Promise<ReleaseArtifactLookupRow[]>,
   },
 };
 
@@ -293,7 +297,9 @@ export class ReleaseService {
       }),
       db.releaseDeployment.findMany({
         where: { tenancyId: fields.tenancyId, releaseId: release.id },
-        orderBy: { finishedAt: "desc" },
+        // `id` breaks ties between deployments sharing a finishedAt so the
+        // capped list is stable across requests.
+        orderBy: [{ finishedAt: "desc" }, { id: "desc" }],
         take: RELEASE_GRAPH_LIST_LIMIT,
       }),
     ]);
@@ -315,7 +321,9 @@ export class ReleaseService {
     const db = await this.resolveDatabase(scope);
     const rows = await db.release.findMany({
       where: fields,
-      orderBy: { dateAdded: "desc" },
+      // `id` breaks ties between releases sharing a dateAdded so the limited
+      // page boundary (and the derived `truncated` flag) is deterministic.
+      orderBy: [{ dateAdded: "desc" }, { id: "desc" }],
       take: limit + 1,
     });
     for (const release of rows) assertReleaseScope(scope, release);
@@ -394,7 +402,7 @@ export class ReleaseService {
       throw new ReleaseScopeInvariantError(`deploymentKey ${deploymentKey} is already attached to a different release scope`);
     }
 
-    return await db.releaseDeployment.upsert({
+    const deployment = await db.releaseDeployment.upsert({
       where: { tenancyId_deploymentKey: { tenancyId: fields.tenancyId, deploymentKey } },
       create: {
         ...fields,
@@ -416,6 +424,23 @@ export class ReleaseService {
         ...(metadata === undefined ? {} : { metadata }),
       },
     });
+    // The pre-upsert ownership check above is a friendly early exit only: two
+    // concurrent registrations that reuse one deploymentKey for different
+    // releases can both pass it (TOCTOU). The upsert's update clause never
+    // moves a row between releases, so re-checking the row we actually got
+    // back detects the loser of that race — it must fail loudly instead of
+    // reporting success against a deployment that is attached to another
+    // release. (The loser's mutable-field update may have landed on the
+    // winner's row inside the race window; both requests come from the same
+    // tenant reusing one idempotency key, so surfacing the conflict is the
+    // correct resolution and no cross-tenant data can be touched.)
+    if (deployment.tenancyId !== fields.tenancyId
+      || deployment.projectId !== fields.projectId
+      || deployment.branchId !== fields.branchId
+      || deployment.releaseId !== releaseId) {
+      throw new ReleaseScopeInvariantError(`deploymentKey ${deploymentKey} is already attached to a different release scope`);
+    }
+    return deployment;
   }
 
   public async upsertCommit(scope: ReleaseScope, input: UpsertReleaseCommitInput): Promise<ReleaseCommit> {
@@ -430,7 +455,7 @@ export class ReleaseService {
     if (input.position > MAX_DATABASE_INT) {
       throw new ReleaseInputError("commit position exceeds the database integer range");
     }
-    if (input.message !== undefined) validateText(input.message, "commit message", 100_000);
+    if (input.message !== undefined) validateMultilineText(input.message, "commit message", 100_000);
     if (input.authorName !== undefined) validateText(input.authorName, "commit author name", 256);
     if (input.authorEmail !== undefined) validateText(input.authorEmail, "commit author email", 320);
     validateOptionalUrl(input.url, "commit url");
@@ -492,25 +517,26 @@ export class ReleaseService {
         manifestSha256,
       },
     };
-    const existing = await db.releaseArtifact.findUnique({ where });
-    const effectiveStatus = existing?.status === PrismaReleaseArtifactStatus.FINALIZED || status === PrismaReleaseArtifactStatus.FINALIZED
-      ? PrismaReleaseArtifactStatus.FINALIZED
-      : status;
-
+    // "Once finalized, always finalized": a REGISTERED retry must never
+    // downgrade an artifact that a concurrent request already finalized. A
+    // read-then-upsert of the stored status would race, so instead the update
+    // clause simply never writes REGISTERED — it either upgrades the row to
+    // FINALIZED (monotone, safe under any interleaving) or leaves the stored
+    // status untouched.
     return await db.releaseArtifact.upsert({
       where,
       create: {
         ...fields,
         releaseId,
         manifestSha256,
-        status: effectiveStatus,
+        status,
         ...(input.dist === undefined ? {} : { dist: input.dist }),
         ...(input.environment === undefined ? {} : { environment: input.environment }),
         ...(input.manifestObjectKey === undefined ? {} : { manifestObjectKey: input.manifestObjectKey }),
         ...(input.finalizedAt === undefined ? {} : { finalizedAt: input.finalizedAt }),
       },
       update: {
-        status: effectiveStatus,
+        ...(status === PrismaReleaseArtifactStatus.FINALIZED ? { status: PrismaReleaseArtifactStatus.FINALIZED } : {}),
         ...(input.dist === undefined ? {} : { dist: input.dist }),
         ...(input.environment === undefined ? {} : { environment: input.environment }),
         ...(input.manifestObjectKey === undefined ? {} : { manifestObjectKey: input.manifestObjectKey }),
@@ -525,7 +551,9 @@ export class ReleaseService {
   ): Promise<ReleaseArtifactDebugId> {
     const fields = releaseScopeFields(scope);
     const releaseArtifactId = validateUuid(input.releaseArtifactId, "releaseArtifactId");
-    const artifact = await this.requireArtifact(scope, releaseArtifactId);
+    // requireArtifact already throws if the artifact exists outside the
+    // requested project/branch scope, so no further scope check is needed here.
+    await this.requireArtifact(scope, releaseArtifactId);
     const debugId = validateDebugId(input.debugId);
     const codeFile = validateText(input.codeFile, "codeFile", 1_024);
     if (input.sourceMapFile !== null) validateText(input.sourceMapFile, "sourceMapFile", 1_024);
@@ -543,9 +571,6 @@ export class ReleaseService {
     if (input.bundleObjectKey !== undefined) validateText(input.bundleObjectKey, "bundleObjectKey", 4_096);
     if (input.sourceMapObjectKey !== undefined && input.sourceMapObjectKey !== null) {
       validateText(input.sourceMapObjectKey, "sourceMapObjectKey", 4_096);
-    }
-    if (artifact.projectId !== fields.projectId || artifact.branchId !== fields.branchId) {
-      throw new ReleaseScopeInvariantError(`release artifact ${releaseArtifactId} is outside the requested project branch`);
     }
 
     const db = await this.resolveDatabase(scope);
@@ -616,7 +641,6 @@ export class ReleaseService {
           },
         },
       },
-      include: { releaseArtifact: { include: { release: true } } },
       orderBy: { createdAt: "desc" },
       take: LOOKUP_LIMIT,
     });
@@ -690,6 +714,9 @@ function adaptPrismaClient(client: PrismaClientTransaction): ReleaseDatabase {
     },
     releaseArtifactDebugId: {
       upsert: async (args) => await client.releaseArtifactDebugId.upsert(args),
+      // The seam's arg type omits `include`, so this adapter is the single
+      // place that decides the relation shape — it must stay in sync with
+      // ReleaseArtifactLookupRow (enforced by the return type).
       findMany: async (args) => await client.releaseArtifactDebugId.findMany({
         ...args,
         include: { releaseArtifact: { include: { release: true } } },
@@ -746,6 +773,18 @@ function validateScopedText(value: string, fieldName: string, maxBytes: number):
 function validateText(value: string, fieldName: string, maxBytes: number): string {
   if (value.length === 0 || Buffer.byteLength(value, "utf8") > maxBytes || /[\u0000-\u001f\u007f]/u.test(value)) {
     throw new ReleaseInputError(`${fieldName} must be non-empty, bounded, and free of control characters`);
+  }
+  return value;
+}
+
+/**
+ * Like validateText, but for prose fields that are legitimately multi-line —
+ * git commit messages are usually "subject\n\nbody". Tab, LF, and CR stay
+ * allowed; every other control character is still rejected.
+ */
+function validateMultilineText(value: string, fieldName: string, maxBytes: number): string {
+  if (value.length === 0 || Buffer.byteLength(value, "utf8") > maxBytes || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)) {
+    throw new ReleaseInputError(`${fieldName} must be non-empty, bounded, and free of prohibited control characters`);
   }
   return value;
 }

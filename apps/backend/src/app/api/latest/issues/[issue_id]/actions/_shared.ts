@@ -1,5 +1,5 @@
-import { Prisma } from "@/generated/prisma/client";
-import { assertPublicIssueReadEnabled } from "@/lib/issues/public-issue-api";
+import { resolveIssueIdentity, type ResolvedIssueIdentity } from "@/lib/issues/issue-identity";
+import { assertObservabilityEnabled } from "@/lib/issues/observability-gate";
 import type { Tenancy } from "@/lib/tenancies";
 import {
   IssueLifecycleInputError,
@@ -8,12 +8,14 @@ import {
   type IssueLifecycleTransition,
 } from "@/lib/issues/issue-lifecycle";
 import { IssueProductInputError } from "@/lib/issues/issue-product";
-import { getPrismaClientForTenancy } from "@/prisma-client";
 import type { SmartRequest } from "@/route-handlers/smart-request";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import { isUuid } from "@hexclave/shared/dist/utils/uuids";
 
+// 2100-01-01T00:00:00Z. Must stay equal to `MAX_ISSUE_TIMESTAMP_MILLIS` in
+// `@hexclave/shared`'s `interface/admin-issues` — the internal PATCH schema
+// bounds `ignored_until_millis` with that constant, and the public action
+// routes here must accept exactly the same timestamp range.
 export const MAX_ACTION_TIMESTAMP_MILLIS = 4_102_444_800_000;
 const MAX_ACTION_ISSUE_ID_LENGTH = 64;
 
@@ -61,74 +63,26 @@ export type IssueActionResponse = {
   regressed_at_millis: number | null,
 };
 
-export type IssueActionTarget = {
-  issueId: string,
-  redirectedFromIssueId: string | null,
-};
-
-function isValidShortId(value: string): boolean {
-  if (!/^\d+$/.test(value) || value.length > 19) return false;
-  return value.length < 19 || value <= "9223372036854775807";
-}
-
-function issueIdentityPredicate(rawIssueId: string): Prisma.Sql {
-  if (isValidShortId(rawIssueId)) return Prisma.sql`i."shortId" = ${rawIssueId}::bigint`;
-  if (isUuid(rawIssueId)) return Prisma.sql`i."id" = ${rawIssueId}::uuid`;
-  throw new StatusError(StatusError.BadRequest, "issue_id must be a UUID or a numeric short id");
-}
-
-function redirectIdentityPredicate(rawIssueId: string): Prisma.Sql {
-  if (isValidShortId(rawIssueId)) return Prisma.sql`"fromShortId" = ${rawIssueId}::bigint`;
-  if (isUuid(rawIssueId)) return Prisma.sql`"fromIssueId" = ${rawIssueId}::uuid`;
-  throw new StatusError(StatusError.BadRequest, "issue_id must be a UUID or a numeric short id");
-}
-
-/**
- * Resolves the path id on the primary tenant boundary used by the action.
- * Direct rows win over redirects, and redirects are deliberately one hop: the
- * merge writer rewrites inbound redirects, so walking an unbounded chain would
- * turn corrupt redirect data into an unbounded request.
- */
-export async function resolveIssueActionTarget(tenancy: Tenancy, rawIssueId: string): Promise<IssueActionTarget | null> {
-  const prisma = await getPrismaClientForTenancy(tenancy);
-  const directRows = await prisma.$replica().$queryRaw<Array<{ id: string }>>(Prisma.sql`
-    SELECT i."id"
-    FROM "Issue" i
-    WHERE i."tenancyId" = ${tenancy.id}::uuid
-      AND ${issueIdentityPredicate(rawIssueId)}
-    LIMIT 1
-  `);
-  const direct = directRows.at(0);
-  if (direct !== undefined) return { issueId: direct.id, redirectedFromIssueId: null };
-
-  const redirectRows = await prisma.$replica().$queryRaw<Array<{ fromIssueId: string, toIssueId: string }>>(Prisma.sql`
-    SELECT "fromIssueId", "toIssueId"
-    FROM "IssueRedirect"
-    WHERE "tenancyId" = ${tenancy.id}::uuid
-      AND ${redirectIdentityPredicate(rawIssueId)}
-    LIMIT 1
-  `);
-  const redirect = redirectRows.at(0);
-  if (redirect === undefined) return null;
-
-  const targetRows = await prisma.$replica().$queryRaw<Array<{ id: string }>>(Prisma.sql`
-    SELECT i."id"
-    FROM "Issue" i
-    WHERE i."tenancyId" = ${tenancy.id}::uuid
-      AND i."id" = ${redirect.toIssueId}::uuid
-    LIMIT 1
-  `);
-  return targetRows.at(0) === undefined
-    ? null
-    : { issueId: targetRows[0].id, redirectedFromIssueId: redirect.fromIssueId };
-}
+export type IssueActionTarget = ResolvedIssueIdentity;
 
 export function assertIssueActionsEnabled(tenancy: Tenancy): void {
-  assertPublicIssueReadEnabled(tenancy);
+  assertObservabilityEnabled(tenancy);
 }
 
 export function actorUserId(fullReq: SmartRequest): string | null {
   return fullReq.auth?.user?.id ?? null;
+}
+
+/**
+ * The issue-product mutations (comment, owner, subscription, bookmark) report
+ * a row that vanished mid-transaction as `IssueProductInputError` with this
+ * marker rather than as `IssueNotFoundError` — but for the resolution-to-merge
+ * race the two mean the same thing, so both must get the one
+ * follow-the-redirect retry below. `rethrowIssueActionError` matches the same
+ * marker when mapping the terminal failure to a 404.
+ */
+export function isIssueRowVanishedError(error: unknown): boolean {
+  return error instanceof IssueProductInputError && error.message.includes("was not found in the authenticated branch");
 }
 
 export async function withIssueActionTarget<T>(options: {
@@ -140,12 +94,12 @@ export async function withIssueActionTarget<T>(options: {
   // helper's lock. Retrying resolution once follows the new redirect without
   // hiding a genuine not-found or retrying an arbitrary failed mutation.
   for (let attempt = 0; attempt < 2; attempt++) {
-    const target = await resolveIssueActionTarget(options.tenancy, options.rawIssueId);
+    const target = await resolveIssueIdentity(options.tenancy, options.rawIssueId);
     if (target === null) throw new StatusError(StatusError.NotFound, "Issue not found");
     try {
       return { target, result: await options.action(target) };
     } catch (error) {
-      if (error instanceof IssueNotFoundError && attempt === 0) continue;
+      if ((error instanceof IssueNotFoundError || isIssueRowVanishedError(error)) && attempt === 0) continue;
       rethrowIssueActionError(error);
     }
   }
@@ -160,7 +114,7 @@ export function rethrowIssueActionError(error: unknown): never {
     throw new StatusError(StatusError.BadRequest, "Invalid issue action");
   }
   if (error instanceof IssueProductInputError) {
-    if (error.message.includes("was not found in the authenticated branch")) {
+    if (isIssueRowVanishedError(error)) {
       throw new StatusError(StatusError.NotFound, "Issue not found");
     }
     throw new StatusError(StatusError.BadRequest, "Invalid issue product action");

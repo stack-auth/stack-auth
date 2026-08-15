@@ -9,8 +9,8 @@ import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } fro
 /**
  * Merge two or more issues into one.
  *
- * `internal/` because the whole observability surface is dashboard-only today; a
- * public API is a deliberate follow-up rather than an oversight.
+ * `internal/` because the whole observability surface is dashboard-only today;
+ * there is no public merge API yet.
  *
  * The caller does not choose the primary — see `orderIssuesForMerge`. Nothing in
  * this response is a `BigInt`, which matters because `smart-response.tsx` runs
@@ -47,13 +47,18 @@ export const POST = createSmartRouteHandler({
     });
     // Announced against the SURVIVING issue: the merged-away ids no longer
     // resolve to a row, so a consumer receiving one of those could not look it
-    // up.
-    runAsynchronouslyAndWaitUntil(emitIssueLifecycleWebhook({
-      tenancy: auth.tenancy,
-      issueId: primaryIssueId,
-      event: "merged",
-      now: new Date(),
-    }));
+    // up. A no-op merge (a retried request, or a concurrent merge that already
+    // completed) returns an empty `mergedIssueIds` and changed nothing, so it
+    // must not announce anything — `issue.merged` is unthrottled and keyed on
+    // the request instant, so re-emitting here would NOT dedup at Svix.
+    if (mergedIssueIds.length > 0) {
+      runAsynchronouslyAndWaitUntil(emitIssueLifecycleWebhook({
+        tenancy: auth.tenancy,
+        issueId: primaryIssueId,
+        event: "merged",
+        now: new Date(),
+      }));
+    }
 
     return {
       statusCode: 200,

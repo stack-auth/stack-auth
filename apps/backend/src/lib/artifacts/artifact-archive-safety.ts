@@ -1,5 +1,6 @@
 import { gunzipSync } from "node:zlib";
 import { parseTar, type TarEntry } from "@hexclave/shared/dist/utils/tar";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { ArtifactServiceError } from "./artifact-errors";
 import { MAX_ARTIFACT_PATH_BYTES } from "./artifact-manifest";
 
@@ -82,7 +83,14 @@ export function validateGzipTarArtifactArchive(
       maxEntries: limits.maxEntries ?? MAX_ARCHIVE_ENTRIES,
       maxTotalBytes: maxBytes,
     });
-  } catch {
+  } catch (error) {
+    // parseTar throws StatusError(400, ...) with messages documented as safe
+    // to show the uploader (limit exceeded, unsafe path, checksum mismatch,
+    // truncation, ...). Forward them so a legitimate uploader can actually fix
+    // the archive; anything else stays behind the generic classification.
+    if (error instanceof StatusError && error.statusCode === 400) {
+      throw invalidArchive(`Artifact archive is not a safe ustar archive: ${error.message}`);
+    }
     throw invalidArchive("Artifact archive is not a safe ustar archive.");
   }
   return validateArtifactArchiveEntries(entries.map((entry) => ({

@@ -11,8 +11,8 @@ import type { StackPlatform } from "./types";
  * system frame — i.e. the UI would show a stack that cannot produce that issue.
  *
  * This is a hardcoded ruleset, not Sentry's user-configurable enhancer DSL. The
- * DSL is a large surface with its own parser and cache, and nothing in the plan
- * needs per-project overrides yet.
+ * DSL is a large surface with its own parser and cache, and grouping does not
+ * currently need per-project overrides.
  *
  * The node branch is ported from Sentry's `filenameIsInApp`
  * (`packages/core/src/utils/node-stack-trace.ts`), originally forked from
@@ -20,8 +20,13 @@ import type { StackPlatform } from "./types";
  * `stack-parser.ts`.
  */
 
-/** Bundler/runtime paths that are never the customer's source, on the browser side. */
-const JAVASCRIPT_NOT_IN_APP_SUBSTRINGS = ["/node_modules/"];
+/**
+ * Bundler/runtime paths that are never the customer's source, on the browser
+ * side. `/~/` is legacy webpack's module-directory marker (`webpack:///./~/pkg/…`
+ * meant `node_modules/pkg`), still seen from older toolchains; treating it as
+ * app code would pull third-party frames into the `app` grouping hash.
+ */
+const JAVASCRIPT_NOT_IN_APP_SUBSTRINGS = ["/node_modules/", "/~/"];
 const JAVASCRIPT_NOT_IN_APP_PREFIXES = ["webpack-internal:", "node:"];
 /**
  * Next.js emits its own runtime into `framework-<hash>.js` under this directory.
@@ -34,6 +39,13 @@ const NEXT_FRAMEWORK_CHUNK_PREFIX = "/_next/static/chunks/framework";
 const NON_FILE_PATHS = new Set(["<anonymous>", "[native code]", "native", "<unknown>"]);
 
 const WINDOWS_ABSOLUTE_PATH_RE = /^[a-zA-Z]:/;
+/**
+ * `node_modules` as a whole path segment, under either separator. The Windows
+ * branch above accepts `C:\…` paths as potential app code, so the dependency
+ * exclusion must understand backslashes too — a plain `includes("node_modules/")`
+ * would classify `C:\app\node_modules\pkg\index.js` as in-app and change grouping.
+ */
+const NODE_MODULES_SEGMENT_RE = /(?:^|[\\/])node_modules[\\/]/;
 // Schema from https://stackoverflow.com/a/3641782 — `scheme://`, i.e. the frame
 // went through a bundler or came off the network rather than off disk.
 const URL_SCHEME_RE = /^[a-zA-Z][a-zA-Z0-9.\-+]*:\/\//;
@@ -65,7 +77,7 @@ export function isInAppPath(path: string, platform: StackPlatform): boolean {
         && !path.startsWith(".")
         && !URL_SCHEME_RE.test(path);
       if (isBuiltinOrBundled) return false;
-      return !path.includes("node_modules/");
+      return !NODE_MODULES_SEGMENT_RE.test(path);
     }
   }
 }
