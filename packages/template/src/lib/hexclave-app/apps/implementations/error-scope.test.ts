@@ -36,6 +36,15 @@ describe("error scope", () => {
     expect(merged.attachments?.map((attachment) => attachment.filename)).toEqual(["scope.txt", "capture.txt"]);
   });
 
+  it("caps initial breadcrumbs like addBreadcrumb does, keeping the newest", () => {
+    const initialBreadcrumbs = Array.from({ length: 150 }, (_, index) => ({ message: `initial-${index}` }));
+    const scope = createErrorScope({ breadcrumbs: initialBreadcrumbs });
+    const snapshot = scope.snapshot();
+    expect(snapshot.breadcrumbs).toHaveLength(100);
+    expect(snapshot.breadcrumbs?.[0]?.message).toBe("initial-50");
+    expect(snapshot.breadcrumbs?.at(-1)?.message).toBe("initial-149");
+  });
+
   it("restores nested ambient scopes and works without an OTel context manager", () => {
     const parent = createErrorScope({ tags: { parent: "yes" } });
     const child = createErrorScope({ tags: { child: "yes" } });

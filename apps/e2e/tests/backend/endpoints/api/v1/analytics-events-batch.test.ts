@@ -2380,7 +2380,10 @@ it("accepts $log events with message/level and stamps producer/runtime server-si
   `);
 
   const queryRes = await queryAnalyticsUntil({
-    query: "SELECT event_type, message, level, producer, runtime, service_namespace, service_name, service_version, deployment_environment_name, JSONExtractString(resource_attributes, 'suite') AS resource_suite FROM logs WHERE session_replay_segment_id = {segId:String}",
+    // The log message lives in the canonical OTel `body` column (a JSON
+    // envelope of {type, value}); `logs` deliberately exposes no `message`
+    // column — that name belongs to the events surface.
+    query: "SELECT event_type, JSONExtractString(body, 'value') AS message, level, producer, runtime, service_namespace, service_name, service_version, deployment_environment_name, JSONExtractString(resource_attributes, 'suite') AS resource_suite FROM logs WHERE session_replay_segment_id = {segId:String}",
     params: { segId: sessionReplaySegmentId },
   }, (r) => Array.isArray(r.body.result) && r.body.result.length === 1);
   // producer/runtime come from the route, never from the client: client auth

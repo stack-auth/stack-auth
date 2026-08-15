@@ -147,6 +147,14 @@ function scrubHeaderValue(name: string, value: string): string {
   return typeof scrubbed === "string" ? scrubbed : FILTERED_VALUE;
 }
 
+// Cookie NAMES are retained as presence diagnostics (their values are always
+// discarded), but they are still caller-controlled request data: a client can
+// send arbitrarily many cookies and can put value-shaped secrets (JWTs,
+// emails, key material) into the name half of a pair. Bound the collection
+// and run each name through the string scrubber so those bypasses close
+// without hiding which legitimate cookies were present.
+const MAX_COOKIE_NAMES = 50;
+
 function safeHeadersFromEntries(entries: Iterable<readonly [string, string]>): { headers: Record<string, string>, cookieNames: string[] } {
   const headers: Record<string, string> = {};
   const cookieNames = new Set<string>();
@@ -156,14 +164,22 @@ function safeHeadersFromEntries(entries: Iterable<readonly [string, string]>): {
     if (name === "cookie") {
       for (const cookie of rawValue.split(";")) {
         const cookieName = cookie.split("=", 1)[0]?.trim();
-        if (cookieName !== "") cookieNames.add(cookieName);
+        if (cookieName !== "") {
+          cookieNames.add(scrubString(cookieName, { remainingCharacters: MAX_CONTEXT_STRING_LENGTH }));
+        }
       }
       continue;
     }
     if (SAFE_HEADER_NAMES.has(name)) headers[name] = scrubHeaderValue(name, rawValue);
   }
 
-  return { headers, cookieNames: [...cookieNames].sort() };
+  const sortedCookieNames = [...cookieNames].sort();
+  return {
+    headers,
+    cookieNames: sortedCookieNames.length > MAX_COOKIE_NAMES
+      ? [...sortedCookieNames.slice(0, MAX_COOKIE_NAMES), "[Names limited]"]
+      : sortedCookieNames,
+  };
 }
 
 function safeUrlPath(url: string): { path: string, queryParameterCount: number } {
@@ -171,8 +187,14 @@ function safeUrlPath(url: string): { path: string, queryParameterCount: number }
     const parsed = new URL(url);
     // Query values are request data, not safe route metadata. Keep only the
     // path and count so a useful route diagnostic survives without retaining
-    // arbitrary user input in a Sentry scope.
-    return { path: parsed.pathname, queryParameterCount: [...parsed.searchParams.keys()].length };
+    // arbitrary user input in a Sentry scope. The path itself is still
+    // caller-controlled — dynamic and catch-all segments can carry PII or
+    // value-shaped secrets (emails, JWTs, tokens) — so it goes through the
+    // same string scrubber and size bound as every other retained string.
+    return {
+      path: scrubString(parsed.pathname, { remainingCharacters: MAX_CONTEXT_STRING_LENGTH }),
+      queryParameterCount: [...parsed.searchParams.keys()].length,
+    };
   } catch {
     return { path: "[Invalid URL]", queryParameterCount: 0 };
   }

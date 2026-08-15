@@ -1,4 +1,4 @@
-import { createProductionErrorAttachmentService } from "@/lib/attachments";
+import { createProductionErrorAttachmentService, ErrorAttachmentNotFoundError } from "@/lib/attachments";
 import { validateErrorAttachmentScope } from "@/lib/attachments/attachment-contract";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import type { SmartResponse } from "@/route-handlers/smart-response";
@@ -40,8 +40,14 @@ export const GET = createSmartRouteHandler({
         },
       } as const;
     } catch (error) {
-      if (error instanceof Error && error.message.includes("not found")) throw new StatusError(StatusError.NotFound, "Attachment not found");
-      throw new StatusError(StatusError.InternalServerError, "Attachment bytes are unavailable");
+      // Match the not-found case by type, not by message text: the service also
+      // throws ErrorAttachmentNotFoundError("Attachment bytes are not available")
+      // when the metadata row exists but the backing object is gone, and every
+      // absent-attachment case must be the same 404. Anything else (storage
+      // outage, integrity mismatch) is an internal fault — rethrow so the
+      // generic 500 handler logs it without reflecting details to the caller.
+      if (error instanceof ErrorAttachmentNotFoundError) throw new StatusError(StatusError.NotFound, "Attachment not found");
+      throw error;
     }
   },
 });

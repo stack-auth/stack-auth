@@ -41,6 +41,25 @@ export type ErrorIngestClientReportRequest = {
 /** Relay shifts client-report timestamps when the envelope clock is badly skewed. */
 export const ERROR_INGEST_CLIENT_REPORT_MIN_CLOCK_DRIFT_MS = 55 * 60 * 1_000;
 
+/**
+ * Deliberate wire-parse rejections. Routes reflect exactly this class as a 400
+ * (mirroring how the envelope route treats ErrorIngestEnvelopeError); any other
+ * error stays an internal failure and must not reach the client.
+ */
+export class ErrorIngestClientReportParseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ErrorIngestClientReportParseError";
+  }
+}
+
+// Same shapes the envelope metadata boundary refuses (SECRET_TEXT_RE in
+// error-ingest-envelope.ts): client-report reason/category are the only
+// client-authored strings that reach the loss ledger without the payload
+// scrubber, so an auth header or JWT pasted there must fail the parse instead
+// of being persisted verbatim.
+const SECRET_TEXT_RE = /(?:bearer\s+|basic\s+|-----begin [^-]*private key-----|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})/iu;
+
 const REPORT_BUCKETS: readonly ErrorIngestClientReportBucket[] = [
   "discarded_events",
   "rate_limited_events",
@@ -98,22 +117,25 @@ function parseReportTimestamp(value: unknown): number | undefined {
 
   let timestampMs: number;
   if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new Error("Error ingest client report timestamp is invalid");
+    if (!Number.isFinite(value)) throw new ErrorIngestClientReportParseError("Error ingest client report timestamp is invalid");
     // Relay's UnixTimestamp is expressed in seconds. Accepting millisecond
     // values as well keeps this boundary compatible with browser adapters that
     // already operate in Date#getTime units without widening the date range.
-    timestampMs = Math.abs(value) >= 100_000_000_000 ? value : value * 1_000;
+    // Rounding keeps fractional-second timestamps (and float artifacts of the
+    // seconds→ms conversion) inside the safe-integer check below, matching the
+    // envelope timestamp parser.
+    timestampMs = Math.round(Math.abs(value) >= 100_000_000_000 ? value : value * 1_000);
   } else if (typeof value === "string") {
-    if (!isBoundedText(value, 64)) throw new Error("Error ingest client report timestamp is invalid");
+    if (!isBoundedText(value, 64)) throw new ErrorIngestClientReportParseError("Error ingest client report timestamp is invalid");
     const parsed = Date.parse(value);
-    if (!Number.isFinite(parsed)) throw new Error("Error ingest client report timestamp is invalid");
+    if (!Number.isFinite(parsed)) throw new ErrorIngestClientReportParseError("Error ingest client report timestamp is invalid");
     timestampMs = parsed;
   } else {
-    throw new Error("Error ingest client report timestamp is invalid");
+    throw new ErrorIngestClientReportParseError("Error ingest client report timestamp is invalid");
   }
 
   if (!Number.isSafeInteger(timestampMs) || !Number.isFinite(new Date(timestampMs).getTime())) {
-    throw new Error("Error ingest client report timestamp is outside the supported date range");
+    throw new ErrorIngestClientReportParseError("Error ingest client report timestamp is outside the supported date range");
   }
   return timestampMs;
 }
@@ -162,9 +184,12 @@ function isRecord(value: unknown): value is { readonly [key: string]: unknown } 
 }
 
 function parseReportEntries(value: unknown, field: string): ErrorIngestClientReportEntry[] {
-  if (!Array.isArray(value) || value.length > MAX_REPORT_ROWS) throw new Error(`${field} must be an array with at most ${MAX_REPORT_ROWS} entries`);
+  // Sentry SDKs omit buckets they have nothing to report for, so a missing
+  // bucket is an empty one (mirroring the envelope parser), not a parse error.
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > MAX_REPORT_ROWS) throw new ErrorIngestClientReportParseError(`${field} must be an array with at most ${MAX_REPORT_ROWS} entries`);
   return value.map((entry) => {
-    if (!isRecord(entry)) throw new Error(`${field} entries must be objects`);
+    if (!isRecord(entry)) throw new ErrorIngestClientReportParseError(`${field} entries must be objects`);
     const reason = entry.reason;
     const category = entry.category;
     const quantity = entry.quantity;
@@ -175,18 +200,21 @@ function parseReportEntries(value: unknown, field: string): ErrorIngestClientRep
       !isBoundedText(reason, ERROR_INGEST_CLIENT_REPORT_REASON_CATEGORY_MAX_BYTES)
       || !isBoundedText(category, ERROR_INGEST_CLIENT_REPORT_REASON_CATEGORY_MAX_BYTES)
     ) {
-      throw new Error(`${field} reason and category are not supported bounded values`);
+      throw new ErrorIngestClientReportParseError(`${field} reason and category are not supported bounded values`);
+    }
+    if (SECRET_TEXT_RE.test(reason) || SECRET_TEXT_RE.test(category)) {
+      throw new ErrorIngestClientReportParseError(`${field} reason and category must not contain secret-bearing text`);
     }
     if (!isReportQuantity(quantity)) {
-      throw new Error(`${field} quantity is outside the supported range`);
+      throw new ErrorIngestClientReportParseError(`${field} quantity is outside the supported range`);
     }
     return { reason, category, quantity };
   });
 }
 
 export function parseErrorIngestClientReportRequest(value: unknown): ErrorIngestClientReportRequest {
-  if (!isRecord(value)) throw new Error("Error ingest client report must be an object");
-  if (!isBoundedText(value.idempotency_key, ERROR_INGEST_CLIENT_REPORT_IDEMPOTENCY_KEY_MAX_BYTES)) throw new Error("Error ingest client report idempotency_key is required and must be bounded");
+  if (!isRecord(value)) throw new ErrorIngestClientReportParseError("Error ingest client report must be an object");
+  if (!isBoundedText(value.idempotency_key, ERROR_INGEST_CLIENT_REPORT_IDEMPOTENCY_KEY_MAX_BYTES)) throw new ErrorIngestClientReportParseError("Error ingest client report idempotency_key is required and must be bounded");
   const timestampMs = parseReportTimestamp(value.timestamp);
   const clientReport = {
     discarded_events: parseReportEntries(value.discarded_events, "discarded_events"),
@@ -195,7 +223,7 @@ export function parseErrorIngestClientReportRequest(value: unknown): ErrorIngest
     filtered_sampling_events: parseReportEntries(value.filtered_sampling_events, "filtered_sampling_events"),
   } satisfies ErrorIngestClientReportProjection;
   if (Object.values(clientReport).reduce((count, entries) => count + entries.length, 0) > MAX_REPORT_ROWS) {
-    throw new Error(`Error ingest client report contains more than ${MAX_REPORT_ROWS} entries`);
+    throw new ErrorIngestClientReportParseError(`Error ingest client report contains more than ${MAX_REPORT_ROWS} entries`);
   }
   return {
     clientReport,
@@ -217,25 +245,42 @@ export function buildErrorIngestClientReportRows(
   }
   if (!isBoundedText(projection.idempotencyKey, ERROR_INGEST_CLIENT_REPORT_IDEMPOTENCY_KEY_MAX_BYTES)) throw new Error("Error ingest client report idempotency key is invalid");
 
-  const rows: ErrorIngestClientReportRow[] = [];
+  // The persisted unique index is (scope, idempotencyKey, bucket, reason,
+  // category), and every row of one projection shares the idempotencyKey. Two
+  // same-identity entries in one request would therefore collide with each
+  // other and `skipDuplicates` would silently drop the second one's quantity,
+  // so merge them into a single summed row before building rows.
+  const aggregated = new Map<string, { bucket: ErrorIngestClientReportBucket, reason: string, category: string, quantity: number }>();
+  let entryCount = 0;
   for (const bucket of REPORT_BUCKETS) {
     for (const entry of entriesForBucket(projection.clientReport, bucket)) {
-      if (rows.length >= MAX_REPORT_ROWS) throw new Error("Error ingest client report contains too many entries");
+      entryCount += 1;
+      if (entryCount > MAX_REPORT_ROWS) throw new Error("Error ingest client report contains too many entries");
       validateEntry(entry);
-      rows.push({
-        ...scope,
-        id: randomUUID(),
-        protocol,
-        bucket,
-        reason: entry.reason,
-        category: entry.category,
-        quantity: entry.quantity,
-        idempotencyKey: projection.idempotencyKey,
-        reportedAt,
-      });
+      const key = JSON.stringify([bucket, entry.reason, entry.category]);
+      const existing = aggregated.get(key);
+      if (existing === undefined) {
+        aggregated.set(key, { bucket, reason: entry.reason, category: entry.category, quantity: entry.quantity });
+      } else {
+        // Saturate instead of overflowing: each entry is individually bounded,
+        // but a merged sum could exceed the ledger's supported range (and the
+        // Int column). The ledger is lossy accounting metadata, so capping is
+        // preferable to rejecting an otherwise valid report.
+        existing.quantity = Math.min(existing.quantity + entry.quantity, MAX_REPORT_QUANTITY);
+      }
     }
   }
-  return rows;
+  return [...aggregated.values()].map((entry) => ({
+    ...scope,
+    id: randomUUID(),
+    protocol,
+    bucket: entry.bucket,
+    reason: entry.reason,
+    category: entry.category,
+    quantity: entry.quantity,
+    idempotencyKey: projection.idempotencyKey,
+    reportedAt,
+  }));
 }
 
 export function buildErrorIngestClientReportRequestRows(
@@ -251,14 +296,16 @@ export function buildErrorIngestClientReportRequestRows(
   );
 }
 
-export async function persistErrorIngestClientReportProjection(
-  scope: ErrorIngestClientReportScope,
-  protocol: ErrorIngestClientReportProtocol,
-  projection: Pick<ErrorIngestProtocolProjection, "clientReport" | "idempotencyKey">,
-  client: typeof globalPrismaClient = globalPrismaClient,
-  reportedAt = new Date(),
+/**
+ * The single persistence contract for loss-ledger rows: idempotent insert via
+ * the (scope, idempotencyKey, bucket, reason, category) unique index. Both
+ * public persist entry points funnel through here so the write semantics
+ * cannot drift between the projection and raw-request paths.
+ */
+async function persistErrorIngestClientReportRows(
+  rows: readonly ErrorIngestClientReportRow[],
+  client: typeof globalPrismaClient,
 ): Promise<number> {
-  const rows = buildErrorIngestClientReportRows(scope, protocol, projection, reportedAt);
   if (rows.length === 0) return 0;
   return await retryTransaction(client, async (tx: PrismaClientTransaction) => {
     const result = await tx.errorIngestClientReport.createMany({
@@ -269,19 +316,21 @@ export async function persistErrorIngestClientReportProjection(
   });
 }
 
+export async function persistErrorIngestClientReportProjection(
+  scope: ErrorIngestClientReportScope,
+  protocol: ErrorIngestClientReportProtocol,
+  projection: Pick<ErrorIngestProtocolProjection, "clientReport" | "idempotencyKey">,
+  client: typeof globalPrismaClient = globalPrismaClient,
+  reportedAt = new Date(),
+): Promise<number> {
+  return await persistErrorIngestClientReportRows(buildErrorIngestClientReportRows(scope, protocol, projection, reportedAt), client);
+}
+
 export async function persistErrorIngestClientReportRequest(
   scope: ErrorIngestClientReportScope,
   request: ErrorIngestClientReportRequest,
   client: typeof globalPrismaClient = globalPrismaClient,
   reportedAt = new Date(),
 ): Promise<number> {
-  const rows = buildErrorIngestClientReportRequestRows(scope, request, reportedAt);
-  if (rows.length === 0) return 0;
-  return await retryTransaction(client, async (tx: PrismaClientTransaction) => {
-    const result = await tx.errorIngestClientReport.createMany({
-      data: rows.map((row) => ({ ...row })),
-      skipDuplicates: true,
-    });
-    return result.count;
-  });
+  return await persistErrorIngestClientReportRows(buildErrorIngestClientReportRequestRows(scope, request, reportedAt), client);
 }

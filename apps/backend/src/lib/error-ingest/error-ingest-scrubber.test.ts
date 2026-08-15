@@ -36,6 +36,36 @@ describe("scrubErrorIngestPayload", () => {
     expect(result.truncated).toBe(true);
   });
 
+  it("filters secrets in serialized JSON messages and protocol-relative URL credentials", () => {
+    const result = scrubErrorIngestPayload({
+      message: 'sign-in failed: {"password":"hunter2","user":"bob"} via //login:hunter3@auth.example.test/callback',
+      detail: "config {'api_key':'abc123'}",
+    });
+
+    const serialized = JSON.stringify(result.value);
+    expect(result.value).toEqual({
+      message: 'sign-in failed: {"password":"[Filtered]","user":"bob"} via //[Filtered]@auth.example.test/callback',
+      detail: "config {'api_key':'[Filtered]'}",
+    });
+    expect(serialized).not.toContain("hunter2");
+    expect(serialized).not.toContain("hunter3");
+    expect(serialized).not.toContain("abc123");
+  });
+
+  it("keeps the built-in drop policy authoritative over urlKeys overrides", () => {
+    // A urlKeys override may only relax a plain field to a path-only URL
+    // projection. Pointing it at a built-in sensitive key must not resurrect
+    // any part of the value as a "URL path".
+    const result = scrubErrorIngestPayload(
+      { tags: { password: "https://example.test/reset?code=secret-code", plain: "https://example.test/page?q=1" } },
+      { overrides: { urlKeys: ["tags.password", "tags.plain"] } },
+    );
+
+    expect(result.value).toEqual({ tags: { plain: "https://example.test/page" } });
+    expect(JSON.stringify(result.value)).not.toContain("secret-code");
+    expect(result.dropped).toContain("$.tags.password.sensitive");
+  });
+
   it("is cycle-safe, bounds recursion and collections, and emits deterministic output", () => {
     const payload: Record<string, unknown> = {
       z: "last",

@@ -11,15 +11,15 @@ function json(value: unknown): string {
 }
 
 function envelope(header: unknown, items: readonly { header: unknown, payload: string | Uint8Array }[]): Uint8Array {
+  // Mirrors real SDK framing: item parts are JOINED with "\n" and the final
+  // payload ends at EOF with no trailing newline — including a final
+  // length-framed item, so these fixtures exercise the parser's EOF terminator
+  // path instead of always padding a newline the wire format doesn't promise.
   const chunks: Uint8Array[] = [new TextEncoder().encode(`${json(header)}\n`)];
-  for (const item of items) {
+  for (const [index, item] of items.entries()) {
     const payload = typeof item.payload === "string" ? new TextEncoder().encode(item.payload) : item.payload;
     chunks.push(new TextEncoder().encode(`${json(item.header)}\n`), payload);
-    if (item.header !== undefined && typeof item.header === "object" && item.header !== null && "length" in item.header) {
-      chunks.push(new Uint8Array([0x0a]));
-    } else if (chunks.length > 0 && (items.indexOf(item) < items.length - 1)) {
-      chunks.push(new Uint8Array([0x0a]));
-    }
+    if (index < items.length - 1) chunks.push(new Uint8Array([0x0a]));
   }
   const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
   const result = new Uint8Array(total);
@@ -86,6 +86,41 @@ describe("Sentry-style error ingest envelope contract", () => {
     expect(JSON.stringify(parsed)).not.toContain("private attachment bytes");
     expect(parsed.protocolProjection.items.map((item) => item.status)).toEqual(["accepted", "accepted", "accepted"]);
     expect(parsed.protocolProjection.items.map((item) => item.category)).toEqual(["error", "client_report", "attachment"]);
+  });
+
+  it("accepts a length-framed final item terminated by EOF and one terminated by a newline", () => {
+    const eventId = "0123456789abcdef0123456789abcdef";
+    const attachmentBytes = new TextEncoder().encode("binary\xffbytes");
+    const item = lengthFramedItem({ type: "attachment", filename: "crash.bin", content_type: "application/octet-stream" }, attachmentBytes);
+    const atEof = envelope({ event_id: eventId }, [{ header: item.header, payload: attachmentBytes }]);
+    expect(atEof[atEof.byteLength - 1]).not.toBe(0x0a);
+    expect(parseErrorIngestEnvelope(atEof).items[0]?.outcome.status).toBe("accepted");
+
+    const withNewline = new Uint8Array(atEof.byteLength + 1);
+    withNewline.set(atEof, 0);
+    withNewline[withNewline.byteLength - 1] = 0x0a;
+    expect(parseErrorIngestEnvelope(withNewline).items[0]?.outcome.status).toBe("accepted");
+
+    // A declared length that overruns the envelope stays malformed.
+    const truncated = atEof.subarray(0, atEof.byteLength - 1);
+    expect(() => parseErrorIngestEnvelope(truncated)).toThrow(/framing/iu);
+  });
+
+  it("accepts Dynamic Sampling Context trace headers carrying the public DSN key", () => {
+    const eventId = "0123456789abcdef0123456789abcdef";
+    const parsed = parseErrorIngestEnvelope(envelope(
+      {
+        event_id: eventId,
+        trace: {
+          trace_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          public_key: "abcdef0123456789abcdef0123456789",
+          sample_rate: "1.0",
+        },
+      },
+      [{ header: { type: "event" }, payload: json({ event_id: eventId, message: "boom" }) }],
+    ));
+    expect(parsed.header.trace).toMatchObject({ public_key: "abcdef0123456789abcdef0123456789" });
+    expect(parsed.items[0]?.outcome.status).toBe("accepted");
   });
 
   it("uses the envelope event identity for retries that change payload metadata", () => {

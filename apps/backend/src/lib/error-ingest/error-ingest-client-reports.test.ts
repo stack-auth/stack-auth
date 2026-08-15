@@ -4,6 +4,7 @@ import {
   buildErrorIngestClientReportRequestRows,
   buildErrorIngestClientReportRows,
   ERROR_INGEST_CLIENT_REPORT_REASON_CATEGORY_MAX_BYTES,
+  ErrorIngestClientReportParseError,
   normalizeErrorIngestClientReportReportedAt,
   parseErrorIngestClientReportRequest,
 } from "./error-ingest-client-reports";
@@ -121,6 +122,51 @@ describe("error ingest client report persistence contract", () => {
       filtered_events: [],
       filtered_sampling_events: [],
     })).toThrow(/reason and category/iu);
+  });
+
+  it("treats omitted buckets as empty, rounds fractional Unix timestamps, and rejects secret-bearing text as a typed parse error", () => {
+    // Standard Sentry client reports carry only `discarded_events`.
+    const request = parseErrorIngestClientReportRequest({
+      idempotency_key: "client-batch-minimal",
+      timestamp: 1_754_444_800.25,
+      discarded_events: [{ reason: "network_error", category: "error", quantity: 1 }],
+    });
+    expect(request.timestampMs).toBe(1_754_444_800_250);
+    expect(request.clientReport).toEqual({
+      discarded_events: [{ reason: "network_error", category: "error", quantity: 1 }],
+      rate_limited_events: [],
+      filtered_events: [],
+      filtered_sampling_events: [],
+    });
+
+    let thrown: unknown;
+    try {
+      parseErrorIngestClientReportRequest({
+        idempotency_key: "client-batch-secret",
+        discarded_events: [{ reason: "Bearer top-secret", category: "error", quantity: 1 }],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ErrorIngestClientReportParseError);
+    expect(String(thrown)).toContain("secret-bearing");
+    expect(() => parseErrorIngestClientReportRequest("not-an-object")).toThrow(ErrorIngestClientReportParseError);
+  });
+
+  it("merges same-identity entries in one request so skipDuplicates cannot drop quantity", () => {
+    const request = parseErrorIngestClientReportRequest({
+      idempotency_key: "client-batch-duplicates",
+      discarded_events: [
+        { reason: "network_error", category: "error", quantity: 2 },
+        { reason: "network_error", category: "error", quantity: 3 },
+        { reason: "queue_overflow", category: "error", quantity: 1 },
+      ],
+    });
+    const rows = buildErrorIngestClientReportRequestRows(scope, request);
+    expect(rows.map(({ bucket, reason, category, quantity }) => ({ bucket, reason, category, quantity }))).toEqual([
+      { bucket: "discarded_events", reason: "network_error", category: "error", quantity: 5 },
+      { bucket: "discarded_events", reason: "queue_overflow", category: "error", quantity: 1 },
+    ]);
   });
 
   it("uses the client timestamp for durable report chronology", () => {

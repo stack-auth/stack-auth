@@ -6,10 +6,11 @@ import {
   type ErrorIngestItemOutcomeDetails,
   type ErrorIngestProtocolProjection,
 } from "@/lib/error-ingest";
-import { getOtlpIssueBatchId } from "@/lib/otlp-log-writer";
-import type { CanonicalOtlpLogRecord } from "@/lib/otlp-logs";
-import { getOtlpTraceDeduplicationToken, type OtlpTenantContext } from "@/lib/otlp-trace-writer";
-import type { CanonicalOtlpSpan } from "@/lib/otlp-traces";
+import { getOtlpIssueBatchId } from "@/lib/otlp/log-writer";
+import type { CanonicalOtlpLogRecord } from "@/lib/otlp/logs";
+import { getOtlpTraceDeduplicationToken, type OtlpTenantContext } from "@/lib/otlp/trace-writer";
+import type { CanonicalOtlpSpan } from "@/lib/otlp/traces";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import type { ErrorIngestPolicyItemOutcome } from "./error-ingest-policy";
 
 function policyDetails(outcome: ErrorIngestPolicyItemOutcome): ErrorIngestItemOutcomeDetails {
@@ -96,16 +97,26 @@ export function createOtlpTraceProtocolProjection(
   tenant: OtlpTenantContext,
   policyOutcomes?: readonly ErrorIngestPolicyItemOutcome[],
 ): ErrorIngestProtocolProjection {
-  const policyByItemId = new Map(policyOutcomes?.map((outcome) => [outcome.itemId, outcome]));
-  const outcomes = spans.map((span) => {
+  // Span item IDs are identity-derived (`span:{traceId}:{spanId}`), so one
+  // request can legally contain the same item ID twice. Policy outcomes are
+  // per OCCURRENCE (the route builds one policy item per span, in span order),
+  // so match them by position — an ID-keyed map would collapse duplicate
+  // identities onto the last outcome and misreport partial-success and
+  // client-report counts.
+  if (policyOutcomes !== undefined && policyOutcomes.length !== spans.length) {
+    throw new HexclaveAssertionError("OTLP trace policy outcomes must be one-per-span in span order");
+  }
+  const outcomes = spans.map((span, spanIndex) => {
     const item: ErrorIngestItemDescriptor = {
       itemId: `span:${span.traceId}:${span.spanId}`,
       itemType: "span",
     };
-    const policyOutcome = policyByItemId.get(item.itemId);
-    return policyOutcome === undefined
-      ? createErrorIngestItemOutcome(item, { status: "accepted" })
-      : createErrorIngestItemOutcome(item, policyDetails(policyOutcome));
+    const policyOutcome = policyOutcomes?.[spanIndex];
+    if (policyOutcome === undefined) return createErrorIngestItemOutcome(item, { status: "accepted" });
+    if (policyOutcome.itemId !== item.itemId) {
+      throw new HexclaveAssertionError("OTLP trace policy outcome order does not match the span order");
+    }
+    return createErrorIngestItemOutcome(item, policyDetails(policyOutcome));
   });
   return createErrorIngestProtocolProjection(getOtlpTraceDeduplicationToken(spans, tenant), outcomes);
 }

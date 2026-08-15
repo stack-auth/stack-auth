@@ -117,6 +117,19 @@ it("accepts an authenticated Sentry envelope and returns itemized outcomes", asy
     rawContentType: "application/x-sentry-envelope",
   });
   expect(retry.status).toBe(200);
+  // A retry of the identical envelope must be treated as the same delivery end
+  // to end: the batch id is derived from the envelope's event id, so ClickHouse
+  // and the client-report ledger dedupe on it, and the retry reports the same
+  // counts instead of double-counting events or client reports.
+  expect(retry.body).toMatchObject({
+    batch_id: response.body.batch_id,
+    inserted: 1,
+    status: "accepted",
+    ingest: {
+      counts: { accepted: 3 },
+      idempotency_key: response.body.ingest.idempotency_key,
+    },
+  });
 
   const attachments = await niceBackendFetch(`/api/v1/analytics/attachments?event_id=${eventId}`, {
     method: "GET",

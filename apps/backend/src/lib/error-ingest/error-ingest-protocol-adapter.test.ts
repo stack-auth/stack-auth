@@ -53,18 +53,21 @@ describe("error-ingest protocol adapter", () => {
         { category: "span", reason: "sampling", quantity: 1 },
       ],
     });
+    // Each OTLP signal counts only its own item types: the filtered log for
+    // `logs`, the sampled-out span for `traces`. The other five rejections are
+    // events/unknown items that no OTLP signal may claim.
     expect(projection.otlpPartialSuccess.logs).toEqual({
-      rejectedItems: 5,
+      rejectedItems: 1,
       body: {
         partialSuccess: {
-          rejectedLogRecords: "5",
-          errorMessage: "error ingest rejected 5 item(s): filtered=2, rate_limited=1, rejected=1, dropped=1",
+          rejectedLogRecords: "1",
+          errorMessage: "error ingest rejected 1 item(s): filtered=1",
         },
       },
     });
     expect(projection.otlpPartialSuccess.traces.body.partialSuccess).toEqual({
-      rejectedSpans: "5",
-      errorMessage: "error ingest rejected 5 item(s): filtered=2, rate_limited=1, rejected=1, dropped=1",
+      rejectedSpans: "1",
+      errorMessage: "error ingest rejected 1 item(s): filtered=1",
     });
     expect(projection.legacyBatch).toMatchObject({
       batchId: "batch-1",
@@ -150,7 +153,7 @@ describe("error-ingest protocol adapter", () => {
   it("bounds OTLP error text without copying item reasons or payloads", () => {
     const projection = createErrorIngestProtocolProjection(
       "bounded",
-      [createErrorIngestItemOutcome(item("secret-item"), { status: "rejected", reason: "invalid" })],
+      [createErrorIngestItemOutcome(item("secret-item", "log"), { status: "rejected", reason: "invalid" })],
       { limits: { maxErrorMessageBytes: 12 } },
     );
     const partialSuccess = projection.otlpPartialSuccess.logs.body.partialSuccess;
@@ -193,6 +196,9 @@ describe("error-ingest protocol adapter", () => {
     expect(projection.clientReport.discarded_events).toEqual([
       { category: "transaction", reason: "unsupported", quantity: 1 },
     ]);
-    expect(projection.otlpPartialSuccess.logs).toMatchObject({ rejectedItems: 1 });
+    // Transactions belong to the traces signal; a batch with no log items must
+    // never report rejectedLogRecords.
+    expect(projection.otlpPartialSuccess.logs).toMatchObject({ rejectedItems: 0 });
+    expect(projection.otlpPartialSuccess.traces).toMatchObject({ rejectedItems: 1 });
   });
 });

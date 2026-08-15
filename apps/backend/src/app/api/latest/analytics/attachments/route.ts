@@ -1,7 +1,7 @@
-import { createProductionErrorAttachmentService, type ErrorAttachmentMetadata } from "@/lib/attachments";
-import { validateErrorAttachmentScope, validateErrorEventId } from "@/lib/attachments/attachment-contract";
+import { createProductionErrorAttachmentService, ErrorAttachmentConflictError, type ErrorAttachmentMetadata } from "@/lib/attachments";
+import { validateErrorAttachmentScope, validateErrorAttachmentUpload, validateErrorEventId, type ValidatedErrorAttachmentUpload } from "@/lib/attachments/attachment-contract";
+import { assertObservabilityEnabled } from "@/lib/issues/observability-gate";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
@@ -44,12 +44,30 @@ export const POST = createSmartRouteHandler({
   }).defined(),
   async handler({ auth, body }) {
     assertObservabilityEnabled(auth.tenancy);
+    // Parse the payload at the route boundary, separately from the service
+    // call, so the 400 response reflects ONLY errors thrown by our own
+    // validator (every throw in attachment-contract.ts is a fixed, safe
+    // message). This replaces a former message-substring heuristic that could
+    // classify infrastructure failures as client errors and echo their text.
+    let upload: ValidatedErrorAttachmentUpload;
+    try {
+      upload = validateErrorAttachmentUpload(body);
+    } catch (error) {
+      if (error instanceof Error) throw new StatusError(StatusError.BadRequest, error.message);
+      throw error;
+    }
     const service = await createProductionErrorAttachmentService(auth.tenancy);
     let result;
     try {
-      result = await service.upload(attachmentScope(auth.tenancy), body);
+      result = await service.uploadBytes(attachmentScope(auth.tenancy), upload);
     } catch (error) {
-      throw toAttachmentStatusError(error);
+      // Conflicts are matched by type (never by error.name, which stays
+      // "Error" for subclasses that don't set it) so idempotency-key/content
+      // mismatches surface as the intended 409 with the service's fixed
+      // message. Everything else is an internal fault (DB/object storage) and
+      // bubbles to the generic 500 handler without leaking details.
+      if (error instanceof ErrorAttachmentConflictError) throw new StatusError(StatusError.Conflict, error.message);
+      throw error;
     }
     return { statusCode: 200, bodyType: "json", body: { status: result.status, attachment: serializeAttachment(result.attachment) } } as const;
   },
@@ -93,10 +111,6 @@ function validateEventIdForRoute(value: unknown): string {
   }
 }
 
-function assertObservabilityEnabled(tenancy: { config: { apps: { installed: { observability?: { enabled?: boolean } } } } }): void {
-  if (!tenancy.config.apps.installed.observability?.enabled) throw new KnownErrors.ObservabilityNotEnabled();
-}
-
 function serializeAttachment(attachment: ErrorAttachmentMetadata) {
   return {
     id: attachment.id,
@@ -109,13 +123,4 @@ function serializeAttachment(attachment: ErrorAttachmentMetadata) {
     sha256: attachment.sha256,
     created_at: attachment.createdAt.toISOString(),
   };
-}
-
-function toAttachmentStatusError(error: unknown): StatusError {
-  if (error instanceof StatusError) return error;
-  if (error instanceof Error && error.message.includes("Attachment")) {
-    const status = error.name === "ErrorAttachmentConflictError" ? StatusError.Conflict : StatusError.BadRequest;
-    return new StatusError(status, error.message);
-  }
-  return new StatusError(StatusError.BadRequest, "Invalid error attachment");
 }

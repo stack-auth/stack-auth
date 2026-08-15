@@ -4,7 +4,7 @@ import {
   ErrorIngestTransactionAdapterError,
   sentryTransactionToCanonicalOtlpSpans,
 } from "./error-ingest-transaction-adapter";
-import { buildOtlpTraceRows, getOtlpTraceDeduplicationToken } from "../otlp-trace-writer";
+import { buildOtlpTraceRows, getOtlpTraceDeduplicationToken } from "@/lib/otlp/trace-writer";
 
 const EVENT_ID = "55555555555555555555555555555555";
 const TRACE_ID = "66666666666666666666666666666666";
@@ -109,6 +109,24 @@ describe("Sentry transaction to canonical OTLP adapter", () => {
       endTimeUnixNano: "1754444800750000000",
     });
     expect(spans[1]?.attributes.get("sentry.span.data")).toEqual(expect.objectContaining({ type: "kvlist" }));
+  });
+
+  it("retains the distributed upstream ancestor on the transaction root", () => {
+    const upstreamSpanId = "9999999999999999";
+    const spans = sentryTransactionToCanonicalOtlpSpans(parseTransaction({
+      contexts: {
+        trace: {
+          trace_id: TRACE_ID,
+          span_id: ROOT_SPAN_ID,
+          parent_span_id: upstreamSpanId,
+          op: "http.server",
+          status: "ok",
+        },
+      },
+    }), context);
+    // Continuing the upstream trace (instead of forcing null) keeps one root
+    // per distributed trace when both services report their spans here.
+    expect(spans[0]).toMatchObject({ spanId: ROOT_SPAN_ID, parentSpanId: upstreamSpanId });
   });
 
   it("keeps the authenticated retry identity stable while preserving privacy in rows", () => {

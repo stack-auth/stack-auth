@@ -92,6 +92,12 @@ export type ErrorIngestEnvelopeTransactionMetadata = {
   durationMs: number,
   traceId: string,
   spanId: string,
+  /**
+   * The upstream ancestor from `contexts.trace.parent_span_id`. Retained so a
+   * distributed transaction keeps its cross-service ancestry instead of being
+   * flattened into a second trace root.
+   */
+  parentSpanId: string | null,
   spanCount: number,
   spans: readonly ErrorIngestEnvelopeTransactionSpan[],
 };
@@ -295,6 +301,11 @@ function parseEnvelopeHeader(value: RecordValue, limits: ErrorIngestEnvelopeLimi
     // meaningful to the local read model.
     const traceKeys = new Set([
       "trace_id",
+      // The Dynamic Sampling Context's public_key is the project's public DSN
+      // key (not a secret; SECRET_KEY_RE only matches api/private key forms)
+      // and is sent by default by current Sentry SDKs, so rejecting it would
+      // reject virtually every distributed-tracing envelope.
+      "public_key",
       "sample_rate",
       "release",
       "environment",
@@ -505,6 +516,13 @@ function parseTransactionMetadata(
   if (!isRecord(rawTrace)) throw new ErrorIngestEnvelopeError("malformed", "Transaction trace context is required");
   const traceId = transactionId(rawTrace.trace_id, "Transaction trace_id", /^[0-9a-f]{32}$/u);
   const spanId = transactionId(rawTrace.span_id, "Transaction span_id", /^[0-9a-f]{16}$/u);
+  let parentSpanId: string | null = null;
+  if (rawTrace.parent_span_id !== undefined && rawTrace.parent_span_id !== null) {
+    parentSpanId = transactionId(rawTrace.parent_span_id, "Transaction parent_span_id", /^[0-9a-f]{16}$/u);
+    if (parentSpanId === spanId) {
+      throw new ErrorIngestEnvelopeError("malformed", "Transaction is self-parented");
+    }
+  }
 
   const scrubbedResult = scrubErrorIngestPayload(rawTransaction, {
     maxPayloadBytes: Math.min(limits.maxEventPayloadBytes, 256 * 1024),
@@ -567,6 +585,7 @@ function parseTransactionMetadata(
     durationMs: timestampMs - startTimestampMs,
     traceId,
     spanId,
+    parentSpanId,
     spanCount,
     spans,
   };
@@ -756,10 +775,13 @@ export function parseErrorIngestEnvelope(
         throw new ErrorIngestEnvelopeError("malformed", "Envelope item length is invalid");
       }
       payloadEnd = itemHeaderLine.nextOffset + length;
-      if (payloadEnd > bytes.byteLength || bytes[payloadEnd] !== 0x0a) {
+      // The Sentry envelope spec terminates a length-framed payload with a
+      // newline OR end-of-file: SDKs join item parts with "\n" and emit no
+      // trailing newline after a final length-framed item (e.g. an attachment).
+      if (payloadEnd > bytes.byteLength || (payloadEnd < bytes.byteLength && bytes[payloadEnd] !== 0x0a)) {
         throw new ErrorIngestEnvelopeError("malformed", "Envelope item payload framing is invalid");
       }
-      nextOffset = payloadEnd + 1;
+      nextOffset = payloadEnd < bytes.byteLength ? payloadEnd + 1 : payloadEnd;
     }
     const payload = bytes.subarray(itemHeaderLine.nextOffset, payloadEnd);
     offset = nextOffset;

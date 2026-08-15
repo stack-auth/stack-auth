@@ -23,8 +23,8 @@ import type { CapturedErrorEvent, ErrorEventProcessor } from "../interfaces/erro
  * What we deliberately do NOT do (unlike Sentry): no client-side stack
  * PARSING into frames and no sourcemapping — the raw (bounded) stack string
  * ships and grouping stays server-side; no allowUrls/denyUrls filtering
- * (follow-up — ignoreErrors substring matching covers the v1 need); and no
- * replay-on-error buffered flush (follow-up).
+ * (`ignoreErrors` substring matching covers the current need); and no
+ * replay-on-error buffered flush.
  */
 
 // Mirrors the `$log` message cap (TELEMETRY_MAX_LOG_MESSAGE_BYTES): big enough for
@@ -122,7 +122,7 @@ export function computeErrorFingerprint(name: string, message: string, stack: st
   return djb2Hash(`${name}\n${message}\n${firstStackLine}`).toString(16);
 }
 
-type NormalizedError = {
+export type NormalizedError = {
   name: string,
   message: string,
   stack: string | null,
@@ -159,6 +159,62 @@ function exceptionValueFromNormalized(normalized: NormalizedError, mechanism?: C
     ...normalized.stack === null ? {} : { stacktrace: { raw: truncateUtf8Bytes(normalized.stack, ERROR_TEXT_MAX_BYTES) } },
     ...mechanism === undefined ? {} : { mechanism },
   };
+}
+
+/**
+ * Aggregate byte budget for one event's `exception.values` chain. Per-value
+ * truncation bounds each entry, but MAX_LINKED_ERROR_VALUES entries at up to
+ * ~3x ERROR_TEXT_MAX_BYTES of raw text each could still sum well past the
+ * shared 64KB item-data contract (CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES) and
+ * get the whole event dropped at ingest. 32KB leaves room for the bounded
+ * top-level message/stack (8KB each), debug images (4KB), and typical scope
+ * data, while a realistic worst-case single root value (~25KB) still fits.
+ */
+export const ERROR_EXCEPTION_VALUES_MAX_BYTES = 32_768;
+
+const exceptionValueEncoder = new TextEncoder();
+
+/**
+ * Applies the same per-value byte bounds `buildLinkedExceptionValues` bakes in
+ * to a CALLER-supplied value (captureEvent adapters hand us pre-built chains
+ * that must not bypass the byte budget every other capture path enforces).
+ * Frames are capped at the raw-stack frame budget for the same reason.
+ */
+function boundExceptionValue(value: CapturedExceptionValue): CapturedExceptionValue {
+  const stacktrace = value.stacktrace === undefined ? undefined : {
+    ...value.stacktrace.raw === undefined ? {} : { raw: truncateUtf8Bytes(value.stacktrace.raw, ERROR_TEXT_MAX_BYTES) },
+    ...value.stacktrace.frames === undefined ? {} : { frames: value.stacktrace.frames.slice(0, ERROR_STACK_TRACE_LIMIT) },
+  };
+  return {
+    ...value,
+    ...value.type === undefined ? {} : { type: truncateUtf8Bytes(value.type, ERROR_TEXT_MAX_BYTES) },
+    ...value.value === undefined ? {} : { value: truncateUtf8Bytes(value.value, ERROR_TEXT_MAX_BYTES) },
+    ...stacktrace === undefined ? {} : { stacktrace },
+  };
+}
+
+/**
+ * Bounds a whole exception chain: per-value truncation, the linked-value count
+ * cap, and the aggregate ERROR_EXCEPTION_VALUES_MAX_BYTES budget. The LAST
+ * value is the primary group identity, so trimming keeps the root plus the
+ * values nearest it (its direct causes) and drops the outermost-linked entries
+ * first — the same preference buildLinkedExceptionValues applies at its count
+ * cap. The root always survives, even alone over budget: an over-budget event
+ * beats silently losing the primary identity.
+ */
+function boundExceptionValues(values: readonly CapturedExceptionValue[]): CapturedExceptionValue[] {
+  const bounded = values.slice(-MAX_LINKED_ERROR_VALUES).map(boundExceptionValue);
+  const kept: CapturedExceptionValue[] = [];
+  // Byte accounting mirrors what JSON.stringify(values) actually costs: the
+  // enclosing `[]` plus one `,` between entries.
+  let bytes = 2;
+  for (let i = bounded.length - 1; i >= 0; i--) {
+    const entryBytes = exceptionValueEncoder.encode(JSON.stringify(bounded[i])).length + (kept.length > 0 ? 1 : 0);
+    if (kept.length > 0 && bytes + entryBytes > ERROR_EXCEPTION_VALUES_MAX_BYTES) break;
+    bytes += entryBytes;
+    kept.unshift(bounded[i]);
+  }
+  return kept;
 }
 
 export function buildLinkedExceptionValues(error: unknown, normalized: NormalizedError = normalizeCapturedError(error)): CapturedExceptionValue[] {
@@ -280,19 +336,24 @@ export function buildErrorEventData(error: unknown, options: BuildErrorEventData
   });
 }
 
-// Split from buildErrorEventData so the client capture path — which already
-// normalized the error for dedupe/flood-control — never normalizes twice:
+// Split from buildErrorEventData so client capture paths — which already
+// normalized the error for dedupe/flood-control (see
+// createClientErrorCapturePolicy) — never normalize twice:
 // normalizeCapturedError synthesizes a fresh capture-site stack for plain
 // objects, so a second call would produce a DIFFERENT stack (and fingerprint)
-// than the one the dedupe logic compared.
-function buildErrorEventDataFromNormalized(normalized: NormalizedError, options: BuildErrorEventDataOptions): CapturedErrorEvent {
+// than the one the dedupe logic compared. Exported for consumers of the
+// policy's admission result (console.error promotion in client-analytics.ts).
+export function buildErrorEventDataFromNormalized(normalized: NormalizedError, options: BuildErrorEventDataOptions): CapturedErrorEvent {
   const message = truncateUtf8Bytes(normalized.message, ERROR_TEXT_MAX_BYTES);
   const stack = normalized.stack !== null ? truncateUtf8Bytes(normalized.stack, ERROR_TEXT_MAX_BYTES) : null;
   // Resolved from the TRUNCATED stack on purpose: symbolication joins debug
   // images onto the frames parsed out of the stack that actually shipped, so an
   // image for a frame that got truncated away would never be used.
   const debugImages = (options.getDebugImages ?? getDebugImagesForStack)(stack);
-  const exceptionValues = options.exceptionValues ?? [exceptionValueFromNormalized(normalized)];
+  // Bounded at the single choke point every capture path funnels through, so
+  // neither a deep automatic cause chain nor an adapter-supplied chain can
+  // push the event past the shared item-data budget.
+  const exceptionValues = boundExceptionValues(options.exceptionValues ?? [exceptionValueFromNormalized(normalized)]);
   const primaryExceptionIndex = exceptionValues.length - 1;
   const exceptions = exceptionValues.map((exception, index) => index === primaryExceptionIndex
     ? {
@@ -336,9 +397,8 @@ function errorScopeToEventData(scope: ErrorScopeData | undefined): Record<string
     ...scope.level === undefined ? {} : { level: scope.level },
     // Processors are execution policy, not event data. They are passed to the
     // pipeline from the capture-time scope snapshot and never serialized.
-    // Keep the current deterministic grouping fingerprint separate from the
-    // future server-side custom-fingerprint contract. M3 will make this field
-    // affect grouping only after the backend can persist config provenance.
+    // The SDK event's local `fingerprint` is a client dedup key; grouping
+    // reads `fingerprint_override`.
     ...scope.fingerprint === undefined ? {} : { fingerprint_override: scope.fingerprint },
   };
 }
@@ -359,9 +419,7 @@ function renderStackFrames(frames: readonly ErrorStackFrame[] | undefined): stri
 /**
  * Adapts a normalized event input onto the existing `$error` projection. The
  * exception chain is retained under `exception`; name/message/stack remain at
- * the top level because the current backend grouping contract reads those
- * fields directly. This is the compatibility bridge until the rich envelope
- * becomes a first-class backend schema in M0/M2.
+ * the top level because backend grouping reads those fields directly.
  */
 export function buildCapturedEventData(event: CaptureEvent, options: {
   eventId: ErrorEventId,
@@ -374,7 +432,11 @@ export function buildCapturedEventData(event: CaptureEvent, options: {
   const name = event.name ?? exception?.type ?? "Error";
   const message = event.message ?? exception?.value ?? "";
   if (message === "") throw new Error("Hexclave captureEvent requires message or exception.values[].value");
-  const stack = event.stack ?? renderStackFrames(exception?.stacktrace?.frames);
+  // `raw` outranks rendered frames: it is the engine-native stack, which is
+  // what server-side grouping and debug-image lookup are tuned for. Without
+  // this fallback, an adapter supplying only `stacktrace.raw` would produce an
+  // event with no top-level stack at all.
+  const stack = event.stack ?? exception?.stacktrace?.raw ?? renderStackFrames(exception?.stacktrace?.frames);
   const data = buildErrorEventDataFromNormalized({
     name,
     message,
@@ -396,9 +458,99 @@ export function buildCapturedEventData(event: CaptureEvent, options: {
   return data;
 }
 
+export type ClientErrorCaptureAdmission = {
+  /**
+   * Normalized exactly ONCE, by the policy. Callers must build the event from
+   * THIS (via buildErrorEventDataFromNormalized) instead of re-normalizing:
+   * normalizeCapturedError synthesizes a fresh capture-site stack for plain
+   * objects, so a second normalization would diverge from what dedupe saw.
+   */
+  normalized: NormalizedError,
+};
+
+export type ClientErrorCapturePolicy = {
+  /**
+   * Runs the local admission policy for one candidate error. Returns null when
+   * the capture must be dropped locally; on admission the error object is
+   * marked captured and counted against the flood caps, so the caller MUST
+   * emit the event it builds from the returned normalization.
+   */
+  admit: (raw: unknown) => ClientErrorCaptureAdmission | null,
+};
+
+/**
+ * The LOCAL admission policy shared by every automatic client `$error` source:
+ * already-captured marker, ignoreErrors substring drops, single-slot signature
+ * dedupe, and the per-page-view flood caps. Extracted from the global-handler
+ * installer so console.error promotion cannot bypass it — and so both sources
+ * can share ONE state instance: an error that was console.error'd and later
+ * surfaces at window.onerror must dedupe and count as a single capture.
+ */
+export function createClientErrorCapturePolicy(deps: {
+  ignoreErrors: readonly string[],
+  getCurrentPageViewSpanId: () => string | null,
+}): ClientErrorCapturePolicy {
+  // Single-slot dedupe: the exact same error signature arriving back-to-back
+  // (double-registered handlers, immediate re-render loops) is dropped.
+  let lastCaptured: { name: string, message: string, fingerprint: string, stack: string | null } | null = null;
+  // Flood control, keyed to the current page view (see getCurrentPageViewSpanId).
+  let capPageViewSpanId = deps.getCurrentPageViewSpanId();
+  let perFingerprintCounts = new Map<string, number>();
+  let totalOnPageView = 0;
+  let droppedByCap = 0;
+  let warnedCap = false;
+
+  return {
+    admit: (raw) => {
+      if (isAlreadyCaptured(raw)) return null;
+      const normalized = normalizeCapturedError(raw);
+      if (deps.ignoreErrors.some((needle) => normalized.message.includes(needle))) return null;
+
+      // Page-view rollover resets the caps (compare-on-capture: the policy is
+      // created EAGERLY, before the lazily-loaded tracker exists, so it samples
+      // the id on every admission instead of hooking the tracker lifecycle).
+      const pageViewSpanId = deps.getCurrentPageViewSpanId();
+      if (pageViewSpanId !== capPageViewSpanId) {
+        capPageViewSpanId = pageViewSpanId;
+        perFingerprintCounts = new Map();
+        totalOnPageView = 0;
+        droppedByCap = 0;
+      }
+
+      const message = truncateUtf8Bytes(normalized.message, ERROR_TEXT_MAX_BYTES);
+      const stack = normalized.stack !== null ? truncateUtf8Bytes(normalized.stack, ERROR_TEXT_MAX_BYTES) : null;
+      const fingerprint = computeErrorFingerprint(normalized.name, message, stack);
+      if (
+        lastCaptured !== null
+        && lastCaptured.name === normalized.name
+        && lastCaptured.message === message
+        && lastCaptured.fingerprint === fingerprint
+        && lastCaptured.stack === stack
+      ) {
+        return null;
+      }
+      const fingerprintCount = perFingerprintCounts.get(fingerprint) ?? 0;
+      if (fingerprintCount >= MAX_ERRORS_PER_FINGERPRINT_PER_PAGE_VIEW || totalOnPageView >= MAX_ERRORS_PER_PAGE_VIEW) {
+        droppedByCap += 1;
+        if (!warnedCap) {
+          warnedCap = true;
+          console.warn(`Hexclave analytics: error capture rate cap reached on this page view (${MAX_ERRORS_PER_FINGERPRINT_PER_PAGE_VIEW} per error group / ${MAX_ERRORS_PER_PAGE_VIEW} total); further errors are dropped locally (${droppedByCap} so far)`);
+        }
+        return null;
+      }
+      perFingerprintCounts.set(fingerprint, fingerprintCount + 1);
+      totalOnPageView += 1;
+      markCaptured(raw);
+      lastCaptured = { name: normalized.name, message, fingerprint, stack };
+      return { normalized };
+    },
+  };
+}
+
 export type ClientErrorCaptureDeps = {
   /** Delivers one `$error` event's data (fire-and-forget; the sink pre-catches). */
   emit: (data: CapturedErrorEvent, scope?: ErrorScopeData) => void,
+  /** Only consulted by the DEFAULT policy; ignored when `policy` is supplied. */
   ignoreErrors: readonly string[],
   release: string | null,
   environment: string | null,
@@ -411,6 +563,12 @@ export type ClientErrorCaptureDeps = {
    * (id still null) count against the first page's budget.
    */
   getCurrentPageViewSpanId: () => string | null,
+  /**
+   * Shared admission policy. Pass the same instance to every automatic capture
+   * source (ClientAnalytics shares it with console.error promotion) so dedupe
+   * and flood caps see one stream. Defaults to a fresh instance.
+   */
+  policy?: ClientErrorCapturePolicy,
 };
 
 export type ClientErrorCapture = {
@@ -434,15 +592,12 @@ export function installClientErrorCapture(deps: ClientErrorCaptureDeps): ClientE
   // Synchronous re-entrancy guard: capture code must never capture itself.
   let capturing = false;
   let warnedInternalFailure = false;
-  // Single-slot dedupe: the exact same error signature arriving back-to-back
-  // (double-registered handlers, immediate re-render loops) is dropped.
-  let lastCaptured: { name: string, message: string, fingerprint: string, stack: string | null } | null = null;
-  // Flood control, keyed to the current page view (see getCurrentPageViewSpanId).
-  let capPageViewSpanId: string | null = deps.getCurrentPageViewSpanId();
-  let perFingerprintCounts = new Map<string, number>();
-  let totalOnPageView = 0;
-  let droppedByCap = 0;
-  let warnedCap = false;
+  // Dedupe/flood-control live in the (possibly shared) policy; only the
+  // handler-reentrancy state above belongs to this installer.
+  const policy = deps.policy ?? createClientErrorCapturePolicy({
+    ignoreErrors: deps.ignoreErrors,
+    getCurrentPageViewSpanId: deps.getCurrentPageViewSpanId,
+  });
 
   const armIgnoreNext = () => {
     ignoreNext += 1;
@@ -456,44 +611,9 @@ export function installClientErrorCapture(deps: ClientErrorCaptureDeps): ClientE
     capturing = true;
     try {
       if (ignoreNext > 0) return;
-      if (isAlreadyCaptured(raw)) return;
-      const normalized = normalizeCapturedError(raw);
-      if (deps.ignoreErrors.some((needle) => normalized.message.includes(needle))) return;
-
-      // Page-view rollover resets the caps (compare-on-capture, see the dep doc).
-      const pageViewSpanId = deps.getCurrentPageViewSpanId();
-      if (pageViewSpanId !== capPageViewSpanId) {
-        capPageViewSpanId = pageViewSpanId;
-        perFingerprintCounts = new Map();
-        totalOnPageView = 0;
-        droppedByCap = 0;
-      }
-
-      const message = truncateUtf8Bytes(normalized.message, ERROR_TEXT_MAX_BYTES);
-      const stack = normalized.stack !== null ? truncateUtf8Bytes(normalized.stack, ERROR_TEXT_MAX_BYTES) : null;
-      const fingerprint = computeErrorFingerprint(normalized.name, message, stack);
-      if (
-        lastCaptured !== null
-        && lastCaptured.name === normalized.name
-        && lastCaptured.message === message
-        && lastCaptured.fingerprint === fingerprint
-        && lastCaptured.stack === stack
-      ) {
-        return;
-      }
-      const fingerprintCount = perFingerprintCounts.get(fingerprint) ?? 0;
-      if (fingerprintCount >= MAX_ERRORS_PER_FINGERPRINT_PER_PAGE_VIEW || totalOnPageView >= MAX_ERRORS_PER_PAGE_VIEW) {
-        droppedByCap += 1;
-        if (!warnedCap) {
-          warnedCap = true;
-          console.warn(`Hexclave analytics: error capture rate cap reached on this page view (${MAX_ERRORS_PER_FINGERPRINT_PER_PAGE_VIEW} per error group / ${MAX_ERRORS_PER_PAGE_VIEW} total); further errors are dropped locally (${droppedByCap} so far)`);
-        }
-        return;
-      }
-      perFingerprintCounts.set(fingerprint, fingerprintCount + 1);
-      totalOnPageView += 1;
-      markCaptured(raw);
-      lastCaptured = { name: normalized.name, message, fingerprint, stack };
+      const admission = policy.admit(raw);
+      if (admission === null) return;
+      const normalized = admission.normalized;
 
       const scope = getActiveErrorScope()?.snapshot();
       deps.emit(buildErrorEventDataFromNormalized(normalized, {

@@ -64,8 +64,13 @@ const URL_KEY_PATTERN = /(?:^|[._-])(?:http[-_.]?target|request[-_.]?(?:target|u
 const AUTH_SCHEME_PATTERN = /\b(Bearer|Basic|Digest)\s+[^\s,;]+/gi;
 const PRIVATE_KEY_PATTERN = /-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g;
 const JWT_PATTERN = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
-const URL_AUTH_PATTERN = /([a-z][a-z\d+.-]*:\/\/)(?:[^/@\s]+):(?:[^/@\s]+)@/gi;
-const SENSITIVE_ASSIGNMENT_PATTERN = /((?:access[-_.]?token|api[-_.]?key|authorization|client[-_.]?secret|cookie|credential|id[-_.]?token|password|passwd|private[-_.]?key|refresh[-_.]?token|secret|session[-_.]?token|signature|token)\s*[:=]\s*)(["']?)(?:(Bearer|Basic|Digest)\s+)?([^\s"'&,;}\]]+)\2/gi;
+// The scheme is optional so protocol-relative references (`//user:pass@host`)
+// lose their userinfo credentials just like absolute URLs.
+const URL_AUTH_PATTERN = /((?:[a-z][a-z\d+.-]*:)?\/\/)(?:[^/@\s]+):(?:[^/@\s]+)@/gi;
+// The optional quote around the key (backreference \2) covers serialized JSON
+// embedded in message strings (`{"password":"..."}`), which the bare-key form
+// cannot reach because the closing key quote sits between the key and the colon.
+const SENSITIVE_ASSIGNMENT_PATTERN = /((["']?)(?:access[-_.]?token|api[-_.]?key|authorization|client[-_.]?secret|cookie|credential|id[-_.]?token|password|passwd|private[-_.]?key|refresh[-_.]?token|secret|session[-_.]?token|signature|token)\2\s*[:=]\s*)(["']?)(?:(Bearer|Basic|Digest)\s+)?([^\s"'&,;}\]]+)\3/gi;
 const SENSITIVE_QUERY_VALUE_PATTERN = /([?&](?:access[-_.]?token|api[-_.]?key|authorization|client[-_.]?secret|id[-_.]?token|password|refresh[-_.]?token|secret|signature|token)=)[^&#\s]*/gi;
 const SENSITIVE_COMPACT_KEY_PARTS: readonly string[] = [
   "access_token",
@@ -168,7 +173,7 @@ function scrubString(value: string, state: ScrubState, path: string, maxBytes: n
     .replace(PRIVATE_KEY_PATTERN, FILTERED_VALUE)
     .replace(
       SENSITIVE_ASSIGNMENT_PATTERN,
-      (_match: string, prefix: string, quote: string, scheme: string | undefined) => `${prefix}${quote}${scheme === undefined ? FILTERED_VALUE : `${scheme} ${FILTERED_VALUE}`}${quote}`,
+      (_match: string, prefix: string, _keyQuote: string, valueQuote: string, scheme: string | undefined) => `${prefix}${valueQuote}${scheme === undefined ? FILTERED_VALUE : `${scheme} ${FILTERED_VALUE}`}${valueQuote}`,
     )
     .replace(AUTH_SCHEME_PATTERN, "$1 " + FILTERED_VALUE)
     .replace(SENSITIVE_QUERY_VALUE_PATTERN, "$1" + FILTERED_VALUE)
@@ -223,6 +228,20 @@ function defineSafeProperty(
   });
 }
 
+/**
+ * Combines the built-in key policy with configured overrides. The built-in
+ * `drop` decision stays authoritative: a `urlKeys` override can only relax a
+ * built-in `value` field down to a path-only projection, never resurrect part
+ * of a field the built-in boundary would remove (see ErrorIngestScrubOverrides:
+ * overrides must not be able to weaken the fail-closed contract).
+ */
+function resolveFieldPolicy(fieldPath: string, key: string, overrides: ErrorIngestScrubOverrides | undefined): ScrubPolicy {
+  const builtIn = policyForKey(key);
+  if (builtIn === "drop" || matchesOverride(fieldPath, key, overrides?.dropKeys)) return "drop";
+  if (matchesOverride(fieldPath, key, overrides?.urlKeys)) return "url";
+  return builtIn;
+}
+
 function matchesOverride(path: string, key: string, configuredKeys: readonly string[] | undefined): boolean {
   if (configuredKeys === undefined || configuredKeys.length === 0) return false;
   const normalizedPath = path.replace(/^\$\./, "");
@@ -250,11 +269,7 @@ function scrubMap(
   if (entries.length > limits.maxCollectionEntries) drop(state, path, "fields");
   for (const [key, rawValue] of entries.slice(0, limits.maxCollectionEntries)) {
     const fieldPath = pathForKey(path, key);
-    const policy = matchesOverride(fieldPath, key, overrides?.dropKeys)
-      ? "drop"
-      : matchesOverride(fieldPath, key, overrides?.urlKeys)
-        ? "url"
-        : policyForKey(key);
+    const policy = resolveFieldPolicy(fieldPath, key, overrides);
     if (policy === "drop") {
       drop(state, fieldPath, "sensitive");
       continue;
@@ -346,11 +361,7 @@ function scrubObject(
 
   for (const key of keys.slice(0, limits.maxCollectionEntries)) {
     const fieldPath = pathForKey(path, key);
-    const policy = matchesOverride(fieldPath, key, overrides?.dropKeys)
-      ? "drop"
-      : matchesOverride(fieldPath, key, overrides?.urlKeys)
-        ? "url"
-        : policyForKey(key);
+    const policy = resolveFieldPolicy(fieldPath, key, overrides);
     if (policy === "drop") {
       drop(state, fieldPath, "sensitive");
       continue;
