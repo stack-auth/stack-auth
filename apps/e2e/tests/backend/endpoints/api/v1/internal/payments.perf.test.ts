@@ -80,6 +80,14 @@ if (PREFILL_STAGES.length > 1 && OUTPUT_PATH != null && !OUTPUT_PATH.includes("{
   throw new Error("HEXCLAVE_PAYMENTS_PERF_OUTPUT must contain the {prefill} placeholder when multiple prefill stages are configured");
 }
 
+// The per-stage summaries only land once a stage completes, which for the larger stages is tens of
+// minutes of blindness. This log instead appends one line per prefilled customer as it finishes, so
+// the shape of the curve (and any regression in it) is visible while the sweep is still running.
+const PREFILL_LOG_PATH = process.env.HEXCLAVE_PAYMENTS_PERF_PREFILL_LOG;
+if (PREFILL_LOG_PATH != null && PREFILL_LOG_PATH.trim() === "") {
+  throw new Error(`HEXCLAVE_PAYMENTS_PERF_PREFILL_LOG must be a non-empty path, got ${PREFILL_LOG_PATH}`);
+}
+
 type PerfMetric = {
   name: string,
   count: number,
@@ -160,7 +168,19 @@ if (MAX_ALLOWED_PREFILL_CUSTOMERS < 0 || MAX_PREFILL_CUSTOMERS > MAX_ALLOWED_PRE
 const TEST_TIMEOUT_MS = BASE_TEST_TIMEOUT_MS * PREFILL_STAGES.length
   + MAX_PREFILL_CUSTOMERS * PREFILL_TIMEOUT_MS;
 
-async function prefillOne(index: number): Promise<void> {
+let prefillLogInitialized = false;
+function appendPrefillLog(index: number, stage: number, elapsedMs: number): void {
+  if (PREFILL_LOG_PATH == null) return;
+  if (!prefillLogInitialized) {
+    fs.mkdirSync(path.dirname(path.resolve(PREFILL_LOG_PATH)), { recursive: true });
+    fs.writeFileSync(PREFILL_LOG_PATH, "index,stage,finished_at_iso,elapsed_ms\n");
+    prefillLogInitialized = true;
+  }
+  fs.appendFileSync(PREFILL_LOG_PATH, `${index},${stage},${new Date().toISOString()},${elapsedMs.toFixed(3)}\n`);
+}
+
+async function prefillOne(index: number, stage: number): Promise<void> {
+  const startedAt = performance.now();
   const { userId } = await Auth.fastSignUp();
 
   const subscriptionCode = await createPurchaseCode({
@@ -212,15 +232,17 @@ async function prefillOne(index: number): Promise<void> {
     });
     expect(updateResponse.status).toBe(200);
   }
+
+  appendPrefillLog(index, stage, performance.now() - startedAt);
 }
 
-async function prefillCustomersInRange(startIndex: number, count: number): Promise<void> {
+async function prefillCustomersInRange(startIndex: number, count: number, stage: number): Promise<void> {
   let nextIndex = 0;
   const worker = async (): Promise<void> => {
     while (true) {
       const offset = nextIndex++;
       if (offset >= count) return;
-      await prefillOne(startIndex + offset);
+      await prefillOne(startIndex + offset, stage);
     }
   };
   await Promise.all(Array.from({ length: Math.min(PREFILL_CONCURRENCY, count) }, worker));
@@ -428,7 +450,7 @@ it("benchmarks backend-level payments flows through the Bulldozer HTTP boundary"
     await measure(
       "prefill existing payments data",
       delta,
-      () => prefillCustomersInRange(previousPrefillCustomers, delta),
+      () => prefillCustomersInRange(previousPrefillCustomers, delta, prefillCustomers),
       metricsBeforeWorkload,
     );
 

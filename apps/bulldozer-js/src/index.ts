@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { getHeapStatistics } from "node:v8";
 import { isBulldozerRequestAuthorized } from "./auth.js";
 import { declareBulldozerDatabase, type BulldozerDatabase } from "./databases/bulldozer/index.js";
+import { declareDelayedLowLevelDatabase } from "./databases/low-level/implementations/delayed.js";
 import { declareInMemoryLowLevelDatabase } from "./databases/low-level/implementations/in-memory.js";
 import { declareInstantAvailabilityLowLevelDatabase } from "./databases/low-level/implementations/instant-availability.js";
 import { declareLmdbLowLevelDatabase, getLmdbDiagnostics } from "./databases/low-level/implementations/lmdb.js";
@@ -63,7 +64,16 @@ function readOptionalNonNegativeNumberEnv(name: string): number | undefined {
 
 function createLowLevelDatabase(): LowLevelDatabase {
   if (process.env.HEXCLAVE_BULLDOZER_JS_LOW_LEVEL_BACKEND === "in-memory") {
-    return declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const inMemory = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    // Opt-in only: with both delays unset the in-memory backend stays exactly as fast as before, so
+    // this is purely additive for benchmarks that want in-memory semantics with LMDB-like IO cost.
+    const readDelayMs = readOptionalNonNegativeNumberEnv("HEXCLAVE_BULLDOZER_JS_IN_MEMORY_READ_DELAY_MS");
+    const writeDelayMs = readOptionalNonNegativeNumberEnv("HEXCLAVE_BULLDOZER_JS_IN_MEMORY_WRITE_DELAY_MS");
+    if (readDelayMs === undefined && writeDelayMs === undefined) return inMemory;
+    return declareDelayedLowLevelDatabase(inMemory, {
+      readDelayMs: readDelayMs ?? 0,
+      writeDelayMs: writeDelayMs ?? 0,
+    });
   }
 
   const lmdbPath = defaultLmdbPath();
@@ -1157,6 +1167,8 @@ const startupFields = {
   nodeVersion: process.version,
   sentryEnvironment: resolveBulldozerSentryEnvironment(),
   lowLevelBackend: process.env.HEXCLAVE_BULLDOZER_JS_LOW_LEVEL_BACKEND ?? "lmdb",
+  inMemoryReadDelayMs: readOptionalNonNegativeNumberEnv("HEXCLAVE_BULLDOZER_JS_IN_MEMORY_READ_DELAY_MS"),
+  inMemoryWriteDelayMs: readOptionalNonNegativeNumberEnv("HEXCLAVE_BULLDOZER_JS_IN_MEMORY_WRITE_DELAY_MS"),
   usingTmpLmdb: process.env.HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB === "1",
   lmdbCompression: process.env.HEXCLAVE_BULLDOZER_JS_LMDB_COMPRESSION === "1",
   disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
