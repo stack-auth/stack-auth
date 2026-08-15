@@ -14,7 +14,7 @@ export type { AppId };
 
 // Helper to generate screenshot paths
 const getScreenshots = (appName: string, count: number): string[] => {
-  return Array.from({ length: count }, (_, i) => `/storeDesc-${appName}-${i + 1}.png`);
+  return Array.from({ length: count }, (_, i) => `/storeDesc-${appName}-${i + 1}.webp`);
 };
 
 export const DUMMY_ORIGIN = "https://example.com";
