@@ -29,13 +29,17 @@ export function getGrowthPhase(status: GrowthStatus): GrowthPhase {
 }
 
 /**
- * Poll quickly while backend analysis phases advance, then slowly after the interview while the
- * report is composed and held for publication. The latter keeps the loading state tied to the real
- * admin release without making a request every seven seconds for roughly a day. An unfinished
- * interview is user-driven, so it does not poll in the background.
+ * Poll quickly while backend analysis phases advance, then slowly through the two waits the customer
+ * cannot end themselves: their question plan being finalized before the interview opens (the
+ * day-long one — see lib/growth/interview-release.ts on the backend), and their report being
+ * composed after they answer (minutes). Both resolve without the customer doing anything, so the
+ * page has to notice on its own.
+ *
+ * Slowly, because a day at the analysis cadence is thousands of requests for one state change. An
+ * interview that is open and unanswered is user-driven, so it does not poll at all.
  */
 export function getGrowthStatusPollIntervalMillis(status: GrowthStatus): number | null {
   if (getGrowthPhase(status) === "analyzing") return 7_000;
-  if (status.release.state === "preparing" && status.interview.state === "completed") return 60_000;
+  if (status.release.state === "preparing" && (status.interview.state === "preparing" || status.interview.state === "completed")) return 60_000;
   return null;
 }
