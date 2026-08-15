@@ -23,8 +23,13 @@ export const GROWTH_HOLD_TITLE = "We're putting your report together";
 
 export const GROWTH_HOLD_BODY = "We're now preparing a report tailored for you.";
 
-/** One line, for places that already have their own heading above them. */
-export const GROWTH_HOLD_SHORT = "Your report will be ready in about 24 hours.";
+/**
+ * One line, for places that already have their own heading above them (eg. the Deep analysis
+ * timeline step). It carries both halves of the hold — what's happening and when it lands — because
+ * those surfaces have room for exactly one line of copy, and splitting the promise across a subtitle
+ * and a paragraph inside the card below it read as two unrelated statements.
+ */
+export const GROWTH_HOLD_SHORT = "We're now preparing a report tailored for you — it'll be ready in about 24 hours.";
 
 /**
  * The standalone panel, for pages whose entire content is withheld. Matches the dashed empty-state

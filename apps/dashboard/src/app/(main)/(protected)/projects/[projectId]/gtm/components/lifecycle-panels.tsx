@@ -23,7 +23,7 @@ import {
   PlugsConnectedIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { useGrowthHref } from "./action-card";
 import { GrowthStatusGate } from "./frame";
@@ -195,44 +195,59 @@ function SetUpStep(props: { status: GrowthStatus, state: GrowthTimelineStepState
   );
 }
 
-function StepRow(props: { step: GrowthAnalysisStep }) {
+/**
+ * One row of the deep-analysis checklist.
+ *
+ * `waiting` marks a row that is blocked on the customer rather than on us (today: the interview).
+ * A spinner there would claim we're working while we're actually waiting for them, so the row gets
+ * a plain focused ring instead. `children` renders under the row, indented to the label column —
+ * that's where the interview's call to action lives, so the ask sits with the step it belongs to
+ * rather than below the whole checklist, where it read as unrelated to the row asking for it.
+ */
+function StepRow(props: { step: GrowthAnalysisStep, waiting?: boolean, children?: ReactNode }) {
   const { step } = props;
-  const icon = new Map([
+  const stateIcon = new Map([
     ["pending", <CircleIcon key="pending" className="size-4 text-muted-foreground/40" />],
     ["running", <CircleNotchIcon key="running" className="size-4 animate-spin text-cyan-600 dark:text-cyan-400" />],
     ["done", <CheckCircleIcon key="done" weight="fill" className="size-4 text-emerald-600 dark:text-emerald-400" />],
     ["failed", <WarningCircleIcon key="failed" weight="fill" className="size-4 text-destructive" />],
   ]).get(step.state) ?? <CircleIcon className="size-4 text-muted-foreground/40" />;
+  const icon = props.waiting === true
+    ? <CircleIcon weight="bold" className="size-4 text-cyan-600 dark:text-cyan-400" />
+    : stateIcon;
   const labelClassName = step.state === "pending" ? "text-sm text-muted-foreground/60" : "text-sm";
   return (
-    <div className="flex items-center gap-3 py-1.5">
-      {icon}
-      {step.description == null ? (
-        <span className={labelClassName}>{step.label}</span>
-      ) : (
-        // Not `SimpleTooltip`: its content is centre-aligned and capped at 15rem, which is fine for the
-        // short strings it was built for but turns a three-sentence explanation into a tall ragged column.
-        // Composed here instead so the copy gets a left-aligned, wider box; a global TooltipProvider is
-        // already mounted in layout-client.tsx. `tabIndex` is what makes the hint keyboard-reachable —
-        // Radix only opens on focus for a focusable trigger.
-        <Tooltip delayDuration={150}>
-          <TooltipTrigger asChild>
-            <span
-              tabIndex={0}
-              className={`${labelClassName} cursor-help underline decoration-dotted decoration-foreground/25 underline-offset-4 transition-colors hover:decoration-foreground/60 hover:transition-none`}
-            >
-              {step.label}
-            </span>
-          </TooltipTrigger>
-          <TooltipPortal>
-            <TooltipContent side="right" align="start" className="max-w-80">
-              <p className="text-xs leading-relaxed text-wrap">{step.description}</p>
-            </TooltipContent>
-          </TooltipPortal>
-        </Tooltip>
-      )}
-      {step.state === "running" && <DesignBadge label="In progress" color="cyan" size="sm" />}
-      {step.state === "failed" && <DesignBadge label="Failed" color="red" size="sm" />}
+    <div>
+      <div className="flex items-center gap-3 py-1.5">
+        {icon}
+        {step.description == null ? (
+          <span className={labelClassName}>{step.label}</span>
+        ) : (
+          // Not `SimpleTooltip`: its content is centre-aligned and capped at 15rem, which is fine for the
+          // short strings it was built for but turns a three-sentence explanation into a tall ragged column.
+          // Composed here instead so the copy gets a left-aligned, wider box; a global TooltipProvider is
+          // already mounted in layout-client.tsx. `tabIndex` is what makes the hint keyboard-reachable —
+          // Radix only opens on focus for a focusable trigger.
+          <Tooltip delayDuration={150}>
+            <TooltipTrigger asChild>
+              <span
+                tabIndex={0}
+                className={`${labelClassName} cursor-help underline decoration-dotted decoration-foreground/25 underline-offset-4 transition-colors hover:decoration-foreground/60 hover:transition-none`}
+              >
+                {step.label}
+              </span>
+            </TooltipTrigger>
+            <TooltipPortal>
+              <TooltipContent side="right" align="start" className="max-w-80">
+                <p className="text-xs leading-relaxed text-wrap">{step.description}</p>
+              </TooltipContent>
+            </TooltipPortal>
+          </Tooltip>
+        )}
+        {step.state === "running" && <DesignBadge label="In progress" color="cyan" size="sm" />}
+        {step.state === "failed" && <DesignBadge label="Failed" color="red" size="sm" />}
+      </div>
+      {props.children != null && <div className="pb-2 pl-7 pt-1">{props.children}</div>}
     </div>
   );
 }
@@ -497,35 +512,61 @@ function AnalysisFailedContent(props: { status: GrowthStatus }) {
   );
 }
 
-function EmbeddedInterviewCard(props: { status: GrowthStatus }) {
+/** The two interview states the customer can still act on — everything else has nothing to invite them to. */
+function interviewIsOpen(interview: GrowthStatus["interview"]): boolean {
+  return interview.state === "ready" || interview.state === "in_progress";
+}
+
+/**
+ * The interview's ask: what it's for, how far they've got, and the way in. Two surfaces show it —
+ * inline under the "Your interview" checklist row while the analysis is still running, and as a
+ * card once the interview is the current timeline step — so the copy and the button live here
+ * rather than being written twice and drifting apart.
+ *
+ * `heading` is only passed by the card: inline, the checklist row above it is already the heading.
+ */
+function InterviewInvite(props: { status: GrowthStatus, heading?: string }) {
   const projectId = useProjectId();
   const withQuery = useGrowthHref();
   const interview = props.status.interview;
-  if (interview.state !== "ready" && interview.state !== "in_progress") return null;
+  if (!interviewIsOpen(interview)) return null;
   const inProgress = interview.state === "in_progress";
   return (
-    <DesignCard>
-      <div className="flex flex-col gap-4">
-        <div>
-          <p className="text-sm font-medium text-foreground">Your interview is ready</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Answer a few questions while the analysis continues so the report fits your business.
-          </p>
-        </div>
+    <div className="flex flex-col gap-4">
+      <div>
+        {props.heading != null && <p className="text-sm font-medium text-foreground">{props.heading}</p>}
+        <p className={`text-sm text-muted-foreground${props.heading != null ? " mt-1" : ""}`}>
+          Answer a few questions while the analysis continues so the report fits your business.
+        </p>
         {inProgress && (
-          <p className="text-sm text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             You have answered {interview.answeredCount} of about {interview.estimatedTotal} so far.
           </p>
         )}
-        <div>
-          <GoToButton href={withQuery(`/projects/${projectId}/gtm/interview`)}>
-            {inProgress ? "Continue the interview" : "Take the interview"}
-          </GoToButton>
-        </div>
       </div>
+      <div>
+        <GoToButton href={withQuery(`/projects/${projectId}/gtm/interview`)}>
+          {inProgress ? "Continue the interview" : "Take the interview"}
+        </GoToButton>
+      </div>
+    </div>
+  );
+}
+
+function EmbeddedInterviewCard(props: { status: GrowthStatus }) {
+  if (!interviewIsOpen(props.status.interview)) return null;
+  return (
+    <DesignCard>
+      <InterviewInvite status={props.status} heading="Your interview is ready" />
     </DesignCard>
   );
 }
+
+/**
+ * Id of the synthesized interview row. The checklist render needs to single it out: it is the one
+ * row waiting on the customer rather than on us, so it carries the ask and a waiting marker.
+ */
+const GROWTH_INTERVIEW_ROW_ID = "customer-interview";
 
 /** Customer-facing steps that keep the initial analysis visibly active through publication. */
 function analysisLoadingSteps(status: GrowthStatus): GrowthAnalysisStep[] | null {
@@ -535,7 +576,7 @@ function analysisLoadingSteps(status: GrowthStatus): GrowthAnalysisStep[] | null
   return [
     ...steps,
     {
-      id: "customer-interview",
+      id: GROWTH_INTERVIEW_ROW_ID,
       label: "Your interview",
       description: "A short set of questions generated from the analysis. Your answers give the final report context that product data and website research cannot provide.",
       state: interviewState,
@@ -584,7 +625,6 @@ function AnalysisStep(props: { status: GrowthStatus, state: GrowthTimelineStepSt
               <p className="text-sm text-muted-foreground">Your analysis is queued and will start any moment now.</p>
             ) : (
               <div className="flex flex-col">
-                {holdActive && <p className="pb-3 text-sm text-muted-foreground">{GROWTH_HOLD_BODY}</p>}
                 {/*
                   Every row still pending means the run exists and this step is "current", but the
                   orchestrator has not dispatched a single phase yet — so the card renders as a
@@ -596,11 +636,20 @@ function AnalysisStep(props: { status: GrowthStatus, state: GrowthTimelineStepSt
                 {steps.every((step) => step.state === "pending") && (
                   <p className="pb-3 text-sm text-muted-foreground">Your analysis is queued and will start any moment now.</p>
                 )}
-                {steps.map((step) => <StepRow key={step.id} step={step} />)}
+                {steps.map((step) => {
+                  // The interview row is the only one blocked on the customer: it shows a waiting
+                  // ring instead of a spinner, and carries the ask directly beneath it so the
+                  // button belongs to the row that asks for it.
+                  const awaitingInterview = step.id === GROWTH_INTERVIEW_ROW_ID && step.state === "running";
+                  return (
+                    <StepRow key={step.id} step={step} waiting={awaitingInterview}>
+                      {awaitingInterview ? <InterviewInvite status={status} /> : undefined}
+                    </StepRow>
+                  );
+                })}
               </div>
             )}
           </DesignCard>
-          {holdActive && <EmbeddedInterviewCard status={status} />}
         </GrowthTimelineStep>
       );
     }
