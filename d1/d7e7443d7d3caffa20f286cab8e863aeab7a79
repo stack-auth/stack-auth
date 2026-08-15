@@ -1,0 +1,57 @@
+apps/backend/package.json
+  s_2c57837bf795b2::t_6bf4a00ab21b17 43
+apps/backend/prisma/migrations/20260701000000_add_session_replay_segment/migration.sql
+  s_2c57837bf795b2::t_912d6c5c650cff 21-27
+apps/backend/prisma/migrations/20260726000000_add_releases/migration.sql
+  s_2c57837bf795b2::t_07970b50206e0f 17-48
+apps/backend/prisma/migrations/20260731000000_add_issues/migration.sql
+  s_2c57837bf795b2::t_c4a6e623bcbaf6 18-24,387-393,395-396,407-410,412-413
+apps/backend/prisma/migrations/20260731000000_add_issues/tests/creates-issue-tables.ts
+  s_2c57837bf795b2::t_357cf47c03b6d1 57
+apps/backend/prisma/migrations/20260731000000_add_issues/tests/issue-product-metadata-schema-and-constraints.ts
+  s_2c57837bf795b2::t_f681201cf6129c 33-42,47-49
+apps/backend/prisma/migrations/20260801000000_add_error_ingest_client_reports/migration.sql
+  s_2c57837bf795b2::t_1687fa0e3d2482 13-18
+apps/backend/prisma/migrations/20260801000000_add_error_ingest_client_reports/tests/error-ingest-client-reports-schema-and-constraints.ts
+  s_2c57837bf795b2::t_edda031d3b7304 89
+apps/backend/prisma/migrations/20260810000000_simplify_observability/migration.sql
+  s_2c57837bf795b2::t_4c1a203827e003 16-22
+apps/backend/prisma/migrations/20260810000000_simplify_observability/tests/batch-id-is-transport-string.ts
+  s_2c57837bf795b2::t_b492cc755c688c 6-18,23
+apps/backend/prisma/migrations/20260814000000_enforce_issue_subject_natural_keys/migration.sql
+  s_2c57837bf795b2::t_97b84bc3ed5c12 1-82
+apps/backend/prisma/migrations/20260814000000_enforce_issue_subject_natural_keys/tests/dedupes-and-enforces-natural-keys.ts
+  s_2c57837bf795b2::t_5c676d19020fb6 1-113
+apps/backend/prisma/schema.prisma
+  s_2c57837bf795b2::t_324d56e21d96ab 1256-1314,1897,1913,1929,1946-1947,1959,1974-1975,1990,2003-2004,2016,2034-2035,2053,2066,2081,2091,2093,2106,2139,2141-2143,2160,2171,2186,2841,2851,2853-2856,2859-2865,2872,2881-2883,2886-2887,2896,2905,2907-2909,2920,2926,2928-2931,2934-2935,2942,2952,2954-2957,2960-2964,2975-2978,2981
+apps/backend/prisma/seed.ts
+  s_2c57837bf795b2::t_4072be2d739e99 484-489,491
+apps/backend/scripts/clickhouse-migrations.test.ts
+  s_2c57837bf795b2::t_5a6f62ed8b9b76 24,51,88-102,424-427,636,642,644-646,651-664,669-783
+apps/backend/scripts/clickhouse-migrations.ts
+  s_2c57837bf795b2::t_f7bf44e95ee794 157-168,170-171,328-342,362-363,380-383,395-403,436-443,455,458-460,467-468,551,566,595,606,619-636,641-649,652-653,678-685,692-706,712-714,766-812,814,816-828,830-831,834-838,840-843,846-847,850-853,856-860,862-864,866-870,872-902,904,906-922,924-937,939-992,1379-1380,1904-1909,1915
+apps/backend/scripts/db-migrations.ts
+  s_2c57837bf795b2::t_364ab617cfd601 17,193-196,264-284
+apps/backend/src/prisma-client.tsx
+  s_2c57837bf795b2::t_1f07e9bf71f550 633-642
+apps/backend/src/s3.tsx
+  s_2c57837bf795b2::t_1e0778d0535567 5,76-82,96,105-136,141-185,201-208,224,231-252
+package.json
+  s_2c57837bf795b2::t_10ddd4f4d5d421 46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "d1d7e7443d7d3caffa20f286cab8e863aeab7a79",
+  "prompts": {},
+  "sessions": {
+    "s_2c57837bf795b2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "534f3379-be72-4057-9a7d-40cac2df6f1a",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
