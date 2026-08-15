@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { LowLevelDatabase } from "../index.js";
 import { declareDelayedLowLevelDatabase } from "./delayed.js";
 import { declareInMemoryLowLevelDatabase } from "./in-memory.js";
 
@@ -9,6 +10,59 @@ const text = (value: ArrayBuffer | null) => value === null ? null : textDecoder.
 
 function createDelayedDatabase(options: { readDelayMs: number, writeDelayMs: number }) {
   return declareDelayedLowLevelDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()), options);
+}
+
+// An in-memory database whose very first `setAll` rejects, to check that a failed write doesn't take
+// the emulated write device down with it.
+function createFailingFirstWriteDatabase(): LowLevelDatabase {
+  const inner = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+  let shouldFail = true;
+  return {
+    ...inner,
+    declareKvStore(id) {
+      const store = inner.declareKvStore(id);
+      return {
+        ...store,
+        async setAll(entries, options) {
+          if (shouldFail) {
+            shouldFail = false;
+            throw new Error("simulated write failure");
+          }
+          return await store.setAll(entries, options);
+        },
+      };
+    },
+  };
+}
+
+// Tracks how many wrapped `setAll` calls are ever in flight at the same time; the yield in the
+// middle gives an unserialized wrapper every chance to overlap them.
+function createConcurrencyTrackingDatabase(): { database: LowLevelDatabase, getMaxConcurrentWrites: () => number } {
+  const inner = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+  let concurrentWrites = 0;
+  let maxConcurrentWrites = 0;
+  return {
+    getMaxConcurrentWrites: () => maxConcurrentWrites,
+    database: {
+      ...inner,
+      declareKvStore(id) {
+        const store = inner.declareKvStore(id);
+        return {
+          ...store,
+          async setAll(entries, options) {
+            concurrentWrites++;
+            maxConcurrentWrites = Math.max(maxConcurrentWrites, concurrentWrites);
+            await new Promise<void>(resolve => setImmediate(resolve));
+            try {
+              return await store.setAll(entries, options);
+            } finally {
+              concurrentWrites--;
+            }
+          },
+        };
+      },
+    },
+  };
 }
 
 describe("delayed low-level database", () => {
@@ -82,6 +136,72 @@ describe("delayed low-level database", () => {
 
     const listed = await store.listEntries();
     expect(listed.entries).toHaveLength(writeCount);
+  });
+
+  it("runs the wrapped write itself inside its writer slot", async () => {
+    const { database: wrapped, getMaxConcurrentWrites } = createConcurrencyTrackingDatabase();
+    const database = declareDelayedLowLevelDatabase(wrapped, { readDelayMs: 0, writeDelayMs: 5 });
+    const store = database.declareKvStore("store");
+
+    await Promise.all(Array.from({ length: 5 }, async (_, index) => await store.setAll([{ key: buffer(`k${index}`), value: buffer(`v${index}`) }])));
+    expect(getMaxConcurrentWrites()).toBe(1);
+  });
+
+  it("makes compare-and-set pay the write delay only when it writes", async () => {
+    const readDelayMs = 10;
+    const writeDelayMs = 40;
+    const database = createDelayedDatabase({ readDelayMs, writeDelayMs });
+    const store = database.declareKvStore("store");
+    await store.setAll([{ key: buffer("a"), value: buffer("1") }]);
+    const afterSetup = database.getDebugInfo();
+
+    const beforeFailedMs = performance.now();
+    const failed = await store.compareAndSetAll([{ key: buffer("a"), compare: buffer("wrong"), value: buffer("2") }]);
+    const failedElapsedMs = performance.now() - beforeFailedMs;
+    expect(failed.results.map(result => result.wasSet)).toEqual([false]);
+    expect(failedElapsedMs).toBeGreaterThanOrEqual(readDelayMs);
+    expect(failedElapsedMs).toBeLessThan(writeDelayMs);
+    const afterFailed = database.getDebugInfo();
+    expect(afterFailed.readOperations).toBe(afterSetup.readOperations + 1);
+    expect(afterFailed.writeOperations).toBe(afterSetup.writeOperations);
+
+    const beforeSucceededMs = performance.now();
+    const succeeded = await store.compareAndSetAll([{ key: buffer("a"), compare: buffer("1"), value: buffer("2") }]);
+    expect(succeeded.results.map(result => result.wasSet)).toEqual([true]);
+    expect(performance.now() - beforeSucceededMs).toBeGreaterThanOrEqual(readDelayMs + writeDelayMs);
+    const afterSucceeded = database.getDebugInfo();
+    expect(afterSucceeded.readOperations).toBe(afterFailed.readOperations + 1);
+    expect(afterSucceeded.writeOperations).toBe(afterFailed.writeOperations + 1);
+    expect(text((await store.get(buffer("a"))).buffer)).toBe("2");
+  });
+
+  it("keeps the writer usable after a write fails", async () => {
+    const writeDelayMs = 20;
+    const database = declareDelayedLowLevelDatabase(createFailingFirstWriteDatabase(), { readDelayMs: 0, writeDelayMs });
+    const store = database.declareKvStore("store");
+
+    await expect(store.setAll([{ key: buffer("a"), value: buffer("1") }])).rejects.toThrow("simulated write failure");
+
+    // The failed write must neither leave the emulated device permanently occupied nor have consumed
+    // service time for a write that never happened.
+    const beforeMs = performance.now();
+    await store.setAll([{ key: buffer("b"), value: buffer("2") }]);
+    const elapsedMs = performance.now() - beforeMs;
+    expect(elapsedMs).toBeGreaterThanOrEqual(writeDelayMs);
+    expect(elapsedMs).toBeLessThan(writeDelayMs * 3);
+    expect(text((await store.get(buffer("b"))).buffer)).toBe("2");
+  });
+
+  it("waits for queued writes before closing the wrapped database", async () => {
+    const writeDelayMs = 50;
+    const database = createDelayedDatabase({ readDelayMs: 0, writeDelayMs });
+    const store = database.declareKvStore("store");
+
+    const pendingWrite = store.setAll([{ key: buffer("a"), value: buffer("1") }]);
+    const beforeCloseMs = performance.now();
+    await database.close();
+    expect(performance.now() - beforeCloseMs).toBeGreaterThanOrEqual(writeDelayMs);
+    await pendingWrite;
   });
 
   it("reports delay counters in debug info", async () => {

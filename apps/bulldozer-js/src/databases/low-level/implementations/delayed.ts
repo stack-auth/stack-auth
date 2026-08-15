@@ -46,57 +46,64 @@ export function declareDelayedLowLevelDatabase(wrapped: LowLevelDatabase, option
   let writeOperations = 0;
   let delayedReadMs = 0;
   let delayedWriteMs = 0;
-  // The emulated write device's timeline: the point (on the `performance.now` clock) at which it
-  // finishes everything queued so far. A new write starts once the device is free, so queueing delay
-  // falls out of the model instead of having to be simulated separately.
-  let writeDeviceFreeAtMs = 0;
+  // Tail of the emulated write device's queue: a promise that settles once everything currently
+  // queued has been serviced. Each write chains onto it, which is what makes writes actually run
+  // one at a time (as opposed to only their completion times being staggered) and gives `close()`
+  // something to await. The chained promise is always resolved, never rejected, so a failing write
+  // does not poison the queue for the writes behind it.
+  let writerQueueTail: Promise<void> = Promise.resolve();
 
-  const withReadDelay = async <T>(operation: () => Promise<T>): Promise<T> => {
-    const deadlineMs = performance.now() + readDelayMs;
-    const result = await operation();
+  const payReadDelay = async (deadlineMs: number): Promise<void> => {
     readOperations++;
     const beforeSleepMs = performance.now();
     await sleepUntil(deadlineMs);
     delayedReadMs += performance.now() - beforeSleepMs;
-    return result;
   };
 
-  const withWriteDelay = async <T>(operation: () => Promise<T>): Promise<T> => {
-    const startMs = Math.max(performance.now(), writeDeviceFreeAtMs);
-    writeDeviceFreeAtMs = startMs + writeDelayMs;
-    const deadlineMs = writeDeviceFreeAtMs;
+  const withReadDelay = async <T>(operation: () => Promise<T>): Promise<T> => {
+    const deadlineMs = performance.now() + readDelayMs;
     const result = await operation();
-    writeOperations++;
-    const beforeSleepMs = performance.now();
-    await sleepUntil(deadlineMs);
-    delayedWriteMs += performance.now() - beforeSleepMs;
+    await payReadDelay(deadlineMs);
     return result;
   };
 
-  const declareStoreOrDump = (wrappedStore: LowLevelKvStore & LowLevelKvDump): LowLevelKvStore & LowLevelKvDump => ({
-    async get(key) {
+  /**
+   * Runs `operation` in its own slot on the emulated single writer: nothing else in this wrapper
+   * writes while it runs, and the slot is only released once the device's service time has elapsed.
+   * `shouldPayWriteDelay` lets compare-and-set skip the service time when it didn't actually write.
+   */
+  const withWriteDelay = async <T>(operation: () => Promise<T>, shouldPayWriteDelay: (result: T) => boolean = () => true): Promise<T> => {
+    const previousQueueTail = writerQueueTail;
+    let releaseNextWrite = (): void => {};
+    writerQueueTail = new Promise<void>(resolve => {
+      releaseNextWrite = resolve;
+    });
+    await previousQueueTail;
+    try {
+      const deadlineMs = performance.now() + writeDelayMs;
+      const result = await operation();
+      if (!shouldPayWriteDelay(result)) return result;
+      writeOperations++;
+      const beforeSleepMs = performance.now();
+      await sleepUntil(deadlineMs);
+      delayedWriteMs += performance.now() - beforeSleepMs;
+      return result;
+    } finally {
+      releaseNextWrite();
+    }
+  };
+
+  // The methods a KV store and a KV dump have in common; the two differ only in how they write
+  // (`setAll`/`compareAndSetAll` vs. `insertAll`), which is why those are added by the callers below.
+  const declareSharedMethods = (wrappedStore: LowLevelKvStore | LowLevelKvDump) => ({
+    async get(key: ArrayBuffer) {
       return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.get", attributes }, async () => await withReadDelay(async () => await wrappedStore.get(key)));
     },
-    async listEntries(listOptions) {
+    async listEntries(listOptions?: { startAfter?: ArrayBuffer, limit?: number }) {
       return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.listEntries", attributes }, async () => await withReadDelay(async () => await wrappedStore.listEntries(listOptions)));
     },
-    async setAll(entries, setOptions) {
-      return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.setAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => await withWriteDelay(async () => await wrappedStore.setAll(entries, setOptions)));
-    },
-    async deleteAll(keys, deleteOptions) {
+    async deleteAll(keys: ArrayBuffer[], deleteOptions?: { requiresSeq?: DatabaseSeq }) {
       return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.deleteAll", attributes: { ...attributes, "bulldozer.low_level.key_count": keys.length } }, async () => await withWriteDelay(async () => await wrappedStore.deleteAll(keys, deleteOptions)));
-    },
-    async insertAll(values, insertOptions) {
-      return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.insertAll", attributes: { ...attributes, "bulldozer.low_level.value_count": values.length } }, async () => await withWriteDelay(async () => await wrappedStore.insertAll(values, insertOptions)));
-    },
-    async compareAndSetAll(entries, compareAndSetOptions) {
-      return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
-        // A compare-and-set reads the current values and then writes the matching ones, so it pays
-        // both delays rather than being classified as one or the other.
-        const result = await withReadDelay(async () => await wrappedStore.compareAndSetAll(entries, compareAndSetOptions));
-        if (result.results.some(entryResult => entryResult.wasSet)) await withWriteDelay(async () => {});
-        return result;
-      });
     },
     async debugEntries() {
       return await wrappedStore.debugEntries?.() ?? [];
@@ -117,11 +124,35 @@ export function declareDelayedLowLevelDatabase(wrapped: LowLevelDatabase, option
         delayedWriteMs,
       };
     },
-    declareKvStore(id) {
-      return declareStoreOrDump(wrapped.declareKvStore(id) as LowLevelKvStore & LowLevelKvDump);
+    declareKvStore(id): LowLevelKvStore {
+      const wrappedStore = wrapped.declareKvStore(id);
+      return {
+        ...declareSharedMethods(wrappedStore),
+        async setAll(entries, setOptions) {
+          return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.setAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => await withWriteDelay(async () => await wrappedStore.setAll(entries, setOptions)));
+        },
+        async compareAndSetAll(entries, compareAndSetOptions) {
+          return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
+            // A compare-and-set first reads the current values (always) and then writes the matching
+            // ones (only if any matched), so it pays the read latency up front and the writer's
+            // service time only when it actually mutated something.
+            await payReadDelay(performance.now() + readDelayMs);
+            return await withWriteDelay(
+              async () => await wrappedStore.compareAndSetAll(entries, compareAndSetOptions),
+              result => result.results.some(entryResult => entryResult.wasSet),
+            );
+          });
+        },
+      };
     },
-    declareKvDump(id) {
-      return declareStoreOrDump(wrapped.declareKvDump(id) as LowLevelKvStore & LowLevelKvDump);
+    declareKvDump(id): LowLevelKvDump {
+      const wrappedDump = wrapped.declareKvDump(id);
+      return {
+        ...declareSharedMethods(wrappedDump),
+        async insertAll(values, insertOptions) {
+          return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.insertAll", attributes: { ...attributes, "bulldozer.low_level.value_count": values.length } }, async () => await withWriteDelay(async () => await wrappedDump.insertAll(values, insertOptions)));
+        },
+      };
     },
     async waitUntilAvailable(seq: DatabaseSeq) {
       await wrapped.waitUntilAvailable(seq);
@@ -136,6 +167,9 @@ export function declareDelayedLowLevelDatabase(wrapped: LowLevelDatabase, option
       return wrapped.combineSeqs(...seqs);
     },
     async close() {
+      // Writes that are still queued behind the emulated device would otherwise run against an
+      // already-closed backend.
+      await writerQueueTail;
       await wrapped.close();
     },
     async debugSnapshot() {

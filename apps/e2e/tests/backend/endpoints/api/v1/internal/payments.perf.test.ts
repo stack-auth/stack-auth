@@ -3,7 +3,7 @@ import path from "node:path";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { expect } from "vitest";
 import { it } from "../../../../../helpers";
-import { Auth, Payments, Project, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, Payments, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
 const USER_COUNT = 6;
 const ITEM_UPDATES_PER_USER = 10;
@@ -19,23 +19,20 @@ if (PREFILL_VALUE != null && PREFILL_STAGES_VALUE != null) {
   throw new Error("HEXCLAVE_PAYMENTS_PERF_PREFILL and HEXCLAVE_PAYMENTS_PERF_PREFILL_STAGES cannot both be set");
 }
 
-function parseNonNegativeInteger(envName: string, value: string): number {
-  if (!/^\d+$/.test(value)) {
-    throw new Error(`${envName} must be a non-negative integer, got ${value}`);
-  }
+// Single source of truth for "this env var holds a count": digits only (so no signs, exponents or
+// whitespace-with-a-number sneaking through `Number()`) and within the safe integer range. Callers
+// add whatever extra constraint they need on top of the returned number.
+function parseNonNegativeInteger(envName: string, value: string, expectation = "a non-negative integer"): number {
   const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed)) {
-    throw new Error(`${envName} must be a non-negative integer, got ${value}`);
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(parsed)) {
+    throw new Error(`${envName} must be ${expectation}, got ${value}`);
   }
   return parsed;
 }
 
 function parsePositiveInteger(envName: string, value: string): number {
-  if (!/^\d+$/.test(value)) {
-    throw new Error(`${envName} must be a positive integer, got ${value}`);
-  }
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+  const parsed = parseNonNegativeInteger(envName, value, "a positive integer");
+  if (parsed <= 0) {
     throw new Error(`${envName} must be a positive integer, got ${value}`);
   }
   return parsed;
@@ -44,18 +41,11 @@ function parsePositiveInteger(envName: string, value: string): number {
 function parsePrefillStages(value: string): number[] {
   const stages: number[] = [];
   for (const rawStage of value.split(",")) {
-    const stageValue = rawStage.trim();
-    if (!/^\d+$/.test(stageValue)) {
-      throw new Error(
-        `HEXCLAVE_PAYMENTS_PERF_PREFILL_STAGES must be a comma-separated list of strictly increasing non-negative integers, offending value ${rawStage}`,
-      );
-    }
-    const stage = Number(stageValue);
-    if (!Number.isSafeInteger(stage)) {
-      throw new Error(
-        `HEXCLAVE_PAYMENTS_PERF_PREFILL_STAGES must be a comma-separated list of strictly increasing non-negative integers, offending value ${rawStage}`,
-      );
-    }
+    const stage = parseNonNegativeInteger(
+      "HEXCLAVE_PAYMENTS_PERF_PREFILL_STAGES",
+      rawStage.trim(),
+      "a comma-separated list of strictly increasing non-negative integers",
+    );
     if (stages.length > 0 && stage <= stages[stages.length - 1]) {
       throw new Error(
         `HEXCLAVE_PAYMENTS_PERF_PREFILL_STAGES must be strictly increasing, offending value ${rawStage}`,
@@ -94,15 +84,6 @@ type PerfMetric = {
   elapsedMs: number,
 };
 
-type RequestUserAuth = {
-  accessToken?: string,
-  refreshToken?: string,
-};
-
-// Prefill requests use server/admin access and explicit customer IDs, so an empty override avoids
-// pinning a 60-second user token while also suppressing the shared ambient auth state.
-const PREFILL_NO_USER_AUTH: RequestUserAuth = {};
-
 async function measure<T>(name: string, count: number, fn: () => Promise<T>, metrics: PerfMetric[]): Promise<T> {
   const startedAt = performance.now();
   const result = await fn();
@@ -113,7 +94,7 @@ async function measure<T>(name: string, count: number, fn: () => Promise<T>, met
   return result;
 }
 
-async function createPurchaseCode(options: { customerType: "user", customerId: string, productId: string, userAuth?: RequestUserAuth }) {
+async function createPurchaseCode(options: { customerType: "user", customerId: string, productId: string }) {
   const res = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "server",
@@ -122,7 +103,6 @@ async function createPurchaseCode(options: { customerType: "user", customerId: s
       customer_id: options.customerId,
       product_id: options.productId,
     },
-    userAuth: options.userAuth,
   });
   expect(res.status).toBe(200);
   const codeMatch = (res.body.url as string).match(/\/purchase\/([a-z0-9-_]+)/);
@@ -180,69 +160,80 @@ function appendPrefillLog(index: number, stage: number, elapsedMs: number): void
 }
 
 async function prefillOne(index: number, stage: number): Promise<void> {
-  const startedAt = performance.now();
-  const { userId } = await Auth.fastSignUp();
+  // Prefill customers are created concurrently, and `Auth.fastSignUp()` writes the tokens of the
+  // user it just created into the process-wide backend context. Pinning `userAuth` for this
+  // customer's async subtree (a `with` value wins over any `set` value) means a worker can never
+  // pick up another worker's ambient token, instead of every request in here having to remember to
+  // override it. Prefill only needs server/admin access with explicit customer IDs anyway.
+  await backendContext.with({ userAuth: null }, async () => {
+    const startedAt = performance.now();
+    const { userId } = await Auth.fastSignUp();
 
-  const subscriptionCode = await createPurchaseCode({
-    customerType: "user",
-    customerId: userId,
-    productId: "perf-sub",
-    userAuth: PREFILL_NO_USER_AUTH,
-  });
-  const subscriptionResponse = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
-    accessType: "admin",
-    method: "POST",
-    body: { full_code: subscriptionCode, price_id: "monthly", quantity: 1 },
-    userAuth: PREFILL_NO_USER_AUTH,
-  });
-  expect(subscriptionResponse.status).toBe(200);
-
-  const oneTimeCode = await createPurchaseCode({
-    customerType: "user",
-    customerId: userId,
-    productId: "perf-otp",
-    userAuth: PREFILL_NO_USER_AUTH,
-  });
-  const oneTimeResponse = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
-    accessType: "admin",
-    method: "POST",
-    body: { full_code: oneTimeCode, price_id: "single", quantity: 2 },
-    userAuth: PREFILL_NO_USER_AUTH,
-  });
-  expect(oneTimeResponse.status).toBe(200);
-
-  for (let grant = 0; grant < 2; grant++) {
-    const grantResponse = await niceBackendFetch(urlString`/api/v1/payments/products/user/${userId}`, {
-      method: "POST",
-      accessType: "server",
-      body: { product_id: "perf-api-grant", quantity: 1 },
-      userAuth: PREFILL_NO_USER_AUTH,
+    const subscriptionCode = await createPurchaseCode({
+      customerType: "user",
+      customerId: userId,
+      productId: "perf-sub",
     });
-    expect(grantResponse.status).toBe(200);
-  }
-
-  for (let update = 0; update < ITEM_UPDATES_PER_USER; update++) {
-    const itemId = update % 2 === 0 ? "credits" : "boosts";
-    const updateResponse = await niceBackendFetch(urlString`/api/latest/payments/items/user/${userId}/${itemId}/update-quantity`, {
+    const subscriptionResponse = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+      accessType: "admin",
       method: "POST",
-      accessType: "server",
-      query: { allow_negative: "false" },
-      body: { delta: update + 1, description: `prefill-${index}-${update}` },
-      userAuth: PREFILL_NO_USER_AUTH,
+      body: { full_code: subscriptionCode, price_id: "monthly", quantity: 1 },
     });
-    expect(updateResponse.status).toBe(200);
-  }
+    expect(subscriptionResponse.status).toBe(200);
 
-  appendPrefillLog(index, stage, performance.now() - startedAt);
+    const oneTimeCode = await createPurchaseCode({
+      customerType: "user",
+      customerId: userId,
+      productId: "perf-otp",
+    });
+    const oneTimeResponse = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+      accessType: "admin",
+      method: "POST",
+      body: { full_code: oneTimeCode, price_id: "single", quantity: 2 },
+    });
+    expect(oneTimeResponse.status).toBe(200);
+
+    for (let grant = 0; grant < 2; grant++) {
+      const grantResponse = await niceBackendFetch(urlString`/api/v1/payments/products/user/${userId}`, {
+        method: "POST",
+        accessType: "server",
+        body: { product_id: "perf-api-grant", quantity: 1 },
+      });
+      expect(grantResponse.status).toBe(200);
+    }
+
+    for (let update = 0; update < ITEM_UPDATES_PER_USER; update++) {
+      const itemId = update % 2 === 0 ? "credits" : "boosts";
+      const updateResponse = await niceBackendFetch(urlString`/api/latest/payments/items/user/${userId}/${itemId}/update-quantity`, {
+        method: "POST",
+        accessType: "server",
+        query: { allow_negative: "false" },
+        body: { delta: update + 1, description: `prefill-${index}-${update}` },
+      });
+      expect(updateResponse.status).toBe(200);
+    }
+
+    appendPrefillLog(index, stage, performance.now() - startedAt);
+  });
 }
 
 async function prefillCustomersInRange(startIndex: number, count: number, stage: number): Promise<void> {
   let nextIndex = 0;
+  // Without this, the other workers would keep hammering the backend for another customer each after
+  // one of them has already failed the whole prefill, which makes the failure output much noisier
+  // (and, for a benchmark, wastes minutes of a run that is going to be discarded anyway).
+  let failed = false;
   const worker = async (): Promise<void> => {
     while (true) {
+      if (failed) return;
       const offset = nextIndex++;
       if (offset >= count) return;
-      await prefillOne(startIndex + offset, stage);
+      try {
+        await prefillOne(startIndex + offset, stage);
+      } catch (error) {
+        failed = true;
+        throw error;
+      }
     }
   };
   await Promise.all(Array.from({ length: Math.min(PREFILL_CONCURRENCY, count) }, worker));
