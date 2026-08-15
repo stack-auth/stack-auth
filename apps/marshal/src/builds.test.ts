@@ -276,7 +276,7 @@ describe("buildTimeEnv", () => {
 });
 
 describe("the build completion webhook", () => {
-  // The gate in app.ts authenticates /internal/* BEFORE any handler runs and 404s a path it
+  // The gate in marshal-app.ts authenticates /internal/* BEFORE any handler runs and 404s a path it
   // does not recognize, so a webhook URL the gate cannot match means no real Fly build can
   // ever complete — and nothing in e2e notices, because the mock builder completes in
   // process without crossing HTTP. Both sides derive from buildCompletionPath; this pins
