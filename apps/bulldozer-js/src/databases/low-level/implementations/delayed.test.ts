@@ -265,6 +265,51 @@ describe("delayed low-level database", () => {
     expect(wasClosedBeforeMutationFinished()).toBe(false);
   });
 
+  it("waits for a pending sequence waiter before closing the wrapped backend", async () => {
+    // Sequence waiters pay no delay, but they are pending against the wrapped backend, so closing it
+    // underneath them would leave them waiting on a closed database.
+    const inner = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    let releaseDurable = (): void => {};
+    let durableFinished = false;
+    let closedAfterDurableFinished = false;
+    const wrapped: LowLevelDatabase = {
+      ...inner,
+      async waitUntilDurable() {
+        await new Promise<void>(resolve => {
+          releaseDurable = resolve;
+        });
+        durableFinished = true;
+      },
+      async close() {
+        closedAfterDurableFinished = durableFinished;
+        await inner.close();
+      },
+    };
+    const database = declareDelayedLowLevelDatabase(wrapped, { readDelayMs: 0, writeDelayMs: 0 });
+
+    const pendingDurable = database.waitUntilDurable(database.initialSeq);
+    // Two turns: one for the wrapper to reach the wrapped waiter, one for `close()` to get past its
+    // synchronous part and prove that it does not resolve while the waiter is still pending.
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const pendingClose = database.close();
+    await new Promise<void>(resolve => setImmediate(resolve));
+
+    releaseDurable();
+    await pendingDurable;
+    await pendingClose;
+    expect(closedAfterDurableFinished).toBe(true);
+  });
+
+  it("rejects operations that start after close has begun", async () => {
+    const database = createDelayedDatabase({ readDelayMs: 5, writeDelayMs: 5 });
+    const store = database.declareKvStore("store");
+    await store.setAll([{ key: buffer("a"), value: buffer("1") }]);
+
+    const pendingClose = database.close();
+    await expect(store.get(buffer("a"))).rejects.toThrow("cannot accept new operations");
+    await pendingClose;
+  });
+
   it("reports delay counters in debug info", async () => {
     const database = createDelayedDatabase({ readDelayMs: 1, writeDelayMs: 1 });
     const store = database.declareKvStore("store");

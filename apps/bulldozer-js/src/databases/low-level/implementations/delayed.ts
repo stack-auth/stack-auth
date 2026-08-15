@@ -58,8 +58,15 @@ export function declareDelayedLowLevelDatabase(wrapped: LowLevelDatabase, option
   // knows about operations that already reached it.
   let inFlightOperations = 0;
   let idleWaiters: (() => void)[] = [];
+  // Set synchronously by `close()` before it awaits anything, so that the drain below terminates:
+  // without it, an operation that starts while the drain is yielding would be handed a backend that
+  // is about to close (or, if the drain kept waiting for it, could keep `close()` alive forever).
+  let isClosing = false;
 
   const trackInFlight = async <T>(operation: () => Promise<T>): Promise<T> => {
+    // Async function bodies run synchronously up to their first await, so this check and the counter
+    // below cannot interleave with `close()` setting the flag.
+    if (isClosing) throw new Error("This delayed low-level database is closing or already closed, so it cannot accept new operations");
     inFlightOperations++;
     try {
       return await operation();
@@ -126,7 +133,7 @@ export function declareDelayedLowLevelDatabase(wrapped: LowLevelDatabase, option
       return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.deleteAll", attributes: { ...attributes, "bulldozer.low_level.key_count": keys.length } }, async () => await trackInFlight(async () => await withWriteDelay(async () => await wrappedStore.deleteAll(keys, deleteOptions))));
     },
     async debugEntries() {
-      return await wrappedStore.debugEntries?.() ?? [];
+      return await trackInFlight(async () => await wrappedStore.debugEntries?.() ?? []);
     },
   });
 
@@ -174,22 +181,26 @@ export function declareDelayedLowLevelDatabase(wrapped: LowLevelDatabase, option
         },
       };
     },
+    // The sequence waiters do no IO of their own, so they pay no delay — but they do hold a reference
+    // into the wrapped backend for as long as they are pending, so they are tracked like everything
+    // else and `close()` waits for them.
     async waitUntilAvailable(seq: DatabaseSeq) {
-      await wrapped.waitUntilAvailable(seq);
+      await trackInFlight(async () => await wrapped.waitUntilAvailable(seq));
     },
     async waitUntilDurable(seq: DatabaseSeq) {
-      await wrapped.waitUntilDurable(seq);
+      await trackInFlight(async () => await wrapped.waitUntilDurable(seq));
     },
     async waitUntilReplicated(seq: DatabaseSeq) {
-      await wrapped.waitUntilReplicated(seq);
+      await trackInFlight(async () => await wrapped.waitUntilReplicated(seq));
     },
     combineSeqs(...seqs) {
       return wrapped.combineSeqs(...seqs);
     },
     async close() {
+      isClosing = true;
       // Anything still in flight would otherwise run against an already-closed backend, so drain
       // until nothing is left: an operation woken up by the drain can enqueue further work behind the
-      // writer queue (a buffered flush resuming, say), which is why one pass is not enough.
+      // writer queue, which is why one pass is not enough.
       while (inFlightOperations > 0) {
         await new Promise<void>(resolve => idleWaiters.push(resolve));
         await writerQueueTail;
@@ -198,7 +209,7 @@ export function declareDelayedLowLevelDatabase(wrapped: LowLevelDatabase, option
       await wrapped.close();
     },
     async debugSnapshot() {
-      return await wrapped.debugSnapshot?.() ?? { stores: {}, dumps: {} };
+      return await trackInFlight(async () => await wrapped.debugSnapshot?.() ?? { stores: {}, dumps: {} });
     },
     initialSeq: wrapped.initialSeq,
   };
