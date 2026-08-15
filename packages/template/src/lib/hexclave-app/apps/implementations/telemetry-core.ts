@@ -1,6 +1,6 @@
 import { ignoreUnhandledRejection } from "@hexclave/shared/dist/utils/promises";
-import { CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_NAME_RE, generateW3cTraceId, isW3cSpanId, isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
-import { runWithSpanContext } from "./span-context";
+import { CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_NAME_RE, isW3cSpanId, isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
+import { generateOtelTraceId } from "./otel-context";
 
 /**
  * Environment-independent core of the custom telemetry API: the public types
@@ -21,6 +21,11 @@ import { runWithSpanContext } from "./span-context";
 export type SpanContext = {
   traceId: string,
   spanId: string,
+  /** Standard OTel trace flags. Omitted serialized parents remain sampled for
+   * backwards compatibility with the pre-OTel facade contract. */
+  traceFlags?: number,
+  /** Opaque W3C vendor state, when the context crossed a propagation boundary. */
+  traceState?: string,
 };
 
 /** Anything accepted as a parent: a serialized SpanContext or a live Span handle. */
@@ -39,28 +44,21 @@ export type TrackOptions = {
    * `parent`, the parent still wins — `root` only drops the AMBIENT parent.
    */
   root?: boolean,
-  /**
-   * Non-hierarchical references to other spans: causally related work that is
-   * not this item's parent (e.g. a second ambient span from an unrelated flow,
-   * or the producer of a queued message). Stored in `analytics_internal.span_links`.
-   */
-  links?: ParentRef[],
 };
 
 export type StartSpanOptions = TrackOptions & {
+  /**
+   * Non-hierarchical references to other spans: causally related work that is
+   * not this span's parent (e.g. a second ambient span from an unrelated flow,
+   * or the producer of a queued message). OpenTelemetry links belong to spans,
+   * not events, so this is deliberately absent from `TrackOptions`.
+   */
+  links?: ParentRef[],
   data?: Record<string, unknown>,
   startedAtMs?: number,
 };
 
-/**
- * A custom span: a time interval written to analytics as an open interval on
- * start and re-written (versioned upsert) on setData/end. A span that is never
- * ended — e.g. the tab closed — stays visible as an open interval by design.
- *
- * Returned promises resolve when the batch containing the update is acknowledged
- * and reject on definitive send failure. Methods validate their arguments and
- * may throw before creating an update.
- */
+/** A thin ergonomic handle over a real OpenTelemetry span. */
 export type Span = {
   /** The trace this span belongs to; shared with every ancestor and descendant. */
   readonly traceId: string,
@@ -94,8 +92,8 @@ export type Span = {
   run<T>(fn: () => T): Promise<Awaited<T>>,
   /**
    * The cross-tier propagation headers pinned to exactly this span — the
-   * standard `traceparent` carrying this span's W3C context plus the Hexclave
-   * correlation header. For transports the SDK cannot instrument (XHR,
+   * standard `traceparent`/`tracestate` carrying this span's W3C context plus
+   * filtered Hexclave correlation baggage. For transports the SDK cannot instrument (XHR,
    * sendBeacon, WebSocket handshakes). Setting these headers on a fetch also
    * overrides the automatic ambient ones.
    */
@@ -111,29 +109,13 @@ export type Span = {
   spanContext(): SpanContext,
 };
 
-export type SpanUpdateRow = {
-  trace_id: string,
-  span_id: string,
-  /** null means this span IS the trace root. */
-  parent_span_id: string | null,
-  span_type: string,
-  started_at_ms: number,
-  ended_at_ms: number | null,
-  data: Record<string, unknown>,
-  updated_at_ms: number,
-  /** OTel instrumentation scope/tracer name. Present only for auto-instrumented library spans. */
-  scope_name?: string,
-  // CORRELATION, not ancestry: the `$page-view` span this span happened on.
-  // Client tab state the server cannot derive, so it rides per-item (a batch can
-  // straddle a navigation). Frozen at span creation; never set on $page-view rows.
-  page_view_span_id?: string,
-  /**
-   * Non-hierarchical references to other spans; see TrackOptions.links. Wire
-   * shape is snake_case like every other field on this row, so it is NOT
-   * `SpanContext` — the camelCase form is the SDK-facing type only.
-   */
-  links?: { trace_id: string, span_id: string }[],
+/** Internal stored form. Target scope is only supplied by trusted platform code. */
+export type StoredSpanLink = SpanContext & {
+  linkedProjectId?: string,
+  linkedBranchId?: string,
 };
+
+export const MAX_SPAN_LINKS = 32;
 
 // Keep fire-and-forget telemetry from becoming an unhandled rejection while
 // returning the original promise so callers that await it still observe failure.
@@ -272,6 +254,9 @@ function getSpanContextError(context: SpanContext, role: string): string | null 
   if (!isW3cSpanId(context.spanId)) {
     return `Invalid ${role} spanId ${JSON.stringify(context.spanId)}: must be 16 lowercase hex characters and not all-zero`;
   }
+  if (context.traceFlags !== undefined && (!Number.isInteger(context.traceFlags) || context.traceFlags < 0 || context.traceFlags > 255)) {
+    return `Invalid ${role} traceFlags ${JSON.stringify(context.traceFlags)}: must be an integer between 0 and 255`;
+  }
   return null;
 }
 
@@ -280,8 +265,12 @@ export type ResolvedSpanParent = {
   traceId: string,
   /** null means the item starts a NEW trace (it is the root activity). */
   parentSpanId: string | null,
+  /** Standard flags inherited from the selected parent. */
+  traceFlags?: number,
+  /** Opaque W3C state inherited from the selected parent. */
+  traceState?: string,
   /** Non-hierarchical references; empty when there are none. */
-  links: SpanContext[],
+  links: StoredSpanLink[],
 };
 
 /**
@@ -343,12 +332,14 @@ export function resolveSpanParent(opts: {
     parent = opts.fallbackParent;
   }
 
-  const links: SpanContext[] = [];
+  const links: StoredSpanLink[] = [];
   for (const ref of opts.links ?? []) {
     const context = parentRefToSpanContext(ref);
     const error = getSpanContextError(context, "link");
     if (error !== null) return { error };
-    links.push({ traceId: context.traceId, spanId: context.spanId });
+    if (!links.some((link) => link.spanId === context.spanId && link.traceId === context.traceId)) {
+      links.push({ traceId: context.traceId, spanId: context.spanId });
+    }
   }
   if (parent !== null) {
     for (const context of ambient) {
@@ -357,10 +348,15 @@ export function resolveSpanParent(opts: {
       links.push({ traceId: context.traceId, spanId: context.spanId });
     }
   }
+  if (links.length > MAX_SPAN_LINKS) {
+    return { error: `A span may link to at most ${MAX_SPAN_LINKS} other spans` };
+  }
 
   return {
-    traceId: parent?.traceId ?? generateW3cTraceId(),
+    traceId: parent?.traceId ?? generateOtelTraceId(),
     parentSpanId: parent?.spanId ?? null,
+    ...parent?.traceFlags === undefined ? {} : { traceFlags: parent.traceFlags },
+    ...parent?.traceState === undefined ? {} : { traceState: parent.traceState },
     links,
   };
 }
@@ -384,7 +380,7 @@ export async function withSpanImpl<T>(
     return await rejectedPreCaught("withSpan() requires a callback function");
   }
   const span = startSpan(spanType, options);
-  return await runWithSpanContext(span.spanContext(), async () => {
+  return await span.run(async () => {
     try {
       const result = await fn(span);
       span.end().catch(() => {});

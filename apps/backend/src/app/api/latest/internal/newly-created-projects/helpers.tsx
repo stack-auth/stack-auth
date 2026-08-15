@@ -323,13 +323,14 @@ export async function loadProjectActivityMetrics(projectIds: string[]): Promise<
               SELECT
                 project_id AS projectId,
                 max(event_at) AS lastActive
-              FROM analytics_internal.events
-              WHERE event_type = '$token-refresh'
-                AND user_id IS NOT NULL
-                AND project_id IN {projectIds:Array(String)}
+              FROM analytics_internal.telemetry
+              PREWHERE project_id IN {projectIds:Array(String)}
+                AND branch_id = {branchId:String}
+                AND event_type = '$token-refresh'
+              WHERE user_id IS NOT NULL
               GROUP BY project_id
             `,
-            query_params: { projectIds: projectIdChunk },
+            query_params: { branchId, projectIds: projectIdChunk },
             format: "JSONEachRow",
           }),
         ]);
@@ -371,23 +372,38 @@ export async function loadProjectActivityMetrics(projectIds: string[]): Promise<
   }
 }
 
+export function buildInternalOwnerReplayIdsQuery(): string {
+  return `
+      SELECT DISTINCT assumeNotNull(session_replay_id) AS sessionReplayId
+      FROM (
+        -- Current SDKs model page views as spans.
+        SELECT session_replay_id, user_id, data AS payload
+        FROM analytics_internal.spans FINAL
+        PREWHERE project_id = {internalProjectId:String}
+          AND branch_id = {branchId:String}
+          AND span_type = '$page-view'
+        UNION ALL
+        -- Retain legacy event page views until telemetry retention expires.
+        SELECT session_replay_id, user_id, toString(data) AS payload
+        FROM analytics_internal.telemetry
+        PREWHERE project_id = {internalProjectId:String}
+          AND branch_id = {branchId:String}
+          AND event_type = '$page-view'
+      )
+      WHERE user_id IN {ownerUserIds:Array(String)}
+        AND session_replay_id IS NOT NULL
+        AND (
+          position(JSONExtractString(payload, 'path'), {projectPath:String}) > 0
+          OR position(JSONExtractString(payload, 'url'), {projectPath:String}) > 0
+        )
+    `;
+}
+
 async function loadInternalOwnerReplayIds(projectId: string, ownerUserIds: string[]): Promise<string[]> {
   if (ownerUserIds.length === 0) return [];
   const clickhouse = getClickhouseAdminClientForMetrics();
   const result = await clickhouse.query({
-    query: `
-      SELECT DISTINCT assumeNotNull(session_replay_id) AS sessionReplayId
-      FROM analytics_internal.events
-      WHERE project_id = {internalProjectId:String}
-        AND branch_id = {branchId:String}
-        AND user_id IN {ownerUserIds:Array(String)}
-        AND session_replay_id IS NOT NULL
-        AND event_type = '$page-view'
-        AND (
-          position(JSONExtractString(toString(data), 'path'), {projectPath:String}) > 0
-          OR position(JSONExtractString(toString(data), 'url'), {projectPath:String}) > 0
-        )
-    `,
+    query: buildInternalOwnerReplayIdsQuery(),
     query_params: {
       internalProjectId: INTERNAL_PROJECT_ID,
       branchId: DEFAULT_BRANCH_ID,

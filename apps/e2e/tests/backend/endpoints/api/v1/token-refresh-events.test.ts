@@ -1,4 +1,4 @@
-import { formatTraceparent, generateW3cSpanId, generateW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
+import { generateW3cSpanId, generateW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../helpers";
@@ -404,7 +404,7 @@ it("OAuth refresh token grant creates exactly one additional $token-refresh even
     method: "POST",
     accessType: "client",
     headers: {
-      traceparent: formatTraceparent({ traceId, spanId: clientSpanId, sampled: true }),
+      traceparent: `00-${traceId}-${clientSpanId}-01`,
     },
     body: {
       grant_type: "refresh_token",

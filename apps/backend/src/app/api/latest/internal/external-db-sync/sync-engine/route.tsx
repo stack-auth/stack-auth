@@ -5,6 +5,7 @@ import { ensureUpstashSignature } from "@/lib/upstash";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
 import { yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
+import { captureError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { traceSpan } from "@/utils/telemetry";
 
 export const POST = createSmartRouteHandler({
@@ -51,15 +52,23 @@ export const POST = createSmartRouteHandler({
         };
       }
 
-      const needsResync = await traceSpan("external-db-sync.sync-engine.syncExternalDatabases", async (syncSpan) => {
-        const resync = await syncExternalDatabases(tenancy);
-        syncSpan.setAttribute("stack.external-db-sync.needs-resync", resync);
-        return resync;
-      });
-      if (needsResync) {
-        await traceSpan("external-db-sync.sync-engine.enqueueResync", async () => {
-          await enqueueExternalDbSync(tenancy.id);
+      try {
+        const needsResync = await traceSpan("external-db-sync.sync-engine.syncExternalDatabases", async (syncSpan) => {
+          const resync = await syncExternalDatabases(tenancy);
+          syncSpan.setAttribute("stack.external-db-sync.needs-resync", resync);
+          return resync;
         });
+        if (needsResync) {
+          await traceSpan("external-db-sync.sync-engine.enqueueResync", async () => {
+            await enqueueExternalDbSync(tenancy.id);
+          });
+        }
+      } catch (error) {
+        // The outbox row is deleted only after QStash accepts this delivery.
+        // Returning 503 keeps a failed sync visible to QStash rather than
+        // acknowledging a delivery whose external cursor did not advance.
+        captureError("external-db-sync-sync-engine", error);
+        throw new StatusError(StatusError.ServiceUnavailable, "External database synchronization is temporarily unavailable");
       }
 
       return {

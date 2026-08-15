@@ -1,13 +1,10 @@
+import { getLocalCronJobPaths } from "../src/lib/cron-job-registry";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
 
-const endpoints = [
-  "/api/latest/internal/external-db-sync/sequencer",
-  "/api/latest/internal/external-db-sync/poller",
-  "/api/latest/internal/workflow-engine-step",
-];
+const endpoints = getLocalCronJobPaths();
 
 async function main() {
   if (getEnvVariable("NEXT_PUBLIC_STACK_IS_PREVIEW", "") === "true") {

@@ -1,4 +1,5 @@
 import * as yup from "yup";
+import { issueCreatedWebhookEvent, issueIgnoredWebhookEvent, issueMergedWebhookEvent, issueRegressedWebhookEvent, issueResolvedWebhookEvent } from "./crud/issues";
 import { teamMembershipCreatedWebhookEvent, teamMembershipDeletedWebhookEvent } from "./crud/team-memberships";
 import { teamPermissionCreatedWebhookEvent, teamPermissionDeletedWebhookEvent } from "./crud/team-permissions";
 import { teamCreatedWebhookEvent, teamDeletedWebhookEvent, teamUpdatedWebhookEvent } from "./crud/teams";
@@ -14,6 +15,10 @@ export type WebhookEvent<S extends yup.Schema> = {
   },
 };
 
+// Every event that customers can subscribe to MUST be listed here: this array is the sole input to
+// `parseWebhookOpenAPI`, which generates `docs-mintlify/openapi/webhooks.json`. An event that is emitted but
+// missing from this list is undocumented and effectively invisible (see `project_permission.created` /
+// `project_permission.deleted`, which are emitted today and are not listed).
 export const webhookEvents = [
   userCreatedWebhookEvent,
   userUpdatedWebhookEvent,
@@ -25,4 +30,9 @@ export const webhookEvents = [
   teamMembershipDeletedWebhookEvent,
   teamPermissionCreatedWebhookEvent,
   teamPermissionDeletedWebhookEvent,
+  issueCreatedWebhookEvent,
+  issueRegressedWebhookEvent,
+  issueResolvedWebhookEvent,
+  issueIgnoredWebhookEvent,
+  issueMergedWebhookEvent,
 ] as const;

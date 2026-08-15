@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { Tenancy } from "@/lib/tenancies";
-import { globalPrismaClient, retryTransaction } from "@/prisma-client";
+import { globalPrismaClient, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import {
   WORKFLOW_ID_REGEX,
   type WorkflowManifestJson,
@@ -56,7 +56,52 @@ function getStoredScheduleKeys(manifest: Prisma.JsonValue): string[] {
 
 // ─── Sync (create + save source; every save of changed source mints a version) ───
 
-export async function syncWorkflowSource(tenancy: Tenancy, options: { workflowId: string, source: string, displayName?: string, mustBeNew: boolean }): Promise<WorkflowSyncResultJson> {
+export type WorkflowSourceSyncOptions = {
+  workflowId: string,
+  source: string,
+  displayName?: string,
+  mustBeNew: boolean,
+  /**
+   * Optional compare-and-swap guard for trusted registrations. `null` means
+   * that no definition may exist when the write commits; a string means the
+   * latest version must still contain exactly that source. Ordinary dashboard
+   * syncs leave this unset and retain their existing behavior.
+   */
+  expectedLatestSource?: string | null,
+};
+
+async function assertExpectedLatestWorkflowSource(
+  tx: PrismaClientTransaction,
+  tenancyId: string,
+  workflowId: string,
+  expectedLatestSource: string | null,
+): Promise<void> {
+  const definition = await tx.workflowDefinition.findUnique({
+    where: { tenancyId_workflowId: { tenancyId, workflowId } },
+    select: { latestVersion: true },
+  });
+  if (expectedLatestSource === null) {
+    if (definition !== null) {
+      throw new StatusError(StatusError.Conflict, `Workflow "${workflowId}" was created while registration was in progress; retry the registration`);
+    }
+    return;
+  }
+  if (definition === null) {
+    throw new StatusError(StatusError.Conflict, `Workflow "${workflowId}" was deleted while registration was in progress; retry the registration`);
+  }
+  const latestVersion = await tx.workflowVersion.findUnique({
+    where: { tenancyId_workflowId_version: { tenancyId, workflowId, version: definition.latestVersion } },
+    select: { source: true },
+  });
+  if (latestVersion === null) {
+    throwErr("WorkflowDefinition.latestVersion points at a missing version row");
+  }
+  if (latestVersion.source !== expectedLatestSource) {
+    throw new StatusError(StatusError.Conflict, `Workflow "${workflowId}" changed while registration was in progress; refusing to overwrite the current source`);
+  }
+}
+
+export async function syncWorkflowSource(tenancy: Pick<Tenancy, "id">, options: WorkflowSourceSyncOptions): Promise<WorkflowSyncResultJson> {
   validateWorkflowId(options.workflowId);
 
   const existing = await globalPrismaClient.workflowDefinition.findUnique({
@@ -84,6 +129,13 @@ export async function syncWorkflowSource(tenancy: Tenancy, options: { workflowId
     previousScheduleKeys = getStoredScheduleKeys(latestVersion.manifest);
     if (latestVersion.sourceHash === compiled.data.sourceHash) {
       // Unchanged source (and runtime env): no version minted.
+      const expectedLatestSource = options.expectedLatestSource;
+      if (expectedLatestSource !== undefined) {
+        const expectedSource = expectedLatestSource;
+        await retryTransaction(globalPrismaClient, async (tx) => {
+          await assertExpectedLatestWorkflowSource(tx, tenancy.id, options.workflowId, expectedSource);
+        });
+      }
       return {
         workflow_id: options.workflowId,
         version: existing.latestVersion,
@@ -99,8 +151,13 @@ export async function syncWorkflowSource(tenancy: Tenancy, options: { workflowId
     .filter((trigger) => trigger.type === "schedule")
     .map((trigger) => `${trigger.cron}|${trigger.timezone}`);
   const newlyActivatedScheduleKeys = scheduleKeys.filter((scheduleKey) => !previousScheduleKeys.includes(scheduleKey));
+  const expectedLatestSource = options.expectedLatestSource;
   try {
     await retryTransaction(globalPrismaClient, async (tx) => {
+      if (expectedLatestSource !== undefined) {
+        const expectedSource = expectedLatestSource;
+        await assertExpectedLatestWorkflowSource(tx, tenancy.id, options.workflowId, expectedSource);
+      }
       await tx.workflowVersion.create({
         data: {
           tenancyId: tenancy.id,

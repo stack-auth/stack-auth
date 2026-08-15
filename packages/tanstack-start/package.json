@@ -25,6 +25,24 @@
         "default": "./dist/config.js"
       }
     },
+    "./otel": {
+      "types": "./dist/integrations/otel.d.ts",
+      "import": {
+        "default": "./dist/esm/integrations/otel.js"
+      },
+      "require": {
+        "default": "./dist/integrations/otel.js"
+      }
+    },
+    "./otel/browser": {
+      "types": "./dist/integrations/otel-browser.d.ts",
+      "import": {
+        "default": "./dist/esm/integrations/otel-browser.js"
+      },
+      "require": {
+        "default": "./dist/integrations/otel-browser.js"
+      }
+    },
     "./tanstack-start-server-context": {
       "types": "./dist/tanstack-start-server-context.combined.d.ts",
       "import": {
@@ -126,6 +144,25 @@
     "LICENSE"
   ],
   "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/api-logs": "^0.221.0",
+    "@opentelemetry/core": "^2.10.0",
+    "@opentelemetry/context-async-hooks": "^2.10.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.221.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.221.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.221.0",
+    "@opentelemetry/otlp-transformer": "^0.221.0",
+    "@opentelemetry/instrumentation": "^0.221.0",
+    "@opentelemetry/instrumentation-fetch": "^0.221.0",
+    "@opentelemetry/instrumentation-undici": "^0.31.0",
+    "@opentelemetry/instrumentation-xml-http-request": "^0.221.0",
+    "@opentelemetry/resources": "^2.10.0",
+    "@opentelemetry/sdk-trace-base": "^2.10.0",
+    "@opentelemetry/sdk-logs": "^0.221.0",
+    "@opentelemetry/sdk-metrics": "^2.10.0",
+    "@opentelemetry/sdk-trace-node": "^2.10.0",
+    "@opentelemetry/sdk-trace-web": "^2.10.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
     "@ai-sdk/react": "^3.0.72",
     "ai": "^6.0.0",
     "@hookform/resolvers": "^5.2.2",

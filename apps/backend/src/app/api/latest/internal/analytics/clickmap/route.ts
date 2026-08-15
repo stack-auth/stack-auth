@@ -134,7 +134,7 @@ async function handleTeamHourOfWeek(tenancy: Tenancy, body: ClickmapRequestBody,
     const result = await client.query({
       query: `
         SELECT toDayOfWeek(event_at) AS weekday, toHour(event_at) AS hour, uniqExact(assumeNotNull(user_id)) AS value
-        FROM analytics_internal.events
+        FROM analytics_internal.telemetry
         WHERE project_id = {projectId:String}
           AND branch_id = {branchId:String}
           AND user_id IN {memberUserIds:Array(String)}

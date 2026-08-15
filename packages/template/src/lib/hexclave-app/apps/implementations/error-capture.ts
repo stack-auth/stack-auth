@@ -1,7 +1,12 @@
 import type { DebugImage } from "@hexclave/shared/dist/utils/analytics-wire";
 import { getDebugImagesForStack } from "./debug-ids";
+import type { CapturedExceptionValue, CaptureEvent, ErrorEventId, ErrorScopeData, ErrorStackFrame } from "../interfaces/error-capture";
 import type { ErrorCaptureOptions } from "./observability-config";
 import { truncateUtf8Bytes } from "./telemetry-core";
+import { generateUuid } from "./telemetry-transport";
+import { getActiveErrorScope, mergeErrorScopeData } from "./error-scope";
+import { MAX_ERROR_PROCESSORS } from "./error-processors";
+import type { CapturedErrorEvent, ErrorEventProcessor } from "../interfaces/error-capture";
 
 /**
  * Global error capture (`$error` events), functional-style like web-vitals.ts.
@@ -28,6 +33,11 @@ import { truncateUtf8Bytes } from "./telemetry-core";
 // _captureServerRequestError path.
 export const ERROR_TEXT_MAX_BYTES = 8_192;
 
+/** Sentry/Relay-compatible event identity: lowercase hexadecimal, no dashes. */
+export function generateErrorEventId(): ErrorEventId {
+  return generateUuid().replace(/-/g, "");
+}
+
 // First ~50 frames are plenty for grouping/debugging; raising V8's default 10
 // at install time is what makes the "first 50 frames" of the raw stack exist
 // at all.
@@ -47,12 +57,20 @@ export const DEFAULT_IGNORE_ERRORS = ["Script error", "ResizeObserver loop"] as 
 export type NormalizedErrorCaptureOptions = {
   enabled: boolean,
   ignoreErrors: readonly string[],
+  eventProcessors?: readonly ErrorEventProcessor[],
+  beforeSend?: ErrorCaptureOptions["beforeSend"],
 };
 
 export function normalizeErrorCaptureOptions(options: ErrorCaptureOptions | undefined): NormalizedErrorCaptureOptions {
+  const eventProcessors = [...options?.eventProcessors ?? []];
+  if (eventProcessors.length > MAX_ERROR_PROCESSORS) {
+    throw new Error(`Hexclave error capture: at most ${MAX_ERROR_PROCESSORS} event processors are allowed`);
+  }
   return {
     enabled: options?.enabled !== false,
     ignoreErrors: [...DEFAULT_IGNORE_ERRORS, ...options?.ignoreErrors ?? []],
+    eventProcessors,
+    beforeSend: options?.beforeSend,
   };
 }
 
@@ -112,6 +130,84 @@ type NormalizedError = {
 };
 
 /**
+ * Sentry's linked-errors integration keeps the causal chain in one event and
+ * places the originating error last. That ordering matters: the last value is
+ * the primary group identity while the preceding values explain the cause or
+ * AggregateError branch. Keep the same bounded shape here so `cause` and
+ * `AggregateError.errors` are useful without allowing a malicious cyclic graph
+ * to turn capture into an unbounded traversal.
+ */
+export const MAX_LINKED_ERROR_VALUES = 10;
+
+function linkedErrorProperty(error: Error, key: "cause" | "errors"): unknown {
+  try {
+    return Reflect.get(error, key);
+  } catch {
+    return undefined;
+  }
+}
+
+function exceptionValueFromNormalized(normalized: NormalizedError, mechanism?: CapturedExceptionValue["mechanism"]): CapturedExceptionValue {
+  return {
+    // The top-level compatibility fields are bounded below, but the canonical
+    // exception chain is also sent through OTel as part of the same `data`
+    // object. Keep both representations on the same byte budget; otherwise a
+    // long raw stack would bypass the top-level cap and make the event fail the
+    // shared 64 KB telemetry contract.
+    type: truncateUtf8Bytes(normalized.name, ERROR_TEXT_MAX_BYTES),
+    value: truncateUtf8Bytes(normalized.message, ERROR_TEXT_MAX_BYTES),
+    ...normalized.stack === null ? {} : { stacktrace: { raw: truncateUtf8Bytes(normalized.stack, ERROR_TEXT_MAX_BYTES) } },
+    ...mechanism === undefined ? {} : { mechanism },
+  };
+}
+
+export function buildLinkedExceptionValues(error: unknown, normalized: NormalizedError = normalizeCapturedError(error)): CapturedExceptionValue[] {
+  const values: CapturedExceptionValue[] = [];
+  const seen = new Set<object>();
+
+  const visit = (candidate: unknown, source: string | null, isRoot: boolean): void => {
+    if (!(candidate instanceof Error) || seen.has(candidate) || values.length >= MAX_LINKED_ERROR_VALUES) return;
+    seen.add(candidate);
+
+    const cause = linkedErrorProperty(candidate, "cause");
+    if (cause instanceof Error) visit(cause, "cause", false);
+
+    const aggregateErrors = linkedErrorProperty(candidate, "errors");
+    if (Array.isArray(aggregateErrors)) {
+      for (const [index, child] of aggregateErrors.entries()) {
+        if (child instanceof Error) visit(child, `errors[${index}]`, false);
+        if (values.length >= MAX_LINKED_ERROR_VALUES) break;
+      }
+    }
+
+    const direct = isRoot ? normalized : normalizeCapturedError(candidate);
+    const hasChildren = cause instanceof Error || (Array.isArray(aggregateErrors) && aggregateErrors.some((child) => child instanceof Error));
+    const mechanism = source === null
+      ? undefined
+      : {
+        type: "chained",
+        handled: true,
+        data: {
+          source,
+          ...hasChildren ? { is_exception_group: true } : {},
+        },
+      };
+    if (values.length >= MAX_LINKED_ERROR_VALUES) {
+      // Children are visited before their parent so the root can stay last.
+      // If the graph is deeper than the cap, retain the newest bounded child
+      // values and always keep the root identity that drives grouping.
+      if (!isRoot) return;
+      values.splice(0, values.length - (MAX_LINKED_ERROR_VALUES - 1));
+    }
+    values.push(exceptionValueFromNormalized(direct, mechanism));
+  };
+
+  if (error instanceof Error) visit(error, null, true);
+  if (values.length === 0) values.push(exceptionValueFromNormalized(normalized));
+  return values;
+}
+
+/**
  * Normalizes anything thrown/rejected into name/message/stack. Non-Error
  * values are marked `synthetic` and — for objects — get a stack synthesized at
  * capture time (a fresh Error here), so there is at least a capture location
@@ -148,6 +244,10 @@ export type BuildErrorEventDataOptions = {
   release: string | null,
   environment: string | null,
   sdkVersion: string,
+  /** Stable product event identity. Generated when omitted for automatic captures. */
+  eventId?: ErrorEventId,
+  /** Public scope data merged into the bounded event projection. */
+  scope?: ErrorScopeData,
   /** Force the synthetic flag on (used when the CALLER already synthesized the message, e.g. primitive rejections). */
   synthetic?: boolean,
   /** Extra flat fields (filename/lineno/colno, url/path, route metadata, …). */
@@ -158,6 +258,8 @@ export type BuildErrorEventDataOptions = {
    * callers leave it unset and get the real global reader.
    */
   getDebugImages?: (stack: string | null) => DebugImage[],
+  /** Canonical exception chain. Generated automatically for captureException. */
+  exceptionValues?: readonly CapturedExceptionValue[],
 };
 
 /**
@@ -170,8 +272,12 @@ export type BuildErrorEventDataOptions = {
  * present-when-set (like the tracker's `rage`/`dead` flags) so filters stay
  * cheap.
  */
-export function buildErrorEventData(error: unknown, options: BuildErrorEventDataOptions): Record<string, unknown> {
-  return buildErrorEventDataFromNormalized(normalizeCapturedError(error), options);
+export function buildErrorEventData(error: unknown, options: BuildErrorEventDataOptions): CapturedErrorEvent {
+  const normalized = normalizeCapturedError(error);
+  return buildErrorEventDataFromNormalized(normalized, {
+    ...options,
+    exceptionValues: buildLinkedExceptionValues(error, normalized),
+  });
 }
 
 // Split from buildErrorEventData so the client capture path — which already
@@ -179,14 +285,27 @@ export function buildErrorEventData(error: unknown, options: BuildErrorEventData
 // normalizeCapturedError synthesizes a fresh capture-site stack for plain
 // objects, so a second call would produce a DIFFERENT stack (and fingerprint)
 // than the one the dedupe logic compared.
-function buildErrorEventDataFromNormalized(normalized: NormalizedError, options: BuildErrorEventDataOptions): Record<string, unknown> {
+function buildErrorEventDataFromNormalized(normalized: NormalizedError, options: BuildErrorEventDataOptions): CapturedErrorEvent {
   const message = truncateUtf8Bytes(normalized.message, ERROR_TEXT_MAX_BYTES);
   const stack = normalized.stack !== null ? truncateUtf8Bytes(normalized.stack, ERROR_TEXT_MAX_BYTES) : null;
   // Resolved from the TRUNCATED stack on purpose: symbolication joins debug
   // images onto the frames parsed out of the stack that actually shipped, so an
   // image for a frame that got truncated away would never be used.
   const debugImages = (options.getDebugImages ?? getDebugImagesForStack)(stack);
+  const exceptionValues = options.exceptionValues ?? [exceptionValueFromNormalized(normalized)];
+  const primaryExceptionIndex = exceptionValues.length - 1;
+  const exceptions = exceptionValues.map((exception, index) => index === primaryExceptionIndex
+    ? {
+      ...exception,
+      mechanism: {
+        ...exception.mechanism,
+        type: options.mechanismType,
+        handled: options.handled,
+      },
+    }
+    : exception);
   return {
+    event_id: options.eventId ?? generateErrorEventId(),
     message,
     name: normalized.name,
     ...stack !== null ? { stack } : {},
@@ -194,19 +313,92 @@ function buildErrorEventDataFromNormalized(normalized: NormalizedError, options:
     mechanism_type: options.mechanismType,
     handled: options.handled,
     ...normalized.synthetic || options.synthetic === true ? { synthetic: 1 } : {},
+    exception: { values: exceptions },
     // Fingerprint over the UNTRUNCATED inputs would differ from what a reader
     // can recompute from the row, so hash the bounded values.
     fingerprint: computeErrorFingerprint(normalized.name, message, stack),
     ...options.release !== null ? { release: options.release } : {},
     ...options.environment !== null ? { environment: options.environment } : {},
     sdk_version: options.sdkVersion,
+    ...errorScopeToEventData(options.scope),
     ...options.extra ?? {},
   };
 }
 
+function errorScopeToEventData(scope: ErrorScopeData | undefined): Record<string, unknown> {
+  if (scope === undefined) return {};
+  return {
+    ...scope.user === undefined ? {} : { user: scope.user },
+    ...scope.tags === undefined ? {} : { tags: scope.tags },
+    ...scope.contexts === undefined ? {} : { contexts: scope.contexts },
+    ...scope.extra === undefined ? {} : { extra: scope.extra },
+    ...scope.breadcrumbs === undefined ? {} : { breadcrumbs: scope.breadcrumbs },
+    ...scope.level === undefined ? {} : { level: scope.level },
+    // Processors are execution policy, not event data. They are passed to the
+    // pipeline from the capture-time scope snapshot and never serialized.
+    // Keep the current deterministic grouping fingerprint separate from the
+    // future server-side custom-fingerprint contract. M3 will make this field
+    // affect grouping only after the backend can persist config provenance.
+    ...scope.fingerprint === undefined ? {} : { fingerprint_override: scope.fingerprint },
+  };
+}
+
+function renderStackFrames(frames: readonly ErrorStackFrame[] | undefined): string | null {
+  if (frames === undefined || frames.length === 0) return null;
+  const lines = frames.map((frame) => {
+    const functionName = frame.function ?? "?";
+    const filename = frame.absPath ?? frame.filename ?? "<unknown>";
+    const location = frame.lineno === undefined
+      ? filename
+      : `${filename}:${frame.lineno}${frame.colno === undefined ? "" : `:${frame.colno}`}`;
+    return `    at ${functionName} (${location})`;
+  });
+  return lines.join("\n");
+}
+
+/**
+ * Adapts a normalized event input onto the existing `$error` projection. The
+ * exception chain is retained under `exception`; name/message/stack remain at
+ * the top level because the current backend grouping contract reads those
+ * fields directly. This is the compatibility bridge until the rich envelope
+ * becomes a first-class backend schema in M0/M2.
+ */
+export function buildCapturedEventData(event: CaptureEvent, options: {
+  eventId: ErrorEventId,
+  release: string | null,
+  environment: string | null,
+  sdkVersion: string,
+  scope?: ErrorScopeData,
+}): CapturedErrorEvent {
+  const exception = event.exception?.values.at(-1);
+  const name = event.name ?? exception?.type ?? "Error";
+  const message = event.message ?? exception?.value ?? "";
+  if (message === "") throw new Error("Hexclave captureEvent requires message or exception.values[].value");
+  const stack = event.stack ?? renderStackFrames(exception?.stacktrace?.frames);
+  const data = buildErrorEventDataFromNormalized({
+    name,
+    message,
+    stack,
+    synthetic: false,
+  }, {
+    mechanismType: event.mechanism ?? "captured.event",
+    handled: event.handled ?? true,
+    release: event.release ?? options.release,
+    environment: event.environment ?? options.environment,
+    sdkVersion: options.sdkVersion,
+    eventId: options.eventId,
+    scope: mergeErrorScopeData(options.scope, event),
+    exceptionValues: event.exception?.values,
+    extra: {
+      ...event.platform === undefined ? {} : { platform: event.platform },
+    },
+  });
+  return data;
+}
+
 export type ClientErrorCaptureDeps = {
   /** Delivers one `$error` event's data (fire-and-forget; the sink pre-catches). */
-  emit: (data: Record<string, unknown>) => void,
+  emit: (data: CapturedErrorEvent, scope?: ErrorScopeData) => void,
   ignoreErrors: readonly string[],
   release: string | null,
   environment: string | null,
@@ -303,6 +495,7 @@ export function installClientErrorCapture(deps: ClientErrorCaptureDeps): ClientE
       markCaptured(raw);
       lastCaptured = { name: normalized.name, message, fingerprint, stack };
 
+      const scope = getActiveErrorScope()?.snapshot();
       deps.emit(buildErrorEventDataFromNormalized(normalized, {
         mechanismType: info.mechanismType,
         handled: false,
@@ -310,6 +503,8 @@ export function installClientErrorCapture(deps: ClientErrorCaptureDeps): ClientE
         release: deps.release,
         environment: deps.environment,
         sdkVersion: deps.sdkVersion,
+        scope,
+        exceptionValues: buildLinkedExceptionValues(raw, normalized),
         extra: {
           // Query strings and fragments routinely contain OAuth codes, reset
           // tokens, and other credentials. Keep the useful page identity while
@@ -318,7 +513,7 @@ export function installClientErrorCapture(deps: ClientErrorCaptureDeps): ClientE
           path: window.location.pathname,
           ...info.extra ?? {},
         },
-      }));
+      }), scope);
     } catch (captureError) {
       // A failure HERE must never recurse through the very handlers we patch:
       // arm the ignore-next counter before doing anything else that could throw.

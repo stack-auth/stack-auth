@@ -1,0 +1,414 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { IssueDetailResponseSchema } from "@hexclave/shared/dist/interface/admin-issues";
+import { OBSERVABILITY_TIME_RANGES } from "../filters";
+import {
+  buildIssueListQueryString,
+  getIssueFacetsQuery,
+  getIssueSparklineQuery,
+  parseIssueFacetRows,
+  parseIssueSparklineRows,
+  setIssueAssignee,
+  setIssueBookmarkState,
+  setIssueOwnerState,
+  setIssueSubscriptionState,
+  setIssueTeam,
+  updateIssueAssignment,
+  updateIssueBookmark,
+  updateIssueOwner,
+  updateIssueSubscription,
+  updateIssueTeam,
+  mergeIssues,
+  unmergeIssue,
+  snoozeIssue,
+  unsnoozeIssue,
+  regressIssue,
+  searchPublicIssues,
+  updateIssuesStatusBulk,
+  type IssueListRequest,
+} from "./issues-data";
+
+const { sendInternalAdminRequestMock } = vi.hoisted(() => ({
+  sendInternalAdminRequestMock: vi.fn(),
+}));
+
+vi.mock("@/lib/hexclave-app-internals", () => ({
+  sendInternalAdminRequest: sendInternalAdminRequestMock,
+}));
+
+const SAMPLE_HASH_A = "0123456789abcdef0123456789abcdef";
+const SAMPLE_HASH_B = "fedcba9876543210fedcba9876543210";
+const USER_ID = "00000000-0000-4000-8000-000000000001";
+const TEAM_ID = "00000000-0000-4000-8000-000000000002";
+const ISSUE_ID = "00000000-0000-4000-8000-000000000003";
+const adminApp = { projectId: "project-1" };
+
+const detail = IssueDetailResponseSchema.validateSync({
+  issue: {
+    id: ISSUE_ID, short_id: "1", type: "TypeError", value: "boom", culprit: "app.ts",
+    level: "error", status: "unresolved", substatus: "ongoing", first_seen_at_millis: 1,
+    last_seen_at_millis: 2, times_seen: "3", counters_truncated_at_millis: null,
+    window_occurrences: 3, window_users: 1, service_name: "web", environment: "production",
+    release: null, handled: false, synthetic: false, updated_at_millis: 2, issue_hashes: [SAMPLE_HASH_A],
+  },
+  occurrence: null,
+  newer_cursor: null,
+  older_cursor: null,
+  release_context: { first_release: null, last_release: null, release_commits: [], suspect_commits: [] },
+  redirected_from_issue_id: null,
+  product: {
+    priority: null,
+    assignee_user_id: null,
+    team_id: null,
+    owners: [],
+    activities: [],
+    comments: [],
+    subscriptions: [],
+    bookmarked_user_ids: [],
+  },
+});
+
+beforeEach(() => {
+  sendInternalAdminRequestMock.mockReset();
+});
+
+describe("getIssueSparklineQuery", () => {
+  it("binds the hashes as a parameter instead of interpolating them", () => {
+    const { query, params } = getIssueSparklineQuery(24, [SAMPLE_HASH_A, SAMPLE_HASH_B]);
+    expect(query).toContain("issue_hash IN {issueHashes:Array(String)}");
+    expect(query).not.toContain(SAMPLE_HASH_A);
+    expect(params.issueHashes).toEqual([SAMPLE_HASH_A, SAMPLE_HASH_B]);
+  });
+
+  it("reads the errors view and bounds the scan by the selected range", () => {
+    expect(getIssueSparklineQuery(24, [SAMPLE_HASH_A]).query).toContain("FROM default.errors");
+    for (const range of OBSERVABILITY_TIME_RANGES) {
+      expect(getIssueSparklineQuery(range.hours, [SAMPLE_HASH_A]).query)
+        .toContain(`event_at >= now64(3) - INTERVAL ${range.hours} HOUR`);
+    }
+  });
+
+  it("throws for an hours value outside the shared range set", () => {
+    expect(() => getIssueSparklineQuery(3, [SAMPLE_HASH_A])).toThrow(/Unknown issues time range/);
+    expect(() => getIssueSparklineQuery(0, [SAMPLE_HASH_A])).toThrow(/Unknown issues time range/);
+  });
+
+  it("refuses to build a query for zero hashes, which would scan every error", () => {
+    expect(() => getIssueSparklineQuery(24, [])).toThrow(/zero hashes/);
+  });
+});
+
+describe("getIssueFacetsQuery", () => {
+  it("groups services and environments together in one query", () => {
+    const { query } = getIssueFacetsQuery(168);
+    expect(query).toContain("FROM default.errors");
+    expect(query).toContain("GROUP BY service_namespace, service_name, deployment_environment_name");
+    expect(query).toContain("event_at >= now64(3) - INTERVAL 168 HOUR");
+  });
+
+  it("throws for an unknown range", () => {
+    expect(() => getIssueFacetsQuery(999)).toThrow(/Unknown issues time range/);
+  });
+});
+
+describe("parseIssueSparklineRows", () => {
+  it("returns an empty series for a requested hash with no occurrences", () => {
+    const parsed = parseIssueSparklineRows([], [SAMPLE_HASH_A, SAMPLE_HASH_B]);
+    expect(parsed.get(SAMPLE_HASH_A)).toEqual([]);
+    expect(parsed.get(SAMPLE_HASH_B)).toEqual([]);
+  });
+
+  it("parses ClickHouse timestamps as UTC and string counts as numbers", () => {
+    const parsed = parseIssueSparklineRows(
+      [{ issue_hash: SAMPLE_HASH_A, bucket_start: "2026-07-31 12:00:00.000", occurrences: "17" }],
+      [SAMPLE_HASH_A],
+    );
+    expect(parsed.get(SAMPLE_HASH_A)).toEqual([
+      { bucketMs: Date.parse("2026-07-31T12:00:00.000Z"), occurrences: 17 },
+    ]);
+  });
+
+  it("throws when a row carries a hash nobody asked for", () => {
+    expect(() => parseIssueSparklineRows(
+      [{ issue_hash: SAMPLE_HASH_B, bucket_start: "2026-07-31 12:00:00.000", occurrences: 1 }],
+      [SAMPLE_HASH_A],
+    )).toThrow(/unrequested issue hash/);
+  });
+});
+
+describe("parseIssueFacetRows", () => {
+  it("de-duplicates services and drops empty environments", () => {
+    const facets = parseIssueFacetRows([
+      { service_namespace: null, service_name: "web", deployment_environment_name: "production" },
+      { service_namespace: null, service_name: "web", deployment_environment_name: "staging" },
+      { service_namespace: null, service_name: "", deployment_environment_name: "" },
+    ]);
+    expect(facets.services).toHaveLength(1);
+    expect(facets.environments).toEqual(["production", "staging"]);
+  });
+});
+
+describe("buildIssueListQueryString", () => {
+  const request: IssueListRequest = {
+    hours: 24,
+    status: "unresolved",
+    service: null,
+    environment: null,
+    handled: "all",
+    search: "",
+    sort: "last_seen",
+    sortDir: "desc",
+    cursor: null,
+    limit: 50,
+  };
+
+  it("sends the filter values the endpoint's parsers actually accept", () => {
+    const params = new URLSearchParams(buildIssueListQueryString({
+      ...request,
+      status: "all",
+      handled: "unhandled",
+      environment: "staging",
+    }));
+    // `all` is a real value for both, not "omit the param": the endpoint's
+    // parseStatus/parseHandled accept it, and sending "true"/"false" for
+    // `handled` (an easy guess) is a 400.
+    expect(params.get("status")).toBe("all");
+    expect(params.get("handled")).toBe("unhandled");
+    expect(params.get("environment")).toBe("staging");
+    expect(params.get("hours")).toBe("24");
+    expect(params.get("sort")).toBe("last_seen");
+    expect(params.get("sort_dir")).toBe("desc");
+  });
+
+  it("narrows a namespaced service identity to the name the endpoint filters on", () => {
+    const params = new URLSearchParams(buildIssueListQueryString({
+      ...request,
+      service: { namespace: "backend", name: "api" },
+    }));
+    expect(params.get("service")).toBe("api");
+    expect(params.get("service_namespace")).toBeNull();
+  });
+
+  it("never asks for more than the server's page size", () => {
+    const params = new URLSearchParams(buildIssueListQueryString({ ...request, limit: 5000 }));
+    expect(params.get("limit")).toBe("50");
+  });
+
+  it("omits an empty search rather than sending a blank filter", () => {
+    expect(new URLSearchParams(buildIssueListQueryString(request)).get("search")).toBeNull();
+    expect(new URLSearchParams(buildIssueListQueryString({ ...request, search: "boom" })).get("search")).toBe("boom");
+  });
+});
+
+describe("issue triage action helpers", () => {
+  it("validates and posts bounded bulk status changes with per-item outcomes", async () => {
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      status: "resolved",
+      results: [{
+        input_issue_id: ISSUE_ID,
+        action: "resolve",
+        issue_id: ISSUE_ID,
+        redirected: false,
+        redirected_from_issue_id: null,
+        changed: true,
+        changed_at_millis: 10,
+        status: "resolved",
+        transition_kind: "status_changed",
+        ignored_until_millis: null,
+        regressed_at_millis: null,
+        error: null,
+      }],
+    }), { status: 200 }));
+
+    await expect(updateIssuesStatusBulk(adminApp, [ISSUE_ID], "resolved"))
+      .resolves.toMatchObject({ status: "resolved", results: [{ issue_id: ISSUE_ID, changed: true }] });
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(
+      adminApp,
+      "/issues/actions/bulk",
+      expect.objectContaining({ body: JSON.stringify({ issue_ids: [ISSUE_ID], status: "resolved" }) }),
+    );
+
+    await expect(updateIssuesStatusBulk(adminApp, [ISSUE_ID, ISSUE_ID], "resolved"))
+      .rejects.toThrow(/duplicates/);
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("validates and posts a merge of two or more issues", async () => {
+    const otherIssueId = "00000000-0000-4000-8000-000000000004";
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      primary_issue_id: ISSUE_ID,
+      merged_issue_ids: [otherIssueId],
+    }), { status: 200 }));
+
+    await expect(mergeIssues(adminApp, [ISSUE_ID, otherIssueId])).resolves.toMatchObject({
+      primary_issue_id: ISSUE_ID,
+      merged_issue_ids: [otherIssueId],
+    });
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(
+      adminApp,
+      "/internal/issues/merge",
+      expect.objectContaining({
+        body: JSON.stringify({ issue_ids: [ISSUE_ID, otherIssueId] }),
+      }),
+    );
+
+    await expect(mergeIssues(adminApp, [ISSUE_ID])).rejects.toThrow(/at least 2/);
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("validates and posts unmerge, snooze, unsnooze, and regress", async () => {
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      source_issue_id: ISSUE_ID,
+      new_issue_id: "00000000-0000-4000-8000-000000000006",
+      counters_truncated_at_millis: 10,
+    }), { status: 200 }));
+    await expect(unmergeIssue(adminApp, ISSUE_ID, [SAMPLE_HASH_A])).resolves.toMatchObject({
+      source_issue_id: ISSUE_ID,
+    });
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(
+      adminApp,
+      `/internal/issues/${ISSUE_ID}/unmerge`,
+      expect.objectContaining({ body: JSON.stringify({ hashes: [SAMPLE_HASH_A] }) }),
+    );
+
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      action: "snooze", issue_id: ISSUE_ID, redirected: false, redirected_from_issue_id: null,
+      changed: true, changed_at_millis: 10, status: "ignored", previous_assignee_user_id: null,
+      assignee_user_id: null, transition_kind: "status_changed", ignored_until_millis: 99, regressed_at_millis: null,
+    }), { status: 200 }));
+    await expect(snoozeIssue(adminApp, ISSUE_ID, Date.now() + 60_000)).resolves.toMatchObject({ action: "snooze", status: "ignored" });
+
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      action: "unsnooze", issue_id: ISSUE_ID, redirected: false, redirected_from_issue_id: null,
+      changed: true, changed_at_millis: 11, status: "unresolved", previous_assignee_user_id: null,
+      assignee_user_id: null, transition_kind: "reopened", ignored_until_millis: null, regressed_at_millis: null,
+    }), { status: 200 }));
+    await expect(unsnoozeIssue(adminApp, ISSUE_ID)).resolves.toMatchObject({ action: "unsnooze" });
+
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      action: "regress", issue_id: ISSUE_ID, redirected: false, redirected_from_issue_id: null,
+      changed: true, changed_at_millis: 12, status: "unresolved", previous_assignee_user_id: null,
+      assignee_user_id: null, transition_kind: "regressed", ignored_until_millis: null, regressed_at_millis: 12,
+    }), { status: 200 }));
+    await expect(regressIssue(adminApp, ISSUE_ID)).resolves.toMatchObject({ action: "regress", transition_kind: "regressed" });
+  });
+
+  it("validates and posts self-assignment and unassignment through their typed routes", async () => {
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      action: "assign", issue_id: ISSUE_ID, redirected: false, redirected_from_issue_id: null,
+      changed: true, changed_at_millis: 10, status: null, previous_assignee_user_id: null,
+      assignee_user_id: USER_ID, transition_kind: null, ignored_until_millis: null, regressed_at_millis: null,
+    }), { status: 200 }));
+
+    await expect(updateIssueAssignment(adminApp, ISSUE_ID, USER_ID)).resolves.toMatchObject({ assignee_user_id: USER_ID });
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(adminApp, `/issues/${ISSUE_ID}/actions/assign`, expect.objectContaining({ body: JSON.stringify({ assignee_user_id: USER_ID }) }));
+
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      action: "unassign", issue_id: ISSUE_ID, redirected: false, redirected_from_issue_id: null,
+      changed: true, changed_at_millis: 11, status: null, previous_assignee_user_id: USER_ID,
+      assignee_user_id: null, transition_kind: null, ignored_until_millis: null, regressed_at_millis: null,
+    }), { status: 200 }));
+    await expect(updateIssueAssignment(adminApp, ISSUE_ID, null)).resolves.toMatchObject({ assignee_user_id: null });
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(adminApp, `/issues/${ISSUE_ID}/actions/unassign`, expect.objectContaining({ body: "{}" }));
+  });
+
+  it("validates team assignment and keeps tenant/action errors visible", async () => {
+    sendInternalAdminRequestMock.mockResolvedValue(new Response("private tenant detail", { status: 409 }));
+    await expect(updateIssueTeam(adminApp, ISSUE_ID, TEAM_ID)).rejects.toThrow("Updating issue team failed with status 409");
+    await expect(updateIssueTeam(adminApp, ISSUE_ID, "not-a-uuid")).rejects.toThrow("Team ID must be a UUID");
+  });
+
+  it("posts ownership with bounded null context and rejects invalid subjects", async () => {
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      issue_id: ISSUE_ID, id: "00000000-0000-4000-8000-000000000004", type: "user",
+      user_id: USER_ID, team_id: null, source: "manual", context: null, updated_at_millis: 12,
+    }), { status: 200 }));
+    await expect(updateIssueOwner(adminApp, ISSUE_ID, { type: "user", userId: USER_ID, teamId: null })).resolves.toMatchObject({ user_id: USER_ID });
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(adminApp, `/issues/${ISSUE_ID}/actions/owner`, expect.objectContaining({ body: JSON.stringify({ type: "user", user_id: USER_ID, team_id: null, source: "manual", context: null }) }));
+    await expect(updateIssueOwner(adminApp, ISSUE_ID, { type: "user", userId: null, teamId: null })).rejects.toThrow("A user owner requires only a user ID");
+  });
+
+  it("posts bookmark and subscription changes for the authenticated subject", async () => {
+    sendInternalAdminRequestMock.mockResolvedValueOnce(new Response(JSON.stringify({ issue_id: ISSUE_ID, user_id: USER_ID, bookmarked: true, changed: true, changed_at_millis: 13 }), { status: 200 }));
+    await expect(updateIssueBookmark(adminApp, ISSUE_ID, USER_ID, true, "bookmark-1")).resolves.toMatchObject({ bookmarked: true });
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(adminApp, `/issues/${ISSUE_ID}/actions/bookmark`, expect.objectContaining({ body: JSON.stringify({ user_id: USER_ID, bookmarked: true, idempotency_key: "bookmark-1" }) }));
+
+    sendInternalAdminRequestMock.mockResolvedValueOnce(new Response(JSON.stringify({ issue_id: ISSUE_ID, subject_type: "user", subject_id: USER_ID, subscribed: true, reason: "manual", updated_at_millis: 14 }), { status: 200 }));
+    await expect(updateIssueSubscription(adminApp, ISSUE_ID, "user", USER_ID, true, "manual", "subscription-1")).resolves.toMatchObject({ subscribed: true });
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(adminApp, `/issues/${ISSUE_ID}/actions/subscribe`, expect.objectContaining({ body: JSON.stringify({ subject_type: "user", subject_id: USER_ID, subscribed: true, reason: "manual", idempotency_key: "subscription-1" }) }));
+  });
+
+  it("bounds comment/action text before it reaches the authenticated route", async () => {
+    await expect(updateIssueBookmark(adminApp, ISSUE_ID, USER_ID, true, "x".repeat(129))).rejects.toThrow("Idempotency key must contain 1-128 characters");
+    await expect(updateIssueSubscription(adminApp, ISSUE_ID, "user", USER_ID, true, "x".repeat(65), "subscription-1")).rejects.toThrow("Subscription reason must contain 1-64 characters");
+  });
+});
+
+describe("issue triage optimistic state", () => {
+  it("applies each subject update immutably, so a rejected mutation can restore the exact snapshot", () => {
+    const bookmarked = setIssueBookmarkState(detail, USER_ID, true);
+    const subscribed = setIssueSubscriptionState(bookmarked, { type: "user", id: USER_ID, is_active: true, reason: "manual", created_at: "2026-08-06T00:00:00.000Z", updated_at: "2026-08-06T00:00:00.000Z" }, true, "2026-08-06T00:00:01.000Z");
+    const assigned = setIssueAssignee(subscribed, USER_ID);
+    const teamed = setIssueTeam(assigned, TEAM_ID);
+    const owned = setIssueOwnerState(teamed, {
+      id: "00000000-0000-4000-8000-000000000005", type: "team", user_id: null, team_id: TEAM_ID,
+      source: "manual", context: null, created_at: "2026-08-06T00:00:00.000Z", updated_at: "2026-08-06T00:00:01.000Z",
+    });
+
+    expect(detail.product).toMatchObject({ assignee_user_id: null, team_id: null, bookmarked_user_ids: [], subscriptions: [], owners: [] });
+    expect(owned.product).toMatchObject({ assignee_user_id: USER_ID, team_id: TEAM_ID, bookmarked_user_ids: [USER_ID] });
+    expect(owned.product.subscriptions[0]?.is_active).toBe(true);
+    expect(owned.product.owners[0]?.team_id).toBe(TEAM_ID);
+  });
+
+  it("searches public issue records with the extra event dimensions", async () => {
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      items: [{
+        record_type: "issue",
+        issue_id: ISSUE_ID,
+        issue_short_id: "1",
+        issue_type: "TypeError",
+        issue_value: "boom",
+        issue_culprit: "app.ts",
+        issue_status: "unresolved",
+        event_id: "evt-1",
+        occurrence_id: "occ-1",
+        event_at_millis: 10,
+        message: "boom",
+        level: "error",
+        release: "1.4.2",
+        matched_tag: { key: "browser", value: "chrome" },
+      }],
+      next_cursor: null,
+    }), { status: 200 }));
+
+    await expect(searchPublicIssues(adminApp, {
+      hours: 24,
+      status: "unresolved",
+      service: null,
+      environment: null,
+      handled: "all",
+      search: "",
+      level: "error",
+      release: "1.4.2",
+      userId: USER_ID,
+      tagKey: "browser",
+      tagValue: "chrome",
+      cursor: null,
+    })).resolves.toMatchObject({
+      items: [{ issue_id: ISSUE_ID, level: "error", release: "1.4.2" }],
+      nextCursor: null,
+    });
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(
+      adminApp,
+      expect.stringMatching(/^\/issues\/search\?/),
+      { method: "GET" },
+    );
+    const searchPath = sendInternalAdminRequestMock.mock.calls[0]?.[1];
+    expect(searchPath).toContain("record=issue");
+    expect(searchPath).toContain("level=error");
+    expect(searchPath).toContain("release=1.4.2");
+    expect(searchPath).toContain(`user_id=${USER_ID}`);
+    expect(searchPath).toContain("tag_key=browser");
+    expect(searchPath).toContain("tag_value=chrome");
+  });
+});

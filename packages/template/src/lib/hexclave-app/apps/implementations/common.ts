@@ -178,7 +178,7 @@ function fetchBackendUrlsInBackground(primaryBaseUrl: string): void {
   // The started-marker MUST be set before the fetch is issued, NOT via
   // createGlobal around this whole body: createGlobal only stores the value
   // after its init returns, and the fetch below runs through the SDK's own
-  // fetch instrumentation, whose should-this-span-be-ignored check calls
+  // HTTP instrumentation, whose request-policy hook calls
   // getApiUrls() → this function again. With a createGlobal-wrapped body that
   // re-entrant call re-ran the init before the marker existed → infinite
   // recursion (RangeError) on the first instrumented fetch of the process.

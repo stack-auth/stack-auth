@@ -84,7 +84,7 @@ it and retries that removal during the initial event-loop turns so framework
 routers cannot restore the action URL after hydration. If consumption reports an
 already-used or expired action, treat it as an expected no-op.
 Also on construct, install product autocapture only when Analytics is enabled,
-and install fetch/XHR, error, log, and span instrumentation only when
+and register official OTel fetch/XHR instrumentation plus error, log, and span facades only when
 Observability is enabled. Both use the same lazy telemetry transport.
 All emitted signals inherit the constructor's immutable telemetry.resource.
 When `inheritsFrom` is used, omitting telemetry inherits the entire parent
@@ -1036,7 +1036,7 @@ validation rules live in analytics.spec.md — the summaries here only pin the
 surface:
 
   trackEvent(eventType, data?, options?): Promise<void>
-    Buffers a custom analytics event; resolves on batch ack. Rejects
+    Emits a named OTel LogRecord; managed mode resolves after provider flush. Rejects
     (pre-caught) on invalid input or unavailable analytics.
 
   logger.{trace,debug,info,warn,error}(message, data?): void
@@ -1044,7 +1044,7 @@ surface:
     Available eagerly on every app instance.
 
   startSpan(spanType, options?): Span
-    Starts a custom span (open interval, versioned upserts). Invalid input
+    Starts a custom span through the active OTel Tracer. Invalid input
     throws; environment unavailability (e.g. SSR on a client app) returns an
     INERT span instead — see analytics.spec.md "Inert spans".
     The handle exposes its W3C identity as `traceId`, `spanId`, and
@@ -1062,15 +1062,67 @@ surface:
     wins; see analytics.spec.md "Parent resolution".
 
   flush(): Promise<void>
-    Sends all buffered analytics immediately and settles in-flight sends.
+    Force-flushes Hexclave-managed trace/log providers and replay transport.
+
+  captureException(error, options?): ErrorEventId
+    Captures an arbitrary thrown value as a handled error by default and
+    returns a 32-character lowercase hexadecimal event id.
+
+  captureMessage(message, options?): ErrorEventId
+    Captures a non-empty message and returns its event id.
+
+  captureEvent(event): ErrorEventId
+    Captures a framework-neutral normalized event, including an exception chain
+    and explicit stack frames when supplied, and returns its event id.
+
+  Attachment inputs
+    `captureException`, `captureMessage`, and `captureEvent` accept bounded
+    `attachments` in their scope/event data. Each attachment has `data`
+    (`string | Uint8Array`), a safe `filename`, and optional `contentType`,
+    `attachmentType`, `occurrenceId`, and `idempotencyKey`. The scope also
+    exposes `addAttachment` and `clearAttachments`.
+
+    Attachment bytes never enter the `$error` event projection. The browser
+    app wires the default injectable transport to
+    `/api/latest/analytics/attachments` through the existing authenticated
+    request seam; callers may replace it with
+    `observability.errorCapture.attachmentTransport`. A processor receives
+    attachments on its typed hint. If no transport is available,
+    `onAttachmentPending` receives a retryable `PendingErrorAttachment`;
+    supplying attachments without either seam throws synchronously rather than
+    silently discarding bytes. Uploads are bounded to 10 attachments and 2 MiB
+    per attachment.
+
+  lastEventId(): ErrorEventId | undefined
+    Returns the most recent manually or automatically captured event id for the
+    app instance, if any.
+
+  withErrorScope<T>(fn: (scope: ErrorScope) => T): T
+    Runs `fn` with an isolated scope inherited from the current scope. The
+  withErrorScopeAsync<T>(fn: (scope: ErrorScope) => Promise<T>): Promise<T>
+    Runs an async callback with an isolated scope inherited from the current
+    scope. Server/framework runtimes use their exact async context primitive;
+    runtimes without one fail closed rather than leaking a scope globally.
+    The callback can set user, tags, contexts, extras, breadcrumbs, level, a
+    fingerprint override, and event processors. `scope.setExtras(extras)` merges
+    an object into existing extra data with the same key precedence as repeated
+    `setExtra` calls; blank keys are rejected. Scope state is restored when
+    the callback returns or throws; see analytics.spec.md for merge and bound
+    semantics.
+
+  Error processors
+    `observability.errorCapture.eventProcessors` run in registration order,
+    followed by the capture-time scope processors and `beforeSend`. A processor
+    may return the event, a replacement event, `{ action: "drop", reason? }`,
+    or `null`. Event IDs are immutable. The SDK bounds one capture to 20
+    callbacks and 250ms of processor time; callback failure, timeout, or limit
+    drops the event and emits only an audit-safe diagnostic.
 
   getSpanPropagationHeaders(options?: { parent?, root? }): Record<string, string>
     The cross-tier propagation headers — the standard W3C `traceparent` (which
-    carries hierarchy for a head-sampled parent, so any OTel-compatible
-    receiver can continue a trace whose parent is guaranteed to be retained)
-    plus `x-hexclave-span-context` (non-hierarchical correlation) — for
-    transports the SDK cannot instrument itself. Head-dropped/pre-load spans
-    return correlation only; {} when there is nothing to propagate.
+    carries hierarchy and standard provider trace flags), `tracestate`, plus
+    `baggage` (non-hierarchical correlation) — for transports the SDK cannot
+    instrument itself. {} when there is nothing to propagate.
 
 
 ## Redirect Methods  [BROWSER-ONLY]

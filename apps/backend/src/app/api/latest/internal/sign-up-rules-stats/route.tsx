@@ -63,13 +63,16 @@ export const GET = createSmartRouteHandler({
             NULLIF(CAST(data.ruleId, 'Nullable(String)'), '')
           ) as rule_id,
           data.action as action,
-          toStartOfHour(event_at) as hour
-        FROM analytics_internal.events
-        WHERE event_type = '$sign-up-rule-trigger'
-          AND project_id = {projectId:String}
+          toStartOfHour(event_at) as hour,
+          count() AS trigger_count
+        FROM analytics_internal.telemetry
+        PREWHERE project_id = {projectId:String}
           AND branch_id = {branchId:String}
+          AND event_type = '$sign-up-rule-trigger'
           AND event_at >= {since:DateTime}
-        ORDER BY event_at ASC
+        GROUP BY rule_id, action, hour
+        HAVING rule_id IS NOT NULL
+        ORDER BY hour ASC, rule_id ASC, action ASC
       `,
       query_params: {
         projectId,
@@ -82,6 +85,7 @@ export const GET = createSmartRouteHandler({
       rule_id: string | null,
       action: "allow" | "reject" | "restrict" | "log",
       hour: string,
+      trigger_count: number | string,
     }[] = await result.json();
 
     const rows = rawRows.filter((row): row is typeof row & { rule_id: string } => row.rule_id != null && row.rule_id !== '');
@@ -101,10 +105,11 @@ export const GET = createSmartRouteHandler({
     };
 
     for (const row of rows) {
+      const triggerCount = Number(row.trigger_count);
       // Update action counts
       const action = row.action;
       if (action in actionCounts) {
-        actionCounts[action]++;
+        actionCounts[action] += triggerCount;
       }
 
       // Update rule triggers
@@ -113,12 +118,12 @@ export const GET = createSmartRouteHandler({
         ruleData = { totalCount: 0, hourlyMap: new Map() };
         ruleTriggersMap.set(row.rule_id, ruleData);
       }
-      ruleData.totalCount++;
+      ruleData.totalCount += triggerCount;
 
       // Group by hour (normalize to ISO format)
       // ClickHouse returns datetime without timezone, treat as UTC
       const hourKey = new Date(row.hour + 'Z').toISOString().slice(0, 13) + ':00:00.000Z';
-      ruleData.hourlyMap.set(hourKey, (ruleData.hourlyMap.get(hourKey) ?? 0) + 1);
+      ruleData.hourlyMap.set(hourKey, (ruleData.hourlyMap.get(hourKey) ?? 0) + triggerCount);
     }
 
     // Build hourly breakdown for each rule
@@ -130,11 +135,12 @@ export const GET = createSmartRouteHandler({
             NULLIF(CAST(data.ruleId, 'Nullable(String)'), '')
           ) as rule_id,
           count() as total_count
-        FROM analytics_internal.events
-        WHERE event_type = '$sign-up-rule-trigger'
-          AND project_id = {projectId:String}
+        FROM analytics_internal.telemetry
+        PREWHERE project_id = {projectId:String}
           AND branch_id = {branchId:String}
+          AND event_type = '$sign-up-rule-trigger'
         GROUP BY rule_id
+        HAVING rule_id IS NOT NULL
       `,
       query_params: {
         projectId,

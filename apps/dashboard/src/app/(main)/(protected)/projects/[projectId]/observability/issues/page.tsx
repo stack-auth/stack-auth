@@ -1,7 +1,7 @@
-import { AppTodoPage } from "../../app-todo-page";
+import PageClient from "./page-client";
 
 export const metadata = { title: "Issues" };
 
 export default function Page() {
-  return <AppTodoPage title="Issues" description="Group related error occurrences into actionable problems." />;
+  return <PageClient />;
 }

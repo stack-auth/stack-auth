@@ -1,12 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { getAppEnableConfigUpdate, getEnabledAppIds, getEnabledNavigableAppIds } from "./apps-utils";
 
-describe("nested app enablement", () => {
-  it("inherits Observability enablement without adding a duplicate top-level entry", () => {
-    const installed = { analytics: { enabled: true } };
+describe("app enablement", () => {
+  it("enables Warehouse and Observability independently as top-level apps", () => {
+    const installed = {
+      analytics: { enabled: true },
+      warehouse: { enabled: true },
+      observability: { enabled: true },
+    };
+    expect(getEnabledAppIds({ analytics: { enabled: true } })).not.toContain("observability");
+    expect(getEnabledAppIds({ analytics: { enabled: true } })).not.toContain("warehouse");
     expect(getEnabledAppIds(installed)).toContain("observability");
-    expect(getEnabledNavigableAppIds(installed)).toContain("analytics");
-    expect(getEnabledNavigableAppIds(installed)).not.toContain("observability");
+    expect(getEnabledAppIds(installed)).toContain("warehouse");
+    expect(getEnabledNavigableAppIds(installed)).toEqual([
+      "analytics",
+      "observability",
+      "warehouse",
+    ]);
   });
 });
 

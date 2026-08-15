@@ -5,11 +5,15 @@ import { DesignSelectorDropdown } from "@/components/design-components/select";
 import { Button, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ArrowClockwiseIcon, CodeIcon } from "@phosphor-icons/react";
+import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
+import { useAdminApp } from "../../use-admin-app";
 import { AnalyticsEventLimitBanner } from "../shared";
+import { replaceLocationSearch } from "../../observability/filters";
+import { TelemetryRowLinks } from "../../observability/telemetry-row-links";
 import {
   QueryDataGrid,
   type QueryDataGridMode,
@@ -44,6 +48,24 @@ const AVAILABLE_TABLES = new Map<TableId, TableConfig>([
       displayName: "Spans",
       baseQuery: "SELECT * FROM default.spans",
       defaultOrderBy: "started_at",
+      defaultOrderDir: "desc",
+    },
+  ],
+  [
+    "logs",
+    {
+      displayName: "Logs",
+      baseQuery: "SELECT * FROM default.logs",
+      defaultOrderBy: "event_at",
+      defaultOrderDir: "desc",
+    },
+  ],
+  [
+    "errors",
+    {
+      displayName: "Errors",
+      baseQuery: "SELECT * FROM default.errors",
+      defaultOrderBy: "event_at",
       defaultOrderDir: "desc",
     },
   ],
@@ -152,9 +174,29 @@ const AVAILABLE_TABLE_OPTIONS = [...AVAILABLE_TABLES.entries()].map(
   ([value, config]) => ({ value, label: config.displayName }),
 );
 
+const TELEMETRY_TABLE_IDS = new Set(["events", "spans", "logs", "errors"]);
+
+const TELEMETRY_DETAIL_TECHNICAL_COLUMNS = [
+  "trace_id",
+  "span_id",
+  "parent_span_id",
+  "page_view_span_id",
+  "session_replay_id",
+  "session_replay_segment_id",
+  "refresh_token_id",
+] as const;
+
+function readInitialTableId(): TableId {
+  if (typeof window === "undefined") return "events";
+  const raw = new URLSearchParams(window.location.search).get("table");
+  if (raw != null && AVAILABLE_TABLES.has(raw)) return raw;
+  return "events";
+}
+
 // ─── Per-table content ──────────────────────────────────────────────
 
 export function TableContent({ tableId }: { tableId: TableId }) {
+  const adminApp = useAdminApp();
   const tableConfig = AVAILABLE_TABLES.get(tableId) ?? throwErr(`Unknown analytics table: ${tableId}`);
 
   // AI thread behind the search bar — constrained to row filters over this
@@ -218,16 +260,29 @@ export function TableContent({ tableId }: { tableId: TableId }) {
         fillHeight
         stickyTop={0}
         horizontalScrollbarPosition="top"
+        detailTitle={`${tableConfig.displayName} details`}
+        detailTechnicalColumns={TELEMETRY_TABLE_IDS.has(tableId) ? TELEMETRY_DETAIL_TECHNICAL_COLUMNS : undefined}
+        detailExtraContent={TELEMETRY_TABLE_IDS.has(tableId)
+          ? (row) => <TelemetryRowLinks row={row} projectId={adminApp.projectId} />
+          : undefined}
       />
     </div>
   );
 }
 
-export default function PageClient() {
-  const [selectedTable, setSelectedTable] = useState<TableId | null>("events");
+export default function PageClient({ appId }: { appId: AppId }) {
+  const [selectedTable, setSelectedTable] = useState<TableId | null>(readInitialTableId);
+
+  useEffect(() => {
+    if (selectedTable == null) return;
+    const params = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
+    if (selectedTable === "events") params.delete("table");
+    else params.set("table", selectedTable);
+    replaceLocationSearch(params);
+  }, [selectedTable]);
 
   return (
-    <AppEnabledGuard appId="analytics">
+    <AppEnabledGuard appId={appId}>
       {/* containedHeight: page fills the shell under the header and scrolls internally,
           so table rows cannot travel behind the floating dark-mode header. */}
       <PageLayout fillWidth noPadding containedHeight>

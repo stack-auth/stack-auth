@@ -1,16 +1,20 @@
-import { getBatchDestinationDeduplicationToken, insertBatchEvents } from "@/lib/analytics-telemetry-writers";
+import { buildTelemetryWritePlan, getBatchDestinationDeduplicationToken, insertBatchEvents, normalizeBatchEvents, type NormalizedEventBatch } from "@/lib/analytics-telemetry-writers";
+import { evaluateErrorIngestPolicy, persistErrorIngestClientReportProjection } from "@/lib/telemetry-ingest";
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
+import { createLegacyBatchProtocolProjection } from "@/lib/error-ingest/error-ingest-protocol-projections";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { increasePlanItemQuantity, tryDecreasePlanItemQuantities, type MeteredPlanItemId } from "@/lib/plan-metering";
 import { findRecentSessionReplay } from "@/lib/session-replays";
+import { buildTelemetryMaterializationMessage, enqueueQstashMessage } from "@/lib/qstash-outbox";
 import { buildBatchSpanLinkRows, buildBatchSpanRows, getBatchDuplicateSpanIdError, insertSpanLinks, insertSpans } from "@/lib/spans";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { captureError, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
-import { CLIENT_SYSTEM_SPAN_TYPES, CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_NAME_RE, HTTP_CLIENT_SPAN_TYPE, LOG_LEVELS, SERVER_SYSTEM_SPAN_TYPES, SYSTEM_EVENT_TYPES, TELEMETRY_MAX_LOG_MESSAGE_BYTES, TELEMETRY_SCOPE_NAME_MAX_BYTES, TELEMETRY_UUID_RE, W3C_SPAN_ID_RE, W3C_TRACE_ID_RE, canWriteTelemetrySignal, classifyTelemetrySignal, getTelemetryResourceError, isTelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
+import { CLIENT_SYSTEM_SPAN_TYPES, CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_NAME_RE, LOG_LEVELS, SERVER_SYSTEM_SPAN_TYPES, SYSTEM_EVENT_TYPES, TELEMETRY_MAX_LOG_MESSAGE_BYTES, TELEMETRY_SCOPE_NAME_MAX_BYTES, TELEMETRY_SCOPE_VERSION_MAX_BYTES, TELEMETRY_SPAN_KINDS, TELEMETRY_SPAN_STATUS_CODES, TELEMETRY_SPAN_STATUS_MESSAGE_MAX_BYTES, TELEMETRY_UUID_RE, W3C_SPAN_ID_RE, W3C_TRACE_ID_RE, canWriteTelemetrySignal, classifyTelemetrySignal, getTelemetryResourceError, isTelemetryResource, type TelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
 import { Buffer } from "node:buffer";
 import * as zlib from "node:zlib";
 
@@ -38,9 +42,68 @@ const W3C_TRACE_ID_ERROR = "must be 32 lowercase hex characters and not all-zero
 const W3C_SPAN_ID_ERROR = "must be 16 lowercase hex characters and not all-zero";
 
 const LOG_EVENT_TYPE = "$log";
+const ERROR_EVENT_TYPE = "$error";
+
+const errorIngestClientReportEntrySchema = yupObject({
+  reason: yupString().defined(),
+  category: yupString().defined(),
+  quantity: yupNumber().defined(),
+}).defined();
+
+const errorIngestClientReportSchema = yupObject({
+  discarded_events: yupArray(errorIngestClientReportEntrySchema).defined(),
+  rate_limited_events: yupArray(errorIngestClientReportEntrySchema).defined(),
+  filtered_events: yupArray(errorIngestClientReportEntrySchema).defined(),
+  filtered_sampling_events: yupArray(errorIngestClientReportEntrySchema).defined(),
+}).defined();
+
+const errorIngestProtocolItemSchema = yupObject({
+  itemIndex: yupNumber().defined(),
+  itemId: yupString().defined(),
+  itemType: yupString().defined(),
+  eventId: yupString().optional(),
+  status: yupString().defined(),
+  reason: yupString().optional(),
+  canonicalItemId: yupString().optional(),
+  retryAfterMs: yupNumber().optional(),
+  category: yupString().defined(),
+  clientReportBucket: yupString().optional(),
+  clientReportReason: yupString().optional(),
+  rejectedByOtlp: yupBoolean().defined(),
+}).defined();
+
+const errorIngestCountsSchema = yupObject({
+  accepted: yupNumber().defined(),
+  filtered: yupNumber().defined(),
+  rate_limited: yupNumber().defined(),
+  rejected: yupNumber().defined(),
+  deduplicated: yupNumber().defined(),
+  dropped: yupNumber().defined(),
+  queued: yupNumber().defined(),
+}).defined();
+
+/**
+ * Field-level contract for `$error` payloads.
+ *
+ * Deliberately permissive about EXTRA keys — the SDK adds mechanism metadata,
+ * urls, route info, and (once source maps land) `debug_images`, and rejecting
+ * unknown fields would make every SDK upgrade a breaking change. What it does
+ * enforce is the type of the four fields the server actually reads, so a
+ * malformed payload is rejected at the boundary rather than silently producing
+ * a degraded grouping hash.
+ */
+function isValidErrorEventData(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const data = value as Record<string, unknown>;
+  if (typeof data.name !== "string" || typeof data.message !== "string") return false;
+  if (data.stack !== undefined && typeof data.stack !== "string") return false;
+  if (data.handled !== undefined && typeof data.handled !== "boolean") return false;
+  return true;
+}
 
 const MAX_EVENTS = 500;
 const MAX_SPANS = 500;
+
 // Links are a niche affordance; a low cap keeps one span from ballooning the batch
 // (and the span_links insert) while staying far above any plausible real use.
 const MAX_SPAN_LINKS = 32;
@@ -108,16 +171,15 @@ export const POST = createSmartRouteHandler({
       // server/admin auth.
       session_replay_segment_id: yupString().optional().matches(UUID_RE, "Invalid session_replay_segment_id"),
       batch_id: yupString().defined().matches(UUID_RE, "Invalid batch_id"),
-      // Versions the BATCH body the way the propagation header's `v1.` prefix
-      // versions the header — so the wire contract can evolve without guessing
-      // from field shapes. This ingestion surface is unreleased, so v3 (W3C span
-      // identity) replaces the earlier pre-release shapes outright rather than
-      // being accepted alongside them.
-      schema_version: yupNumber().defined().integer().oneOf([3]),
-      resource: yupMixed().defined().test(
+      // Versioned batches use the W3C identity contract. An omitted version is
+      // the released pre-resource shape and is handled by the explicit legacy
+      // compatibility test below; it must not be confused with a malformed
+      // versioned request.
+      schema_version: yupNumber().optional().integer().oneOf([3]),
+      resource: yupMixed().optional().test(
         "telemetry-resource",
         "Invalid telemetry resource",
-        (value) => getTelemetryResourceError(value) === null,
+        (value) => value === undefined || getTelemetryResourceError(value) === null,
       ),
       sent_at_ms: yupNumber().defined().integer().min(0),
       // Server/admin auth only (see the request-level auth-type tests below):
@@ -175,6 +237,17 @@ export const POST = createSmartRouteHandler({
           (event) => event.event_type === LOG_EVENT_TYPE
             ? event.message !== undefined && event.level !== undefined
             : event.message === undefined && event.level === undefined,
+        ).test(
+          // `$error` is the one event type whose `data` the SERVER reads and
+          // promotes into typed ClickHouse columns (`error_type`, `message`,
+          // `error_culprit`) and feeds to the grouping algorithm. Everywhere
+          // else `data` is opaque customer JSON, validated only for shape and
+          // size. So it gets a field-level contract here rather than being
+          // discovered at grouping time, where a wrong type would degrade the
+          // hash instead of rejecting the item.
+          "error-fields",
+          `${ERROR_EVENT_TYPE} data must carry string name/message, optional string stack, and boolean handled`,
+          (event) => event.event_type !== ERROR_EVENT_TYPE || isValidErrorEventData(event.data),
         ),
       ).optional().max(MAX_EVENTS),
       spans: yupArray(
@@ -208,6 +281,19 @@ export const POST = createSmartRouteHandler({
             `scope_name must be a non-empty string of at most ${TELEMETRY_SCOPE_NAME_MAX_BYTES} UTF-8 bytes`,
             (value) => value === undefined || (value !== "" && Buffer.byteLength(value, "utf8") <= TELEMETRY_SCOPE_NAME_MAX_BYTES),
           ),
+          scope_version: yupString().optional().test(
+            "span-scope-version-size",
+            `scope_version must be a non-empty string of at most ${TELEMETRY_SCOPE_VERSION_MAX_BYTES} UTF-8 bytes`,
+            (value) => value === undefined || (value !== "" && Buffer.byteLength(value, "utf8") <= TELEMETRY_SCOPE_VERSION_MAX_BYTES),
+          ),
+          // First-class OTel columns remain separate from opaque product data.
+          kind: yupString().optional().oneOf([...TELEMETRY_SPAN_KINDS]),
+          status_code: yupString().optional().oneOf([...TELEMETRY_SPAN_STATUS_CODES]),
+          status_message: yupString().optional().test(
+            "span-status-message-size",
+            `status_message must be at most ${TELEMETRY_SPAN_STATUS_MESSAGE_MAX_BYTES} UTF-8 bytes`,
+            (value) => value === undefined || Buffer.byteLength(value, "utf8") <= TELEMETRY_SPAN_STATUS_MESSAGE_MAX_BYTES,
+          ),
           // See the event-level page_view_span_id above.
           page_view_span_id: yupString().optional().test("span-page-view-span-id", `page_view_span_id ${W3C_SPAN_ID_ERROR}`, (value) => value === undefined || isUsableW3cSpanId(value)),
           // Non-hierarchical references to other spans (see TrackOptions.links in
@@ -216,7 +302,16 @@ export const POST = createSmartRouteHandler({
             yupObject({
               trace_id: yupString().defined().test("link-trace-id", `link trace_id ${W3C_TRACE_ID_ERROR}`, (value) => isUsableW3cTraceId(value)),
               span_id: yupString().defined().test("link-span-id", `link span_id ${W3C_SPAN_ID_ERROR}`, (value) => isUsableW3cSpanId(value)),
-            }).defined(),
+              // Trusted platform-only target scope. Ordinary SDK callers cannot
+              // claim another project's rows; the request-level rule below is
+              // the authorization boundary for these optional fields.
+              linked_project_id: yupString().optional().min(1),
+              linked_branch_id: yupString().optional().min(1),
+            }).defined().test(
+              "link-target-scope-pair",
+              "linked_project_id and linked_branch_id must be provided together",
+              (link) => (link.linked_project_id === undefined) === (link.linked_branch_id === undefined),
+            ),
           ).optional().max(MAX_SPAN_LINKS),
         }).defined().test(
           "span-interval",
@@ -258,6 +353,25 @@ export const POST = createSmartRouteHandler({
           .filter((span) => span != null && typeof span.span_id === "string")
           .map((span) => span.span_id);
         return new Set(spanIds).size === spanIds.length;
+      },
+    ).test(
+      "wire-version",
+      "Legacy analytics batches must omit versioned fields and contain only $page-view/$click events; versioned batches require schema_version 3 and a telemetry resource",
+      (body) => {
+        if (body.schema_version === undefined) {
+          const events = Array.isArray(body.events) ? body.events : [];
+          return body.resource === undefined
+            && body.spans === undefined
+            && body.user_id === undefined
+            && body.refresh_token_id === undefined
+            && body.session_replay_id === undefined
+            && body.session_replay_segment_id !== undefined
+            && events.length > 0
+            // Yup can run this parent test before child item validation.
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+            && events.every((event) => event != null && (event.event_type === "$page-view" || event.event_type === "$click"));
+        }
+        return body.schema_version === 3 && isTelemetryResource(body.resource);
       },
     ).transform((_value, originalValue) => maybeDecodeBinaryBody(originalValue)),
   }).test(
@@ -307,7 +421,11 @@ export const POST = createSmartRouteHandler({
         (span) => span == null
           || typeof span.span_type !== "string"
           || (canWriteTelemetrySignal(span.span_type, "span", origin)
-            && (span.scope_name === undefined || origin === "server")),
+            // Instrumentation scope (name + version) is server-only. Browsers
+            // may set kind/status on their own spans, but cannot label them as
+            // trusted library instrumentation.
+            && (span.scope_name === undefined || origin === "server")
+            && (span.scope_version === undefined || origin === "server")),
       );
       return eventsAllowed && spansAllowed;
     },
@@ -321,22 +439,65 @@ export const POST = createSmartRouteHandler({
       // though span insertion is now synchronous and observable by the caller.
       inserted: yupNumber().defined(),
       accepted_spans: yupNumber().defined(),
+      // Additive only: this branch is reserved for item-level normalization
+      // once the request schema stops rejecting the whole batch up front.
+      ingest: yupObject({
+        status: yupString().defined(),
+        counts: errorIngestCountsSchema,
+        outcomes: yupArray(errorIngestProtocolItemSchema).defined(),
+        client_report: errorIngestClientReportSchema,
+        idempotency_key: yupString().defined(),
+      }).defined().optional(),
     }).defined(),
   }),
   async handler({ auth, body }) {
-    if (!isTelemetryResource(body.resource)) {
-      throw new HexclaveAssertionError("The request schema accepted an invalid telemetry resource");
+    let resource: TelemetryResource | null;
+    if (body.schema_version === undefined) {
+      resource = null;
+    } else {
+      if (!isTelemetryResource(body.resource)) {
+        throw new HexclaveAssertionError("The request schema accepted an invalid telemetry resource");
+      }
+      resource = body.resource;
     }
-    const resource = body.resource;
 
     if (!auth.tenancy.config.apps.installed["analytics"]?.enabled) {
       throw new KnownErrors.AnalyticsNotEnabled();
     }
 
-    const events = body.events ?? [];
-    const spans = body.spans ?? [];
+    let events = body.events ?? [];
+    let spans = body.spans ?? [];
     const tenancyId = auth.tenancy.id;
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const projectId = auth.tenancy.project.id;
+    const branchId = auth.tenancy.branchId;
+
+    // Keep this rollout at the legacy batch seam. OTLP retains its existing
+    // request contract until it can expose the same item-level outcomes; this
+    // avoids silently changing a different protocol in the same change.
+    const policyDecision = evaluateErrorIngestPolicy({
+      config: auth.tenancy.config,
+      scope: { tenancyId, projectId, branchId },
+      items: [
+        ...events.map((event, index) => ({ itemId: `event:${index}`, itemType: "event" as const, data: event.data })),
+        ...spans.map((span, index) => ({ itemId: `span:${index}`, itemType: "span" as const, data: span.data })),
+      ],
+      nowMs: new Date().getTime(),
+    });
+    const acceptedEventIndexes = new Set(policyDecision.acceptedEventIndexes);
+    const acceptedSpanIndexes = new Set(policyDecision.acceptedSpanIndexes);
+    events = events
+      .map((event, index) => {
+        const scrubbedData = policyDecision.scrubbedData.get(`event:${index}`);
+        return scrubbedData === undefined ? event : { ...event, data: scrubbedData };
+      })
+      .filter((_event, index) => acceptedEventIndexes.has(index));
+    spans = spans
+      .map((span, index) => {
+        const scrubbedData = policyDecision.scrubbedData.get(`span:${index}`);
+        return scrubbedData === undefined ? span : { ...span, data: scrubbedData };
+      })
+      .filter((_span, index) => acceptedSpanIndexes.has(index));
 
     // Client auth is the browser tracker: identity comes from the session (user +
     // refresh token, always present) and batches are tied to a per-tab segment.
@@ -378,8 +539,11 @@ export const POST = createSmartRouteHandler({
       refreshTokenId = body.refresh_token_id ?? (auth.type === "admin" ? auth.refreshTokenId ?? null : null);
     }
 
-    const projectId = auth.tenancy.project.id;
-    const branchId = auth.tenancy.branchId;
+    const hasExplicitLinkTarget = spans.some((span) =>
+      (span.links ?? []).some((link) => link.linked_project_id !== undefined));
+    if (hasExplicitLinkTarget && (auth.type === "client" || projectId !== "internal")) {
+      throw new StatusError(StatusError.BadRequest, "Cross-project span link targets are reserved for the internal platform backend");
+    }
 
     // Validate explicitly forwarded replay context before touching quota. If no
     // replay was forwarded, derive the caller's current rolling replay from the
@@ -487,8 +651,9 @@ export const POST = createSmartRouteHandler({
     // The producer/runtime stamps come from the ROUTE (never the client), so a
     // client cannot spoof platform-produced rows or clear the defaults.
     const runtime = auth.type === "client" ? "browser" : "server";
+    let normalizedEvents: NormalizedEventBatch | null = null;
     try {
-      const spanRows = buildBatchSpanRows({
+      const spanRows = resource === null ? [] : buildBatchSpanRows({
         spans,
         resource,
         projectId,
@@ -499,26 +664,45 @@ export const POST = createSmartRouteHandler({
         sessionReplaySegmentId,
         serverNowMs: Date.now(),
       });
-      const spanLinkRows = buildBatchSpanLinkRows({ spans, projectId, branchId });
+      const spanLinkRows = resource === null ? [] : buildBatchSpanLinkRows({ spans, projectId, branchId });
+
+      // Normalized once, up front. Grouping every `$error` in the batch is the
+      // only CPU-bound step in this handler, and the result is needed twice:
+      // by the ClickHouse insert below and by the Issue materialization that
+      // runs after it. Normalizing inside the insert (as this used to) would
+      // have meant recomputing it.
+      normalizedEvents = normalizeBatchEvents(events, {
+        projectId,
+        branchId,
+        userId,
+        refreshTokenId,
+        sessionReplayId,
+        sessionReplaySegmentId,
+        runtime,
+        resource,
+        // The authenticated SDK path is always an SDK producer. Metering is
+        // decided above; internal platform telemetry is explicitly unmetered.
+        producer: "sdk",
+        groupingConfig: auth.tenancy.config.observability.errorGrouping,
+      }, body.batch_id);
+
+      // Queue control-plane work before the ClickHouse write. If the process
+      // dies after this insert, QStash retries until the referenced batch is
+      // visible; if the ClickHouse write fails, the job has no issue rows to
+      // apply and eventually reaches its normal delivery failure state.
+      if (normalizedEvents.issueInputs.length > 0) {
+        await enqueueQstashMessage(buildTelemetryMaterializationMessage({
+          tenancyId: auth.tenancy.id,
+          batchId: body.batch_id,
+        }));
+      }
 
       // Each destination has its own stable deduplication token, so all
       // independent ClickHouse writes can run concurrently. A partial commit
       // is safe: the request refunds quota, then a retry no-ops at destinations
       // that already accepted this batch.
       await Promise.all([
-        insertBatchEvents(clickhouseClient, events, {
-          projectId,
-          branchId,
-          userId,
-          refreshTokenId,
-          sessionReplayId,
-          sessionReplaySegmentId,
-          runtime,
-          resource,
-          // The authenticated SDK path is always an SDK producer. Metering is
-          // decided above; internal platform telemetry is explicitly unmetered.
-          producer: "sdk",
-        }, body.batch_id),
+        insertBatchEvents(clickhouseClient, buildTelemetryWritePlan(normalizedEvents, body.batch_id)),
         insertSpans(clickhouseClient, spanRows, {
           deduplicationToken: getBatchDestinationDeduplicationToken(body.batch_id, "analytics_internal.spans"),
         }),
@@ -535,10 +719,45 @@ export const POST = createSmartRouteHandler({
       throw error;
     }
 
+    const protocolProjection = createLegacyBatchProtocolProjection(
+      body.batch_id,
+      events.length,
+      spans.length,
+      policyDecision.outcomes,
+    );
+    runAsynchronouslyAndWaitUntil(persistErrorIngestClientReportProjection(
+      {
+        tenancyId: auth.tenancy.id,
+        projectId: auth.tenancy.project.id,
+        branchId: auth.tenancy.branchId,
+      },
+      "legacy_batch",
+      protocolProjection,
+    ));
     return {
       statusCode: 200,
       bodyType: "json",
-      body: { inserted: events.length, accepted_spans: spans.length },
+      body: {
+        inserted: events.length,
+        accepted_spans: spans.length,
+        ...(protocolProjection.status === "accepted" ? {} : {
+          ingest: {
+            status: protocolProjection.status,
+            counts: { ...protocolProjection.counts },
+            // Yup's JSON response schema models arrays as mutable values;
+            // materialize the adapter's readonly projection only at this
+            // serialization boundary without changing its source contract.
+            outcomes: [...protocolProjection.items],
+            client_report: {
+              discarded_events: [...protocolProjection.clientReport.discarded_events],
+              rate_limited_events: [...protocolProjection.clientReport.rate_limited_events],
+              filtered_events: [...protocolProjection.clientReport.filtered_events],
+              filtered_sampling_events: [...protocolProjection.clientReport.filtered_sampling_events],
+            },
+            idempotency_key: protocolProjection.idempotencyKey,
+          },
+        }),
+      },
     };
   },
 });

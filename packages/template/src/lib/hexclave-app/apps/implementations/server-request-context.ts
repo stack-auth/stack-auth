@@ -7,7 +7,7 @@ import type { SpanContext } from "./telemetry-core";
  * Resolved ONCE from an incoming request — the caller's refresh token + user
  * (server-trusted, from the session), the incoming W3C `traceparent` (which trace
  * this request belongs to), and the client-propagated correlation context
- * (untrusted labels, from the `x-hexclave-span-context` header) — then made
+ * (untrusted labels, from the `baggage` header) — then made
  * ambient for the duration of the callback so every span/event created inside,
  * including bare `serverApp.trackEvent(...)` calls, joins the same trace and
  * session without threading the context by hand.
@@ -30,7 +30,7 @@ export type ServerRequestSpanContext = {
   pageViewSpanId: string | null,
   /**
    * HIERARCHY: the span named by the incoming `traceparent` — normally the
-   * caller's `$http-client` fetch. This is the OUTERMOST ambient parent for
+   * caller's OTel HTTP client span. This is the OUTERMOST ambient parent for
    * everything the request does, which is what puts the client fetch and the
    * backend work it triggered in ONE trace. Null when the request arrived with no
    * usable traceparent, in which case the request itself roots a new trace.

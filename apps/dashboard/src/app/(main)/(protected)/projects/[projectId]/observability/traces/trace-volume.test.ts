@@ -29,7 +29,7 @@ describe("trace volume", () => {
   it("counts only the same physical roots as the trace inbox", () => {
     const { query } = getTraceVolumeQuery(24, null);
     expect(query).toContain("FROM default.trace_roots AS r");
-    expect(query).toContain("span_type != '$http-client'");
+    expect(query).not.toContain("$http-client");
     expect(query).not.toContain("UNION ALL");
     expect(query).not.toContain("bridged-server");
     expect(query).not.toContain("bridge_root_rank");

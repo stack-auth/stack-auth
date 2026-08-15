@@ -27,13 +27,8 @@ function createHexclaveServerApp() {
     analytics: { enabled: selfTelemetryEnabled },
     observability: {
       enabled: selfTelemetryEnabled,
-      // Healthy backend traces are deterministically sampled as complete SDK
-      // flush groups. Errors, failed requests/library work, and slow spans are
-      // promoted before the analytics batch transport is invoked.
-      traceSampleRate: 0.1,
       // The backend's internal trace context must not become a customer-facing
-      // Hexclave correlation header on downstream calls. W3C trace propagation
-      // remains independent and follows the SDK's trusted-origin policy.
+      // Hexclave correlation baggage on downstream calls.
       spanPropagation: { enabled: false },
     },
     telemetry: {

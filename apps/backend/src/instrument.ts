@@ -1,13 +1,15 @@
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
-import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { BatchSpanProcessor, NoopSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { context } from "@opentelemetry/api";
+import { suppressTracing } from "@opentelemetry/core";
+import { registerInstrumentations } from "@opentelemetry/instrumentation";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import * as Sentry from "@sentry/node";
 import backendPackageJson from "../package.json";
+import { getHexclaveServerApp } from "./hexclave";
 import { createBackendInstrumentationPlan } from "./instrumentation-plan";
 import { initPerfStats } from "./lib/dev-perf-stats";
+import { registerNodeTelemetrySuppressionRunner } from "./lib/node-telemetry-suppression";
 import { getSentryRelease } from "./sentry-release";
 import { sanitizeBackendSentryEvent, sanitizeBackendSentrySpan } from "./sentry-scrubbing";
 
@@ -17,6 +19,7 @@ globalThis.global = globalThis;
 process.env.NEXT_RUNTIME ??= "nodejs";
 
 let registered = false;
+let disableBackendInstrumentations: (() => void) | null = null;
 
 export function registerBackendInstrumentation() {
   if (registered) {
@@ -36,31 +39,33 @@ export function registerBackendInstrumentation() {
     sentryDsn,
     sentryTracesSampleRate: sentryBaseConfig.tracesSampleRate,
   });
-  const openTelemetrySpanProcessors = plan.otlpTracesEndpoint == null
-    ? plan.sentryEnabled ? [] : [new NoopSpanProcessor()]
-    : [new BatchSpanProcessor(new OTLPTraceExporter({ url: plan.otlpTracesEndpoint }))];
-  const openTelemetryInstrumentations = plan.sentryEnabled || plan.otlpTracesEndpoint == null
-    ? []
-    : [
-      new PrismaInstrumentation(),
-      ...getNodeAutoInstrumentations(),
-    ];
 
   process.title = `stack-backend:${portPrefix} (node/elysia)`;
   initPerfStats();
 
-  // Sentry owns the one global OpenTelemetry provider in every environment.
-  // When Sentry is disabled but an OTLP destination exists, register the Node and
-  // Prisma instrumentations explicitly. With no exporter, the no-op processor keeps
-  // request context available without paying to patch every instrumented library.
+  // Dogfood the same managed SDK integration customers use. Construction
+  // synchronously installs Hexclave's tracer, logger, meter, W3C propagation,
+  // correlation processor, and authenticated OTLP exporters before any other
+  // integration can claim the process-wide OpenTelemetry globals.
+  getHexclaveServerApp();
+
+  // Prisma supplies an official OTel instrumentation class rather than using
+  // the global API by itself. Register it against the provider the Hexclave
+  // SDK just installed; otherwise switching provider ownership away from
+  // Sentry silently removes database spans from otherwise-complete traces.
+  disableBackendInstrumentations = registerInstrumentations({
+    instrumentations: [new PrismaInstrumentation()],
+  });
+
+  // Sentry remains an optional error-reporting sink for installations with a
+  // DSN, but it must never own or be required by backend OpenTelemetry.
   Sentry.init({
     ignoreErrors: sentryBaseConfig.ignoreErrors,
     normalizeDepth: sentryBaseConfig.normalizeDepth,
     maxValueLength: sentryBaseConfig.maxValueLength,
     debug: sentryBaseConfig.debug,
-    tracesSampleRate: plan.tracesSampleRate,
-    openTelemetryInstrumentations,
-    openTelemetrySpanProcessors,
+    tracesSampleRate: 0,
+    skipOpenTelemetrySetup: true,
     dsn: sentryDsn,
     enabled: plan.sentryEnabled,
     sendDefaultPii: false,
@@ -74,12 +79,22 @@ export function registerBackendInstrumentation() {
     beforeSendSpan: sanitizeBackendSentrySpan,
     beforeSendTransaction: sanitizeBackendSentryEvent,
   });
+
+  // Hexclave owns the process provider; enter the standard suppression context
+  // from that provider's OTel graph so ingestion cannot recursively export.
+  registerNodeTelemetrySuppressionRunner(
+    async (fn) => await context.with(suppressTracing(context.active()), fn),
+  );
 }
 
 export async function closeBackendInstrumentation(timeoutMs = 2000): Promise<void> {
-  // Sentry shuts down its provider and every additional span processor passed
-  // above, so there is only one lifecycle to flush during graceful shutdown.
-  if (!await Sentry.close(timeoutMs)) {
+  disableBackendInstrumentations?.();
+  disableBackendInstrumentations = null;
+  const [, sentryClosed] = await Promise.all([
+    getHexclaveServerApp().flush(),
+    Sentry.close(timeoutMs),
+  ]);
+  if (!sentryClosed) {
     throw new Error(`Backend instrumentation did not close within ${timeoutMs}ms`);
   }
 }

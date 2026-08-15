@@ -9,7 +9,7 @@ import { insertSessionReplaySpans } from "@/lib/spans";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { getTelemetryResourceError, isTelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
+import { getTelemetryResourceError, isTelemetryResource, type TelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
 import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
@@ -84,11 +84,14 @@ export const POST = createSmartRouteHandler({
       refreshTokenId: adaptSchema
     }).defined(),
     body: yupObject({
-      schema_version: yupNumber().defined().integer().oneOf([2]),
-      resource: yupMixed().defined().test(
+      // The released replay body predates the resource envelope and omitted
+      // both version and resource. Keep that shape explicit instead of having
+      // callers or tests silently fill the new fields.
+      schema_version: yupNumber().optional().integer().oneOf([2]),
+      resource: yupMixed().optional().test(
         "telemetry-resource",
         "Invalid telemetry resource",
-        (value) => getTelemetryResourceError(value) === null,
+        (value) => value === undefined || getTelemetryResourceError(value) === null,
       ),
       browser_session_id: yupString().defined().matches(UUID_RE, "Invalid browser_session_id"),
       session_replay_segment_id: yupString().defined().matches(UUID_RE, "Invalid session_replay_segment_id"),
@@ -96,7 +99,13 @@ export const POST = createSmartRouteHandler({
       started_at_ms: yupNumber().defined().integer().min(0),
       sent_at_ms: yupNumber().defined().integer().min(0),
       events: yupArray(yupMixed().defined()).defined(),
-    }).defined().transform((_value, originalValue) => maybeDecodeBinaryBody(originalValue)),
+    }).defined().test(
+      "wire-version",
+      "Legacy session replay batches must omit schema_version and resource; versioned batches require schema_version 2 and a telemetry resource",
+      (body) => body.schema_version === undefined
+        ? body.resource === undefined
+        : body.schema_version === 2 && isTelemetryResource(body.resource),
+    ).transform((_value, originalValue) => maybeDecodeBinaryBody(originalValue)),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
@@ -109,10 +118,15 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth, body }, fullReq) {
-    if (!isTelemetryResource(body.resource)) {
-      throw new HexclaveAssertionError("The request schema accepted an invalid telemetry resource");
+    let resource: TelemetryResource | null;
+    if (body.schema_version === undefined) {
+      resource = null;
+    } else {
+      if (!isTelemetryResource(body.resource)) {
+        throw new HexclaveAssertionError("The request schema accepted an invalid telemetry resource");
+      }
+      resource = body.resource;
     }
-    const resource = body.resource;
 
     if (!auth.tenancy.config.apps.installed["analytics"]?.enabled) {
       throw new KnownErrors.AnalyticsNotEnabled();
@@ -221,17 +235,28 @@ export const POST = createSmartRouteHandler({
     // here would strand them if the first request failed after creating the
     // chunk.
     if (chunk == null) {
-      const payload = {
-        schema_version: 2,
-        resource,
-        session_replay_id: replayId,
-        browser_session_id: browserSessionId,
-        session_replay_segment_id: sessionReplaySegmentId,
-        batch_id: batchId,
-        started_at_ms: body.started_at_ms,
-        sent_at_ms: body.sent_at_ms,
-        events: body.events,
-      };
+      const payload = resource === null
+        ? {
+          v: 1,
+          session_replay_id: replayId,
+          browser_session_id: browserSessionId,
+          session_replay_segment_id: sessionReplaySegmentId,
+          batch_id: batchId,
+          started_at_ms: body.started_at_ms,
+          sent_at_ms: body.sent_at_ms,
+          events: body.events,
+        }
+        : {
+          schema_version: 2,
+          resource,
+          session_replay_id: replayId,
+          browser_session_id: browserSessionId,
+          session_replay_segment_id: sessionReplaySegmentId,
+          batch_id: batchId,
+          started_at_ms: body.started_at_ms,
+          sent_at_ms: body.sent_at_ms,
+          events: body.events,
+        };
       const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
       // rrweb JSON is extremely repetitive. Best-speed gzip is ~4x cheaper
       // than the default level for representative replay batches while the
@@ -306,22 +331,26 @@ export const POST = createSmartRouteHandler({
     }
     const replay = replayRows[0];
 
-    // These are structural trace rows, not an optional projection. Wait for
-    // ClickHouse acceptance so a successful replay response never leaves page
-    // spans permanently orphaned from their replay/session ancestors.
-    await insertSessionReplaySpans(getSharedClickhouseAdminClient(), {
-      projectId,
-      branchId,
-      replayId,
-      sessionReplaySegmentId: chunk.sessionReplaySegmentId,
-      projectUserId,
-      refreshTokenId,
-      replayStartedAt: replay.startedAt,
-      replayLastEventAt: replay.lastEventAt,
-      segmentStartedAt: segmentBounds.firstEventAt,
-      segmentLastEventAt: segmentBounds.lastEventAt,
-      resource,
-    });
+    if (resource !== null) {
+      // These are structural trace rows, not an optional projection. Wait for
+      // ClickHouse acceptance so a successful versioned replay response never
+      // leaves page spans permanently orphaned from their replay/session
+      // ancestors. Legacy replay uploads predate these lifecycle rows and keep
+      // their original storage semantics.
+      await insertSessionReplaySpans(getSharedClickhouseAdminClient(), {
+        projectId,
+        branchId,
+        replayId,
+        sessionReplaySegmentId: chunk.sessionReplaySegmentId,
+        projectUserId,
+        refreshTokenId,
+        replayStartedAt: replay.startedAt,
+        replayLastEventAt: replay.lastEventAt,
+        segmentStartedAt: segmentBounds.firstEventAt,
+        segmentLastEventAt: segmentBounds.lastEventAt,
+        resource,
+      });
+    }
     return {
       statusCode: 200,
       bodyType: "json",

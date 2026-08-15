@@ -64,7 +64,7 @@ export const GET = hexclave.routeHandler(async ({ request, user }) => {
 
 `routeHandler` keeps Next.js's `(request, context)` signature, so export the wrapped function directly; your handler receives `{ request, context, user, hexclave }` as a single object (`context` is Next's second argument, e.g. `{ params }`). With `required: true`, unauthenticated calls get a JSON `401` before your handler runs — pass `unauthorized: () => Response` to customize it.
 
-Server actions receive no `Request`, so the adapter reads the ambient headers from `next/headers` — they carry the session cookies as well as `traceparent` and `x-hexclave-span-context`, because the browser SDK's patched fetch instruments React's action POSTs like any other same-origin request:
+Server actions receive no `Request`, so the adapter reads the ambient headers from `next/headers` — they carry the session cookies as well as `traceparent` and `baggage`, because the browser SDK's patched fetch instruments React's action POSTs like any other same-origin request:
 
 ```ts app/actions.ts
 "use server";
@@ -80,7 +80,7 @@ export const createOrder = hexclave.serverAction(async ({ user }, formData: Form
 
 `serverAction` prepends a `{ user, hexclave }` context to the action's own arguments — the wrapped action keeps its outward signature, so it works with `<form action={...}>` and direct calls alike. `required` rejections throw (customize with `unauthorized: () => Error`); pass `name` so the span is identifiable (the span type stays low-cardinality).
 
-Separately from the wrappers, export `hexclaveInstrumentation(app)` from your `instrumentation.ts` — see [Server-Side Instrumentation](/guides/apps/analytics/cross-tier-tracing#server-side-instrumentation). Server-wide outbound-fetch spans and the uncaught-exception monitor already install when the server app is constructed; `register()` adds ambient request attribution (bare `trackEvent`/`withSpan`/`logger` calls inside a request scope link to the caller without `{ request }`), and `onRequestError` reports the errors Next.js catches during request handling. The wrappers and the instrumentation are complementary: the instrumentation covers everything that happens on the server, the wrappers add the per-route span your handler runs *inside of*.
+Separately from the route adapters, export `hexclaveInstrumentation(app)` from your `instrumentation.ts` — see [Server-Side Instrumentation](/guides/apps/analytics/cross-tier-tracing#server-side-instrumentation). `register()` installs the managed OTel provider and official instrumentations, adds ambient request attribution (bare `trackEvent`/`withSpan`/`logger` calls inside a request scope link to the caller without `{ request }`), and `onRequestError` reports errors Next.js catches. The pieces are complementary: OTel instrumentation covers libraries and outbound HTTP while route adapters create the per-route span your handler runs inside.
 
 ## TanStack Start
 

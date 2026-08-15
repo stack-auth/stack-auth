@@ -91,7 +91,7 @@ export function getClickhouseExternalClient() {
   return sharedClickhouseExternalClient;
 }
 
-// Safety net for heavy analytical reads against `analytics_internal.events`:
+// Safety net for heavy analytical reads against the canonical telemetry table:
 // GROUP BY spills to disk at ~50% of the per-query cap (leaving headroom for
 // the post-spill merge), grace_hash partitions large join build sides instead
 // of allocating one giant hash table, and the per-user cap bounds total

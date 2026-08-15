@@ -93,7 +93,10 @@ export async function createResponse<T extends SmartResponse>(req: Request | nul
 
     switch (bodyType) {
       case "empty": {
-        arrayBufferBody = new ArrayBuffer(0);
+        // Fetch forbids a non-null body for status codes whose wire format
+        // cannot carry content. `new ArrayBuffer(0)` is still a body, so a
+        // valid 204/205/304 response throws before it reaches the client.
+        arrayBufferBody = [204, 205, 304].includes(status) ? null : new ArrayBuffer(0);
         break;
       }
       case "json": {

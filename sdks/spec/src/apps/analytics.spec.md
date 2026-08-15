@@ -31,9 +31,8 @@ drift):
     trace id  = 32 lowercase hex chars, never all-zero
     span id   = 16 lowercase hex chars, never all-zero, unique within its trace
     parent    = a single span id, or NULL meaning "this span is the trace root"
-  A span's parent_span_id must differ from its own span_id. Generate ordinary
-  operation ids with fresh randomness (generateW3cTraceId / generateW3cSpanId
-  in the shared analytics-wire helpers). Session lifecycle nodes are the one
+  A span's parent_span_id must differ from its own span_id. The configured OTel
+  SDK IdGenerator owns ordinary operation IDs. Session lifecycle nodes are the one
   exception: their W3C ids are deterministically derived from their UUIDs so
   the browser, ingestion tier, and virtual refresh-token projection agree
   without shared state. There are NO id
@@ -67,7 +66,7 @@ the product's lifecycle hierarchy while using scalar W3C parents throughout:
                   ├─ $away / $offline
                   ├─ $click / $error / $log …  (events inside the page view)
                   ├─ custom withSpan / startSpan
-                  └─ $http-client
+                  └─ OTel HTTP client span
                       └─ backend request span   (via `traceparent`)
                           └─ library spans (Prisma, Drizzle, AI SDK, …)
 
@@ -151,8 +150,18 @@ integrity signals. It does not disable code instrumentation.
     release?: string
     environment?: string
     traceSampleRate?: number
-    errorCapture?: { enabled?: bool, ignoreErrors?: string[] }
+    errorCapture?: {
+      enabled?: bool,
+      ignoreErrors?: string[],
+      eventProcessors?: ErrorEventProcessor[],
+      beforeSend?: ErrorBeforeSend,
+      attachmentTransport?: ErrorAttachmentTransport,
+      onAttachmentPending?: (attachment: PendingErrorAttachment) => void | PromiseLike<void>,
+    }
     logs?: { captureConsole?: ("log" | "warn" | "error" | "info" | "debug")[] }
+    openTelemetry?: {
+      provider?: "managed" | "existing-provider"
+    }
     spanPropagation?: {
       enabled?: bool
       allowedOrigins?: string[]
@@ -160,8 +169,6 @@ integrity signals. It does not disable code instrumentation.
     }
     network?: {
       enabled?: bool
-      capture?: "all" | "errors-only"
-      sampleRate?: number // deprecated alias for observability.traceSampleRate
       allowOrigins?: string[]
       denyOrigins?: string[]
       ignoreUrls?: string[]
@@ -173,6 +180,20 @@ or library instrumentation. Console capture defaults to warn+error; error,
 network, and propagation capture default to enabled. Release and environment
 use the platform defaults described in the error-capture section.
 
+On servers, `observability.openTelemetry.provider` defaults to `managed`.
+Managed mode synchronously installs official Node TracerProvider and
+LoggerProvider instances,
+AsyncLocalStorage context manager, W3C trace-context+baggage propagator,
+parent-based ratio sampler, Hexclave correlation processor, and authenticated
+OTLP/HTTP trace and log exporters. Any pre-existing global registration is a configuration
+error and MUST throw rather than silently routing spans elsewhere.
+
+`existing-provider` mode MUST NOT mutate any OpenTelemetry global. The
+application configures its own trace/logger providers with the exporters and correlation
+processor exposed by the framework package's Node-only `/otel` entrypoint and
+owns its sampler, resource, instrumentations, context manager, propagator, and
+lifecycle. Hexclave's `Span`, event, and logger APIs remain thin facades over
+the active OTel globals in both modes.
   telemetry: {
     resource?: TelemetryResource
     waitUntil?: (promise) => void
@@ -229,35 +250,27 @@ Validation at app construction (throw synchronously):
 - resource.attributes, when present, is a plain JSON-serializable object whose
   serialized UTF-8 form is at most 16 KiB.
 - network.allowOrigins and network.denyOrigins are mutually exclusive.
-- observability.traceSampleRate (and the deprecated network.sampleRate alias)
-  must be a number in [0, 1]. If both are present, they must be equal.
+- observability.traceSampleRate must be a number in [0, 1].
 
 
-## Batch wire format
+## Signal wire formats and compatibility
 
-One batch per flush. Body (JSON):
+New SDK versions export traces and logs with the official OTLP/HTTP exporter to
+the standard `/v1/traces` and `/v1/logs` signal suffixes. Do not define a second
+SDK-owned envelope or serialize spans/events/logs into
+`/analytics/events/batch`.
 
-  {
-    schema_version: 3,          // versions the envelope+row shapes
-    resource: TelemetryResource,// required, copied from the app constructor
-    batch_id: uuid,             // fresh per send
-    sent_at_ms: number,
-    // Browser batches:
-    session_replay_segment_id: uuid,   // the tab's segment identity
-    // Server-key batches (fields present only when known):
-    user_id?: uuid,
-    refresh_token_id?: uuid,           // resolved from the request session
-    session_replay_id?: uuid,          // from the propagation header
-    session_replay_segment_id?: uuid,  // from the propagation header
-    events?: [EventItem, ...],
-    spans?: [SpanRow, ...],
-  }
+The released `/analytics/events/batch` endpoint remains available for older
+SDKs. Treat it as a receiver-side compatibility adapter: validate the released
+event shape, normalize it into the canonical storage model, and never make its
+custom JSON schema a dependency of new SDK code.
 
-The replay uploader uses its existing dedicated route, but the same resource
-contract applies. Every session replay batch body begins with:
+The replay uploader uses its existing dedicated route. Its body version remains
+independent from the events/spans batch because rrweb chunks have a separate
+wire format. New replay batches begin with:
 
   {
-    schema_version: 3,
+    schema_version: 2,
     resource: TelemetryResource,
     browser_session_id: uuid,
     session_replay_segment_id: uuid,
@@ -274,30 +287,11 @@ attributes in resource_attributes. Missing/invalid resource or an empty
 service.name rejects the entire v3 batch. Never infer a value during ingestion
 and never place such rows into an "unknown" or generic service bucket.
 
-EventItem:
-  {
-    event_type: string,               // custom name or system "$..." type
-    event_at_ms: number,
-    data: object,
-    trace_id?: 32hex,                 // the trace the enclosing span belongs to
-    span_id?: 16hex,                  // the ENCLOSING span (an event is an instant
-                                      // INSIDE a span, never a node in the tree)
-    page_view_span_id?: 16hex,        // the $page-view span this item happened on
-    // $log items only (route-enforced: required on $log, forbidden elsewhere):
-    message?: string,
-    level?: "trace" | "debug" | "info" | "warn" | "error",
-  }
-
-trace_id and span_id are set together or not at all: an event with no enclosing
-span carries neither.
-
-In a BROWSER the current `$page-view` span is the enclosing span of last resort
-(see "Trace boundaries"), so a bare trackEvent, a console/logger line and every
-auto-captured event ($click, $form-submit, $error, the integrity signals, …) all
-carry the page view's (trace_id, span_id). This matters more for events than for
-spans: an event is reachable ONLY through its trace_id, since `page_view_span_id`
-is a correlation column, so without it a session's entire click/error/log stream
-belonged to no trace and could not be reached from one.
+In a browser the current `$page-view` span is the enclosing span of last resort
+(see "Trace boundaries"), so a bare trackEvent and every auto-captured event
+carry the page view's standard OTel span context. `app.logger` uses the active
+OTel Context. Page/replay correlation is also retained as namespaced OTel
+attributes so it remains queryable even when no span is recording.
 
 Auto-captured events take the page view DIRECTLY rather than through ambient
 resolution — they fire from DOM listeners, where whatever `withSpan` frame
@@ -305,29 +299,10 @@ happens to be open elsewhere on the page is not the operation the user's click
 belongs to. Events recorded before the tab's first $page-view span (the pre-load
 window) or under `root: true` still carry no trace.
 
-SpanRow (versioned upsert; the row with the highest updated_at_ms per span_id
-wins server-side):
-  {
-    trace_id: 32hex,                  // required
-    span_id: 16hex,                   // required, unique within the trace
-    parent_span_id: 16hex | null,     // null = this span IS the trace root
-    span_type: string,
-    started_at_ms: number,
-    ended_at_ms: number | null,       // null = still-open interval
-    data: object,                     // the FULL accumulated data, re-sent every row
-    updated_at_ms: number,            // per-span monotonic: max(Date.now(), last+1)
-    page_view_span_id?: 16hex,        // frozen at span creation; never on $page-view rows
-    links?: [{ trace_id: 32hex, span_id: 16hex }, ...],  // non-hierarchical refs
-  }
-
-Route-side validation of every span/event item: the 32/16-hex shapes above,
-all-zero ids rejected, parent_span_id !== span_id, and page_view_span_id !==
-span_id (a span cannot be its own page view). There is no cross-item ancestry
-check to run any more — a scalar parent is either well-shaped or it isn't.
-
-Ids on the wire are the FINAL ids: what the SDK generates is what the dashboard
-and any external OTel-compatible consumer sees. The ingestion route never
-rewrites, prefixes, or namespaces them.
+OTLP identity fields are final: what the OTel SDK generates is what the
+dashboard and any external OTel-compatible consumer sees. The authenticated
+gateway validates the OTLP model and stamps tenant columns; it never rewrites,
+prefixes, or namespaces trace/span IDs.
 
 `page_view_span_id`, `session_replay_id`, `session_replay_segment_id` and
 `refresh_token_id` remain correlation columns for direct filtering. The same
@@ -338,77 +313,53 @@ parents must match the deterministic UUID-to-W3C mapping used by the browser's
 page-view parent. The browser may use the segment as a scalar parent only after
 that replay write has returned successfully for the same tab segment.
 
-Buffering/flush:
-- Browser: buffer and flush every ~10 seconds, or sooner when the buffer fills;
-  keepalive flush on tab hide/unload. Span updates within one flush window
-  coalesce to one row per span id (latest wins; superseded rows' promise
-  settlers ride along and settle with the shipped batch). Non-keepalive
-  analytics and replay bodies use gzip only when the JSON is at least 1 KiB and
-  compression makes it smaller; keepalive bodies stay plain JSON so dispatch
-  is not delayed by asynchronous compression during page teardown.
-- Server: coalesce per (userId + request-context) batch key and flush after a
-  short non-blocking window (100 ms at full capture; 1 second when
-  traceSampleRate < 1, so a busy sampled producer cannot still issue ten mostly
-  empty collector requests per second). At full capture, flush immediately at
-  400 buffered items. With sampling enabled, buffer up to 4,000 raw items so
-  the sampling window is not defeated by the wire-size threshold; after trace
-  selection and promotion, split retained rows into batches of at most 400.
-  Run the collector POST in a telemetry-suppressed context detached from the
-  trace being exported. A framework-created non-recording delivery span MUST
-  carry sampled=0: inheriting and propagating sampled=1 to the analytics batch
-  endpoint makes that endpoint trace its own collector work and bypass the
-  receiver's local trace sample rate recursively.
-  The delivery queue permits at most 8 active requests and 256 queued batches /
-  8 MiB. No request handler awaits telemetry delivery:
-  awaiting the returned promises or calling flush() is the delivery guarantee.
-  Every send promise is also passed to telemetry.waitUntil (explicit, else the
-  auto-detected Vercel hook — see the option above).
-- Server sticky disable: when a batch send fails with the backend's
-  ANALYTICS_NOT_ENABLED rejection (matched on the KnownErrors code in the
-  failure text), server telemetry disables for the REST OF THE PROCESS: warn
-  once, clear the buffers, reject subsequent telemetry promises locally
-  ("analytics is not enabled for this project"), and stop opening
-  $http-client spans. Required by the eager instrumentation install — a
-  project without the analytics app must not send a doomed batch per outgoing
-  fetch forever. Mirrors the browser tracker's AnalyticsNotEnabled _disable().
+Buffering, export, and sampling:
 
-Trace sampling is a PRE-TRANSPORT flush policy, shared by browser and server:
-
-- `observability.traceSampleRate` defaults to 1. The deprecated
-  `network.sampleRate` field is only an alias for this trace-wide setting; it
-  MUST NOT cause an independent network-span random draw.
-- The head decision is deterministic from the trace id, so every row/upsert and
-  every SDK process that uses the same rate reaches the same result.
-- Apply that decision only after the environment buffer has coalesced its
-  complete flush snapshot. Group events and spans by `trace_id`; keep or drop
-  the group as one unit. Events without a trace are outside trace sampling and
-  are always retained.
-- Promote a head-dropped trace group when the snapshot contains `$error`, an
-  error-level `$log`, an error marker, a failed HTTP/status value, or a span at
-  least 3 seconds long. Promotion keeps EVERY event/span from that trace in the
-  snapshot, including healthy ancestors and siblings.
-- When sampling removes every item, resolve its public settlers locally and do
-  not construct or send an analytics batch request. Sampling is a successful
-  delivery-policy decision, not a transport failure callers should retry.
-- Retain the latest row of a sampled-out OPEN span locally without its already
-  resolved settler. If a later flush promotes that trace, the live root/page
-  ancestor is still available; completed healthy rows are not retained across
-  flushes. Cap retained browser rows at the live-span soft cap and retained
-  server contexts at the delivery-queue context cap, so never-ended spans
-  cannot turn tail promotion into an unbounded memory registry.
+- The configured OTel `BatchSpanProcessor` and `BatchLogRecordProcessor` own
+  batching, queue bounds, scheduling, retries, and OTLP serialization. Hexclave
+  does not maintain a parallel trace/log transport or schema-versioned batch.
+- `flush()` force-flushes both providers only in managed-provider mode. In
+  existing-provider mode the application owns processor/exporter lifecycle.
+- Browser autocapture may briefly retain a DOM-derived event locally only when
+  its final meaning is not yet known (dead-click classification and keystroke
+  coalescing). Once classified it becomes a named OTel LogRecord; it never
+  becomes a legacy analytics-batch row in new SDK versions.
+- Session replay remains a separate transport because replay chunks are not an
+  OpenTelemetry signal. The released `/analytics/events/batch` route remains a
+  receiver-side compatibility adapter for already-deployed SDKs only.
+- Authentication replacement is a hard replay boundary. Before sign-out can
+  await network I/O, rotate the per-tab segment and clear its queued replay
+  events. Suppress subsequent incremental rrweb events until the next
+  authenticated token set has been published; then take a new FullSnapshot
+  before accepting increments. This prevents both cross-user DOM attribution
+  and mutation-only replay streams that the player cannot reconstruct.
+- `observability.traceSampleRate` defaults to 0.1 and configures the managed
+  provider's standard parent-aware root sampler. Existing-provider mode leaves
+  sampling entirely to the application's provider.
+- Error/latency-aware retention is tail sampling. It must run after ingestion
+  in a Collector or authenticated backend buffering boundary; an SDK cannot
+  resurrect a head-dropped span after its outcome becomes known. Logs and
+  errors may be retained independently of trace sampling. HTTP client metrics
+  are derived from recorded CLIENT spans (spanmetrics), so they follow the
+  same head-sampling decision as the request span.
 
 
 ## trackEvent(eventType, data?, options?)
 
-Buffers one EventItem. Returns a promise that resolves when the batch carrying
-the event is acknowledged and rejects (pre-caught, so fire-and-forget is safe)
-on invalid input, disabled/unavailable analytics, or definitive send failure.
+Emits one named OpenTelemetry LogRecord with
+`hexclave.signal.type = "event"` and the structured payload in
+`hexclave.data`. In managed-provider mode the returned promise force-flushes
+the managed trace and logger providers, preserving the released remote-
+acknowledgement behavior. In existing-provider mode Hexclave does not own the
+provider lifecycle, so the promise acknowledges synchronous provider
+acceptance. Invalid input and disabled/unavailable analytics reject pre-caught.
 
 TrackOptions:
   parent: ParentRef?           - the ONE span this item belongs under; overrides
                                  ambient context entirely (see "Parent resolution")
   root: bool?                  - drop the AMBIENT parent: start a new trace
-  links: ParentRef[]?          - non-hierarchical references to related spans
+
+Events do not accept `links`: OpenTelemetry links are owned by spans.
 
 Server-side additionally:
   userId: uuid?    - explicit attribution (validated as uuid)
@@ -419,8 +370,8 @@ Server-side additionally:
 
 ## logger (both app classes)
 
-`app.logger` is an eagerly-available object with five methods, one per log
-level (the wire's single level vocabulary — there is no numeric severity):
+`app.logger` is an eagerly-available facade over the active OpenTelemetry
+LoggerProvider with five methods:
 
   logger.trace(message, data?)   level "trace"
   logger.debug(message, data?)   level "debug"
@@ -428,25 +379,23 @@ level (the wire's single level vocabulary — there is no numeric severity):
   logger.warn(message, data?)    level "warn"
   logger.error(message, data?)   level "error"
 
-Each call emits one `$log` EventItem with message/level set. Contract:
+Each call emits one OTel LogRecord whose body is the message, whose standard
+severity number/text correspond to the chosen method, and whose structured
+payload is the `hexclave.data` attribute. Contract:
 
 - Fire-and-forget; NEVER throws into user code.
 - Non-string messages are coerced to a bounded string representation (depth-
   limited, circular-safe) rather than dropped.
-- message is truncated to 8,192 UTF-8 bytes BEFORE buffering.
+- message is truncated to 8,192 UTF-8 bytes BEFORE emission.
 - `data` follows the normal event-data validation; invalid data drops the log
   with a console warning.
 - Environments with no delivery path (analytics disabled; non-browser client
   app) warn ONCE per app instance and silently drop further logs.
-- Logs carry the same enclosing context as events, including the browser
-  $page-view fallback (see EventItem): the enclosing span's (trace_id, span_id)
-  from global spans / enclosing withSpan frames, else the current page view;
-  the page view is stamped as a correlation column either way. Server logs inside a
-  withSpan({ request }) scope join the CALLER'S TRACE, because the incoming
-  `traceparent` gave that scope its trace id.
-- Every emitted item carries a client-side-only origin marker ("logger" for
-  explicit calls, "console" for the automatic mirror) that never leaves the
-  process — it routes pre-load buffering (below), nothing else.
+- The OTel Logs SDK reads the active OTel Context, so logs inside a span carry
+  the standard trace_id/span_id/flags correlation. Hexclave replay/page
+  correlation remains namespaced attributes copied from allowlisted baggage.
+- The client-side-only origin marker ("logger" or "console") controls local
+  validation/rate limiting only and never leaves the process.
 
 ### Console capture (observability.logs.captureConsole)
 
@@ -478,8 +427,11 @@ projectId differs logs ONE console warning naming both projects.
    { console_level: <level> }.
 3. If any arg is an actual Error, additionally set data.error_name and
    data.error_fingerprint — computed EXACTLY like the $error pipeline
-   (truncate message/stack to the 8,192-byte cap, then fingerprint), so a
-   thrown-and-logged error is collapsible to one line in the dashboard.
+   (truncate message/stack to the 8,192-byte cap, then fingerprint) — and emit
+   a handled $error occurrence through the Issues pipeline while retaining the
+   $log row for surrounding console context. Plain string console.error calls
+   remain logs-only because they have no trustworthy exception stack or
+   identity to group.
 4. Skip messages whose first arg is a string starting with "Hexclave" (the
    SDK's own warnings must never report themselves). Additionally expose
    runWithoutConsoleCapture(fn) — sets the shared suppression flag around fn —
@@ -494,29 +446,29 @@ projectId differs logs ONE console warning naming both projects.
    monotonic clock, never wall-clock time.
 7. Uninstall restores a method only when it is still the SDK's patch.
 
-Pre-load buffering (browser): origin:"console" items arriving before the
-lazily-loaded tracker module NEVER trigger the load (a chatty hydration must
-not pull the analytics runtime onto the critical path). They queue — with the
-enclosing span context and timestamp captured at call time — in a 100-item ring
-buffer (overflow drops the OLDEST), drained through the normal adoption path
-(generation-checked, so a sign-out in between drops them) when the
-idle-scheduled load completes. origin:"logger" items keep the load-triggering
-fast path of custom events.
+Browser logger calls do not depend on the lazily-loaded EventTracker. The
+managed OTel provider is installed when the analytics facade is constructed;
+its official BatchLogRecordProcessor owns the bounded pre-export queue. Before
+authentication changes, both trace and log processors force-flush. If that
+flush fails, retire both providers before installing replacements so buffered
+signals can never cross users.
 
 
 ## startSpan(spanType, options?) / the Span handle
 
-StartSpanOptions: TrackOptions & { data?, startedAtMs? }
+StartSpanOptions: TrackOptions & { data?, startedAtMs?, links? }
   = { data?, startedAtMs?, parent?, root?, links? }
 (server-side additionally userId?).
 
 Behavior:
 - Validate spanType/data/startedAtMs; invalid input THROWS synchronously with
   the same messages in every environment.
-- The span's open interval row (ended_at_ms: null) is enqueued immediately, so
-  a span that is never ended still shows up as an open interval.
-- setData(data): shallow-merge and re-write (validation applies to the merged
-  result). end(options?): idempotent; endedAtMs must be an integer >= start.
+- Start one real span from the active OTel Tracer. The provider owns identity,
+  parentage, sampling, processors, and export. Like standard OTel, an unended
+  span is not exported as a fabricated open-row update.
+- `setData(data)` shallow-merges validated data into the namespaced
+  `hexclave.data` attribute. `end(options?)` is idempotent; `endedAtMs` must be
+  an integer at or after the start.
 - Handle members: traceId, spanId, spanType, isEnded, setData, end, trackEvent,
   startSpan, withSpan, run, spanContext(), getSpanPropagationHeaders(), fetch().
   spanContext() returns the serializable { traceId, spanId } identity — the one
@@ -587,19 +539,25 @@ forced into a false parent relationship. This is the honest home for the case a
 single-path model had to reject outright — a span joining two flows (a queued
 message consumed inside an unrelated request, a batch job triggered by several
 users' actions) records the extra flows as links and keeps exactly one parent.
+Deduplicate by (traceId, spanId) and reject more than 32 links. The owner trace's
+sampling decision governs whether link rows persist; linked traces are sampled
+independently and a link never promotes either trace.
 
 Any malformed context (bad hex shape, all-zero id, `parentSpanId === spanId`)
 returns `{ error }` with a message naming the role ("parent", "ambient parent",
 "link") — never a silently corrected id.
 
 
-## Cross-tier propagation (traceparent + x-hexclave-span-context)
+## Cross-tier propagation (`traceparent`, `tracestate`, and `baggage`)
 
-Two headers with strictly separated jobs:
+Three standard headers with strictly separated jobs:
 
 - `traceparent` (W3C standard) is the ONE hierarchy carrier. It, and only it,
   tells the receiver which trace to join and which span to nest under.
-- `x-hexclave-span-context` carries only NON-HIERARCHICAL correlation that W3C
+- `tracestate` carries opaque vendor-specific trace state and sampling hints.
+  Preserve and forward it through the official propagator without interpreting
+  it as Hexclave product metadata.
+- `baggage` carries only NON-HIERARCHICAL correlation that W3C
   has no field for.
 
 Splitting them this way is what buys interop: the hierarchy travels in the
@@ -610,79 +568,57 @@ other side simply ignores.
 
 ### traceparent
 
-Value: "00-<32hex traceId>-<16hex spanId>-<flags>" for the `$http-client` span
-opened for this request.
-
-It is emitted only when the `$http-client` span is guaranteed to be stored.
-Tentatively kept spans and pre-load spans that can be discarded MUST NOT be
-advertised as remote parents. If one of those requests reaches a Hexclave
-backend, the backend starts a fresh root trace instead of storing a reference to
-a parent that may never exist. Emitted client contexts always carry sampled
-flags `01`.
+Value: "00-<32hex traceId>-<16hex spanId>-<flags>" for the active OTel context,
+normally the OTel HTTP client span opened for this request. The official W3C
+propagator serializes the provider's real trace flags and `tracestate`; the SDK
+must not recalculate or overwrite the provider's sampling decision.
 
 An explicitly caller-set `traceparent` is never overwritten.
 
-### x-hexclave-span-context (header codec)
+### baggage
 
-Header name: x-hexclave-span-context
-Value: "v1." + base64url(JSON.stringify(payload)) where payload is:
+Header name: `baggage` (W3C standard). Use the OpenTelemetry W3C baggage
+propagator for parsing, validation, escaping, merging, and serialization.
 
-  {
-    projectId: string,                 // required
-    sessionReplayId?: uuid,
-    sessionReplaySegmentId?: uuid,
-    pageViewSpanId?: 16hex,            // the sender's current $page-view span
-  }
+Hexclave owns only these namespaced entries:
 
-Nothing in this payload is ancestry. The replay/segment ids are database uuids,
-and `pageViewSpanId` names which page the user was on — a grouping question, not
-a parent question. The receiver stamps them onto its own rows as scalar
-correlation columns.
+- `hexclave.session_replay.id`: replay UUID
+- `hexclave.session_replay.segment.id`: replay-segment UUID
+- `hexclave.page_view.span_id`: 16-hex W3C span id for page correlation
 
-`projectId` does double duty, and the second job is why the header rides even
-with no correlation ids to carry. `traceparent` names a span id but not a
-project, and a project only ever reads its own rows — so a receiver that inherits
-a parent from a caller whose telemetry lives elsewhere writes a row that is
-neither a child (nothing in this project has that span id) nor a root, and it
-disappears from every traces view. A receiver must therefore treat the incoming
-`traceparent` as HIERARCHY only when the span-context header claims the same
-project; otherwise it keeps the incoming trace_id — so the two tiers still
-correlate, including with external OTel tooling — and roots its own span.
+Nothing in baggage is ancestry or tenant identity. The receiver stamps valid
+allowlisted values onto spans as attributes/correlation columns. It preserves
+unrelated vendors' baggage when injecting and ignores malformed Hexclave
+entries without rejecting the request.
 
-Decode rules (receiver): null for missing/oversized (> 4096 chars)/wrong
-version/undecodable/structurally invalid values — a bad header must never
-throw into the request path. Individually invalid id fields are dropped, not
-fatal. A payload whose `projectId` does not match the receiving app's project is
-ignored WHOLESALE. All ids in the header are CLIENT-CONTROLLED labels: fine for
-telemetry, never for authz/billing/security.
+Never propagate `projectId` in baggage. Project/branch authorization and
+billing come exclusively from authenticated credentials. Any baggage value is
+client-controlled and may be used only for telemetry correlation, never for
+authorization, billing, or security decisions.
 
-### When the headers ride (browser)
+Managed browser mode registers the official OTel fetch and XMLHttpRequest
+instrumentations with the managed WebTracerProvider. Existing-provider mode
+does not patch globals; the host application owns its instrumentations.
 
-The SDK wraps global fetch AND patches XMLHttpRequest
-(open/send/setRequestHeader on the prototype), idempotently via globalThis
-markers with a provider registry (HMR / multiple apps share one wrapper).
-On uninstall, restore each XHR prototype method only when that slot is still
-the SDK's wrapper; never overwrite instrumentation installed later.
+`traceparent` rides when instrumentation opened a sampled HTTP client span
+and the origin policy below allows it. The provider's trace flags are the sole
+sampling authority. Correlation baggage may still ride without `traceparent`.
 
-`traceparent` rides only when instrumentation opened a guaranteed-stored
-`$http-client` span and the origin policy below allows it. Correlation context
-may still ride without `traceparent`.
-
-Attach `x-hexclave-span-context` when ALL of:
-- spanPropagation.enabled !== false and there is something to say — either a
-  correlation id OR a `traceparent` riding along, whose project claim it is (see
-  the codec section). The bare-projectId case is not academic: it covers the
-  pre-page-view boot window, which is when a browser makes its auth requests;
+Attach `baggage` when ALL of:
+- spanPropagation.enabled !== false and there is at least one allowlisted
+  Hexclave correlation value to say;
 - target is http(s) and same-origin OR in the propagation origin policy: the
   union of spanPropagation.allowedOrigins and (unless useTrustedDomains is
   false) the trusted-domain-derived origins, all exact origin matches — plus
   localhost/loopback targets (any port) when the project allows localhost;
 - the request is not mode: "no-cors" (fetch);
-- the caller did NOT set the header themselves (caller intent always wins);
+- for fetch, merge Hexclave's namespaced entries into caller baggage while
+  preserving unrelated entries; XHR cannot replace a previously appended
+  header, so caller-set baggage remains untouched there;
 - across ALL registered providers there is exactly ONE candidate header value
   (ambiguous multi-project same-origin requests fail closed).
 
-Both header values go through the SAME gate: the origin policy above (both leak
+All propagation header values go through the same gate: the origin policy above (they leak
 information about the caller, so neither escapes it) AND the single-candidate
 rule. Two registered providers wanting to attach different traces means the
 request goes out with NEITHER header — fail closed rather than join an arbitrary
@@ -691,8 +627,8 @@ trace.
 ### Manual propagation
 
 app.getSpanPropagationHeaders(options?: { parent?, root? }) [client]
-  Returns the propagation headers — `traceparent` for the resolved span plus
-  `x-hexclave-span-context` — carrying the same context an item tracked right
+  Returns the propagation headers — `traceparent`/`tracestate` for the resolved span plus
+  `baggage` — carrying the same context an item tracked right
   now would get, or {} when there is nothing to propagate. For transports the
   SDK cannot instrument (sendBeacon, WebSocket handshakes, manually-built
   requests).
@@ -700,62 +636,46 @@ app.getSpanPropagationHeaders(options?: { parent?, root? }) [client]
 span.getSpanPropagationHeaders()
   Same, but pinned to exactly this span. For a sampled trace, `traceparent`
   names this span's { traceId, spanId }, so the receiving backend span becomes
-  its direct child with no ambient-context ambiguity. For a head-dropped or
-  pre-load span, returns correlation only.
+  its direct child with no ambient-context ambiguity. A non-sampled context is
+  not rewritten as sampled; correlation baggage remains independent.
 
 span.fetch(input, init?)
   fetch with the propagation headers pinned to this span. Browser: follows the
-  same same-origin/allowedOrigins policy as the automatic wrapper and never
+  same same-origin/allowedOrigins policy as automatic instrumentation and never
   overwrites explicitly-set headers. SERVER: fails closed — there is no
   self-origin, so no headers are attached; use getSpanPropagationHeaders()
   explicitly for trusted targets.
 
 
-## $http-client spans (network capture)
+## HTTP client spans (network capture)
 
-One span per outgoing http(s) request observed by the instrumentation, on both
-tiers (browser fetch + XHR; server outbound fetch once the server fetch
-instrumentation is installed). Span creation is independent of the header
-origin policy (it is a local write) but respects observability.network filters.
+Use `@opentelemetry/instrumentation-fetch` and
+`@opentelemetry/instrumentation-xml-http-request` in managed browsers and
+`@opentelemetry/instrumentation-undici` in managed Node runtimes. These official
+instrumentations own span naming, semantic HTTP attributes, lifecycle, status,
+errors, and W3C propagation. Hexclave supplies only URL/privacy policy hooks and
+the authenticated exporter.
 
-Span data:
-  { method, url, transport: "fetch" | "xhr",
-    // set at end:
-    status?, error?: 1, aborted?: 1, propagated?: 1 }
-
-- url is SANITIZED to origin + pathname only (query/hash/userinfo stripped —
-  they routinely carry tokens). Non-http(s)/unparseable targets: no span.
-- propagated: 1 means this span's context actually rode the outgoing headers, so
-  the backend work for this request is in the same trace.
-- End the span when response HEADERS arrive (never the body stream) or the
-  request settles with an error. XHR: end on loadend; status 0 = errored.
-- Aborted requests are NOT failures (SPA data layers cancel routinely).
-
-Sampling / keep-drop state machine:
-- `traceSampleRate` makes one deterministic head decision from the trace id,
-  shared by browser/server propagation and flush. Sampling is therefore
-  trace-wide, not a separate random draw per network span.
-- `capture == "all"` writes the open `$http-client` row immediately. It
-  propagates `traceparent` with flags `01` only when the whole trace is
-  head-sampled and the row is already owned by a live delivery buffer.
-- `capture == "errors-only"` writes NO row until end time, then keeps it only
-  if the outcome is in the ALWAYS-KEEP class:
-    status >= 400, OR network error (errored && !aborted), OR duration >= 3s.
-  Dropped maybe-keep spans are never written at all.
-- At flush, a failed/slow span or error event promotes the complete trace group
-  present in that flush, regardless of `traceSampleRate`. A head-dropped,
-  errors-only, or pre-load span does not propagate `traceparent`, because it
-  cannot promise that the named parent will be stored. If it is later promoted,
-  its local span remains useful but the backend request is a separate root
-  trace.
-- Browser: hard cap of 500 $http-client spans per $page-view. Server: no cap,
-  but requests to the SDK's own API base URL are never recorded.
+Sampling:
+- Each request is a real OTel client span. The configured parent-aware OTel
+  sampler makes the trace decision and the official exporter serializes it.
+- HTTP client metrics (`hexclave.http.client.request.count` /
+  `hexclave.http.client.request.duration`) are recorded by
+  `createHexclaveHttpMetricSpanProcessor` from those same recorded CLIENT
+  spans. A head-dropped request produces neither a span nor a metric.
+- A recorded sampled request propagates its own standard W3C context. There is
+  no deferred custom-row mode: failure/latency retention requires backend tail
+  sampling because those facts do not exist at span start.
+- Export requests are excluded to prevent recursive telemetry.
 
 
-## $error events (global error capture)
+## $error LogRecords (global error capture)
 
-Errors are instants → EVENTS (a failure inside a span interval is recorded on
-the span's own data.error instead). Event data (shared by all capture paths):
+Errors are instants → OTel LogRecords, never spans. Emit `eventName = "$error"`,
+standard ERROR severity, the message as body, `hexclave.signal.type = "error"`,
+and the structured payload in `hexclave.data`. A failure inside a span interval
+also sets the span's standard error status/exception event. Structured error
+data shared by all capture paths:
 
   {
     message,                    // truncated to 8,192 UTF-8 bytes
@@ -805,6 +725,61 @@ Server capture:
   — all idempotent). Construction happens in customer module scope, after
   frameworks have applied their own fetch patches at runtime startup.
 
+The authenticated OTLP Logs receiver preserves the complete canonical record,
+then derives the existing error/issue columns server-side. The exact marker is
+required before interpreting `hexclave.data`; vanilla OTel errors remain
+ordinary logs. Grouping, deterministic occurrence/batch identity, the issue
+materialization ledger, and reconciliation retain the released behavior.
+
+### Public manual capture and scopes
+
+Every client and server app exposes framework-neutral manual error capture. The
+methods return the event identity immediately; the identity is 32 lowercase
+hexadecimal characters and is also emitted as `hexclave.event.id` in the OTel
+record:
+
+  captureException(error, options?): ErrorEventId
+  captureMessage(message, options?): ErrorEventId
+  captureEvent(event): ErrorEventId
+  lastEventId(): ErrorEventId | undefined
+
+`captureException` accepts an arbitrary thrown value and optional `handled` and
+`mechanism` fields. `captureMessage` rejects an empty message. `captureEvent`
+accepts a normalized message or exception chain with optional stack frames,
+platform, release, and environment fields. All three paths preserve the
+current bounded `$error` projection while retaining the normalized exception
+chain under `exception` when one is supplied.
+
+`withErrorScope(fn)` creates an isolated scope inherited from the current
+scope, passes it to `fn`, and restores the parent scope even when `fn` throws.
+Scope fields are user, tags, contexts, extras, breadcrumbs, level, attachments,
+a fingerprint override, and event processors. Tags/contexts/extras are merged by
+key; the most recent level/fingerprint/user wins; breadcrumbs are kept in
+insertion order and bounded to the most recent 100 entries. Empty scope keys
+are rejected. Processors run before the configured `beforeSend`, may replace or
+drop an event, cannot change its event ID, and are bounded to 20 callbacks and
+250ms per capture. Processor failures and timeouts drop the event with an
+audit-safe diagnostic rather than re-emitting it recursively.
+Automatic browser/server captures snapshot the active scope. Async framework
+integrations use the host OTel context manager or the SDK's server async-local
+fallback; the synchronous fallback is restored at the end of the synchronous
+callback and is not used as a process-global async scope.
+
+Attachments follow the Sentry scope/envelope boundary without making binary
+data part of the OTel `$error` record. An attachment is bounded to 2 MiB and
+has a filename, optional media/attachment type, and optional occurrence and
+idempotency keys. Processors inspect the attachment list through
+`ErrorEventHint.attachments`. The default browser transport calls the existing
+authenticated `/analytics/attachments` request path; an injected
+`ErrorAttachmentTransport` can target another compatible receiver. Failed or
+unconfigured uploads are surfaced through `PendingErrorAttachment` and
+`onAttachmentPending`, and a capture with neither delivery seam fails loudly.
+
+When `automaticSideEffects` is false, app construction does not install
+automatic global handlers or instrumentation, but explicit manual capture
+remains available and initializes only the delivery facade it needs. `flush()`
+waits for queued server manual captures before force-flushing managed OTel
+providers.
 
 ## Server request linking (withSpan({ request }) etc.)
 
@@ -816,17 +791,13 @@ plain string-valued record) to server trackEvent/withSpan:
    explicitly overridden. refresh_token_id is also the identity from which an
    authenticated browser trace's root W3C context is derived.
 2. Parse the incoming `traceparent` (UNTRUSTED, but this is the only hierarchy
-   input). Accept it only when `x-hexclave-span-context` contains the same
-   project id and its sampled flag is `01`; then its trace id becomes the trace
-   of everything recorded in this scope and its span id becomes the parent of
-   the scope's root span. Without both guarantees, this request IS a root
-   activity: mint a fresh trace id and give the scope's root span
-   `parent_span_id = null`.
-3. Decode the x-hexclave-span-context header (UNTRUSTED labels): session
+   input). Accept any valid sampled context; it does not require Hexclave
+   baggage. Its trace id becomes the scope's trace and its span id the immediate
+   parent. Without a valid sampled context, mint a fresh root.
+3. Decode the baggage header (UNTRUSTED labels): session
    replay/segment ids and pageViewSpanId, all stamped as scalar correlation
-   columns. A header naming a different projectId is ignored wholesale. This
-   header contributes NO ancestry.
-4. Run the callback inside an AsyncLocalStorage scope carrying this context;
+   columns. Baggage contributes no ancestry or tenant identity.
+4. Run the callback inside the configured OTel ContextManager scope;
    everything created inside (spans, events, logs, outbound-fetch spans)
    inherits the trace id and nests under the scope's root span.
 
@@ -835,26 +806,18 @@ is no per-item ancestry decision to make: only the scope's root span uses the
 incoming span id as its parent, and everything deeper parents to its own
 enclosing span in the ordinary way.
 
-Server outbound fetch instrumentation: wraps global fetch (idempotent,
-replace-keyed per project); opens $http-client spans for outgoing requests
-(same keep/drop semantics; parented by the enclosing span of the ambient request
-context, in the request's trace) and attaches `traceparent` +
-x-hexclave-span-context ONLY to the propagation origin policy —
-spanPropagation.allowedOrigins plus the trusted-domain-derived defaults
-(there is no self-origin server-side). On a server→server hop the outgoing
-`traceparent` names the NEW hop's own `$http-client` span (in the same trace),
-never the incoming one — that is what makes the multi-hop chain a real tree
-rather than a fan of siblings. Installed EAGERLY at server-app construction
-(register() and first { request } use remain as idempotent redundancy). Server
-span.fetch follows the same origin policy.
+Server outbound fetch uses the official Undici instrumentation registered with
+the managed provider. Its privacy hook instruments and propagates only to the
+configured origin policy; W3C propagation names the new client span on each hop.
+`span.fetch` remains an explicit facade convenience and follows the same policy.
 
 Server delivery coalesces at most 400 items per batch and permits at most 32
 batch requests in flight per app instance. When the collector is slow or
 unavailable, a batch beyond that limit is dropped: its returned telemetry
 promises reject and one warning is emitted for the overload episode. Delivery
 must never open unbounded sockets or queue unbounded payloads in the host
-application. Every collector delivery runs inside the hidden bridge's exact
-telemetry-suppression context when that bridge is registered. Consequently the
+application. Every collector delivery runs inside OTel's standard
+telemetry-suppression context. Consequently the
 Next/undici spans opened by the collector POST neither inherit the request being
 exported nor emit another batch; runtimes where the bridge backed off still
 send normally.
@@ -881,190 +844,44 @@ passed (session resolution, header decode, ALS scope). Rules:
   per-request-object session memoization (one token round-trip per request).
 
 
-## Library span bridge (server)
+## Official OpenTelemetry SDK integration (server)
 
-The server SDK can become the process's OpenTelemetry API implementation, so
-any library emitting spans through the `@opentelemetry/api` GLOBAL (Prisma via
-@prisma/instrumentation, Drizzle's OTel support, Vercel AI SDK
-experimental_telemetry) flows into native operation-named rows with the OTel
-tracer in `scope_name` — users never configure exporters, endpoints, or
-collectors. Implemented as a minimal
-hand-rolled TracerProvider/Tracer/Span + AsyncLocalStorage ContextManager
-(NOT @opentelemetry/sdk-trace-*). `@opentelemetry/api` is imported only via
-the shared package's re-export module (utils/otel-api) — the SDK package
-itself takes no OTel dependency.
+The server SDK never implements the OpenTelemetry API itself. In managed mode
+it installs the official NodeTracerProvider and LoggerProvider, an
+AsyncLocalStorageContextManager, the W3C trace-context+baggage propagators,
+parent-aware sampling, BatchSpanProcessor/BatchLogRecordProcessor, and the
+official OTLP/HTTP JSON exporters. Trace/span identity, async context,
+sampling, resources, scopes, events, links, severity, and serialization remain
+owned by OpenTelemetry.
 
-Registration (registerLibrarySpanBridge, exposed on the internal
-instrumentation seam and called by framework register()):
-- Server-only; no-op in browser-like environments and in runtimes without
-  AsyncLocalStorage (node:async_hooks loaded via a bundler-opaque dynamic
-  import) — without an exact async-context primitive the bridge would
-  cross-parent concurrent requests.
-- Claims the API globals ONLY if free: setGlobalTracerProvider first; if it
-  reports failure, do NOT register the context manager either — back off
-  completely with exactly ONE debug-level console message (prefix
-  "Hexclave"), sticky per process. If the provider claim succeeds but the
-  context-manager claim fails, ROLL BACK the provider claim (all-or-nothing —
-  partial ownership mis-parents). Never clobber a user's own OTel setup.
-- Idempotent per process via a Symbol.for-keyed globalThis state shared
-  across bundled SDK copies; re-registration swaps the deps to the newest app
-  instance (HMR replace semantics) and returns the existing provider.
-- Returns { provider } (for instrumentation-class wiring) or null.
+Registration is synchronous and process-global. It is idempotent only for the
+same project/resource/config signature. Any conflicting tracer, context,
+propagator, or logger provider throws an actionable setup error; never silently
+back off or install a partial provider. Shutdown disables instrumentations and
+shuts down both providers. forceFlush flushes both signal pipelines.
 
-Span identity: a bridge span's Hexclave identity and its OTel SpanContext are
-THE SAME PAIR of ids. { traceId, spanId } is minted once, W3C-shaped, and used
-verbatim both on the Hexclave wire and through the `@opentelemetry/api` surface —
-there is no second id space and therefore no id-translation table. traceFlags is
-1. An auto-instrumented library operation and a `withSpan` span are the same
-kind of node in the same tree; `scope_name` distinguishes their authorship.
+In `existing-provider` mode Hexclave registers no globals. Applications add
+`createHexclaveOtlpTraceExporter`, `createHexclaveOtlpLogExporter`, and
+`createHexclaveOtlpMetricExporter`, plus
+`createHexclaveCorrelationSpanProcessor` and
+`createHexclaveHttpMetricSpanProcessor` from the Node-only `/otel` entrypoint
+to their own official providers. Existing-provider applications own
+registration, instrumentation, sampling, flush, and shutdown. Browser
+existing-provider integrations use the `/otel/browser` exporters, whose async
+header factories resolve fresh credentials for every export.
 
-The bridge still keeps ONE bounded Map<w3cSpanId, { traceId, recordedSpanId }>
-(cap 2000, FIFO eviction), but its job is no longer translation: it maps a span
-the bridge minted to its NEAREST RECORDED ANCESTOR. See "Phantom skipping" below
-— that is the entire reason the map exists.
+Hexclave custom spans are thin facades over the active OTel tracer. Library and
+framework instrumentations are normal typed `Instrumentation[]` registered
+against the official provider. Collector requests run in OTel's standard
+suppressed-tracing Context so HTTP instrumentation cannot recursively export
+the exporter request.
 
-Parenting contract, resolved at startSpan time, in priority order:
-(a) the active/explicit OTel context names a span the bridge minted (registry
-    HIT) → the bridge passes that registry entry down as `otelParent`. Arbitrary
-    OTel nesting depth needs no path bookkeeping, because each level only ever
-    names one parent.
-      - `recordedSpanId` non-null → trace_id = entry.traceId,
-        parent_span_id = entry.recordedSpanId.
-      - `recordedSpanId` null → join entry.traceId as a ROOT
-        (parent_span_id = null). It NEVER means "parent under the phantom".
-(b) registry MISS, or no OTel parent at all → resolve from the ambient Hexclave
-    context AT CALL TIME (innermost enclosing withSpan ALS frame, the server
-    global-span registry, or the trace the request scope adopted from its
-    incoming `traceparent`; synchronous lookups only — the async ambient request
-    provider is never consulted). Foreign spans (wrapped remote SpanContexts,
-    spans from an incompatible second api copy) miss the registry and land here.
-(c) neither → trace root: fresh trace_id, parent_span_id = null, still recorded.
-options.root: true skips (a) and (b). Ambient lookups are
-AsyncLocalStorage-scoped, so resolution is concurrency-safe; startActiveSpan runs
-its callback inside context.with(setSpan(ctx, span), fn) so nesting survives
-awaits.
-
-Cases (b) and (c) are decided INSIDE the seam, not in the bridge: they need app
-state the bridge cannot reach (the global-span registry, the withSpan ALS frames,
-and the trace the request scope adopted). So the bridge passes only what it knows
-— `otelParent`, or null — and the seam returns the resolved identity. A bridge
-that had to supply trace_id/parent_span_id itself could only ever implement (a).
-
-Ignored span: only `STACK: wait(...)` from tracer name `stack-tracer`. That
-operation wraps the telemetry sender's retry delay; recording it would let
-every failed batch mint the row that fills the NEXT batch, an unbounded
-feedback loop. Other `stack-tracer` spans MUST be recorded because they are the
-backend's request/validation/route hierarchy. Next.js runtime spans and every
-Prisma phase (including compile and serialize) are recorded with their exact
-nesting. An ignored span remains API-complete and forwards its nearest recorded
-ancestor to children, so it can never become a phantom parent.
-
-### Phantom skipping (why the registry exists)
-
-A non-recording span — one rejected by the capture policy, or any span
-minted while the seam returned null — is API-complete but writes NO ROW, while
-its children DO write rows. A child must therefore never name such a phantom as
-its `parent_span_id`: the row it points at does not exist. Under a scalar parent
-that silently detaches the whole subtree, and the subtree does not resurface as a
-root either — the trace inbox fires on `parent_span_id IS NULL`, and an orphan's
-parent is non-null. The failure mode is INVISIBLE DATA LOSS, so the registry
-stores the nearest RECORDED ancestor rather than the immediate one:
-
-- a RECORDING span registers { traceId, recordedSpanId: <its own span id> };
-- a NON-RECORDING span WITH a registered parent re-registers that parent's
-  `recordedSpanId` under its own span id, so a later lookup transparently skips
-  the phantom;
-- a NON-RECORDING span with NO registered parent is deliberately NOT registered
-  at all, so its children take case (b) and resolve from ambient context. This is
-  what keeps a Prisma span nested under the Hexclave request context even though
-  the Next.js render span between them is never recorded.
-
-### The API-only context of a non-recording span
-
-A non-recording span (`handle === null`: capture-policy rejection, or the
-seam declining) still needs a spec-valid SpanContext, because library code holds
-the OTel `Span` object and may propagate it. The bridge mints one locally:
-
-  traceId = handle?.traceId ?? otelParent?.traceId ?? generateW3cTraceId()
-  spanId  = handle?.spanId  ?? generateW3cSpanId()
-  traceFlags = 1
-
-So a non-recording span inherits `otelParent.traceId` when a registered OTel
-parent exists — keeping the trace coherent across the gap — and mints a fresh
-trace id when there is none. Minting is CORRECT here rather than a leak: there is
-no trace to inherit, and the alternative (an absent or all-zero id) is what would
-actually break a library propagating the context, because an all-zero id is
-invalid per the W3C spec and looks joinable while matching nothing. Neither
-generator can return an all-zero id — both loop until non-zero.
-
-The minted context is API-ONLY, and that is what makes it safe: nothing is stored
-under those ids, and no child ever names them as a `parent_span_id`, because the
-registry's nearest-recorded-ancestor rule above routes children past the phantom.
-A minted context can therefore never produce a `parent_span_id` pointing at a row
-that does not exist. `spanId` is always freshly minted, never inherited.
-
-### Row emission
-
-The seam is:
-
-  beginLibrarySpan({ name, tracerName, startedAtMs, otelParent }) → handle | null
-
-  otelParent: { traceId: string, recordedSpanId: string | null } | null
-              // non-null = case (a); null defers resolution to the seam
-  handle:     { traceId: string, spanId: string,
-                end(endedAtMs, data): void }
-
-It is called synchronously at startSpan (freezing the batch context and the
-resolved identity); exactly ONE complete row ships per span, at end() — never
-open intervals. The returned traceId/spanId ARE the span's OTel SpanContext, so
-the seam's resolution is what OTel children see too. Row shape: `span_type` is
-the library operation normalized to the custom span-name contract (the exact
-original remains in `data.name`), and `scope_name` is the bounded OTel tracer
-name. A non-null scope is accepted from server/admin auth only and keeps the
-automatic span free. Then started/ended ms (end clamped >= start, integers),
-trace_id/span_id/parent_span_id as resolved above, page_view_span_id from the
-frozen batch context, data validated with the same rules as custom telemetry,
-delivery fire-and-forget through the server telemetry buffer.
-
-Library-span data shape: { ...allowlisted attributes, name, tracer_name,
-kind? ("server"/"client"/"producer"/"consumer" — internal omitted),
-status_code? ("ok"/"error" — unset omitted), status_message? (bounded 1KB),
-dropped_event_count? (span events are dropped but counted; links dropped
-silently), category }. Reserved keys always win attribute collisions.
-
-Attribute policy (allowlist-by-shape): strings byte-bounded to 1KB
-(truncateUtf8Bytes), finite numbers, booleans; primitive arrays JSON-
-stringified then bounded to 1KB; everything else dropped. Keys matching
-/db\.statement|db\.query\.text|sql/i are ALWAYS dropped (SQL text embeds
-literal params/PII). Caps: 64 attributes per span, ~32KB total attribute
-budget (keeps the row under the shared 64KB data limit). recordException
-folds into exception.type/exception.message/exception.stacktrace attributes
-(events are dropped, so there is no exception event). Attribute/status/name
-mutations after end() are ignored; end() is idempotent (first call wins).
-
-Category (dashboard grouping, best-effort, db checked BEFORE ai): "db" when
-any `db.`-prefixed attribute key exists or the tracer name matches
-/prisma|drizzle|pg|postgres|mysql|sqlite|mariadb|mssql|mongo|redis/i; "ai"
-when any `gen_ai.`/`ai.`-prefixed attribute key exists or the tracer name
-contains the word "ai" (word-boundary-ish — "email" must not match) or
-openai/anthropic/gen_ai; else "lib".
-
-Instrumentation-class wiring (Next.js): hexclaveInstrumentation(app,
-{ instrumentations?: unknown[], requestAttribution?: boolean,
-isTelemetrySuppressed?: () => boolean }) — register()
-(now async; Next awaits it)
-duck-type-calls .setTracerProvider(bridgeProvider) and .enable() on each
-entry (exactly what @opentelemetry/instrumentation's registerInstrumentations
-does; duck-typing keeps that package out of the dependency tree). Entries
-missing either method are skipped with one console.warn naming the index.
-When the bridge backed off, entries are still enable()d WITHOUT overriding
-their provider (they resolve the user's own global).
-
-Known limits (v1, documented in code): a second bundled @opentelemetry/api
-copy with an incompatible global-registration version cannot reach the
-provider (degrades to $http-client fetch spans); spans started before
-register() runs are lost (mitigated by registering from instrumentation.ts).
-
+The managed browser registration follows the same ownership model with
+WebTracerProvider, LoggerProvider, StackContextManager, and official OTLP
+exporters. Authentication rotation force-flushes both processors before token
+replacement. If that flush fails, both providers are shut down and replaced
+before the new identity becomes active, preventing queued spans or logs from
+crossing users.
 
 ## Framework integrations
 
@@ -1095,26 +912,25 @@ Next.js specifics (`@hexclave/next` only):
 - hexclaveInstrumentation(app, options?) →
   { register, onRequestError, runWithTelemetrySuppressed } for
   the customer's instrumentation.ts; options = { instrumentations?:
-  unknown[], requestAttribution?: boolean,
-  isTelemetrySuppressed?: () => boolean } (see "Library span bridge").
+  Instrumentation[], requestAttribution?: boolean,
+  isTelemetrySuppressed?: () => boolean }.
   requestAttribution defaults true; false is for control planes whose incoming
   customer requests must not be resolved against a separate internal telemetry
   project. isTelemetrySuppressed is an advanced collector/control-plane hook:
   when it returns true, automatic SDK-native fetch, library, log, and error
   capture is suppressed alongside the runtime's instrumentations. register()
   is ASYNC. runWithTelemetrySuppressed(asyncCallback) is the stronger
-  collector/control-plane boundary: it runs the callback inside the hidden
-  library-span bridge's exact async context and suppresses SDK-native fetch,
+  collector/control-plane boundary: it runs the callback inside OTel's
+  suppressed-tracing async Context and suppresses SDK-native fetch,
   library, log, and error capture for its full async extent. It throws when
-  called before register() successfully claims the bridge. Next awaits the
-  async register(); it installs the server outbound-fetch instrumentation + the
+  called before managed OTel registration succeeds. Next awaits the
+  async register(); it installs the managed OTel provider/instrumentations + the
   uncaught-exception monitor (both idempotent/HMR-safe;
   both also self-install at app construction), registers the next/headers
   ambient request provider (see "Ambient request provider") — after register(),
   bare trackEvent/withSpan/logger calls in route handlers, server actions, and
-  RSCs attribute to the caller's session with no { request } threading — AND
-  registers the library span bridge (claiming the OTel API global only if
-  free), then wires the instrumentations entries.
+  RSCs attribute to the caller's session with no { request } threading — and
+  registers the typed instrumentations against the official managed provider.
   onRequestError(error, request, context) reports a $error event
   (mechanism_type "next.onRequestError") linked to the caller's session via
   the request headers when requestAttribution is enabled, and records it

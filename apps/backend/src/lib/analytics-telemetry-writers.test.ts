@@ -1,10 +1,12 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { EVENTS_COLUMNS, LOGS_COLUMNS, type ClickhouseColumn, type EventColumnName, type LogColumnName } from "../../scripts/clickhouse-migrations";
 import {
+  buildTelemetryWritePlan,
   getBatchDestinationDeduplicationToken,
-  getEventStorageTable,
+  getTelemetryLens,
   normalizeBatchEvents,
 } from "./analytics-telemetry-writers";
+import { createErrorIngestProtocolProjection } from "./error-ingest/error-ingest-protocol-adapter";
 
 /**
  * Bidirectional drift guard between the hand-built insert rows and the ClickHouse
@@ -39,11 +41,14 @@ const DRIFT_GUARD_CONTEXT = {
   producer: "sdk" as const,
 };
 
+const DRIFT_GUARD_BATCH_ID = "00000000-0000-4000-8000-000000000000";
+
 describe("SDK ingest insert rows vs. ClickHouse column declarations", () => {
   it("product-event rows cover the events table", () => {
     const { productEvents } = normalizeBatchEvents(
       [{ event_type: "checkout_completed", event_at_ms: 1_700_000_000_000, data: {} }],
       DRIFT_GUARD_CONTEXT,
+      DRIFT_GUARD_BATCH_ID,
     );
     expectRowMatchesColumns(productEvents[0], EVENTS_COLUMNS, "analytics_internal.events");
     // Same guarantee at compile time.
@@ -54,22 +59,161 @@ describe("SDK ingest insert rows vs. ClickHouse column declarations", () => {
     const { logOccurrences } = normalizeBatchEvents(
       [{ event_type: "$log", event_at_ms: 1_700_000_000_000, data: {}, message: "m", level: "warn" }],
       DRIFT_GUARD_CONTEXT,
+      DRIFT_GUARD_BATCH_ID,
     );
     expectRowMatchesColumns(logOccurrences[0], LOGS_COLUMNS, "analytics_internal.logs");
     expectTypeOf<Exclude<keyof typeof logOccurrences[number], LogColumnName>>().toEqualTypeOf<never>();
   });
 });
 
+describe("error grouping normalization", () => {
+  it("uses the server-side override and ignores the flat local deduplication fingerprint", () => {
+    const baseData = {
+      name: "TypeError",
+      message: "row is null",
+      stack: [
+        "TypeError: row is null",
+        "    at renderRow (https://app.example.com/static/js/table.js:42:9)",
+      ].join("\n"),
+    };
+    const defaultGrouping = normalizeBatchEvents([{
+      event_type: "$error",
+      event_at_ms: 1_700_000_000_000,
+      data: baseData,
+    }], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID);
+    const localFingerprintOnly = normalizeBatchEvents([{
+      event_type: "$error",
+      event_at_ms: 1_700_000_000_000,
+      data: { ...baseData, fingerprint: "sdk-local-dedupe-key" },
+    }], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID);
+    const customGrouping = normalizeBatchEvents([{
+      event_type: "$error",
+      event_at_ms: 1_700_000_000_000,
+      data: { ...baseData, fingerprint_override: ["{{ type }}"], synthetic: true },
+    }], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID);
+
+    expect(localFingerprintOnly.issueInputs[0]?.ownerHash).toBe(defaultGrouping.issueInputs[0]?.ownerHash);
+    expect(customGrouping.issueInputs[0]?.ownerHash).not.toBe(defaultGrouping.issueInputs[0]?.ownerHash);
+    expect(customGrouping.issueInputs[0]?.synthetic).toBe(true);
+    expect(customGrouping.logOccurrences[0]).toMatchObject({ issue_variant: "custom" });
+  });
+
+  it("does not treat an explicit synthetic false value as synthetic", () => {
+    const normalized = normalizeBatchEvents([{
+      event_type: "$error",
+      event_at_ms: 1_700_000_000_000,
+      data: {
+        name: "TypeError",
+        message: "ordinary failure",
+        synthetic: false,
+      },
+    }], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID);
+
+    expect(normalized.issueInputs[0]?.synthetic).toBe(false);
+  });
+
+  it("persists the bounded canonical envelope without request secrets", () => {
+    const normalized = normalizeBatchEvents([{
+      event_type: "$error",
+      event_at_ms: 1_700_000_000_000,
+      data: {
+        event_id: "0123456789abcdef0123456789abcdef",
+        name: "TypeError",
+        message: "row is null",
+        handled: true,
+        exception: {
+          values: [{
+            type: "TypeError",
+            value: "row is null",
+            stacktrace: { frames: [{ filename: "src/table.ts", lineno: 42, colno: 9 }] },
+          }],
+        },
+        breadcrumbs: [{ category: "http", data: { url: "https://example.test/items?token=secret" } }],
+        request: { url: "https://example.test/items?token=secret", headers: { authorization: "Bearer secret" } },
+      },
+    }], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID);
+
+    const envelope = JSON.parse(normalized.logOccurrences[0]?.error_envelope ?? "{}");
+    expect(envelope).toMatchObject({
+      schema: "hexclave.error-envelope",
+      version: 1,
+      event_id: "0123456789abcdef0123456789abcdef",
+      exception: { values: [{ type: "TypeError", value: "row is null" }] },
+    });
+    expect(envelope.request).toEqual({ url: "https://example.test/items" });
+    expect(envelope.breadcrumbs[0].data).toEqual({ url: "https://example.test/items" });
+    expect(normalized.logOccurrences[0]).toMatchObject({ error_envelope: expect.any(String) });
+  });
+
+  it("keeps one manual-capture identity coherent across envelope, occurrence, issue, and outcome projections", () => {
+    const eventId = "0123456789abcdef0123456789abcdef";
+    const normalized = normalizeBatchEvents([{
+      event_type: "$error",
+      event_at_ms: 1_700_000_000_000,
+      data: {
+        event_id: eventId,
+        name: "TypeError",
+        message: "render failed",
+        handled: false,
+        release: "web@2026.08.06",
+      },
+    }], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID);
+    const occurrence = normalized.logOccurrences[0];
+    const issueInput = normalized.issueInputs[0];
+
+    expect(JSON.parse(occurrence.error_envelope).event_id).toBe(eventId);
+    expect(occurrence.occurrence_id).toBe(issueInput.occurrenceId);
+    expect(issueInput).toMatchObject({
+      value: "render failed",
+      release: "web@2026.08.06",
+      handled: false,
+      count: 1,
+    });
+
+    const outcome = createErrorIngestProtocolProjection(DRIFT_GUARD_BATCH_ID, [{
+      itemId: "event:0",
+      itemType: "event",
+      eventId,
+      status: "accepted",
+    }]);
+    expect(outcome.items[0]).toMatchObject({ itemId: "event:0", eventId, status: "accepted" });
+    expect(outcome.idempotencyKey).toBe(createErrorIngestProtocolProjection(DRIFT_GUARD_BATCH_ID, [{
+      itemId: "event:0",
+      itemType: "event",
+      eventId,
+      status: "accepted",
+    }]).idempotencyKey);
+  });
+});
+
 describe("analytics telemetry storage dispatch", () => {
+  it("builds one canonical write plan after protocol-specific normalization", () => {
+    const normalized = normalizeBatchEvents(
+      [{ event_type: "$click", event_at_ms: 1_700_000_000_000, data: {} }],
+      DRIFT_GUARD_CONTEXT,
+      DRIFT_GUARD_BATCH_ID,
+    );
+    const plan = buildTelemetryWritePlan(normalized, DRIFT_GUARD_BATCH_ID);
+
+    expect(plan.batchId).toBe(DRIFT_GUARD_BATCH_ID);
+    expect(plan.destinations).toHaveLength(1);
+    expect(plan.destinations[0]).toMatchObject({
+      table: "analytics_internal.telemetry",
+      deduplicationToken: `${DRIFT_GUARD_BATCH_ID}:analytics_internal.telemetry`,
+    });
+    expect(plan.destinations[0]?.values).toHaveLength(1);
+    expect(plan.issueInputs).toEqual([]);
+  });
+
   it("keeps product events out of observability logs", () => {
     for (const eventType of ["checkout.completed", "$click", "$form-submit"]) {
-      expect(getEventStorageTable(eventType)).toBe("analytics_internal.events");
+      expect(getTelemetryLens(eventType)).toBe("product");
     }
   });
 
   it("keeps log-shaped occurrences out of product events", () => {
-    expect(getEventStorageTable("$log")).toBe("analytics_internal.logs");
-    expect(getEventStorageTable("$error")).toBe("analytics_internal.logs");
+    expect(getTelemetryLens("$log")).toBe("observability");
+    expect(getTelemetryLens("$error")).toBe("observability");
   });
 
   it("gives each destination of one wire batch its own idempotency token", () => {
@@ -79,13 +223,13 @@ describe("analytics telemetry storage dispatch", () => {
     // literal instead just restated the implementation.
     // `as const` so the table names stay their literal types rather than widening
     // to `string`, which the destination parameter deliberately does not accept.
-    const tokens = (["analytics_internal.events", "analytics_internal.logs", "analytics_internal.spans"] as const)
+    const tokens = (["analytics_internal.telemetry", "analytics_internal.spans"] as const)
       .map((table) => getBatchDestinationDeduplicationToken("batch-1", table));
     expect(new Set(tokens).size).toBe(tokens.length);
     // Distinct across batches too, or a retry of batch-2 would be swallowed as
     // a duplicate of batch-1.
-    expect(getBatchDestinationDeduplicationToken("batch-2", "analytics_internal.events"))
-      .not.toBe(getBatchDestinationDeduplicationToken("batch-1", "analytics_internal.events"));
+    expect(getBatchDestinationDeduplicationToken("batch-2", "analytics_internal.telemetry"))
+      .not.toBe(getBatchDestinationDeduplicationToken("batch-1", "analytics_internal.telemetry"));
   });
 
   it("stores the enclosing span identity verbatim and dispatches by taxonomy", () => {
@@ -112,7 +256,7 @@ describe("analytics telemetry storage dispatch", () => {
         deploymentEnvironmentName: "preview",
         attributes: { region: "iad1" },
       },
-    });
+    }, DRIFT_GUARD_BATCH_ID);
 
     expect(normalized.productEvents).toHaveLength(0);
     // The SDK owns span identity, so the writer composes NOTHING: no prefixes, no

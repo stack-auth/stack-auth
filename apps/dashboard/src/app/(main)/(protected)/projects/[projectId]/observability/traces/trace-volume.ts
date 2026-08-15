@@ -37,7 +37,7 @@ SELECT
 FROM default.trace_roots AS r
 WHERE r.started_at >= range_start
   AND r.started_at < range_end + ${granularity.stepSql}
-  AND r.span_type != '$http-client'${serviceCondition}
+  ${serviceCondition}
 GROUP BY bucket_start
 ORDER BY bucket_start ASC
 WITH FILL

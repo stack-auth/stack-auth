@@ -1651,11 +1651,11 @@ it("round-trips span links into the span_links surface", async ({ expect }) => {
   expect(res.body.accepted_spans).toBe(1);
 
   const queryRes = await queryAnalyticsUntil({
-    query: "SELECT trace_id, owner_span_id, linked_trace_id, linked_span_id FROM span_links WHERE owner_span_id = {ownerSpanId:String}",
+    query: "SELECT trace_id, owner_span_id, linked_trace_id, linked_span_id, linked_project_id = project_id AS same_project, linked_branch_id = branch_id AS same_branch FROM span_links WHERE owner_span_id = {ownerSpanId:String}",
     params: { ownerSpanId },
   }, (r) => r.body?.result?.length === 2);
   expect(queryRes?.status).toBe(200);
-  const linkRows = (queryRes?.body as any).result as { trace_id: string, owner_span_id: string, linked_trace_id: string, linked_span_id: string }[];
+  const linkRows = (queryRes?.body as any).result as { trace_id: string, owner_span_id: string, linked_trace_id: string, linked_span_id: string, same_project: number, same_branch: number }[];
 
   // Compared by lookup rather than by sorted order: the row order the table
   // returns is not part of the contract, and the ids are random per run.
@@ -1669,8 +1669,27 @@ it("round-trips span links into the span_links surface", async ({ expect }) => {
       owner_span_id: ownerSpanId,
       linked_trace_id: link.trace_id,
       linked_span_id: link.span_id,
+      same_project: 1,
+      same_branch: 1,
     });
   }
+});
+
+it("rejects client claims about a span link's target tenancy", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    spans: [makeCustomSpan({
+      links: [{
+        trace_id: generateW3cTraceId(),
+        span_id: generateW3cSpanId(),
+        linked_project_id: "another-project",
+        linked_branch_id: "main",
+      }],
+    })],
+  });
+  expect(res.status).toBe(400);
 });
 
 it("rejects unknown $-prefixed event types", async ({ expect }) => {
@@ -2330,68 +2349,6 @@ it("accepts a gzipped binary body containing custom events and spans", async ({ 
   `);
 });
 
-// ---------------------------------------------------------------------------
-// $http-client spans
-//
-// The `http_client_span_id` wire field is gone. It existed because a fetch had
-// to be spliced into a custom ancestry array as the item's "nearest known
-// ancestor"; under W3C a fetch is just a span, so it is referenced the same way
-// any other parent is — via `parent_span_id`, or by sharing its `trace_id` with
-// the backend spans it produced (the `traceparent` it sent on the wire).
-// ---------------------------------------------------------------------------
-
-it("accepts $http-client spans and stores their parent + page correlation verbatim", async ({ expect }) => {
-  await setupAnalyticsProject();
-  await Auth.Otp.signIn();
-
-  const sessionReplaySegmentId = randomUUID();
-  const traceId = generateW3cTraceId();
-  const pageViewSpanId = generateW3cSpanId();
-  const customParentId = generateW3cSpanId();
-  const httpClientSpanId = generateW3cSpanId();
-  const now = Date.now();
-  const res = await uploadTelemetryBatch({
-    session_replay_segment_id: sessionReplaySegmentId,
-    spans: [
-      makeCustomSpan({ trace_id: traceId, span_id: customParentId, parent_span_id: null, page_view_span_id: pageViewSpanId }),
-      {
-        trace_id: traceId,
-        span_id: httpClientSpanId,
-        parent_span_id: customParentId,
-        span_type: "$http-client",
-        started_at_ms: now - 500,
-        ended_at_ms: now - 400,
-        data: { method: "GET", url: "https://api.example.com/v1/items", status: 200 },
-        updated_at_ms: now,
-        page_view_span_id: pageViewSpanId,
-      },
-    ],
-  });
-  expect(res).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": {
-        "accepted_spans": 2,
-        "inserted": 0,
-      },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
-
-  const queryRes = await queryAnalyticsUntil({
-    query: "SELECT span_id, span_type, trace_id, parent_span_id, page_view_span_id FROM spans WHERE span_id = {spanId:String}",
-    params: { spanId: httpClientSpanId },
-  }, (r) => Array.isArray(r.body.result) && r.body.result.length === 1);
-  expect(queryRes?.body.result[0]).toEqual({
-    span_id: httpClientSpanId,
-    span_type: "$http-client",
-    trace_id: traceId,
-    parent_span_id: customParentId,
-    page_view_span_id: pageViewSpanId,
-  });
-});
-
-// ---------------------------------------------------------------------------
 // $log events (SDK logger) and $error events (global error capture)
 // ---------------------------------------------------------------------------
 
@@ -2580,4 +2537,25 @@ it("requires schema version 3 and an explicit telemetry resource", async ({ expe
     events: [{ event_type: "$click", event_at_ms: now, data: {} }],
   });
   expect(missingResource.status).toBe(400);
+});
+
+it("accepts the released legacy batch shape without versioned fields", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+  const now = Date.now();
+  const sessionReplaySegmentId = randomUUID();
+
+  const response = await niceBackendFetch("/api/v1/analytics/events/batch", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      session_replay_segment_id: sessionReplaySegmentId,
+      batch_id: randomUUID(),
+      sent_at_ms: now,
+      events: [{ event_type: "$page-view", event_at_ms: now, data: {} }],
+    },
+  });
+
+  expect(response.status).toBe(200);
+  expect(response.body).toMatchObject({ inserted: 1, accepted_spans: 0 });
 });

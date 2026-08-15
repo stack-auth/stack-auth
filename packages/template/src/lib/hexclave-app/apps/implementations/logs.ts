@@ -4,17 +4,13 @@ import { computeErrorFingerprint, ERROR_TEXT_MAX_BYTES, normalizeCapturedError }
 import { getCustomTelemetryDataError, truncateUtf8Bytes } from "./telemetry-core";
 
 /**
- * Native logs (`app.logger`) — `$log` events with the extra wire fields
- * (message/level) the batch route requires for that type. This module is
- * deliberately tiny and dependency-light: the logger is exposed eagerly on
- * every app instance (client and server), so it must not pull in the
- * lazily-loaded tracker or any autocapture code. Delivery is
- * environment-specific and injected via `emit` — the client sink rides the
- * tracker event path (with pre-load adoption), the server sink rides the
- * server telemetry buffer (inheriting ambient request ancestry).
+ * Native logs (`app.logger`) are an ergonomic facade over OTel LogRecords.
+ * This module owns input validation, console mirroring, redaction, and flood
+ * control only; the injected environment sink emits through the active OTel
+ * LoggerProvider, which owns context correlation, buffering, and delivery.
  */
 
-/** One `$log` event, wire-ready: message pre-truncated, level resolved. */
+/** One validated log call, ready to become an OTel LogRecord. */
 export type LogEmitItem = {
   message: string,
   level: LogLevel,
@@ -99,7 +95,14 @@ const CONSOLE_LEVEL_LOG_LEVELS = new Map<ConsoleCaptureLevel, LogLevel>([
 const CONSOLE_CAPTURE_BUCKET_BURST = 100;
 const CONSOLE_CAPTURE_BUCKET_REFILL_PER_SEC = 10;
 
-type ConsoleCaptureSink = { levels: Set<ConsoleCaptureLevel>, logger: Logger, projectId: string, serviceName: string };
+type ConsoleCaptureSink = {
+  levels: Set<ConsoleCaptureLevel>,
+  logger: Logger,
+  projectId: string,
+  serviceName: string,
+  /** Promotes real console.error(Error) calls into the error pipeline. */
+  captureError?: (error: Error) => void,
+};
 
 // Console is a per-process global, so ALL capture state must be too — and it
 // must be shared across duplicate SDK COPIES in one page/process (two bundled
@@ -210,10 +213,22 @@ function takeConsoleCaptureToken(state: ConsoleCaptureGlobalState, level: Consol
  * OUR patch (someone else patched on top otherwise), and always detaches the
  * sink.
  */
-export function installConsoleCapture(opts: { levels: readonly ConsoleCaptureLevel[], logger: Logger, projectId: string, serviceName: string }): () => void {
+export function installConsoleCapture(opts: {
+  levels: readonly ConsoleCaptureLevel[],
+  logger: Logger,
+  projectId: string,
+  serviceName: string,
+  captureError?: (error: Error) => void,
+}): () => void {
   const state = getConsoleCaptureState();
   const levels = new Set(opts.levels);
-  const sink: ConsoleCaptureSink = { levels, logger: opts.logger, projectId: opts.projectId, serviceName: opts.serviceName };
+  const sink: ConsoleCaptureSink = {
+    levels,
+    logger: opts.logger,
+    projectId: opts.projectId,
+    serviceName: opts.serviceName,
+    captureError: opts.captureError,
+  };
   const identity = `${opts.projectId}\u0000${opts.serviceName}`;
   const conflictingIdentities = [...state.sinksByIdentity.keys()].filter((registeredIdentity) => registeredIdentity !== identity);
   if (conflictingIdentities.length > 0) {
@@ -246,8 +261,8 @@ export function installConsoleCapture(opts: { levels: readonly ConsoleCaptureLev
         }
         // console.error(err) with an actual Error arg carries the SAME
         // fingerprint the $error pipeline would compute (identical truncation
-        // before hashing — see buildErrorEventDataFromNormalized), so the
-        // dashboard can collapse a thrown-AND-logged error into one line.
+        // before hashing — see buildErrorEventDataFromNormalized), so the log
+        // and Issue share one identity instead of becoming unrelated records.
         const errorArg = args.find((arg): arg is Error => arg instanceof Error);
         let errorExtras: Record<string, unknown> = {};
         if (errorArg !== undefined) {
@@ -260,6 +275,13 @@ export function installConsoleCapture(opts: { levels: readonly ConsoleCaptureLev
           };
         }
         currentSink.logger[logLevel](serializeConsoleArgs(args), { console_level: level, ...errorExtras });
+        if (level === "error" && errorArg !== undefined) {
+          // Keep the log row for the surrounding console context, but also
+          // send the actual Error through the structured $error pipeline.
+          // Plain strings stay logs: without an Error object there is no
+          // trustworthy stack or exception identity to group.
+          currentSink.captureError?.(errorArg);
+        }
       } catch (error) {
         // Capture must never throw into whoever called console.*; the original
         // output already happened, so only the mirror is lost.

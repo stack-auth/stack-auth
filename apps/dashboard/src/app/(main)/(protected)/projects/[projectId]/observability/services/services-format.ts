@@ -1,4 +1,8 @@
-import { formatDuration } from "../format";
+import {
+  formatAbsoluteTimeFromMillis,
+  formatDuration,
+  formatRelativeTimeFromMillis,
+} from "../format";
 import { parseServiceTimestamp, type ServiceAttentionReason } from "./services-data";
 
 export { formatDuration };
@@ -30,39 +34,18 @@ export function formatSignedPercent(ratio: number): string {
   return rounded > 0 ? `+${rounded}%` : `−${Math.abs(rounded)}%`;
 }
 
-const RELATIVE_TIME_UNITS: readonly { limitMs: number, divisorMs: number, unit: Intl.RelativeTimeFormatUnit }[] = [
-  { limitMs: 60_000, divisorMs: 1_000, unit: "second" },
-  { limitMs: 3_600_000, divisorMs: 60_000, unit: "minute" },
-  { limitMs: 86_400_000, divisorMs: 3_600_000, unit: "hour" },
-  { limitMs: 2_592_000_000, divisorMs: 86_400_000, unit: "day" },
-];
-
 /**
- * "2m ago" / "3h ago". Recency is the primary thing a reader scans this page
- * for, and an absolute timestamp forces them to do the subtraction themselves.
+ * ClickHouse-timestamp-shaped wrappers over the shared millisecond formatters
+ * in `../format`. The rendering rules live there so Services and Issues can
+ * never disagree about what "2m ago" means; only the parse step is local, since
+ * only this page reads its timestamps out of ClickHouse rows.
  */
 export function formatRelativeTime(value: string, nowMs: number): string {
-  const elapsedMs = nowMs - parseServiceTimestamp(value).getTime();
-  // Clock skew between the browser and ClickHouse can make a fresh row look
-  // like it arrived in the future; "just now" is truthful for both cases.
-  if (elapsedMs < 45_000) return "just now";
-
-  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto", style: "narrow" });
-  for (const { limitMs, divisorMs, unit } of RELATIVE_TIME_UNITS) {
-    if (elapsedMs < limitMs) {
-      return formatter.format(-Math.round(elapsedMs / divisorMs), unit);
-    }
-  }
-  return formatter.format(-Math.round(elapsedMs / 2_592_000_000), "month");
+  return formatRelativeTimeFromMillis(parseServiceTimestamp(value).getTime(), nowMs);
 }
 
 export function formatAbsoluteTime(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(parseServiceTimestamp(value));
+  return formatAbsoluteTimeFromMillis(parseServiceTimestamp(value).getTime());
 }
 
 export const ATTENTION_REASON_LABELS = new Map<ServiceAttentionReason, string>([

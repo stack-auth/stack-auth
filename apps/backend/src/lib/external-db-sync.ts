@@ -1488,7 +1488,7 @@ async function syncDatabase(
 
     if (syncResult.status === "error") {
       captureError(`external-db-sync-${dbId}`, syncResult.error);
-      return false;
+      throw new HexclaveAssertionError(`External database sync failed for ${dbId}.`, { cause: syncResult.error });
     }
 
     return needsResync;
@@ -1532,7 +1532,7 @@ export async function syncExternalDatabases(tenancy: Tenancy): Promise<boolean> 
 
     if (syncResult.status === "error") {
       captureError("external-db-sync-clickhouse", syncResult.error);
-      needsResync = true;
+      throw new HexclaveAssertionError("ClickHouse external database synchronization failed.", { cause: syncResult.error });
     }
   }
 
@@ -1543,9 +1543,8 @@ export async function syncExternalDatabases(tenancy: Tenancy): Promise<boolean> 
         needsResync = true;
       }
     } catch (error) {
-      // Log the error but continue syncing other databases
-      // This ensures one bad database config doesn't block successful syncs to other databases
       captureError(`external-db-sync-${dbId}`, error);
+      throw new HexclaveAssertionError("External database synchronization failed.", { cause: error });
     }
   }
 

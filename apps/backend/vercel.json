@@ -17,6 +17,10 @@
     {
       "path": "/api/latest/internal/workflow-engine-step",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/latest/internal/issues/reconciler",
+      "schedule": "*/5 * * * *"
     }
   ],
   "github": {

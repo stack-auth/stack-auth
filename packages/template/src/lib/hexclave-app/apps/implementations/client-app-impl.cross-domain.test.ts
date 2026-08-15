@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AccessToken } from "@hexclave/shared/dist/sessions";
 import { HexclaveSetupError } from "@hexclave/shared/dist/utils/errors";
 import { Store } from "@hexclave/shared/dist/utils/stores";
 import { hexclaveAppInternalsSymbol } from "../../common";
 import { StackClientApp } from "../interfaces/client-app";
+import { resetManagedBrowserOtelForTesting } from "./browser-otel-sdk";
 import { planRedirectToHandler } from "./redirect-page-urls";
 
 // Every app in this file is constructed with `devTool: false`. The tests install a mock window and document, which makes
@@ -77,6 +78,13 @@ function callProtectedMethod(app: StackClientApp<true>, methodName: string, ...a
 }
 
 describe("StackClientApp cross-domain auth", () => {
+  afterEach(async () => {
+    // Each app constructed with automatic browser analytics owns the page's managed OTel
+    // registration for the duration of that test. Clear it before the next test can construct
+    // an app for a different project; production intentionally keeps this ownership page-wide.
+    await resetManagedBrowserOtelForTesting();
+  });
+
   it("keeps noRedirectBack same-domain redirects free of redirect-back state", async () => {
     const redirectPlan = await planRedirectToHandler({
       handlerName: "signIn",
@@ -711,6 +719,8 @@ describe("StackClientApp cross-domain auth", () => {
       location: {
         href: callbackUrl.toString(),
       },
+      addEventListener: () => {},
+      removeEventListener: () => {},
     } as any;
 
     const nestedAuthSpy = vi.spyOn(StackClientApp.prototype as any, "_maybeHandleNestedCrossDomainAuth").mockResolvedValue(false);
@@ -932,6 +942,8 @@ describe("StackClientApp cross-domain auth", () => {
       location: {
         href: "https://demo.example.test/handler/sign-in?after_auth_return_to=%2Fmusic%3Ftrack%3D1",
       },
+      addEventListener: () => {},
+      removeEventListener: () => {},
       sessionStorage: {
         getItem: (key: string) => sessionStorageMap.get(key) ?? null,
         setItem: (key: string, value: string) => {
@@ -1002,6 +1014,8 @@ describe("StackClientApp cross-domain auth", () => {
       location: {
         href: arrivalUrl.toString(),
       },
+      addEventListener: () => {},
+      removeEventListener: () => {},
       sessionStorage: {
         getItem: (key: string) => sessionStorageMap.get(key) ?? null,
         setItem: (key: string, value: string) => {

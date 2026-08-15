@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   getRecentTraceRootsQuery,
   getSelectedTraceEventQuery,
+  getSelectedTraceLinksQuery,
   getSelectedTraceSpanQuery,
   getSpanDetailQuery,
   parseEventRow,
+  parseTraceLinkRow,
   parseUniqueTraceRootRows,
   parseUniqueSpanRows,
   SPAN_DETAIL_COLUMNS,
@@ -25,12 +27,13 @@ describe("analytics trace row parsing", () => {
       event_at: "2026-07-21 12:00:00.000",
       trace_id: "0123456789abcdef0123456789abcdef",
       span_id: "0123456789abcdef",
+      body: '{"type":"string","value":"checkout failed"}',
       data: "{\"step\":2}",
     })).toMatchObject({
       traceId: "0123456789abcdef0123456789abcdef",
       eventType: "checkout",
       spanId: "0123456789abcdef",
-      raw: { data: { step: 2 } },
+      raw: { body: { type: "string", value: "checkout failed" }, data: { step: 2 } },
     });
   });
 
@@ -47,13 +50,10 @@ describe("analytics trace row parsing", () => {
   it("lists only physical roots and leaves the rest of the trace to the selected waterfall", () => {
     const { query } = getRecentTraceRootsQuery(null);
     expect(query).toContain("FROM default.trace_roots AS r");
-    // `$http-client` is NOT filtered out. A browser fetch with no ambient parent is
-    // a legitimate trace root — the fetch plus the backend work it triggered IS the
-    // trace — so excluding it would leave those traces invisible in the inbox while
-    // their rows sat in `spans`. A fetch inside a withSpan has a parent and never
-    // reaches trace_roots at all.
     expect(query).not.toContain("$http-client");
     expect(query).toContain("r.status_code");
+    expect(query).not.toContain("_next/static");
+    expect(query).not.toContain("coalesce(r.scope_name, '')");
     // trace_roots stores only spans with a NULL parent, so the column is
     // synthesized rather than read.
     expect(query).toContain("CAST(NULL, 'Nullable(String)') AS parent_span_id");
@@ -164,12 +164,61 @@ describe("analytics trace row parsing", () => {
     expect(spanQuery.query).toContain("ORDER BY s.started_at ASC");
   });
 
+  it("keeps a directly linked target inside the large-trace safety cap", () => {
+    const spanQuery = getSelectedTraceSpanQuery(
+      "0123456789abcdef0123456789abcdef",
+      "fedcba9876543210",
+    );
+
+    expect(spanQuery.params).toEqual({
+      traceId: "0123456789abcdef0123456789abcdef",
+      focusSpanId: "fedcba9876543210",
+    });
+    expect(spanQuery.query).toContain("s.span_id = {focusSpanId:String} DESC, s.started_at ASC");
+    expect(spanQuery.query).toContain("LIMIT 10000");
+  });
+
+  it("loads and parses span links separately without merging them into the tree", () => {
+    const linkQuery = getSelectedTraceLinksQuery("0123456789abcdef0123456789abcdef");
+    expect(linkQuery.params).toEqual({ traceId: "0123456789abcdef0123456789abcdef" });
+    expect(linkQuery.query).toContain("FROM default.span_links");
+    expect(linkQuery.query).toContain("target_is_same_scope");
+    expect(linkQuery.query).not.toContain("JOIN default.spans");
+    expect(parseTraceLinkRow({
+      owner_span_id: "1111111111111111",
+      linked_trace_id: "22222222222222222222222222222222",
+      linked_span_id: "3333333333333333",
+      linked_project_id: "internal",
+      linked_branch_id: "main",
+      target_is_same_scope: 1,
+    })).toEqual({
+      ownerSpanId: "1111111111111111",
+      linkedTraceId: "22222222222222222222222222222222",
+      linkedSpanId: "3333333333333333",
+      linkedProjectId: "internal",
+      linkedBranchId: "main",
+      targetIsSameScope: true,
+    });
+  });
+
   it("selects the enclosing span and page-view correlation on events, not an ancestry array", () => {
-    const { query } = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef", 24);
+    const { query } = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef");
     expect(query).toContain("trace_id, span_id, page_view_span_id");
+    expect(query).toContain("message AS body");
+    expect(query).toContain("severity_number");
+    expect(query).toContain("severity_text");
     expect(query).toContain("WHERE trace_id = {traceId:String}");
     expect(query).not.toContain("parent_span_ids");
     expect(query).not.toContain("w3c_trace_id");
+  });
+
+  it("ranks a deep-linked event first so the 5000-row cap cannot hide it", () => {
+    const focused = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef", 1_720_000_000_000);
+    expect(focused.query).toContain("abs(toUnixTimestamp64Milli(event_at) - {focusEventAtMs:Int64})");
+    expect(focused.params).toEqual({
+      traceId: "0123456789abcdef0123456789abcdef",
+      focusEventAtMs: 1_720_000_000_000,
+    });
   });
 
   it("loads only the detail dialog's columns when a span detail opens", () => {
@@ -254,7 +303,7 @@ describe("analytics trace row parsing", () => {
 
   it("loads the complete distributed trace after filtering the inbox by service", () => {
     const spans = getSelectedTraceSpanQuery("0123456789abcdef0123456789abcdef");
-    const events = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef", 24);
+    const events = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef");
 
     expect(spans.query).not.toContain("{serviceName:String}");
     expect(events.query).not.toContain("{serviceName:String}");
@@ -263,8 +312,8 @@ describe("analytics trace row parsing", () => {
     });
     expect(events.params).toEqual({
       traceId: "0123456789abcdef0123456789abcdef",
-      hours: 24,
     });
+    expect(events.query).not.toContain("INTERVAL");
   });
 
   it("deduplicates a span row returned more than once", () => {

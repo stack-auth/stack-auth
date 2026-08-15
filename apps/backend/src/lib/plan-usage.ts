@@ -347,20 +347,15 @@ async function countAnalyticsEventsForProjects(projectIds: string[], period: Usa
 
 export function getAnalyticsEventsUsageQueryForTest(): string {
   return `
-    SELECT sum(total) AS total
-    FROM (
-      SELECT count() AS total
-      FROM analytics_internal.events
-      WHERE project_id IN {projectIds:Array(String)}
-        AND event_at >= {periodStart:DateTime}
-        AND event_at < {periodEnd:DateTime}
-      UNION ALL
-      SELECT count() AS total
-      FROM analytics_internal.logs
-      WHERE project_id IN {projectIds:Array(String)}
-        AND event_at >= {periodStart:DateTime}
-        AND event_at < {periodEnd:DateTime}
-    )
+    SELECT count() AS total
+    FROM analytics_internal.telemetry
+    PREWHERE project_id IN {projectIds:Array(String)}
+      AND event_at >= {periodStart:DateTime}
+      AND event_at < {periodEnd:DateTime}
+    -- The former compatibility event source excluded the two log-shaped
+    -- event types. Keep that billing population exact after querying the
+    -- unified physical table directly.
+    WHERE event_type NOT IN ('$log', '$error')
   `;
 }
 
@@ -377,7 +372,7 @@ async function countAnalyticsSpansForProjects(projectIds: string[], period: Usag
     query: `
       SELECT count() AS total
       FROM analytics_internal.span_writes
-      WHERE project_id IN {projectIds:Array(String)}
+      PREWHERE project_id IN {projectIds:Array(String)}
         AND created_at >= {periodStart:DateTime}
         AND created_at < {periodEnd:DateTime}
     `,

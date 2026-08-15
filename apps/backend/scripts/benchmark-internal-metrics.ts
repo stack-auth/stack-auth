@@ -1271,7 +1271,7 @@ async function ensureOptionDColumn(): Promise<void> {
   if (Number(rows[0]?.c ?? 0) === 0) {
     await client.command({
       query: `
-        ALTER TABLE analytics_internal.events
+        ALTER TABLE analytics_internal.telemetry
         ADD COLUMN IF NOT EXISTS ${BENCH_OPTION_D_COLUMN} Nullable(UInt8)
       `,
     });
@@ -1282,7 +1282,7 @@ async function populateOptionDColumn(): Promise<void> {
   const client = getClickhouseAdminClient();
   await client.command({
     query: `
-      ALTER TABLE analytics_internal.events
+      ALTER TABLE analytics_internal.telemetry
       UPDATE ${BENCH_OPTION_D_COLUMN} = CAST(data.is_anonymous, 'Nullable(UInt8)')
       WHERE project_id = {projectId:String}
     `,
@@ -1294,7 +1294,7 @@ async function populateOptionDColumn(): Promise<void> {
 async function dropOptionDColumn(): Promise<void> {
   const client = getClickhouseAdminClient();
   await client.command({
-    query: `ALTER TABLE analytics_internal.events DROP COLUMN IF EXISTS ${BENCH_OPTION_D_COLUMN}`,
+    query: `ALTER TABLE analytics_internal.telemetry DROP COLUMN IF EXISTS ${BENCH_OPTION_D_COLUMN}`,
   });
 }
 
@@ -1994,7 +1994,7 @@ async function seed(rows: EventRow[], batch = envInt("BENCH_BATCH", 50_000)): Pr
   for (let i = 0; i < rows.length; i += batch) {
     const chunk = rows.slice(i, i + batch);
     await client.insert({
-      table: "analytics_internal.events",
+      table: "analytics_internal.telemetry",
       values: chunk,
       format: "JSONEachRow",
       clickhouse_settings: { date_time_input_format: "best_effort" },
@@ -2005,7 +2005,7 @@ async function seed(rows: EventRow[], batch = envInt("BENCH_BATCH", 50_000)): Pr
 async function cleanup(): Promise<void> {
   const client = getClickhouseAdminClient();
   await client.command({
-    query: `ALTER TABLE analytics_internal.events DELETE WHERE project_id = {p:String}`,
+    query: `ALTER TABLE analytics_internal.telemetry DELETE WHERE project_id = {p:String}`,
     query_params: { p: BENCH_PROJECT_ID },
     // Block until the mutation is applied so the script exits clean.
     clickhouse_settings: { mutations_sync: "2" },
@@ -2372,7 +2372,10 @@ async function seedPerf(now: Date): Promise<void> {
   if (buf.length) await seed(buf, batchRows);
   // Force parts to settle so first-query cost isn't dominated by merges.
   const client = getClickhouseAdminClient();
-  await client.command({ query: "OPTIMIZE TABLE analytics_internal.events FINAL", clickhouse_settings: { mutations_sync: "2" } });
+  // Do not force OPTIMIZE FINAL here. Besides `events` now being a compatibility
+  // view, a forced full merge is unlike production and can hide the part-layout
+  // costs that the benchmark is meant to expose. Every insert above is awaited,
+  // so the queries can immediately read the isolated benchmark rows.
   console.log(`  done in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 }
 

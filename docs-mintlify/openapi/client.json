@@ -2238,6 +2238,134 @@
         }
       }
     },
+    "/issues/search-views/{view_id}": {
+      "put": {
+        "summary": "Update a saved issue search view",
+        "description": "Updates a saved issue-search filter only when the authenticated user owns it or the caller has explicit admin access.",
+        "parameters": [
+          {
+            "name": "view_id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "private",
+                      "project"
+                    ]
+                  },
+                  "query": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "name",
+                  "visibility",
+                  "query"
+                ],
+                "example": {}
+              }
+            }
+          }
+        },
+        "tags": [
+          "Issues"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/issues/search-views/{view_id}",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "schema_version": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "visibility": {
+                      "type": "string",
+                      "enum": [
+                        "private",
+                        "project"
+                      ]
+                    },
+                    "owner_user_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "query": {
+                      "type": "object"
+                    },
+                    "created_at_millis": {
+                      "type": "integer"
+                    },
+                    "updated_at_millis": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "schema_version",
+                    "name",
+                    "visibility",
+                    "query",
+                    "created_at_millis",
+                    "updated_at_millis"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a saved issue search view",
+        "description": "Deletes a saved issue-search filter only when the authenticated user owns it or the caller has explicit admin access.",
+        "parameters": [
+          {
+            "name": "view_id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Issues"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/issues/search-views/{view_id}",
+        "responses": {
+          "204": {
+            "description": "No content"
+          }
+        }
+      }
+    },
     "/auth/oauth/authorize/{provider_id}": {
       "get": {
         "summary": "OAuth authorize endpoint",

@@ -49,7 +49,6 @@ export type WaterfallRow =
   | { kind: "event", event: EventInput, depth: number };
 
 const GENERIC_HTTP_METHOD_SPAN = /^(?:DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT)$/;
-const HTTP_CLIENT_SPAN_TYPE = "$http-client";
 const LIBRARY_SPAN_TYPE = "$lib-span";
 // This SDK-native boundary deliberately keeps its semantic operation name so
 // the cross-tier tree reads naturally, but it is framework instrumentation —
@@ -103,6 +102,62 @@ export function traceErrorCount(trace: Trace): number {
   return count;
 }
 
+export type TraceEventHighlight = {
+  spanId: string | null,
+  eventType: string | null,
+  eventAtMs: number | null,
+};
+
+/**
+ * Product events have no durable id. A shareable highlight is the enclosing
+ * span plus the event's type and epoch-ms; any subset still has to match.
+ */
+export function eventMatchesHighlight(event: EventInput, highlight: TraceEventHighlight): boolean {
+  if (highlight.eventType == null && highlight.eventAtMs == null) return false;
+  if (highlight.spanId != null && event.spanId !== highlight.spanId) return false;
+  if (highlight.eventType != null && event.eventType !== highlight.eventType) return false;
+  if (highlight.eventAtMs != null && event.atMs !== highlight.eventAtMs) return false;
+  return true;
+}
+
+/** Ancestor span ids from the root down to (but not including) `spanId`. */
+export function spanAncestorIds(root: TraceNode, spanId: string): string[] | null {
+  const walk = (node: TraceNode, ancestors: string[]): string[] | null => {
+    if (node.span.id === spanId) return ancestors;
+    for (const child of node.children) {
+      const found = walk(child, [...ancestors, node.span.id]);
+      if (found != null) return found;
+    }
+    return null;
+  };
+  return walk(root, []);
+}
+
+function findSpanIdOwningHighlightedEvent(root: TraceNode, highlight: TraceEventHighlight): string | null {
+  const walk = (node: TraceNode): string | null => {
+    if (node.events.some((event) => eventMatchesHighlight(event, highlight))) return node.span.id;
+    for (const child of node.children) {
+      const found = walk(child);
+      if (found != null) return found;
+    }
+    return null;
+  };
+  return walk(root);
+}
+
+/**
+ * Spans that must be expanded in All mode so a highlighted event/span is
+ * actually visible: the owning span (its events are hidden while collapsed)
+ * and every ancestor on the path from the root.
+ */
+export function spanIdsToExpandForHighlight(root: TraceNode, highlight: TraceEventHighlight): string[] {
+  const spanId = highlight.spanId ?? findSpanIdOwningHighlightedEvent(root, highlight);
+  if (spanId == null) return [];
+  const ancestors = spanAncestorIds(root, spanId);
+  if (ancestors == null) return [];
+  return [...ancestors, spanId];
+}
+
 export function traceContainsSpanId(trace: Trace, spanId: string): boolean {
   const stack = [trace.root];
   while (stack.length > 0) {
@@ -135,11 +190,7 @@ export function traceSignalSpanIds(trace: Trace, slowSpanLimit = 20, needle = ""
     for (const ancestor of ancestors) selected.add(ancestor.span.id);
   };
 
-  const visit = (
-    node: TraceNode,
-    ancestors: TraceNode[],
-    httpClientBoundary: { node: TraceNode, ancestors: TraceNode[] } | null,
-  ) => {
+  const visit = (node: TraceNode, ancestors: TraceNode[]) => {
     const matchesSearch = needle !== "" && (
       traceSpanDisplayName(node.span).toLowerCase().includes(needle)
       || node.events.some((event) => event.eventType.toLowerCase().includes(needle))
@@ -152,26 +203,16 @@ export function traceSignalSpanIds(trace: Trace, slowSpanLimit = 20, needle = ""
       // Explicit search is the escape hatch for inspecting an internal server
       // operation without switching the whole trace to All spans.
       selectWithAncestors(node, ancestors);
-    } else if (hasAutomaticSignal && httpClientBoundary == null) {
+    } else if (hasAutomaticSignal) {
       selectWithAncestors(node, ancestors);
-    } else if (hasAutomaticSignal && httpClientBoundary != null) {
-      // `$http-client` is the compact cross-tier boundary. Next, route-handler,
-      // STACK, and database spans remain available in All spans, but an error,
-      // event, or customer span inside that server subtree only promotes the
-      // request boundary in Signal. Promoting the descendant and restoring its
-      // path is what made Signal grow into a near-copy of the full waterfall.
-      selectWithAncestors(httpClientBoundary.node, httpClientBoundary.ancestors);
     }
-    if (node.span.id !== trace.root.span.id && httpClientBoundary == null) {
+    if (node.span.id !== trace.root.span.id) {
       candidates.push(node);
     }
 
-    const childBoundary = httpClientBoundary ?? (node.span.spanType === HTTP_CLIENT_SPAN_TYPE
-      ? { node, ancestors }
-      : null);
-    for (const child of node.children) visit(child, [...ancestors, node], childBoundary);
+    for (const child of node.children) visit(child, [...ancestors, node]);
   };
-  visit(trace.root, [], null);
+  visit(trace.root, []);
 
   candidates.sort((left, right) => {
     const leftDuration = left.span.endMs == null ? Infinity : left.span.endMs - left.span.startMs;
@@ -350,6 +391,27 @@ export function buildTraces(spans: SpanInput[], events: EventInput[]): { traces:
 
   traces.sort((a, b) => b.startMs - a.startMs);
   return { traces, unattachedEvents };
+}
+
+/**
+ * The tree to show when a trace id is selected. A fragmented trace produces
+ * SEVERAL trees sharing one trace id: any span whose parent row is missing
+ * (not yet exported, dropped on page unload, cut by the row cap) becomes a
+ * fragment root. `traces` is sorted newest-first for the inbox, so a plain
+ * `.find()` by trace id used to return whichever fragment started most
+ * recently — usually some backend request subtree instead of the session's
+ * actual root. Prefer the tree anchored at a TRUE root (parent_span_id NULL,
+ * e.g. the $refresh-token session root), then the earliest and largest tree,
+ * so the selection is deterministic.
+ */
+export function selectPrimaryTrace(traces: Trace[], traceId: string): Trace | null {
+  return traces
+    .filter((trace) => trace.root.span.traceId === traceId)
+    .sort((a, b) =>
+      Number(b.root.span.parentSpanId == null) - Number(a.root.span.parentSpanId == null)
+      || a.startMs - b.startMs
+      || b.spanCount - a.spanCount,
+    )[0] ?? null;
 }
 
 function computeTraceAggregates(root: TraceNode): Omit<Trace, "root"> {

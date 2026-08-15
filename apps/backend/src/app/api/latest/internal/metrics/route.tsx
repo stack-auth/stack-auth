@@ -93,7 +93,7 @@ async function loadUsersByCountry(tenancy: Tenancy, now: Date, includeAnonymous:
             event_at,
             CAST(data.ip_info.country_code, 'Nullable(String)') AS cc,
             coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) AS is_anonymous
-          FROM analytics_internal.events
+          FROM analytics_internal.telemetry
           WHERE event_type = '$token-refresh'
             AND project_id = {projectId:String}
             AND branch_id = {branchId:String}
@@ -178,7 +178,7 @@ async function loadActiveUsersByCountry(
                 event_at,
                 CAST(data.ip_info.country_code, 'Nullable(String)') AS cc,
                 coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) AS is_anonymous
-              FROM analytics_internal.events
+              FROM analytics_internal.telemetry
               WHERE event_type = '$token-refresh'
                 AND project_id = {projectId:String}
                 AND branch_id = {branchId:String}
@@ -281,7 +281,7 @@ async function loadLiveUsersCount(
   const res = await clickhouseClient.query({
     query: `
       SELECT uniqExact(user_id) AS live_users
-      FROM analytics_internal.events
+      FROM analytics_internal.telemetry
       WHERE event_type = '$token-refresh'
         AND project_id = {projectId:String}
         AND branch_id = {branchId:String}
@@ -409,7 +409,7 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymou
         -- Counting hashes instead of the raw uuids keeps the count exact while
         -- holding 8 bytes per distinct user per day group rather than 36.
         uniqExact(sipHash64(assumeNotNull(user_id))) AS dau
-      FROM analytics_internal.events
+      FROM analytics_internal.telemetry
       WHERE event_type = '$token-refresh'
         AND project_id = {projectId:String}
         AND branch_id = {branchId:String}
@@ -461,7 +461,7 @@ async function loadHourlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymo
       SELECT
         toStartOfHour(event_at) AS hour,
         uniqExact(sipHash64(assumeNotNull(user_id))) AS dau
-      FROM analytics_internal.events
+      FROM analytics_internal.telemetry
       WHERE event_type = '$token-refresh'
         AND project_id = {projectId:String}
         AND branch_id = {branchId:String}
@@ -561,7 +561,7 @@ async function loadDailyActiveSplitFromClickhouse(options: {
           SELECT
             sipHash64(assumeNotNull(${idCol})) AS entity_id,
             groupBitOr(bitShiftLeft(toUInt64(1), toUInt8(dateDiff('day', toDate({since:DateTime}), toDate(event_at))))) AS active_days
-          FROM analytics_internal.events
+          FROM analytics_internal.telemetry
           WHERE event_type = '$token-refresh'
             AND project_id = {projectId:String}
             AND branch_id = {branchId:String}
@@ -575,7 +575,7 @@ async function loadDailyActiveSplitFromClickhouse(options: {
           SELECT
             sipHash64(assumeNotNull(${idCol})) AS entity_id,
             toDate(min(event_at)) AS first_date
-          FROM analytics_internal.events
+          FROM analytics_internal.telemetry
           WHERE event_type = '$token-refresh'
             AND project_id = {projectId:String}
             AND branch_id = {branchId:String}
@@ -697,7 +697,7 @@ async function loadAnonymousVisitorsFromTokenRefresh(
         SELECT
           toDate(event_at) AS event_day,
           lower(trim(assumeNotNull(user_id))) AS normalized_user_id
-        FROM analytics_internal.events
+        FROM analytics_internal.telemetry
         WHERE event_type = '$token-refresh'
           AND project_id = {projectId:String}
           AND branch_id = {branchId:String}
@@ -778,7 +778,7 @@ async function loadMonthlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonym
       SELECT uniqExact(sipHash64(normalized_user_id)) AS mau
       FROM (
         SELECT lower(trim(assumeNotNull(user_id))) AS normalized_user_id
-        FROM analytics_internal.events
+        FROM analytics_internal.telemetry
         WHERE event_type = '$token-refresh'
           AND project_id = {projectId:String}
           AND branch_id = {branchId:String}
@@ -1322,7 +1322,7 @@ const PAGE_VIEWS_AND_CLICKS_SQL = `
     session_replay_id,
     session_replay_segment_id,
     created_at
-  FROM analytics_internal.events
+  FROM analytics_internal.telemetry
   PREWHERE project_id = {projectId:String}
     AND branch_id = {branchId:String}
     AND event_type IN ('$click', '$page-view')
@@ -1419,7 +1419,7 @@ async function loadAnalyticsOverview(
           sipHash64(user_id) AS user_hash,
           argMax(coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0), event_at) AS latest_is_anonymous
           ${includeCountry ? ", argMax(CAST(data.ip_info.country_code, 'Nullable(String)'), event_at) AS latest_country" : ""}
-        FROM analytics_internal.events
+        FROM analytics_internal.telemetry
         WHERE event_type = '$token-refresh'
           AND project_id = {projectId:String}
           AND branch_id = {branchId:String}
@@ -1651,7 +1651,7 @@ async function loadAnalyticsOverview(
         query: `
           SELECT
             uniqExact(assumeNotNull(user_id)) AS online
-          FROM analytics_internal.events
+          FROM analytics_internal.telemetry
           WHERE event_type = '$token-refresh'
             AND project_id = {projectId:String}
             AND branch_id = {branchId:String}

@@ -30,10 +30,11 @@ import { setTimeout as sleep } from "timers/promises";
 // while package builds warm up, and fail immediately for other import failures.
 //
 // In addition to workspace packages, the probe checks that the generated Prisma
-// client exists. When `turbo run dev` starts the backend, `codegen-prisma:watch`
-// (`prisma generate --watch`) performs an initial generation that briefly removes
-// and recreates `src/generated/prisma/`. If `codegen-docs` runs during that
-// window it fails with ERR_MODULE_NOT_FOUND for `@/generated/prisma/client`.
+// client is actually importable. When `turbo run dev` starts the backend,
+// `codegen-prisma:watch` (`prisma generate --watch`) rewrites
+// `src/generated/prisma/` in place and can leave `client.ts` on disk before
+// `internal/prismaNamespace.ts` exists. A directory-non-empty check treats that
+// window as ready, then `codegen-docs` dies with ERR_MODULE_NOT_FOUND.
 const repoRoot = path.resolve(__dirname, "..");
 const backendDir = path.join(repoRoot, "apps/backend");
 const timeoutMs = 60_000;
@@ -43,11 +44,11 @@ const probeScript = `
 (async () => {
   await import('@hexclave/js');
   await import('@hexclave/shared/dist/utils/env');
-  const { existsSync, readdirSync } = await import('node:fs');
+  const { existsSync } = await import('node:fs');
   const { join } = await import('node:path');
-  const generatedDir = join(process.cwd(), 'src', 'generated', 'prisma');
-  if (!existsSync(generatedDir) || readdirSync(generatedDir).length === 0) {
-    const err = new Error('ERR_MODULE_NOT_FOUND: Generated Prisma client not yet available at ' + generatedDir);
+  const prismaNamespace = join(process.cwd(), 'src', 'generated', 'prisma', 'internal', 'prismaNamespace.ts');
+  if (!existsSync(prismaNamespace)) {
+    const err = new Error('ERR_MODULE_NOT_FOUND: Generated Prisma client not yet available at ' + prismaNamespace);
     throw err;
   }
 })().then(

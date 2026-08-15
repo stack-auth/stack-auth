@@ -7,7 +7,7 @@ describe("cross-tier telemetry boundary", () => {
       method: "OPTIONS",
       headers: {
         origin: "http://localhost:8101",
-        "access-control-request-headers": "traceparent, tracestate, x-hexclave-span-context",
+        "access-control-request-headers": "traceparent, tracestate, baggage",
       },
     }));
 
@@ -15,7 +15,7 @@ describe("cross-tier telemetry boundary", () => {
     expect(allowHeaders).toEqual(expect.arrayContaining([
       "traceparent",
       "tracestate",
-      "x-hexclave-span-context",
+      "baggage",
     ]));
     expect(result.shortCircuitResponse?.status).toBe(200);
   });

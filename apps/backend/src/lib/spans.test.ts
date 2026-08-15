@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildBatchSpanLinkRows, buildBatchSpanRows, clientUpdatedAtSpanVersion, getBatchDuplicateSpanIdError, insertSessionReplaySpans, insertSpanLinks, insertSpans, type BatchSpanWireItem } from "./spans";
+import { buildBatchSpanLinkRows, buildBatchSpanRows, clientUpdatedAtSpanVersion, getBatchDuplicateSpanIdError, insertSessionReplaySpans, insertSpanLinks, insertSpans, type BatchSpanWireItem, type SpanInsertRow } from "./spans";
 import type { ClickHouseClient } from "./clickhouse";
 
 // W3C ids: 32 hex for traces, 16 hex for spans. Written out literally rather than
@@ -187,13 +187,32 @@ describe("buildBatchSpanRows", () => {
         ...baseSpan,
         span_type: "prisma:client:db_query",
         scope_name: "prisma",
+        scope_version: "5.14.0",
+        kind: "client",
+        status_code: "error",
+        status_message: "query failed",
       }],
     });
     expect(rows[0]).toMatchObject({
       span_type: "prisma:client:db_query",
       scope_name: "prisma",
-      scope_version: null,
+      scope_version: "5.14.0",
+      kind: "client",
+      status_code: "error",
+      status_message: "query failed",
+      billing_item: null,
     });
+  });
+
+  it("classifies only native custom spans for billing before storage", () => {
+    const rows = buildBatchSpanRows({
+      ...baseOpts,
+      spans: [
+        baseSpan,
+        { ...baseSpan, span_id: SPAN_CHILD, span_type: "$page-view" },
+      ],
+    });
+    expect(rows.map((row) => row.billing_item)).toEqual(["analytics_spans", null]);
   });
 
   it("uses the client updated_at_ms as the version, clamped to [1, now + 5min]", () => {
@@ -228,19 +247,37 @@ describe("buildBatchSpanRows", () => {
     expect(rows[0].version).toBe(endedAtMs);
   });
 
-  it("classifies HTTP autocapture as a client span without guessing kinds for other SDK spans", () => {
+  it("defaults legacy spans without an explicit OTel kind to internal", () => {
     const rows = buildBatchSpanRows({
       ...baseOpts,
       spans: [
-        { ...baseSpan, span_type: "$http-client" },
+        { ...baseSpan, span_type: "legacy.unknown" },
         { ...baseSpan, span_id: SPAN_CHILD, span_type: "$page-view" },
         { ...baseSpan, span_id: SPAN_PAGE_VIEW, span_type: "checkout-flow" },
+        // Explicit wire kind remains authoritative.
+        { ...baseSpan, span_id: "aaaaaaaaaaaaaaaa", span_type: "legacy.explicit", kind: "internal" },
       ],
     });
-    expect(rows.map((row) => row.kind)).toEqual(["client", "internal", "internal"]);
+    expect(rows.map((row) => row.kind)).toEqual(["internal", "internal", "internal", "internal"]);
+    expect(rows.map((row) => row.status_code)).toEqual(["unset", "unset", "unset", "unset"]);
+    expect(rows.every((row) => row.status_message === null)).toBe(true);
   });
 
-  it("accepts a $page-view span as a trace root and a $http-client span with a parent", () => {
+  it("never promotes opaque data.status_code into the typed status column", () => {
+    // Opaque legacy data must not leak into the typed OTel status column.
+    const rows = buildBatchSpanRows({
+      ...baseOpts,
+      spans: [{
+        ...baseSpan,
+        span_type: "legacy.http",
+        data: { status_code: 500, method: "GET" },
+      }],
+    });
+    expect(rows[0].status_code).toBe("unset");
+    expect(JSON.parse(rows[0].data)).toEqual({ status_code: 500, method: "GET" });
+  });
+
+  it("accepts a $page-view root and an ordinary child span", () => {
     // Both are root ACTIVITIES, but only a page view is always unparented: a fetch
     // issued inside a withSpan legitimately nests under that span, in the same
     // trace. Neither shape is special-cased any more.
@@ -248,7 +285,7 @@ describe("buildBatchSpanRows", () => {
       ...baseOpts,
       spans: [
         { ...baseSpan, span_type: "$page-view", parent_span_id: null },
-        { ...baseSpan, span_id: SPAN_CHILD, span_type: "$http-client", parent_span_id: SPAN_ROOT },
+        { ...baseSpan, span_id: SPAN_CHILD, span_type: "checkout.request", parent_span_id: SPAN_ROOT },
       ],
     });
     expect(rows[0].parent_span_id).toBeNull();
@@ -303,7 +340,31 @@ describe("buildBatchSpanLinkRows", () => {
       owner_span_id: SPAN_ROOT,
       linked_trace_id: TRACE_B,
       linked_span_id: SPAN_CHILD,
+      linked_project_id: "p1",
+      linked_branch_id: "b1",
     }]);
+  });
+
+  it("accepts trusted cross-project target metadata without changing owner scope", () => {
+    const rows = buildBatchSpanLinkRows({
+      projectId: "internal",
+      branchId: "main",
+      spans: [{
+        ...baseSpan,
+        links: [{
+          trace_id: TRACE_B,
+          span_id: SPAN_CHILD,
+          linked_project_id: "customer-project",
+          linked_branch_id: "production",
+        }],
+      }],
+    });
+    expect(rows[0]).toMatchObject({
+      project_id: "internal",
+      branch_id: "main",
+      linked_project_id: "customer-project",
+      linked_branch_id: "production",
+    });
   });
 
   it("flattens links across every span in the batch", () => {
@@ -333,5 +394,49 @@ describe("insert guards", () => {
     await insertSpans(client, []);
     await insertSpanLinks(client, []);
     expect(insert).not.toHaveBeenCalled();
+  });
+
+  it("deduplicates dependent trace views when a span batch is retried", async () => {
+    const insert = vi.fn(async () => {});
+    const client = { insert } as unknown as ClickHouseClient;
+    const row = {
+      trace_id: TRACE_A,
+      span_id: SPAN_ROOT,
+      span_type: "checkout-flow",
+      billing_item: null,
+      started_at: new Date("2026-01-01T00:00:00.000Z"),
+      ended_at: null,
+      parent_span_id: null,
+      data: "{}",
+      kind: "internal",
+      status_code: "unset",
+      status_message: null,
+      service_namespace: null,
+      service_name: "storefront",
+      service_version: null,
+      service_instance_id: null,
+      deployment_environment_name: null,
+      resource_attributes: "{}",
+      producer: "sdk",
+      project_id: "p1",
+      branch_id: "b1",
+      user_id: null,
+      team_id: null,
+      refresh_token_id: null,
+      session_replay_id: null,
+      session_replay_segment_id: null,
+      page_view_span_id: null,
+      version: 1,
+    } satisfies SpanInsertRow;
+
+    await insertSpans(client, [row], { deduplicationToken: "retry-token" });
+
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({
+      table: "analytics_internal.spans",
+      clickhouse_settings: expect.objectContaining({
+        insert_deduplication_token: "retry-token",
+        deduplicate_blocks_in_dependent_materialized_views: 1,
+      }),
+    }));
   });
 });

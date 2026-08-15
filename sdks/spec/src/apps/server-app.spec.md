@@ -287,7 +287,7 @@ contracts in analytics.spec.md:
       request: RequestLike? - resolve attribution AND the caller's trace from an
         incoming request: session tokens give the user, the standard W3C
         `traceparent` gives the trace id + parent span, and
-        x-hexclave-span-context gives the non-hierarchical correlation ids
+        baggage gives the non-hierarchical correlation ids
         (replay, segment, page view). With request, userId is derived from the
         session unless overridden. A request with no `traceparent` starts a new
         trace rooted at this request.
@@ -297,7 +297,7 @@ contracts in analytics.spec.md:
     override. See analytics.spec.md "Ambient request provider".
 
   logger
-    Same API as the client logger; rides the server telemetry buffer. Inside a
+    Same API as the client logger; emits OTel LogRecords through the active LoggerProvider. Inside a
     withSpan({ request }) scope — or any request scope when an ambient request
     provider is registered — logs automatically join the caller's TRACE (they
     carry its trace_id and the enclosing span_id) and pick up the caller's
@@ -316,17 +316,37 @@ contracts in analytics.spec.md:
     adopt the ambient request.
     Ambient parenting is AsyncLocalStorage-backed (exact under concurrency).
 
-  Delivery: server telemetry coalesces per batch context and flushes on the
-  next microtask (no timer) — await the promises, call flush(), or wire
-  telemetry.waitUntil on serverless (auto-detected on Vercel; see
-  analytics.spec.md). Sends sticky-disable for the process on the backend's
-  ANALYTICS_NOT_ENABLED rejection. See analytics.spec.md "Batch wire
-  format" for the envelope (schema_version: 3, resource, refresh_token_id, ...).
+  Delivery: the configured OTel SpanProcessors and LogRecordProcessors own
+  batching, queue bounds, scheduling, retry, and OTLP serialization. In managed
+  mode, await trackEvent/withSpan or call flush() when remote acknowledgement is
+  required; telemetry.waitUntil carries that flush through serverless request
+  teardown. Existing-provider mode leaves lifecycle ownership with the host
+  application. New SDK telemetry never uses the legacy schema-versioned event
+  batch envelope.
 
-  Auto-instrumentation seams (server outbound-fetch $http-client spans — now
-  installed eagerly at app construction — the uncaught-exception $error
+  Auto-instrumentation seams (official server Undici spans, the uncaught-exception $error
   monitor, Next.js hexclaveInstrumentation, the ambient request provider) are
   specified in analytics.spec.md.
+
+  captureException(error, options?): ErrorEventId
+    Captures an arbitrary thrown value and returns a 32-character lowercase
+    hexadecimal event id. Manual server captures are drained by `flush()`.
+
+  captureMessage(message, options?): ErrorEventId
+    Captures a non-empty message and returns its event id.
+
+  captureEvent(event): ErrorEventId
+    Captures a normalized event or exception chain and returns its event id.
+
+  lastEventId(): ErrorEventId | undefined
+    Returns the latest manually or automatically captured event id.
+
+  withErrorScope<T>(fn: (scope: ErrorScope) => T): T
+    Runs a callback with isolated user, tags, contexts, extras, breadcrumbs,
+    level, and fingerprint enrichment. `scope.setExtras(extras)` provides the
+    same bulk-extra merge as `setExtra`. Server framework adapters use the
+    async context integration described in analytics.spec.md for request-safe
+    propagation.
 
 
 ## queryAnalytics(options)

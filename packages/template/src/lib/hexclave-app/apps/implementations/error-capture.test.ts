@@ -3,14 +3,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildErrorEventData,
+  buildLinkedExceptionValues,
   computeErrorFingerprint,
   DEFAULT_IGNORE_ERRORS,
+  generateErrorEventId,
   installClientErrorCapture,
   installServerErrorMonitor,
   normalizeCapturedError,
   normalizeErrorCaptureOptions,
   type ClientErrorCaptureDeps,
 } from "./error-capture";
+import { createErrorScope, runWithErrorScope } from "./error-scope";
 
 function installWithDeps(overrides?: Partial<ClientErrorCaptureDeps>) {
   const emitted: Record<string, unknown>[] = [];
@@ -45,7 +48,7 @@ function fireOnUnhandledRejection(event: unknown) {
 
 describe("normalizeErrorCaptureOptions", () => {
   it("defaults to enabled with the default ignores, merging user substrings", () => {
-    expect(normalizeErrorCaptureOptions(undefined)).toEqual({ enabled: true, ignoreErrors: [...DEFAULT_IGNORE_ERRORS] });
+    expect(normalizeErrorCaptureOptions(undefined)).toMatchObject({ enabled: true, ignoreErrors: [...DEFAULT_IGNORE_ERRORS] });
     const normalized = normalizeErrorCaptureOptions({ enabled: false, ignoreErrors: ["ChunkLoadError"] });
     expect(normalized.enabled).toBe(false);
     expect(normalized.ignoreErrors).toEqual([...DEFAULT_IGNORE_ERRORS, "ChunkLoadError"]);
@@ -53,6 +56,14 @@ describe("normalizeErrorCaptureOptions", () => {
 });
 
 describe("normalizeCapturedError + buildErrorEventData", () => {
+  it("generates lowercase dashless 32-character event IDs", () => {
+    const first = generateErrorEventId();
+    const second = generateErrorEventId();
+    expect(first).toMatch(/^[0-9a-f]{32}$/);
+    expect(second).toMatch(/^[0-9a-f]{32}$/);
+    expect(first).not.toBe(second);
+  });
+
   it("keeps Error identity and bounds message/stack to 8KB", () => {
     const error = new Error(`boom ${"x".repeat(20_000)}`);
     const data = buildErrorEventData(error, {
@@ -91,6 +102,32 @@ describe("normalizeCapturedError + buildErrorEventData", () => {
     const stackB = "Error: x\n    at foo (a.js:1:1)\n    at OTHER (c.js:9:9)";
     expect(computeErrorFingerprint("Error", "x", stackA)).toBe(computeErrorFingerprint("Error", "x", stackB));
     expect(computeErrorFingerprint("Error", "x", stackA)).not.toBe(computeErrorFingerprint("Error", "y", stackA));
+  });
+
+  it("keeps Error.cause and AggregateError children in one bounded, root-last chain", () => {
+    const cause = new Error("database cause");
+    const root = new Error("request failed");
+    Object.defineProperty(root, "cause", { value: cause, enumerable: false });
+    const values = buildLinkedExceptionValues(root);
+    expect(values.map((value) => value.value)).toEqual(["database cause", "request failed"]);
+    expect(values[0]?.mechanism).toMatchObject({ type: "chained", data: { source: "cause" } });
+
+    const first = new Error("first child");
+    const second = new Error("second child");
+    const aggregate = new Error("many failures");
+    Object.defineProperty(aggregate, "errors", { value: [first, second], enumerable: false });
+    const aggregateValues = buildLinkedExceptionValues(aggregate);
+    expect(aggregateValues.map((value) => value.value)).toEqual(["first child", "second child", "many failures"]);
+
+    const data = buildErrorEventData(root, {
+      mechanismType: "captured.exception",
+      handled: true,
+      release: null,
+      environment: null,
+      sdkVersion: "test",
+    });
+    expect(data.exception?.values).toHaveLength(2);
+    expect(data.exception?.values.at(-1)?.mechanism).toMatchObject({ type: "captured.exception", handled: true });
   });
 });
 
@@ -153,6 +190,21 @@ describe("installClientErrorCapture", () => {
     expect(data.sdk_version).toBe("0.0.0-test");
     capture.uninstall();
     window.history.replaceState(null, "", "/");
+  });
+
+  it("applies the active scope to automatic browser captures", () => {
+    const { emitted, capture } = installWithDeps();
+    const scope = createErrorScope();
+    scope.setUser({ id: "automatic-user" });
+    scope.setTag("surface", "global-handler");
+    runWithErrorScope(scope, () => fireOnError(new Error("scoped automatic error")));
+
+    expect(emitted[0]).toMatchObject({
+      event_id: expect.stringMatching(/^[0-9a-f]{32}$/),
+      user: { id: "automatic-user" },
+      tags: { surface: "global-handler" },
+    });
+    capture.uninstall();
   });
 
   it("synthesizes a single url:line:col frame when onerror has no error object", () => {

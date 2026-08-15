@@ -3,10 +3,9 @@
 import { Link } from "@/components/link";
 import { DesignButton, DesignPillToggle, DesignSelectorDropdown } from "@/components/design-components";
 import { Button, Typography } from "@/components/ui";
-import { cn } from "@/lib/utils";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
@@ -25,13 +24,20 @@ import {
   serviceIdentityToSelectValue,
   type ServiceIdentity,
 } from "../service-identity";
-import { ALL_SERVICES_SELECT_VALUE, isObservabilityTimeRangeHours, OBSERVABILITY_TIME_RANGE_OPTIONS, parseObservabilityTimeRangeId, useServiceIdentityLoader } from "../filters";
+import { ALL_SERVICES_SELECT_VALUE, isObservabilityTimeRangeHours, OBSERVABILITY_TIME_RANGE_OPTIONS, parseObservabilityTimeRangeId, readLocationSearch, replaceLocationSearch, useServiceIdentityLoader, type ObservabilityTimeRangeHours } from "../filters";
 import { tryParseJson } from "../format";
+import { LogLevelChip } from "../log-level";
+import { issueSearchHref } from "../issues/issue-links";
+import { TelemetryRowLinks } from "../telemetry-row-links";
+import {
+  DEFAULT_LOG_TIME_RANGE_HOURS,
+  LOG_LEVELS,
+  parseLogFilters,
+  serializeLogFilters,
+  type LogLevel,
+} from "./log-filters";
 
-export const DEFAULT_LOG_TIME_RANGE_HOURS = 720;
-
-export const LOG_LEVELS = ["error", "warn", "info", "debug", "trace"] as const;
-export type LogLevel = (typeof LOG_LEVELS)[number];
+export { DEFAULT_LOG_TIME_RANGE_HOURS, LOG_LEVELS, type LogLevel };
 
 const ALL_LEVELS_SELECT_VALUE = "all";
 
@@ -86,7 +92,10 @@ export function getLogsQuery(
   if (level != null && !LOG_LEVELS.includes(level)) {
     throw new Error(`Unknown log level: ${level}`);
   }
-  const levelCondition = level == null ? "" : `\n  AND e.level = '${level}'`;
+  // `level` is the normalized product projection. A vanilla OTLP exporter may
+  // provide only severity_text, so use it when the projection is empty.
+  const levelExpression = "coalesce(nullIf(e.level, ''), nullIf(lowerUTF8(e.severity_text), ''), '')";
+  const levelCondition = level == null ? "" : `\n  AND ${levelExpression} = '${level}'`;
   const serviceCondition = service == null ? "" : `
   AND coalesce(e.service_namespace, '') = {serviceNamespace:String}
   AND e.service_name = {serviceName:String}`;
@@ -94,8 +103,8 @@ export function getLogsQuery(
     query: `
 SELECT
   e.event_at,
-  e.level,
-  e.message,
+  ${levelExpression} AS level,
+  e.body AS message,
   e.service_namespace,
   e.service_name,
   e.deployment_environment_name,
@@ -119,36 +128,6 @@ WHERE e.event_at >= now64(3) - INTERVAL ${hours} HOUR${levelCondition}${serviceC
       }),
     },
   };
-}
-
-// DesignBadge (the house chip) has no muted color for low-severity levels and
-// lives in a package outside this change's scope, so the level chip replicates
-// the DesignBadge "sm" pill formula locally, adding a zinc entry. All five
-// levels use the same local chip so the column's chips are metrically
-// identical.
-const MUTED_LEVEL_CHIP_CLASSES = "text-zinc-600 dark:text-zinc-400 bg-zinc-500/15 dark:bg-zinc-500/10 ring-1 ring-zinc-500/25 dark:ring-zinc-500/20";
-const LEVEL_CHIP_CLASSES = new Map<string, string>([
-  ["trace", MUTED_LEVEL_CHIP_CLASSES],
-  ["debug", MUTED_LEVEL_CHIP_CLASSES],
-  ["info", "text-blue-700 dark:text-blue-400 bg-blue-500/20 dark:bg-blue-500/10 ring-1 ring-blue-500/30 dark:ring-blue-500/20"],
-  ["warn", "text-amber-700 dark:text-amber-300 bg-amber-500/20 dark:bg-amber-500/10 ring-1 ring-amber-500/30 dark:ring-amber-500/20"],
-  ["error", "text-red-700 dark:text-red-400 bg-red-500/20 dark:bg-red-500/10 ring-1 ring-red-500/30 dark:ring-red-500/20"],
-]);
-
-export function LogLevelChip({ level }: { level: string }) {
-  // A level outside the known set means malformed ingested data; render it
-  // muted with its raw text instead of crashing the whole grid over one row.
-  const classes = LEVEL_CHIP_CLASSES.get(level) ?? MUTED_LEVEL_CHIP_CLASSES;
-  return (
-    <span
-      className={cn(
-        "inline-flex max-w-full items-center whitespace-nowrap rounded-full px-2 py-0.5 font-medium uppercase leading-none tracking-wide text-[10px]",
-        classes,
-      )}
-    >
-      {level === "" ? "—" : level}
-    </span>
-  );
 }
 
 function stringOrNull(value: unknown): string | null {
@@ -234,40 +213,49 @@ export const LOG_DETAIL_TECHNICAL_COLUMNS = [
 
 function LogDetailExtraContent({ row, projectId }: { row: RowData, projectId: string }) {
   const userId = stringOrNull(row.user_id);
-  const replayId = stringOrNull(row.session_replay_id);
   const data = tryParseJson(row.data);
   const fingerprint = typeof data === "object" && data != null && "error_fingerprint" in data
     ? stringOrNull(data.error_fingerprint)
     : null;
+  const message = stringOrNull(row.message);
 
-  if (userId == null && replayId == null && fingerprint == null) return null;
+  if (userId == null && fingerprint == null && stringOrNull(row.trace_id) == null && stringOrNull(row.session_replay_id) == null) {
+    return null;
+  }
 
   return (
     <div className="space-y-3">
       {fingerprint != null && (
-        <div className="flex items-center gap-2 rounded-lg bg-red-500/5 px-3 py-2 text-xs ring-1 ring-red-500/20">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-red-500/5 px-3 py-2 text-xs ring-1 ring-red-500/20">
           <span className="font-medium text-red-700 dark:text-red-400">Error fingerprint:</span>
           <code className="font-mono text-foreground">{fingerprint}</code>
-        </div>
-      )}
-      {(userId != null || replayId != null) && (
-        <div className="flex flex-wrap items-center gap-2">
-          {userId != null && (
-            <Button size="sm" variant="outline" asChild>
-              <Link href={`/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`}>
-                View user
-              </Link>
-            </Button>
-          )}
-          {replayId != null && (
-            <Button size="sm" variant="outline" asChild>
-              <Link href={`/projects/${encodeURIComponent(projectId)}/session-replays/${encodeURIComponent(replayId)}`}>
-                View session replay
-              </Link>
+          {/*
+            Seeds the Issues search with the log's message rather than the
+            fingerprint. The fingerprint here is the SDK's client-side djb2
+            hash, which is NOT the server-side issue hash and has no stored
+            mapping to one — searching for it would reliably return nothing.
+            Issue search covers the exception type, value, and culprit, so the
+            message is the field most likely to actually land on the right
+            issue. A direct fingerprint → issue_hash link needs the correlation
+            map that is deliberately out of scope here.
+          */}
+          {message != null && (
+            <Button size="sm" variant="outline" asChild className="ml-auto h-6 px-2 text-[11px]">
+              <Link href={issueSearchHref(projectId, message)}>View issue</Link>
             </Button>
           )}
         </div>
       )}
+      <div className="flex flex-wrap items-center gap-2">
+        {userId != null && (
+          <Button size="sm" variant="outline" asChild>
+            <Link href={`/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`}>
+              View user
+            </Link>
+          </Button>
+        )}
+        <TelemetryRowLinks row={row} projectId={projectId} />
+      </div>
     </div>
   );
 }
@@ -296,13 +284,20 @@ function LogsEmptyState({ filterActive }: { filterActive: boolean }) {
 
 export default function PageClient() {
   const adminApp = useAdminApp();
-  const [hours, setHours] = useState<number>(DEFAULT_LOG_TIME_RANGE_HOURS);
-  const [level, setLevel] = useState<LogLevel | null>(null);
-  const [service, setService] = useState<ServiceIdentity | null>(null);
+  const initialFilters = useState(() => parseLogFilters(
+    typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search),
+  ))[0];
+  const [hours, setHours] = useState<ObservabilityTimeRangeHours>(initialFilters.hours);
+  const [level, setLevel] = useState<LogLevel | null>(initialFilters.level);
+  const [service, setService] = useState<ServiceIdentity | null>(initialFilters.service);
   const [services, setServices] = useState<ServiceIdentity[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true);
   const [detailRow, setDetailRow] = useState<RowData | null>(null);
   const logsQuery = useMemo(() => getLogsQuery(hours, level, service), [hours, level, service]);
+
+  useEffect(() => {
+    replaceLocationSearch(serializeLogFilters({ hours, level, service }, readLocationSearch()));
+  }, [hours, level, service]);
 
   const loadLogServices = useServiceIdentityLoader(adminApp, LOG_SERVICES_QUERY);
 

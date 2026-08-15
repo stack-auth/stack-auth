@@ -338,7 +338,7 @@ export async function bulldozerWriteItemQuantityChange(
       tenancyId: change.tenancyId,
       customerType: lowerCustomerType(change.customerType),
       customerId: change.customerId,
-      suffix: "manual-item-quantity-changes",
+      suffixSegments: ["manual-item-quantity-changes"],
     }),
     itemQuantityChangeToStoredRow(change),
   );
@@ -365,7 +365,7 @@ export async function bulldozerTryDecreaseItemQuantityChanges(
       tenancyId: first.tenancyId,
       customerType,
       customerId: first.customerId,
-      suffix: "manual-item-quantity-changes/try-decrease-batch",
+      suffixSegments: ["manual-item-quantity-changes", "try-decrease-batch"],
     }),
     body: { rows: changes.map((change) => ({ rowData: itemQuantityChangeToStoredRow(change) })) },
   });

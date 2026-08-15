@@ -254,8 +254,7 @@ export const GET = createSmartRouteHandler({
       country: Array<{ country_code: string, c: string | number }>,
       deadClicks: Array<{ clicks: string | number, dead: string | number }>,
       split: Array<{ day: string, total_count: string, new_count: string, retained_count: string, reactivated_count: string }>,
-      totalsByProject: CountRow[],
-      verifiedByProject: CountRow[],
+      userCountsByProject: Array<{ projectId: string, total: string | number, verified: string | number }>,
       signupsByProject: Array<{ projectId: string, cur: string | number, prev: string | number }>,
       activeByProject: Array<{ projectId: string, cur: string | number, prev: string | number }>,
       sparkByProject: Array<{ projectId: string, day: string, c: string | number }>,
@@ -281,13 +280,13 @@ export const GET = createSmartRouteHandler({
       const verifiedQuerySettings = "SETTINGS max_threads = 1, max_final_threads = 1, max_block_size = 1024";
       const [
         dauSeries, pvSeries, signupSeries, mauProjects, userCounts, country, deadClicks, split,
-        totalsByProject, verifiedByProject, signupsByProject, activeByProject, sparkByProject,
+        userCountsByProject, signupsByProject, activeByProject, sparkByProject,
         teamsByProject, oauthByProject, emailsByProject, analyticsByProject,
       ] = await Promise.all([
         // Platform daily DAU (active users) over the visible window.
         chQuery<{ day: string, c: string | number }>(`
           SELECT toDate(event_at) AS day, uniqExact(sipHash64(assumeNotNull(user_id))) AS c
-          FROM analytics_internal.events
+          FROM analytics_internal.telemetry
           WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
             AND ${customerEventScope}
             AND event_at >= {since:DateTime} AND event_at < {until:DateTime}
@@ -322,7 +321,7 @@ export const GET = createSmartRouteHandler({
             uniqExactIf(sipHash64(assumeNotNull(user_id)), event_at < {mid:DateTime}) AS mauPrev,
             uniqExactIf(project_id, event_at >= {mid:DateTime}) AS projCur,
             uniqExactIf(project_id, event_at < {mid:DateTime}) AS projPrev
-          FROM analytics_internal.events
+          FROM analytics_internal.telemetry
           WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
             AND ${customerEventScope}
             AND event_at >= {priorSince:DateTime} AND event_at < {until:DateTime}
@@ -344,7 +343,7 @@ export const GET = createSmartRouteHandler({
           SELECT country_code, count() AS c FROM (
             SELECT argMax(cc, event_at) AS country_code FROM (
               SELECT sipHash64(user_id) AS user_hash, event_at, CAST(data.ip_info.country_code, 'Nullable(String)') AS cc
-              FROM analytics_internal.events
+              FROM analytics_internal.telemetry
               WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
                 AND ${customerEventScope}
                 AND event_at >= {since:DateTime} AND event_at < {until:DateTime}
@@ -370,7 +369,7 @@ export const GET = createSmartRouteHandler({
             SELECT day, entity_id, lagInFrame(day, 1) OVER (PARTITION BY entity_id ORDER BY day) AS prev_day
             FROM (
               SELECT DISTINCT toDate(event_at) AS day, sipHash64(assumeNotNull(user_id)) AS entity_id
-              FROM analytics_internal.events
+              FROM analytics_internal.telemetry
               WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
                 AND ${customerEventScope}
                 AND cityHash64(assumeNotNull(user_id)) % ${ACTIVITY_SPLIT_SAMPLE} = 0
@@ -380,7 +379,7 @@ export const GET = createSmartRouteHandler({
           ) AS w
           LEFT JOIN (
             SELECT sipHash64(assumeNotNull(user_id)) AS entity_id, toDate(min(event_at)) AS first_date
-            FROM analytics_internal.events
+            FROM analytics_internal.telemetry
             WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
               AND ${customerEventScope}
               AND cityHash64(assumeNotNull(user_id)) % ${ACTIVITY_SPLIT_SAMPLE} = 0
@@ -390,17 +389,16 @@ export const GET = createSmartRouteHandler({
           ) AS f USING (entity_id)
           GROUP BY w.day ORDER BY w.day ASC
         `, windowParams),
-        // Per-project total users.
-        chQuery<CountRow>(`
-          SELECT project_id AS projectId, count() AS c
+        // Per-project total and verified users. Both counts have the same FINAL
+        // population and grouping, so countIf keeps them in one scan instead of
+        // merging the users/contact-channel state twice.
+        chQuery<{ projectId: string, total: string | number, verified: string | number }>(`
+          SELECT project_id AS projectId,
+            count() AS total,
+            countIf(${verifiedSubquery}) AS verified
           FROM analytics_internal.users FINAL
-          WHERE ${customerUserScope} AND is_anonymous = 0 GROUP BY project_id
-        `, baseParams),
-        // Per-project verified users.
-        chQuery<CountRow>(`
-          SELECT project_id AS projectId, count() AS c
-          FROM analytics_internal.users FINAL
-          WHERE ${customerUserScope} AND is_anonymous = 0 AND ${verifiedSubquery} GROUP BY project_id
+          WHERE ${customerUserScope} AND is_anonymous = 0
+          GROUP BY project_id
           ${verifiedQuerySettings}
         `, baseParams),
         // Per-project signups, current vs prior window.
@@ -418,7 +416,7 @@ export const GET = createSmartRouteHandler({
           SELECT project_id AS projectId,
             uniqExactIf(sipHash64(assumeNotNull(user_id)), event_at >= {mid:DateTime}) AS cur,
             uniqExactIf(sipHash64(assumeNotNull(user_id)), event_at < {mid:DateTime}) AS prev
-          FROM analytics_internal.events
+          FROM analytics_internal.telemetry
           WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
             AND ${customerEventScope}
             AND event_at >= {priorSince:DateTime} AND event_at < {until:DateTime}
@@ -427,7 +425,7 @@ export const GET = createSmartRouteHandler({
         // Per-project daily active sparkline (visible window).
         chQuery<{ projectId: string, day: string, c: string | number }>(`
           SELECT project_id AS projectId, toDate(event_at) AS day, uniqExact(sipHash64(assumeNotNull(user_id))) AS c
-          FROM analytics_internal.events
+          FROM analytics_internal.telemetry
           WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
             AND ${customerEventScope}
             AND event_at >= {since:DateTime} AND event_at < {until:DateTime}
@@ -441,7 +439,7 @@ export const GET = createSmartRouteHandler({
       ]);
       ch = {
         dauSeries, pvSeries, signupSeries, mauProjects, userCounts, country, deadClicks, split,
-        totalsByProject, verifiedByProject, signupsByProject, activeByProject, sparkByProject,
+        userCountsByProject, signupsByProject, activeByProject, sparkByProject,
         teamsByProject, oauthByProject, emailsByProject, analyticsByProject,
       };
     } catch (cause) {
@@ -648,8 +646,8 @@ export const GET = createSmartRouteHandler({
     ];
 
     // ---- Per-project leaderboard ----
-    const totalsMap = rowsToMap(ch.totalsByProject);
-    const verifiedMap = rowsToMap(ch.verifiedByProject);
+    const totalsMap = new Map(ch.userCountsByProject.map((row) => [row.projectId, num(row.total)]));
+    const verifiedMap = new Map(ch.userCountsByProject.map((row) => [row.projectId, num(row.verified)]));
     const signupsMap = new Map(ch.signupsByProject.map((r) => [r.projectId, { cur: num(r.cur), prev: num(r.prev) }]));
     const activeMap = new Map(ch.activeByProject.map((r) => [r.projectId, { cur: num(r.cur), prev: num(r.prev) }]));
     const revenueMap = new Map(pg.revenueByProject.map((r) => [r.projectId, { cur: num(r.cur), prev: num(r.prev) }]));

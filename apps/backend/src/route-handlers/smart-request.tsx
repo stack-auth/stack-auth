@@ -116,24 +116,20 @@ async function validate<T>(obj: SmartRequest, schema: yup.Schema<T>, req: Reques
 }
 
 
-// Hard cap applied to JSON request bodies BEFORE JSON.parse (for compressed
-// bodies it is also the decompression output bound — a zip-bomb guard).
-// JSON.parse of an attacker-sized body is a CPU/allocation amplifier, so the
-// limit must be enforced before parsing rather than by handlers afterwards.
+// Hard cap applied to decoded JSON and protobuf request bodies before parsing
+// (for compressed bodies it is also the decompression output bound — a
+// zip-bomb guard). JSON.parse and protobuf decoding of an attacker-sized body
+// are CPU/allocation amplifiers, so the limit must be enforced first.
 // 8 MiB matches the largest JSON bodies we accept anywhere (the analytics
 // batch route's decompressed cap).
-const MAX_JSON_BODY_BYTES = 8 * 1024 * 1024;
+const MAX_DECODED_BODY_BYTES = 8 * 1024 * 1024;
 
-// Transparent request decompression, deliberately scoped to application/json
-// bodies only: the application/octet-stream batch routes do their own gzip
+// Transparent request decompression for structured JSON and protobuf bodies.
+// The application/octet-stream batch routes do their own gzip
 // decoding (their compression is an adblocker-evasion detail inside the body,
 // not transport encoding, and is sent WITHOUT a Content-Encoding header), and
-// compressed bodies of every content type were rejected before this existed,
-// so decoding JSON is strictly additive. Kept (despite the retired
-// telemetry-ingest endpoints being its original driver) because gzip/deflate
-// JSON requests are a documented HTTP capability that clients may already rely
-// on, and dropping transport decompression would turn their requests into
-// hard 400s.
+// compressed bodies of every content type were rejected before this existed.
+// JSON and OTLP protobuf both define gzip as a transport-level capability.
 async function decodeBodyContentEncoding(req: Request, bodyBuffer: ArrayBuffer): Promise<Uint8Array> {
   const contentEncoding = req.headers.get("content-encoding")?.trim().toLowerCase() ?? "";
   const raw = new Uint8Array(bodyBuffer);
@@ -155,9 +151,9 @@ async function decodeBodyContentEncoding(req: Request, bodyBuffer: ArrayBuffer):
         }
       };
       if (contentEncoding === "gzip") {
-        zlib.gunzip(raw, { maxOutputLength: MAX_JSON_BODY_BYTES }, callback);
+        zlib.gunzip(raw, { maxOutputLength: MAX_DECODED_BODY_BYTES }, callback);
       } else {
-        zlib.inflate(raw, { maxOutputLength: MAX_JSON_BODY_BYTES }, callback);
+        zlib.inflate(raw, { maxOutputLength: MAX_DECODED_BODY_BYTES }, callback);
       }
     });
   } catch (error) {
@@ -189,7 +185,7 @@ async function parseBody(req: Request, bodyBuffer: ArrayBuffer): Promise<SmartRe
     }
     case "application/json": {
       const decoded = await decodeBodyContentEncoding(req, bodyBuffer);
-      if (decoded.byteLength > MAX_JSON_BODY_BYTES) {
+      if (decoded.byteLength > MAX_DECODED_BODY_BYTES) {
         throw new StatusError(StatusError.PayloadTooLarge, "Request body too large");
       }
       const text = new TextDecoder().decode(decoded);
@@ -201,6 +197,23 @@ async function parseBody(req: Request, bodyBuffer: ArrayBuffer): Promise<SmartRe
     }
     case "application/octet-stream": {
       return bodyBuffer;
+    }
+    case "application/x-sentry-envelope": {
+      // Sentry envelopes are newline-framed bytes. Keep them opaque here, but
+      // still honor transport-level compression and the shared decompression
+      // cap before the authenticated envelope route parses item framing.
+      const decoded = await decodeBodyContentEncoding(req, bodyBuffer);
+      if (decoded.byteLength > MAX_DECODED_BODY_BYTES) {
+        throw new StatusError(StatusError.PayloadTooLarge, "Request body too large");
+      }
+      return decoded;
+    }
+    case "application/x-protobuf": {
+      const decoded = await decodeBodyContentEncoding(req, bodyBuffer);
+      if (decoded.byteLength > MAX_DECODED_BODY_BYTES) {
+        throw new StatusError(StatusError.PayloadTooLarge, "Request body too large");
+      }
+      return decoded;
     }
     case "text/plain": {
       return getText();

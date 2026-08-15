@@ -1,18 +1,23 @@
-import { formatTraceparent, isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
-import { encodeSpanContextHeader, SPAN_CONTEXT_HEADER } from "@hexclave/shared/dist/utils/span-context-codec";
+import { isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
+import { BAGGAGE_HEADER, encodeCorrelationBaggage, type SpanPropagationContext } from "@hexclave/shared/dist/utils/span-context-codec";
 import { describe, expect, it, vi } from "vitest";
-import { resolveCustomerRequestObservability, runWithCustomerRequestObservability } from "./customer-request-observability";
+import { getVerifiedCustomerRequestLinkTarget, resolveCustomerRequestObservability, runWithCustomerRequestObservability } from "./customer-request-observability";
 import type { SpanInsertRow } from "./spans";
+
+function sampledTraceparent(traceId: string, spanId: string): string {
+  return `00-${traceId}-${spanId}-01`;
+}
 
 function request(options: {
   path?: string,
   traceparent?: string,
-  spanContextProjectId?: string,
+  correlation?: SpanPropagationContext,
 } = {}): Request {
   const headers = new Headers();
   if (options.traceparent !== undefined) headers.set("traceparent", options.traceparent);
-  if (options.spanContextProjectId !== undefined) {
-    headers.set(SPAN_CONTEXT_HEADER, encodeSpanContextHeader({ projectId: options.spanContextProjectId }));
+  if (options.correlation !== undefined) {
+    const baggage = encodeCorrelationBaggage(options.correlation);
+    if (baggage !== null) headers.set(BAGGAGE_HEADER, baggage);
   }
   return new Request(`http://localhost${options.path ?? "/api/v1/auth/oauth/token"}`, {
     method: "POST",
@@ -31,8 +36,8 @@ describe("customer request observability", () => {
 
     const response = await runWithCustomerRequestObservability(
       request({
-        traceparent: formatTraceparent({ traceId, spanId: parentSpanId, sampled: true }),
-        spanContextProjectId: "project",
+        traceparent: sampledTraceparent(traceId, parentSpanId),
+        correlation: { sessionReplaySegmentId: "33333333-3333-4333-8333-333333333333" },
       }),
       async () => {
         resolveCustomerRequestObservability({
@@ -40,7 +45,13 @@ describe("customer request observability", () => {
           branchId: "main",
           userId: null,
           refreshTokenId: null,
-          headers: { get: (name) => name.toLowerCase() === SPAN_CONTEXT_HEADER ? encodeSpanContextHeader({ projectId: "project" }) : null },
+          headers: request({ correlation: { sessionReplaySegmentId: "33333333-3333-4333-8333-333333333333" } }).headers,
+        });
+        expect(getVerifiedCustomerRequestLinkTarget()).toEqual({
+          traceId,
+          spanId: parentSpanId,
+          projectId: "project",
+          branchId: "main",
         });
         // OAuth refresh grant identity is verified only after the route has
         // validated the refresh token, later than ordinary request auth.
@@ -62,36 +73,60 @@ describe("customer request observability", () => {
       parent_span_id: parentSpanId,
       span_type: "hexclave.api.request",
       kind: "server",
+      status_code: "ok",
+      status_message: null,
       producer: "hexclave-backend",
       project_id: "project",
       branch_id: "main",
       user_id: "user",
       refresh_token_id: "refresh",
+      session_replay_segment_id: "33333333-3333-4333-8333-333333333333",
       data: JSON.stringify({ method: "POST", status_code: 201 }),
     });
     expect(rows[0]?.span_id).toMatch(/^[0-9a-f]{16}$/);
     expect(rows[0]?.resource_attributes).toBe("{}");
   });
 
-  // A parent span id is only meaningful to a project that can actually see that
-  // span. Inheriting either half of a foreign edge would make the row an orphan
-  // or one of many disconnected roots in the caller's trace, so both the parent
-  // and trace id are replaced together.
-  it.each([
-    { name: "another project's caller", spanContextProjectId: "other-project", sampled: true },
-    { name: "a caller that sent no span-context header", spanContextProjectId: undefined, sampled: true },
-    { name: "an unsampled caller", spanContextProjectId: "project", sampled: false },
-  ])("starts a fresh rooted trace for $name", async ({ sampled, spanContextProjectId }) => {
+  it("continues a sampled external W3C parent without requiring Hexclave baggage", async () => {
     const traceId = "33333333333333333333333333333333";
+    const parentSpanId = "4444444444444444";
     const rows: SpanInsertRow[] = [];
     const writer = vi.fn(async (row: SpanInsertRow) => {
       rows.push(row);
     });
 
     const incoming = request({
-      traceparent: formatTraceparent({ traceId, spanId: "4444444444444444", sampled }),
-      ...spanContextProjectId === undefined ? {} : { spanContextProjectId },
+      traceparent: sampledTraceparent(traceId, parentSpanId),
     });
+    await runWithCustomerRequestObservability(
+      incoming,
+      async () => {
+        resolveCustomerRequestObservability({
+          projectId: "project",
+          branchId: "main",
+          userId: null,
+          refreshTokenId: null,
+          headers: incoming.headers,
+        });
+        return new Response(null, { status: 200 });
+      },
+      writer,
+    );
+
+    expect(rows[0]?.parent_span_id).toBe(parentSpanId);
+    expect(rows[0]?.trace_id).toBe(traceId);
+  });
+
+  it("starts a fresh rooted trace for an unsampled caller", async () => {
+    const traceId = "55555555555555555555555555555555";
+    const rows: SpanInsertRow[] = [];
+    const writer = vi.fn(async (row: SpanInsertRow) => {
+      rows.push(row);
+    });
+    const incoming = request({
+      traceparent: `00-${traceId}-6666666666666666-00`,
+    });
+
     await runWithCustomerRequestObservability(
       incoming,
       async () => {

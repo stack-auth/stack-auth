@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTraces, flattenTrace, formatDuration, getTraceScaleEnd, isSystemSpanType, panViewWindow, traceContainsSpanId, traceErrorCount, traceSignalSpanIds, traceSpanDisplayName, zoomViewWindow, type EventInput, type SpanInput } from "./trace-utils";
+import { buildTraces, eventMatchesHighlight, flattenTrace, formatDuration, getTraceScaleEnd, isSystemSpanType, panViewWindow, selectPrimaryTrace, spanAncestorIds, spanIdsToExpandForHighlight, traceContainsSpanId, traceErrorCount, traceSignalSpanIds, traceSpanDisplayName, zoomViewWindow, type EventInput, type SpanInput } from "./trace-utils";
 
 function span(id: string, opts: Partial<SpanInput> = {}): SpanInput {
   return {
@@ -217,6 +217,27 @@ describe("buildTraces missing-parent tolerance", () => {
     expect(traces[0].spanCount).toBe(2);
     expect(traces[1].spanCount).toBe(1);
   });
+
+  it("selectPrimaryTrace prefers the true root over newer fragments of the same trace", () => {
+    // Regression test: a session trace whose current $page-view span has not
+    // been exported yet fragments into many trees sharing one trace id. The
+    // detail pane used `.find()` over a newest-first list, so clicking the
+    // $refresh-token root displayed an arbitrary recent backend fragment.
+    const { traces } = buildTraces([
+      span("session-root", { spanType: "$refresh-token", startMs: 1000, endMs: null }),
+      span("old-page-view", { spanType: "$page-view", startMs: 1100, endMs: 1900, parentSpanId: "session-root" }),
+      span("fragment-request", { spanType: "GET /api/users", startMs: 5000, endMs: 5100, parentSpanId: "unexported-page-view" }),
+      span("fragment-child", { spanType: "resolve page components", startMs: 5010, endMs: 5020, parentSpanId: "fragment-request" }),
+      span("other-trace-root", { traceId: "other-trace", startMs: 9000 }),
+    ], []);
+
+    const primary = selectPrimaryTrace(traces, "test-trace");
+    expect(primary?.root.span.id).toBe("session-root");
+    // The fragment stays a separate tree; it must never be silently preferred.
+    expect(traces.some((trace) => trace.root.span.id === "fragment-request")).toBe(true);
+    expect(selectPrimaryTrace(traces, "other-trace")?.root.span.id).toBe("other-trace-root");
+    expect(selectPrimaryTrace(traces, "missing-trace")).toBeNull();
+  });
 });
 
 describe("getTraceScaleEnd", () => {
@@ -284,7 +305,7 @@ describe("trace signal selection", () => {
     const spans = [
       span("root", { spanType: "$page-view", startMs: 0, endMs: 1000 }),
       span("fast", { spanType: "$render", startMs: 10, endMs: 11, parentSpanId: "root" }),
-      span("client", { spanType: "$http-client", startMs: 20, endMs: 900, parentSpanId: "fast" }),
+      span("client", { spanType: "HTTP GET", startMs: 20, endMs: 900, parentSpanId: "fast", raw: { kind: "client", scope_name: "@opentelemetry/instrumentation-fetch" } }),
       span("error-parent", { spanType: "$middleware", startMs: 30, endMs: 40, parentSpanId: "root" }),
       span("error", {
         spanType: "$db-query",
@@ -388,13 +409,13 @@ describe("trace signal selection", () => {
     expect([...traceSignalSpanIds(traces[0], 0)]).toEqual(["root", "checkout"]);
   });
 
-  it("collapses the auto-instrumented server subtree onto its $http-client boundary", () => {
+  it("keeps the causal path through a standard OTel HTTP client span", () => {
     const spans = [
       span("refresh", { spanType: "$refresh-token", startMs: 0, endMs: 10_000 }),
       span("replay", { spanType: "$session-replay", startMs: 10, endMs: 9000, parentSpanId: "refresh" }),
       span("segment", { spanType: "$session-replay-segment", startMs: 20, endMs: 8000, parentSpanId: "replay" }),
       span("page", { spanType: "$page-view", startMs: 30, endMs: 7000, parentSpanId: "segment" }),
-      span("client", { spanType: "$http-client", startMs: 40, endMs: 6000, parentSpanId: "page" }),
+      span("client", { spanType: "HTTP GET", startMs: 40, endMs: 6000, parentSpanId: "page", raw: { kind: "client", scope_name: "@opentelemetry/instrumentation-fetch" } }),
       span("middleware", {
         spanType: "middleware-GET",
         startMs: 50,
@@ -442,13 +463,7 @@ describe("trace signal selection", () => {
     const { traces } = buildTraces(spans, events);
 
     expect(flattenTrace(traces[0]).filter((row) => row.kind === "span")).toHaveLength(spans.length);
-    expect(traceSignalSpanIds(traces[0], 20, "$refresh-token")).toEqual(new Set([
-      "refresh",
-      "client",
-      "page",
-      "segment",
-      "replay",
-    ]));
+    expect(traceSignalSpanIds(traces[0], 0)).toEqual(new Set(spans.map((item) => item.id)));
   });
 });
 
@@ -470,5 +485,52 @@ describe("isSystemSpanType", () => {
   it("flags $-prefixed types as system", () => {
     expect(isSystemSpanType("$page-view")).toBe(true);
     expect(isSystemSpanType("checkout")).toBe(false);
+  });
+});
+
+describe("event highlight identity", () => {
+  it("matches a custom event by enclosing span, type, and epoch-ms", () => {
+    const checkout = event("checkout_completed", { spanId: "page-view", atMs: 1_720_000_000_000 });
+    expect(eventMatchesHighlight(checkout, {
+      spanId: "page-view",
+      eventType: "checkout_completed",
+      eventAtMs: 1_720_000_000_000,
+    })).toBe(true);
+    expect(eventMatchesHighlight(checkout, {
+      spanId: "other-span",
+      eventType: "checkout_completed",
+      eventAtMs: 1_720_000_000_000,
+    })).toBe(false);
+    expect(eventMatchesHighlight(checkout, {
+      spanId: "page-view",
+      eventType: "checkout_completed",
+      eventAtMs: 1_720_000_000_001,
+    })).toBe(false);
+  });
+
+  it("does not treat a span-only highlight as an event match", () => {
+    expect(eventMatchesHighlight(event("checkout_completed", { spanId: "page-view" }), {
+      spanId: "page-view",
+      eventType: null,
+      eventAtMs: null,
+    })).toBe(false);
+  });
+});
+
+describe("spanIdsToExpandForHighlight", () => {
+  it("expands the owning span and its ancestors so a nested event is visible", () => {
+    const { traces } = buildTraces([
+      span("page-view", { spanType: "$page-view" }),
+      span("checkout", { parentSpanId: "page-view", startMs: 1100, endMs: 1800 }),
+    ], [
+      event("item_added", { spanId: "checkout", atMs: 1200 }),
+    ]);
+    const root = traces[0].root;
+    expect(spanAncestorIds(root, "checkout")).toEqual(["page-view"]);
+    expect(spanIdsToExpandForHighlight(root, {
+      spanId: "checkout",
+      eventType: "item_added",
+      eventAtMs: 1200,
+    })).toEqual(["page-view", "checkout"]);
   });
 });

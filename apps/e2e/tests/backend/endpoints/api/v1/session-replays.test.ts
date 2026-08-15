@@ -8,6 +8,15 @@ import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, Project, Team, backendContext, bumpEmailAddress, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 
+/**
+ * Response bodies come back as `any` from the fetch helper; this narrows a list
+ * of them to something indexable so the tests can read fields without casts.
+ */
+function asObjects(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null);
+}
+
 const TELEMETRY_RESOURCE = {
   service: { namespace: "e2e", name: "test-client", version: "test" },
   deploymentEnvironmentName: "test",
@@ -55,6 +64,14 @@ async function withInternalDatabase<T>(fn: (client: Client) => Promise<T>): Prom
   } finally {
     await client.end();
   }
+}
+
+function isReplayListItem(value: unknown): value is { id: unknown, project_user?: unknown } {
+  return typeof value === "object" && value !== null && "id" in value;
+}
+
+function getReplayListItems(value: unknown) {
+  return Array.isArray(value) ? value.filter(isReplayListItem) : [];
 }
 
 /**
@@ -815,6 +832,60 @@ it("admin can list session replays, list chunks, and fetch events", async ({ exp
   });
   expect(eventsRes.status).toBe(200);
   expect(eventsRes.body?.events?.length).toBe(events.length);
+});
+
+it("attributes an existing anonymous session replay to the user after upgrade", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ "apps.installed.analytics.enabled": true });
+
+  const anonymousUser = await Auth.Anonymous.signUp();
+  const upload = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: 1_700_000_000_000,
+    sentAtMs: 1_700_000_000_400,
+    events: [{ type: 1, timestamp: 1_700_000_000_100 }],
+  });
+  expect(upload.status).toBe(200);
+  const recordingId = upload.body?.session_replay_id;
+  if (typeof recordingId !== "string") {
+    throw new Error("Expected session replay id.");
+  }
+
+  const beforeUpgrade = await niceBackendFetch(`/api/v1/internal/session-replays/${recordingId}`, {
+    method: "GET",
+    accessType: "admin",
+  });
+  expect(beforeUpgrade.status).toBe(200);
+  expect(beforeUpgrade.body?.project_user).toEqual({
+    id: anonymousUser.userId,
+    display_name: null,
+    primary_email: null,
+  });
+
+  const { signUpResponse: upgrade } = await Auth.Password.signUpWithEmail();
+  expect(upgrade.status).toBe(200);
+  expect(upgrade.body.user_id).toBe(anonymousUser.userId);
+
+  const afterUpgrade = await listReplaysWithRetry(
+    { user_ids: anonymousUser.userId },
+    (res) => getReplayListItems(res.body?.items).some((item) => {
+      const projectUser = item.project_user;
+      return item.id === recordingId
+        && typeof projectUser === "object"
+        && projectUser !== null
+        && "id" in projectUser
+        && projectUser.id === anonymousUser.userId
+        && "primary_email" in projectUser
+        && projectUser.primary_email === backendContext.value.mailbox.emailAddress;
+    }),
+  );
+  const upgradedRecording = getReplayListItems(afterUpgrade.body?.items).find((item) => item.id === recordingId);
+  expect(upgradedRecording?.project_user).toEqual({
+    id: anonymousUser.userId,
+    display_name: null,
+    primary_email: backendContext.value.mailbox.emailAddress,
+  });
 });
 
 it("admin list session replays paginates without skipping items", async ({ expect }) => {
@@ -2086,4 +2157,27 @@ it("does not debit quota when appending chunks to an existing session replay, ev
 
   const quantityAfterThird = await getSessionReplayItemQuantity(ownerTeamId);
   expect(quantityAfterThird).toBe(0);
+});
+
+it("accepts the released legacy replay shape without versioned fields", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.fastSignUp();
+
+  const now = Date.now();
+  const response = await niceBackendFetch("/api/v1/session-replays/batch", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      browser_session_id: randomUUID(),
+      session_replay_segment_id: randomUUID(),
+      batch_id: randomUUID(),
+      started_at_ms: now,
+      sent_at_ms: now + 500,
+      events: [{ type: 2, timestamp: now + 100 }],
+    },
+  });
+
+  expect(response.status).toBe(200);
+  expect(response.body.deduped).toBe(false);
 });

@@ -139,6 +139,11 @@ export class SessionRecorder {
   private _rrwebModule: typeof import("rrweb") | null = null;
   private _lastBrowserSessionId: string | null = null;
   private _takingSnapshot = false;
+  // Authentication changes rotate the segment before the next user's tokens
+  // are published. Drop incremental events in that gap: without a new full
+  // snapshot they are unplayable, and retaining them could attach the previous
+  // user's sign-out DOM mutations to the next user's replay.
+  private _needsFullSnapshot = false;
   private _flushInProgress = false;
   private _resnapshotTimer: ReturnType<typeof setTimeout> | null = null;
   private _sessionReplaySegmentId: string;
@@ -197,6 +202,22 @@ export class SessionRecorder {
    */
   setSessionReplaySegmentId(id: string) {
     this._sessionReplaySegmentId = id;
+    this._needsFullSnapshot = true;
+  }
+
+  /** Resume a rotated segment only after its authenticated session is live. */
+  captureFullSnapshotForCurrentSegment(): void {
+    if (!this._needsFullSnapshot || !this._recording || this._rrwebModule === null) return;
+    if (this._takingSnapshot) return;
+    this._takingSnapshot = true;
+    try {
+      this._rrwebModule.record.takeFullSnapshot();
+      this._needsFullSnapshot = false;
+    } catch (error) {
+      captureWarning("SessionRecorder.fullSnapshot", error);
+    } finally {
+      this._takingSnapshot = false;
+    }
   }
 
   private _persistActivity(nowMs: number): StoredSession {
@@ -437,14 +458,14 @@ export class SessionRecorder {
           // schema. Rotate the tab identity at the exact replay boundary so a
           // later replay can never re-parent an existing segment row.
           this._deps.onSessionRotation?.();
-          // Inject a FullSnapshot for the new session (calls emit synchronously)
-          this._takingSnapshot = true;
-          try {
-            this._rrwebModule!.record.takeFullSnapshot();
-          } finally {
-            this._takingSnapshot = false;
-          }
+          // Inject a FullSnapshot for the new session (calls emit synchronously).
+          // The app callback marks the new segment as awaiting this snapshot.
+          this._needsFullSnapshot = true;
+          this.captureFullSnapshotForCurrentSegment();
         }
+
+        if (this._needsFullSnapshot && event.type !== 2) return;
+        if (event.type === 2) this._needsFullSnapshot = false;
 
         // Measure UTF-8 byte length to match the server's byte limit (.length counts UTF-16 units, undercounting multibyte content).
         const eventSize = textEncoder.encode(JSON.stringify(event)).byteLength;

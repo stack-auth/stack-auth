@@ -3,14 +3,16 @@
 import { DesignBadge, DesignPillToggle } from "@/components/design-components";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { CaretRightIcon, ChartLineIcon, ClockIcon, KeyboardIcon, StackIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { ArrowRightIcon, CaretRightIcon, ChartLineIcon, ClockIcon, KeyboardIcon, LinkSimpleIcon, StackIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  eventMatchesHighlight,
   formatDuration,
   getTraceScaleEnd,
   isSystemSpanType,
   panViewWindow,
   spanHasError,
+  spanIdsToExpandForHighlight,
   traceErrorCount,
   traceSignalSpanIds,
   traceSpanDisplayName,
@@ -18,6 +20,7 @@ import {
   type EventInput,
   type SpanInput,
   type Trace,
+  type TraceEventHighlight,
   type TraceNode,
   type ViewWindow,
   type WaterfallRow,
@@ -53,10 +56,11 @@ const NAME_COLUMN = "minmax(200px, 260px)";
 const DURATION_COLUMN = "76px";
 const FULL_VIEW: ViewWindow = { start: 0, end: 1 };
 
-// Row heights are pinned by the h-8 (span) / h-7 (event) classes on the row
+// Row heights are pinned by the h-8 (span) / h-7 (event and link) classes on the row
 // elements below; the windowed-rendering math depends on them staying in sync.
 export const SPAN_ROW_HEIGHT_PX = 32;
 export const EVENT_ROW_HEIGHT_PX = 28;
+export const LINK_ROW_HEIGHT_PX = 28;
 // Rows rendered beyond each edge of the scrollport. Also absorbs the one-frame
 // geometry drift when content above the list (banners, sticky header) resizes
 // without a scroll event.
@@ -69,11 +73,30 @@ const INITIAL_VIEWPORT_GUESS_PX = 1200;
  * Cumulative row tops: offsets[i] is the y position of row i relative to the
  * top of the row list, offsets[rows.length] is the total list height.
  */
-export function computeRowOffsets(rows: WaterfallRow[]): number[] {
+export type TraceWaterfallLink = {
+  ownerSpanId: string,
+  linkedTraceId: string,
+  linkedSpanId: string,
+  linkedProjectId: string,
+  linkedBranchId: string,
+  targetIsSameScope: boolean,
+};
+
+export type TraceWaterfallRow = WaterfallRow | {
+  kind: "link",
+  link: TraceWaterfallLink,
+  depth: number,
+};
+
+export function computeRowOffsets(rows: readonly TraceWaterfallRow[]): number[] {
   const offsets = new Array<number>(rows.length + 1);
   offsets[0] = 0;
   for (let i = 0; i < rows.length; i++) {
-    offsets[i + 1] = offsets[i] + (rows[i].kind === "span" ? SPAN_ROW_HEIGHT_PX : EVENT_ROW_HEIGHT_PX);
+    offsets[i + 1] = offsets[i] + (
+      rows[i].kind === "span"
+        ? SPAN_ROW_HEIGHT_PX
+        : rows[i].kind === "link" ? LINK_ROW_HEIGHT_PX : EVENT_ROW_HEIGHT_PX
+    );
   }
   return offsets;
 }
@@ -154,10 +177,20 @@ function collectSubtreeSpanIds(node: TraceNode): string[] {
   ];
 }
 
-function flattenVisibleTrace(trace: Trace, collapsedSpanIds: Set<string>): WaterfallRow[] {
-  const rows: WaterfallRow[] = [];
+function flattenVisibleTrace(
+  trace: Trace,
+  collapsedSpanIds: Set<string>,
+  linksByOwnerSpanId: ReadonlyMap<string, readonly TraceWaterfallLink[]>,
+): TraceWaterfallRow[] {
+  const rows: TraceWaterfallRow[] = [];
   const walk = (node: TraceNode) => {
     rows.push({ kind: "span", node });
+    for (const link of linksByOwnerSpanId.get(node.span.id) ?? []) {
+      // A link is attached to this span but is not its child. Keep it visible
+      // when the hierarchical subtree is collapsed so collapse never changes
+      // the apparent link graph.
+      rows.push({ kind: "link", link, depth: node.depth + 1 });
+    }
     if (collapsedSpanIds.has(node.span.id)) return;
     const items: { atMs: number, row: () => void }[] = [
       ...node.events.map((event) => ({ atMs: event.atMs, row: () => rows.push({ kind: "event", event, depth: node.depth + 1 }) })),
@@ -170,12 +203,28 @@ function flattenVisibleTrace(trace: Trace, collapsedSpanIds: Set<string>): Water
   return rows;
 }
 
-function flattenSignalTrace(trace: Trace, needle: string): WaterfallRow[] {
+function flattenSignalTrace(
+  trace: Trace,
+  needle: string,
+  linksByOwnerSpanId: ReadonlyMap<string, readonly TraceWaterfallLink[]>,
+): TraceWaterfallRow[] {
   const signalIds = traceSignalSpanIds(trace, 20, needle);
-  const rows: WaterfallRow[] = [];
+  const promoteLinkedOwners = (node: TraceNode, ancestors: readonly TraceNode[]) => {
+    if (linksByOwnerSpanId.has(node.span.id)) {
+      signalIds.add(node.span.id);
+      for (const ancestor of ancestors) signalIds.add(ancestor.span.id);
+    }
+    for (const child of node.children) promoteLinkedOwners(child, [...ancestors, node]);
+  };
+  promoteLinkedOwners(trace.root, []);
+
+  const rows: TraceWaterfallRow[] = [];
   const walk = (node: TraceNode, visibleDepth: number) => {
     if (!signalIds.has(node.span.id)) return;
     rows.push({ kind: "span", node: { ...node, depth: visibleDepth } });
+    for (const link of linksByOwnerSpanId.get(node.span.id) ?? []) {
+      rows.push({ kind: "link", link, depth: visibleDepth + 1 });
+    }
     for (const event of node.events) {
       rows.push({ kind: "event", event, depth: visibleDepth + 1 });
     }
@@ -200,6 +249,29 @@ function defaultCollapsedSpanIds(root: TraceNode): Set<string> {
 export function shouldShowCollapseControl(mode: "signal" | "all", hasChildren: boolean): boolean {
   return mode === "all" && hasChildren;
 }
+
+export function waterfallRowMatchesHighlight(row: TraceWaterfallRow, highlight: TraceEventHighlight): boolean {
+  if (row.kind === "span") {
+    return highlight.eventType == null
+      && highlight.eventAtMs == null
+      && highlight.spanId != null
+      && row.node.span.id === highlight.spanId;
+  }
+  if (row.kind === "event") {
+    return eventMatchesHighlight(row.event, highlight);
+  }
+  return false;
+}
+
+export function findHighlightedRowIndex(
+  rows: readonly TraceWaterfallRow[],
+  highlight: TraceEventHighlight,
+): number | null {
+  const index = rows.findIndex((row) => waterfallRowMatchesHighlight(row, highlight));
+  return index < 0 ? null : index;
+}
+
+const HIGHLIGHT_ROW_CLASSES = "bg-cyan-500/10 ring-1 ring-inset ring-cyan-500/35";
 
 function TimelineGridlines() {
   return (
@@ -243,8 +315,11 @@ export function TraceWaterfall({
   nowMs,
   needle,
   unattachedEventCount,
+  links,
+  highlight = null,
   onSelectSpan,
   onSelectEvent,
+  onOpenLink,
 }: {
   trace: Trace,
   /** Physical services participating in this trace, from trace_services. */
@@ -262,13 +337,37 @@ export function TraceWaterfall({
    * containment that is not in the data).
    */
   unattachedEventCount: number,
+  /** Non-hierarchical edges, rendered directly beneath their owner spans. */
+  links: readonly TraceWaterfallLink[],
+  /**
+   * Deep-link / click selection. A custom event that inherited its enclosing
+   * span (no `root: true`) is identified by that span plus the event's type
+   * and epoch-ms — product events have no durable id of their own.
+   */
+  highlight?: TraceEventHighlight | null,
   onSelectSpan: (span: SpanInput) => void,
   onSelectEvent: (event: EventInput) => void,
+  onOpenLink: (link: TraceWaterfallLink) => void,
 }) {
   const [mode, setMode] = useState<"signal" | "all">("signal");
   const [collapsedSpanIds, setCollapsedSpanIds] = useState<Set<string>>(() => defaultCollapsedSpanIds(trace.root));
-  const signalRows = useMemo(() => flattenSignalTrace(trace, needle), [trace, needle]);
-  const allRows = useMemo(() => flattenVisibleTrace(trace, collapsedSpanIds), [trace, collapsedSpanIds]);
+  const linksByOwnerSpanId = useMemo(() => {
+    const result = new Map<string, TraceWaterfallLink[]>();
+    for (const link of links) {
+      const ownerLinks = result.get(link.ownerSpanId);
+      if (ownerLinks === undefined) result.set(link.ownerSpanId, [link]);
+      else ownerLinks.push(link);
+    }
+    return result;
+  }, [links]);
+  const signalRows = useMemo(
+    () => flattenSignalTrace(trace, needle, linksByOwnerSpanId),
+    [linksByOwnerSpanId, needle, trace],
+  );
+  const allRows = useMemo(
+    () => flattenVisibleTrace(trace, collapsedSpanIds, linksByOwnerSpanId),
+    [collapsedSpanIds, linksByOwnerSpanId, trace],
+  );
   const rows = mode === "signal" ? signalRows : allRows;
   const signalSpanCount = signalRows.filter((row) => row.kind === "span").length;
   const hiddenSignalSpanCount = trace.spanCount - signalSpanCount;
@@ -330,6 +429,50 @@ export function TraceWaterfall({
     setMode("signal");
     setCollapsedSpanIds(defaultCollapsedSpanIds(trace.root));
   }, [rootSpanId, trace.root]);
+
+  const highlightSpanId = highlight?.spanId ?? null;
+  const highlightEventType = highlight?.eventType ?? null;
+  const highlightEventAtMs = highlight?.eventAtMs ?? null;
+  const activeHighlight = useMemo((): TraceEventHighlight | null => {
+    if (highlightSpanId == null && highlightEventType == null && highlightEventAtMs == null) return null;
+    return { spanId: highlightSpanId, eventType: highlightEventType, eventAtMs: highlightEventAtMs };
+  }, [highlightEventAtMs, highlightEventType, highlightSpanId]);
+  const highlightedRowIndex = activeHighlight == null ? null : findHighlightedRowIndex(rows, activeHighlight);
+
+  useEffect(() => {
+    if (activeHighlight == null) return;
+    const idsToExpand = spanIdsToExpandForHighlight(trace.root, activeHighlight);
+    if (idsToExpand.length > 0) {
+      setCollapsedSpanIds((prev) => {
+        let changed = false;
+        const next = new Set(prev);
+        for (const id of idsToExpand) {
+          if (next.delete(id)) changed = true;
+        }
+        return changed ? next : prev;
+      });
+    }
+    if (findHighlightedRowIndex(signalRows, activeHighlight) == null) {
+      setMode("all");
+    }
+  }, [activeHighlight, signalRows, trace.root]);
+
+  useEffect(() => {
+    if (highlightedRowIndex == null) return;
+    const list = listRef.current;
+    if (list == null) return;
+    const rowTop = rowOffsets[highlightedRowIndex];
+    const scroller = findScrollParent(list);
+    const listRect = list.getBoundingClientRect();
+    if (scroller == null) {
+      const target = window.scrollY + listRect.top + rowTop - window.innerHeight * 0.3;
+      window.scrollTo({ top: Math.max(target, 0) });
+      return;
+    }
+    const scrollerRect = scroller.getBoundingClientRect();
+    const target = scroller.scrollTop + (listRect.top - scrollerRect.top) + rowTop - scroller.clientHeight * 0.3;
+    scroller.scrollTo({ top: Math.max(target, 0) });
+  }, [highlightedRowIndex, rootSpanId, rowOffsets]);
 
   // The scale is clamped to "now" so a malformed or clock-skewed future end
   // cannot compress everything that actually happened into a sliver. Future
@@ -569,10 +712,15 @@ export function TraceWaterfall({
               const widthPct = Math.max(rightPct - leftPct, 0.4);
               const fades = open || runsIntoFuture;
               const hasError = spanHasError(span);
+              const isHighlighted = highlightedRowIndex === rowIndex;
               return (
                 <div
                   key={`span-${span.id}`}
-                  className="group w-full grid gap-3 px-4 items-center h-8 border-b border-border/20 hover:bg-muted/30 transition-colors hover:transition-none text-left cursor-pointer"
+                  aria-current={isHighlighted ? "true" : undefined}
+                  className={cn(
+                    "group w-full grid gap-3 px-4 items-center h-8 border-b border-border/20 hover:bg-muted/30 transition-colors hover:transition-none text-left cursor-pointer",
+                    isHighlighted && HIGHLIGHT_ROW_CLASSES,
+                  )}
                   style={{ gridTemplateColumns }}
                   onClick={() => onSelectSpan(span)}
                 >
@@ -622,19 +770,24 @@ export function TraceWaterfall({
                   </span>
                 </div>
               );
-            } else {
+            } else if (row.kind === "event") {
               const { event } = row;
               const leftPct = toPct(event.atMs);
+              const isHighlighted = highlightedRowIndex === rowIndex;
               return (
                 <div
-                  key={`event-${rowIndex}`}
-                  className="w-full grid gap-3 px-4 items-center h-7 border-b border-border/20 hover:bg-muted/30 transition-colors hover:transition-none text-left cursor-pointer"
+                  key={`event-${event.spanId ?? "none"}-${event.eventType}-${event.atMs}`}
+                  aria-current={isHighlighted ? "true" : undefined}
+                  className={cn(
+                    "w-full grid gap-3 px-4 items-center h-7 border-b border-border/20 hover:bg-muted/30 transition-colors hover:transition-none text-left cursor-pointer",
+                    isHighlighted && HIGHLIGHT_ROW_CLASSES,
+                  )}
                   style={{ gridTemplateColumns }}
                   onClick={() => onSelectEvent(event)}
                 >
                   <div className="flex items-center gap-1.5 min-w-0" style={{ paddingLeft: `${row.depth * 14}px` }}>
-                    <span className="h-1.5 w-1.5 rotate-45 bg-foreground/50 shrink-0" />
-                    <span className="font-mono text-[11px] text-muted-foreground truncate">{event.eventType}</span>
+                    <span className={cn("h-1.5 w-1.5 rotate-45 shrink-0", isHighlighted ? "bg-cyan-600 dark:bg-cyan-400" : "bg-foreground/50")} />
+                    <span className={cn("font-mono text-[11px] truncate", isHighlighted ? "font-medium text-foreground" : "text-muted-foreground")}>{event.eventType}</span>
                   </div>
                   <div className="relative h-4 cursor-ew-resize" onPointerDown={startTimelineDrag} onClick={(e) => e.stopPropagation()}>
                     <TimelineGridlines />
@@ -650,6 +803,37 @@ export function TraceWaterfall({
                     +{formatDuration(event.atMs - scaleStart)}
                   </span>
                 </div>
+              );
+            } else {
+              const { link } = row;
+              const targetLabel = `${link.linkedTraceId.slice(0, 8)}/${link.linkedSpanId.slice(0, 6)}`;
+              const title = link.targetIsSameScope
+                ? `Open linked span ${link.linkedSpanId} in trace ${link.linkedTraceId}`
+                : `Linked span belongs to ${link.linkedProjectId}/${link.linkedBranchId}`;
+              return (
+                <button
+                  key={`link-${link.ownerSpanId}-${link.linkedTraceId}-${link.linkedSpanId}`}
+                  type="button"
+                  disabled={!link.targetIsSameScope}
+                  aria-label={title}
+                  title={title}
+                  className="group grid h-7 w-full items-center gap-3 border-b border-cyan-500/10 bg-cyan-500/[0.025] px-4 text-left outline-none transition-colors duration-150 enabled:cursor-pointer enabled:hover:bg-cyan-500/[0.07] enabled:hover:transition-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-500/40 disabled:cursor-default"
+                  style={{ gridTemplateColumns }}
+                  onClick={() => onOpenLink(link)}
+                >
+                  <span className="flex min-w-0 items-center gap-1.5" style={{ paddingLeft: `${row.depth * 14}px` }}>
+                    <LinkSimpleIcon className="h-3.5 w-3.5 shrink-0 text-cyan-600 dark:text-cyan-400" />
+                    <span className="shrink-0 font-mono text-[10px] font-medium uppercase tracking-wider text-cyan-700 dark:text-cyan-300">link</span>
+                    <span className="truncate font-mono text-[11px] text-muted-foreground">{targetLabel}</span>
+                  </span>
+                  <span className="relative flex h-4 items-center" aria-hidden>
+                    <span className="w-full border-t border-dashed border-cyan-500/40" />
+                    <ArrowRightIcon className="-ml-1 h-3 w-3 shrink-0 text-cyan-600 dark:text-cyan-400" />
+                  </span>
+                  <span className="truncate text-right font-mono text-[10px] text-muted-foreground">
+                    {link.targetIsSameScope ? "same scope" : "external"}
+                  </span>
+                </button>
               );
             }
           })}

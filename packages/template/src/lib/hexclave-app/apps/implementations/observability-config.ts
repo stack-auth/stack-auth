@@ -1,4 +1,5 @@
 import type { NetworkOptions } from "./network-capture";
+import type { ErrorAttachmentTransport, ErrorBeforeSend, ErrorEventProcessor, PendingErrorAttachment } from "../interfaces/error-capture";
 
 export { type NetworkOptions } from "./network-capture";
 
@@ -7,7 +8,18 @@ export type ErrorCaptureOptions = {
   enabled?: boolean,
   /** Error-message substrings to drop locally, merged with SDK defaults. */
   ignoreErrors?: string[],
+  /** Processors run in registration order before `beforeSend`. */
+  eventProcessors?: readonly ErrorEventProcessor[],
+  /** Final app-level processor. Return an event to replace/accept or null to drop. */
+  beforeSend?: ErrorBeforeSend,
+  /** Injectable private-item transport. The default client transport calls Hexclave's attachment API. */
+  attachmentTransport?: ErrorAttachmentTransport,
+  /** Receives bytes that need retrying when no transport is available or an upload fails. */
+  onAttachmentPending?: (attachment: PendingErrorAttachment) => void | PromiseLike<void>,
 };
+
+/** JSON-safe form used by SSR/client-app serialization. Runtime callbacks are local policy. */
+export type ErrorCaptureOptionsJson = Omit<ErrorCaptureOptions, "eventProcessors" | "beforeSend" | "attachmentTransport" | "onAttachmentPending">;
 
 export const DEFAULT_CONSOLE_CAPTURE_LEVELS: ("log" | "warn" | "error" | "info" | "debug")[] = ["warn", "error"];
 
@@ -22,7 +34,7 @@ export type LogsOptions = {
 };
 
 export type SpanPropagationOptions = {
-  /** Set false to stop attaching the Hexclave context header. @default true */
+  /** Set false to stop attaching Hexclave correlation baggage. Standard OTel trace context remains independent. @default true */
   enabled?: boolean,
   /** Extra exact origins allowed to receive the propagation header. */
   allowedOrigins?: string[],
@@ -30,40 +42,73 @@ export type SpanPropagationOptions = {
   useTrustedDomains?: boolean,
 };
 
+export type OpenTelemetryOptions = {
+  /**
+   * Who owns the process-wide OpenTelemetry provider.
+   *
+   * `managed` installs a Node provider, parent-aware sampler, Hexclave OTLP
+   * exporter, W3C propagators, and async context manager. `existing-provider`
+   * leaves every global untouched; configure the application's provider with
+   * the exports from that framework package's Node-only `/otel` entrypoint.
+   *
+   * @default "managed"
+   */
+  provider?: "managed" | "existing-provider",
+};
+
 export type ObservabilityOptions = {
   /** Whether logs, errors, spans, and code instrumentation are enabled. @default true */
   enabled?: boolean,
   /**
-   * Deterministic sample rate in [0, 1] for healthy traces. Sampling is applied
-   * once to the coalesced SDK flush, so every event/span in one trace receives
-   * the same decision. Failed and slow traces are always retained.
+   * Root-trace sampling probability in [0, 1]. Managed mode uses OTel's
+   * parent-based ratio sampler, so an upstream sampling decision is preserved.
+   * Existing-provider mode leaves sampling entirely to that provider.
    *
-   * @default 1
+   * @default 0.1
    */
   traceSampleRate?: number,
   errorCapture?: ErrorCaptureOptions,
   logs?: LogsOptions,
   spanPropagation?: SpanPropagationOptions,
   network?: NetworkOptions,
+  openTelemetry?: OpenTelemetryOptions,
 };
 
+export type ObservabilityOptionsJson = Omit<ObservabilityOptions, "errorCapture"> & {
+  errorCapture?: ErrorCaptureOptionsJson,
+};
+
+/**
+ * Keep processor functions out of the serialized app payload. Passing callback
+ * references through an SSR boundary is both non-serializable and misleading:
+ * the hydrated client cannot execute a server closure, so it must start with a
+ * callback-free policy unless the caller configures it locally again.
+ */
+export function observabilityOptionsToJson(options: ObservabilityOptions | undefined): ObservabilityOptionsJson | undefined {
+  if (options === undefined) return undefined;
+  const { errorCapture, ...rest } = options;
+  if (errorCapture === undefined) return rest;
+  const {
+    eventProcessors: _eventProcessors,
+    beforeSend: _beforeSend,
+    attachmentTransport: _attachmentTransport,
+    onAttachmentPending: _onAttachmentPending,
+    ...jsonErrorCapture
+  } = errorCapture;
+  return {
+    ...rest,
+    errorCapture: jsonErrorCapture,
+  };
+}
+
 export function normalizeTraceSampleRate(options: ObservabilityOptions | undefined): number {
-  const sampleRate = options?.traceSampleRate ?? options?.network?.sampleRate ?? 1;
+  const sampleRate = options?.traceSampleRate ?? 0.1;
   if (typeof sampleRate !== "number" || !(sampleRate >= 0 && sampleRate <= 1)) {
     throw new Error("Hexclave analytics: observability.traceSampleRate must be a number between 0 and 1");
-  }
-  if (
-    options?.traceSampleRate !== undefined
-    && options.network?.sampleRate !== undefined
-    && options.traceSampleRate !== options.network.sampleRate
-  ) {
-    throw new Error("Hexclave analytics: observability.traceSampleRate and the deprecated network.sampleRate alias must match when both are set");
   }
   return sampleRate;
 }
 
-// ObservabilityOptions is JSON-native by construction (no RegExp/function-valued
-// fields, unlike AnalyticsOptions.replays.blockClass and TelemetryOptions.waitUntil),
-// so it crosses the SSR serialization boundary as-is — there is deliberately no
-// toJson/fromJson pair here. Keep it that way: adding a non-JSON field means
-// adding the codec, not silently dropping the field.
+// Error processors are runtime callbacks. They are intentionally omitted by the
+// client JSON serializer; a callback cannot safely cross an SSR serialization
+// boundary. The other observability fields remain JSON-native.

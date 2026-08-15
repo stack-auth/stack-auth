@@ -152,11 +152,8 @@ export function handleApiRequest(handler: (req: Request, options: any, requestId
             ...allowedLongRequestPathPrefixes.map(path => path.replace(/^\/api\/latest\//, "/api/v1/")),
           ];
           // Collector requests are background delivery, not a user-facing
-          // request critical path. During a development cold compile they can
-          // wait behind package work for longer than 12 seconds while remaining
-          // safely queued by the SDK; flagging each one as a serverless timeout
-          // obscures real slow requests. Exact path matching keeps this
-          // exemption off arbitrary analytics subroutes.
+          // request critical path. Exact path matching keeps this exemption off
+          // arbitrary analytics subroutes.
           const warnAfterSeconds = isTelemetryIngestionPath(requestUrl.pathname)
             || allAllowedLongRequestPaths.includes(requestUrl.pathname)
             || allAllowedLongRequestPathPrefixes.some(prefix => requestUrl.pathname.startsWith(prefix))
@@ -317,6 +314,11 @@ export function createSmartRouteHandler<
     let smartRes = await traceSpan({
       description: 'calling smart route handler callback',
       attributes: {
+        "user.id": fullReq.auth?.user?.id ?? "<none>",
+        "stack.smart-request.project.id": fullReq.auth?.project.id ?? "<none>",
+        "stack.smart-request.project.display_name": fullReq.auth?.project.display_name ?? "<none>",
+        "stack.smart-request.user.id": fullReq.auth?.user?.id ?? "<none>",
+        "stack.smart-request.user.authenticated": fullReq.auth?.user != null,
         "stack.smart-request.access-type": fullReq.auth?.type ?? "<none>",
         "stack.smart-request.client-version.platform": fullReq.clientVersion?.platform ?? "<none>",
         "stack.smart-request.client-version.version": fullReq.clientVersion?.version ?? "<none>",

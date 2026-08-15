@@ -1,7 +1,7 @@
-import { AppTodoPage } from "../../app-todo-page";
+import PageClient from "./page-client";
 
 export const metadata = { title: "Retention" };
 
 export default function Page() {
-  return <AppTodoPage title="Retention" description="Measure whether cohorts return after their first meaningful event." />;
+  return <PageClient />;
 }
