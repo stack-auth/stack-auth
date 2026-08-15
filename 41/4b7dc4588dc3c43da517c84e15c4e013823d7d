@@ -1,0 +1,171 @@
+apps/backend/src/app/api/latest/analytics/otlp/v1/logs/route.test.ts
+  s_2c57837bf795b2::t_e8eeffd731f638 1-2
+apps/backend/src/app/api/latest/analytics/otlp/v1/logs/route.tsx
+  s_2c57837bf795b2::t_39cf75d95db433 2,4-7,10-14,127-165
+apps/backend/src/app/api/latest/analytics/otlp/v1/metrics/route.tsx
+  s_2c57837bf795b2::t_e9ec02cb1dd336 2-5
+apps/backend/src/app/api/latest/analytics/otlp/v1/traces/route.test.ts
+  s_2c57837bf795b2::t_3b72b6558c563b 1-2
+apps/backend/src/app/api/latest/analytics/otlp/v1/traces/route.tsx
+  s_2c57837bf795b2::t_6777a1736141af 2,4-7,125-129
+apps/backend/src/app/api/latest/internal/analytics/metrics/route.ts
+  s_2c57837bf795b2::t_55a51660d2a759 1,28-31,52
+apps/backend/src/lib/analytics-telemetry-writers.test.ts
+  s_2c57837bf795b2::t_d1204cf351eee1 189-250
+apps/backend/src/lib/analytics-telemetry-writers.ts
+  s_2c57837bf795b2::t_7778163b2e65ab 10,13,104-105,134-148,288,334,427-434,437-438
+apps/backend/src/lib/customer-request-observability.ts
+  s_2c57837bf795b2::t_c21785c19d0a91 10,54-62,98-99
+apps/backend/src/lib/events.tsx
+  s_2c57837bf795b2::t_0c9b242554cda5 16,319-327,364-371,522-536,539,546-548
+apps/backend/src/lib/internal-observability.ts
+  s_2c57837bf795b2::t_66a8815203bdb6 9,11
+apps/backend/src/lib/legacy-telemetry-dual-write.test.ts
+  s_2c57837bf795b2::t_7b8dd04873de56 1-120
+apps/backend/src/lib/legacy-telemetry-dual-write.ts
+  s_2c57837bf795b2::t_38bbb5b9c2f21b 1-109
+apps/backend/src/lib/otlp/http.test.ts
+  s_2c57837bf795b2::t_4506bff94ffeda 2-3
+apps/backend/src/lib/otlp/http.ts
+  s_2c57837bf795b2::t_eaed235020105e 1-2
+apps/backend/src/lib/otlp/json.ts
+  s_2c57837bf795b2::t_e99a47dd0e2e11 52-64,66-67,78-82,85-96,121-123,126,129,131-133,139
+apps/backend/src/lib/otlp/log-writer.test.ts
+  s_2c57837bf795b2::t_afc5174e702797 2-6,300-334,353
+apps/backend/src/lib/otlp/log-writer.ts
+  s_2c57837bf795b2::t_89f8001cf58861 1,3-8,227-259
+apps/backend/src/lib/otlp/logs.test.ts
+  s_2c57837bf795b2::t_c89a453ca13595 2-3,147-159
+apps/backend/src/lib/otlp/logs.ts
+  s_2c57837bf795b2::t_de7138abed25d6 2,120-123
+apps/backend/src/lib/otlp/metric-query.test.ts
+  s_2c57837bf795b2::t_34146a22c0b908 2,8,11-13,16-51,80-140
+apps/backend/src/lib/otlp/metric-query.ts
+  s_2c57837bf795b2::t_81ae94f3354e8e 45-52,107-114,179-210,320-321,323-341
+apps/backend/src/lib/otlp/metric-writer.test.ts
+  s_2c57837bf795b2::t_9f417bb6c8c098 2-3,84-121
+apps/backend/src/lib/otlp/metric-writer.ts
+  s_2c57837bf795b2::t_5bf55ecc785df9 2,14-16,80-100,175
+apps/backend/src/lib/otlp/metrics.test.ts
+  s_2c57837bf795b2::t_8381929b06c2ea 5
+apps/backend/src/lib/otlp/metrics.ts
+  s_2c57837bf795b2::t_e2d30a9ba0aa88 9,11-12,22-24
+apps/backend/src/lib/otlp/protobuf.test.ts
+  s_2c57837bf795b2::t_82bb6ad2855835 8
+apps/backend/src/lib/otlp/trace-writer.test.ts
+  s_2c57837bf795b2::t_74f8ad2a4f4d2c 2-3,126-163
+apps/backend/src/lib/otlp/trace-writer.ts
+  s_2c57837bf795b2::t_767c3c2e00002e 3-7,31,217-221,268-276
+apps/backend/src/lib/otlp/traces.test.ts
+  s_2c57837bf795b2::t_b5a9fe1f359db3 2,135-167
+apps/backend/src/lib/otlp/traces.ts
+  s_2c57837bf795b2::t_e80cb50e3195fc 2-4,115-118
+apps/backend/src/lib/qstash-outbox.test.ts
+  s_2c57837bf795b2::t_8ac883e70893e0 23
+apps/backend/src/lib/qstash-outbox.ts
+  s_2c57837bf795b2::t_da50c555631175 7,80-86,212-216
+apps/backend/src/lib/seed-dummy-data.ts
+  s_2c57837bf795b2::t_22f3702a3ad9ce 2717-2721
+apps/backend/src/lib/spans.tsx
+  s_2c57837bf795b2::t_645fcfe6f33b6b 13,19,103-108,110-115,362-363,365-370
+apps/backend/src/lib/telemetry/resource.ts
+  s_2c57837bf795b2::t_c37d1d35d792cb 2
+apps/backend/src/lib/telemetry/write-plan.ts
+  s_2c57837bf795b2::t_bf240111644dcf 1
+apps/backend/src/route-handlers/smart-route-handler.tsx
+  s_2c57837bf795b2::t_e6fc1385b74258 6
+apps/e2e/tests/backend/endpoints/api/v1/analytics-otlp-logs.test.ts
+  s_2c57837bf795b2::t_c629d0832eb4ec 2,18,68,76-78
+apps/e2e/tests/backend/endpoints/api/v1/analytics-otlp-metrics.test.ts
+  s_2c57837bf795b2::t_912c3309d9a0d0 2,41,81-83
+apps/e2e/tests/backend/endpoints/api/v1/analytics-otlp-traces.test.ts
+  s_2c57837bf795b2::t_afd5ce6930b597 2,18,44-46
+apps/e2e/tests/backend/endpoints/api/v1/analytics-query.test.ts
+  s_2c57837bf795b2::t_4de11274d979f9 620,622,626-627,633-634,685-688,693-696,709-716,737-744,769,771,775-776,782-783,806-1493,1975,1977,1981-1982,1988-1989
+packages/template/src/integrations/adapter-core.ts
+  s_2c57837bf795b2::t_106201dbc2bbf6 124,179
+packages/template/src/integrations/convex.ts
+  s_2c57837bf795b2::t_0fc7682b74c7c3 76
+packages/template/src/integrations/elysia.ts
+  s_2c57837bf795b2::t_56db03144db4ca 21,23-29
+packages/template/src/integrations/next.test.ts
+  s_2c57837bf795b2::t_c62269db9306d2 293-297,306-307
+packages/template/src/integrations/next.ts
+  s_2c57837bf795b2::t_eece17f2b79b74 215-227,246-248,259-274,276-277
+packages/template/src/integrations/tanstack-start.ts
+  s_2c57837bf795b2::t_0c992aa2492caa 16-17
+packages/template/src/lib/hexclave-app/apps/implementations/browser-http-instrumentation.test.ts
+  s_2c57837bf795b2::t_f2a8b2a98daa1b 31,101
+packages/template/src/lib/hexclave-app/apps/implementations/browser-otel-queue.test.ts
+  s_2c57837bf795b2::t_5eef2b878d73c7 1-222
+packages/template/src/lib/hexclave-app/apps/implementations/browser-otel-queue.ts
+  s_2c57837bf795b2::t_be6178cd7ef45e 144-150,171,175-180,184-187,390,392-394,403
+packages/template/src/lib/hexclave-app/apps/implementations/browser-otel-sdk.test.ts
+  s_2c57837bf795b2::t_a1e430b4a52493 1,69,83-118,153,217,487-506,596
+packages/template/src/lib/hexclave-app/apps/implementations/browser-otel-sdk.ts
+  s_2c57837bf795b2::t_a49f0179ffd93d 153,245-248,381-386,1359-1361,1366-1368,1627-1632,1634-1637
+packages/template/src/lib/hexclave-app/apps/implementations/client-analytics.ts
+  s_2c57837bf795b2::t_d196f9bae709cb 5,81,203-207,213-227,238,245,248-256,258-259,281-283,286-288,336,549,555-567,579,659-667,671-674,767-777,783-785,808,818,838-840,894
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.analytics.test.ts
+  s_2c57837bf795b2::t_77b9820c4354d4 95-146,196,267,424-540,632-703
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_2c57837bf795b2::t_ba738ab3b982cd 1761-1765,1768,1788,4602-4605,4699-4704,4760-4763
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.test.ts
+  s_2c57837bf795b2::t_b676596e291035 4,55-83,88,91,95,137-231
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.ts
+  s_2c57837bf795b2::t_9bf5f736bbd068 89-91,163,320-324,626,634-636,644-667,748-750,759,769-775,1032-1036
+packages/template/src/lib/hexclave-app/apps/implementations/integration-registry.test.ts
+  s_2c57837bf795b2::t_7da0ffa1c4eddc 371-390
+packages/template/src/lib/hexclave-app/apps/implementations/integration-registry.ts
+  s_2c57837bf795b2::t_14db0f16674517 300-307
+packages/template/src/lib/hexclave-app/apps/implementations/otel-http-metrics.test.ts
+  s_2c57837bf795b2::t_7f0b1fae4d7ec7 1,31-47,57-80
+packages/template/src/lib/hexclave-app/apps/implementations/otel-log-facade.test.ts
+  s_2c57837bf795b2::t_e0129e3fe42b61 43-136
+packages/template/src/lib/hexclave-app/apps/implementations/otel-log-facade.ts
+  s_2c57837bf795b2::t_6632b4c3cf849e 14-19,25-39,46-54,56-59,66,73-76
+packages/template/src/lib/hexclave-app/apps/implementations/otel-sdk.test.ts
+  s_2c57837bf795b2::t_b344ac358a3bae 61-97
+packages/template/src/lib/hexclave-app/apps/implementations/otel-sdk.ts
+  s_2c57837bf795b2::t_c1174752882522 114-119,167-171,202-207,261-277,286-287,292
+packages/template/src/lib/hexclave-app/apps/implementations/otel-span-facade.test.ts
+  s_2c57837bf795b2::t_c9bf0c21ec9c24 105-129
+packages/template/src/lib/hexclave-app/apps/implementations/otel-span-facade.ts
+  s_2c57837bf795b2::t_e86aab14c5abef 12-21,67-76,100-101,104-112,145,159-166,190-194
+packages/template/src/lib/hexclave-app/apps/implementations/otel-web-vitals.test.ts
+  s_2c57837bf795b2::t_94276608318a2a 1,5,18,20,22-24,29,45-78
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.http-client.test.ts
+  s_2c57837bf795b2::t_47c1dad45ecb48 2,280-404
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_2c57837bf795b2::t_4835653d698c66 545-553,2198-2201,2211-2212,2215,2326-2331,2500-2504,2646-2667,2671-2694
+packages/template/src/lib/hexclave-app/apps/implementations/server-lifecycle.test.ts
+  s_2c57837bf795b2::t_cf0820f10a65fb 124-147
+packages/template/src/lib/hexclave-app/apps/implementations/server-lifecycle.ts
+  s_2c57837bf795b2::t_d5aa9490c61556 150-157
+packages/template/src/lib/hexclave-app/apps/implementations/span-handle.ts
+  s_2c57837bf795b2::t_8361fb1f341a6e 16-18,22-27,31-32,65-67
+packages/template/src/lib/hexclave-app/apps/implementations/telemetry-core.test.ts
+  s_2c57837bf795b2::t_db6d61ea0d2cf3 207-240
+packages/template/src/lib/hexclave-app/apps/implementations/telemetry-core.ts
+  s_2c57837bf795b2::t_26fc209e2026a5 342-346,348-354,358-359,361-362
+packages/template/src/lib/hexclave-app/apps/implementations/web-vitals.ts
+  s_2c57837bf795b2::t_6132027e33bedf 1,53-54,56-59,65,72,79,86,93,100,107,112-119,122,125,127,130,133,143
+packages/template/src/lib/hexclave-app/apps/interfaces/client-app.ts
+  s_2c57837bf795b2::t_e0d094e75683ae 176-179,182-185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "414b7dc4588dc3c43da517c84e15c4e013823d7d",
+  "prompts": {},
+  "sessions": {
+    "s_2c57837bf795b2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "534f3379-be72-4057-9a7d-40cac2df6f1a",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
