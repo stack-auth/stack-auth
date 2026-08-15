@@ -1,0 +1,241 @@
+apps/backend/src/app/api/latest/internal/issues/[issue_id]/route.tsx
+  s_2c57837bf795b2::t_cefcbb3ff36a93 4-7,10-11,15,25-28,80-83,93,95-99,114-115,118-120,154,186,188-191,195-206,208-219,222-226,230
+apps/backend/src/app/api/latest/internal/issues/[issue_id]/unmerge/route.tsx
+  s_2c57837bf795b2::t_12928b630237d7 1,7,31-34,51-56,59
+apps/backend/src/app/api/latest/internal/issues/merge/route.tsx
+  s_2c57837bf795b2::t_55d1961392d015 12-13,50-61
+apps/backend/src/app/api/latest/internal/issues/route.tsx
+  s_2c57837bf795b2::t_2de0c0dbc2015e 1-3,5,15-20,28,30-33
+apps/backend/src/app/api/latest/internal/issues/search-views/[view_id]/route.ts
+  s_2c57837bf795b2::t_31999201458389 2-10
+apps/backend/src/app/api/latest/internal/issues/search-views/_shared.ts
+  s_2c57837bf795b2::t_e20c883340351e 1-2,5-9,11-46
+apps/backend/src/app/api/latest/internal/issues/search-views/route.test.ts
+  s_2c57837bf795b2::t_dc6a46c1505a50 10-11
+apps/backend/src/app/api/latest/internal/issues/search-views/route.ts
+  s_2c57837bf795b2::t_cc4317d84a9f13 2-5,7-8
+apps/backend/src/app/api/latest/issues/[issue_id]/actions/_shared.ts
+  s_2c57837bf795b2::t_8fd55b5e38c3a7 1-2,15-18,66,68-69,72-73,77-82,84-85,97,102,117
+apps/backend/src/app/api/latest/issues/[issue_id]/actions/unsnooze/route.ts
+  s_2c57837bf795b2::t_a108811999e9d7 40-44
+apps/backend/src/app/api/latest/issues/[issue_id]/activity/route.ts
+  s_2c57837bf795b2::t_fc3e31f2de8bda 1-3,5-8,12-45,52-57,59-60,62-64
+apps/backend/src/app/api/latest/issues/[issue_id]/metadata/route.ts
+  s_2c57837bf795b2::t_519389e4eb3092 1-2,8,19-25,27,34-36
+apps/backend/src/app/api/latest/issues/[issue_id]/occurrences/route.ts
+  s_2c57837bf795b2::t_ddcb74c32027f2 2-3,32
+apps/backend/src/app/api/latest/issues/[issue_id]/product-route.test.ts
+  s_2c57837bf795b2::t_e7ca5730eafc16 11,28-49,74
+apps/backend/src/app/api/latest/issues/[issue_id]/route.ts
+  s_2c57837bf795b2::t_090a8334e170ce 2-3,32
+apps/backend/src/app/api/latest/issues/actions/bulk/bulk-status.ts
+  s_2c57837bf795b2::t_8cb447e5bf8faf 3,45-47,55
+apps/backend/src/app/api/latest/issues/actions/bulk/route.test.ts
+  s_2c57837bf795b2::t_d50e2aa1e989b5 31-32
+apps/backend/src/app/api/latest/issues/alerts/[rule_id]/disable/route.ts
+  s_2c57837bf795b2::t_00b4d5cbd48c56 1,3,5,22,25,28-32
+apps/backend/src/app/api/latest/issues/alerts/[rule_id]/route.ts
+  s_2c57837bf795b2::t_ee78041ac85a61 1,3,5,22,25,28
+apps/backend/src/app/api/latest/issues/alerts/deliveries/[delivery_id]/replay/route.ts
+  s_2c57837bf795b2::t_7428020a094f49 1,3,5,22,25
+apps/backend/src/app/api/latest/issues/alerts/deliveries/[delivery_id]/route.ts
+  s_2c57837bf795b2::t_cd980484500862 1,3,5,22,25
+apps/backend/src/app/api/latest/issues/alerts/deliveries/route.ts
+  s_2c57837bf795b2::t_225541b78d1729 1,3,5,21,24
+apps/backend/src/app/api/latest/issues/alerts/route.ts
+  s_2c57837bf795b2::t_04ad6668c27787 1,3-8,11,31,34,36-40,50,54,57-62,64-65
+apps/backend/src/app/api/latest/issues/contract.ts
+  s_2c57837bf795b2::t_4c0a0c6ffeb3fc 20,334-338,476-479,487-489
+apps/backend/src/app/api/latest/issues/route.test.ts
+  s_2c57837bf795b2::t_539f644cfc4adf 7,144-161
+apps/backend/src/app/api/latest/issues/route.ts
+  s_2c57837bf795b2::t_e316943b509ecc 2,31
+apps/backend/src/app/api/latest/issues/search-views/[view_id]/route.ts
+  s_2c57837bf795b2::t_101739e110ba82 2-10
+apps/backend/src/app/api/latest/issues/search-views/_shared.ts
+  s_2c57837bf795b2::t_b16dd53da80ab8 1,7-43
+apps/backend/src/app/api/latest/issues/search-views/route.test.ts
+  s_2c57837bf795b2::t_37bd04ed008481 12-13
+apps/backend/src/app/api/latest/issues/search-views/route.ts
+  s_2c57837bf795b2::t_15f30ef0e0095c 2-5,7-8
+apps/backend/src/app/api/latest/issues/search/route.test.ts
+  s_2c57837bf795b2::t_cfd8411ade369f 13-14
+apps/backend/src/app/api/latest/issues/search/route.ts
+  s_2c57837bf795b2::t_d456700a7c12af 1,37
+apps/backend/src/app/api/latest/releases/artifacts/route.ts
+  s_2c57837bf795b2::t_77c4b0355e0a74 1,3
+apps/backend/src/lib/artifacts/artifact-archive-safety.test.ts
+  s_2c57837bf795b2::t_eca1ad0a87fe01 11-25,68-75,77-78,80
+apps/backend/src/lib/artifacts/artifact-archive-safety.ts
+  s_2c57837bf795b2::t_5d4f2dcb8961ad 3,86-93
+apps/backend/src/lib/artifacts/artifact-errors.ts
+  s_2c57837bf795b2::t_c498dd07a6f6fe 9
+apps/backend/src/lib/artifacts/artifact-manifest.ts
+  s_2c57837bf795b2::t_c17a19400c4e84 99-101
+apps/backend/src/lib/artifacts/artifact-route-handlers.ts
+  s_2c57837bf795b2::t_5d53e6ee8ef312 137-139,144,151,158,186-188
+apps/backend/src/lib/artifacts/artifact-storage.ts
+  s_2c57837bf795b2::t_56995b39f8a940 2,69-74,77-88,96-107,109-113
+apps/backend/src/lib/artifacts/artifact-upload-service.test.ts
+  s_2c57837bf795b2::t_13555a3b6b2c3f 189-190,196-198,200-277
+apps/backend/src/lib/artifacts/artifact-upload-service.ts
+  s_2c57837bf795b2::t_a8ca804a80cab6 189-190,193-204,265-275,531,535,539-548,551-558,573-574,577-585
+apps/backend/src/lib/issues/__fixtures__/bundler-chunks.ts
+  s_2c57837bf795b2::t_17c7abf6d2816f 10-11
+apps/backend/src/lib/issues/grouping-config.test.ts
+  s_2c57837bf795b2::t_3e17d202691e23 30-31
+apps/backend/src/lib/issues/grouping-config.ts
+  s_2c57837bf795b2::t_f7fccb568d6904 88-89
+apps/backend/src/lib/issues/grouping-fingerprint.test.ts
+  s_2c57837bf795b2::t_9cc6124e542d57 142-150
+apps/backend/src/lib/issues/grouping-fingerprint.ts
+  s_2c57837bf795b2::t_5c3d053b93a48f 53-67,70,74
+apps/backend/src/lib/issues/grouping-golden.test.ts
+  s_2c57837bf795b2::t_d209496ff22f6c 112-116,121
+apps/backend/src/lib/issues/grouping-provenance.ts
+  s_2c57837bf795b2::t_c358a4f4a99917 26-27
+apps/backend/src/lib/issues/grouping.ts
+  s_2c57837bf795b2::t_b264038664041e 36-37,73,210-215,221-222
+apps/backend/src/lib/issues/in-app.test.ts
+  s_2c57837bf795b2::t_27449a7b8da059 12,30-31
+apps/backend/src/lib/issues/in-app.ts
+  s_2c57837bf795b2::t_e7848fb87a373f 14-15,23-29,42-48,80
+apps/backend/src/lib/issues/issue-activity.ts
+  s_2c57837bf795b2::t_af37628f947789 139-141
+apps/backend/src/lib/issues/issue-alerts/api.ts
+  s_2c57837bf795b2::t_209195c3119b65 187-197,208-210
+apps/backend/src/lib/issues/issue-alerts/contract.ts
+  s_2c57837bf795b2::t_fa19e77c160a13 1-335
+apps/backend/src/lib/issues/issue-alerts/destinations.ts
+  s_2c57837bf795b2::t_ed3fb4310218d5 2,41-48
+apps/backend/src/lib/issues/issue-alerts/email-template.ts
+  s_2c57837bf795b2::t_778ab46b83527e 1-9
+apps/backend/src/lib/issues/issue-alerts/evaluator.ts
+  s_2c57837bf795b2::t_4fe96f7d46f920 24,466-471
+apps/backend/src/lib/issues/issue-alerts/ingestion.ts
+  s_2c57837bf795b2::t_c419863a42fea3 20-28,64-66,117,121,123-125,127-151,232-247,261-265
+apps/backend/src/lib/issues/issue-alerts/persistence.ts
+  s_2c57837bf795b2::t_b93f0794926bbf 842-859
+apps/backend/src/lib/issues/issue-alerts/signal.ts
+  s_2c57837bf795b2::t_3a42bdb7818866 64-83,193-194
+apps/backend/src/lib/issues/issue-alerts/workflow-status.test.ts
+  s_2c57837bf795b2::t_bc4d2679dd5aba 75,92-94,96,205-263
+apps/backend/src/lib/issues/issue-alerts/workflow-status.ts
+  s_2c57837bf795b2::t_32dce198104ed4 45-46,196,200-210,212,232,242,268-272
+apps/backend/src/lib/issues/issue-detail.ts
+  s_2c57837bf795b2::t_8fc5b2f3146563 1-248
+apps/backend/src/lib/issues/issue-identity.ts
+  s_2c57837bf795b2::t_dc6f913559a30f 1-130
+apps/backend/src/lib/issues/issue-lifecycle.ts
+  s_2c57837bf795b2::t_7642e70a3a7d43 4-6,202-204,341-351,400-408,416-426,465-481
+apps/backend/src/lib/issues/issue-merge.ts
+  s_2c57837bf795b2::t_7959b0b742db08 482-489,491-500,503,511-512,520-530,800-802,804-813
+apps/backend/src/lib/issues/issue-occurrences.ts
+  s_2c57837bf795b2::t_a7acc8974354b3 1-112
+apps/backend/src/lib/issues/issue-product.test.ts
+  s_2c57837bf795b2::t_5b934962786fec 24-29,34-57
+apps/backend/src/lib/issues/issue-product.ts
+  s_2c57837bf795b2::t_f11e162f8c4236 11-12,245-275,309,332-343,457,486,551,575,595-602,604-609,611
+apps/backend/src/lib/issues/issue-queries.test.ts
+  s_2c57837bf795b2::t_80cef3288ea85f 9,68-76
+apps/backend/src/lib/issues/issue-queries.ts
+  s_2c57837bf795b2::t_e1e3e2184447c7 139,164-177,357,414,491,580-582,585,620,623-632,634-635,637-638
+apps/backend/src/lib/issues/issue-reconciler.ts
+  s_2c57837bf795b2::t_f0d688516ea2a4 299-307,310-311,316,320-321,324-326,331
+apps/backend/src/lib/issues/issue-store.ts
+  s_2c57837bf795b2::t_8e2855cf95929f 7,257-290,313-316,596-599,783-787,801-814
+apps/backend/src/lib/issues/issue-webhooks.ts
+  s_2c57837bf795b2::t_1b519f42b91d49 104-109,114,123-126,155-161,213-217,231-241
+apps/backend/src/lib/issues/observability-gate.ts
+  s_2c57837bf795b2::t_95064050fcb3fe 1-16
+apps/backend/src/lib/issues/occurrence-attachments.ts
+  s_2c57837bf795b2::t_977ad27a7f7622 1-71
+apps/backend/src/lib/issues/occurrence-projection.test.ts
+  s_2c57837bf795b2::t_c51623fca78e75 11-12,218,265,278
+apps/backend/src/lib/issues/occurrence-projection.ts
+  s_2c57837bf795b2::t_cf796bb4b3c88c 1-291
+apps/backend/src/lib/issues/occurrence-symbolication.ts
+  s_2c57837bf795b2::t_7e74923e26e4be 1-5,8,16,18-23,25-26,151,204,209,243-244
+apps/backend/src/lib/issues/ownership/hydration.integration.test.ts
+  s_2c57837bf795b2::t_27321217758374 1,18-39,103-126
+apps/backend/src/lib/issues/parameterize.test.ts
+  s_2c57837bf795b2::t_5f28efacfe5d4a 81-89
+apps/backend/src/lib/issues/parameterize.ts
+  s_2c57837bf795b2::t_71d411bba8f8df 18-19,21-27,29,84
+apps/backend/src/lib/issues/public-scrub.ts
+  s_2c57837bf795b2::t_b353604d4612ba 1-26
+apps/backend/src/lib/issues/public-search/contract.test.ts
+  s_2c57837bf795b2::t_75a184660aaf1c 136-142
+apps/backend/src/lib/issues/public-search/contract.ts
+  s_2c57837bf795b2::t_e4b0774d005ef5 324-331
+apps/backend/src/lib/issues/public-search/query.ts
+  s_2c57837bf795b2::t_18abf66e68afda 254-267,276,281,287-288,348,358-359,373,382,394,424,433,439,459,472
+apps/backend/src/lib/issues/rebuild-stability.test.ts
+  s_2c57837bf795b2::t_30ec4a7be9e804 37-50
+apps/backend/src/lib/issues/saved-search-views/route-handlers.ts
+  s_2c57837bf795b2::t_224d19f09f53d2 1-246
+apps/backend/src/lib/issues/stack-parser.test.ts
+  s_2c57837bf795b2::t_4e0021c5415238 44-45,206-225
+apps/backend/src/lib/issues/stack-parser.ts
+  s_2c57837bf795b2::t_a62468dd1e9e98 105-111,113
+apps/backend/src/lib/issues/types.ts
+  s_2c57837bf795b2::t_afc52b748f3f71 40,43-44,143
+apps/backend/src/lib/releases/release-route-handlers.test.ts
+  s_2c57837bf795b2::t_78d86cacc30c49 22,252-260,329,399-410
+apps/backend/src/lib/releases/release-route-handlers.ts
+  s_2c57837bf795b2::t_396b9869654fc2 78-81,418
+apps/backend/src/lib/releases/release-service.test.ts
+  s_2c57837bf795b2::t_36211e0e80dec7 228,283,356-406,456-483
+apps/backend/src/lib/releases/release-service.ts
+  s_2c57837bf795b2::t_62f8f4856c9432 91-95,300-302,324-326,405,427-443,458,520-525,532,539,554-556,717-719,780-791
+apps/backend/src/lib/symbolication/javascript-symbolication.test.ts
+  s_2c57837bf795b2::t_83177a80d04113 256,269-270,274-276,279-280,295-338,360-367
+apps/backend/src/lib/symbolication/javascript-symbolication.ts
+  s_2c57837bf795b2::t_c37c5f8c5791a6 37,53-58,300-307,310,640,720-724,730,739-748,750-756,774,803,811-813,994-1004,1041,1044,1048-1063
+apps/backend/src/lib/workflows/issue-alerts/contract.test.ts
+  s_2c57837bf795b2::t_f7e4c06560daee 41,44-45,60-66,162-175
+apps/backend/src/lib/workflows/issue-alerts/contract.ts
+  s_2c57837bf795b2::t_9544dc41a77481 254-261
+apps/backend/src/lib/workflows/issue-alerts/registration.ts
+  s_2c57837bf795b2::t_a400df033d921e 71-81
+apps/e2e/tests/backend/endpoints/api/v1/issues.test.ts
+  s_2c57837bf795b2::t_ef4337cfe51262 15-24,148-149,151-158,162-186,329,339-340,343,386,404-407,441-454,464-477,622,883-892
+docs-mintlify/guides/apps/observability/grouping.mdx
+  s_2c57837bf795b2::t_b359102748a960 42,114
+packages/cli/src/commands/source-maps.ts
+  s_2c57837bf795b2::t_a7d299983ba260 17,477-481,488-493,591-598,789,791-796,809,836,843-848,895,920-926,951-959,961,972-979,1020-1027
+packages/cli/src/lib/source-maps.test.ts
+  s_2c57837bf795b2::t_217ba87259fbff 303-332,410-422,496-509,539-554,569-573,575-576,580-606,723-738,824-826,832,894-955,1048-1062,1064-1071
+packages/cli/src/lib/source-maps.ts
+  s_2c57837bf795b2::t_d48e1dd8ef5524 39,43,191-225,275-302,334-337,409-417,503,653-660
+packages/shared/src/interface/admin-issues.test.ts
+  s_2c57837bf795b2::t_8cde533fb20bd6 1-74
+packages/shared/src/interface/admin-issues.ts
+  s_2c57837bf795b2::t_dd7f3ed96c8c54 26-34,414-417,419,428-432,434
+packages/shared/src/interface/crud/issues.ts
+  s_2c57837bf795b2::t_3751f2b693a252 26-32,34-47,49-50,52-54,56-59,61-65,67-72,76,86,96,106,116
+packages/shared/src/utils/issue-alert-email-template.test.ts
+  s_2c57837bf795b2::t_971d73671123a7 5
+packages/shared/src/utils/issue-alert-email-template.ts
+  s_2c57837bf795b2::t_b2fe4d4529d447 1-47
+packages/template/src/lib/hexclave-app/apps/implementations/debug-ids.test.ts
+  s_2c57837bf795b2::t_f6f166211cf032 60-65,152-187,208-221,286-303
+packages/template/src/lib/hexclave-app/apps/implementations/debug-ids.ts
+  s_2c57837bf795b2::t_05aff74dfc2a35 54-59,66-78,86,89-94,98-107,110-128,130-142,144-151,156-179,182,184-190,199
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "f6f9a4be862a11ea73affbd6d6db80a505c8ddd2",
+  "prompts": {},
+  "sessions": {
+    "s_2c57837bf795b2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "534f3379-be72-4057-9a7d-40cac2df6f1a",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
