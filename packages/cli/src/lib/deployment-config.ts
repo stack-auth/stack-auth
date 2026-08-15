@@ -305,6 +305,11 @@ export type EvaluatedService = {
   definition: DeploymentServiceDefinition,
   env: Record<string, EvaluatedEnvVarValue>,
   absoluteRootDirectory: string,
+  // `dockerfilePath` exactly as the deploy file spells it (relative to the
+  // service's root directory). `definition.dockerfile_path` has the root
+  // directory joined on, so an error about a missing Dockerfile can name both
+  // the line the author has to edit and the path that was looked for.
+  authoredDockerfilePath: string | undefined,
   // Local-only: `hexclave dev --service-id` runs this. It is deliberately
   // absent from `definition` (and from the sync route's schema) because the
   // backend never acts on it, so there is no reason for it to leave the
@@ -701,19 +706,28 @@ export function evaluateDeploymentConfig(options: {
       throw new CliError(`deploy.services.${serviceId}.rootDirectory resolves to ${absoluteRootDirectory}, which is outside the directory containing the deploy file (${deployFileDirectory}). Root directories must be inside it.`);
     }
 
-    // Optional Dockerfile location, relative to the root directory. When it is
+    // Optional Dockerfile location, written relative to the service's
+    // `rootDirectory` — the service's code is what its Dockerfile belongs to,
+    // so a service moves by editing one field rather than two. When it is
     // absent, the service is NOT built from a Dockerfile at all — the remote
     // builder auto-detects the build with Railpack (https://railpack.com)
     // instead, even if a file named "Dockerfile" happens to exist.
+    //
+    // It is JOINED onto the root directory here, so what leaves this machine
+    // is a path within the uploaded tree: the pre-flight below, the wire
+    // schema and the remote builder all resolve `dockerfile_path` against the
+    // upload root, and one meaning per field is what keeps them from drifting.
+    // The authored spelling is kept alongside it, purely so an error can quote
+    // what the deploy file actually says.
     const dockerfilePathRaw = readOptionalStringField(record, serviceId, "dockerfilePath");
     let dockerfilePath: string | undefined;
     if (dockerfilePathRaw !== undefined) {
       const absoluteDockerfilePath = path.resolve(absoluteRootDirectory, dockerfilePathRaw);
-      const relativeDockerfilePath = path.relative(absoluteRootDirectory, absoluteDockerfilePath);
-      if (relativeDockerfilePath === "" || relativeDockerfilePath === ".." || relativeDockerfilePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativeDockerfilePath)) {
-        throw new CliError(`deploy.services.${serviceId}.dockerfilePath must point to a file inside the service's root directory (got ${JSON.stringify(dockerfilePathRaw)}).`);
+      const rootRelativeDockerfilePath = path.relative(absoluteRootDirectory, absoluteDockerfilePath);
+      if (rootRelativeDockerfilePath === "" || rootRelativeDockerfilePath === ".." || rootRelativeDockerfilePath.startsWith(`..${path.sep}`) || path.isAbsolute(rootRelativeDockerfilePath)) {
+        throw new CliError(`deploy.services.${serviceId}.dockerfilePath must point to a file inside the service's root directory (got ${JSON.stringify(dockerfilePathRaw)}). It is resolved relative to \`rootDirectory\` (${JSON.stringify(relativeRootDirectory === "" ? "." : relativeRootDirectory.split(path.sep).join("/"))}), not to the deploy file.`);
       }
-      dockerfilePath = relativeDockerfilePath.split(path.sep).join("/");
+      dockerfilePath = path.relative(deployFileDirectory, absoluteDockerfilePath).split(path.sep).join("/");
     }
 
     const minInstances = readOptionalIntegerField(record, serviceId, "minInstances");
@@ -772,7 +786,8 @@ export function evaluateDeploymentConfig(options: {
         // the config directory itself) — an absolute local path would be
         // meaningless (and leak local filesystem layout) server-side.
         root_directory: relativeRootDirectory === "" ? "." : relativeRootDirectory.split(path.sep).join("/"),
-        // Root-directory-relative posix path; absent = Railpack auto-detection.
+        // Posix path within the uploaded tree — `rootDirectory` already joined
+        // on. Absent = Railpack auto-detection.
         dockerfile_path: dockerfilePath,
         // Absent = the container filesystem is entirely ephemeral.
         persistent_volumes: persistentVolumes,
@@ -780,6 +795,7 @@ export function evaluateDeploymentConfig(options: {
       },
       env,
       absoluteRootDirectory,
+      authoredDockerfilePath: dockerfilePathRaw,
       devCommand,
     });
   }

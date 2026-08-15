@@ -204,9 +204,13 @@ export type DeploymentServiceDefinition = {
   // client-side (it decides what `hexclave deploy` packages), but stored so
   // the dashboard can display it.
   root_directory?: string | undefined,
-  // The Dockerfile to build from, relative to root_directory. When absent the
-  // service is NOT built from a Dockerfile — the remote builder auto-detects
-  // the build with Railpack (https://railpack.com) instead.
+  // The Dockerfile to build from, as a path within the uploaded tree — i.e.
+  // relative to the directory containing hexclave.deploy.ts, like
+  // root_directory. In the deploy file it is written relative to the service's
+  // `rootDirectory` and the CLI joins the two before sending it, so that the
+  // pre-flight, this schema and the remote builder all resolve it against one
+  // base. When absent the service is NOT built from a Dockerfile — the remote
+  // builder auto-detects the build with Railpack (https://railpack.com) instead.
   dockerfile_path?: string | undefined,
   // Persistent disks mounted into the container, keyed by VOLUME ID. Absent or
   // empty = the container filesystem is entirely ephemeral (the default).
@@ -576,14 +580,15 @@ export const deploymentServiceDefinitionSchema = yupObject({
       if (value === undefined || Object.keys(value).length === 0) return true;
       return (this.parent as { type?: string }).type === "server";
     }),
-  // Optional Dockerfile location relative to root_directory; absent = Railpack
-  // auto-detected build. Must stay inside the packaged source — it flows into
-  // the remote builder as a path within the source tarball. The rules here
-  // must be AT LEAST as strict as Marshal's validateServiceSpec: anything the
-  // runtime would reject must already fail at sync time, not after an upload
-  // has been consumed at deploy time.
+  // Optional Dockerfile location within the uploaded tree (the deploy file's
+  // `dockerfilePath` with the service's `rootDirectory` already joined on);
+  // absent = Railpack auto-detected build. Must stay inside the packaged source
+  // — it flows into the remote builder as a path within the source tarball. The
+  // rules here must be AT LEAST as strict as Marshal's validateServiceSpec:
+  // anything the runtime would reject must already fail at sync time, not after
+  // an upload has been consumed at deploy time.
   dockerfile_path: yupString().optional().max(512)
-    .test("relative-path", 'dockerfile_path must be a normalized relative path inside the service\'s root directory (no leading "/", no "." or ".." segments, no backslashes or control characters)', (value) =>
+    .test("relative-path", 'dockerfile_path must be a normalized relative path inside the uploaded source (no leading "/", no "." or ".." segments, no backslashes or control characters)', (value) =>
       value === undefined || (
         value !== ""
         && !value.startsWith("/")

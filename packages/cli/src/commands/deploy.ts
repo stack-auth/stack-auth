@@ -220,7 +220,10 @@ export async function packageAndUploadSource(options: {
       const rootDirectory = service.definition.root_directory ?? ".";
       const candidate = rootDirectory === "." ? "Dockerfile" : `${rootDirectory.replace(/^\.\//, "").replace(/\/$/, "")}/Dockerfile`;
       if (packaged.paths.includes(candidate)) {
-        console.error(`Note: the source contains ${candidate}, but services.${service.serviceId} does not set dockerfilePath, so its image will be built with Railpack auto-detection (https://railpack.com) instead. Set dockerfilePath: ${JSON.stringify(candidate)} to build from it.`);
+        // `dockerfilePath` is written relative to the service's root directory,
+        // so the value to suggest is the bare "Dockerfile" even though the file
+        // sits at `candidate` within the upload.
+        console.error(`Note: the source contains ${candidate}, but services.${service.serviceId} does not set dockerfilePath, so its image will be built with Railpack auto-detection (https://railpack.com) instead. Set dockerfilePath: "Dockerfile" to build from it.`);
       }
       continue;
     }
@@ -230,9 +233,15 @@ export async function packageAndUploadSource(options: {
     // later in the remote builder. (Docker never runs locally.)
     if (!packaged.paths.includes(dockerfilePath)) {
       const onDisk = fs.existsSync(path.join(sourceRoot, dockerfilePath));
+      // `dockerfilePath` is authored relative to the service's root directory
+      // and joined onto it before it gets here, so name both: the value in the
+      // deploy file is what has to be edited, and the joined path is what was
+      // actually looked for.
+      const declared = `dockerfilePath ${JSON.stringify(service.authoredDockerfilePath ?? dockerfilePath)}`;
+      const resolved = service.authoredDockerfilePath === dockerfilePath ? "" : ` (${dockerfilePath}, relative to its rootDirectory ${JSON.stringify(service.definition.root_directory ?? ".")})`;
       throw new CliError(onDisk
-        ? `services.${service.serviceId} declares dockerfilePath ${JSON.stringify(dockerfilePath)} but that file isn't in the packaged source — check your .dockerignore/.gitignore (and that the path matches the filename case-exactly).`
-        : `services.${service.serviceId} declares dockerfilePath ${JSON.stringify(dockerfilePath)}, but there is no such file under ${sourceRoot}.`);
+        ? `services.${service.serviceId} declares ${declared}${resolved} but that file isn't in the packaged source — check your .dockerignore/.gitignore (and that the path matches the filename case-exactly).`
+        : `services.${service.serviceId} declares ${declared}${resolved}, but there is no such file under ${sourceRoot}.`);
     }
   }
   console.error(`Packaged ${packaged.fileCount} files (${(packaged.tarballGzipped.length / 1024).toFixed(1)} KiB compressed) from ${sourceRoot}.`);

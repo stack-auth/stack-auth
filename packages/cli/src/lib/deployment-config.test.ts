@@ -59,8 +59,9 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
       min_instances: 1,
       max_instances: 3,
       root_directory: "apps/web",
-      // Normalized to a root-directory-relative posix path.
-      dockerfile_path: "docker/Dockerfile.web",
+      // Authored relative to rootDirectory, joined onto it and normalized to a
+      // posix path within the upload.
+      dockerfile_path: "apps/web/docker/Dockerfile.web",
       env: {
         DB_URL: { type: "connection", value: "database.url" },
         DB_INTERNAL: { type: "connection", value: "database.url:5432" },
@@ -352,12 +353,36 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     expect(services.get("web")?.definition.dockerfile_path).toBeUndefined();
   });
 
+  it("joins dockerfilePath onto the root directory", () => {
+    // Authored relative to rootDirectory; what leaves the machine is a path
+    // within the upload, which is what the builder resolves against /ctx.
+    const { services } = evaluate(() => ({
+      web: { type: "serverless", ports: { 3000: { protocol: "http" } }, rootDirectory: "./apps/web", dockerfilePath: "Dockerfile" },
+    }));
+    expect(services.get("web")?.definition.dockerfile_path).toBe("apps/web/Dockerfile");
+    // ...and the authored spelling is kept, so an error can quote the line the
+    // author actually has to edit.
+    expect(services.get("web")?.authoredDockerfilePath).toBe("Dockerfile");
+  });
+
+  it("leaves dockerfilePath alone when the root directory is the deploy file's own", () => {
+    const { services } = evaluate(() => ({
+      web: { type: "serverless", ports: { 3000: { protocol: "http" } }, dockerfilePath: "./docker/Dockerfile" },
+    }));
+    expect(services.get("web")?.definition.dockerfile_path).toBe("docker/Dockerfile");
+  });
+
   it("rejects dockerfilePath values escaping the root directory", () => {
     expect(() => evaluate(() => ({
       web: { type: "serverless", ports: { 3000: { protocol: "http" } }, dockerfilePath: "../Dockerfile" },
     }))).toThrow("services.web.dockerfilePath must point to a file inside the service's root directory");
     expect(() => evaluate(() => ({
       web: { type: "serverless", ports: { 3000: { protocol: "http" } }, dockerfilePath: "." },
+    }))).toThrow("services.web.dockerfilePath must point to a file inside the service's root directory");
+    // A Dockerfile ABOVE a nested service is no longer expressible: it would
+    // escape the root directory, even though it is inside the upload.
+    expect(() => evaluate(() => ({
+      web: { type: "serverless", ports: { 3000: { protocol: "http" } }, rootDirectory: "./apps/web", dockerfilePath: "../../Dockerfile" },
     }))).toThrow("services.web.dockerfilePath must point to a file inside the service's root directory");
   });
 });

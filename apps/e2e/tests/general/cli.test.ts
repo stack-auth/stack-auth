@@ -429,10 +429,10 @@ describe("Stack CLI", () => {
     const deployDir = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-deploy-"));
     try {
       // web builds from an explicit Dockerfile (dockerfilePath + pre-flight);
-      // db has none, covering the Railpack auto-detection default. The path is
-      // relative to the UPLOAD root, not to the service — the whole deployment
-      // source is uploaded once, so a service can reach shared code above its
-      // own directory.
+      // db has none, covering the Railpack auto-detection default. web's
+      // dockerfilePath is written relative to its rootDirectory ("./web"), so
+      // the bare "Dockerfile" below must reach the server as "web/Dockerfile"
+      // — this is the end-to-end proof that the CLI joins the two.
       fs.mkdirSync(path.join(deployDir, "web"));
       fs.writeFileSync(path.join(deployDir, "web", "index.html"), "<h1>web</h1>");
       fs.writeFileSync(path.join(deployDir, "web", "Dockerfile"), "FROM nginx:alpine\n");
@@ -451,7 +451,7 @@ describe("Stack CLI", () => {
         '      type: "serverless",',
         '      ports: { 3000: { protocol: "http" } },',
         '      rootDirectory: "./web",',
-        '      dockerfilePath: "web/Dockerfile",',
+        '      dockerfilePath: "Dockerfile",',
         '      devCommand: "npm run dev",',
         "      env: {",
         '        DB_URL: service("db").url(5432),',
@@ -513,9 +513,10 @@ describe("Stack CLI", () => {
         hasDevCommand: false,
         keys: ["DB_URL", "OPENAI", "PROJECT_ID"],
         openai: { key: "OPENAI", type: "secret", value: null, secret_key: "OPENAI_KEY" },
-        // Stored relative to the UPLOAD ROOT, not to the service's rootDirectory: the build
-        // context is the whole upload (that is what lets a monorepo service COPY shared code
-        // from above its own directory), so this is the path the builder opens.
+        // Authored as a bare "Dockerfile" under rootDirectory "./web" and stored with the
+        // root directory joined on — relative to the UPLOAD ROOT, because the build context
+        // is the whole upload (that is what lets a monorepo service COPY shared code from
+        // above its own directory), so this is the path the builder opens.
         webDockerfile: "web/Dockerfile",
         // No dockerfilePath at all: db is built by Railpack auto-detection.
         dbDockerfile: null,

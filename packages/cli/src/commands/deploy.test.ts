@@ -142,6 +142,40 @@ describe("deploy command helpers", () => {
     })).rejects.toThrow("there is no such file");
   });
 
+  it("resolves a declared dockerfilePath against the service's root directory", async () => {
+    // `dockerfilePath: "Dockerfile"` under `rootDirectory: "./apps/web"` means
+    // apps/web/Dockerfile — the pre-flight and the remote builder both look for
+    // it at that path within the upload, so a bare "Dockerfile" at the repo
+    // root must NOT satisfy it.
+    const dir = makeTempDir();
+    fs.mkdirSync(path.join(dir, "apps", "web"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "Dockerfile"), "FROM nginx:alpine\n");
+    fs.writeFileSync(path.join(dir, "apps", "web", "index.html"), "<h1>hi</h1>");
+    const servicesOf = (rootDirectory: string) => evaluateDeploymentConfig({
+      deployFilePath: path.join(dir, "hexclave.deploy.ts"),
+      idExport: "test-source",
+      deployExport: () => ({ services: {
+        web: { type: "serverless", ports: { 3000: { protocol: "http" } }, rootDirectory, dockerfilePath: "Dockerfile" },
+      } }),
+      mode: "deploy",
+    }).services;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const upload = (services: ReturnType<typeof servicesOf>) => packageAndUploadSource({
+      auth: TEST_AUTH,
+      authHeaders: () => Promise.resolve({ authorization: "test" }),
+      sourceRoot: dir,
+      services,
+    });
+
+    expect(servicesOf("./apps/web").get("web")?.definition.dockerfile_path).toBe("apps/web/Dockerfile");
+    // The error names the authored value AND the path that was looked for.
+    await expect(upload(servicesOf("./apps/web"))).rejects.toThrow(/dockerfilePath "Dockerfile" \(apps\/web\/Dockerfile/);
+    // The same declaration at the root directory finds the root Dockerfile, so
+    // it gets past the pre-flight and fails at the first network call instead.
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("nope", { status: 503 })));
+    await expect(upload(servicesOf("./"))).rejects.not.toThrow(/dockerfilePath/);
+  });
+
   it("notes an ignored Dockerfile when no dockerfilePath is set", async () => {
     // A Dockerfile in the source is deliberately NOT picked up implicitly — but silently
     // ignoring it would be a trap, so the deploy must say what it is doing instead.
