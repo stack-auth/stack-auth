@@ -73,6 +73,37 @@ export async function uploadBytes(options: {
   };
 }
 
+/**
+ * Writes one immutable object without allowing a retry or concurrent writer to
+ * replace the bytes. Content-addressed callers use the false result to read
+ * and compare the existing object before treating the operation as idempotent.
+ */
+export async function uploadBytesIfAbsent(options: {
+  key: string,
+  body: Uint8Array,
+  contentType?: string,
+  contentEncoding?: string,
+  private?: boolean,
+}): Promise<boolean> {
+  const { client, bucket } = getS3Target(options.private === true);
+  try {
+    await client.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: options.key,
+      Body: options.body,
+      IfNoneMatch: "*",
+      ...(options.contentType ? { ContentType: options.contentType } : {}),
+      ...(options.contentEncoding ? { ContentEncoding: options.contentEncoding } : {}),
+    }));
+    return true;
+  } catch (error) {
+    if (error instanceof S3ServiceException && [409, 412].includes(error.$metadata.httpStatusCode ?? 0)) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 function getS3Target(privateBucket: boolean): { client: S3Client, bucket: string } {
   if (!s3Client) {
     throw new HexclaveAssertionError("S3 is not configured");
@@ -93,6 +124,7 @@ export async function createPresignedUploadUrl(options: {
   key: string,
   expiresInSeconds: number,
   contentType: string,
+  contentEncoding?: string,
   private?: boolean,
 }): Promise<string> {
   const { client, bucket } = getS3Target(options.private === true);
@@ -102,6 +134,7 @@ export async function createPresignedUploadUrl(options: {
       Bucket: bucket,
       Key: options.key,
       ContentType: options.contentType,
+      ...(options.contentEncoding ? { ContentEncoding: options.contentEncoding } : {}),
     }),
     { expiresIn: options.expiresInSeconds },
   );
