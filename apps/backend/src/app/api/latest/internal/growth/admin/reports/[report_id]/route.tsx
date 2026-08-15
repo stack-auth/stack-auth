@@ -1,14 +1,13 @@
 import { requireGrowthAdminTenancy } from "@/lib/growth/admin";
-import { getGrowthAdminReport, publishGrowthReport, unpublishGrowthReport } from "@/lib/growth/report-release";
+import { getGrowthAdminReport, unpublishGrowthReport } from "@/lib/growth/report-release";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
 /**
- * One report as the reviewer reads it, and the release control itself.
+ * One report as the customer reads it, and the pull-it-back control.
  *
  * GET returns the report through the same builder the customer route uses, only with the
- * published-only filter lifted: a reviewer must approve the actual artefact, not a staff-only
- * rendering of it.
+ * published-only filter lifted, so staff can still read a report they have unpublished.
  */
 export const GET = createSmartRouteHandler({
   metadata: { hidden: true },
@@ -35,9 +34,11 @@ export const GET = createSmartRouteHandler({
 });
 
 /**
- * Publishing is what unlocks the whole customer workspace for a project, so it is one explicit
- * action rather than a general PATCH over a status field. "unpublish" is the staff undo — see
- * unpublishGrowthReport for why it exists.
+ * Unpublishing is staff error recovery, not part of any lifecycle — see unpublishGrowthReport. It
+ * stays one explicit named action rather than a general PATCH over a status field, so that nothing
+ * can arrive here as a side effect of editing something else.
+ *
+ * There is no "publish" counterpart: reports publish the moment the report phase writes them.
  */
 export const PATCH = createSmartRouteHandler({
   metadata: { hidden: true },
@@ -47,7 +48,7 @@ export const PATCH = createSmartRouteHandler({
     params: yupObject({ report_id: yupString().defined() }).defined(),
     body: yupObject({
       target_project_id: yupString().defined(),
-      action: yupString().oneOf(["publish", "unpublish"]).defined(),
+      action: yupString().oneOf(["unpublish"]).defined(),
     }).defined(),
   }),
   response: yupObject({
@@ -57,9 +58,6 @@ export const PATCH = createSmartRouteHandler({
   }),
   handler: async ({ auth, params, body }) => {
     const tenancy = await requireGrowthAdminTenancy(auth.project.id, auth.user, body.target_project_id);
-    const result = body.action === "publish"
-      ? await publishGrowthReport(tenancy, params.report_id, { publishedByUserId: auth.user?.id ?? null, now: new Date() })
-      : await unpublishGrowthReport(tenancy, params.report_id);
-    return { statusCode: 200, bodyType: "json", body: result };
+    return { statusCode: 200, bodyType: "json", body: await unpublishGrowthReport(tenancy, params.report_id) };
   },
 });
