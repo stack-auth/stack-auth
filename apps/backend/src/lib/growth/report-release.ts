@@ -5,28 +5,6 @@ import { isUuid } from "@hexclave/shared/dist/utils/uuids";
 import { getGrowthReportBody } from "./actions";
 import { assertTriggerIsValid } from "./phases";
 
-/**
- * The release gate: a growth report is written by the `report` phase, but no customer sees it until
- * a Hexclave staff member has read it and published it.
- *
- * This module is the ONLY place allowed to decide what "released" means. Everything else asks it —
- * the customer routes through `requireGrowthWorkspaceReleased`, the status wire through
- * `getGrowthReleaseState`. That matters because the gate is enforced in a dozen route files, and a
- * second definition drifting out of step with this one would not fail loudly; it would just quietly
- * hand somebody a report nobody had read.
- *
- * The staff half lives here too, so that "what publishing does" and "what publishing gates" are
- * legible in one file. Like quiz-games.ts, nothing in this module authorizes anything: every
- * function takes an already-resolved `Tenancy` for the TARGET project, and resolving it — plus
- * checking the caller is a platform admin — is `requireGrowthAdminTenancy` in ./admin.ts, at the
- * route boundary.
- */
-
-/**
- * What a customer may read. Unpublished reports are not "hidden from the response" — as far as
- * every customer-facing query is concerned they do not exist, which is why this is a `where`
- * fragment rather than a field the wire mappers remember to strip.
- */
 export const PUBLISHED_GROWTH_REPORT_FILTER = { publishedAt: { not: null } };
 
 /**
@@ -44,23 +22,6 @@ export async function isGrowthWorkspaceReleased(tenancy: Tenancy): Promise<boole
   return published != null;
 }
 
-/**
- * Guard for the customer routes that are dark until the first report is published. Sits directly
- * under `requireGrowthAppEnabled` in every locked handler.
- *
- * The message says nothing about staff review on purpose: to the customer the report is being
- * prepared, and that is all this build promises them. 409 rather than 403 because nothing about the
- * caller is wrong — the workspace is simply not in a state that can answer yet, and it will be.
- *
- * What is locked, and why these and not others:
- *   overview, metrics-overview  the insights, the journey stepper, the category scores
- *   briefs/**                   a daily brief summarizes findings the report has not revealed yet
- *   actions/**                  "suggestions" ARE proposed action items
- *   chat/**                     the assistant answers from full growth context
- * What stays open, because the customer needs it to GET to a report at all: status, onboarding,
- * runs/**, analysis/retry, interview/**, milestones/**, workflows/restore. reports/[report_id] is
- * gated too, but by the published-only lookup rather than by this guard — see getGrowthReportBody.
- */
 export async function requireGrowthWorkspaceReleased(tenancy: Tenancy): Promise<void> {
   if (!(await isGrowthWorkspaceReleased(tenancy))) {
     throw new StatusError(409, "Your growth report is still being prepared.");
@@ -70,18 +31,6 @@ export async function requireGrowthWorkspaceReleased(tenancy: Tenancy): Promise<
 export const GROWTH_RELEASE_STATES = ["not_ready", "preparing", "released"] as const;
 export type GrowthReleaseState = typeof GROWTH_RELEASE_STATES[number];
 
-/**
- * The single release signal on the status wire, which the dashboard uses to decide between the
- * "come back in about 24 hours" hold and the live workspace.
- *
- * `preparing` covers the whole customer-visible analysis window: deep analysis has started, the
- * interview may still be generated or awaiting answers, the report may still be composing, or the
- * finished report may be waiting for a human to publish it. The customer sees that as one continuous
- * operation, and the dashboard keeps its analysis progress open until release.
- *
- * `not_ready` is everything before deep analysis starts, plus failed analysis. A failure must win
- * over the hold so the retry action remains visible instead of promising a report that is not coming.
- */
 export function getGrowthReleaseState(options: {
   released: boolean,
   deepAnalysisStarted: boolean,
@@ -95,9 +44,6 @@ export function getGrowthReleaseState(options: {
 // ─── Staff ───────────────────────────────────────────────────────────────────
 
 async function requireReportInTenancy(tenancy: Tenancy, reportId: string) {
-  // A non-UUID id can never match a row, but Prisma would turn it into a Postgres cast error (a
-  // 500) instead of a clean miss — so pre-check and 404 early. Same 404 whether the report does not
-  // exist or belongs to another project, so ids from other projects cannot be probed.
   if (!isUuid(reportId)) throw new StatusError(404, "Report not found.");
   const report = await globalPrismaClient.growthReport.findFirst({
     where: { id: reportId, projectId: tenancy.project.id, branchId: tenancy.branchId },
@@ -159,35 +105,6 @@ export async function getGrowthAdminReport(tenancy: Tenancy, reportId: string) {
   return { ...body, published_at_millis: report.publishedAt == null ? null : report.publishedAt.getTime() };
 }
 
-/**
- * Releases a reviewed report to the customer.
- *
- * A plain single-row update, with none of the archive-the-incumbent dance publishQuizGame needs:
- * publishing report N does not invalidate report N−1, because a branch accumulates published
- * reports over its lifetime and that history is the point. The customer's "latest report" is simply
- * the newest published row.
- */
-export async function publishGrowthReport(tenancy: Tenancy, reportId: string, options: {
-  publishedByUserId: string | null,
-  now: Date,
-}) {
-  const report = await requireReportInTenancy(tenancy, reportId);
-  if (report.publishedAt != null) throw new StatusError(409, "This report is already published.");
-  await globalPrismaClient.growthReport.update({
-    where: { id: report.id },
-    data: { publishedAt: options.now, publishedByUserId: options.publishedByUserId },
-  });
-  return await listGrowthAdminReports(tenancy);
-}
-
-/**
- * Takes a published report back out of the customer's hands.
- *
- * This exists for staff error recovery — publishing against the wrong project is the realistic
- * mistake, and there has to be a way back from it. It is not part of any customer-facing lifecycle,
- * and it does not pretend the report was never read: `publishedByUserId` is cleared alongside
- * `publishedAt` so the row stops claiming an approval that has been withdrawn.
- */
 export async function unpublishGrowthReport(tenancy: Tenancy, reportId: string) {
   const report = await requireReportInTenancy(tenancy, reportId);
   if (report.publishedAt == null) throw new StatusError(409, "This report is not published.");

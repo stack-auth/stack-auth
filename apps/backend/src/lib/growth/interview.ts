@@ -3,6 +3,7 @@ import { GrowthPhaseStatus, GrowthRunStatus } from "@/generated/prisma/enums";
 import type { Tenancy } from "@/lib/tenancies";
 import { enqueueWorkflowEvent } from "@/lib/workflows/events";
 import { globalPrismaClient, retryTransaction } from "@/prisma-client";
+import { isGrowthInterviewReleased } from "./interview-release";
 import { assertTriggerIsValid } from "./phases";
 import { GROWTH_INTERVIEW_QUESTIONS_PHASE_KEY } from "./phases";
 import { createGrowthRunToken } from "./run-token";
@@ -45,9 +46,9 @@ async function findLatestRunWithInterview(tenancy: Tenancy) {
   return latestRun == null || latestRun.status === GrowthRunStatus.CANCELLED ? null : latestRun;
 }
 
-async function requireLatestRunWithInterview(tenancy: Tenancy): Promise<LatestRunWithInterview & { interview: NonNullable<LatestRunWithInterview["interview"]> }> {
+async function requireLatestRunWithInterview(tenancy: Tenancy, options?: { allowHeld?: boolean }): Promise<LatestRunWithInterview & { interview: NonNullable<LatestRunWithInterview["interview"]> }> {
   const run = await findLatestRunWithInterview(tenancy);
-  if (run?.interview == null) {
+  if (run?.interview == null || (options?.allowHeld !== true && !isGrowthInterviewReleased(run.interview))) {
     // Also covers "no run at all": before the interview-questions phase saved a plan there is no
     // interview resource to show, and the dashboard treats the 404 as "not ready yet".
     throw new StatusError(404, "No interview exists for this project yet.");
@@ -168,8 +169,8 @@ export async function skipGrowthInterview(tenancy: Tenancy): Promise<{ status: s
  * already flowed into the report phase, so "retake" would have to invalidate and recompose the
  * report too; that is a bigger feature and refusing loudly beats half-doing it.
  */
-export async function retakeGrowthInterview(tenancy: Tenancy): Promise<{ status: string, runId: string }> {
-  const run = await requireLatestRunWithInterview(tenancy);
+export async function retakeGrowthInterview(tenancy: Tenancy, options?: { allowHeld?: boolean }): Promise<{ status: string, runId: string }> {
+  const run = await requireLatestRunWithInterview(tenancy, options);
   if (run.status !== GrowthRunStatus.AWAITING_INTERVIEW) {
     throw new StatusError(400, "The interview can only be retaken while the analysis is waiting on it.");
   }
@@ -191,7 +192,7 @@ export async function retakeGrowthInterview(tenancy: Tenancy): Promise<{ status:
     await tx.growthInterviewQuestion.deleteMany({ where: { interviewId: run.interview.id } });
     await tx.growthInterview.update({
       where: { id: run.interview.id },
-      data: { status: "pending", messages: Prisma.DbNull, completedAt: null },
+      data: { status: "pending", messages: Prisma.DbNull, completedAt: null, releasedAt: null, releasedByUserId: null },
     });
     // A full re-arm, not just status: the phase gets a fresh attempt budget (a retake is a new piece
     // of work, not a continuation of the old one) and the stale timestamps would otherwise make the

@@ -7,9 +7,7 @@ export const GROWTH_METRIC_IDS = ["new_signups", "returning_users", "transaction
 export const GROWTH_RUN_TRIGGERS = ["initial", "milestone", "manual"] as const;
 export const GROWTH_ANALYSIS_STATES = ["none", "running", "completed", "failed"] as const;
 export const GROWTH_ANALYSIS_STEP_STATES = ["pending", "running", "done", "failed"] as const;
-export const GROWTH_INTERVIEW_STATES = ["not_ready", "ready", "in_progress", "completed"] as const;
-// The human-gated integrations step's derived UI state: "pending" = upcoming (metrics not settled
-// yet), "waiting" = awaiting the user's connect-or-skip answer, "connected"/"skipped" = settled.
+export const GROWTH_INTERVIEW_STATES = ["not_ready", "preparing", "ready", "in_progress", "completed"] as const;
 export const GROWTH_INTEGRATIONS_STATES = ["pending", "waiting", "connected", "skipped"] as const;
 export const GROWTH_RUN_STATUSES = ["pending", "running", "awaiting_interview", "composing_report", "completed", "failed", "cancelled"] as const;
 export const GROWTH_PHASE_STATUSES = ["pending", "dispatched", "running", "completed", "failed", "skipped"] as const;

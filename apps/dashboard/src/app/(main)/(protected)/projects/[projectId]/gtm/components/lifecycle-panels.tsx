@@ -27,7 +27,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { useGrowthHref } from "./action-card";
 import { GrowthStatusGate } from "./frame";
-import { GROWTH_HOLD_BODY, GROWTH_HOLD_SHORT } from "./report-hold";
+import { GROWTH_HOLD_BODY, GROWTH_HOLD_SHORT, GROWTH_INTERVIEW_PREPARING_DETAIL } from "./report-hold";
 import { GrowthTimeline, GrowthTimelineStep } from "./timeline";
 
 /**
@@ -204,7 +204,7 @@ function SetUpStep(props: { status: GrowthStatus, state: GrowthTimelineStepState
  * that's where the interview's call to action lives, so the ask sits with the step it belongs to
  * rather than below the whole checklist, where it read as unrelated to the row asking for it.
  */
-function StepRow(props: { step: GrowthAnalysisStep, waiting?: boolean, children?: ReactNode }) {
+function StepRow(props: { step: GrowthAnalysisStep, waiting?: boolean, runningLabel?: string, children?: ReactNode }) {
   const { step } = props;
   const stateIcon = new Map([
     ["pending", <CircleIcon key="pending" className="size-4 text-muted-foreground/40" />],
@@ -244,7 +244,7 @@ function StepRow(props: { step: GrowthAnalysisStep, waiting?: boolean, children?
             </TooltipPortal>
           </Tooltip>
         )}
-        {step.state === "running" && <DesignBadge label="In progress" color="cyan" size="sm" />}
+        {step.state === "running" && <DesignBadge label={props.runningLabel ?? "In progress"} color="cyan" size="sm" />}
         {step.state === "failed" && <DesignBadge label="Failed" color="red" size="sm" />}
       </div>
       {props.children != null && <div className="pb-2 pl-7 pt-1">{props.children}</div>}
@@ -572,7 +572,13 @@ const GROWTH_INTERVIEW_ROW_ID = "customer-interview";
 function analysisLoadingSteps(status: GrowthStatus): GrowthAnalysisStep[] | null {
   const steps = status.analysis.steps;
   if (steps == null || status.release.state !== "preparing") return steps;
-  const interviewState = status.interview.state === "completed" ? "done" : status.interview.state === "ready" || status.interview.state === "in_progress" ? "running" : "pending";
+  // "preparing" (plan held for review) is a running row, not a pending one: something is genuinely
+  // happening to this step, and a pending circle would read as "we haven't got to it yet".
+  const interviewState = status.interview.state === "completed"
+    ? "done"
+    : status.interview.state === "preparing" || status.interview.state === "ready" || status.interview.state === "in_progress"
+      ? "running"
+      : "pending";
   return [
     ...steps,
     {
@@ -637,13 +643,18 @@ function AnalysisStep(props: { status: GrowthStatus, state: GrowthTimelineStepSt
                   <p className="pb-3 text-sm text-muted-foreground">Your analysis is queued and will start any moment now.</p>
                 )}
                 {steps.map((step) => {
-                  // The interview row is the only one blocked on the customer: it shows a waiting
-                  // ring instead of a spinner, and carries the ask directly beneath it so the
-                  // button belongs to the row that asks for it.
-                  const awaitingInterview = step.id === GROWTH_INTERVIEW_ROW_ID && step.state === "running";
+                  if (step.id !== GROWTH_INTERVIEW_ROW_ID) return <StepRow key={step.id} step={step} />;
+                  // The interview row is the only one where no machine is working: it is either
+                  // held while its questions are finalized, or waiting on the customer. Either way
+                  // a spinner would claim we're computing something, so the row takes a still ring
+                  // and says beneath itself what is actually being waited for.
+                  const preparing = status.interview.state === "preparing";
+                  const open = interviewIsOpen(status.interview);
                   return (
-                    <StepRow key={step.id} step={step} waiting={awaitingInterview}>
-                      {awaitingInterview ? <InterviewInvite status={status} /> : undefined}
+                    <StepRow key={step.id} step={step} waiting={preparing || open} runningLabel={preparing ? "Preparing" : undefined}>
+                      {preparing
+                        ? <p className="text-sm text-muted-foreground">{GROWTH_INTERVIEW_PREPARING_DETAIL}</p>
+                        : open ? <InterviewInvite status={status} /> : undefined}
                     </StepRow>
                   );
                 })}

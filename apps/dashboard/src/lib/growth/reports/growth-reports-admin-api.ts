@@ -4,10 +4,12 @@ import { mapGrowthReport, reportSchema, requestGrowthAdminJson } from "../growth
 import { GROWTH_RUN_TRIGGERS, type GrowthReport, type GrowthRunTrigger } from "../growth-types";
 
 /**
- * Staff fetchers for the Growth admin Reports card — reviewing a report and releasing it to the
- * customer. Mirrors games/growth-games-admin-api.ts: zod-parse the snake_case wire, map to camel,
- * and let every mutation return the whole list so the card replaces its state from one authoritative
- * snapshot rather than patching a row it guessed at.
+ * Staff fetchers for the Growth admin Reports card — reading what the analysis wrote for a customer,
+ * and pulling a report back if something went badly wrong. Reports are not review-gated (they
+ * publish on write; the human step is on the interview questions instead), so there is no publish
+ * call here — only the recovery one. Mirrors games/growth-games-admin-api.ts: zod-parse the
+ * snake_case wire, map to camel, and let every mutation return the whole list so the card replaces
+ * its state from one authoritative snapshot rather than patching a row it guessed at.
  *
  * The list and the detail are separate calls on purpose. A report document is long, and staff read
  * one at a time — shipping every report's full body just to render a list of titles would make
@@ -37,7 +39,7 @@ export type GrowthAdminReportSummary = {
   trigger: GrowthRunTrigger,
   actionItemCount: number,
   createdAtMillis: number,
-  /** null means held: written, but not released to the customer. */
+  /** null means pulled: staff unpublished it, so the customer can no longer read it. */
   publishedAtMillis: number | null,
   publishedByUserId: string | null,
 };
@@ -72,13 +74,6 @@ export async function getGrowthAdminReports(app: object, projectId: string): Pro
 export async function getGrowthAdminReport(app: object, projectId: string, reportId: string): Promise<GrowthAdminReportDetail> {
   const parsed = detailSchema.parse(await requestGrowthAdminJson(app, urlString`/reports/${reportId}?project_id=${projectId}`));
   return { ...mapGrowthReport(parsed), publishedAtMillis: parsed.published_at_millis };
-}
-
-export async function publishGrowthAdminReport(app: object, projectId: string, reportId: string): Promise<GrowthAdminReportsBody> {
-  return await listBody(requestGrowthAdminJson(app, urlString`/reports/${reportId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ target_project_id: projectId, action: "publish" }),
-  }));
 }
 
 export async function unpublishGrowthAdminReport(app: object, projectId: string, reportId: string): Promise<GrowthAdminReportsBody> {

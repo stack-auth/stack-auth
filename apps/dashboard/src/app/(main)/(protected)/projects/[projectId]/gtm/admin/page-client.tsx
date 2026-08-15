@@ -13,6 +13,7 @@ import { PageLayout } from "../../page-layout";
 import { useProjectId } from "../../use-admin-app";
 import { GrowthWorkspaceContent } from "../components/workspace-overview";
 import { GrowthAdminGamesCard } from "./games-card";
+import { GrowthAdminInterviewCard } from "./interview-card";
 import { GrowthAdminReportsCard } from "./reports-card";
 
 type Loadable = { status: "loading" } | { status: "error", message: string } | { status: "loaded", projects: GrowthAdminProject[], selected: GrowthAdminProject | null, overview: GrowthOverview | null };
@@ -81,8 +82,10 @@ function AdminEditor(props: { app: object, project: GrowthAdminProject, overview
   return (
     <div className="space-y-4">
       {error != null && <DesignAlert variant="error">{error}</DesignAlert>}
-      {/* First: releasing a report unlocks the customer's whole workspace, which makes it the most
-        * consequential thing on this page. */}
+      {/* First: a held interview is a customer sitting still — until it is released they cannot
+        * answer, and nothing downstream (report, actions, briefs) can happen. It is the only
+        * remaining human gate in the lifecycle, and therefore the most consequential thing here. */}
+      <GrowthAdminInterviewCard app={props.app} projectId={props.project.id} />
       <GrowthAdminReportsCard app={props.app} projectId={props.project.id} />
       <GrowthAdminGamesCard app={props.app} projectId={props.project.id} />
 

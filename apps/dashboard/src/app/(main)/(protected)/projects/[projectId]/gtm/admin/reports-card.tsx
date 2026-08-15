@@ -6,7 +6,6 @@ import { formatGrowthRelativeTime } from "@/lib/growth/growth-format";
 import {
   getGrowthAdminReport,
   getGrowthAdminReports,
-  publishGrowthAdminReport,
   unpublishGrowthAdminReport,
   type GrowthAdminReportDetail,
   type GrowthAdminReportsBody,
@@ -20,18 +19,6 @@ import { GrowthActionCard } from "../components/action-card";
 import { GrowthDocumentRenderer } from "../components/growth-document";
 import { GrowthReportSections } from "../components/report-sections";
 
-/**
- * The staff review surface for growth reports: read what the analysis wrote for a customer, then
- * release it to them.
- *
- * Publishing here is what unlocks the customer's entire Growth workspace — until the first report is
- * published they see the lifecycle timeline and a "check back in about 24 hours" note, and nothing
- * else. That is why the review body below renders through the SAME components the customer's report
- * page uses (GrowthDocumentRenderer / GrowthReportSections / GrowthActionCard) rather than a
- * staff-only summary: a reviewer has to approve the artefact that ships, not a description of it.
- *
- * Dense on purpose, like the Games card — this is an internal tool and the reader is a pro user.
- */
 
 type ListState =
   | { status: "loading" }
@@ -51,7 +38,9 @@ function ReportRow(props: {
   onSelect: () => void,
 }) {
   const { report } = props;
-  const held = report.publishedAtMillis == null;
+  // "pulled" rather than "held": a report with no publish timestamp is one staff took back, since
+  // nothing writes a report unpublished any more.
+  const pulled = report.publishedAtMillis == null;
   return (
     <button
       type="button"
@@ -62,7 +51,7 @@ function ReportRow(props: {
       )}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <DesignBadge label={held ? "held" : "live"} color={held ? "orange" : "green"} size="sm" />
+        <DesignBadge label={pulled ? "pulled" : "live"} color={pulled ? "orange" : "green"} size="sm" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{report.title}</span>
         <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{report.trigger}</span>
       </div>
@@ -139,8 +128,8 @@ export function GrowthAdminReportsCard(props: { app: object, projectId: string }
   }, [props.app, props.projectId]);
 
   /**
-   * Errors surface inline rather than being thrown: the realistic ones here are the 409s for
-   * publishing something already published (two staff tabs open on the same project), which is
+   * Errors surface inline rather than being thrown: the realistic one here is the 409 for
+   * unpublishing something already unpublished (two staff tabs open on the same project), which is
    * information, not a crash.
    */
   const mutate = async (label: string, mutation: () => Promise<GrowthAdminReportsBody>) => {
@@ -156,7 +145,7 @@ export function GrowthAdminReportsCard(props: { app: object, projectId: string }
     }
   };
 
-  const subtitle = "Read what the analysis wrote, then release it — publishing unlocks the customer's whole workspace";
+  const subtitle = "What the analysis sent this customer. Reports publish on write — the review gate is on the interview above";
 
   if (list.status === "loading") {
     return (
@@ -188,8 +177,8 @@ export function GrowthAdminReportsCard(props: { app: object, projectId: string }
 
         {reports.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No reports for this project yet. One is written at the end of every analysis run, once the
-            customer has finished their interview.
+            No reports for this project yet. One is written — and published — at the end of every
+            analysis run, once the customer has finished their interview.
           </p>
         ) : (
           <div className="space-y-2">
@@ -212,18 +201,17 @@ export function GrowthAdminReportsCard(props: { app: object, projectId: string }
           <div className="space-y-3 border-t border-foreground/[0.09] pt-4">
             <div className="flex flex-wrap items-center gap-2">
               {selected.publishedAtMillis == null ? (
-                <DesignButton
-                  size="sm"
-                  disabled={busy}
-                  onClick={async () => await mutate("growth-admin-reports-publish", () => publishGrowthAdminReport(props.app, props.projectId, selected.id))}
-                >
-                  Publish to customer
-                </DesignButton>
+                // No "publish" counterpart: there is no way back from a pull except a fresh
+                // analysis run, and offering a one-click re-release would re-create the review
+                // queue this build deliberately removed.
+                <span className="text-xs text-muted-foreground">
+                  Pulled — the customer can no longer read this. Run a new analysis to replace it.
+                </span>
               ) : (
                 <>
                   {/* Retracting a report the customer may already have read is a real act, not a
-                    * toggle — it exists for the wrong-project mistake, so it is styled as the
-                    * secondary, deliberate choice rather than sitting where Publish just was. */}
+                    * toggle — it exists for the analysis that went badly wrong, so it is styled as
+                    * the secondary, deliberate choice. */}
                   <DesignButton
                     size="sm"
                     variant="outline"

@@ -23,12 +23,13 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupMixed().defined(),
   }),
-  handler: async ({ auth, body }) => ({
-    statusCode: 200,
-    bodyType: "json",
-    body: await retakeGrowthInterview(
+  handler: async ({ auth, body }) => {
+    const result = await retakeGrowthInterview(
       await requireGrowthAdminTenancy(auth.project.id, auth.user, body.target_project_id),
       { allowHeld: true },
-    ),
-  }),
+    );
+    // Same snake_case ack as the customer's retake route: the plan is written asynchronously, so
+    // there is nothing to return but "the reset landed, keep watching this run".
+    return { statusCode: 200, bodyType: "json", body: { status: result.status, run_id: result.runId } };
+  },
 });

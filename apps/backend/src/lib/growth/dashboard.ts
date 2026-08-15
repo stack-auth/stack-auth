@@ -6,6 +6,7 @@ import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { GROWTH_METRIC_CATALOG } from "./metric-catalog";
 import { seedDefaultGrowthMilestones } from "./milestones";
+import { isGrowthInterviewReleased } from "./interview-release";
 import { growthPhaseStatusToStepState } from "./phase-step-state";
 import { getGrowthReleaseState } from "./report-release";
 import {
@@ -155,9 +156,11 @@ export async function getGrowthStatusBody(tenancy: Tenancy) {
     ? "not_ready"
     : interview.status === "completed" || interview.status === "skipped"
       ? "completed"
-      : answeredCount > 0
-        ? "in_progress"
-        : "ready";
+      : !isGrowthInterviewReleased(interview)
+        ? "preparing"
+        : answeredCount > 0
+          ? "in_progress"
+          : "ready";
 
   // `latestReport` is already filtered to published rows, so its presence is exactly "this branch
   // has had a report released" — no second query needed for the release state.
