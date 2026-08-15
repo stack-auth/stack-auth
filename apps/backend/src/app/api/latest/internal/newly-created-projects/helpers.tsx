@@ -38,7 +38,7 @@ export const FEATURED_APP_IDS = [
   "emails",
   "payments",
   "analytics",
-  "deployments-alpha",
+  "deploy",
   "gtm",
 ] as const satisfies readonly AppId[];
 

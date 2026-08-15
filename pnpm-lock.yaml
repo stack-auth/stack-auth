@@ -967,6 +967,40 @@ importers:
         specifier: 6.0.3
         version: 6.0.3
 
+  apps/marshal:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1089.0
+        version: 3.1089.0
+      '@aws-sdk/s3-request-presigner':
+        specifier: ^3.1089.0
+        version: 3.1089.0
+      '@elysiajs/node':
+        specifier: ^1.4.5
+        version: 1.4.5(elysia@1.4.29(@sinclair/typebox@0.34.49)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@5.9.3))
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
+      elysia:
+        specifier: ^1.4.28
+        version: 1.4.29(@sinclair/typebox@0.34.49)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@5.9.3)
+    devDependencies:
+      '@types/node':
+        specifier: 20.17.6
+        version: 20.17.6
+      rimraf:
+        specifier: ^5.0.5
+        version: 5.0.10
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(tsx@4.15.5)(typescript@5.9.3)(unrun@0.2.39)
+      tsx:
+        specifier: 4.15.5
+        version: 4.15.5
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
   apps/mcp:
     dependencies:
       '@bydefault/vercel':
@@ -3509,6 +3543,11 @@ packages:
         optional: true
       graphql-yoga:
         optional: true
+
+  '@elysiajs/node@1.4.5':
+    resolution: {integrity: sha512-K58HEre7RQWZOkLcMNl2RFnuZFzmUUyxHRBSfC2XaJz4j2AjrpHKu/f26tN9LRi3nx1L0PbH22vgZ4O2Fqppbw==}
+    peerDependencies:
+      elysia: '>= 1.4.0'
 
   '@emnapi/core@1.11.1':
     resolution: {integrity: sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ==}
@@ -20362,6 +20401,12 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@elysiajs/node@1.4.5(elysia@1.4.29(@sinclair/typebox@0.34.49)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@5.9.3))':
+    dependencies:
+      crossws: 0.4.10(srvx@0.11.22)
+      elysia: 1.4.29(@sinclair/typebox@0.34.49)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@5.9.3)
+      srvx: 0.11.22
+
   '@emnapi/core@1.11.1':
     dependencies:
       '@emnapi/wasi-threads': 1.2.2
@@ -31463,6 +31508,18 @@ snapshots:
     optionalDependencies:
       typescript: 5.9.3
 
+  elysia@1.4.29(@sinclair/typebox@0.34.49)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@5.9.3):
+    dependencies:
+      '@sinclair/typebox': 0.34.49
+      cookie: 1.1.1
+      exact-mirror: 1.1.1
+      fast-decode-uri-component: 1.0.1
+      file-type: 22.0.1
+      memoirist: 0.4.0
+      openapi-types: 12.1.3
+    optionalDependencies:
+      typescript: 5.9.3
+
   elysia@1.4.29(@sinclair/typebox@0.34.49)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@6.0.3):
     dependencies:
       '@sinclair/typebox': 0.34.49
@@ -37799,6 +37856,20 @@ snapshots:
     transitivePeerDependencies:
       - oxc-resolver
 
+  rolldown-plugin-dts@0.27.14(rolldown@1.1.2)(typescript@5.9.3):
+    dependencies:
+      dts-resolver: 3.0.0
+      get-tsconfig: 5.0.0-beta.5
+      obug: 2.1.4
+      rolldown: 1.1.2
+      yuku-ast: 0.8.1
+      yuku-codegen: 0.8.1
+      yuku-parser: 0.8.1
+    optionalDependencies:
+      typescript: 5.9.3
+    transitivePeerDependencies:
+      - oxc-resolver
+
   rolldown-plugin-dts@0.27.14(rolldown@1.1.2)(typescript@6.0.3):
     dependencies:
       dts-resolver: 3.0.0
@@ -39264,6 +39335,33 @@ snapshots:
       json5: 1.0.2
       minimist: 1.2.8
       strip-bom: 3.0.0
+
+  tsdown@0.22.14(tsx@4.15.5)(typescript@5.9.3)(unrun@0.2.39):
+    dependencies:
+      ansis: 4.3.1
+      cac: 7.0.0
+      defu: 6.1.7
+      empathic: 2.0.1
+      hookable: 6.1.1
+      import-without-cache: 0.4.0
+      obug: 2.1.4
+      picomatch: 4.0.5
+      rolldown: 1.1.2
+      rolldown-plugin-dts: 0.27.14(rolldown@1.1.2)(typescript@5.9.3)
+      tinyexec: 1.2.4
+      tinyglobby: 0.2.17
+      tree-kill: 1.2.2
+      unconfig-core: 7.5.0
+      verkit: 0.3.1
+    optionalDependencies:
+      tsx: 4.15.5
+      typescript: 5.9.3
+      unrun: 0.2.39
+    transitivePeerDependencies:
+      - '@typescript/native-preview'
+      - '@volar/typescript'
+      - oxc-resolver
+      - vue-tsc
 
   tsdown@0.22.14(tsx@4.15.5)(typescript@6.0.3)(unrun@0.2.39):
     dependencies:

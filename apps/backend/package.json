@@ -1,11 +1,11 @@
 {
   "name": "@hexclave/backend",
-  "version": "1.0.93",
+  "version": "1.0.96",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "type": "module",
   "engines": {
-    "node": "22.x"
+    "node": "24.x"
   },
   "scripts": {
     "clean": "rimraf src/generated && rimraf dist && rimraf node_modules",
