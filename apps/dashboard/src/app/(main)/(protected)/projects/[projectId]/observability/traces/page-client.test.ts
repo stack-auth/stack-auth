@@ -202,7 +202,7 @@ describe("analytics trace row parsing", () => {
   });
 
   it("selects the enclosing span and page-view correlation on events, not an ancestry array", () => {
-    const { query } = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef");
+    const { query } = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef", null, { startMs: 1_720_000_000_000, endMs: 1_720_000_100_000 });
     expect(query).toContain("trace_id, span_id, page_view_span_id");
     expect(query).toContain("message AS body");
     expect(query).toContain("severity_number");
@@ -212,11 +212,29 @@ describe("analytics trace row parsing", () => {
     expect(query).not.toContain("w3c_trace_id");
   });
 
+  it("bounds the event scan to the selected trace's interval, not the inbox window", () => {
+    // The telemetry tables are keyed (project_id, branch_id, event_at) with no
+    // trace_id index, so an unbounded trace_id filter would scan the project's
+    // whole retained history. The bound comes from the trace itself so a
+    // deep-linked event outside the inbox hours window still loads.
+    const { query, params } = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef", null, { startMs: 1_720_000_000_000, endMs: 1_720_000_100_000 });
+    expect(query).toContain("event_at >= fromUnixTimestamp64Milli({eventWindowStartMs:Int64})");
+    expect(query).toContain("event_at <= fromUnixTimestamp64Milli({eventWindowEndMs:Int64})");
+    expect(query).not.toContain("INTERVAL {hours:UInt32}");
+    expect(params).toEqual({
+      traceId: "0123456789abcdef0123456789abcdef",
+      eventWindowStartMs: 1_720_000_000_000,
+      eventWindowEndMs: 1_720_000_100_000,
+    });
+  });
+
   it("ranks a deep-linked event first so the 5000-row cap cannot hide it", () => {
-    const focused = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef", 1_720_000_000_000);
+    const focused = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef", 1_720_000_000_000, { startMs: 1_719_999_000_000, endMs: 1_720_000_100_000 });
     expect(focused.query).toContain("abs(toUnixTimestamp64Milli(event_at) - {focusEventAtMs:Int64})");
     expect(focused.params).toEqual({
       traceId: "0123456789abcdef0123456789abcdef",
+      eventWindowStartMs: 1_719_999_000_000,
+      eventWindowEndMs: 1_720_000_100_000,
       focusEventAtMs: 1_720_000_000_000,
     });
   });
@@ -303,7 +321,7 @@ describe("analytics trace row parsing", () => {
 
   it("loads the complete distributed trace after filtering the inbox by service", () => {
     const spans = getSelectedTraceSpanQuery("0123456789abcdef0123456789abcdef");
-    const events = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef");
+    const events = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef", null, { startMs: 1_720_000_000_000, endMs: 1_720_000_100_000 });
 
     expect(spans.query).not.toContain("{serviceName:String}");
     expect(events.query).not.toContain("{serviceName:String}");
@@ -312,7 +330,10 @@ describe("analytics trace row parsing", () => {
     });
     expect(events.params).toEqual({
       traceId: "0123456789abcdef0123456789abcdef",
+      eventWindowStartMs: 1_720_000_000_000,
+      eventWindowEndMs: 1_720_000_100_000,
     });
+    // The event bound derives from the trace's interval, never the inbox hours.
     expect(events.query).not.toContain("INTERVAL");
   });
 

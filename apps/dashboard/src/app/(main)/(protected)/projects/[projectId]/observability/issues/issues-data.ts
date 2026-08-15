@@ -1,4 +1,4 @@
-import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import {
   IssueBulkStatusRequestSchema,
@@ -160,7 +160,15 @@ LIMIT 500
 export type IssueSparklineBucket = { bucketMs: number, occurrences: number };
 export type IssueFacets = { services: ServiceIdentity[], environments: string[] };
 
-function parseClickHouseUtc(value: unknown, key: string): number {
+/**
+ * ClickHouse `DateTime64` string → epoch millis, throwing on anything else.
+ * Shared by every issues-side ClickHouse parser (sparklines here, the
+ * "leading up to" excerpt in `correlation.ts`) so a date-format fix cannot land
+ * in one and not the other. The analytics grid has its own `parseClickHouseDate`
+ * with a different contract (returns a `Date`, no unknown-input handling), so
+ * this is deliberately not unified with it.
+ */
+export function parseClickHouseUtc(value: unknown, key: string): number {
   if (typeof value !== "string") {
     throw new HexclaveAssertionError(`Expected ${key} to be a ClickHouse timestamp string`);
   }
@@ -183,28 +191,54 @@ function toCount(value: unknown, key: string): number {
 export function parseIssueSparklineRows(
   rows: readonly Record<string, unknown>[],
   requestedHashes: readonly string[],
+  hours: ObservabilityTimeRangeHours,
+  nowMs: number,
 ): Map<string, IssueSparklineBucket[]> {
   // Every requested hash gets an entry, including hashes with no occurrences in
   // the window. Without that the row would stay in its "pending" state forever
   // and read as "still loading" rather than "nothing happened here".
+  //
+  // Each entry is a DENSE, zero-filled grid rather than the sparse GROUP BY
+  // rows: the shared sparkline renders buckets adjacently with no time axis, so
+  // a sparse series would silently compress quiet periods and misplace every
+  // bar after a gap (mirrors `buildServiceTimelines` in `services-data.ts`).
+  // The grid is recomputed from the granularity instead of inferred from the
+  // rows so an entirely silent tail can't shorten the series. Every step width
+  // divides evenly into the epoch, which is exactly how ClickHouse's
+  // `toStartOfInterval` aligns, so flooring against the epoch reproduces the
+  // server's bucket boundaries.
+  const granularity = getBucketGranularity(hours);
+  const latestBucketMs = Math.floor(nowMs / granularity.stepMs) * granularity.stepMs;
+  const earliestBucketMs = latestBucketMs - (granularity.bucketCount - 1) * granularity.stepMs;
   const byHash = new Map<string, IssueSparklineBucket[]>(
-    requestedHashes.map((hash) => [hash, []]),
+    requestedHashes.map((hash) => [hash, Array.from({ length: granularity.bucketCount }, (_unused, index) => ({
+      bucketMs: earliestBucketMs + index * granularity.stepMs,
+      occurrences: 0,
+    }))]),
   );
   for (const row of rows) {
     const hash = row.issue_hash;
     if (typeof hash !== "string") {
       throw new HexclaveAssertionError("Expected sparkline row issue_hash to be a string");
     }
-    const bucket = {
-      bucketMs: parseClickHouseUtc(row.bucket_start, "sparkline bucket_start"),
-      occurrences: toCount(row.occurrences, "sparkline occurrences"),
-    };
     const existing = byHash.get(hash);
     if (existing == null) {
       // A hash we didn't ask for means the query and the cache key disagree.
       throw new HexclaveAssertionError(`Sparkline row returned an unrequested issue hash: ${hash}`);
     }
-    existing.push(bucket);
+    const bucketMs = parseClickHouseUtc(row.bucket_start, "sparkline bucket_start");
+    // The query's rolling `now - INTERVAL hours` window can clip a partial
+    // bucket just before the grid (and clock skew could produce one just
+    // after); both would be misleading half-buckets, so they are dropped the
+    // same way the services timeline drops them.
+    if (bucketMs < earliestBucketMs || bucketMs > latestBucketMs) continue;
+    const index = (bucketMs - earliestBucketMs) / granularity.stepMs;
+    if (!Number.isInteger(index)) {
+      throw new HexclaveAssertionError(`Sparkline bucket ${bucketMs} is not aligned to the ${granularity.label} grid`);
+    }
+    const bucket = existing[index]
+      ?? throwErr(`Sparkline bucket index ${index} is out of range despite the bounds check above`);
+    bucket.occurrences += toCount(row.occurrences, "sparkline occurrences");
   }
   return byHash;
 }
@@ -268,10 +302,14 @@ export async function fetchIssueList(adminApp: object, request: IssueListRequest
 export async function fetchIssueDetail(
   adminApp: object,
   idOrShortId: string,
-  options: { occurrence?: string, direction?: IssueOccurrenceDirection } = {},
+  options: { occurrence?: string, direction?: IssueOccurrenceDirection, hours?: ObservabilityTimeRangeHours } = {},
 ): Promise<IssueDetailResponse> {
   const params = new URLSearchParams();
   if (options.occurrence != null) params.set("occurrence", options.occurrence);
+  // Scopes the response's window counts (`window_occurrences`/`window_users`)
+  // so the detail header shows the same numbers as the list the reader came
+  // from; the endpoint defaults to 24h when omitted.
+  if (options.hours != null) params.set("hours", String(options.hours));
   // The direction is what turns one cursor into two buttons: the same
   // `(event_at, occurrence_id)` cursor means "the one before" or "the one
   // after" depending on it, so sending only the cursor always steps older.

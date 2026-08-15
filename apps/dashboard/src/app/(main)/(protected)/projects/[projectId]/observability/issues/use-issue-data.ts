@@ -106,7 +106,11 @@ export type IssueSparklines = {
   /** Keyed by issue hash. A missing key means "still loading". */
   byHash: ReadonlyMap<string, readonly EventSparklineBucket[]>,
   error: Error | null,
-  /** Re-requests everything currently on screen. */
+  /**
+   * Re-requests every on-screen hash that hasn't loaded yet (failed hashes are
+   * released back into that set). Already-loaded charts are kept — retry exists
+   * to recover from an error, not to refresh data.
+   */
   retry: () => void,
 };
 
@@ -166,7 +170,7 @@ export function useIssueSparklines(
       try {
         const { query, params } = getIssueSparklineQuery(hours, wanted);
         const response = await queryObservability(adminApp, { query, params });
-        const parsed = parseIssueSparklineRows(response.result, wanted);
+        const parsed = parseIssueSparklineRows(response.result, wanted, hours, Date.now());
         if (cancelled) return;
         setError(null);
         setCache((current) => {
@@ -189,6 +193,13 @@ export function useIssueSparklines(
 
     return () => {
       cancelled = true;
+      // Release this run's hashes: once `cancelled` is set the success path
+      // discards its result, so a hash that stays in `inFlight` here would
+      // never reach `byHash` and its row would show "Loading activity" forever
+      // (e.g. when an append or refresh re-runs the effect mid-request). The
+      // next run may re-request a hash whose response was discarded — a
+      // duplicate query is the cheap side of that trade.
+      for (const hash of wanted) inFlight.delete(hash);
     };
   }, [adminApp, hours, visibleHashes, byHash, retryToken]);
 

@@ -23,10 +23,13 @@ export function IssueEventSearch({
   const [tagKey, setTagKey] = useState("");
   const [tagValue, setTagValue] = useState("");
   const [items, setItems] = useState<IssuePublicSearchRecord[] | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const runSearch = async () => {
+  // `cursor: null` starts a fresh search; a cursor appends the next page to
+  // the already-rendered results.
+  const runSearch = async (cursor: string | null) => {
     setBusy(true);
     setError(null);
     try {
@@ -42,10 +45,15 @@ export function IssueEventSearch({
         userId: userId.trim() === "" ? null : userId.trim(),
         tagKey: tagKey.trim() === "" ? null : tagKey.trim(),
         tagValue: tagValue.trim() === "" ? null : tagValue.trim(),
-        cursor: null,
+        cursor,
       });
-      setItems(result.items);
+      setItems((current) => cursor == null || current == null ? result.items : [...current, ...result.items]);
+      setNextCursor(result.nextCursor);
     } catch (caught) {
+      // Clear stale results: leaving a previous search's rows under the error
+      // banner would read as results for the CURRENT inputs.
+      setItems(null);
+      setNextCursor(null);
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setBusy(false);
@@ -62,7 +70,7 @@ export function IssueEventSearch({
         <DesignInput size="sm" value={tagValue} onChange={(event) => setTagValue(event.target.value)} placeholder="Tag value" aria-label="Search tag value" />
       </div>
       <div className="mt-2">
-        <DesignButton size="sm" variant="secondary" loading={busy} onClick={runSearch} className="gap-1.5">
+        <DesignButton size="sm" variant="secondary" loading={busy} onClick={() => runSearch(null)} className="gap-1.5">
           <MagnifyingGlassIcon className="h-3.5 w-3.5" />
           Search events
         </DesignButton>
@@ -92,6 +100,13 @@ export function IssueEventSearch({
             );
           })}
         </ul>
+      )}
+      {items != null && items.length > 0 && nextCursor != null && (
+        <div className="mt-2">
+          <DesignButton size="sm" variant="ghost" loading={busy} onClick={() => runSearch(nextCursor)}>
+            Load more
+          </DesignButton>
+        </div>
       )}
     </DesignCard>
   );

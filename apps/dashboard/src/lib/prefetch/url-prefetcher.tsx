@@ -54,7 +54,11 @@ const urlPrefetchers: Record<string, UrlPrefetcher[]> = {
     // the project overview page renders the AnalyticsEventLimitBanner
     ...usageLimitBannerPrefetchers("analytics_events"),
   ],
-  "/projects/*/analytics/queries": [
+  // The queries/tables workspaces moved from /analytics to /warehouse (the old
+  // URLs are server-side redirects), so the banner prefetch keys must follow —
+  // keyed to the old paths they would never fire on the pages that render the
+  // banner.
+  "/projects/*/warehouse/queries": [
     ...usageLimitBannerPrefetchers("analytics_events"),
   ],
   "/projects/*/observability/traces": [
@@ -63,7 +67,7 @@ const urlPrefetchers: Record<string, UrlPrefetcher[]> = {
   "/projects/*/observability/logs": [
     ...usageLimitBannerPrefetchers("analytics_events"),
   ],
-  "/projects/*/analytics/tables": [
+  "/projects/*/warehouse/tables": [
     ...usageLimitBannerPrefetchers("analytics_events"),
   ],
   "/projects/*/session-replays": [

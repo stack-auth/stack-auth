@@ -20,7 +20,7 @@ import {
   RocketLaunchIcon,
   UploadSimpleIcon,
 } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
@@ -175,24 +175,33 @@ export default function PageClient() {
     };
   }, [adminApp, reloadToken]);
 
+  // Guards against out-of-order lookup responses: clicking release rows in
+  // quick succession keeps several fetches in flight, and without the sequence
+  // check the slowest response (or a late failure) would overwrite the
+  // selection the user actually made last.
+  const lookupSeqRef = useRef(0);
+
   const lookup = async (version: string) => {
     const nextVersion = version.trim();
     if (nextVersion === "") {
       setOperationError("Enter a release version to look up.");
       return;
     }
+    const seq = ++lookupSeqRef.current;
     setLookingUp(true);
     setOperationError(null);
     setNotice(null);
     try {
       const release = await fetchReleaseByVersion(adminApp, nextVersion);
+      if (seq !== lookupSeqRef.current) return;
       setSelectedRelease(release);
       setLookupVersion(release.version);
     } catch (caught) {
+      if (seq !== lookupSeqRef.current) return;
       setSelectedRelease(null);
       setOperationError(errorMessage(caught));
     } finally {
-      setLookingUp(false);
+      if (seq === lookupSeqRef.current) setLookingUp(false);
     }
   };
 
@@ -270,7 +279,12 @@ export default function PageClient() {
         next.set(commit.id, commit);
         return next;
       });
-      setSelectedRelease(await fetchReleaseByVersion(adminApp, selectedRelease.version));
+      // Apply the refreshed release only while it is still the selected one:
+      // the admin may have clicked another release while this request was in
+      // flight, and unconditionally setting would yank the view back to the
+      // release the commit was added to.
+      const refreshedRelease = await fetchReleaseByVersion(adminApp, selectedRelease.version);
+      setSelectedRelease((current) => (current?.id === refreshedRelease.id ? refreshedRelease : current));
       setCommitSha("");
       setCommitMessage("");
       setCommitPosition(String(position + 1));
@@ -318,7 +332,9 @@ export default function PageClient() {
         next.set(deployment.id, deployment);
         return next;
       });
-      setSelectedRelease(await fetchReleaseByVersion(adminApp, selectedRelease.version));
+      // Same stale-selection guard as addCommit above.
+      const refreshedRelease = await fetchReleaseByVersion(adminApp, selectedRelease.version);
+      setSelectedRelease((current) => (current?.id === refreshedRelease.id ? refreshedRelease : current));
       setDeploymentKey("");
       setDeploymentName("");
       setDeploymentUrl("");

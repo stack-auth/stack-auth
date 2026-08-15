@@ -9,7 +9,13 @@ import { computeRowOffsets, computeRowWindow, findHighlightedRowIndex, shouldSho
 afterEach(cleanup);
 
 beforeEach(() => {
-  window.scrollTo = vi.fn();
+  // Assigned via an intermediate on purpose: in assignment position, vi.fn()
+  // is contextually typed against the overloaded window.scrollTo and infers
+  // only the (x, y) overload, and that Mock<[number, number], void> then fails
+  // to satisfy the full overload intersection. Without the context it keeps
+  // its default loose signature, which satisfies every overload.
+  const scrollToMock = vi.fn();
+  window.scrollTo = scrollToMock;
 });
 
 function spanRow(id: string): WaterfallRow {

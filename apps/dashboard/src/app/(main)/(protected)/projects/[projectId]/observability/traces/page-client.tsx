@@ -270,6 +270,10 @@ LIMIT 10000
   };
 }
 
+// Safety cap for span links, mirroring the 10,000-span cap: hitting it is
+// surfaced in the UI (see linksResultWasCapped) instead of silently truncating.
+export const SPAN_LINKS_CAP = 1000;
+
 export function getSelectedTraceLinksQuery(traceId: string): {
   query: string,
   params: Record<string, string>,
@@ -287,7 +291,7 @@ SELECT
 FROM default.span_links
 WHERE trace_id = {traceId:String}
 ORDER BY owner_span_id ASC, linked_trace_id ASC, linked_span_id ASC
-LIMIT 1000
+LIMIT ${SPAN_LINKS_CAP}
 `,
     params: { traceId },
   };
@@ -376,7 +380,16 @@ LIMIT 1
   };
 }
 
-export function getSelectedTraceEventQuery(traceId: string, focusEventAtMs: number | null = null): {
+// Slack applied around the selected trace's own interval when fetching its
+// events. Events belong inside their trace's span intervals; the slack only
+// absorbs producer clock skew, so it can stay small.
+export const TRACE_EVENT_WINDOW_SLACK_MS = 15 * 60 * 1000;
+
+export function getSelectedTraceEventQuery(
+  traceId: string,
+  focusEventAtMs: number | null,
+  window: { startMs: number, endMs: number },
+): {
   query: string,
   params: Record<string, string | number>,
 } {
@@ -390,11 +403,16 @@ export function getSelectedTraceEventQuery(traceId: string, focusEventAtMs: numb
     // event-shaped views; OTel log/error branches provide their canonical body
     // and severity fields.
     //
-    // No time-range bound: this is a point lookup by trace_id. Bounding by the
-    // inbox hours window would drop a deep-linked custom event that happened
-    // just outside it, which is exactly the shareable URL this query exists to
-    // serve. The 5000-row cap is the safety; when a highlight timestamp is
-    // present we rank that event first so the cap cannot hide it.
+    // The time bound is derived from the SELECTED TRACE's interval (plus skew
+    // slack, plus the deep-linked highlight timestamp — see loadSelectedTrace),
+    // NOT from the inbox hours window: an inbox bound would drop a deep-linked
+    // custom event that happened just outside it, which is exactly the
+    // shareable URL this query exists to serve. Some bound is required though —
+    // the telemetry tables are keyed (project_id, branch_id, event_at) with no
+    // trace_id index, so an unbounded trace_id filter scans the project's whole
+    // retained history and can hit the 30s query timeout on busy projects. The
+    // 5000-row cap is the volume safety; when a highlight timestamp is present
+    // we rank that event first so the cap cannot hide it.
     query: `
 WITH correlated AS (
   SELECT event_type, event_at, data, message AS body, level,
@@ -424,10 +442,17 @@ SELECT event_type, event_at, data, body, level, severity_number, severity_text,
        refresh_token_id, session_replay_id, session_replay_segment_id
 FROM correlated
 WHERE trace_id = {traceId:String}
+  AND event_at >= fromUnixTimestamp64Milli({eventWindowStartMs:Int64})
+  AND event_at <= fromUnixTimestamp64Milli({eventWindowEndMs:Int64})
 ORDER BY ${focusEventAtMs == null ? "event_at ASC" : "abs(toUnixTimestamp64Milli(event_at) - {focusEventAtMs:Int64}) ASC, event_at ASC"}
 LIMIT 5000
 `,
-    params: { traceId, ...focusEventAtMs == null ? {} : { focusEventAtMs } },
+    params: {
+      traceId,
+      eventWindowStartMs: window.startMs,
+      eventWindowEndMs: window.endMs,
+      ...focusEventAtMs == null ? {} : { focusEventAtMs },
+    },
   };
 }
 
@@ -614,6 +639,7 @@ export default function PageClient() {
   const [traceLoading, setTraceLoading] = useState(false);
   const [traceError, setTraceError] = useState<string | null>(null);
   const [traceResultWasCapped, setTraceResultWasCapped] = useState(false);
+  const [linksResultWasCapped, setLinksResultWasCapped] = useState(false);
   const [traceVolume, setTraceVolume] = useState<TraceVolumeBucket[]>([]);
   const [traceVolumeLoading, setTraceVolumeLoading] = useState(true);
   const [traceVolumeError, setTraceVolumeError] = useState<string | null>(null);
@@ -738,28 +764,53 @@ export default function PageClient() {
     setTraceError(null);
     try {
       const spanQuery = getSelectedTraceSpanQuery(traceId, focusSpanId);
-      const eventQuery = getSelectedTraceEventQuery(traceId, highlightEventAtMs);
       const linksQuery = getSelectedTraceLinksQuery(traceId);
-      const [spansResponse, eventsResponse, linksResponse] = await Promise.all([
+      const [spansResponse, linksResponse] = await Promise.all([
         queryObservability(adminApp, {
           query: spanQuery.query,
           params: spanQuery.params,
         }),
-        queryObservability(adminApp, {
-          query: eventQuery.query,
-          params: eventQuery.params,
-        }),
         queryObservability(adminApp, linksQuery),
       ]);
       if (seq !== traceRequestSeqRef.current) return;
-      setSelectedSpans(parseUniqueSpanRows(spansResponse.result));
-      setSelectedEvents(eventsResponse.result
-        .map(parseEventRow)
-        .filter((event): event is EventInput => event != null));
+      const spans = parseUniqueSpanRows(spansResponse.result);
+      // The event fetch runs AFTER the spans so it can be bounded to the
+      // trace's own interval (see the comment on getSelectedTraceEventQuery).
+      // One extra serial round-trip buys a primary-key/partition-prunable scan
+      // instead of one over the project's entire retained event history. With
+      // no spans there is no waterfall to place events into, so the fetch is
+      // skipped entirely.
+      let events: EventInput[] = [];
+      if (spans.length > 0) {
+        const loadedAtMs = Date.now();
+        const spanStartMs = Math.min(...spans.map((span) => span.startMs));
+        // Open spans (endMs == null) extend the interval to "now". A capped
+        // trace can under-report its true end; the capped-trace alert already
+        // flags that view as partial.
+        const spanEndMs = Math.max(...spans.map((span) => span.endMs ?? loadedAtMs));
+        const eventQuery = getSelectedTraceEventQuery(traceId, highlightEventAtMs, {
+          // A deep-linked highlight timestamp widens the window so clock skew
+          // between the event and its trace's spans cannot hide the very event
+          // the shared URL points at.
+          startMs: (highlightEventAtMs == null ? spanStartMs : Math.min(spanStartMs, highlightEventAtMs)) - TRACE_EVENT_WINDOW_SLACK_MS,
+          endMs: (highlightEventAtMs == null ? spanEndMs : Math.max(spanEndMs, highlightEventAtMs)) + TRACE_EVENT_WINDOW_SLACK_MS,
+        });
+        const eventsResponse = await queryObservability(adminApp, {
+          query: eventQuery.query,
+          params: eventQuery.params,
+        });
+        if (seq !== traceRequestSeqRef.current) return;
+        events = eventsResponse.result
+          .map(parseEventRow)
+          .filter((event): event is EventInput => event != null);
+      }
+      setSelectedSpans(spans);
+      setSelectedEvents(events);
       setSelectedLinks(linksResponse.result
         .map(parseTraceLinkRow)
         .filter((link): link is TraceLink => link != null));
       setTraceResultWasCapped(spansResponse.result.length >= 10000);
+      setLinksResultWasCapped(linksResponse.result.length >= SPAN_LINKS_CAP);
       setNowMs(Date.now());
     } catch (e) {
       if (seq !== traceRequestSeqRef.current) return;
@@ -982,7 +1033,11 @@ export default function PageClient() {
           title={shareLinkCopied ? "Copied!" : "Copy link to this view"}
           onClick={() => runAsynchronouslyWithAlert(async () => {
             const viewedId = linkedSelection?.traceId ?? pinnedTraceId ?? selectedTraceId;
-            if (viewedId != null && pinnedTraceId == null) setPinnedTraceId(viewedId);
+            // Pin so the copied URL survives inbox churn — but not while
+            // following a span link: the URL already names the linked trace via
+            // linkedSelection, and pinning the linked trace would break "Back
+            // to originating trace" (the pin is what "back" returns to).
+            if (viewedId != null && pinnedTraceId == null && linkedSelection == null) setPinnedTraceId(viewedId);
             const params = serializeTracePageUrlState({
               hours,
               service,
@@ -1040,6 +1095,14 @@ export default function PageClient() {
             variant="warning"
             title="Selected trace is unusually large"
             description="Showing the earliest 10,000 spans in this trace."
+          />
+        )}
+
+        {linksResultWasCapped && !traceLoading && traceError == null && (
+          <DesignAlert
+            variant="warning"
+            title="Selected trace has an unusually large number of span links"
+            description={`Showing the first ${SPAN_LINKS_CAP.toLocaleString()} span links in this trace; further links exist but are not listed.`}
           />
         )}
 
@@ -1132,7 +1195,10 @@ export default function PageClient() {
               <div className="flex items-center justify-between gap-3 border-b border-border/50 bg-foreground/[0.03] px-3 py-2">
                 <div className="min-w-0 text-xs text-muted-foreground">
                   <span className="font-medium text-foreground">Following span link</span>{" "}
-                  <span className="font-mono">{selectedRootTraceId?.slice(0, 8) ?? "trace"}</span>{" → "}
+                  {/* The originating side is what "Back" returns to: the pinned
+                      trace when one exists (deep link / explicit click), else
+                      the auto-selected inbox root. */}
+                  <span className="font-mono">{(pinnedTraceId ?? selectedRootTraceId)?.slice(0, 8) ?? "trace"}</span>{" → "}
                   <span className="font-mono">{linkedSelection.traceId.slice(0, 8)}/{linkedSelection.spanId?.slice(0, 6) ?? "root"}</span>
                 </div>
                 <DesignButton
@@ -1188,11 +1254,12 @@ export default function PageClient() {
                   openEventDetail(event.raw);
                 }}
                 onOpenLink={(link) => {
+                  // The follow target lives ONLY in linkedSelection: selection,
+                  // URL, and highlight all read linkedSelection first, and
+                  // leaving pinned/highlight untouched is what lets "Back to
+                  // originating trace" restore the exact pre-follow view by
+                  // just clearing linkedSelection.
                   setLinkedSelection({ traceId: link.linkedTraceId, spanId: link.linkedSpanId });
-                  setPinnedTraceId(link.linkedTraceId);
-                  setHighlightSpanId(link.linkedSpanId);
-                  setHighlightEventType(null);
-                  setHighlightEventAtMs(null);
                 }}
               />
             )}

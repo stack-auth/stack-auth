@@ -1,29 +1,16 @@
-import { escapeHtml } from "@hexclave/shared/dist/utils/html";
+import { type IssueAlertEmailPlaceholderToken } from "@hexclave/shared/dist/utils/issue-alert-email-template";
 import { deindent } from "@hexclave/shared/dist/utils/strings";
 
-/**
- * Tokens authors can put in an issue-alert subject or HTML body. The backend
- * substitutes the same names from the triggering issue when the email is
- * enqueued. Keep this list aligned with
- * `apps/backend/src/lib/issues/issue-alerts/email-template.ts`.
- *
- * Unknown `{{tokens}}` are left untouched so a typo is visible in the sent
- * mail instead of silently disappearing.
- */
-export const ISSUE_ALERT_EMAIL_PLACEHOLDER_TOKENS = [
-  "short_id",
-  "type",
-  "summary",
-  "culprit",
-  "environment",
-  "release",
-  "status",
-  "kind",
-  "occurred_at",
-  "issue_url",
-] as const;
-
-export type IssueAlertEmailPlaceholderToken = typeof ISSUE_ALERT_EMAIL_PLACEHOLDER_TOKENS[number];
+// The token vocabulary and interpolation semantics are a cross-app contract
+// with the backend's alert-email renderer, so they live in `@hexclave/shared`
+// (utils/issue-alert-email-template). This module re-exports them for the
+// alert editor and adds the dashboard-only pieces: per-token hints, the
+// default subject/body, and sample values for the live preview.
+export {
+  ISSUE_ALERT_EMAIL_PLACEHOLDER_TOKENS,
+  interpolateIssueAlertEmailTemplate,
+  type IssueAlertEmailPlaceholderToken,
+} from "@hexclave/shared/dist/utils/issue-alert-email-template";
 
 export const ISSUE_ALERT_EMAIL_PLACEHOLDERS: readonly {
   token: IssueAlertEmailPlaceholderToken,
@@ -40,13 +27,6 @@ export const ISSUE_ALERT_EMAIL_PLACEHOLDERS: readonly {
   { token: "occurred_at", hint: "When this occurrence was seen" },
   { token: "issue_url", hint: "Dashboard link to the issue" },
 ];
-
-const PLACEHOLDER_PATTERN = /\{\{([a-z_]+)\}\}/g;
-const KNOWN_PLACEHOLDER_TOKENS: ReadonlySet<string> = new Set(ISSUE_ALERT_EMAIL_PLACEHOLDER_TOKENS);
-
-function isPlaceholderToken(name: string): name is IssueAlertEmailPlaceholderToken {
-  return KNOWN_PLACEHOLDER_TOKENS.has(name);
-}
 
 export const DEFAULT_ISSUE_ALERT_EMAIL_SUBJECT = "[{{kind}}] {{short_id}}: {{summary}}";
 
@@ -79,19 +59,6 @@ export const DEFAULT_ISSUE_ALERT_EMAIL_HTML = deindent`
     </p>
   </div>
 `;
-
-export function interpolateIssueAlertEmailTemplate(
-  template: string,
-  values: ReadonlyMap<IssueAlertEmailPlaceholderToken, string>,
-  options: { escapeHtml: boolean },
-): string {
-  return template.replace(PLACEHOLDER_PATTERN, (match, name: string) => {
-    if (!isPlaceholderToken(name)) return match;
-    const value = values.get(name);
-    if (value == null) return match;
-    return options.escapeHtml ? escapeHtml(value) : value;
-  });
-}
 
 export function createIssueAlertEmailPreviewValues(options: {
   projectId: string,
