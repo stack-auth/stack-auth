@@ -306,11 +306,28 @@ const environmentSchemaFuzzerConfig = [{
     }],
   }],
   observability: [{
-    errorIngest: [undefined],
+    errorIngest: [undefined, {
+      finalScrub: [undefined, {
+        // Record keys are dotless rule ids (config-override normalization
+        // splits dotted keys into nested objects); the dotted field selector
+        // lives in the record value, so every selector is fuzzable now.
+        dropKeys: [undefined, { dropEmail: [undefined, "user.email", "tags.customer-id"] }],
+        urlKeys: [undefined, { pathOnlyUrl: [undefined, "url", "request.url"] }],
+      }],
+      rateLimit: [undefined, {
+        maxItemsPerWindow: [1, 250, 100_000],
+        windowSeconds: [1, 60, 86_400],
+      }],
+      quota: [undefined, {
+        maxBytesPerWindow: [1, 65_536, 50 * 1024 * 1024],
+        windowSeconds: [1, 60, 86_400],
+      }],
+    }],
     errorGrouping: [{
-      activeConfigId: [undefined, "hexclave-js:2026-08-01"] as const,
+      activeConfigId: [undefined, "hexclave-js:2026-08-01", "hexclave-js:2026-08-06"] as const,
       readableConfigIds: [{
         "hexclave-js:2026-08-01": [{ enabled: [true, false] }],
+        "hexclave-js:2026-08-06": [{ enabled: [true, false] }],
       }],
     }],
   }],
