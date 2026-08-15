@@ -1,0 +1,101 @@
+apps/backend/src/app/api/latest/analytics/attachments/[attachment_id]/route.ts
+  s_2c57837bf795b2::t_177d3945a3f8c0 1,43-50
+apps/backend/src/app/api/latest/analytics/attachments/route.test.ts
+  s_2c57837bf795b2::t_fa126365c0eb48 1-208
+apps/backend/src/app/api/latest/analytics/attachments/route.ts
+  s_2c57837bf795b2::t_9fa6387e1da107 1-3,47-58,62,64-70
+apps/backend/src/app/api/latest/analytics/client-reports/route.ts
+  s_2c57837bf795b2::t_a3645867adaf6b 2,5,37-43
+apps/backend/src/app/api/latest/analytics/envelope/route.test.ts
+  s_2c57837bf795b2::t_1cc1cb0feaa5d7 1-75
+apps/backend/src/app/api/latest/analytics/envelope/route.ts
+  s_2c57837bf795b2::t_197e9c5bc98752 7,16,24,139-144
+apps/backend/src/app/api/latest/analytics/events/batch/route.test.tsx
+  s_2c57837bf795b2::t_b276709bed659a 1,4-84
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_2c57837bf795b2::t_7f7f4de9b97e2f 2-3,373-390,484,493-511,515,518,524,730-735,752-756,761,776-781
+apps/backend/src/lib/attachments/attachment-contract.test.ts
+  s_2c57837bf795b2::t_f49173f206a651 27-36
+apps/backend/src/lib/attachments/attachment-contract.ts
+  s_2c57837bf795b2::t_fe98d6db1a3323 12-13,108-116
+apps/backend/src/lib/attachments/attachment-service.ts
+  s_2c57837bf795b2::t_231e6eecec469c 167-170
+apps/backend/src/lib/error-ingest/error-ingest-client-reports.test.ts
+  s_2c57837bf795b2::t_d2806fe110d16d 7,127-171
+apps/backend/src/lib/error-ingest/error-ingest-client-reports.ts
+  s_2c57837bf795b2::t_ea3b2092f1a45e 44-62,120,124-127,129,131,134,138,187-190,192,203-206,209,216-217,226,248-254,257-258,260-270,273-283,299-307,319-328,335
+apps/backend/src/lib/error-ingest/error-ingest-envelope.test.ts
+  s_2c57837bf795b2::t_8720274d3d93d2 14-17,19,22,91-125
+apps/backend/src/lib/error-ingest/error-ingest-envelope.ts
+  s_2c57837bf795b2::t_9c18aec11b40af 95-100,304-308,519-525,588,778-781,784
+apps/backend/src/lib/error-ingest/error-ingest-event-adapter.test.ts
+  s_2c57837bf795b2::t_3a4c968c01c0b2 89-121
+apps/backend/src/lib/error-ingest/error-ingest-event-adapter.ts
+  s_2c57837bf795b2::t_928142609b7139 88-91,138-146,151
+apps/backend/src/lib/error-ingest/error-ingest-outcomes.test.ts
+  s_2c57837bf795b2::t_7c8108597b8bf7 4,27,53,58
+apps/backend/src/lib/error-ingest/error-ingest-outcomes.ts
+  s_2c57837bf795b2::t_b8aa113eff3a22 45,82-86,88-90,94-99
+apps/backend/src/lib/error-ingest/error-ingest-policy.test.ts
+  s_2c57837bf795b2::t_3afaee90fc7e29 27-30,47,50,52-60,92-110,198-202
+apps/backend/src/lib/error-ingest/error-ingest-policy.ts
+  s_2c57837bf795b2::t_125419aa041cd6 17-21,160-164,201-203,206,208-209,211,214,216,478-488,503-505,546-551,618-621,631-637
+apps/backend/src/lib/error-ingest/error-ingest-protocol-adapter.test.ts
+  s_2c57837bf795b2::t_48365d6b1da65e 56-58,60,63-64,69-70,156,199-202
+apps/backend/src/lib/error-ingest/error-ingest-protocol-adapter.ts
+  s_2c57837bf795b2::t_e776f5bbfd6013 5,400-407,519-524,526,530-533,558,582-583
+apps/backend/src/lib/error-ingest/error-ingest-protocol-projections.ts
+  s_2c57837bf795b2::t_25098e280d5f89 9-13,100-109,114-119
+apps/backend/src/lib/error-ingest/error-ingest-scrubber.test.ts
+  s_2c57837bf795b2::t_8141d0c17d4325 39-68
+apps/backend/src/lib/error-ingest/error-ingest-scrubber.ts
+  s_2c57837bf795b2::t_97a84d1776a7ff 67-73,176,231-244,272,364
+apps/backend/src/lib/error-ingest/error-ingest-transaction-adapter.test.ts
+  s_2c57837bf795b2::t_9e8fb704ad7983 7,114-131
+apps/backend/src/lib/error-ingest/error-ingest-transaction-adapter.ts
+  s_2c57837bf795b2::t_0cf0c567a47b72 4-5,182-188
+apps/backend/src/lib/error-ingest/index.ts
+  s_2c57837bf795b2::t_d770bd4e7213db 13,16,50
+apps/backend/src/lib/safe-request-context.test.ts
+  s_2c57837bf795b2::t_7d06983b67e998 46-85
+apps/backend/src/lib/safe-request-context.ts
+  s_2c57837bf795b2::t_daba3db28a512b 150-157,167-169,176-182,190-197
+apps/e2e/tests/backend/endpoints/api/v1/analytics-sentry-envelope.test.ts
+  s_2c57837bf795b2::t_0cddbb9ab3d74b 120-132
+packages/template/src/lib/hexclave-app/apps/implementations/error-attachments.test.ts
+  s_2c57837bf795b2::t_9d9609a90933a2 3,16-21
+packages/template/src/lib/hexclave-app/apps/implementations/error-attachments.ts
+  s_2c57837bf795b2::t_75a036b31b71c4 30-35,55
+packages/template/src/lib/hexclave-app/apps/implementations/error-capture.test.ts
+  s_2c57837bf795b2::t_2b16078768cf18 5,9,11,135-257,376-387
+packages/template/src/lib/hexclave-app/apps/implementations/error-capture.ts
+  s_2c57837bf795b2::t_a5e76917764c0a 26-27,125,164-219,339-341,344-346,353-356,400-401,422,435-439,461-549,553,566-571,595-600,614-616
+packages/template/src/lib/hexclave-app/apps/implementations/error-processors.test.ts
+  s_2c57837bf795b2::t_80bd91bcac0604 120-147
+packages/template/src/lib/hexclave-app/apps/implementations/error-processors.ts
+  s_2c57837bf795b2::t_d0e50f8cdcd1af 9-15,248-270
+packages/template/src/lib/hexclave-app/apps/implementations/error-scope.test.ts
+  s_2c57837bf795b2::t_7c5d5bc546093c 39-47
+packages/template/src/lib/hexclave-app/apps/implementations/error-scope.ts
+  s_2c57837bf795b2::t_1a83c59d45bb4b 33-37,41
+packages/template/src/lib/hexclave-app/apps/interfaces/error-capture.ts
+  s_2c57837bf795b2::t_5c74e697c0de6c 98
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_2c57837bf795b2::t_e2a6bacb126965 2383-2386
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "6bb09ae7b721e81f7e31540a8e4ed6aa5541fa28",
+  "prompts": {},
+  "sessions": {
+    "s_2c57837bf795b2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "534f3379-be72-4057-9a7d-40cac2df6f1a",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
