@@ -52,6 +52,26 @@ export function declareDelayedLowLevelDatabase(wrapped: LowLevelDatabase, option
   // something to await. The chained promise is always resolved, never rejected, so a failing write
   // does not poison the queue for the writes behind it.
   let writerQueueTail: Promise<void> = Promise.resolve();
+  // Number of operations that have entered this wrapper and not returned yet, including the ones that
+  // are only sleeping off a delay and have not touched the wrapped backend at all yet (a
+  // compare-and-set in its read phase, say). `close()` needs those too: the writer queue alone only
+  // knows about operations that already reached it.
+  let inFlightOperations = 0;
+  let idleWaiters: (() => void)[] = [];
+
+  const trackInFlight = async <T>(operation: () => Promise<T>): Promise<T> => {
+    inFlightOperations++;
+    try {
+      return await operation();
+    } finally {
+      inFlightOperations--;
+      if (inFlightOperations === 0) {
+        const waiters = idleWaiters;
+        idleWaiters = [];
+        for (const waiter of waiters) waiter();
+      }
+    }
+  };
 
   const payReadDelay = async (deadlineMs: number): Promise<void> => {
     readOperations++;
@@ -97,13 +117,13 @@ export function declareDelayedLowLevelDatabase(wrapped: LowLevelDatabase, option
   // (`setAll`/`compareAndSetAll` vs. `insertAll`), which is why those are added by the callers below.
   const declareSharedMethods = (wrappedStore: LowLevelKvStore | LowLevelKvDump) => ({
     async get(key: ArrayBuffer) {
-      return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.get", attributes }, async () => await withReadDelay(async () => await wrappedStore.get(key)));
+      return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.get", attributes }, async () => await trackInFlight(async () => await withReadDelay(async () => await wrappedStore.get(key))));
     },
     async listEntries(listOptions?: { startAfter?: ArrayBuffer, limit?: number }) {
-      return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.listEntries", attributes }, async () => await withReadDelay(async () => await wrappedStore.listEntries(listOptions)));
+      return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.listEntries", attributes }, async () => await trackInFlight(async () => await withReadDelay(async () => await wrappedStore.listEntries(listOptions))));
     },
     async deleteAll(keys: ArrayBuffer[], deleteOptions?: { requiresSeq?: DatabaseSeq }) {
-      return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.deleteAll", attributes: { ...attributes, "bulldozer.low_level.key_count": keys.length } }, async () => await withWriteDelay(async () => await wrappedStore.deleteAll(keys, deleteOptions)));
+      return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.deleteAll", attributes: { ...attributes, "bulldozer.low_level.key_count": keys.length } }, async () => await trackInFlight(async () => await withWriteDelay(async () => await wrappedStore.deleteAll(keys, deleteOptions))));
     },
     async debugEntries() {
       return await wrappedStore.debugEntries?.() ?? [];
@@ -129,10 +149,10 @@ export function declareDelayedLowLevelDatabase(wrapped: LowLevelDatabase, option
       return {
         ...declareSharedMethods(wrappedStore),
         async setAll(entries, setOptions) {
-          return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.setAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => await withWriteDelay(async () => await wrappedStore.setAll(entries, setOptions)));
+          return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.setAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => await trackInFlight(async () => await withWriteDelay(async () => await wrappedStore.setAll(entries, setOptions))));
         },
         async compareAndSetAll(entries, compareAndSetOptions) {
-          return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
+          return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => await trackInFlight(async () => {
             // A compare-and-set first reads the current values (always) and then writes the matching
             // ones (only if any matched), so it pays the read latency up front and the writer's
             // service time only when it actually mutated something.
@@ -141,7 +161,7 @@ export function declareDelayedLowLevelDatabase(wrapped: LowLevelDatabase, option
               async () => await wrappedStore.compareAndSetAll(entries, compareAndSetOptions),
               result => result.results.some(entryResult => entryResult.wasSet),
             );
-          });
+          }));
         },
       };
     },
@@ -150,7 +170,7 @@ export function declareDelayedLowLevelDatabase(wrapped: LowLevelDatabase, option
       return {
         ...declareSharedMethods(wrappedDump),
         async insertAll(values, insertOptions) {
-          return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.insertAll", attributes: { ...attributes, "bulldozer.low_level.value_count": values.length } }, async () => await withWriteDelay(async () => await wrappedDump.insertAll(values, insertOptions)));
+          return await traceSpanHot({ description: "bulldozer-js.low-level.delayed.insertAll", attributes: { ...attributes, "bulldozer.low_level.value_count": values.length } }, async () => await trackInFlight(async () => await withWriteDelay(async () => await wrappedDump.insertAll(values, insertOptions))));
         },
       };
     },
@@ -167,8 +187,13 @@ export function declareDelayedLowLevelDatabase(wrapped: LowLevelDatabase, option
       return wrapped.combineSeqs(...seqs);
     },
     async close() {
-      // Writes that are still queued behind the emulated device would otherwise run against an
-      // already-closed backend.
+      // Anything still in flight would otherwise run against an already-closed backend, so drain
+      // until nothing is left: an operation woken up by the drain can enqueue further work behind the
+      // writer queue (a buffered flush resuming, say), which is why one pass is not enough.
+      while (inFlightOperations > 0) {
+        await new Promise<void>(resolve => idleWaiters.push(resolve));
+        await writerQueueTail;
+      }
       await writerQueueTail;
       await wrapped.close();
     },

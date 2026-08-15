@@ -65,14 +65,14 @@ function createConcurrencyTrackingDatabase(): { database: LowLevelDatabase, getM
   };
 }
 
-// Records whether `close()` was reached before the wrapped write it was racing against had finished,
-// which a wrapper that closes without draining its writer queue would do.
-function createCloseOrderTrackingDatabase(): { database: LowLevelDatabase, wasClosedBeforeWriteFinished: () => boolean } {
+// Records whether `close()` was reached while a mutation the wrapper had accepted had not reached the
+// wrapped database yet, which is what a wrapper that closes without draining its in-flight work does.
+function createCloseOrderTrackingDatabase(): { database: LowLevelDatabase, wasClosedBeforeMutationFinished: () => boolean } {
   const inner = declareInMemoryLowLevelDatabase(crypto.randomUUID());
-  let writeFinished = false;
-  let closedBeforeWriteFinished = false;
+  let finishedMutations = 0;
+  let closedAfterMutations = 0;
   return {
-    wasClosedBeforeWriteFinished: () => closedBeforeWriteFinished,
+    wasClosedBeforeMutationFinished: () => closedAfterMutations < finishedMutations,
     database: {
       ...inner,
       declareKvStore(id) {
@@ -82,13 +82,19 @@ function createCloseOrderTrackingDatabase(): { database: LowLevelDatabase, wasCl
           async setAll(entries, options) {
             await new Promise<void>(resolve => setImmediate(resolve));
             const result = await store.setAll(entries, options);
-            writeFinished = true;
+            finishedMutations++;
+            return result;
+          },
+          async compareAndSetAll(entries, options) {
+            await new Promise<void>(resolve => setImmediate(resolve));
+            const result = await store.compareAndSetAll(entries, options);
+            finishedMutations++;
             return result;
           },
         };
       },
       async close() {
-        if (!writeFinished) closedBeforeWriteFinished = true;
+        closedAfterMutations = finishedMutations;
         await inner.close();
       },
     },
@@ -179,7 +185,9 @@ describe("delayed low-level database", () => {
 
   it("makes compare-and-set pay the write delay only when it writes", async () => {
     const readDelayMs = 10;
-    const writeDelayMs = 40;
+    // Deliberately far apart: the "didn't write, so didn't pay the service time" assertion compares
+    // against this bound, and a tight one would fail whenever CI stalls the event loop for a few ms.
+    const writeDelayMs = 200;
     const database = createDelayedDatabase({ readDelayMs, writeDelayMs });
     const store = database.declareKvStore("store");
     await store.setAll([{ key: buffer("a"), value: buffer("1") }]);
@@ -206,7 +214,7 @@ describe("delayed low-level database", () => {
   });
 
   it("keeps the writer usable after a write fails", async () => {
-    const writeDelayMs = 20;
+    const writeDelayMs = 50;
     const database = declareDelayedLowLevelDatabase(createFailingFirstWriteDatabase(), { readDelayMs: 0, writeDelayMs });
     const store = database.declareKvStore("store");
 
@@ -228,7 +236,7 @@ describe("delayed low-level database", () => {
 
   it("waits for queued writes before closing the wrapped database", async () => {
     const writeDelayMs = 50;
-    const { database: wrapped, wasClosedBeforeWriteFinished } = createCloseOrderTrackingDatabase();
+    const { database: wrapped, wasClosedBeforeMutationFinished } = createCloseOrderTrackingDatabase();
     const database = declareDelayedLowLevelDatabase(wrapped, { readDelayMs: 0, writeDelayMs });
     const store = database.declareKvStore("store");
 
@@ -236,8 +244,25 @@ describe("delayed low-level database", () => {
     const beforeCloseMs = performance.now();
     await database.close();
     expect(performance.now() - beforeCloseMs).toBeGreaterThanOrEqual(writeDelayMs);
-    expect(wasClosedBeforeWriteFinished()).toBe(false);
+    expect(wasClosedBeforeMutationFinished()).toBe(false);
     await pendingWrite;
+  });
+
+  it("waits for a compare-and-set that is still paying its read delay before closing", async () => {
+    // A compare-and-set sleeps off its read delay before it ever reaches the writer queue, so it is
+    // invisible to a `close()` that only drains that queue.
+    const readDelayMs = 50;
+    const { database: wrapped, wasClosedBeforeMutationFinished } = createCloseOrderTrackingDatabase();
+    const database = declareDelayedLowLevelDatabase(wrapped, { readDelayMs, writeDelayMs: 10 });
+    const store = database.declareKvStore("store");
+    await store.setAll([{ key: buffer("a"), value: buffer("1") }]);
+
+    const pendingCompareAndSet = store.compareAndSetAll([{ key: buffer("a"), compare: buffer("1"), value: buffer("2") }]);
+    await database.close();
+    // Awaited only after `close()` returned: the ordering question is whether the compare-and-set had
+    // already reached the wrapped database by then, so it must be settled before asserting.
+    expect((await pendingCompareAndSet).results.map(result => result.wasSet)).toEqual([true]);
+    expect(wasClosedBeforeMutationFinished()).toBe(false);
   });
 
   it("reports delay counters in debug info", async () => {
