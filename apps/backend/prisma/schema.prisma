@@ -318,6 +318,7 @@ model GrowthFinding {
 
   @@index([projectId, branchId, kind, createdAt(sort: Desc)])
   @@index([projectId, branchId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([runId])
 }
 
 // Larger generated content (blog drafts, report sections, crawl summaries)
@@ -340,6 +341,7 @@ model GrowthArtifact {
   run     GrowthAnalysisRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
 
   @@index([projectId, branchId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([runId])
 }
 
 // The interview attached to a run. The pre-generated question plan lives in
@@ -669,6 +671,8 @@ model GrowthMilestoneEvent {
   analysisRunId String? @db.Uuid
 
   milestone GrowthMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+
+  @@index([milestoneId])
 }
 
 // ── Growth games ─────────────────────────────────────────────────────────────
@@ -845,6 +849,7 @@ model GrowthQuizAnswer {
   question GrowthQuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@unique([roundId, questionId])
+  @@index([questionId])
 }
 
 model Tenancy {
