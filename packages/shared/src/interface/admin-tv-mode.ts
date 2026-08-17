@@ -585,7 +585,7 @@ export const TV_BUILT_IN_PROFILES: readonly TvBuiltInProfile[] = [
     updatedAt: null,
     configuration: {
       displayName: "Company Pulse",
-      description: "The complete General Mode rotation for shared office spaces.",
+      description: "A complete project overview for shared office spaces.",
       mode: "general",
       defaultDurationSeconds: 20,
       playlist: [

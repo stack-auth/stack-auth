@@ -46,7 +46,7 @@ describe("TV profile customization copy", () => {
         "alertTitle": "Persisted Project Profile",
         "breadcrumb": "Saved Profile",
         "isTemplateDraft": false,
-        "pageDescription": "Configure this named General Mode presentation profile.",
+        "pageDescription": "Configure this named TV presentation profile.",
         "saveLabel": "Save Profile",
       }
     `);

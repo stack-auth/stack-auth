@@ -9,6 +9,7 @@ import {
   DesignInput,
   DesignSelectorDropdown,
 } from "@/components/design-components";
+import { toast } from "@/components/ui";
 import {
   approveTvDisplayOrThrow,
   fetchTvDisplaysOrThrow,
@@ -99,7 +100,7 @@ export function TvDisplayManagement({ adminApp, profiles }: { adminApp: object, 
   const [profileId, setProfileId] = useState(profiles[0]?.id ?? "company-pulse");
   const [acknowledgeExact, setAcknowledgeExact] = useState(false);
   const [pairing, setPairing] = useState(false);
-  const [pairingNotice, setPairingNotice] = useState<ActionNotice | null>(null);
+  const [pairingError, setPairingError] = useState<ActionNotice | null>(null);
   const pairingInFlight = useRef(false);
   const refreshInFlight = useRef(false);
   const hiddenDisplayIds = useRef(new Set<string>());
@@ -113,7 +114,7 @@ export function TvDisplayManagement({ adminApp, profiles }: { adminApp: object, 
       display.displayName === pending.displayName && !pending.existingDisplayIds.has(display.id)
     ))) {
       pendingPairing.current = null;
-      setPairingNotice({
+      toast({
         variant: "success",
         title: "Display Paired",
         description: `${pending.displayName} is connected and ready for TV Mode.`,
@@ -146,11 +147,7 @@ export function TvDisplayManagement({ adminApp, profiles }: { adminApp: object, 
     if (pairingInFlight.current) return;
     pairingInFlight.current = true;
     setPairing(true);
-    setPairingNotice({
-      variant: "info",
-      title: "Pairing Display",
-      description: "The request is being approved. Keep the pairing screen open while the display connects.",
-    });
+    setPairingError(null);
     const nextDisplayName = displayName.trim();
     try {
       await approveTvDisplayOrThrow(adminApp, {
@@ -165,7 +162,7 @@ export function TvDisplayManagement({ adminApp, profiles }: { adminApp: object, 
       };
       setPairingCode("");
       setAcknowledgeExact(false);
-      setPairingNotice({
+      toast({
         variant: "success",
         title: "Pairing Approved",
         description: "The display is connecting now and will appear below automatically.",
@@ -177,7 +174,7 @@ export function TvDisplayManagement({ adminApp, profiles }: { adminApp: object, 
       }
     } catch (error) {
       pendingPairing.current = null;
-      setPairingNotice(getPairingFailureNotice(error));
+      setPairingError(getPairingFailureNotice(error));
     } finally {
       pairingInFlight.current = false;
       setPairing(false);
@@ -195,26 +192,31 @@ export function TvDisplayManagement({ adminApp, profiles }: { adminApp: object, 
   }));
 
   return (
-    <section className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold text-foreground">Paired Displays</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Connect a TV once, then manage its project profile without signing into the display.</p>
-      </div>
+    <section className="space-y-5">
       {loadFailed ? <DesignAlert variant="error" title="Displays Couldn’t Be Loaded" description="Trying again automatically. Existing display assignments are unchanged." /> : null}
-      <DesignCard gradient="default" glassmorphic>
-        <div className="space-y-4 p-1">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-500"><PlusIcon className="h-5 w-5" weight="bold" /></div>
-            <div><p className="font-medium text-foreground">Pair a New Display</p><p className="text-sm text-muted-foreground">Enter the secure code shown on the TV Mode display.</p></div>
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <DesignInput aria-label="Pairing code" value={pairingCode} onChange={(event) => setPairingCode(event.target.value.toUpperCase())} placeholder="ABCD-EFGH" size="lg" className="font-mono uppercase tracking-widest" />
-            <DesignInput aria-label="Display name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Office Display" size="lg" />
-            <div>
-              <label htmlFor="new-tv-display-profile" className="sr-only">TV profile</label>
+      <DesignCard
+        title="Pair a New Display"
+        subtitle="Enter the secure code shown on the TV, then choose its name and profile."
+        icon={PlusIcon}
+        gradient="default"
+        glassmorphic
+        contentClassName="!p-0"
+      >
+        <div className="space-y-4 p-4 sm:p-5">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <label htmlFor="new-tv-display-code" className="text-xs font-medium text-foreground">Pairing Code</label>
+              <DesignInput id="new-tv-display-code" aria-label="Pairing code" value={pairingCode} onChange={(event) => setPairingCode(event.target.value.toUpperCase())} placeholder="ABCD-EFGH" size="lg" className="font-mono uppercase tracking-widest" />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="new-tv-display-name" className="text-xs font-medium text-foreground">Display Name</label>
+              <DesignInput id="new-tv-display-name" aria-label="Display name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Office Display" size="lg" />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="new-tv-display-profile" className="text-xs font-medium text-foreground">Assigned Profile</label>
               <DesignSelectorDropdown triggerId="new-tv-display-profile" value={profileId} onValueChange={(value) => {
-              setProfileId(value);
-              setAcknowledgeExact(false);
+                setProfileId(value);
+                setAcknowledgeExact(false);
               }} options={profileOptions} size="lg" />
             </div>
           </div>
@@ -224,25 +226,50 @@ export function TvDisplayManagement({ adminApp, profiles }: { adminApp: object, 
               <span>I understand that this physical display will show exact financial values visible to people nearby.</span>
             </label>
           ) : null}
-          {pairingNotice == null ? null : <DesignAlert {...pairingNotice} glassmorphic />}
-          <DesignButton type="button" size="lg" loading={pairing} disabled={!TV_DISPLAY_PAIRING_CODE_PATTERN.test(normalizedPairingCode) || displayName.trim().length === 0 || (selectedProfile?.configuration.financialVisibility === "exact" && !acknowledgeExact)} onClick={pair} className="gap-2 rounded-xl">
-            <BroadcastIcon className="h-4 w-4" weight="fill" /> Pair Display
-          </DesignButton>
+          {pairingError == null ? null : <DesignAlert {...pairingError} glassmorphic />}
+          <div className="flex justify-end border-t border-foreground/[0.07] pt-4">
+            <DesignButton type="button" size="lg" loading={pairing} disabled={!TV_DISPLAY_PAIRING_CODE_PATTERN.test(normalizedPairingCode) || displayName.trim().length === 0 || (selectedProfile?.configuration.financialVisibility === "exact" && !acknowledgeExact)} onClick={pair} className="w-full gap-2 rounded-xl sm:w-auto">
+              <BroadcastIcon className="h-4 w-4" weight="fill" /> Pair Display
+            </DesignButton>
+          </div>
         </div>
       </DesignCard>
 
-      {displays == null && !loadFailed ? <DesignCard gradient="default" glassmorphic><p className="text-sm text-muted-foreground">Loading paired displays…</p></DesignCard> : null}
-      {displays?.length === 0 ? <DesignCard gradient="default" glassmorphic><p className="text-sm text-muted-foreground">No displays are paired with this project yet.</p></DesignCard> : null}
-      {displays?.map((display) => (
-        <DisplayRow
-          key={`${display.id}:${display.displayName}:${display.profileId}:${display.exactFinancialsAcknowledged}`}
-          adminApp={adminApp}
-          display={display}
-          profiles={profiles}
-          onChanged={refresh}
-          onRemoved={hideDisplay}
-        />
-      ))}
+      <DesignCard
+        title="Paired Displays"
+        subtitle="Manage connected screens, their names, and assigned profiles."
+        icon={MonitorIcon}
+        gradient="default"
+        glassmorphic
+        contentClassName="!p-0"
+      >
+        {displays == null && !loadFailed ? (
+          <p className="p-5 text-sm text-muted-foreground">Loading paired displays…</p>
+        ) : null}
+        {displays?.length === 0 ? (
+          <div className="flex flex-col items-center justify-center px-5 py-10 text-center">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
+              <MonitorIcon className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <h3 className="text-sm font-semibold text-foreground">No Displays Paired Yet</h3>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">Use the pairing form above when a TV is showing a secure code.</p>
+          </div>
+        ) : null}
+        {displays == null || displays.length === 0 ? null : (
+          <div className="divide-y divide-foreground/[0.07]">
+            {displays.map((display) => (
+              <DisplayRow
+                key={`${display.id}:${display.displayName}:${display.profileId}:${display.exactFinancialsAcknowledged}`}
+                adminApp={adminApp}
+                display={display}
+                profiles={profiles}
+                onChanged={refresh}
+                onRemoved={hideDisplay}
+              />
+            ))}
+          </div>
+        )}
+      </DesignCard>
     </section>
   );
 }
@@ -262,7 +289,7 @@ function DisplayRow({ adminApp, display, profiles, onChanged, onRemoved }: {
     profileId: display.profileId,
     acknowledgeExact: display.exactFinancialsAcknowledged,
   });
-  const [notice, setNotice] = useState<ActionNotice | null>(null);
+  const [saveError, setSaveError] = useState<ActionNotice | null>(null);
   const [unpairOpen, setUnpairOpen] = useState(false);
   const [unpairNotice, setUnpairNotice] = useState<ActionNotice | null>(null);
   const profile = profiles.find((candidate) => candidate.id === profileId);
@@ -275,7 +302,7 @@ function DisplayRow({ adminApp, display, profiles, onChanged, onRemoved }: {
     && profile != null
     && (profile.configuration.financialVisibility !== "exact" || acknowledgeExact);
   const save = async () => {
-    setNotice(null);
+    setSaveError(null);
     try {
       await updateTvDisplayOrThrow(adminApp, display.id, {
         displayName: normalizedName,
@@ -284,14 +311,14 @@ function DisplayRow({ adminApp, display, profiles, onChanged, onRemoved }: {
       });
       setName(normalizedName);
       setSavedAssignment({ name: normalizedName, profileId, acknowledgeExact });
-      setNotice({
+      toast({
         variant: "success",
         title: "Assignment Updated",
         description: "The display will use the new name and profile on its next refresh.",
       });
       await onChanged();
     } catch {
-      setNotice(getManagementFailureNotice("save"));
+      setSaveError(getManagementFailureNotice("save"));
     }
   };
   const revoke = async () => {
@@ -300,6 +327,11 @@ function DisplayRow({ adminApp, display, profiles, onChanged, onRemoved }: {
       await revokeTvDisplayOrThrow(adminApp, display.id);
       onRemoved(display.id);
       setUnpairOpen(false);
+      toast({
+        variant: "success",
+        title: "Display Unpaired",
+        description: `${display.displayName} no longer has access to TV Mode.`,
+      });
     } catch {
       setUnpairNotice(getManagementFailureNotice("unpair"));
     }
@@ -309,64 +341,76 @@ function DisplayRow({ adminApp, display, profiles, onChanged, onRemoved }: {
     ...profiles.map((candidate) => ({ value: candidate.id, label: candidate.configuration.displayName })),
   ];
   return (
-    <DesignCard gradient="default" glassmorphic>
-      <div className="space-y-4 p-1">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-foreground/[0.05] text-muted-foreground"><MonitorIcon className="h-5 w-5" weight="fill" /></div>
-            <div><p className="font-medium text-foreground">{display.displayName}</p><p className="text-xs text-muted-foreground">{display.lastSeenAt == null ? "Not connected yet" : `Last seen ${new Date(display.lastSeenAt).toLocaleString()}`}</p></div>
+    <div className="p-4 transition-colors duration-150 hover:bg-foreground/[0.02] hover:transition-none sm:p-5">
+      <div className="grid gap-5 lg:grid-cols-[minmax(190px,0.7fr)_minmax(0,1.5fr)]">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-foreground/[0.05] text-muted-foreground ring-1 ring-foreground/[0.06]">
+            <MonitorIcon className="h-5 w-5" weight="fill" />
           </div>
-          <DesignBadge label={stateLabel(display.state)} color={display.state === "online" ? "green" : display.state === "revoked" ? "red" : "blue"} size="sm" />
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          <DesignInput aria-label={`Display name for ${display.displayName}`} value={name} onChange={(event) => {
-            setName(event.target.value);
-            setNotice(null);
-          }} size="lg" />
-          <div>
-            <label htmlFor={`tv-display-profile-${display.id}`} className="sr-only">Profile for {display.displayName}</label>
-            <DesignSelectorDropdown triggerId={`tv-display-profile-${display.id}`} value={profileId} onValueChange={(value) => {
-              setProfileId(value);
-              setAcknowledgeExact(false);
-              setNotice(null);
-            }} options={profileOptions} size="lg" />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="truncate text-sm font-semibold text-foreground">{display.displayName}</p>
+              <DesignBadge label={stateLabel(display.state)} color={display.state === "online" ? "green" : display.state === "revoked" ? "red" : "blue"} size="sm" />
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{display.lastSeenAt == null ? "Not connected yet" : `Last seen ${new Date(display.lastSeenAt).toLocaleString()}`}</p>
+            <p className="mt-1 truncate text-xs text-muted-foreground">Profile: {profile?.configuration.displayName ?? display.profileDisplayName}</p>
           </div>
         </div>
-        {profile?.configuration.financialVisibility === "exact" && !acknowledgeExact ? (
-          <label className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3 text-sm text-foreground">
-            <input type="checkbox" checked={acknowledgeExact} onChange={(event) => {
-              setAcknowledgeExact(event.target.checked);
-              setNotice(null);
-            }} className="mt-0.5" />
-            <span>Allow this physical display to show exact financial values.</span>
-          </label>
-        ) : null}
-        {notice == null ? null : <DesignAlert {...notice} glassmorphic />}
-        <div className="flex gap-2">
-          <DesignButton type="button" size="lg" variant={hasChanges ? "default" : "secondary"} disabled={!canSave} onClick={save} className="rounded-xl">
-            {hasChanges ? "Save Assignment" : "Assignment Saved"}
-          </DesignButton>
-          <DesignButton type="button" size="lg" variant="outline" onClick={() => setUnpairOpen(true)} className="gap-2 rounded-xl border-red-500/20 text-red-500 hover:bg-red-500/[0.06]">
-            <LinkBreakIcon className="h-4 w-4" /> Unpair
-          </DesignButton>
+
+        <div className="min-w-0 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label htmlFor={`tv-display-name-${display.id}`} className="text-xs font-medium text-foreground">Display Name</label>
+              <DesignInput id={`tv-display-name-${display.id}`} aria-label={`Display name for ${display.displayName}`} value={name} onChange={(event) => {
+                setName(event.target.value);
+                setSaveError(null);
+              }} size="lg" />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor={`tv-display-profile-${display.id}`} className="text-xs font-medium text-foreground">Assigned Profile</label>
+              <DesignSelectorDropdown triggerId={`tv-display-profile-${display.id}`} value={profileId} onValueChange={(value) => {
+                setProfileId(value);
+                setAcknowledgeExact(false);
+                setSaveError(null);
+              }} options={profileOptions} size="lg" />
+            </div>
+          </div>
+          {profile?.configuration.financialVisibility === "exact" && !acknowledgeExact ? (
+            <label className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3 text-sm text-foreground">
+              <input type="checkbox" checked={acknowledgeExact} onChange={(event) => {
+                setAcknowledgeExact(event.target.checked);
+                setSaveError(null);
+              }} className="mt-0.5" />
+              <span>Allow this physical display to show exact financial values.</span>
+            </label>
+          ) : null}
+          {saveError == null ? null : <DesignAlert {...saveError} glassmorphic />}
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-foreground/[0.07] pt-3">
+            <DesignButton type="button" size="sm" variant={hasChanges ? "default" : "secondary"} disabled={!canSave} onClick={save} className="rounded-lg">
+              {hasChanges ? "Save Assignment" : "Assignment Saved"}
+            </DesignButton>
+            <DesignButton type="button" size="sm" variant="outline" onClick={() => setUnpairOpen(true)} className="gap-2 rounded-lg border-red-500/20 text-red-500 hover:bg-red-500/[0.06]">
+              <LinkBreakIcon className="h-4 w-4" /> Unpair
+            </DesignButton>
+          </div>
         </div>
-        <DesignDialog
-          open={unpairOpen}
-          onOpenChange={setUnpairOpen}
-          icon={LinkBreakIcon}
-          title="Unpair Display?"
-          description={`${display.displayName} will immediately lose access to TV Mode and require a new pairing code to reconnect.`}
-          size="sm"
-          footer={(
-            <>
-              <DesignButton type="button" variant="outline" onClick={() => setUnpairOpen(false)}>Keep Display</DesignButton>
-              <DesignButton type="button" variant="destructive" onClick={revoke}>Unpair Display</DesignButton>
-            </>
-          )}
-        >
-          {unpairNotice == null ? null : <DesignAlert {...unpairNotice} glassmorphic />}
-        </DesignDialog>
       </div>
-    </DesignCard>
+      <DesignDialog
+        open={unpairOpen}
+        onOpenChange={setUnpairOpen}
+        icon={LinkBreakIcon}
+        title="Unpair Display?"
+        description={`${display.displayName} will immediately lose access to TV Mode and require a new pairing code to reconnect.`}
+        size="sm"
+        footer={(
+          <>
+            <DesignButton type="button" variant="outline" onClick={() => setUnpairOpen(false)}>Keep Display</DesignButton>
+            <DesignButton type="button" variant="destructive" onClick={revoke}>Unpair Display</DesignButton>
+          </>
+        )}
+      >
+        {unpairNotice == null ? null : <DesignAlert {...unpairNotice} glassmorphic />}
+      </DesignDialog>
+    </div>
   );
 }

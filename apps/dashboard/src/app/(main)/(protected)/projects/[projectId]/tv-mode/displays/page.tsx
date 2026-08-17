@@ -4,7 +4,7 @@ import { SiteLoadingIndicator } from "@/components/site-loading-indicator";
 import PageClient from "./page-client";
 
 export const metadata: Metadata = {
-  title: "TV Profiles",
+  title: "TV Displays",
 };
 
 export default function Page() {

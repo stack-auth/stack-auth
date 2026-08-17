@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
-import { getTvBuiltInProfile, type TvDisplayResource } from "@hexclave/shared/dist/interface/admin-tv-mode";
+import { Toaster } from "@/components/ui";
+import { getTvBuiltInProfile, type TvDisplayResource, type TvProfileResource } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getPairingFailureNotice, TvDisplayManagement } from "./display-management";
@@ -30,6 +31,10 @@ function getCompanyPulseProfile() {
   const profile = getTvBuiltInProfile("company-pulse");
   if (profile == null) throw new Error("Company Pulse profile is missing.");
   return profile;
+}
+
+function renderManagement(adminApp: object, profiles: TvProfileResource[] = [getCompanyPulseProfile()]) {
+  return render(<><TvDisplayManagement adminApp={adminApp} profiles={profiles} /><Toaster /></>);
 }
 
 afterEach(() => {
@@ -69,15 +74,14 @@ describe("TV display pairing feedback", () => {
       },
     };
     const alert = vi.spyOn(window, "alert").mockImplementation(() => undefined);
-    render(<TvDisplayManagement adminApp={adminApp} profiles={[getCompanyPulseProfile()]} />);
+    renderManagement(adminApp);
 
-    await waitFor(() => expect(screen.getByText("No displays are paired with this project yet.")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("No Displays Paired Yet")).toBeTruthy());
     fireEvent.change(screen.getByLabelText("Pairing code"), { target: { value: "ABCD-EFGH" } });
     const pairButton = screen.getByRole("button", { name: "Pair Display" });
     fireEvent.click(pairButton);
     fireEvent.click(pairButton);
 
-    expect(screen.getByText("Pairing Display")).toBeTruthy();
     expect(pairButton.hasAttribute("disabled")).toBe(true);
     expect(requests.filter((request) => request.method === "POST")).toHaveLength(1);
 
@@ -103,7 +107,7 @@ describe("TV display pairing feedback", () => {
         },
       },
     };
-    render(<TvDisplayManagement adminApp={adminApp} profiles={[getCompanyPulseProfile()]} />);
+    renderManagement(adminApp);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Unpair" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Unpair" }));
@@ -113,11 +117,12 @@ describe("TV display pairing feedback", () => {
     fireEvent.click(screen.getByRole("button", { name: "Unpair Display" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByText("Display Unpaired")).toBeTruthy();
     expect(requests.filter((request) => request.method === "DELETE")).toEqual([{
       path: `/internal/tv-mode/displays/${display.id}`,
       method: "DELETE",
     }]);
-    expect(screen.getByText("No displays are paired with this project yet.")).toBeTruthy();
+    expect(screen.getByText("No Displays Paired Yet")).toBeTruthy();
   });
 
   it("enables assignment saving only after the display configuration changes", async () => {
@@ -132,7 +137,7 @@ describe("TV display pairing feedback", () => {
         },
       },
     };
-    render(<TvDisplayManagement adminApp={adminApp} profiles={[getCompanyPulseProfile()]} />);
+    renderManagement(adminApp);
 
     const savedButton = await screen.findByRole("button", { name: "Assignment Saved" });
     expect(savedButton.hasAttribute("disabled")).toBe(true);
@@ -169,13 +174,62 @@ describe("TV display pairing feedback", () => {
         sendRequest: async () => jsonResponse({ displays: [renamedDisplay] }),
       },
     };
-    const rendered = render(<TvDisplayManagement adminApp={firstAdminApp} profiles={[getCompanyPulseProfile()]} />);
+    const rendered = render(<><TvDisplayManagement adminApp={firstAdminApp} profiles={[getCompanyPulseProfile()]} /><Toaster /></>);
 
     await screen.findByLabelText("Display name for Office Display");
-    rendered.rerender(<TvDisplayManagement adminApp={secondAdminApp} profiles={[getCompanyPulseProfile()]} />);
+    rendered.rerender(<><TvDisplayManagement adminApp={secondAdminApp} profiles={[getCompanyPulseProfile()]} /><Toaster /></>);
 
     const input = await screen.findByLabelText("Display name for Lobby Display");
     expect(input).toHaveProperty("value", "Lobby Display");
     expect(screen.getByRole("button", { name: "Assignment Saved" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("keeps multiple displays scannable with status, activity, and profile context", async () => {
+    const offlineDisplay: TvDisplayResource = {
+      ...display,
+      id: "4bf7db40-d2cf-4a33-a941-bcec44736ec1",
+      displayName: "Lobby Display",
+      state: "offline",
+      lastSeenAt: "2026-08-15T11:30:00.000Z",
+    };
+    const adminApp = {
+      [hexclaveAppInternalsSymbol]: {
+        sendRequest: async () => jsonResponse({ displays: [display, offlineDisplay] }),
+      },
+    };
+
+    renderManagement(adminApp);
+
+    await screen.findByLabelText("Display name for Office Display");
+    expect(screen.getByLabelText("Display name for Lobby Display")).toBeTruthy();
+    expect(screen.getByText("Online")).toBeTruthy();
+    expect(screen.getByText("Offline")).toBeTruthy();
+    expect(screen.getAllByText("Profile: Company Pulse")).toHaveLength(2);
+  });
+
+  it("preserves exact-financial acknowledgment in the refined pairing form", async () => {
+    const baseProfile = getCompanyPulseProfile();
+    const exactProfile: TvProfileResource = {
+      ...baseProfile,
+      configuration: {
+        ...baseProfile.configuration,
+        financialVisibility: "exact",
+      },
+    };
+    const adminApp = {
+      [hexclaveAppInternalsSymbol]: {
+        sendRequest: async () => jsonResponse({ displays: [] }),
+      },
+    };
+
+    renderManagement(adminApp, [exactProfile]);
+
+    await screen.findByText("No Displays Paired Yet");
+    fireEvent.change(screen.getByLabelText("Pairing code"), { target: { value: "ABCD-EFGH" } });
+    const pairButton = screen.getByRole("button", { name: "Pair Display" });
+    expect(pairButton.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.click(screen.getByText(/I understand that this physical display/));
+    expect(pairButton.hasAttribute("disabled")).toBe(false);
   });
 });

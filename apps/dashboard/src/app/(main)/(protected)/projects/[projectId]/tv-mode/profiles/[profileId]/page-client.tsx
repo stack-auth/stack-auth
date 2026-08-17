@@ -279,7 +279,7 @@ export default function PageClient() {
         <DesignAlert variant="error" title="Unknown Profile" description={`No TV presentation profile exists for "${profileId}", or it could not be loaded.`} />
         <Link href={`/projects/${projectId}/tv-mode`} className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
           <ArrowLeftIcon className="h-4 w-4" />
-          Back to TV Mode
+          All Profiles
         </Link>
       </PageLayout>
     );
@@ -350,7 +350,7 @@ export default function PageClient() {
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
           <div className="space-y-4">
-            <DesignCard title="Profile" subtitle="Identity and presentation mode" icon={MonitorPlayIcon} gradient="cyan" glassmorphic>
+            <DesignCard title="Profile" subtitle="Identity and profile details" icon={MonitorPlayIcon} gradient="cyan" glassmorphic>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="tv-profile-name" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">TV Name</label>

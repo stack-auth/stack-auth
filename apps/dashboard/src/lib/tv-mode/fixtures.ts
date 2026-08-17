@@ -219,7 +219,7 @@ export const TV_PROFILE_FIXTURES = [
   {
     id: "company-pulse",
     displayName: companyPulseProfile.configuration.displayName,
-    description: "The complete General Mode rotation for shared office spaces.",
+    description: "A complete project overview for shared office spaces.",
     mode: "general",
     defaultDurationSeconds: companyPulseProfile.configuration.defaultDurationSeconds,
     playlist: [

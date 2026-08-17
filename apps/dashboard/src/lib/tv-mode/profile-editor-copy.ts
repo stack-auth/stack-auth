@@ -54,7 +54,7 @@ export function getTvProfileEditorCopy(
   } : {
     isTemplateDraft,
     breadcrumb: "Saved Profile",
-    pageDescription: "Configure this named General Mode presentation profile.",
+    pageDescription: "Configure this named TV presentation profile.",
     alertTitle: "Persisted Project Profile",
     alertDescription: "Changes are versioned and saved only to this project.",
     saveLabel: "Save Profile",

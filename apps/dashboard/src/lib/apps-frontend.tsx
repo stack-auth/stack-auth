@@ -323,14 +323,14 @@ export const ALL_APPS_FRONTEND = {
     href: "tv-mode",
     navigationItems: [
       {
-        displayName: "TV Mode",
+        displayName: "Profiles",
         href: ".",
-        matchPath: (relativePart) => /^\/projects\/[^/]+\/tv-mode\/?$/.test(relativePart),
+        matchPath: (relativePart) => /^\/projects\/[^/]+\/tv-mode(?:\/profiles(?:\/.*)?)?\/?$/.test(relativePart),
       },
       {
-        displayName: "Profiles",
-        href: "profiles/engineering-office",
-        matchPath: (relativePart) => /^\/projects\/[^/]+\/tv-mode\/profiles(?:\/.*)?$/.test(relativePart),
+        displayName: "Displays",
+        href: "displays",
+        matchPath: (relativePart) => /^\/projects\/[^/]+\/tv-mode\/displays\/?$/.test(relativePart),
       },
     ],
     screenshots: [],

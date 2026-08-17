@@ -26,7 +26,7 @@ describe("TV Mode centralized fixtures", () => {
     }
   });
 
-  it("registers the approved four-screen General Mode playlist", () => {
+  it("registers the approved four-screen profile playlist", () => {
     expect(TV_PROFILE_FIXTURES.map((profile) => ({
       id: profile.id,
       mode: profile.mode,

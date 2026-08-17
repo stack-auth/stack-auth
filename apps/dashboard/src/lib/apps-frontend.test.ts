@@ -3,50 +3,66 @@ import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import {
   ALL_APPS_FRONTEND,
   DUMMY_ORIGIN,
+  getItemPath,
   testItemPath,
 } from "./apps-frontend";
 
 describe("TV Mode navigation matching", () => {
   const projectId = "project-fixture";
   const app = ALL_APPS_FRONTEND["tv-mode"];
-  const overviewItem = app.navigationItems.at(0)
-    ?? throwErr("TV Mode navigation must include an overview item");
-  const profilesItem = app.navigationItems.at(1)
+  const profilesItem = app.navigationItems.at(0)
     ?? throwErr("TV Mode navigation must include a profiles item");
+  const displaysItem = app.navigationItems.at(1)
+    ?? throwErr("TV Mode navigation must include a displays item");
 
   function matches(path: string) {
     const url = new URL(path, DUMMY_ORIGIN);
     return {
-      overview: testItemPath(projectId, app, overviewItem, url),
       profiles: testItemPath(projectId, app, profilesItem, url),
+      displays: testItemPath(projectId, app, displaysItem, url),
     };
   }
 
-  it("keeps overview and profile active states mutually exclusive", () => {
+  it("keeps profile and display active states mutually exclusive", () => {
     expect({
-      overview: matches(`/projects/${projectId}/tv-mode`),
-      profilesIndex: matches(`/projects/${projectId}/tv-mode/profiles`),
+      profilesIndex: matches(`/projects/${projectId}/tv-mode`),
+      profilesRoutePrefix: matches(`/projects/${projectId}/tv-mode/profiles`),
       profileDetail: matches(`/projects/${projectId}/tv-mode/profiles/company-pulse`),
+      displays: matches(`/projects/${projectId}/tv-mode/displays`),
       presentation: matches(`/projects/${projectId}/tv-mode/present/company-pulse`),
     }).toMatchInlineSnapshot(`
       {
-        "overview": {
-          "overview": true,
+        "displays": {
+          "displays": true,
           "profiles": false,
         },
         "presentation": {
-          "overview": false,
+          "displays": false,
           "profiles": false,
         },
         "profileDetail": {
-          "overview": false,
+          "displays": false,
           "profiles": true,
         },
         "profilesIndex": {
-          "overview": false,
+          "displays": false,
+          "profiles": true,
+        },
+        "profilesRoutePrefix": {
+          "displays": false,
           "profiles": true,
         },
       }
     `);
+  });
+
+  it("builds project-scoped profile and display destinations without a profile id", () => {
+    expect(app.navigationItems.map((item) => ({
+      displayName: item.displayName,
+      pathname: new URL(getItemPath(projectId, app, item), DUMMY_ORIGIN).pathname,
+    }))).toEqual([
+      { displayName: "Profiles", pathname: `/projects/${projectId}/tv-mode/` },
+      { displayName: "Displays", pathname: `/projects/${projectId}/tv-mode/displays` },
+    ]);
   });
 });

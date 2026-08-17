@@ -7,6 +7,7 @@ import {
   EyeIcon,
   EyeSlashIcon,
   GearSixIcon,
+  MonitorIcon,
   MonitorPlayIcon,
   PlusIcon,
 } from "@phosphor-icons/react";
@@ -22,7 +23,6 @@ import { getTvScreenDefinition } from "@/components/tv-mode/screen-registry";
 import { getTvProfileEventCoverageLabel, getTvProfileOverviewAction } from "@/lib/tv-mode/profile-editor-copy";
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from "../use-admin-app";
-import { TvDisplayManagement } from "./display-management";
 
 function actionLinkClass(variant: "primary" | "secondary"): string {
   return variant === "primary"
@@ -57,14 +57,20 @@ export default function PageClient() {
 
   return (
     <PageLayout
-      title="TV Mode"
-      description="Turn live project activity into a clear, full-screen view for shared displays."
+      title="Profiles"
+      description="Create and manage the presentation profiles shown on shared displays."
       allowContentOverflow
       actions={
-        <Link href={`/projects/${projectId}/tv-mode/profiles/company-pulse?create=1`} className={actionLinkClass("secondary")}>
-          <PlusIcon className="h-4 w-4" weight="bold" />
-          New Profile
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/projects/${projectId}/tv-mode/displays`} className={actionLinkClass("secondary")}>
+            <MonitorIcon className="h-4 w-4" weight="fill" />
+            Manage Displays
+          </Link>
+          <Link href={`/projects/${projectId}/tv-mode/profiles/company-pulse?create=1`} className={actionLinkClass("secondary")}>
+            <PlusIcon className="h-4 w-4" weight="bold" />
+            New Profile
+          </Link>
+        </div>
       }
     >
       <DesignAlert
@@ -102,7 +108,6 @@ export default function PageClient() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <Typography className="text-base font-semibold text-foreground">{configuration.displayName}</Typography>
-                        <DesignBadge label="General Mode" color="cyan" size="sm" />
                         <DesignBadge label={profile.origin === "built-in" ? "Template" : "Saved"} color={profile.origin === "built-in" ? "blue" : "green"} size="sm" />
                       </div>
                       <Typography variant="secondary" className="mt-1 text-sm">{configuration.description}</Typography>
@@ -174,7 +179,6 @@ export default function PageClient() {
           );
         })}
       </div>
-      {profiles == null || loadError ? null : <TvDisplayManagement adminApp={adminApp} profiles={profiles} />}
     </PageLayout>
   );
 }
