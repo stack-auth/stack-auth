@@ -3,8 +3,8 @@
 import Loading from "@/app/loading";
 import { CursorBlastEffect } from "@hexclave/dashboard-ui-components";
 import { ConfigUpdateDialogProvider } from "@/components/config-update";
+import { DesignAlert } from "@/components/design-components/alert";
 import { HexclaveRebrandModal } from "@/components/hexclave-rebrand-modal";
-import { PreviewFlowError } from "@/components/preview-flow-error";
 import { getPublicEnvVar } from '@/lib/env';
 import { useStackApp, useUser } from "@hexclave/next";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
@@ -24,8 +24,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
       : undefined
   );
   const autoLoginStarted = useRef(false);
-  const [autoLoginError, setAutoLoginError] = useState(false);
-  const [autoLoginRetry, setAutoLoginRetry] = useState(0);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     // Run the auto-login at most once. Without this guard, React StrictMode
@@ -43,29 +42,33 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
         const id = generateUuid();
         const email = `preview-${id}@preview.hexclave.com`;
         const password = `PreviewPass-${id}`;
-        try {
-          const signInResult = await app.signInWithCredential({ email, password, noRedirect: true });
-          if (signInResult.status === "error") {
-            await app.signUpWithCredential({ email, password, noRedirect: true });
+        const signInResult = await app.signInWithCredential({ email, password, noRedirect: true });
+        if (signInResult.status === "error") {
+          const signUpResult = await app.signUpWithCredential({ email, password, noRedirect: true });
+          if (signUpResult.status === "error") {
+            throw signUpResult.error;
           }
-        } catch (error) {
-          captureError("preview-auto-login", error);
-          setAutoLoginError(true);
         }
       };
-      runAsynchronously(autoLogin());
+      runAsynchronously(autoLogin(), {
+        onError: (error) => {
+          captureError("preview-auto-login", error);
+          setError(true);
+        },
+      });
     }
-  }, [user, app, isRemoteDevelopmentEnvironment, isPreview, autoLoginRetry]);
+  }, [user, app, isRemoteDevelopmentEnvironment, isPreview]);
 
-  if (isPreview && autoLoginError) {
+  if (error) {
     return (
-      <PreviewFlowError
-        onRetry={() => {
-          autoLoginStarted.current = false;
-          setAutoLoginError(false);
-          setAutoLoginRetry((retry) => retry + 1);
-        }}
-      />
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <DesignAlert
+          variant="error"
+          title="Preview unavailable"
+          description="The preview could not be opened. Reload the page to try again."
+          className="max-w-lg"
+        />
+      </main>
     );
   } else if ((isRemoteDevelopmentEnvironment || isPreview) && !user) {
     return <Loading />;

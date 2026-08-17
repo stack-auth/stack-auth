@@ -1,23 +1,13 @@
 'use client';
 
 import Loading from "@/app/loading";
+import { DesignAlert } from "@/components/design-components/alert";
 import { useRouter } from "@/components/router";
 import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
-import { PreviewFlowError } from "@/components/preview-flow-error";
 import { useStackApp, useUser } from "@hexclave/next";
-import { captureError } from "@hexclave/shared/dist/utils/errors";
-import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useMemo, useRef, useState } from "react";
-
-const MAX_CREATE_PROJECT_ATTEMPTS = 3;
-
-function getResponseStatus(error: unknown): number | undefined {
-  if (error instanceof Response) return error.status;
-  if (error instanceof Error && error.cause !== undefined) {
-    return getResponseStatus(error.cause);
-  }
-  return undefined;
-}
 
 export default function PreviewProjectRedirect() {
   const app = useStackApp();
@@ -38,42 +28,23 @@ export default function PreviewProjectRedirect() {
     };
   }, [app]);
   const creating = useRef(false);
-  const [createProjectError, setCreateProjectError] = useState(false);
-  const [createProjectRetry, setCreateProjectRetry] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user || creating.current) return;
     creating.current = true;
 
-    const createProject = async () => {
-      try {
-        let response: Response | undefined;
-        let lastError: unknown;
-        for (let attempt = 0; attempt < MAX_CREATE_PROJECT_ATTEMPTS; attempt++) {
-          try {
-            response = await appInternals.sendRequest(
-              "/internal/preview/create-project",
-              { method: "POST" },
-              "client",
-            );
-            if (!response.ok) {
-              const text = await response.text();
-              throw new Error(`Failed to create preview project: ${response.status} ${text}`, { cause: response });
-            }
-            break;
-          } catch (error) {
-            lastError = error;
-            const status = getResponseStatus(error);
-            if (status !== undefined && status >= 400 && status < 500) throw error;
-            if (attempt === MAX_CREATE_PROJECT_ATTEMPTS - 1) throw error;
+    runAsynchronously(
+      async () => {
+        const response = await appInternals.sendRequest(
+          "/internal/preview/create-project",
+          { method: "POST" },
+          "client",
+        );
 
-            // The fallback seed path is intentionally slow and can briefly fail while ClickHouse warms up.
-            await wait(250 * 2 ** attempt);
-          }
-        }
-
-        if (response == null) {
-          throw lastError ?? new Error("Preview project creation did not return a response.");
+        if (!response.ok) {
+          const text = await response.text();
+          throw new HexclaveAssertionError(`Failed to create preview project: ${response.status} ${text}`);
         }
 
         const body = await response.json();
@@ -83,24 +54,27 @@ export default function PreviewProjectRedirect() {
         // (The normal create-project flow in page-client.tsx does the same.)
         await appInternals.refreshOwnedProjects();
         router.push(`/projects/${encodeURIComponent(body.project_id)}`);
-      } catch (error) {
-        captureError("preview-project-create", error);
-        setCreateProjectError(true);
-      }
-    };
-    runAsynchronously(createProject());
-  }, [user, appInternals, router, createProjectRetry]);
+      },
+      {
+        onError: () => {
+          setError("The preview could not be opened. Reload the page to try again.");
+        },
+      },
+    );
+  }, [user, appInternals, router]);
 
-  if (createProjectError) {
+  if (error) {
     return (
-      <PreviewFlowError
-        onRetry={() => {
-          creating.current = false;
-          setCreateProjectError(false);
-          setCreateProjectRetry((retry) => retry + 1);
-        }}
-      />
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <DesignAlert
+          variant="error"
+          title="Preview unavailable"
+          description={error}
+          className="max-w-lg"
+        />
+      </main>
     );
   }
+
   return <Loading />;
 }
