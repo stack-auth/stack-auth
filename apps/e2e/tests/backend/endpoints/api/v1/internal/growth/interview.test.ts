@@ -312,6 +312,7 @@ describe("internal growth interview (no mock Eve)", () => {
     const failedTurn = await niceBackendFetch(`${ADMIN_BASE}/interview/stream`, {
       accessType: "admin",
       method: "POST",
+      allowedServerErrorStatusCodes: [502],
       body: { answer: { order_index: 0, option_ids: ["signups"], free_text: "Mostly self-serve signups." } },
     });
     expect(failedTurn.status).toBe(502);
@@ -444,6 +445,7 @@ describe("internal growth interview (no mock Eve)", () => {
     const answered = await niceBackendFetch(`${ADMIN_BASE}/interview/stream`, {
       accessType: "admin",
       method: "POST",
+      allowedServerErrorStatusCodes: [502],
       body: { answer: { order_index: 0, option_ids: ["signups"] } },
     });
     // Eve is unreachable from this file, so the turn 502s — but the answer is persisted first.

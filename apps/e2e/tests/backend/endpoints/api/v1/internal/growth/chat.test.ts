@@ -85,6 +85,7 @@ describe("internal growth chat (no mock Eve)", () => {
     const failedTurn = await niceBackendFetch(`${ADMIN_BASE}/chat`, {
       accessType: "admin",
       method: "POST",
+      allowedServerErrorStatusCodes: [502],
       body: { message: "Why did signups drop last week?" },
     });
     expect(failedTurn.status).toBe(502);
@@ -97,6 +98,7 @@ describe("internal growth chat (no mock Eve)", () => {
     const retriedTurn = await niceBackendFetch(`${ADMIN_BASE}/chat`, {
       accessType: "admin",
       method: "POST",
+      allowedServerErrorStatusCodes: [502],
       body: { message: "Why did signups drop last week?" },
     });
     expect(retriedTurn.status).toBe(502);

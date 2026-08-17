@@ -35,6 +35,7 @@ describe("internal growth lifecycle", () => {
             "completed_at_millis": null,
             "compute_metrics": null,
             "error_message": null,
+            "integrations": null,
             "run_id": null,
             "started_at_millis": null,
             "state": "none",
@@ -75,6 +76,9 @@ describe("internal growth lifecycle", () => {
                 "workflow_id": "growth-daily-brief",
               },
             ],
+          },
+          "release": {
+            "state": "not_ready",
           },
         },
         "headers": Headers { <some fields may have been hidden> },

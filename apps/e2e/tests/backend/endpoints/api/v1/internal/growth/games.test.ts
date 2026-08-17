@@ -109,7 +109,7 @@ describe("staff review surface", () => {
     // 409 rather than 500: a young project having thin data is a normal state, and the message is
     // written to be shown to staff verbatim.
     expect(response.status).toBe(409);
-    expect(String((response.body as { error: string }).error)).toContain("enough metric history");
+    expect(response.body).toEqual(expect.stringContaining("enough metric history"));
   });
 
   it("leaves no draft behind when generation is refused", async ({ expect }) => {
@@ -192,7 +192,7 @@ describe("customer surface", () => {
     ] as const) {
       const response = await niceBackendFetch(path, { accessType: "admin", method });
       expect(response.status, `${method} ${path}`).toBe(400);
-      expect(response.body).toMatchObject({ error: "The Growth app is not enabled for this project." });
+      expect(response.body).toBe("The Growth app is not enabled for this project.");
     }
   });
 
@@ -215,7 +215,7 @@ describe("customer surface", () => {
     await createOnboardedGrowthProject();
     const response = await niceBackendFetch(`${GAMES_BASE}/rounds`, { accessType: "admin", method: "POST" });
     expect(response.status).toBe(409);
-    expect(String((response.body as { error: string }).error)).toContain("no quiz published");
+    expect(response.body).toEqual(expect.stringContaining("no quiz published"));
   });
 
   it("404s identically for a malformed round id, an unknown one, and another project's", async ({ expect }) => {
@@ -224,7 +224,7 @@ describe("customer surface", () => {
     for (const roundId of ["not-a-uuid", randomUUID()]) {
       const get = await niceBackendFetch(`${GAMES_BASE}/rounds/${roundId}`, { accessType: "admin" });
       expect(get.status, `GET ${roundId}`).toBe(404);
-      expect(get.body).toMatchObject({ error: "Round not found." });
+      expect(get.body).toBe("Round not found.");
 
       const finish = await niceBackendFetch(`${GAMES_BASE}/rounds/${roundId}/finish`, { accessType: "admin", method: "POST" });
       expect(finish.status, `finish ${roundId}`).toBe(404);

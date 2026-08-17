@@ -88,9 +88,9 @@ describe("growth agent simulation", () => {
       run_id: runId,
       source: "website-research",
       findings: [
-        { kind: "competitor", category: "acquisition", tags: ["competitor"], title: "Competitor: Basecamp", body: "Established player in team PM." },
-        { kind: "competitor", category: "acquisition", tags: ["competitor"], title: "Competitor: Basecamp", body: "Duplicate row that must be skipped." },
-        { kind: "audience", category: "acquisition", tags: ["audience"], title: "ICP: small agencies", body: "5-20 person service teams.", data: { confidence: 0.8 } },
+        { kind: "competitor", category: "reach", tags: ["competitor"], title: "Competitor: Basecamp", body: "Established player in team PM." },
+        { kind: "competitor", category: "reach", tags: ["competitor"], title: "Competitor: Basecamp", body: "Duplicate row that must be skipped." },
+        { kind: "audience", category: "reach", tags: ["audience"], title: "ICP: small agencies", body: "5-20 person service teams.", data: { confidence: 0.8 } },
       ],
     };
     const findings = await niceBackendFetch(`${AGENT_BASE}/findings`, { method: "POST", headers: GROWTH_AGENT_AUTH, body: findingsBody });
@@ -185,10 +185,10 @@ describe("growth agent simulation", () => {
       content_md: "# Report\n\nDetails...",
       sections: [{ id: "overview", title: "Overview", kind: "markdown", body_markdown: "..." }],
       action_items: [
-        { type_id: "run_ads", category: "ads", tags: ["search"], title: "Launch a search ads campaign", description: "Target small agencies." },
+        { type_id: "run_ads", category: "reach", tags: ["search"], title: "Launch a search ads campaign", description: "Target small agencies." },
         {
           type_id: "publish_blog",
-          category: "content",
+          category: "reach",
           tags: ["comparison"],
           title: "Publish an SEO comparison post",
           description: "Compare against incumbents.",
@@ -274,7 +274,7 @@ describe("growth agent simulation", () => {
 
     const missingHeader = await niceBackendFetch(`${AGENT_BASE}/findings`, {
       method: "POST",
-      body: { project_id: projectId, branch_id: branchId, source: "chat", findings: [{ kind: "note", category: "engagement", tags: [], title: "t", body: "b" }] },
+      body: { project_id: projectId, branch_id: branchId, source: "chat", findings: [{ kind: "note", category: "product", tags: [], title: "t", body: "b" }] },
     });
     expect(missingHeader.status).toBe(401);
   });
@@ -296,7 +296,7 @@ describe("growth agent simulation", () => {
     const crossProjectFindings = await niceBackendFetch(`${AGENT_BASE}/findings`, {
       method: "POST",
       headers: GROWTH_AGENT_AUTH,
-      body: { ...scope, run_id: foreignRunId, source: "chat", findings: [{ kind: "note", category: "engagement", tags: [], title: "t", body: "b" }] },
+      body: { ...scope, run_id: foreignRunId, source: "chat", findings: [{ kind: "note", category: "product", tags: [], title: "t", body: "b" }] },
     });
     expect(crossProjectFindings.status).toBe(404);
 
@@ -326,14 +326,14 @@ describe("growth agent simulation", () => {
     const badSource = await niceBackendFetch(`${AGENT_BASE}/findings`, {
       method: "POST",
       headers: GROWTH_AGENT_AUTH,
-      body: { ...scope, run_id: runId, source: "made-up-source", findings: [{ kind: "note", category: "engagement", tags: [], title: "t", body: "b" }] },
+      body: { ...scope, run_id: runId, source: "made-up-source", findings: [{ kind: "note", category: "product", tags: [], title: "t", body: "b" }] },
     });
     expect(badSource.status).toBe(400);
 
     const badType = await niceBackendFetch(`${AGENT_BASE}/action-items`, {
       method: "POST",
       headers: GROWTH_AGENT_AUTH,
-      body: { ...scope, type_id: "made-up-type", category: "activation", tags: [], title: "t", description: "d" },
+      body: { ...scope, type_id: "made-up-type", category: "conversion", tags: [], title: "t", description: "d" },
     });
     expect(badType.status).toBe(400);
 
@@ -352,7 +352,7 @@ describe("growth agent simulation", () => {
         run_id: runId,
         summary: "s",
         content_md: "c",
-        action_items: [{ type_id: "run_ads", category: "ads", tags: [], title: "t", description: "d", watched_metrics: [{ metric_id: "nonsense", window_days: 14 }] }],
+        action_items: [{ type_id: "run_ads", category: "reach", tags: [], title: "t", description: "d", watched_metrics: [{ metric_id: "nonsense", window_days: 14 }] }],
       },
     });
     expect(badWatchedMetric.status).toBe(400);
