@@ -7,7 +7,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 const mockSignInWithCredential = vi.hoisted(() => vi.fn());
 const mockSignUpWithCredential = vi.hoisted(() => vi.fn());
 const mockCaptureError = vi.hoisted(() => vi.fn());
-const mockCurrentUser = vi.hoisted(() => ({ current: null as { id: string } | null }));
+const mockCurrentUser = vi.hoisted<{ current: { id: string } | null }>(() => ({ current: null }));
 
 vi.mock("@/app/loading", () => ({
   default: () => <div>Loading preview</div>,
@@ -54,9 +54,7 @@ vi.mock("@hexclave/shared/dist/utils/promises", () => ({
   runAsynchronously: (
     promise: Promise<unknown>,
     options: { onError?: (error: Error) => void },
-  ) => {
-    promise.then(undefined, options.onError).catch(() => undefined);
-  },
+  ) => promise.then(undefined, options.onError),
 }));
 
 vi.mock("@hexclave/shared/dist/utils/uuids", () => ({
