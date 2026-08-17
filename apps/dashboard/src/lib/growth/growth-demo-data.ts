@@ -68,7 +68,7 @@ function demoSteps(states: GrowthAnalysisStep["state"][]): GrowthAnalysisStep[] 
     // `analysis.steps` (it renders as its own block via `computeMetrics` above the checklist).
     ["website-research", "Website & competitor research", "Reads your landing page and the sites of comparable products to work out how you position yourself and where competitors are stronger. What it finds becomes the outside-in view every later step builds on."],
     ["data-analysis", "Data analysis", "Mines your product analytics for the patterns behind the headline numbers: where signups come from, who activates, and who quietly drops off. It records the baselines that later recommendations are measured against."],
-    ["analysis:optimize-above-the-fold", "Optimize above-the-fold", "Audits the first screen of your landing page — headline, subheadline and main call to action — against who actually signs up and sticks around. It proposes exact replacement copy rather than vague directions."],
+    ["analysis:first-screen-audit", "First-screen audit", "Audits the first screen of your landing page — headline, subheadline and main call to action — against who actually signs up and sticks around. It proposes exact replacement copy rather than vague directions."],
     ["analysis:seo-aeo-strategy", "SEO & AEO strategy", "Works out which search intents you can realistically win, in classic search and in answer engines like AI assistants. Produces a prioritized content plan plus one ready-to-approve blog idea."],
     ["interview-questions", "Interview preparation", "Turns everything the research could not observe from the outside into a short set of questions for you. Each one is grounded in something the analysis actually found, so none of them are generic."],
   ];

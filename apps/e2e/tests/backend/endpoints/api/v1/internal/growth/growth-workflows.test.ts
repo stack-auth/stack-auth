@@ -44,7 +44,7 @@ const GROWTH_DAILY_BRIEF_WORKFLOW_ID = "growth-daily-brief";
 const IMMEDIATE_PHASE_KEYS = [
   "website-research",
   "data-analysis",
-  "analysis:optimize-above-the-fold",
+  "analysis:first-screen-audit",
   "analysis:seo-aeo-strategy",
   "analysis:traffic-quality",
   "analysis:icp-visitor-outreach",

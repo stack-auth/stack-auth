@@ -135,7 +135,7 @@ describe("internal growth lifecycle", () => {
     expect(analysis.steps.map((step) => step.id)).toEqual([
       "website-research",
       "data-analysis",
-      "analysis:optimize-above-the-fold",
+      "analysis:first-screen-audit",
       "analysis:seo-aeo-strategy",
       "analysis:traffic-quality",
       "analysis:icp-visitor-outreach",

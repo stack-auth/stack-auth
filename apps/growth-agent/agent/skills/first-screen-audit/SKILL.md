@@ -1,8 +1,8 @@
 ---
-description: Execute the "Optimize above-the-fold" growth analysis topic — audit the landing page's first screen against what converting users actually respond to, and propose concrete copy/layout changes.
+description: Execute the "First-screen audit" growth analysis topic — audit the landing page's first screen against what converting users actually respond to, and propose concrete copy/layout changes.
 ---
 
-# Optimize above-the-fold
+# First-screen audit
 
 Goal: make the first screen of the project's landing page convert better by grounding its headline, subheadline, and primary CTA in who actually signs up and activates.
 
