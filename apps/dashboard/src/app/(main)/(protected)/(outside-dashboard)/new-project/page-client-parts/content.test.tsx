@@ -13,7 +13,11 @@ const mockOwnedProjects = vi.hoisted(() => ({
     onboardingState?: null,
   }>,
 }));
-const mockCreateProject = vi.hoisted(() => vi.fn(async () => ({ id: "created-project-id" })));
+type MockCreatedProject = {
+  id: string,
+  app?: object,
+};
+const mockCreateProject = vi.hoisted(() => vi.fn(async (): Promise<MockCreatedProject> => ({ id: "created-project-id" })));
 const mockWindowOpen = vi.hoisted(() => vi.fn());
 const mockSearchParams = vi.hoisted(() => ({ current: new URLSearchParams() }));
 
@@ -117,9 +121,45 @@ vi.mock("./components", () => ({
   ),
   SetupNewProjectPage: ({ onBack }: { onBack: () => void }) => (
     <div>
-      <h1>Set up Hexclave in a project</h1>
+      <h1>Almost done!</h1>
       <button type="button" onClick={onBack}>Go back</button>
     </div>
+  ),
+  ProductSelectionPage: ({
+    initialPrimaryAppId,
+    onLetAiDecide,
+    onPrimaryAppSelected,
+    onClearPrimaryApp,
+    onContinue,
+  }: {
+    initialPrimaryAppId?: "authentication" | null,
+    onLetAiDecide: () => void,
+    onPrimaryAppSelected: (appId: "authentication") => void,
+    onClearPrimaryApp: () => void,
+    onContinue: (appIds: Set<"analytics" | "authentication">) => void,
+  }) => (
+    <div>
+      {initialPrimaryAppId == null ? (
+        <>
+          <h1>What will you use Hexclave for?</h1>
+          <button type="button" onClick={onLetAiDecide}>Not sure / Decide later</button>
+          <button type="button" onClick={() => onPrimaryAppSelected("authentication")}>Choose Authentication</button>
+        </>
+      ) : (
+        <>
+          <h1>Do you want to install any other apps?</h1>
+          <p>Primary: {initialPrimaryAppId}</p>
+          <button type="button" onClick={onClearPrimaryApp}>Clear primary app</button>
+          <button type="button" onClick={() => onContinue(new Set(["authentication", "analytics"]))}>Continue with products</button>
+        </>
+      )}
+    </div>
+  ),
+  parseOnboardingAppSearchParam: (value: string | null) => (
+    value === "authentication" ? "authentication" : null
+  ),
+  ProductConfigurationWizard: ({ selectedApps }: { selectedApps: Set<"analytics"> }) => (
+    <div>Configure selected products: {[...selectedApps].join(", ")}</div>
   ),
 }));
 
@@ -158,23 +198,61 @@ describe("new project page", () => {
     expect(mockCreateProject).not.toHaveBeenCalled();
   });
 
-  it("shows the setup prompt without creating a project", () => {
+  it("shows product selection before creating a project", () => {
     render(<PageClient />);
 
     fireEvent.click(screen.getByText("Set up Hexclave in a project"));
 
-    expect(mockReplace).toHaveBeenCalledWith("/new-project?mode=setup-new");
+    expect(mockReplace).toHaveBeenCalledWith("/new-project?mode=setup-products");
     expect(mockCreateProject).not.toHaveBeenCalled();
     expect(screen.queryByText("Name your project")).toBeNull();
   });
 
-  it("renders the setup prompt from the setup-new mode without a project", () => {
-    mockSearchParams.current = new URLSearchParams("mode=setup-new");
+  it("renders the product picker from setup-products mode without a project", () => {
+    mockSearchParams.current = new URLSearchParams("mode=setup-products");
     render(<PageClient />);
 
-    expect(screen.getByText("Set up Hexclave in a project")).not.toBeNull();
+    expect(screen.getByText("What will you use Hexclave for?")).not.toBeNull();
+    expect(mockCreateProject).not.toHaveBeenCalled();
+  });
+
+  it("skips the primary-app screen when ?app= is provided", () => {
+    mockSearchParams.current = new URLSearchParams("mode=setup-products&app=authentication");
+    render(<PageClient />);
+
+    expect(screen.getByText("Do you want to install any other apps?")).not.toBeNull();
+    expect(screen.getByText("Primary: authentication")).not.toBeNull();
+    expect(screen.queryByText("What will you use Hexclave for?")).toBeNull();
+    expect(mockCreateProject).not.toHaveBeenCalled();
+  });
+
+  it("renders the setup prompt after choosing AI setup", () => {
+    mockSearchParams.current = new URLSearchParams("mode=setup-new-ai");
+    render(<PageClient />);
+
+    expect(screen.getByText("Almost done!")).not.toBeNull();
     expect(screen.getByText("Go back")).not.toBeNull();
     expect(mockCreateProject).not.toHaveBeenCalled();
+  });
+
+  it("keeps configured onboarding local after products are selected", () => {
+    mockSearchParams.current = new URLSearchParams("mode=setup-products&app=authentication");
+    render(<PageClient />);
+
+    fireEvent.click(screen.getByText("Continue with products"));
+
+    expect(screen.getByText("Configure selected products: authentication, analytics")).not.toBeNull();
+    expect(screen.queryByText("Name your project")).toBeNull();
+    expect(mockCreateProject).not.toHaveBeenCalled();
+  });
+
+  it("writes the selected primary app into the app search param", () => {
+    mockSearchParams.current = new URLSearchParams("mode=setup-products");
+    render(<PageClient />);
+
+    fireEvent.click(screen.getByText("Choose Authentication"));
+
+    expect(mockReplace).toHaveBeenCalledWith("/new-project?mode=setup-products&app=authentication");
   });
 
   it.each(["link-existing", "deploy-local", "deploy-github"])(

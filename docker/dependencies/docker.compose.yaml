@@ -209,7 +209,7 @@ services:
     ports:
       - "${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}21:9090"
     environment:
-      - initialBuckets=stack-storage,stack-storage-private
+      - initialBuckets=stack-storage,stack-storage-private,marshal
       - root=s3mockroot
       - debug=false
     volumes:
@@ -272,6 +272,21 @@ services:
     image: vercel-mock
     ports:
       - "${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}26:8080"       # mock of the Vercel REST API for the Deployments app
+
+  # ================= Fly mock =================
+
+  fly-mock:
+    build:
+      context: ./fly-mock
+      dockerfile: Dockerfile
+    image: fly-mock
+    restart: unless-stopped                                    # a guarded handler shouldn't crash, but recover the container if it ever does
+    ports:
+      # Bound to LOOPBACK, unlike the other mocks: this one's /__mock introspection returns
+      # each machine's resolved environment, which in a deployments test run holds decrypted
+      # project secrets. Only Marshal (on the host) needs to reach it, so there is nothing to
+      # gain from publishing it to every interface.
+      - "127.0.0.1:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}48:8080"  # mock of the Fly.io Machines/GraphQL/logs APIs for Marshal
 
   # ================= Stripe =================
   

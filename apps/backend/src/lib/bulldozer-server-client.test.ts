@@ -163,6 +163,53 @@ describe("fetchBulldozerServerJson", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("retries transient GET responses and returns a later successful response", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response("upstream unavailable", { status: 503 }))
+      .mockResolvedValueOnce(new Response("bad gateway", { status: 502 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = fetchBulldozerServerJson<{ success: true }>({ method: "GET", path: "/owned-products" });
+    await vi.runAllTimersAsync();
+
+    await expect(request).resolves.toEqual({ success: true });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("returns the final transient GET response after exhausting retries", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockImplementation(async () => new Response("upstream unavailable", { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = expect(fetchBulldozerServerJson({ method: "GET", path: "/owned-products" }))
+      .rejects.toMatchObject({
+        extraData: {
+          status: 503,
+          responseText: "upstream unavailable",
+        },
+      });
+    await vi.runAllTimersAsync();
+
+    await request;
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
+  it("retries ambiguous socket failures for GET requests", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(errorWithCode("ECONNRESET"))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = fetchBulldozerServerJson<{ success: true }>({ method: "GET", path: "/owned-products" });
+    await vi.runAllTimersAsync();
+
+    await expect(request).resolves.toEqual({ success: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("encodes customer path segments without double-encoding", () => {
     expect(bulldozerCustomerPath({
       tenancyId: "tenancy/id",

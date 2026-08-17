@@ -7,7 +7,7 @@ import { Command } from "commander";
 import * as fs from "fs";
 import * as path from "path";
 import { getAdminProject } from "../lib/app.js";
-import { isProjectAuthWithRefreshToken, isProjectAuthWithSecretServerKey, resolveAuth, resolveProjectId, type ProjectAuthWithSecretServerKey } from "../lib/auth.js";
+import { isProjectAuthWithRefreshToken, isProjectAuthWithSecretServerKey, resolveAuth, resolveProjectId, type ProjectAuth, type ProjectAuthWithSecretServerKey } from "../lib/auth.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import { CliError } from "../lib/errors.js";
 import { startProgress, withProgress } from "../lib/progress.js";
@@ -22,14 +22,14 @@ function isConfigOverride(value: unknown): value is EnvironmentConfigOverrideOve
   return prototype === Object.prototype || prototype === null;
 }
 
-function parseConfigOverride(value: unknown): EnvironmentConfigOverrideOverride | null {
+export function parseConfigOverride(value: unknown): EnvironmentConfigOverrideOverride | null {
   if (value === SHOW_ONBOARDING_STACK_CONFIG_VALUE) {
     return {};
   }
   return isConfigOverride(value) ? value : null;
 }
 
-type BranchConfigSourceApi =
+export type BranchConfigSourceApi =
   | { type: "pushed-from-github", owner: string, repo: string, branch: string, commit_hash: string, config_file_path: string, workflow_path?: string }
   | { type: "pushed-from-unknown" }
   | { type: "unlinked" };
@@ -172,7 +172,26 @@ async function pushConfigWithSecretServerKey(
   const message = responseText.length > 0
     ? responseText
     : `Request failed with status ${response.status}.`;
-  throw new CliError(`Failed to push config with STACK_SECRET_SERVER_KEY: ${message}`);
+  throw new CliError(`Failed to push config with HEXCLAVE_SECRET_SERVER_KEY: ${message}`);
+}
+
+/**
+ * Pushes a parsed config override to the project's branch config. Shared by
+ * `hexclave config push` and `hexclave deploy` (which pushes the config file
+ * by default before deploying) so both use the exact same auth paths.
+ */
+export async function pushConfigToProject(auth: ProjectAuth, config: EnvironmentConfigOverrideOverride, source: BranchConfigSourceApi): Promise<void> {
+  if (isProjectAuthWithSecretServerKey(auth)) {
+    await pushConfigWithSecretServerKey(auth, config, source);
+  } else {
+    if (!isProjectAuthWithRefreshToken(auth)) {
+      throw new CliError("Pushing the config requires either HEXCLAVE_SECRET_SERVER_KEY or `hexclave login`.");
+    }
+    const project = await getAdminProject(auth);
+    await project.pushConfig(config, {
+      source: sourceToSdkSource(source),
+    });
+  }
 }
 
 function sourceToSdkSource(source: BranchConfigSourceApi):
@@ -248,7 +267,7 @@ export function registerConfigCommand(program: Command) {
     .action(async (opts) => {
       const auth = resolveAuth(resolveProjectId(opts.cloudProjectId));
       if (!isProjectAuthWithRefreshToken(auth)) {
-        throw new CliError("`hexclave config pull` requires `hexclave login`. Remove STACK_SECRET_SERVER_KEY and try again.");
+        throw new CliError("`hexclave config pull` requires `hexclave login`. Unset HEXCLAVE_SECRET_SERVER_KEY (or the legacy STACK_SECRET_SERVER_KEY) and try again.");
       }
       // Resolve and validate the target file before any network work so we fail fast (e.g. when the
       // target already exists without --overwrite) instead of paying for a wasted round-trip.
@@ -312,17 +331,7 @@ export function registerConfigCommand(program: Command) {
         }
 
         progress.update("Pushing config");
-        if (isProjectAuthWithSecretServerKey(auth)) {
-          await pushConfigWithSecretServerKey(auth, config, source);
-        } else {
-          if (!isProjectAuthWithRefreshToken(auth)) {
-            throw new CliError("`hexclave config push` requires either STACK_SECRET_SERVER_KEY or `hexclave login`.");
-          }
-          const project = await getAdminProject(auth);
-          await project.pushConfig(config, {
-            source: sourceToSdkSource(source),
-          });
-        }
+        await pushConfigToProject(auth, config, source);
       } finally {
         progress.stop();
       }

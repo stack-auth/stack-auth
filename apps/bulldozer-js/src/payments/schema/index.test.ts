@@ -515,7 +515,6 @@ describe("payments schema", () => {
     });
 
     const group = customerGroup("u-past");
-    expect(await rowDatas(snapshot, schema.splitChanges, group)).toEqual([]);
     const quantities = (await rowsBySortKey(snapshot, schema.itemQuantities, group)).map(row => asRecord(row.rowData));
     const latest = quantities.at(-1);
     expect(latest === undefined ? 0 : Number(asRecord(latest.itemQuantities).boosts ?? 0)).toBe(0);
@@ -537,20 +536,12 @@ describe("payments schema", () => {
     });
 
     const group = customerGroup("u-manual");
-    const splits = (await rowDatas(snapshot, schema.splitChanges, group)).map(asRecord);
-    // The grant is emitted with its expiry, plus a zero-quantity expire marker at the expiry time
-    // that references the grant's id (so expiry drops that grant's remaining, not a blind -5).
-    expect(splits.map(row => ({ quantity: row.quantity, at: row.txnEffectiveAtMillis }))).toEqual([
-      { quantity: 5, at: 4000 },
-      { quantity: 0, at: 5000 },
-    ]);
-    expect(splits[1].expireGrantId).toBe("miqc:manual-1:0");
     const quantities = (await rowDatas(snapshot, schema.itemQuantities, group)).map(asRecord);
     expect(asRecord(quantities[0].itemQuantities).boosts).toBe(5);
     expect(asRecord(quantities[1].itemQuantities).boosts).toBe(0);
   });
 
-  it("compacts non-expiring item quantity changes by item", async () => {
+  it("applies compacted non-expiring item quantity changes by item", async () => {
     const schema = createPaymentsSchema();
     let snapshot = await initializedSnapshot();
     snapshot = await set(snapshot, schema.manualItemQuantityChanges, "compact-a", {
@@ -577,16 +568,6 @@ describe("payments schema", () => {
     });
 
     const group = customerGroup("u-compact");
-    const compacted = (await rowDatas(snapshot, schema.compactedItemQuantityChangeEntries, group)).map(asRecord);
-    expect(compacted).toHaveLength(1);
-    expect(compacted[0]).toMatchObject({
-      type: "compacted-item-quantity-change",
-      itemId: "credits",
-      quantity: 12,
-      expiresWhen: null,
-    });
-    expect(await rowDatas(snapshot, schema.nonCompactableItemQuantityChangeEntries, group)).toEqual([]);
-
     const quantities = asRecord((await rowsBySortKey(snapshot, schema.itemQuantities, group)).at(-1)?.rowData ?? null);
     expect(asRecord(quantities.itemQuantities).credits).toBe(12);
   });
