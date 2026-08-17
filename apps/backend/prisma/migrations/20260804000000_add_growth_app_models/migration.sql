@@ -106,6 +106,8 @@ CREATE TABLE "GrowthInterview" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "completedAt" TIMESTAMP(3),
+    "releasedAt" TIMESTAMP(3),
+    "releasedByUserId" TEXT,
 
     CONSTRAINT "GrowthInterview_pkey" PRIMARY KEY ("id")
 );
@@ -141,10 +143,6 @@ CREATE TABLE "GrowthReport" (
     "contentMd" TEXT NOT NULL,
     "sections" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    -- The staff release gate. A report row exists the moment the `report` phase finishes writing it,
-    -- but no customer sees it until someone at Hexclave has read it and published it. NULL is the
-    -- hidden state, and deliberately the state a row lands in by default, so any write path that
-    -- forgets about publishing fails closed rather than open. See lib/growth/report-release.ts.
     "publishedAt" TIMESTAMP(3),
     "publishedByUserId" TEXT,
 

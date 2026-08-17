@@ -2,7 +2,7 @@ import { describe, type ExpectStatic } from "vitest";
 import { it } from "../../../../../../helpers";
 import { niceBackendFetch } from "../../../../../backend-helpers";
 import { createWorkflow, listRuns, pollWithTicks } from "../workflows-helpers";
-import { GROWTH_AGENT_AUTH, createGrowthProject, publishGrowthReportAsStaff, requireRunId } from "./growth-helpers";
+import { GROWTH_AGENT_AUTH, createGrowthProject, requireRunId } from "./growth-helpers";
 
 const ADMIN_BASE = "/api/latest/internal/growth";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
@@ -260,9 +260,8 @@ describe("growth action-workflow lifecycle", () => {
       },
     });
     expect(report.status).toBe(200);
-    // Released to the customer, the way staff would: the report wire and the action routes below are
-    // all withheld until then. Publishing this report rather than seeding another keeps it "latest".
-    await publishGrowthReportAsStaff(scope.project_id, (report.body as { report_id: string }).report_id);
+    // Live to the customer already: reports publish on write, so the report wire and the action
+    // routes below are readable without a staff step.
     const actionItemIds = (report.body as { action_item_ids: string[] }).action_item_ids;
     expect(actionItemIds).toHaveLength(4);
     const [loopItemId, dismissItemId, deleteItemId, plainItemId] = actionItemIds;
@@ -369,7 +368,6 @@ describe("growth action-workflow lifecycle", () => {
       },
     });
     expect(report.status).toBe(200);
-    await publishGrowthReportAsStaff(scope.project_id, (report.body as { report_id: string }).report_id);
     const [itemId] = (report.body as { action_item_ids: string[] }).action_item_ids;
 
     // ...then the customer takes the id with a DIFFERENT source before activation. Activation must

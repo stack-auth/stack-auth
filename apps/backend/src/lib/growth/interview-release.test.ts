@@ -20,8 +20,8 @@ describe("isGrowthInterviewReleased", () => {
   });
 
   it("treats the unix epoch as released, not as absent", () => {
-    // A truthiness check would call this held: `new Date(0)` is falsy in exactly the way an
-    // accidental `if (interview.releasedAt)` refactor would be wrong about.
+    // The realistic wrong refactor is reaching through the Date — `releasedAt?.getTime()` is 0 here,
+    // which is falsy, so a truthiness check on it would hold a plan that has in fact been released.
     expect(isGrowthInterviewReleased({ releasedAt: new Date(0) })).toBe(true);
   });
 });

@@ -33,7 +33,9 @@ describe("FindingDetailContent", () => {
     render(<FindingDetailContent releaseState="preparing" />);
 
     expect(screen.getByText("We're putting your report together")).toBeTruthy();
-    expect(screen.getByText(/check back in about 24 hours/i)).toBeTruthy();
+    // The hold names its duration and sends people away, so nobody waits on a page that only
+    // updates when it is reloaded.
+    expect(screen.getByText(/takes about a day/i)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Growth overview" }).getAttribute("href")).toBe("/projects/project-1/gtm");
     expect(getGrowthOverview).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();

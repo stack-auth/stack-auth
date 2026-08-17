@@ -1,7 +1,7 @@
 import { describe, type ExpectStatic } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Project, niceBackendFetch } from "../../../../../backend-helpers";
-import { GROWTH_AGENT_AUTH, createGrowthProject, requireRunId } from "./growth-helpers";
+import { GROWTH_AGENT_AUTH, createGrowthProject, releaseGrowthInterviewAsStaff, requireRunId } from "./growth-helpers";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 
 const ADMIN_BASE = "/api/latest/internal/growth";
@@ -230,6 +230,13 @@ describe("internal growth interview (no mock Eve)", () => {
     expect(longQuestion.status).toBe(400);
     await saveQuestionPlan(scope, runId);
 
+    // Written, but held for review: to the customer a plan nobody has read is indistinguishable
+    // from one that has not been generated. interview-release.test.ts owns that gate; here it is a
+    // precondition, asserted once so this suite fails loudly if the gate ever moves again.
+    const beforeRelease = await getInterview();
+    expect(beforeRelease.status).toBe(404);
+    await releaseGrowthInterviewAsStaff(scope.project_id);
+
     const fresh = await getInterview();
     expect(fresh.status).toBe(200);
     expect(fresh.body).toMatchObject({ status: "pending", messages: [] });
@@ -248,6 +255,7 @@ describe("internal growth interview (no mock Eve)", () => {
     // A separate project whose interview the agent completed: skipping is refused with a 400.
     const second = await setUpOnboardedGrowthProject();
     await saveQuestionPlan(second.scope, second.runId);
+    await releaseGrowthInterviewAsStaff(second.scope.project_id);
     const complete = await niceBackendFetch(`${AGENT_BASE}/interview/complete`, {
       method: "POST",
       headers: GROWTH_AGENT_AUTH,
@@ -261,6 +269,7 @@ describe("internal growth interview (no mock Eve)", () => {
   it("persists answers before proxying, surfaces Eve unavailability as a retryable 502, and guards the machine write modes", { timeout: 300_000 }, async ({ expect }) => {
     const { scope, runId } = await setUpOnboardedGrowthProject();
     await saveQuestionPlan(scope, runId);
+    await releaseGrowthInterviewAsStaff(scope.project_id);
 
     // The stream route refuses turns until the run awaits the interview.
     const tooEarly = await niceBackendFetch(`${ADMIN_BASE}/interview/stream`, {
@@ -410,6 +419,7 @@ describe("internal growth interview (no mock Eve)", () => {
 
     const { scope, runId } = await setUpOnboardedGrowthProject();
     await saveQuestionPlan(scope, runId);
+    await releaseGrowthInterviewAsStaff(scope.project_id);
 
     // Retaking is refused until the run actually awaits the interview.
     const tooEarly = await niceBackendFetch(`${ADMIN_BASE}/interview/retake`, { accessType: "admin", method: "POST" });
@@ -444,11 +454,12 @@ describe("internal growth interview (no mock Eve)", () => {
     const retake = await niceBackendFetch(`${ADMIN_BASE}/interview/retake`, { accessType: "admin", method: "POST" });
     expect(retake).toMatchObject({ status: 200, body: { status: "pending", run_id: runId } });
 
-    // The plan and transcript are gone; the interview row itself is reused and back to pending.
+    // The plan and transcript are gone AND the interview is held again: the replacement plan has not
+    // been reviewed, so a retake cannot be used to walk a fresh set of questions past the gate. The
+    // customer therefore sees the same 404 they saw before their first plan was released, until the
+    // re-armed phase writes a new plan and staff release that one.
     const afterRetake = await getInterview();
-    expect(afterRetake.status).toBe(200);
-    expect(afterRetake.body).toMatchObject({ status: "pending", messages: [] });
-    expect(afterRetake.body.questions).toEqual([]);
+    expect(afterRetake.status).toBe(404);
 
     // The run is running again with the question phase re-armed on a fresh attempt budget, while
     // every other phase stays settled — retake must not re-run research.
@@ -467,8 +478,10 @@ describe("internal growth interview (no mock Eve)", () => {
     expect(findings.status).toBe(200);
     expect(JSON.stringify(findings.body)).toContain("Homepage has no pricing link");
 
-    // Retaking again now that the run is RUNNING (not awaiting) is refused.
+    // Retaking again is refused — as a 404 rather than the "only while awaiting" 400, because the
+    // retake the customer just performed put the interview back under the release gate, and that
+    // gate is checked before the run status. Either way there is nothing for them to retake.
     const retakeAgain = await niceBackendFetch(`${ADMIN_BASE}/interview/retake`, { accessType: "admin", method: "POST" });
-    expect(retakeAgain.status).toBe(400);
+    expect(retakeAgain.status).toBe(404);
   });
 });

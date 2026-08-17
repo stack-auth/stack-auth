@@ -28,7 +28,7 @@ eve loads `.env` and `.env.local` from the app root (it does not read `.env.deve
 ## Development
 
 ```sh
-pnpm dev  # eve dev on port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}47 (default 8147)
+pnpm dev  # eve dev on port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}49 (default 8149)
 ```
 
 ## HTTP surface

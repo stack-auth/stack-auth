@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Project, niceBackendFetch } from "../../../../../backend-helpers";
-import { GROWTH_AGENT_AUTH, createGrowthProject, publishGrowthReportAsStaff, requireRunId } from "./growth-helpers";
+import { GROWTH_AGENT_AUTH, createGrowthProject, requireRunId } from "./growth-helpers";
 
 const ADMIN_BASE = "/api/latest/internal/growth";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
@@ -143,11 +143,8 @@ async function seedCompletedRunWithReport(scope: { project_id: string, branch_id
   if (report.status !== 200) {
     throw new Error(`Saving the report failed with status ${report.status}.`);
   }
-  // Released to the customer, the way a Hexclave reviewer would. Writing the report is no longer
-  // enough to make it readable — the report route and the whole action surface stay dark until it is
-  // published (see lib/growth/report-release.ts). That gate is report-release.test.ts's subject; here
-  // it is just a precondition for everything below.
-  await publishGrowthReportAsStaff(scope.project_id, (report.body as { report_id: string }).report_id);
+  // No release step: writing the report IS releasing it (see lib/growth/report-release.ts), so the
+  // report route and the action surface below are readable from here on.
   return {
     reportId: (report.body as { report_id: string }).report_id,
     actionItemIds: (report.body as { action_item_ids: string[] }).action_item_ids,

@@ -618,12 +618,11 @@ function AnalysisStep(props: { status: GrowthStatus, state: GrowthTimelineStepSt
     }
     case "current": {
       const steps = analysisLoadingSteps(status);
-      const holdActive = status.release.state === "preparing";
       return (
         <GrowthTimelineStep
           state="current"
           title="Deep analysis"
-          subtitle={holdActive ? GROWTH_HOLD_SHORT : "This usually takes a little while — feel free to come back later"}
+          subtitle={GROWTH_HOLD_SHORT}
           badge={<DesignBadge label="In progress" color="cyan" size="sm" />}
         >
           <DesignCard>

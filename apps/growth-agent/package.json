@@ -11,7 +11,7 @@
     "#*": "./agent/*"
   },
   "scripts": {
-    "dev": "eve dev --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}47",
+    "dev": "eve dev --no-ui --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}49",
     "build": "eve build",
     "start": "eve start",
     "test": "vitest",

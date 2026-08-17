@@ -59,14 +59,39 @@ export const postMigration = async (sql: Sql, context: Awaited<ReturnType<typeof
   ]);
   expect(workflowColumns.every((row) => row.is_nullable === "YES")).toBe(true);
 
-  // The release gate on GrowthReport. A report is written by the analysis but stays invisible to the
-  // customer until staff publish it, and "invisible" has to be what a row gets by DEFAULT — a write
-  // path that forgets about publishing must fail closed, not hand out an unreviewed report.
   const [run] = await sql<{ id: string }[]>`
     INSERT INTO "GrowthAnalysisRun" ("projectId", "branchId", "trigger", "status", "updatedAt")
     VALUES (${context.projectId}, 'main', 'initial', 'COMPOSING_REPORT', NOW())
     RETURNING "id"::text AS id
   `;
+
+  // The staff release gate on GrowthInterview. The assertion that matters is the boring-looking one:
+  // a plan lands HELD. If these columns ever gained a DEFAULT (now() being the tempting one), every
+  // generated plan would count as staff-approved and customers would answer questions nobody read.
+  const [interview] = await sql<{ releasedAt: Date | null, releasedByUserId: string | null }[]>`
+    INSERT INTO "GrowthInterview" ("runId", "projectId", "branchId", "status", "updatedAt")
+    VALUES (${run.id}::uuid, ${context.projectId}, 'main', 'pending', NOW())
+    RETURNING "releasedAt", "releasedByUserId"
+  `;
+  expect(interview.releasedAt).toBeNull();
+  expect(interview.releasedByUserId).toBeNull();
+
+  const gateColumns = await sql<{ column_name: string, is_nullable: string, data_type: string, column_default: string | null }[]>`
+    SELECT column_name, is_nullable, data_type, column_default
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'GrowthInterview'
+      AND column_name IN ('releasedAt', 'releasedByUserId')
+    ORDER BY column_name
+  `;
+  expect(gateColumns).toEqual([
+    { column_name: "releasedAt", is_nullable: "YES", data_type: "timestamp without time zone", column_default: null },
+    { column_name: "releasedByUserId", is_nullable: "YES", data_type: "text", column_default: null },
+  ]);
+
+  // GrowthReport carries no gate of its own — upsertGrowthReport stamps publishedAt on create — but
+  // the column stays nullable so unpublishGrowthReport can pull a report back, and a row inserted
+  // without it must not acquire a timestamp from the database.
   const [report] = await sql<{ publishedAt: Date | null, publishedByUserId: string | null }[]>`
     INSERT INTO "GrowthReport" ("runId", "projectId", "branchId", "title", "summary", "contentMd")
     VALUES (${run.id}::uuid, ${context.projectId}, 'main', 'Fresh report', 'Just written', '# Report')

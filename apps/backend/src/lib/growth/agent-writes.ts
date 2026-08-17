@@ -12,6 +12,7 @@ import { getGrowthActionEventSlug, validateGrowthWorkflowSpec } from "./workflow
 import { GROWTH_EVENT_TYPES } from "./workflows";
 import { assertGrowthCategory, assertGrowthCategoryScore, GROWTH_CATEGORIES, GROWTH_NOTE_KIND, LEGACY_GROWTH_CATEGORIES, normalizeGrowthTags, type GrowthCategory } from "./categories";
 import { compileGrowthDocument } from "./content-document";
+import { withGrowthInterviewOtherOption } from "./interview-question-options";
 
 /**
  * Write-side logic behind the internal/growth-agent/* machine routes, kept out of the route files the
@@ -413,20 +414,6 @@ export type GrowthAgentInterviewQuestionInput = {
   allowSkip: boolean | undefined,
   origin: "planned" | "adaptive" | undefined,
 };
-
-const GROWTH_INTERVIEW_OTHER_OPTION_ID = "other";
-
-function withGrowthInterviewOtherOption(options: GrowthAgentInterviewQuestionInput["options"]): GrowthAgentInterviewQuestionInput["options"] {
-  const existingOther = options.find((option) => option.id.toLowerCase() === GROWTH_INTERVIEW_OTHER_OPTION_ID);
-  // The id is the durable contract used by answer validation. Normalize its customer-facing copy
-  // so old agent output such as "Someone else" still presents one predictable final affordance.
-  // Filtering all case variants also prevents a malformed plan from creating duplicate ids after
-  // normalization.
-  return [
-    ...options.filter((option) => option.id.toLowerCase() !== GROWTH_INTERVIEW_OTHER_OPTION_ID),
-    { id: GROWTH_INTERVIEW_OTHER_OPTION_ID, label: "Other", description: existingOther?.description ?? "Write your own answer" },
-  ];
-}
 
 export async function replaceGrowthInterviewQuestions(options: {
   tenancy: Tenancy,

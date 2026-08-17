@@ -2,7 +2,7 @@ import { describe, type ExpectStatic } from "vitest";
 import { it } from "../../../../../../helpers";
 import { niceBackendFetch } from "../../../../../backend-helpers";
 import { listRuns, pollWithTicks, sendCustomEvent } from "../workflows-helpers";
-import { GROWTH_AGENT_AUTH, createGrowthProject, requireRunId, unlockGrowthWorkspaceAsStaff } from "./growth-helpers";
+import { GROWTH_AGENT_AUTH, createGrowthProject, releaseGrowthInterviewAsStaff, requireRunId, unlockGrowthWorkspaceAsStaff } from "./growth-helpers";
 import { MockEve, MockEveDispatch, withMockEve } from "./mock-eve";
 
 const ADMIN_BASE = "/api/latest/internal/growth";
@@ -630,6 +630,10 @@ describe("growth interview streaming (mock Eve)", () => {
       });
       expect(questionPlan.status).toBe(200);
       expect(await agentPhaseCall(runId, "interview-questions", "complete", scope, 1)).toMatchObject({ status: 200 });
+      // The plan is written held; a customer cannot start a turn on questions nobody has reviewed
+      // (see lib/growth/interview-release.ts). Releasing it is what makes the stream route below
+      // reachable at all.
+      await releaseGrowthInterviewAsStaff(projectId);
       await pollWithTicks(expect, async () => {
         const run = await getRun(runId);
         return run.status === "awaiting_interview" ? run : null;

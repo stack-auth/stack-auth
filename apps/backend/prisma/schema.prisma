@@ -361,6 +361,8 @@ model GrowthInterview {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   completedAt DateTime?
+  releasedAt       DateTime?
+  releasedByUserId String?
 
   run       GrowthAnalysisRun         @relation(fields: [runId], references: [id], onDelete: Cascade)
   questions GrowthInterviewQuestion[]
@@ -393,18 +395,6 @@ model GrowthInterviewQuestion {
   @@unique([interviewId, orderIndex])
 }
 
-// A freeform chat between a project's admins and the growth assistant.
-//
-// Deliberately NOT stored in the dashboard companion's AiConversation/AiMessage tables, which an
-// earlier draft reused behind a `kind` discriminator. That reuse required relaxing
-// AiConversation.projectUserId to nullable and left the two populations separated only by every
-// present and future query remembering to filter on the right column. Separate tables make the
-// isolation structural instead of conventional.
-//
-// Project-scoped, not user-scoped like the companion: every other growth resource is
-// (projectId, branchId)-keyed, and admin-auth dashboard requests usually carry no acting user at
-// all (the owned-project admin app authenticates with the admin key alone), so a required owner
-// would be unfulfillable on the normal path.
 model GrowthChatConversation {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
@@ -464,22 +454,8 @@ model GrowthReport {
 
   createdAt DateTime @default(now())
 
-  // Staff release gate. A report row exists the moment the `report` phase finishes writing it, but
-  // nobody has read it yet — so the customer must not. `publishedAt == null` is the hidden state,
-  // deliberately the DEFAULT one, so any future write path that forgets about publishing fails
-  // closed (invisible) rather than open. Set by publishGrowthReport in lib/growth/report-release.ts,
-  // which is also the only module allowed to decide what "released" means.
-  //
-  // Unlike GrowthQuizGame this needs no generated column or partial unique index: a branch
-  // accumulates many published reports over its life (that IS the history), so there is no
-  // "exactly one live row" invariant to enforce.
   publishedAt       DateTime?
   publishedByUserId String?
-
-  // Customer read receipt. This belongs to the report row (rather than browser storage) so the
-  // unread prompt is consistent across devices, and every newly published report starts unread.
-  // Like GrowthBrief.readAt, this is branch-wide: Growth is currently a shared project workspace,
-  // not a per-member inbox.
   readAt DateTime?
 
   run GrowthAnalysisRun @relation(fields: [runId], references: [id], onDelete: Cascade)
@@ -489,8 +465,6 @@ model GrowthReport {
   @@index([projectId, branchId, publishedAt(sort: Desc)])
 }
 
-// A one-click recommendation surfaced by a report or brief. typeId is
-// validated against the code registry in lib/growth/action-item-types.ts.
 model GrowthActionItem {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
@@ -556,8 +530,6 @@ model GrowthCategoryScore {
   @@index([projectId, branchId, updatedAt(sort: Desc)])
 }
 
-// Point-in-time values of an action item's watched metrics: one "before" row
-// captured at activation, "after" rows captured by the daily engine tick.
 model GrowthMetricSnapshot {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 

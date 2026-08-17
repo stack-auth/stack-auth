@@ -1,6 +1,7 @@
 import type { Tenancy } from "@/lib/tenancies";
 import { GrowthRunStatus } from "@/generated/prisma/enums";
-import { globalPrismaClient } from "@/prisma-client";
+import { globalPrismaClient, retryTransaction } from "@/prisma-client";
+import { withGrowthInterviewOtherOption } from "./interview-question-options";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { isUuid } from "@hexclave/shared/dist/utils/uuids";
 
@@ -148,7 +149,8 @@ export async function updateGrowthAdminInterviewQuestion(tenancy: Tenancy, quest
     where: { id: question.id },
     data: {
       prompt: input.prompt,
-      options: input.options.map((option) => ({ id: option.id, label: option.label, description: option.description ?? null })),
+      options: withGrowthInterviewOtherOption(input.options)
+        .map((option) => ({ id: option.id, label: option.label, description: option.description ?? null })),
       allowSkip: input.allowSkip,
     },
   });
@@ -168,7 +170,7 @@ export async function deleteGrowthAdminInterviewQuestion(tenancy: Tenancy, quest
   if (run.interview.questions.length <= 1) {
     throw new StatusError(400, "An interview needs at least one question. Regenerate the plan instead.");
   }
-  await globalPrismaClient.$transaction(async (tx) => {
+  await retryTransaction(globalPrismaClient, async (tx) => {
     await tx.growthInterviewQuestion.delete({ where: { id: question.id } });
     // One statement rather than a loop: the rows are few, but a loop would briefly leave two
     // questions sharing an index, and nothing stops a concurrent read from seeing that.

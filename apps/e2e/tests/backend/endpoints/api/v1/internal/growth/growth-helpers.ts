@@ -21,44 +21,56 @@ export function requireRunId(body: unknown): string {
 }
 
 /**
- * Releases a growth report to the customer, the way a Hexclave staff reviewer would.
+ * Runs `call` as a Hexclave platform admin — the internal project's keys plus a member of its owner
+ * team — and restores whoever the caller was afterwards.
  *
- * Almost every customer-facing growth route is dark until the branch has a published report — see
- * lib/growth/report-release.ts — so a suite that seeds a report through the agent API and then reads
- * it back as the customer has to publish it in between, exactly as production does.
- *
- * Publishing means being a platform admin, which means a different project's keys and a different
- * signed-in user. The surrounding context is snapshotted and restored so callers can keep going as
- * whoever they were: these suites interleave customer, agent and staff calls, and leaving the
+ * The restore is the point: these suites interleave customer, agent and staff calls, and leaving the
  * context pointing at the internal project would break the NEXT assertion rather than this one,
  * which is a miserable thing to debug.
  */
-export async function publishGrowthReportAsStaff(projectId: string, reportId: string): Promise<void> {
+export async function asGrowthStaff<T>(call: () => Promise<T>): Promise<T> {
   const { projectKeys, userAuth, mailbox } = backendContext.value;
   try {
     backendContext.set({ projectKeys: InternalProjectKeys, userAuth: null });
     const { userId } = await Auth.fastSignUp();
     await Team.addMember(INTERNAL_PROJECT_OWNER_TEAM_ID, userId);
-    const published = await niceBackendFetch(`/api/latest/internal/growth/admin/reports/${reportId}`, {
-      accessType: "client",
-      method: "PATCH",
-      body: { target_project_id: projectId, action: "publish" },
-    });
-    if (published.status !== 200) {
-      throw new Error(`Publishing the growth report failed with status ${published.status}: ${JSON.stringify(published.body)}`);
-    }
+    return await call();
   } finally {
     backendContext.set({ projectKeys, userAuth, mailbox });
   }
 }
 
 /**
- * Seeds a minimal published report so the customer-facing growth routes are reachable.
+ * Releases a project's interview question plan to the customer, the way a staff reviewer would.
+ *
+ * The plan is written held — see lib/growth/interview-release.ts — so a suite that drives a run to
+ * the interview and then answers it as the customer has to release it in between, exactly as
+ * production does. This is the ONLY human gate left in the growth lifecycle; reports publish on
+ * write, so there is no report-side counterpart to this helper.
+ */
+export async function releaseGrowthInterviewAsStaff(projectId: string): Promise<void> {
+  await asGrowthStaff(async () => {
+    const released = await niceBackendFetch("/api/latest/internal/growth/admin/interview/release", {
+      accessType: "client",
+      method: "POST",
+      body: { target_project_id: projectId },
+    });
+    if (released.status !== 200) {
+      throw new Error(`Releasing the growth interview failed with status ${released.status}: ${JSON.stringify(released.body)}`);
+    }
+  });
+}
+
+/**
+ * Seeds a minimal report so the customer-facing growth routes are reachable.
  *
  * For suites whose subject is something else entirely — briefs, chat, workflows, the overview read
- * model — and which therefore have no report of their own to publish, but which now need the
- * workspace released before they can read anything. Nothing about the report matters here except
- * that it exists and is live, so it is deliberately the smallest one the agent API accepts.
+ * model — and which therefore have no report of their own, but which need the workspace released
+ * before they can read anything. Nothing about the report matters here except that it exists, so it
+ * is deliberately the smallest one the agent API accepts.
+ *
+ * No publish step: a report is live the moment the agent writes it. The name keeps "AsStaff" because
+ * writing one still needs the machine secret, which is not something a customer has.
  */
 export async function unlockGrowthWorkspaceAsStaff(scope: { project_id: string, branch_id: string }): Promise<string> {
   const runId = await requireGrowthRunIdForScope();
@@ -77,9 +89,7 @@ export async function unlockGrowthWorkspaceAsStaff(scope: { project_id: string, 
   if (report.status !== 200) {
     throw new Error(`Seeding the unlock report failed with status ${report.status}: ${JSON.stringify(report.body)}`);
   }
-  const reportId = (report.body as { report_id: string }).report_id;
-  await publishGrowthReportAsStaff(scope.project_id, reportId);
-  return reportId;
+  return (report.body as { report_id: string }).report_id;
 }
 
 /**

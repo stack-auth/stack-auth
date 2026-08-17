@@ -4,10 +4,10 @@ import { HourglassMediumIcon } from "@phosphor-icons/react";
 
 export const GROWTH_HOLD_TITLE = "We're putting your report together";
 
-export const GROWTH_HOLD_BODY = "We're now preparing a report tailored for you.";
+export const GROWTH_HOLD_BODY = "This takes about a day. Feel free to come back later — your report will be here when it's ready.";
 
-export const GROWTH_HOLD_SHORT = "We're now preparing a report tailored for you.";
-export const GROWTH_INTERVIEW_PREPARING_DETAIL = "We're putting your questions together — they'll be ready in about 24 hours.";
+export const GROWTH_HOLD_SHORT = "This takes about a day. Feel free to come back later.";
+export const GROWTH_INTERVIEW_PREPARING_DETAIL = "We're putting your questions together";
 
 /**
  * The standalone panel, for pages whose entire content is withheld. Matches the dashed empty-state
