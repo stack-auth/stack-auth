@@ -24,6 +24,10 @@ const GAMES_BASE = `${GROWTH_BASE}/games`;
 // Deliberately WITHOUT mock-eve: only growth-workflows.test.ts may bind the fixed Eve port (see
 // mock-eve.ts), and generation never needs it — an unreachable Eve is exactly the fallback path,
 // where the draft is still built with template wording.
+//
+// createOnboardedGrowthProject POSTs /onboarding, which compiles two canonical workflows in the
+// sandbox (60s backstop each). Tests that go through it get a 300s budget so a contended e2e
+// worker pool does not kill them against the default 60s testTimeout.
 
 /** Signs in as a Hexclave platform admin — membership of the internal project's owner team. */
 async function signInAsInternalAdmin(): Promise<void> {
@@ -51,7 +55,7 @@ async function createOnboardedGrowthProject(): Promise<string> {
 }
 
 describe("admin authorization", () => {
-  it("refuses every admin games route for a signed-in user who is not a platform admin", async ({ expect }) => {
+  it("refuses every admin games route for a signed-in user who is not a platform admin", { timeout: 300_000 }, async ({ expect }) => {
     const projectId = await createOnboardedGrowthProject();
     await signInAsNonAdmin();
 
@@ -82,7 +86,7 @@ describe("admin authorization", () => {
 });
 
 describe("staff review surface", () => {
-  it("reports an empty quiz state for a project that has never had one", async ({ expect }) => {
+  it("reports an empty quiz state for a project that has never had one", { timeout: 300_000 }, async ({ expect }) => {
     const projectId = await createOnboardedGrowthProject();
     await signInAsInternalAdmin();
 
@@ -97,7 +101,7 @@ describe("staff review surface", () => {
     `);
   });
 
-  it("refuses to generate for a project with too little metric history, and says how far off it is", async ({ expect }) => {
+  it("refuses to generate for a project with too little metric history, and says how far off it is", { timeout: 300_000 }, async ({ expect }) => {
     const projectId = await createOnboardedGrowthProject();
     await signInAsInternalAdmin();
 
@@ -112,7 +116,7 @@ describe("staff review surface", () => {
     expect(response.body).toEqual(expect.stringContaining("enough metric history"));
   });
 
-  it("leaves no draft behind when generation is refused", async ({ expect }) => {
+  it("leaves no draft behind when generation is refused", { timeout: 300_000 }, async ({ expect }) => {
     const projectId = await createOnboardedGrowthProject();
     await signInAsInternalAdmin();
     await niceBackendFetch(`${ADMIN_GAMES}/generate`, { accessType: "client", method: "POST", body: { target_project_id: projectId } });
@@ -124,7 +128,7 @@ describe("staff review surface", () => {
     expect((after.body as { draft: unknown }).draft).toBeNull();
   });
 
-  it("404s on a game id that does not exist, for every mutation", async ({ expect }) => {
+  it("404s on a game id that does not exist, for every mutation", { timeout: 300_000 }, async ({ expect }) => {
     const projectId = await createOnboardedGrowthProject();
     await signInAsInternalAdmin();
 
@@ -147,7 +151,7 @@ describe("staff review surface", () => {
     }
   });
 
-  it("validates the edit body before it looks anything up", async ({ expect }) => {
+  it("validates the edit body before it looks anything up", { timeout: 300_000 }, async ({ expect }) => {
     const projectId = await createOnboardedGrowthProject();
     await signInAsInternalAdmin();
 
@@ -170,7 +174,7 @@ describe("staff review surface", () => {
     expect(negative.status).toBe(400);
   });
 
-  it("rejects an unknown lifecycle action", async ({ expect }) => {
+  it("rejects an unknown lifecycle action", { timeout: 300_000 }, async ({ expect }) => {
     const projectId = await createOnboardedGrowthProject();
     await signInAsInternalAdmin();
     const response = await niceBackendFetch(`${ADMIN_GAMES}/${randomUUID()}`, {
@@ -196,7 +200,7 @@ describe("customer surface", () => {
     }
   });
 
-  it("reports no published quiz when staff have not published one", async ({ expect }) => {
+  it("reports no published quiz when staff have not published one", { timeout: 300_000 }, async ({ expect }) => {
     await createOnboardedGrowthProject();
 
     // The banner renders nothing at all on this body — which is the honest outcome, because there is
@@ -211,14 +215,14 @@ describe("customer surface", () => {
     `);
   });
 
-  it("refuses to start a round when nothing is published", async ({ expect }) => {
+  it("refuses to start a round when nothing is published", { timeout: 300_000 }, async ({ expect }) => {
     await createOnboardedGrowthProject();
     const response = await niceBackendFetch(`${GAMES_BASE}/rounds`, { accessType: "admin", method: "POST" });
     expect(response.status).toBe(409);
     expect(response.body).toEqual(expect.stringContaining("no quiz published"));
   });
 
-  it("404s identically for a malformed round id, an unknown one, and another project's", async ({ expect }) => {
+  it("404s identically for a malformed round id, an unknown one, and another project's", { timeout: 300_000 }, async ({ expect }) => {
     await createOnboardedGrowthProject();
 
     for (const roundId of ["not-a-uuid", randomUUID()]) {
@@ -236,7 +240,7 @@ describe("customer surface", () => {
     }
   });
 
-  it("validates the answer body before it looks anything up", async ({ expect }) => {
+  it("validates the answer body before it looks anything up", { timeout: 300_000 }, async ({ expect }) => {
     await createOnboardedGrowthProject();
 
     for (const body of [{}, { order_index: -1, option_id: "o0" }, { order_index: 0 }, { order_index: 1.5, option_id: "o0" }, { order_index: 0, option_id: "" }]) {
@@ -247,7 +251,7 @@ describe("customer surface", () => {
     }
   });
 
-  it("does not expose the staff review surface to a project admin key", async ({ expect }) => {
+  it("does not expose the staff review surface to a project admin key", { timeout: 300_000 }, async ({ expect }) => {
     const projectId = await createOnboardedGrowthProject();
 
     // The admin routes take user auth in the internal project; a customer's own admin key must not

@@ -8,6 +8,10 @@ const BASE_PATH = "/api/latest/internal/growth";
 // Dynamic run ids make inline snapshots impractical for the run-shaped responses, so those use
 // toMatchObject (deliberate deviation from the usual snapshot preference); the pre-onboarding
 // status is fully deterministic and snapshotted.
+//
+// Tests that POST /onboarding get a 300s budget: seeding compiles two canonical workflows in the
+// sandbox (60s backstop each), and a contended e2e worker pool regularly spends more than the
+// default 60s testTimeout waiting on that.
 
 describe("internal growth lifecycle", () => {
   it("rejects requests without admin access and requests on projects without the app", async ({ expect }) => {
@@ -77,16 +81,14 @@ describe("internal growth lifecycle", () => {
               },
             ],
           },
-          "release": {
-            "state": "not_ready",
-          },
+          "release": { "state": "not_ready" },
         },
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
   });
 
-  it("completes onboarding, creates the initial run with its phase plan, and flips the status", async ({ expect }) => {
+  it("completes onboarding, creates the initial run with its phase plan, and flips the status", { timeout: 300_000 }, async ({ expect }) => {
     await createGrowthProject();
 
     const invalidUrl = await niceBackendFetch(`${BASE_PATH}/onboarding`, {
@@ -158,7 +160,7 @@ describe("internal growth lifecycle", () => {
     expect((run.body as { phases: unknown[] }).phases).toHaveLength(10);
   });
 
-  it("refuses concurrent runs and manual runs before onboarding", async ({ expect }) => {
+  it("refuses concurrent runs and manual runs before onboarding", { timeout: 300_000 }, async ({ expect }) => {
     await createGrowthProject();
 
     const beforeOnboarding = await niceBackendFetch(`${BASE_PATH}/runs`, {
@@ -184,7 +186,7 @@ describe("internal growth lifecycle", () => {
     expect(concurrent.status).toBe(409);
   });
 
-  it("only retries failed analyses", async ({ expect }) => {
+  it("only retries failed analyses", { timeout: 300_000 }, async ({ expect }) => {
     await createGrowthProject();
     const noRun = await niceBackendFetch(`${BASE_PATH}/analysis/retry`, { accessType: "admin", method: "POST" });
     expect(noRun.status).toBe(400);
@@ -199,7 +201,7 @@ describe("internal growth lifecycle", () => {
     expect(pendingRun.status).toBe(400);
   });
 
-  it("scopes run reads to the project", async ({ expect }) => {
+  it("scopes run reads to the project", { timeout: 300_000 }, async ({ expect }) => {
     await createGrowthProject();
     const onboarding = await niceBackendFetch(`${BASE_PATH}/onboarding`, {
       accessType: "admin",

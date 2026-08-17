@@ -82,26 +82,22 @@ describe("internal growth chat (no mock Eve)", () => {
     // retryable 502 — and because the chat persists only after a successful proxy call (the
     // deliberate opposite of the interview's answer-first rule), NOTHING may exist afterwards: no
     // half-created conversation row, no dangling user message.
-    const failedTurn = await niceBackendFetch(`${ADMIN_BASE}/chat`, {
+    await expect(niceBackendFetch(`${ADMIN_BASE}/chat`, {
       accessType: "admin",
       method: "POST",
-      allowedServerErrorStatusCodes: [502],
       body: { message: "Why did signups drop last week?" },
-    });
-    expect(failedTurn.status).toBe(502);
+    })).rejects.toThrow(/API threw ISE.*502/);
     const afterFailure = await listConversations();
     expect(afterFailure.status).toBe(200);
     expect(afterFailure.body).toEqual({ conversations: [] });
 
     // Retrying fails the same way and still leaves nothing behind (retries are idempotent from the
     // user's point of view precisely because nothing was persisted).
-    const retriedTurn = await niceBackendFetch(`${ADMIN_BASE}/chat`, {
+    await expect(niceBackendFetch(`${ADMIN_BASE}/chat`, {
       accessType: "admin",
       method: "POST",
-      allowedServerErrorStatusCodes: [502],
       body: { message: "Why did signups drop last week?" },
-    });
-    expect(retriedTurn.status).toBe(502);
+    })).rejects.toThrow(/API threw ISE.*502/);
     const afterRetry = await listConversations();
     expect(afterRetry.body).toEqual({ conversations: [] });
   });

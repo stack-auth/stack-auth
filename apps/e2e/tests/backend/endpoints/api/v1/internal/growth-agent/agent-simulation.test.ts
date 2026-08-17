@@ -12,6 +12,10 @@ const AGENT_BASE = "/api/latest/internal/growth-agent";
 // simulation echoes attempt 0, which is the real invariant (body attempt === stored attempt), and
 // the stale-attempt test proves any other echo is fenced with a 409. The orchestration-driven
 // lifecycle (dispatches, attempt bumps, run transitions) lives in growth-workflows.test.ts.
+//
+// Every test here onboarded, and onboarding compiles two canonical workflows in the sandbox (60s
+// backstop each). The 300s budget is the same one interview-release / report-release already use,
+// so a contended e2e worker pool does not kill them against the default 60s testTimeout.
 
 async function createGrowthProjectWithIds() {
   const projectKeys = await createGrowthProject();
@@ -43,7 +47,7 @@ async function getRunPhaseKeys(runId: string): Promise<string[]> {
 }
 
 describe("growth agent simulation", () => {
-  it("runs a full analysis: phase lifecycle, findings, artifacts, interview, report, brief, tasks", async ({ expect }) => {
+  it("runs a full analysis: phase lifecycle, findings, artifacts, interview, report, brief, tasks", { timeout: 300_000 }, async ({ expect }) => {
     const { projectId, branchId } = await createGrowthProjectWithIds();
     const scope = { project_id: projectId, branch_id: branchId };
     const runId = await completeOnboarding();
@@ -261,7 +265,7 @@ describe("growth agent simulation", () => {
     expect(phases.every((phase) => phase.status === "completed" && phase.attempt === 0)).toBe(true);
   });
 
-  it("rejects wrong or missing agent secrets with a 401", async ({ expect }) => {
+  it("rejects wrong or missing agent secrets with a 401", { timeout: 300_000 }, async ({ expect }) => {
     const { projectId, branchId } = await createGrowthProjectWithIds();
     const runId = await completeOnboarding();
 
@@ -279,7 +283,7 @@ describe("growth agent simulation", () => {
     expect(missingHeader.status).toBe(401);
   });
 
-  it("scopes runs to the authenticated project and fences stale attempts", async ({ expect }) => {
+  it("scopes runs to the authenticated project and fences stale attempts", { timeout: 300_000 }, async ({ expect }) => {
     await createGrowthProjectWithIds();
     const foreignRunId = await completeOnboarding();
 
@@ -318,7 +322,7 @@ describe("growth agent simulation", () => {
     expect(earlyHeartbeat.status).toBe(409);
   });
 
-  it("validates content-write inputs loudly", async ({ expect }) => {
+  it("validates content-write inputs loudly", { timeout: 300_000 }, async ({ expect }) => {
     const { projectId, branchId } = await createGrowthProjectWithIds();
     const scope = { project_id: projectId, branch_id: branchId };
     const runId = await completeOnboarding();
@@ -358,7 +362,7 @@ describe("growth agent simulation", () => {
     expect(badWatchedMetric.status).toBe(400);
   });
 
-  it("rejects agent requests for projects without the growth app", async ({ expect }) => {
+  it("rejects agent requests for projects without the growth app", { timeout: 300_000 }, async ({ expect }) => {
     const { projectId, branchId } = await createGrowthProjectWithIds();
     const runId = await completeOnboarding();
     // Disable the app again: the agent secret alone must not grant access to a project that never

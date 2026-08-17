@@ -309,13 +309,11 @@ describe("internal growth interview (no mock Eve)", () => {
 
     // ANSWER-FIRST PERSISTENCE: the answer is written before the Eve proxy call, and no working Eve
     // exists in this suite, so the turn fails with the retryable 502 — but the answer survives.
-    const failedTurn = await niceBackendFetch(`${ADMIN_BASE}/interview/stream`, {
+    await expect(niceBackendFetch(`${ADMIN_BASE}/interview/stream`, {
       accessType: "admin",
       method: "POST",
-      allowedServerErrorStatusCodes: [502],
       body: { answer: { order_index: 0, option_ids: ["signups"], free_text: "Mostly self-serve signups." } },
-    });
-    expect(failedTurn.status).toBe(502);
+    })).rejects.toThrow(/API threw ISE.*502/);
     const afterAnswer = await getInterview();
     expect(afterAnswer.body.status).toBe("active");
     expect(afterAnswer.body.questions[0]).toMatchObject({
@@ -442,14 +440,12 @@ describe("internal growth interview (no mock Eve)", () => {
     expect(finding.status).toBe(200);
 
     // Answer one question so the retake has real state to discard.
-    const answered = await niceBackendFetch(`${ADMIN_BASE}/interview/stream`, {
+    // Eve is unreachable from this file, so the turn 502s — but the answer is persisted first.
+    await expect(niceBackendFetch(`${ADMIN_BASE}/interview/stream`, {
       accessType: "admin",
       method: "POST",
-      allowedServerErrorStatusCodes: [502],
       body: { answer: { order_index: 0, option_ids: ["signups"] } },
-    });
-    // Eve is unreachable from this file, so the turn 502s — but the answer is persisted first.
-    expect(answered.status).toBe(502);
+    })).rejects.toThrow(/API threw ISE.*502/);
     const beforeRetake = await getInterview();
     expect(beforeRetake.body.questions[0]?.answer_option_ids).toEqual(["signups"]);
 

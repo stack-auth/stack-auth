@@ -148,14 +148,12 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
   rawContentType?: string,
   headers?: Record<string, string | undefined>,
   omitPublishableClientKey?: boolean,
-  /** Explicit exceptions for routes whose documented, user-safe contract intentionally uses 5xx. */
-  allowedServerErrorStatusCodes?: readonly number[],
   userAuth?: {
     accessToken?: string,
     refreshToken?: string,
   },
 }): Promise<NiceResponse> {
-  const { body, rawBody, rawContentType, headers, accessType, omitPublishableClientKey, allowedServerErrorStatusCodes, userAuth: userAuthOverride, ...otherOptions } = options ?? {};
+  const { body, rawBody, rawContentType, headers, accessType, omitPublishableClientKey, userAuth: userAuthOverride, ...otherOptions } = options ?? {};
   if (body !== undefined && rawBody !== undefined) {
     throw new HexclaveAssertionError("niceBackendFetch: pass either body or rawBody, not both");
   }
@@ -232,7 +230,7 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
       ...Object.fromEntries(new Headers(filterUndefined(headers ?? {}) as any).entries()),
     }),
   });
-  if (res.status >= 500 && res.status < 600 && allowedServerErrorStatusCodes?.includes(res.status) !== true) {
+  if (res.status >= 500 && res.status < 600) {
     throw new HexclaveAssertionError(`API threw ISE in ${otherOptions.method ?? "GET"} ${url}: ${res.status} ${typeof res.body === "string" ? res.body : nicify(res.body)}`);
   }
   if (res.headers.has("x-stack-known-error")) {

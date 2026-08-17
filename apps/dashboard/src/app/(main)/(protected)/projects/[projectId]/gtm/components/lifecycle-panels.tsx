@@ -770,7 +770,7 @@ function ReportStep(props: { status: GrowthStatus, state: GrowthTimelineStepStat
       // spinner sets the expectation that something resolves while you watch, and this does not.
       if (report == null) {
         return (
-          <GrowthTimelineStep state="current" title="Report" subtitle="Writing your report from the analysis and your interview answers.">
+          <GrowthTimelineStep state="current" title="Report" subtitle="Writing your report from the analysis and your interview answers. Takes ~4 mins.">
             <DesignCard>
               <div className="flex items-start gap-3">
                 <HourglassMediumIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground/70" />
