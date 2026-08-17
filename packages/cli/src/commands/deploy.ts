@@ -286,12 +286,16 @@ async function uploadSource(uploadUrl: string, contentType: string, bytes: Uint8
       // This header is signed into the R2/S3 URL and must match exactly.
       "content-type": contentType,
       "content-length": bytes.length.toString(),
+      "if-none-match": "*",
     },
     // Copy into a plain ArrayBuffer: TS's BodyInit doesn't accept
     // Uint8Array<ArrayBufferLike>, and slicing also drops any surrounding
     // bytes of a shared buffer.
     body: new Uint8Array(bytes).slice().buffer,
   });
+  // A content-addressed object already present in storage is the desired
+  // result of a retry after a completed PUT whose response was lost.
+  if (response.status === 412) return;
   if (!response.ok) {
     const responseBody = await response.text();
     throw new CliError(`Source upload failed (${response.status} from object storage): ${responseBody.slice(0, 1000)}`);

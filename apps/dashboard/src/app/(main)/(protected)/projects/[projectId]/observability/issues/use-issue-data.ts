@@ -170,7 +170,7 @@ export function useIssueSparklines(
       try {
         const { query, params } = getIssueSparklineQuery(hours, wanted);
         const response = await queryObservability(adminApp, { query, params });
-        const parsed = parseIssueSparklineRows(response.result, wanted, hours, Date.now());
+        const parsed = parseIssueSparklineRows(response.result, wanted, hours, performance.timeOrigin + performance.now());
         if (cancelled) return;
         setError(null);
         setCache((current) => {

@@ -125,6 +125,12 @@ export type IssueAlertWorkflowUpdate =
   | { kind: "failed", error: string, nextRetryAt: Date | null, at?: Date }
   | { kind: "dropped", error?: string, at?: Date };
 
+export type IssueAlertWorkflowDeliveryExpectation = {
+  state: IssueAlertDeliveryStateValue,
+  nextRetryAt: Date | null,
+  lastAttemptAt: Date | null,
+};
+
 type StoredRuleRow = {
   id: string,
   tenancyId: string,
@@ -729,25 +735,36 @@ async function recordWorkflowUpdateInTransaction(
   deliveryId: string,
   update: IssueAlertWorkflowUpdate,
   expectedWorkflowEventId?: string,
+  expectedDelivery?: IssueAlertWorkflowDeliveryExpectation,
 ): Promise<IssueAlertDeliverySnapshot | null> {
   validateScope(scope);
   if (!UUID_PATTERN.test(deliveryId)) throw new IssueAlertPersistenceInputError("deliveryId must be a UUID");
   if (expectedWorkflowEventId !== undefined) validateWorkflowEventId(expectedWorkflowEventId);
+  if (expectedWorkflowEventId === undefined && expectedDelivery !== undefined) {
+    throw new IssueAlertPersistenceInputError("expected workflow delivery state requires an expected workflow event id");
+  }
   const at = validateTimestamp(update.at, "workflow update time");
   const workflowEventGuard = expectedWorkflowEventId === undefined ? {} : { workflowEventId: expectedWorkflowEventId };
+  const expectedDeliveryGuard = expectedDelivery === undefined ? {} : {
+    state: expectedDelivery.state,
+    nextRetryAt: expectedDelivery.nextRetryAt,
+    lastAttemptAt: expectedDelivery.lastAttemptAt,
+  };
   const lifecycleStateGuard = expectedWorkflowEventId === undefined ? {} : {
     state: { notIn: [IssueAlertDeliveryState.DELIVERED, IssueAlertDeliveryState.DROPPED] },
   };
   if (update.kind === "enqueued") {
     validateWorkflowEventId(update.workflowEventId);
+    if (expectedDelivery !== undefined && expectedDelivery.state !== IssueAlertDeliveryState.CLAIMED) return null;
     const updated = await client.issueAlertDelivery.updateMany({
       where: {
         tenancyId: scope.tenancyId,
         projectId: scope.projectId,
         branchId: scope.branchId,
         id: deliveryId,
-        ...workflowEventGuard,
-        state: IssueAlertDeliveryState.CLAIMED,
+        ...(expectedDelivery === undefined
+          ? { ...workflowEventGuard, state: IssueAlertDeliveryState.CLAIMED }
+          : { ...workflowEventGuard, ...expectedDeliveryGuard }),
       },
       data: {
         state: IssueAlertDeliveryState.ENQUEUED,
@@ -760,7 +777,15 @@ async function recordWorkflowUpdateInTransaction(
     if (expectedWorkflowEventId !== undefined && updated.count === 0) return null;
   } else if (update.kind === "delivered") {
     const updated = await client.issueAlertDelivery.updateMany({
-      where: { tenancyId: scope.tenancyId, projectId: scope.projectId, branchId: scope.branchId, id: deliveryId, ...workflowEventGuard, ...lifecycleStateGuard },
+      where: {
+        tenancyId: scope.tenancyId,
+        projectId: scope.projectId,
+        branchId: scope.branchId,
+        id: deliveryId,
+        ...workflowEventGuard,
+        ...lifecycleStateGuard,
+        ...expectedDeliveryGuard,
+      },
       data: {
         state: IssueAlertDeliveryState.DELIVERED,
         outcome: IssueAlertDeliveryOutcome.WORKFLOW_DELIVERED,
@@ -777,7 +802,15 @@ async function recordWorkflowUpdateInTransaction(
       throw new IssueAlertPersistenceInputError("workflow failure error must be a non-empty bounded string");
     }
     const updated = await client.issueAlertDelivery.updateMany({
-      where: { tenancyId: scope.tenancyId, projectId: scope.projectId, branchId: scope.branchId, id: deliveryId, ...workflowEventGuard, ...lifecycleStateGuard },
+      where: {
+        tenancyId: scope.tenancyId,
+        projectId: scope.projectId,
+        branchId: scope.branchId,
+        id: deliveryId,
+        ...workflowEventGuard,
+        ...lifecycleStateGuard,
+        ...expectedDeliveryGuard,
+      },
       data: {
         state: IssueAlertDeliveryState.FAILED,
         outcome: IssueAlertDeliveryOutcome.WORKFLOW_FAILED,
@@ -794,7 +827,15 @@ async function recordWorkflowUpdateInTransaction(
       throw new IssueAlertPersistenceInputError("workflow drop error must be a bounded string");
     }
     const updated = await client.issueAlertDelivery.updateMany({
-      where: { tenancyId: scope.tenancyId, projectId: scope.projectId, branchId: scope.branchId, id: deliveryId, ...workflowEventGuard, ...lifecycleStateGuard },
+      where: {
+        tenancyId: scope.tenancyId,
+        projectId: scope.projectId,
+        branchId: scope.branchId,
+        id: deliveryId,
+        ...workflowEventGuard,
+        ...lifecycleStateGuard,
+        ...expectedDeliveryGuard,
+      },
       data: {
         state: IssueAlertDeliveryState.DROPPED,
         outcome: IssueAlertDeliveryOutcome.WORKFLOW_DROPPED,
@@ -859,10 +900,7 @@ export class IssueAlertPersistenceService implements IssueAlertRuleRepository {
     `);
 
     const records: IssueAlertRuleRecord[] = [];
-    const seenRuleKeys = new Set<string>();
     for (const row of rows) {
-      if (seenRuleKeys.has(row.ruleKey)) continue;
-      seenRuleKeys.add(row.ruleKey);
       const rule = parseStoredIssueAlertRule(row);
       if (rule === null) continue;
       if (records.length >= ISSUE_ALERT_MAX_ACTIVE_RULES) break;
@@ -933,9 +971,17 @@ export class IssueAlertPersistenceService implements IssueAlertRuleRepository {
     scope: IssueAlertRuleScope,
     deliveryId: string,
     expectedWorkflowEventId: string,
+    expectedDelivery: IssueAlertWorkflowDeliveryExpectation,
     update: IssueAlertWorkflowUpdate,
   ): Promise<IssueAlertDeliverySnapshot | null> {
-    return await retryTransaction(this.client, async (tx) => await recordWorkflowUpdateInTransaction(tx, scope, deliveryId, update, expectedWorkflowEventId));
+    return await retryTransaction(this.client, async (tx) => await recordWorkflowUpdateInTransaction(
+      tx,
+      scope,
+      deliveryId,
+      update,
+      expectedWorkflowEventId,
+      expectedDelivery,
+    ));
   }
 
   async inspectDelivery(scope: IssueAlertRuleScope, deliveryId: string): Promise<IssueAlertDeliverySnapshot | null> {

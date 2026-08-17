@@ -183,6 +183,7 @@ describe("analytics trace row parsing", () => {
     expect(linkQuery.params).toEqual({ traceId: "0123456789abcdef0123456789abcdef" });
     expect(linkQuery.query).toContain("FROM default.span_links");
     expect(linkQuery.query).toContain("target_is_same_scope");
+    expect(linkQuery.query).toContain("LIMIT 1001");
     expect(linkQuery.query).not.toContain("JOIN default.spans");
     expect(parseTraceLinkRow({
       owner_span_id: "1111111111111111",

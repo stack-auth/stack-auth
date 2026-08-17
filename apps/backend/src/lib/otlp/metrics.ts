@@ -1,5 +1,6 @@
 import { isW3cSpanId, isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
 import {
+  DEFAULT_OTLP_ATTRIBUTE_LIMITS,
   OtlpJsonRequestError,
   otlpArray,
   otlpRecord,
@@ -41,9 +42,9 @@ export const DEFAULT_OTLP_METRICS_NORMALIZATION_LIMITS: OtlpMetricsNormalization
   maxScopeMetricsPerResource: 128,
   maxMetricsPerScope: 1_024,
   maxDataPointsPerMetric: 10_000,
-  maxAttributesPerList: 256,
-  maxAttributeArrayValues: 256,
-  maxAttributeDepth: 16,
+  maxAttributesPerList: DEFAULT_OTLP_ATTRIBUTE_LIMITS.maxAttributesPerList,
+  maxAttributeArrayValues: DEFAULT_OTLP_ATTRIBUTE_LIMITS.maxAttributeArrayValues,
+  maxAttributeDepth: DEFAULT_OTLP_ATTRIBUTE_LIMITS.maxDepth,
   maxExemplarsPerDataPoint: 256,
   maxHistogramBuckets: 10_000,
   maxQuantileValues: 256,

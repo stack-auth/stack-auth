@@ -155,6 +155,14 @@ function scrubHeaderValue(name: string, value: string): string {
 // without hiding which legitimate cookies were present.
 const MAX_COOKIE_NAMES = 50;
 
+function decodeUriComponentSafely(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function safeHeadersFromEntries(entries: Iterable<readonly [string, string]>): { headers: Record<string, string>, cookieNames: string[] } {
   const headers: Record<string, string> = {};
   const cookieNames = new Set<string>();
@@ -165,7 +173,7 @@ function safeHeadersFromEntries(entries: Iterable<readonly [string, string]>): {
       for (const cookie of rawValue.split(";")) {
         const cookieName = cookie.split("=", 1)[0]?.trim();
         if (cookieName !== "") {
-          cookieNames.add(scrubString(cookieName, { remainingCharacters: MAX_CONTEXT_STRING_LENGTH }));
+          cookieNames.add(scrubString(decodeUriComponentSafely(cookieName), { remainingCharacters: MAX_CONTEXT_STRING_LENGTH }));
         }
       }
       continue;
@@ -192,7 +200,7 @@ function safeUrlPath(url: string): { path: string, queryParameterCount: number }
     // value-shaped secrets (emails, JWTs, tokens) — so it goes through the
     // same string scrubber and size bound as every other retained string.
     return {
-      path: scrubString(parsed.pathname, { remainingCharacters: MAX_CONTEXT_STRING_LENGTH }),
+      path: scrubString(decodeUriComponentSafely(parsed.pathname), { remainingCharacters: MAX_CONTEXT_STRING_LENGTH }),
       queryParameterCount: [...parsed.searchParams.keys()].length,
     };
   } catch {

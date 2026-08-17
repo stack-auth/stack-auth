@@ -30,6 +30,7 @@ SET LOCAL statement_timeout = '5min';
 -- crashed-previous-attempt case; the happy path takes no lock at all.
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
+-- RUN_OUTSIDE_TRANSACTION_SENTINEL
 DO $$
 DECLARE
   invalid_index_oid oid;

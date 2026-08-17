@@ -83,6 +83,15 @@ describe("OTLP metric query contract", () => {
     expect(() => parseOtlpMetricQueryType("timer")).toThrow("metric_type must be one of");
   });
 
+  it("requires a metric name when selecting by metric type", async () => {
+    const { client } = fakeCatalogClient([{ rows: [] }]);
+    await expect(queryOtlpMetrics({
+      tenancy: { project: { id: "p" }, branchId: "b" },
+      request: { metricType: "histogram" },
+      client,
+    })).rejects.toThrow("metric_type requires metric_name");
+  });
+
   it("scopes the targeted catalog-entry lookup by name and optionally type", () => {
     expect(buildOtlpMetricCatalogEntryQuery(false)).toContain("metric_name = {metricName:String}");
     expect(buildOtlpMetricCatalogEntryQuery(false)).not.toContain("{metricType:String}");

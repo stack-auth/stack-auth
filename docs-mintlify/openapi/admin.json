@@ -3648,7 +3648,130 @@
                     "rules": {
                       "type": "array",
                       "items": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "database_id": {
+                            "type": "string"
+                          },
+                          "schemaVersion": {
+                            "type": "number"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "filters": {
+                            "type": "object",
+                            "properties": {
+                              "projectIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "environments": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "releases": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "tags": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "operator": {
+                                      "type": "string",
+                                      "enum": [
+                                        "equals",
+                                        "not_equals",
+                                        "contains",
+                                        "starts_with",
+                                        "in",
+                                        "exists",
+                                        "not_exists"
+                                      ]
+                                    },
+                                    "value": {
+                                      "type": "object"
+                                    }
+                                  },
+                                  "required": [
+                                    "key",
+                                    "operator"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": []
+                          },
+                          "conditions": {
+                            "type": "object",
+                            "properties": {
+                              "all": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object"
+                                }
+                              },
+                              "any": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object"
+                                }
+                              }
+                            },
+                            "required": []
+                          },
+                          "cooldown": {
+                            "type": "object",
+                            "properties": {
+                              "durationSeconds": {
+                                "type": "integer"
+                              },
+                              "keyBy": {
+                                "type": "string",
+                                "enum": [
+                                  "issue",
+                                  "issue_environment",
+                                  "issue_release",
+                                  "issue_environment_release"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "durationSeconds",
+                              "keyBy"
+                            ]
+                          },
+                          "action": {
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "database_id",
+                          "schemaVersion",
+                          "id",
+                          "version",
+                          "enabled",
+                          "conditions",
+                          "cooldown",
+                          "action"
+                        ]
                       }
                     },
                     "truncated": {
@@ -3677,7 +3800,126 @@
                 "type": "object",
                 "properties": {
                   "rule": {
-                    "type": "object"
+                    "type": "object",
+                    "properties": {
+                      "schemaVersion": {
+                        "type": "number"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "integer"
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "filters": {
+                        "type": "object",
+                        "properties": {
+                          "projectIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "environments": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "releases": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "tags": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "key": {
+                                  "type": "string"
+                                },
+                                "operator": {
+                                  "type": "string",
+                                  "enum": [
+                                    "equals",
+                                    "not_equals",
+                                    "contains",
+                                    "starts_with",
+                                    "in",
+                                    "exists",
+                                    "not_exists"
+                                  ]
+                                },
+                                "value": {
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "key",
+                                "operator"
+                              ]
+                            }
+                          }
+                        },
+                        "required": []
+                      },
+                      "conditions": {
+                        "type": "object",
+                        "properties": {
+                          "all": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "any": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          }
+                        },
+                        "required": []
+                      },
+                      "cooldown": {
+                        "type": "object",
+                        "properties": {
+                          "durationSeconds": {
+                            "type": "integer"
+                          },
+                          "keyBy": {
+                            "type": "string",
+                            "enum": [
+                              "issue",
+                              "issue_environment",
+                              "issue_release",
+                              "issue_environment_release"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "durationSeconds",
+                          "keyBy"
+                        ]
+                      },
+                      "action": {
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "schemaVersion",
+                      "id",
+                      "version",
+                      "enabled",
+                      "conditions",
+                      "cooldown",
+                      "action"
+                    ]
                   }
                 },
                 "required": [
@@ -3701,7 +3943,130 @@
                   "type": "object",
                   "properties": {
                     "rule": {
-                      "type": "object"
+                      "type": "object",
+                      "properties": {
+                        "database_id": {
+                          "type": "string"
+                        },
+                        "schemaVersion": {
+                          "type": "number"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "filters": {
+                          "type": "object",
+                          "properties": {
+                            "projectIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "environments": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "releases": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "key": {
+                                    "type": "string"
+                                  },
+                                  "operator": {
+                                    "type": "string",
+                                    "enum": [
+                                      "equals",
+                                      "not_equals",
+                                      "contains",
+                                      "starts_with",
+                                      "in",
+                                      "exists",
+                                      "not_exists"
+                                    ]
+                                  },
+                                  "value": {
+                                    "type": "object"
+                                  }
+                                },
+                                "required": [
+                                  "key",
+                                  "operator"
+                                ]
+                              }
+                            }
+                          },
+                          "required": []
+                        },
+                        "conditions": {
+                          "type": "object",
+                          "properties": {
+                            "all": {
+                              "type": "array",
+                              "items": {
+                                "type": "object"
+                              }
+                            },
+                            "any": {
+                              "type": "array",
+                              "items": {
+                                "type": "object"
+                              }
+                            }
+                          },
+                          "required": []
+                        },
+                        "cooldown": {
+                          "type": "object",
+                          "properties": {
+                            "durationSeconds": {
+                              "type": "integer"
+                            },
+                            "keyBy": {
+                              "type": "string",
+                              "enum": [
+                                "issue",
+                                "issue_environment",
+                                "issue_release",
+                                "issue_environment_release"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "durationSeconds",
+                            "keyBy"
+                          ]
+                        },
+                        "action": {
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "database_id",
+                        "schemaVersion",
+                        "id",
+                        "version",
+                        "enabled",
+                        "conditions",
+                        "cooldown",
+                        "action"
+                      ]
                     }
                   },
                   "required": [
@@ -3743,7 +4108,153 @@
                     "deliveries": {
                       "type": "array",
                       "items": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "rule_id": {
+                            "type": "string"
+                          },
+                          "issue_id": {
+                            "type": "string"
+                          },
+                          "canonical_issue_id": {
+                            "type": "string"
+                          },
+                          "redirected": {
+                            "type": "boolean"
+                          },
+                          "redirected_from_issue_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "occurrence_id": {
+                            "type": "string"
+                          },
+                          "rule_version": {
+                            "type": "integer"
+                          },
+                          "event_kind": {
+                            "type": "string",
+                            "enum": [
+                              "new",
+                              "regression",
+                              "occurrence"
+                            ]
+                          },
+                          "deduplication_key": {
+                            "type": "string"
+                          },
+                          "cooldown_key": {
+                            "type": "string"
+                          },
+                          "cooldown_duration_seconds": {
+                            "type": "integer"
+                          },
+                          "cooldown_expires_at_millis": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "claimed",
+                              "suppressed",
+                              "enqueued",
+                              "delivered",
+                              "failed",
+                              "dropped"
+                            ]
+                          },
+                          "outcome": {
+                            "type": "string",
+                            "enum": [
+                              "none",
+                              "cooldown_active",
+                              "workflow_enqueued",
+                              "workflow_delivered",
+                              "workflow_failed",
+                              "workflow_dropped",
+                              "invalid_rule"
+                            ]
+                          },
+                          "workflow_event_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "attempt_count": {
+                            "type": "integer"
+                          },
+                          "replay_count": {
+                            "type": "integer"
+                          },
+                          "last_attempt_at_millis": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "next_retry_at_millis": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "last_error": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "claimed_at_millis": {
+                            "type": "integer"
+                          },
+                          "enqueued_at_millis": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "completed_at_millis": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "created_at_millis": {
+                            "type": "integer"
+                          },
+                          "updated_at_millis": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "rule_id",
+                          "issue_id",
+                          "canonical_issue_id",
+                          "redirected",
+                          "occurrence_id",
+                          "rule_version",
+                          "event_kind",
+                          "deduplication_key",
+                          "cooldown_key",
+                          "cooldown_duration_seconds",
+                          "state",
+                          "outcome",
+                          "attempt_count",
+                          "replay_count",
+                          "claimed_at_millis",
+                          "created_at_millis",
+                          "updated_at_millis"
+                        ]
                       }
                     },
                     "truncated": {
@@ -3788,7 +4299,153 @@
                   "type": "object",
                   "properties": {
                     "delivery": {
-                      "type": "object"
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "rule_id": {
+                          "type": "string"
+                        },
+                        "issue_id": {
+                          "type": "string"
+                        },
+                        "canonical_issue_id": {
+                          "type": "string"
+                        },
+                        "redirected": {
+                          "type": "boolean"
+                        },
+                        "redirected_from_issue_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "occurrence_id": {
+                          "type": "string"
+                        },
+                        "rule_version": {
+                          "type": "integer"
+                        },
+                        "event_kind": {
+                          "type": "string",
+                          "enum": [
+                            "new",
+                            "regression",
+                            "occurrence"
+                          ]
+                        },
+                        "deduplication_key": {
+                          "type": "string"
+                        },
+                        "cooldown_key": {
+                          "type": "string"
+                        },
+                        "cooldown_duration_seconds": {
+                          "type": "integer"
+                        },
+                        "cooldown_expires_at_millis": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "claimed",
+                            "suppressed",
+                            "enqueued",
+                            "delivered",
+                            "failed",
+                            "dropped"
+                          ]
+                        },
+                        "outcome": {
+                          "type": "string",
+                          "enum": [
+                            "none",
+                            "cooldown_active",
+                            "workflow_enqueued",
+                            "workflow_delivered",
+                            "workflow_failed",
+                            "workflow_dropped",
+                            "invalid_rule"
+                          ]
+                        },
+                        "workflow_event_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "attempt_count": {
+                          "type": "integer"
+                        },
+                        "replay_count": {
+                          "type": "integer"
+                        },
+                        "last_attempt_at_millis": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "next_retry_at_millis": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "last_error": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "claimed_at_millis": {
+                          "type": "integer"
+                        },
+                        "enqueued_at_millis": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "completed_at_millis": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "created_at_millis": {
+                          "type": "integer"
+                        },
+                        "updated_at_millis": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "rule_id",
+                        "issue_id",
+                        "canonical_issue_id",
+                        "redirected",
+                        "occurrence_id",
+                        "rule_version",
+                        "event_kind",
+                        "deduplication_key",
+                        "cooldown_key",
+                        "cooldown_duration_seconds",
+                        "state",
+                        "outcome",
+                        "attempt_count",
+                        "replay_count",
+                        "claimed_at_millis",
+                        "created_at_millis",
+                        "updated_at_millis"
+                      ]
                     }
                   },
                   "required": [
@@ -3828,7 +4485,153 @@
                   "type": "object",
                   "properties": {
                     "delivery": {
-                      "type": "object"
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "rule_id": {
+                          "type": "string"
+                        },
+                        "issue_id": {
+                          "type": "string"
+                        },
+                        "canonical_issue_id": {
+                          "type": "string"
+                        },
+                        "redirected": {
+                          "type": "boolean"
+                        },
+                        "redirected_from_issue_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "occurrence_id": {
+                          "type": "string"
+                        },
+                        "rule_version": {
+                          "type": "integer"
+                        },
+                        "event_kind": {
+                          "type": "string",
+                          "enum": [
+                            "new",
+                            "regression",
+                            "occurrence"
+                          ]
+                        },
+                        "deduplication_key": {
+                          "type": "string"
+                        },
+                        "cooldown_key": {
+                          "type": "string"
+                        },
+                        "cooldown_duration_seconds": {
+                          "type": "integer"
+                        },
+                        "cooldown_expires_at_millis": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "claimed",
+                            "suppressed",
+                            "enqueued",
+                            "delivered",
+                            "failed",
+                            "dropped"
+                          ]
+                        },
+                        "outcome": {
+                          "type": "string",
+                          "enum": [
+                            "none",
+                            "cooldown_active",
+                            "workflow_enqueued",
+                            "workflow_delivered",
+                            "workflow_failed",
+                            "workflow_dropped",
+                            "invalid_rule"
+                          ]
+                        },
+                        "workflow_event_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "attempt_count": {
+                          "type": "integer"
+                        },
+                        "replay_count": {
+                          "type": "integer"
+                        },
+                        "last_attempt_at_millis": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "next_retry_at_millis": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "last_error": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "claimed_at_millis": {
+                          "type": "integer"
+                        },
+                        "enqueued_at_millis": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "completed_at_millis": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "created_at_millis": {
+                          "type": "integer"
+                        },
+                        "updated_at_millis": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "rule_id",
+                        "issue_id",
+                        "canonical_issue_id",
+                        "redirected",
+                        "occurrence_id",
+                        "rule_version",
+                        "event_kind",
+                        "deduplication_key",
+                        "cooldown_key",
+                        "cooldown_duration_seconds",
+                        "state",
+                        "outcome",
+                        "attempt_count",
+                        "replay_count",
+                        "claimed_at_millis",
+                        "created_at_millis",
+                        "updated_at_millis"
+                      ]
                     },
                     "replayed": {
                       "type": "boolean"
@@ -3872,7 +4675,130 @@
                   "type": "object",
                   "properties": {
                     "rule": {
-                      "type": "object"
+                      "type": "object",
+                      "properties": {
+                        "database_id": {
+                          "type": "string"
+                        },
+                        "schemaVersion": {
+                          "type": "number"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "filters": {
+                          "type": "object",
+                          "properties": {
+                            "projectIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "environments": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "releases": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "key": {
+                                    "type": "string"
+                                  },
+                                  "operator": {
+                                    "type": "string",
+                                    "enum": [
+                                      "equals",
+                                      "not_equals",
+                                      "contains",
+                                      "starts_with",
+                                      "in",
+                                      "exists",
+                                      "not_exists"
+                                    ]
+                                  },
+                                  "value": {
+                                    "type": "object"
+                                  }
+                                },
+                                "required": [
+                                  "key",
+                                  "operator"
+                                ]
+                              }
+                            }
+                          },
+                          "required": []
+                        },
+                        "conditions": {
+                          "type": "object",
+                          "properties": {
+                            "all": {
+                              "type": "array",
+                              "items": {
+                                "type": "object"
+                              }
+                            },
+                            "any": {
+                              "type": "array",
+                              "items": {
+                                "type": "object"
+                              }
+                            }
+                          },
+                          "required": []
+                        },
+                        "cooldown": {
+                          "type": "object",
+                          "properties": {
+                            "durationSeconds": {
+                              "type": "integer"
+                            },
+                            "keyBy": {
+                              "type": "string",
+                              "enum": [
+                                "issue",
+                                "issue_environment",
+                                "issue_release",
+                                "issue_environment_release"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "durationSeconds",
+                            "keyBy"
+                          ]
+                        },
+                        "action": {
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "database_id",
+                        "schemaVersion",
+                        "id",
+                        "version",
+                        "enabled",
+                        "conditions",
+                        "cooldown",
+                        "action"
+                      ]
                     }
                   },
                   "required": [
@@ -3912,7 +4838,130 @@
                   "type": "object",
                   "properties": {
                     "rule": {
-                      "type": "object"
+                      "type": "object",
+                      "properties": {
+                        "database_id": {
+                          "type": "string"
+                        },
+                        "schemaVersion": {
+                          "type": "number"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "filters": {
+                          "type": "object",
+                          "properties": {
+                            "projectIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "environments": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "releases": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "key": {
+                                    "type": "string"
+                                  },
+                                  "operator": {
+                                    "type": "string",
+                                    "enum": [
+                                      "equals",
+                                      "not_equals",
+                                      "contains",
+                                      "starts_with",
+                                      "in",
+                                      "exists",
+                                      "not_exists"
+                                    ]
+                                  },
+                                  "value": {
+                                    "type": "object"
+                                  }
+                                },
+                                "required": [
+                                  "key",
+                                  "operator"
+                                ]
+                              }
+                            }
+                          },
+                          "required": []
+                        },
+                        "conditions": {
+                          "type": "object",
+                          "properties": {
+                            "all": {
+                              "type": "array",
+                              "items": {
+                                "type": "object"
+                              }
+                            },
+                            "any": {
+                              "type": "array",
+                              "items": {
+                                "type": "object"
+                              }
+                            }
+                          },
+                          "required": []
+                        },
+                        "cooldown": {
+                          "type": "object",
+                          "properties": {
+                            "durationSeconds": {
+                              "type": "integer"
+                            },
+                            "keyBy": {
+                              "type": "string",
+                              "enum": [
+                                "issue",
+                                "issue_environment",
+                                "issue_release",
+                                "issue_environment_release"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "durationSeconds",
+                            "keyBy"
+                          ]
+                        },
+                        "action": {
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "database_id",
+                        "schemaVersion",
+                        "id",
+                        "version",
+                        "enabled",
+                        "conditions",
+                        "cooldown",
+                        "action"
+                      ]
                     },
                     "changed": {
                       "type": "boolean"
@@ -7507,7 +8556,43 @@
                     "items": {
                       "type": "array",
                       "items": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "actor_user_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "idempotency_key": {
+                            "type": "string"
+                          },
+                          "data": {
+                            "type": [
+                              "object",
+                              "null"
+                            ]
+                          },
+                          "occurred_at": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type",
+                          "idempotency_key",
+                          "occurred_at",
+                          "created_at"
+                        ]
                       }
                     }
                   },
@@ -11827,6 +12912,136 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "commits": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "release_id": {
+                            "type": "string"
+                          },
+                          "repository": {
+                            "type": "string"
+                          },
+                          "commit_sha": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "integer"
+                          },
+                          "message": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "author_name": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "author_email": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "committed_at": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "url": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "created_at": {
+                            "type": "string"
+                          },
+                          "updated_at": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "release_id",
+                          "repository",
+                          "commit_sha",
+                          "position",
+                          "created_at",
+                          "updated_at"
+                        ]
+                      }
+                    },
+                    "deployments": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "release_id": {
+                            "type": "string"
+                          },
+                          "deployment_key": {
+                            "type": "string"
+                          },
+                          "environment": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "url": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "started_at": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "finished_at": {
+                            "type": "string"
+                          },
+                          "metadata": {
+                            "type": [
+                              "object",
+                              "null"
+                            ]
+                          },
+                          "created_at": {
+                            "type": "string"
+                          },
+                          "updated_at": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "release_id",
+                          "deployment_key",
+                          "environment",
+                          "finished_at",
+                          "created_at",
+                          "updated_at"
+                        ]
+                      }
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -11884,6 +13099,8 @@
                     }
                   },
                   "required": [
+                    "commits",
+                    "deployments",
                     "id",
                     "version",
                     "status",
@@ -12836,6 +14053,117 @@
                     "finished_at",
                     "created_at",
                     "updated_at"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/releases/recent": {
+      "get": {
+        "summary": "List recent releases",
+        "description": "Returns recent releases for the authenticated tenant, project, and branch scope.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "tags": [
+          "Releases"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/releases/recent",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "open",
+                              "archived"
+                            ]
+                          },
+                          "ref": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "url": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "data": {
+                            "type": [
+                              "object",
+                              "null"
+                            ]
+                          },
+                          "date_added": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "date_started": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "date_released": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "created_at": {
+                            "type": "string"
+                          },
+                          "updated_at": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "version",
+                          "status",
+                          "created_at",
+                          "updated_at"
+                        ]
+                      }
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "truncated"
                   ]
                 }
               }

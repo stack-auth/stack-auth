@@ -318,9 +318,12 @@ export class ArtifactUploadService {
     if (info.byteLength !== expectedBytes) {
       throw new ArtifactServiceError("integrity_mismatch", `Uploaded ${kind} byte length does not match its manifest.`);
     }
-    const bytes = await this.storage.readObject(key);
-    if (bytes === null || bytes.byteLength !== expectedBytes) {
+    const bytes = await this.storage.readObject(key, info.eTag);
+    if (bytes === null) {
       throw new ArtifactServiceError("artifact_not_found", `Uploaded ${kind} is missing.`);
+    }
+    if (bytes.byteLength !== expectedBytes) {
+      throw new ArtifactServiceError("integrity_mismatch", `Uploaded ${kind} byte length changed while it was being read.`);
     }
     return bytes;
   }
@@ -556,7 +559,10 @@ function verifySourceMap(sourceMapText: string, artifact: ArtifactManifestArtifa
  * finalization what the symbolicator would later reject.
  */
 function readInlineSourceMap(bundleBytes: Uint8Array): Uint8Array | null {
-  const source = new TextDecoder().decode(bundleBytes);
+  const source = decodeStrictUtf8(bundleBytes);
+  if (source === null) {
+    throw new ArtifactServiceError("integrity_mismatch", "The uploaded bundle is not valid UTF-8.");
+  }
   const matcher = /^[ \t]*\/\/[#@][ \t]*sourceMappingURL=([^\s]*)[ \t]*$/gmu;
   let lastUrl: string | null = null;
   let match = matcher.exec(source);

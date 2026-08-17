@@ -127,6 +127,25 @@ describe("OTel Span facade", () => {
     expect(started[1]?.spanId).toBe(child.spanId);
   });
 
+  it("ends and deregisters a span when onStarted rejects", () => {
+    const { exporter, provider, capabilities } = fixture();
+    const onEnded = vi.fn();
+    const registrationError = new Error("span registry unavailable");
+
+    expect(() => createOtelSpanFacade({
+      tracer: provider.getTracer("facade-test"),
+      spanType: "checkout",
+      capabilities: {
+        ...capabilities,
+        onStarted: () => { throw registrationError; },
+        onEnded,
+      },
+    })).toThrow(registrationError);
+
+    expect(onEnded).toHaveBeenCalledTimes(1);
+    expect(exporter.getFinishedSpans().map((span) => span.name)).toEqual(["checkout"]);
+  });
+
   it("lets the official propagator preserve an upstream tracestate", async () => {
     const { provider, capabilities } = fixture();
     const span = createOtelSpanFacade({

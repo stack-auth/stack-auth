@@ -272,6 +272,7 @@ LIMIT 10000
 
 // Safety cap for span links, mirroring the 10,000-span cap: hitting it is
 // surfaced in the UI (see linksResultWasCapped) instead of silently truncating.
+export const TRACE_SPANS_CAP = 10000;
 export const SPAN_LINKS_CAP = 1000;
 
 export function getSelectedTraceLinksQuery(traceId: string): {
@@ -291,7 +292,7 @@ SELECT
 FROM default.span_links
 WHERE trace_id = {traceId:String}
 ORDER BY owner_span_id ASC, linked_trace_id ASC, linked_span_id ASC
-LIMIT ${SPAN_LINKS_CAP}
+LIMIT ${SPAN_LINKS_CAP + 1}
 `,
     params: { traceId },
   };
@@ -787,7 +788,10 @@ export default function PageClient() {
         // Open spans (endMs == null) extend the interval to "now". A capped
         // trace can under-report its true end; the capped-trace alert already
         // flags that view as partial.
-        const spanEndMs = Math.max(...spans.map((span) => span.endMs ?? loadedAtMs));
+        const spansResultWasCapped = spansResponse.result.length >= TRACE_SPANS_CAP;
+        const spanEndMs = spansResultWasCapped
+          ? loadedAtMs
+          : Math.max(...spans.map((span) => span.endMs ?? loadedAtMs));
         const eventQuery = getSelectedTraceEventQuery(traceId, highlightEventAtMs, {
           // A deep-linked highlight timestamp widens the window so clock skew
           // between the event and its trace's spans cannot hide the very event
@@ -806,11 +810,11 @@ export default function PageClient() {
       }
       setSelectedSpans(spans);
       setSelectedEvents(events);
-      setSelectedLinks(linksResponse.result
+      setSelectedLinks(linksResponse.result.slice(0, SPAN_LINKS_CAP)
         .map(parseTraceLinkRow)
         .filter((link): link is TraceLink => link != null));
-      setTraceResultWasCapped(spansResponse.result.length >= 10000);
-      setLinksResultWasCapped(linksResponse.result.length >= SPAN_LINKS_CAP);
+      setTraceResultWasCapped(spansResponse.result.length >= TRACE_SPANS_CAP);
+      setLinksResultWasCapped(linksResponse.result.length > SPAN_LINKS_CAP);
       setNowMs(Date.now());
     } catch (e) {
       if (seq !== traceRequestSeqRef.current) return;

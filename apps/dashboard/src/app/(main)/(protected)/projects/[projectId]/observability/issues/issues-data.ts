@@ -117,7 +117,8 @@ export function getIssueSparklineQuery(
 SELECT
   issue_hash,
   toStartOfInterval(event_at, ${granularity.stepSql}) AS bucket_start,
-  count() AS occurrences
+  count() AS occurrences,
+  max(now64(3)) AS query_now
 FROM default.errors
 WHERE event_at >= now64(3) - INTERVAL ${hours} HOUR
   AND issue_hash IN {issueHashes:Array(String)}
@@ -208,7 +209,12 @@ export function parseIssueSparklineRows(
   // `toStartOfInterval` aligns, so flooring against the epoch reproduces the
   // server's bucket boundaries.
   const granularity = getBucketGranularity(hours);
-  const latestBucketMs = Math.floor(nowMs / granularity.stepMs) * granularity.stepMs;
+  const queryNowValue = rows.find((row) => row.query_now != null)?.query_now;
+  // The query window and the bucket grid must share the same clock. Empty
+  // result sets have no row from which to read ClickHouse's clock, so retain
+  // the caller's timestamp only for the all-zero fallback series.
+  const gridNowMs = queryNowValue == null ? nowMs : parseClickHouseUtc(queryNowValue, "sparkline query_now");
+  const latestBucketMs = Math.floor(gridNowMs / granularity.stepMs) * granularity.stepMs;
   const earliestBucketMs = latestBucketMs - (granularity.bucketCount - 1) * granularity.stepMs;
   const byHash = new Map<string, IssueSparklineBucket[]>(
     requestedHashes.map((hash) => [hash, Array.from({ length: granularity.bucketCount }, (_unused, index) => ({

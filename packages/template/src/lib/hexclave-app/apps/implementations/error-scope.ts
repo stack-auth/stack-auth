@@ -37,7 +37,9 @@ function copyScopeData(data: ErrorScopeData | undefined): ErrorScopeData {
     ...data.breadcrumbs === undefined ? {} : { breadcrumbs: data.breadcrumbs.slice(-MAX_BREADCRUMBS).map((breadcrumb) => ({ ...breadcrumb, ...breadcrumb.data === undefined ? {} : { data: { ...breadcrumb.data } } })) },
     ...data.level === undefined ? {} : { level: data.level },
     ...data.fingerprint === undefined ? {} : { fingerprint: [...data.fingerprint] },
-    ...data.eventProcessors === undefined ? {} : { eventProcessors: [...data.eventProcessors] },
+    // Match addEventProcessor and preserve the newest processors when a
+    // caller seeds an oversized initial scope.
+    ...data.eventProcessors === undefined ? {} : { eventProcessors: data.eventProcessors.slice(-MAX_EVENT_PROCESSORS) },
     ...data.attachments === undefined ? {} : { attachments: cloneErrorAttachmentInputs(data.attachments) },
   };
 }

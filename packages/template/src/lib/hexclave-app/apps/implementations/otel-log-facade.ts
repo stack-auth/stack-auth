@@ -13,14 +13,19 @@ const SEVERITY_NUMBERS = new Map<LogLevel, SeverityNumber>([
 
 function objectEntriesToAnyValueMap(value: object): AnyValueMap {
   const result: AnyValueMap = {};
-  for (const [key, child] of Object.entries(value)) result[key] = toOtelAnyValue(child);
+  for (const [key, child] of Object.entries(value)) {
+    // Match JSON.stringify: enumerable function and undefined properties are
+    // omitted from objects, rather than becoming an OTel `undefined` value.
+    if (typeof child === "function" || child === undefined) continue;
+    result[key] = toOtelAnyValue(child, key);
+  }
   return result;
 }
 
-function toOtelAnyValue(value: unknown): AnyValue {
+function toOtelAnyValue(value: unknown, key = ""): AnyValue {
   if (value === null || value === undefined || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
   if (value instanceof Uint8Array) return value;
-  if (Array.isArray(value)) return value.map(toOtelAnyValue);
+  if (Array.isArray(value)) return value.map((entry, index) => toOtelAnyValue(entry, String(index)));
   if (typeof value === "object") {
     // Follow JSON.stringify's semantics: the accepted-data contract is "JSON
     // serializable" (getCustomTelemetryDataError validates via stringify, which
@@ -28,7 +33,7 @@ function toOtelAnyValue(value: unknown): AnyValue {
     // properties instead would silently turn e.g. a Date into `{}`.
     const toJson: unknown = Reflect.get(value, "toJSON");
     if (typeof toJson === "function") {
-      const jsonValue: unknown = Reflect.apply(toJson, value, []);
+      const jsonValue: unknown = Reflect.apply(toJson, value, [key]);
       // Like JSON.stringify, toJSON is consulted once per level: converting an
       // object result through toOtelAnyValue again would loop forever when
       // toJSON returns `this`. Children still get their own toJSON treatment.

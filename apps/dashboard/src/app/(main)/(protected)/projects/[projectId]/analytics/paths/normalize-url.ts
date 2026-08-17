@@ -19,9 +19,9 @@ function isLikelyDynamicSegment(segment: string): boolean {
   if (HEX_ID_REGEX.test(segment)) return true;
   if (PREFIXED_ID_REGEX.test(segment)) return true;
 
-  // Length 20, not the regex's 16: shorter base64-shaped words (`api`, `auth`)
-  // would otherwise collapse into `:id`.
-  if (segment.length >= 20 && BASE64_TOKEN_REGEX.test(segment)) return true;
+  // The regex's minimum is long enough to avoid ordinary words such as `api`
+  // and `auth`, while keeping the runtime check aligned with the contract.
+  if (BASE64_TOKEN_REGEX.test(segment)) return true;
 
   return false;
 }

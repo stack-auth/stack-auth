@@ -11,6 +11,7 @@ import { getBillingTeamId } from "@/lib/plan-entitlements";
 import { getPrismaClientForTenancy, isPrismaError, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import { deepPlainEquals } from "@hexclave/shared/dist/utils/objects";
 import { createHash, randomUUID } from "node:crypto";
+import { DEFAULT_BRANCH_ID } from "@/lib/branch-constants";
 import type { IssuePriority } from "./issue-lifecycle";
 import type { IssueActivitySubject } from "./issue-activity";
 
@@ -235,11 +236,19 @@ async function assertIssueExists(tx: PrismaClientTransaction, scope: IssueProduc
 
 async function assertProjectUser(tx: PrismaClientTransaction, tenancy: Tenancy, userId: string, fieldName: string): Promise<void> {
   assertUuid(userId, fieldName);
-  const user = await tx.projectUser.findUnique({
-    where: { tenancyId_projectUserId: { tenancyId: tenancy.id, projectUserId: userId } },
-    select: { projectUserId: true },
-  });
-  if (user === null) throw new IssueProductInputError(`${fieldName} is not a member of the authenticated branch`);
+  const rows = await tx.$queryRaw<{ projectUserId: string }[]>`
+    SELECT "projectUserId"
+    FROM "ProjectUser"
+    WHERE "projectUserId" = ${userId}::uuid
+      AND (
+        "tenancyId" = ${tenancy.id}::uuid
+        OR ("mirroredProjectId" = 'internal' AND "mirroredBranchId" = ${DEFAULT_BRANCH_ID})
+      )
+    ORDER BY CASE WHEN "tenancyId" = ${tenancy.id}::uuid THEN 0 ELSE 1 END
+    LIMIT 1
+    FOR KEY SHARE
+  `;
+  if (rows.length === 0) throw new IssueProductInputError(`${fieldName} is not a member of the authenticated branch`);
 }
 
 /**
@@ -351,6 +360,7 @@ export async function setIssuePriority(options: IssueProductScope & {
   assertScope(options);
   const actorUserId = actorId(options.actorUserId);
   const occurredAt = assertValidDate(options.occurredAt ?? new Date(), "occurredAt");
+  const actionId = randomUUID();
   const prisma = await getPrismaClientForTenancy(options.tenancy);
   return await retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
@@ -371,7 +381,7 @@ export async function setIssuePriority(options: IssueProductScope & {
     });
     await appendActivityInTransaction({
       tx, tenancy: options.tenancy, issueId: options.issueId, actorUserId,
-      type: "priority_changed", idempotencyKey: activityKey("priority", `${previousPriority ?? "none"}:${options.priority ?? "none"}:${occurredAt.toISOString()}`),
+      type: "priority_changed", idempotencyKey: activityKey("priority", `${previousPriority ?? "none"}:${options.priority ?? "none"}:${occurredAt.toISOString()}:${actionId}`),
       data: { from: previousPriority, to: options.priority }, occurredAt,
     });
     return {
@@ -397,6 +407,7 @@ export async function assignIssueToTeam(options: IssueProductScope & {
   const teamId = options.teamId ?? ownerTeamId;
   assertProjectOwnerTeam(options.tenancy, teamId, "teamId");
   const changedAt = assertValidDate(options.changedAt ?? new Date(), "changedAt");
+  const actionId = randomUUID();
   const prisma = await getPrismaClientForTenancy(options.tenancy);
   return await retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
@@ -416,7 +427,7 @@ export async function assignIssueToTeam(options: IssueProductScope & {
     });
     await appendActivityInTransaction({
       tx, tenancy: options.tenancy, issueId: options.issueId, actorUserId,
-      type: "team_changed", idempotencyKey: activityKey("team", `${current.assignedTeamId ?? "none"}:${teamId}:${changedAt.toISOString()}`),
+      type: "team_changed", idempotencyKey: activityKey("team", `${current.assignedTeamId ?? "none"}:${teamId}:${changedAt.toISOString()}:${actionId}`),
       data: { from: current.assignedTeamId, to: teamId }, occurredAt: changedAt,
     });
     return {
@@ -453,6 +464,7 @@ export async function setIssueOwner(options: IssueProductScope & {
       throw new IssueProductInputError("owner.type must be user or team");
     }
   }
+  const actionId = randomUUID();
   const prisma = await getPrismaClientForTenancy(options.tenancy);
   return await retryOnceOnUniqueConstraintRace(() => retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
@@ -475,7 +487,7 @@ export async function setIssueOwner(options: IssueProductScope & {
       : await tx.issueOwner.update({ where: { tenancyId_id: { tenancyId: options.tenancy.id, id: existingOwner.id } }, data: { context: options.owner.context ?? Prisma.JsonNull, updatedAt: occurredAt } });
     await appendActivityInTransaction({
       tx, tenancy: options.tenancy, issueId: options.issueId, actorUserId,
-      type: "owner_changed", idempotencyKey: activityKey("owner", `${owner.id}:${occurredAt.toISOString()}`),
+      type: "owner_changed", idempotencyKey: activityKey("owner", `${owner.id}:${occurredAt.toISOString()}:${actionId}`),
       data: { owner_type: ownerType, owner_id: ownerUserId ?? ownerTeamId, source: options.owner.source }, occurredAt,
     });
     return {
@@ -696,6 +708,7 @@ export async function removeIssueOwner(options: IssueProductScope & { ownerId: s
   assertUuid(options.ownerId, "ownerId");
   const actorUserId = actorId(options.actorUserId);
   const occurredAt = assertValidDate(options.occurredAt ?? new Date(), "occurredAt");
+  const actionId = randomUUID();
   const prisma = await getPrismaClientForTenancy(options.tenancy);
   await retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
@@ -705,7 +718,7 @@ export async function removeIssueOwner(options: IssueProductScope & { ownerId: s
     await tx.issueOwner.delete({ where: { tenancyId_id: { tenancyId: options.tenancy.id, id: options.ownerId } } });
     await appendActivityInTransaction({
       tx, tenancy: options.tenancy, issueId: options.issueId, actorUserId,
-      type: "owner_changed", idempotencyKey: activityKey("owner-remove", `${owner.id}:${occurredAt.toISOString()}`),
+      type: "owner_changed", idempotencyKey: activityKey("owner-remove", `${owner.id}:${occurredAt.toISOString()}:${actionId}`),
       data: { owner_id: owner.id, removed: true }, occurredAt,
     });
   });

@@ -180,6 +180,7 @@ function database(options: {
       findMany: async () => [deployment],
       findUnique: async () => null,
       upsert: async () => deployment,
+      update: async () => deployment,
     },
     releaseCommit: {
       findMany: async () => [commit],

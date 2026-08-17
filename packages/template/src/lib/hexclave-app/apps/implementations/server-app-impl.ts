@@ -2655,14 +2655,20 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       // it runs fire-and-forget — the record is emitted once (and only once)
       // from inside the resolved scope, or unattributed when resolution
       // degrades (see _runWithAmbientRequestScope's failure contract).
-      runAsynchronously(this._runWithAmbientRequestScope(null, async () => {
+      const ambientLog = this._runWithAmbientRequestScope(null, async () => {
         const resolved = getServerRequestContext();
         if (resolved !== null) {
           this._emitServerLogWithRequestContext(item, resolved);
         } else {
           emitHexclaveOtelLog(item, clientVersion);
         }
-      }));
+      });
+      registerTelemetryBackgroundTask(
+        this._telemetryOptions?.waitUntil ?? autoDetectedBackgroundTaskHook,
+        ambientLog,
+        "server ambient logger",
+      );
+      runAsynchronously(ambientLog);
       return "ok";
     }
     emitHexclaveOtelLog(item, clientVersion);

@@ -69,7 +69,10 @@ export function formatCount(value: number): string {
   if (!Number.isFinite(value)) throw new Error(`Cannot format a non-finite count: ${value}`);
   if (value < 0) throw new Error(`Cannot format a negative count: ${value}`);
   if (value < 10_000) return value.toLocaleString();
-  if (value < 1_000_000) return `${(value / 1_000).toFixed(value < 100_000 ? 1 : 0)}k`;
+  if (value < 1_000_000) {
+    const thousands = (value / 1_000).toFixed(value < 100_000 ? 1 : 0);
+    return thousands === "1000" ? "1.0M" : `${thousands}k`;
+  }
   return `${(value / 1_000_000).toFixed(value < 10_000_000 ? 1 : 0)}M`;
 }
 

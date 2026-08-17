@@ -2,7 +2,12 @@ import { Prisma } from "@/generated/prisma/client";
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import { isUuid } from "@hexclave/shared/dist/utils/uuids";
+
+const ISSUE_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+function isIssueUuid(value: string): boolean {
+  return ISSUE_UUID_PATTERN.test(value);
+}
 
 /**
  * The ONE canonical resolver for a user-supplied issue identifier (the
@@ -44,7 +49,7 @@ export function isValidShortId(raw: string): boolean {
 // have to cast one of them per row and lose its index.
 function issueIdentityPredicate(rawId: string): Prisma.Sql {
   if (isValidShortId(rawId)) return Prisma.sql`i."shortId" = ${rawId}::bigint`;
-  if (isUuid(rawId)) return Prisma.sql`i."id" = ${rawId}::uuid`;
+  if (isIssueUuid(rawId)) return Prisma.sql`i."id" = ${rawId}::uuid`;
   throw new StatusError(StatusError.BadRequest, "issue_id must be a UUID or a numeric short id");
 }
 
@@ -54,7 +59,7 @@ function issueIdentityPredicate(rawId: string): Prisma.Sql {
 // `fromShortId` with its own unique constraint.
 function issueRedirectPredicate(rawId: string): Prisma.Sql {
   if (isValidShortId(rawId)) return Prisma.sql`"fromShortId" = ${rawId}::bigint`;
-  if (isUuid(rawId)) return Prisma.sql`"fromIssueId" = ${rawId}::uuid`;
+  if (isIssueUuid(rawId)) return Prisma.sql`"fromIssueId" = ${rawId}::uuid`;
   throw new StatusError(StatusError.BadRequest, "issue_id must be a UUID or a numeric short id");
 }
 
@@ -89,7 +94,7 @@ export type ResolvedIssueIdentity = {
  * duplication, not a consistency requirement.)
  */
 export async function resolveIssueIdentity(tenancy: Tenancy, rawId: string): Promise<ResolvedIssueIdentity | null> {
-  if (!isValidShortId(rawId) && !isUuid(rawId)) {
+  if (!isValidShortId(rawId) && !isIssueUuid(rawId)) {
     throw new StatusError(StatusError.BadRequest, "issue_id must be a UUID or a numeric short id");
   }
 

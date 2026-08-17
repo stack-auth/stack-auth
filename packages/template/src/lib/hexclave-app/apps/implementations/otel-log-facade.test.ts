@@ -134,6 +134,32 @@ describe("emitHexclaveOtelLog", () => {
     }]);
   });
 
+  it("passes each property's JSON key to toJSON", async () => {
+    const exporter = new InMemoryLogRecordExporter();
+    const provider = new LoggerProvider({ processors: [new SimpleLogRecordProcessor({ exporter })] });
+    providers.push(provider);
+    logs.setGlobalLoggerProvider(provider);
+    const keys: string[] = [];
+
+    emitHexclaveOtelLog({
+      message: "key-aware value",
+      level: "info",
+      data: {
+        custom: {
+          toJSON(key: string): string {
+            keys.push(key);
+            return key;
+          },
+        },
+      },
+      origin: "logger",
+    }, "test-version");
+    await provider.forceFlush();
+
+    expect(keys).toEqual(["custom"]);
+    expect(exporter.getFinishedLogRecords()[0]?.attributes["hexclave.data"]).toMatchObject({ custom: "custom" });
+  });
+
   it("emits product events as named OTel LogRecords with explicit parent context", async () => {
     const exporter = new InMemoryLogRecordExporter();
     const provider = new LoggerProvider({ processors: [new SimpleLogRecordProcessor({ exporter })] });

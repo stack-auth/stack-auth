@@ -85,7 +85,7 @@ describe("Hexclave managed OTel SDK", () => {
     const eager = registerManagedOtel(options);
 
     const prisma = fakeInstrumentation("@prisma/instrumentation");
-    const late = registerManagedOtel({ ...options, instrumentations: [prisma] });
+    const late = registerManagedOtel({ ...options, instrumentations: [prisma, prisma] });
     expect(late).toBe(eager);
     expect(prisma.setTracerProvider).toHaveBeenCalledTimes(1);
 

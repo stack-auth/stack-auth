@@ -270,15 +270,42 @@ export const ERROR_MAX_DEBUG_IMAGES_BYTES = 4_096;
  * and edge runtimes, so this keeps the module dependency-free.
  */
 export function truncateUtf8Bytes(value: string, maxBytes: number): string {
-  const encoder = new TextEncoder();
-  if (encoder.encode(value).length <= maxBytes) return value;
-  // Chop from a chars-can't-be-shorter-than-bytes upper bound down to budget;
-  // the 64-char step keeps this O(few iterations) for realistic inputs.
-  let sliced = value.slice(0, maxBytes);
-  while (sliced.length > 0 && encoder.encode(sliced).length > maxBytes) {
-    sliced = sliced.slice(0, Math.max(0, sliced.length - 64));
+  if (maxBytes <= 0 || value === "") return "";
+
+  // Stop as soon as the prefix cannot fit. Encoding the entire public message
+  // before truncating defeats the cap on exactly the oversized-input path this
+  // helper protects, and slicing by UTF-16 units can leave a lone surrogate at
+  // the grouping boundary. Count the UTF-8 width of each code point instead;
+  // paired surrogates are admitted as one four-byte code point or rejected as a
+  // pair, so the persisted prefix and the grouping hash always agree.
+  let bytes = 0;
+  let index = 0;
+  while (index < value.length) {
+    const first = value.charCodeAt(index);
+    let width: number;
+    let units = 1;
+    if (first >= 0xd800 && first <= 0xdbff && index + 1 < value.length) {
+      const second = value.charCodeAt(index + 1);
+      if (second >= 0xdc00 && second <= 0xdfff) {
+        width = 4;
+        units = 2;
+      } else {
+        width = 3;
+      }
+    } else if (first >= 0xd800 && first <= 0xdfff) {
+      width = 3;
+    } else if (first <= 0x7f) {
+      width = 1;
+    } else if (first <= 0x7ff) {
+      width = 2;
+    } else {
+      width = 3;
+    }
+    if (bytes + width > maxBytes) break;
+    bytes += width;
+    index += units;
   }
-  return sliced;
+  return index === value.length ? value : value.slice(0, index);
 }
 
 // The one log-level vocabulary of the telemetry pipeline, ordered least to

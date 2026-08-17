@@ -155,7 +155,7 @@ export function getOtlpMetricBucketNanoseconds(hours: OtlpMetricQueryHours): big
   return 86_400n * 1_000_000_000n;
 }
 
-export function buildOtlpMetricCatalogQuery(hours: OtlpMetricQueryHours): string {
+function buildOtlpMetricCatalogQuerySql(options: { where: string, limit: number }): string {
   return `
 SELECT
   metric_name,
@@ -167,13 +167,20 @@ SELECT
   count() AS point_count,
   toString(max(time_unix_nano)) AS latest_time_unix_nano
 FROM analytics_internal.metrics FINAL
-PREWHERE project_id = {projectId:String}
-  AND branch_id = {branchId:String}
-  AND time_unix_nano >= toUnixTimestamp64Nano(now64(9) - INTERVAL {hours:UInt32} HOUR)
+PREWHERE ${options.where}
 GROUP BY metric_name, metric_type
 ORDER BY point_count DESC, metric_name ASC, metric_type ASC
-LIMIT ${MAX_CATALOG_ROWS}
+LIMIT ${options.limit}
 `;
+}
+
+export function buildOtlpMetricCatalogQuery(hours: OtlpMetricQueryHours): string {
+  return buildOtlpMetricCatalogQuerySql({
+    where: `project_id = {projectId:String}
+  AND branch_id = {branchId:String}
+  AND time_unix_nano >= toUnixTimestamp64Nano(now64(9) - INTERVAL {hours:UInt32} HOUR)`,
+    limit: MAX_CATALOG_ROWS,
+  });
 }
 
 /**
@@ -186,26 +193,14 @@ LIMIT ${MAX_CATALOG_ROWS}
  * types one name can carry.
  */
 export function buildOtlpMetricCatalogEntryQuery(withMetricType: boolean): string {
-  return `
-SELECT
-  metric_name,
-  argMax(metric_description, (time_unix_nano, created_at, point_id)) AS metric_description,
-  argMax(metric_unit, (time_unix_nano, created_at, point_id)) AS metric_unit,
-  metric_type,
-  argMax(aggregation_temporality, (time_unix_nano, created_at, point_id)) AS aggregation_temporality,
-  argMax(is_monotonic, (time_unix_nano, created_at, point_id)) AS is_monotonic,
-  count() AS point_count,
-  toString(max(time_unix_nano)) AS latest_time_unix_nano
-FROM analytics_internal.metrics FINAL
-PREWHERE project_id = {projectId:String}
+  return buildOtlpMetricCatalogQuerySql({
+    where: `project_id = {projectId:String}
   AND branch_id = {branchId:String}
   AND metric_name = {metricName:String}
   ${withMetricType ? "AND metric_type = {metricType:String}" : ""}
-  AND time_unix_nano >= toUnixTimestamp64Nano(now64(9) - INTERVAL {hours:UInt32} HOUR)
-GROUP BY metric_name, metric_type
-ORDER BY point_count DESC, metric_name ASC, metric_type ASC
-LIMIT ${OTLP_METRIC_TYPES.length}
-`;
+  AND time_unix_nano >= toUnixTimestamp64Nano(now64(9) - INTERVAL {hours:UInt32} HOUR)`,
+    limit: OTLP_METRIC_TYPES.length,
+  });
 }
 
 export function buildOtlpMetricSeriesQuery(hours: OtlpMetricQueryHours): string {
@@ -318,6 +313,9 @@ export async function queryOtlpMetrics(options: {
   });
   const catalog = parseOtlpMetricCatalogRows(await catalogResult.json<RawCatalogRow>());
   const requestedType = parseOtlpMetricQueryType(options.request.metricType);
+  if (requestedType !== null && options.request.metricName == null) {
+    throw new StatusError(StatusError.BadRequest, "metric_type requires metric_name");
+  }
   let selected = options.request.metricName == null
     ? catalog[0]
     : catalog.find((entry) => entry.metric_name === options.request.metricName

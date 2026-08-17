@@ -5,8 +5,10 @@ import { Link } from "@/components/link";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { issueDetailHref } from "./issue-links";
-import { searchPublicIssues, type IssuePublicSearchRecord } from "./issues-data";
+import { searchPublicIssues, type IssuePublicSearchRecord, type IssuePublicSearchRequest } from "./issues-data";
 import type { IssueFilters } from "./issue-filters";
+
+type IssueEventSearchFilters = Omit<IssuePublicSearchRequest, "cursor">;
 
 export function IssueEventSearch({
   adminApp,
@@ -24,6 +26,7 @@ export function IssueEventSearch({
   const [tagValue, setTagValue] = useState("");
   const [items, setItems] = useState<IssuePublicSearchRecord[] | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [cursorFilters, setCursorFilters] = useState<IssueEventSearchFilters | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -32,28 +35,36 @@ export function IssueEventSearch({
   const runSearch = async (cursor: string | null) => {
     setBusy(true);
     setError(null);
+    const currentFilters: IssueEventSearchFilters = {
+      hours: filters.hours,
+      status: filters.status,
+      service: filters.service,
+      environment: filters.environment,
+      handled: filters.handled,
+      search: filters.search,
+      level: level.trim() === "" ? null : level.trim(),
+      release: release.trim() === "" ? null : release.trim(),
+      userId: userId.trim() === "" ? null : userId.trim(),
+      tagKey: tagKey.trim() === "" ? null : tagKey.trim(),
+      tagValue: tagValue.trim() === "" ? null : tagValue.trim(),
+    };
+    const requestFilters = cursor == null || cursorFilters == null ? currentFilters : cursorFilters;
     try {
       const result = await searchPublicIssues(adminApp, {
-        hours: filters.hours,
-        status: filters.status,
-        service: filters.service,
-        environment: filters.environment,
-        handled: filters.handled,
-        search: filters.search,
-        level: level.trim() === "" ? null : level.trim(),
-        release: release.trim() === "" ? null : release.trim(),
-        userId: userId.trim() === "" ? null : userId.trim(),
-        tagKey: tagKey.trim() === "" ? null : tagKey.trim(),
-        tagValue: tagValue.trim() === "" ? null : tagValue.trim(),
+        ...requestFilters,
         cursor,
       });
       setItems((current) => cursor == null || current == null ? result.items : [...current, ...result.items]);
       setNextCursor(result.nextCursor);
+      setCursorFilters(result.nextCursor == null ? null : requestFilters);
     } catch (caught) {
-      // Clear stale results: leaving a previous search's rows under the error
-      // banner would read as results for the CURRENT inputs.
-      setItems(null);
-      setNextCursor(null);
+      if (cursor == null) {
+        // Clear stale results only for a fresh search. A failed page request
+        // must leave the successful pages and cursor available for retry.
+        setItems(null);
+        setNextCursor(null);
+        setCursorFilters(null);
+      }
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setBusy(false);

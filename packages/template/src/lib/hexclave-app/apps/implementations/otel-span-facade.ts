@@ -190,7 +190,18 @@ export function createOtelSpanFacade(options: {
   // Fired LAST so the observer always receives a fully constructed handle
   // (including the trusted link writer). Child facades run through this same
   // factory, so every span in the tree announces itself here.
-  options.capabilities.onStarted?.(facade);
+  try {
+    options.capabilities.onStarted?.(facade);
+  } catch (error) {
+    // Registration is part of span creation. If it fails, do not leave an
+    // already-exportable span alive without a caller that can end it; close it
+    // through the same lifecycle hook used by ordinary callers, then preserve
+    // the registration failure for the caller.
+    ended = true;
+    otelSpan.end();
+    options.capabilities.onEnded?.(facade);
+    throw error;
+  }
 
   return facade;
 }

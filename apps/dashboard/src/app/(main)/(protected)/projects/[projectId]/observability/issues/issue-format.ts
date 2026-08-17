@@ -73,6 +73,15 @@ function stringField(data: Record<string, unknown> | null | undefined, key: stri
 }
 
 /**
+ * The backend's grouping fallback stamps this exact sentinel as the culprit
+ * when it could not derive one (see `degradedResult` in
+ * `apps/backend/src/lib/issues/grouping.ts`). It is non-empty, so without
+ * special-casing it here a degraded browser error would render "<unknown>"
+ * even when the occurrence still carries a usable `data.url`/`data.path`.
+ */
+const SERVER_UNKNOWN_CULPRIT_SENTINEL = "<unknown>";
+
+/**
  * "Where did this happen" — the line under the title.
  *
  * Falls back through the whole chain rather than trusting any single source:
@@ -82,14 +91,6 @@ function stringField(data: Record<string, unknown> | null | undefined, key: stri
  * culprit renders as a blank second line, which reads as a layout bug rather
  * than as missing data, so the terminal fallback is a visible word.
  */
-/**
- * The backend's grouping fallback stamps this exact sentinel as the culprit
- * when it could not derive one (see `degradedResult` in
- * `apps/backend/src/lib/issues/grouping.ts`). It is non-empty, so without
- * special-casing it here a degraded browser error would render "<unknown>"
- * even when the occurrence still carries a usable `data.url`/`data.path`.
- */
-const SERVER_UNKNOWN_CULPRIT_SENTINEL = "<unknown>";
 
 export function issueCulprit(input: IssueCulpritInput): string {
   const explicit = input.culprit?.trim();

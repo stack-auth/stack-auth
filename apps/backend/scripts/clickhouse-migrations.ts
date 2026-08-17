@@ -805,6 +805,9 @@ export async function cutoverLegacyTelemetryTables(
   const telemetryTable = qualifiedClickhouseTable(database, "telemetry");
   const stateTable = qualifiedClickhouseTable(database, LEGACY_TELEMETRY_MIGRATION_STATE_TABLE);
   const minDrainSeconds = options.minDrainSeconds ?? 15 * 60;
+  if (!Number.isFinite(minDrainSeconds) || minDrainSeconds < 0) {
+    throwErr(`Invalid minDrainSeconds value: ${String(minDrainSeconds)}`);
+  }
 
   const [eventsExists, logsExists, telemetryExists] = await Promise.all([
     clickhousePhysicalTableExists(client, { database, table: options.eventsTable ?? "events" }),
@@ -851,6 +854,15 @@ export async function cutoverLegacyTelemetryTables(
   for (const { source, table, tableName } of sources) {
     const copied = await backfillLegacyTelemetrySource(client, { source, table, tableName, database, telemetryTable, stateTable });
     combinedFingerprint = combineLegacyTelemetryFingerprints(combinedFingerprint, copied);
+  }
+
+  // A pre-expand writer can wake up after the initial drain while the
+  // partition backfill is running. Re-check immediately before retirement so
+  // a fresh row cannot be mistaken for the frozen set and then destroyed with
+  // its source table. A non-zero drain window makes this a loud retry rather
+  // than silently dropping the late write.
+  for (const { table } of sources) {
+    await assertLegacyTelemetrySourceDrained(client, table, minDrainSeconds);
   }
 
   // The commit point: sources are dropped only after every partition above has
@@ -2938,6 +2950,63 @@ FINAL
 WHERE sync_is_deleted = 0;
 `;
 
+const OTEL_VIEW_COLUMN_DESCRIPTIONS = new Map<string, string>([
+  ["event_type", "Event or log classification emitted by the OpenTelemetry producer"],
+  ["event_at", "Time at which the OpenTelemetry record occurred (UTC)"],
+  ["message", "Human-readable message associated with the record, when present"],
+  ["level", "Normalized severity level reported by the producer"],
+  ["data", "Structured application payload as JSON"],
+  ["body", "OpenTelemetry log body serialized as JSON"],
+  ["attributes", "OpenTelemetry record attributes as JSON"],
+  ["resource_attributes", "OpenTelemetry resource attributes as JSON"],
+  ["scope_attributes", "OpenTelemetry instrumentation-scope attributes as JSON"],
+  ["trace_id", "Trace identity shared by all spans and records in the trace"],
+  ["span_id", "Span identity associated with this record, when present"],
+  ["parent_span_id", "Immediate parent span identity, when present"],
+  ["span_type", "OpenTelemetry span name"],
+  ["started_at", "Time at which the span started (UTC)"],
+  ["ended_at", "Time at which the span ended (UTC)"],
+  ["kind", "OpenTelemetry span kind"],
+  ["status_code", "OpenTelemetry operation status"],
+  ["status_message", "Optional OpenTelemetry operation status message"],
+  ["service_namespace", "Logical namespace of the producing service, when reported"],
+  ["service_name", "Name of the producing service"],
+  ["service_version", "Version of the producing service, when reported"],
+  ["deployment_environment_name", "Deployment environment reported by the producer"],
+  ["project_id", "Project identifier, automatically constrained by row-level security"],
+  ["branch_id", "Branch identifier, automatically constrained by row-level security"],
+  ["user_id", "User associated with the record, when known"],
+  ["refresh_token_id", "Session refresh-token identifier, when known"],
+  ["session_replay_id", "Session replay identifier, when known"],
+  ["session_replay_segment_id", "Session replay segment identifier, when known"],
+  ["page_view_span_id", "Page-view span associated with the record, when known"],
+  ["created_at", "Time at which the record was inserted (UTC)"],
+]);
+
+function buildOtelViewColumnCommentStatements(
+  table: string,
+  columns: readonly ClickhouseColumn[],
+  omittedColumns: readonly string[] = [],
+): string[] {
+  const omitted = new Set(omittedColumns);
+  return columns
+    .filter((column) => !omitted.has(column.name))
+    .map((column) => {
+      const description = OTEL_VIEW_COLUMN_DESCRIPTIONS.get(column.name)
+        ?? `OpenTelemetry ${column.name.replace(/_/g, " ")} value exposed by the ${table} view`;
+      return `ALTER TABLE default.${table} COMMENT COLUMN ${column.name} '${description}'`;
+    });
+}
+
+const OTEL_VIEW_COLUMN_COMMENT_STATEMENTS = [
+  ...buildOtelViewColumnCommentStatements("logs", LOGS_COLUMNS, [...ERROR_GROUPING_COLUMN_NAMES, ...ERROR_ENVELOPE_COLUMN_NAMES]),
+  ...buildOtelViewColumnCommentStatements("errors", LOGS_COLUMNS),
+  ...buildOtelViewColumnCommentStatements("span_events", SPAN_EVENTS_COLUMNS),
+  ...buildOtelViewColumnCommentStatements("span_links", SPAN_LINKS_COLUMNS),
+  ...buildOtelViewColumnCommentStatements("trace_roots", TRACE_ROOTS_COLUMNS, ["version"]),
+  ...buildOtelViewColumnCommentStatements("trace_services", TRACE_SERVICES_COLUMNS, ["created_at", "version"]),
+];
+
 // ─── Column comments ────────────────────────────────────────────────
 // Applied to the default.* views after creation so that DESCRIBE TABLE
 // returns useful descriptions for each column. The AI assistant uses
@@ -3134,6 +3203,8 @@ const COLUMN_COMMENT_STATEMENTS: string[] = [
   `ALTER TABLE default.connected_accounts COMMENT COLUMN provider 'OAuth/SSO provider name, e.g. google, github'`,
   `ALTER TABLE default.connected_accounts COMMENT COLUMN provider_account_id 'User account ID at the external provider'`,
   `ALTER TABLE default.connected_accounts COMMENT COLUMN created_at 'When this account was linked (UTC)'`,
+
+  ...OTEL_VIEW_COLUMN_COMMENT_STATEMENTS,
 ];
 
 const COLUMN_COMMENT_TABLES = [
@@ -3150,6 +3221,12 @@ const COLUMN_COMMENT_TABLES = [
   "notification_preferences",
   "refresh_tokens",
   "connected_accounts",
+  "logs",
+  "errors",
+  "span_events",
+  "span_links",
+  "trace_roots",
+  "trace_services",
 ];
 
 function buildColumnCommentSql(): string[] {

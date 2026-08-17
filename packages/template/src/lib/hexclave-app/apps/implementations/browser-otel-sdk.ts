@@ -243,8 +243,9 @@ export type HexclaveBrowserOtelExporterOptions = {
 
 export type BrowserOtlpOfflineQueueOptions = {
   /**
-   * IndexedDB database name PREFIX. Each signal (traces/logs/metrics) stores
-   * its queue in its own `${dbName}-${signal}` database.
+   * IndexedDB database name. The default uses one database per signal; a
+   * configured name remains the legacy shared database name so queued batches
+   * written by older SDK versions remain readable after upgrade.
    */
   dbName?: string,
   maxQueueSize?: number,
@@ -378,12 +379,10 @@ function queueOptionsForExporter(options: HexclaveBrowserOtelExporterOptions, si
 } {
   const projectKey = encodeURIComponent(options.projectId);
   return {
-    // A configured dbName is a PREFIX — one database per signal. All three
-    // signal queues sharing one literal database would break: IndexedDB runs
-    // onupgradeneeded only once per version, so whichever signal opened the
-    // shared database first would create only its own object stores and the
-    // other signals' transactions would fail with NotFoundError.
-    dbName: `${options.offlineQueue?.dbName ?? `hexclave-otlp-offline-${projectKey}`}-${signal}`,
+    // Custom names were literal database names before signal suffixes were
+    // introduced. Keep that name so old queued batches are drained; the queue
+    // schema upgrade creates all signal stores in the shared database.
+    dbName: options.offlineQueue?.dbName ?? `hexclave-otlp-offline-${projectKey}-${signal}`,
     storeName: `batches-${signal}`,
     maxQueueSize: normalizedPositiveInteger(options.offlineQueue?.maxQueueSize, OTLP_OFFLINE_QUEUE_MAX_SIZE),
     maxQueueBytes: normalizedPositiveInteger(options.offlineQueue?.maxQueueBytes, OTLP_OFFLINE_QUEUE_MAX_BYTES),
@@ -1555,6 +1554,10 @@ function registrationSignature(options: BrowserManagedOtelOptions): string {
     projectId: options.projectId,
     resource: options.resource,
     traceSampleRate: options.traceSampleRate,
+    // This policy is installed into the page-global propagator. Treat it as
+    // part of provider ownership so a second same-project app cannot silently
+    // inherit the first owner's baggage behavior.
+    correlationBaggage: options.getPropagationPolicy().correlationBaggage,
   });
 }
 

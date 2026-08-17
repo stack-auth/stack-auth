@@ -38,7 +38,7 @@ describe("scrubErrorIngestPayload", () => {
 
   it("filters secrets in serialized JSON messages and protocol-relative URL credentials", () => {
     const result = scrubErrorIngestPayload({
-      message: 'sign-in failed: {"password":"hunter2","user":"bob"} via //login:hunter3@auth.example.test/callback',
+      message: 'sign-in failed: {"password":"hunter2","user":"bob"} via //login:hunter3@secret-suffix@auth.example.test/callback',
       detail: "config {'api_key':'abc123'}",
     });
 

@@ -1,4 +1,7 @@
-import { type IssueAlertEmailPlaceholderToken } from "@hexclave/shared/dist/utils/issue-alert-email-template";
+import {
+  ISSUE_ALERT_EMAIL_PLACEHOLDER_TOKENS,
+  type IssueAlertEmailPlaceholderToken,
+} from "@hexclave/shared/dist/utils/issue-alert-email-template";
 import { deindent } from "@hexclave/shared/dist/utils/strings";
 
 // The token vocabulary and interpolation semantics are a cross-app contract
@@ -12,21 +15,27 @@ export {
   type IssueAlertEmailPlaceholderToken,
 } from "@hexclave/shared/dist/utils/issue-alert-email-template";
 
+const ISSUE_ALERT_EMAIL_PLACEHOLDER_HINTS = new Map<IssueAlertEmailPlaceholderToken, string>([
+  ["short_id", "Per-project issue number"],
+  ["type", "Error type, for example TypeError"],
+  ["summary", "Error message"],
+  ["culprit", "Code location"],
+  ["environment", "production, staging, …"],
+  ["release", "Release that reported it"],
+  ["status", "unresolved, resolved, or ignored"],
+  ["kind", "New issue, regression, or frequency"],
+  ["occurred_at", "When this occurrence was seen"],
+  ["issue_url", "Dashboard link to the issue"],
+]);
+
 export const ISSUE_ALERT_EMAIL_PLACEHOLDERS: readonly {
   token: IssueAlertEmailPlaceholderToken,
   hint: string,
-}[] = [
-  { token: "short_id", hint: "Per-project issue number" },
-  { token: "type", hint: "Error type, for example TypeError" },
-  { token: "summary", hint: "Error message" },
-  { token: "culprit", hint: "Code location" },
-  { token: "environment", hint: "production, staging, …" },
-  { token: "release", hint: "Release that reported it" },
-  { token: "status", hint: "unresolved, resolved, or ignored" },
-  { token: "kind", hint: "New issue, regression, or frequency" },
-  { token: "occurred_at", hint: "When this occurrence was seen" },
-  { token: "issue_url", hint: "Dashboard link to the issue" },
-];
+}[] = ISSUE_ALERT_EMAIL_PLACEHOLDER_TOKENS.map((token) => {
+  const hint = ISSUE_ALERT_EMAIL_PLACEHOLDER_HINTS.get(token);
+  if (hint == null) throw new Error(`No hint is defined for issue-alert email placeholder ${token}`);
+  return { token, hint };
+});
 
 export const DEFAULT_ISSUE_ALERT_EMAIL_SUBJECT = "[{{kind}}] {{short_id}}: {{summary}}";
 

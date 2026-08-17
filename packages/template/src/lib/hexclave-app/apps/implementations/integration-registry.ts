@@ -307,6 +307,10 @@ function safeUrlPath(value: string | undefined, maxBytes: number): string | unde
     }
     return truncateUtf8Bytes(parsed.pathname || "/", maxBytes);
   } catch {
+    const scheme = /^([a-z][a-z\d+.-]*):/iu.exec(value)?.[1]?.toLowerCase();
+    if (scheme !== undefined && scheme !== "http" && scheme !== "https") {
+      return truncateUtf8Bytes(`<${scheme}-url>`, maxBytes);
+    }
     const queryStart = value.search(/[?#]/);
     return truncateUtf8Bytes(value.slice(0, queryStart === -1 ? value.length : queryStart), maxBytes);
   }

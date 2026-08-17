@@ -51,7 +51,10 @@ export type BrowserOtlpOfflineQueue = {
 
 const AUTH_GENERATION_KEY = "auth-generation";
 const QUEUE_BYTES_KEY = "queue-bytes";
-const DATABASE_VERSION = 1;
+// Version 2 creates every signal store in a custom database. Version 1 used a
+// single literal custom dbName for all signals, so upgrading that database must
+// preserve its existing batches while adding the stores for the other signals.
+const DATABASE_VERSION = 2;
 
 function normalizeQueueNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : fallback;
@@ -205,11 +208,15 @@ function openDatabase(options: BrowserOtlpOfflineQueueOptions): Promise<IDBDatab
 
     request.onupgradeneeded = () => {
       const database = request.result;
-      if (!database.objectStoreNames.contains(options.storeName)) {
-        database.createObjectStore(options.storeName, { autoIncrement: true });
-      }
-      if (!database.objectStoreNames.contains(`${options.storeName}-meta`)) {
-        database.createObjectStore(`${options.storeName}-meta`);
+      const storeNames = new Set([options.storeName, "batches-traces", "batches-logs", "batches-metrics"]);
+      for (const storeName of storeNames) {
+        if (!database.objectStoreNames.contains(storeName)) {
+          database.createObjectStore(storeName, { autoIncrement: true });
+        }
+        const metaStoreName = `${storeName}-meta`;
+        if (!database.objectStoreNames.contains(metaStoreName)) {
+          database.createObjectStore(metaStoreName);
+        }
       }
     };
     request.onsuccess = () => {

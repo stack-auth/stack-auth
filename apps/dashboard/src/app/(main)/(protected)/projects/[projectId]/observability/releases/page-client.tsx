@@ -138,6 +138,8 @@ export default function PageClient() {
   const [createReleasedAt, setCreateReleasedAt] = useState("");
   const [creating, setCreating] = useState(false);
   const [selectedRelease, setSelectedRelease] = useState<Release | null>(null);
+  const selectedReleaseRef = useRef<Release | null>(selectedRelease);
+  selectedReleaseRef.current = selectedRelease;
   const [operationError, setOperationError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [sessionCommits, setSessionCommits] = useState<Map<string, ReleaseCommit>>(() => new Map());
@@ -241,11 +243,20 @@ export default function PageClient() {
     }
   };
 
+  const refreshSelectedRelease = async (releaseId: string, version: string): Promise<boolean> => {
+    const refreshedRelease = await fetchReleaseByVersion(adminApp, version);
+    if (selectedReleaseRef.current?.id !== releaseId) return false;
+    setSelectedRelease((current) => current?.id === releaseId ? refreshedRelease : current);
+    return true;
+  };
+
   const addCommit = async () => {
     if (selectedRelease === null) {
       setOperationError("Select a release before adding a commit.");
       return;
     }
+    const selectedReleaseId = selectedRelease.id;
+    const selectedReleaseVersion = selectedRelease.version;
     const repository = commitRepository.trim();
     const sha = commitSha.trim();
     if (repository === "" || sha === "") {
@@ -266,7 +277,7 @@ export default function PageClient() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          release_id: selectedRelease.id,
+          release_id: selectedReleaseId,
           repository,
           commit_sha: sha,
           position,
@@ -279,16 +290,12 @@ export default function PageClient() {
         next.set(commit.id, commit);
         return next;
       });
-      // Apply the refreshed release only while it is still the selected one:
-      // the admin may have clicked another release while this request was in
-      // flight, and unconditionally setting would yank the view back to the
-      // release the commit was added to.
-      const refreshedRelease = await fetchReleaseByVersion(adminApp, selectedRelease.version);
-      setSelectedRelease((current) => (current?.id === refreshedRelease.id ? refreshedRelease : current));
-      setCommitSha("");
-      setCommitMessage("");
-      setCommitPosition(String(position + 1));
-      setNotice(`Commit ${commit.commit_sha} is registered on ${selectedRelease.version}.`);
+      if (await refreshSelectedRelease(selectedReleaseId, selectedReleaseVersion)) {
+        setCommitSha("");
+        setCommitMessage("");
+        setCommitPosition(String(position + 1));
+        setNotice(`Commit ${commit.commit_sha} is registered on ${selectedReleaseVersion}.`);
+      }
     } catch (caught) {
       setOperationError(errorMessage(caught));
     } finally {
@@ -301,6 +308,8 @@ export default function PageClient() {
       setOperationError("Select a release before adding a deployment.");
       return;
     }
+    const selectedReleaseId = selectedRelease.id;
+    const selectedReleaseVersion = selectedRelease.version;
     const key = deploymentKey.trim();
     const environment = deploymentEnvironment.trim();
     if (key === "" || environment === "") {
@@ -317,7 +326,7 @@ export default function PageClient() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          release_id: selectedRelease.id,
+          release_id: selectedReleaseId,
           deployment_key: key,
           environment,
           ...(name === undefined ? {} : { name }),
@@ -332,13 +341,12 @@ export default function PageClient() {
         next.set(deployment.id, deployment);
         return next;
       });
-      // Same stale-selection guard as addCommit above.
-      const refreshedRelease = await fetchReleaseByVersion(adminApp, selectedRelease.version);
-      setSelectedRelease((current) => (current?.id === refreshedRelease.id ? refreshedRelease : current));
-      setDeploymentKey("");
-      setDeploymentName("");
-      setDeploymentUrl("");
-      setNotice(`Deployment ${deployment.deployment_key} is registered on ${selectedRelease.version}.`);
+      if (await refreshSelectedRelease(selectedReleaseId, selectedReleaseVersion)) {
+        setDeploymentKey("");
+        setDeploymentName("");
+        setDeploymentUrl("");
+        setNotice(`Deployment ${deployment.deployment_key} is registered on ${selectedReleaseVersion}.`);
+      }
     } catch (caught) {
       setOperationError(errorMessage(caught));
     } finally {

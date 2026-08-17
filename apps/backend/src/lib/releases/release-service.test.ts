@@ -142,6 +142,7 @@ function fakeDatabase(overrides: ReleaseDatabaseOverrides = {}): ReleaseDatabase
       findMany: async () => [],
       findUnique: async () => null,
       upsert: async () => deployment,
+      update: async () => deployment,
       ...overrides.releaseDeployment,
     },
     releaseCommit: {

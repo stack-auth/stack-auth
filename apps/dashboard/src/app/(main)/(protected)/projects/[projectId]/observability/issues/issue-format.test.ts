@@ -119,6 +119,7 @@ describe("formatIssueCount", () => {
     expect(formatIssueCount("9999")).toBe("9,999");
     expect(formatIssueCount("10000")).toBe("10.0k");
     expect(formatIssueCount("125000")).toBe("125k");
+    expect(formatIssueCount("999500")).toBe("1.0M");
     expect(formatIssueCount("1500000")).toBe("1.5M");
   });
 

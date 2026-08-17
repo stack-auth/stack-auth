@@ -183,7 +183,7 @@ export function StackFrameList({
               // default) onto a DIFFERENT frame run after occurrence
               // navigation swaps the stack. First/last location plus length is
               // enough to distinguish runs without hashing every frame.
-              key={`collapsed-${group.startIndex}-${group.frames.length}-${frameLocationLabel(group.frames[0] ?? throwMissingCollapsedFrame())}-${frameLocationLabel(group.frames[group.frames.length - 1] ?? throwMissingCollapsedFrame())}`}
+              key={`collapsed-${group.startIndex}-${group.frames.length}-${group.defaultExpanded ? "expanded" : "collapsed"}-${frameLocationLabel(group.frames[0] ?? throwMissingCollapsedFrame())}-${frameLocationLabel(group.frames[group.frames.length - 1] ?? throwMissingCollapsedFrame())}`}
               frames={group.frames}
               defaultExpanded={group.defaultExpanded}
             />

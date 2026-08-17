@@ -140,6 +140,25 @@ describe("parseIssueSparklineRows", () => {
     expect(series?.filter((bucket) => bucket.occurrences !== 0)).toHaveLength(1);
   });
 
+  it("anchors the grid to ClickHouse time when the browser clock differs", () => {
+    const parsed = parseIssueSparklineRows(
+      [{
+        issue_hash: SAMPLE_HASH_A,
+        bucket_start: "2026-07-31 14:00:00.000",
+        occurrences: 3,
+        query_now: "2026-07-31 14:30:00.000",
+      }],
+      [SAMPLE_HASH_A],
+      24,
+      NOW_MS,
+    );
+    const series = parsed.get(SAMPLE_HASH_A);
+    expect(series?.[23]).toEqual({
+      bucketMs: Date.parse("2026-07-31T14:00:00.000Z"),
+      occurrences: 3,
+    });
+  });
+
   it("drops the clipped partial bucket outside the grid instead of misplacing it", () => {
     const beforeEarliest = new Date(EARLIEST_BUCKET_MS - 3_600_000).toISOString().replace("T", " ").replace("Z", "");
     const parsed = parseIssueSparklineRows(

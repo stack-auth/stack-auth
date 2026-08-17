@@ -31,6 +31,8 @@ import {
 import {
   serviceIdentityLabel,
   serviceIdentityToSelectValue,
+  namespacedSelectValue,
+  selectValueToNamespacedValue,
   selectValueToServiceIdentity,
 } from "../service-identity";
 import {
@@ -82,22 +84,7 @@ const SEARCH_DEBOUNCE_MS = 300;
  * would make it impossible to filter on). The prefix only lives inside the
  * dropdown — the URL codec and the API both carry the raw environment name.
  */
-const ALL_ENVIRONMENTS_SELECT_VALUE = "all";
 const ENVIRONMENT_SELECT_VALUE_PREFIX = "env:";
-
-function environmentToSelectValue(environment: string | null): string {
-  return environment == null ? ALL_ENVIRONMENTS_SELECT_VALUE : `${ENVIRONMENT_SELECT_VALUE_PREFIX}${environment}`;
-}
-
-function selectValueToEnvironment(value: string): string | null {
-  if (value === ALL_ENVIRONMENTS_SELECT_VALUE) return null;
-  if (!value.startsWith(ENVIRONMENT_SELECT_VALUE_PREFIX)) {
-    // The option list below is the only producer of these values, so anything
-    // else is a programming error rather than user input.
-    throw new Error(`Unknown environment select value: ${value}`);
-  }
-  return value.slice(ENVIRONMENT_SELECT_VALUE_PREFIX.length);
-}
 
 const HANDLED_FILTER_LABELS = new Map([
   ["all", "Handled & unhandled"],
@@ -184,6 +171,7 @@ export default function PageClient() {
   // after a newer one would stamp its stale metadata over the visible list.
   // Monotonic sequence: only the most recently started request may apply.
   const listRequestSeqRef = useRef(0);
+  const countsRevisionRef = useRef(0);
 
   const dataSource = useMemo<DataGridDataSource<IssueListItem>>(() => {
     return async function* (params) {
@@ -202,6 +190,7 @@ export default function PageClient() {
         limit: params.pagination.pageSize,
       });
       if (listRequestSeqRef.current === requestId) {
+        countsRevisionRef.current += 1;
         setCounts(response.counts);
         setApproximate(response.approximate);
       }
@@ -228,10 +217,13 @@ export default function PageClient() {
   // row keeps the outcome deterministic; extra clicks during it are no-ops (the
   // primary button also shows its own loading state meanwhile).
   const pendingStatusIssueIdsRef = useRef(new Set<string>());
+  const pendingStatusCountRevisionsRef = useRef(new Map<string, number>());
 
   const changeStatus = useCallback(async (issue: IssueListItem, status: IssueStatus) => {
     if (pendingStatusIssueIdsRef.current.has(issue.id)) return;
     pendingStatusIssueIdsRef.current.add(issue.id);
+    const countRevisionAtStart = countsRevisionRef.current;
+    pendingStatusCountRevisionsRef.current.set(issue.id, countRevisionAtStart);
     setStatusError(null);
     // `from` is the status the user acted on (override included), so chained
     // optimistic count adjustments telescope correctly.
@@ -248,10 +240,16 @@ export default function PageClient() {
       // Narrow catch around one call: revert and surface. Never swallowed, and
       // never a toast — a failed state change must stay on screen.
       setOverrides(clearOptimisticStatus(overridesRef.current, issue.id));
-      setCounts((current) => adjustIssueStatusCounts(current, status, from));
+      // A list refresh may have replaced the optimistic counts while the PATCH
+      // was in flight. Reversing against that fresh server snapshot would
+      // subtract a real row, so only undo the delta on the revision it changed.
+      if (pendingStatusCountRevisionsRef.current.get(issue.id) === countsRevisionRef.current) {
+        setCounts((current) => adjustIssueStatusCounts(current, status, from));
+      }
       setStatusError(error instanceof Error ? error.message : String(error));
     } finally {
       pendingStatusIssueIdsRef.current.delete(issue.id);
+      pendingStatusCountRevisionsRef.current.delete(issue.id);
     }
   }, [adminApp]);
 
@@ -419,15 +417,15 @@ export default function PageClient() {
             disabled={facetsState.loading}
           />
           <DesignSelectorDropdown
-            value={environmentToSelectValue(filters.environment)}
+            value={namespacedSelectValue(filters.environment, ENVIRONMENT_SELECT_VALUE_PREFIX)}
             onValueChange={(value) => setFilters((current) => ({
               ...current,
-              environment: selectValueToEnvironment(value),
+              environment: selectValueToNamespacedValue(value, ENVIRONMENT_SELECT_VALUE_PREFIX),
             }))}
             options={[
-              { value: ALL_ENVIRONMENTS_SELECT_VALUE, label: "All environments" },
+              { value: "all", label: "All environments" },
               ...facetsState.facets.environments.map((environment) => ({
-                value: environmentToSelectValue(environment),
+                value: namespacedSelectValue(environment, ENVIRONMENT_SELECT_VALUE_PREFIX),
                 label: environment,
               })),
             ]}

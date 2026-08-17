@@ -205,10 +205,10 @@ export async function assertIssueAlertRecipients(tenancy: Tenancy, rule: IssueAl
       select: { projectUserId: true },
     });
     if (users.length !== userIds.length) {
-      if (ownerTeamMatch?.status === "missing_email") {
-        throw new StatusError(StatusError.BadRequest, "Issue alert recipients must have a primary email on this project's team");
-      }
       throw new StatusError(StatusError.BadRequest, "Issue alert recipients must be members of this project's team");
+    }
+    if (ownerTeamMatch?.status === "missing_email") {
+      throw new StatusError(StatusError.BadRequest, "Issue alert recipients must have a primary email on this project's team");
     }
     return;
   }

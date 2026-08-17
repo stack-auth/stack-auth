@@ -47,21 +47,31 @@ type CustomerRequestSpanWriter = (row: SpanInsertRow) => Promise<void>;
 const customerRequestStorage = new AsyncLocalStorage<CustomerRequestObservabilityHolder>();
 
 function mergeTrustedIdentity(
-  current: string | null,
-  incoming: string | null,
-): string | null {
-  if (current !== null && incoming !== null && current !== incoming) {
+  current: CustomerRequestTenancy | null,
+  incoming: Pick<CustomerRequestTenancy, "userId" | "refreshTokenId">,
+): Pick<CustomerRequestTenancy, "userId" | "refreshTokenId"> {
+  if (current === null) return incoming;
+
+  const userConflict = current.userId !== null
+    && incoming.userId !== null
+    && current.userId !== incoming.userId;
+  const refreshTokenConflict = current.refreshTokenId !== null
+    && incoming.refreshTokenId !== null
+    && current.refreshTokenId !== incoming.refreshTokenId;
+  if (userConflict || refreshTokenConflict) {
     // NOT an invariant violation: auth endpoints can mint tokens for a
     // DIFFERENT principal than the (incidental) session that authenticated
-    // the request — e.g. signing in user B while user A's access token is
-    // still attached, which is exactly what SDK sign-in flows do. The request
-    // span belongs to the authenticated caller, so the identity resolved
-    // first wins and the conflicting enrichment is dropped. This used to
-    // throw, which killed the whole logEvent pipeline mid-loop and silently
-    // lost the second principal's $token-refresh telemetry row.
-    return current;
+    // the request. Keep the first verified pair together; merging fields
+    // independently could combine user A with user B's refresh token.
+    return {
+      userId: current.userId,
+      refreshTokenId: current.refreshTokenId,
+    };
   }
-  return incoming ?? current;
+  return {
+    userId: current.userId ?? incoming.userId,
+    refreshTokenId: current.refreshTokenId ?? incoming.refreshTokenId,
+  };
 }
 
 /**
@@ -91,12 +101,16 @@ export function resolveCustomerRequestObservability(options: {
   const labels = options.headers === undefined
     ? null
     : decodeCorrelationBaggage(readBaggageHeader(options.headers));
+  const identity = mergeTrustedIdentity(current, {
+    userId: options.userId,
+    refreshTokenId: options.refreshTokenId,
+  });
 
   holder.tenancy = {
     projectId: options.projectId,
     branchId: options.branchId,
-    userId: mergeTrustedIdentity(current?.userId ?? null, options.userId),
-    refreshTokenId: mergeTrustedIdentity(current?.refreshTokenId ?? null, options.refreshTokenId),
+    userId: identity.userId,
+    refreshTokenId: identity.refreshTokenId,
     sessionReplayId: current?.sessionReplayId ?? labels?.sessionReplayId ?? null,
     sessionReplaySegmentId: current?.sessionReplaySegmentId ?? labels?.sessionReplaySegmentId ?? null,
     pageViewSpanId: current?.pageViewSpanId ?? labels?.pageViewSpanId ?? null,

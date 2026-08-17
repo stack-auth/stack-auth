@@ -173,5 +173,18 @@ describe("Sentry transaction to canonical OTLP adapter", () => {
       timestamp: 20_000_000_001,
     });
     expect(() => sentryTransactionToCanonicalOtlpSpans(outsideOtlpRange, context)).toThrow(/OTLP timestamp range/iu);
+
+    const zeroParent = parseTransaction({
+      contexts: {
+        trace: {
+          trace_id: TRACE_ID,
+          span_id: ROOT_SPAN_ID,
+          parent_span_id: "0000000000000000",
+          op: "http.server",
+          status: "ok",
+        },
+      },
+    });
+    expect(() => sentryTransactionToCanonicalOtlpSpans(zeroParent, context)).toThrow(/valid W3C span id/iu);
   });
 });
