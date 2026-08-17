@@ -51,6 +51,9 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
         }
       };
       runAsynchronously(autoLogin(), {
+        // We report the error ourselves under a dedicated tag, so we opt out of
+        // runAsynchronously's generic logging to avoid duplicate Sentry events.
+        noErrorLogging: true,
         onError: (error) => {
           captureError("preview-auto-login", error);
           setError(true);
