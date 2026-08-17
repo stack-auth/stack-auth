@@ -20,7 +20,7 @@ describe("growth-server/findings", () => {
     await createGrowthProject();
     const body = {
       workflow_id: "customer-workflow-cpa-monitor",
-      findings: [{ kind: "metric_alert", category: "ads", tags: ["cpa"], title: "CPA drifted above target", body: "CPA has been above $40 for 3 days." }],
+      findings: [{ kind: "metric_alert", category: "reach", tags: ["cpa"], title: "CPA drifted above target", body: "CPA has been above $40 for 3 days." }],
     };
     const first = await niceBackendFetch(`${BASE}/findings`, { accessType: "server", method: "POST", body });
     expect(first.status).toBe(200);
@@ -39,7 +39,7 @@ describe("growth-server/findings", () => {
       body: {
         workflow_id: "customer-workflow-cpa-monitor",
         source: "daily-brief", // not a field this route accepts; source is always workflow_id.
-        findings: [{ kind: "metric_alert", category: "ads", tags: [], title: "t", body: "b" }],
+        findings: [{ kind: "metric_alert", category: "reach", tags: [], title: "t", body: "b" }],
       },
     });
     expect(response.status).toBe(400);
@@ -55,7 +55,7 @@ describe("growth-server/action-items", () => {
       body: {
         workflow_id: "customer-workflow-cpa-monitor",
         type_id: "run_ads",
-        category: "ads",
+        category: "reach",
         tags: [],
         title: "Raise the bid",
         description: "CPA drifted, consider raising the bid.",
@@ -73,7 +73,7 @@ describe("growth-server/action-items", () => {
       body: {
         workflow_id: "customer-workflow-cpa-monitor",
         type_id: "custom",
-        category: "ads",
+        category: "reach",
         tags: [],
         title: "Raise the bid",
         description: "CPA drifted, consider raising the bid.",
@@ -92,7 +92,7 @@ describe("growth-server/action-items", () => {
       body: {
         workflow_id: "customer-workflow-cpa-monitor",
         type_id: "custom",
-        category: "ads",
+        category: "reach",
         tags: [],
         title: "Raise the bid",
         description: "CPA drifted, consider raising the bid.",
@@ -106,7 +106,7 @@ describe("growth-server/action-items", () => {
     const body = {
       workflow_id: "customer-workflow-cpa-monitor",
       type_id: "custom",
-      category: "ads",
+      category: "reach",
       tags: ["cpa"],
       title: "Raise the bid",
       description: "CPA drifted, consider raising the bid.",
@@ -139,7 +139,7 @@ describe("growth-server/action-items", () => {
       const response = await niceBackendFetch(`${BASE}/action-items`, {
         accessType,
         method: "POST",
-        body: { workflow_id: "w", type_id: "custom", category: "ads", tags: [], title: "t", description: "d", dedupe_key: "k" },
+        body: { workflow_id: "w", type_id: "custom", category: "reach", tags: [], title: "t", description: "d", dedupe_key: "k" },
       });
       expect(response.status).toBeGreaterThanOrEqual(400);
       expect(response.status).toBeLessThan(500);

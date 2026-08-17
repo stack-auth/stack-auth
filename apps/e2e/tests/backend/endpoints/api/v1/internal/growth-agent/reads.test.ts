@@ -87,7 +87,7 @@ describe("growth-agent project-context", () => {
         company_summary: "An example company.",
       },
       domains: [],
-      enabled_apps: expect.arrayContaining(["growth"]),
+      enabled_apps: expect.arrayContaining(["gtm"]),
       user_count: 0,
       latest_run: {
         id: expect.any(String),
@@ -113,6 +113,7 @@ describe("growth-agent context-bundle", () => {
         "status": 200,
         "body": {
           "active_actions": [],
+          "artifacts": [],
           "daily_metrics": [],
           "findings": [],
           "interview_answers": [],
