@@ -1,0 +1,277 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/page-client.tsx
+  s_8049dbbfac65db::t_971916e4ba146a 34-35,420,423,426,428
+  s_8049dbbfac65db::t_76b8654666a6b7 174,193,220,225-226,243-248,252
+docs-mintlify/openapi/server.json
+  s_2c57837bf795b2::t_655578548e7f43 3611-3734,3763-3882,3906-4029,4071-4217,4262-4408,4448-4594,4638-4761,4801-4924,8519-8555,12212-12341,12399-12400,13361-13471
+packages/template/src/lib/hexclave-app/apps/implementations/error-capture.ts
+  s_8049dbbfac65db::t_9dafebafc615a4 184-198,201,206,211-222,232,234-245,395-398,408
+packages/template/src/lib/hexclave-app/apps/implementations/otel-log-facade.test.ts
+  s_8049dbbfac65db::t_4a12360d7a4816 137-162
+apps/backend/src/lib/issues/issue-alerts/persistence.ts
+  s_8049dbbfac65db::t_a1b5d243c51e01 128-133,738,743-745,748-752,758,765-766,780-788,805-813,830-838,974,977-984
+  s_8049dbbfac65db::t_9f5d22ee82b6dc 767
+apps/backend/prisma/migrations/20260726000000_add_releases/migration.sql
+  s_8049dbbfac65db::t_304ecc488dc939 33
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-format.ts
+  s_8049dbbfac65db::t_79c64ad732e11c 75
+  s_8049dbbfac65db::t_76b8654666a6b7 76-83
+apps/backend/src/lib/error-ingest/error-ingest-transaction-adapter.test.ts
+  s_8049dbbfac65db::t_39b68f1efbdf5c 176-188
+apps/backend/src/lib/issues/public-search/contract.test.ts
+  s_8049dbbfac65db::t_5eaf7c9f9e71b7 140
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/issue-alert-email-template.ts
+  s_8049dbbfac65db::t_407cf529d7d898 1-4
+  s_8049dbbfac65db::t_7b7402289e6f93 18-29,34-38
+  s_8049dbbfac65db::t_f96f057a9f2e3c 30
+packages/shared/src/utils/analytics-wire.tsx
+  s_8049dbbfac65db::t_356f5c9b7cf2f7 273-306,308
+apps/backend/src/app/api/latest/internal/issues/merge/route.tsx
+  s_8049dbbfac65db::t_97f5d90fd2d092 59-62
+  s_8049dbbfac65db::t_73d996ecba1bac 8-9,50-58,63,68,74
+  s_8049dbbfac65db::t_3ca56b7b447904 66-67
+apps/backend/src/lib/error-ingest/error-ingest-protocol-adapter.ts
+  s_8049dbbfac65db::t_a8fb719dc9afc0 5,534
+apps/backend/prisma/migrations/20260701000000_add_session_replay_segment/migration.sql
+  s_8049dbbfac65db::t_e9595e2f716042 11-14,21-23,26-29,42-57,60-75
+packages/template/src/integrations/next.ts
+  s_8049dbbfac65db::t_d05b84cf49624b 270-272
+  s_8049dbbfac65db::t_9da0a9413d3b1b 6,260-263,276
+  s_8049dbbfac65db::t_5eaf7c9f9e71b7 269
+packages/template/src/lib/hexclave-app/apps/implementations/integration-registry.ts
+  s_8049dbbfac65db::t_6eb7d4e8015ea7 310-313
+apps/backend/src/lib/otlp/json.ts
+  s_8049dbbfac65db::t_f71c6ea2b0fd39 19-26,99-101
+  s_8049dbbfac65db::t_b7ccf9244d3f3b 138
+packages/template/src/lib/hexclave-app/apps/implementations/error-scope.ts
+  s_8049dbbfac65db::t_33f7a65b6d5ee2 40-42
+packages/template/src/lib/hexclave-app/apps/implementations/browser-otel-sdk.test.ts
+  s_8049dbbfac65db::t_5e4796ebc83d31 119-137
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/page-client.tsx
+  s_8049dbbfac65db::t_76b8654666a6b7 275,295,791-794,813,816-817
+packages/cli/src/commands/source-maps.ts
+  s_8049dbbfac65db::t_522eb3099bfc64 828-842
+  s_8049dbbfac65db::t_5eaf7c9f9e71b7 1032-1036
+  s_8049dbbfac65db::t_52361682481897 20
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/stack-frame-list.tsx
+  s_8049dbbfac65db::t_76b8654666a6b7 186
+apps/backend/src/lib/issues/issue-product.ts
+  s_8049dbbfac65db::t_0dae5d0651a748 384,410,430,467,490,721
+  s_8049dbbfac65db::t_bc5a3e904dc6f7 711
+  s_8049dbbfac65db::t_879e3763484447 14,239-251
+  s_8049dbbfac65db::t_64d1a3a006b22e 363
+apps/backend/src/lib/issues/issue-lifecycle.ts
+  s_8049dbbfac65db::t_0dae5d0651a748 5,339,366,413,458,482,492,523
+apps/backend/src/lib/releases/release-service.test.ts
+  s_8049dbbfac65db::t_98ec451300f3e2 145
+apps/backend/src/lib/issues/issue-alerts/api.ts
+  s_8049dbbfac65db::t_5eaf7c9f9e71b7 210-211
+  s_8049dbbfac65db::t_5b101fe87e6ed6 212
+apps/backend/src/lib/error-ingest/error-ingest-scrubber.test.ts
+  s_8049dbbfac65db::t_2c866e2db7deb3 41
+apps/backend/src/lib/safe-request-context.test.ts
+  s_8049dbbfac65db::t_2c866e2db7deb3 67-75,93-101
+apps/backend/package.json
+  s_8049dbbfac65db::t_e73a6017a3af4a 8
+apps/backend/src/lib/qstash-outbox.ts
+  s_8049dbbfac65db::t_9da0a9413d3b1b 139,146-147
+apps/backend/src/app/api/latest/internal/issues/[issue_id]/route.tsx
+  s_8049dbbfac65db::t_5eaf7c9f9e71b7 5-6,200-203,205,211-212,222
+apps/backend/src/app/api/latest/issues/[issue_id]/actions/_shared.ts
+  s_8049dbbfac65db::t_5eaf7c9f9e71b7 14,16
+apps/backend/src/lib/issues/issue-occurrences.ts
+  s_8049dbbfac65db::t_dd631658c5f34a 101-104,112-113
+  s_8049dbbfac65db::t_cef9707c9bf7b9 8,81-95,98-100,110-111
+apps/backend/src/lib/customer-request-observability.test.ts
+  s_8049dbbfac65db::t_65dee55763b620 120-150
+apps/backend/src/lib/events.tsx
+  s_8049dbbfac65db::t_30956abc08bc09 327-339,429
+apps/backend/src/lib/issues/public-search/contract.ts
+  s_8049dbbfac65db::t_5eaf7c9f9e71b7 329-330
+apps/e2e/tests/backend/endpoints/api/v1/analytics-sentry-envelope.test.ts
+  s_8049dbbfac65db::t_7cc942d42af4c9 2,89-105,152-158
+  s_8049dbbfac65db::t_40d911fcc88b62 159
+apps/backend/src/lib/artifacts/artifact-archive-safety.ts
+  s_8049dbbfac65db::t_5eaf7c9f9e71b7 87-89,91-98,100-101
+  s_8049dbbfac65db::t_214436d12a6a74 99
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_2c57837bf795b2::t_0a04af94c54e20 113
+packages/template/src/lib/hexclave-app/apps/implementations/browser-otel-sdk.ts
+  s_8049dbbfac65db::t_5e4796ebc83d31 1557-1560
+  s_8049dbbfac65db::t_536ba5f4a38ddb 246-248,382-385
+apps/backend/src/lib/issues/public-scrub.ts
+  s_8049dbbfac65db::t_5eaf7c9f9e71b7 23-28
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_8049dbbfac65db::t_aa74426051b818 511-513,761,778-780,782
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issues-data.ts
+  s_8049dbbfac65db::t_971916e4ba146a 120-121,212-217
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event-search.tsx
+  s_8049dbbfac65db::t_76b8654666a6b7 8,11-12,29,38-51,54,59,61-67
+apps/backend/src/lib/otlp/metric-query.ts
+  s_8049dbbfac65db::t_4a12360d7a4816 316-318
+  s_8049dbbfac65db::t_59ff567223def2 170,173,177,179-183,197,201-203
+  s_8049dbbfac65db::t_a9cdee354a5b69 184-185
+  s_8049dbbfac65db::t_f96f057a9f2e3c 158,178,196
+apps/backend/src/lib/error-ingest/error-ingest-protocol-projections.ts
+  s_8049dbbfac65db::t_aa74426051b818 41-53,56
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/service-identity.ts
+  s_8049dbbfac65db::t_971916e4ba146a 9-23
+apps/backend/src/lib/issues/grouping-fingerprint.ts
+  s_8049dbbfac65db::t_56ff9381790122 66,89-93,98,145-159
+  s_8049dbbfac65db::t_c5e346ed0c2e39 94-97
+  s_8049dbbfac65db::t_3abb78e8a121e6 160
+apps/backend/prisma/migrations/20260814000000_enforce_issue_subject_natural_keys/migration.sql
+  s_8049dbbfac65db::t_304ecc488dc939 17
+docs-mintlify/openapi/webhooks.json
+  s_8049dbbfac65db::t_ab923c6fdbb95b 1296,1604,1614,1763,1773,1932
+packages/template/src/lib/hexclave-app/apps/implementations/integration-registry.test.ts
+  s_8049dbbfac65db::t_6eb7d4e8015ea7 382,389
+apps/backend/src/lib/error-ingest/error-ingest-protocol-adapter.test.ts
+  s_8049dbbfac65db::t_aa74426051b818 57
+apps/backend/src/lib/otlp/metrics.ts
+  s_8049dbbfac65db::t_f71c6ea2b0fd39 3,45-47
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issues-data.test.ts
+  s_8049dbbfac65db::t_8f1833d28f9dc5 143-161
+packages/template/src/lib/hexclave-app/apps/implementations/otel-span-facade.test.ts
+  s_8049dbbfac65db::t_b7ccf9244d3f3b 130-148
+packages/shared/src/config/schema.ts
+  s_8049dbbfac65db::t_f1e368e9b41e7a 1007
+  s_8049dbbfac65db::t_7cc942d42af4c9 718-719,722,912-926,931-1006
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/paths/normalize-url.ts
+  s_8049dbbfac65db::t_76b8654666a6b7 22-24
+apps/backend/src/lib/legacy-telemetry-dual-write.test.ts
+  s_8049dbbfac65db::t_b7ccf9244d3f3b 47-50
+  s_8049dbbfac65db::t_0d70278b927fcf 104,112-118
+  s_8049dbbfac65db::t_0e240734eddd99 119-120
+packages/template/src/lib/hexclave-app/apps/implementations/debug-ids.ts
+  s_8049dbbfac65db::t_356f5c9b7cf2f7 172-177
+apps/backend/src/lib/safe-request-context.ts
+  s_8049dbbfac65db::t_2c866e2db7deb3 158-165,176,203
+apps/backend/src/app/api/latest/analytics/events/batch/route.test.tsx
+  s_8049dbbfac65db::t_aa74426051b818 72-73
+apps/backend/scripts/db-migrations.ts
+  s_8049dbbfac65db::t_304ecc488dc939 275,278-283
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/page-client.test.ts
+  s_8049dbbfac65db::t_0d40c250a58fe5 186
+packages/template/src/lib/hexclave-app/apps/implementations/otel-sdk.test.ts
+  s_8049dbbfac65db::t_4a12360d7a4816 88
+packages/cli/src/lib/source-maps.ts
+  s_8049dbbfac65db::t_2ed2a14e2fed04 264
+  s_8049dbbfac65db::t_d6566d661c16d9 59,140,185-186,197-200
+docs-mintlify/openapi/admin.json
+  s_2c57837bf795b2::t_1d8d0835788ae6 3651-3774,3803-3922,3946-4069,4111-4257,4302-4448,4488-4634,4678-4801,4841-4964,8559-8595,12915-13044,13102-13103,14064-14174
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/[issueId]/page.tsx
+  s_8049dbbfac65db::t_76b8654666a6b7 2,9-13
+packages/template/src/lib/hexclave-app/apps/implementations/otel-log-facade.ts
+  s_8049dbbfac65db::t_4a12360d7a4816 25,28,36
+  s_8049dbbfac65db::t_9da0a9413d3b1b 16-21
+apps/backend/src/lib/issues/issue-alerts/ingestion.ts
+  s_8049dbbfac65db::t_1e207e4bcc1c09 236,246-263
+apps/backend/prisma/schema.prisma
+  s_8049dbbfac65db::t_e73a6017a3af4a 1279-1281
+apps/backend/src/lib/error-ingest/error-ingest-outcomes.ts
+  s_8049dbbfac65db::t_a8fb719dc9afc0 81-88,99
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-format.test.ts
+  s_8049dbbfac65db::t_0d40c250a58fe5 122
+packages/template/src/lib/hexclave-app/apps/implementations/otel-span-facade.ts
+  s_8049dbbfac65db::t_b7ccf9244d3f3b 193-204
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_8049dbbfac65db::t_9da0a9413d3b1b 2658,2665-2671
+apps/backend/src/lib/symbolication/javascript-symbolication.ts
+  s_8049dbbfac65db::t_b338b608441b26 753-754
+  s_8049dbbfac65db::t_908e8fbb312bf9 1049-1052,1054
+apps/backend/src/lib/issues/occurrence-projection.ts
+  s_8049dbbfac65db::t_199111ff0f6e97 186-187
+  s_8049dbbfac65db::t_cef9707c9bf7b9 197,201-203
+apps/backend/scripts/clickhouse-migrations.ts
+  s_8049dbbfac65db::t_a575922475f21e 2953-3009,3206-3207,3224-3229
+  s_8049dbbfac65db::t_a7779c172585ea 808-810,859-866
+  s_8049dbbfac65db::t_05c30e1ba402bd 867
+apps/e2e/tests/backend/endpoints/api/v1/issues.test.ts
+  s_8049dbbfac65db::t_3021bab1ebb544 81-82,381,485,521,559,597,666,694,738,770,827,850,926,960,1053,1077,1109,1152,1190,1234,1263
+apps/backend/src/lib/issues/public-search/projection.ts
+  s_8049dbbfac65db::t_5eaf7c9f9e71b7 2-7,100,125,145,147,149-150,167,177-178,181,231-232,247,274,306-307,309-311,342-344,357-359,362
+  s_8049dbbfac65db::t_35e79763f34507 354
+packages/template/src/lib/hexclave-app/apps/implementations/browser-otel-queue.ts
+  s_8049dbbfac65db::t_536ba5f4a38ddb 54-57,211-219
+apps/backend/src/lib/error-ingest/error-ingest-client-reports.ts
+  s_8049dbbfac65db::t_35719cfa085661 218
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/releases/page-client.tsx
+  s_8049dbbfac65db::t_76b8654666a6b7 141-142,246-252,258-259,280,293-298,311-312,329,344-349
+apps/backend/src/lib/releases/release-route-handlers.test.ts
+  s_8049dbbfac65db::t_98ec451300f3e2 183
+apps/backend/src/lib/error-ingest/error-ingest-scrubber.ts
+  s_8049dbbfac65db::t_2c866e2db7deb3 69
+apps/backend/src/lib/issues/in-app.ts
+  s_8049dbbfac65db::t_356f5c9b7cf2f7 29-30,66
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/paths/normalize-url.test.ts
+  s_8049dbbfac65db::t_0d40c250a58fe5 14-18
+apps/backend/src/lib/customer-request-observability.ts
+  s_8049dbbfac65db::t_9da0a9413d3b1b 50-52,56-57,59-61,64-66,69,71,74,104-107,112-113
+  s_8049dbbfac65db::t_dd631658c5f34a 53-55,58,67-68,72-73
+apps/backend/src/lib/artifacts/artifact-upload-service.ts
+  s_8049dbbfac65db::t_8540e71a10ba4f 562-565
+  s_8049dbbfac65db::t_cab30b4ba30551 321-322,325-326
+  s_8049dbbfac65db::t_2301c2b1eb0dac 327
+apps/backend/src/lib/otlp/metric-query.test.ts
+  s_8049dbbfac65db::t_4a12360d7a4816 86-94
+apps/backend/src/lib/error-ingest/error-ingest-transaction-adapter.ts
+  s_8049dbbfac65db::t_35719cfa085661 6,170-171
+  s_8049dbbfac65db::t_d7c31eb88f32be 172
+apps/backend/src/lib/issues/issue-alerts/workflow-status.test.ts
+  s_8049dbbfac65db::t_a1b5d243c51e01 83,87-91
+packages/template/src/lib/hexclave-app/apps/implementations/otel-sdk.ts
+  s_8049dbbfac65db::t_4a12360d7a4816 269-274,280-282
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/service-identity.test.ts
+  s_8049dbbfac65db::t_971916e4ba146a 4,6,14-22
+apps/backend/src/lib/releases/release-service.ts
+  s_8049dbbfac65db::t_013e8b97ae7fcf 80,96,397-404,427-431,435-438,443-446,709
+apps/backend/src/lib/error-ingest/error-ingest-client-reports.test.ts
+  s_8049dbbfac65db::t_39b68f1efbdf5c 153-156
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/format.ts
+  s_8049dbbfac65db::t_76b8654666a6b7 72-75
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/use-issue-data.ts
+  s_8049dbbfac65db::t_971916e4ba146a 173
+apps/backend/src/lib/issues/issue-webhooks.ts
+  s_8049dbbfac65db::t_73d996ecba1bac 208,243
+apps/backend/src/lib/issues/issue-merge.ts
+  s_8049dbbfac65db::t_c69bb4bcdcacd8 522-527,814-816,861
+apps/backend/src/lib/otlp/log-writer.ts
+  s_8049dbbfac65db::t_15fde8f450afd0 1,233-236
+apps/backend/src/lib/legacy-telemetry-dual-write.ts
+  s_8049dbbfac65db::t_b7ccf9244d3f3b 100-104
+  s_8049dbbfac65db::t_0d70278b927fcf 1,67-70,112
+apps/backend/src/lib/issues/issue-identity.ts
+  s_8049dbbfac65db::t_356f5c9b7cf2f7 6-10,52,62,97
+  s_8049dbbfac65db::t_1206512539f992 5
+packages/cli/src/commands/deploy.ts
+  s_8049dbbfac65db::t_304ecc488dc939 289,296-298
+apps/backend/src/lib/issues/issue-alerts/workflow-status.ts
+  s_8049dbbfac65db::t_a1b5d243c51e01 23,52-58,252-259,288-298
+apps/backend/src/lib/artifacts/artifact-storage.ts
+  s_8049dbbfac65db::t_2a483c862297f9 88
+  s_8049dbbfac65db::t_cab30b4ba30551 17-18,29,64,69,71-76,78,80-83,86-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "2e355a025c1278f40d67fde9ff9cc635baa8463f",
+  "prompts": {},
+  "sessions": {
+    "s_2c57837bf795b2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "534f3379-be72-4057-9a7d-40cac2df6f1a",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_8049dbbfac65db": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a010c8-c0ac-73f2-b5bb-3bda674e00dc",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
