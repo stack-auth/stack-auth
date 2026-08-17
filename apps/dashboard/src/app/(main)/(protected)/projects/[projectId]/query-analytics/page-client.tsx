@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useRef } from "react";
 import { getShortcutModifierKeyLabel } from "@/lib/keyboard-shortcuts";
 import { Alert, Button, Textarea, Typography } from "@/components/ui";
 import { PageLayout } from "../page-layout";
-import { useAdminApp } from "../use-admin-app";
+import { useServerApp } from "../use-admin-app";
 import { clickhouseKeywords, clickhouseTables, conf, language } from "./monaco-clickhouse";
 
 const CLICKHOUSE_LANGUAGE_ID = "clickhouse-sql";
@@ -21,7 +21,7 @@ type CompletionItem = Parameters<Monaco["languages"]["registerCompletionItemProv
   : never;
 
 export default function PageClient() {
-  const adminApp = useAdminApp();
+  const serverApp = useServerApp();
   const modifierKeyLabel = getShortcutModifierKeyLabel();
   const [query, setQuery] = React.useState("SELECT 1 AS value;");
   const [resultText, setResultText] = React.useState("");
@@ -53,7 +53,7 @@ export default function PageClient() {
       setLoading(true);
       setError(null);
       try {
-        const response = await adminApp.queryAnalytics({
+        const response = await serverApp.queryAnalytics({
           query: currentQuery,
           include_all_branches: false,
         });

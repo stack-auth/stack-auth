@@ -103,9 +103,11 @@ function parseApiVersionStringToArray(version: string): [number, number] {
 
 
 function matchPath(path: string, toMatchWith: string): Record<string, string | string[]> | false {
-  // get the relative part, and modify it to have a leading slash, without a trailing slash, without ./.., etc.
-  const url = new URL(path + "/", "http://example.com");
-  const modifiedPath = url.pathname.slice(1, -1);
+  // Normalize to relative path segments without a trailing slash. Appending "/" before URL parsing
+  // turns an already-trailing path into "//", which URL interprets as a protocol-relative URL during
+  // the final recursive match and rejects because it has no host.
+  const url = new URL(path === "" ? "/" : path, "http://example.com");
+  const modifiedPath = url.pathname.slice(1).replace(/\/+$/, "");
   const modifiedToMatchWith = toMatchWith.slice(1);
 
   if (modifiedPath === "" && modifiedToMatchWith === "") {
@@ -145,6 +147,20 @@ function matchPath(path: string, toMatchWith: string): Record<string, string | s
     return false;
   }
 }
+
+import.meta.vitest?.test("matches routes with trailing slashes", ({ expect }) => {
+  expect({
+    staticRoute: SmartRouter.matchNormalizedPath("/api/v1/", "/api/v1"),
+    dynamicRoute: SmartRouter.matchNormalizedPath("/users/user-123/", "/users/[user_id]"),
+  }).toMatchInlineSnapshot(`
+    {
+      "dynamicRoute": {
+        "user_id": "user-123",
+      },
+      "staticRoute": {},
+    }
+  `);
+});
 
 /**
  * Modified from: https://github.com/vercel/next.js/blob/6ff13369bb18045657d0f84ddc86b540340603a1/packages/next/src/shared/lib/router/utils/app-paths.ts#L23

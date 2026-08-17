@@ -805,9 +805,11 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
   const fullCode = purchaseUrl.split("/purchase/")[1];
   const stackTestTenancyId = fullCode.split("_")[0];
 
+  const idSuffix = randomUUID().replace(/-/g, "");
+  const stripeCustomerId = `cus_update_${idSuffix}`;
   const nowSec = Math.floor(Date.now() / 1000);
   const activeSubscription = {
-    id: "sub_update_1",
+    id: `sub_update_${idSuffix}`,
     status: "active",
     items: {
       data: [
@@ -832,7 +834,7 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
     account: accountId,
     data: {
       object: {
-        customer: "cus_update_1",
+        customer: stripeCustomerId,
         stack_stripe_mock_data: {
           "accounts.retrieve": { metadata: { tenancyId: stackTestTenancyId } },
           "customers.retrieve": { metadata: { customerId: userId, customerType: "USER" } },
@@ -848,15 +850,28 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
 
   await waitForItemQuantity({ customerType: "user", customerId: userId, itemId, expected: 1 });
 
+  // Cancel the subscription "now". The included-item grant is emitted effective
+  // at the subscription row's DB creation time (i.e. when the add webhook above
+  // was processed), so the cancellation must end the subscription strictly after
+  // that — otherwise the grant's expiry would be ordered *before* the grant
+  // itself and the seat would never drop. We capture the time after the add has
+  // been confirmed and add one second: `floor(now)+1 > now > createdAt`, so the
+  // ended_at (in whole Stripe seconds) is guaranteed to land after the row's
+  // createdAt while still being at most ~1s ahead of the subsequent poll, which
+  // the poll loop tolerates. Real Stripe likewise always sets canceled_at/
+  // ended_at on a terminal-status subscription.
+  const cancelSec = Math.floor(Date.now() / 1000) + 1;
   const canceledSubscription = {
     ...activeSubscription,
     status: "canceled",
+    canceled_at: cancelSec,
+    ended_at: cancelSec,
     items: {
       data: [
         {
           quantity: 1,
-          current_period_start: nowSec - 2 * 60,
-          current_period_end: nowSec - 60,
+          current_period_start: nowSec - 60,
+          current_period_end: cancelSec,
         },
       ],
     },
@@ -868,7 +883,7 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
     account: accountId,
     data: {
       object: {
-        customer: "cus_update_1",
+        customer: stripeCustomerId,
         stack_stripe_mock_data: {
           "accounts.retrieve": { metadata: { tenancyId: stackTestTenancyId } },
           "customers.retrieve": { metadata: { customerId: userId, customerType: "USER" } },
@@ -969,4 +984,210 @@ it("does NOT auto-grant `free` when a non-internal tenancy's sub is canceled via
   expect(subsResponse.status).toBe(200);
   const items = (subsResponse.body as { items: Array<{ id: string | null }> }).items;
   expect(items.map((i) => i.id)).not.toContain("free");
+});
+
+it("sends a trial ending soon email for customer.subscription.trial_will_end", async ({ expect }) => {
+  const projectDisplayName = "Trial Will End Email Test";
+  await Project.createAndSwitch({ display_name: projectDisplayName });
+  await Payments.setup();
+
+  const productId = "trial-product";
+  const product = {
+    displayName: "Pro Trial Plan",
+    customerType: "user",
+    serverOnly: false,
+    stackable: false,
+    prices: {
+      monthly: {
+        USD: "19.00",
+        interval: [1, "month"],
+        freeTrial: [14, "day"],
+      },
+    },
+    includedItems: {},
+  };
+
+  await Project.updateConfig({
+    payments: {
+      products: {
+        [productId]: product,
+      },
+    },
+  });
+
+  const mailbox = await bumpEmailAddress();
+  const { userId } = await Auth.fastSignUp({
+    primary_email: mailbox.emailAddress,
+    primary_email_verified: true,
+  });
+
+  const accountInfo = await niceBackendFetch("/api/latest/internal/payments/stripe/account-info", {
+    accessType: "admin",
+  });
+  expect(accountInfo.status).toBe(200);
+  const accountId: string = accountInfo.body.account_id;
+
+  const createUrlResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: productId,
+    },
+  });
+  expect(createUrlResponse.status).toBe(200);
+  const purchaseUrl = (createUrlResponse.body as { url: string }).url;
+  const fullCode = purchaseUrl.split("/purchase/")[1];
+  const stackTestTenancyId = fullCode.split("_")[0];
+
+  const trialEnd = Math.floor(Date.UTC(2026, 0, 15, 12, 0, 0) / 1000);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const payloadObj = {
+    id: uniqueEventId("trial_will_end"),
+    type: "customer.subscription.trial_will_end",
+    account: accountId,
+    data: {
+      object: {
+        id: "sub_trial_will_end",
+        customer: "cus_trial_will_end",
+        status: "trialing",
+        trial_end: trialEnd,
+        metadata: {
+          productId,
+          product: JSON.stringify(product),
+          priceId: "monthly",
+        },
+        items: {
+          data: [{
+            quantity: 1,
+            current_period_start: nowSec,
+            current_period_end: trialEnd,
+          }],
+        },
+        cancel_at_period_end: false,
+        stack_stripe_mock_data: {
+          "accounts.retrieve": { metadata: { tenancyId: stackTestTenancyId } },
+          "customers.retrieve": { metadata: { customerId: userId, customerType: "USER" } },
+          "subscriptions.list": { data: [{
+            id: "sub_trial_will_end",
+            status: "trialing",
+            trial_end: trialEnd,
+            items: { data: [{
+              quantity: 1,
+              current_period_start: nowSec,
+              current_period_end: trialEnd,
+            }] },
+            metadata: { productId, product: JSON.stringify(product), priceId: "monthly" },
+            cancel_at_period_end: false,
+          }] },
+        },
+      },
+    },
+  };
+
+  const res = await Payments.sendStripeWebhook(payloadObj);
+  expect(res.status).toBe(200);
+  expect(res.body).toEqual({ received: true });
+
+  const email = await waitForOutboxEmail("Your free trial for Pro Trial Plan is ending soon");
+  expect(email.variables).toMatchInlineSnapshot(`
+    {
+      "productName": "Pro Trial Plan",
+      "trialEndDate": "2026-01-15T12:00:00.000Z",
+    }
+  `);
+});
+
+it("does not send a payment receipt for a $0 invoice (e.g. free trial create)", async ({ expect }) => {
+  const projectDisplayName = "Zero Dollar Receipt Skip Test";
+  await Project.createAndSwitch({ display_name: projectDisplayName });
+  await Payments.setup();
+
+  const productId = "zero-receipt-sub";
+  const product = {
+    displayName: "Trial Plan",
+    customerType: "user",
+    serverOnly: false,
+    stackable: false,
+    prices: { monthly: { USD: "19.00", interval: [1, "month"], freeTrial: [7, "day"] } },
+    includedItems: {},
+  };
+
+  await Project.updateConfig({
+    payments: {
+      products: {
+        [productId]: product,
+      },
+    },
+  });
+
+  const mailbox = await bumpEmailAddress();
+  const { userId } = await Auth.fastSignUp({
+    primary_email: mailbox.emailAddress,
+    primary_email_verified: true,
+  });
+
+  const accountInfo = await niceBackendFetch("/api/latest/internal/payments/stripe/account-info", {
+    accessType: "admin",
+  });
+  expect(accountInfo.status).toBe(200);
+  const accountId: string = accountInfo.body.account_id;
+
+  const createUrlResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: productId,
+    },
+  });
+  expect(createUrlResponse.status).toBe(200);
+  const purchaseUrl = (createUrlResponse.body as { url: string }).url;
+  const fullCode = purchaseUrl.split("/purchase/")[1];
+  const stackTestTenancyId = fullCode.split("_")[0];
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const payloadObj = {
+    id: uniqueEventId("zero_receipt"),
+    type: "invoice.payment_succeeded",
+    account: accountId,
+    data: {
+      object: {
+        id: "in_zero_trial_create",
+        customer: "cus_zero_trial",
+        amount_paid: 0,
+        currency: "usd",
+        billing_reason: "subscription_create",
+        hosted_invoice_url: "https://example.com/invoice/zero",
+        lines: {
+          data: [{ description: "Trial Plan", quantity: 1 }],
+        },
+        stack_stripe_mock_data: {
+          "accounts.retrieve": { metadata: { tenancyId: stackTestTenancyId } },
+          "customers.retrieve": { metadata: { customerId: userId, customerType: "USER" } },
+          "subscriptions.list": { data: [{
+            id: "sub_zero_trial",
+            status: "trialing",
+            items: { data: [{
+              quantity: 1,
+              current_period_start: nowSec,
+              current_period_end: nowSec + 7 * 24 * 60 * 60,
+            }] },
+            metadata: { productId, product: JSON.stringify(product), priceId: "monthly" },
+            cancel_at_period_end: false,
+          }] },
+        },
+      },
+    },
+  };
+
+  const res = await Payments.sendStripeWebhook(payloadObj);
+  expect(res.status).toBe(200);
+  expect(res.body).toEqual({ received: true });
+
+  await wait(1500);
+  const receipts = await getOutboxEmails({ subject: `Your receipt from ${projectDisplayName}` });
+  expect(receipts.length).toBe(0);
 });

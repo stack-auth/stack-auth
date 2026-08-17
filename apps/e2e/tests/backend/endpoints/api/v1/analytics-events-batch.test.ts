@@ -64,7 +64,7 @@ it("requires a user token", async ({ expect }) => {
 it("throws error when analytics is not enabled", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   // Analytics is disabled by default - do NOT call Project.updateConfig
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const res = await uploadEventBatch({
     sessionReplaySegmentId: randomUUID(),
@@ -80,7 +80,7 @@ it("throws error when analytics is not enabled", async ({ expect }) => {
 it("accepts valid $page-view events", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const now = Date.now();
   const res = await uploadEventBatch({
@@ -133,7 +133,7 @@ it("accepts valid $page-view events", async ({ expect }) => {
 it("accepts valid $click events", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const now = Date.now();
   const res = await uploadEventBatch({
@@ -172,7 +172,7 @@ it("accepts valid $click events", async ({ expect }) => {
 it("accepts a gzipped binary body (adblocker-evasion encoding)", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const now = Date.now();
   const payload = {
@@ -214,7 +214,7 @@ it("accepts a gzipped binary body (adblocker-evasion encoding)", async ({ expect
 it("rejects a binary body that isn't valid gzip", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const res = await niceBackendFetch("/api/v1/analytics/events/batch", {
     method: "POST",
@@ -234,7 +234,7 @@ it("rejects a binary body that isn't valid gzip", async ({ expect }) => {
 it("rejects a binary body larger than the compressed size cap", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   // Random bytes don't compress, so even before gunzip the byteLength check
   // fires. 1.1 MB > the 1 MB MAX_COMPRESSED_BYTES cap.
@@ -258,7 +258,7 @@ it("rejects a binary body larger than the compressed size cap", async ({ expect 
 it("rejects a gzipped body that decompresses past the server size cap", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   // 9 MB of zeros gzips to ~9 KB but decompresses past the 8 MB server cap.
   const bomb = gzipSync(Buffer.alloc(9 * 1024 * 1024));
@@ -281,7 +281,7 @@ it("rejects a gzipped body that decompresses past the server size cap", async ({
 it("handles click event data containing a truncated surrogate pair (lone high surrogate)", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   // Simulate what the client-side event tracker does: .substring(0, 200) can
   // cut a string in the middle of a surrogate pair when emoji characters are
@@ -326,7 +326,7 @@ it("handles click event data containing a truncated surrogate pair (lone high su
 it("rejects empty events array", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const res = await uploadEventBatch({
     sessionReplaySegmentId: randomUUID(),
@@ -362,7 +362,7 @@ it("rejects empty events array", async ({ expect }) => {
 it("rejects too many events (>500)", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const tooManyEvents = Array.from({ length: 501 }, (_, i) => ({
     event_type: "$page-view",
@@ -404,7 +404,7 @@ it("rejects too many events (>500)", async ({ expect }) => {
 it("rejects invalid session_replay_segment_id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const res = await niceBackendFetch("/api/v1/analytics/events/batch", {
     method: "POST",
@@ -444,7 +444,7 @@ it("rejects invalid session_replay_segment_id", async ({ expect }) => {
 it("rejects invalid batch_id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const res = await niceBackendFetch("/api/v1/analytics/events/batch", {
     method: "POST",
@@ -484,7 +484,7 @@ it("rejects invalid batch_id", async ({ expect }) => {
 it("rejects invalid event_type", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const res = await niceBackendFetch("/api/v1/analytics/events/batch", {
     method: "POST",
@@ -524,7 +524,7 @@ it("rejects invalid event_type", async ({ expect }) => {
 it("inserted events are queryable via analytics query endpoint", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const sessionReplaySegmentId = randomUUID();
   const now = Date.now();
@@ -558,9 +558,9 @@ it("inserted events are queryable via analytics query endpoint", async ({ expect
   let queryRes;
   for (let attempt = 0; attempt < 15; attempt++) {
     await wait(500);
-    queryRes = await niceBackendFetch("/api/v1/internal/analytics/query", {
+    queryRes = await niceBackendFetch("/api/v1/analytics/query", {
       method: "POST",
-      accessType: "admin",
+      accessType: "server",
       body: {
         query: "SELECT event_type, session_replay_segment_id FROM events WHERE session_replay_segment_id = {segId:String} ORDER BY event_at",
         params: { segId: sessionReplaySegmentId },

@@ -172,7 +172,7 @@ export function KpiBlock({
         </div>
         <div
           role="tooltip"
-          className="pointer-events-none absolute left-4 right-4 top-full z-20 mt-1.5 rounded-xl border border-foreground/10 bg-background/95 p-3 opacity-0 shadow-[0_12px_28px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 dark:shadow-[0_12px_28px_rgba(0,0,0,0.55)]"
+          className="pointer-events-none absolute left-4 right-4 top-full z-20 mt-1.5 rounded-xl border border-black/[0.08] bg-white/95 p-3 opacity-0 shadow-[0_12px_28px_rgba(15,23,42,0.18)] ring-1 ring-black/[0.06] backdrop-blur-xl transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 dark:border-white/[0.08] dark:bg-background/95 dark:ring-white/[0.08] dark:shadow-[0_12px_28px_rgba(0,0,0,0.55)]"
         >
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-0.5">

@@ -1,6 +1,6 @@
 'use client';
 
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, type TooltipProps } from 'recharts';
 import { useId } from 'react';
 
 type DataPoint = { date: string, activity: number };
@@ -9,7 +9,26 @@ const CHART_HEIGHT = 56;
 const EMPTY_BASELINE_COUNT = 30;
 
 function formatDay(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' });
+  // Append T00:00:00 to force local-time interpretation for bare YYYY-MM-DD strings,
+  // which are otherwise parsed as UTC midnight and can shift to the previous day in negative-UTC timezones
+  const date = iso.includes('T') ? new Date(iso) : new Date(`${iso}T00:00:00`);
+  return date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' });
+}
+
+function ProjectUsersMetricTooltip({ active, label, payload }: TooltipProps<number, string>) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  const value = payload[0]?.value;
+  const formattedValue = typeof value === 'number' ? value.toLocaleString() : value;
+
+  return (
+    <div className="rounded-md border border-black/[0.08] bg-white px-3 py-1.5 text-xs text-foreground shadow-md ring-1 ring-black/[0.06] dark:border-white/[0.08] dark:bg-background dark:ring-white/[0.08]">
+      <div className="text-[10px] text-muted-foreground">{formatDay(label)}</div>
+      <div>new signups: {formattedValue}</div>
+    </div>
+  );
 }
 
 function EmptyBaseline({ count }: { count: number }) {
@@ -111,18 +130,7 @@ export function ProjectUsersMetric(props: {
               </defs>
               <Tooltip
                 cursor={{ stroke: 'currentColor', strokeOpacity: 0.2, strokeDasharray: '2 3' }}
-                contentStyle={{
-                  background: 'hsl(var(--background))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: 6,
-                  fontSize: 11,
-                  padding: '4px 8px',
-                  boxShadow: '0 6px 20px -10px rgb(0 0 0 / 0.3)',
-                }}
-                labelStyle={{ color: 'hsl(var(--muted-foreground))', marginBottom: 1, fontSize: 10 }}
-                itemStyle={{ color: 'hsl(var(--foreground))', padding: 0 }}
-                labelFormatter={(label: string) => formatDay(label)}
-                formatter={(value: number) => [value.toLocaleString(), 'new signups']}
+                content={<ProjectUsersMetricTooltip />}
               />
               <Area
                 type="monotone"

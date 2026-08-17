@@ -3,6 +3,7 @@
 import {
   DesignBadge,
   type DesignBadgeColor,
+  DesignButton,
   DesignCard,
 } from "@/components/design-components";
 import { cn, Skeleton } from "@/components/ui";
@@ -10,12 +11,13 @@ import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-a
 import { UserPageMetricCard } from "@/app/(main)/(protected)/projects/[projectId]/users/[userId]/user-page-metric-card";
 import { UserPageTableSection } from "@/app/(main)/(protected)/projects/[projectId]/users/[userId]/user-page-table-section";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
-import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, CoinsIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, CoinsIcon, GearIcon, PlusMinusIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from "@phosphor-icons/react";
 import type { DataGridColumnDef } from "@hexclave/dashboard-ui-components";
 import type { Transaction, TransactionEntry, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useState } from "react";
 import type { CustomerType } from "./customer-selector";
+import { ItemQuantityChangeDialog } from "./item-quantity-change-dialog";
 
 // Re-export so existing consumers of this module keep working, while the
 // canonical definition lives in customer-selector.tsx.
@@ -527,6 +529,7 @@ function ItemsCard({ customerType, customerId, itemIds }: { customerType: Custom
 
 function ItemBalanceRow({ customerType, customerId, itemId }: { customerType: CustomerType, customerId: string, itemId: string }) {
   const hexclaveAdminApp = useAdminApp();
+  const [isAdjustOpen, setIsAdjustOpen] = useState(false);
   const itemOptions = customerType === "user"
     ? { userId: customerId, itemId }
     : customerType === "team"
@@ -536,13 +539,36 @@ function ItemBalanceRow({ customerType, customerId, itemId }: { customerType: Cu
   const isNegative = item.quantity < 0;
 
   return (
-    <div className="flex items-center justify-between gap-3 py-1.5" title={itemId}>
-      <span className="truncate text-sm text-foreground">{item.displayName}</span>
-      <span
-        className={`shrink-0 text-sm font-semibold tabular-nums ${isNegative ? "text-destructive" : "text-foreground"}`}
-      >
-        {item.quantity}
-      </span>
-    </div>
+    <>
+      <div className="flex items-center justify-between gap-3 py-1" title={itemId}>
+        <span className="truncate text-sm text-foreground">{item.displayName}</span>
+        <div className="flex shrink-0 items-center gap-1">
+          <span
+            className={`text-sm font-semibold tabular-nums ${isNegative ? "text-destructive" : "text-foreground"}`}
+          >
+            {item.quantity}
+          </span>
+          <DesignButton
+            variant="ghost"
+            size="icon"
+            type="button"
+            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            aria-label={`Adjust quantity of ${item.displayName}`}
+            onClick={() => setIsAdjustOpen(true)}
+          >
+            <PlusMinusIcon className="h-3.5 w-3.5" aria-hidden />
+          </DesignButton>
+        </div>
+      </div>
+      <ItemQuantityChangeDialog
+        open={isAdjustOpen}
+        onOpenChange={setIsAdjustOpen}
+        customerType={customerType}
+        customerId={customerId}
+        itemId={itemId}
+        itemDisplayName={item.displayName}
+        currentQuantity={item.quantity}
+      />
+    </>
   );
 }

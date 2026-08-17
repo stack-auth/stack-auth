@@ -103,9 +103,9 @@ async function waitForAnalyticsRowsForSessionReplaySegment(
   expectedCount: number,
 ): Promise<void> {
   for (let i = 0; i < 30; i++) {
-    const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
+    const response = await niceBackendFetch("/api/v1/analytics/query", {
       method: "POST",
-      accessType: "admin",
+      accessType: "server",
       body: {
         query: `
           SELECT count() AS count
@@ -180,6 +180,13 @@ it("should return metrics data with users", async ({ expect }) => {
       (r.body?.active_users_by_country?.["AQ"]?.length ?? 0) >= 2,
   );
   expect(response).toMatchSnapshot(`metrics_result_with_users`);
+
+  const hourlyUsers: Array<{ activity: number }> = response.body.hourly_users;
+  expect(hourlyUsers).toHaveLength(24);
+  expect(hourlyUsers.reduce((sum, bucket) => sum + bucket.activity, 0)).toBe(
+    response.body.total_users,
+  );
+  expect(hourlyUsers.slice(0, -2).every((bucket) => bucket.activity === 0)).toBe(true);
 
   await ensureAnonymousUsersAreStillExcluded(response);
 }, {

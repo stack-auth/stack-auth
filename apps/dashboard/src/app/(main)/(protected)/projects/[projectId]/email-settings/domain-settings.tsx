@@ -586,7 +586,7 @@ function ManagedDomainSetupDialog(props: {
                           <li>Under <span className="font-medium text-foreground">Import DNS records</span>, click <span className="font-medium text-foreground">Select a file</span> and pick the file you just downloaded.</li>
                         </ol>
                         <Image
-                          src="/assets/cloudflare-import-dns.png"
+                          src="/assets/cloudflare-import-dns.webp"
                           alt="Cloudflare Import and Export dialog screenshot"
                           width={1048}
                           height={828}
@@ -1180,7 +1180,7 @@ export function DomainSettings() {
               </div>
 
               {serverType === "resend" && (
-                <div className="space-y-1.5">
+                <div className="hexclave-sensitive space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Resend API Key</Label>
                   <DesignInput
                     value={formValues.password || ""}
@@ -1195,7 +1195,7 @@ export function DomainSettings() {
               {serverType === "standard" && (
                 <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
                   {configFields.map((field) => (
-                    <div key={field.key} className="space-y-1.5">
+                    <div key={field.key} className={cn("space-y-1.5", field.type === "password" && "hexclave-sensitive")}>
                       <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{field.label}</Label>
                       <DesignInput
                         value={formValues[field.key] || ""}

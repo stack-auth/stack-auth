@@ -41,6 +41,7 @@ import {
 import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from "@hexclave/next";
 import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { LayoutGroup, motion, useReducedMotion, type Transition } from "motion/react";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
@@ -480,17 +481,32 @@ function FilterMenu({
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <FilterMenuButton active={active} />
-      <Suspense fallback={null}>
-        <FilterMenuContent
-          filters={filters}
-          onSelect={(dimension, value) => {
-            onToggle(dimension, value);
-            setOpen(false);
-          }}
-        />
-      </Suspense>
+      {/* The menu contents read metrics, but they render in the page header, which
+          sits outside the overview's metrics error boundary. Without a boundary of
+          its own, a failed metrics request thrown here escapes the route and lands
+          in global-error.tsx, which navigates to "/" after three seconds — so a
+          broken analytics query would kick the user off the project entirely.
+          The overview below reports the failure, so the menu degrades to nothing. */}
+      <ErrorBoundary errorComponent={FilterMenuErrorComponent}>
+        <Suspense fallback={null}>
+          <FilterMenuContent
+            filters={filters}
+            onSelect={(dimension, value) => {
+              onToggle(dimension, value);
+              setOpen(false);
+            }}
+          />
+        </Suspense>
+      </ErrorBoundary>
     </DropdownMenu>
   );
+}
+
+function FilterMenuErrorComponent({ error }: { error: unknown }) {
+  useEffect(() => {
+    captureError("metrics-page-filter-menu", error);
+  }, [error]);
+  return null;
 }
 
 function FilterMenuContent({
@@ -526,7 +542,7 @@ function FilterMenuContent({
     <DropdownMenuPortal>
       <DropdownMenuContent
         align="end"
-        className="w-[min(30rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-foreground/[0.08] bg-background p-0 shadow-lg"
+        className="w-[min(30rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-black/[0.08] bg-white p-0 shadow-lg ring-1 ring-black/[0.06] dark:border-white/[0.08] dark:bg-background dark:ring-white/[0.08]"
       >
         <DropdownMenuLabel className="px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground">
           Filter analytics by
@@ -1491,8 +1507,9 @@ export default function MetricsPage() {
   );
 }
 
-function MetricsErrorComponent(props: { error: Error, reset?: () => void }) {
-  return <MetricsErrorFallback error={props.error} onRetryAction={props.reset} />;
+function MetricsErrorComponent(props: { error: unknown, reset?: () => void }) {
+  const error = props.error instanceof Error ? props.error : new Error(String(props.error));
+  return <MetricsErrorFallback error={error} onRetryAction={props.reset} />;
 }
 
 function MetricsFilterPreloader({

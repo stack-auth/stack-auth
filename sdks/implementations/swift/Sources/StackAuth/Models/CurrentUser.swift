@@ -23,6 +23,8 @@ public actor CurrentUser {
     public var isAnonymous: Bool { userData.isAnonymous }
     public var isRestricted: Bool { userData.isRestricted }
     public var restrictedReason: User.RestrictedReason? { userData.restrictedReason }
+    public var restrictedByAdmin: Bool { userData.restrictedByAdmin }
+    public var restrictedByAdminReason: String? { userData.restrictedByAdminReason }
     public var oauthProviders: [User.OAuthProviderInfo] { userData.oauthProviders }
     
     init(client: APIClient, json: [String: Any]) {

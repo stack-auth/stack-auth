@@ -2,6 +2,7 @@ import { Skeleton, cn } from "~/components/ui";
 import { Bell, Contact, CreditCard, Key, Monitor, PlusCircle, Settings, ShieldCheck } from "lucide-react";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Team, useStackApp, useUser } from "@hexclave/react";
+import { AccountDeletionBoundary, type DeleteAccountCallback } from "./account-deletion-boundary";
 import { HostedFullPage } from "./hosted-full-page";
 import { SidebarLayout } from './sidebar-layout';
 import { ProfilePage } from "./profile-page/profile-page";
@@ -55,7 +56,7 @@ const TeamCreationPage = React.lazy(async () => ({
   default: (await import("./teams/team-creation-page")).TeamCreationPage,
 }));
 
-export function HostedAccountSettings(props: {
+type HostedAccountSettingsProps = {
   fullPage?: boolean,
   mockUser?: {
     displayName?: string,
@@ -72,6 +73,7 @@ export function HostedAccountSettings(props: {
     config: {
       allowUserApiKeys: boolean,
       clientTeamCreationEnabled?: boolean,
+      clientUserDeletionEnabled?: boolean,
     },
   },
   mockSessions?: Array<{
@@ -85,6 +87,20 @@ export function HostedAccountSettings(props: {
       cityName?: string,
     },
   }>,
+};
+
+export function HostedAccountSettings(props: HostedAccountSettingsProps) {
+  return (
+    <AccountDeletionBoundary>
+      {(onDeleteAccount) => (
+        <AuthenticatedAccountSettings {...props} onDeleteAccount={onDeleteAccount} />
+      )}
+    </AccountDeletionBoundary>
+  );
+}
+
+function AuthenticatedAccountSettings(props: HostedAccountSettingsProps & {
+  onDeleteAccount: DeleteAccountCallback,
 }) {
   const userFromHook = useUser({ or: props.mockUser ? 'return-null' : 'redirect' });
   const stackApp = useStackApp();
@@ -232,7 +248,18 @@ export function HostedAccountSettings(props: {
       type: 'item' as const,
       id: 'settings',
       icon: <Icon name="Settings"/>,
-      content: <SettingsPage mockMode={!!props.mockUser}/>,
+      content: (
+        <SettingsPage
+          mockMode={!!props.mockUser}
+          showDeleteSection={!!props.mockUser || project.config.clientUserDeletionEnabled === true}
+          onDeleteAccount={async () => {
+            if (userFromHook == null) {
+              throw new Error("Cannot delete an account without an authenticated user");
+            }
+            await props.onDeleteAccount(() => userFromHook.delete());
+          }}
+        />
+      ),
     },
     ...( (teams.length > 0 || project.config.clientTeamCreationEnabled) ? [{
       title: 'Teams',

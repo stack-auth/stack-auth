@@ -1,7 +1,7 @@
 import { globalPrismaClient } from '@/prisma-client';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
 import { EmailOutboxCreatedWith } from '@/generated/prisma/client';
-import { DEFAULT_TEMPLATE_IDS } from '@hexclave/shared/dist/helpers/emails';
+import { DEFAULT_EMAIL_THEMES, DEFAULT_TEMPLATE_IDS } from '@hexclave/shared/dist/helpers/emails';
 import { UsersCrud } from '@hexclave/shared/dist/interface/crud/users';
 import { getEnvBoolean, getEnvVariable } from '@hexclave/shared/dist/utils/env';
 import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
@@ -99,9 +99,21 @@ export async function sendEmailFromDefaultTemplate(options: {
 }
 
 const DEFAULT_TEMPLATE_ID_SET: ReadonlySet<string> = new Set(Object.values(DEFAULT_TEMPLATE_IDS));
+const DEFAULT_EMAIL_THEME_ID_SET: ReadonlySet<string> = new Set(Object.keys(DEFAULT_EMAIL_THEMES));
+
+/** Whether an email was rendered with a project-defined custom (non-default) theme. */
+function isCustomEmailTheme(themeId: string | null | undefined): boolean {
+  return themeId !== null && themeId !== undefined && !DEFAULT_EMAIL_THEME_ID_SET.has(themeId);
+}
 
 /** Whether an outbox email is project-defined custom content that should get the shared-server dev wrapper. */
-export function isCustomEmailForSharedServer(recipient: EmailOutboxRecipient, createdWith: EmailOutboxCreatedWith, programmaticCallTemplateId: string | null): boolean {
+export function isCustomEmailForSharedServer(recipient: EmailOutboxRecipient, createdWith: EmailOutboxCreatedWith, programmaticCallTemplateId: string | null, themeId: string | null | undefined): boolean {
+  // A custom (non-default) theme makes even a default/system email (verification, password reset, ...) look
+  // like the project's own production email, so it should carry the dev notice regardless of recipient or
+  // template. Hexclave's own internal notifications always send with themeId === null, so they stay exempt.
+  if (isCustomEmailTheme(themeId)) {
+    return true;
+  }
   // Hexclave's own system notifications (credential-scanning alerts, internal feedback) send raw HTML to bare
   // "custom-emails" addresses and must go out verbatim; the send-email API always targets the project's users.
   if (recipient.type === "custom-emails") {

@@ -189,6 +189,175 @@
         }
       }
     },
+    "/analytics/query": {
+      "post": {
+        "summary": "Run analytics query",
+        "description": "Runs a read-only ClickHouse SQL query against the current project's analytics dataset.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "include_all_branches": {
+                    "type": "boolean",
+                    "example": false,
+                    "description": "Reserved for future branch-wide analytics queries. Must be false.",
+                    "default": false
+                  },
+                  "query": {
+                    "type": "string",
+                    "example": "SELECT count() AS event_count FROM events",
+                    "description": "A read-only ClickHouse SQL query."
+                  },
+                  "params": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                    "example": {
+                      "event_type": "$page-view"
+                    },
+                    "description": "ClickHouse query parameters referenced by the query.",
+                    "default": {}
+                  },
+                  "timeout_ms": {
+                    "type": "integer",
+                    "example": 10000,
+                    "description": "Maximum query execution time in milliseconds. The effective timeout is also capped by the project's plan.",
+                    "default": 10000
+                  }
+                },
+                "required": [
+                  "query"
+                ],
+                "example": {
+                  "include_all_branches": false,
+                  "query": "SELECT count() AS event_count FROM events",
+                  "params": {
+                    "event_type": "$page-view"
+                  },
+                  "timeout_ms": 10000
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Analytics"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/analytics/query",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "array",
+                      "items": {
+                        "type": [
+                          "object",
+                          "null"
+                        ]
+                      },
+                      "example": [
+                        {
+                          "event_count": 42
+                        }
+                      ],
+                      "description": "Query result rows as plain JSON objects."
+                    },
+                    "query_id": {
+                      "type": "string",
+                      "example": "00000000-0000-0000-0000-000000000000:main:00000000-0000-0000-0000-000000000001",
+                      "description": "The ClickHouse query ID. Use it to fetch query timing stats."
+                    }
+                  },
+                  "required": [
+                    "result",
+                    "query_id"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/analytics/query/timing": {
+      "post": {
+        "summary": "Get analytics query timing",
+        "description": "Returns CPU and wall-clock timing stats for a previously run analytics query.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query_id": {
+                    "type": "string",
+                    "example": "00000000-0000-0000-0000-000000000000:main:00000000-0000-0000-0000-000000000001",
+                    "description": "The query_id returned from POST /analytics/query."
+                  }
+                },
+                "required": [
+                  "query_id"
+                ],
+                "example": {
+                  "query_id": "00000000-0000-0000-0000-000000000000:main:00000000-0000-0000-0000-000000000001"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Analytics"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/analytics/query/timing",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "stats": {
+                      "type": "object",
+                      "properties": {
+                        "cpu_time": {
+                          "type": "number",
+                          "example": 12,
+                          "description": "ClickHouse CPU time in milliseconds."
+                        },
+                        "wall_clock_time": {
+                          "type": "number",
+                          "example": 18,
+                          "description": "ClickHouse wall-clock time in milliseconds."
+                        }
+                      },
+                      "required": [
+                        "cpu_time",
+                        "wall_clock_time"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "stats"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/anonymous/sign-up": {
       "post": {
         "summary": "Sign up anonymously",
@@ -313,7 +482,13 @@
                       "type": "object",
                       "properties": {
                         "next_cursor": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
                           "description": "The cursor to fetch the next page of results. null if there is no next page."
                         }
@@ -345,7 +520,10 @@
                     "type": "string"
                   },
                   "expires_at_millis": {
-                    "type": "number"
+                    "type": [
+                      "number",
+                      "null"
+                    ]
                   },
                   "is_public": {
                     "type": "boolean"
@@ -779,7 +957,13 @@
                       "type": "object",
                       "properties": {
                         "next_cursor": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
                           "description": "The cursor to fetch the next page of results. null if there is no next page."
                         }
@@ -811,7 +995,10 @@
                     "type": "string"
                   },
                   "expires_at_millis": {
-                    "type": "number"
+                    "type": [
+                      "number",
+                      "null"
+                    ]
                   },
                   "is_public": {
                     "type": "boolean"
@@ -1438,7 +1625,13 @@
                       "type": "object",
                       "properties": {
                         "next_cursor": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
                           "description": "The cursor to fetch the next page of results. null if there is no next page."
                         }
@@ -1552,7 +1745,13 @@
                       "type": "object",
                       "properties": {
                         "next_cursor": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
                           "description": "The cursor to fetch the next page of results. null if there is no next page."
                         }
@@ -2529,7 +2728,13 @@
                           "type": "boolean"
                         },
                         "boost_expires_at": {
-                          "type": "string"
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ]
                         }
                       },
                       "required": [
@@ -2610,7 +2815,13 @@
                       "type": "object",
                       "properties": {
                         "next_cursor": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
                           "description": "The cursor to fetch the next page of results. null if there is no next page."
                         }
@@ -2784,7 +2995,13 @@
                       "type": "object",
                       "properties": {
                         "next_cursor": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
                           "description": "The cursor to fetch the next page of results. null if there is no next page."
                         }
@@ -2887,7 +3104,13 @@
                     "type": "string"
                   },
                   "theme_id": {
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ]
                   },
                   "to": {
                     "type": "object"
@@ -2974,7 +3197,7 @@
     "/emails/send-email": {
       "post": {
         "summary": "Send email",
-        "description": "Send an email to a list of users. The content field should contain either {html} for HTML emails, {template_id, variables} for template-based emails, or {draft_id} for a draft email.",
+        "description": "Send an email to a list of users (user_ids), all users (all_users), or arbitrary email addresses (emails). The content field should contain either {html} for HTML emails, {template_id, variables} for template-based emails, or {draft_id} for a draft email.",
         "parameters": [],
         "tags": [
           "Emails"
@@ -2995,11 +3218,12 @@
                         "properties": {
                           "user_id": {
                             "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
                           }
                         },
-                        "required": [
-                          "user_id"
-                        ]
+                        "required": []
                       }
                     }
                   },
@@ -3482,7 +3706,13 @@
                       "type": "object",
                       "properties": {
                         "next_cursor": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
                           "description": "The cursor to fetch the next page of results. null if there is no next page."
                         }
@@ -3935,6 +4165,105 @@
                     "type",
                     "allow_sign_in",
                     "allow_connected_accounts"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/browser-actions": {
+      "post": {
+        "summary": "Create a browser action",
+        "description": "Creates a single-use link to one of the project's trusted origins that, when opened, makes the Hexclave SDK on that page perform an action in the browser: signing in as a given user (impersonation) or showing the clickmap overlay. Requires server or higher access.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "impersonation",
+                      "clickmap-overlay"
+                    ],
+                    "example": "impersonation",
+                    "description": "The action the SDK performs after the link is opened. `impersonation` signs the browser in as `user_id`; `clickmap-overlay` mounts the clickmap overlay."
+                  },
+                  "origin": {
+                    "type": "string",
+                    "example": "https://app.example.com",
+                    "description": "The project's trusted origin where the link opens. The action can only be consumed by a request whose Origin header matches this value."
+                  },
+                  "expires_in_millis": {
+                    "type": "integer",
+                    "example": 300000,
+                    "description": "How long the single-use link remains redeemable, in milliseconds.",
+                    "default": 300000
+                  },
+                  "session_expires_in_millis": {
+                    "type": "integer",
+                    "example": 7200000,
+                    "description": "Lifetime of the impersonation session, measured from link creation. Ignored for `clickmap-overlay` actions.",
+                    "default": 7200000
+                  },
+                  "user_id": {
+                    "type": "string",
+                    "example": "user_123",
+                    "description": "ID of the user to impersonate. Required when `type` is `impersonation` and ignored for `clickmap-overlay`."
+                  }
+                },
+                "required": [
+                  "type",
+                  "origin"
+                ],
+                "example": {
+                  "type": "impersonation",
+                  "origin": "https://app.example.com",
+                  "expires_in_millis": 300000,
+                  "session_expires_in_millis": 7200000,
+                  "user_id": "user_123"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Others"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/browser-actions",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "example": "browser_action_code",
+                      "description": "Opaque, single-use browser action ID."
+                    },
+                    "url": {
+                      "type": "string",
+                      "example": "https://app.example.com/?hexclave_action_id=browser_action_code",
+                      "description": "URL at the requested trusted origin containing the browser action ID. Open it in the target browser to perform the action."
+                    },
+                    "expires_at_millis": {
+                      "type": "number",
+                      "example": 1800000000000,
+                      "description": "Unix timestamp in milliseconds after which the browser action can no longer be consumed."
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "url",
+                    "expires_at_millis"
                   ]
                 }
               }
@@ -4941,7 +5270,10 @@
                         "required": []
                       },
                       "client_metadata": {
-                        "type": "object",
+                        "type": [
+                          "object",
+                          "null"
+                        ],
                         "example": {
                           "featureFlag": true,
                           "source": "marketing-campaign"
@@ -4949,7 +5281,10 @@
                         "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                       },
                       "client_read_only_metadata": {
-                        "type": "object",
+                        "type": [
+                          "object",
+                          "null"
+                        ],
                         "example": {
                           "featureFlag": true,
                           "source": "marketing-campaign"
@@ -4957,7 +5292,10 @@
                         "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
                       },
                       "server_metadata": {
-                        "type": "object",
+                        "type": [
+                          "object",
+                          "null"
+                        ],
                         "example": {
                           "featureFlag": true,
                           "source": "marketing-campaign"
@@ -5038,7 +5376,7 @@
                   "price_id": {
                     "type": "string",
                     "example": "price_1234567890abcdef",
-                    "description": "The Stack auth price ID to purchase"
+                    "description": "The Hexclave price ID to purchase"
                   },
                   "quantity": {
                     "type": "integer",
@@ -5081,16 +5419,16 @@
                     "client_secret": {
                       "type": "string",
                       "example": "1234567890abcdef_secret_xyz123",
-                      "description": "Stripe client secret used by the browser to confirm payment via Stripe Elements. Omitted when no payment step is required from the customer; in that case the purchase is being settled without a confirmation step and the caller should skip mounting Stripe Elements."
+                      "description": "Stripe client secret used by the browser to confirm payment or setup via Stripe Elements. Omitted when no confirmation step is required from the customer."
                     },
-                    "client_secret_type": {
+                    "stripe_intent_type": {
                       "type": "string",
                       "enum": [
                         "payment",
                         "setup"
                       ],
                       "example": "payment",
-                      "description": "The Stripe confirmation flow to use for client_secret. Defaults to payment when omitted for backwards compatibility."
+                      "description": "Whether client_secret is a PaymentIntent (immediate charge) or SetupIntent (e.g. free trial card collection). Omitted when client_secret is omitted."
                     }
                   }
                 }
@@ -5185,7 +5523,10 @@
                           "required": []
                         },
                         "client_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "featureFlag": true,
                             "source": "marketing-campaign"
@@ -5193,7 +5534,10 @@
                           "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                         },
                         "client_read_only_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "featureFlag": true,
                             "source": "marketing-campaign"
@@ -5201,7 +5545,10 @@
                           "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
                         },
                         "server_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "featureFlag": true,
                             "source": "marketing-campaign"
@@ -5215,13 +5562,25 @@
                       ]
                     },
                     "stripe_account_id": {
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ]
                     },
                     "project_id": {
                       "type": "string"
                     },
                     "project_logo_url": {
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ]
                     },
                     "already_bought_non_stackable": {
                       "type": "boolean"
@@ -5244,17 +5603,26 @@
                         ]
                       }
                     },
+                    "replaces_stripe_subscription": {
+                      "type": "boolean",
+                      "example": false,
+                      "description": "Whether this purchase will replace an existing Stripe-backed subscription in-place (free trials are not re-applied on that path)"
+                    },
                     "test_mode": {
                       "type": "boolean"
                     },
                     "charges_enabled": {
-                      "type": "boolean"
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
                     }
                   },
                   "required": [
                     "project_id",
                     "already_bought_non_stackable",
                     "conflicting_products",
+                    "replaces_stripe_subscription",
                     "test_mode"
                   ]
                 }
@@ -5432,7 +5800,13 @@
                       "type": "object",
                       "properties": {
                         "next_cursor": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
                           "description": "The cursor to fetch the next page of results. null if there is no next page."
                         }
@@ -5771,7 +6145,13 @@
                       "type": "object",
                       "properties": {
                         "next_cursor": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
                           "description": "The cursor to fetch the next page of results. null if there is no next page."
                         }
@@ -6003,7 +6383,13 @@
                       "type": "object",
                       "properties": {
                         "next_cursor": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
                           "description": "The cursor to fetch the next page of results. null if there is no next page."
                         }
@@ -6359,7 +6745,13 @@
                       "type": "object",
                       "properties": {
                         "next_cursor": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
                           "description": "The cursor to fetch the next page of results. null if there is no next page."
                         }
@@ -6554,8 +6946,14 @@
                       "example": "MyMusic",
                       "description": "Human-readable project display name. This is not a unique identifier."
                     },
+                    "is_development_environment": {
+                      "type": "boolean"
+                    },
                     "pushed_config_error": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "properties": {
                         "message": {
                           "type": "string"
@@ -6583,6 +6981,7 @@
                   "required": [
                     "id",
                     "display_name",
+                    "is_development_environment",
                     "config_warnings"
                   ]
                 }
@@ -6651,22 +7050,52 @@
                                 "type": "string"
                               },
                               "countryCode": {
-                                "type": "string"
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "enum": [
+                                  null
+                                ]
                               },
                               "regionCode": {
-                                "type": "string"
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "enum": [
+                                  null
+                                ]
                               },
                               "cityName": {
-                                "type": "string"
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "enum": [
+                                  null
+                                ]
                               },
                               "latitude": {
-                                "type": "number"
+                                "type": [
+                                  "number",
+                                  "null"
+                                ]
                               },
                               "longitude": {
-                                "type": "number"
+                                "type": [
+                                  "number",
+                                  "null"
+                                ]
                               },
                               "tzIdentifier": {
-                                "type": "string"
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "enum": [
+                                  null
+                                ]
                               }
                             },
                             "required": [
@@ -6686,7 +7115,13 @@
                       "type": "object",
                       "properties": {
                         "next_cursor": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
                           "description": "The cursor to fetch the next page of results. null if there is no next page."
                         }
@@ -6967,7 +7402,13 @@
                       "type": "object",
                       "properties": {
                         "next_cursor": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
                           "description": "The cursor to fetch the next page of results. null if there is no next page."
                         }
@@ -7360,7 +7801,13 @@
                                 "description": "The unique identifier of the user"
                               },
                               "primary_email": {
-                                "type": "string",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "enum": [
+                                  null
+                                ],
                                 "example": "johndoe@example.com",
                                 "description": "Primary email"
                               },
@@ -7375,12 +7822,21 @@
                                 "description": "Whether the primary email is used for authentication. If this is set to `false`, the user will not be able to sign in with the primary email with password or OTP"
                               },
                               "display_name": {
-                                "type": "string",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "enum": [
+                                  null
+                                ],
                                 "example": "John Doe",
                                 "description": "Human-readable user display name. This is not a unique identifier."
                               },
                               "selected_team": {
-                                "type": "object",
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
                                 "properties": {
                                   "created_at_millis": {
                                     "type": "number",
@@ -7388,7 +7844,10 @@
                                     "description": "The time the team was created (the number of milliseconds since epoch, January 1, 1970, UTC)"
                                   },
                                   "server_metadata": {
-                                    "type": "object",
+                                    "type": [
+                                      "object",
+                                      "null"
+                                    ],
                                     "example": {
                                       "key": "value"
                                     },
@@ -7405,19 +7864,31 @@
                                     "description": "Human-readable team display name. This is not a unique identifier."
                                   },
                                   "profile_image_url": {
-                                    "type": "string",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ],
+                                    "enum": [
+                                      null
+                                    ],
                                     "example": "https://example.com/image.jpg",
                                     "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                                   },
                                   "client_metadata": {
-                                    "type": "object",
+                                    "type": [
+                                      "object",
+                                      "null"
+                                    ],
                                     "example": {
                                       "key": "value"
                                     },
                                     "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                                   },
                                   "client_read_only_metadata": {
-                                    "type": "object",
+                                    "type": [
+                                      "object",
+                                      "null"
+                                    ],
                                     "example": {
                                       "key": "value"
                                     },
@@ -7431,12 +7902,24 @@
                                 ]
                               },
                               "selected_team_id": {
-                                "type": "string",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "enum": [
+                                  null
+                                ],
                                 "example": "team-id",
                                 "description": "ID of the team currently selected by the user"
                               },
                               "profile_image_url": {
-                                "type": "string",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "enum": [
+                                  null
+                                ],
                                 "example": "https://example.com/image.jpg",
                                 "description": "URL of the profile image for user. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                               },
@@ -7446,21 +7929,30 @@
                                 "description": "The time the user signed up (identify) => `(the number of milliseconds since epoch, January 1, 1970, UTC)`"
                               },
                               "client_metadata": {
-                                "type": "object",
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
                                 "example": {
                                   "key": "value"
                                 },
                                 "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                               },
                               "client_read_only_metadata": {
-                                "type": "object",
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
                                 "example": {
                                   "key": "value"
                                 },
                                 "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
                               },
                               "server_metadata": {
-                                "type": "object",
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
                                 "example": {
                                   "key": "value"
                                 },
@@ -7480,7 +7972,10 @@
                                 "description": "Whether the user is in restricted state (has signed up but not completed onboarding requirements)"
                               },
                               "restricted_reason": {
-                                "type": "object",
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
                                 "properties": {
                                   "type": {
                                     "type": "string",
@@ -7503,17 +7998,35 @@
                                 "description": "Whether the user is restricted by an administrator. Can be set manually or by sign-up rules."
                               },
                               "restricted_by_admin_reason": {
-                                "type": "string",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "enum": [
+                                  null
+                                ],
                                 "example": null,
                                 "description": "Public reason shown to the user explaining why they are restricted. Optional."
                               },
                               "restricted_by_admin_private_details": {
-                                "type": "string",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "enum": [
+                                  null
+                                ],
                                 "example": null,
                                 "description": "Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above."
                               },
                               "country_code": {
-                                "type": "string",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "enum": [
+                                  null
+                                ],
                                 "example": "US",
                                 "description": "Best-effort ISO country code captured at sign-up time from request geo headers."
                               },
@@ -7571,12 +8084,24 @@
                             "description": "The unique identifier of the user"
                           },
                           "display_name": {
-                            "type": "string",
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              null
+                            ],
                             "example": "John Doe",
                             "description": "Human-readable team member display name. This is not a unique identifier. Note that this is separate from the display_name of the user."
                           },
                           "profile_image_url": {
-                            "type": "string",
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              null
+                            ],
                             "example": "https://example.com/image.jpg",
                             "description": "URL of the profile image for team member. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                           }
@@ -7592,7 +8117,13 @@
                       "type": "object",
                       "properties": {
                         "next_cursor": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
                           "description": "The cursor to fetch the next page of results. null if there is no next page."
                         }
@@ -7656,7 +8187,13 @@
                           "description": "The unique identifier of the user"
                         },
                         "primary_email": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "johndoe@example.com",
                           "description": "Primary email"
                         },
@@ -7671,12 +8208,21 @@
                           "description": "Whether the primary email is used for authentication. If this is set to `false`, the user will not be able to sign in with the primary email with password or OTP"
                         },
                         "display_name": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "John Doe",
                           "description": "Human-readable user display name. This is not a unique identifier."
                         },
                         "selected_team": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "properties": {
                             "created_at_millis": {
                               "type": "number",
@@ -7684,7 +8230,10 @@
                               "description": "The time the team was created (the number of milliseconds since epoch, January 1, 1970, UTC)"
                             },
                             "server_metadata": {
-                              "type": "object",
+                              "type": [
+                                "object",
+                                "null"
+                              ],
                               "example": {
                                 "key": "value"
                               },
@@ -7701,19 +8250,31 @@
                               "description": "Human-readable team display name. This is not a unique identifier."
                             },
                             "profile_image_url": {
-                              "type": "string",
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                null
+                              ],
                               "example": "https://example.com/image.jpg",
                               "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                             },
                             "client_metadata": {
-                              "type": "object",
+                              "type": [
+                                "object",
+                                "null"
+                              ],
                               "example": {
                                 "key": "value"
                               },
                               "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                             },
                             "client_read_only_metadata": {
-                              "type": "object",
+                              "type": [
+                                "object",
+                                "null"
+                              ],
                               "example": {
                                 "key": "value"
                               },
@@ -7727,12 +8288,24 @@
                           ]
                         },
                         "selected_team_id": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "team-id",
                           "description": "ID of the team currently selected by the user"
                         },
                         "profile_image_url": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "https://example.com/image.jpg",
                           "description": "URL of the profile image for user. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                         },
@@ -7742,21 +8315,30 @@
                           "description": "The time the user signed up (identify) => `(the number of milliseconds since epoch, January 1, 1970, UTC)`"
                         },
                         "client_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
                           "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                         },
                         "client_read_only_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
                           "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
                         },
                         "server_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
@@ -7776,7 +8358,10 @@
                           "description": "Whether the user is in restricted state (has signed up but not completed onboarding requirements)"
                         },
                         "restricted_reason": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "properties": {
                             "type": {
                               "type": "string",
@@ -7799,17 +8384,35 @@
                           "description": "Whether the user is restricted by an administrator. Can be set manually or by sign-up rules."
                         },
                         "restricted_by_admin_reason": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": null,
                           "description": "Public reason shown to the user explaining why they are restricted. Optional."
                         },
                         "restricted_by_admin_private_details": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": null,
                           "description": "Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above."
                         },
                         "country_code": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "US",
                           "description": "Best-effort ISO country code captured at sign-up time from request geo headers."
                         },
@@ -7867,12 +8470,24 @@
                       "description": "The unique identifier of the user"
                     },
                     "display_name": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "John Doe",
                       "description": "Human-readable team member display name. This is not a unique identifier. Note that this is separate from the display_name of the user."
                     },
                     "profile_image_url": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "https://example.com/image.jpg",
                       "description": "URL of the profile image for team member. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                     }
@@ -7925,7 +8540,13 @@
                     "description": "Human-readable team member display name. This is not a unique identifier. Note that this is separate from the display_name of the user."
                   },
                   "profile_image_url": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "https://example.com/image.jpg",
                     "description": "URL of the profile image for team member. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                   }
@@ -7959,7 +8580,13 @@
                           "description": "The unique identifier of the user"
                         },
                         "primary_email": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "johndoe@example.com",
                           "description": "Primary email"
                         },
@@ -7974,12 +8601,21 @@
                           "description": "Whether the primary email is used for authentication. If this is set to `false`, the user will not be able to sign in with the primary email with password or OTP"
                         },
                         "display_name": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "John Doe",
                           "description": "Human-readable user display name. This is not a unique identifier."
                         },
                         "selected_team": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "properties": {
                             "created_at_millis": {
                               "type": "number",
@@ -7987,7 +8623,10 @@
                               "description": "The time the team was created (the number of milliseconds since epoch, January 1, 1970, UTC)"
                             },
                             "server_metadata": {
-                              "type": "object",
+                              "type": [
+                                "object",
+                                "null"
+                              ],
                               "example": {
                                 "key": "value"
                               },
@@ -8004,19 +8643,31 @@
                               "description": "Human-readable team display name. This is not a unique identifier."
                             },
                             "profile_image_url": {
-                              "type": "string",
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                null
+                              ],
                               "example": "https://example.com/image.jpg",
                               "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                             },
                             "client_metadata": {
-                              "type": "object",
+                              "type": [
+                                "object",
+                                "null"
+                              ],
                               "example": {
                                 "key": "value"
                               },
                               "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                             },
                             "client_read_only_metadata": {
-                              "type": "object",
+                              "type": [
+                                "object",
+                                "null"
+                              ],
                               "example": {
                                 "key": "value"
                               },
@@ -8030,12 +8681,24 @@
                           ]
                         },
                         "selected_team_id": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "team-id",
                           "description": "ID of the team currently selected by the user"
                         },
                         "profile_image_url": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "https://example.com/image.jpg",
                           "description": "URL of the profile image for user. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                         },
@@ -8045,21 +8708,30 @@
                           "description": "The time the user signed up (identify) => `(the number of milliseconds since epoch, January 1, 1970, UTC)`"
                         },
                         "client_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
                           "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                         },
                         "client_read_only_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
                           "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
                         },
                         "server_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
@@ -8079,7 +8751,10 @@
                           "description": "Whether the user is in restricted state (has signed up but not completed onboarding requirements)"
                         },
                         "restricted_reason": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "properties": {
                             "type": {
                               "type": "string",
@@ -8102,17 +8777,35 @@
                           "description": "Whether the user is restricted by an administrator. Can be set manually or by sign-up rules."
                         },
                         "restricted_by_admin_reason": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": null,
                           "description": "Public reason shown to the user explaining why they are restricted. Optional."
                         },
                         "restricted_by_admin_private_details": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": null,
                           "description": "Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above."
                         },
                         "country_code": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "US",
                           "description": "Best-effort ISO country code captured at sign-up time from request geo headers."
                         },
@@ -8170,12 +8863,24 @@
                       "description": "The unique identifier of the user"
                     },
                     "display_name": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "John Doe",
                       "description": "Human-readable team member display name. This is not a unique identifier. Note that this is separate from the display_name of the user."
                     },
                     "profile_image_url": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "https://example.com/image.jpg",
                       "description": "URL of the profile image for team member. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                     }
@@ -8409,7 +9114,10 @@
                             "description": "The time the team was created (the number of milliseconds since epoch, January 1, 1970, UTC)"
                           },
                           "server_metadata": {
-                            "type": "object",
+                            "type": [
+                              "object",
+                              "null"
+                            ],
                             "example": {
                               "key": "value"
                             },
@@ -8426,19 +9134,31 @@
                             "description": "Human-readable team display name. This is not a unique identifier."
                           },
                           "profile_image_url": {
-                            "type": "string",
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              null
+                            ],
                             "example": "https://example.com/image.jpg",
                             "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                           },
                           "client_metadata": {
-                            "type": "object",
+                            "type": [
+                              "object",
+                              "null"
+                            ],
                             "example": {
                               "key": "value"
                             },
                             "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                           },
                           "client_read_only_metadata": {
-                            "type": "object",
+                            "type": [
+                              "object",
+                              "null"
+                            ],
                             "example": {
                               "key": "value"
                             },
@@ -8456,7 +9176,13 @@
                       "type": "object",
                       "properties": {
                         "next_cursor": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
                           "description": "The cursor to fetch the next page of results. null if there is no next page."
                         }
@@ -8495,26 +9221,41 @@
                     "description": "The ID of the creator of the team. If not specified, the user will not be added to the team. Can be either \"me\" or the ID of the user. Only used on the client side."
                   },
                   "client_read_only_metadata": {
-                    "type": "object",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
                     "example": {
                       "key": "value"
                     },
                     "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
                   },
                   "server_metadata": {
-                    "type": "object",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
                     "example": {
                       "key": "value"
                     },
                     "description": "Server metadata. Used as a data store, only accessible from the server side. You can store secret information related to the team here."
                   },
                   "profile_image_url": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "https://example.com/image.jpg",
                     "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                   },
                   "client_metadata": {
-                    "type": "object",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
                     "example": {
                       "key": "value"
                     },
@@ -8560,7 +9301,10 @@
                       "description": "The time the team was created (the number of milliseconds since epoch, January 1, 1970, UTC)"
                     },
                     "server_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
@@ -8577,19 +9321,31 @@
                       "description": "Human-readable team display name. This is not a unique identifier."
                     },
                     "profile_image_url": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "https://example.com/image.jpg",
                       "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                     },
                     "client_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
                       "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                     },
                     "client_read_only_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
@@ -8640,7 +9396,10 @@
                       "description": "The time the team was created (the number of milliseconds since epoch, January 1, 1970, UTC)"
                     },
                     "server_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
@@ -8657,19 +9416,31 @@
                       "description": "Human-readable team display name. This is not a unique identifier."
                     },
                     "profile_image_url": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "https://example.com/image.jpg",
                       "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                     },
                     "client_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
                       "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                     },
                     "client_read_only_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
@@ -8748,14 +9519,20 @@
                 "type": "object",
                 "properties": {
                   "client_read_only_metadata": {
-                    "type": "object",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
                     "example": {
                       "key": "value"
                     },
                     "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
                   },
                   "server_metadata": {
-                    "type": "object",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
                     "example": {
                       "key": "value"
                     },
@@ -8767,12 +9544,21 @@
                     "description": "Human-readable team display name. This is not a unique identifier."
                   },
                   "profile_image_url": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "https://example.com/image.jpg",
                     "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                   },
                   "client_metadata": {
-                    "type": "object",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
                     "example": {
                       "key": "value"
                     },
@@ -8814,7 +9600,10 @@
                       "description": "The time the team was created (the number of milliseconds since epoch, January 1, 1970, UTC)"
                     },
                     "server_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
@@ -8831,19 +9620,31 @@
                       "description": "Human-readable team display name. This is not a unique identifier."
                     },
                     "profile_image_url": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "https://example.com/image.jpg",
                       "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                     },
                     "client_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
                       "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                     },
                     "client_read_only_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
@@ -8882,9 +9683,9 @@
             "in": "query",
             "schema": {
               "type": "integer",
-              "description": "The maximum number of items to return"
+              "description": "The maximum number of items to return (capped at 1000). Larger result sets must be paged with cursor."
             },
-            "description": "The maximum number of items to return",
+            "description": "The maximum number of items to return (capped at 1000). Larger result sets must be paged with cursor.",
             "required": false
           },
           {
@@ -9011,7 +9812,13 @@
                             "description": "The unique identifier of the user"
                           },
                           "primary_email": {
-                            "type": "string",
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              null
+                            ],
                             "example": "johndoe@example.com",
                             "description": "Primary email"
                           },
@@ -9026,12 +9833,21 @@
                             "description": "Whether the primary email is used for authentication. If this is set to `false`, the user will not be able to sign in with the primary email with password or OTP"
                           },
                           "display_name": {
-                            "type": "string",
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              null
+                            ],
                             "example": "John Doe",
                             "description": "Human-readable user display name. This is not a unique identifier."
                           },
                           "selected_team": {
-                            "type": "object",
+                            "type": [
+                              "object",
+                              "null"
+                            ],
                             "properties": {
                               "created_at_millis": {
                                 "type": "number",
@@ -9039,7 +9855,10 @@
                                 "description": "The time the team was created (the number of milliseconds since epoch, January 1, 1970, UTC)"
                               },
                               "server_metadata": {
-                                "type": "object",
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
                                 "example": {
                                   "key": "value"
                                 },
@@ -9056,19 +9875,31 @@
                                 "description": "Human-readable team display name. This is not a unique identifier."
                               },
                               "profile_image_url": {
-                                "type": "string",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "enum": [
+                                  null
+                                ],
                                 "example": "https://example.com/image.jpg",
                                 "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                               },
                               "client_metadata": {
-                                "type": "object",
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
                                 "example": {
                                   "key": "value"
                                 },
                                 "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                               },
                               "client_read_only_metadata": {
-                                "type": "object",
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
                                 "example": {
                                   "key": "value"
                                 },
@@ -9082,12 +9913,24 @@
                             ]
                           },
                           "selected_team_id": {
-                            "type": "string",
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              null
+                            ],
                             "example": "team-id",
                             "description": "ID of the team currently selected by the user"
                           },
                           "profile_image_url": {
-                            "type": "string",
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              null
+                            ],
                             "example": "https://example.com/image.jpg",
                             "description": "URL of the profile image for user. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                           },
@@ -9097,21 +9940,30 @@
                             "description": "The time the user signed up (identify) => `(the number of milliseconds since epoch, January 1, 1970, UTC)`"
                           },
                           "client_metadata": {
-                            "type": "object",
+                            "type": [
+                              "object",
+                              "null"
+                            ],
                             "example": {
                               "key": "value"
                             },
                             "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                           },
                           "client_read_only_metadata": {
-                            "type": "object",
+                            "type": [
+                              "object",
+                              "null"
+                            ],
                             "example": {
                               "key": "value"
                             },
                             "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
                           },
                           "server_metadata": {
-                            "type": "object",
+                            "type": [
+                              "object",
+                              "null"
+                            ],
                             "example": {
                               "key": "value"
                             },
@@ -9131,7 +9983,10 @@
                             "description": "Whether the user is in restricted state (has signed up but not completed onboarding requirements)"
                           },
                           "restricted_reason": {
-                            "type": "object",
+                            "type": [
+                              "object",
+                              "null"
+                            ],
                             "properties": {
                               "type": {
                                 "type": "string",
@@ -9154,17 +10009,35 @@
                             "description": "Whether the user is restricted by an administrator. Can be set manually or by sign-up rules."
                           },
                           "restricted_by_admin_reason": {
-                            "type": "string",
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              null
+                            ],
                             "example": null,
                             "description": "Public reason shown to the user explaining why they are restricted. Optional."
                           },
                           "restricted_by_admin_private_details": {
-                            "type": "string",
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              null
+                            ],
                             "example": null,
                             "description": "Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above."
                           },
                           "country_code": {
-                            "type": "string",
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              null
+                            ],
                             "example": "US",
                             "description": "Best-effort ISO country code captured at sign-up time from request geo headers."
                           },
@@ -9216,7 +10089,13 @@
                       "type": "object",
                       "properties": {
                         "next_cursor": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
                           "description": "The cursor to fetch the next page of results. null if there is no next page."
                         }
@@ -9248,38 +10127,65 @@
                     "type": "boolean"
                   },
                   "display_name": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "John Doe",
                     "description": "Human-readable user display name. This is not a unique identifier."
                   },
                   "profile_image_url": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "https://example.com/image.jpg",
                     "description": "URL of the profile image for user. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                   },
                   "client_metadata": {
-                    "type": "object",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
                     "example": {
                       "key": "value"
                     },
                     "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                   },
                   "client_read_only_metadata": {
-                    "type": "object",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
                     "example": {
                       "key": "value"
                     },
                     "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
                   },
                   "server_metadata": {
-                    "type": "object",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
                     "example": {
                       "key": "value"
                     },
                     "description": "Server metadata. Used as a data store, only accessible from the server side. You can store secret information related to the user here."
                   },
                   "primary_email": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "johndoe@example.com",
                     "description": "Primary email"
                   },
@@ -9294,7 +10200,13 @@
                     "description": "Whether the primary email is used for authentication. If this is set to `false`, the user will not be able to sign in with the primary email with password or OTP"
                   },
                   "password": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "my-new-password",
                     "description": "Sets the user's password. Doing so revokes all current sessions."
                   },
@@ -9303,7 +10215,13 @@
                     "description": "If `password` is not given, sets the user's password hash to the given string in Modular Crypt Format (ex.: `$2a$10$VIhIOofSMqGdGlL4wzE//e.77dAQGqNtF/1dT7bqCrVtQuInWy2qi`). Doing so revokes all current sessions."
                   },
                   "totp_secret_base64": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "dG90cC1zZWNyZXQ=",
                     "description": "Enables 2FA and sets a TOTP secret for the user. Set to null to disable 2FA."
                   },
@@ -9313,17 +10231,35 @@
                     "description": "Whether the user is restricted by an administrator. Can be set manually or by sign-up rules."
                   },
                   "restricted_by_admin_reason": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": null,
                     "description": "Public reason shown to the user explaining why they are restricted. Optional."
                   },
                   "restricted_by_admin_private_details": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": null,
                     "description": "Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above."
                   },
                   "country_code": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "US",
                     "description": "Best-effort ISO country code captured at sign-up time from request geo headers."
                   },
@@ -9395,7 +10331,13 @@
                       "description": "The unique identifier of the user"
                     },
                     "primary_email": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "johndoe@example.com",
                       "description": "Primary email"
                     },
@@ -9410,12 +10352,21 @@
                       "description": "Whether the primary email is used for authentication. If this is set to `false`, the user will not be able to sign in with the primary email with password or OTP"
                     },
                     "display_name": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "John Doe",
                       "description": "Human-readable user display name. This is not a unique identifier."
                     },
                     "selected_team": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "properties": {
                         "created_at_millis": {
                           "type": "number",
@@ -9423,7 +10374,10 @@
                           "description": "The time the team was created (the number of milliseconds since epoch, January 1, 1970, UTC)"
                         },
                         "server_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
@@ -9440,19 +10394,31 @@
                           "description": "Human-readable team display name. This is not a unique identifier."
                         },
                         "profile_image_url": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "https://example.com/image.jpg",
                           "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                         },
                         "client_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
                           "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                         },
                         "client_read_only_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
@@ -9466,12 +10432,24 @@
                       ]
                     },
                     "selected_team_id": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "team-id",
                       "description": "ID of the team currently selected by the user"
                     },
                     "profile_image_url": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "https://example.com/image.jpg",
                       "description": "URL of the profile image for user. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                     },
@@ -9481,21 +10459,30 @@
                       "description": "The time the user signed up (identify) => `(the number of milliseconds since epoch, January 1, 1970, UTC)`"
                     },
                     "client_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
                       "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                     },
                     "client_read_only_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
                       "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
                     },
                     "server_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
@@ -9515,7 +10502,10 @@
                       "description": "Whether the user is in restricted state (has signed up but not completed onboarding requirements)"
                     },
                     "restricted_reason": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "properties": {
                         "type": {
                           "type": "string",
@@ -9538,17 +10528,35 @@
                       "description": "Whether the user is restricted by an administrator. Can be set manually or by sign-up rules."
                     },
                     "restricted_by_admin_reason": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": null,
                       "description": "Public reason shown to the user explaining why they are restricted. Optional."
                     },
                     "restricted_by_admin_private_details": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": null,
                       "description": "Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above."
                     },
                     "country_code": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "US",
                       "description": "Best-effort ISO country code captured at sign-up time from request geo headers."
                     },
@@ -9624,7 +10632,13 @@
                       "description": "The unique identifier of the user"
                     },
                     "primary_email": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "johndoe@example.com",
                       "description": "Primary email"
                     },
@@ -9639,12 +10653,21 @@
                       "description": "Whether the primary email is used for authentication. If this is set to `false`, the user will not be able to sign in with the primary email with password or OTP"
                     },
                     "display_name": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "John Doe",
                       "description": "Human-readable user display name. This is not a unique identifier."
                     },
                     "selected_team": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "properties": {
                         "created_at_millis": {
                           "type": "number",
@@ -9652,7 +10675,10 @@
                           "description": "The time the team was created (the number of milliseconds since epoch, January 1, 1970, UTC)"
                         },
                         "server_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
@@ -9669,19 +10695,31 @@
                           "description": "Human-readable team display name. This is not a unique identifier."
                         },
                         "profile_image_url": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "https://example.com/image.jpg",
                           "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                         },
                         "client_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
                           "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                         },
                         "client_read_only_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
@@ -9695,12 +10733,24 @@
                       ]
                     },
                     "selected_team_id": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "team-id",
                       "description": "ID of the team currently selected by the user"
                     },
                     "profile_image_url": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "https://example.com/image.jpg",
                       "description": "URL of the profile image for user. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                     },
@@ -9710,21 +10760,30 @@
                       "description": "The time the user signed up (identify) => `(the number of milliseconds since epoch, January 1, 1970, UTC)`"
                     },
                     "client_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
                       "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                     },
                     "client_read_only_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
                       "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
                     },
                     "server_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
@@ -9744,7 +10803,10 @@
                       "description": "Whether the user is in restricted state (has signed up but not completed onboarding requirements)"
                     },
                     "restricted_reason": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "properties": {
                         "type": {
                           "type": "string",
@@ -9767,17 +10829,35 @@
                       "description": "Whether the user is restricted by an administrator. Can be set manually or by sign-up rules."
                     },
                     "restricted_by_admin_reason": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": null,
                       "description": "Public reason shown to the user explaining why they are restricted. Optional."
                     },
                     "restricted_by_admin_private_details": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": null,
                       "description": "Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above."
                     },
                     "country_code": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "US",
                       "description": "Best-effort ISO country code captured at sign-up time from request geo headers."
                     },
@@ -9872,38 +10952,65 @@
                 "type": "object",
                 "properties": {
                   "display_name": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "John Doe",
                     "description": "Human-readable user display name. This is not a unique identifier."
                   },
                   "profile_image_url": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "https://example.com/image.jpg",
                     "description": "URL of the profile image for user. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                   },
                   "client_metadata": {
-                    "type": "object",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
                     "example": {
                       "key": "value"
                     },
                     "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                   },
                   "client_read_only_metadata": {
-                    "type": "object",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
                     "example": {
                       "key": "value"
                     },
                     "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
                   },
                   "server_metadata": {
-                    "type": "object",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
                     "example": {
                       "key": "value"
                     },
                     "description": "Server metadata. Used as a data store, only accessible from the server side. You can store secret information related to the user here."
                   },
                   "primary_email": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "johndoe@example.com",
                     "description": "Primary email"
                   },
@@ -9918,7 +11025,13 @@
                     "description": "Whether the primary email is used for authentication. If this is set to `false`, the user will not be able to sign in with the primary email with password or OTP"
                   },
                   "password": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "my-new-password",
                     "description": "Sets the user's password. Doing so revokes all current sessions."
                   },
@@ -9927,12 +11040,24 @@
                     "description": "If `password` is not given, sets the user's password hash to the given string in Modular Crypt Format (ex.: `$2a$10$VIhIOofSMqGdGlL4wzE//e.77dAQGqNtF/1dT7bqCrVtQuInWy2qi`). Doing so revokes all current sessions."
                   },
                   "totp_secret_base64": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "dG90cC1zZWNyZXQ=",
                     "description": "Enables 2FA and sets a TOTP secret for the user. Set to null to disable 2FA."
                   },
                   "selected_team_id": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "team-id",
                     "description": "ID of the team currently selected by the user"
                   },
@@ -9945,17 +11070,35 @@
                     "description": "Whether the user is restricted by an administrator. Can be set manually or by sign-up rules."
                   },
                   "restricted_by_admin_reason": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": null,
                     "description": "Public reason shown to the user explaining why they are restricted. Optional."
                   },
                   "restricted_by_admin_private_details": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": null,
                     "description": "Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above."
                   },
                   "country_code": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "US",
                     "description": "Best-effort ISO country code captured at sign-up time from request geo headers."
                   },
@@ -10028,7 +11171,13 @@
                       "description": "The unique identifier of the user"
                     },
                     "primary_email": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "johndoe@example.com",
                       "description": "Primary email"
                     },
@@ -10043,12 +11192,21 @@
                       "description": "Whether the primary email is used for authentication. If this is set to `false`, the user will not be able to sign in with the primary email with password or OTP"
                     },
                     "display_name": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "John Doe",
                       "description": "Human-readable user display name. This is not a unique identifier."
                     },
                     "selected_team": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "properties": {
                         "created_at_millis": {
                           "type": "number",
@@ -10056,7 +11214,10 @@
                           "description": "The time the team was created (the number of milliseconds since epoch, January 1, 1970, UTC)"
                         },
                         "server_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
@@ -10073,19 +11234,31 @@
                           "description": "Human-readable team display name. This is not a unique identifier."
                         },
                         "profile_image_url": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "https://example.com/image.jpg",
                           "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                         },
                         "client_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
                           "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                         },
                         "client_read_only_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
@@ -10099,12 +11272,24 @@
                       ]
                     },
                     "selected_team_id": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "team-id",
                       "description": "ID of the team currently selected by the user"
                     },
                     "profile_image_url": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "https://example.com/image.jpg",
                       "description": "URL of the profile image for user. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                     },
@@ -10114,21 +11299,30 @@
                       "description": "The time the user signed up (identify) => `(the number of milliseconds since epoch, January 1, 1970, UTC)`"
                     },
                     "client_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
                       "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                     },
                     "client_read_only_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
                       "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
                     },
                     "server_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
@@ -10148,7 +11342,10 @@
                       "description": "Whether the user is in restricted state (has signed up but not completed onboarding requirements)"
                     },
                     "restricted_reason": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "properties": {
                         "type": {
                           "type": "string",
@@ -10171,17 +11368,35 @@
                       "description": "Whether the user is restricted by an administrator. Can be set manually or by sign-up rules."
                     },
                     "restricted_by_admin_reason": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": null,
                       "description": "Public reason shown to the user explaining why they are restricted. Optional."
                     },
                     "restricted_by_admin_private_details": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": null,
                       "description": "Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above."
                     },
                     "country_code": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "US",
                       "description": "Best-effort ISO country code captured at sign-up time from request geo headers."
                     },
@@ -10269,7 +11484,13 @@
                       "description": "The unique identifier of the user"
                     },
                     "primary_email": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "johndoe@example.com",
                       "description": "Primary email"
                     },
@@ -10284,12 +11505,21 @@
                       "description": "Whether the primary email is used for authentication. If this is set to `false`, the user will not be able to sign in with the primary email with password or OTP"
                     },
                     "display_name": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "John Doe",
                       "description": "Human-readable user display name. This is not a unique identifier."
                     },
                     "selected_team": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "properties": {
                         "created_at_millis": {
                           "type": "number",
@@ -10297,7 +11527,10 @@
                           "description": "The time the team was created (the number of milliseconds since epoch, January 1, 1970, UTC)"
                         },
                         "server_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
@@ -10314,19 +11547,31 @@
                           "description": "Human-readable team display name. This is not a unique identifier."
                         },
                         "profile_image_url": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "https://example.com/image.jpg",
                           "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                         },
                         "client_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
                           "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                         },
                         "client_read_only_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
@@ -10340,12 +11585,24 @@
                       ]
                     },
                     "selected_team_id": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "team-id",
                       "description": "ID of the team currently selected by the user"
                     },
                     "profile_image_url": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "https://example.com/image.jpg",
                       "description": "URL of the profile image for user. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                     },
@@ -10355,21 +11612,30 @@
                       "description": "The time the user signed up (identify) => `(the number of milliseconds since epoch, January 1, 1970, UTC)`"
                     },
                     "client_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
                       "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                     },
                     "client_read_only_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
                       "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
                     },
                     "server_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
@@ -10389,7 +11655,10 @@
                       "description": "Whether the user is in restricted state (has signed up but not completed onboarding requirements)"
                     },
                     "restricted_reason": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "properties": {
                         "type": {
                           "type": "string",
@@ -10412,17 +11681,35 @@
                       "description": "Whether the user is restricted by an administrator. Can be set manually or by sign-up rules."
                     },
                     "restricted_by_admin_reason": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": null,
                       "description": "Public reason shown to the user explaining why they are restricted. Optional."
                     },
                     "restricted_by_admin_private_details": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": null,
                       "description": "Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above."
                     },
                     "country_code": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "US",
                       "description": "Best-effort ISO country code captured at sign-up time from request geo headers."
                     },
@@ -10541,38 +11828,65 @@
                 "type": "object",
                 "properties": {
                   "display_name": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "John Doe",
                     "description": "Human-readable user display name. This is not a unique identifier."
                   },
                   "profile_image_url": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "https://example.com/image.jpg",
                     "description": "URL of the profile image for user. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                   },
                   "client_metadata": {
-                    "type": "object",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
                     "example": {
                       "key": "value"
                     },
                     "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                   },
                   "client_read_only_metadata": {
-                    "type": "object",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
                     "example": {
                       "key": "value"
                     },
                     "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
                   },
                   "server_metadata": {
-                    "type": "object",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
                     "example": {
                       "key": "value"
                     },
                     "description": "Server metadata. Used as a data store, only accessible from the server side. You can store secret information related to the user here."
                   },
                   "primary_email": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "johndoe@example.com",
                     "description": "Primary email"
                   },
@@ -10587,7 +11901,13 @@
                     "description": "Whether the primary email is used for authentication. If this is set to `false`, the user will not be able to sign in with the primary email with password or OTP"
                   },
                   "password": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "my-new-password",
                     "description": "Sets the user's password. Doing so revokes all current sessions."
                   },
@@ -10596,12 +11916,24 @@
                     "description": "If `password` is not given, sets the user's password hash to the given string in Modular Crypt Format (ex.: `$2a$10$VIhIOofSMqGdGlL4wzE//e.77dAQGqNtF/1dT7bqCrVtQuInWy2qi`). Doing so revokes all current sessions."
                   },
                   "totp_secret_base64": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "dG90cC1zZWNyZXQ=",
                     "description": "Enables 2FA and sets a TOTP secret for the user. Set to null to disable 2FA."
                   },
                   "selected_team_id": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "team-id",
                     "description": "ID of the team currently selected by the user"
                   },
@@ -10614,17 +11946,35 @@
                     "description": "Whether the user is restricted by an administrator. Can be set manually or by sign-up rules."
                   },
                   "restricted_by_admin_reason": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": null,
                     "description": "Public reason shown to the user explaining why they are restricted. Optional."
                   },
                   "restricted_by_admin_private_details": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": null,
                     "description": "Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above."
                   },
                   "country_code": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      null
+                    ],
                     "example": "US",
                     "description": "Best-effort ISO country code captured at sign-up time from request geo headers."
                   },
@@ -10697,7 +12047,13 @@
                       "description": "The unique identifier of the user"
                     },
                     "primary_email": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "johndoe@example.com",
                       "description": "Primary email"
                     },
@@ -10712,12 +12068,21 @@
                       "description": "Whether the primary email is used for authentication. If this is set to `false`, the user will not be able to sign in with the primary email with password or OTP"
                     },
                     "display_name": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "John Doe",
                       "description": "Human-readable user display name. This is not a unique identifier."
                     },
                     "selected_team": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "properties": {
                         "created_at_millis": {
                           "type": "number",
@@ -10725,7 +12090,10 @@
                           "description": "The time the team was created (the number of milliseconds since epoch, January 1, 1970, UTC)"
                         },
                         "server_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
@@ -10742,19 +12110,31 @@
                           "description": "Human-readable team display name. This is not a unique identifier."
                         },
                         "profile_image_url": {
-                          "type": "string",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            null
+                          ],
                           "example": "https://example.com/image.jpg",
                           "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                         },
                         "client_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
                           "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                         },
                         "client_read_only_metadata": {
-                          "type": "object",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
                           "example": {
                             "key": "value"
                           },
@@ -10768,12 +12148,24 @@
                       ]
                     },
                     "selected_team_id": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "team-id",
                       "description": "ID of the team currently selected by the user"
                     },
                     "profile_image_url": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "https://example.com/image.jpg",
                       "description": "URL of the profile image for user. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
                     },
@@ -10783,21 +12175,30 @@
                       "description": "The time the user signed up (identify) => `(the number of milliseconds since epoch, January 1, 1970, UTC)`"
                     },
                     "client_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
                       "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
                     },
                     "client_read_only_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
                       "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
                     },
                     "server_metadata": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "example": {
                         "key": "value"
                       },
@@ -10817,7 +12218,10 @@
                       "description": "Whether the user is in restricted state (has signed up but not completed onboarding requirements)"
                     },
                     "restricted_reason": {
-                      "type": "object",
+                      "type": [
+                        "object",
+                        "null"
+                      ],
                       "properties": {
                         "type": {
                           "type": "string",
@@ -10840,17 +12244,35 @@
                       "description": "Whether the user is restricted by an administrator. Can be set manually or by sign-up rules."
                     },
                     "restricted_by_admin_reason": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": null,
                       "description": "Public reason shown to the user explaining why they are restricted. Optional."
                     },
                     "restricted_by_admin_private_details": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": null,
                       "description": "Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above."
                     },
                     "country_code": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        null
+                      ],
                       "example": "US",
                       "description": "Best-effort ISO country code captured at sign-up time from request geo headers."
                     },

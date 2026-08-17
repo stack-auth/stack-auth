@@ -17,9 +17,9 @@ const stripQueryId = <T extends { status: number, body?: Record<string, unknown>
 const queryEvents = async (params: {
   userId?: string,
   eventType?: string,
-}) => await niceBackendFetch("/api/v1/internal/analytics/query", {
+}) => await niceBackendFetch("/api/v1/analytics/query", {
   method: "POST",
-  accessType: "admin",
+  accessType: "server",
   body: {
     query: `
       SELECT event_type, project_id, branch_id, user_id, team_id
@@ -40,9 +40,9 @@ const queryEvents = async (params: {
 const queryEventDataJson = async (params: {
   userId?: string,
   eventType?: string,
-}) => await niceBackendFetch("/api/v1/internal/analytics/query", {
+}) => await niceBackendFetch("/api/v1/analytics/query", {
   method: "POST",
-  accessType: "admin",
+  accessType: "server",
   body: {
     query: `
       SELECT toJSONString(data) AS data_json

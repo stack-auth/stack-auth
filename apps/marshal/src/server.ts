@@ -1,0 +1,12 @@
+// Standalone Node entrypoint: owns the listener. Everything hosted (Vercel) goes through
+// src/vercel.ts instead, which exports the same app without binding a port. This file is
+// what `pnpm start` / `pnpm dev` / the e2e workflows run.
+import "./load-env.js";
+import { createMarshalApp } from "./marshal-app.js";
+import { getConfig } from "./config.js";
+
+const config = getConfig();
+const { app } = createMarshalApp();
+app.listen(config.port);
+
+console.log(`Marshal listening on http://localhost:${config.port} (env=${config.envId}, builder=${config.builderKind}, fly org=${config.fly.orgSlug})`);

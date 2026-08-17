@@ -3,8 +3,11 @@ import { AdminUserProjectsCrud, ProjectsCrud } from "@hexclave/shared/dist/inter
 import { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 
 import { CompleteConfig, EnvironmentConfigNormalizedOverride, EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
+import type { AdminDeploymentDomainJson, AdminDeploymentJson, AdminDeploymentServiceOutcomeJson, AdminProjectSecretJson, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";
+
+export type { AdminDeploymentDomainJson, AdminDeploymentEnvVarJson, AdminDeploymentJson, AdminDeploymentServiceOutcomeJson, AdminProjectSecretJson, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
 
 /**
  * SDK type for pushed config source (camelCase for SDK).
@@ -26,6 +29,7 @@ export type PushConfigOptions = {
 export type Project = {
   readonly id: string,
   readonly displayName: string,
+  readonly isDevelopmentEnvironment: boolean,
   readonly pushedConfigError: { message: string } | null,
   readonly configWarnings: { message: string }[],
   readonly config: ProjectConfig,
@@ -139,6 +143,66 @@ export type AdminProject = {
   getProductionModeErrors(this: AdminProject): Promise<ProductionModeError[]>,
   // NEXT_LINE_PLATFORM react-like
   useProductionModeErrors(this: AdminProject): ProductionModeError[],
+
+  /**
+   * Lists the project's deployment services (definitions as synced from the
+   * config file's `services` export by `hexclave deploy`, merged with their
+   * operational state: deploy status, env vars, domains). Definitions are
+   * read-only through the SDK — the config file is the source of truth.
+   */
+  listDeploymentServices(this: AdminProject): Promise<AdminDeploymentServiceJson[]>,
+
+  /**
+   * Lists the project's stored secrets (keys and timestamps only — values are
+   * write-only and can never be read back).
+   */
+  listProjectSecrets(this: AdminProject): Promise<AdminProjectSecretJson[]>,
+
+  /**
+   * Sets (or overwrites) the value of a project secret. Values are only read
+   * server-side by the feature that consumes them — today, a deploy filling
+   * `secret()` env vars.
+   */
+  setProjectSecret(this: AdminProject, key: string, value: string): Promise<void>,
+
+  /**
+   * Deletes a stored project secret value.
+   */
+  deleteProjectSecret(this: AdminProject, key: string): Promise<void>,
+
+  /**
+   * Lists the project's deployments (one per `hexclave deploy`) newest first,
+   * each with the services it deployed and their runs.
+   */
+  listDeployments(this: AdminProject, options?: { limit?: number }): Promise<AdminDeploymentJson[]>,
+
+  /**
+   * Reads one deployment, including what each of its services did.
+   */
+  getDeployment(this: AdminProject, deploymentId: string): Promise<AdminDeploymentJson>,
+
+  /**
+   * Returns the build logs of a deployment collected so far (the server follows
+   * a running build for a while before returning). One deploy is one build, so
+   * one log covers every service it shipped.
+   */
+  getDeploymentBuildLogs(this: AdminProject, deploymentId: string, options?: { signal?: AbortSignal }): Promise<string>,
+
+  /**
+   * Adds a custom domain to a deployment service.
+   */
+  addDeploymentServiceDomain(this: AdminProject, serviceId: string, hostname: string, options?: { isPrimary?: boolean }): Promise<void>,
+
+  /**
+   * Returns a domain's verification state and the DNS records the user must
+   * create. Poll this until `verified` is true.
+   */
+  getDeploymentServiceDomain(this: AdminProject, serviceId: string, hostname: string): Promise<AdminDeploymentDomainJson>,
+
+  /**
+   * Removes a custom domain from a deployment service.
+   */
+  deleteDeploymentServiceDomain(this: AdminProject, serviceId: string, hostname: string): Promise<void>,
 } & Project;
 
 export type AdminOwnedProject = {
@@ -189,6 +253,9 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
             client_secret: p.clientSecret,
             facebook_config_id: p.facebookConfigId,
             microsoft_tenant_id: p.microsoftTenantId,
+            apple_team_id: p.appleTeamId,
+            apple_key_id: p.appleKeyId,
+            apple_private_key: p.applePrivateKey,
             apple_bundle_ids: p.appleBundleIds,
           }),
         })),

@@ -41,6 +41,7 @@ runOrExit("pnpm", ["exec", "next", "build"], {
     NEXT_CONFIG_OUTPUT: "standalone",
     NODE_ENV: "production",
     STACK_NEXT_CONFIG_DISABLE_TYPESCRIPT: "true",
+    HEXCLAVE_DASHBOARD_BUILD_FOR_RDE: "true",
   },
 });
 
@@ -56,6 +57,12 @@ const server = spawn(process.execPath, [standaloneServerPath], {
   env: {
     ...process.env,
     NODE_ENV: "production",
+    // `next.config`'s `headers()` is evaluated at build time and baked into the
+    // routes manifest (the build above already sets this flag), so the RDE
+    // frame-ancestors headers are correct regardless of the server's runtime
+    // env. We still propagate the flag here so the running process self-reports
+    // as an RDE build and stays correct if any header logic ever moves to runtime.
+    HEXCLAVE_DASHBOARD_BUILD_FOR_RDE: "true",
   },
   stdio: "inherit",
 });

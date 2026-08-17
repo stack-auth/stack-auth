@@ -36,6 +36,7 @@ it("get project details", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -48,6 +49,7 @@ it("get project details", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -95,6 +97,7 @@ it("creates and updates the basic project information of a project", async ({ ex
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "Updated description",
         "display_name": "Updated Project",
@@ -107,6 +110,7 @@ it("creates and updates the basic project information of a project", async ({ ex
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -170,6 +174,7 @@ it("creates and updates the email config of a project", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -182,6 +187,7 @@ it("creates and updates the email config of a project", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }

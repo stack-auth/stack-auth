@@ -3,6 +3,31 @@ import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
+const CLICKHOUSE_EVENT_POLL_TIMEOUT_MS = 60_000;
+const CLICKHOUSE_EVENT_POLL_INTERVAL_MS = 500;
+
+// Analytics events reach ClickHouse asynchronously, and full-suite CI runners can take many seconds per request.
+async function pollUntil<T>(
+  getValue: () => Promise<T>,
+  predicate: (value: T) => boolean,
+  describeValue: (value: T) => string,
+  timeoutDescription: string,
+): Promise<T> {
+  const deadline = performance.now() + CLICKHOUSE_EVENT_POLL_TIMEOUT_MS;
+  let value = await getValue();
+  while (!predicate(value)) {
+    const remainingMs = deadline - performance.now();
+    if (remainingMs <= 0) {
+      throw new Error(
+        `Timed out after ${CLICKHOUSE_EVENT_POLL_TIMEOUT_MS / 1000}s waiting for ${timeoutDescription}. Last value: ${describeValue(value)}`,
+      );
+    }
+    await wait(Math.min(CLICKHOUSE_EVENT_POLL_INTERVAL_MS, remainingMs));
+    value = await getValue();
+  }
+  return value;
+}
+
 
 describe("without project access", () => {
   backendContext.set({
@@ -131,11 +156,21 @@ describe("with admin access", () => {
       await wait(1_000 + 10_000 - (now.getTime() - lastSecondOfHour.getTime()));
     }
 
-    // Sign up a user to trigger the rule
+    // ClickHouse receives the rule-trigger event asynchronously, so wait for it before querying stats.
     const { userId } = await Auth.Password.signUpWithEmail();
 
-    const response = await niceBackendFetch("/api/v1/internal/sign-up-rules-stats", { accessType: "admin" });
-    expect(response.status).toBe(200);
+    const getStats = () => niceBackendFetch("/api/v1/internal/sign-up-rules-stats", { accessType: "admin" });
+    const response = await pollUntil(
+      getStats,
+      (value) => value.status === 200
+        && value.body.rule_triggers.some((rule: { rule_id: string; total_count: number }) => rule.rule_id === "test-rule" && rule.total_count > 0),
+      (value) => `stats response status=${value.status}, body=${JSON.stringify(value.body)}`,
+      "test-rule trigger in sign-up rule stats",
+    );
+
+    expect(response.status, "Timed out waiting for sign-up rule stats").toBe(200);
+    const testRule = response.body.rule_triggers.find((rule: { rule_id: string }) => rule.rule_id === "test-rule");
+    expect(testRule?.total_count, "Timed out waiting for test-rule event in ClickHouse").toBeGreaterThan(0);
     expect(Array.isArray(response.body.rule_triggers)).toBe(true);
     expect(typeof response.body.total_triggers).toBe('number');
     expect(response).toMatchInlineSnapshot(`
@@ -191,12 +226,10 @@ describe("with admin access", () => {
     await Auth.Password.signUpWithEmail();
 
     // Wait for the ClickHouse event to appear and verify via a raw COALESCE query
-    let chResult: any;
-    for (let attempt = 0; attempt < 15; attempt++) {
-      await wait(500);
-      chResult = await niceBackendFetch("/api/v1/internal/analytics/query", {
+    const chResult = await pollUntil(
+      () => niceBackendFetch("/api/v1/analytics/query", {
         method: "POST",
-        accessType: "admin",
+        accessType: "server",
         body: {
           query: `
             SELECT
@@ -210,9 +243,11 @@ describe("with admin access", () => {
           `,
           params: {},
         },
-      });
-      if (chResult.status === 200 && chResult.body?.result?.length > 0) break;
-    }
+      }),
+      (value) => value.status === 200 && value.body?.result?.length > 0,
+      (value) => `ClickHouse query response status=${value.status}, body=${JSON.stringify(value.body)}`,
+      "sign-up-rule-trigger event in ClickHouse",
+    );
 
     expect(chResult.status).toBe(200);
     expect(chResult.body.result.length).toBeGreaterThan(0);

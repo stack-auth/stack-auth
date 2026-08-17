@@ -34,7 +34,7 @@ async function getInternalBillingTenancy(): Promise<Tenancy> {
 
 /**
  * Writes the `free` Subscription row. Caller is responsible for a subsequent
- * `bulldozerWriteSubscription(prisma, sub)` after any outer transaction
+ * `bulldozerWriteSubscription(sub)` after any outer transaction
  * commits, and for verifying there's no conflicting plan in the same line.
  *
  * `prisma` is deliberately typed as the union — the helper does a single
@@ -114,7 +114,8 @@ export async function createFreePlanSubscriptionRow(options: {
  *      TimeFold in its dependencies, so its row-change triggers cascade
  *      synchronously during `bulldozerWriteSubscription`'s `setRow`
  *      (unlike `ownedProducts`, which sits downstream of a TimeFold and
- *      only catches up when `pg_cron` drains the queue). That means
+ *      only catches up when bulldozer-js's in-process tick loop drains
+ *      the queue). That means
  *      callers that just committed a sub mutation upstream (the DELETE
  *      cancel route, the Stripe webhook handler) see their own writes
  *      here and we don't spuriously regrant on stale data.
@@ -230,6 +231,6 @@ export async function ensureFreePlanForBillingTeam(billingTeamId: string): Promi
   // COMMIT and can't nest. If it fails after the Prisma insert committed,
   // the sub exists in Prisma but not yet in Bulldozer; same trade-off as
   // all other dual-write call sites, reconciled by the next sync.
-  await bulldozerWriteSubscription(internalPrisma, createdSub);
+  await bulldozerWriteSubscription(createdSub);
   return true;
 }

@@ -23,6 +23,21 @@ describe("without project ID", () => {
     `);
   });
 
+  it("should load with a trailing slash", async ({ expect }) => {
+    const response = await niceBackendFetch("/api/v1/");
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": deindent\`
+          Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
+          
+          Authentication: None
+        \`,
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+
   it("should fail when given extra query parameters", async ({ expect }) => {
     const response = await niceBackendFetch("/api/v1?extra=param");
     expect(response).toMatchInlineSnapshot(`

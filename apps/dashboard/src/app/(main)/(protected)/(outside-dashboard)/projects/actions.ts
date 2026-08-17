@@ -1,5 +1,6 @@
 "use server";
 import { isRemoteDevelopmentEnvironmentEnabled } from "@/lib/remote-development-environment/env";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { hexclaveAppInternalsSymbol } from "@hexclave/next";
 
 async function getServerApp() {
@@ -48,4 +49,8 @@ export async function inviteUser(teamId: string, email: string, origin: string) 
     throw new Error("Team not found");
   }
   await team.inviteUser({ email, callbackUrl });
+}
+
+export async function getArePlanLimitsEnforced(): Promise<boolean> {
+  return getEnvVariable("STACK_DISABLE_PLAN_LIMITS", "false") !== "true";
 }

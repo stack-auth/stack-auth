@@ -1,13 +1,15 @@
 import { teamMembershipsCrudHandlers } from "@/app/api/latest/team-memberships/crud";
+import { logUserRestrictedInBackground } from "@/lib/compliance-events";
 import { sendEmailFromDefaultTemplate } from "@/lib/emails";
 import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
-import { arePlanLimitsEnforced } from "@/lib/plan-entitlements";
+import { arePlanLimitsEnforced, UNLIMITED_ITEM_CAPACITY } from "@/lib/plan-entitlements";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@/generated/prisma/client";
 import { KnownErrors } from "@hexclave/shared";
 import { emailSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { teamsCrudHandlers } from "../../teams/crud";
 
 export const teamInvitationCodeHandler = createVerificationCodeHandler({
@@ -72,6 +74,10 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
   async handler(tenancy, {}, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
     if (user.restricted_reason) {
+      logUserRestrictedInBackground(tenancy, {
+        userId: user.id,
+        restrictedReason: user.restricted_reason.type,
+      });
       throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(user.restricted_reason);
     }
     const prisma = await getPrismaClientForTenancy(tenancy);
@@ -87,13 +93,23 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
       if (!item) {
         throw new KnownErrors.ItemNotFound("dashboard_admins");
       }
-      const maxDashboardAdmins = await getItemQuantityForCustomer({
-        prisma,
-        tenancyId: tenancy.id,
-        customerId: data.team_id,
-        itemId: "dashboard_admins",
-        customerType: "team",
-      });
+      // The seat cap lives in bulldozer, but accepting a team invite must not
+      // hard-depend on it: if bulldozer is unreachable, report it and skip the
+      // check this once (treat the cap as unlimited) rather than blocking the
+      // invite. The cap is re-enforced on the next accept once bulldozer is back.
+      let maxDashboardAdmins: number;
+      try {
+        maxDashboardAdmins = await getItemQuantityForCustomer({
+          prisma,
+          tenancyId: tenancy.id,
+          customerId: data.team_id,
+          itemId: "dashboard_admins",
+          customerType: "team",
+        });
+      } catch (error) {
+        captureError("team-invitations:accept:dashboard-admins-seat-check", error);
+        maxDashboardAdmins = UNLIMITED_ITEM_CAPACITY;
+      }
       if (currentMemberCount + 1 > maxDashboardAdmins) {
         throw new KnownErrors.ItemQuantityInsufficientAmount("dashboard_admins", data.team_id, -1);
       }
@@ -128,6 +144,10 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
   async details(tenancy, {}, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
     if (user.restricted_reason) {
+      logUserRestrictedInBackground(tenancy, {
+        userId: user.id,
+        restrictedReason: user.restricted_reason.type,
+      });
       throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(user.restricted_reason);
     }
 

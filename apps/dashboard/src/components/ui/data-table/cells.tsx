@@ -6,6 +6,7 @@ import { Badge } from "../badge";
 import { Button } from "../button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../dropdown-menu";
 import { SimpleTooltip } from "../simple-tooltip";
+import { Skeleton } from "../skeleton";
 import { cn } from "@/lib/utils";
 
 export function TextCell(props: { children: React.ReactNode, size?: number, icon?: React.ReactNode }) {
@@ -52,6 +53,16 @@ export function AvatarCell(props: { src?: string, fallback?: string }) {
       <AvatarImage src={props.src} />
       <AvatarFallback>{props.fallback}</AvatarFallback>
     </Avatar>
+  );
+}
+
+/** Loading placeholder matching AvatarCell + adjacent label layout. */
+export function AvatarCellSkeleton(props: { className?: string }) {
+  return (
+    <div className={cn("flex items-center gap-2", props.className)}>
+      <Skeleton className="h-6 w-6 shrink-0 rounded-full" />
+      <Skeleton className="h-4 w-24" />
+    </div>
   );
 }
 

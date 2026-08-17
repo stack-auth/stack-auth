@@ -1,3 +1,5 @@
+export type WalkthroughPhase = 'navigating' | 'dwelling' | 'finishing';
+
 export type WalkthroughStep = {
   id: string,
   path: string,
@@ -21,14 +23,14 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     path: '/',
     sidebarNavLabel: 'Overview',
     title: 'Global User Map',
-    description: 'See where your users are around the world.',
+    description: 'Pinch-zoom around the globe and see where sign-ups are landing.',
     spotlightPadding: 12,
   },
   {
     id: 'overview-metrics',
     path: '/',
     title: 'Usage Metrics',
-    description: 'Track daily active users and sign-ups at a glance.',
+    description: 'Daily actives, sign-ups, and retention — the numbers you actually check.',
     spotlightPadding: 12,
   },
   {
@@ -36,34 +38,34 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     path: '/users',
     cmdkSearch: 'Users',
     title: 'User Management',
-    description: 'Manage all your users — search, export, or create new ones.',
+    description: 'Search, export, impersonate, or spin up test users in one place.',
   },
   {
     id: 'teams-table',
     path: '/teams',
     cmdkSearch: 'Teams',
     title: 'Teams',
-    description: 'Organize users into teams for multi-tenant apps.',
+    description: 'Multi-tenant apps live here. Teams, roles, invites — the whole stack.',
   },
   {
     id: 'emails-sent',
     path: '/email-sent',
     cmdkSearch: 'Emails sent',
     title: 'Email Logs',
-    description: 'Monitor sent emails, delivery status, and domain reputation.',
+    description: 'Every sent email, delivery status, and domain health in one feed.',
   },
   {
     id: 'payments-products',
     path: '/payments/products',
     cmdkSearch: 'Products',
     title: 'Products & Pricing',
-    description: 'Define products, pricing, and subscriptions.',
+    description: 'Products, prices, and subscriptions wired straight to Stripe.',
   },
   {
     id: 'analytics-replays',
     path: '/session-replays',
     sidebarNavLabel: 'Replays',
     title: 'Session Replays',
-    description: 'Watch real user sessions to understand how people use your app.',
+    description: 'Watch real sessions — clicks, rage taps, and dead ends included.',
   },
 ];

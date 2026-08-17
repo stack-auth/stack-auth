@@ -8,12 +8,16 @@
  */
 
 import { Prisma } from "@/generated/prisma/client";
-import { createBulldozerExecutionContext, toExecutableSqlTransaction, type BulldozerExecutionContext } from "@/lib/bulldozer/db/index";
-import { paymentsSchema } from "@/lib/payments/schema/singleton";
-import type { ManualTransactionRow } from "@/lib/payments/schema/types";
-import type { PrismaClientTransaction } from "@/prisma-client";
-
-const schema = paymentsSchema;
+import { bulldozerCustomerPath, fetchBulldozerServerJson } from "@/lib/bulldozer-server-client";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
+import {
+  PAYMENT_PROVIDERS,
+  TRANSACTION_TYPES,
+  type ManualTransactionRow,
+  type PaymentProvider,
+  type TransactionEntryData,
+  type TransactionType,
+} from "@/lib/payments/schema/types";
 
 function dateToMillis(d: Date | null | undefined): number | null {
   return d ? d.getTime() : null;
@@ -151,55 +155,284 @@ export function manualTransactionToStoredRow(transaction: ManualTransactionRow):
   return transaction;
 }
 
+function prismaCustomerTypeFromManualTransaction(customerType: ManualTransactionRow["customerType"]): "USER" | "TEAM" | "CUSTOM" {
+  switch (customerType) {
+    case "user": {
+      return "USER";
+    }
+    case "team": {
+      return "TEAM";
+    }
+    case "custom": {
+      return "CUSTOM";
+    }
+    default: {
+      customerType satisfies never;
+      throw new Error(`Invalid manual transaction customerType: ${JSON.stringify(customerType)}`);
+    }
+  }
+}
+
+function lowerCustomerType(customerType: string): "user" | "team" | "custom" {
+  const lowered = customerType.toLowerCase();
+  if (lowered === "user" || lowered === "team" || lowered === "custom") {
+    return lowered;
+  }
+  throw new Error(`Invalid customer type for Bulldozer row: ${customerType}`);
+}
+
+export function manualTransactionToPrismaRow(transaction: ManualTransactionRow) {
+  return {
+    tenancyId: transaction.tenancyId,
+    txnId: transaction.txnId,
+    type: transaction.type,
+    customerId: transaction.customerId,
+    customerType: prismaCustomerTypeFromManualTransaction(transaction.customerType),
+    paymentProvider: transaction.paymentProvider,
+    effectiveAt: new Date(transaction.effectiveAtMillis),
+    createdAt: new Date(transaction.createdAtMillis),
+    // Prisma Json input is wider than our entry union; shape is validated on read-back.
+    entries: transaction.entries as unknown as Prisma.InputJsonValue,
+  };
+}
+
+function parseManualTransactionType(type: string): TransactionType {
+  for (const candidate of TRANSACTION_TYPES) {
+    if (candidate === type) return candidate;
+  }
+  throw new Error(`Invalid manual transaction type: ${type}`);
+}
+
+function parseManualTransactionPaymentProvider(paymentProvider: string | null): PaymentProvider | null {
+  if (paymentProvider == null) return null;
+  for (const candidate of PAYMENT_PROVIDERS) {
+    if (candidate === paymentProvider) return candidate;
+  }
+  throw new Error(`Invalid manual transaction paymentProvider: ${paymentProvider}`);
+}
+
+/**
+ * Inverse of `manualTransactionToPrismaRow` for backfill: Prisma → Bulldozer row.
+ * Fail loud on scalar shape errors; entries must be a JSON array (element shapes are
+ * enforced when Bulldozer applies the row).
+ */
+export function prismaManualTransactionToBulldozerRow(row: {
+  tenancyId: string,
+  txnId: string,
+  type: string,
+  customerId: string,
+  customerType: string,
+  paymentProvider: string | null,
+  effectiveAt: Date,
+  createdAt: Date,
+  entries: unknown,
+}): ManualTransactionRow {
+  if (!Array.isArray(row.entries)) {
+    throw new Error(`ManualTransaction ${row.tenancyId},${row.txnId} entries must be a JSON array`);
+  }
+  // Entries were stored from ManualTransactionRow; Bulldozer re-validates on write.
+  // `as` is required because Prisma Json has no structural link to TransactionEntryData[].
+  const entries = row.entries as TransactionEntryData[];
+  return {
+    txnId: row.txnId,
+    tenancyId: row.tenancyId,
+    type: parseManualTransactionType(row.type),
+    customerId: row.customerId,
+    customerType: lowerCustomerType(row.customerType),
+    paymentProvider: parseManualTransactionPaymentProvider(row.paymentProvider),
+    effectiveAtMillis: row.effectiveAt.getTime(),
+    createdAtMillis: row.createdAt.getTime(),
+    entries,
+  };
+}
+
 // ── Dual-write executors ──────────────────────────────────────────────
 
-async function executeSetRow(
-  prisma: PrismaClientTransaction,
-  storedTable: { setRow(ctx: BulldozerExecutionContext, id: string, data: { type: "expression", sql: string }): { type: "statement", sql: string }[] },
-  id: string,
-  rowData: Record<string, unknown>,
-) {
-  const executionContext = createBulldozerExecutionContext();
-  const escaped = JSON.stringify(rowData).replaceAll("'", "''");
-  const sql = toExecutableSqlTransaction(
-    executionContext,
-    storedTable.setRow(executionContext, id, { type: "expression", sql: `'${escaped}'::jsonb` }),
-  );
-  await prisma.$executeRaw`${Prisma.raw(sql)}`;
+async function postBulldozerRow(path: string, rowData: Record<string, unknown>) {
+  await fetchBulldozerServerJson<{ success: true }>({
+    method: "POST",
+    path,
+    body: { rowData },
+  });
+}
+
+async function postBulldozerRowsBatch(path: string, rowsData: Record<string, unknown>[]) {
+  if (rowsData.length === 0) return;
+  await fetchBulldozerServerJson<{ success: true }>({
+    method: "POST",
+    path,
+    body: { rows: rowsData.map((rowData) => ({ rowData })) },
+  });
+}
+
+/**
+ * Batch ingress is tenancy-scoped (the URL carries the tenancy), but a backfill
+ * page is ordered by (tenancyId, id) and can straddle tenancies. Group first so
+ * each POST is a single tenancy's rows.
+ */
+function groupByTenancy<T>(rows: T[], tenancyOf: (row: T) => string): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const row of rows) {
+    const tenancyId = tenancyOf(row);
+    const existing = groups.get(tenancyId);
+    if (existing) {
+      existing.push(row);
+    } else {
+      groups.set(tenancyId, [row]);
+    }
+  }
+  return groups;
+}
+
+function readManualTransactionTenancyId(transaction: ManualTransactionRow): string {
+  const tenancyId = transaction.tenancyId;
+  if (typeof tenancyId !== "string" || tenancyId.length === 0) {
+    throw new Error("Manual transaction is missing tenancyId");
+  }
+  return tenancyId;
 }
 
 export async function bulldozerWriteSubscription(
-  prisma: PrismaClientTransaction,
   sub: Parameters<typeof subscriptionToStoredRow>[0],
 ) {
-  await executeSetRow(prisma, schema.subscriptions, sub.id, subscriptionToStoredRow(sub));
+  await postBulldozerRow(
+    urlString`/v1/${sub.tenancyId}/stripe/subscriptions/changed`,
+    subscriptionToStoredRow(sub),
+  );
 }
 
 export async function bulldozerWriteSubscriptionInvoice(
-  prisma: PrismaClientTransaction,
   inv: Parameters<typeof subscriptionInvoiceToStoredRow>[0],
 ) {
-  await executeSetRow(prisma, schema.subscriptionInvoices, inv.id, subscriptionInvoiceToStoredRow(inv));
+  await postBulldozerRow(
+    urlString`/v1/${inv.tenancyId}/stripe/subscription-invoices/changed`,
+    subscriptionInvoiceToStoredRow(inv),
+  );
 }
 
 export async function bulldozerWriteOneTimePurchase(
-  prisma: PrismaClientTransaction,
   purchase: Parameters<typeof oneTimePurchaseToStoredRow>[0],
 ) {
-  await executeSetRow(prisma, schema.oneTimePurchases, purchase.id, oneTimePurchaseToStoredRow(purchase));
+  await postBulldozerRow(
+    urlString`/v1/${purchase.tenancyId}/stripe/one-time-purchases/changed`,
+    oneTimePurchaseToStoredRow(purchase),
+  );
 }
 
 export async function bulldozerWriteItemQuantityChange(
-  prisma: PrismaClientTransaction,
   change: Parameters<typeof itemQuantityChangeToStoredRow>[0],
 ) {
-  await executeSetRow(prisma, schema.manualItemQuantityChanges, change.id, itemQuantityChangeToStoredRow(change));
+  await postBulldozerRow(
+    bulldozerCustomerPath({
+      tenancyId: change.tenancyId,
+      customerType: lowerCustomerType(change.customerType),
+      customerId: change.customerId,
+      suffix: "manual-item-quantity-changes",
+    }),
+    itemQuantityChangeToStoredRow(change),
+  );
 }
 
 export async function bulldozerWriteManualTransaction(
-  prisma: PrismaClientTransaction,
   transactionId: string,
   transaction: ManualTransactionRow,
 ) {
-  await executeSetRow(prisma, schema.manualTransactions, transactionId, manualTransactionToStoredRow(transaction));
+  await postBulldozerRow(
+    urlString`/v1/${readManualTransactionTenancyId(transaction)}/transactions/${transactionId}/refund`,
+    manualTransactionToStoredRow(transaction),
+  );
+}
+
+/**
+ * Prisma-then-Bulldozer dual-write for a refund manual transaction. Shared by
+ * the subscription and OTP refund handlers so field updates stay in sync.
+ */
+export async function persistRefundManualTransaction(
+  prisma: { manualTransaction: { upsert: (args: {
+    where: { tenancyId_txnId: { tenancyId: string, txnId: string } },
+    create: ReturnType<typeof manualTransactionToPrismaRow>,
+    update: Omit<ReturnType<typeof manualTransactionToPrismaRow>, "tenancyId" | "txnId" | "createdAt">,
+  }) => Promise<unknown> } },
+  refundRow: ManualTransactionRow,
+): Promise<void> {
+  const refundPrismaRow = manualTransactionToPrismaRow(refundRow);
+  await prisma.manualTransaction.upsert({
+    where: {
+      tenancyId_txnId: {
+        tenancyId: refundPrismaRow.tenancyId,
+        txnId: refundPrismaRow.txnId,
+      },
+    },
+    create: refundPrismaRow,
+    update: {
+      type: refundPrismaRow.type,
+      customerId: refundPrismaRow.customerId,
+      customerType: refundPrismaRow.customerType,
+      paymentProvider: refundPrismaRow.paymentProvider,
+      effectiveAt: refundPrismaRow.effectiveAt,
+      // Preserve original create time on conflict (idempotent re-refund / retry).
+      entries: refundPrismaRow.entries,
+    },
+  });
+  await bulldozerWriteManualTransaction(refundRow.txnId, refundRow);
+}
+
+// ── Batch dual-write executors (backfill only) ────────────────────────
+// These mirror the single-row helpers but POST a whole page through the batch
+// ingress routes, which collapse the downstream cascade into one pass per batch.
+// The live dual-write path keeps using the single-row helpers above.
+
+export async function bulldozerWriteSubscriptions(
+  subs: Parameters<typeof subscriptionToStoredRow>[0][],
+) {
+  for (const [tenancyId, group] of groupByTenancy(subs, (sub) => sub.tenancyId)) {
+    await postBulldozerRowsBatch(
+      `/v1/${encodeURIComponent(tenancyId)}/stripe/subscriptions/changed-batch`,
+      group.map(subscriptionToStoredRow),
+    );
+  }
+}
+
+export async function bulldozerWriteSubscriptionInvoices(
+  invoices: Parameters<typeof subscriptionInvoiceToStoredRow>[0][],
+) {
+  for (const [tenancyId, group] of groupByTenancy(invoices, (inv) => inv.tenancyId)) {
+    await postBulldozerRowsBatch(
+      `/v1/${encodeURIComponent(tenancyId)}/stripe/subscription-invoices/changed-batch`,
+      group.map(subscriptionInvoiceToStoredRow),
+    );
+  }
+}
+
+export async function bulldozerWriteOneTimePurchases(
+  purchases: Parameters<typeof oneTimePurchaseToStoredRow>[0][],
+) {
+  for (const [tenancyId, group] of groupByTenancy(purchases, (purchase) => purchase.tenancyId)) {
+    await postBulldozerRowsBatch(
+      `/v1/${encodeURIComponent(tenancyId)}/stripe/one-time-purchases/changed-batch`,
+      group.map(oneTimePurchaseToStoredRow),
+    );
+  }
+}
+
+export async function bulldozerWriteItemQuantityChanges(
+  changes: Parameters<typeof itemQuantityChangeToStoredRow>[0][],
+) {
+  for (const [tenancyId, group] of groupByTenancy(changes, (change) => change.tenancyId)) {
+    await postBulldozerRowsBatch(
+      `/v1/${encodeURIComponent(tenancyId)}/manual-item-quantity-changes/changed-batch`,
+      group.map(itemQuantityChangeToStoredRow),
+    );
+  }
+}
+
+export async function bulldozerWriteManualTransactions(
+  transactions: ManualTransactionRow[],
+) {
+  for (const [tenancyId, group] of groupByTenancy(transactions, readManualTransactionTenancyId)) {
+    await postBulldozerRowsBatch(
+      `/v1/${encodeURIComponent(tenancyId)}/transactions/refund-batch`,
+      group.map(manualTransactionToStoredRow),
+    );
+  }
 }

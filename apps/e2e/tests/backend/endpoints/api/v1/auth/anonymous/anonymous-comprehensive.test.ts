@@ -82,6 +82,15 @@ it("JWKS endpoint includes anonymous/restricted keys when requested", async ({ e
   const allKeys = anonymousJwks.body.keys;
   expect(allKeys).toHaveLength(6);
 
+  // The anonymous issuer has no query parameters, so consumers can resolve its
+  // issuer-relative JWKS alias and still receive the anonymous and restricted keys.
+  const anonymousIssuerJwks = await niceBackendFetch(`/api/v1/projects-anonymous-users/${project.projectId}/.well-known/jwks.json`, {
+    method: "GET",
+    accessType: null,
+  });
+  expect(anonymousIssuerJwks.status).toBe(200);
+  expect(anonymousIssuerJwks.body).toEqual(anonymousJwks.body);
+
   // Check that the kids are different
   const kids = allKeys.map((key: any) => key.kid);
   expect(new Set(kids).size).toBe(6);
@@ -149,6 +158,7 @@ it("list users excludes anonymous users by default", async ({ expect }) => {
   await Auth.Anonymous.signUp();
 
   // Create a regular user
+  // Email delivery is queue-driven and can take tens of seconds in dev/CI; this test only needs the user record.
   await Auth.Password.signUpWithEmail();
 
   // List users without include_anonymous
@@ -172,6 +182,7 @@ it("list users includes anonymous users when requested", async ({ expect }) => {
 
   // Create a regular user
   await bumpEmailAddress();
+  // Email delivery is queue-driven and can take tens of seconds in dev/CI; this test only needs the user record.
   await Auth.Password.signUpWithEmail();
 
   // List users with include_anonymous=true

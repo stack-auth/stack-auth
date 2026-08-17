@@ -4,7 +4,7 @@ import { SubscriptionStatus } from "@/generated/prisma/client";
 import type { getPrismaClientForTenancy } from "@/prisma-client";
 import type { OrganizationRenderedConfig } from "@hexclave/shared/dist/config/schema";
 import type { TransactionEntry } from "@hexclave/shared/dist/interface/crud/transactions";
-import { FAR_FUTURE_DATE, addInterval, getIntervalsElapsed, type DayInterval } from "@hexclave/shared/dist/utils/dates";
+import { FAR_FUTURE_DATE, getIntervalsElapsed, nthDayIntervalMillis, type DayInterval } from "@hexclave/shared/dist/utils/dates";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { deepPlainEquals } from "@hexclave/shared/dist/utils/objects";
@@ -160,9 +160,13 @@ function addWhenRepeatedItemWindowTransactions(options: {
   const entries: LedgerTransaction[] = [];
   const elapsed = getIntervalsElapsed(anchor, finalNow, repeat);
 
+  // Windows must use the SAME anchor-relative, month-end-clamped boundaries the bulldozer fold emits
+  // (nthDayIntervalMillis), otherwise a month-end monthly/yearly item drifts and the exact-quantity
+  // comparison below reports a false integrity mismatch. Window i is [boundary(i), boundary(i+1)).
+  const anchorMillis = anchor.getTime();
   for (let i = 0; i <= elapsed; i++) {
-    const windowStart = addInterval(new Date(anchor), [repeat[0] * i, repeat[1]]);
-    const windowEnd = addInterval(new Date(windowStart), repeat);
+    const windowStart = new Date(nthDayIntervalMillis(anchorMillis, repeat, i));
+    const windowEnd = new Date(nthDayIntervalMillis(anchorMillis, repeat, i + 1));
     entries.push({ amount: baseQty, grantTime: windowStart, expirationTime: windowEnd });
   }
 

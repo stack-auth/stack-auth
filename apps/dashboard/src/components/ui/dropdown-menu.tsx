@@ -86,7 +86,7 @@ const DropdownMenuSubContent = forwardRefIfNeeded<
   <DropdownMenuPrimitive.SubContent
     ref={ref}
     className={cn(
-        "stack-scope z-50 min-w-[8rem] overflow-hidden rounded-xl border border-border/50 bg-popover p-1.5 text-popover-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        "stack-scope z-50 min-w-[8rem] overflow-hidden rounded-xl border border-black/[0.08] bg-white p-1.5 text-popover-foreground shadow-lg ring-1 ring-black/[0.06] dark:border-white/[0.08] dark:bg-background/95 dark:ring-white/[0.08] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
         className
       )}
     {...props}
@@ -270,4 +270,3 @@ export {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger, DropdownMenuTrigger
 };
-

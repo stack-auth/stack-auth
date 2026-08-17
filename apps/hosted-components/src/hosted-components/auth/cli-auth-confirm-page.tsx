@@ -1,5 +1,6 @@
-import { useStackApp, useCliAuthConfirmation } from "@hexclave/react";
+import { useCliAuthConfirmation } from "@hexclave/react";
 import { KeyRound } from "lucide-react";
+import { useState } from "react";
 
 import { Button, Typography } from "~/components/ui";
 
@@ -8,15 +9,21 @@ import { HostedAuthLoading, HostedAuthMessage, HostedAuthShell } from "./support
 export function HostedCliAuthConfirm(props: {
   fullPage?: boolean,
 }) {
-  const app = useStackApp();
   const cliAuth = useCliAuthConfirmation();
+  const [cancelled, setCancelled] = useState(false);
+
+  if (cancelled) {
+    return (
+      <HostedAuthMessage title="Authorization cancelled" fullPage={props.fullPage}>
+        The CLI application was not authorized. You can close this tab.
+      </HostedAuthMessage>
+    );
+  }
 
   if (cliAuth.status === "success") {
     return (
       <HostedAuthMessage
         title="CLI Authorized Successfully"
-        primaryAction={() => app.redirectToHome()}
-        primaryText="Go home"
         fullPage={props.fullPage}
       >
         The CLI application has been authorized successfully. You can close this window and return to the command line.
@@ -30,7 +37,7 @@ export function HostedCliAuthConfirm(props: {
         title="Authorization Failed"
         primaryAction={cliAuth.retry}
         primaryText="Try again"
-        secondaryAction={() => app.redirectToHome()}
+        secondaryAction={() => setCancelled(true)}
         secondaryText="Cancel"
         fullPage={props.fullPage}
       >
@@ -50,11 +57,9 @@ export function HostedCliAuthConfirm(props: {
     return (
       <HostedAuthMessage
         title="Invalid Authorization Link"
-        primaryAction={() => app.redirectToHome()}
-        primaryText="Go home"
         fullPage={props.fullPage}
       >
-        This CLI authorization link is missing a login code. Please return to the command line and start the login process again.
+        This CLI authorization link is missing a login code. Please return to the command line and start the login process again. You can close this tab.
       </HostedAuthMessage>
     );
   }
@@ -96,7 +101,7 @@ export function HostedCliAuthConfirm(props: {
         </Button>
         <Button
           variant="secondary"
-          onClick={() => app.redirectToHome()}
+          onClick={() => setCancelled(true)}
           disabled={cliAuth.isLoading}
           className="h-10 rounded-xl font-semibold"
         >

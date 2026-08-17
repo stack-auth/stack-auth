@@ -151,6 +151,7 @@ const docsJson = {
             "pages": [
               "guides/other/self-host",
               "guides/other/known-errors",
+              "guides/other/dev-tool",
               "migration",
               {
                 "group": "Tutorials",
@@ -245,9 +246,7 @@ const docsJson = {
     }
   },
   "seo": {
-    "metatags": {
-      "robots": "noindex"
-    }
+    "indexing": "all"
   },
   "settings": {
     "customScripts": [
@@ -255,7 +254,12 @@ const docsJson = {
       "/code-language-labels.js"
     ]
   },
-  "redirects": []
+  "redirects": [
+    {
+      "source": "/guides/going-further/backend-integration",
+      "destination": "/guides/going-further/local-vs-cloud-dashboard"
+    }
+  ]
 } as const;
 
 export default docsJson;

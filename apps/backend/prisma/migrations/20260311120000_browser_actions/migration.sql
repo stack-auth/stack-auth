@@ -1,0 +1,1 @@
+ALTER TYPE "VerificationCodeType" ADD VALUE 'BROWSER_ACTION';

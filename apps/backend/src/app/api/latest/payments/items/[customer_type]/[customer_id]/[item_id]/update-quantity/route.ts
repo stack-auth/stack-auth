@@ -95,18 +95,24 @@ export const POST = createSmartRouteHandler({
       customerId: req.params.customer_id,
     });
 
+    // Read the current quantity from bulldozer-js BEFORE starting the Prisma
+    // transaction. getItemQuantityForCustomer reads via HTTP from the
+    // bulldozer-js server and does not use the Prisma client; keeping the
+    // call inside the transaction would hold the transaction open for the
+    // full HTTP round-trip, exhausting the interactive-transaction pool
+    // under load and causing "Unable to start a transaction" cascades.
+    const totalQuantity = await getItemQuantityForCustomer({
+      prisma,
+      tenancyId: tenancy.id,
+      itemId: req.params.item_id,
+      customerId: req.params.customer_id,
+      customerType: req.params.customer_type,
+    });
+    if (!allowNegative && (totalQuantity + req.body.delta < 0)) {
+      throw new KnownErrors.ItemQuantityInsufficientAmount(req.params.item_id, req.params.customer_id, req.body.delta);
+    }
+
     const change = await retryTransaction(prisma, async (tx) => {
-      const totalQuantity = await getItemQuantityForCustomer({
-        prisma: tx,
-        tenancyId: tenancy.id,
-        itemId: req.params.item_id,
-        customerId: req.params.customer_id,
-        customerType: req.params.customer_type,
-      });
-      if (!allowNegative && (totalQuantity + req.body.delta < 0)) {
-        throw new KnownErrors.ItemQuantityInsufficientAmount(req.params.item_id, req.params.customer_id, req.body.delta);
-      }
-      // dual write - prisma and bulldozer
       const change = await tx.itemQuantityChange.create({
         data: {
           tenancyId: tenancy.id,
@@ -120,7 +126,7 @@ export const POST = createSmartRouteHandler({
       });
       return change;
     });
-    await bulldozerWriteItemQuantityChange(prisma, change);
+    await bulldozerWriteItemQuantityChange(change);
 
     return {
       statusCode: 200,

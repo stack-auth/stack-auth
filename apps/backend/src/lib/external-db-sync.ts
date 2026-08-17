@@ -3,6 +3,7 @@ import type { PrismaTransaction } from "@/lib/types";
 import { getPrismaClientForTenancy, PrismaClientWithReplica } from "@/prisma-client";
 import { Prisma } from "@/generated/prisma/client";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
+import { getSafeExternalPostgresClientOptions } from "@/lib/ssrf-protection/external-db-sync";
 import { DEFAULT_DB_SYNC_MAPPINGS } from "@hexclave/shared/dist/config/db-sync-mappings";
 import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import { captureError, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -35,6 +36,11 @@ type ExternalDbSyncTarget =
     tableName: "ProjectUser",
     tenancyId: string,
     projectUserId: string,
+  }
+  | {
+    tableName: "EmailOutbox",
+    tenancyId: string,
+    emailOutboxId: string,
   }
   | {
     tableName: "ContactChannel",
@@ -147,6 +153,35 @@ export async function recordExternalDbSyncDeletion(
       FROM "ProjectUser"
       WHERE "tenancyId" = ${target.tenancyId}::uuid
         AND "projectUserId" = ${target.projectUserId}::uuid
+      FOR UPDATE
+    `);
+
+    return;
+  }
+
+  if (target.tableName === "EmailOutbox") {
+    assertUuid(target.emailOutboxId, "emailOutboxId");
+    await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "DeletedRow" (
+        "id",
+        "tenancyId",
+        "tableName",
+        "primaryKey",
+        "data",
+        "deletedAt",
+        "shouldUpdateSequenceId"
+      )
+      SELECT
+        gen_random_uuid(),
+        "tenancyId",
+        'EmailOutbox',
+        jsonb_build_object('tenancyId', "tenancyId", 'id', "id"),
+        to_jsonb("EmailOutbox".*),
+        NOW(),
+        TRUE
+      FROM "EmailOutbox"
+      WHERE "tenancyId" = ${target.tenancyId}::uuid
+        AND "id" = ${target.emailOutboxId}::uuid
       FOR UPDATE
     `);
 
@@ -1333,6 +1368,8 @@ async function syncPostgresMapping(
       mappingId,
     );
 
+    // This watermark relies on sequencer allocation committing in sequence order; a visible
+    // higher value must imply that every lower value is already visible to the source reader.
     let maxSeqInBatch = lastSequenceId;
     for (const row of rows) {
       const seqNum = parseSequenceId(row.sequence_id, mappingId);
@@ -1411,6 +1448,8 @@ async function syncClickhouseMapping(
       mappingId,
     );
 
+    // This watermark relies on sequencer allocation committing in sequence order; a visible
+    // higher value must imply that every lower value is already visible to the source reader.
     let maxSeqInBatch = lastSequenceId;
     for (const row of rows) {
       const seqNum = parseSequenceId(row.sync_sequence_id, mappingId);
@@ -1452,10 +1491,12 @@ async function syncDatabase(
       );
     }
     assertNonEmptyString(dbConfig.connectionString, `external DB ${dbId} connectionString`);
+    const externalClientOptions = await getSafeExternalPostgresClientOptions(dbConfig.connectionString);
 
-    const externalClient = new Client({
-      connectionString: dbConfig.connectionString,
-    });
+    const externalClient = new Client(externalClientOptions);
+    // node-postgres treats an EventEmitter "error" without a listener as fatal to
+    // the whole process; report connection loss to the error sink instead.
+    externalClient.on("error", (error) => captureError("external-db-sync-client", error));
 
     let needsResync = false;
     const syncResult = await Result.fromPromise((async () => {

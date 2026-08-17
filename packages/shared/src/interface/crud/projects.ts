@@ -15,16 +15,29 @@ const oauthProviderReadSchema = yupObject({
     schemaFields.oauthClientIdSchema,
     { type: 'standard' },
   ),
-  client_secret: schemaFields.yupDefinedAndNonEmptyWhen(
-    schemaFields.oauthClientSecretSchema,
-    { type: 'standard' },
-  ),
+  client_secret: schemaFields.oauthClientSecretSchema.optional(),
+  apple_team_id: schemaFields.oauthAppleTeamIdSchema.optional(),
+  apple_key_id: schemaFields.oauthAppleKeyIdSchema.optional(),
+  apple_private_key: schemaFields.oauthApplePrivateKeySchema.optional(),
 
   // extra params
   facebook_config_id: schemaFields.oauthFacebookConfigIdSchema.optional(),
   microsoft_tenant_id: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
   apple_bundle_ids: schemaFields.oauthAppleBundleIdsSchema.optional(),
-});
+}).test(
+  "apple-credentials",
+  "client_secret is required for standard providers, unless the provider is apple with all Apple key credentials set",
+  (provider) => {
+    if (provider.type !== "standard") return true;
+    const hasClientSecret = provider.client_secret != null && provider.client_secret !== "";
+    const keyFields = [provider.apple_team_id, provider.apple_key_id, provider.apple_private_key];
+    const hasAnyKeyField = keyFields.some(value => value != null && value !== "");
+    const hasAllKeyFields = keyFields.every(value => value != null && value !== "");
+    return provider.id === "apple"
+      ? (hasClientSecret || hasAllKeyFields) && (!hasAnyKeyField || hasAllKeyFields)
+      : hasClientSecret;
+  },
+);
 
 const oauthProviderWriteSchema = oauthProviderReadSchema.omit(['provider_config_id']);
 
@@ -127,6 +140,7 @@ export const projectsCrudAdminReadSchema = yupObject({
 export const projectsCrudClientReadSchema = yupObject({
   id: schemaFields.projectIdSchema.defined(),
   display_name: schemaFields.projectDisplayNameSchema.defined(),
+  is_development_environment: schemaFields.yupBoolean().defined(),
   pushed_config_error: pushedConfigErrorSchema.nullable().defined(),
   config_warnings: yupArray(configWarningSchema).defined(),
   config: yupObject({

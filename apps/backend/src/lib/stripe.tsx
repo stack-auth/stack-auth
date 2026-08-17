@@ -338,7 +338,7 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         creationSource: "PURCHASE_PAGE"
       },
     });
-    await bulldozerWriteSubscription(prisma, upsertedSub);
+    await bulldozerWriteSubscription(upsertedSub);
     if (PROMO_APPLIED_SUBSCRIPTION_STATUSES.includes(subscription.status as typeof PROMO_APPLIED_SUBSCRIPTION_STATUSES[number])) {
       await markPromoCodeRedemptionApplied({
         prisma,
@@ -404,7 +404,7 @@ export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: strin
       hostedInvoiceUrl: invoice.hosted_invoice_url,
     },
   });
-  await bulldozerWriteSubscriptionInvoice(prisma, upsertedInvoice);
+  await bulldozerWriteSubscriptionInvoice(upsertedInvoice);
   if (invoice.status === "paid") {
     await markPromoCodeRedemptionApplied({
       prisma,

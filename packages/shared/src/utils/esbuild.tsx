@@ -7,6 +7,21 @@ import { ignoreUnhandledRejection, runAsynchronously } from './promises';
 import { Result } from "./results";
 import { traceSpan, withTraceSpan } from './telemetry';
 
+type EsbuildBrowserRuntimeModule = Partial<typeof esbuild> & {
+  default?: typeof esbuild,
+};
+
+// The built ESM package can import esbuild-wasm's CJS browser entry as a
+// default-only namespace under Node. Normalize once so both tsx source runs and
+// built dist runs see the same API surface.
+const esbuildModule: EsbuildBrowserRuntimeModule = esbuild;
+function getEsbuildApi(module: EsbuildBrowserRuntimeModule): typeof esbuild {
+  return module.version == null && module.default != null
+    ? module.default
+    : esbuild;
+}
+const esbuildApi = getEsbuildApi(esbuildModule);
+
 
 // esbuild requires self property to be set, and it is not set by default in nodejs
 (globalThis.self as any) ??= globalThis as any;
@@ -25,7 +40,7 @@ if (typeof process !== "undefined" && typeof process.exit === "function" && getP
 }
 
 export function initializeEsbuild(): Promise<void> {
-  const esbuildWasmUrl = `https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`;
+  const esbuildWasmUrl = `https://unpkg.com/esbuild-wasm@${esbuildApi.version}/esbuild.wasm`;
   if (esbuildInitializePromise == null) {
     esbuildInitializePromise = withTraceSpan('initializeEsbuild', async () => {
       try {
@@ -53,7 +68,7 @@ export function initializeEsbuild(): Promise<void> {
           };
         }
         try {
-          await esbuild.initialize(initOptions);
+          await esbuildApi.initialize(initOptions);
         } catch (e) {
           if (e instanceof Error && e.message === 'Cannot call "initialize" more than once') {
             // this happens especially in local development, just ignore
@@ -97,7 +112,7 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
   ]);
   let result;
   try {
-    result = await traceSpan('bundleJavaScript', async () => await esbuild.build({
+    result = await traceSpan('bundleJavaScript', async () => await esbuildApi.build({
       entryPoints: ['/entry.js'],
       bundle: true,
       write: false,

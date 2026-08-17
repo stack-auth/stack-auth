@@ -37,7 +37,9 @@
         "^build"
       ],
       "outputs": [
-        ".next",
+        ".next/**",
+        "!.next/cache/**",
+        "!.next/dev/**",
         "dist/**",
         "lib/**",
         "*.js",
@@ -61,6 +63,8 @@
       ],
       "outputs": [
         ".next/**",
+        "!.next/cache/**",
+        "!.next/dev/**",
         "src/generated/bundled-type-definitions.ts"
       ],
       "outputLogs": "new-only"
@@ -79,7 +83,9 @@
         "^build"
       ],
       "outputs": [
-        ".next",
+        ".next/**",
+        "!.next/cache/**",
+        "!.next/dev/**",
         "dist/**",
         "lib/**",
         "*.js",
@@ -129,6 +135,22 @@
       "cache": false
     },
     "dev": {
+      "persistent": true,
+      "cache": false
+    },
+    "//#build-packages:watch": {
+      "persistent": true,
+      "cache": false
+    },
+    "//#generate-sdks:watch": {
+      "persistent": true,
+      "cache": false
+    },
+    "//#generate-openapi-docs:watch": {
+      "persistent": true,
+      "cache": false
+    },
+    "//#generate-setup-prompt-docs:watch": {
       "persistent": true,
       "cache": false
     },

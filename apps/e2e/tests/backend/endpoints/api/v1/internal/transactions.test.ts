@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { expect } from "vitest";
 import { it } from "../../../../../helpers";
@@ -76,18 +76,7 @@ async function createPurchaseCodeForCustomer(options: { customerType: "user" | "
 const stripeWebhookSecret = getEnvVariable("STACK_STRIPE_WEBHOOK_SECRET", "mock_stripe_webhook_secret");
 
 async function sendStripeWebhook(payload: unknown) {
-  const timestamp = Math.floor(Date.now() / 1000);
-  const hmac = createHmac("sha256", stripeWebhookSecret);
-  hmac.update(`${timestamp}.${JSON.stringify(payload)}`);
-  const signature = hmac.digest("hex");
-  return await niceBackendFetch("/api/latest/integrations/stripe/webhooks", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "stripe-signature": `t=${timestamp},v1=${signature}`,
-    },
-    body: payload,
-  });
+  return await PaymentsHelper.sendStripeWebhook(payload, { secret: stripeWebhookSecret });
 }
 async function createPurchaseCode(options: { userId: string, productId: string }) {
   return await createPurchaseCodeForCustomer({
@@ -336,9 +325,10 @@ it("omits subscription-renewal entries for subscription creation invoices", asyn
   const code = await createPurchaseCode({ userId, productId: "sub-product" });
   const tenancyId = code.split("_")[0];
 
+  const idSuffix = randomUUID().replace(/-/g, "");
   const nowSec = Math.floor(Date.now() / 1000);
   const stripeSubscription = {
-    id: "sub_tx_filter",
+    id: `sub_tx_filter_${idSuffix}`,
     status: "active",
     items: {
       data: [
@@ -364,7 +354,7 @@ it("omits subscription-renewal entries for subscription creation invoices", asyn
   };
 
   const baseInvoiceObject = {
-    customer: "cus_tx_filter",
+    customer: `cus_tx_filter_${idSuffix}`,
     stack_stripe_mock_data: stackStripeMockData,
     lines: {
       data: [
@@ -380,26 +370,26 @@ it("omits subscription-renewal entries for subscription creation invoices", asyn
   };
 
   const creationInvoiceEvent = {
-    id: "evt_sub_invoice_creation",
+    id: `evt_sub_invoice_creation_${idSuffix}`,
     type: "invoice.payment_succeeded",
     account: accountId,
     data: {
       object: {
         ...baseInvoiceObject,
-        id: "in_creation_tx",
+        id: `in_creation_tx_${idSuffix}`,
         billing_reason: "subscription_create",
       },
     },
   };
 
   const renewalInvoiceEvent = {
-    id: "evt_sub_invoice_cycle",
+    id: `evt_sub_invoice_cycle_${idSuffix}`,
     type: "invoice.payment_succeeded",
     account: accountId,
     data: {
       object: {
         ...baseInvoiceObject,
-        id: "in_cycle_tx",
+        id: `in_cycle_tx_${idSuffix}`,
         billing_reason: "subscription_cycle",
       },
     },
@@ -424,6 +414,152 @@ it("omits subscription-renewal entries for subscription creation invoices", asyn
 
   const purchaseTransaction = response.body.transactions.find((tx: any) => tx.type === "purchase");
   expect(purchaseTransaction).toBeDefined();
+});
+
+it("books subscription-renewal money when a free trial converts via subscription_cycle invoice", async () => {
+  // Mirrors Stripe: trial create → billing_reason=subscription_create ($0, filtered);
+  // trial end charge → billing_reason=subscription_cycle (booked as subscription-renewal).
+  const trialProduct = {
+    displayName: "Trial Product",
+    customerType: "user",
+    serverOnly: false,
+    stackable: false,
+    prices: {
+      monthly: { USD: "19.00", interval: [1, "month"], freeTrial: [14, "day"] },
+    },
+    includedItems: {},
+  };
+  await setupProjectWithPaymentsConfig({
+    extraProducts: { "trial-product": trialProduct },
+  });
+  // Keep testMode from setupProjectWithPaymentsConfig (true). create-purchase-url
+  // only needs a tenancy id here; the Stripe-synced subscription is still
+  // creationSource=PURCHASE_PAGE → paymentProvider=stripe, so trial start money
+  // gating and renewal invoicing behave the same.
+  const { userId } = await Auth.fastSignUp();
+
+  const accountInfo = await niceBackendFetch("/api/latest/internal/payments/stripe/account-info", {
+    accessType: "admin",
+  });
+  expect(accountInfo.status).toBe(200);
+  const accountId: string = accountInfo.body.account_id;
+
+  const code = await createPurchaseCodeForCustomer({
+    customerType: "user",
+    customerId: userId,
+    productId: "trial-product",
+  });
+  const tenancyId = code.split("_")[0];
+
+  const idSuffix = randomUUID().replace(/-/g, "");
+  const nowSec = Math.floor(Date.now() / 1000);
+  const stripeSubscription = {
+    id: `sub_tx_trial_${idSuffix}`,
+    status: "trialing",
+    items: {
+      data: [
+        {
+          quantity: 1,
+          current_period_start: nowSec - 60,
+          current_period_end: nowSec + 14 * 24 * 60 * 60,
+        },
+      ],
+    },
+    metadata: {
+      productId: "trial-product",
+      product: JSON.stringify(trialProduct),
+      priceId: "monthly",
+    },
+    cancel_at_period_end: false,
+  };
+
+  const stackStripeMockData = {
+    "accounts.retrieve": { metadata: { tenancyId } },
+    "customers.retrieve": { metadata: { customerId: userId, customerType: "USER" } },
+    "subscriptions.list": { data: [stripeSubscription] },
+  };
+
+  const baseInvoiceObject = {
+    customer: `cus_tx_trial_${idSuffix}`,
+    currency: "usd",
+    stack_stripe_mock_data: stackStripeMockData,
+    lines: {
+      data: [
+        {
+          description: "Trial Product",
+          quantity: 1,
+          parent: {
+            subscription_item_details: {
+              subscription: stripeSubscription.id,
+            },
+          },
+        },
+      ],
+    },
+  };
+
+  const creationRes = await sendStripeWebhook({
+    id: `evt_trial_create_${idSuffix}`,
+    type: "invoice.payment_succeeded",
+    account: accountId,
+    data: {
+      object: {
+        ...baseInvoiceObject,
+        id: `in_trial_create_${idSuffix}`,
+        billing_reason: "subscription_create",
+        total: 0,
+        amount_paid: 0,
+      },
+    },
+  });
+  expect(creationRes.status).toBe(200);
+
+  let response = await niceBackendFetch("/api/latest/internal/payments/transactions", {
+    accessType: "admin",
+  });
+  expect(response.status).toBe(200);
+  expect(response.body.transactions.filter((tx: any) => tx.type === "subscription-renewal")).toHaveLength(0);
+
+  const purchaseTxn = response.body.transactions.find((tx: any) => tx.type === "purchase");
+  expect(purchaseTxn).toBeDefined();
+  expect(purchaseTxn.entries.some((entry: any) => entry.type === "money_transfer")).toBe(false);
+
+  // After trial: Stripe charges and emits a cycle invoice (not subscription_create).
+  const activeSubscription = { ...stripeSubscription, status: "active" };
+  const cycleMockData = {
+    ...stackStripeMockData,
+    "subscriptions.list": { data: [activeSubscription] },
+  };
+  const cycleRes = await sendStripeWebhook({
+    id: `evt_trial_cycle_${idSuffix}`,
+    type: "invoice.payment_succeeded",
+    account: accountId,
+    data: {
+      object: {
+        ...baseInvoiceObject,
+        stack_stripe_mock_data: cycleMockData,
+        id: `in_trial_cycle_${idSuffix}`,
+        billing_reason: "subscription_cycle",
+        total: 1900,
+        amount_paid: 1900,
+      },
+    },
+  });
+  expect(cycleRes.status).toBe(200);
+
+  response = await niceBackendFetch("/api/latest/internal/payments/transactions", {
+    accessType: "admin",
+  });
+  expect(response.status).toBe(200);
+
+  const renewalTransactions = response.body.transactions.filter((tx: any) => tx.type === "subscription-renewal");
+  expect(renewalTransactions).toHaveLength(1);
+  expect(renewalTransactions[0]?.entries).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      type: "money_transfer",
+      charged_amount: expect.objectContaining({ USD: "19.00" }),
+    }),
+  ]));
 });
 
 it("filters results by transaction type", async () => {

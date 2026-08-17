@@ -1,7 +1,5 @@
-import { createBulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
-import { tableIdToDebugString } from "@/lib/bulldozer/db/utilities";
+import { fetchBulldozerServerJson } from "@/lib/bulldozer-server-client";
 import { syncExternalDatabases } from "@/lib/external-db-sync";
-import { createPaymentsSchema } from "@/lib/payments/schema/index";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import type { OrganizationRenderedConfig } from "@hexclave/shared/dist/config/schema";
@@ -172,19 +170,10 @@ async function main() {
   }
 
   await recurse(`[bulldozer] verifying data integrity across all payments tables`, async () => {
-    const executionContext = createBulldozerExecutionContext();
-    const schema = createPaymentsSchema();
-    for (const table of schema._allTables) {
-      const label = tableIdToDebugString(table.tableId);
-      await recurse(`[bulldozer table] ${label}`, async () => {
-        const errors = await prismaClient.$queryRawUnsafe<unknown[]>(toQueryableSqlQuery(table.verifyDataIntegrity(executionContext)));
-        if (errors.length > 0) {
-          throw new HexclaveAssertionError(deindent`
-            Bulldozer data integrity violation in table ${label}: found ${errors.length} error row(s).
-          `, { errors });
-        }
-      });
-    }
+    await fetchBulldozerServerJson<{ success: true }>({
+      method: "POST",
+      path: "/internal/payments/verify-data-integrity",
+    });
   });
 
   const endAt = Math.min(startAt + count, projects.length);

@@ -3,6 +3,7 @@ import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write"
 import { createFreePlanSubscriptionRow } from "@/lib/payments/ensure-free-plan";
 import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { sendTeamCreatedWebhook, sendTeamDeletedWebhook, sendTeamUpdatedWebhook } from "@/lib/webhooks";
+import { enqueueWorkflowEvent } from "@/lib/workflows/events";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
@@ -10,6 +11,7 @@ import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { Prisma, PurchaseCreationSource } from "@/generated/prisma/client";
 import { KnownErrors } from "@hexclave/shared";
 import { teamsCrud } from "@hexclave/shared/dist/interface/crud/teams";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { validateBase64Image } from "@hexclave/shared/dist/utils/base64";
 import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -129,13 +131,20 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
         })
         : null;
 
+      // Workflow platform events ride the entity transaction (transactional
+      // outbox); the Svix webhook below stays fire-and-forget post-commit.
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "team.created", payload: teamPrismaToCrud(db) });
+
       return { db, freePlanSubscription };
     });
 
     if (freePlanSubscription != null) {
-      // This is quite slow with current Bulldozer. Let's not block the team creation for this and run asynchronously.
-      // TODO: Run this synchronously once we have bulldozerjs
-      runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(prisma, freePlanSubscription));
+      try {
+        await bulldozerWriteSubscription(freePlanSubscription);
+      } catch (error) {
+        // let's not block team creation for this
+        captureError("teams:create:free-plan-bulldozer-write", error);
+      }
     }
 
     const result = teamPrismaToCrud(db);
@@ -193,7 +202,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
 
       await ensureTeamExists(tx, { tenancyId: auth.tenancy.id, teamId: params.team_id });
 
-      return await tx.team.update({
+      const updated = await tx.team.update({
         where: {
           tenancyId_teamId: {
             tenancyId: auth.tenancy.id,
@@ -208,6 +217,8 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
           profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-profile-images"),
         }),
       });
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "team.updated", payload: teamPrismaToCrud(updated) });
+      return updated;
     });
 
     const result = teamPrismaToCrud(db);
@@ -263,6 +274,8 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
           },
         },
       });
+
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "team.deleted", payload: { id: params.team_id } });
     });
 
     runAsynchronouslyAndWaitUntil(sendTeamDeletedWebhook({

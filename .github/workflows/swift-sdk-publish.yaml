@@ -32,13 +32,13 @@ jobs:
         id: check-tag
         run: |
           TAG="v${{ steps.version.outputs.version }}"
-          echo "Checking if tag $TAG exists in stack-auth/swift-sdk-prerelease..."
+          echo "Checking if tag $TAG exists in hexclave/swift-sdk-prerelease..."
           
           # Use the GitHub API to check if the tag exists
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "Authorization: Bearer ${{ secrets.SWIFT_SDK_PUBLISH_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/stack-auth/swift-sdk-prerelease/git/refs/tags/$TAG")
+            "https://api.github.com/repos/hexclave/swift-sdk-prerelease/git/refs/tags/$TAG")
           
           if [ "$HTTP_STATUS" = "200" ]; then
             echo "Tag $TAG already exists, skipping publish"
@@ -96,5 +96,5 @@ jobs:
           if [ "${{ steps.check-tag.outputs.exists }}" = "true" ]; then
             echo "::notice::Skipped publishing - tag v${{ steps.version.outputs.version }} already exists"
           else
-            echo "::notice::Published Swift SDK v${{ steps.version.outputs.version }} to stack-auth/swift-sdk-prerelease"
+            echo "::notice::Published Swift SDK v${{ steps.version.outputs.version }} to hexclave/swift-sdk-prerelease"
           fi

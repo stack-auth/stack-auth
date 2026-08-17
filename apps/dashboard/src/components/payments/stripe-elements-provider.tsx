@@ -31,26 +31,33 @@ export function StripeElementsProvider({
     );
   }, [stripeAccountId]);
 
+  const appearance = {
+    variables: appearanceVariablesForTheme(resolvedTheme),
+    labels: "floating" as const,
+  };
 
+  // Remount when mode changes — Stripe Elements options.mode is not safely
+  // updated in place; free-trial checkout switches to setup after validate-code.
   return (
     <Elements
+      key={`${mode}:${stripeAccountId}:${amount}`}
       stripe={stripePromise}
-      options={mode === "setup" ? {
-        mode,
-        currency: "usd",
-        appearance: {
-          variables: appearanceVariablesForTheme(resolvedTheme),
-          labels: "floating"
+      options={mode === "setup"
+        ? {
+          mode: "setup",
+          currency: "usd",
+          // Restrict to cards for trial SetupIntents. Auto wallets (Apple/Google
+          // Pay) can 400 elements/sessions on local HTTP / incomplete Connect
+          // capability setups and surface as a generic Elements error.
+          paymentMethodTypes: ["card"],
+          appearance,
         }
-      } : {
-        mode,
-        currency: "usd",
-        amount,
-        appearance: {
-          variables: appearanceVariablesForTheme(resolvedTheme),
-          labels: "floating"
-        }
-      }}
+        : {
+          mode,
+          currency: "usd",
+          amount,
+          appearance,
+        }}
     >
       {children}
     </Elements>

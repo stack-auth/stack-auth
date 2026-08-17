@@ -46,7 +46,7 @@ describe.sequential("ensureFreePlanForBillingTeam (real DB)", () => {
     prisma: any,
   }) {
     const now = new Date();
-    await bulldozerWriteSubscription(options.prisma, {
+    await bulldozerWriteSubscription({
       id: randomUUID(),
       tenancyId: options.tenancyId,
       customerId: options.billingTeamId,
@@ -158,7 +158,7 @@ describe.sequential("ensureFreePlanForBillingTeam (real DB)", () => {
 
     const yesterday = new Date(Date.now() - 24 * 3600 * 1000);
     const endedSubId = randomUUID();
-    await bulldozerWriteSubscription(prisma, {
+    await bulldozerWriteSubscription({
       id: endedSubId,
       tenancyId: tenancy.id,
       customerId: billingTeamId,

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import type {
   DataGridColumnDef,
   DataGridDataSource,
@@ -122,10 +123,28 @@ function useAsyncDataSource<TRow>(opts: {
   const [error, setError] = useState<Error | null>(null);
 
   const cursorRef = useRef<unknown>(undefined);
-  const abortRef = useRef<AbortController | null>(null);
+  const inFlightFetchRef = useRef<AbortController | null>(null);
+  // The infinite-scroll sentinel's IntersectionObserver only fires on
+  // intersection *changes* (by design, to avoid auto-loading the whole
+  // dataset). If `loadMore` is called while another fetch is in flight we
+  // can't just drop it: the sentinel won't fire again until the user scrolls
+  // away and back. Remember the request and replay it once the in-flight
+  // fetch settles.
+  const pendingLoadMoreRef = useRef(false);
+  const hasMoreRef = useRef(true);
+  const paginationModeRef = useRef(paginationMode);
+  paginationModeRef.current = paginationMode;
   const pageIndexRef = useRef(0);
   const hasDataRef = useRef(false);
   const hasMountedServerPaginationRef = useRef(false);
+  // Effects can be replayed when a descendant suspends. Only a fetch that
+  // actually delivered results is safe to reuse as a skip key.
+  const lastCompletedNonAppendFetchKeyRef = useRef<{
+    dataSource: DataGridDataSource<TRow>,
+    sortingKey: string,
+    quickSearchKey: string,
+    pageSize: number,
+  } | null>(null);
 
   const latestArgsRef = useRef({
     dataSource,
@@ -141,6 +160,10 @@ function useAsyncDataSource<TRow>(opts: {
 
   const fetchPage = useCallback(
     async (append: boolean) => {
+      if (append && inFlightFetchRef.current != null) {
+        return;
+      }
+
       const {
         dataSource: currentDataSource,
         getRowId: currentGetRowId,
@@ -149,9 +172,15 @@ function useAsyncDataSource<TRow>(opts: {
         pagination: currentPagination,
       } = latestArgsRef.current;
 
-      abortRef.current?.abort();
+      inFlightFetchRef.current?.abort();
       const controller = new AbortController();
-      abortRef.current = controller;
+      inFlightFetchRef.current = controller;
+      const fetchKey = {
+        dataSource: currentDataSource,
+        sortingKey: JSON.stringify(currentSorting),
+        quickSearchKey: currentQuickSearch,
+        pageSize: currentPagination.pageSize,
+      };
 
       if (append) {
         setIsLoadingMore(true);
@@ -162,21 +191,34 @@ function useAsyncDataSource<TRow>(opts: {
         } else {
           setIsLoading(true);
         }
-        cursorRef.current = undefined;
-        pageIndexRef.current = 0;
       }
       // Clear previous error at the start of a new attempt; we'll set it
       // again if this attempt fails.
       setError(null);
+
+      // Cursor/page-index state is tracked locally and only committed to the
+      // shared refs when this fetch actually delivers a result. An aborted
+      // reset must not clobber the committed pagination state: if it did, a
+      // later effect run that skips via `lastCompletedNonAppendFetchKeyRef`
+      // would keep the old rows but leave `cursorRef === undefined`, and the
+      // next loadMore would silently restart from page one.
+      let cursor = append ? cursorRef.current : undefined;
+      let pageIndex = append ? pageIndexRef.current : 0;
+      let failed = false;
+      // The abort guard lives inside the for-await body, so a generator that
+      // completes with zero yields never hits it and would otherwise fall
+      // through to the post-loop completion-key write. Only mark a reset
+      // complete after it has actually delivered (and committed) a result.
+      let committedResult = false;
 
       try {
         const params: DataGridFetchParams = {
           sorting: currentSorting,
           quickSearch: currentQuickSearch,
           pagination: append
-            ? { pageIndex: pageIndexRef.current, pageSize: currentPagination.pageSize }
+            ? { pageIndex, pageSize: currentPagination.pageSize }
             : currentPagination,
-          cursor: cursorRef.current,
+          cursor,
         };
 
         const gen = currentDataSource(params);
@@ -188,9 +230,11 @@ function useAsyncDataSource<TRow>(opts: {
             setTotalRowCount(result.totalRowCount);
           }
           if (result.nextCursor !== undefined) {
-            cursorRef.current = result.nextCursor;
+            cursor = result.nextCursor;
           }
-          setHasMore(result.hasMore !== false);
+          cursorRef.current = cursor;
+          hasMoreRef.current = result.hasMore !== false;
+          setHasMore(hasMoreRef.current);
 
           if (append) {
             setRows((prev) => {
@@ -201,11 +245,20 @@ function useAsyncDataSource<TRow>(opts: {
               return [...prev, ...newRows];
             });
           } else {
+            // The visible rows now belong to this (possibly still incomplete)
+            // reset, so the previously completed fetch key no longer describes
+            // them and must not allow a skip.
+            lastCompletedNonAppendFetchKeyRef.current = null;
             setRows(result.rows);
           }
 
           hasDataRef.current = true;
-          pageIndexRef.current++;
+          committedResult = true;
+          pageIndex++;
+          pageIndexRef.current = pageIndex;
+        }
+        if (!append && committedResult && !controller.signal.aborted) {
+          lastCompletedNonAppendFetchKeyRef.current = fetchKey;
         }
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -214,12 +267,35 @@ function useAsyncDataSource<TRow>(opts: {
         // consumer to wire up error rendering.
         // eslint-disable-next-line no-console
         console.error("[DataGrid] Data source error:", err);
+        failed = true;
         setError(err instanceof Error ? err : new Error(String(err)));
       } finally {
-        if (!controller.signal.aborted) {
+        // Only the owning fetch resets the loading flags; if this fetch was
+        // replaced by a newer one, that fetch manages them instead. This also
+        // covers cleanup-initiated aborts, which would otherwise leave
+        // `isLoadingMore` stuck and block all future loadMore calls.
+        if (inFlightFetchRef.current === controller) {
+          inFlightFetchRef.current = null;
           setIsLoading(false);
           setIsRefetching(false);
           setIsLoadingMore(false);
+          // Replay a loadMore that was requested (and deferred) while this
+          // fetch was in flight — but only if this fetch succeeded while we
+          // are still in infinite mode. Skip on failure (the append would run
+          // against inconsistent state and its setError(null) would hide this
+          // fetch's error), when pagination mode changed away from infinite,
+          // and on unmount-cleanup aborts — `inFlightFetchRef.current ===
+          // controller` with an aborted signal only happens then.
+          const shouldChainLoadMore =
+            pendingLoadMoreRef.current
+            && !failed
+            && !controller.signal.aborted
+            && hasMoreRef.current
+            && paginationModeRef.current === "infinite";
+          pendingLoadMoreRef.current = false;
+          if (shouldChainLoadMore) {
+            runAsynchronously(fetchPage(true));
+          }
         }
       }
     },
@@ -227,8 +303,26 @@ function useAsyncDataSource<TRow>(opts: {
   );
 
   useEffect(() => {
-    fetchPage(false).catch(() => {});
-    return () => abortRef.current?.abort();
+    // Deferred loadMore is only meaningful for infinite scroll; drop it when
+    // the consumer leaves that mode so a later settle cannot append wrongly.
+    if (paginationMode !== "infinite") {
+      pendingLoadMoreRef.current = false;
+    }
+  }, [paginationMode]);
+
+  useEffect(() => {
+    const lastCompletedKey = lastCompletedNonAppendFetchKeyRef.current;
+    const isSameCompletedFetch = hasDataRef.current
+      && lastCompletedKey?.dataSource === dataSource
+      && lastCompletedKey.sortingKey === sortingKey
+      && lastCompletedKey.quickSearchKey === quickSearchKey
+      && lastCompletedKey.pageSize === pagination.pageSize;
+    if (!isSameCompletedFetch) {
+      runAsynchronously(fetchPage(false));
+    }
+    // Always return the abort cleanup (even when the fetch is skipped) so an
+    // in-flight append is cancelled on unmount.
+    return () => inFlightFetchRef.current?.abort();
     // Also refetches when `dataSource` identity changes — consumers encode
     // external filter state into the generator's closure, so a new
     // generator reference is the signal that the query changed.
@@ -243,17 +337,25 @@ function useAsyncDataSource<TRow>(opts: {
       hasMountedServerPaginationRef.current = true;
       return;
     }
-    fetchPage(false).catch(() => {});
+    runAsynchronously(fetchPage(false));
   }, [fetchPage, paginationMode, pagination.pageIndex]);
 
   const loadMore = useCallback(() => {
-    if (!isLoadingMore && hasMore && paginationMode === "infinite") {
-      fetchPage(true).catch(() => {});
+    if (paginationMode !== "infinite" || !hasMore) {
+      return;
     }
-  }, [isLoadingMore, hasMore, paginationMode, fetchPage]);
+    // Keep pagination single-flight. In particular, do not let the sentinel
+    // start an append against a cursor that a concurrent reset is replacing.
+    // Queue the request instead of dropping it (see pendingLoadMoreRef).
+    if (inFlightFetchRef.current != null) {
+      pendingLoadMoreRef.current = true;
+      return;
+    }
+    runAsynchronously(fetchPage(true));
+  }, [hasMore, paginationMode, fetchPage]);
 
   const reload = useCallback(() => {
-    fetchPage(false).catch(() => {});
+    runAsynchronously(fetchPage(false));
   }, [fetchPage]);
 
   return {

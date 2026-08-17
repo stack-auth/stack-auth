@@ -56,6 +56,7 @@ const ignoredEvents = [
   "payout.created",
   "payout.paid",
   "payout.reconciliation_completed",
+  "refund.updated",
 ] as const satisfies Stripe.Event.Type[];
 
 const isSubscriptionChangedEvent = (event: Stripe.Event): event is Stripe.Event & { type: (typeof subscriptionChangedEvents)[number] } => {
@@ -235,7 +236,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         quantity: qty,
       }
     });
-    await bulldozerWriteOneTimePurchase(prisma, upsertedPurchase);
+    await bulldozerWriteOneTimePurchase(upsertedPurchase);
     await markPromoCodeRedemptionApplied({
       prisma,
       tenancyId: tenancy.id,
@@ -380,6 +381,12 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     if (event.type === "invoice.payment_succeeded") {
       const invoice = event.data.object as Stripe.Invoice;
 
+      // Skip $0 invoices (e.g. free-trial creation invoices) so customers don't
+      // get a "payment receipt" that looks like they were charged at checkout.
+      if (invoice.amount_paid === 0) {
+        return;
+      }
+
       const tenancy = await getTenancyForStripeAccountId(accountId, mockData);
       const prisma = await getPrismaClientForTenancy(tenancy);
       const stripeCustomerId = invoice.customer;
@@ -418,6 +425,47 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         recipients,
         templateType: "payment_receipt",
         extraVariables,
+      });
+    }
+
+    if (event.type === "customer.subscription.trial_will_end") {
+      const subscription = event.data.object as Stripe.Subscription;
+      const tenancy = await getTenancyForStripeAccountId(accountId, mockData);
+      const prisma = await getPrismaClientForTenancy(tenancy);
+      const stripeCustomerId = subscription.customer;
+      if (typeof stripeCustomerId !== "string") {
+        throw new HexclaveAssertionError("Stripe subscription customer id missing", { event });
+      }
+      const stripeCustomer = await stripe.customers.retrieve(stripeCustomerId);
+      if (stripeCustomer.deleted) {
+        throw new HexclaveAssertionError("Stripe subscription customer deleted", { event });
+      }
+      const customerType = normalizeCustomerType(stripeCustomer.metadata.customerType);
+      if (!stripeCustomer.metadata.customerId || !customerType) {
+        throw new HexclaveAssertionError("Stripe subscription customer metadata missing customerId or customerType", { event });
+      }
+      const recipients = await getPaymentRecipients({
+        tenancy,
+        prisma,
+        customerType,
+        customerId: stripeCustomer.metadata.customerId,
+      });
+      const product = await resolveProductFromStripeMetadata({
+        prisma,
+        tenancyId: tenancy.id,
+        metadata: subscription.metadata as Record<string, string | undefined>,
+        context: { subscriptionId: subscription.id },
+      });
+      const productName = product.displayName ?? "Subscription";
+      const trialEndDate = formatStripeTimestamp(subscription.trial_end);
+      await sendDefaultTemplateEmail({
+        tenancy,
+        recipients,
+        templateType: "trial_will_end",
+        extraVariables: {
+          productName,
+          trialEndDate,
+        },
       });
     }
 

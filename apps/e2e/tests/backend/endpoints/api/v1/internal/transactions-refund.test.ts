@@ -821,9 +821,10 @@ async function createLiveModeSubscriptionWithRenewal(): Promise<{
   const code = await createPurchaseCode({ userId, productId: "sub-product" });
   const tenancyId = code.split("_")[0];
 
+  const idSuffix = randomUUID().replace(/-/g, "");
   const nowSec = Math.floor(Date.now() / 1000);
   const stripeSubscription = {
-    id: "sub_renewal_refund_1",
+    id: `sub_renewal_refund_${idSuffix}`,
     status: "active",
     items: {
       data: [
@@ -849,7 +850,7 @@ async function createLiveModeSubscriptionWithRenewal(): Promise<{
   };
 
   const baseInvoiceObject = {
-    customer: "cus_renewal_refund_1",
+    customer: `cus_renewal_refund_${idSuffix}`,
     stack_stripe_mock_data: stackStripeMockData,
     lines: {
       data: [
@@ -863,13 +864,13 @@ async function createLiveModeSubscriptionWithRenewal(): Promise<{
   };
 
   const startWebhook = await Payments.sendStripeWebhook({
-    id: "evt_renewal_refund_start",
+    id: `evt_renewal_refund_start_${idSuffix}`,
     type: "invoice.payment_succeeded",
     account: accountId,
     data: {
       object: {
         ...baseInvoiceObject,
-        id: "in_renewal_refund_start",
+        id: `in_renewal_refund_start_${idSuffix}`,
         billing_reason: "subscription_create",
       },
     },
@@ -877,13 +878,13 @@ async function createLiveModeSubscriptionWithRenewal(): Promise<{
   expect(startWebhook.status).toBe(200);
 
   const renewalWebhook = await Payments.sendStripeWebhook({
-    id: "evt_renewal_refund_cycle",
+    id: `evt_renewal_refund_cycle_${idSuffix}`,
     type: "invoice.payment_succeeded",
     account: accountId,
     data: {
       object: {
         ...baseInvoiceObject,
-        id: "in_renewal_refund_cycle",
+        id: `in_renewal_refund_cycle_${idSuffix}`,
         billing_reason: "subscription_cycle",
       },
     },

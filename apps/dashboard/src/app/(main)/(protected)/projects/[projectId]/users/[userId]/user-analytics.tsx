@@ -24,7 +24,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useAdminApp } from "../../use-admin-app";
+import { useServerApp } from "../../use-admin-app";
 import { UserPageMetricCard } from "./user-page-metric-card";
 import { UserPageTableSection } from "./user-page-table-section";
 
@@ -440,7 +440,7 @@ function parseDayFilterRange(dayFilter: string): { since: Date, until: Date } | 
 }
 
 export function UserAnalyticsSection({ user, dayFilter, onClearDayFilter }: UserAnalyticsSectionProps) {
-  const hexclaveAdminApp = useAdminApp();
+  const serverApp = useServerApp();
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [recent, setRecent] = useState<RecentEventsState>({ rows: [], hasMore: false, isLoadingMore: false });
   const recentContextRef = useRef<RecentFetchContext | null>(null);
@@ -503,7 +503,7 @@ export function UserAnalyticsSection({ user, dayFilter, onClearDayFilter }: User
     };
 
     const runQuery = (query: string, params: Record<string, unknown>) =>
-      hexclaveAdminApp.queryAnalytics({ query, params, timeout_ms: 30_000, include_all_branches: false });
+      serverApp.queryAnalytics({ query, params, timeout_ms: 30_000, include_all_branches: false });
 
     runAsynchronously(async () => {
       const [summaryRes, dailyRes, topPagesRes, topReferrersRes, recentRes] = await Promise.all([
@@ -548,7 +548,7 @@ export function UserAnalyticsSection({ user, dayFilter, onClearDayFilter }: User
     return () => {
       token.cancelled = true;
     };
-  }, [hexclaveAdminApp, user.id, filterRange]);
+  }, [serverApp, user.id, filterRange]);
 
   const onLoadMoreRecent = useCallback(() => {
     const current = recent;
@@ -558,7 +558,7 @@ export function UserAnalyticsSection({ user, dayFilter, onClearDayFilter }: User
     const offset = current.rows.length;
     setRecent((p) => ({ ...p, isLoadingMore: true }));
     runAsynchronously(async () => {
-      const res = await hexclaveAdminApp.queryAnalytics({
+      const res = await serverApp.queryAnalytics({
         query: RECENT_EVENTS_QUERY,
         params: { ...ctx.params, limit: RECENT_EVENTS_PAGE_SIZE, offset },
         timeout_ms: 30_000,
@@ -579,7 +579,7 @@ export function UserAnalyticsSection({ user, dayFilter, onClearDayFilter }: User
         setRecent((p) => ({ ...p, isLoadingMore: false, hasMore: false }));
       },
     });
-  }, [hexclaveAdminApp, recent]);
+  }, [recent, serverApp]);
 
   return (
     <div className="flex flex-col gap-4">

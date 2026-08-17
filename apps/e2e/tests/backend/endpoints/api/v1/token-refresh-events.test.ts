@@ -18,9 +18,9 @@ type AnalyticsEvent = {
 const queryEvents = async (params: {
   userId?: string,
   eventType?: string,
-}) => await niceBackendFetch("/api/v1/internal/analytics/query", {
+}) => await niceBackendFetch("/api/v1/analytics/query", {
   method: "POST",
-  accessType: "admin",
+  accessType: "server",
   body: {
     query: `
       SELECT event_type, project_id, branch_id, user_id, team_id, event_at
@@ -164,7 +164,7 @@ it("OTP signin (new user) creates exactly one $token-refresh event", async ({ ex
     config: { magic_link_enabled: true },
   });
   await InternalApiKey.createAndSetProjectKeys();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
 
   const events = await expectExactlyNTokenRefreshEvents(userId, 1, { projectId });
   expect(events[0]).toMatchObject({
@@ -305,7 +305,7 @@ it("session refresh endpoint creates exactly one additional $token-refresh event
   });
   await InternalApiKey.createAndSetProjectKeys();
 
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
   await expectExactlyNTokenRefreshEvents(userId, 1, { projectId });
 
   // Refresh the session

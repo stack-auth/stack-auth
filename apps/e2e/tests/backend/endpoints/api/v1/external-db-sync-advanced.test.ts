@@ -22,9 +22,9 @@ import {
 const COMPLEX_SEQUENCE_TIMEOUT = TEST_TIMEOUT * 2 + 30_000;
 
 async function runQueryForCurrentProject(body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
-  return await niceBackendFetch("/api/v1/internal/analytics/query", {
+  return await niceBackendFetch("/api/v1/analytics/query", {
     method: "POST",
-    accessType: "admin",
+    accessType: "server",
     body,
   });
 }

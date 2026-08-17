@@ -1,8 +1,8 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
-import { getClientSecretFromStripeSubscription, getSetupIntentClientSecretFromStripeSubscription, validatePurchaseSession } from "@/lib/payments";
+import { assertFreeTrialAllowedForPurchase, getClientSecretFromStripeSubscription, getEffectiveFreeTrial, getStripeTrialPeriodDays, validatePurchaseSession } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { computeApplicationFeeAmount, getApplicationFeePercentOrUndefined } from "@/lib/payments/platform-fees";
-import { attachStripePaymentIntentToPromoRedemption, attachStripeSubscriptionToPromoRedemption, calculateUnitAmountUsdCents, createStripeCouponParamsForPromoCode, promoRedemptionMetadata, reservePromoCodeRedemption, voidExpiredOrFailedPromoCodeRedemption, type ReservedPromoCodeRedemption } from "@/lib/payments/promo-codes";
+import { attachStripePaymentIntentToPromoRedemption, attachStripeSubscriptionToPromoRedemption, createStripeCouponParamsForPromoCode, promoRedemptionMetadata, reservePromoCodeRedemption, voidExpiredOrFailedPromoCodeRedemption, type ReservedPromoCodeRedemption } from "@/lib/payments/promo-codes";
 import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getTenancy } from "@/lib/tenancies";
@@ -10,11 +10,16 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { getStripeOneTimeMinAmount } from "@hexclave/shared/dist/payments/stripe-limits";
-import { yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { moneyAmountSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
+import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
 import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import Stripe from "stripe";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
+
+const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "USD")
+  ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -33,7 +38,7 @@ export const POST = createSmartRouteHandler({
       }),
       price_id: yupString().defined().meta({
         openapiField: {
-          description: "The Stack auth price ID to purchase",
+          description: "The Hexclave price ID to purchase",
           exampleValue: "price_1234567890abcdef"
         }
       }),
@@ -57,13 +62,13 @@ export const POST = createSmartRouteHandler({
     body: yupObject({
       client_secret: yupString().optional().meta({
         openapiField: {
-          description: "Stripe client secret used by the browser to confirm payment via Stripe Elements. Omitted when no payment step is required from the customer; in that case the purchase is being settled without a confirmation step and the caller should skip mounting Stripe Elements.",
+          description: "Stripe client secret used by the browser to confirm payment or setup via Stripe Elements. Omitted when no confirmation step is required from the customer.",
           exampleValue: "1234567890abcdef_secret_xyz123",
         },
       }),
-      client_secret_type: yupString().oneOf(["payment", "setup"]).optional().meta({
+      stripe_intent_type: yupString().oneOf(["payment", "setup"]).optional().meta({
         openapiField: {
-          description: "The Stripe confirmation flow to use for client_secret. Defaults to payment when omitted for backwards compatibility.",
+          description: "Whether client_secret is a PaymentIntent (immediate charge) or SetupIntent (e.g. free trial card collection). Omitted when client_secret is omitted.",
           exampleValue: "payment",
         },
       }),
@@ -99,18 +104,18 @@ export const POST = createSmartRouteHandler({
       throw new HexclaveAssertionError("Price not resolved for purchase session");
     }
 
-    // Validate the price amount up-front so a malformed config can't slip past
-    // the Stripe-minimum guards below and produce a raw Stripe error at
-    // PaymentIntent/Subscription.create time.
-    const priceAmount = Number(selectedPrice.USD);
-    if (!Number.isFinite(priceAmount) || priceAmount < 0) {
+    // Validate up-front so a malformed config returns 400 instead of letting
+    // moneyAmountToStripeUnits throw a yup ValidationError that becomes a 500.
+    // Also never use `Number(USD) * 100` — e.g. 79.99 → 7998.999999999999 and
+    // Stripe rejects with parameter_invalid_integer.
+    if (selectedPrice.USD == null || !moneyAmountSchema(USD_CURRENCY).defined().isValidSync(selectedPrice.USD)) {
       throw new StatusError(400, `Price amount must be a finite, non-negative number (got ${JSON.stringify(selectedPrice.USD)})`);
     }
-    const unitAmountCents = calculateUnitAmountUsdCents(selectedPrice);
+    const unitAmountStripeUnits = moneyAmountToStripeUnits(selectedPrice.USD as MoneyAmount, USD_CURRENCY);
     // TODO(default-plans): when default/free plans become first-class, route
     // these directly via an ensureDefaultPlan-style grant instead of forcing
     // callers to configure an interval just to make Stripe happy.
-    const isFreePrice = unitAmountCents === 0;
+    const isFreePrice = unitAmountStripeUnits === 0;
     if (isFreePrice && !selectedPrice.interval) {
       throw new StatusError(400, "Free products must have a billing interval");
     }
@@ -120,9 +125,20 @@ export const POST = createSmartRouteHandler({
     // PaymentIntent.create time. Recurring sub items don't have this minimum
     // (handled above for the $0 case).
     const stripeOneTimeMin = getStripeOneTimeMinAmount('USD');
-    if (!selectedPrice.interval && unitAmountCents > 0 && unitAmountCents < stripeOneTimeMin * 100) {
+    const minOneTimeStripeUnits = moneyAmountToStripeUnits(
+      stripeOneTimeMin.toFixed(USD_CURRENCY.decimals) as MoneyAmount,
+      USD_CURRENCY,
+    );
+    if (!selectedPrice.interval && unitAmountStripeUnits > 0 && unitAmountStripeUnits < minOneTimeStripeUnits) {
       throw new StatusError(400, `One-time prices must be at least $${stripeOneTimeMin.toFixed(2)} (Stripe minimum)`);
     }
+
+    // Validate free-trial configuration before reserving a promo redemption so
+    // an invalid purchase cannot consume redemption capacity.
+    const effectiveFreeTrial = getEffectiveFreeTrial(data.product, selectedPrice);
+    assertFreeTrialAllowedForPurchase(selectedPrice, effectiveFreeTrial);
+    const trialPeriodDays = effectiveFreeTrial != null ? getStripeTrialPeriodDays(effectiveFreeTrial) : undefined;
+    const shouldExpectSetupIntent = effectiveFreeTrial != null;
 
     const productVersionId = await upsertProductVersion({
       prisma,
@@ -143,8 +159,8 @@ export const POST = createSmartRouteHandler({
       productVersionId,
       promoCode: promo_code,
     }) : null;
-    const originalAmountCents = unitAmountCents * quantity;
-    const effectiveAmountCents = promoRedemption?.finalAmountUsdCents ?? originalAmountCents;
+    const originalAmountStripeUnits = unitAmountStripeUnits * quantity;
+    const effectiveAmountStripeUnits = promoRedemption?.finalAmountUsdCents ?? originalAmountStripeUnits;
     const isForeverFreeAfterPromo = promoRedemption?.finalAmountUsdCents === 0 && promoRedemption.subscriptionDuration === "forever";
     const requiresSetupAfterFirstInvoicePromo = promoRedemption?.finalAmountUsdCents === 0 && promoRedemption.subscriptionDuration === "first_invoice";
 
@@ -176,9 +192,7 @@ export const POST = createSmartRouteHandler({
     };
 
     const voidPromoRedemptionAfterSubscriptionFailure = async (redemption: ReservedPromoCodeRedemption | null, reason: string) => {
-      if (!redemption) {
-        return;
-      }
+      if (!redemption) return;
       const voidResult = await Result.fromPromise(voidExpiredOrFailedPromoCodeRedemption({
         prisma,
         tenancyId: tenancy.id,
@@ -213,73 +227,68 @@ export const POST = createSmartRouteHandler({
         couponId,
         options.redemption ? promoStripeIdempotencyKey(options.operation, options.redemption) : undefined,
       ));
-      if (result.status === "ok") {
-        return result.data;
-      }
+      if (result.status === "ok") return result.data;
       if (options.redemption && isAmbiguousStripeFailure(result.error)) {
         captureAmbiguousStripePromoFailure("promo-stripe-subscription-ambiguous", result.error, options.redemption, couponId);
         throw result.error;
       }
       if (couponId) {
         const deleteResult = await Result.fromPromise(stripe.coupons.del(couponId));
-        if (deleteResult.status === "error") {
-          captureError("promo-stripe-coupon-cleanup-failed", deleteResult.error);
-        }
+        if (deleteResult.status === "error") captureError("promo-stripe-coupon-cleanup-failed", deleteResult.error);
       }
       await voidPromoRedemptionAfterSubscriptionFailure(options.redemption, options.failureReason);
       throw result.error;
     };
 
-    const finishSubscriptionResponse = async (subscription: Stripe.Subscription) => {
+    const finishSubscriptionResponse = async (subscription: Stripe.Subscription, expectsSetupIntent: boolean) => {
       if (isFreePrice || isForeverFreeAfterPromo) {
-        // Stripe activates permanently $0 subs synchronously and produces no
-        // confirmation secret. FIRST_INVOICE $0 promos are different: renewals
-        // will charge later, so the caller still needs a setup intent now.
         await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
         return { statusCode: 200, bodyType: "json" as const, body: {} };
       }
-      const clientSecret = requiresSetupAfterFirstInvoicePromo
-        ? getSetupIntentClientSecretFromStripeSubscription(subscription)
-        : getClientSecretFromStripeSubscription(subscription);
+      const clientSecretResult = getClientSecretFromStripeSubscription(subscription, expectsSetupIntent);
       await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
       return {
         statusCode: 200,
         bodyType: "json" as const,
         body: {
-          client_secret: clientSecret,
-          client_secret_type: requiresSetupAfterFirstInvoicePromo ? "setup" as const : "payment" as const,
+          client_secret: clientSecretResult.clientSecret,
+          stripe_intent_type: clientSecretResult.type,
         },
       };
     };
 
     if (conflictingSubscriptions.length > 0) {
       const conflicting = conflictingSubscriptions[0];
-      const conflictingStripeSubscriptionId = conflicting.stripeSubscriptionId;
-      if (conflictingStripeSubscriptionId) {
-        const existingStripeSub = await stripe.subscriptions.retrieve(conflictingStripeSubscriptionId);
+      if (conflicting.stripeSubscriptionId) {
+        const existingStripeSub = await stripe.subscriptions.retrieve(conflicting.stripeSubscriptionId);
         const existingItem = existingStripeSub.items.data[0];
         const product = await stripe.products.create({ name: data.product.displayName ?? "Subscription" });
-        const selectedInterval = selectedPrice.interval;
-        if (selectedInterval) {
+        if (selectedPrice.interval) {
+          const selectedInterval = selectedPrice.interval;
           const applicationFeePercent = getApplicationFeePercentOrUndefined(tenancy.project.id);
           // TODO(default-plans): $0 subs currently piggyback on the Stripe
           // subscription lifecycle. Once default plans land, free subs should be
           // granted directly (Prisma insert + bulldozer write, mirroring
           // ensureFreePlanForBillingTeam) and skip Stripe entirely.
           //
+          // Do not attach trial_period_days on in-place subscription updates
+          // (plan switch / conflict replace): re-trialing an existing customer
+          // is usually wrong. Trials only apply when creating a new Stripe sub.
           const updated = await runSubscriptionWithPromoCouponCleanup({
             redemption: promoRedemption,
             failureReason: "stripe_subscription_update_failed",
             operation: "subscription-update",
-            run: async (couponId, idempotencyKey) => await stripe.subscriptions.update(conflictingStripeSubscriptionId, {
+            run: async (couponId, idempotencyKey) => await stripe.subscriptions.update(conflicting.stripeSubscriptionId ?? throwErr("Expected conflicting Stripe subscription id"), {
               payment_behavior: 'default_incomplete',
               payment_settings: { save_default_payment_method: 'on_subscription' },
+              // Expand nested objects so we get client_secret fields (otherwise
+              // Stripe returns id strings for pending_setup_intent / latest_invoice).
               expand: ['latest_invoice.confirmation_secret', 'pending_setup_intent'],
               items: [{
                 id: existingItem.id,
                 price_data: {
                   currency: "usd",
-                  unit_amount: unitAmountCents,
+                  unit_amount: unitAmountStripeUnits,
                   product: product.id,
                   recurring: {
                     interval_count: selectedInterval[0],
@@ -306,9 +315,11 @@ export const POST = createSmartRouteHandler({
               stripeSubscriptionId: updated.id,
             });
           }
-          return await finishSubscriptionResponse(updated);
+          // Conflict updates never start a configured free trial, but a 100%
+          // first-invoice promo still needs a SetupIntent for future renewals.
+          return await finishSubscriptionResponse(updated, requiresSetupAfterFirstInvoicePromo);
         } else {
-          await stripe.subscriptions.cancel(conflictingStripeSubscriptionId);
+          await stripe.subscriptions.cancel(conflicting.stripeSubscriptionId);
         }
       } else if (conflicting.id) {
         const updatedConflicting = await prisma.subscription.update({
@@ -325,12 +336,12 @@ export const POST = createSmartRouteHandler({
             endedAt: new Date(),
           },
         });
-        await bulldozerWriteSubscription(prisma, updatedConflicting);
+        await bulldozerWriteSubscription(updatedConflicting);
       }
     }
     // One-time payment path after conflicts handled
     if (!selectedPrice.interval) {
-      const amountCents = effectiveAmountCents;
+      const amountCents = effectiveAmountStripeUnits;
       if (promoRedemption && amountCents <= 0) {
         await voidExpiredOrFailedPromoCodeRedemption({
           prisma,
@@ -340,7 +351,7 @@ export const POST = createSmartRouteHandler({
         });
         throw new StatusError(400, "Promo code discounts this one-time purchase below the minimum charge amount.");
       }
-      if (promoRedemption && amountCents < stripeOneTimeMin * 100) {
+      if (promoRedemption && amountCents < minOneTimeStripeUnits) {
         await voidExpiredOrFailedPromoCodeRedemption({
           prisma,
           tenancyId: tenancy.id,
@@ -356,7 +367,7 @@ export const POST = createSmartRouteHandler({
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amountCents,
         currency: "usd",
-        customer: stripeCustomerId,
+        customer: data.stripeCustomerId,
         automatic_payment_methods: { enabled: true },
         metadata: {
           productId: data.productId || "",
@@ -384,7 +395,14 @@ export const POST = createSmartRouteHandler({
         throwErr(500, "No client secret returned from Stripe for payment intent");
       }
       await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
-      return { statusCode: 200, bodyType: "json", body: { client_secret: clientSecret, client_secret_type: "payment" as const } };
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {
+          client_secret: clientSecret,
+          stripe_intent_type: "payment" as const,
+        },
+      };
     }
     const subscriptionInterval = selectedPrice.interval;
 
@@ -400,6 +418,10 @@ export const POST = createSmartRouteHandler({
     // Note on $0 subs: Stripe auto-activates them on create (status="active",
     // invoice="paid") regardless of `default_incomplete` so we keep the same
     // call shape and only diverge in how we read the response below.
+    //
+    // Free trials: pass trial_period_days so the first invoice is $0 and
+    // Stripe attaches pending_setup_intent for card collection instead of a
+    // PaymentIntent. Charge happens automatically when the trial ends.
     const created = await runSubscriptionWithPromoCouponCleanup({
       redemption: promoRedemption,
       failureReason: "stripe_subscription_create_failed",
@@ -408,11 +430,13 @@ export const POST = createSmartRouteHandler({
         customer: stripeCustomerId,
         payment_behavior: 'default_incomplete',
         payment_settings: { save_default_payment_method: 'on_subscription' },
+        // Expand nested objects so we get client_secret fields (otherwise
+        // Stripe returns id strings for pending_setup_intent / latest_invoice).
         expand: ['latest_invoice.confirmation_secret', 'pending_setup_intent'],
         items: [{
           price_data: {
             currency: "usd",
-            unit_amount: unitAmountCents,
+            unit_amount: unitAmountStripeUnits,
             product: product.id,
             recurring: {
               interval_count: subscriptionInterval[0],
@@ -428,6 +452,7 @@ export const POST = createSmartRouteHandler({
           ...(promoRedemption ? promoRedemptionMetadata(promoRedemption) : {}),
         },
         ...(couponId ? { discounts: [{ coupon: couponId }] } : {}),
+        ...(trialPeriodDays !== undefined ? { trial_period_days: trialPeriodDays } : {}),
         ...(applicationFeePercent !== undefined ? { application_fee_percent: applicationFeePercent } : {}),
       }, idempotencyKey ? { idempotencyKey } : undefined),
     });
@@ -439,6 +464,6 @@ export const POST = createSmartRouteHandler({
         stripeSubscriptionId: created.id,
       });
     }
-    return await finishSubscriptionResponse(created);
+    return await finishSubscriptionResponse(created, shouldExpectSetupIntent || requiresSetupAfterFirstInvoicePromo);
   }
 });

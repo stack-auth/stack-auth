@@ -181,8 +181,8 @@ it("should provide delivery statistics", async ({ expect }) => {
     primaryEmailVerified: true,
   });
 
-  // Give Bulldozer's pg_cron tick time to materialise the billing team's
-  // `emails_per_month` quota from its freshly-granted free plan. Without
+  // Give bulldozer-js's in-process tick loop time to materialise the billing
+  // team's `emails_per_month` quota from its freshly-granted free plan. Without
   // this wait the first email gets quota-blocked into a permanent
   // server-error terminal and `stats.hour.sent` never reaches 1.
   await wait(2000);

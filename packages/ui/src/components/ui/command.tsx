@@ -16,7 +16,7 @@ const Command: React.FC<React.ComponentPropsWithoutRef<typeof CommandPrimitive>>
   <CommandPrimitive
     ref={ref}
     className={cn(
-      "stack-scope flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground",
+      "stack-scope flex h-full w-full flex-col overflow-hidden rounded-md bg-white text-popover-foreground dark:bg-popover",
       className
     )}
     {...props}
@@ -156,4 +156,3 @@ export {
   CommandSeparator,
   CommandShortcut,
 };
-

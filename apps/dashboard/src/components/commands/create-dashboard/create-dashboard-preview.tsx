@@ -122,7 +122,7 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
     backendBaseUrl: browserBaseUrl,
     currentUser: () => currentUserRef.current,
     systemPrompt: "create-dashboard",
-    tools: ["update-dashboard"],
+    tools: projectIdRef.current ? ["update-dashboard", "read-config"] : ["update-dashboard"],
     quality: "smart",
     speed: "fast",
     projectId: projectIdRef.current,

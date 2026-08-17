@@ -14,6 +14,9 @@ lastActiveAt: Date
 serverMetadata: json
   Server-only metadata, not visible to client.
 
+restrictedByAdminPrivateDetails: string | null
+  Private details about the restriction (e.g. which sign-up rule triggered it), never visible to the client.
+
 
 ## Server-specific Update Methods
 
@@ -113,7 +116,7 @@ teamId: string
 
 Returns: ServerTeam | null
 
-Find in listTeams() by id.
+Find in listTeams() by id. This is deliberately scoped to the user's own team memberships (unlike the app-level getTeam), so it returns null for teams the user is not a member of.
 
 Does not error.
 

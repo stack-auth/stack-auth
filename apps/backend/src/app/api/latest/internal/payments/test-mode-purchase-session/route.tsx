@@ -74,6 +74,8 @@ export const POST = createSmartRouteHandler({
       promoCode: promo_code,
     }) : null;
 
+    // Test mode does not simulate free trials (no Stripe trialing / SetupIntent /
+    // deferred charge). Configured freeTrial is ignored; the dashboard warns.
     const grantResult = await Result.fromPromise(grantProductToCustomer({
       prisma,
       tenancy,

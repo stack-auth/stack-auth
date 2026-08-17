@@ -8,17 +8,22 @@ import { StripeElementsProvider } from "@/components/payments/stripe-elements-pr
 import { DesignAlert } from "@/components/design-components/alert";
 import { DesignCard } from "@/components/design-components/card";
 import { Button, Input, Skeleton, Typography } from "@/components/ui";
-import { getPublicEnvVar } from "@/lib/env";
 import { XCircleIcon } from "@phosphor-icons/react";
 import { inlineProductSchema } from "@hexclave/shared/dist/schema-fields";
+import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
+import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { typedEntries } from "@hexclave/shared/dist/utils/objects";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
+import { getApiBaseUrl } from "../get-api-base-url";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
+
+const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "USD")
+  ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
 
 type ProductData = {
   product?: Omit<yup.InferType<typeof inlineProductSchema>, "included_items" | "server_only"> & { stackable: boolean },
@@ -27,6 +32,7 @@ type ProductData = {
   project_logo_url: string | null,
   already_bought_non_stackable?: boolean,
   conflicting_products?: { product_id: string, display_name: string }[],
+  replaces_stripe_subscription?: boolean,
   test_mode: boolean,
   charges_enabled: boolean | null,
 };
@@ -47,11 +53,6 @@ type PromoQuote = {
 type InvalidPromoQuote = {
   valid: false,
   error?: string,
-};
-
-type PurchaseSessionResult = {
-  client_secret?: string,
-  client_secret_type?: "payment" | "setup",
 };
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -89,28 +90,69 @@ function parsePromoQuote(value: unknown): PromoQuote | InvalidPromoQuote {
   };
 }
 
-function parsePurchaseSessionResult(value: unknown): PurchaseSessionResult {
-  if (!isObject(value)) {
-    return {};
-  }
-  return {
-    client_secret: typeof value.client_secret === "string" ? value.client_secret : undefined,
-    client_secret_type: value.client_secret_type === "payment" || value.client_secret_type === "setup" ? value.client_secret_type : undefined,
-  };
-}
-
 function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
-const baseUrl = new URL("/api/v1", apiUrl).toString();
 const MAX_STRIPE_AMOUNT_CENTS = 999_999 * 100;
+const GENERIC_PURCHASE_FAILURE_MESSAGE = "We couldn't complete the purchase. Please try again.";
+const GENERIC_TEST_MODE_PURCHASE_FAILURE_MESSAGE = "We couldn't complete the test purchase. Please try again.";
+
+async function readResponseJson(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (text.length === 0) {
+    return null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function getResponseCode(responseBody: unknown) {
+  if (typeof responseBody === "object" && responseBody !== null && "code" in responseBody && typeof responseBody.code === "string") {
+    return responseBody.code;
+  }
+  return null;
+}
+
+function getPurchaseFailureMessage(responseBody: unknown, fallbackMessage: string) {
+  if (getResponseCode(responseBody) !== null && typeof responseBody === "object" && responseBody !== null && "error" in responseBody && typeof responseBody.error === "string") {
+    return responseBody.error;
+  }
+  return fallbackMessage;
+}
+
+function getClientSecret(responseBody: unknown) {
+  if (typeof responseBody === "object" && responseBody !== null && "client_secret" in responseBody && typeof responseBody.client_secret === "string") {
+    return responseBody.client_secret;
+  }
+  return null;
+}
+
+function getStripeIntentType(responseBody: unknown): "payment" | "setup" {
+  if (
+    typeof responseBody === "object"
+    && responseBody !== null
+    && "stripe_intent_type" in responseBody
+    && (responseBody.stripe_intent_type === "payment" || responseBody.stripe_intent_type === "setup")
+  ) {
+    return responseBody.stripe_intent_type;
+  }
+  // Older responses / one-time paths without the field are payment intents.
+  return "payment";
+}
 
 export default function PageClient({ code }: { code: string }) {
   const [data, setData] = useState<ProductData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // A missing NEXT_PUBLIC_STACK_API_URL is a deployment/config error, not a bad purchase
+  // code. getApiBaseUrl() can only run client-side (the var is blank during prerender), so we
+  // resolve it in the effect below and surface a failure here loudly via the error boundary
+  // instead of letting it fall into the "Invalid Purchase Code" catch path.
+  const [configError, setConfigError] = useState<unknown>(null);
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
   const [quantityInput, setQuantityInput] = useState<string>("1");
   const [promoCodeInput, setPromoCodeInput] = useState("");
@@ -133,7 +175,13 @@ export default function PageClient({ code }: { code: string }) {
     if (!selectedPriceId || !data?.product?.prices) {
       return 0;
     }
-    return Math.round(Number(data.product.prices[selectedPriceId].USD) * 100);
+    const usd = data.product.prices[selectedPriceId].USD;
+    if (usd == null) {
+      return 0;
+    }
+    // Never `Number(USD) * 100` — e.g. 79.99 → 7998.999999999999, which Stripe
+    // Elements/API reject as parameter_invalid_integer.
+    return moneyAmountToStripeUnits(usd as MoneyAmount, USD_CURRENCY);
   }, [data, selectedPriceId]);
 
   const rawAmountCents = useMemo(() => {
@@ -150,24 +198,43 @@ export default function PageClient({ code }: { code: string }) {
     return Boolean(price.interval) && promoQuote.final_amount_usd_cents === 0 && promoQuote.subscription_duration === "first_invoice";
   }, [data, selectedPriceId, promoQuote]);
 
+  // Price-level free_trial preferred; product-level is transitional fallback.
+  const hasSelectedFreeTrial = useMemo(() => {
+    if (!selectedPriceId || !data?.product?.prices) return false;
+    const price = data.product.prices[selectedPriceId];
+    return !!(price.free_trial ?? data.product.free_trial);
+  }, [data, selectedPriceId]);
+
+  // purchase-session intentionally omits trial_period_days on in-place Stripe
+  // subscription updates (plan switch / conflict replace). If we still mounted
+  // Elements in setup mode from product config alone, confirmPayment would fail
+  // with a Stripe mode mismatch against the PaymentIntent that path returns.
+  const appliesFreeTrialAtCheckout = useMemo(() => {
+    if (!hasSelectedFreeTrial) return false;
+    if (data?.replaces_stripe_subscription === true) return false;
+    return true;
+  }, [hasSelectedFreeTrial, data?.replaces_stripe_subscription]);
+
   const elementsAmountCents = useMemo(() => {
-    if (promoQuote) {
-      return promoQuote.final_amount_usd_cents;
-    }
+    // Immediate charge is $0 during a free trial — Stripe Elements amount should
+    // reflect what the customer pays now (SetupIntent / deferred charge).
+    if (appliesFreeTrialAtCheckout) return 0;
+    if (promoQuote) return promoQuote.final_amount_usd_cents;
     if (!unitCents) return 0;
     if (rawAmountCents < 1) return unitCents;
     if (isTooLarge) return MAX_STRIPE_AMOUNT_CENTS;
     return rawAmountCents;
-  }, [promoQuote, unitCents, rawAmountCents, isTooLarge]);
+  }, [appliesFreeTrialAtCheckout, promoQuote, unitCents, rawAmountCents, isTooLarge]);
 
   const elementsMode = useMemo<"subscription" | "payment" | "setup">(() => {
     if (isSetupAfterFirstInvoicePromo) return "setup";
     if (!selectedPriceId || !data?.product?.prices) return "subscription";
+    if (appliesFreeTrialAtCheckout) return "setup";
     const price = data.product.prices[selectedPriceId];
     return price.interval ? "subscription" : "payment";
-  }, [data, selectedPriceId, isSetupAfterFirstInvoicePromo]);
+  }, [data, selectedPriceId, appliesFreeTrialAtCheckout, isSetupAfterFirstInvoicePromo]);
 
-  const validateCode = useCallback(async () => {
+  const validateCode = useCallback(async (baseUrl: string) => {
     const response = await fetch(`${baseUrl}/payments/purchases/validate-code`, {
       method: "POST",
       headers: {
@@ -192,11 +259,17 @@ export default function PageClient({ code }: { code: string }) {
   }, [code, returnUrl]);
 
   useEffect(() => {
+    let baseUrl: string;
+    try {
+      baseUrl = getApiBaseUrl();
+    } catch (err) {
+      setConfigError(err);
+      return;
+    }
     setLoading(true);
-    runAsynchronously(Result.fromPromise(validateCode()).then((result) => {
-      if (result.status === "error") {
-        setError(result.error instanceof Error ? result.error.message : "An error occurred");
-      }
+    runAsynchronously(validateCode(baseUrl).catch((err) => {
+      setError(err instanceof Error ? err.message : "An error occurred");
+    }).finally(() => {
       setLoading(false);
     }));
   }, [validateCode]);
@@ -227,6 +300,7 @@ export default function PageClient({ code }: { code: string }) {
       return;
     }
     setPromoLoading(true);
+    const baseUrl = getApiBaseUrl();
     const responseResult = await Result.fromPromise(fetch(`${baseUrl}/payments/purchases/validate-promo-code`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -264,6 +338,7 @@ export default function PageClient({ code }: { code: string }) {
   };
 
   const setupSubscription = async () => {
+    const baseUrl = getApiBaseUrl();
     const response = await fetch(`${baseUrl}/payments/purchases/purchase-session`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -274,19 +349,22 @@ export default function PageClient({ code }: { code: string }) {
         ...(appliedPromoCode ? { promo_code: appliedPromoCode } : {}),
       }),
     });
-    const result = await response.json();
+    const result = await readResponseJson(response);
 
     if (!response.ok) {
-      throw new Error(result?.error?.message ?? "Failed to setup subscription");
+      throw new Error(getPurchaseFailureMessage(result, GENERIC_PURCHASE_FAILURE_MESSAGE));
     }
 
-    const parsedResult = parsePurchaseSessionResult(result);
-    if (!parsedResult.client_secret && !isFreeForCheckout) {
-      throw new Error("Failed to setup subscription");
+    const clientSecret = getClientSecret(result);
+    if (!clientSecret && !isFreeForCheckout) {
+      throw new Error(GENERIC_PURCHASE_FAILURE_MESSAGE);
+    }
+    if (!clientSecret) {
+      return null;
     }
     return {
-      clientSecret: parsedResult.client_secret,
-      clientSecretType: parsedResult.client_secret_type ?? "payment",
+      clientSecret,
+      stripeIntentType: getStripeIntentType(result),
     };
   };
 
@@ -294,6 +372,7 @@ export default function PageClient({ code }: { code: string }) {
     if (quantityNumber < 1 || isTooLarge) {
       return;
     }
+    const baseUrl = getApiBaseUrl();
     const response = await fetch(`${baseUrl}/internal/payments/test-mode-purchase-session`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -305,7 +384,8 @@ export default function PageClient({ code }: { code: string }) {
       }),
     });
     if (!response.ok) {
-      throw new Error("Failed to bypass with test mode");
+      const result = await readResponseJson(response);
+      throw new Error(getPurchaseFailureMessage(result, GENERIC_TEST_MODE_PURCHASE_FAILURE_MESSAGE));
     }
     const url = new URL(`/purchase/return`, window.location.origin);
     url.searchParams.set("bypass", "1");
@@ -315,6 +395,12 @@ export default function PageClient({ code }: { code: string }) {
     }
     window.location.assign(url.toString());
   }, [appliedPromoCode, code, selectedPriceId, quantityNumber, isTooLarge, returnUrl]);
+
+  if (configError != null) {
+    // Surface deployment/config errors to the error boundary instead of swallowing them
+    // into the "Invalid Purchase Code" card. (configError is only ever set client-side.)
+    throw configError;
+  }
 
   const checkoutDisabled = quantityNumber < 1 || isTooLarge || promoLoading || data?.already_bought_non_stackable === true;
   const showInvalidPurchaseCode = !loading && error != null;
@@ -513,6 +599,7 @@ export default function PageClient({ code }: { code: string }) {
                   <TestModeBypassForm
                     onBypass={handleBypass}
                     disabled={checkoutDisabled}
+                    ignoresFreeTrial={hasSelectedFreeTrial}
                   />
                 ) : data.stripe_account_id == null ? (
                   <PaymentsNotEnabledCard />
@@ -540,6 +627,7 @@ export default function PageClient({ code }: { code: string }) {
                       disabled={checkoutDisabled}
                       chargesEnabled={data.charges_enabled ?? false}
                       isFree={isFreeForCheckout}
+                      setupMode={appliesFreeTrialAtCheckout || isSetupAfterFirstInvoicePromo}
                     />
                   </StripeElementsProvider>
                 )}

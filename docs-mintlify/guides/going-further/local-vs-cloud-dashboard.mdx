@@ -25,7 +25,7 @@ Use a development environment when you want to:
 The usual setup looks like this:
 
 ```ts title="hexclave.config.ts"
-import type { HexclaveConfig } from "@hexclave/js/config";
+import type { HexclaveConfig } from "@hexclave/js";
 
 export const config: HexclaveConfig = "show-onboarding";
 ```
@@ -72,41 +72,41 @@ You can get these values from the cloud dashboard. The project ID appears in the
 To start with a development environment, run the setup wizard and choose the config-file flow:
 
 ```sh title="Terminal"
-stack init --mode create
+hexclave init --mode create
 ```
 
 If you already have a config file, link it instead:
 
 ```sh title="Terminal"
-stack init --mode link-config --config-file ./hexclave.config.ts
+hexclave init --mode link-config --config-file ./hexclave.config.ts
 ```
 
 To start with a cloud project, create one from the CLI:
 
 ```sh title="Terminal"
-stack init --mode create-cloud
+hexclave init --mode create-cloud
 ```
 
 Or link an existing cloud project:
 
 ```sh title="Terminal"
-stack init --mode link-cloud --select-project-id <project-id>
+hexclave init --mode link-cloud --select-project-id <project-id>
 ```
 
 You can also copy config between the two styles. Pull cloud branch config into a local config file:
 
 ```sh title="Terminal"
-stack --project-id <project-id> config pull --config-file ./hexclave.config.ts
+hexclave config pull --cloud-project-id <project-id> --config-file ./hexclave.config.ts
 ```
 
 Push local config-file changes back to a cloud project:
 
 ```sh title="Terminal"
-stack --project-id <project-id> config push --config-file ./hexclave.config.ts
+hexclave config push --cloud-project-id <project-id> --config-file ./hexclave.config.ts
 ```
 
 <Info>
-  `config pull` requires `stack login`. `config push` supports either `stack login` or `HEXCLAVE_SECRET_SERVER_KEY`.
+  `config pull` requires `hexclave login`. `config push` supports either `hexclave login` or `HEXCLAVE_SECRET_SERVER_KEY`.
 </Info>
 
 For the full setup flow by framework, see [Setup](/guides/getting-started/setup).

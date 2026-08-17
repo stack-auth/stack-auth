@@ -56,8 +56,11 @@ it("gets current project (internal)", async ({ expect }) => {
           "passkey_enabled": false,
           "sign_up_enabled": true,
         },
+        "config_warnings": [],
         "display_name": "Hexclave Dashboard",
         "id": "internal",
+        "is_development_environment": false,
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -97,6 +100,7 @@ it("creates and updates the basic project information of a project", async ({ ex
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "Updated description",
         "display_name": "Updated Project",
@@ -109,6 +113,7 @@ it("creates and updates the basic project information of a project", async ({ ex
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -151,6 +156,7 @@ it("updates the basic project configuration", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -163,6 +169,7 @@ it("updates the basic project configuration", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -210,6 +217,7 @@ it("updates the project domains configuration", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -222,6 +230,7 @@ it("updates the project domains configuration", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -275,6 +284,7 @@ it("updates the project domains configuration", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -287,6 +297,7 @@ it("updates the project domains configuration", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -334,6 +345,7 @@ it("should allow insecure HTTP connections if insecureHttp is true", async ({ ex
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -346,6 +358,7 @@ it("should allow insecure HTTP connections if insecureHttp is true", async ({ ex
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -436,6 +449,7 @@ it("updates the project email configuration", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -448,6 +462,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -500,6 +515,7 @@ it("updates the project email configuration", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -512,6 +528,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -550,6 +567,7 @@ it("updates the project email configuration", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -562,6 +580,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -600,6 +619,7 @@ it("updates the project email configuration", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -612,6 +632,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -664,6 +685,7 @@ it("updates the project email configuration", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -676,6 +698,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -841,6 +864,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -853,6 +877,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -898,6 +923,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -910,6 +936,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -959,6 +986,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -971,6 +999,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -1015,6 +1044,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -1027,6 +1057,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -1086,6 +1117,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -1098,6 +1130,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -1157,6 +1190,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -1169,6 +1203,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -1199,12 +1234,12 @@ it("fails when trying to update OAuth provider with empty client_secret", async 
         "details": {
           "message": deindent\`
             Request validation failed on PATCH /api/v1/internal/projects/current:
-              - body.config.oauth_providers[0].client_secret must not be empty
+              - client_secret is required for standard providers, unless the provider is apple with all Apple key credentials set
           \`,
         },
         "error": deindent\`
           Request validation failed on PATCH /api/v1/internal/projects/current:
-            - body.config.oauth_providers[0].client_secret must not be empty
+            - client_secret is required for standard providers, unless the provider is apple with all Apple key credentials set
         \`,
       },
       "headers": Headers {

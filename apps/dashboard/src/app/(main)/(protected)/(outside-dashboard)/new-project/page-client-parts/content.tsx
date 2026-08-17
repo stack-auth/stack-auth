@@ -1,5 +1,6 @@
 "use client";
 
+import { DesignDialog } from "@/components/design-components";
 import { DesignButton } from "@/components/design-components/button";
 import { DesignInput } from "@/components/design-components/input";
 import { DesignSelectorDropdown } from "@/components/design-components/select";
@@ -11,12 +12,6 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
   Label,
   Spinner,
   Typography,
@@ -25,10 +20,18 @@ import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import { PlusCircleIcon } from "@phosphor-icons/react";
 import { type AdminOwnedProject } from "@hexclave/next";
+import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { runAsynchronouslyWithAlert, wait } from "@hexclave/shared/dist/utils/promises";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  NewProjectEntryPage,
+  parseOnboardingAppSearchParam,
+  ProductConfigurationWizard,
+  ProductSelectionPage,
+  SetupNewProjectPage,
+} from "./components";
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
 import {
   beginPendingAction,
@@ -38,6 +41,7 @@ import {
   type OnboardingProgressUpdate,
   type ProjectOnboardingState,
   type ProjectOnboardingStatus,
+  type TimelineStep,
 } from "./shared";
 
 export default function PageClient() {
@@ -68,35 +72,26 @@ function PageClientInner() {
   const redirectToNeonConfirmWith = searchParams.get("redirect_to_neon_confirm_with");
   const redirectToConfirmWith = searchParams.get("redirect_to_confirm_with");
   const mode = searchParams.get("mode");
+  const primaryAppFromSearch = parseOnboardingAppSearchParam(searchParams.get("app"));
 
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [projectOnboardingStates, setProjectOnboardingStates] = useState<Map<string, ProjectOnboardingState | null>>(new Map());
   const [projectName, setProjectName] = useState(displayNameFromSearch ?? "");
   const hasProjectName = projectName.trim().length > 0;
-  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(() => user.selectedTeam?.id ?? teams.at(0)?.id ?? null);
+  // Integration confirm flows already know they need a project and usually
+  // prefill display_name, so skip Welcome and open the name/team dialog.
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(() => {
+    return redirectToNeonConfirmWith != null || redirectToConfirmWith != null;
+  });
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
-  const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(true);
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
+  const [selectedProductApps, setSelectedProductApps] = useState<Set<AppId> | null>(null);
+  const [isConfiguringProducts, setIsConfiguringProducts] = useState(false);
   const creatingTeamRef = useRef(false);
   const creatingProjectRef = useRef(false);
-
-  useEffect(() => {
-    if (selectedTeamId != null) {
-      return;
-    }
-
-    if (user.selectedTeam != null) {
-      setSelectedTeamId(user.selectedTeam.id);
-      return;
-    }
-
-    const firstTeam = teams.at(0);
-    if (firstTeam !== undefined) {
-      setSelectedTeamId(firstTeam.id);
-    }
-  }, [selectedTeamId, teams, user.selectedTeam]);
 
   const updateSearchParams = useCallback((updates: Record<string, string | null>) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -112,6 +107,74 @@ function PageClientInner() {
     const query = params.toString();
     router.replace(query.length > 0 ? `/new-project?${query}` : "/new-project");
   }, [router, searchParams]);
+
+  const createProject = useCallback(async () => {
+    if (!beginPendingAction(creatingProjectRef, setCreatingProject)) {
+      return;
+    }
+
+    try {
+      const trimmedProjectName = projectName.trim();
+      if (trimmedProjectName.length === 0) {
+        throw new Error("Project name is required.");
+      }
+      const firstTeam = teams.at(0);
+      const teamId = selectedTeamId ?? user.selectedTeam?.id ?? firstTeam?.id;
+      if (teamId === undefined) {
+        throw new Error("Select a team before creating the project.");
+      }
+
+      const newProject = await user.createProject({
+        displayName: trimmedProjectName,
+        teamId,
+        onboardingStatus: "config_choice",
+      });
+
+      setProjectStatuses((previous) => {
+        const next = new Map(previous);
+        next.set(newProject.id, "config_choice");
+        return next;
+      });
+      setProjectOnboardingStates((previous) => {
+        const next = new Map(previous);
+        next.set(newProject.id, null);
+        return next;
+      });
+
+      if (redirectToNeonConfirmWith != null) {
+        const confirmSearchParams = new URLSearchParams(redirectToNeonConfirmWith);
+        confirmSearchParams.set("default_selected_project_id", newProject.id);
+        router.push(`/integrations/neon/confirm?${confirmSearchParams.toString()}`);
+        await wait(2000);
+        return;
+      }
+
+      if (redirectToConfirmWith != null) {
+        const confirmSearchParams = new URLSearchParams(redirectToConfirmWith);
+        confirmSearchParams.set("default_selected_project_id", newProject.id);
+        router.push(`/integrations/custom/confirm?${confirmSearchParams.toString()}`);
+        await wait(2000);
+        return;
+      }
+
+      updateSearchParams({
+        project_id: newProject.id,
+        mode: "deploy",
+      });
+      setIsCreateDialogOpen(false);
+    } finally {
+      endPendingAction(creatingProjectRef, setCreatingProject);
+    }
+  }, [projectName, redirectToConfirmWith, redirectToNeonConfirmWith, router, selectedTeamId, teams, updateSearchParams, user]);
+
+  const handleCreateProjectSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!hasProjectName || creatingProject) {
+      return;
+    }
+
+    runAsynchronouslyWithAlert(createProject());
+  }, [createProject, creatingProject, hasProjectName]);
 
   const selectedProject = useMemo(() => {
     if (selectedProjectId == null) {
@@ -144,13 +207,24 @@ function PageClientInner() {
     return onboardingState;
   }, [projectOnboardingStates, selectedProject, selectedProjectId]);
 
+  const isCompletedProjectRelinking = selectedProjectStatus === "completed" && (
+    mode === "link-existing"
+    || mode === "deploy-local"
+    || mode === "deploy-github"
+  );
+
   useEffect(() => {
     if (selectedProject == null || selectedProjectStatus !== "completed") {
       return;
     }
+    // Re-linking starts in link-existing mode, then switches to a deployment-
+    // specific mode. Keep every stage on this page for completed projects.
+    if (isCompletedProjectRelinking) {
+      return;
+    }
 
     router.replace(`/projects/${encodeURIComponent(selectedProject.id)}`);
-  }, [router, selectedProject, selectedProjectStatus]);
+  }, [isCompletedProjectRelinking, router, selectedProject, selectedProjectStatus]);
 
   const saveSelectedProjectOnboardingProgress = async (project: AdminOwnedProject, update: OnboardingProgressUpdate) => {
     const projectInternals = getStackAppInternals(project.app);
@@ -235,7 +309,7 @@ function PageClientInner() {
     );
   }
 
-  if (selectedProject != null && selectedProjectStatus === "completed") {
+  if (selectedProject != null && selectedProjectStatus === "completed" && !isCompletedProjectRelinking) {
     return (
       <div className="flex w-full flex-grow items-center justify-center">
         <Spinner size={24} />
@@ -248,179 +322,152 @@ function PageClientInner() {
   }
 
   if (selectedProject == null) {
+    const entrySteps: TimelineStep[] = [{ id: "config_choice", label: "Get started" }];
+    let preProjectPage: ReactNode;
+    if (isConfiguringProducts) {
+      if (selectedProductApps == null) {
+        throw new Error("Product configuration mode requires a product selection.");
+      }
+      preProjectPage = (
+        <ProductConfigurationWizard
+          selectedApps={selectedProductApps}
+          onBack={() => setIsConfiguringProducts(false)}
+        />
+      );
+    } else if (mode === "setup-new-ai") {
+      preProjectPage = (
+        <SetupNewProjectPage
+          steps={entrySteps}
+          currentStep="config_choice"
+          disabled={creatingProject}
+          onBack={() => updateSearchParams({ mode: "setup-products" })}
+        />
+      );
+    } else if (mode === "setup-products") {
+      preProjectPage = (
+        <ProductSelectionPage
+          key={primaryAppFromSearch ?? "primary-app-unset"}
+          steps={entrySteps}
+          currentStep="config_choice"
+          disabled={creatingProject}
+          initialPrimaryAppId={primaryAppFromSearch}
+          onBack={() => updateSearchParams({ mode: null, app: null })}
+          onPrimaryAppSelected={(appId) => updateSearchParams({ app: appId })}
+          onClearPrimaryApp={() => updateSearchParams({ app: null })}
+          onLetAiDecide={() => updateSearchParams({ mode: "setup-new-ai", app: null })}
+          onContinue={(appIds) => {
+            setSelectedProductApps(appIds);
+            setIsConfiguringProducts(true);
+          }}
+        />
+      );
+    } else {
+      preProjectPage = (
+        <NewProjectEntryPage
+          steps={entrySteps}
+          currentStep="config_choice"
+          disabled={creatingProject}
+          onBack={projects.length > 0 ? () => router.push("/projects") : undefined}
+          onSelect={(choice) => {
+            if (choice === "setup-new") {
+              updateSearchParams({ mode: "setup-products" });
+              return;
+            }
+            setSelectedProductApps(null);
+            setIsCreateDialogOpen(true);
+          }}
+        />
+      );
+    }
+
     return (
-      <div className="flex w-full flex-grow items-center justify-center">
-        <Dialog
-          open={isCreateProjectOpen}
+      <div className="flex w-full flex-grow justify-center">
+        {preProjectPage}
+
+        <DesignDialog
+          open={isCreateDialogOpen}
           onOpenChange={(open) => {
-            setIsCreateProjectOpen(open);
-            if (!open) {
-              router.push("/projects");
+            if (open || creatingProjectRef.current) {
+              return;
+            }
+            setIsCreateDialogOpen(false);
+          }}
+          size="lg"
+          icon={PlusCircleIcon}
+          title="Name your project"
+          description="Choose a name and the team that will own this Hexclave project."
+          hideTopCloseButton={creatingProject}
+          footer={(
+            <>
+              <DesignButton
+                type="button"
+                variant="outline"
+                onClick={() => setIsCreateDialogOpen(false)}
+                disabled={creatingProject}
+              >
+                Back
+              </DesignButton>
+              <DesignButton
+                type="submit"
+                form="create-project-form"
+                disabled={!hasProjectName || selectedTeamId == null || creatingProject}
+                loading={creatingProject}
+              >
+                Continue
+              </DesignButton>
+            </>
+          )}
+        >
+          <form id="create-project-form" onSubmit={handleCreateProjectSubmit} className="space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="project-name">Project name</Label>
+              <DesignInput
+                id="project-name"
+                value={projectName}
+                onChange={(event) => setProjectName(event.target.value)}
+                placeholder="My Project"
+                autoFocus
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="team-id">Team</Label>
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <DesignSelectorDropdown
+                  value={selectedTeamId ?? ""}
+                  onValueChange={setSelectedTeamId}
+                  placeholder="Select a team"
+                  size="md"
+                  className="w-full"
+                  options={teams.map((team) => ({ value: team.id, label: team.displayName }))}
+                />
+                <DesignButton type="button" variant="outline" onClick={() => setIsCreateTeamOpen(true)} className="sm:min-w-[140px]">
+                  <PlusCircleIcon className="mr-2 h-4 w-4" />
+                  New team
+                </DesignButton>
+              </div>
+            </div>
+          </form>
+        </DesignDialog>
+
+        <DesignDialog
+          open={isCreateTeamOpen}
+          onOpenChange={(open) => {
+            if (!creatingTeam) {
+              setIsCreateTeamOpen(open);
             }
           }}
-        >
-          <DialogContent
-            className="overflow-hidden border-0 bg-white/90 p-0 shadow-2xl backdrop-blur-xl ring-1 ring-black/[0.06] dark:bg-background/75 dark:ring-white/[0.08] sm:max-w-[720px] sm:rounded-3xl"
-            overlayProps={{ className: "bg-black/70 backdrop-blur-[2px]" }}
-            noCloseButton
-          >
-            <DialogHeader className="border-b border-black/[0.08] px-6 py-6 text-left dark:border-white/[0.08]">
-              <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-blue-500/10 p-2.5 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400">
-                  <PlusCircleIcon className="h-5 w-5" />
-                </div>
-                <div className="space-y-1">
-                  <DialogTitle className="text-xl font-semibold tracking-tight">Create a new project</DialogTitle>
-                </div>
-              </div>
-              <DialogDescription>
-                Start by naming your project and choosing the team that will own it.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-5 px-6 py-6">
-              <div className="space-y-2">
-                <Label htmlFor="project-name">Project name</Label>
-                <DesignInput
-                  id="project-name"
-                  value={projectName}
-                  onChange={(event) => setProjectName(event.target.value)}
-                  placeholder="My Project"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="team-id">Team</Label>
-                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                  <DesignSelectorDropdown
-                    value={selectedTeamId ?? ""}
-                    onValueChange={setSelectedTeamId}
-                    placeholder="Select a team"
-                    size="md"
-                    className="w-full"
-                    options={teams.map((team) => ({ value: team.id, label: team.displayName }))}
-                  />
-                  <DesignButton variant="outline" onClick={() => setIsCreateTeamOpen(true)} className="rounded-xl sm:min-w-[152px]">
-                    <PlusCircleIcon className="mr-2 h-4 w-4" />
-                    Create Team
-                  </DesignButton>
-                </div>
-              </div>
-            </div>
-
-            <DialogFooter className="border-t border-black/[0.08] px-6 py-4 dark:border-white/[0.08] sm:justify-end sm:space-x-2">
-              <DesignButton variant="outline" className="rounded-xl" onClick={() => router.push("/projects")} disabled={creatingProject}>
+          size="md"
+          icon={PlusCircleIcon}
+          title="Create a team"
+          description="The new team will be selected as this project's owner."
+          hideTopCloseButton={creatingTeam}
+          footer={(
+            <>
+              <DesignButton variant="outline" onClick={() => setIsCreateTeamOpen(false)} disabled={creatingTeam}>
                 Cancel
               </DesignButton>
               <DesignButton
-                className="rounded-xl"
-                disabled={!hasProjectName || creatingProject}
-                loading={creatingProject}
-                onClick={() => {
-                  if (!beginPendingAction(creatingProjectRef, setCreatingProject)) {
-                    return;
-                  }
-
-                  return runAsynchronouslyWithAlert(async () => {
-                    const trimmedProjectName = projectName.trim();
-                    if (trimmedProjectName.length === 0) {
-                      throw new Error("Project name is required.");
-                    }
-
-                    const firstTeam = teams.at(0);
-                    const teamId = selectedTeamId ?? user.selectedTeam?.id ?? firstTeam?.id;
-                    if (teamId === undefined) {
-                      throw new Error("Select a team before creating the project.");
-                    }
-
-                    try {
-                      const newProject = await user.createProject({
-                        displayName: trimmedProjectName,
-                        teamId,
-                        onboardingStatus: "config_choice",
-                      });
-
-                      setProjectStatuses((previous) => {
-                        const next = new Map(previous);
-                        next.set(newProject.id, "config_choice");
-                        return next;
-                      });
-                      setProjectOnboardingStates((previous) => {
-                        const next = new Map(previous);
-                        next.set(newProject.id, null);
-                        return next;
-                      });
-
-                      if (redirectToNeonConfirmWith != null) {
-                        const confirmSearchParams = new URLSearchParams(redirectToNeonConfirmWith);
-                        confirmSearchParams.set("default_selected_project_id", newProject.id);
-                        router.push(`/integrations/neon/confirm?${confirmSearchParams.toString()}`);
-                        await wait(2000);
-                        return;
-                      }
-
-                      if (redirectToConfirmWith != null) {
-                        const confirmSearchParams = new URLSearchParams(redirectToConfirmWith);
-                        confirmSearchParams.set("default_selected_project_id", newProject.id);
-                        router.push(`/integrations/custom/confirm?${confirmSearchParams.toString()}`);
-                        await wait(2000);
-                        return;
-                      }
-
-                      updateSearchParams({
-                        project_id: newProject.id,
-                        mode: null,
-                      });
-                    } finally {
-                      endPendingAction(creatingProjectRef, setCreatingProject);
-                    }
-                  });
-                }}
-              >
-                Create Project
-              </DesignButton>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={isCreateTeamOpen} onOpenChange={setIsCreateTeamOpen}>
-          <DialogContent
-            className="overflow-hidden border-0 bg-white/90 p-0 shadow-2xl backdrop-blur-xl ring-1 ring-black/[0.06] dark:bg-background/75 dark:ring-white/[0.08] sm:max-w-[640px] sm:rounded-3xl"
-            overlayProps={{ className: "bg-black/70 backdrop-blur-[2px]" }}
-            noCloseButton
-          >
-            <DialogHeader className="px-6 pb-0 pt-6 text-left">
-              <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-blue-500/10 p-2.5 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400">
-                  <PlusCircleIcon className="h-5 w-5" />
-                </div>
-                <div className="space-y-1">
-                  <DialogTitle className="text-xl font-semibold tracking-tight">Create Team</DialogTitle>
-                </div>
-              </div>
-              <DialogDescription>
-                This team will be available immediately for project ownership.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-5 px-6 py-6">
-              <div className="space-y-2">
-                <Label htmlFor="new-team-name">Team name</Label>
-                <DesignInput
-                  id="new-team-name"
-                  value={newTeamName}
-                  onChange={(event) => setNewTeamName(event.target.value)}
-                  placeholder="Acme Team"
-                />
-              </div>
-            </div>
-
-            <DialogFooter className="px-6 pb-6 pt-0 sm:justify-end sm:space-x-2">
-              <DesignButton variant="outline" className="rounded-xl" onClick={() => setIsCreateTeamOpen(false)} disabled={creatingTeam}>
-                Cancel
-              </DesignButton>
-              <DesignButton
-                className="rounded-xl"
                 loading={creatingTeam}
                 onClick={() => {
                   if (!beginPendingAction(creatingTeamRef, setCreatingTeam)) {
@@ -449,9 +496,20 @@ function PageClientInner() {
               >
                 Create Team
               </DesignButton>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </>
+          )}
+        >
+          <div className="space-y-2">
+            <Label htmlFor="new-team-name">Team name</Label>
+            <DesignInput
+              id="new-team-name"
+              value={newTeamName}
+              onChange={(event) => setNewTeamName(event.target.value)}
+              placeholder="Acme Team"
+              autoFocus
+            />
+          </div>
+        </DesignDialog>
       </div>
     );
   }
@@ -467,7 +525,7 @@ function PageClientInner() {
         saveOnboardingProgress={(update) => saveSelectedProjectOnboardingProgress(selectedProject, update)}
         onComplete={() => {
           const projectUrl = `/projects/${encodeURIComponent(selectedProject.id)}`;
-          if (mode === "link-existing") {
+          if (mode === "deploy-local" || mode === "deploy-github") {
             window.location.href = projectUrl;
             return;
           }

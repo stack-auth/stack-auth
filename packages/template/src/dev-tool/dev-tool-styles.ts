@@ -324,6 +324,14 @@ export const devToolCSS = getInPageUiBaseCSS('.hexclave-devtool') + `
     z-index: 1;
   }
 
+  /* Iframe panes lay their content out as a flex column so the embedded
+     dashboard (or the fallback message) fills the pane height. Uses two
+     classes to win over the plain .sdt-tab-pane-active { display: block }. */
+  .hexclave-devtool .sdt-tab-pane-iframe.sdt-tab-pane-active {
+    display: flex;
+    flex-direction: column;
+  }
+
   /* ===== Overview tab — single column ===== */
 
   .hexclave-devtool .sdt-ov {
@@ -1229,6 +1237,33 @@ export const devToolCSS = getInPageUiBaseCSS('.hexclave-devtool') + `
 
   .hexclave-devtool .sdt-iframe-error-btn:hover {
     background: var(--sdt-accent-hover);
+  }
+
+  .hexclave-devtool .sdt-dashboard-unavailable {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 24px;
+    text-align: center;
+    color: var(--sdt-text-secondary);
+    font-size: 14px;
+  }
+
+  .hexclave-devtool .sdt-dashboard-unavailable-text {
+    max-width: 420px;
+    line-height: 1.5;
+  }
+
+  .hexclave-devtool .sdt-dashboard-unavailable-link {
+    color: var(--sdt-accent);
+    text-decoration: none;
+  }
+
+  .hexclave-devtool .sdt-dashboard-unavailable-link:hover {
+    text-decoration: underline;
   }
 
   /* Shared content fade animation */

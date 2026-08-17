@@ -1,5 +1,1 @@
-# Hexclave
-
-## Commands
-- **Lint**: `pnpm lint`
-- **Typecheck**: `pnpm typecheck`
+AGENTS.md

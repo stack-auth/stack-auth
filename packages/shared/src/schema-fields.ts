@@ -55,6 +55,54 @@ declare module "yup" {
   }
 }
 
+// `JSON.parse` turns `__proto__` into an ordinary own property, so any request
+// body can carry one — and yup's ObjectSchema mishandles it while casting, in
+// two separate ways:
+//
+//  1. It resolves each key against its `fields` object. `fields` is created with
+//     a null prototype, but `clone()` rebuilds it as `Object.assign({}, ...)`,
+//     so on every DERIVED schema — which is all of them, since `.defined()`,
+//     `.unknown()` etc. all clone — `fields["__proto__"]` resolves to
+//     `Object.prototype`. That is truthy but not a schema, and the cast dies
+//     with `field.resolve is not a function`, failing an otherwise valid
+//     request.
+//  2. Unknown keys are copied onto a fresh `{}` with `result[key] = value`,
+//     which for `__proto__` sets the result's prototype instead of creating the
+//     key, silently dropping the entry.
+//
+// Fixed here rather than at each call site: every object schema in the codebase
+// parses untrusted JSON, so every one of them is exposed. The key is carried
+// around the cast and reattached with `defineProperty`, which keeps it a plain
+// data property and treats it exactly like any other unknown key.
+const PROTOTYPE_KEY = "__proto__";
+
+function hasOwnPrototypeKey(value: unknown): boolean {
+  return typeof value === "object" && value !== null && Object.prototype.hasOwnProperty.call(value, PROTOTYPE_KEY);
+}
+
+const originalObjectSchemaCast = (yup.ObjectSchema.prototype as any)._cast;
+(yup.ObjectSchema.prototype as any)._cast = function (this: any, value: any, options: any = {}) {
+  if (!hasOwnPrototypeKey(value)) return originalObjectSchemaCast.call(this, value, options);
+
+  const prototypeEntry = Object.getOwnPropertyDescriptor(value, PROTOTYPE_KEY)!.value;
+  // Object schemas only ever read own enumerable string keys, so a shallow copy
+  // without this one is exactly what yup would otherwise have walked.
+  const withoutPrototypeKey: Record<string, unknown> = {};
+  for (const key of Object.keys(value)) {
+    if (key === PROTOTYPE_KEY) continue;
+    withoutPrototypeKey[key] = value[key];
+  }
+  const cast = originalObjectSchemaCast.call(this, withoutPrototypeKey, options);
+
+  // `__proto__` can never be a declared field — `yupObject({ __proto__: x })`
+  // sets the shape literal's prototype instead of declaring anything — so it is
+  // always an unknown key, and follows the same strip rule as the others.
+  const stripsUnknownKeys = options.stripUnknown ?? this.spec?.noUnknown;
+  if (stripsUnknownKeys || typeof cast !== "object" || cast === null) return cast;
+  Object.defineProperty(cast, PROTOTYPE_KEY, { value: prototypeEntry, writable: true, enumerable: true, configurable: true });
+  return cast;
+};
+
 // eslint-disable-next-line no-restricted-syntax
 yup.addMethod(yup.string, "nonEmpty", function (message?: string) {
   return this.test(
@@ -119,6 +167,39 @@ import.meta.vitest?.test("getNested", ({ expect }) => {
   expect(() => yupRecord(yupString().oneOf(["a"]), yupString()).getNested("b" as never)).toThrow();
   expect(yupUnion(yupString(), yupObject({ a: yupNumber() })).getNested("a" as never).describe().type).toEqual("mixed");
   expect(yupUnion(yupObject({ a: yupString() }), yupObject({ a: yupNumber() })).getNested("a").describe().type).toEqual("mixed");
+});
+import.meta.vitest?.test("yupRecord applies nested defaults without leaking the record as the child parent", async ({ expect }) => {
+  const schema = yupObject({
+    services: yupRecord(yupString(), yupObject({
+      visibility: yupString().oneOf(["public", "private"]).default("private").defined(),
+      transport: yupString().oneOf(["http", "tcp"]).default("http").defined(),
+    }).defined()).defined(),
+  });
+  await expect(schema.validate({ services: { web: {} } })).resolves.toEqual({
+    services: { web: { visibility: "private", transport: "http" } },
+  });
+});
+import.meta.vitest?.test("object schemas keep a `__proto__` key as data instead of dying on it", async ({ expect }) => {
+  // JSON.parse, not a literal: `{ __proto__: ... }` in source sets the
+  // prototype, so only the parsed form reproduces what a request body does.
+  const body = JSON.parse('{"env":{"__proto__":{"value":"a"},"NORMAL":{}},"unknown":{"__proto__":"b"}}');
+  const schema = yupObject({
+    env: yupRecord(yupString(), yupObject({
+      value: yupString().default("fallback").defined(),
+    }).defined()).defined(),
+  });
+
+  const result = await schema.validate(body);
+  // The key survives as a real own property — and the sibling still gets its
+  // default, which is what forces yup to rebuild the record rather than pass it
+  // through untouched.
+  expect(Object.getOwnPropertyDescriptor(result.env, "__proto__")?.value).toEqual({ value: "a" });
+  expect(result.env.NORMAL).toEqual({ value: "fallback" });
+  // Nothing was written to the actual prototype chain, here or globally.
+  expect(Object.getPrototypeOf(result.env)).toBe(Object.prototype);
+  expect(({} as any).value).toBe(undefined);
+  // Unknown keys pass through with theirs intact too.
+  expect(Object.getOwnPropertyDescriptor((result as any).unknown, "__proto__")?.value).toBe("b");
 });
 
 export async function yupValidate<S extends yup.ISchema<any>>(
@@ -305,13 +386,40 @@ export function yupRecord<K extends yup.StringSchema, T extends yup.AnySchema>(
 
         // Validate the value
         try {
-          await yupValidate(valueSchema, (value as Record<string, unknown>)[key], {
-            ...context.options,
+          // `path` is cast in because Yup drives it internally and leaves it off
+          // the public ValidateOptions type, even though validate() honours it.
+          const childOptions = {
+            // Do not forward Yup's internal `parent`/`originalValue` fields
+            // from the record test. They describe the whole record and make
+            // the nested schema validate that record as its own parent, which
+            // prevents nested defaults from being applied.
+            abortEarly: context.options.abortEarly,
+            disableStackTrace: context.options.disableStackTrace,
+            recursive: context.options.recursive,
+            // Forwarded explicitly because it is what names the field in the
+            // child's error message. Dropping it leaves every nested failure
+            // reading "this cannot be null" with nothing identifying the entry.
+            path: (context.options as { path?: string }).path,
+            // Yup runs custom tests in a strict validation phase after the
+            // outer object has cast. The record's dynamic children were not
+            // part of that cast, so they still need their own non-strict pass
+            // for defaults and transforms.
+            strict: false,
+            stripUnknown: context.options.stripUnknown,
             context: {
               ...context.options.context,
               path: path ? `${path}.${key}` : key,
             },
-          });
+          } as yup.ValidateOptions & { currentUserId?: string | null };
+          const validatedValue = await yupValidate(valueSchema, (value as Record<string, unknown>)[key], childOptions);
+          // yupRecord is represented as a custom object test, so Yup cannot
+          // install the cast child value for us. Preserve defaults and other
+          // child casts in the returned record explicitly.
+          //
+          // defineProperty, not assignment: a record key is arbitrary user
+          // input, and `record.__proto__ = value` would reassign the record's
+          // prototype instead of storing the entry.
+          Object.defineProperty(value, key, { value: validatedValue, writable: true, enumerable: true, configurable: true });
         } catch (e: any) {
           return createError({
             path: path ? `${path}.${key}` : key,
@@ -444,10 +552,21 @@ import.meta.vitest?.test("countryCodeSchema", async ({ expect }) => {
   await expect(countryCodeSchema.validate(" us ")).resolves.toBe("US");
   await expect(countryCodeSchema.validate("usa")).rejects.toThrow("must be a 2-letter country code");
 });
-export const intervalSchema = yupTuple<Interval>([yupNumber().min(0).integer().defined(), yupString().oneOf(['millisecond', 'second', 'minute', 'hour', 'day', 'week', 'month', 'year']).defined()]);
-export const dayIntervalSchema = yupTuple<DayInterval>([yupNumber().min(0).integer().defined(), yupString().oneOf(['day', 'week', 'month', 'year']).defined()]);
+// Interval counts must be >= 1: a zero-length interval is meaningless for billing
+// intervals, free trials, and item repeats alike, and a zero repeat interval in
+// particular makes the bulldozer tick loop spin forever on a never-advancing
+// trigger (see apps/bulldozer-js repeatIntervalMs).
+export const intervalSchema = yupTuple<Interval>([yupNumber().min(1).integer().defined(), yupString().oneOf(['millisecond', 'second', 'minute', 'hour', 'day', 'week', 'month', 'year']).defined()]);
+export const dayIntervalSchema = yupTuple<DayInterval>([yupNumber().min(1).integer().defined(), yupString().oneOf(['day', 'week', 'month', 'year']).defined()]);
 export const intervalOrNeverSchema = yupUnion(intervalSchema.defined(), yupString().oneOf(['never']).defined());
 export const dayIntervalOrNeverSchema = yupUnion(dayIntervalSchema.defined(), yupString().oneOf(['never']).defined());
+import.meta.vitest?.test("interval schemas reject a zero/negative count", async ({ expect }) => {
+  await expect(intervalSchema.validate([1, "day"])).resolves.toEqual([1, "day"]);
+  await expect(dayIntervalSchema.validate([2, "month"])).resolves.toEqual([2, "month"]);
+  await expect(intervalSchema.validate([0, "day"])).rejects.toThrow();
+  await expect(dayIntervalSchema.validate([0, "month"])).rejects.toThrow();
+  await expect(dayIntervalSchema.validate([-1, "day"])).rejects.toThrow();
+});
 /**
  * This schema is useful for fields where the user can specify the ID, such as price IDs. It is particularly common
  * for IDs in the config schema.
@@ -602,6 +721,9 @@ export const oauthClientSecretSchema = yupString().meta({ openapiField: { descri
 export const oauthCustomCallbackUrlSchema = urlSchema.meta({ openapiField: { description: 'The OAuth redirect/callback URL sent to the provider. When omitted, the default callback URL is used. Cannot be set for shared providers.', exampleValue: 'https://api.hexclave.com/api/v1/auth/oauth/callback/google' } });
 export const oauthFacebookConfigIdSchema = yupString().meta({ openapiField: { description: 'The configuration id for Facebook business login (for things like ads and marketing). This is only required if you are using the standard OAuth with Facebook and you are using Facebook business login.' } });
 export const oauthMicrosoftTenantIdSchema = yupString().meta({ openapiField: { description: 'The Microsoft tenant id for Microsoft directory. This is only required if you are using the standard OAuth with Microsoft and you have an Azure AD tenant.' } });
+export const oauthAppleTeamIdSchema = yupString().meta({ openapiField: { description: 'Apple Developer Team ID used to mint a client secret for Sign in with Apple.' } });
+export const oauthAppleKeyIdSchema = yupString().meta({ openapiField: { description: 'Apple private key ID used to mint a client secret for Sign in with Apple.' } });
+export const oauthApplePrivateKeySchema = yupString().meta({ openapiField: { description: 'Apple Sign in with Apple private key contents in .p8 PEM format.' } });
 export const oauthAppleBundleIdsSchema = yupArray(yupString().defined()).meta({ openapiField: { description: 'Apple Bundle IDs for native iOS/macOS apps. Required for native Sign In with Apple (in addition to web Apple OAuth which uses the Client ID/Services ID).', exampleValue: ['com.example.ios', 'com.example.macos'] } });
 export const oauthAppleBundleIdSchema = yupString().defined().meta({ openapiField: { description: 'Apple Bundle ID for native iOS/macOS apps.', exampleValue: 'com.example.ios' } });
 export const oauthAccountMergeStrategySchema = yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).meta({ openapiField: { description: 'Determines how to handle OAuth logins that match an existing user by email. `link_method` adds the OAuth method to the existing user. `raise_error` rejects the login with an error. `allow_duplicates` creates a new user.', exampleValue: 'link_method' } });

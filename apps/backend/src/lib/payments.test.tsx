@@ -5,7 +5,8 @@ import { validatePurchaseSession } from './payments';
 import { bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { globalPrismaClient } from "@/prisma-client";
 
-// Uses globalPrismaClient which connects to the real dev DB (with BulldozerStorageEngine).
+// Uses globalPrismaClient which connects to the real dev DB. Payment state is
+// written to bulldozer-js (LMDB) via the dual-write functions below, not Postgres.
 // customerType: 'custom' avoids needing a real ProjectUser/Team in the DB.
 // Each test writes data to Bulldozer stored tables via the dual-write functions
 // AND (for subscriptions) to the Prisma Subscription table — validatePurchaseSession
@@ -29,7 +30,7 @@ describe.sequential('validatePurchaseSession - purchase guards (real DB)', () =>
   });
 
   const grantOtp = async (id: string, productId: string, product: ReturnType<typeof makeProduct>) => {
-    await bulldozerWriteOneTimePurchase(prisma as any, {
+    await bulldozerWriteOneTimePurchase({
       id, tenancyId, customerId, customerType: 'CUSTOM',
       productId, priceId: null, product: product as any, quantity: 1,
       stripePaymentIntentId: null, revokedAt: null, refundedAt: null,
@@ -82,7 +83,7 @@ describe.sequential('validatePurchaseSession - purchase guards (real DB)', () =>
         cancelAtPeriodEnd: false, creationSource: 'TEST_MODE',
       },
     });
-    await bulldozerWriteSubscription(prisma as any, {
+    await bulldozerWriteSubscription({
       id, tenancyId, customerId, customerType: 'CUSTOM',
       productId, priceId: null, product: product as any, quantity: 1,
       stripeSubscriptionId: `stripe-${id}`, status: 'active',

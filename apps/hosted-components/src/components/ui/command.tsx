@@ -12,7 +12,7 @@ const Command: React.FC<React.ComponentPropsWithoutRef<typeof CommandPrimitive>>
   <CommandPrimitive
     ref={ref}
     className={cn(
-      "flex h-full w-full flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground",
+      "flex h-full w-full flex-col overflow-hidden rounded-xl bg-white text-popover-foreground dark:bg-popover",
       className
     )}
     {...props}

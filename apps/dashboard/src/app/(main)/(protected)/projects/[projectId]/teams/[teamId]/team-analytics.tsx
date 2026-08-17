@@ -22,7 +22,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useAdminApp } from "../../use-admin-app";
+import { useAdminApp, useServerApp } from "../../use-admin-app";
 import { UserPageMetricCard } from "../../users/[userId]/user-page-metric-card";
 import { UserPageTableSection } from "../../users/[userId]/user-page-table-section";
 
@@ -236,6 +236,7 @@ function densifyDau(dau: DauRow[], range: { startUtc: Date, endUtcInclusive: Dat
 
 export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
   const hexclaveAdminApp = useAdminApp();
+  const serverApp = useServerApp();
   const members = team.useUsers();
   const memberIds = useMemo(() => members.map((m) => m.id), [members]);
   const memberIdsKey = useMemo(() => memberIds.join(","), [memberIds]);
@@ -279,7 +280,7 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
     };
 
     const runQuery = (query: string, params: Record<string, unknown>) =>
-      hexclaveAdminApp.queryAnalytics({ query, params, timeout_ms: 30_000, include_all_branches: false });
+      serverApp.queryAnalytics({ query, params, timeout_ms: 30_000, include_all_branches: false });
 
     const emptySummary: SummaryRow = {
       total_events: 0,
@@ -348,7 +349,7 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
       token.cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- dependency on serialized member IDs, not referential equality
-  }, [hexclaveAdminApp, team.id, memberIdsKey]);
+  }, [hexclaveAdminApp, serverApp, team.id, memberIdsKey]);
 
   return (
     <div className="flex flex-col gap-4">
