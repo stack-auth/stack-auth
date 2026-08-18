@@ -1,6 +1,7 @@
 import { getDataWarehouseConnectionInfo, rotateDataWarehousePassword } from "@/lib/data-warehouse";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -23,6 +24,7 @@ export const POST = createSmartRouteHandler({
       database_name: yupString().defined(),
       username: yupString().defined(),
       password: yupString().defined(),
+      password_updated_at_millis: yupNumber().defined(),
       connection: yupObject({
         host: yupString().defined(),
         https_port: yupNumber().defined(),
@@ -31,8 +33,14 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth }) => {
-    const { password, warehouse } = await rotateDataWarehousePassword(auth.tenancy);
+    // Validate before rotation so a response-serialization failure cannot lose
+    // the only copy of a password that ClickHouse has already activated.
     const connection = getDataWarehouseConnectionInfo();
+    const { password, warehouse } = await rotateDataWarehousePassword(auth.tenancy);
+    const passwordUpdatedAtMillis = warehouse.passwordUpdatedAt?.getTime();
+    if (passwordUpdatedAtMillis == null) {
+      throw new HexclaveAssertionError("A rotated Data Warehouse must have passwordUpdatedAt");
+    }
     return {
       statusCode: 200,
       bodyType: "json",
@@ -40,6 +48,7 @@ export const POST = createSmartRouteHandler({
         database_name: warehouse.databaseName,
         username: warehouse.userName,
         password,
+        password_updated_at_millis: passwordUpdatedAtMillis,
         connection: {
           host: connection.host,
           https_port: connection.httpsPort,

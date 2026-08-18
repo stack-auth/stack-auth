@@ -71,6 +71,26 @@ function apiToPushedConfigSource(source: BranchConfigSourceApi): PushedConfigSou
   return source;
 }
 
+function getDataWarehousePasswordUpdatedAtMillis(credentials: unknown): number {
+  // SDK responses are not runtime-schema-validated, and this timestamp is what
+  // lets the mutation response replace the cache without a second request.
+  // Fail loudly rather than caching an invented value if an older backend omits
+  // the field.
+  if (typeof credentials !== "object" || credentials == null) {
+    throw new HexclaveAssertionError("The Data Warehouse credentials response was not an object");
+  }
+  const value = Reflect.get(credentials, "password_updated_at_millis");
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new HexclaveAssertionError("The Data Warehouse credentials response omitted password_updated_at_millis");
+  }
+  return value;
+}
+
+import.meta.vitest?.test("Data Warehouse credential responses require the cache timestamp", ({ expect }) => {
+  expect(getDataWarehousePasswordUpdatedAtMillis({ password_updated_at_millis: 123 })).toBe(123);
+  expect(() => getDataWarehousePasswordUpdatedAtMillis({})).toThrow("omitted password_updated_at_millis");
+});
+
 export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _HexclaveServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId> {
   declare protected _interface: HexclaveAdminInterface;
 
@@ -571,14 +591,31 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
    */
   async provisionDataWarehouse(): Promise<DataWarehouseCredentialsJson> {
     const result = await this._interface.provisionDataWarehouse();
-    await this._adminDataWarehouseCache.refresh([]);
+    // The POST response contains the complete new read state. Updating the
+    // cache synchronously avoids a second request that could fail after the
+    // server has already issued the only copy of this password.
+    this._adminDataWarehouseCache.forceSetCachedValue([], Result.ok({
+      status: "ready",
+      database_name: result.database_name,
+      username: result.username,
+      error: null,
+      password_updated_at_millis: getDataWarehousePasswordUpdatedAtMillis(result),
+      connection: result.connection,
+    }));
     return result;
   }
 
   /** Issues a new password, invalidating the previous one. Also shown once. */
   async rotateDataWarehousePassword(): Promise<DataWarehouseCredentialsJson> {
     const result = await this._interface.rotateDataWarehousePassword();
-    await this._adminDataWarehouseCache.refresh([]);
+    this._adminDataWarehouseCache.forceSetCachedValue([], Result.ok({
+      status: "ready",
+      database_name: result.database_name,
+      username: result.username,
+      error: null,
+      password_updated_at_millis: getDataWarehousePasswordUpdatedAtMillis(result),
+      connection: result.connection,
+    }));
     return result;
   }
 

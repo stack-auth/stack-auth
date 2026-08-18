@@ -99,6 +99,10 @@ export async function runClickhouseMigrations() {
 
   // Grants. The REVOKEs come first and include `REVOKE ALL FROM limited_user`,
   // which strips granted *roles* too — so the role grant has to follow them.
+  // TODO(data-warehouse-ga): build and verify a versioned shadow role before
+  // switching users/policies in a future PR. We accept for alpha that this
+  // destructive rebuild creates a short cluster-wide partial-grant window and
+  // that a failed GRANT leaves the live role incomplete until the next run.
   await client.command({ query: `REVOKE ALL PRIVILEGES ON *.* FROM ${ANALYTICS_READER_ROLE};` });
   await client.command({ query: "REVOKE ALL PRIVILEGES ON *.* FROM limited_user;" });
   await client.command({ query: "REVOKE ALL FROM limited_user;" });

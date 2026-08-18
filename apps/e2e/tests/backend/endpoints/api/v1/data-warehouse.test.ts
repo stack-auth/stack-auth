@@ -1,8 +1,53 @@
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { Client } from "pg";
 import { it } from "../../../../helpers";
 import { Project, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 import { waitForItemQuantityToReach } from "../../../payment-quota-helpers";
+
+const DATA_WAREHOUSE_OPERATION_LOCK_CLASS = 247_911;
+
+async function whileWarehouseOperationLocked<T>(projectId: string, operation: () => Promise<T>): Promise<T> {
+  const connectionString = getEnvVariable(
+    "HEXCLAVE_DATABASE_CONNECTION_STRING",
+    getEnvVariable("STACK_DATABASE_CONNECTION_STRING", ""),
+  );
+  if (connectionString === "") {
+    throw new HexclaveAssertionError("Data Warehouse concurrency tests require a database connection string");
+  }
+  const client = new Client({ connectionString, connectionTimeoutMillis: 10_000, query_timeout: 30_000 });
+  await client.connect();
+  let lockedTenancyId: string | null = null;
+  try {
+    const tenancyResult = await client.query<{ id: string }>(
+      `SELECT "id" FROM "Tenancy" WHERE "projectId" = $1 ORDER BY "createdAt" LIMIT 1`,
+      [projectId],
+    );
+    if (tenancyResult.rows.length !== 1) {
+      throw new HexclaveAssertionError("Expected exactly one Data Warehouse test tenancy", {
+        projectId,
+        resultCount: tenancyResult.rows.length,
+      });
+    }
+    const [tenancyRow] = tenancyResult.rows;
+    const tenancyId = tenancyRow.id;
+    await client.query(
+      "SELECT pg_advisory_lock($1::int, hashtext($2::text))",
+      [DATA_WAREHOUSE_OPERATION_LOCK_CLASS, tenancyId],
+    );
+    lockedTenancyId = tenancyId;
+    return await operation();
+  } finally {
+    if (lockedTenancyId != null) {
+      await client.query(
+        "SELECT pg_advisory_unlock($1::int, hashtext($2::text))",
+        [DATA_WAREHOUSE_OPERATION_LOCK_CLASS, lockedTenancyId],
+      );
+    }
+    await client.end();
+  }
+}
 
 /**
  * Creates a project whose billing team is on the team plan, which is what
@@ -96,6 +141,7 @@ it("provisions a database and user on the team plan, returning the password exac
   expect(provisionResponse.body.username).toBe(projectId);
   expect(typeof provisionResponse.body.password).toBe("string");
   expect(provisionResponse.body.password.length).toBeGreaterThan(20);
+  expect(provisionResponse.body.password_updated_at_millis).toEqual(expect.any(Number));
 
   const getResponse = await getWarehouse();
   expect(getResponse.status).toBe(200);
@@ -114,15 +160,13 @@ it("refuses to provision twice, so live credentials are never silently invalidat
   expect(String(second.body)).toContain("already has a data warehouse");
 });
 
-it("serializes concurrent provisioning so only one password can be issued", async ({ expect }) => {
-  await createEntitledProject();
-  const responses = await Promise.all([provision(), provision()]);
-  expect(responses.map(response => response.status).sort((a, b) => a - b)).toEqual([200, 409]);
+it("rejects provisioning while another session holds its operation lock", async ({ expect }) => {
+  const { projectId } = await createEntitledProject();
+  const blocked = await whileWarehouseOperationLocked(projectId, async () => await provision());
+  expect(blocked.status).toBe(409);
 
-  const successful = responses.find(response => response.status === 200);
-  if (successful == null) {
-    throw new HexclaveAssertionError("Expected one concurrent provisioning request to succeed", { responses });
-  }
+  const successful = await provision();
+  expect(successful.status).toBe(200);
   const direct = await clickhouse({ ...successful.body, query: "SELECT 1" });
   expect(direct.status).toBe(200);
 });
@@ -178,11 +222,12 @@ it("caps both per-query and aggregate resource usage for direct connections", as
       SELECT
         getSetting('max_memory_usage'),
         getSetting('max_memory_usage_for_user'),
-        getSetting('max_concurrent_queries_for_user')
+        getSetting('max_concurrent_queries_for_user'),
+        getSetting('max_threads')
     `,
   });
   expect(configuredLimits.status).toBe(200);
-  expect(configuredLimits.text).toBe("4000000000\t4000000000\t10");
+  expect(configuredLimits.text).toBe("4000000000\t4000000000\t10\t4");
 
   const raiseAggregateMemoryLimit = await clickhouse({
     ...credentials,
@@ -197,6 +242,13 @@ it("caps both per-query and aggregate resource usage for direct connections", as
   });
   expect(raiseConcurrencyLimit.status).not.toBe(200);
   expect(raiseConcurrencyLimit.text).toContain("max_concurrent_queries_for_user");
+
+  const raiseCpuParallelism = await clickhouse({
+    ...credentials,
+    query: "SELECT 1 SETTINGS max_threads = 5",
+  });
+  expect(raiseCpuParallelism.status).not.toBe(200);
+  expect(raiseCpuParallelism.text).toContain("max_threads");
 });
 
 it("denies the table engines and table functions that reach outside the instance", async ({ expect }) => {
@@ -214,6 +266,16 @@ it("denies the table engines and table functions that reach outside the instance
     query: "SELECT * FROM url('http://example.com', CSV, 'a String')",
   });
   expect(urlFunction.status).not.toBe(200);
+
+  // On affected ClickHouse builds CREATE TABLE AS could infer a remote schema
+  // before checking READ ON URL. This must fail on privileges, without trying
+  // the deliberately unreachable address.
+  const inferredUrlTable = await clickhouse({
+    ...credentials,
+    query: `CREATE TABLE "${projectId}".inferred_url AS url('http://127.0.0.1:1/data.csv', CSV)`,
+  });
+  expect(inferredUrlTable.status).not.toBe(200);
+  expect(inferredUrlTable.text).toContain("URL");
 
   // Dictionary sources have their own outbound connectors and are not governed
   // by the URL source privilege above. The user must not have CREATE DICTIONARY
@@ -315,6 +377,7 @@ it("rotates the password, invalidating the old one and keeping analytics working
   expect(rotateResponse.status).toBe(200);
   expect(rotateResponse.body.password).not.toBe(original.password);
   expect(rotateResponse.body.username).toBe(original.username);
+  expect(rotateResponse.body.password_updated_at_millis).toEqual(expect.any(Number));
 
   const withOldPassword = await clickhouse({ ...original, query: "SELECT 1" });
   expect(withOldPassword.status).not.toBe(200);
@@ -328,8 +391,8 @@ it("rotates the password, invalidating the old one and keeping analytics working
   expect(analytics.status).toBe(200);
 });
 
-it("rejects an overlapping rotation instead of persisting a competing password", async ({ expect }) => {
-  await createEntitledProject();
+it("rejects rotation while another session holds its operation lock", async ({ expect }) => {
+  const { projectId } = await createEntitledProject();
   const { body: original } = await provision();
 
   const rotate = () => niceBackendFetch("/api/v1/data-warehouse/rotate-password", {
@@ -337,13 +400,11 @@ it("rejects an overlapping rotation instead of persisting a competing password",
     accessType: "admin",
     body: {},
   });
-  const responses = await Promise.all([rotate(), rotate()]);
-  expect(responses.map(response => response.status).sort((a, b) => a - b)).toEqual([200, 409]);
+  const blocked = await whileWarehouseOperationLocked(projectId, async () => await rotate());
+  expect(blocked.status).toBe(409);
 
-  const successful = responses.find(response => response.status === 200);
-  if (successful == null) {
-    throw new HexclaveAssertionError("Expected one concurrent password rotation to succeed", { responses });
-  }
+  const successful = await rotate();
+  expect(successful.status).toBe(200);
   expect((await clickhouse({ ...original, query: "SELECT 1" })).status).not.toBe(200);
   expect((await clickhouse({ ...successful.body, query: "SELECT 1" })).status).toBe(200);
 });

@@ -1,6 +1,7 @@
 import { getDataWarehouseConnectionInfo, provisionDataWarehouse } from "@/lib/data-warehouse";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -23,6 +24,7 @@ export const POST = createSmartRouteHandler({
       database_name: yupString().defined(),
       username: yupString().defined(),
       password: yupString().defined(),
+      password_updated_at_millis: yupNumber().defined(),
       connection: yupObject({
         host: yupString().defined(),
         https_port: yupNumber().defined(),
@@ -31,8 +33,15 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth }) => {
-    const { password, warehouse } = await provisionDataWarehouse(auth.tenancy);
+    // Validate all public connection metadata before changing the one-time
+    // password. A malformed port must not turn a successful mutation into a
+    // response failure that discards the only copy of the credential.
     const connection = getDataWarehouseConnectionInfo();
+    const { password, warehouse } = await provisionDataWarehouse(auth.tenancy);
+    const passwordUpdatedAtMillis = warehouse.passwordUpdatedAt?.getTime();
+    if (passwordUpdatedAtMillis == null) {
+      throw new HexclaveAssertionError("A newly provisioned Data Warehouse must have passwordUpdatedAt");
+    }
     return {
       statusCode: 200,
       bodyType: "json",
@@ -40,6 +49,7 @@ export const POST = createSmartRouteHandler({
         database_name: warehouse.databaseName,
         username: warehouse.userName,
         password,
+        password_updated_at_millis: passwordUpdatedAtMillis,
         connection: {
           host: connection.host,
           https_port: connection.httpsPort,

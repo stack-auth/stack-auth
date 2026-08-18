@@ -20,10 +20,13 @@
 // cannot be defeated by a caller that forgets to set them.
 //
 // ALPHA CAVEATS (deliberate, tracked):
-// - No storage quota. ClickHouse has no native per-database size limit, so
-//   nothing stops a project from filling the disk shared with our analytics.
-// - No deprovisioning. Uninstalling the app leaves the database and user in
-//   place; there is no delete path yet.
+// - TODO(data-warehouse-ga): add storage accounting and enforcement in a future
+//   PR. We accept for alpha that ClickHouse has no native per-database size
+//   limit, so a project can fill disk shared with our analytics.
+// - TODO(data-warehouse-ga): add a deprovisioning/reconciliation path in a
+//   future PR. We accept for alpha that deleting a tenancy cascades away the
+//   PostgreSQL row while its ClickHouse database and still-usable user remain;
+//   uninstalling the app likewise leaves both objects in place.
 // - No downgrade enforcement yet. The entitlement gates provisioning and
 //   rotation, but an already-provisioned ClickHouse user remains active after
 //   the project loses the entitlement, including for direct connections. This
@@ -80,6 +83,9 @@ const MAX_MEMORY_USAGE_FOR_USER_BYTES = MAX_MEMORY_USAGE_BYTES;
 /** CPU/admission-control backstop for one customer's direct connections. */
 const MAX_CONCURRENT_QUERIES_FOR_USER = 10;
 
+/** Per-query CPU parallelism ceiling, so one query cannot occupy every core. */
+const MAX_THREADS = 4;
+
 /** Hourly quota per warehouse user. Generous — this is an abuse backstop, not a product limit. */
 const QUOTA_INTERVAL_HOURS = 1;
 const QUOTA_MAX_QUERIES = 10_000;
@@ -125,6 +131,32 @@ const ALLOWED_TABLE_ENGINES = [
 /**
  * The matching *source* privileges, which gate the table functions (`url()`,
  * `s3()`, `remote()`, `file()`, …). Same reasoning as the engines above.
+ *
+ * Known gap (ClickHouse #99122): these REVOKEs gate the *execution* path, but
+ * the schema-resolution path does not consult them. `DESCRIBE TABLE mysql(...)`
+ * / `postgresql(...)` (and `CREATE TABLE AS ...`) connect to an
+ * attacker-supplied host to infer the schema *before* the source check runs, so
+ * revoking MYSQL/POSTGRES does not stop the outbound connection. `SELECT FROM
+ * mysql(...)` is still blocked; only the DESCRIBE/CREATE-AS resolution leaks.
+ * We verified this on ClickHouse Cloud (26.2.1.558): `url()`/`s3()`/`remote()`
+ * are correctly denied even for DESCRIBE, but `mysql()`/`postgresql()` DESCRIBE
+ * still dial out. The same bypass is reachable through `/analytics/query` as the
+ * shared `limited_user`, independent of the Data Warehouse app.
+ *
+ * We accept this. The severe SSRF outcome — reading cloud instance-metadata
+ * (IMDS) credentials — is not reachable through this bypass: the leaking
+ * functions speak DB wire protocols and cannot emit the HTTP GET that IMDS
+ * requires, and the functions that *can* speak HTTP (`url()`/`s3()`) are denied
+ * even for DESCRIBE. So credential theft is blocked by the bypass's own protocol
+ * limitation, not by anything we do; Cloud additionally appears to firewall
+ * egress to IMDS/RFC1918. What remains is low, abuse-tier: a blind localhost
+ * port scan of the ClickHouse node (open/closed distinguishable by error code +
+ * timing) and blind outbound connects to public hosts — no rows, banners, or
+ * credentials are readable, because the DB handshake needs valid target creds.
+ * An app-layer statement guard would not help anyway: warehouse users hold
+ * direct ClickHouse credentials and bypass our routes entirely. Self-hosted
+ * operators who do not firewall IMDS should restrict ClickHouse egress
+ * themselves; on Cloud we rely on the provider's network isolation.
  */
 const FORBIDDEN_SOURCES = [
   "FILE", "URL", "REMOTE", "MYSQL", "ODBC", "JDBC", "HDFS", "S3", "HIVE",
@@ -208,7 +240,7 @@ async function getPlanTimeoutSeconds(tenancy: Tenancy): Promise<number> {
   return Math.min(Math.max(item.quantity, 1), MAX_EXECUTION_TIME_SECONDS);
 }
 
-async function assertClickhouseTableEngineGrantsEnabled(): Promise<void> {
+async function assertClickhouseWarehouseSecurityPrerequisites(): Promise<void> {
   const probeSuffix = generateSecureRandomString(80);
   if (!/^[a-zA-Z0-9]+$/.test(probeSuffix)) {
     throw new HexclaveAssertionError("Unexpected random string shape for the ClickHouse engine-grant probe");
@@ -217,7 +249,25 @@ async function assertClickhouseTableEngineGrantsEnabled(): Promise<void> {
   const quotedProbe = `\`${probeName}\``;
   const probePassword = generateWarehousePassword();
   const adminClient = getClickhouseAdminClient();
+  let operationFailed = false;
   try {
+    // There used to be a minimum-version gate here, requiring an upstream build
+    // that contained the loop() row-policy fix (#97682) and the remote
+    // schema-inference access-check fix (#99122). It was removed because it
+    // gated on upstream build numbers, which ClickHouse Cloud does not follow:
+    // Cloud backports fixes without landing on the corresponding upstream patch
+    // release. We reproduced the loop() row-policy bypass on a local
+    // (unpatched) server, then ran the same probe against a real ClickHouse
+    // Cloud service reporting 26.2.1.558 — below the gate's threshold, and the
+    // exact version the gate's unit test asserted was unsafe — and the row
+    // policy held: a user pinned to one project read zero foreign rows through
+    // loop(), while a policy-free control user on the same data saw them. So the
+    // gate would have refused to provision on Cloud services that are in fact
+    // patched, blocking the product for no gain.
+    //
+    // The bugs are still reachable on unpatched local/self-hosted servers. We
+    // accept that: warehouse credentials are a production concern, and local
+    // development has no cross-tenant data worth protecting.
     await adminClient.command({
       query: `CREATE USER ${quotedProbe} IDENTIFIED WITH sha256_password BY {password:String}`,
       query_params: { password: probePassword },
@@ -239,12 +289,59 @@ async function assertClickhouseTableEngineGrantsEnabled(): Promise<void> {
     } finally {
       await probeClient.close();
     }
+  } catch (error) {
+    operationFailed = true;
+    throw error;
   } finally {
-    await adminClient.command({ query: `DROP TABLE IF EXISTS default.${quotedProbe}` });
-    await adminClient.command({ query: `DROP USER IF EXISTS ${quotedProbe}` });
-    await adminClient.close();
+    const cleanedUp = await runClickhouseCleanupSteps("data-warehouse-engine-grant-probe-cleanup", [
+      async () => await adminClient.command({ query: `DROP TABLE IF EXISTS default.${quotedProbe}` }),
+      async () => await adminClient.command({ query: `DROP USER IF EXISTS ${quotedProbe}` }),
+      async () => await adminClient.close(),
+    ]);
+    if (!cleanedUp && !operationFailed) {
+      throw new HexclaveAssertionError("Failed to clean up the ClickHouse engine-grant probe");
+    }
   }
 }
+
+async function runClickhouseCleanupSteps(
+  context: string,
+  steps: ReadonlyArray<() => Promise<unknown>>,
+  reportError: (context: string, error: unknown) => void = (errorContext, error) => captureError(errorContext, error),
+): Promise<boolean> {
+  let succeeded = true;
+  for (const step of steps) {
+    try {
+      await step();
+    } catch (error) {
+      succeeded = false;
+      reportError(context, error);
+    }
+  }
+  return succeeded;
+}
+
+import.meta.vitest?.test("ClickHouse cleanup attempts every step after a failure", async ({ expect }) => {
+  const attempts: string[] = [];
+  const reportedErrors: unknown[] = [];
+  const firstError = new Error("first cleanup failed");
+  const succeeded = await runClickhouseCleanupSteps("test-cleanup", [
+    async () => {
+      attempts.push("first");
+      throw firstError;
+    },
+    async () => {
+      attempts.push("second");
+    },
+    async () => {
+      attempts.push("close");
+    },
+  ], (_context, error) => reportedErrors.push(error));
+
+  expect(succeeded).toBe(false);
+  expect(attempts).toEqual(["first", "second", "close"]);
+  expect(reportedErrors).toEqual([firstError]);
+});
 
 /**
  * Creates (or repairs) the ClickHouse database, user, grants, settings, and
@@ -333,7 +430,8 @@ async function applyWarehouseDdl(options: {
           max_execution_time = ${timeoutSeconds} MAX ${MAX_EXECUTION_TIME_SECONDS},
           max_memory_usage = ${MAX_MEMORY_USAGE_BYTES} MAX ${MAX_MEMORY_USAGE_BYTES},
           max_memory_usage_for_user = ${MAX_MEMORY_USAGE_FOR_USER_BYTES} MAX ${MAX_MEMORY_USAGE_FOR_USER_BYTES},
-          max_concurrent_queries_for_user = ${MAX_CONCURRENT_QUERIES_FOR_USER} MAX ${MAX_CONCURRENT_QUERIES_FOR_USER}
+          max_concurrent_queries_for_user = ${MAX_CONCURRENT_QUERIES_FOR_USER} MAX ${MAX_CONCURRENT_QUERIES_FOR_USER},
+          max_threads = ${MAX_THREADS} MAX ${MAX_THREADS}
       `,
       query_params: { password },
     });
@@ -357,6 +455,12 @@ async function withDataWarehouseOperationLock<T>(options: {
   // could replay a non-transactional external side effect, so this must not use
   // retryTransaction. The advisory lock makes overlapping provision/rotation
   // requests fail immediately instead of returning two competing passwords.
+  //
+  // TODO(data-warehouse-ga): replace this with a durable multi-phase operation
+  // in a future PR. We accept for alpha that a PostgreSQL commit failure after
+  // the callback returns is ambiguous: ClickHouse may have the new password
+  // while PostgreSQL retains the old encrypted password. The in-callback
+  // recovery below cannot observe or reconcile that commit-phase failure.
   // eslint-disable-next-line no-restricted-syntax
   return await options.prisma.$transaction(async (tx) => {
     const lockRows = await tx.$queryRaw<{ locked: boolean }[]>`
@@ -402,18 +506,15 @@ async function cleanUpUnpersistedWarehouseUser(userName: string): Promise<boolea
   const quotedUser = quoteClickhouseIdentifierFromProjectId(userName);
   const quotaName = `\`${userName}_quota\``;
   const client = getClickhouseAdminClient();
-  try {
-    // Keep the database and any customer data so a retry remains non-destructive,
-    // but remove credentials that the failed request could not return or store.
-    await client.command({ query: `DROP QUOTA IF EXISTS ${quotaName}` });
-    await client.command({ query: `DROP USER IF EXISTS ${quotedUser}` });
-    return true;
-  } catch (error) {
-    captureError("data-warehouse-clean-up-unpersisted-user", error);
-    return false;
-  } finally {
-    await client.close();
-  }
+  // Keep the database and any customer data so a retry remains non-destructive,
+  // but remove credentials that the failed request could not return or store.
+  // Every step is attempted even if an earlier one fails; in particular, a
+  // quota cleanup failure must never leave live credentials behind by itself.
+  return await runClickhouseCleanupSteps("data-warehouse-clean-up-unpersisted-user", [
+    async () => await client.command({ query: `DROP QUOTA IF EXISTS ${quotaName}` }),
+    async () => await client.command({ query: `DROP USER IF EXISTS ${quotedUser}` }),
+    async () => await client.close(),
+  ]);
 }
 
 async function recoverPreviousWarehouseAccess(options: {
@@ -480,7 +581,7 @@ export async function provisionDataWarehouse(tenancy: Tenancy): Promise<{ passwo
           otherTenancyId: otherTenancyRow.tenancyId,
         });
       }
-      await assertClickhouseTableEngineGrantsEnabled();
+      await assertClickhouseWarehouseSecurityPrerequisites();
 
       await tx.dataWarehouse.upsert({
         where: { tenancyId: tenancy.id },
@@ -565,7 +666,7 @@ export async function rotateDataWarehousePassword(tenancy: Tenancy): Promise<{ p
           warehouseStatus: existing.status,
         });
       }
-      await assertClickhouseTableEngineGrantsEnabled();
+      await assertClickhouseWarehouseSecurityPrerequisites();
 
       const password = generateWarehousePassword();
       const encryptedPassword = await encryptWithKms(password);

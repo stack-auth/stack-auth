@@ -68,6 +68,7 @@ export type DataWarehouseCredentialsJson = {
   database_name: string,
   username: string,
   password: string,
+  password_updated_at_millis: number,
   connection: DataWarehouseConnectionJson,
 };
 
