@@ -13,14 +13,14 @@ Built on the [eve](https://eve.dev) agent framework.
 
 | Variable | Purpose |
 | --- | --- |
-| `HEXCLAVE_GROWTH_BACKEND_URL` | Base URL of the Hexclave backend (dev value committed in `.env`: `http://localhost:8102`). The client appends `/api/latest/internal/growth-agent`. |
+| `HEXCLAVE_GROWTH_BACKEND_URL` | Base URL of the Hexclave backend. The client appends `/api/latest/internal/growth-agent`. |
 | `HEXCLAVE_GROWTH_AGENT_API_SECRET` | Shared service secret. Used both to verify inbound bearer tokens from the backend and as the outbound bearer token to the backend. |
 | `VERCEL_TOKEN`, `VERCEL_TEAM_ID`, `VERCEL_PROJECT_ID` | Explicit Vercel Sandbox credentials for local development when the backend is pinned to `vercel`. Vercel deployments normally authenticate automatically through `VERCEL_OIDC_TOKEN` (OIDC must be enabled for the project). |
 | `AGENT_BROWSER_SNAPSHOT_ID` | Optional but strongly recommended in production: a pre-built Vercel sandbox snapshot with Chromium + agent-browser installed, for sub-second browser-VM startup (create once via `createAgentBrowserSnapshot()` from `@agent-browser/sandbox/vercel`). Without it, each `browse-page` call cold-installs Chromium (~30s). |
 
 ## Environment files
 
-eve loads `.env` and `.env.local` from the app root (it does not read `.env.development`). Committed dev defaults live in `.env`; put machine-local secrets in `.env.local`.
+The development script uses `dotenv-cli` like the other monorepo apps: it loads the documented variables from `.env`, then the prefix-aware local defaults from `.env.development`. Put machine-local overrides in `.env.local`.
 
 ## Development
 
