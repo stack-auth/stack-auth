@@ -255,11 +255,15 @@ export async function resolveTvProfile(
 ): Promise<TvProfileResource | null> {
   const builtIn = getTvBuiltInProfile(profileId);
   if (builtIn != null) return builtIn;
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(profileId)) {
+  if (!isSavedTvProfileId(profileId)) {
     return null;
   }
   const row = (await querySavedProfileRows(tenancy, profileId)).at(0);
   return row == null ? null : await rowToResource(row);
+}
+
+function isSavedTvProfileId(profileId: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(profileId);
 }
 
 export async function createTvProfile(
@@ -300,6 +304,7 @@ export async function updateTvProfile(
   configurationInput: TvProfileConfiguration,
 ): Promise<TvSavedProfileResource | null> {
   if (getTvBuiltInProfile(profileId) != null) throw new TvBuiltInProfileMutationError();
+  if (!isSavedTvProfileId(profileId)) return null;
   if (!(await profileTableIsReady(tenancy))) return null;
   const configuration = await validateConfiguration(configurationInput);
   const schema = await getPrismaSchemaForTenancy(tenancy);
@@ -342,6 +347,7 @@ export async function deleteTvProfile(
   expectedVersion: number,
 ): Promise<boolean | null> {
   if (getTvBuiltInProfile(profileId) != null) throw new TvBuiltInProfileMutationError();
+  if (!isSavedTvProfileId(profileId)) return false;
   if (!(await profileTableIsReady(tenancy))) return null;
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const deleted = await retryTransaction(globalPrismaClient, async (transaction) => {

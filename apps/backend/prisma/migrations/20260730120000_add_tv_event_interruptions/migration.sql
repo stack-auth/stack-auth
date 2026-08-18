@@ -159,7 +159,9 @@ ALTER TABLE "TvEventEvaluatorState"
 ADD CONSTRAINT "TvEventEvaluatorState_activeOccurrence_fkey"
 FOREIGN KEY ("tenancyId", "activeOccurrenceId")
 REFERENCES "TvEventOccurrence"("tenancyId", "id")
-ON DELETE CASCADE
+-- Preserve evaluator cadence and typed baseline state if an occurrence is
+-- removed, while leaving the required tenancy key intact.
+ON DELETE SET NULL ("activeOccurrenceId")
 ON UPDATE CASCADE;
 
 -- AddForeignKey

@@ -232,6 +232,8 @@ it("does not resolve a saved TV profile through another project's tenancy", asyn
 
 it("rejects non-admin access and unknown TV profile resources", async ({ expect }) => {
   await Project.createAndSwitch();
+  const template = getTvBuiltInProfile("company-pulse");
+  if (template == null) throw new Error("Company Pulse must exist.");
 
   const nonAdminResponse = await niceBackendFetch(
     "/api/v1/internal/tv-mode/profiles/company-pulse/snapshot",
@@ -244,4 +246,27 @@ it("rejects non-admin access and unknown TV profile resources", async ({ expect 
     { accessType: "admin" },
   );
   expect(unknownProfileResponse.status).toBe(404);
+
+  const malformedUpdateResponse = await niceBackendFetch(
+    "/api/v1/internal/tv-mode/profiles/not-a-uuid",
+    {
+      method: "PATCH",
+      accessType: "admin",
+      body: {
+        expectedVersion: 1,
+        configuration: template.configuration,
+      },
+    },
+  );
+  expect(malformedUpdateResponse.status).toBe(404);
+
+  const malformedDeleteResponse = await niceBackendFetch(
+    "/api/v1/internal/tv-mode/profiles/not-a-uuid",
+    {
+      method: "DELETE",
+      accessType: "admin",
+      body: { expectedVersion: 1 },
+    },
+  );
+  expect(malformedDeleteResponse.status).toBe(404);
 });

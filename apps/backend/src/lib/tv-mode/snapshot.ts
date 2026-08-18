@@ -1320,11 +1320,18 @@ export async function buildLiveTvSnapshot(options: {
     revenue: revenue.screen,
     audience: audience.screen,
   });
-  await evaluateTvEventsIfDue({
-    tenancy: options.tenancy,
-    now,
-    totalUsers: audience.screen.data?.totalUsers ?? null,
-  });
+  try {
+    await evaluateTvEventsIfDue({
+      tenancy: options.tenancy,
+      now,
+      totalUsers: audience.screen.data?.totalUsers ?? null,
+    });
+  } catch (cause) {
+    captureError("tv-event-evaluation-failed", new HexclaveAssertionError(
+      "TV event evaluation failed without affecting the operational snapshot.",
+      { cause, tenancyId: options.tenancy.id },
+    ));
+  }
   let presentation: TvEventPresentation = { highlight: null, takeover: null };
   try {
     presentation = await resolveTvEventPresentation({

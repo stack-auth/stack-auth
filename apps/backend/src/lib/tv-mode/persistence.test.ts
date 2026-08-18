@@ -25,6 +25,7 @@ import {
   createTvProfile,
   deleteTvProfile,
   TvBuiltInProfileMutationError,
+  updateTvProfile,
 } from "@/lib/tv-mode/profiles";
 import { globalPrismaClient } from "@/prisma-client";
 import {
@@ -341,6 +342,57 @@ describe.sequential("TV presentation persistence (real DB)", () => {
       takeoverEndsAt: assigned.takeoverEndsAt,
       recoveryEndsAt: assigned.recoveryEndsAt,
       highlightExpiresAt: assigned.highlightExpiresAt,
+      updatedAt: assigned.updatedAt,
+    });
+  });
+
+  it("does not rewrite an assignment after policy supersession is already persisted", async () => {
+    const occurrence = await createOccurrence(firstTenancy.id);
+    const profileId = randomUUID();
+    const template = getTvBuiltInProfile("company-pulse");
+    if (template == null) throw new Error("Company Pulse TV template is missing");
+    const profile = profileWithTiming(profileId, template.configuration.interruptionPreferences.timing);
+    const disabledProfile: TvProfileResource = {
+      ...profile,
+      configuration: {
+        ...profile.configuration,
+        interruptionPreferences: {
+          ...profile.configuration.interruptionPreferences,
+          incidentTypes: {
+            ...profile.configuration.interruptionPreferences.incidentTypes,
+            emailDeliveryDegradation: false,
+          },
+        },
+      },
+    };
+
+    await synchronizeTvProfileAssignments({
+      tenancy: firstTenancy,
+      profile,
+      occurrences: [occurrence],
+      now: new Date("2026-07-31T10:01:10.000Z"),
+    });
+    await synchronizeTvProfileAssignments({
+      tenancy: firstTenancy,
+      profile: disabledProfile,
+      occurrences: [occurrence],
+      now: new Date("2026-07-31T10:01:20.000Z"),
+    });
+    const superseded = await globalPrismaClient.tvProfileEventPresentation.findUniqueOrThrow({
+      where: { tenancyId_profileId_occurrenceId: { tenancyId: firstTenancy.id, profileId, occurrenceId: occurrence.id } },
+    });
+
+    await synchronizeTvProfileAssignments({
+      tenancy: firstTenancy,
+      profile: disabledProfile,
+      occurrences: [occurrence],
+      now: new Date("2026-07-31T10:01:30.000Z"),
+    });
+    await expect(globalPrismaClient.tvProfileEventPresentation.findUniqueOrThrow({
+      where: { tenancyId_profileId_occurrenceId: { tenancyId: firstTenancy.id, profileId, occurrenceId: occurrence.id } },
+    })).resolves.toMatchObject({
+      supersededAt: superseded.supersededAt,
+      updatedAt: superseded.updatedAt,
     });
   });
 
@@ -395,5 +447,18 @@ describe.sequential("TV presentation persistence (real DB)", () => {
     if (profile == null) throw new Error("TV profile persistence is unavailable");
 
     await expect(deleteTvProfile(firstTenancy, profile.id, profile.version)).resolves.toBe(true);
+  });
+
+  it("rejects malformed saved-profile IDs before PostgreSQL UUID casts", async () => {
+    const template = getTvBuiltInProfile("company-pulse");
+    if (template == null) throw new Error("Company Pulse TV template is missing");
+
+    await expect(updateTvProfile(
+      firstTenancy,
+      "not-a-uuid",
+      1,
+      template.configuration,
+    )).resolves.toBeNull();
+    await expect(deleteTvProfile(firstTenancy, "not-a-uuid", 1)).resolves.toBe(false);
   });
 });

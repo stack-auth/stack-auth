@@ -1113,6 +1113,7 @@ export async function synchronizeTvProfileAssignments(options: {
         WHERE "tenancyId" = ${options.tenancy.id}::UUID
           AND "profileId" = ${options.profile.id}
           AND "occurrenceId" = ${occurrence.id}::UUID
+          AND "supersededAt" IS NULL
       `;
       continue;
     }
@@ -1230,6 +1231,16 @@ export async function synchronizeTvProfileAssignments(options: {
           EXCLUDED."highlightExpiresAt"
         ),
         "updatedAt" = EXCLUDED."updatedAt"
+      WHERE
+        EXCLUDED."takeoverStartedAt" > ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"."takeoverStartedAt"
+        OR (
+          ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"."recoveryEndsAt" IS NULL
+          AND EXCLUDED."recoveryEndsAt" IS NOT NULL
+        )
+        OR (
+          ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"."highlightExpiresAt" IS NULL
+          AND EXCLUDED."highlightExpiresAt" IS NOT NULL
+        )
     `;
   }
 
@@ -1340,15 +1351,25 @@ export async function resolveTvEventPresentation(options: {
   const occurrences = await loadOccurrences(options.tenancy, options.now);
   await synchronizeTvProfileAssignments({ ...options, occurrences });
   const assignments = await loadAssignments(options.tenancy, options.profile.id);
-  const durableOccurrences: TvDurableEventOccurrence[] = occurrences.map((occurrence) => ({
-    id: occurrence.id,
-    type: occurrenceType(occurrence),
-    presentationClass: presentationClass(occurrence),
-    lifecycle: occurrenceLifecycle(occurrence),
-    occurredAt: occurrence.occurredAt,
-    activatedAt: occurrence.activatedAt ?? occurrence.occurredAt,
-    resolvedAt: occurrence.resolvedAt,
-  }));
+  const activeAssignmentOccurrenceIds = new Set(
+    assignments
+      .filter((assignment) => assignment.supersededAt == null)
+      .map((assignment) => assignment.occurrenceId),
+  );
+  const durableOccurrences: TvDurableEventOccurrence[] = occurrences
+    .filter((occurrence) => (
+      isEligible(occurrence, options.profile.configuration.interruptionPreferences)
+      && activeAssignmentOccurrenceIds.has(occurrence.id)
+    ))
+    .map((occurrence) => ({
+      id: occurrence.id,
+      type: occurrenceType(occurrence),
+      presentationClass: presentationClass(occurrence),
+      lifecycle: occurrenceLifecycle(occurrence),
+      occurredAt: occurrence.occurredAt,
+      activatedAt: occurrence.activatedAt ?? occurrence.occurredAt,
+      resolvedAt: occurrence.resolvedAt,
+    }));
   const durableAssignments: TvDurablePresentationAssignment[] = assignments.map((assignment) => ({
     occurrenceId: assignment.occurrenceId,
     takeoverStartedAt: assignment.takeoverStartedAt,

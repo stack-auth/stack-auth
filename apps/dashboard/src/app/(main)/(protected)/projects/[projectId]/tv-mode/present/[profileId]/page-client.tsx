@@ -19,6 +19,7 @@ import {
   type TvScreenId,
 } from "@/lib/tv-mode/types";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { useAdminApp } from "../../../use-admin-app";
 
 const TV_FIXTURE_VARIANT_SET = new Set<string>(TV_FIXTURE_VARIANTS);
@@ -97,7 +98,7 @@ export default function PageClient() {
           ? "error"
           : null}
       onExit={() => runAsynchronouslyWithAlert(exitStandaloneTvPresentation({
-        fallbackHref: `/projects/${projectId}/tv-mode`,
+        fallbackHref: urlString`/projects/${projectId}/tv-mode`,
         environment: getBrowserTvPresentationExitEnvironment(),
       }))}
       initialScreenId={isTvScreenId(screenParam) ? screenParam : undefined}

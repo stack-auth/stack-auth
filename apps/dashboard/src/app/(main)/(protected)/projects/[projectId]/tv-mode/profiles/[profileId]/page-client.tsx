@@ -19,6 +19,7 @@ import {
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import type { TvProfileResource } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import {
   DesignAlert,
@@ -218,6 +219,7 @@ function settingRow({
 export default function PageClient() {
   const projectId = useProjectId();
   const adminApp = useAdminApp();
+  const project = adminApp.useProject();
   const profileId = getProfileIdFromPath(usePathname());
   const createFromTemplate = useSearchParams().get("create") === "1";
   const [resource, setResource] = useState<TvProfileResource | null>(null);
@@ -277,7 +279,7 @@ export default function PageClient() {
     return (
       <PageLayout title="TV Profile Not Found" description="The requested TV profile does not exist.">
         <DesignAlert variant="error" title="Unknown Profile" description={`No TV presentation profile exists for "${profileId}", or it could not be loaded.`} />
-        <Link href={`/projects/${projectId}/tv-mode`} className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
+        <Link href={urlString`/projects/${projectId}/tv-mode`} className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
           <ArrowLeftIcon className="h-4 w-4" />
           All Profiles
         </Link>
@@ -302,7 +304,7 @@ export default function PageClient() {
                 resource,
                 `${resource.configuration.displayName} Copy`,
               );
-              window.location.assign(`/projects/${projectId}/tv-mode/profiles/${duplicated.id}`);
+              window.location.assign(urlString`/projects/${projectId}/tv-mode/profiles/${duplicated.id}`);
             }}>
               Duplicate
             </DesignButton>
@@ -312,7 +314,7 @@ export default function PageClient() {
             </DesignButton>
             <button
               type="button"
-              onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}`)}
+              onClick={() => launchPresentation(urlString`/projects/${projectId}/tv-mode/present/${profileId}`)}
               className="inline-flex h-8 items-center gap-2 rounded-lg bg-foreground px-3 text-xs font-medium text-background"
             >
               <BroadcastIcon className="h-4 w-4" weight="fill" />
@@ -323,7 +325,7 @@ export default function PageClient() {
         }
       >
         <div className="flex items-center gap-2">
-          <Link href={`/projects/${projectId}/tv-mode`} className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground">
+          <Link href={urlString`/projects/${projectId}/tv-mode`} className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground">
             <ArrowLeftIcon className="h-3.5 w-3.5" />
             All Profiles
           </Link>
@@ -389,7 +391,7 @@ export default function PageClient() {
                 </div>
                 <div className="sm:col-span-2">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Project</p>
-                  <div className="rounded-xl border border-foreground/[0.08] bg-foreground/[0.025] px-4 py-2.5 text-sm text-foreground">Acme Production</div>
+                  <div className="rounded-xl border border-foreground/[0.08] bg-foreground/[0.025] px-4 py-2.5 text-sm text-foreground">{project.displayName}</div>
                 </div>
               </div>
             </DesignCard>
@@ -746,7 +748,7 @@ export default function PageClient() {
                         <button
                           type="button"
                           key={preview.fixture}
-                          onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=${preview.fixture}`)}
+                          onClick={() => launchPresentation(urlString`/projects/${projectId}/tv-mode/present/${profileId}?fixture=${preview.fixture}`)}
                           className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-xs font-medium text-foreground transition-colors duration-150 hover:bg-foreground/[0.04] hover:transition-none"
                         >
                           <span className="min-w-0">{preview.label}</span>
@@ -765,7 +767,7 @@ export default function PageClient() {
                   <button
                     type="button"
                     key={state.fixture}
-                    onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=${state.fixture}`)}
+                    onClick={() => launchPresentation(urlString`/projects/${projectId}/tv-mode/present/${profileId}?fixture=${state.fixture}`)}
                     className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-xs font-medium text-foreground hover:bg-foreground/[0.04]"
                   >
                     {state.label}
@@ -807,7 +809,7 @@ export default function PageClient() {
                 setSaved(cloneProfile(nextDraft));
                 setSavedNoticeVisible(true);
                 if (savedResource.id !== profileId) {
-                  window.location.assign(`/projects/${projectId}/tv-mode/profiles/${savedResource.id}`);
+                  window.location.assign(urlString`/projects/${projectId}/tv-mode/profiles/${savedResource.id}`);
                 }
               } catch (error) {
                 setSaveError(error instanceof TvProfileRequestError && error.status === 409
@@ -828,7 +830,7 @@ export default function PageClient() {
           profileName={resource.configuration.displayName}
           onConfirm={async () => {
             await deleteTvProfileOrThrow(adminApp, resource);
-            window.location.assign(`/projects/${projectId}/tv-mode`);
+            window.location.assign(urlString`/projects/${projectId}/tv-mode`);
           }}
         />
       ) : null}

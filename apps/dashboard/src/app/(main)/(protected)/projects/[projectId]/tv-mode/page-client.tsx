@@ -12,6 +12,7 @@ import {
   PlusIcon,
 } from "@phosphor-icons/react";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import type { TvProfileResource } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { useEffect, useState } from "react";
 import { DesignAlert, DesignBadge, DesignCard } from "@/components/design-components";
@@ -62,11 +63,11 @@ export default function PageClient() {
       allowContentOverflow
       actions={
         <div className="flex flex-wrap gap-2">
-          <Link href={`/projects/${projectId}/tv-mode/displays`} className={actionLinkClass("secondary")}>
+          <Link href={urlString`/projects/${projectId}/tv-mode/displays`} className={actionLinkClass("secondary")}>
             <MonitorIcon className="h-4 w-4" weight="fill" />
             Manage Displays
           </Link>
-          <Link href={`/projects/${projectId}/tv-mode/profiles/company-pulse?create=1`} className={actionLinkClass("secondary")}>
+          <Link href={urlString`/projects/${projectId}/tv-mode/profiles/company-pulse?create=1`} className={actionLinkClass("secondary")}>
             <PlusIcon className="h-4 w-4" weight="bold" />
             New Profile
           </Link>
@@ -115,7 +116,9 @@ export default function PageClient() {
                   </div>
                   <div className="flex shrink-0 gap-2">
                     <Link
-                      href={`/projects/${projectId}/tv-mode/profiles/${profile.id}${profile.origin === "built-in" ? "?create=1" : ""}`}
+                      href={profile.origin === "built-in"
+                        ? urlString`/projects/${projectId}/tv-mode/profiles/${profile.id}?create=1`
+                        : urlString`/projects/${projectId}/tv-mode/profiles/${profile.id}`}
                       className={actionLinkClass("secondary")}
                     >
                       {profile.origin === "built-in"
@@ -125,7 +128,7 @@ export default function PageClient() {
                     </Link>
                     <button
                       type="button"
-                      onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profile.id}`)}
+                      onClick={() => launchPresentation(urlString`/projects/${projectId}/tv-mode/present/${profile.id}`)}
                       className={actionLinkClass("primary")}
                     >
                       <BroadcastIcon className="h-4 w-4" weight="fill" />

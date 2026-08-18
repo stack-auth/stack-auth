@@ -265,4 +265,46 @@ describe("TV event presentation orchestration", () => {
       highlight: { occurrenceId: "incident", variant: "resolved-incident" },
     });
   });
+
+  it("never presents active, recovering, or resolved incidents with superseded assignments", () => {
+    const active = occurrence("active", "incident");
+    const resolvedAt = new Date("2026-07-29T10:05:00.000Z");
+    const resolved: TvDurableEventOccurrence = {
+      ...occurrence("resolved", "critical-incident"),
+      lifecycle: "resolved",
+      resolvedAt,
+    };
+    const activeAssignment = {
+      ...createTvPresentationAssignment({
+        occurrence: active,
+        preferences: preferences(),
+        takeoverStartedAt: occurredAt,
+      }),
+      supersededAt: new Date("2026-07-29T10:00:10.000Z"),
+    };
+    const resolvedAssignment = {
+      ...createTvPresentationAssignment({
+        occurrence: resolved,
+        preferences: preferences(),
+        takeoverStartedAt: occurredAt,
+      }),
+      recoveryEndsAt: new Date("2026-07-29T10:06:00.000Z"),
+      highlightExpiresAt: new Date("2026-07-29T16:05:00.000Z"),
+      supersededAt: new Date("2026-07-29T10:05:10.000Z"),
+    };
+
+    expect(deriveTvPresentation({
+      now: new Date("2026-07-29T10:05:30.000Z"),
+      occurrences: [active, resolved],
+      assignments: [activeAssignment, resolvedAssignment],
+    })).toEqual({ takeover: null, highlight: null });
+  });
+
+  it("skips active incidents without a profile assignment", () => {
+    expect(deriveTvPresentation({
+      now: new Date("2026-07-29T10:00:30.000Z"),
+      occurrences: [occurrence("unassigned", "critical-incident")],
+      assignments: [],
+    })).toEqual({ takeover: null, highlight: null });
+  });
 });

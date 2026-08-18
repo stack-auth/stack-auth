@@ -65,37 +65,39 @@ export const postMigration = async (sql: Sql) => {
 
   // Exercise the actual production guards against the failure mode that
   // CREATE INDEX CONCURRENTLY IF NOT EXISTS cannot detect on its own.
-  await sql.unsafe(
-    'DROP INDEX CONCURRENTLY "Subscription_tenancyId_createdAt_idx"',
-  );
-  await sql.unsafe(`
-    CREATE INDEX CONCURRENTLY "Subscription_tenancyId_createdAt_idx"
-      ON "Subscription"("createdAt", "tenancyId")
-  `);
+  try {
+    await sql.unsafe(
+      'DROP INDEX CONCURRENTLY IF EXISTS "Subscription_tenancyId_createdAt_idx"',
+    );
+    await sql.unsafe(`
+      CREATE INDEX CONCURRENTLY "Subscription_tenancyId_createdAt_idx"
+        ON "Subscription"("createdAt", "tenancyId")
+    `);
 
-  const migrationSql = fs.readFileSync(
-    path.join(__dirname, "..", "migration.sql"),
-    "utf8",
-  );
-  const migrationStatements = migrationSql.split("SPLIT_STATEMENT_SENTINEL");
-  const preflightStatement = migrationStatements[0];
-  const postconditionStatement = migrationStatements.at(-1);
-  if (postconditionStatement == null) {
-    throw new Error("Expected the TV snapshot index migration to contain a postcondition statement.");
+    const migrationSql = fs.readFileSync(
+      path.join(__dirname, "..", "migration.sql"),
+      "utf8",
+    );
+    const migrationStatements = migrationSql.split("SPLIT_STATEMENT_SENTINEL");
+    const preflightStatement = migrationStatements[0];
+    const postconditionStatement = migrationStatements.at(-1);
+    if (postconditionStatement == null) {
+      throw new Error("Expected the TV snapshot index migration to contain a postcondition statement.");
+    }
+
+    await expect(sql.unsafe(preflightStatement)).rejects.toThrow(
+      /already exists but is invalid or has an unexpected definition/,
+    );
+    await expect(sql.unsafe(postconditionStatement)).rejects.toThrow(
+      /did not finish with the expected valid definition/,
+    );
+  } finally {
+    await sql.unsafe(
+      'DROP INDEX CONCURRENTLY IF EXISTS "Subscription_tenancyId_createdAt_idx"',
+    );
+    await sql.unsafe(`
+      CREATE INDEX CONCURRENTLY "Subscription_tenancyId_createdAt_idx"
+        ON "Subscription"("tenancyId", "createdAt")
+    `);
   }
-
-  await expect(sql.unsafe(preflightStatement)).rejects.toThrow(
-    /already exists but is invalid or has an unexpected definition/,
-  );
-  await expect(sql.unsafe(postconditionStatement)).rejects.toThrow(
-    /did not finish with the expected valid definition/,
-  );
-
-  await sql.unsafe(
-    'DROP INDEX CONCURRENTLY "Subscription_tenancyId_createdAt_idx"',
-  );
-  await sql.unsafe(`
-    CREATE INDEX CONCURRENTLY "Subscription_tenancyId_createdAt_idx"
-      ON "Subscription"("tenancyId", "createdAt")
-  `);
 };

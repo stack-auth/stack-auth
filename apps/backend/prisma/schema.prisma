@@ -224,7 +224,7 @@ model TvPresentationProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([tenancyId, normalizedDisplayName], name: "TvPresentationProfile_tenancy_name_key")
+  @@unique([tenancyId, normalizedDisplayName], map: "TvPresentationProfile_tenancy_name_key")
   @@index([tenancyId, updatedAt(sort: Desc), id], name: "TvPresentationProfile_tenancy_updatedAt_id_idx")
 }
 
@@ -390,7 +390,9 @@ model TvEventEvaluatorState {
   typedState          Json
 
   activeOccurrenceId String? @db.Uuid
-  activeOccurrence   TvEventOccurrence? @relation("TvEvaluatorActiveOccurrence", fields: [tenancyId, activeOccurrenceId], references: [tenancyId, id], onDelete: Cascade, onUpdate: Cascade, map: "TvEventEvaluatorState_activeOccurrence_fkey")
+  // The migration's composite foreign key narrows SET NULL to activeOccurrenceId;
+  // tenancyId remains required and continues to own this evaluator state.
+  activeOccurrence   TvEventOccurrence? @relation("TvEvaluatorActiveOccurrence", fields: [tenancyId, activeOccurrenceId], references: [tenancyId, id], onDelete: SetNull, onUpdate: Cascade, map: "TvEventEvaluatorState_activeOccurrence_fkey")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

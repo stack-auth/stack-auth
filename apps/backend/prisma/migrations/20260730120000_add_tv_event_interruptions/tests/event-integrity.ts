@@ -167,10 +167,10 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       AND "id" = ${activeOccurrenceId}::uuid
   `;
   expect(await sql`
-    SELECT 1 FROM "TvEventEvaluatorState"
+    SELECT "activeOccurrenceId" FROM "TvEventEvaluatorState"
     WHERE "tenancyId" = ${ctx.first.tenancyId}::uuid
       AND "evaluatorKey" = 'email-delivery'
-  `).toHaveLength(0);
+  `).toEqual([{ activeOccurrenceId: null }]);
   expect(await sql`
     SELECT 1 FROM "TvProfileEventPresentation"
     WHERE "tenancyId" = ${ctx.first.tenancyId}::uuid

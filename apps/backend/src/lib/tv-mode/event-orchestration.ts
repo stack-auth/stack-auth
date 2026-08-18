@@ -113,8 +113,16 @@ export function deriveTvPresentation(options: {
   occurrences: TvDurableEventOccurrence[],
   assignments: TvDurablePresentationAssignment[],
 }): TvDerivedPresentation {
-  const assignments = new Map(options.assignments.map((assignment) => [assignment.occurrenceId, assignment]));
-  const activeIncident = selectOutrankingOccurrence(options.occurrences);
+  // A presentation assignment is the profile-specific authorization to render
+  // an occurrence. Superseded and missing assignments must therefore be
+  // excluded before any lifecycle branch chooses a presentation.
+  const assignments = new Map(
+    options.assignments
+      .filter((assignment) => assignment.supersededAt == null)
+      .map((assignment) => [assignment.occurrenceId, assignment]),
+  );
+  const presentableOccurrences = options.occurrences.filter((occurrence) => assignments.has(occurrence.id));
+  const activeIncident = selectOutrankingOccurrence(presentableOccurrences);
   if (activeIncident != null) {
     const assignment = assignments.get(activeIncident.id);
     if (assignment == null || assignment.takeoverStartedAt == null || assignment.takeoverEndsAt == null) {
@@ -137,7 +145,7 @@ export function deriveTvPresentation(options: {
     };
   }
 
-  const recovery = [...options.occurrences]
+  const recovery = [...presentableOccurrences]
     .filter((occurrence) => occurrence.resolvedAt != null)
     .sort((left, right) => (
       (right.resolvedAt?.getTime() ?? 0) - (left.resolvedAt?.getTime() ?? 0)
@@ -162,14 +170,12 @@ export function deriveTvPresentation(options: {
     };
   }
 
-  const celebration = [...options.occurrences]
+  const celebration = [...presentableOccurrences]
     .filter((occurrence) => occurrence.presentationClass === "celebration")
     .sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime())
     .find((occurrence) => {
       const assignment = assignments.get(occurrence.id);
-      return assignment != null
-        && assignment.supersededAt == null
-        && isBefore(assignment.highlightExpiresAt, options.now);
+      return assignment != null && isBefore(assignment.highlightExpiresAt, options.now);
     });
   if (celebration != null) {
     const assignment = assignments.get(celebration.id);
@@ -195,7 +201,7 @@ export function deriveTvPresentation(options: {
     };
   }
 
-  const resolvedIncident = [...options.occurrences]
+  const resolvedIncident = [...presentableOccurrences]
     .filter((occurrence) => occurrence.lifecycle === "resolved" && occurrence.presentationClass !== "celebration")
     .sort((left, right) => (
       (right.resolvedAt?.getTime() ?? 0) - (left.resolvedAt?.getTime() ?? 0)
