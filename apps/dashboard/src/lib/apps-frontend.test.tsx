@@ -79,7 +79,7 @@ describe("testItemPath", () => {
 describe("Analytics, Warehouse, and Observability navigation", () => {
   it("keeps product analytics, warehouse exploration, and observability in distinct apps", () => {
     const analyticsItems = ALL_APPS_FRONTEND.analytics.navigationItems.map((item) => item.displayName);
-    expect(analyticsItems).toEqual(["Retention", "Paths", "Replays", "Clickmaps"]);
+    expect(analyticsItems).toEqual(["Funnels", "Paths", "Replays", "Clickmaps"]);
 
     const warehouse = ALL_APPS_FRONTEND.warehouse;
     const tables = warehouse.navigationItems.find((item) => item.displayName === "Tables");

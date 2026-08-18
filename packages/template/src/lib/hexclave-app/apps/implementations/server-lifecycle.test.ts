@@ -242,7 +242,7 @@ describe("server lifecycle integration", () => {
       baseUrl: "https://api.example.test",
       tokenStore: "memory",
       noAutomaticPrefetch: true,
-      observability: { openTelemetry: { provider: "existing-provider" } },
+      observability: { enabled: true, openTelemetry: { provider: "existing-provider" } },
     });
     const instrumentation = getServerAppInstrumentation(app);
     if (instrumentation === null) throw new Error("Expected a real server app instrumentation facade");

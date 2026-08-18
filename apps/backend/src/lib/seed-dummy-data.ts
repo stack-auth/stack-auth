@@ -1506,7 +1506,7 @@ const DUMMY_NAVIGATION_JOURNEYS: readonly (readonly string[])[] = [
   ['/docs', '/docs/observability', '/docs/api-reference', '/contact-sales'],
   ['/sign-in', '/app', '/app/projects', '/app/projects/demo/overview', '/app/projects/demo/analytics', '/app/projects/demo/analytics/paths'],
   ['/sign-in', '/app', '/app/projects/demo/overview', '/app/projects/demo/users', '/app/projects/demo/users/sample-user', '/app/projects/demo/teams'],
-  ['/app/projects/demo/overview', '/app/projects/demo/analytics', '/app/projects/demo/analytics/events', '/app/projects/demo/analytics/paths', '/app/projects/demo/analytics/retention'],
+  ['/app/projects/demo/overview', '/app/projects/demo/analytics', '/app/projects/demo/analytics/events', '/app/projects/demo/analytics/paths'],
   ['/app/projects/demo/overview', '/app/projects/demo/observability', '/app/projects/demo/observability/traces', '/app/projects/demo/observability/services', '/app/projects/demo/observability/logs'],
   ['/app/projects/demo/overview', '/app/projects/demo/session-replays', '/app/projects/demo/session-replays/sample-session', '/app/projects/demo/analytics/events'],
   ['/app/projects/demo/overview', '/app/projects/demo/authentication', '/app/projects/demo/authentication/methods', '/app/projects/demo/authentication/oauth'],
@@ -1514,7 +1514,7 @@ const DUMMY_NAVIGATION_JOURNEYS: readonly (readonly string[])[] = [
   ['/app/projects/demo/overview', '/app/projects/demo/integrations', '/app/projects/demo/integrations/webhooks', '/app/projects/demo/integrations/webhooks/sample-webhook'],
   ['/app/projects/demo/overview', '/app/projects/demo/api-keys', '/app/projects/demo/settings', '/app/projects/demo/settings/billing'],
   ['/app/projects/demo/users', '/app/projects/demo/teams', '/app/projects/demo/rbac', '/app/projects/demo/rbac/permissions'],
-  ['/app/projects/demo/analytics', '/app/projects/demo/analytics/events', '/app/projects/demo/analytics/paths', '/app/projects/demo/analytics/saved-views'],
+  ['/app/projects/demo/analytics', '/app/projects/demo/analytics/events', '/app/projects/demo/analytics/paths'],
   ['/app/projects/demo/observability', '/app/projects/demo/observability/issues', '/app/projects/demo/observability/traces', '/app/projects/demo/observability/performance'],
   ['/pricing', '/docs/getting-started', '/sign-up', '/onboarding', '/onboarding/create-project', '/app/projects/demo/overview'],
 ];

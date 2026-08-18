@@ -184,6 +184,5 @@
   },
   "editor.formatOnSaveMode": "file",
   "git.ignoreLimitWarning": true,
-  "chatgpt.commentCodeLensEnabled": false,
-  "js/ts.tsdk.path": "node_modules/typescript/lib"
+  "chatgpt.commentCodeLensEnabled": false
 }

@@ -199,19 +199,24 @@ function getS3Target(privateBucket: boolean): { client: S3Client, bucket: string
  * backend's S3/R2 credentials. Callers must send the returned content type
  * because it is part of the signature.
  *
- * UPLOAD CONTRACT: the URL is create-only. `IfNoneMatch: "*"` is part of the
- * signed canonical request, so every uploader must send the literal header
- * `If-None-Match: *` (the signature fails without it) and must treat a 412
- * response as "already uploaded" success. Without this, a presigned URL for a
- * content-addressed object would be overwrite-capable: a same-tenant key
- * holder could replace already-published bytes (an availability problem even
- * though readers digest-verify what they download).
+ * CREATE-ONLY MODE: with `createOnly: true`, `IfNoneMatch: "*"` becomes part
+ * of the signed canonical request, so every uploader must send the literal
+ * header `If-None-Match: *` (the signature fails without it) and must treat a
+ * 412 response as "already uploaded" success. Content-addressed objects (e.g.
+ * source-map artifacts) want this because an overwrite-capable presigned URL
+ * would let a same-tenant key holder replace already-published bytes (an
+ * availability problem even though readers digest-verify what they download).
+ * It is opt-in rather than the default because pre-existing consumers of
+ * presigned URLs (the deployment source upload flow and its already-released
+ * CLI versions) sign plain PUTs; forcing the header on them would 403 every
+ * upload from an older CLI.
  */
 export async function createPresignedUploadUrl(options: {
   key: string,
   expiresInSeconds: number,
   contentType: string,
   contentEncoding?: string,
+  createOnly?: boolean,
   private?: boolean,
 }): Promise<string> {
   const { client, bucket } = getS3Target(options.private === true);
@@ -221,15 +226,15 @@ export async function createPresignedUploadUrl(options: {
       Bucket: bucket,
       Key: options.key,
       ContentType: options.contentType,
-      IfNoneMatch: "*",
+      ...(options.createOnly === true ? { IfNoneMatch: "*" } : {}),
       ...(options.contentEncoding ? { ContentEncoding: options.contentEncoding } : {}),
     }),
     { expiresIn: options.expiresInSeconds },
   );
 }
 
-import.meta.vitest?.test("presigned upload URLs sign If-None-Match as a required header", async ({ expect }) => {
-  // The create-only contract only works if the SDK signs If-None-Match into
+import.meta.vitest?.test("create-only presigned upload URLs sign If-None-Match as a required header", async ({ expect }) => {
+  // The createOnly contract only works if the SDK signs If-None-Match into
   // the canonical request as a HEADER (so the object store rejects requests
   // that omit it) rather than hoisting it into the query string. Signing is
   // fully local, so this needs no S3 endpoint or real credentials.

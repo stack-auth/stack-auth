@@ -88,7 +88,7 @@ import { subscribeSessionRefresh } from "./session-refresh-subscription";
 import { AnalyticsOptions, analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions } from "./analytics-config";
 import { createAnonymousAnalyticsTokenStore } from "./analytics-session";
 import { createErrorScope, getActiveErrorScope, runWithErrorScope, runWithErrorScopeAsync } from "./error-scope";
-import { DEFAULT_CONSOLE_CAPTURE_LEVELS, normalizeTraceSampleRate, observabilityOptionsToJson, ObservabilityOptions } from "./observability-config";
+import { DEFAULT_CONSOLE_CAPTURE_LEVELS, isObservabilityEnabled, normalizeTraceSampleRate, observabilityOptionsToJson, ObservabilityOptions } from "./observability-config";
 import { resolveTelemetryResource, snapshotTelemetryOptions, TelemetryOptions, TelemetryResource, telemetryOptionsToJson } from "./telemetry-config";
 
 export function stripBrowserActionQueryParam() {
@@ -891,7 +891,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     // internal StackClientApp, not on per-project owned admin apps.
     const canRefreshClientAccessTokens = !("projectOwnerSession" in this._interface.options);
     const analyticsEnabled = canRefreshClientAccessTokens && this._analyticsOptions?.enabled !== false;
-    const observabilityEnabled = canRefreshClientAccessTokens && this._observabilityOptions?.enabled !== false;
+    const observabilityEnabled = canRefreshClientAccessTokens && isObservabilityEnabled(this._observabilityOptions);
     const telemetryResource = analyticsEnabled || observabilityEnabled ? this._telemetryResource : null;
 
     const sessionReplayOptions = {
@@ -4601,7 +4601,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
    * subclass installs or uses the Node provider instead.
    */
   protected _emitLog(item: LogEmitItem): "ok" | "unavailable" {
-    if (this._observabilityOptions?.enabled === false || this._clientAnalytics === null) return "unavailable";
+    if (!isObservabilityEnabled(this._observabilityOptions) || this._clientAnalytics === null) return "unavailable";
     // An explicit logger call must land on a recording provider even when
     // `automaticSideEffects: false` deferred the eager managed registration —
     // otherwise the record would silently hit the no-op global LoggerProvider.
@@ -4677,7 +4677,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   startSpan(spanType: string, options?: StartSpanOptions): Span {
-    if (this._observabilityOptions?.enabled !== false && this._clientAnalytics) {
+    if (isObservabilityEnabled(this._observabilityOptions) && this._clientAnalytics) {
       return this._clientAnalytics.startSpan(spanType, options);
     }
     // Environment unavailability (SSR / non-browser) hands back an INERT span

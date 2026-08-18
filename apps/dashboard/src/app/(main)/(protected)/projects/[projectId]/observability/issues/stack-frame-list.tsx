@@ -1,9 +1,9 @@
 "use client";
 
-import { DesignAlert, DesignBadge } from "@/components/design-components";
+import { DesignAlert, DesignBadge, DesignDialog } from "@/components/design-components";
 import { cn } from "@/lib/utils";
-import { CaretRightIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { CaretRightIcon, CodeIcon } from "@phosphor-icons/react";
+import { useState, type KeyboardEvent } from "react";
 import {
   collapsedFramesLabel,
   frameFunctionLabel,
@@ -77,9 +77,22 @@ function FrameSourceContext({
   );
 }
 
-function StackFrameRow({ frame }: { frame: StackFrameView }) {
+function StackFrameRow({ frame, onSelect }: { frame: StackFrameView, onSelect: (frame: StackFrameView) => void }) {
+  const handleKeyDown = (event: KeyboardEvent<HTMLLIElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onSelect(frame);
+  };
+
   return (
-    <li className="px-3 py-2">
+    <li
+      role="button"
+      tabIndex={0}
+      aria-label={`View stack frame ${frameFunctionLabel(frame)}`}
+      onClick={() => onSelect(frame)}
+      onKeyDown={handleKeyDown}
+      className="cursor-pointer px-3 py-2 transition-colors duration-150 hover:transition-none hover:bg-foreground/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+    >
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <span className="font-mono text-xs font-medium text-foreground">{frameFunctionLabel(frame)}</span>
         <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={frameLocationLabel(frame)}>
@@ -101,9 +114,11 @@ function StackFrameRow({ frame }: { frame: StackFrameView }) {
 function CollapsedFrameGroup({
   frames,
   defaultExpanded,
+  onSelect,
 }: {
   frames: readonly StackFrameView[],
   defaultExpanded: boolean,
+  onSelect: (frame: StackFrameView) => void,
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   return (
@@ -120,7 +135,7 @@ function CollapsedFrameGroup({
       {expanded && (
         <ul className="divide-y divide-foreground/[0.05] border-t border-foreground/[0.05] bg-foreground/[0.015]">
           {frames.map((frame, index) => (
-            <StackFrameRow key={`${frameLocationLabel(frame)}-${index}`} frame={frame} />
+            <StackFrameRow key={`${frameLocationLabel(frame)}-${index}`} frame={frame} onSelect={onSelect} />
           ))}
         </ul>
       )}
@@ -142,6 +157,8 @@ export function StackFrameList({
   rawStack: string | null,
   order: StackFrameOrder,
 }) {
+  const [selectedFrame, setSelectedFrame] = useState<StackFrameView | null>(null);
+
   if (frames.length === 0) {
     if (rawStack == null || rawStack.trim() === "") {
       return (
@@ -169,24 +186,70 @@ export function StackFrameList({
   const groups = groupStackFrames(orderStackFrames(frames, order));
 
   return (
-    <ul className="divide-y divide-foreground/[0.06] overflow-hidden rounded-xl ring-1 ring-foreground/[0.08]">
-      {groups.map((group) => (
-        group.kind === "frame"
-          ? <StackFrameRow key={`frame-${group.index}`} frame={group.frame} />
-          : (
-            <CollapsedFrameGroup
-              // Keyed by content, not just position: `expanded` is component
-              // state seeded from `defaultExpanded`, so a positional key would
-              // carry one occurrence's expand/collapse choice (and a stale
-              // default) onto a DIFFERENT frame run after occurrence
-              // navigation swaps the stack. First/last location plus length is
-              // enough to distinguish runs without hashing every frame.
-              key={`collapsed-${group.startIndex}-${group.frames.length}-${group.defaultExpanded ? "expanded" : "collapsed"}-${frameLocationLabel(group.frames[0] ?? throwMissingCollapsedFrame())}-${frameLocationLabel(group.frames[group.frames.length - 1] ?? throwMissingCollapsedFrame())}`}
-              frames={group.frames}
-              defaultExpanded={group.defaultExpanded}
-            />
-          )
-      ))}
-    </ul>
+    <>
+      <ul className="divide-y divide-foreground/[0.06] overflow-hidden rounded-xl ring-1 ring-foreground/[0.08]">
+        {groups.map((group) => (
+          group.kind === "frame"
+            ? <StackFrameRow key={`frame-${group.index}`} frame={group.frame} onSelect={setSelectedFrame} />
+            : (
+              <CollapsedFrameGroup
+                // Keyed by content, not just position: `expanded` is component
+                // state seeded from `defaultExpanded`, so a positional key would
+                // carry one occurrence's expand/collapse choice (and a stale
+                // default) onto a DIFFERENT frame run after occurrence
+                // navigation swaps the stack. First/last location plus length is
+                // enough to distinguish runs without hashing every frame.
+                key={`collapsed-${group.startIndex}-${group.frames.length}-${group.defaultExpanded ? "expanded" : "collapsed"}-${frameLocationLabel(group.frames[0] ?? throwMissingCollapsedFrame())}-${frameLocationLabel(group.frames[group.frames.length - 1] ?? throwMissingCollapsedFrame())}`}
+                frames={group.frames}
+                defaultExpanded={group.defaultExpanded}
+                onSelect={setSelectedFrame}
+              />
+            )
+        ))}
+      </ul>
+
+      <DesignDialog
+        open={selectedFrame != null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedFrame(null);
+        }}
+        size="xl"
+        icon={CodeIcon}
+        title={selectedFrame == null ? "Stack frame" : frameFunctionLabel(selectedFrame)}
+        description={selectedFrame == null ? undefined : frameLocationLabel(selectedFrame)}
+      >
+        {selectedFrame != null && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              {selectedFrame.in_app && <DesignBadge label="App" color="blue" size="sm" />}
+              {selectedFrame.symbolication?.status === "symbolicated" && <DesignBadge label="Mapped" color="green" size="sm" />}
+              {selectedFrame.symbolication?.status === "unsymbolicated" && <DesignBadge label="Unmapped" color="zinc" size="sm" />}
+            </div>
+            <dl className="grid gap-3 sm:grid-cols-2">
+              <div className="min-w-0">
+                <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Function</dt>
+                <dd className="mt-1 break-words font-mono text-xs text-foreground">{frameFunctionLabel(selectedFrame)}</dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Location</dt>
+                <dd className="mt-1 break-words font-mono text-xs text-foreground">{frameLocationLabel(selectedFrame)}</dd>
+              </div>
+              {selectedFrame.debug_id != null && (
+                <div className="min-w-0 sm:col-span-2">
+                  <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Debug ID</dt>
+                  <dd className="mt-1 break-all font-mono text-xs text-foreground">{selectedFrame.debug_id}</dd>
+                </div>
+              )}
+            </dl>
+            {selectedFrame.context != null && (
+              <div>
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Source context</div>
+                <FrameSourceContext context={selectedFrame.context} lineno={selectedFrame.lineno} />
+              </div>
+            )}
+          </div>
+        )}
+      </DesignDialog>
+    </>
   );
 }

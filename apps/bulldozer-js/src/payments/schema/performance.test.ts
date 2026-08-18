@@ -54,7 +54,6 @@ const subscription = (index: number, namespace = ""): SubscriptionRow => ({
   productRevokedAtMillis: null,
   creationSource: "TEST_MODE",
   createdAtMillis: 1_000 + index,
-  updatedAtMillis: 1_000 + index,
 });
 const oneTimePurchase = (index: number, namespace = "") => ({
   id: `${namespace}otp-${index}`,

@@ -150,6 +150,9 @@ describe("hexclaveInstrumentation", () => {
       baseUrl: "https://api.example.test",
       tokenStore: "memory",
       noAutomaticPrefetch: true,
+      // Observability is opt-in; these tests exercise the instrumentation
+      // install pipeline, which is inert without it.
+      observability: { enabled: true },
     });
   }
 

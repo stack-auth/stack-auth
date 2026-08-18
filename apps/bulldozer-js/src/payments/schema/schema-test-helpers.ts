@@ -76,7 +76,6 @@ export const subscription = (id: string, overrides: Partial<SubscriptionRow> = {
   productRevokedAtMillis: null,
   creationSource: "TEST_MODE",
   createdAtMillis: 0,
-  updatedAtMillis: 0,
   ...overrides,
 });
 

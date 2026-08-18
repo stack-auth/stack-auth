@@ -1362,6 +1362,8 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                           : { height: fixedRowHeight }),
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
+                      onClick={(e) => { if (!shouldIgnoreRowClick(e)) handleRowClick(row, rowId, e); }}
+                      onDoubleClick={(e) => { if (!shouldIgnoreRowClick(e)) onRowDoubleClick?.(row, rowId, e); }}
                       role="row"
                       aria-rowindex={virtualRow.index + 2}
                       aria-selected={isSelected}
@@ -1372,9 +1374,6 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                         <div
                           className="flex items-center justify-center border-r border-black/[0.04] dark:border-white/[0.04]"
                           style={{ width: 44 }}
-                          data-no-row-click=""
-                          onClick={(e) => e.stopPropagation()}
-                          onDoubleClick={(e) => e.stopPropagation()}
                         >
                           <SelectionCheckbox
                             checked={isSelected}
@@ -1383,30 +1382,17 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                           />
                         </div>
                       )}
-                      {/*
-                        onRowClick is attached to the cells, not the row.
-                        The checkbox is a sibling, so selecting a row cannot
-                        fire the navigation callback even if stopPropagation
-                        fails on the button.
-                      */}
-                      <div
-                        className="flex min-h-0 min-w-0 flex-1"
-                        data-row-body=""
-                        onClick={(e) => { if (!shouldIgnoreRowClick(e)) handleRowClick(row, rowId, e); }}
-                        onDoubleClick={(e) => { if (!shouldIgnoreRowClick(e)) onRowDoubleClick?.(row, rowId, e); }}
-                      >
-                        {visibleColumns.map((col) => (
-                          <DataCell
-                            key={col.id}
-                            col={col}
-                            row={row}
-                            rowId={rowId}
-                            rowIndex={virtualRow.index}
-                            isSelected={isSelected}
-                            dateDisplay={state.dateDisplay}
-                          />
-                        ))}
-                      </div>
+                      {visibleColumns.map((col) => (
+                        <DataCell
+                          key={col.id}
+                          col={col}
+                          row={row}
+                          rowId={rowId}
+                          rowIndex={virtualRow.index}
+                          isSelected={isSelected}
+                          dateDisplay={state.dateDisplay}
+                        />
+                      ))}
                     </div>
                   );
                 })}

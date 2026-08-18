@@ -52,6 +52,10 @@ export function createS3ArtifactObjectStorage(): ArtifactObjectStorage {
           expiresInSeconds: 15 * 60,
           contentType: options.contentType,
           contentEncoding: options.contentEncoding,
+          // Artifact keys are content-addressed, so the URL must not be
+          // overwrite-capable; uploaders send `If-None-Match: *` and treat 412
+          // as already-uploaded success.
+          createOnly: true,
           private: true,
         });
       } catch (error) {

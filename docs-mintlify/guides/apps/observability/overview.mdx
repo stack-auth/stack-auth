@@ -6,7 +6,7 @@ description: "Uncaught errors become grouped, triageable Issues with a resolve/i
 
 Every `$error` occurrence Hexclave captures is parsed, grouped, and rolled up into an **Issue**: one row per distinct bug, with a stable id, an occurrence count, a lifecycle, and a link back to the trace, session replay, and user that produced it.
 
-There is nothing to instrument. If the SDK is capturing errors — which it does by default — you already have Issues.
+There is nothing to instrument. If the SDK is capturing errors — which it does once you opt in with `observability: { enabled: true }` — you already have Issues.
 
 Open **Observability -> Issues** in the dashboard.
 

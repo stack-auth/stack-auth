@@ -427,9 +427,7 @@ export const ALL_APPS_FRONTEND = {
     icon: ChartLineIcon,
     href: "analytics",
     navigationItems: [
-      { displayName: "Retention", href: "./retention" },
       { displayName: "Funnels", href: "./funnels" },
-      { displayName: "Saved views", href: "./saved-views" },
       { displayName: "Paths", href: "./paths" },
       { displayName: "Replays", href: "../session-replays" },
       { displayName: "Clickmaps", href: "./clickmaps" },
@@ -438,7 +436,7 @@ export const ALL_APPS_FRONTEND = {
     storeDescription: (
       <>
         <p>Analytics helps you understand how people use your product.</p>
-        <p>Explore retention, funnels, paths, replays, and clickmaps without leaving the dashboard.</p>
+        <p>Explore funnels, paths, replays, and clickmaps without leaving the dashboard.</p>
       </>
     ),
   },

@@ -57,7 +57,17 @@ export type OpenTelemetryOptions = {
 };
 
 export type ObservabilityOptions = {
-  /** Whether logs, errors, spans, and code instrumentation are enabled. @default true */
+  /**
+   * Whether logs, errors, spans, and code instrumentation are enabled.
+   *
+   * Off by default: observability installs global side effects (error/console
+   * hooks, fetch/XHR instrumentation, an OpenTelemetry provider, outgoing
+   * trace headers) and the backend rejects its data unless the project's
+   * Observability app is enabled — so it must be a deliberate opt-in rather
+   * than something an SDK upgrade turns on for existing apps.
+   *
+   * @default false
+   */
   enabled?: boolean,
   /**
    * Root-trace sampling probability in [0, 1]. Managed mode uses OTel's
@@ -99,6 +109,16 @@ export function observabilityOptionsToJson(options: ObservabilityOptions | undef
     ...rest,
     errorCapture: jsonErrorCapture,
   };
+}
+
+/**
+ * Single source of truth for the observability umbrella gate. Every call site
+ * that previously spelled the gate as `?.enabled === false` (default-on) must
+ * go through this helper so the opt-in default cannot drift between the
+ * scattered checks in the client and server app implementations.
+ */
+export function isObservabilityEnabled(options: ObservabilityOptions | ObservabilityOptionsJson | undefined): boolean {
+  return options?.enabled === true;
 }
 
 export function normalizeTraceSampleRate(options: ObservabilityOptions | undefined): number {

@@ -1,28 +1,228 @@
--- Error tracking: issues, grouping hashes, the exactly-once materialization
--- ledger, ownership/activity/saved-search metadata, the alert surface and the
--- attachment ledger.
+-- Observability foundation: session-replay segment bounds, the release graph,
+-- issues (grouping, materialization, alerts, attachments, product metadata),
+-- error-ingest client reports, and workflow dead-letter columns.
 --
--- Every table here is new, so indexes and foreign-key validation are O(1).
--- Intermediate follow-up migrations that only existed while this surface was
--- under development are folded into the final CREATE shapes (correct alert
+-- These landed as five development migrations. They share one file because
+-- nothing here needs its own transaction:
+--   * every new table is empty, so indexes and FK validation are O(1)
+--   * WorkflowEvent only gains two nullable columns (metadata-only on
+--     supported PostgreSQL; the table itself was created by
+--     20260720000000_add_workflows)
+--   * there is no NOT VALID / VALIDATE CONSTRAINT pair, no row backfill, and
+--     no ACCESS EXCLUSIVE rewrite
+--
+-- The one non-O(1) step is the Tenancy composite unique index that the new
+-- scope foreign keys reference. Tenancy is a hot, high-cardinality table, so
+-- that index is built concurrently outside the bookkeeping transaction. Later
+-- statements in this file reuse it; it is not repeated.
+--
+-- Timestamped after 20260806000000_add_manual_transaction so this does not
+-- insert into the already-shipped sequence. SessionReplay and WorkflowEvent
+-- already exist by then.
+--
+-- The table starts empty and there is no SessionReplaySegment backfill:
+-- segments that predate it are seeded lazily by upsertSessionReplaySegmentBounds,
+-- which aggregates the segment's existing chunks the first time it sees a
+-- segment with no row. That keeps this migration O(1) on a table with millions
+-- of chunks, and the aggregate is bounded by one replay's chunk count.
+--
+-- No SessionReplaySegment secondary indexes: both cascade paths
+-- ((tenancyId, sessionReplayId) from SessionReplay and (tenancyId) from
+-- Tenancy) are prefixes of the primary key, as is the upsert's conflict target.
+--
+-- Intermediate follow-up issue migrations that only existed while that surface
+-- was under development are folded into the final CREATE shapes (correct alert
 -- rule scope key, no IssueActivity actor FK, Issue/IssueHash columns present
 -- from day one).
---
--- The Tenancy composite unique key that these scope foreign keys reference is
--- created concurrently by 20260726000000_add_releases, which orders before
--- this migration.
 
+-- If a previous attempt's CREATE INDEX CONCURRENTLY crashed mid-build, it
+-- leaves an INVALID index behind. IF NOT EXISTS would then skip the rebuild,
+-- and the composite foreign keys below would fail with "no unique constraint
+-- matching given keys" on every retry, with no way to make progress without
+-- manual intervention. Drop such a leftover so the retry rebuilds it. The DROP
+-- takes a brief ACCESS EXCLUSIVE lock on Tenancy, but only in the
+-- crashed-previous-attempt case; the happy path takes no lock at all.
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+-- RUN_OUTSIDE_TRANSACTION_SENTINEL
+DO $$
+DECLARE
+  invalid_index_oid oid;
+BEGIN
+  -- This block runs outside the migration transaction so the invalid-index
+  -- cleanup can commit independently. Reapply the transaction-local timeout
+  -- here; otherwise a crashed-attempt retry can wait indefinitely for the
+  -- ACCESS EXCLUSIVE lock this DROP INDEX requires.
+  PERFORM set_config('lock_timeout', '2s', true);
+  SELECT i.indexrelid INTO invalid_index_oid
+  FROM pg_index i
+  JOIN pg_class c ON c.oid = i.indexrelid
+  WHERE i.indrelid = '/* SCHEMA_NAME_SENTINEL */."Tenancy"'::regclass
+    AND c.relname = 'Tenancy_id_projectId_branchId_key'
+    AND NOT i.indisvalid;
+  IF invalid_index_oid IS NOT NULL THEN
+    EXECUTE 'DROP INDEX ' || invalid_index_oid::regclass;
+  END IF;
+END
+$$;
+
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+-- RUN_OUTSIDE_TRANSACTION_SENTINEL
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "Tenancy_id_projectId_branchId_key"
+  ON /* SCHEMA_NAME_SENTINEL */."Tenancy" ("id", "projectId", "branchId");
 
 -- SPLIT_STATEMENT_SENTINEL
 
 -- The FK adds below take brief SHARE ROW EXCLUSIVE locks on hot referenced
--- tables (Tenancy, Project, ProjectUser). Fail fast instead of queueing an
--- exclusive lock request behind long-running production queries for the
--- lifetime of the deploy transaction.
+-- tables (Tenancy, Project, ProjectUser, SessionReplay). Fail fast instead of
+-- queueing an exclusive lock request behind long-running production queries
+-- for the lifetime of the deploy transaction. SET LOCAL is transaction-scoped,
+-- so this covers the rest of this file.
 SET LOCAL lock_timeout = '2s';
 SET LOCAL statement_timeout = '5min';
 
--- CreateEnum
+-- Session replay segment bounds (min firstEventAt / max lastEventAt), updated
+-- O(1) per replay batch via LEAST/GREATEST upsert instead of re-aggregating
+-- over the segment's chunks on every upload.
+CREATE TABLE "SessionReplaySegment" (
+    "id" TEXT NOT NULL,
+    "tenancyId" UUID NOT NULL,
+    "sessionReplayId" UUID NOT NULL,
+    "firstEventAt" TIMESTAMP(3) NOT NULL,
+    "lastEventAt" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "SessionReplaySegment_pkey" PRIMARY KEY ("tenancyId","sessionReplayId","id")
+);
+
+-- Release graph: releases, deployments, commits and uploaded artifacts.
+--
+-- Release rows carry the complete tenancy scope rather than just a tenancyId.
+-- Tenancy is the authoritative project/branch scope, and the composite foreign
+-- key below makes it impossible for a release row to pair a tenancy with a
+-- different project or branch. The child graph repeats the same scope so every
+-- release query stays tenant- and branch-indexed without loading the parent.
+CREATE TYPE "ReleaseStatus" AS ENUM ('OPEN', 'ARCHIVED');
+CREATE TYPE "ReleaseArtifactStatus" AS ENUM ('REGISTERED', 'FINALIZED');
+
+CREATE TABLE "Release" (
+    "tenancyId" UUID NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "branchId" TEXT NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "version" VARCHAR(250) NOT NULL,
+    "status" "ReleaseStatus" NOT NULL DEFAULT 'OPEN',
+    "ref" VARCHAR(250),
+    "url" TEXT,
+    "data" JSONB,
+    "dateAdded" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "dateStarted" TIMESTAMP(3),
+    "dateReleased" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Release_pkey" PRIMARY KEY ("tenancyId", "id")
+);
+
+CREATE TABLE "ReleaseDeployment" (
+    "tenancyId" UUID NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "branchId" TEXT NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "releaseId" UUID NOT NULL,
+    "deploymentKey" VARCHAR(256) NOT NULL,
+    "environment" VARCHAR(255) NOT NULL,
+    "name" VARCHAR(64),
+    "url" TEXT,
+    "startedAt" TIMESTAMP(3),
+    "finishedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "metadata" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ReleaseDeployment_pkey" PRIMARY KEY ("tenancyId", "id")
+);
+
+CREATE TABLE "ReleaseCommit" (
+    "tenancyId" UUID NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "branchId" TEXT NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "releaseId" UUID NOT NULL,
+    "repository" VARCHAR(256) NOT NULL,
+    "commitSha" VARCHAR(128) NOT NULL,
+    "position" INTEGER NOT NULL,
+    "message" TEXT,
+    "authorName" VARCHAR(256),
+    "authorEmail" VARCHAR(320),
+    "committedAt" TIMESTAMP(3),
+    "url" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ReleaseCommit_pkey" PRIMARY KEY ("tenancyId", "id")
+);
+
+CREATE TABLE "ReleaseArtifact" (
+    "tenancyId" UUID NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "branchId" TEXT NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "releaseId" UUID NOT NULL,
+    "manifestSha256" VARCHAR(64) NOT NULL,
+    "dist" VARCHAR(64),
+    "environment" VARCHAR(255),
+    "status" "ReleaseArtifactStatus" NOT NULL DEFAULT 'REGISTERED',
+    "manifestObjectKey" TEXT,
+    "finalizedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ReleaseArtifact_pkey" PRIMARY KEY ("tenancyId", "id")
+);
+
+CREATE TABLE "ReleaseArtifactDebugId" (
+    "tenancyId" UUID NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "branchId" TEXT NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "releaseArtifactId" UUID NOT NULL,
+    "debugId" VARCHAR(36) NOT NULL,
+    "codeFile" TEXT NOT NULL,
+    "sourceMapFile" TEXT,
+    "sourceMapInline" BOOLEAN NOT NULL,
+    "bundleSha256" VARCHAR(64) NOT NULL,
+    "bundleBytes" INTEGER NOT NULL,
+    "sourceMapSha256" VARCHAR(64) NOT NULL,
+    "sourceMapBytes" INTEGER NOT NULL,
+    "sourceMapGzippedBytes" INTEGER NOT NULL,
+    "bundleObjectKey" TEXT,
+    "sourceMapObjectKey" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ReleaseArtifactDebugId_pkey" PRIMARY KEY ("tenancyId", "id")
+);
+
+CREATE UNIQUE INDEX "Release_tenancyId_version_key" ON "Release"("tenancyId", "version");
+CREATE INDEX "Release_scope_dateAdded_idx" ON "Release"("tenancyId", "projectId", "branchId", "dateAdded" DESC, "id" DESC);
+CREATE INDEX "Release_tenancyId_status_dateReleased_idx" ON "Release"("tenancyId", "status", "dateReleased");
+CREATE UNIQUE INDEX "ReleaseDeployment_tenancyId_deploymentKey_key" ON "ReleaseDeployment"("tenancyId", "deploymentKey");
+CREATE INDEX "ReleaseDeployment_release_environment_finishedAt_idx" ON "ReleaseDeployment"("tenancyId", "releaseId", "environment", "finishedAt");
+CREATE INDEX "ReleaseDeployment_environment_finishedAt_idx" ON "ReleaseDeployment"("tenancyId", "environment", "finishedAt");
+CREATE UNIQUE INDEX "ReleaseCommit_release_repository_sha_key" ON "ReleaseCommit"("tenancyId", "releaseId", "repository", "commitSha");
+CREATE UNIQUE INDEX "ReleaseCommit_release_position_key" ON "ReleaseCommit"("tenancyId", "releaseId", "position");
+CREATE INDEX "ReleaseCommit_repository_sha_idx" ON "ReleaseCommit"("tenancyId", "repository", "commitSha");
+CREATE UNIQUE INDEX "ReleaseArtifact_release_manifest_key" ON "ReleaseArtifact"("tenancyId", "releaseId", "manifestSha256");
+CREATE INDEX "ReleaseArtifact_release_environment_dist_idx" ON "ReleaseArtifact"("tenancyId", "releaseId", "environment", "dist", "createdAt");
+CREATE UNIQUE INDEX "ReleaseArtifactDebugId_artifact_debugId_key" ON "ReleaseArtifactDebugId"("tenancyId", "releaseArtifactId", "debugId");
+CREATE INDEX "ReleaseArtifactDebugId_tenancyId_debugId_idx" ON "ReleaseArtifactDebugId"("tenancyId", "debugId");
+
+-- Error tracking: issues, grouping hashes, the exactly-once materialization
+-- ledger, ownership/activity/saved-search metadata, the alert surface and the
+-- attachment ledger.
 CREATE TYPE "IssueStatus" AS ENUM ('UNRESOLVED', 'RESOLVED', 'IGNORED');
 CREATE TYPE "IssueHashState" AS ENUM ('LOCKED');
 CREATE TYPE "IssueHashGroupingRole" AS ENUM ('PRIMARY', 'SECONDARY');
@@ -35,7 +235,6 @@ CREATE TYPE "IssueAlertEventKind" AS ENUM ('NEW', 'REGRESSION', 'OCCURRENCE');
 CREATE TYPE "IssueAlertDeliveryState" AS ENUM ('CLAIMED', 'SUPPRESSED', 'ENQUEUED', 'DELIVERED', 'FAILED', 'DROPPED');
 CREATE TYPE "IssueAlertDeliveryOutcome" AS ENUM ('NONE', 'COOLDOWN_ACTIVE', 'WORKFLOW_ENQUEUED', 'WORKFLOW_DELIVERED', 'WORKFLOW_FAILED', 'WORKFLOW_DROPPED', 'INVALID_RULE');
 
--- CreateTable
 CREATE TABLE "Issue" (
     "id" UUID NOT NULL,
     "tenancyId" UUID NOT NULL,
@@ -71,7 +270,6 @@ CREATE TABLE "Issue" (
     CONSTRAINT "Issue_pkey" PRIMARY KEY ("tenancyId","id")
 );
 
--- CreateTable
 -- Many-to-one from day one: a scalar Issue.hash would make the app/system
 -- variant split, merge, unmerge and every future grouping-algorithm change
 -- require migrating the whole hash space instead of rewriting rows here.
@@ -99,7 +297,6 @@ CREATE TABLE "IssueHash" (
     CONSTRAINT "IssueHash_pkey" PRIMARY KEY ("tenancyId","hash")
 );
 
--- CreateTable
 -- The exactly-once ledger. The INSERT is the idempotency check: ON CONFLICT DO
 -- NOTHING returning 0 rows means this ingest batch's deltas were already applied.
 -- Without it, a batch retried after ClickHouse's insert-token dedup would write
@@ -128,7 +325,6 @@ CREATE TABLE "IssueMaterialization" (
     CONSTRAINT "IssueMaterialization_pkey" PRIMARY KEY ("tenancyId","batchId")
 );
 
--- CreateTable
 -- Merge keeps the source issue's id AND short id resolvable. Existing redirects
 -- are rewritten to the new target on merge rather than chained, so a lookup is
 -- always exactly one hop however many times an issue has been merged. No FK in
@@ -143,7 +339,6 @@ CREATE TABLE "IssueRedirect" (
     CONSTRAINT "IssueRedirect_pkey" PRIMARY KEY ("tenancyId","fromIssueId")
 );
 
--- CreateTable
 -- Short id allocator. Scoped to a Tenancy, which is (project, branch) — so short
 -- ids are per project AND branch, not per project. BIGINT so a firehose project
 -- cannot wrap the counter.
@@ -356,7 +551,6 @@ CREATE TABLE "IssueSavedSearchView" (
     CONSTRAINT "IssueSavedSearchView_query_size_check" CHECK (octet_length("query"::text) <= 16384)
 );
 
--- CreateIndex
 CREATE INDEX "Issue_tenancyId_status_lastSeenAt_idx" ON "Issue"("tenancyId", "status", "lastSeenAt");
 CREATE INDEX "Issue_tenancyId_lastSeenAt_idx" ON "Issue"("tenancyId", "lastSeenAt");
 CREATE INDEX "Issue_tenancyId_status_firstSeenAt_idx" ON "Issue"("tenancyId", "status", "firstSeenAt");
@@ -432,7 +626,80 @@ CREATE UNIQUE INDEX "IssueSavedSearchView_scope_name_key"
 CREATE INDEX "IssueSavedSearchView_scope_updatedAt_idx"
   ON "IssueSavedSearchView" ("tenancyId", "projectId", "branchId", "visibility", "ownerUserId", "updatedAt" DESC, "id" DESC);
 
--- AddForeignKey
+-- The error-ingest client-report ledger: the durable record of item-level
+-- ingest outcomes.
+--
+-- Client reports carry only category/reason/quantity metadata; event payloads
+-- never cross this boundary. The idempotency key is supplied by the protocol
+-- projection, so retrying an ambiguous response cannot double-count a report.
+CREATE TABLE "ErrorIngestClientReport" (
+    "tenancyId" UUID NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "branchId" TEXT NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "protocol" VARCHAR(32) NOT NULL,
+    "bucket" VARCHAR(64) NOT NULL,
+    "reason" VARCHAR(64) NOT NULL,
+    "category" VARCHAR(64) NOT NULL,
+    "quantity" INTEGER NOT NULL,
+    "idempotencyKey" VARCHAR(256) NOT NULL,
+    "reportedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ErrorIngestClientReport_pkey" PRIMARY KEY ("tenancyId", "id"),
+    CONSTRAINT "ErrorIngestClientReport_quantity_check" CHECK ("quantity" > 0 AND "quantity" <= 1000000000),
+    CONSTRAINT "ErrorIngestClientReport_text_check" CHECK (
+      length("protocol") > 0 AND length("bucket") > 0 AND length("reason") > 0 AND length("category") > 0 AND length("idempotencyKey") > 0
+    )
+);
+
+CREATE UNIQUE INDEX "ErrorIngestClientReport_scope_idempotency_key"
+  ON "ErrorIngestClientReport" ("tenancyId", "projectId", "branchId", "idempotencyKey", "bucket", "reason", "category");
+CREATE INDEX "ErrorIngestClientReport_scope_reportedAt_idx"
+  ON "ErrorIngestClientReport" ("tenancyId", "projectId", "branchId", "reportedAt" DESC, "id" DESC);
+
+-- Keep poison workflow events visible without retrying them forever.
+-- WorkflowEvent predates this release, so unlike the issue tables (which
+-- create these dead-letter-adjacent fields directly above) it needs an ALTER.
+ALTER TABLE "WorkflowEvent"
+  ADD COLUMN IF NOT EXISTS "deadLetteredAt" TIMESTAMP(3),
+  ADD COLUMN IF NOT EXISTS "lastProcessingError" VARCHAR(2048);
+
+ALTER TABLE "SessionReplaySegment" ADD CONSTRAINT "SessionReplaySegment_tenancyId_sessionReplayId_fkey"
+  FOREIGN KEY ("tenancyId", "sessionReplayId") REFERENCES "SessionReplay"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "SessionReplaySegment" ADD CONSTRAINT "SessionReplaySegment_tenancyId_fkey"
+  FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "Release" ADD CONSTRAINT "Release_tenancy_scope_fkey"
+  FOREIGN KEY ("tenancyId", "projectId", "branchId")
+  REFERENCES "Tenancy"("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Release" ADD CONSTRAINT "Release_projectId_fkey"
+  FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "ReleaseDeployment" ADD CONSTRAINT "ReleaseDeployment_tenancy_scope_fkey"
+  FOREIGN KEY ("tenancyId", "projectId", "branchId")
+  REFERENCES "Tenancy"("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ReleaseDeployment" ADD CONSTRAINT "ReleaseDeployment_release_fkey"
+  FOREIGN KEY ("tenancyId", "releaseId") REFERENCES "Release"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "ReleaseCommit" ADD CONSTRAINT "ReleaseCommit_tenancy_scope_fkey"
+  FOREIGN KEY ("tenancyId", "projectId", "branchId")
+  REFERENCES "Tenancy"("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ReleaseCommit" ADD CONSTRAINT "ReleaseCommit_release_fkey"
+  FOREIGN KEY ("tenancyId", "releaseId") REFERENCES "Release"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "ReleaseArtifact" ADD CONSTRAINT "ReleaseArtifact_tenancy_scope_fkey"
+  FOREIGN KEY ("tenancyId", "projectId", "branchId")
+  REFERENCES "Tenancy"("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ReleaseArtifact" ADD CONSTRAINT "ReleaseArtifact_release_fkey"
+  FOREIGN KEY ("tenancyId", "releaseId") REFERENCES "Release"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "ReleaseArtifactDebugId" ADD CONSTRAINT "ReleaseArtifactDebugId_tenancy_scope_fkey"
+  FOREIGN KEY ("tenancyId", "projectId", "branchId")
+  REFERENCES "Tenancy"("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ReleaseArtifactDebugId" ADD CONSTRAINT "ReleaseArtifactDebugId_artifact_fkey"
+  FOREIGN KEY ("tenancyId", "releaseArtifactId") REFERENCES "ReleaseArtifact"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
+
 ALTER TABLE "Issue" ADD CONSTRAINT "Issue_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "IssueHash" ADD CONSTRAINT "IssueHash_tenancyId_issueId_fkey" FOREIGN KEY ("tenancyId", "issueId") REFERENCES "Issue"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -520,3 +787,9 @@ ALTER TABLE "IssueSavedSearchView"
   FOREIGN KEY ("tenancyId", "ownerUserId")
   REFERENCES "ProjectUser" ("tenancyId", "projectUserId")
   ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "ErrorIngestClientReport" ADD CONSTRAINT "ErrorIngestClientReport_tenancy_scope_fkey"
+  FOREIGN KEY ("tenancyId", "projectId", "branchId")
+  REFERENCES "Tenancy" ("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ErrorIngestClientReport" ADD CONSTRAINT "ErrorIngestClientReport_projectId_fkey"
+  FOREIGN KEY ("projectId") REFERENCES "Project" ("id") ON DELETE CASCADE ON UPDATE CASCADE;

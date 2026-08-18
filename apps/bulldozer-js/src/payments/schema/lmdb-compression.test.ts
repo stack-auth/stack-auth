@@ -42,7 +42,6 @@ const subscription = (tenancyId: string, customerId: string, id: string): Subscr
   productRevokedAtMillis: null,
   creationSource: "TEST_MODE",
   createdAtMillis: 1_000,
-  updatedAtMillis: 1_000,
 });
 
 const otp = (tenancyId: string, customerId: string, id: string) => ({

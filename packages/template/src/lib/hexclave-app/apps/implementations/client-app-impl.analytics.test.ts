@@ -106,6 +106,7 @@ describe("browser analytics startup", () => {
       automaticSideEffects: false,
       devTool: false,
       observability: {
+        enabled: true,
         openTelemetry: { provider: "existing-provider" },
         ...spanPropagationEnabled === undefined ? {} : { spanPropagation: { enabled: spanPropagationEnabled } },
       },
@@ -297,7 +298,7 @@ describe("browser analytics startup", () => {
       tokenStore: null,
       noAutomaticPrefetch: true,
       devTool: false,
-      observability: { openTelemetry: { provider: "existing-provider" } },
+      observability: { enabled: true, openTelemetry: { provider: "existing-provider" } },
       telemetry: TEST_TELEMETRY,
     });
     stubSessionRootContext(app);
@@ -327,7 +328,7 @@ describe("browser analytics startup", () => {
       tokenStore: null,
       noAutomaticPrefetch: true,
       devTool: false,
-      observability: { openTelemetry: { provider: "existing-provider" } },
+      observability: { enabled: true, openTelemetry: { provider: "existing-provider" } },
       telemetry: TEST_TELEMETRY,
     });
     stubSessionRootContext(app);
@@ -390,7 +391,7 @@ describe("browser analytics startup", () => {
       noAutomaticPrefetch: true,
       automaticSideEffects: false,
       devTool: false,
-      observability: { openTelemetry: { provider: "existing-provider" } },
+      observability: { enabled: true, openTelemetry: { provider: "existing-provider" } },
       telemetry: TEST_TELEMETRY,
     });
 
@@ -518,6 +519,7 @@ describe("browser analytics startup", () => {
       noAutomaticPrefetch: true,
       devTool: false,
       observability: {
+        enabled: true,
         openTelemetry: { provider: "existing-provider" },
         errorCapture: { enabled: false },
         logs: { captureConsole: ["warn"] },
@@ -553,6 +555,7 @@ describe("browser analytics startup", () => {
       noAutomaticPrefetch: true,
       devTool: false,
       observability: {
+        enabled: true,
         openTelemetry: { provider: "existing-provider" },
         logs: { captureConsole: ["warn"] },
       },
@@ -602,6 +605,7 @@ describe("browser analytics startup", () => {
       automaticSideEffects: false,
       devTool: false,
       observability: {
+        enabled: true,
         openTelemetry: { provider: "existing-provider" },
         errorCapture: {
           beforeSend: async (event) => {

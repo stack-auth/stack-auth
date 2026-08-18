@@ -279,7 +279,7 @@ export async function assertIssueProjectUserInTransaction(
  * Retries `run` once when its transaction lost a unique-constraint race.
  *
  * The IssueOwner/IssueSubscription natural keys are enforced NULLS NOT
- * DISTINCT (migration 20260731000000_add_issues), so
+ * DISTINCT (migration 20260811000000_add_observability), so
  * two concurrent "first" mutations for the same subject now surface as one
  * winner and one P2002 loser instead of silently creating duplicates. A P2002
  * aborts the loser's whole interactive transaction, so recovery has to re-run

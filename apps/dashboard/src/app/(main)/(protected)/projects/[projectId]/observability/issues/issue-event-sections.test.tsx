@@ -73,6 +73,24 @@ function renderTriage(onAddComment: (body: string) => Promise<void>) {
 }
 
 describe("IssueProductSection", () => {
+  it("collapses and reopens the triage controls without losing the card", async () => {
+    renderTriage(vi.fn(async () => {}));
+
+    expect(screen.getByText("Priority")).toBeDefined();
+    const collapseButton = screen.getByRole("button", { name: "Collapse triage panel" });
+    expect(collapseButton.getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.click(collapseButton);
+
+    await waitFor(() => expect(screen.queryByText("Priority")).toBeNull());
+    const expandButton = screen.getByRole("button", { name: "Expand triage panel" });
+    expect(expandButton.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(expandButton);
+
+    await waitFor(() => expect(screen.getByText("Priority")).toBeDefined());
+  });
+
   it("keeps the comment control busy until the durable action settles", async () => {
     let resolve: (() => void) | undefined;
     const onAddComment = vi.fn(() => new Promise<void>((nextResolve) => {

@@ -34,7 +34,7 @@ scope.
 
 ## The Client Side
 
-Nothing to do beyond having analytics enabled with a persistent token store (like `"cookie"` or `"nextjs-cookie"`, the usual setups) — the headers are attached automatically, for both `fetch` and XHR-based HTTP clients (like axios' default browser adapter), to requests going to:
+Nothing to do beyond having observability enabled (`observability: { enabled: true }`) with a persistent token store (like `"cookie"` or `"nextjs-cookie"`, the usual setups) — the headers are attached automatically, for both `fetch` and XHR-based HTTP clients (like axios' default browser adapter), to requests going to:
 
 - **Your own origin** — same-origin requests always qualify.
 - **Your project's trusted domains** — the exact origins derived from the trusted-domain list your project already maintains for auth redirects. If your frontend and API live on different domains and both are trusted domains, cross-origin propagation works with zero config. Wildcard trusted domains are skipped — propagation matches exact origins only, so wildcards never silently widen the policy. And when your project's "allow localhost" development flag is on, `localhost`/loopback targets on **any** port qualify too, so split-port local dev (app on `:3000`, API on `:4000`) also needs no config.
@@ -50,6 +50,7 @@ export const hexclaveClientApp = new HexclaveClientApp({
     resource: { service: { name: "stack-dashboard" } },
   },
   observability: {
+    enabled: true,
     spanPropagation: {
       allowedOrigins: ["https://api.example.com"],  // exact origins, matched scheme+host+port
       // useTrustedDomains: false,                  // opt out of the trusted-domain defaults
@@ -106,6 +107,7 @@ export const hexclaveClientApp = new HexclaveClientApp({
     resource: { service: { name: "stack-dashboard" } },
   },
   observability: {
+    enabled: true,
     traceSampleRate: 1,               // optional override: full root sampling (default is 0.1)
     network: {
       // enabled: false,             // turn off automatic HTTP client spans

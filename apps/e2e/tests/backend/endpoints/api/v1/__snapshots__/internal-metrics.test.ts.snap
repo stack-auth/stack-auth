@@ -6,8 +6,135 @@ NiceResponse {
   "body": {
     "active_users_by_country": {},
     "analytics_overview": {
+      "anonymous_visitors_fallback": 0,
       "avg_session_seconds": 0,
       "bounce_rate": 0,
+      "daily_anonymous_visitors_fallback": [
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+      ],
       "daily_avg_session_seconds": [],
       "daily_bounce_rate": [],
       "daily_clicks": [],
@@ -2164,8 +2291,135 @@ NiceResponse {
       ],
     },
     "analytics_overview": {
+      "anonymous_visitors_fallback": 0,
       "avg_session_seconds": 0,
       "bounce_rate": 0,
+      "daily_anonymous_visitors_fallback": [
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+      ],
       "daily_avg_session_seconds": [],
       "daily_bounce_rate": [],
       "daily_clicks": [],
@@ -4130,7 +4384,7 @@ NiceResponse {
         "date": <stripped field 'date'>,
       },
       {
-        "activity": 10,
+        "activity": 0,
         "date": <stripped field 'date'>,
       },
     ],
@@ -4228,7 +4482,7 @@ NiceResponse {
         "date": <stripped field 'date'>,
       },
       {
-        "activity": 9,
+        "activity": 0,
         "date": <stripped field 'date'>,
       },
     ],
@@ -4400,8 +4654,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4434,8 +4688,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4468,8 +4722,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4502,8 +4756,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4536,8 +4790,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4572,8 +4826,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4606,8 +4860,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4640,8 +4894,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4674,8 +4928,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4708,8 +4962,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4742,8 +4996,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4776,8 +5030,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4810,8 +5064,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4844,8 +5098,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,

@@ -114,8 +114,12 @@ uses.
 
 ## Constructor options
 
-Both app constructors accept three independent option objects. Analytics and
-Observability default to enabled and share one delivery core.
+Both app constructors accept three independent option objects. Analytics
+defaults to enabled; Observability is strictly opt-in — `observability.enabled`
+defaults to false, and no observability instrumentation (error/console hooks,
+network capture, OTel provider, span propagation, exporters) may be installed
+unless the caller passes `observability.enabled: true`. They share one delivery
+core.
 
   TelemetryResource = {
     service: {
@@ -201,10 +205,11 @@ the active OTel globals in both modes.
 
 `telemetry.resource` is the immutable identity of the process, deployment, or
 browser application producing the telemetry. It is REQUIRED whenever either
-Analytics or Observability is effectively enabled. Because both default to
-enabled, omitting it is valid only when both `analytics.enabled` and
-`observability.enabled` are explicitly false (or when the app has no telemetry
-delivery path, such as an owner-session admin app). Validate and throw
+Analytics or Observability is effectively enabled. Analytics defaults to
+enabled and Observability is opt-in, so omitting it is valid only when
+`analytics.enabled` is explicitly false and `observability.enabled` is not set
+to true (or when the app has no telemetry delivery path, such as an
+owner-session admin app). Validate and throw
 synchronously at app construction; NEVER infer a service from the SDK class,
 framework, hostname, request URL, project, or runtime, and NEVER substitute a
 generic fallback such as "Hexclave".

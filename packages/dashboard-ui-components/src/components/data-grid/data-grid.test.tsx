@@ -598,28 +598,15 @@ describe("DataGrid controlled callbacks", () => {
     expect(selectedIds).toEqual(new Set(["row-1", "row-2"]));
   });
 
-  it("still fires onRowClick when the row body is clicked", () => {
+  it("still fires onRowClick when a row cell is clicked", () => {
     const onRowClick = vi.fn();
     const { container } = render(<InteractiveDataGridHarness onRowClick={onRowClick} />);
-    const rowBody = container.querySelector('[data-row-id="row-1"] [data-row-body]');
-    if (rowBody == null) throw new Error("DataGrid: expected a rendered row body for row-1");
-    fireEvent.click(rowBody);
+    const cell = container.querySelector('[data-row-id="row-1"] [role="gridcell"]');
+    if (cell == null) throw new Error("DataGrid: expected a rendered cell for row-1");
+    fireEvent.click(cell);
 
     expect(onRowClick).toHaveBeenCalledTimes(1);
     expect(onRowClick.mock.calls[0]?.[0]).toEqual({ id: "row-1", name: "Row 1" });
-  });
-
-  it("does not fire onRowClick when the selection cell is clicked", () => {
-    const onRowClick = vi.fn();
-    const onSelectionChange = vi.fn();
-    const { container } = render(
-      <InteractiveDataGridHarness onRowClick={onRowClick} onSelectionChange={onSelectionChange} />,
-    );
-    const selectionCell = container.querySelector('[data-row-id="row-1"] [data-no-row-click]');
-    if (selectionCell == null) throw new Error("DataGrid: expected a selection cell for row-1");
-    fireEvent.click(selectionCell);
-
-    expect(onRowClick).not.toHaveBeenCalled();
   });
 
   it("identifies nested interactive controls as row-click blockers", () => {

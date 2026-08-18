@@ -325,10 +325,6 @@ export const GET = createSmartRouteHandler({
       span.setAttribute("stack.external-db-sync.requests-failed", totalRequestsFailed);
       span.setAttribute("stack.external-db-sync.iterations", iterationCount);
 
-      if (totalRequestsFailed > 0) {
-        throw new StatusError(StatusError.ServiceUnavailable, "Outgoing request delivery is temporarily unavailable");
-      }
-
       return {
         statusCode: 200,
         bodyType: "json" as const,

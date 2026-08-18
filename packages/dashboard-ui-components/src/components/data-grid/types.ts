@@ -258,14 +258,10 @@ export type DataGridExportOptions<TRow> = {
 // ─── Callbacks ───────────────────────────────────────────────────────
 export type DataGridCallbacks<TRow> = {
   /**
-   * Fires when the row body is clicked. Selection checkboxes do not trigger
+   * Fires when the row is clicked. Selection checkboxes do not trigger
    * this — they only update `selection` — so it is safe to use for navigation.
-   *
-   * The handler is attached to the row-body wrapper (`[data-row-body]`), not
-   * the `role="row"` element, so a checkbox click can never bubble into it.
-   * Consequently `event.currentTarget` is that wrapper; use
-   * `event.currentTarget.closest('[role="row"]')` to reach row-level
-   * attributes such as `data-row-id` or to measure the full row.
+   * (Clicks on interactive elements inside cells — buttons, links, inputs, or
+   * anything marked `[data-no-row-click]` — are ignored as well.)
    */
   onRowClick?: (row: TRow, rowId: RowId, event: React.MouseEvent) => void;
   onRowDoubleClick?: (row: TRow, rowId: RowId, event: React.MouseEvent) => void;

@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { InfoIcon, WarningCircleIcon } from "@phosphor-icons/react/dist/ssr";
+import { TooltipPortal } from "@radix-ui/react-tooltip";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 export function SimpleTooltip(props: {
@@ -40,13 +41,14 @@ export function SimpleTooltip(props: {
           </div>
         )}
       </TooltipTrigger>
-      {props.tooltip && (
+      {props.tooltip && <TooltipPortal>
         <TooltipContent className="pointer-events-auto">
           <div className="max-w-60 text-center text-wrap whitespace-pre-wrap">
             {props.tooltip}
           </div>
         </TooltipContent>
-      )}
+      </TooltipPortal>}
     </Tooltip>
   );
 }
+

@@ -286,20 +286,12 @@ async function uploadSource(uploadUrl: string, contentType: string, bytes: Uint8
       // This header is signed into the R2/S3 URL and must match exactly.
       "content-type": contentType,
       "content-length": bytes.length.toString(),
-      "if-none-match": "*",
     },
     // Copy into a plain ArrayBuffer: TS's BodyInit doesn't accept
     // Uint8Array<ArrayBufferLike>, and slicing also drops any surrounding
     // bytes of a shared buffer.
     body: new Uint8Array(bytes).slice().buffer,
   });
-  // Deployment upload keys are random rather than content-addressed, so a 412
-  // proves only that some caller populated this slot. Accepting it could deploy
-  // a different valid tarball uploaded through the same presigned URL.
-  if (response.status === 412) {
-    const responseBody = await response.text();
-    throw new CliError(`Source upload conflicted with an existing object (412 from object storage): ${responseBody.slice(0, 1000)}`);
-  }
   if (!response.ok) {
     const responseBody = await response.text();
     throw new CliError(`Source upload failed (${response.status} from object storage): ${responseBody.slice(0, 1000)}`);

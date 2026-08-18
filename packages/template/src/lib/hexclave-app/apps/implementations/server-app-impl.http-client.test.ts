@@ -125,7 +125,7 @@ function makeApp(baseUrl: string, traceSampleRate = 1): StackServerApp {
     baseUrl,
     tokenStore: "memory",
     noAutomaticPrefetch: true,
-    observability: { traceSampleRate },
+    observability: { enabled: true, traceSampleRate },
     telemetry: { resource: { service: { name: "test-server" } } },
   });
   return app;

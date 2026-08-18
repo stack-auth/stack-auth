@@ -29,7 +29,6 @@ function createSubscriptionPeriod(startMillis: number, endMillis: number): Subsc
     productRevokedAtMillis: null,
     creationSource: "TEST_MODE",
     createdAtMillis: startMillis,
-    updatedAtMillis: startMillis,
   };
 }
 

@@ -7,10 +7,10 @@ Hexclave Observability captures **`$error` occurrences** from uncaught errors on
 
 ## Automatic Error Capture
 
-With Observability enabled, error capture is on by default — nothing to set up:
+Observability is opt-in: pass `observability: { enabled: true }` in your app options (and enable the Observability app on your project). Once it is on, error capture is included by default — nothing else to set up:
 
 - **Browser**: uncaught errors (`window.onerror`) and unhandled promise rejections become error-severity OpenTelemetry LogRecords. The SDK chains through any handlers you or your framework already installed and never changes their behavior.
-- **Server**: uncaught exceptions are observed via Node's `uncaughtExceptionMonitor` — observation-only, so your process's crash behavior is untouched. The monitor installs automatically when your `HexclaveServerApp` is constructed; no instrumentation wiring needed. In Next.js, additionally wire up [`hexclaveInstrumentation`](/guides/apps/analytics/cross-tier-tracing#server-side-instrumentation): its `onRequestError` reports every error Next catches during request handling, linked to the caller's client session.
+- **Server**: uncaught exceptions are observed via Node's `uncaughtExceptionMonitor` — observation-only, so your process's crash behavior is untouched. The monitor installs automatically when your `HexclaveServerApp` is constructed with observability enabled; no instrumentation wiring needed. In Next.js, additionally wire up [`hexclaveInstrumentation`](/guides/apps/analytics/cross-tier-tracing#server-side-instrumentation): its `onRequestError` reports every error Next catches during request handling, linked to the caller's client session.
 
 Each `$error` LogRecord records the error's `name`, `message`, and raw `stack` (bounded to 8 KB each), where it was caught (`data.mechanism_type`, e.g. `global.onerror`, `global.unhandledrejection`, `node.uncaughtexception`, `next.onRequestError`), the page `url`/`path` on the client, and a client-side `fingerprint` used for local flood control.
 
@@ -28,6 +28,7 @@ export const hexclaveClientApp = new HexclaveClientApp({
     resource: { service: { name: "stack-dashboard" } },
   },
   observability: {
+    enabled: true,                             // observability is opt-in
     release: process.env.NEXT_PUBLIC_GIT_SHA,  // default: VERCEL_GIT_COMMIT_SHA when unset
     environment: "production",                 // default: VERCEL_ENV, then NODE_ENV
     errorCapture: {
@@ -69,6 +70,7 @@ export const hexclaveClientApp = new HexclaveClientApp({
     resource: { service: { name: "stack-dashboard" } },
   },
   observability: {
+    enabled: true,
     logs: {
       captureConsole: ["log", "info", "debug", "warn", "error"],  // widen to all levels
       // captureConsole: [],                                      // turn console capture off

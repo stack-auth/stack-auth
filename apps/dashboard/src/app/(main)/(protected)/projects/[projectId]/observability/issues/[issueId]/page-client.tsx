@@ -16,7 +16,6 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   ChartLineIcon,
-  ClockCounterClockwiseIcon,
   LinkIcon,
   ListDashesIcon,
   SpinnerGapIcon,
@@ -76,6 +75,7 @@ import {
 import { StackFrameList } from "../stack-frame-list";
 import { DEFAULT_STACK_FRAME_ORDER, type StackFrameOrder } from "../stack-frames";
 import { IssueEventSections, IssueExceptionCauses, IssueProductSection } from "../issue-event-sections";
+import { IssueLeadingUpTo } from "../issue-leading-up-to";
 import { heroStack } from "../issue-event";
 
 const FRAME_ORDER_OPTIONS = [
@@ -851,42 +851,12 @@ export default function PageClient() {
                   onTeamSubscriptionChange={changeTeamSubscription}
                 />
 
-                <DesignCard
-                  title="Leading up to this"
-                  icon={ClockCounterClockwiseIcon}
+                <IssueLeadingUpTo
+                  lines={leadingUpTo}
+                  error={leadingUpToError}
                   subtitle={anchor == null ? "No correlation id" : CORRELATION_ANCHOR_LABELS.get(anchor.kind)}
-                >
-                  {leadingUpToError != null && (
-                    <DesignAlert variant="warning" title="Couldn't load logs" description={leadingUpToError} />
-                  )}
-                  {leadingUpToError == null && leadingUpTo == null && (
-                    <div className="flex items-center justify-center py-6">
-                      <SpinnerGapIcon className="h-4 w-4 animate-spin text-muted-foreground" />
-                    </div>
-                  )}
-                  {leadingUpToError == null && leadingUpTo != null && leadingUpTo.length === 0 && (
-                    <div className="py-2 text-xs text-muted-foreground/70">
-                      {anchor == null
-                        ? "This occurrence carries no trace, page view, or session id to correlate on."
-                        : "No log lines in the five minutes before this error."}
-                    </div>
-                  )}
-                  {leadingUpToError == null && leadingUpTo != null && leadingUpTo.length > 0 && (
-                    <ol className="max-h-80 space-y-1.5 overflow-y-auto">
-                      {leadingUpTo.map((line, index) => (
-                        <li key={`${line.eventAtMillis}-${index}`} className={cn("flex min-w-0 items-baseline gap-2")}>
-                          <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground/60">
-                            {formatAbsoluteTimeFromMillis(line.eventAtMillis)}
-                          </span>
-                          <LogLevelChip level={line.level} />
-                          <span className="min-w-0 truncate font-mono text-[11px]" title={line.message}>
-                            {line.message}
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                </DesignCard>
+                  hasCorrelation={anchor != null}
+                />
               </div>
             </aside>
           </div>

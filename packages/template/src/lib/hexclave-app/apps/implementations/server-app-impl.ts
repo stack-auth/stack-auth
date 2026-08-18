@@ -46,7 +46,7 @@ import { clientVersion, createCache, createCacheBySession, getAnalyticsBaseUrl, 
 import { assertValidSpanStartInput, autoDetectedBackgroundTaskHook, getCustomTelemetryNameError, preCaught, registerTelemetryBackgroundTask, rejectedPreCaught, resolveSpanParent, withSpanImpl, getCustomTelemetryDataError, type Span, type SpanContext, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
 import { buildCapturedEventData, buildErrorEventData, generateErrorEventId, installServerErrorMonitor } from "./error-capture";
 import type { CapturedErrorEvent, CaptureEvent, CaptureExceptionOptions, CaptureMessageOptions, ErrorEventId, ErrorScopeData } from "../interfaces/error-capture";
-import { DEFAULT_CONSOLE_CAPTURE_LEVELS } from "./observability-config";
+import { DEFAULT_CONSOLE_CAPTURE_LEVELS, isObservabilityEnabled } from "./observability-config";
 import { createLogger, installConsoleCapture, type LogEmitItem } from "./logs";
 import { emitHexclaveOtelError, emitHexclaveOtelEvent, emitHexclaveOtelLog } from "./otel-log-facade";
 import { createOtelSpanFacade } from "./otel-span-facade";
@@ -527,7 +527,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     // - projectOwnerSession-backed apps (the dashboard's per-project admin
     //   apps): they have no server key, so their batches could never be
     //   accepted — eager install would only produce doomed sends.
-    if (!isBrowserLike() && !("projectOwnerSession" in this._interface.options) && this._observabilityOptions?.enabled !== false) {
+    if (!isBrowserLike() && !("projectOwnerSession" in this._interface.options) && isObservabilityEnabled(this._observabilityOptions)) {
       this._ensureOpenTelemetryProvider();
       this._installServerErrorMonitor();
       // Automatic console capture (warn+error by default), same eager-install
@@ -2032,7 +2032,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   override startSpan(spanType: string, options?: StartSpanOptions & { userId?: string }): Span {
-    if (this._observabilityOptions?.enabled === false) {
+    if (!isObservabilityEnabled(this._observabilityOptions)) {
       return super.startSpan(spanType, options);
     }
     if (this._clientAnalytics) {
@@ -2267,7 +2267,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     this._serverFetchInstrumentationInstalled = true;
     // Browser-like environments are registered by the browser provider.
     if (this._clientAnalytics) return;
-    if (this._observabilityOptions?.enabled === false) return;
+    if (!isObservabilityEnabled(this._observabilityOptions)) return;
     this._registerOpenTelemetryNow([]);
   }
 
@@ -2278,7 +2278,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
    */
   private _buildManagedOtelOptions(instrumentations: Instrumentation[]): Parameters<typeof registerManagedOtelAsync>[0] | null {
     if (this._clientAnalytics) return null;
-    if (this._observabilityOptions?.enabled === false) return null;
+    if (!isObservabilityEnabled(this._observabilityOptions)) return null;
     if (this._observabilityOptions?.openTelemetry?.provider === "existing-provider") return null;
     const interfaceOptions = this._interface.options;
     if (!("secretServerKey" in interfaceOptions)) return null;
@@ -2482,7 +2482,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   private assertServerErrorCaptureAvailable(): void {
-    if (this._observabilityOptions?.enabled === false) {
+    if (!isObservabilityEnabled(this._observabilityOptions)) {
       throw new Error("Hexclave error capture is unavailable because observability is disabled");
     }
   }
@@ -2558,7 +2558,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     // Browser-like environment: the window.onerror/onunhandledrejection
     // capture (ClientAnalytics) owns errors there.
     if (this._clientAnalytics) return;
-    if (this._observabilityOptions?.enabled === false) return;
+    if (!isObservabilityEnabled(this._observabilityOptions)) return;
     if (this._observabilityOptions?.errorCapture?.enabled === false) return;
     const runtime: ErrorIntegrationRuntime = {
       captureException: (error, options) => this.captureException(error, options),
@@ -2599,7 +2599,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   _installServerLifecycle(options: Omit<ServerLifecycleInstallOptions, "ownerKey" | "capture" | "flush"> = {}): ServerLifecycleHandle | null {
     if (this._serverLifecycleHandle?.active === true) return this._serverLifecycleHandle;
     if (this._clientAnalytics) return null;
-    if (this._observabilityOptions?.enabled === false) return null;
+    if (!isObservabilityEnabled(this._observabilityOptions)) return null;
     if (this._observabilityOptions?.errorCapture?.enabled === false) return null;
 
     const capture = (error: unknown, info: { signal: ServerLifecycleSignal }): Promise<void> => {
@@ -2645,7 +2645,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     // "ok" deliberately means "suppressed, do not warn": returning unavailable
     // would make the logger emit a diagnostic from inside the collector path.
     if (this._isTelemetrySuppressed()) return "ok";
-    if (this._observabilityOptions?.enabled === false) return "unavailable";
+    if (!isObservabilityEnabled(this._observabilityOptions)) return "unavailable";
     if (this._clientAnalytics) return super._emitLog(item);
     this._registerOpenTelemetryNow([]);
     const requestContext = getServerRequestContext();

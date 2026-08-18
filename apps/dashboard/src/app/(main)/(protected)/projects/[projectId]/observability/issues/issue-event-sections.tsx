@@ -12,7 +12,7 @@ import {
 } from "@/components/design-components";
 import { Textarea } from "@/components/ui/textarea";
 import { RowDetailField } from "../../analytics/shared";
-import { ArrowsSplitIcon, BracketsCurlyIcon, ChatCircleTextIcon, ClockCounterClockwiseIcon, GitBranchIcon, ListDashesIcon, PaperclipIcon, ShieldCheckIcon, TagIcon, TreeStructureIcon, UsersThreeIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { ArrowsSplitIcon, BracketsCurlyIcon, CaretDownIcon, ChatCircleTextIcon, ClockCounterClockwiseIcon, GitBranchIcon, ListDashesIcon, PaperclipIcon, ShieldCheckIcon, TagIcon, TreeStructureIcon, UsersThreeIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import {
   breadcrumbTimestampMillis,
   formatIssueEventValue,
@@ -466,6 +466,7 @@ export function IssueProductSection({
   const [commentDraft, setCommentDraft] = useState("");
   const [commentError, setCommentError] = useState<string | null>(null);
   const [commentSaving, setCommentSaving] = useState(false);
+  const [triageOpen, setTriageOpen] = useState(true);
   const isBookmarked = product.bookmarked_user_ids.includes(currentUserId);
   const isSubscribed = product.subscriptions.some((subscription) => subscription.type === "user" && subscription.id === currentUserId && subscription.is_active);
   const isTeamSubscribed = product.subscriptions.some((subscription) => subscription.type === "team" && subscription.id === ownerTeam.id && subscription.is_active);
@@ -508,22 +509,34 @@ export function IssueProductSection({
   return (
     <DesignCard
       title="Triage"
-      subtitle="Ownership, notifications, and comments"
       icon={UsersThreeIcon}
       actions={
-        <DesignMenu
-          variant="actions"
-          align="end"
-          items={[
-            { id: "priority-none", label: "Clear priority", onClick: async () => await onPriorityChange(null) },
-            { id: "priority-low", label: "Set low priority", onClick: async () => await onPriorityChange("low") },
-            { id: "priority-medium", label: "Set medium priority", onClick: async () => await onPriorityChange("medium") },
-            { id: "priority-high", label: "Set high priority", onClick: async () => await onPriorityChange("high") },
-          ]}
-        />
+        <div className="flex items-center gap-1">
+          <DesignButton
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-controls="issue-triage-content"
+            aria-expanded={triageOpen}
+            aria-label={triageOpen ? "Collapse triage panel" : "Expand triage panel"}
+            onClick={() => setTriageOpen((open) => !open)}
+          >
+            <CaretDownIcon className={`h-3.5 w-3.5 transition-transform duration-150 ${triageOpen ? "rotate-180" : ""}`} aria-hidden="true" />
+          </DesignButton>
+          <DesignMenu
+            variant="actions"
+            align="end"
+            items={[
+              { id: "priority-none", label: "Clear priority", onClick: async () => await onPriorityChange(null) },
+              { id: "priority-low", label: "Set low priority", onClick: async () => await onPriorityChange("low") },
+              { id: "priority-medium", label: "Set medium priority", onClick: async () => await onPriorityChange("medium") },
+              { id: "priority-high", label: "Set high priority", onClick: async () => await onPriorityChange("high") },
+            ]}
+          />
+        </div>
       }
     >
-      <div className="space-y-4">
+      {triageOpen ? <div id="issue-triage-content" className="space-y-4">
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Priority</span>
@@ -678,7 +691,7 @@ export function IssueProductSection({
             <DesignButton size="sm" variant="secondary" loading={commentSaving} onClick={submitComment}>Comment</DesignButton>
           </div>
         </div>
-      </div>
+      </div> : null}
     </DesignCard>
   );
 }
