@@ -285,24 +285,20 @@ export async function loadProjectActivityMetrics(projectIds: string[]): Promise<
       async (projectIdChunk) => {
         const [userRowsResult, activityRowsResult] = await Promise.all([
           clickhouse.query({
-            // Deduplicate the ReplacingMergeTree rows to each user's latest
-            // version with `FINAL` rather than an explicit argMax GROUP BY on
-            // the dedup key. The argMax approach materializes one aggregation
-            // state per user; over user-heavy projects those per-user states
-            // exceed the per-query max_memory_usage cap regardless of
-            // max_bytes_before_external_group_by (pre-aggregation spills to
-            // disk, but the post-spill merge of millions of UUID-keyed groups
-            // does not stay under the cap, and the in-order pipeline cannot
-            // spill at all). `FINAL` instead deduplicates as a streaming merge
-            // of sorted parts — memory scales with part count, not user count —
-            // and the outer GROUP BY only has one group per project. FINAL over
-            // the *unbatched* candidate window was too heavy historically, but
-            // combined with the project-ID batching below it stays far below
-            // the cap (validated empirically on a 5M-row seeded table under a
-            // 300 MB cap: every argMax variant OOMs, FINAL passes with
-            // headroom and identical results). This also matches the dedup
-            // semantics of the public `default.users` view, which reads the
-            // same table with FINAL.
+            // Deduplicate the ReplacingMergeTree rows with `FINAL` instead of
+            // an explicit argMax GROUP BY on the dedup key: argMax needs one
+            // aggregation state per user, which exceeds the per-query memory
+            // cap on user-heavy batches (even with external group-by spill),
+            // while FINAL is a streaming merge of sorted parts whose memory
+            // scales with part count, not user count. Combined with the
+            // project-ID batching below it stays far under the cap, and it
+            // matches the dedup semantics of the public `default.users` view.
+            // Note that deletion tombstones carry deletedAt as signed_up_at
+            // and thus usually live in a later monthly partition than the
+            // live row; FINAL still collapses the pair because it merges
+            // across partitions by default — so never enable
+            // do_not_merge_across_partitions_select_final on this table, or
+            // deleted users would be counted again (validated empirically).
             query: `
               SELECT
                 project_id AS projectId,
