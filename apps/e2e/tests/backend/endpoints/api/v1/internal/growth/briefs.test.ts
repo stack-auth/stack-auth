@@ -7,6 +7,9 @@ import { GROWTH_AGENT_AUTH, createGrowthProject, requireRunId, unlockGrowthWorks
 const ADMIN_BASE = "/api/latest/internal/growth";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
 
+// Growth fixtures seed sandbox-backed workflows during onboarding and can land around 60s under
+// full-suite load, so default-timeout tests need 90s of headroom.
+
 const BRIEF_DOCUMENT = {
   format: "growth-mdx-v1",
   source_mdx: "## Yesterday\n\n<Metric data=\"signups\" />",
@@ -70,7 +73,7 @@ async function seedBrief(scope: { project_id: string, branch_id: string }, date:
   return (response.body as { brief_id: string }).brief_id;
 }
 
-describe("internal growth briefs", () => {
+describe("internal growth briefs", { timeout: 90_000 }, () => {
   it("lists briefs newest-day-first with cursor pagination", async ({ expect }) => {
     const { projectId, branchId } = await createGrowthProjectWithIds();
     const scope = { project_id: projectId, branch_id: branchId };

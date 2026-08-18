@@ -25,7 +25,7 @@ async function listConversations(): Promise<{ status: number, body: Conversation
   return { status: response.status, body: response.body as ConversationList };
 }
 
-describe("internal growth chat (no mock Eve)", () => {
+describe("internal growth chat (no mock Eve)", { timeout: 90_000 }, () => {
   it("rejects growth-disabled projects and non-admin access", async ({ expect }) => {
     await Project.createAndSwitch();
 

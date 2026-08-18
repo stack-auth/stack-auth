@@ -13,7 +13,7 @@ const BASE_PATH = "/api/latest/internal/growth";
 // sandbox (60s backstop each), and a contended e2e worker pool regularly spends more than the
 // default 60s testTimeout waiting on that.
 
-describe("internal growth lifecycle", () => {
+describe("internal growth lifecycle", { timeout: 90_000 }, () => {
   it("rejects requests without admin access and requests on projects without the app", async ({ expect }) => {
     await Project.createAndSwitch();
     // App not enabled: even an admin request is rejected with a 400.

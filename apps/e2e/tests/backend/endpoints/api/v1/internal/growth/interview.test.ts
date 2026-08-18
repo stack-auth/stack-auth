@@ -7,6 +7,9 @@ import { urlString } from "@hexclave/shared/dist/utils/urls";
 const ADMIN_BASE = "/api/latest/internal/growth";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
 
+// Growth fixtures seed sandbox-backed workflows during onboarding and can land around 60s under
+// full-suite load, so default-timeout tests need 90s of headroom.
+
 // Non-streaming interview e2e: GET/skip semantics, answer-first persistence when Eve is unreachable,
 // and the interview-questions append mode. This file must NOT use mock-eve (its fixed port belongs
 // to growth-workflows.test.ts exclusively); every Eve dispatch from here either hits nothing (connection
@@ -185,7 +188,7 @@ async function getInterview(): Promise<{ status: number, body: InterviewBody }> 
   return { status: response.status, body: response.body as InterviewBody };
 }
 
-describe("internal growth interview (no mock Eve)", () => {
+describe("internal growth interview (no mock Eve)", { timeout: 90_000 }, () => {
   it("rejects non-admin access, growth-disabled projects, and returns 404 before a question plan exists", async ({ expect }) => {
     await Project.createAndSwitch();
     // App not enabled: even an admin request is rejected with a 400.

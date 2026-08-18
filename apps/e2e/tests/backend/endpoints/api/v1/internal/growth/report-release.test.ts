@@ -7,6 +7,9 @@ const GROWTH_BASE = "/api/latest/internal/growth";
 const ADMIN_BASE = "/api/latest/internal/growth/admin";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
 
+// Growth fixtures seed sandbox-backed workflows during onboarding and can land around 60s under
+// full-suite load, so default-timeout tests need 90s of headroom.
+
 /**
  * What a customer may read, and when. A report is theirs the moment the analysis writes it — there
  * is no staff review of reports; the human gate moved onto the interview questions
@@ -53,7 +56,7 @@ async function seedReport() {
   return { projectId, scope, reportId: (report.body as { report_id: string }).report_id };
 }
 
-describe("internal Growth report release", () => {
+describe("internal Growth report release", { timeout: 90_000 }, () => {
   it("withholds the whole workspace from the customer until a report exists", { timeout: 300_000 }, async ({ expect }) => {
     await seedProjectWithoutReport();
 

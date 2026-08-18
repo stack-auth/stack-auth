@@ -9,6 +9,9 @@ const ADMIN_BASE = "/api/latest/internal/growth";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
 const SERVER_BASE = "/api/v1/internal/growth-server";
 
+// Growth fixtures seed sandbox-backed workflows during onboarding and can land around 60s under
+// full-suite load, so default-timeout tests need 90s of headroom.
+
 // E2E coverage for the wide growth metric store (ClickHouse growth_daily_metrics /
 // growth_daily_ad_metrics) and its agent-facing surfaces: the daily rollup writing rows, schema
 // discovery via column comments, row-policy isolation between projects, and the metrics-context
@@ -95,7 +98,7 @@ function requireSingleCount(body: unknown): number {
   return count;
 }
 
-describe("growth metric store rollup", () => {
+describe("growth metric store rollup", { timeout: 90_000 }, () => {
   it("writes wide metric rows to ClickHouse that the agent's sql-query can read back", { timeout: 120_000 }, async ({ expect }) => {
     const scope = await createOnboardedGrowthProject();
 
@@ -124,7 +127,7 @@ describe("growth metric store rollup", () => {
   });
 });
 
-describe("growth metric store schema discovery", () => {
+describe("growth metric store schema discovery", { timeout: 90_000 }, () => {
   it("exposes both growth tables via SHOW TABLES and documents columns via DESCRIBE comments", { timeout: 120_000 }, async ({ expect }) => {
     const scope = await createOnboardedGrowthProject();
 
@@ -149,7 +152,7 @@ describe("growth metric store schema discovery", () => {
   });
 });
 
-describe("growth metric store isolation", () => {
+describe("growth metric store isolation", { timeout: 90_000 }, () => {
   it("scopes growth_daily_metrics reads to the querying project via the row policy", { timeout: 120_000 }, async ({ expect }) => {
     // Project 1 rolls up, so the shared table definitely holds rows...
     const firstScope = await createOnboardedGrowthProject();
@@ -167,7 +170,7 @@ describe("growth metric store isolation", () => {
   });
 });
 
-describe("growth-agent metrics-context", () => {
+describe("growth-agent metrics-context", { timeout: 90_000 }, () => {
   it("returns the catalog, queryable tables, correlation rules, and post-rollup freshness", { timeout: 120_000 }, async ({ expect }) => {
     const scope = await createOnboardedGrowthProject();
     // Roll up first so freshness has something to report for this tenancy.
@@ -250,7 +253,7 @@ describe("growth-agent metrics-context", () => {
   });
 });
 
-describe("growth compute-metrics phase", () => {
+describe("growth compute-metrics phase", { timeout: 90_000 }, () => {
   it("reports the compute-metrics phase as its own status block, not a checklist step", async ({ expect }) => {
     await createOnboardedGrowthProject();
     // lifecycle.test.ts pins the full ordered checklist (which excludes compute-metrics), so this

@@ -7,13 +7,16 @@ const OVERVIEW_PATH = "/api/latest/internal/growth/overview";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
 const FINDING_DOCUMENT = { format: "growth-mdx-v1", source_mdx: "## Evidence\n\nThe first-session drop is concentrated before project two.", data: [] };
 
+// Growth fixtures seed sandbox-backed workflows during onboarding and can land around 60s under
+// full-suite load, so default-timeout tests need 90s of headroom.
+
 async function createGrowthProjectScope() {
   const keys = await createGrowthProject();
   if (keys === "no-project") throw new Error("Growth overview test requires a fresh project.");
   return { project_id: keys.projectId, branch_id: "main" };
 }
 
-describe("internal Growth overview", () => {
+describe("internal Growth overview", { timeout: 90_000 }, () => {
   it("stays closed until the customer's first report is released", async ({ expect }) => {
     // The overview carries the insights, the journey stages and the category scores — everything the
     // hold is meant to withhold — so it answers nothing at all until a report is published.

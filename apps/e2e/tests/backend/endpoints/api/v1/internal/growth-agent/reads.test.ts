@@ -5,6 +5,9 @@ import { GROWTH_AGENT_AUTH, createGrowthProject } from "../growth/growth-helpers
 
 const BASE_PATH = "/api/latest/internal/growth-agent";
 
+// Growth fixtures seed sandbox-backed workflows during onboarding and can land around 60s under
+// full-suite load, so default-timeout tests need 90s of headroom.
+
 // The growth-agent read routes are machine routes authenticated purely by the shared agent secret
 // (GROWTH_AGENT_AUTH) plus project_id/branch_id in the query/body — no Hexclave access type. The
 // auth negatives are exercised on one representative route (project-context) since all four routes
@@ -26,7 +29,7 @@ async function createOnboardedGrowthProject() {
   return { projectId: projectKeys.projectId, branchId: projectKeys.branchId ?? "main" };
 }
 
-describe("growth-agent read route auth", () => {
+describe("growth-agent read route auth", { timeout: 90_000 }, () => {
   it("rejects missing header, wrong secret, unknown project, and growth-disabled project", async ({ expect }) => {
     const { projectId, branchId } = await createOnboardedGrowthProject();
     const contextUrl = `${BASE_PATH}/project-context`;
@@ -66,7 +69,7 @@ describe("growth-agent read route auth", () => {
   });
 });
 
-describe("growth-agent project-context", () => {
+describe("growth-agent project-context", { timeout: 90_000 }, () => {
   it("returns the project context right after onboarding", async ({ expect }) => {
     const { projectId, branchId } = await createOnboardedGrowthProject();
     const response = await niceBackendFetch(`${BASE_PATH}/project-context`, {
@@ -100,7 +103,7 @@ describe("growth-agent project-context", () => {
   });
 });
 
-describe("growth-agent context-bundle", () => {
+describe("growth-agent context-bundle", { timeout: 90_000 }, () => {
   it("returns the empty-state bundle on a freshly onboarded project", async ({ expect }) => {
     const { projectId, branchId } = await createOnboardedGrowthProject();
     const response = await niceBackendFetch(`${BASE_PATH}/context-bundle`, {
@@ -127,7 +130,7 @@ describe("growth-agent context-bundle", () => {
   });
 });
 
-describe("growth-agent metrics", () => {
+describe("growth-agent metrics", { timeout: 90_000 }, () => {
   it("returns all six metrics with 30-day daily series", async ({ expect }) => {
     const { projectId, branchId } = await createOnboardedGrowthProject();
     const response = await niceBackendFetch(`${BASE_PATH}/metrics`, {
@@ -158,7 +161,7 @@ describe("growth-agent metrics", () => {
 // but only through the customer-facing /analytics/query endpoint against whatever the dev
 // ClickHouse contains), so this suite covers sql-query's auth behavior and the always-valid trivial
 // query; row contents are intentionally not asserted.
-describe("growth-agent sql-query", () => {
+describe("growth-agent sql-query", { timeout: 90_000 }, () => {
   it("rejects bad auth and answers a trivial query", async ({ expect }) => {
     const { projectId, branchId } = await createOnboardedGrowthProject();
 

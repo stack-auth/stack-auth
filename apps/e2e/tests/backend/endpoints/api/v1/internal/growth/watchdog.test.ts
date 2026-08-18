@@ -7,6 +7,9 @@ const ADMIN_BASE = "/api/latest/internal/growth";
 const SERVER_BASE = "/api/v1/internal/growth-server";
 const CRON_AUTH = { "authorization": "Bearer mock_cron_secret" };
 
+// Growth fixtures seed sandbox-backed workflows during onboarding and can land around 60s under
+// full-suite load, so default-timeout tests need 90s of headroom.
+
 async function setUpOnboardedProject() {
   const projectKeys = await createGrowthProject();
   if (projectKeys === "no-project") {
@@ -27,7 +30,7 @@ async function setUpOnboardedProject() {
 // plain server credentials), so their negatives are e2e-testable without any workflow running.
 // Forged-run-id 404s on the analysis verbs live in growth-workflows.test.ts; this covers the
 // remaining request-validation and gating negatives.
-describe("growth-server bridge negatives", () => {
+describe("growth-server bridge negatives", { timeout: 90_000 }, () => {
   it("rejects client access, growth-disabled projects, and invalid rollup dates", async ({ expect }) => {
     const { runId } = await setUpOnboardedProject();
 

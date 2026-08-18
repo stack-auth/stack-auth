@@ -9,6 +9,9 @@ const ADMIN_BASE = "/api/latest/internal/growth";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
 const SERVER_BASE = "/api/v1/internal/growth-server";
 
+// Growth fixtures seed sandbox-backed workflows during onboarding and can land around 60s under
+// full-suite load, so default-timeout tests need 90s of headroom.
+
 // E2E tests for the workflow-driven growth orchestration: onboarding seeds the two canonical
 // growth workflows and enqueues the activation boundary event transactionally; the WORKFLOW engine
 // (workflow-engine-step, driven via the shared tickWorkflowEngine helper) executes the
@@ -125,7 +128,7 @@ async function bridgeCall(path: string, body: unknown) {
   });
 }
 
-describe("growth workflow orchestration e2e (mock Eve)", () => {
+describe("growth workflow orchestration e2e (mock Eve)", { timeout: 90_000 }, () => {
   it("drives a full analysis lifecycle through the workflow engine: seeding, legs, dispatches, interview gate, report, completion", { timeout: 420_000 }, async ({ expect }) => {
     await withMockEve(async (mock) => {
       const { projectId, branchId } = await setUpOnboardedProject();

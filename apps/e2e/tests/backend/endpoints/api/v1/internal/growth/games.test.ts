@@ -8,6 +8,9 @@ const GROWTH_BASE = "/api/latest/internal/growth";
 const ADMIN_GAMES = `${GROWTH_BASE}/admin/games`;
 const GAMES_BASE = `${GROWTH_BASE}/games`;
 
+// Growth fixtures seed sandbox-backed workflows during onboarding and can land around 60s under
+// full-suite load, so default-timeout tests need 90s of headroom.
+
 // E2E coverage for Growth games: the staff review surface (generate → review → publish) and the
 // customer surface it publishes to.
 //
@@ -54,7 +57,7 @@ async function createOnboardedGrowthProject(): Promise<string> {
   return keys.projectId;
 }
 
-describe("admin authorization", () => {
+describe("admin authorization", { timeout: 90_000 }, () => {
   it("refuses every admin games route for a signed-in user who is not a platform admin", { timeout: 300_000 }, async ({ expect }) => {
     const projectId = await createOnboardedGrowthProject();
     await signInAsNonAdmin();
@@ -85,7 +88,7 @@ describe("admin authorization", () => {
   });
 });
 
-describe("staff review surface", () => {
+describe("staff review surface", { timeout: 90_000 }, () => {
   it("reports an empty quiz state for a project that has never had one", { timeout: 300_000 }, async ({ expect }) => {
     const projectId = await createOnboardedGrowthProject();
     await signInAsInternalAdmin();
@@ -184,7 +187,7 @@ describe("staff review surface", () => {
   });
 });
 
-describe("customer surface", () => {
+describe("customer surface", { timeout: 90_000 }, () => {
   it("refuses every games route when the Growth app is not installed", async ({ expect }) => {
     await Project.createAndSwitch();
 

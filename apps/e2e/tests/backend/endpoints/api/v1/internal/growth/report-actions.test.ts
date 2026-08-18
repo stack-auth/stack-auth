@@ -7,6 +7,9 @@ import { GROWTH_AGENT_AUTH, createGrowthProject, requireRunId } from "./growth-h
 const ADMIN_BASE = "/api/latest/internal/growth";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
 
+// Growth fixtures seed sandbox-backed workflows during onboarding and can land around 60s under
+// full-suite load, so default-timeout tests need 90s of headroom.
+
 // The admin report/action surface has no write API of its own — reports and action items only come
 // into existence through the machine-facing growth-agent routes. So these tests seed by "playing
 // the agent" (like agent-simulation.test.ts, and deliberately WITHOUT mock-eve: no engine, no
@@ -152,7 +155,7 @@ async function seedCompletedRunWithReport(scope: { project_id: string, branch_id
   };
 }
 
-describe("internal growth reports and actions", () => {
+describe("internal growth reports and actions", { timeout: 90_000 }, () => {
   it("serves the report by id and as latest, with its action items", async ({ expect }) => {
     const { projectId, branchId } = await createGrowthProjectWithIds();
     const scope = { project_id: projectId, branch_id: branchId };

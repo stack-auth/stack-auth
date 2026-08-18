@@ -7,6 +7,9 @@ const ADMIN_BASE = "/api/latest/internal/growth/admin";
 const GROWTH_BASE = "/api/latest/internal/growth";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
 
+// Growth fixtures seed sandbox-backed workflows during onboarding and can land around 60s under
+// full-suite load, so default-timeout tests need 90s of headroom.
+
 async function signInAsInternalAdmin(): Promise<void> {
   backendContext.set({ projectKeys: InternalProjectKeys, userAuth: null });
   const { userId } = await Auth.fastSignUp();
@@ -56,7 +59,7 @@ function actionUpdateBody(projectId: string, overrides: ActionUpdateOverrides = 
   };
 }
 
-describe("internal Growth admin", () => {
+describe("internal Growth admin", { timeout: 90_000 }, () => {
   it("requires an internal platform admin", async ({ expect }) => {
     backendContext.set({ projectKeys: InternalProjectKeys, userAuth: null });
     expect((await niceBackendFetch(`${ADMIN_BASE}/projects`, { accessType: "client" })).status).toBe(401);

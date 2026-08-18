@@ -6,6 +6,9 @@ import { createGrowthProject } from "./growth-helpers";
 
 const ADMIN_BASE = "/api/latest/internal/growth";
 
+// Growth fixtures seed sandbox-backed workflows during onboarding and can land around 60s under
+// full-suite load, so default-timeout tests need 90s of headroom.
+
 // Milestones return server-generated ids and clock-dependent timestamps, so most assertions use
 // toMatchObject (deliberate deviation from the usual snapshot preference); fully deterministic
 // bodies (delete ack) are snapshotted. (Scheduled tasks were replaced by customer workflows in the
@@ -42,7 +45,7 @@ function requireId(body: unknown): string {
   return body.id;
 }
 
-describe("internal growth milestones", () => {
+describe("internal growth milestones", { timeout: 90_000 }, () => {
   it("seeds the default total_users ladder exactly once on onboarding", async ({ expect }) => {
     await createOnboardedGrowthProject();
 
