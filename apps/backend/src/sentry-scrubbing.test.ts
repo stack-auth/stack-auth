@@ -334,6 +334,51 @@ describe("prepareBackendSentryEvent", () => {
     expect(nicifiedError).toEqual(expect.not.stringContaining("hunter2"));
   });
 
+  it("redacts plural credential keys", () => {
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "plural-keys" } },
+      {
+        originalException: new HexclaveAssertionError("plural extraData", {
+          tokens: ["rawTokenValue"],
+          passwords: ["hunter2"],
+          secrets: ["shh"],
+        }),
+      },
+    );
+
+    expect(result.extra).toEqual(expect.objectContaining({
+      errorProps: expect.objectContaining({
+        extraData: {
+          tokens: "[redacted]",
+          passwords: "[redacted]",
+          secrets: "[redacted]",
+        },
+      }),
+    }));
+    expect(JSON.stringify(result)).not.toContain("rawTokenValue");
+    expect(JSON.stringify(result)).not.toContain("hunter2");
+  });
+
+  it("redacts URL userinfo even under a non-sensitive key", () => {
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "url-userinfo" } },
+      {
+        originalException: new HexclaveAssertionError("url extraData", {
+          url: "postgres://user:hunter2@db/app",
+        }),
+      },
+    );
+
+    expect(result.extra).toEqual(expect.objectContaining({
+      errorProps: expect.objectContaining({
+        extraData: {
+          url: "postgres://[redacted]@db/app",
+        },
+      }),
+    }));
+    expect(JSON.stringify(result)).not.toContain("hunter2");
+  });
+
   it("ignores non-string location values", () => {
     const result = prepareBackendSentryEvent({
       extra: {

@@ -106,23 +106,41 @@ const sensitiveDiagnosticKeySegments = new Set([
 const maxDiagnosticDepth = 8;
 const maxDiagnosticCollectionSize = 50;
 
+function matchesSensitiveDiagnosticSegment(part: string): boolean {
+  if (sensitiveDiagnosticKeySegments.has(part)) {
+    return true;
+  }
+  // tokens / passwords / secrets / dsns / apiKeys — same as the singular forms
+  // already in the set (credential/credentials were listed explicitly).
+  if (part.length > 3 && part.endsWith("es") && sensitiveDiagnosticKeySegments.has(part.slice(0, -2))) {
+    return true;
+  }
+  if (part.length > 2 && part.endsWith("s") && sensitiveDiagnosticKeySegments.has(part.slice(0, -1))) {
+    return true;
+  }
+  return false;
+}
+
 function isSensitiveDiagnosticKey(key: string): boolean {
   const normalized = key
     .replaceAll(/([a-z0-9])([A-Z])/g, "$1_$2")
     .replaceAll(/[^A-Za-z0-9]+/g, "_")
     .toLowerCase();
   const compact = normalized.replaceAll("_", "");
-  if (sensitiveDiagnosticKeySegments.has(compact)) {
+  if (matchesSensitiveDiagnosticSegment(compact)) {
     return true;
   }
-  return normalized.split("_").some((part) => part !== "" && sensitiveDiagnosticKeySegments.has(part));
+  return normalized.split("_").some((part) => part !== "" && matchesSensitiveDiagnosticSegment(part));
 }
 
 function scrubDiagnosticString(value: string): string {
-  return value.replaceAll(
-    /\b(sk_[A-Za-z0-9_-]+|pk_[A-Za-z0-9_-]+|pck_[A-Za-z0-9_-]+|stk_[A-Za-z0-9_-]+|ssk_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b/g,
-    "[redacted]",
-  );
+  return value
+    .replaceAll(
+      /\b(sk_[A-Za-z0-9_-]+|pk_[A-Za-z0-9_-]+|pck_[A-Za-z0-9_-]+|stk_[A-Za-z0-9_-]+|ssk_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b/g,
+      "[redacted]",
+    )
+    // postgres://user:pass@host and the same userinfo shape on other URLs
+    .replaceAll(/:\/\/[^/@\s]+:[^/@\s]+@/g, "://[redacted]@");
 }
 
 function scrubDiagnosticValue(
