@@ -37,4 +37,17 @@ describe("PageLayout shell attributes", () => {
     expect(container.querySelectorAll("[data-contained-height]")).toHaveLength(1);
     expect(container.querySelectorAll("[data-full-bleed]")).toHaveLength(1);
   });
+
+  it("does not expose shell attributes from layouts in header props", () => {
+    const { container } = render(
+      <PageLayout
+        containedHeight
+        fullBleed
+        actions={<PageLayout containedHeight fullBleed />}
+      />,
+    );
+
+    expect(container.querySelectorAll("[data-contained-height]")).toHaveLength(1);
+    expect(container.querySelectorAll("[data-full-bleed]")).toHaveLength(1);
+  });
 });

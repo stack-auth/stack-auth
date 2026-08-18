@@ -26,7 +26,7 @@ export function PageLayout(props: {
   // layouts are content and must not change how the page itself scrolls.
   const exposesShellAttributes = !isNested;
 
-  return (
+  const pageLayout = (
     <div
       className={cn("flex flex-1 min-h-0 flex-col", !props.noPadding && "py-4 px-4 sm:py-6 sm:px-6")}
       data-contained-height={exposesShellAttributes && props.containedHeight ? "true" : undefined}
@@ -77,11 +77,15 @@ export function PageLayout(props: {
           "flex flex-col gap-4",
           !props.allowContentOverflow && "flex-1 min-h-0",
         )}>
-          <PageLayoutContext.Provider value={true}>
-            {props.children}
-          </PageLayoutContext.Provider>
+          {props.children}
         </div>
       </div>
     </div>
+  );
+
+  return (
+    <PageLayoutContext.Provider value={true}>
+      {pageLayout}
+    </PageLayoutContext.Provider>
   );
 }
