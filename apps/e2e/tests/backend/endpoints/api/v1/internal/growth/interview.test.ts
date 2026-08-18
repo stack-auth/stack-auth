@@ -466,7 +466,7 @@ describe("internal growth interview (no mock Eve)", () => {
     const questionPhase = run.phases.find((phase) => phase.phase_key === "interview-questions");
     expect(questionPhase).toMatchObject({ status: "pending", attempt: 0 });
     const researchPhases = run.phases.filter((phase) => phase.phase_key !== "interview-questions" && phase.phase_key !== "report");
-    expect(researchPhases.every((phase) => phase.status === "completed" || phase.status === "skipped")).toBe(true);
+    expect(researchPhases.every((phase) => phase.status === "completed")).toBe(true);
 
     // The finding is untouched.
     const findings = await niceBackendFetch(urlString`${AGENT_BASE}/context-bundle?project_id=${scope.project_id}&branch_id=${scope.branch_id}`, {

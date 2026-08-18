@@ -56,16 +56,6 @@ async function getWorkflowSummary(workflowId: string) {
   return (response.body.workflows as { id: string, latest_version: number }[]).find((workflow) => workflow.id === workflowId) ?? null;
 }
 
-async function waitForWorkflowDefinition(expect: ExpectStatic, workflowId: string) {
-  const deadline = performance.now() + 120_000;
-  while (performance.now() < deadline) {
-    if (await getWorkflowSummary(workflowId) != null) return;
-    await tickGrowthWatchdog(expect);
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error(`Workflow ${workflowId} was not seeded before the recovery deadline.`);
-}
-
 async function getOrchestrationWorkflowState(expect: ExpectStatic, workflowId: string) {
   const status = await niceBackendFetch(`${ADMIN_BASE}/status`, { accessType: "admin" });
   expect(status.status).toBe(200);
@@ -100,39 +90,28 @@ async function tickAnalysisRun(expect: ExpectStatic, runId: string) {
 
 /** Settles one phase via the machine routes, retrying on attempt-fence 409s (ticks bump attempts). */
 async function settlePhase(scope: AgentScope, runId: string, phaseKey: string) {
-  const deadline = performance.now() + 120_000;
-  while (performance.now() < deadline) {
+  for (let i = 0; i < 20; i++) {
     const run = await getRun(runId);
     const phase = run.phases.find((candidate) => candidate.phase_key === phaseKey);
     if (phase == null) throw new Error(`Run ${runId} has no phase ${phaseKey}.`);
-    if (phase.status === "completed" || phase.status === "failed" || phase.status === "skipped") return;
+    if (phase.status === "completed" || phase.status === "failed") return;
     const start = await niceBackendFetch(`${AGENT_BASE}/runs/${runId}/phases/${phaseKey}/start`, {
       method: "POST",
       headers: GROWTH_AGENT_AUTH,
       body: { ...scope, attempt: phase.attempt, eve_session_id: `eve-session-${phaseKey}` },
     });
-    if (start.status === 409) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      continue;
-    }
+    if (start.status === 409) continue;
     if (start.status !== 200) throw new Error(`Starting phase ${phaseKey} failed with status ${start.status}: ${JSON.stringify(start.body)}`);
-    const refreshedRun = await getRun(runId);
-    const refreshedPhase = refreshedRun.phases.find((candidate) => candidate.phase_key === phaseKey);
-    if (refreshedPhase == null) throw new Error(`Run ${runId} has no phase ${phaseKey}.`);
-    if (refreshedPhase.status === "completed" || refreshedPhase.status === "failed" || refreshedPhase.status === "skipped") return;
     const complete = await niceBackendFetch(`${AGENT_BASE}/runs/${runId}/phases/${phaseKey}/complete`, {
       method: "POST",
       headers: GROWTH_AGENT_AUTH,
-      body: { ...scope, attempt: refreshedPhase.attempt },
+      body: { ...scope, attempt: phase.attempt },
     });
-    if (complete.status === 409) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      continue;
-    }
+    if (complete.status === 409) continue;
     if (complete.status !== 200) throw new Error(`Completing phase ${phaseKey} failed with status ${complete.status}: ${JSON.stringify(complete.body)}`);
     return;
   }
-  throw new Error(`settlePhase(${phaseKey}) did not settle before its retry deadline.`);
+  throw new Error(`settlePhase(${phaseKey}) kept losing attempt races.`);
 }
 
 /**
@@ -163,7 +142,7 @@ async function driveRunToAwaitingInterview(expect: ExpectStatic, scope: AgentSco
     if (run.status === "awaiting_interview") return;
     if (run.status === "failed") {
       const retry = await niceBackendFetch(`${ADMIN_BASE}/analysis/retry`, { accessType: "admin", method: "POST" });
-      expect([200, 409]).toContain(retry.status);
+      expect(retry.status).toBe(200);
     } else if (run.status !== "pending") {
       for (const phase of run.phases) {
         if (phase.phase_key === "report") continue;
@@ -246,7 +225,6 @@ describe("growth watchdog", () => {
 
     // Edit the daily-brief workflow like a customer would (append a comment — a byte-level change
     // that still compiles to the same behavior).
-    await waitForWorkflowDefinition(expect, GROWTH_DAILY_BRIEF_WORKFLOW_ID);
     const versionsResponse = await niceBackendFetch(`/api/v1/internal/workflows/${GROWTH_DAILY_BRIEF_WORKFLOW_ID}/versions`, {
       method: "GET",
       accessType: "admin",

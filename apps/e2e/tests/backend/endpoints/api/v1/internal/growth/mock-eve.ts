@@ -11,22 +11,18 @@ import http from "node:http";
 //   - only ONE e2e file may use this helper (growth-workflows.test.ts) — vitest runs test FILES in
 //     separate workers, and a second file binding the same port would flake with EADDRINUSE.
 //
-// The server answers owned-project POSTs with 200 {"accepted":true} (the real Eve app's ack
-// contract) and records them. Dispatches for other projects are recorded but receive 500, matching
-// the failure path of an absent Eve instead of parking a foreign run in DISPATCHED forever.
+// The server answers every POST with 200 {"accepted":true} (the real Eve app's ack contract) and
+// records it. Note that while the mock is listening, engine ticks triggered by OTHER concurrently
+// running growth e2e tests (their onboarding routes kick the engine inline) can also land here, so
+// consumers must always filter dispatches by project/run rather than asserting on global counts.
 
 export type MockEveDispatch = {
   path: string,
   body: any, // eslint-disable-line @typescript-eslint/no-explicit-any -- dispatch bodies are backend-defined JSON; tests narrow them per-path at the assertion site
   authorization: string | undefined,
   receivedAtMillis: number,
-  /** The HTTP status the mock answered with. */
+  /** The HTTP status the mock answered with (200, or 500 while a failNextDispatches window is active). */
   respondedWithStatus: number,
-};
-
-export type MockEveScope = {
-  project_id: string,
-  branch_id: string,
 };
 
 type FailWindow = {
@@ -67,7 +63,7 @@ export const MOCK_EVE_PORT = 32872;
 // for the fixed port. (Across workers there is no such protection — hence the one-file rule above.)
 let mockEveMutex: Promise<void> = Promise.resolve();
 
-export async function withMockEve<T>(ownerScope: MockEveScope, fn: (mock: MockEve) => Promise<T>): Promise<T> {
+export async function withMockEve<T>(fn: (mock: MockEve) => Promise<T>): Promise<T> {
   const previous = mockEveMutex;
   let release!: () => void;
   mockEveMutex = new Promise((resolve) => {
@@ -118,12 +114,6 @@ export async function withMockEve<T>(ownerScope: MockEveScope, fn: (mock: MockEv
           dispatch.respondedWithStatus = 500;
           dispatches.push(dispatch);
           res.writeHead(500, { "content-type": "application/json" }).end(JSON.stringify({ error: "mock Eve simulated dispatch failure" }));
-          return;
-        }
-        if (dispatch.body.project_id !== ownerScope.project_id || dispatch.body.branch_id !== ownerScope.branch_id) {
-          dispatch.respondedWithStatus = 500;
-          dispatches.push(dispatch);
-          res.writeHead(500, { "content-type": "application/json" }).end(JSON.stringify({ error: "mock Eve rejected a foreign project dispatch" }));
           return;
         }
         // Later registrations win so a test can override an earlier catch-all within its own scope.

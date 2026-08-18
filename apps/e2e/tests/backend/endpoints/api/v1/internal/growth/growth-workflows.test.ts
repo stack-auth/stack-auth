@@ -55,14 +55,12 @@ async function waitForDispatchWithTicks(expect: ExpectStatic, mock: MockEve, pre
   return await pollWithTicks(expect, async () => mock.dispatches.find(predicate) ?? null, options);
 }
 
-type AgentScope = { project_id: string, branch_id: string };
-
-async function createGrowthProjectScope(): Promise<AgentScope> {
+async function setUpOnboardedProject() {
   const projectKeys = await createGrowthProject();
   if (projectKeys === "no-project") {
     throw new Error("createGrowthProject should have switched the context to a fresh project.");
   }
-  return { project_id: projectKeys.projectId, branch_id: "main" };
+  return { projectId: projectKeys.projectId, branchId: "main" };
 }
 
 async function completeOnboarding() {
@@ -93,6 +91,8 @@ function getRunPhase(run: AdminRunBody, phaseKey: string): AdminRunPhase {
   if (phase == null) throw new Error(`Run ${run.id} has no phase ${phaseKey}.`);
   return phase;
 }
+
+type AgentScope = { project_id: string, branch_id: string };
 
 async function agentPhaseCall(runId: string, phaseKey: string, action: "start" | "heartbeat" | "complete" | "fail", scope: AgentScope, attempt: number, extraBody: Record<string, unknown> = {}) {
   return await niceBackendFetch(`${AGENT_BASE}/runs/${runId}/phases/${phaseKey}/${action}`, {
@@ -127,9 +127,8 @@ async function bridgeCall(path: string, body: unknown) {
 
 describe("growth workflow orchestration e2e (mock Eve)", () => {
   it("drives a full analysis lifecycle through the workflow engine: seeding, legs, dispatches, interview gate, report, completion", { timeout: 420_000 }, async ({ expect }) => {
-    const ownerScope = await createGrowthProjectScope();
-    await withMockEve(ownerScope, async (mock) => {
-      const { project_id: projectId, branch_id: branchId } = ownerScope;
+    await withMockEve(async (mock) => {
+      const { projectId, branchId } = await setUpOnboardedProject();
       const scope: AgentScope = { project_id: projectId, branch_id: branchId };
       const runId = await completeOnboarding();
 
@@ -350,9 +349,8 @@ describe("growth workflow orchestration e2e (mock Eve)", () => {
   });
 
   it("resets failed dispatches to pending and re-dispatches with a bumped attempt", { timeout: 300_000 }, async ({ expect }) => {
-    const ownerScope = await createGrowthProjectScope();
-    await withMockEve(ownerScope, async (mock) => {
-      const { project_id: projectId, branch_id: branchId } = ownerScope;
+    await withMockEve(async (mock) => {
+      const { projectId, branchId } = await setUpOnboardedProject();
       const scope: AgentScope = { project_id: projectId, branch_id: branchId };
 
       // Arm the failure window BEFORE onboarding: the boundary event is enqueued transactionally
@@ -402,9 +400,8 @@ describe("growth workflow orchestration e2e (mock Eve)", () => {
   });
 
   it("retries exhausted phases with fresh token anchors and attempt budgets", { timeout: 300_000 }, async ({ expect }) => {
-    const ownerScope = await createGrowthProjectScope();
-    await withMockEve(ownerScope, async (mock) => {
-      const { project_id: projectId, branch_id: branchId } = ownerScope;
+    await withMockEve(async (mock) => {
+      const { projectId, branchId } = await setUpOnboardedProject();
       const scope: AgentScope = { project_id: projectId, branch_id: branchId };
 
       // Exhaust every immediate phase's three-attempt dispatch budget. Direct bridge ticks keep
@@ -473,9 +470,8 @@ describe("growth workflow orchestration e2e (mock Eve)", () => {
   });
 
   it("fences zombie agents echoing a stale attempt after a re-dispatch, without changing state", { timeout: 300_000 }, async ({ expect }) => {
-    const ownerScope = await createGrowthProjectScope();
-    await withMockEve(ownerScope, async (mock) => {
-      const { project_id: projectId, branch_id: branchId } = ownerScope;
+    await withMockEve(async (mock) => {
+      const { projectId, branchId } = await setUpOnboardedProject();
       const scope: AgentScope = { project_id: projectId, branch_id: branchId };
 
       // Fail only website-research's first dispatch; the other 5 immediate phases dispatch fine.
@@ -514,9 +510,8 @@ describe("growth workflow orchestration e2e (mock Eve)", () => {
   });
 
   it("runs the daily-brief workflow end to end: rollup, Eve dispatch, agent content, deliveries, milestone evaluation", { timeout: 300_000 }, async ({ expect }) => {
-    const ownerScope = await createGrowthProjectScope();
-    await withMockEve(ownerScope, async (mock) => {
-      const { project_id: projectId, branch_id: branchId } = ownerScope;
+    await withMockEve(async (mock) => {
+      const { projectId, branchId } = await setUpOnboardedProject();
       const scope: AgentScope = { project_id: projectId, branch_id: branchId };
       await completeOnboarding();
 
@@ -667,9 +662,8 @@ describe("growth workflow orchestration e2e (mock Eve)", () => {
 // (GET/skip/answer-persistence negatives) lives in interview.test.ts without the mock.
 describe("growth interview streaming (mock Eve)", () => {
   it("persists the answer before proxying, passes the assistant turn through as a UI chunk stream, and persists the transcript", { timeout: 420_000 }, async ({ expect }) => {
-    const ownerScope = await createGrowthProjectScope();
-    await withMockEve(ownerScope, async (mock) => {
-      const { project_id: projectId, branch_id: branchId } = ownerScope;
+    await withMockEve(async (mock) => {
+      const { projectId, branchId } = await setUpOnboardedProject();
       const scope: AgentScope = { project_id: projectId, branch_id: branchId };
       const runId = await completeOnboarding();
 
