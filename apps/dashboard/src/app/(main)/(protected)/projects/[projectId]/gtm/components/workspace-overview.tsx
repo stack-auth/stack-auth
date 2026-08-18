@@ -28,6 +28,10 @@ const CATEGORY_PRESENTATION = new Map<GrowthCategory, { label: string, icon: typ
 
 type Loadable = { status: "loading" } | { status: "error", message: string } | { status: "loaded", value: GrowthOverview };
 
+export function getGrowthOverviewRefreshVersion(status: GrowthStatus): string {
+  return `${status.latestReport?.id ?? "no-report"}:${status.analysis.completedAtMillis ?? "not-complete"}`;
+}
+
 function formatDate(millis: number): string {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "2-digit", year: "numeric" }).format(millis).toUpperCase();
 }
@@ -295,6 +299,7 @@ export function GrowthWorkspaceOverview(props: { status: GrowthStatus }) {
   const projectId = useProjectId();
   const { demo } = useGrowthStatus();
   const [data, setData] = useState<Loadable>(() => demo ? { status: "loaded", value: buildGrowthDemoOverview(GROWTH_DEMO_NOW_MILLIS) } : { status: "loading" });
+  const overviewRefreshVersion = getGrowthOverviewRefreshVersion(props.status);
   const refresh = useCallback(async () => {
     if (demo) {
       setData({ status: "loaded", value: buildGrowthDemoOverview(GROWTH_DEMO_NOW_MILLIS) });
@@ -310,7 +315,7 @@ export function GrowthWorkspaceOverview(props: { status: GrowthStatus }) {
   useEffect(() => {
     if (!demo) setData({ status: "loading" });
     runAsynchronously(refresh());
-  }, [demo, refresh]);
+  }, [demo, refresh, overviewRefreshVersion]);
   if (data.status === "loading") return <div className="space-y-8" aria-busy="true"><div className="h-72 animate-pulse rounded-2xl border bg-foreground/[0.03]" /><div className="h-[42rem] animate-pulse rounded-2xl border bg-foreground/[0.03]" /></div>;
   if (data.status === "error") return <DesignAlert variant="error"><div className="flex flex-wrap items-center justify-between gap-3"><span>Could not load the Growth overview: {data.message}</span><DesignButton size="sm" variant="outline" onClick={refresh}>Retry</DesignButton></div></DesignAlert>;
   return (
