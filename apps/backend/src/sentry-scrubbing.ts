@@ -139,8 +139,71 @@ function scrubDiagnosticString(value: string): string {
       /\b(sk_[A-Za-z0-9_-]+|pk_[A-Za-z0-9_-]+|pck_[A-Za-z0-9_-]+|stk_[A-Za-z0-9_-]+|ssk_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b/g,
       "[redacted]",
     )
-    // postgres://user:pass@host and the same userinfo shape on other URLs
-    .replaceAll(/:\/\/[^/@\s]+:[^/@\s]+@/g, "://[redacted]@");
+    // Userinfo is everything between :// and the last @ before path/query/hash,
+    // so passwords may contain @ or space (the previous [^/@\s]+ cut those short).
+    .replaceAll(/:\/\/[^/?#]*@/g, "://[redacted]@");
+}
+
+function readOwnDataProperty(object: object, key: string): { kind: "missing" } | { kind: "accessor" } | { kind: "value", value: unknown } {
+  const descriptor = Object.getOwnPropertyDescriptor(object, key);
+  if (descriptor == null) {
+    return { kind: "missing" };
+  }
+  if (descriptor.get != null) {
+    return { kind: "accessor" };
+  }
+  if (Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+    return { kind: "value", value: descriptor.value };
+  }
+  return { kind: "missing" };
+}
+
+function scrubOwnEnumerableFields(
+  value: object,
+  seen: WeakSet<object>,
+  depth: number,
+): unknown {
+  if (depth >= maxDiagnosticDepth) {
+    return "[truncated]";
+  }
+  if (seen.has(value)) {
+    return "[circular]";
+  }
+  seen.add(value);
+  if (Array.isArray(value)) {
+    const entries = value.slice(0, maxDiagnosticCollectionSize).map((entry) => (
+      scrubDiagnosticValue(entry, undefined, seen, depth + 1)
+    ));
+    if (value.length > maxDiagnosticCollectionSize) {
+      entries.push("[truncated]");
+    }
+    return entries;
+  }
+  const scrubbed = new Map<string, unknown>();
+  let enumerableCount = 0;
+  let truncated = false;
+  for (const nestedKey in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, nestedKey)) {
+      continue;
+    }
+    enumerableCount += 1;
+    if (enumerableCount > maxDiagnosticCollectionSize) {
+      truncated = true;
+      break;
+    }
+    const own = readOwnDataProperty(value, nestedKey);
+    if (own.kind === "accessor") {
+      scrubbed.set(nestedKey, isSensitiveDiagnosticKey(nestedKey) ? "[redacted]" : "[accessor]");
+      continue;
+    }
+    if (own.kind === "value") {
+      scrubbed.set(nestedKey, scrubDiagnosticValue(own.value, nestedKey, seen, depth + 1));
+    }
+  }
+  if (truncated) {
+    scrubbed.set("[truncated]", true);
+  }
+  return Object.fromEntries(scrubbed);
 }
 
 function scrubDiagnosticValue(
@@ -165,54 +228,37 @@ function scrubDiagnosticValue(
     return `[${typeof value}]`;
   }
   if (value instanceof Error) {
+    const name = readOwnDataProperty(value, "name");
+    const message = readOwnDataProperty(value, "message");
     return {
-      name: value.name,
-      message: scrubDiagnosticString(value.message),
+      name: name.kind === "accessor" ? "[accessor]" : name.kind === "value" && typeof name.value === "string" ? name.value : value.constructor.name,
+      message: message.kind === "accessor" ? "[accessor]" : message.kind === "value" && typeof message.value === "string" ? scrubDiagnosticString(message.value) : "",
     };
   }
   if (typeof value !== "object") {
     return value;
   }
-  if (depth >= maxDiagnosticDepth) {
-    return "[truncated]";
-  }
-  if (seen.has(value)) {
-    return "[circular]";
-  }
-  seen.add(value);
-  if (Array.isArray(value)) {
-    const entries = value.slice(0, maxDiagnosticCollectionSize).map((entry) => (
-      scrubDiagnosticValue(entry, undefined, seen, depth + 1)
-    ));
-    if (value.length > maxDiagnosticCollectionSize) {
-      entries.push("[truncated]");
-    }
-    return entries;
-  }
-  const keys = Object.keys(value);
-  const scrubbed = new Map<string, unknown>();
-  for (const nestedKey of keys.slice(0, maxDiagnosticCollectionSize)) {
-    scrubbed.set(nestedKey, scrubDiagnosticValue(Reflect.get(value, nestedKey), nestedKey, seen, depth + 1));
-  }
-  if (keys.length > maxDiagnosticCollectionSize) {
-    scrubbed.set("[truncated]", true);
-  }
-  return Object.fromEntries(scrubbed);
+  return scrubOwnEnumerableFields(value, seen, depth);
 }
 
 /**
  * Dashboard dump (cause, enumerable error props, nicify), then key-scrub.
- * nicify runs on already-scrubbed errorProps so the string dump does not
- * re-introduce redacted values.
+ * Root errorProps walks enumerable own data (extraData) without spreading the
+ * Error. Nested Error values stay name/message only.
  */
 function getExceptionExtra(error: unknown): Record<string, unknown> {
   if (!(error instanceof Error)) {
     return {};
   }
 
-  const errorProps = scrubDiagnosticValue({ ...error });
+  const errorProps = scrubOwnEnumerableFields(error, new WeakSet(), 0);
+  const causeProperty = readOwnDataProperty(error, "cause");
   return {
-    cause: scrubDiagnosticValue(error.cause),
+    cause: causeProperty.kind === "accessor"
+      ? "[accessor]"
+      : causeProperty.kind === "value"
+        ? scrubDiagnosticValue(causeProperty.value)
+        : undefined,
     errorProps,
     nicifiedError: nicify(errorProps, { maxDepth: 8 }),
   };

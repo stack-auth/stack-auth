@@ -424,4 +424,79 @@ describe("prepareBackendSentryEvent", () => {
       }),
     }));
   });
+
+  it("redacts URL userinfo when the password contains @ or space", () => {
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "url-userinfo-special-chars" } },
+      {
+        originalException: new HexclaveAssertionError("url extraData", {
+          url: "postgres://user:p@ss word@db/app",
+        }),
+      },
+    );
+
+    expect(result.extra).toEqual(expect.objectContaining({
+      errorProps: expect.objectContaining({
+        extraData: {
+          url: "postgres://[redacted]@db/app",
+        },
+      }),
+    }));
+    expect(JSON.stringify(result)).not.toContain("p@ss word");
+  });
+
+  it("stops after 50 enumerable own keys on a wide diagnostic object", () => {
+    const wide: Record<string, number> = {};
+    for (let index = 0; index < 80; index++) {
+      wide[`field${index}`] = index;
+    }
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "wide-object" } },
+      { originalException: new HexclaveAssertionError("wide extraData", wide) },
+    );
+
+    expect(result.extra).toEqual(expect.objectContaining({
+      errorProps: expect.objectContaining({
+        extraData: expect.objectContaining({
+          field0: 0,
+          field49: 49,
+          "[truncated]": true,
+        }),
+      }),
+    }));
+    expect(JSON.stringify(result.extra.errorProps)).not.toContain("field50");
+  });
+
+  it("does not invoke throwing enumerable getters while building extras", () => {
+    const extraData = { innerCode: "<safe>" };
+    const error = new HexclaveAssertionError("accessor extraData", extraData);
+    Object.defineProperty(extraData, "boom", {
+      enumerable: true,
+      get() {
+        throw new Error("diagnostic getter should not run");
+      },
+    });
+    Object.defineProperty(error, "explode", {
+      enumerable: true,
+      get() {
+        throw new Error("error getter should not run");
+      },
+    });
+
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "throwing-getter" } },
+      { originalException: error },
+    );
+
+    expect(result.extra).toEqual(expect.objectContaining({
+      location: "throwing-getter",
+      errorProps: expect.objectContaining({
+        explode: "[accessor]",
+        extraData: {
+          innerCode: "<safe>",
+          boom: "[accessor]",
+        },
+      }),
+    }));
+  });
 });
