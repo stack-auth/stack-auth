@@ -20,7 +20,7 @@ describe("internal Growth overview", () => {
     await createGrowthProjectScope();
     const held = await niceBackendFetch(OVERVIEW_PATH, { accessType: "admin" });
     expect(held.status).toBe(409);
-    expect(held.body).toMatchObject({ error: "Your growth report is still being prepared." });
+    expect(held.body).toBe("Your growth report is still being prepared.");
   });
 
   it("returns an honest bounded empty state", async ({ expect }) => {

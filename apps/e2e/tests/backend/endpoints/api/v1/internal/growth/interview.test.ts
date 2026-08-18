@@ -433,7 +433,7 @@ describe("internal growth interview (no mock Eve)", () => {
       body: {
         ...scope,
         run_id: runId,
-        source: "website",
+        source: "website-research",
         findings: [{ kind: "observation", category: "conversion", tags: ["website"], title: "Homepage has no pricing link", body: "Observed during research." }],
       },
     });
