@@ -298,8 +298,12 @@ export function evaluateFeatureFlag(
 
   if (flag.holdoutId !== undefined) {
     const holdout = config.holdouts?.[flag.holdoutId];
-    const subjectId = getFlagAllocationSubject(flag, config, context);
-    if (holdout !== undefined && subjectId !== undefined) {
+    if (holdout !== undefined) {
+      const subjectId = getFlagAllocationSubject(flag, config, context);
+      // Mixed assignment units (or a missing subject) cannot compute a stable
+      // holdout bucket. Fail closed to the fallback rather than letting those
+      // subjects skip the holdout and enter targeting.
+      if (subjectId === undefined) return defaultResult(flagId, flag, "holdout");
       const allocation = holdout.allocationBasisPoints ?? 0;
       if (featureFlagBucket(subjectId, `holdout.${flag.holdoutId}.${holdout.allocationSalt ?? flag.holdoutId}`) * 10_000 < allocation) {
         return defaultResult(flagId, flag, "holdout");
@@ -484,4 +488,27 @@ import.meta.vitest?.test("team experiments use the team for holdout and mutual-e
   const secondUser = { distinctId: "user-b", userId: "user-b", teamId: "shared-team" };
   expect(evaluateFeatureFlag("first", config, firstUser)).toEqual(evaluateFeatureFlag("first", config, secondUser));
   expect(evaluateFeatureFlag("second", config, firstUser)).toEqual(evaluateFeatureFlag("second", config, secondUser));
+});
+
+import.meta.vitest?.test("holdout fails closed when mixed assignment units make the subject unresolvable", ({ expect }) => {
+  const config: FeatureFlagsConfig = {
+    flags: {
+      mixed: {
+        key: "mixed",
+        fallbackVariantKey: "off",
+        holdoutId: "holdout",
+        variants: { on: { value: true }, off: { value: false } },
+        rules: {
+          userRule: { experimentId: "userExperiment", stickyBy: "userId", variantKey: "on" },
+          teamRule: { experimentId: "teamExperiment", stickyBy: "teamId", variantKey: "on" },
+        },
+      },
+    },
+    holdouts: { holdout: { allocationBasisPoints: 5_000 } },
+    experiments: {
+      userExperiment: { flagId: "mixed", assignmentUnit: "user" },
+      teamExperiment: { flagId: "mixed", assignmentUnit: "team" },
+    },
+  };
+  expect(evaluateFeatureFlag("mixed", config, { distinctId: "user-a", userId: "user-a", teamId: "team-a" }).reason).toBe("holdout");
 });

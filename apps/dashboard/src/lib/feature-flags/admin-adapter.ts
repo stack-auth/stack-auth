@@ -82,7 +82,15 @@ async function requestJson(adminApp: object, path: string, init: RequestInit): P
   const response: unknown = await pending;
   if (!(response instanceof Response)) throw new HexclaveAssertionError("Admin app sendRequest did not return a Response.");
   if (response.status === 404 || response.status === 501) throw new FeatureFlagsBackendUnavailableError();
-  if (!response.ok) throw new HexclaveAssertionError(`Feature-flags backend request failed: ${path} → ${response.status}`);
+  if (!response.ok) {
+    const payload: unknown = await response.json().catch(() => null);
+    const message = typeof payload === "string" && payload.trim().length > 0
+      ? payload
+      : payload != null && typeof payload === "object" && !Array.isArray(payload) && typeof Reflect.get(payload, "error") === "string"
+        ? String(Reflect.get(payload, "error"))
+        : `Feature-flags backend request failed: ${path} → ${response.status}`;
+    throw new Error(message);
+  }
   return await response.json();
 }
 

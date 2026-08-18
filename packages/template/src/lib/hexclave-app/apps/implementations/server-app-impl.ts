@@ -112,6 +112,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         userId: identity.userId,
         teamId: request.team_id,
         user: identity.user,
+        team: request.team_id === undefined ? undefined : { id: request.team_id },
         context: request.context,
       });
       const localResult: FeatureFlagEvaluateResponse<Json>["results"][string] = {

@@ -322,6 +322,14 @@ export function getFeatureFlagsConfigErrors(config: FeatureFlagsConfig): string[
     if (experiment.trafficAllocationBasisPoints === undefined) errors.push(`Experiment "${experimentId}" must define a traffic allocation`);
     if (experiment.controlVariantKey === undefined) errors.push(`Experiment "${experimentId}" must define a control variant`);
     if (experiment.flagId !== undefined && !hasRecordKey(config.flags, experiment.flagId)) errors.push(`Experiment "${experimentId}" references missing flag "${experiment.flagId}"`);
+    if (experiment.archived !== true && experiment.flagId !== undefined) {
+      const siblingIds = Object.entries(config.experiments ?? {})
+        .filter(([otherId, other]) => otherId !== experimentId && other?.archived !== true && other?.flagId === experiment.flagId)
+        .map(([otherId]) => otherId);
+      if (siblingIds.length > 0) {
+        errors.push(`Experiment "${experimentId}" targets flag "${experiment.flagId}" which is already targeted by "${siblingIds[0]}"`);
+      }
+    }
 
     const variantEntries = Object.entries(experiment.variantWeights ?? {});
     if (variantEntries.length < 2 || variantEntries.length > 10) errors.push(`Experiment "${experimentId}" must define between 2 and 10 variants`);
@@ -440,6 +448,17 @@ import.meta.vitest?.test("feature flag schema validates operator types, referenc
     experiments: { userExperiment: { flagId: "a", assignmentUnit: "user" }, teamExperiment: { flagId: "b", assignmentUnit: "team" } },
     mutualExclusionGroups: { mixed: { experimentWeights: { userExperiment: 5_000, teamExperiment: 5_000 } } },
   })).toContain('Mutual exclusion group "mixed" mixes user and team assignment units');
+  expect(getFeatureFlagsConfigErrors({
+    flags: { shared: {} },
+    experiments: { first: { flagId: "shared" }, second: { flagId: "shared" } },
+  })).toEqual(expect.arrayContaining([
+    'Experiment "first" targets flag "shared" which is already targeted by "second"',
+    'Experiment "second" targets flag "shared" which is already targeted by "first"',
+  ]));
+  expect(getFeatureFlagsConfigErrors({
+    flags: { shared: {} },
+    experiments: { archived: { flagId: "shared", archived: true }, next: { flagId: "shared" } },
+  }).some((error) => error.includes("already targeted"))).toBe(false);
 });
 
 import.meta.vitest?.test("whole-config validation rejects incomplete experiment definitions", ({ expect }) => {
