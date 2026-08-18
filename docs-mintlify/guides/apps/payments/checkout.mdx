@@ -58,6 +58,38 @@ const checkoutUrl = await team.createCheckoutUrl({ productId });
   If you're using a non-JS backend (Python, Go, etc.), call the REST API directly: `POST /api/v1/payments/purchases/create-purchase-url` with `customer_type`, `customer_id`, and `product_id`. See the [REST API overview](/api/overview) for details.
 </Info>
 
+On the **server**, you can also pass an inline product definition instead of `productId`, or create a URL for a [custom customer](./customers):
+
+```typescript
+import { hexclaveServerApp } from "@/hexclave/server";
+
+const checkoutUrl = await hexclaveServerApp.createCheckoutUrl({
+  customCustomerId: "external-org-123",
+  productId: "prod_enterprise",
+  returnUrl: "https://example.com/billing",
+});
+```
+
+## Hosted checkout
+
+`createCheckoutUrl` returns a hosted Hexclave page (`/purchase/{code}`). Price and quantity are chosen **on that page**, not in the URL. Stackable products show a quantity selector.
+
+Checkout URLs expire after **24 hours**. If **Block new purchases** is on in **Payments -> Settings**, creating a URL and completing checkout both fail; existing subscriptions keep renewing.
+
+A **$0 recurring** price activates without collecting a card. One-time $0 prices cannot go through checkout.
+
+[Free trials](./products-and-pricing#free-trials) collect a card up front and charge it when the trial ends. In **test mode**, checkout grants the product immediately and skips the trial.
+
+## Creating a checkout URL from the dashboard
+
+You don't have to generate URLs in code. **Create checkout** is available from:
+
+- **Payments -> Customers** (user, team, or custom)
+- A product's detail page, and product cards in **Payments -> Product Lines**
+- The **Users** and **Teams** tables
+
+The URL still expires in 24 hours. Send it to the customer, or open it yourself while testing.
+
 ## Checking what a customer owns
 
 After a purchase, you'll want to know what the customer has. Check their product list, or check a specific [item balance](./items-and-entitlements).
@@ -82,4 +114,5 @@ Each product in the list includes:
 
 - [Items & Entitlements](./items-and-entitlements) - read and consume credits, seats, and quota
 - [Subscriptions](./subscriptions) - manage recurring plans after purchase
+- [Refunds](./refunds) - reverse a purchase from the dashboard
 - [Granting Products](./granting-products) - give access without checkout

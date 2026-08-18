@@ -52,7 +52,7 @@ Key concepts:
 
 ### Built-in templates
 
-Hexclave ships with templates for common auth flows. These are used automatically by the built-in authentication components:
+Hexclave ships with templates for common auth and payment flows. These are sent automatically when the matching event happens:
 
 | Template | Trigger |
 |---|---|
@@ -63,6 +63,7 @@ Hexclave ships with templates for common auth flows. These are used automaticall
 | **Sign In Invitation** | User is invited to create an account |
 | **Payment Receipt** | A payment succeeds (one-time or subscription) |
 | **Payment Failed** | A payment fails |
+| **Trial Ending Soon** | A [Payments free trial](/guides/apps/payments/products-and-pricing#free-trials) is about to end |
 
 You can customize any built-in template from the dashboard under **Emails → Templates**.
 
