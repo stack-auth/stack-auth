@@ -1,0 +1,204 @@
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_9c466d47d4e384::t_efef9f13dedc24 2509-2528
+  s_9c466d47d4e384::t_323974ab9f45f9 2484
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event.test.ts
+  s_0d2384aaddfcc2::t_34bc2e81fd71bb 41-75,90
+  s_0d2384aaddfcc2::t_f5a3c1e5be7149 10,13-18,76-89
+  s_0d2384aaddfcc2::t_ed555cbedf1f0e 91
+packages/template/src/lib/hexclave-app/apps/implementations/telemetry-core.ts
+  s_9c466d47d4e384::t_d65f53ac8b3833 396,401-402
+  s_9c466d47d4e384::t_dc44a2d0768e3f 1
+apps/backend/src/lib/analytics-telemetry-writers.ts
+  s_9c466d47d4e384::t_7427a2a63dcdfd 192-194
+  s_9c466d47d4e384::t_ead0b15d9642fb 1
+  s_9c466d47d4e384::t_c866978a709ce1 175-182
+  s_9c466d47d4e384::t_852be4ca19578a 411
+  s_9c466d47d4e384::t_abb768231caf5e 2
+packages/template/src/lib/hexclave-app/apps/interfaces/error-capture.ts
+  s_0d2384aaddfcc2::t_dce76ac1554d61 123-126,129,134-135
+  s_9c466d47d4e384::t_0f15aa53a8a954 107-113
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/waterfall.test.ts
+  s_0d2384aaddfcc2::t_9fbd1d6b4b90cf 79,83,89
+packages/shared/src/utils/analytics-wire.tsx
+  s_0d2384aaddfcc2::t_f1f90712570cf9 157,160-162,165
+apps/backend/scripts/db-migrations.ts
+  s_803e7a77486ba9::t_aec75715d0ec32 17
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/trace-utils.test.ts
+  s_0d2384aaddfcc2::t_07c48ce8d588c1 29,37-40
+apps/backend/src/lib/issues/issue-queries.test.ts
+  s_9c466d47d4e384::t_8751900344e6ab 53-54,56-58,60,66
+  s_9c466d47d4e384::t_1480a8757f3313 2,10
+  s_9c466d47d4e384::t_22712e62e2c155 55,59,61-65
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_0d2384aaddfcc2::t_d1bf0f6ee70fed 17
+  s_0d2384aaddfcc2::t_d82f7a3d536749 259-261,264,266
+  s_9c466d47d4e384::t_07b934e6835341 91,93-94
+  s_9c466d47d4e384::t_321c58dadbbf59 101
+  s_0d2384aaddfcc2::t_2216337b7b5e3f 640-641
+examples/demo/src/app/error-tracking-demo/observability-page.tsx
+  s_0d2384aaddfcc2::t_54b3df24db59e6 390-391
+packages/shared/src/utils/telemetry-taxonomy.test.ts
+  s_0d2384aaddfcc2::t_9a549f7f626f38 27,31,34
+  s_0d2384aaddfcc2::t_878b96834f2c02 44-45
+apps/backend/prisma/migrations/20260731000000_add_issues/tests/hash-uniqueness-and-ledger.ts
+  s_803e7a77486ba9::t_7f7ad05b9f1e32 149-177
+apps/backend/src/lib/error-ingest/error-ingest-event-adapter.ts
+  s_9c466d47d4e384::t_be0ab339855d98 3-6
+  s_9c466d47d4e384::t_1f4dea69249b1a 122-125
+apps/e2e/tests/backend/endpoints/api/v1/issues.test.ts
+  s_803e7a77486ba9::t_c6e6f73aacff5e 638
+  s_9c466d47d4e384::t_a6340009604d59 90
+apps/backend/src/lib/issues/issue-queries.ts
+  s_9c466d47d4e384::t_9f232a41b947b5 215-216,221-229
+  s_9c466d47d4e384::t_7d3378fe6d31c0 4
+  s_9c466d47d4e384::t_168f9682c67921 304
+  s_9c466d47d4e384::t_4b0ff4f40cdebb 230-231
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event.ts
+  s_0d2384aaddfcc2::t_86673652dc3636 258,262
+  s_0d2384aaddfcc2::t_96ab08dea34450 317,320-321
+  s_0d2384aaddfcc2::t_cb6b692d4f69ab 355-356,361
+  s_0d2384aaddfcc2::t_1bca4c925ffbcf 383-386
+  s_0d2384aaddfcc2::t_df2e8c2fc83cb5 407
+  s_0d2384aaddfcc2::t_ad01580c03c8e9 517-518
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_9c466d47d4e384::t_03cda2b1ec4fcc 4851-4854
+  s_9c466d47d4e384::t_497438cef67087 4899-4902
+  s_9c466d47d4e384::t_e7d3ce1b40b527 4887-4890
+  s_9c466d47d4e384::t_ce112942cc6ad3 4827-4830
+  s_9c466d47d4e384::t_3bfa9822288f59 4815-4818
+  s_9c466d47d4e384::t_07071ae443d842 4574-4577
+  s_9c466d47d4e384::t_42a6ae2cf6d480 4839-4842
+apps/backend/scripts/clickhouse-migrations.ts
+  s_803e7a77486ba9::t_7545b1894c418d 1076-1080
+  s_803e7a77486ba9::t_a6f989ee39ab22 963-975
+  s_803e7a77486ba9::t_829a6b3b9e7fe2 962,995,1008
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/span-tree.tsx
+  s_9c466d47d4e384::t_a6f087e5c4d731 170-181
+apps/backend/src/lib/issues/occurrence-projection.ts
+  s_0d2384aaddfcc2::t_a4d82a9c9b6347 154,157-158
+apps/backend/prisma/migrations/20260731000000_add_issues/tests/issue-alert-schema-and-constraints.ts
+  s_803e7a77486ba9::t_8e1a86f7cd0070 47-57
+apps/backend/src/lib/analytics-telemetry-writers.test.ts
+  s_9c466d47d4e384::t_dcb5602ebccc17 109
+  s_9c466d47d4e384::t_7e314080336275 74
+  s_9c466d47d4e384::t_723edb1637d37c 189-199
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/trace-utils.ts
+  s_0d2384aaddfcc2::t_372e1bda891d6a 74-75
+apps/backend/src/lib/error-ingest/error-ingest-event-adapter.test.ts
+  s_9c466d47d4e384::t_4b26e333e28736 132-140
+  s_9c466d47d4e384::t_0bcd3477e83f27 107
+  s_9c466d47d4e384::t_e2681c7f3cb028 95
+  s_9c466d47d4e384::t_fa7fb4b202dfcf 127
+  s_9c466d47d4e384::t_1212f304339415 80,84
+  s_9c466d47d4e384::t_5a1c40b655e695 116
+apps/backend/prisma/migrations/20260731000000_add_issues/migration.sql
+  s_803e7a77486ba9::t_87aa54e4676cd2 119-125
+  s_803e7a77486ba9::t_b1a4a3213c8fba 209-211
+packages/template/src/lib/hexclave-app/apps/implementations/browser-otel-sdk.test.ts
+  s_9c466d47d4e384::t_0d409fdeda3412 60-71
+apps/backend/src/lib/issues/grouping.ts
+  s_9c466d47d4e384::t_d23df9c5fe7b5d 4
+  s_9c466d47d4e384::t_3d84c5256d30b3 91-98
+packages/template/src/lib/hexclave-app/apps/implementations/web-vitals.ts
+  s_9c466d47d4e384::t_5307184bffe516 159
+apps/backend/src/lib/issues/issue-product.ts
+  s_803e7a77486ba9::t_13220d26d9ce37 282
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_9c466d47d4e384::t_555eb0c43334fc 1879-1881,1887,1894,1897-1899,1902-1904
+  s_9c466d47d4e384::t_4fcc45803beb65 1989-1993,2000,2007,2017
+apps/backend/src/lib/issues/grouping-fingerprint.ts
+  s_9c466d47d4e384::t_37038e4bc476af 178-184,191
+apps/backend/prisma/migrations/20260811000000_harden_background_jobs/migration.sql
+  s_803e7a77486ba9::t_0aafa94267dd6c 2-7
+packages/template/src/lib/hexclave-app/apps/implementations/otel-sdk-loader.ts
+  s_9c466d47d4e384::t_f56377b0b27d3a 7-10,26-28,44-45,50,52,70-72,76-79,83-87,89,91-92,97-99,102,108-112,114-123
+  s_9c466d47d4e384::t_4a25beb9bbeae0 53-56,65,69
+  s_9c466d47d4e384::t_40fd0fbd19697c 30-37
+  s_9c466d47d4e384::t_1a80d663e472dc 95-96
+  s_9c466d47d4e384::t_e73b6cdf17f1eb 29
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/waterfall.tsx
+  s_9c466d47d4e384::t_a59be511cb1b64 748
+  s_9c466d47d4e384::t_8bd4b3dcc778d6 800,802,804
+  s_9c466d47d4e384::t_b373abb6899a72 803
+  s_9c466d47d4e384::t_e71be96404b5d8 740
+  s_9c466d47d4e384::t_ccb53dff34e826 732-739,741
+  s_9c466d47d4e384::t_bace2ca473db8e 795
+  s_9c466d47d4e384::t_c4016b5b5de4e1 731
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/span-tree.test.ts
+  s_9c466d47d4e384::t_a66ec97a1ee070 1-41
+packages/template/src/lib/hexclave-app/apps/implementations/error-capture.ts
+  s_0d2384aaddfcc2::t_242b197940aab0 186,191-192
+  s_0d2384aaddfcc2::t_18c482bb260c71 441
+  s_9c466d47d4e384::t_12ff1e5185fbff 471-473,481
+packages/template/src/lib/hexclave-app/apps/implementations/integration-registry.ts
+  s_9c466d47d4e384::t_eb43890e100784 601
+  s_9c466d47d4e384::t_4479a1a99ab8be 618
+packages/template/src/lib/hexclave-app/apps/implementations/browser-otel-queue.ts
+  s_9c466d47d4e384::t_f5029a233cda99 511-515
+  s_9c466d47d4e384::t_2a702ee06b9217 59-64
+  s_9c466d47d4e384::t_751ae07345d2b2 427-433
+  s_9c466d47d4e384::t_f0ee1e50642cd2 572-577
+  s_9c466d47d4e384::t_cdad34d83e555c 322-327,331-336
+  s_9c466d47d4e384::t_533e14b29fb8f1 195-196
+packages/template/src/lib/hexclave-app/apps/implementations/error-processors.test.ts
+  s_9c466d47d4e384::t_b423188b329b0b 67
+packages/template/src/lib/hexclave-app/apps/implementations/browser-otel-sdk.ts
+  s_9c466d47d4e384::t_a12316135cef2b 1606
+  s_9c466d47d4e384::t_1d15606f95e983 1455,1482,1782
+  s_9c466d47d4e384::t_2e405f5e52c997 1740
+  s_9c466d47d4e384::t_154072093c283d 1454,1481,1755
+  s_9c466d47d4e384::t_058dde3616f963 1438-1439
+  s_9c466d47d4e384::t_6509a2818c80e9 1807
+  s_9c466d47d4e384::t_35e6d1116b42fa 389-390
+  s_9c466d47d4e384::t_9573a517e8b065 369-374
+apps/backend/scripts/clickhouse-migrations.test.ts
+  s_803e7a77486ba9::t_7c3ffaa55e45a1 156
+  s_803e7a77486ba9::t_33c5b26978c445 203-207
+apps/backend/src/lib/issues/public-search/projection.ts
+  s_0d2384aaddfcc2::t_3bd0dac3b95160 174
+packages/template/src/lib/hexclave-app/apps/implementations/browser-otel-queue.test.ts
+  s_9c466d47d4e384::t_6dc5a33b21016c 222-238
+packages/shared/src/utils/error-envelope.test.ts
+  s_0d2384aaddfcc2::t_cd8449b8f6b560 138-175
+packages/shared/src/utils/error-envelope.ts
+  s_0d2384aaddfcc2::t_a0f8500b689394 507
+  s_0d2384aaddfcc2::t_bbe607049f4aa3 452-453
+  s_0d2384aaddfcc2::t_4d53d77745a192 396,399,402
+packages/template/src/lib/hexclave-app/apps/implementations/error-capture.test.ts
+  s_9c466d47d4e384::t_8bc5e350e213e4 230
+  s_0d2384aaddfcc2::t_cbad2ada0e5600 189-226
+  s_9c466d47d4e384::t_f2b24e978b68b0 240-250
+  s_9c466d47d4e384::t_b3d3a2d1d70ca1 165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "65a872d33b61fd25ef6ef452a188d34422854d7a",
+  "prompts": {},
+  "sessions": {
+    "s_0d2384aaddfcc2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "52b7ef97-3d4b-4d21-a24d-6664bff5ae71",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_803e7a77486ba9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fdd769c7-8420-4c6a-9d9e-9d0ff51198ef",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_9c466d47d4e384": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d97e033a-0aa0-4f45-83d3-3c32bf179775",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
