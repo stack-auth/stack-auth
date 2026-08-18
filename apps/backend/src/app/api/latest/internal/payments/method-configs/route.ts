@@ -171,12 +171,12 @@ export const PATCH = createSmartRouteHandler({
       afterRoot[`methods.${methodId}`] = preference;
     }
     const metadata = buildUpdatedFieldsAuditMetadata({
-      source: "internal.payments.method_configs.update",
+      source: "payments.method_configs.update",
       patch: afterRoot,
       beforeRoot: {},
       afterRoot,
     }) ?? {
-        source: "internal.payments.method_configs.update",
+        source: "payments.method_configs.update",
       };
     await recordAuditEvent({
       tenancy: auth.tenancy,

@@ -35,7 +35,7 @@ export const POST = createSmartRouteHandler({
     // Full key material is returned to the caller once; audit only records
     // which key kinds were minted plus non-secret description/expiry.
     const metadata = buildCreatedFieldsAuditMetadata({
-      source: "internal.api_keys.create",
+      source: "api_keys.create",
       fields: {
         api_key_id: set.id,
         description: set.description,
@@ -45,7 +45,7 @@ export const POST = createSmartRouteHandler({
         has_super_secret_admin_key: set.has_super_secret_admin_key,
       },
     }) ?? {
-        source: "internal.api_keys.create",
+        source: "api_keys.create",
         api_key_id: set.id,
       };
     await recordAuditEvent({

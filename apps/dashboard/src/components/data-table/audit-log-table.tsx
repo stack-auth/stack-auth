@@ -50,7 +50,19 @@ export type AuditLogAction =
   | "payment.item_quantity.changed"
   | "payment.refund.created"
   | "payment.stripe.setup_started"
-  | "payment.method_config.updated";
+  | "payment.method_config.updated"
+  | "email.template.created"
+  | "email.template.updated"
+  | "email.template.deleted"
+  | "email.theme.created"
+  | "email.theme.updated"
+  | "email.theme.deleted"
+  | "email.draft.created"
+  | "email.draft.updated"
+  | "email.draft.deleted"
+  | "email.managed_domain.setup_started"
+  | "email.managed_domain.applied"
+  | "email.managed_domain.deleted";
 
 export type AuditLogEvent = {
   id: string,
@@ -192,6 +204,42 @@ function formatAction(action: AuditLogAction): string {
     case "payment.method_config.updated": {
       return "Payment methods updated";
     }
+    case "email.template.created": {
+      return "Email template created";
+    }
+    case "email.template.updated": {
+      return "Email template updated";
+    }
+    case "email.template.deleted": {
+      return "Email template deleted";
+    }
+    case "email.theme.created": {
+      return "Email theme created";
+    }
+    case "email.theme.updated": {
+      return "Email theme updated";
+    }
+    case "email.theme.deleted": {
+      return "Email theme deleted";
+    }
+    case "email.draft.created": {
+      return "Email draft created";
+    }
+    case "email.draft.updated": {
+      return "Email draft updated";
+    }
+    case "email.draft.deleted": {
+      return "Email draft deleted";
+    }
+    case "email.managed_domain.setup_started": {
+      return "Managed email domain setup started";
+    }
+    case "email.managed_domain.applied": {
+      return "Managed email domain applied";
+    }
+    case "email.managed_domain.deleted": {
+      return "Managed email domain deleted";
+    }
     default: {
       const _exhaustive: never = action;
       return _exhaustive;
@@ -255,6 +303,15 @@ const FIELD_LABELS = new Map<string, string>([
   ["invoice_id", "Invoice ID"],
   ["stripe_account_created", "Stripe account created"],
   ["config_id", "Config ID"],
+  ["template_id", "Template"],
+  ["theme_id", "Theme"],
+  ["draft_id", "Draft"],
+  ["tsx_source_updated", "Source updated"],
+  ["subdomain", "Subdomain"],
+  ["sender_local_part", "Sender local part"],
+  ["domain_id", "Domain"],
+  ["status", "Status"],
+  ["provider", "Provider"],
 ]);
 
 const OAUTH_PROVIDER_FIELD_LABELS = new Map<string, string>([

@@ -41,6 +41,18 @@ export const AUDIT_LOG_ACTIONS = [
   "payment.refund.created",
   "payment.stripe.setup_started",
   "payment.method_config.updated",
+  "email.template.created",
+  "email.template.updated",
+  "email.template.deleted",
+  "email.theme.created",
+  "email.theme.updated",
+  "email.theme.deleted",
+  "email.draft.created",
+  "email.draft.updated",
+  "email.draft.deleted",
+  "email.managed_domain.setup_started",
+  "email.managed_domain.applied",
+  "email.managed_domain.deleted",
 ] as const;
 
 export type AuditLogAction = typeof AUDIT_LOG_ACTIONS[number];

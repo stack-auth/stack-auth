@@ -1,3 +1,4 @@
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../../helpers";
 import { Auth, InternalApiKey, Payments, Project, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../backend-helpers";
 
@@ -645,7 +646,7 @@ it("records Authentication user-directory admin actions", async ({ expect }) => 
     action: "user.sign_in_invitation.sent",
     target_user_id: null,
     metadata: {
-      source: "internal.send_sign_in_invitation",
+      source: "send_sign_in_invitation",
     },
   });
   expect(JSON.stringify(invitationList.body.items[0].metadata)).not.toContain("invitee-audit@example.com");
@@ -713,7 +714,7 @@ it("records project API key create, update, and revoke without persisting secret
     action: "project_api_key.created",
     target_user_id: null,
     metadata: {
-      source: "internal.api_keys.create",
+      source: "api_keys.create",
       changed_paths: expect.arrayContaining([
         "api_key_id",
         "description",
@@ -738,7 +739,7 @@ it("records project API key create, update, and revoke without persisting secret
   expect(updatedList.body.items[0]).toMatchObject({
     action: "project_api_key.updated",
     metadata: {
-      source: "internal.api_keys.update",
+      source: "api_keys.update",
       api_key_id: apiKeyId,
       changed_paths: ["description"],
       changes: {
@@ -756,7 +757,7 @@ it("records project API key create, update, and revoke without persisting secret
   expect(revokedList.body.items[0]).toMatchObject({
     action: "project_api_key.revoked",
     metadata: {
-      source: "internal.api_keys.update",
+      source: "api_keys.update",
       api_key_id: apiKeyId,
       description: "Renamed audited project key",
     },
@@ -1301,7 +1302,7 @@ it("records Payments dashboard mutations (checkout, item quantity, stripe setup,
     action: "payment.stripe.setup_started",
     actor_type: "admin_user",
     metadata: {
-      source: "internal.payments.setup",
+      source: "payments.setup",
       changes: {
         stripe_account_created: { before: null, after: expect.any(Boolean) },
       },
@@ -1439,7 +1440,7 @@ it("records Payments dashboard mutations (checkout, item quantity, stripe setup,
     action: "payment.method_config.updated",
     actor_type: "admin_user",
     metadata: {
-      source: "internal.payments.method_configs.update",
+      source: "payments.method_configs.update",
       config_id: configId,
       changes: {
         "methods.card": { before: null, after: "on" },
@@ -1455,7 +1456,7 @@ it("records Payments dashboard mutations (checkout, item quantity, stripe setup,
     actor_type: "admin_user",
     target_user_id: userId,
     metadata: {
-      source: "internal.payments.transactions.refund",
+      source: "payments.transactions.refund",
       changes: {
         purchase_type: { before: null, after: "subscription" },
         purchase_id: { before: null, after: purchaseTxn.id },
@@ -1469,4 +1470,421 @@ it("records Payments dashboard mutations (checkout, item quantity, stripe setup,
   });
   expect(JSON.stringify(refundList.body.items[0].metadata)).not.toContain("pi_");
   expect(JSON.stringify(refundList.body.items[0].metadata)).not.toContain("payment_intent");
+});
+
+const AUDITED_TEMPLATE_SOURCE = `
+  import { Subject, NotificationCategory } from '@stackframe/emails';
+  export const variablesSchema = (v) => v;
+  export function EmailTemplate() {
+    return <>
+      <Subject value="Audited Template Subject" />
+      <NotificationCategory value="Transactional" />
+      <div>Audited template</div>
+    </>;
+  }
+`;
+
+const AUDITED_THEME_SOURCE = `import { Html, Tailwind, Body } from '@react-email/components';
+export function EmailTheme({ children }: { children: React.ReactNode }) {
+  return (
+    <Html>
+      <Tailwind>
+        <Body>
+          <div className="bg-white text-slate-800 p-4 rounded-lg max-w-[600px] mx-auto leading-relaxed">
+            {children}
+          </div>
+        </Body>
+      </Tailwind>
+    </Html>
+  );
+}`;
+
+async function waitForManagedDomainStatus(options: {
+  domainId: string,
+  subdomain: string,
+  senderLocalPart: string,
+  status: string,
+}) {
+  const deadline = performance.now() + 10_000;
+  let lastBody: unknown = undefined;
+  while (performance.now() < deadline) {
+    const response = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/check", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        domain_id: options.domainId,
+        subdomain: options.subdomain,
+        sender_local_part: options.senderLocalPart,
+      },
+    });
+    lastBody = response.body;
+    if (response.status === 200 && response.body.status === options.status) {
+      return;
+    }
+    await wait(250);
+  }
+  throw new Error(`Timed out waiting for managed email domain ${options.domainId} to become ${options.status}; last response body: ${JSON.stringify(lastBody)}`);
+}
+
+it("records Emails dashboard mutations (templates, themes, drafts, managed domain) and skips admin-key-only template create", async ({ expect }) => {
+  await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+      email_config: {
+        type: "standard",
+        host: "smtp.example.com",
+        port: 587,
+        username: "test@example.com",
+        password: "password123",
+        sender_name: "Test App",
+        sender_email: "noreply@example.com",
+      },
+    },
+  });
+  const projectKeys = backendContext.value.projectKeys;
+  if (projectKeys === "no-project") {
+    throw new Error("Expected project keys after Project.createAndSwitch");
+  }
+  const dashboardAdminAccessToken = projectKeys.adminAccessToken;
+  expect(typeof dashboardAdminAccessToken).toBe("string");
+
+  backendContext.set({
+    projectKeys: {
+      ...projectKeys,
+      adminAccessToken: undefined,
+    },
+  });
+  const programmaticCreate = await niceBackendFetch("/api/v1/internal/email-templates", {
+    method: "POST",
+    accessType: "admin",
+    body: { display_name: "Programmatic Template" },
+  });
+  expect(programmaticCreate.status).toBe(200);
+  const programmaticList = await listAuditLog({ action: "email.template.created" });
+  expect(programmaticList.status).toBe(200);
+  expect(programmaticList.body.items).toEqual([]);
+
+  backendContext.set({
+    projectKeys: {
+      ...projectKeys,
+      adminAccessToken: dashboardAdminAccessToken,
+    },
+  });
+
+  const createTemplate = await niceBackendFetch("/api/v1/internal/email-templates", {
+    method: "POST",
+    accessType: "admin",
+    body: { display_name: "Audited Template" },
+  });
+  expect(createTemplate.status).toBe(200);
+  const templateId = createTemplate.body.id as string;
+
+  const updateTemplate = await niceBackendFetch(`/api/v1/internal/email-templates/${templateId}`, {
+    method: "PATCH",
+    accessType: "admin",
+    body: { tsx_source: AUDITED_TEMPLATE_SOURCE },
+  });
+  expect(updateTemplate.status).toBe(200);
+
+  const deleteTemplate = await niceBackendFetch(`/api/v1/internal/email-templates/${templateId}`, {
+    method: "DELETE",
+    accessType: "admin",
+  });
+  expect(deleteTemplate.status).toBe(200);
+
+  const createTheme = await niceBackendFetch("/api/v1/internal/email-themes", {
+    method: "POST",
+    accessType: "admin",
+    body: { display_name: "Audited Theme" },
+  });
+  expect(createTheme.status).toBe(200);
+  const themeId = createTheme.body.id as string;
+
+  const updateTheme = await niceBackendFetch(`/api/v1/internal/email-themes/${themeId}`, {
+    method: "PATCH",
+    accessType: "admin",
+    body: { tsx_source: AUDITED_THEME_SOURCE },
+  });
+  expect(updateTheme.status).toBe(200);
+
+  const deleteTheme = await niceBackendFetch(`/api/v1/internal/email-themes/${themeId}`, {
+    method: "DELETE",
+    accessType: "admin",
+  });
+  expect(deleteTheme.status).toBe(200);
+
+  const createDraft = await niceBackendFetch("/api/v1/internal/email-drafts", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      display_name: "Audited Draft",
+      theme_id: false,
+    },
+  });
+  expect(createDraft.status).toBe(200);
+  const draftId = createDraft.body.id as string;
+
+  const updateDraft = await niceBackendFetch(`/api/v1/internal/email-drafts/${draftId}`, {
+    method: "PATCH",
+    accessType: "admin",
+    body: {
+      display_name: "Renamed Audited Draft",
+      tsx_source: AUDITED_TEMPLATE_SOURCE,
+    },
+  });
+  expect(updateDraft.status).toBe(200);
+
+  const deleteDraft = await niceBackendFetch(`/api/v1/internal/email-drafts/${draftId}`, {
+    method: "DELETE",
+    accessType: "admin",
+  });
+  expect(deleteDraft.status).toBe(200);
+
+  const setupToDelete = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/setup", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      subdomain: "audit-delete.example.com",
+      sender_local_part: "noreply",
+    },
+  });
+  expect(setupToDelete.status).toBe(200);
+  const deletedDomainId = setupToDelete.body.domain_id as string;
+  const deleteDomain = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/delete", {
+    method: "POST",
+    accessType: "admin",
+    body: { resend_domain_id: deletedDomainId },
+  });
+  expect(deleteDomain.status).toBe(200);
+
+  const setupToApply = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/setup", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      subdomain: "audit-apply.example.com",
+      sender_local_part: "hello",
+    },
+  });
+  expect(setupToApply.status).toBe(200);
+  const appliedDomainId = setupToApply.body.domain_id as string;
+  await waitForManagedDomainStatus({
+    domainId: appliedDomainId,
+    subdomain: "audit-apply.example.com",
+    senderLocalPart: "hello",
+    status: "verified",
+  });
+  const applyDomain = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/apply", {
+    method: "POST",
+    accessType: "admin",
+    body: { domain_id: appliedDomainId },
+  });
+  expect(applyDomain.status).toBe(200);
+
+  const createdTemplates = await listAuditLog({ action: "email.template.created" });
+  expect(createdTemplates.status).toBe(200);
+  expect(createdTemplates.body.items).toHaveLength(1);
+  expect(createdTemplates.body.items[0]).toMatchObject({
+    action: "email.template.created",
+    actor_type: "admin_user",
+    metadata: {
+      source: "email_templates.create",
+      changes: {
+        template_id: { before: null, after: templateId },
+        display_name: { before: null, after: "Audited Template" },
+      },
+    },
+  });
+  expect(JSON.stringify(createdTemplates.body.items[0].metadata)).not.toContain("Programmatic Template");
+  expect(JSON.stringify(createdTemplates.body.items[0].metadata)).not.toContain("export function EmailTemplate");
+
+  const updatedTemplates = await listAuditLog({ action: "email.template.updated" });
+  expect(updatedTemplates.status).toBe(200);
+  expect(updatedTemplates.body.items).toHaveLength(1);
+  expect(updatedTemplates.body.items[0]).toMatchObject({
+    action: "email.template.updated",
+    actor_type: "admin_user",
+    metadata: {
+      source: "email_templates.update",
+      template_id: templateId,
+      display_name: "Audited Template",
+      changes: {
+        tsx_source_updated: { before: false, after: true },
+      },
+    },
+  });
+  expect(JSON.stringify(updatedTemplates.body.items[0].metadata)).not.toContain("Audited Template Subject");
+  expect(JSON.stringify(updatedTemplates.body.items[0].metadata)).not.toContain("export function EmailTemplate");
+
+  const deletedTemplates = await listAuditLog({ action: "email.template.deleted" });
+  expect(deletedTemplates.status).toBe(200);
+  expect(deletedTemplates.body.items).toHaveLength(1);
+  expect(deletedTemplates.body.items[0]).toMatchObject({
+    action: "email.template.deleted",
+    actor_type: "admin_user",
+    metadata: {
+      source: "email_templates.delete",
+      changes: {
+        template_id: { before: null, after: templateId },
+        display_name: { before: null, after: "Audited Template" },
+      },
+    },
+  });
+
+  const createdThemes = await listAuditLog({ action: "email.theme.created" });
+  expect(createdThemes.status).toBe(200);
+  expect(createdThemes.body.items).toHaveLength(1);
+  expect(createdThemes.body.items[0]).toMatchObject({
+    action: "email.theme.created",
+    actor_type: "admin_user",
+    metadata: {
+      source: "email_themes.create",
+      changes: {
+        theme_id: { before: null, after: themeId },
+        display_name: { before: null, after: "Audited Theme" },
+      },
+    },
+  });
+
+  const updatedThemes = await listAuditLog({ action: "email.theme.updated" });
+  expect(updatedThemes.status).toBe(200);
+  expect(updatedThemes.body.items).toHaveLength(1);
+  expect(updatedThemes.body.items[0]).toMatchObject({
+    action: "email.theme.updated",
+    actor_type: "admin_user",
+    metadata: {
+      source: "email_themes.update",
+      theme_id: themeId,
+      display_name: "Audited Theme",
+      changes: {
+        tsx_source_updated: { before: false, after: true },
+      },
+    },
+  });
+  expect(JSON.stringify(updatedThemes.body.items[0].metadata)).not.toContain("export function EmailTheme");
+
+  const deletedThemes = await listAuditLog({ action: "email.theme.deleted" });
+  expect(deletedThemes.status).toBe(200);
+  expect(deletedThemes.body.items).toHaveLength(1);
+  expect(deletedThemes.body.items[0]).toMatchObject({
+    action: "email.theme.deleted",
+    actor_type: "admin_user",
+    metadata: {
+      source: "email_themes.delete",
+      changes: {
+        theme_id: { before: null, after: themeId },
+        display_name: { before: null, after: "Audited Theme" },
+      },
+    },
+  });
+
+  const createdDrafts = await listAuditLog({ action: "email.draft.created" });
+  expect(createdDrafts.status).toBe(200);
+  expect(createdDrafts.body.items).toHaveLength(1);
+  expect(createdDrafts.body.items[0]).toMatchObject({
+    action: "email.draft.created",
+    actor_type: "admin_user",
+    metadata: {
+      source: "email_drafts.create",
+      changes: {
+        draft_id: { before: null, after: draftId },
+        display_name: { before: null, after: "Audited Draft" },
+        theme_id: { before: null, after: false },
+      },
+    },
+  });
+
+  const updatedDrafts = await listAuditLog({ action: "email.draft.updated" });
+  expect(updatedDrafts.status).toBe(200);
+  expect(updatedDrafts.body.items).toHaveLength(1);
+  expect(updatedDrafts.body.items[0]).toMatchObject({
+    action: "email.draft.updated",
+    actor_type: "admin_user",
+    metadata: {
+      source: "email_drafts.update",
+      draft_id: draftId,
+      changes: {
+        display_name: { before: "Audited Draft", after: "Renamed Audited Draft" },
+        tsx_source_updated: { before: false, after: true },
+      },
+    },
+  });
+  expect(JSON.stringify(updatedDrafts.body.items[0].metadata)).not.toContain("export function EmailTemplate");
+
+  const deletedDrafts = await listAuditLog({ action: "email.draft.deleted" });
+  expect(deletedDrafts.status).toBe(200);
+  expect(deletedDrafts.body.items).toHaveLength(1);
+  expect(deletedDrafts.body.items[0]).toMatchObject({
+    action: "email.draft.deleted",
+    actor_type: "admin_user",
+    metadata: {
+      source: "email_drafts.delete",
+      changes: {
+        draft_id: { before: null, after: draftId },
+        display_name: { before: null, after: "Renamed Audited Draft" },
+      },
+    },
+  });
+
+  const setupList = await listAuditLog({ action: "email.managed_domain.setup_started" });
+  expect(setupList.status).toBe(200);
+  expect(setupList.body.items).toHaveLength(2);
+  expect(setupList.body.items).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      action: "email.managed_domain.setup_started",
+      actor_type: "admin_user",
+      metadata: expect.objectContaining({
+        source: "emails.managed_onboarding.setup",
+        changes: expect.objectContaining({
+          domain_id: { before: null, after: deletedDomainId },
+          subdomain: { before: null, after: "audit-delete.example.com" },
+          sender_local_part: { before: null, after: "noreply" },
+          status: { before: null, after: "pending_verification" },
+        }),
+      }),
+    }),
+    expect.objectContaining({
+      action: "email.managed_domain.setup_started",
+      actor_type: "admin_user",
+      metadata: expect.objectContaining({
+        source: "emails.managed_onboarding.setup",
+        changes: expect.objectContaining({
+          domain_id: { before: null, after: appliedDomainId },
+          subdomain: { before: null, after: "audit-apply.example.com" },
+          sender_local_part: { before: null, after: "hello" },
+          status: { before: null, after: "pending_verification" },
+        }),
+      }),
+    }),
+  ]));
+
+  const appliedList = await listAuditLog({ action: "email.managed_domain.applied" });
+  expect(appliedList.status).toBe(200);
+  expect(appliedList.body.items).toHaveLength(1);
+  expect(appliedList.body.items[0]).toMatchObject({
+    action: "email.managed_domain.applied",
+    actor_type: "admin_user",
+    metadata: {
+      source: "emails.managed_onboarding.apply",
+      changes: {
+        domain_id: { before: null, after: appliedDomainId },
+        provider: { before: null, after: "managed" },
+      },
+    },
+  });
+  expect(JSON.stringify(appliedList.body.items[0].metadata)).not.toContain("managed_mock_key_");
+  expect(JSON.stringify(appliedList.body.items[0].metadata)).not.toContain("password");
+
+  const deletedDomains = await listAuditLog({ action: "email.managed_domain.deleted" });
+  expect(deletedDomains.status).toBe(200);
+  expect(deletedDomains.body.items).toHaveLength(1);
+  expect(deletedDomains.body.items[0]).toMatchObject({
+    action: "email.managed_domain.deleted",
+    actor_type: "admin_user",
+    metadata: {
+      source: "emails.managed_onboarding.delete",
+      changes: {
+        domain_id: { before: null, after: deletedDomainId },
+      },
+    },
+  });
 });

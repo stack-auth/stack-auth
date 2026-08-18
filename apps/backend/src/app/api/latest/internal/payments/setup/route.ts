@@ -74,12 +74,12 @@ export const POST = createSmartRouteHandler({
 
     // Dashboard-only via recordAuditEvent. Never persist the Account Link URL.
     const metadata = buildCreatedFieldsAuditMetadata({
-      source: "internal.payments.setup",
+      source: "payments.setup",
       fields: {
         stripe_account_created: stripeAccountCreated,
       },
     }) ?? {
-        source: "internal.payments.setup",
+        source: "payments.setup",
         stripe_account_created: stripeAccountCreated,
       };
     await recordAuditEvent({

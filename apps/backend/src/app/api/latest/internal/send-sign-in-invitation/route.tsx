@@ -53,7 +53,7 @@ export const POST = createSmartRouteHandler({
       auth,
       action: "user.sign_in_invitation.sent",
       metadata: {
-        source: "internal.send_sign_in_invitation",
+        source: "send_sign_in_invitation",
       },
     });
 

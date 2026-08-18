@@ -81,7 +81,7 @@ export const internalApiKeyCrudHandlers = createLazyProxy(() => createPrismaCrud
         auth,
         action: "project_api_key.revoked",
         metadata: {
-          source: "internal.api_keys.update",
+          source: "api_keys.update",
           api_key_id: prisma.id,
           description: prisma.description,
         },
@@ -90,7 +90,7 @@ export const internalApiKeyCrudHandlers = createLazyProxy(() => createPrismaCrud
 
     if (previous.description !== prisma.description) {
       const metadata = buildUpdatedFieldsAuditMetadata({
-        source: "internal.api_keys.update",
+        source: "api_keys.update",
         patch: { description: prisma.description },
         beforeRoot: { description: previous.description },
         afterRoot: { description: prisma.description },

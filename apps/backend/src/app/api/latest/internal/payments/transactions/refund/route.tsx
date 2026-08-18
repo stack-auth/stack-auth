@@ -412,7 +412,7 @@ export const POST = createSmartRouteHandler({
 
     // Dashboard-only via recordAuditEvent. Never persist Stripe payment-intent IDs.
     const metadata = buildCreatedFieldsAuditMetadata({
-      source: "internal.payments.transactions.refund",
+      source: "payments.transactions.refund",
       fields: {
         purchase_type: body.type,
         purchase_id: body.id,
@@ -424,7 +424,7 @@ export const POST = createSmartRouteHandler({
         customer_id: result.audit.customerId,
       },
     }) ?? {
-        source: "internal.payments.transactions.refund",
+        source: "payments.transactions.refund",
         purchase_type: body.type,
         purchase_id: body.id,
         refund_transaction_id: result.body.refund_transaction_id,
