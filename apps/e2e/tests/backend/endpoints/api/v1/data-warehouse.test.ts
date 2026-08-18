@@ -168,6 +168,37 @@ it("keeps the project's analytics access, scoped by the pinned project id", asyn
   expect(override.text).toContain("SQL_project_id");
 });
 
+it("caps both per-query and aggregate resource usage for direct connections", async ({ expect }) => {
+  await createEntitledProject();
+  const { body: credentials } = await provision();
+
+  const configuredLimits = await clickhouse({
+    ...credentials,
+    query: `
+      SELECT
+        getSetting('max_memory_usage'),
+        getSetting('max_memory_usage_for_user'),
+        getSetting('max_concurrent_queries_for_user')
+    `,
+  });
+  expect(configuredLimits.status).toBe(200);
+  expect(configuredLimits.text).toBe("4000000000\t4000000000\t10");
+
+  const raiseAggregateMemoryLimit = await clickhouse({
+    ...credentials,
+    query: "SELECT 1 SETTINGS max_memory_usage_for_user = 4000000001",
+  });
+  expect(raiseAggregateMemoryLimit.status).not.toBe(200);
+  expect(raiseAggregateMemoryLimit.text).toContain("max_memory_usage_for_user");
+
+  const raiseConcurrencyLimit = await clickhouse({
+    ...credentials,
+    query: "SELECT 1 SETTINGS max_concurrent_queries_for_user = 11",
+  });
+  expect(raiseConcurrencyLimit.status).not.toBe(200);
+  expect(raiseConcurrencyLimit.text).toContain("max_concurrent_queries_for_user");
+});
+
 it("denies the table engines and table functions that reach outside the instance", async ({ expect }) => {
   const { projectId } = await createEntitledProject();
   const { body: credentials } = await provision();
@@ -183,6 +214,25 @@ it("denies the table engines and table functions that reach outside the instance
     query: "SELECT * FROM url('http://example.com', CSV, 'a String')",
   });
   expect(urlFunction.status).not.toBe(200);
+
+  // Dictionary sources have their own outbound connectors and are not governed
+  // by the URL source privilege above. The user must not have CREATE DICTIONARY
+  // at all, so ClickHouse rejects this before attempting the HTTP request.
+  const httpDictionary = await clickhouse({
+    ...credentials,
+    query: `
+      CREATE DICTIONARY "${projectId}".outbound_dictionary (
+        id UInt64,
+        value String
+      )
+      PRIMARY KEY id
+      SOURCE(HTTP(URL 'http://example.com/data.csv' FORMAT 'CSV'))
+      LAYOUT(HASHED())
+      LIFETIME(0)
+    `,
+  });
+  expect(httpDictionary.status).not.toBe(200);
+  expect(httpDictionary.text).toContain("CREATE DICTIONARY");
 
   // Kafka has no matching source privilege in FORBIDDEN_SOURCES, so this only
   // fails when ClickHouse actually enforces the TABLE ENGINE revoke. The URL

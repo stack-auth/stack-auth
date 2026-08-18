@@ -24,11 +24,16 @@
 //   nothing stops a project from filling the disk shared with our analytics.
 // - No deprovisioning. Uninstalling the app leaves the database and user in
 //   place; there is no delete path yet.
-// - No plan-change reconciliation. Per-user settings (below) are a snapshot
-//   taken at provision/rotation time. Upgrading from team to growth does not
-//   raise the ClickHouse-side defaults until the password is rotated. The
-//   `/analytics/query` path is unaffected — it computes the timeout per
-//   request from the live entitlement.
+// - No downgrade enforcement yet. The entitlement gates provisioning and
+//   rotation, but an already-provisioned ClickHouse user remains active after
+//   the project loses the entitlement, including for direct connections. This
+//   is an explicit alpha tradeoff: a future plan-change reconciler must disable
+//   the ClickHouse user without deleting its database or customer data.
+// - No plan-change reconciliation for ClickHouse settings. Per-user settings
+//   (below) are a snapshot taken at provision/rotation time. Upgrading from
+//   team to growth does not raise the ClickHouse-side defaults until the
+//   password is rotated. The `/analytics/query` path is unaffected — it
+//   computes the timeout per request from the live entitlement.
 // - One database per project, not per branch. The database is named after the
 //   project id, so a second branch in the same project would collide; the
 //   Prisma model allows one row per tenancy and provisioning refuses when
@@ -63,6 +68,17 @@ const MAX_EXECUTION_TIME_SECONDS = Math.max(...Object.values(PLAN_LIMITS).map(p 
  * request) a direct connection can run anything it likes.
  */
 const MAX_MEMORY_USAGE_BYTES = 4_000_000_000;
+
+/**
+ * Aggregate memory ceiling across every query concurrently running as one
+ * warehouse user. Keep this equal to the per-query ceiling: concurrency may
+ * divide the budget, but can never multiply one customer's impact on the
+ * shared analytics instance.
+ */
+const MAX_MEMORY_USAGE_FOR_USER_BYTES = MAX_MEMORY_USAGE_BYTES;
+
+/** CPU/admission-control backstop for one customer's direct connections. */
+const MAX_CONCURRENT_QUERIES_FOR_USER = 10;
 
 /** Hourly quota per warehouse user. Generous — this is an abuse backstop, not a product limit. */
 const QUOTA_INTERVAL_HOURS = 1;
@@ -118,12 +134,15 @@ const FORBIDDEN_SOURCES = [
 /**
  * Privileges the warehouse user gets on its own database. Enough to use it as
  * a real warehouse — create and alter tables and views, insert, read, clean up
- * — and nothing outside that database.
+ * — and nothing outside that database. Dictionaries are deliberately omitted:
+ * their HTTP and database-backed sources initiate server-side connections but
+ * are not governed by the URL/S3/etc. source revokes below, which would turn
+ * CREATE DICTIONARY into an SSRF primitive on the shared ClickHouse instance.
  */
 const OWN_DATABASE_PRIVILEGES = [
-  "SELECT", "INSERT", "ALTER", "CREATE TABLE", "CREATE VIEW", "CREATE DICTIONARY",
-  "DROP TABLE", "DROP VIEW", "DROP DICTIONARY", "TRUNCATE", "OPTIMIZE",
-  "SHOW TABLES", "SHOW COLUMNS", "SHOW DICTIONARIES", "dictGet",
+  "SELECT", "INSERT", "ALTER", "CREATE TABLE", "CREATE VIEW",
+  "DROP TABLE", "DROP VIEW", "TRUNCATE", "OPTIMIZE",
+  "SHOW TABLES", "SHOW COLUMNS",
 ] as const;
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -312,7 +331,9 @@ async function applyWarehouseDdl(options: {
           SQL_project_id = '${tenancy.project.id}' CONST,
           SQL_branch_id = '${tenancy.branchId}' CONST,
           max_execution_time = ${timeoutSeconds} MAX ${MAX_EXECUTION_TIME_SECONDS},
-          max_memory_usage = ${MAX_MEMORY_USAGE_BYTES} MAX ${MAX_MEMORY_USAGE_BYTES}
+          max_memory_usage = ${MAX_MEMORY_USAGE_BYTES} MAX ${MAX_MEMORY_USAGE_BYTES},
+          max_memory_usage_for_user = ${MAX_MEMORY_USAGE_FOR_USER_BYTES} MAX ${MAX_MEMORY_USAGE_FOR_USER_BYTES},
+          max_concurrent_queries_for_user = ${MAX_CONCURRENT_QUERIES_FOR_USER} MAX ${MAX_CONCURRENT_QUERIES_FOR_USER}
       `,
       query_params: { password },
     });
