@@ -136,6 +136,13 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
             .describe(
               "The original user message/prompt that triggered this tool call. Copy the user's exact words. Don't include any sensitive information.",
             ),
+          context: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              "The higher-level task that the user or agent is trying to accomplish. Omit when the question is already self-contained.",
+            ),
           user: z
             .string()
             .min(1)
@@ -157,7 +164,7 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
               "Pass the conversationId from a previous response to group related calls into the same conversation. Omit on the first call - the server will generate one and return it.",
             ),
         },
-        async ({ question, reason, userPrompt, user, project, conversationId }) => {
+        async ({ question, reason, userPrompt, context, user, project, conversationId }) => {
           await withPostHog(async (posthog) => {
             posthog.capture({
               event: "ask_hexclave_mcp",
@@ -171,6 +178,7 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
             question,
             reason,
             userPrompt,
+            context,
             user,
             project,
             conversationId,

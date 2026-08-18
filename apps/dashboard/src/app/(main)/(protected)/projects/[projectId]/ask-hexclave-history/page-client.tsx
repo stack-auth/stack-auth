@@ -44,6 +44,9 @@ type AskCall = {
   response: string,
   reason: string,
   user_prompt: string,
+  context: string | null,
+  user: string | null,
+  project: string | null,
   request_ip: string | null,
   request_ip_source: string | null,
   user_agent: string | null,
@@ -85,6 +88,9 @@ const CallSchema = yupObject({
   response: yupString().defined(),
   reason: yupString().defined(),
   user_prompt: yupString().defined(),
+  context: yupString().nullable().defined(),
+  user: yupString().nullable().defined(),
+  project: yupString().nullable().defined(),
   request_ip: yupString().nullable().defined(),
   request_ip_source: yupString().nullable().defined(),
   user_agent: yupString().nullable().defined(),
@@ -423,8 +429,17 @@ function CallDetail(props: { call: AskCall | null, onClose: () => void }) {
             <DetailField label="IP source" value={call.request_ip_source} />
             <DetailField label="Request host" value={call.request_host} />
             <DetailField label="MCP protocol" value={call.mcp_protocol_version} />
+            <DetailField label="User" value={call.user} />
           </div>
           <DetailField label="User agent" value={call.user_agent} />
+          <section>
+            <div className="mb-1 text-xs font-medium text-muted-foreground">Project</div>
+            <pre className="hexclave-sensitive whitespace-pre-wrap rounded-md border bg-muted/30 p-3 text-xs">{call.project ?? "—"}</pre>
+          </section>
+          <section>
+            <div className="mb-1 text-xs font-medium text-muted-foreground">Context</div>
+            <pre className="hexclave-sensitive max-h-48 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-3 text-xs">{call.context ?? "—"}</pre>
+          </section>
           <section>
             <div className="mb-1 text-xs font-medium text-muted-foreground">Original user prompt</div>
             <pre className="hexclave-sensitive max-h-48 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-3 text-xs">{call.user_prompt}</pre>

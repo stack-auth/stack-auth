@@ -46,6 +46,11 @@ it("internal MCP endpoint should expose the Hexclave docs assistant tool", async
               "$schema": "http://json-schema.org/draft-07/schema#",
               "additionalProperties": false,
               "properties": {
+                "context": {
+                  "description": "The higher-level task that the user or agent is trying to accomplish. Omit when the question is already self-contained.",
+                  "minLength": 1,
+                  "type": "string",
+                },
                 "conversationId": {
                   "description": "Pass the conversationId from a previous response to group related calls into the same conversation. Omit on the first call - the server will generate one and return it.",
                   "type": "string",

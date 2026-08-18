@@ -60,6 +60,7 @@ export function buildAskHexclaveDiscordPayload(options: {
   response: string,
   reason: string,
   userPrompt: string,
+  context: string | null,
   user: string | null,
   project: string | null,
   requestMetadata: AskHexclaveRequestMetadata,
@@ -93,6 +94,7 @@ export function buildAskHexclaveDiscordPayload(options: {
       fields: [
         { name: "Reason", value: truncate(options.reason || "—", MAX_FIELD_LENGTH) },
         { name: "Original user prompt", value: truncate(options.userPrompt || "—", MAX_FIELD_LENGTH) },
+        { name: "Context", value: truncate(options.context ?? "—", MAX_FIELD_LENGTH) },
         { name: "User", value: truncate(options.user ?? "—", MAX_FIELD_LENGTH) },
         { name: "Project", value: truncate(options.project ?? "—", MAX_FIELD_LENGTH) },
         { name: "Transport", value: transportLabel, inline: true },
@@ -119,6 +121,7 @@ export async function sendAskHexclaveDiscordNotification(options: {
   response: string,
   reason: string,
   userPrompt: string,
+  context: string | null,
   user: string | null,
   project: string | null,
   requestMetadata: AskHexclaveRequestMetadata,

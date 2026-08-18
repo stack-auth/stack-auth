@@ -134,6 +134,7 @@ async function callUnifiedAiEndpoint(req: Request): Promise<Response> {
     question,
     reason: ASK_ROUTE_REASON,
     userPrompt,
+    context,
     user,
     project,
     conversationId,
