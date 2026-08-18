@@ -1,0 +1,18 @@
+---
+title: "Customer Types"
+description: "Bill users, teams, and custom external customers"
+---
+
+A **customer** is whoever owns a purchase. Hexclave supports three types:
+
+- **Users** - Individual user accounts. Users can manage their own purchases, billing, and invoices from the client SDK.
+- **Teams** - Team or organization accounts. Team admins can create checkouts, switch plans, and cancel subscriptions for their team.
+- **Custom customers** - External entities identified by an arbitrary string ID. Useful for integrations with external systems. Custom customers are managed only via the server SDK and do not support billing or invoices.
+
+## Where each method lives
+
+The full billing surface - [`createCheckoutUrl`](./checkout), [`useProducts`](./checkout#checking-what-a-customer-owns), [`useItem`](./items-and-entitlements), [`switchSubscription`](./subscriptions), [`useBilling` and `useInvoices`](./billing-and-invoices) - is available on both **user** and **team** objects.
+
+For **custom customers**, use the top-level `hexclaveServerApp` methods with `customCustomerId` (for example [`grantProduct`](./granting-products), `getItem`, and `listProducts`). Billing, invoices, and subscription switching are not available for custom customers.
+
+Every product declares a **customer type** when you [define it](./products-and-pricing#defining-products), which determines who can purchase it.
