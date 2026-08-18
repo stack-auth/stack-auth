@@ -91,6 +91,7 @@ export function validateGzipTarArtifactArchive(
       const safeMessages = new Set([
         "Invalid tarball: not a ustar archive",
         "Invalid tarball: header checksum mismatch",
+        "Invalid tarball: malformed octal header field",
         "Invalid tarball: missing end-of-archive marker",
         "Invalid tarball: only regular files and directories are supported",
         "Invalid tarball: directory entry with non-zero size",

@@ -10,6 +10,7 @@ describe("isInAppPath — javascript", () => {
     ["a nested dependency", "/srv/app/node_modules/react-dom/index.js", false],
     ["a webpack-internal module", "webpack-internal:///./src/app/page.tsx", false],
     ["a legacy webpack dependency marker", "webpack:///./~/react-proxy/modules/createPrototypeProxy.js", false],
+    ["a namespaced legacy webpack dependency marker", "webpack://app/./~/react-proxy/modules/createPrototypeProxy.js", false],
     ["a node builtin leaking into a browser stack", "node:internal/process/task_queues", false],
     ["the Next framework chunk", "https://app.example.com/_next/static/chunks/framework-2c79e2a64abdb08b.js", false],
     ["the Next framework chunk without an origin", "/_next/static/chunks/framework-2c79e2a64abdb08b.js", false],

@@ -509,7 +509,7 @@ async function applyMerge(
         COALESCE(SUM("timesSeen"), 0)::bigint AS "timesSeen",
         MIN("firstSeenAt") AS "firstSeenAt",
         MAX("lastSeenAt") AS "lastSeenAt",
-        MAX("countersTruncatedAt") AS "countersTruncatedAt"
+        MIN("countersTruncatedAt") AS "countersTruncatedAt"
       FROM losers
     ),
     primary_updated AS (

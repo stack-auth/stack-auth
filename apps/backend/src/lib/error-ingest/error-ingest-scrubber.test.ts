@@ -52,6 +52,16 @@ describe("scrubErrorIngestPayload", () => {
     expect(serialized).not.toContain("abc123");
   });
 
+  it("does not consume query or fragment at-signs as URL password text", () => {
+    const result = scrubErrorIngestPayload({
+      message: "redirect https://user:pass@example.test/callback?next=a@b#owner=c@d",
+    });
+
+    expect(result.value).toEqual({
+      message: "redirect https://[Filtered]@example.test/callback?next=a@b#owner=c@d",
+    });
+  });
+
   it("keeps the built-in drop policy authoritative over urlKeys overrides", () => {
     // A urlKeys override may only relax a plain field to a path-only URL
     // projection. Pointing it at a built-in sensitive key must not resurrect

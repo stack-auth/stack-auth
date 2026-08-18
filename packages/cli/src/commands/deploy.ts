@@ -293,9 +293,13 @@ async function uploadSource(uploadUrl: string, contentType: string, bytes: Uint8
     // bytes of a shared buffer.
     body: new Uint8Array(bytes).slice().buffer,
   });
-  // A content-addressed object already present in storage is the desired
-  // result of a retry after a completed PUT whose response was lost.
-  if (response.status === 412) return;
+  // Deployment upload keys are random rather than content-addressed, so a 412
+  // proves only that some caller populated this slot. Accepting it could deploy
+  // a different valid tarball uploaded through the same presigned URL.
+  if (response.status === 412) {
+    const responseBody = await response.text();
+    throw new CliError(`Source upload conflicted with an existing object (412 from object storage): ${responseBody.slice(0, 1000)}`);
+  }
   if (!response.ok) {
     const responseBody = await response.text();
     throw new CliError(`Source upload failed (${response.status} from object storage): ${responseBody.slice(0, 1000)}`);

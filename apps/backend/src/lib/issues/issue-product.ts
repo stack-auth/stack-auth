@@ -234,15 +234,22 @@ async function assertIssueExists(tx: PrismaClientTransaction, scope: IssueProduc
   if (issue === null) throw new IssueProductInputError("Issue was not found in the authenticated branch");
 }
 
-async function assertProjectUser(tx: PrismaClientTransaction, tenancy: Tenancy, userId: string, fieldName: string): Promise<void> {
+async function assertProjectUser(
+  tx: PrismaClientTransaction,
+  tenancy: Tenancy,
+  userId: string,
+  fieldName: string,
+  options: { allowInternalMirror?: boolean } = {},
+): Promise<void> {
   assertUuid(userId, fieldName);
+  const allowInternalMirror = options.allowInternalMirror ?? true;
   const rows = await tx.$queryRaw<{ projectUserId: string }[]>`
     SELECT "projectUserId"
     FROM "ProjectUser"
     WHERE "projectUserId" = ${userId}::uuid
       AND (
         "tenancyId" = ${tenancy.id}::uuid
-        OR ("mirroredProjectId" = 'internal' AND "mirroredBranchId" = ${DEFAULT_BRANCH_ID})
+        ${allowInternalMirror ? Prisma.sql`OR ("mirroredProjectId" = 'internal' AND "mirroredBranchId" = ${DEFAULT_BRANCH_ID})` : Prisma.empty}
       )
     ORDER BY CASE WHEN "tenancyId" = ${tenancy.id}::uuid THEN 0 ELSE 1 END
     LIMIT 1
@@ -258,8 +265,14 @@ async function assertProjectUser(tx: PrismaClientTransaction, tenancy: Tenancy, 
  * purpose. Kept here rather than duplicated so "is this a project user?" is
  * answered by exactly one query shape.
  */
-export async function assertIssueProjectUserInTransaction(tx: PrismaClientTransaction, tenancy: Tenancy, userId: string, fieldName: string): Promise<void> {
-  await assertProjectUser(tx, tenancy, userId, fieldName);
+export async function assertIssueProjectUserInTransaction(
+  tx: PrismaClientTransaction,
+  tenancy: Tenancy,
+  userId: string,
+  fieldName: string,
+  options: { allowInternalMirror?: boolean } = {},
+): Promise<void> {
+  await assertProjectUser(tx, tenancy, userId, fieldName, options);
 }
 
 /**
@@ -469,7 +482,7 @@ export async function setIssueOwner(options: IssueProductScope & {
   return await retryOnceOnUniqueConstraintRace(() => retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
     if (actorUserId !== null) await assertProjectUser(tx, options.tenancy, actorUserId, "actorUserId");
-    if (ownerUserId !== null) await assertProjectUser(tx, options.tenancy, ownerUserId, "owner.userId");
+    if (ownerUserId !== null) await assertProjectUser(tx, options.tenancy, ownerUserId, "owner.userId", { allowInternalMirror: false });
     if (ownerTeamId !== null) assertProjectOwnerTeam(options.tenancy, ownerTeamId, "owner.teamId");
     const ownerWhere = {
       tenancyId: options.tenancy.id,
@@ -512,7 +525,7 @@ export async function addIssueComment(options: IssueProductScope & {
   const prisma = await getPrismaClientForTenancy(options.tenancy);
   return await retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
-    await assertProjectUser(tx, options.tenancy, options.actorUserId, "actorUserId");
+    await assertProjectUser(tx, options.tenancy, options.actorUserId, "actorUserId", { allowInternalMirror: false });
     const comment = await tx.issueComment.upsert({
       where: {
         tenancyId_projectId_branchId_issueId_idempotencyKey: {
@@ -563,7 +576,7 @@ export async function setIssueSubscription(options: IssueProductScope & {
   return await retryOnceOnUniqueConstraintRace(() => retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
     if (actorUserId !== null) await assertProjectUser(tx, options.tenancy, actorUserId, "actorUserId");
-    if (subjectUserId !== null) await assertProjectUser(tx, options.tenancy, subjectUserId, "subject.id");
+    if (subjectUserId !== null) await assertProjectUser(tx, options.tenancy, subjectUserId, "subject.id", { allowInternalMirror: false });
     if (subjectTeamId !== null) assertProjectOwnerTeam(options.tenancy, subjectTeamId, "subject.id");
     const subscriptionWhere = {
       tenancyId: options.tenancy.id, projectId: options.tenancy.project.id, branchId: options.tenancy.branchId,
@@ -602,7 +615,7 @@ export async function setIssueBookmark(options: IssueProductScope & {
   const prisma = await getPrismaClientForTenancy(options.tenancy);
   return await retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
-    await assertProjectUser(tx, options.tenancy, options.userId, "userId");
+    await assertProjectUser(tx, options.tenancy, options.userId, "userId", { allowInternalMirror: false });
     if (actorUserId !== null) await assertProjectUser(tx, options.tenancy, actorUserId, "actorUserId");
     // Atomic create-if-absent / delete-if-present, with `changed` derived from
     // the affected-row count. A read-then-decide-then-write here would let two

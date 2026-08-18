@@ -290,6 +290,32 @@ describe("Sentry-style error ingest envelope contract", () => {
     expect(parsed.items[0]?.transaction).toBeUndefined();
   });
 
+  it("rejects all-zero W3C transaction and child identities", () => {
+    const eventId = "99999999999999999999999999999999";
+    const parse = (traceId: string, spanId: string, spans: unknown[] = []) => parseErrorIngestEnvelope(envelope(
+      { event_id: eventId },
+      [{
+        header: { type: "transaction" },
+        payload: json({
+          event_id: eventId,
+          transaction: "/checkout",
+          start_timestamp: 1_754_444_800,
+          timestamp: 1_754_444_801,
+          contexts: { trace: { trace_id: traceId, span_id: spanId } },
+          spans,
+        }),
+      }],
+    ));
+
+    expect(parse("0".repeat(32), "7777777777777777").items[0]?.outcome).toEqual(expect.objectContaining({ status: "rejected", reason: "invalid" }));
+    expect(parse("66666666666666666666666666666666", "7777777777777777", [{
+      trace_id: "66666666666666666666666666666666",
+      span_id: "0".repeat(16),
+      start_timestamp: 1_754_444_800,
+      timestamp: 1_754_444_801,
+    }]).items[0]?.outcome).toEqual(expect.objectContaining({ status: "rejected", reason: "invalid" }));
+  });
+
   it("scrubs JSON and source-map-like attachments before the private callback", () => {
     const eventId = "11111111111111111111111111111111";
     const sourceMap = json({

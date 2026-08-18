@@ -524,7 +524,10 @@ export class JavaScriptSymbolicationService {
     }
     let bytes: Uint8Array | null;
     try {
-      bytes = await this.storage.readObject(key);
+      // Preserve the version observed by the size check. Without the ETag,
+      // storage re-HEADs the key and a replacement can pass the new size
+      // check before the old artifact's read limit is applied.
+      bytes = await this.storage.readObject(key, info.eTag);
     } catch (error) {
       if (!(error instanceof ArtifactServiceError) || error.code !== "storage_unavailable") throw error;
       return { ok: false, diagnostic: artifactDiagnostic("artifact_storage_unavailable", "Artifact storage is unavailable.", lookup.artifact.debugId, lookup.artifact.codeFile) };

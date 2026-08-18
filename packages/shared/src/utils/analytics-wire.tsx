@@ -270,7 +270,9 @@ export const ERROR_MAX_DEBUG_IMAGES_BYTES = 4_096;
  * and edge runtimes, so this keeps the module dependency-free.
  */
 export function truncateUtf8Bytes(value: string, maxBytes: number): string {
-  if (maxBytes <= 0 || value === "") return "";
+  // NaN makes every `bytes + width > maxBytes` comparison false, which would
+  // otherwise let an invalid budget bypass the cap and return the full value.
+  if (Number.isNaN(maxBytes) || maxBytes <= 0 || value === "") return "";
 
   // Stop as soon as the prefix cannot fit. Encoding the entire public message
   // before truncating defeats the cap on exactly the oversized-input path this

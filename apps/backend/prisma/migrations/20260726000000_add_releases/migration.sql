@@ -35,6 +35,11 @@ DO $$
 DECLARE
   invalid_index_oid oid;
 BEGIN
+  -- This block runs outside the migration transaction so the invalid-index
+  -- cleanup can commit independently. Reapply the transaction-local timeout
+  -- here; otherwise a crashed-attempt retry can wait indefinitely for the
+  -- ACCESS EXCLUSIVE lock this DROP INDEX requires.
+  PERFORM set_config('lock_timeout', '2s', true);
   SELECT i.indexrelid INTO invalid_index_oid
   FROM pg_index i
   JOIN pg_class c ON c.oid = i.indexrelid

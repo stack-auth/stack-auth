@@ -69,8 +69,16 @@ function mergeTrustedIdentity(
     };
   }
   return {
-    userId: current.userId ?? incoming.userId,
-    refreshTokenId: current.refreshTokenId ?? incoming.refreshTokenId,
+    userId: current.userId ?? (
+      current.refreshTokenId === null || incoming.refreshTokenId === current.refreshTokenId
+        ? incoming.userId
+        : null
+    ),
+    refreshTokenId: current.refreshTokenId ?? (
+      current.userId === null || incoming.userId === current.userId
+        ? incoming.refreshTokenId
+        : null
+    ),
   };
 }
 

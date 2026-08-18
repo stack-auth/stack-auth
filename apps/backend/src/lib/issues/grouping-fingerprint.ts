@@ -142,7 +142,13 @@ export function resolveGroupingFingerprint(
     resolvedValues.push(resolveToken(name, token, input, frames));
   }
 
-  if (FINGERPRINT_TEXT_ENCODER.encode(JSON.stringify(resolvedValues)).byteLength > MAX_GROUPING_FINGERPRINT_PROVENANCE_BYTES) {
+  const durableFingerprint = {
+    type,
+    source: type === "default" ? "default" : "event",
+    tokens,
+    resolved_tokens: resolvedValues,
+  };
+  if (FINGERPRINT_TEXT_ENCODER.encode(JSON.stringify(durableFingerprint)).byteLength > MAX_GROUPING_FINGERPRINT_PROVENANCE_BYTES) {
     // The occurrence projection has the same 64 KiB durable read cap. Hashing
     // a value that cannot be returned as provenance creates an issue whose
     // grouping decision cannot be explained, so degrade to the default owner
@@ -151,7 +157,7 @@ export function resolveGroupingFingerprint(
       resolvedValues: [],
       provenance: {
         type: "default",
-        source: "default",
+        source: "degraded",
         tokens: [],
         resolvedTokens: [],
       },

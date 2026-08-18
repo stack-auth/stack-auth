@@ -7,6 +7,7 @@ import {
   getSpanDetailQuery,
   parseEventRow,
   parseTraceLinkRow,
+  parseTraceLinkRows,
   parseUniqueTraceRootRows,
   parseUniqueSpanRows,
   SPAN_DETAIL_COLUMNS,
@@ -200,6 +201,19 @@ describe("analytics trace row parsing", () => {
       linkedBranchId: "main",
       targetIsSameScope: true,
     });
+  });
+
+  it("filters malformed links before applying the display cap", () => {
+    expect(parseTraceLinkRows([
+      {},
+      {
+        owner_span_id: "1111111111111111",
+        linked_trace_id: "22222222222222222222222222222222",
+        linked_span_id: "3333333333333333",
+        linked_project_id: "internal",
+        linked_branch_id: "main",
+      },
+    ])).toHaveLength(1);
   });
 
   it("selects the enclosing span and page-view correlation on events, not an ancestry array", () => {

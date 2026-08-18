@@ -17,6 +17,8 @@ import { dualWriteLegacyEvents } from "./legacy-telemetry-dual-write";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 import { resolveCustomerRequestObservability } from "./customer-request-observability";
 
+let hasReportedMissingRequestIpContext = false;
+
 export const endUserIpInfoSchema = yupObject({
   ip: yupString().defined(),
   isTrusted: yupBoolean().defined(),
@@ -335,7 +337,14 @@ export async function logEvent<T extends EventType[]>(
     if (!(error instanceof Error) || error.message !== "Backend request context is only available while handling a backend request") {
       throw error;
     }
-    captureError("events:request-ip-info-outside-request", error);
+    // This is an expected path for detached internal event producers. The
+    // normal error sink flushes through Vercel's waitUntil, which is itself
+    // unavailable here; report it once per process without re-entering that
+    // sink and turning a harmless enrichment miss into a recursive error.
+    if (!hasReportedMissingRequestIpContext) {
+      hasReportedMissingRequestIpContext = true;
+      console.warn("Event logging skipped request IP enrichment outside a backend request context", error);
+    }
   }
 
   // rest is no more dynamic APIs so we can run it asynchronously

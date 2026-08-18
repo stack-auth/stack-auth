@@ -199,7 +199,12 @@ export function createOtelSpanFacade(options: {
     // the registration failure for the caller.
     ended = true;
     otelSpan.end();
-    options.capabilities.onEnded?.(facade);
+    try {
+      options.capabilities.onEnded?.(facade);
+    } catch {
+      // Cleanup must not replace the registration failure that caused span
+      // creation to fail; callers need the original error for diagnosis.
+    }
     throw error;
   }
 

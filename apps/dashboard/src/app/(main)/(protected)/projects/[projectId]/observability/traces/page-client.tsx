@@ -546,6 +546,15 @@ export function parseTraceLinkRow(row: Record<string, unknown>): TraceLink | nul
   };
 }
 
+export function parseTraceLinkRows(rows: Record<string, unknown>[]): TraceLink[] {
+  // Apply the cap after parsing: malformed rows must not consume a display
+  // slot that the query deliberately fetched to surface the next valid link.
+  return rows
+    .map(parseTraceLinkRow)
+    .filter((link): link is TraceLink => link != null)
+    .slice(0, SPAN_LINKS_CAP);
+}
+
 type TraceRootSpan = SpanInput & {
   activityMs: number,
 };
@@ -810,9 +819,7 @@ export default function PageClient() {
       }
       setSelectedSpans(spans);
       setSelectedEvents(events);
-      setSelectedLinks(linksResponse.result.slice(0, SPAN_LINKS_CAP)
-        .map(parseTraceLinkRow)
-        .filter((link): link is TraceLink => link != null));
+      setSelectedLinks(parseTraceLinkRows(linksResponse.result));
       setTraceResultWasCapped(spansResponse.result.length >= TRACE_SPANS_CAP);
       setLinksResultWasCapped(linksResponse.result.length > SPAN_LINKS_CAP);
       setNowMs(Date.now());

@@ -300,6 +300,10 @@ export async function queryOtlpMetrics(options: {
   client?: ClickHouseClient,
 }): Promise<OtlpMetricQueryResponse> {
   const hours = parseOtlpMetricQueryHours(options.request.hours);
+  const requestedType = parseOtlpMetricQueryType(options.request.metricType);
+  if (requestedType !== null && options.request.metricName == null) {
+    throw new StatusError(StatusError.BadRequest, "metric_type requires metric_name");
+  }
   const client = options.client ?? getClickhouseAdminClientForMetrics();
   const query_params = {
     projectId: options.tenancy.project.id,
@@ -312,10 +316,6 @@ export async function queryOtlpMetrics(options: {
     format: "JSONEachRow",
   });
   const catalog = parseOtlpMetricCatalogRows(await catalogResult.json<RawCatalogRow>());
-  const requestedType = parseOtlpMetricQueryType(options.request.metricType);
-  if (requestedType !== null && options.request.metricName == null) {
-    throw new StatusError(StatusError.BadRequest, "metric_type requires metric_name");
-  }
   let selected = options.request.metricName == null
     ? catalog[0]
     : catalog.find((entry) => entry.metric_name === options.request.metricName

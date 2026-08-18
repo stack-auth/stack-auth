@@ -13,7 +13,11 @@ describe("normalizeUrlPath", () => {
   });
 
   it("normalizes the shortest URL-safe base64 token accepted by the contract", () => {
-    expect(normalizeUrlPath("/api/Abcdefghijklmnop/details")).toBe("/api/:id/details");
+    expect(normalizeUrlPath("/api/Abcdefghijklmnop1/details")).toBe("/api/:id/details");
     expect(normalizeUrlPath("/api/auth/details")).toBe("/api/auth/details");
+  });
+
+  it("keeps a static 16-character word literal when it has no digits", () => {
+    expect(normalizeUrlPath("/docs/abcdefghijklmnop/details")).toBe("/docs/abcdefghijklmnop/details");
   });
 });

@@ -5,6 +5,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { IssueMergeRequestSchema, IssueMergeResponseSchema } from "@hexclave/shared/dist/interface/admin-issues";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { mapWithConcurrency } from "@hexclave/shared/dist/utils/promises";
 import { resolveIssueIdentity } from "@/lib/issues/issue-identity";
 import { createHash } from "node:crypto";
 
@@ -47,20 +48,29 @@ export const POST = createSmartRouteHandler({
       tenancy: auth.tenancy,
       issueIds: body.issue_ids,
     });
-    const mergeEventId = createHash("sha256")
-      .update(JSON.stringify([primaryIssueId, [...new Set(body.issue_ids)].sort()]))
-      .digest("hex");
     // A merge retry resolves to one target and therefore returns no newly
     // merged ids. If the requested set contains a redirect, that no-op is the
     // durable proof that a previous request completed the merge. Re-enqueue
     // the same lifecycle event with the same id so a send that failed after
     // the provider accepted it is retried without creating a duplicate.
-    const retryingCompletedMerge = mergedIssueIds.length === 0 && (await Promise.all(
-      body.issue_ids.map(async (issueId) => {
-        const identity = await resolveIssueIdentity(auth.tenancy, issueId);
-        return identity !== null && identity.redirectedFromIssueId !== null;
-      }),
-    )).some(Boolean);
+    const retryIdentities = mergedIssueIds.length === 0
+      ? await mapWithConcurrency(body.issue_ids, 8, (issueId) => resolveIssueIdentity(auth.tenancy, issueId, { consistency: "primary" }))
+      : [];
+    const retryingCompletedMerge = retryIdentities.length > 0
+      && retryIdentities.every((identity) => identity !== null && identity.issueId === primaryIssueId)
+      && retryIdentities.some((identity) => identity !== null && identity.redirectedFromIssueId !== null);
+    // Canonicalize a completed retry to the surviving issue plus the original
+    // merged-away ids. This makes a retry containing only a subset of the
+    // redirects reuse the same event id as the original merge.
+    const mergeEventIssueIds = retryingCompletedMerge
+      ? [primaryIssueId, ...retryIdentities.map((identity) => {
+        if (identity === null) throw new Error("Completed merge retry proof contained a missing issue identity");
+        return identity.redirectedFromIssueId ?? identity.issueId;
+      })]
+      : [primaryIssueId, ...body.issue_ids];
+    const mergeEventId = createHash("sha256")
+      .update(JSON.stringify([...new Set(mergeEventIssueIds)].sort()))
+      .digest("hex");
     // Announced against the SURVIVING issue: the merged-away ids no longer
     // resolve to a row, so a consumer receiving one of those could not look it
     // up. A true no-op has no redirect and stays silent; a retry of a completed

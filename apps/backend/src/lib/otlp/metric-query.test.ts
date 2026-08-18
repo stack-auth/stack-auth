@@ -84,12 +84,13 @@ describe("OTLP metric query contract", () => {
   });
 
   it("requires a metric name when selecting by metric type", async () => {
-    const { client } = fakeCatalogClient([{ rows: [] }]);
+    const { client, executed } = fakeCatalogClient([]);
     await expect(queryOtlpMetrics({
       tenancy: { project: { id: "p" }, branchId: "b" },
       request: { metricType: "histogram" },
       client,
     })).rejects.toThrow("metric_type requires metric_name");
+    expect(executed).toHaveLength(0);
   });
 
   it("scopes the targeted catalog-entry lookup by name and optionally type", () => {

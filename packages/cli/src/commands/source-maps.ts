@@ -824,18 +824,21 @@ export function prepareArtifacts(candidates: readonly SourceMapArtifactCandidate
     let mapText: string;
     let mapDir: string;
     if (candidate.sourceMapPath !== null) {
+      let realMapPath: string;
       try {
-        // Open the validated path before checking its real path again. The
-        // descriptor pins the bytes we read even if a local build watcher swaps
-        // the symlink after this check; reading the pathname directly would
-        // reopen the attacker-controlled target during that window.
-        const mapFd = fs.openSync(candidate.sourceMapPath, "r");
+        // Resolve and validate the canonical path before opening it. Opening
+        // the original symlink first lets a swap between openSync and
+        // realpathSync validate a different target from the bytes we read.
+        realMapPath = fs.realpathSync(candidate.sourceMapPath);
+        const realScanDir = fs.realpathSync(candidate.scanDir);
+        if (!isInside(realMapPath, realScanDir)) {
+          throw new CliError(`Source map ${candidate.sourceMapPath} is outside the scanned build directory.`);
+        }
+        // The final-component guard closes the remaining replacement window:
+        // a watcher may replace the canonical path with a symlink after
+        // realpathSync, but must not make this read escape the validated tree.
+        const mapFd = fs.openSync(realMapPath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
         try {
-          const realMapPath = fs.realpathSync(candidate.sourceMapPath);
-          const realScanDir = fs.realpathSync(candidate.scanDir);
-          if (!isInside(realMapPath, realScanDir)) {
-            throw new CliError(`Source map ${candidate.sourceMapPath} is outside the scanned build directory.`);
-          }
           mapText = fs.readFileSync(mapFd, "utf-8");
         } finally {
           fs.closeSync(mapFd);
@@ -843,7 +846,7 @@ export function prepareArtifacts(candidates: readonly SourceMapArtifactCandidate
       } catch (error) {
         throw new CliError(`Could not read source map ${candidate.sourceMapPath}: ${error instanceof Error ? error.message : String(error)}`);
       }
-      mapDir = path.dirname(candidate.sourceMapPath);
+      mapDir = path.dirname(realMapPath);
     } else {
       const inline = readInlineSourceMap(source);
       if (inline === null) {

@@ -346,7 +346,7 @@ export async function assignIssue(options: IssueScope & {
     // mutations) so a user deleted concurrently cannot slip through; throws
     // `IssueProductInputError`, which the action routes map to 400.
     if (options.assigneeUserId !== null) {
-      await assertIssueProjectUserInTransaction(tx, scope.tenancy, options.assigneeUserId, "assigneeUserId");
+      await assertIssueProjectUserInTransaction(tx, scope.tenancy, options.assigneeUserId, "assigneeUserId", { allowInternalMirror: false });
     }
     if (actorUserId !== null) {
       await assertIssueProjectUserInTransaction(tx, scope.tenancy, actorUserId, "actorUserId");
@@ -479,7 +479,7 @@ export async function transitionIssueStatus(options: IssueScope & {
       issueId: options.issueId,
       event: transition.current.status,
       now: changedAt,
-      eventId: `${options.issueId}:${transition.current.status}:${actionId}`,
+      eventId: `${options.issueId}.${transition.current.status}.${changedAt.getTime()}`,
     }));
   }
   return transition;

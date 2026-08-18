@@ -134,6 +134,30 @@ describe("emitHexclaveOtelLog", () => {
     }]);
   });
 
+  it("omits undefined object values and writes null for undefined array values", async () => {
+    const exporter = new InMemoryLogRecordExporter();
+    const provider = new LoggerProvider({ processors: [new SimpleLogRecordProcessor({ exporter })] });
+    providers.push(provider);
+    logs.setGlobalLoggerProvider(provider);
+    const sparse: unknown[] = [];
+    sparse[1] = undefined;
+
+    emitHexclaveOtelLog({
+      message: "undefined values",
+      level: "info",
+      data: {
+        omitted: { toJSON: () => undefined },
+        values: [undefined, ...sparse, { toJSON: () => undefined }],
+      },
+      origin: "logger",
+    }, "test-version");
+    await provider.forceFlush();
+
+    expect(exporter.getFinishedLogRecords()[0]?.attributes["hexclave.data"]).toEqual({
+      values: [null, null, null, null],
+    });
+  });
+
   it("passes each property's JSON key to toJSON", async () => {
     const exporter = new InMemoryLogRecordExporter();
     const provider = new LoggerProvider({ processors: [new SimpleLogRecordProcessor({ exporter })] });

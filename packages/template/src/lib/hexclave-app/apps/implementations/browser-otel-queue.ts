@@ -51,9 +51,9 @@ export type BrowserOtlpOfflineQueue = {
 
 const AUTH_GENERATION_KEY = "auth-generation";
 const QUEUE_BYTES_KEY = "queue-bytes";
-// Version 2 creates every signal store in a custom database. Version 1 used a
-// single literal custom dbName for all signals, so upgrading that database must
-// preserve its existing batches while adding the stores for the other signals.
+// Version 2 adds the stores for every signal to whichever database is opened.
+// Keeping the version bump also upgrades older per-signal databases without
+// changing their existing queue contents.
 const DATABASE_VERSION = 2;
 
 function normalizeQueueNumber(value: unknown, fallback: number): number {
@@ -224,8 +224,12 @@ function openDatabase(options: BrowserOtlpOfflineQueueOptions): Promise<IDBDatab
       database.onversionchange = () => database.close();
       resolve(database);
     };
+    // A previous SDK instance in another tab may still hold the old database
+    // version open. Do not reject here: IndexedDB keeps the request pending and
+    // fires `onsuccess` after that connection closes, which is the safe retry
+    // path. Leaving `onblocked` unset preserves that behavior; the caller's
+    // normal operation deadline remains the bound.
     request.onerror = () => reject(persistenceError("open", request.error));
-    request.onblocked = () => reject(new BrowserOtlpQueuePersistenceError("IndexedDB open was blocked by another connection"));
   });
 }
 

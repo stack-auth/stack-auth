@@ -66,7 +66,7 @@ const PRIVATE_KEY_PATTERN = /-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^
 const JWT_PATTERN = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
 // The scheme is optional so protocol-relative references (`//user:pass@host`)
 // lose their userinfo credentials just like absolute URLs.
-const URL_AUTH_PATTERN = /((?:[a-z][a-z\d+.-]*:)?\/\/)(?:[^/@\s:]+):(?:[^/\s]+)@/gi;
+const URL_AUTH_PATTERN = /((?:[a-z][a-z\d+.-]*:)?\/\/)(?:[^/@\s:]+):(?:[^/\s?#]+)@/gi;
 // The optional quote around the key (backreference \2) covers serialized JSON
 // embedded in message strings (`{"password":"..."}`), which the bare-key form
 // cannot reach because the closing key quote sits between the key and the colon.

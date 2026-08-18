@@ -78,5 +78,10 @@ describe("artifact archive safety", () => {
     recomputeTarHeaderChecksum(tar);
     expectInvalidArchive(() => validateGzipTarArtifactArchive(gzipSync(tar)));
     expect(() => validateGzipTarArtifactArchive(gzipSync(tar))).toThrowError(/only regular files and directories/u);
+
+    const malformedOctal = createTar([{ path: "static/chunk.js", data: new TextEncoder().encode("bundle") }]);
+    malformedOctal[124] = "x".charCodeAt(0);
+    recomputeTarHeaderChecksum(malformedOctal);
+    expect(() => validateGzipTarArtifactArchive(gzipSync(malformedOctal))).toThrowError(/malformed octal header field/u);
   });
 });

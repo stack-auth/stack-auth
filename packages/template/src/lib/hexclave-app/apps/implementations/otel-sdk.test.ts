@@ -95,6 +95,38 @@ describe("Hexclave managed OTel SDK", () => {
     expect(prismaAgain.enable).not.toHaveBeenCalled();
   });
 
+  it("keeps successful instrumentation registrations marked when a later one fails", () => {
+    const fakeInstrumentation = (name: string, enable: () => void = () => {}) => ({
+      instrumentationName: name,
+      instrumentationVersion: "1.0.0",
+      enable: vi.fn(enable),
+      disable: vi.fn(),
+      setTracerProvider: vi.fn(),
+      setMeterProvider: vi.fn(),
+      setConfig: vi.fn(),
+      getConfig: vi.fn(() => ({})),
+    });
+    const options = {
+      analyticsBaseUrl: "http://127.0.0.1:8102",
+      projectId: "project",
+      secretServerKey: "secret",
+      clientVersion: "test",
+      traceSampleRate: 1,
+      resource: { serviceName: "checkout" },
+    };
+    registerManagedOtel(options);
+    const first = fakeInstrumentation("first");
+    const second = fakeInstrumentation("second", () => {
+      throw new Error("second instrumentation failed");
+    });
+
+    expect(() => registerManagedOtel({ ...options, instrumentations: [first, second] })).toThrow("second instrumentation failed");
+
+    const firstAgain = fakeInstrumentation("first");
+    registerManagedOtel({ ...options, instrumentations: [firstAgain] });
+    expect(firstAgain.enable).not.toHaveBeenCalled();
+  });
+
   it("still rejects a different project in the same process", () => {
     const options = {
       analyticsBaseUrl: "http://127.0.0.1:8102",

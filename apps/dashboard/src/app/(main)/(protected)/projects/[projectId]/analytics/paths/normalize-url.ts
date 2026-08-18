@@ -21,7 +21,7 @@ function isLikelyDynamicSegment(segment: string): boolean {
 
   // The regex's minimum is long enough to avoid ordinary words such as `api`
   // and `auth`, while keeping the runtime check aligned with the contract.
-  if (BASE64_TOKEN_REGEX.test(segment)) return true;
+  if (/\d/u.test(segment) && BASE64_TOKEN_REGEX.test(segment)) return true;
 
   return false;
 }

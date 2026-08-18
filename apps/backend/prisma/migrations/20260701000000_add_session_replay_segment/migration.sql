@@ -8,24 +8,24 @@
 -- no row. That keeps this migration O(1) on a table with millions of chunks, and
 -- the aggregate is bounded by one replay's chunk count.
 --
--- The table and each foreign key are separate outside-transaction statements.
--- PostgreSQL holds the referenced-table lock until the statement transaction
--- commits, so keeping both FKs inside the migration transaction would extend
--- the first lock through every later statement and the bookkeeping insert.
+-- The table and each foreign key are separate statements in the migration
+-- transaction. Keeping them atomic is important: the migration runner holds
+-- its advisory-lock transaction while applying the file, and an outside-
+-- transaction statement would need a second pool connection that can deadlock
+-- behind concurrent migration waiters.
 --
 -- No secondary indexes: both cascade paths ((tenancyId, sessionReplayId) from
 -- SessionReplay and (tenancyId) from Tenancy) are prefixes of the primary key,
 -- as is the upsert's conflict target.
 
 -- The FK adds below take a brief SHARE ROW EXCLUSIVE lock on the hot referenced
--- tables (SessionReplay, Tenancy). Each DO block sets a local timeout and runs
--- outside the bookkeeping transaction, so the lock is released immediately
--- after that one constraint is installed.
+-- tables (SessionReplay, Tenancy). Each DO block sets a local timeout; if a
+-- lock cannot be acquired, the whole migration rolls back instead of leaving
+-- a table committed without its constraints.
 
 -- CreateTable
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
--- RUN_OUTSIDE_TRANSACTION_SENTINEL
 CREATE TABLE IF NOT EXISTS /* SCHEMA_NAME_SENTINEL */."SessionReplaySegment" (
     "id" TEXT NOT NULL,
     "tenancyId" UUID NOT NULL,
@@ -41,7 +41,6 @@ CREATE TABLE IF NOT EXISTS /* SCHEMA_NAME_SENTINEL */."SessionReplaySegment" (
 -- AddForeignKey
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
--- RUN_OUTSIDE_TRANSACTION_SENTINEL
 DO $$
 BEGIN
   PERFORM set_config('lock_timeout', '2s', true);
@@ -59,7 +58,6 @@ $$;
 -- AddForeignKey
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
--- RUN_OUTSIDE_TRANSACTION_SENTINEL
 DO $$
 BEGIN
   PERFORM set_config('lock_timeout', '2s', true);

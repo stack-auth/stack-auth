@@ -273,13 +273,16 @@ export function registerManagedOtel(options: ManagedOtelOptions): ManagedOtelReg
       return true;
     });
     if (missing.length === 0) return;
-    instrumentationDisposers.push(registerInstrumentations({
-      instrumentations: missing,
-      tracerProvider: provider,
-    }));
-    // Only mark names after registration succeeds. A failed registration must
-    // remain retryable instead of permanently suppressing the instrumentation.
-    for (const instrumentation of missing) installedInstrumentationNames.add(instrumentation.instrumentationName);
+    // Register one at a time so a failure after an earlier enable cannot leave
+    // an enabled instrumentation unmarked. A later HMR retry must skip only the
+    // instrumentations that actually succeeded, or it will double-patch them.
+    for (const instrumentation of missing) {
+      instrumentationDisposers.push(registerInstrumentations({
+        instrumentations: [instrumentation],
+        tracerProvider: provider,
+      }));
+      installedInstrumentationNames.add(instrumentation.instrumentationName);
+    }
   };
   installInstrumentations([httpInstrumentation, ...options.instrumentations ?? []]);
   const value: ManagedOtelRegistration = {

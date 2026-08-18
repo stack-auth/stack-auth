@@ -243,9 +243,8 @@ export type HexclaveBrowserOtelExporterOptions = {
 
 export type BrowserOtlpOfflineQueueOptions = {
   /**
-   * IndexedDB database name. The default uses one database per signal; a
-   * configured name remains the legacy shared database name so queued batches
-   * written by older SDK versions remain readable after upgrade.
+   * IndexedDB database name prefix. Each signal stores its queue in its own
+   * `${dbName}-${signal}` database, preserving the naming used by older SDKs.
    */
   dbName?: string,
   maxQueueSize?: number,
@@ -379,10 +378,9 @@ function queueOptionsForExporter(options: HexclaveBrowserOtelExporterOptions, si
 } {
   const projectKey = encodeURIComponent(options.projectId);
   return {
-    // Custom names were literal database names before signal suffixes were
-    // introduced. Keep that name so old queued batches are drained; the queue
-    // schema upgrade creates all signal stores in the shared database.
-    dbName: options.offlineQueue?.dbName ?? `hexclave-otlp-offline-${projectKey}-${signal}`,
+    // Keep custom names as a prefix so upgrades continue reading the existing
+    // per-signal databases instead of silently starting a fresh queue.
+    dbName: `${options.offlineQueue?.dbName ?? `hexclave-otlp-offline-${projectKey}`}-${signal}`,
     storeName: `batches-${signal}`,
     maxQueueSize: normalizedPositiveInteger(options.offlineQueue?.maxQueueSize, OTLP_OFFLINE_QUEUE_MAX_SIZE),
     maxQueueBytes: normalizedPositiveInteger(options.offlineQueue?.maxQueueBytes, OTLP_OFFLINE_QUEUE_MAX_BYTES),

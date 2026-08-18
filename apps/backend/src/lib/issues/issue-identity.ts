@@ -3,7 +3,7 @@ import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
-const ISSUE_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const ISSUE_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 function isIssueUuid(value: string): boolean {
   return ISSUE_UUID_PATTERN.test(value);
@@ -86,20 +86,27 @@ export type ResolvedIssueIdentity = {
  * rather than a state to traverse, and walking it would hide that (or, for an
  * accidental cycle, hang the request).
  *
- * All three lookups go through `$replica()`: identity resolution is read-only,
+ * Ordinary lookups go through `$replica()`: identity resolution is read-only,
  * and every mutation that follows re-checks the canonical id against the
- * primary in its own `WHERE tenancyId/id` clause, so a stale replica can at
- * worst produce a not-found or a no-op, never a cross-issue write. (The
- * internal detail route used to read the primary here; that was an accident of
- * duplication, not a consistency requirement.)
+ * primary in its own `WHERE tenancyId/id` clause. Callers that use the result as
+ * read-after-write proof can request a primary read explicitly.
  */
-export async function resolveIssueIdentity(tenancy: Tenancy, rawId: string): Promise<ResolvedIssueIdentity | null> {
+export async function resolveIssueIdentity(
+  tenancy: Tenancy,
+  rawId: string,
+  options: { consistency?: "replica" | "primary" } = {},
+): Promise<ResolvedIssueIdentity | null> {
   if (!isValidShortId(rawId) && !isIssueUuid(rawId)) {
     throw new StatusError(StatusError.BadRequest, "issue_id must be a UUID or a numeric short id");
   }
 
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const directRows = await prisma.$replica().$queryRaw<{ id: string }[]>(Prisma.sql`
+  // Merge retries run immediately after a write and use the result as proof
+  // that a specific lifecycle event already committed. A replica can lag and
+  // report the old live issue instead, so that proof must opt into the primary.
+  // All ordinary identity lookups remain replica-routed by default.
+  const readClient = options.consistency === "primary" ? prisma : prisma.$replica();
+  const directRows = await readClient.$queryRaw<{ id: string }[]>(Prisma.sql`
     SELECT i."id"
     FROM "Issue" i
     WHERE i."tenancyId" = ${tenancy.id}::uuid
@@ -109,7 +116,7 @@ export async function resolveIssueIdentity(tenancy: Tenancy, rawId: string): Pro
   const direct = directRows.at(0);
   if (direct !== undefined) return { issueId: direct.id, redirectedFromIssueId: null };
 
-  const redirectRows = await prisma.$replica().$queryRaw<{ fromIssueId: string, toIssueId: string }[]>(Prisma.sql`
+  const redirectRows = await readClient.$queryRaw<{ fromIssueId: string, toIssueId: string }[]>(Prisma.sql`
     SELECT "fromIssueId", "toIssueId"
     FROM "IssueRedirect"
     WHERE "tenancyId" = ${tenancy.id}::uuid
@@ -121,7 +128,7 @@ export async function resolveIssueIdentity(tenancy: Tenancy, rawId: string): Pro
 
   // The one explicit hop: verify the redirect target actually exists rather
   // than trusting the redirect row (the survivor may itself have been deleted).
-  const targetRows = await prisma.$replica().$queryRaw<{ id: string }[]>(Prisma.sql`
+  const targetRows = await readClient.$queryRaw<{ id: string }[]>(Prisma.sql`
     SELECT i."id"
     FROM "Issue" i
     WHERE i."tenancyId" = ${tenancy.id}::uuid

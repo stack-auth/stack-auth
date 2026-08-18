@@ -17,15 +17,20 @@ function objectEntriesToAnyValueMap(value: object): AnyValueMap {
     // Match JSON.stringify: enumerable function and undefined properties are
     // omitted from objects, rather than becoming an OTel `undefined` value.
     if (typeof child === "function" || child === undefined) continue;
-    result[key] = toOtelAnyValue(child, key);
+    const converted = toOtelAnyValue(child, key);
+    if (converted !== undefined) result[key] = converted;
   }
   return result;
 }
 
-function toOtelAnyValue(value: unknown, key = ""): AnyValue {
+function toOtelAnyValue(value: unknown, key = ""): AnyValue | undefined {
   if (value === null || value === undefined || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
   if (value instanceof Uint8Array) return value;
-  if (Array.isArray(value)) return value.map((entry, index) => toOtelAnyValue(entry, String(index)));
+  if (Array.isArray(value)) {
+    // JSON.stringify turns undefined, functions, and sparse slots into null
+    // inside arrays. Array.from visits holes, unlike Array.prototype.map.
+    return Array.from(value, (entry, index) => toOtelAnyValue(entry, String(index)) ?? null);
+  }
   if (typeof value === "object") {
     // Follow JSON.stringify's semantics: the accepted-data contract is "JSON
     // serializable" (getCustomTelemetryDataError validates via stringify, which
