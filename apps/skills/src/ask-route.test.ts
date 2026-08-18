@@ -56,6 +56,7 @@ describe("skill-site ask route", () => {
       expect(body).toMatchInlineSnapshot(`
         {
           "mcpCallMetadata": {
+            "context": "Installing Hexclave in a static HTML app",
             "conversationId": "conversation-123",
             "project": "Analytics dashboard, TypeScript and Next.js",
             "reason": "skill-site ask endpoint",

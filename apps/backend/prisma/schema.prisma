@@ -2078,6 +2078,9 @@ model AskHexclaveCall {
   response      String @db.Text
   reason        String @db.Text
   userPrompt    String @db.Text
+  context       String? @db.Text
+  user          String? @db.Text
+  project       String? @db.Text
 
   requestIp         String?
   requestIpSource   String?
