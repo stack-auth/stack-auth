@@ -1,4 +1,4 @@
-ARG NODE_VERSION=22.21.1
+ARG NODE_VERSION=24.19.0
 
 # Base
 FROM node:${NODE_VERSION} AS base
@@ -92,6 +92,16 @@ COPY --from=builder --chown=node:node /app/apps/backend/package.json ./apps/back
 # Add the entrypoint script
 COPY ./docker/server/entrypoint.sh .
 RUN chmod +x entrypoint.sh
+
+# Hash the complete assembled runtime tree once while building the image. The
+# entrypoint uses this manifest to invalidate persistent runtime copies when any
+# bundled backend, dashboard, workspace, or entrypoint artifact changes. Include
+# entry types, modes, symlink targets, and regular-file contents, but not mtimes.
+RUN { \
+      find /app -mindepth 1 ! -path /app/.stack-runtime-build-identity -printf 'entry\t%y\t%m\t%p\t%l\n'; \
+      find /app -mindepth 1 ! -path /app/.stack-runtime-build-identity -type f -exec sha256sum {} +; \
+    } | LC_ALL=C sort | sha256sum | cut -d ' ' -f1 > /tmp/stack-runtime-build-identity && \
+    mv /tmp/stack-runtime-build-identity /app/.stack-runtime-build-identity
 
 WORKDIR /app
 

@@ -20,11 +20,18 @@ import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import { PlusCircleIcon } from "@phosphor-icons/react";
 import { type AdminOwnedProject } from "@hexclave/next";
+import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { runAsynchronouslyWithAlert, wait } from "@hexclave/shared/dist/utils/promises";
 import { useSearchParams } from "next/navigation";
-import { type FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { NewProjectEntryPage, SetupNewProjectPage } from "./components";
+import {
+  NewProjectEntryPage,
+  parseOnboardingAppSearchParam,
+  ProductConfigurationWizard,
+  ProductSelectionPage,
+  SetupNewProjectPage,
+} from "./components";
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
 import {
   beginPendingAction,
@@ -65,6 +72,7 @@ function PageClientInner() {
   const redirectToNeonConfirmWith = searchParams.get("redirect_to_neon_confirm_with");
   const redirectToConfirmWith = searchParams.get("redirect_to_confirm_with");
   const mode = searchParams.get("mode");
+  const primaryAppFromSearch = parseOnboardingAppSearchParam(searchParams.get("app"));
 
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [projectOnboardingStates, setProjectOnboardingStates] = useState<Map<string, ProjectOnboardingState | null>>(new Map());
@@ -80,6 +88,8 @@ function PageClientInner() {
   const [creatingProject, setCreatingProject] = useState(false);
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
+  const [selectedProductApps, setSelectedProductApps] = useState<Set<AppId> | null>(null);
+  const [isConfiguringProducts, setIsConfiguringProducts] = useState(false);
   const creatingTeamRef = useRef(false);
   const creatingProjectRef = useRef(false);
 
@@ -313,16 +323,46 @@ function PageClientInner() {
 
   if (selectedProject == null) {
     const entrySteps: TimelineStep[] = [{ id: "config_choice", label: "Get started" }];
-    const preProjectPage = mode === "setup-new"
-      ? (
+    let preProjectPage: ReactNode;
+    if (isConfiguringProducts) {
+      if (selectedProductApps == null) {
+        throw new Error("Product configuration mode requires a product selection.");
+      }
+      preProjectPage = (
+        <ProductConfigurationWizard
+          selectedApps={selectedProductApps}
+          onBack={() => setIsConfiguringProducts(false)}
+        />
+      );
+    } else if (mode === "setup-new-ai") {
+      preProjectPage = (
         <SetupNewProjectPage
           steps={entrySteps}
           currentStep="config_choice"
           disabled={creatingProject}
-          onBack={() => updateSearchParams({ mode: null })}
+          onBack={() => updateSearchParams({ mode: "setup-products" })}
         />
-      )
-      : (
+      );
+    } else if (mode === "setup-products") {
+      preProjectPage = (
+        <ProductSelectionPage
+          key={primaryAppFromSearch ?? "primary-app-unset"}
+          steps={entrySteps}
+          currentStep="config_choice"
+          disabled={creatingProject}
+          initialPrimaryAppId={primaryAppFromSearch}
+          onBack={() => updateSearchParams({ mode: null, app: null })}
+          onPrimaryAppSelected={(appId) => updateSearchParams({ app: appId })}
+          onClearPrimaryApp={() => updateSearchParams({ app: null })}
+          onLetAiDecide={() => updateSearchParams({ mode: "setup-new-ai", app: null })}
+          onContinue={(appIds) => {
+            setSelectedProductApps(appIds);
+            setIsConfiguringProducts(true);
+          }}
+        />
+      );
+    } else {
+      preProjectPage = (
         <NewProjectEntryPage
           steps={entrySteps}
           currentStep="config_choice"
@@ -330,13 +370,15 @@ function PageClientInner() {
           onBack={projects.length > 0 ? () => router.push("/projects") : undefined}
           onSelect={(choice) => {
             if (choice === "setup-new") {
-                updateSearchParams({ mode: "setup-new" });
-                return;
+              updateSearchParams({ mode: "setup-products" });
+              return;
             }
-              setIsCreateDialogOpen(true);
+            setSelectedProductApps(null);
+            setIsCreateDialogOpen(true);
           }}
         />
       );
+    }
 
     return (
       <div className="flex w-full flex-grow justify-center">

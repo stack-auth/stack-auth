@@ -21,7 +21,7 @@ import {
 } from "@/components/ui";
 import { WalkthroughProvider } from "@/components/walkthrough/walkthrough-provider";
 import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, hasNavigationItems, testAppPath, testItemPath, type NavigableAppFrontend } from "@/lib/apps-frontend";
-import { getEnabledAppIds, getEnabledNavigableAppIds } from "@/lib/apps-utils";
+import { getAppEnableConfigUpdate, getEnabledAppIds, getEnabledNavigableAppIds } from "@/lib/apps-utils";
 import { isAppNavigationItemVisible } from "@/lib/app-navigation-visibility";
 import { useUpdateConfig } from "@/components/config-update";
 import { cn } from "@/lib/utils";
@@ -148,6 +148,11 @@ const projectSettingsItem: AppSection = {
       name: "Billing & Usage",
       href: "/project-settings/usage",
       match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings\/usage(\/.*)?$/.test(fullUrl.pathname),
+    },
+    {
+      name: "Secrets",
+      href: "/project-settings/secrets",
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings\/secrets(\/.*)?$/.test(fullUrl.pathname),
     },
     {
       name: "Project Keys",
@@ -702,7 +707,7 @@ function SpotlightSearchWrapper({ projectId }: { projectId: string }) {
   const handleEnableApp = useCallback(async (appId: AppId) => {
     await updateConfig({
       adminApp: hexclaveAdminApp,
-      configUpdate: { [`apps.installed.${appId}.enabled`]: true },
+      configUpdate: getAppEnableConfigUpdate(appId),
       pushable: true,
     });
   }, [hexclaveAdminApp, updateConfig]);

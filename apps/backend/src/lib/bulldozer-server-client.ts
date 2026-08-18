@@ -1,10 +1,12 @@
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
+import type { ManualTransactionRow } from "@/lib/payments/schema/types";
 
 const BULLDOZER_FETCH_MAX_ATTEMPTS = 5;
 const BULLDOZER_FETCH_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000];
 const SAFE_CONNECT_ERROR_CODES = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "EAI_FAIL"]);
+const RETRIABLE_GET_RESPONSE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 type ErrorWithCause = {
   cause?: unknown,
@@ -83,8 +85,23 @@ export async function fetchBulldozerServerJson<T>(options: {
           ...options.body === undefined ? {} : { body: JSON.stringify(options.body) },
         });
 
+        if (
+          options.method === "GET"
+          && RETRIABLE_GET_RESPONSE_STATUSES.has(response.status)
+          && attempt < BULLDOZER_FETCH_MAX_ATTEMPTS
+        ) {
+          firstRetryError ??= new HexclaveAssertionError("Bulldozer GET received a transient HTTP response", {
+            method: options.method,
+            path: options.path,
+            status: response.status,
+          });
+          await response.body?.cancel();
+          await new Promise((resolve) => setTimeout(resolve, BULLDOZER_FETCH_RETRY_DELAYS_MS[attempt - 1]));
+          continue;
+        }
+
         if (attempt > 1 && response.ok) {
-          captureError("bulldozer-server-connect-retry", new HexclaveAssertionError("Bulldozer server request recovered after connect-phase failures", {
+          captureError("bulldozer-server-connect-retry", new HexclaveAssertionError("Bulldozer server request recovered after transient failures", {
             cause: firstRetryError,
             attempts: attempt,
             method: options.method,
@@ -93,7 +110,8 @@ export async function fetchBulldozerServerJson<T>(options: {
         }
         return response;
       } catch (error) {
-        if (!isRetriableBulldozerFetchError(error) || attempt >= BULLDOZER_FETCH_MAX_ATTEMPTS) {
+        const isRetriable = options.method === "GET" || isRetriableBulldozerFetchError(error);
+        if (!isRetriable || attempt >= BULLDOZER_FETCH_MAX_ATTEMPTS) {
           throw error;
         }
         firstRetryError ??= error;
@@ -113,4 +131,28 @@ export async function fetchBulldozerServerJson<T>(options: {
   }
 
   return await response.json() as T;
+}
+
+export type BulldozerManualTransactionsPage = {
+  rows: ManualTransactionRow[],
+  next_cursor: string | null,
+};
+
+/**
+ * Pages Bulldozer GET /v1/manual-transactions (identifier-ordered derived view).
+ * Cursor is the last `rowIdentifier` / sort key from the previous page (same as
+ * `txnId` today via `rowIdField: "txnId"`).
+ */
+export async function fetchBulldozerManualTransactionsPage(options: {
+  limit?: number,
+  cursor?: string | null,
+} = {}): Promise<BulldozerManualTransactionsPage> {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  if (options.cursor != null && options.cursor.length > 0) params.set("cursor", options.cursor);
+  const query = params.toString();
+  return await fetchBulldozerServerJson<BulldozerManualTransactionsPage>({
+    method: "GET",
+    path: query.length > 0 ? `/v1/manual-transactions?${query}` : "/v1/manual-transactions",
+  });
 }

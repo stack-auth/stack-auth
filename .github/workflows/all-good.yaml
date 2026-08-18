@@ -55,10 +55,11 @@ jobs:
               expected_workflows+=("db-migration-backwards-compatibility.yaml")
               ;;
             push)
-              expected_workflows+=("docker-server-build-push.yaml")
               if [ "$REF_NAME" = "dev" ]; then
+                expected_workflows+=("docker-server-build-push.yaml")
                 expected_workflows+=("db-migration-backwards-compatibility.yaml")
               elif [ "$REF_NAME" = "main" ]; then
+                expected_workflows+=("docker-server-build-push.yaml")
                 expected_workflows+=("npm-publish.yaml")
               else
                 echo "Unexpected push branch for all-good: ${REF_NAME}" >&2

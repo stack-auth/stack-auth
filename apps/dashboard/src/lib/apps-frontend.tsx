@@ -496,18 +496,18 @@ export const ALL_APPS_FRONTEND = {
       </>
     ),
   },
-  "deployments-alpha": {
+  "deploy": {
     icon: GraphIcon,
     // The route stays /projects/<id>/deployments — only the app id carries the
     // `-alpha` suffix, so existing links and bookmarks keep working.
     href: "deployments",
     navigationItems: [
-      { displayName: "Services", href: "." },
+      { displayName: "Deploy", href: "." },
     ],
     screenshots: [],
     storeDescription: (
       <>
-        <p>Deployments gives your project a visual canvas for the services that run your app.</p>
+        <p>Deploy gives your project a visual canvas for the services that run your app.</p>
         <p>Drag static sites, containers, and your Hexclave backend around a grid, then wire outputs from one service straight into another service&apos;s environment variables.</p>
         <p>Every project keeps exactly one Hexclave service at its center, so credentials like the secret server key are one reference away.</p>
       </>
@@ -515,7 +515,7 @@ export const ALL_APPS_FRONTEND = {
   },
   "workflows-alpha": {
     icon: TreeStructureIcon,
-    // Like Deployments, only the app id carries the `-alpha` suffix — the route
+    // Like Deploy, only the app id carries the `-alpha` suffix — the route
     // stays /projects/<id>/workflows, and the detail route /workflows/<id>
     // matches as a child of it.
     href: "workflows",

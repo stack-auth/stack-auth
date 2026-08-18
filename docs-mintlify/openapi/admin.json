@@ -4173,6 +4173,105 @@
         }
       }
     },
+    "/browser-actions": {
+      "post": {
+        "summary": "Create a browser action",
+        "description": "Creates a single-use link to one of the project's trusted origins that, when opened, makes the Hexclave SDK on that page perform an action in the browser: signing in as a given user (impersonation) or showing the clickmap overlay. Requires server or higher access.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "impersonation",
+                      "clickmap-overlay"
+                    ],
+                    "example": "impersonation",
+                    "description": "The action the SDK performs after the link is opened. `impersonation` signs the browser in as `user_id`; `clickmap-overlay` mounts the clickmap overlay."
+                  },
+                  "origin": {
+                    "type": "string",
+                    "example": "https://app.example.com",
+                    "description": "The project's trusted origin where the link opens. The action can only be consumed by a request whose Origin header matches this value."
+                  },
+                  "expires_in_millis": {
+                    "type": "integer",
+                    "example": 300000,
+                    "description": "How long the single-use link remains redeemable, in milliseconds.",
+                    "default": 300000
+                  },
+                  "session_expires_in_millis": {
+                    "type": "integer",
+                    "example": 7200000,
+                    "description": "Lifetime of the impersonation session, measured from link creation. Ignored for `clickmap-overlay` actions.",
+                    "default": 7200000
+                  },
+                  "user_id": {
+                    "type": "string",
+                    "example": "user_123",
+                    "description": "ID of the user to impersonate. Required when `type` is `impersonation` and ignored for `clickmap-overlay`."
+                  }
+                },
+                "required": [
+                  "type",
+                  "origin"
+                ],
+                "example": {
+                  "type": "impersonation",
+                  "origin": "https://app.example.com",
+                  "expires_in_millis": 300000,
+                  "session_expires_in_millis": 7200000,
+                  "user_id": "user_123"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Others"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/browser-actions",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "example": "browser_action_code",
+                      "description": "Opaque, single-use browser action ID."
+                    },
+                    "url": {
+                      "type": "string",
+                      "example": "https://app.example.com/?hexclave_action_id=browser_action_code",
+                      "description": "URL at the requested trusted origin containing the browser action ID. Open it in the target browser to perform the action."
+                    },
+                    "expires_at_millis": {
+                      "type": "number",
+                      "example": 1800000000000,
+                      "description": "Unix timestamp in milliseconds after which the browser action can no longer be consumed."
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "url",
+                    "expires_at_millis"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/mfa/sign-in": {
       "post": {
         "summary": "MFA sign in",

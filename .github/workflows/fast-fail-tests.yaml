@@ -213,7 +213,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: 22.x
+          node-version: 24.x
 
       - name: Setup pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -262,6 +262,12 @@ jobs:
       - name: Wait on ClickHouse
         run: pnpm exec wait-on http://localhost:8136/ping
 
+      - name: Wait on s3mock
+        run: pnpm exec wait-on http://localhost:8121/
+
+      - name: Wait on fly-mock
+        run: pnpm exec wait-on http://localhost:8148/health
+
       - name: Initialize database
         run: pnpm run db:init
 
@@ -286,6 +292,18 @@ jobs:
 
       - name: Backfill Bulldozer from Postgres
         run: pnpm run db:backfill-bulldozer-from-prisma
+
+      # Marshal (the deployments runtime) talks to the fly-mock + s3mock
+      # containers; the deployments e2e tests drive it through the backend.
+      - name: Start marshal in background
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        with:
+          run: NODE_ENV=test pnpm run start:marshal &
+          wait-on: |
+            http://localhost:8147/health
+          tail: true
+          wait-for: 30s
+          log-output-if: true
 
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
