@@ -1,4 +1,8 @@
-import { callHexclaveAskAi, type HexclaveAskDiagnostic } from "../../../packages/shared/src/ai/hexclave-ask";
+import {
+  callHexclaveAskAi,
+  getHexclaveAskRequestMetadata,
+  type HexclaveAskDiagnostic,
+} from "../../../packages/shared/src/ai/hexclave-ask";
 import { remindersPrompt } from "@hexclave/shared/dist/ai/unified-prompts/reminders";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
@@ -129,6 +133,7 @@ async function callUnifiedAiEndpoint(req: Request): Promise<Response> {
     reason: ASK_ROUTE_REASON,
     userPrompt,
     conversationId,
+    requestMetadata: getHexclaveAskRequestMetadata(req, "skill-ask"),
     onDiagnostic: logAskDiagnostic,
   });
 
