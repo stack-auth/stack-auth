@@ -399,6 +399,76 @@ describe("growth workflow orchestration e2e (mock Eve)", () => {
     });
   });
 
+  it("retries exhausted phases with fresh token anchors and attempt budgets", { timeout: 300_000 }, async ({ expect }) => {
+    await withMockEve(async (mock) => {
+      const { projectId, branchId } = await setUpOnboardedProject();
+      const scope: AgentScope = { project_id: projectId, branch_id: branchId };
+
+      // Exhaust every immediate phase's three-attempt dispatch budget. Direct bridge ticks keep
+      // this deterministic and fast instead of waiting for the workflow leg's long-poll windows.
+      mock.failNextDispatches(IMMEDIATE_PHASE_KEYS.length * 3, {
+        predicate: (dispatch) => dispatch.path === "/runs/analysis-phase" && dispatch.body.project_id === projectId,
+      });
+      const runId = await completeOnboarding();
+      // The first tick computes metrics and leaves the run resting for its integrations choice.
+      // Skip it explicitly so the six immediate agent phases become ready for the failure waves.
+      expect((await bridgeCall("analysis/tick", { run_id: runId })).status).toBe(200);
+      const skipIntegrations = await niceBackendFetch(`${ADMIN_BASE}/runs/${runId}/integrations`, {
+        accessType: "admin",
+        method: "POST",
+        body: { action: "skip" },
+      });
+      expect(skipIntegrations.status).toBe(200);
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const tick = await bridgeCall("analysis/tick", { run_id: runId });
+        expect(tick.status).toBe(200);
+        for (const phaseKey of IMMEDIATE_PHASE_KEYS) {
+          const dispatch = await mock.waitForDispatch((candidate) => isAnalysisPhaseDispatchFor(candidate, projectId, runId, phaseKey, attempt));
+          expect(dispatch.respondedWithStatus).toBe(500);
+        }
+      }
+      // One tick promotes PENDING-at-attempt-3 phases to FAILED; the next observes those failures
+      // and fails the run.
+      expect((await bridgeCall("analysis/tick", { run_id: runId })).status).toBe(200);
+      expect((await bridgeCall("analysis/tick", { run_id: runId })).status).toBe(200);
+      const failedRun = await getRun(runId);
+      expect(failedRun.status).toBe("failed");
+      for (const phaseKey of IMMEDIATE_PHASE_KEYS) {
+        expect(getRunPhase(failedRun, phaseKey)).toMatchObject({ status: "failed", attempt: 3 });
+      }
+
+      const oldDispatch = await mock.waitForDispatch((candidate) => isAnalysisPhaseDispatchFor(candidate, projectId, runId, "website-research", 3));
+      const oldToken = oldDispatch.body.agent_token;
+      if (typeof oldToken !== "string") throw new Error("Expected the failed dispatch to contain an agent token.");
+      expect(oldToken).toMatch(/^grt_/);
+
+      const retry = await niceBackendFetch(`${ADMIN_BASE}/analysis/retry`, { accessType: "admin", method: "POST" });
+      expect(retry).toMatchObject({ status: 200, body: { run_id: runId } });
+      const retriedRun = await getRun(runId);
+      expect(retriedRun.status).toBe("pending");
+      for (const phaseKey of IMMEDIATE_PHASE_KEYS) {
+        expect(getRunPhase(retriedRun, phaseKey)).toMatchObject({ status: "pending", attempt: 0 });
+      }
+
+      // The replacement row has a new phase id, so even when a later dispatch reuses attempt 1,
+      // no token anchored to an old failed row can authenticate.
+      const staleStart = await niceBackendFetch(`${AGENT_BASE}/runs/${runId}/phases/website-research/start`, {
+        method: "POST",
+        headers: { "authorization": `Bearer ${oldToken}` },
+        body: { ...scope, attempt: 3, eve_session_id: "eve-session-before-manual-retry" },
+      });
+      expect(staleStart.status).toBe(401);
+
+      const redispatchTick = await bridgeCall("analysis/tick", { run_id: runId });
+      expect(redispatchTick.status).toBe(200);
+      const freshDispatch = await mock.waitForDispatch((candidate) => isAnalysisPhaseDispatchFor(candidate, projectId, runId, "website-research", 1));
+      expect(freshDispatch.respondedWithStatus).toBe(200);
+      expect(freshDispatch.body.agent_token).toMatch(/^grt_/);
+      expect(freshDispatch.body.agent_token).not.toBe(oldToken);
+      expect(getRunPhase(await getRun(runId), "website-research")).toMatchObject({ status: "dispatched", attempt: 1 });
+    });
+  });
+
   it("fences zombie agents echoing a stale attempt after a re-dispatch, without changing state", { timeout: 300_000 }, async ({ expect }) => {
     await withMockEve(async (mock) => {
       const { projectId, branchId } = await setUpOnboardedProject();

@@ -376,14 +376,32 @@ export async function retryGrowthAnalysis(options: { tenancy: Tenancy }): Promis
   }
   try {
     await retryTransaction(globalPrismaClient, async (tx) => {
-      await tx.growthAnalysisPhase.updateMany({
-        where: { runId: latestRun.id, status: GrowthPhaseStatus.FAILED },
-        data: { status: GrowthPhaseStatus.PENDING, errorMessage: null },
-      });
-      await tx.growthAnalysisRun.update({
-        where: { id: latestRun.id },
+      // Claim the retry before replacing any phases. Two concurrent retry requests may both have
+      // observed FAILED above, but only one may revive the run and enqueue its activation event.
+      const revived = await tx.growthAnalysisRun.updateMany({
+        where: { id: latestRun.id, status: GrowthRunStatus.FAILED },
         data: { status: GrowthRunStatus.PENDING, errorMessage: null },
       });
+      if (revived.count !== 1) {
+        throw new StatusError(409, "This analysis run is already being retried.");
+      }
+
+      const failedPhases = await tx.growthAnalysisPhase.findMany({
+        where: { runId: latestRun.id, status: GrowthPhaseStatus.FAILED },
+        select: { id: true, phaseKey: true },
+      });
+      if (failedPhases.length > 0) {
+        // Fresh rows are necessary rather than `attempt: 0`: run tokens are fenced by phase id +
+        // attempt, so reusing attempt numbers on the same row could make a zombie session's old
+        // token valid again. Replacing the row resets all execution timestamps and permanently
+        // invalidates every token anchored to the failed phase id.
+        await tx.growthAnalysisPhase.deleteMany({
+          where: { id: { in: failedPhases.map((phase) => phase.id) }, status: GrowthPhaseStatus.FAILED },
+        });
+        await tx.growthAnalysisPhase.createMany({
+          data: failedPhases.map((phase) => ({ runId: latestRun.id, phaseKey: phase.phaseKey })),
+        });
+      }
       // Reviving the run needs a fresh activation event: the original leg
       // exited when the run failed (resting), and onConflict "skip" only
       // dedupes against ACTIVE legs, so this reliably starts a new one.
