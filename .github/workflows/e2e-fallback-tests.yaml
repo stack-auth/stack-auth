@@ -9,8 +9,12 @@ on:
       - dev
   pull_request:
 
+# A concurrency group only ever runs one run at a time, so the sha is part of the group on main/dev:
+# otherwise consecutive dev pushes queue behind each other (and GitHub cancels the older queued run),
+# so one slow or hung run silently skips CI for every commit after it. PRs and feature branches stay
+# grouped per ref, where cancelling superseded runs is what we want.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 jobs:
@@ -30,6 +34,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   build:
+    timeout-minutes: 150
     needs: wait-for-fast-fail
     name: E2E Fallback Tests (Node ${{ matrix.node-version }})
     runs-on: ubicloud-standard-8
@@ -46,7 +51,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [22.x]
+        node-version: [24.x]
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -111,7 +116,14 @@ jobs:
         env:
           HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB: "1"
         with:
-          run: pnpm run start:bulldozer &
+          run: |
+            bulldozer_log="$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
+            (
+              set +e
+              # Keep service output correlatable with the surrounding GitHub Actions logs.
+              pnpm run start:bulldozer 2>&1 | TZ=UTC awk '{ print strftime("%Y-%m-%dT%H:%M:%SZ"), $0; fflush() }' >"$bulldozer_log"
+              echo "${PIPESTATUS[0]}" > "$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt"
+            ) &
           wait-on: |
             tcp:localhost:8146
           tail: true
@@ -128,7 +140,7 @@ jobs:
       - name: Start stack-backend on fallback port (8110)
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
-          run: pnpm -C apps/backend run with-env:test next start --port 8110 &
+          run: PORT=8110 pnpm -C apps/backend run with-env:test pnpm run start &
           wait-on: |
             http://localhost:8110
           tail: true
@@ -157,6 +169,8 @@ jobs:
 
       - name: Start run-email-queue in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        env:
+          PORT: "8110"
         with:
           run: pnpm -C apps/backend run run-email-queue --log-order=stream &
           wait-on: |
@@ -167,6 +181,8 @@ jobs:
 
       - name: Start run-cron-jobs in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        env:
+          PORT: "8110"
         with:
           run: pnpm -C apps/backend run run-cron-jobs:test --log-order=stream &
           wait-on: |
@@ -191,6 +207,24 @@ jobs:
       # Exclude cross-domain-auth which hardcodes the primary URL.
       - name: Run SDK fallback tests
         run: pnpm -w run pre && cd apps/e2e && npx vitest run tests/js/ --exclude '**/{cross-domain-auth,oauth,email-template-existing-project}*'
+
+      - name: Print bulldozer-js diagnostics
+        if: ${{ failure() }}
+        run: |
+          if [[ -f "$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt" ]]; then
+            echo "Bulldozer-js command exited with code $(<"$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt")"
+          else
+            echo "Bulldozer-js command is still running; a child process may have exited"
+          fi
+          tail -n 2000 "$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
+
+      - name: Upload bulldozer-js logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-fallback-bulldozer
+          path: ${{ runner.temp }}/hexclave-bulldozer.untracked.log
+          if-no-files-found: error
 
       - name: Print Docker Compose logs
         if: always()

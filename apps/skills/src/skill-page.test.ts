@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { GET as deploymentsGet } from "./app/deployments/route";
+import { GET as workflowsGet } from "./app/workflows/route";
 import { GET as skillGet } from "./app/route";
 import { createSkillPageRoute } from "./skill-page";
 
@@ -50,13 +51,27 @@ describe("skill page shell", () => {
 });
 
 describe("skill site pages", () => {
+  it("starts the root HTML page with agent fetch instructions, then human content", async () => {
+    const html = await skillGet(htmlRequest("https://skill.hexclave.com/")).text();
+
+    const agentHeadingIndex = html.indexOf("If you are an AI agent");
+    const curlIndex = html.indexOf("curl -sSL https://skill.hexclave.com");
+    const humanHeadingIndex = html.indexOf("If you are a human");
+    const pageHeadingIndex = html.indexOf("The Hexclave Agent Skill");
+
+    expect(agentHeadingIndex).toBeGreaterThan(-1);
+    expect(curlIndex).toBeGreaterThan(agentHeadingIndex);
+    expect(humanHeadingIndex).toBeGreaterThan(curlIndex);
+    expect(pageHeadingIndex).toBeGreaterThan(humanHeadingIndex);
+  });
+
   it("serves the general setup docs URL on the root skill page", async () => {
     const html = await skillGet(htmlRequest("https://skill.hexclave.com/")).text();
 
     expect(html).toContain("https://docs.hexclave.com/guides/getting-started/setup");
   });
 
-  it("serves a Deployments-specific setup prompt on /deployments", async () => {
+  it("serves a Deploy-specific setup prompt on /deployments", async () => {
     const html = await deploymentsGet(htmlRequest("https://skill.hexclave.com/deployments")).text();
 
     // The generic getting-started URL is what this page used to inherit from the
@@ -65,10 +80,28 @@ describe("skill site pages", () => {
     expect(html).toContain(`data-copy="Read https://skill.hexclave.com/deployments and use it to set up Hexclave in this folder"`);
   });
 
-  it("still serves the Deployments skill markdown to non-browser clients", async () => {
+  it("still serves the Deploy skill markdown to non-browser clients", async () => {
     const response = deploymentsGet(markdownRequest("https://skill.hexclave.com/deployments"));
 
     expect(response.headers.get("Content-Type")).toBe("text/markdown; charset=utf-8");
-    await expect(response.text()).resolves.toContain("# Hexclave Deployments");
+    await expect(response.text()).resolves.toContain("# Hexclave Deploy");
+  });
+
+  it("serves a Workflows-specific setup prompt on /workflows", async () => {
+    const html = await workflowsGet(htmlRequest("https://skill.hexclave.com/workflows")).text();
+
+    expect(html).not.toContain(`data-copy="https://docs.hexclave.com/guides/getting-started/setup"`);
+    expect(html).toContain(`data-copy="Read https://skill.hexclave.com/workflows and use it to write a Hexclave workflow for this project"`);
+  });
+
+  it("still serves the Workflows skill markdown to non-browser clients", async () => {
+    const response = workflowsGet(markdownRequest("https://skill.hexclave.com/workflows"));
+
+    expect(response.headers.get("Content-Type")).toBe("text/markdown; charset=utf-8");
+    const markdown = await response.text();
+    expect(markdown).toContain("# Hexclave Workflows");
+    // The one thing an agent most needs from this page: there is no config
+    // section and no CLI command, so it must hand the source to the user.
+    expect(markdown).toContain("cannot live in `hexclave.config.ts` yet");
   });
 });

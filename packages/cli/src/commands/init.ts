@@ -1,5 +1,5 @@
 import { StackClientApp } from "@hexclave/js";
-import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
+import { ALL_APPS, expandAppSoftRequirements, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { detectImportPackageFromDir } from "@hexclave/shared/dist/config-eval";
 import { renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -277,11 +277,9 @@ async function handleCreateCloud(_flags: Record<string, unknown>, opts: InitOpti
   const sessionAuth = await ensureLoggedInSession();
   const user = await withProgress("Loading account", async () => await getInternalUser(sessionAuth));
 
-  const { dashboardUrl } = resolveLoginConfig();
   const newProject = await createProjectInteractively(user, {
     displayName: opts.displayName,
     defaultDisplayName: path.basename(outputDir),
-    dashboardUrl,
   });
   console.log(`\nCreated project: ${newProject.displayName} (${newProject.id})\n`);
 
@@ -317,10 +315,8 @@ async function handleLinkFromCloud(_flags: Record<string, unknown>, opts: InitOp
       throw new CliError(`You don't own any projects. Create one at ${dashboardUrl} or re-run and choose to create one.`);
     }
 
-    const { dashboardUrl } = resolveLoginConfig();
     const newProject = await createProjectInteractively(user, {
       defaultDisplayName: path.basename(outputDir),
-      dashboardUrl,
     });
     console.log(`\nCreated project: ${newProject.displayName} (${newProject.id})\n`);
     projects = [newProject];
@@ -390,7 +386,10 @@ async function handleCreate(opts: InitOptions, outputDir: string): Promise<{ con
     const validAppIds = Object.keys(ALL_APPS);
     const invalidApps = selectedApps.filter((id) => !validAppIds.includes(id));
     if (invalidApps.length > 0) {
-      throw new CliError(`Unknown app IDs: ${invalidApps.join(", ")}. Valid IDs: ${validAppIds.join(", ")}`);
+      const availableAppIds = Object.entries(ALL_APPS)
+        .filter(([, app]) => app.stage !== "alpha")
+        .map(([appId]) => appId);
+      throw new CliError(`Unknown app IDs: ${invalidApps.join(", ")}. Available IDs: ${availableAppIds.join(", ")}`);
     }
   } else {
     const stageOrder = { stable: 0, beta: 1 } as const;
@@ -408,8 +407,12 @@ async function handleCreate(opts: InitOptions, outputDir: string): Promise<{ con
     });
   }
 
+  const validatedSelectedApps = selectedApps.filter((appId): appId is AppId => Object.prototype.hasOwnProperty.call(ALL_APPS, appId));
+  if (validatedSelectedApps.length !== selectedApps.length) {
+    throw new CliError("App selection contained an unknown app after validation.");
+  }
   const installed = Object.fromEntries(
-    selectedApps.map((appId) => [appId, { enabled: true }])
+    [...expandAppSoftRequirements(validatedSelectedApps)].map((appId) => [appId, { enabled: true }])
   );
 
   const config = {

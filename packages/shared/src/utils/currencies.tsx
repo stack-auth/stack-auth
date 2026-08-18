@@ -79,6 +79,13 @@ import.meta.vitest?.describe("moneyAmountToStripeUnits", (test) => {
     }
   });
 
+  test("converts USD amounts that float-multiply incorrectly", ({ expect }) => {
+    // The prod checkout bug: Number("79.99") * 100 === 7998.999999999999
+    expect(Number("79.99") * 100).not.toBe(7999);
+    expect(moneyAmountToStripeUnits("79.99" as MoneyAmount, USD)).toBe(7999);
+    expect(moneyAmountToStripeUnits("19.99" as MoneyAmount, USD)).toBe(1999);
+  });
+
   test("rejects invalid money strings via schema", ({ expect }) => {
     expect(() => moneyAmountToStripeUnits("abc" as MoneyAmount, USD)).toThrow();
     expect(() => moneyAmountToStripeUnits("5.555" as MoneyAmount, USD)).toThrow();

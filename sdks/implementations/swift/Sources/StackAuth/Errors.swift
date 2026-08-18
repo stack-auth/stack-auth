@@ -40,6 +40,17 @@ public struct UserWithEmailAlreadyExistsError: StackAuthErrorProtocol {
     public var description: String { "UserWithEmailAlreadyExistsError: \(message)" }
 }
 
+public struct ContactChannelAlreadyUsedForAuthBySomeoneElseError: StackAuthErrorProtocol {
+    public let code = "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE"
+    public let message = "This email is already used for authentication by another account."
+    public let details: [String: Any]?
+    public var description: String { "ContactChannelAlreadyUsedForAuthBySomeoneElseError: \(message)" }
+
+    public init(details: [String: Any]? = nil) {
+        self.details = details
+    }
+}
+
 public struct PasswordRequirementsNotMetError: StackAuthErrorProtocol {
     public let code = "PASSWORD_REQUIREMENTS_NOT_MET"
     public let message = "The password does not meet the project's requirements."
@@ -150,6 +161,8 @@ extension StackAuthError {
             return EmailPasswordMismatchError()
         case "USER_EMAIL_ALREADY_EXISTS":
             return UserWithEmailAlreadyExistsError()
+        case "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE":
+            return ContactChannelAlreadyUsedForAuthBySomeoneElseError(details: details)
         case "PASSWORD_REQUIREMENTS_NOT_MET":
             return PasswordRequirementsNotMetError()
         case "USER_NOT_FOUND":

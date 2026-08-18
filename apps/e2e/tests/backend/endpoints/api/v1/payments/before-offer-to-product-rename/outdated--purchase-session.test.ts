@@ -130,7 +130,10 @@ it("should properly create subscription", async ({ expect }) => {
     },
   });
   expect(response.status).toBe(200);
-  expect(response.body).toEqual({ client_secret: expect.any(String) });
+  expect(response.body).toEqual({
+    client_secret: expect.any(String),
+    stripe_intent_type: "payment",
+  });
 });
 
 it("should return client secret for one-time price (no interval)", async ({ expect }) => {
@@ -179,7 +182,10 @@ it("should return client secret for one-time price (no interval)", async ({ expe
     },
   });
   expect(res.status).toBe(200);
-  expect(res.body).toEqual({ client_secret: expect.any(String) });
+  expect(res.body).toEqual({
+    client_secret: expect.any(String),
+    stripe_intent_type: "payment",
+  });
 });
 
 it("should error on one-time price quantity > 1 when offer is not stackable", async ({ expect }) => {
@@ -309,7 +315,10 @@ it("should return client secret for one-time price even if a conflicting group s
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "client_secret": "pi_1PgafyB7WZ01zgkWSjxsAJo3_secret_Dm43xiq1k0ywrRRjDoi8y1gkM" },
+      "body": {
+        "client_secret": "pi_1PgafyB7WZ01zgkWSjxsAJo3_secret_Dm43xiq1k0ywrRRjDoi8y1gkM",
+        "stripe_intent_type": "payment",
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -421,7 +430,10 @@ it("should create purchase URL with inline offer, validate code, and create purc
   expect(purchaseSessionResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "client_secret": "" },
+      "body": {
+        "client_secret": "",
+        "stripe_intent_type": "payment",
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -697,7 +709,10 @@ it("should update existing stripe subscription when switching offers within a gr
   expect(purchaseA).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "client_secret": "" },
+      "body": {
+        "client_secret": "",
+        "stripe_intent_type": "payment",
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -728,7 +743,10 @@ it("should update existing stripe subscription when switching offers within a gr
   expect(purchaseB).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "client_secret": "" },
+      "body": {
+        "client_secret": "",
+        "stripe_intent_type": "payment",
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -832,7 +850,10 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
   expect(purchaseB).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "client_secret": "" },
+      "body": {
+        "client_secret": "",
+        "stripe_intent_type": "payment",
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);

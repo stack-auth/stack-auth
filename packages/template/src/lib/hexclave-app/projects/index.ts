@@ -3,11 +3,11 @@ import { AdminUserProjectsCrud, ProjectsCrud } from "@hexclave/shared/dist/inter
 import { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 
 import { CompleteConfig, EnvironmentConfigNormalizedOverride, EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
-import type { AdminDeploymentDomainJson, AdminDeploymentEnvVarOptions, AdminDeploymentRunJson, AdminDeploymentServiceBuildOptions, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
+import type { AdminDeploymentDomainJson, AdminDeploymentJson, AdminDeploymentServiceOutcomeJson, AdminProjectSecretJson, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";
 
-export type { AdminDeploymentDomainJson, AdminDeploymentEnvVarJson, AdminDeploymentEnvVarOptions, AdminDeploymentRunJson, AdminDeploymentServiceBuildOptions, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
+export type { AdminDeploymentDomainJson, AdminDeploymentEnvVarJson, AdminDeploymentJson, AdminDeploymentServiceOutcomeJson, AdminProjectSecretJson, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
 
 /**
  * SDK type for pushed config source (camelCase for SDK).
@@ -145,44 +145,48 @@ export type AdminProject = {
   useProductionModeErrors(this: AdminProject): ProductionModeError[],
 
   /**
-   * Lists the project's deployment services (definitions from the config,
-   * merged with their operational state: deploy status, env vars, domains).
+   * Lists the project's deployment services (definitions as synced from the
+   * config file's `services` export by `hexclave deploy`, merged with their
+   * operational state: deploy status, env vars, domains). Definitions are
+   * read-only through the SDK — the config file is the source of truth.
    */
   listDeploymentServices(this: AdminProject): Promise<AdminDeploymentServiceJson[]>,
 
   /**
-   * Creates a new deployment service definition. Only available when the
-   * project's config source is the dashboard (`unlinked`).
+   * Lists the project's stored secrets (keys and timestamps only — values are
+   * write-only and can never be read back).
    */
-  createDeploymentService(this: AdminProject, id: string, build: AdminDeploymentServiceBuildOptions): Promise<AdminDeploymentServiceJson>,
+  listProjectSecrets(this: AdminProject): Promise<AdminProjectSecretJson[]>,
 
   /**
-   * Updates a deployment service definition. Env vars are part of the
-   * definition, so like the build fields they require the config source to be
-   * the dashboard (`unlinked`); `env` replaces the service's whole env var
-   * set. Secret env var VALUES are never set here — they are supplied at
-   * deploy time via `hexclave deploy --secret <key>=<value>`.
+   * Sets (or overwrites) the value of a project secret. Values are only read
+   * server-side by the feature that consumes them — today, a deploy filling
+   * `secret()` env vars.
    */
-  updateDeploymentService(this: AdminProject, serviceId: string, update: AdminDeploymentServiceBuildOptions & {
-    env?: Record<string, AdminDeploymentEnvVarOptions>,
-  }): Promise<AdminDeploymentServiceJson>,
+  setProjectSecret(this: AdminProject, key: string, value: string): Promise<void>,
 
   /**
-   * Deletes a deployment service, including its provisioned deployment target.
-   * Only available when the project's config source is the dashboard.
+   * Deletes a stored project secret value.
    */
-  deleteDeploymentService(this: AdminProject, serviceId: string): Promise<void>,
+  deleteProjectSecret(this: AdminProject, key: string): Promise<void>,
 
   /**
-   * Lists the most recent deployment runs of a service, newest first.
+   * Lists the project's deployments (one per `hexclave deploy`) newest first,
+   * each with the services it deployed and their runs.
    */
-  listDeploymentRuns(this: AdminProject, serviceId: string, options?: { limit?: number }): Promise<AdminDeploymentRunJson[]>,
+  listDeployments(this: AdminProject, options?: { limit?: number }): Promise<AdminDeploymentJson[]>,
 
   /**
-   * Returns the build logs of a deployment run collected so far (the server
-   * follows a running build for a while before returning).
+   * Reads one deployment, including what each of its services did.
    */
-  getDeploymentRunLogs(this: AdminProject, runId: string, options?: { signal?: AbortSignal }): Promise<string>,
+  getDeployment(this: AdminProject, deploymentId: string): Promise<AdminDeploymentJson>,
+
+  /**
+   * Returns the build logs of a deployment collected so far (the server follows
+   * a running build for a while before returning). One deploy is one build, so
+   * one log covers every service it shipped.
+   */
+  getDeploymentBuildLogs(this: AdminProject, deploymentId: string, options?: { signal?: AbortSignal }): Promise<string>,
 
   /**
    * Adds a custom domain to a deployment service.
@@ -249,6 +253,9 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
             client_secret: p.clientSecret,
             facebook_config_id: p.facebookConfigId,
             microsoft_tenant_id: p.microsoftTenantId,
+            apple_team_id: p.appleTeamId,
+            apple_key_id: p.appleKeyId,
+            apple_private_key: p.applePrivateKey,
             apple_bundle_ids: p.appleBundleIds,
           }),
         })),

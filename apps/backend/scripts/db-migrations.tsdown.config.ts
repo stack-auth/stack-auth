@@ -49,13 +49,15 @@ export default defineConfig({
   entry: [resolve(backendDir, 'scripts/db-migrations.ts')],
   format: ['esm'],
   outDir: resolve(backendDir, 'dist'),
-  target: 'node22',
+  target: 'node24',
   platform: 'node',
   noExternal: [...customNoExternal],
   inlineOnly: false,
   // Externalize Node.js builtins so they're imported rather than shimmed
   external: [...nodeBuiltins, ...externalPackages],
-  clean: true,
+  // Docker builds the backend server into the same dist directory before this
+  // script. Cleaning here deletes dist/server.mjs from the final image.
+  clean: false,
   // Use banner to add createRequire for CommonJS modules that use require() for builtins
   // The imported require is used by the shimmed __require2 function
   banner: {

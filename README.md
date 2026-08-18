@@ -8,8 +8,8 @@
 **The user infrastructure platform.**
 
 Hexclave handles everything around your users: authentication, teams,
-payments, emails, analytics, and much more. Start in minutes on the hosted
-cloud. Your data is always yours to export and self-host.
+payments, emails, analytics, and much more. Get started with our AI
+prompt below.
 
 [Website](https://hexclave.com) · [Docs](https://docs.hexclave.com) · [Dashboard](https://app.hexclave.com) · [Discord](https://discord.hexclave.com)
 
@@ -22,7 +22,7 @@ cloud. Your data is always yours to export and self-host.
 ---
 
 <div align="center">
-  <img src=".github/assets/comparison.png" alt="Where Hexclave fits in the infrastructure stack" width="900"/>
+  <img src=".github/assets/comparison.webp" alt="Where Hexclave fits in the infrastructure stack" width="900"/>
 </div>
 
 ## Get started
@@ -49,130 +49,130 @@ Each one is built on the same user model, and new apps land regularly.
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/authentication.png" alt="" width="40" align="top"/> &nbsp; Authentication
+### <img src=".github/assets/logos/authentication.webp" alt="" width="40" align="top"/> &nbsp; Authentication
 
 Authentication that just works with passkeys, OAuth, and CLI auth. Drop in one component and ship the whole flow; auth methods toggle from the dashboard with no code changes needed.
 
 </td>
 <td width="50%" valign="middle" align="center">
-<img src=".github/assets/app-shots/authentication.png" width="520" alt="Authentication"/>
+<img src=".github/assets/app-shots/authentication.webp" width="520" alt="Authentication"/>
 </td>
 </tr></table>
 
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/teams.png" alt="" width="40" align="top"/> &nbsp; Teams
+### <img src=".github/assets/logos/teams.webp" alt="" width="40" align="top"/> &nbsp; Teams
 
 Build for teams, not just users, with workspaces, email invites, and roles that actually gate the work. The workspace switcher remembers selection, invites auto sign up new users, and permissions hold up under audit.
 
 </td>
 <td width="50%" valign="middle" align="center">
-<img src=".github/assets/app-shots/teams.png" width="520" alt="Teams"/>
+<img src=".github/assets/app-shots/teams.webp" width="520" alt="Teams"/>
 </td>
 </tr></table>
 
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/rbac.png" alt="" width="40" align="top"/> &nbsp; RBAC
+### <img src=".github/assets/logos/rbac.webp" alt="" width="40" align="top"/> &nbsp; RBAC
 
 Permissions, sorted: roles that nest and one permission check that works the same on server or client. Define them in the dashboard, check them anywhere in your code.
 
 </td>
 <td width="50%" valign="middle" align="center">
-<img src=".github/assets/app-shots/rbac.png" width="520" alt="RBAC"/>
+<img src=".github/assets/app-shots/rbac.webp" width="520" alt="RBAC"/>
 </td>
 </tr></table>
 
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/api-keys.png" alt="" width="40" align="top"/> &nbsp; API Keys
+### <img src=".github/assets/logos/api-keys.webp" alt="" width="40" align="top"/> &nbsp; API Keys
 
 API keys without the footguns: leaked keys get auto-revoked, work for users and teams, and show the full secret only once. We never keep the plaintext after creation.
 
 </td>
 <td width="50%" valign="middle" align="center">
-<img src=".github/assets/app-shots/api-keys.png" width="520" alt="API Keys"/>
+<img src=".github/assets/app-shots/api-keys.webp" width="520" alt="API Keys"/>
 </td>
 </tr></table>
 
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/payments.png" alt="" width="40" align="top"/> &nbsp; Payments
+### <img src=".github/assets/logos/payments.webp" alt="" width="40" align="top"/> &nbsp; Payments
 
 Payments without the plumbing for subscriptions, one-time charges, and usage metering with credits. Bill a person or a whole team with one model, no separate codepath.
 
 </td>
 <td width="50%" valign="middle" align="center">
-<img src=".github/assets/app-shots/payments.png" width="520" alt="Payments"/>
+<img src=".github/assets/app-shots/payments.webp" width="520" alt="Payments"/>
 </td>
 </tr></table>
 
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/emails.png" alt="" width="40" align="top"/> &nbsp; Emails
+### <img src=".github/assets/logos/emails.webp" alt="" width="40" align="top"/> &nbsp; Emails
 
 Email that delivers and tells you so, handling transactional and marketing sends from one API. Edit templates with an AI editor, theme once, and track every open and click.
 
 </td>
 <td width="50%" valign="middle" align="center">
-<img src=".github/assets/app-shots/emails.png" width="520" alt="Emails"/>
+<img src=".github/assets/app-shots/emails.webp" width="520" alt="Emails"/>
 </td>
 </tr></table>
 
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/analytics.png" alt="" width="40" align="top"/> &nbsp; Analytics
+### <img src=".github/assets/logos/analytics.webp" alt="" width="40" align="top"/> &nbsp; Analytics
 
 Know your users with no data stack required, with live active user counts and session replays out of the box. Ask in plain English to build dashboards or write SQL to save queries, all with one flag enabled.
 
 </td>
 <td width="50%" valign="middle" align="center">
-<img src=".github/assets/app-shots/analytics.png" width="520" alt="Analytics"/>
+<img src=".github/assets/app-shots/analytics.webp" width="520" alt="Analytics"/>
 </td>
 </tr></table>
 
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/webhooks.png" alt="" width="40" align="top"/> &nbsp; Webhooks
+### <img src=".github/assets/logos/webhooks.webp" alt="" width="40" align="top"/> &nbsp; Webhooks
 
 React to every user event in real time with signed, tamper-proof webhooks. Retries and backoff are handled for you; verify in five lines and manage endpoints from the dashboard.
 
 </td>
 <td width="50%" valign="middle" align="center">
-<img src=".github/assets/app-shots/webhooks.png" width="520" alt="Webhooks"/>
+<img src=".github/assets/app-shots/webhooks.webp" width="520" alt="Webhooks"/>
 </td>
 </tr></table>
 
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/data-vault.png" alt="" width="40" align="top"/> &nbsp; Data Vault
+### <img src=".github/assets/logos/data-vault.webp" alt="" width="40" align="top"/> &nbsp; Data Vault
 
 A safe for the secrets your users hand you, locked with your secret so we never see the plaintext. Store and retrieve tokens in two lines each, server-only by design.
 
 </td>
 <td width="50%" valign="middle" align="center">
-<img src=".github/assets/app-shots/data-vault.png" width="520" alt="Data Vault"/>
+<img src=".github/assets/app-shots/data-vault.webp" width="520" alt="Data Vault"/>
 </td>
 </tr></table>
 
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/launch-checklist.png" alt="" width="40" align="top"/> &nbsp; Launch Checklist
+### <img src=".github/assets/logos/launch-checklist.webp" alt="" width="40" align="top"/> &nbsp; Launch Checklist
 
 Run through the must-do checks before flipping to production: domain setup, callbacks locked, secrets rotated. The progress tracker keeps your team aligned so nothing critical slips through on launch day.
 
 </td>
 <td width="50%" valign="middle" align="center">
-<img src=".github/assets/app-shots/launch-checklist.png" width="520" alt="Launch Checklist"/>
+<img src=".github/assets/app-shots/launch-checklist.webp" width="520" alt="Launch Checklist"/>
 </td>
 </tr></table>
 

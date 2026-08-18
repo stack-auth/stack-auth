@@ -13,6 +13,7 @@ export type AdminListSessionReplaysOptions = {
 export type AdminListSessionReplaysResponse = {
   items: Array<{
     id: string,
+    refresh_token_id: string,
     project_user: {
       id: string,
       display_name: string | null,
@@ -30,6 +31,7 @@ export type AdminListSessionReplaysResponse = {
 
 export type AdminGetSessionReplayResponse = {
   id: string,
+  refresh_token_id: string,
   project_user: {
     id: string,
     display_name: string | null,

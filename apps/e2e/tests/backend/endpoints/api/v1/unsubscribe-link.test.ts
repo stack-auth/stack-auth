@@ -105,7 +105,7 @@ it("unsubscribe link should not be sent for emails with transactional notificati
       },
     },
   });
-  const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const { userId } = await Auth.Password.signUpWithEmail();
   const response = await niceBackendFetch(
     "/api/v1/emails/send-email",
     {

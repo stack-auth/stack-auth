@@ -42,6 +42,21 @@ export type {
 } from "./apps/interfaces/admin-app";
 
 export type {
+  AdminWorkflow,
+  AdminWorkflowDivergenceDiagnostic,
+  AdminWorkflowRun,
+  AdminWorkflowRunDetails,
+  AdminWorkflowRunsFilter,
+  AdminWorkflowRunState,
+  AdminWorkflowStep,
+  AdminWorkflowStepAttempt,
+  AdminWorkflowSyncResult,
+  AdminWorkflowTrigger,
+  AdminWorkflowUpgradeResult,
+  AdminWorkflowVersion
+} from "./workflows";
+
+export type {
   ProjectConfig
 } from "./project-configs";
 
@@ -108,9 +123,9 @@ export type {
 export type {
   AdminDeploymentDomainJson,
   AdminDeploymentEnvVarJson,
-  AdminDeploymentEnvVarOptions,
-  AdminDeploymentRunJson,
-  AdminDeploymentServiceBuildOptions,
+  AdminDeploymentJson,
+  AdminDeploymentServiceOutcomeJson,
+  AdminProjectSecretJson,
   AdminDeploymentServiceJson,
   AdminOwnedProject,
   AdminProject,

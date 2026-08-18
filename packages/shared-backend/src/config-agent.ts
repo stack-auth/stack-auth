@@ -67,9 +67,9 @@ function buildConfigAgentPrompt(options: {
     : `Apply EXACTLY these config changes. Paths use dot notation, so \`a.b.c\` refers to \`config.a.b.c\`:\n\n${options.target.changes.map(({ path, value }) => `- ${JSON.stringify(path)}: set to ${JSON.stringify(value)}`).join("\n")}`;
   const scopeSection = options.scope.mode === "known-file"
     ? `Config file: ${JSON.stringify(options.scope.configFileName)} in the current working directory.`
-    : "Current working directory: the repository root. Find the Hexclave / Stack Auth config file. It is usually a `*.config.ts` file exporting `config`, often wrapped in `defineHexclaveConfig(...)` or a similar helper.";
+    : "Current working directory: the repository root. Find the Hexclave config file. It is usually a `*.config.ts` file exporting `config`, often wrapped in `defineHexclaveConfig(...)` or a similar helper.";
 
-  return `You are updating a Hexclave / Stack Auth configuration file.
+  return `You are updating a Hexclave configuration file.
 
 ${scopeSection}
 
