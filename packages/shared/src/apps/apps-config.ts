@@ -220,7 +220,7 @@ export const ALL_APPS = {
   },
   "gtm": {
     displayName: "GTM",
-    subtitle: "Internal go-to-market workspace",
+    subtitle: "AI-driven growth analysis, actionable items, and daily briefs",
     tags: ["gtm", "operations"],
     stage: "alpha",
     softRequirements: ["analytics"],
