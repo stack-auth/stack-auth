@@ -1,7 +1,6 @@
 import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { recordAuditEvent } from "@/lib/audit-log";
 import { createImpersonationAuthTokens, createAuthTokens, MAX_AUTH_SESSION_EXPIRATION_MS } from "@/lib/tokens";
-import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userIdOrMeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -70,29 +69,18 @@ export const POST = createSmartRouteHandler({
       });
 
     if (isImpersonation) {
-      try {
-        await recordAuditEvent({
-          tenancy,
-          auth,
-          action: "impersonation.started",
-          targetUserId: user.id,
-          reason,
-          metadata: {
-            refresh_token_id: refreshTokenId,
-            expires_at_millis: Date.now() + expiresInMillis,
-            source: "auth.sessions",
-          },
-        });
-      } catch (error) {
-        // Strict audit: do not leave an unlogged impersonation session around.
-        await globalPrismaClient.projectUserRefreshToken.deleteMany({
-          where: {
-            tenancyId: tenancy.id,
-            id: refreshTokenId,
-          },
-        });
-        throw error;
-      }
+      await recordAuditEvent({
+        tenancy,
+        auth,
+        action: "impersonation.started",
+        targetUserId: user.id,
+        reason,
+        metadata: {
+          refresh_token_id: refreshTokenId,
+          expires_at_millis: Date.now() + expiresInMillis,
+          source: "auth.sessions",
+        },
+      });
     }
 
     return {

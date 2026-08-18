@@ -16,7 +16,7 @@ import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { adaptSchema, adminAuthTypeSchema, moneyAmountSchema, productSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { moneyAmountToStripeUnits, stripeUnitsToMoneyAmount } from "@hexclave/shared/dist/utils/currencies";
 import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
-import { captureError, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import type Stripe from "stripe";
 import { InferType } from "yup";
 
@@ -84,27 +84,6 @@ function makeStripeIdempotencyKey(args: {
 }): string {
   const fingerprint = `${args.tenancyId}:${args.sourceTxnId}:${args.amountStripeUnits}:${args.priorRefundedStripeUnits}`;
   return `refund:${createHash("sha256").update(fingerprint).digest("hex").slice(0, 32)}`;
-}
-
-/**
- * Write the dashboard audit row *after* Stripe + the refund ledger have
- * already committed. `recordAuditEvent` throws on insert failure so the
- * HTTP request would look like a failed refund; a dashboard retry would
- * then see the first refund in `priorRefundedStripeUnits`, mint a new
- * Stripe idempotency key, and issue a second real refund.
- *
- * A missing audit row is recoverable. A double refund is not. Report the
- * insert failure and still return success to the caller.
- */
-export async function recordRefundAuditAfterCommit(
-  write: () => Promise<void>,
-  reportWriteFailure: (error: unknown) => void,
-): Promise<void> {
-  try {
-    await write();
-  } catch (error) {
-    reportWriteFailure(error);
-  }
 }
 
 function buildProductRevocationEntry(options: {
@@ -450,16 +429,13 @@ export const POST = createSmartRouteHandler({
         purchase_id: body.id,
         refund_transaction_id: result.body.refund_transaction_id,
       };
-    await recordRefundAuditAfterCommit(
-      () => recordAuditEvent({
-        tenancy: auth.tenancy,
-        auth,
-        action: "payment.refund.created",
-        targetUserId: result.audit.customerType === "user" ? result.audit.customerId : null,
-        metadata,
-      }),
-      (error) => captureError("payments.refund.post-commit-audit", error),
-    );
+    await recordAuditEvent({
+      tenancy: auth.tenancy,
+      auth,
+      action: "payment.refund.created",
+      targetUserId: result.audit.customerType === "user" ? result.audit.customerId : null,
+      metadata,
+    });
 
     return {
       statusCode: result.statusCode,
@@ -497,9 +473,6 @@ export const POST = createSmartRouteHandler({
 //        the just-committed amount, so a fresh key is generated and Stripe
 //        issues a second real refund. This is the open hole — no
 //        out-of-band reconciliation today. Tracked alongside (1).
-//        Post-commit `recordAuditEvent` failures are *not* in this class:
-//        `recordRefundAuditAfterCommit` captures them and still returns
-//        200 so the dashboard does not retry.
 async function handleSubscriptionRefund(options: {
   prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
   tenancy: Tenancy,

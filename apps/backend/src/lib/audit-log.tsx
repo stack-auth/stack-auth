@@ -1,7 +1,7 @@
 import { globalPrismaClient } from "@/prisma-client";
 import type { Tenancy } from "@/lib/tenancies";
 import { Prisma } from "@/generated/prisma/client";
-import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 
 export const AUDIT_LOG_ACTIONS = [
   "impersonation.started",
@@ -512,9 +512,9 @@ export function buildNonSensitiveFieldChanges(options: {
  * only for skipping metadata work.
  *
  * Pass `auth` (not a pre-built actor); actor resolution is handled here.
- * When a write *is* attempted, insert failures fail the caller so audited
- * dashboard actions cannot succeed without a durable trail. Viewing is gated
- * by the Compliance app; writes are not.
+ * Insert failures are reported, not thrown — a missing audit row must never
+ * fail the audited action or the HTTP request. Viewing is gated by the
+ * Compliance app; writes are not.
  *
  * For settings diffs, use `buildProjectSettingsAuditMetadata` then pass the
  * result as `metadata` — don't invent per-action wrappers for simple events.
@@ -551,10 +551,13 @@ export async function recordAuditEvent(options: {
       },
     });
   } catch (error) {
-    throw new HexclaveAssertionError(
-      "Failed to write admin audit log event; refusing to continue the audited action.",
-      { cause: error },
-    );
+    // Audit is best-effort. Failing the caller here would make a succeeded
+    // action look failed, which causes retries (double refunds) and
+    // compensating rollbacks (impersonation sessions). Report it instead.
+    captureError("admin-audit-log-write", new HexclaveAssertionError(
+      "Failed to write admin audit log event; the audited action still succeeded.",
+      { cause: error, auditAction: options.action },
+    ));
   }
 }
 

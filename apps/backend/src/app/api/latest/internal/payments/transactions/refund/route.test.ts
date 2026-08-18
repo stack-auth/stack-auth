@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   getRefundDrivenImmediateEndedAt,
-  recordRefundAuditAfterCommit,
   shouldRejectSubscriptionProductRevocationReplay,
 } from "./route";
 
@@ -28,35 +27,6 @@ describe("subscription refund replay guard", () => {
       productRevokedAt: new Date("2026-01-01T00:00:00Z"),
       priorProductRevoked: true,
     })).toBe(false);
-  });
-});
-
-describe("post-commit refund audit", () => {
-  it("propagates a successful audit write", async () => {
-    let wrote = false;
-    await recordRefundAuditAfterCommit(
-      async () => {
-        wrote = true;
-      },
-      () => {
-        throw new Error("should not report a successful write");
-      },
-    );
-    expect(wrote).toBe(true);
-  });
-
-  it("swallows audit write failures so a dashboard retry cannot double-refund", async () => {
-    const reported: unknown[] = [];
-    await recordRefundAuditAfterCommit(
-      async () => {
-        throw new Error("audit insert failed");
-      },
-      (error) => {
-        reported.push(error);
-      },
-    );
-    expect(reported).toHaveLength(1);
-    expect((reported[0] as Error).message).toBe("audit insert failed");
   });
 });
 

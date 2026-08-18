@@ -2,7 +2,6 @@ import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { recordAuditEvent } from "@/lib/audit-log";
 import { createBrowserAction, DEFAULT_BROWSER_ACTION_TTL_MS, DEFAULT_IMPERSONATION_SESSION_TTL_MS, MAX_BROWSER_ACTION_TTL_MS } from "@/lib/browser-actions";
 import { MAX_AUTH_SESSION_EXPIRATION_MS } from "@/lib/tokens";
-import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -95,32 +94,19 @@ export const POST = createSmartRouteHandler({
     });
 
     if (type === "impersonation") {
-      try {
-        await recordAuditEvent({
-          tenancy,
-          auth,
-          action: "impersonation.started",
-          targetUserId: user_id ?? throwErr(new StatusError(StatusError.BadRequest, "Invalid browser action")),
-          reason,
-          metadata: {
-            refresh_token_id: action.refreshTokenId ?? null,
-            expires_at_millis: Date.now() + session_expires_in_millis,
-            origin,
-            source: "browser-actions",
-          },
-        });
-      } catch (error) {
-        // Strict audit: roll back the impersonation session minted for this action.
-        if (action.refreshTokenId != null) {
-          await globalPrismaClient.projectUserRefreshToken.deleteMany({
-            where: {
-              tenancyId: tenancy.id,
-              id: action.refreshTokenId,
-            },
-          });
-        }
-        throw error;
-      }
+      await recordAuditEvent({
+        tenancy,
+        auth,
+        action: "impersonation.started",
+        targetUserId: user_id ?? throwErr(new StatusError(StatusError.BadRequest, "Invalid browser action")),
+        reason,
+        metadata: {
+          refresh_token_id: action.refreshTokenId ?? null,
+          expires_at_millis: Date.now() + session_expires_in_millis,
+          origin,
+          source: "browser-actions",
+        },
+      });
     }
 
     return {
