@@ -6,7 +6,7 @@ sidebarTitle: "Overview"
 
 <Visibility for="agents">
 <Note>
-  **For agents/LLMs:** This is a high-level *marketing* overview of the Payments app, not an implementation reference. To actually build with payments, start at [Payments setup](./setup), then use the concept pages: [Products & Pricing](./products-and-pricing), [Items & Entitlements](./items-and-entitlements), [Checkout & Purchases](./checkout), [Subscriptions](./subscriptions), [Billing & Invoices](./billing-and-invoices), [Granting Products](./granting-products), and [Customer Types](./customers).
+  **For agents/LLMs:** This is a high-level *marketing* overview of the Payments app, not an implementation reference. To actually build with payments, start at [Payments setup](./setup), then use the concept pages: [Products & Pricing](./products-and-pricing), [Items & Entitlements](./items-and-entitlements), [Checkout & Purchases](./checkout), [Subscriptions](./subscriptions), [Billing & Invoices](./billing-and-invoices), [Refunds](./refunds), [Granting Products](./granting-products), and [Customer Types](./customers).
 </Note>
 </Visibility>
 
@@ -28,7 +28,7 @@ window.location.href = checkoutUrl;
 
 <PricingSkeleton />
 
-Group products into a **product line** to make them mutually exclusive - Free, Pro, and Enterprise where a customer can only hold one at a time. Upgrades, downgrades, and proration on plan switches are handled for you.
+Group products into a **product line** to make them mutually exclusive - Free, Pro, and Enterprise where a customer can only hold one at a time. Upgrades, downgrades, and proration on plan switches are handled for you. Recurring prices can include a **free trial** — the card is collected at checkout and charged when the trial ends. See [Products & Pricing](./products-and-pricing#free-trials).
 
 ## Can I sell credits, seats, or API quota?
 
@@ -65,7 +65,7 @@ With a raw payment processor you build and maintain the glue: webhook handlers, 
 - **Grants & revokes** - products and items are applied on payment and removed when a subscription ends or a refund is issued
 - **Subscription lifecycle** - status, renewals, cancellations, and period ends tracked automatically
 - **Proration** - handled automatically on plan switches, triggered through one SDK call
-- **Refunds** - issued from the dashboard, with entitlements revoked in step
+- **Refunds** - issued from the dashboard (partial or full), with optional entitlement revocation. See [Refunds](./refunds).
 - **Sync** - entitlement and subscription state stays consistent without a database to babysit
 
 <TransactionsSkeleton />
@@ -108,4 +108,4 @@ Straight answers so there are no surprises:
 2. Connect your payment account under **Payments → Settings**, and turn on **test mode** while you build.
 3. Define a product (with items, if you want entitlements), then call `user.createCheckoutUrl(...)`.
 
-Ready for the details - products, items, subscriptions, billing, invoices, and grants? Start with [Payments setup](./setup).
+Ready for the details - products, items, subscriptions, billing, invoices, refunds, and grants? Start with [Payments setup](./setup).

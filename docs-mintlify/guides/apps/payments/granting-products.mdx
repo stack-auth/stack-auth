@@ -3,7 +3,9 @@ title: "Granting Products"
 description: "Give a customer a product without going through checkout"
 ---
 
-Sometimes you need to give a customer a product without charging them - free trials, admin grants, promotional offers, support credits. Use `grantProduct` on the server.
+Sometimes you need to give a customer a product without charging them - comps, promotional offers, or support access. Use `grantProduct` on the server. There is **no grant-product button** in the dashboard — from the dashboard, use [Create checkout](./checkout#creating-a-checkout-url-from-the-dashboard) (even in test mode) or adjust item quantities.
+
+A grant creates a real subscription or one-time product on the customer. It does **not** honor a configured [free trial](./products-and-pricing#free-trials) — access starts immediately. Pass `quantity` for stackable products (defaults to `1`).
 
 ## Granting a configured product
 
@@ -14,6 +16,7 @@ import { hexclaveServerApp } from "@/hexclave/server";
 await hexclaveServerApp.grantProduct({
   userId: "user-id",
   productId: "prod_premium",
+  quantity: 1,
 });
 
 // Grant to a team
@@ -29,7 +32,7 @@ await hexclaveServerApp.grantProduct({
 });
 ```
 
-If you already have a reference to a **server** user or team object (for example from `hexclaveServerApp.getUser(userId)`), you can also call `user.grantProduct({ productId })` directly. This method is server-only.
+If you already have a reference to a **server** user or team object (for example from `hexclaveServerApp.getUser(userId)`), you can also call `user.grantProduct({ productId, quantity })` directly. This method is server-only.
 
 ## Inline products
 
@@ -58,4 +61,5 @@ await hexclaveServerApp.grantProduct({
 ## Related
 
 - [Items & Entitlements](./items-and-entitlements) - the credits and seats a grant hands out
+- [Checkout & Purchases](./checkout) - charge the customer instead
 - [Customer Types](./customers) - grant to users, teams, or custom customers

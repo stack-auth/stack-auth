@@ -53,6 +53,7 @@ Each step has its own guide:
 - [Checkout & Purchases](./checkout) - sell a product and read what a customer owns
 - [Subscriptions](./subscriptions) - switching plans and cancellation
 - [Billing & Invoices](./billing-and-invoices) - payment methods and billing history
+- [Refunds](./refunds) - partial or full refunds, and ending access
 - [Granting Products](./granting-products) - give access without checkout
 - [Customer Types](./customers) - users, teams, and custom customers
 
@@ -61,6 +62,12 @@ Each step has its own guide:
 While you're building, turn on **test mode** in **Payments -> Settings**. With test mode on, purchases skip the payment processor entirely: products and items are granted instantly, no card is collected, and no money moves. It's on by default in development environments.
 
 This lets you wire up checkout, entitlements, and subscription logic end to end without touching real money. When you're confident everything works, turn test mode off - at which point purchases go through the payment processor and **charge real money**.
+
+Test mode does **not** simulate every live behavior:
+
+- **Free trials are skipped.** The product is granted immediately; there is no trial period and no deferred first charge. Turn test mode off to exercise the real trial checkout.
+- **Catalog edits still apply to production.** Test mode only changes how purchases run, not which products exist.
+- **Money refunds are not available.** You can still end access from a refund dialog; you cannot return money that was never charged. See [Refunds](./refunds).
 
 <Warning>
   There's no "live but free" middle ground. With test mode **off**, every purchase is a real, billable charge. Keep test mode on until you're ready to take real payments.
@@ -72,10 +79,10 @@ The dashboard gives you full visibility and control over your payments:
 
 - **Product Lines** - Group products into mutually exclusive tiers. In **Payments -> Product Lines**.
 - **Products & Items** - Create and edit products, set pricing, and configure included items. In **Payments -> Products & Items**.
-- **Customers** - View item balances per customer, manually adjust quantities (with optional expiration), and grant products directly. In **Payments -> Customers**.
-- **Transactions** - See all payment activity, filter by type and customer, view details, and issue refunds. In **Payments -> Transactions**.
-- **Payouts** - View payout information. In **Payments -> Payouts**.
-- **Settings** - Connect your payment account, toggle test mode, configure payment methods, and block new purchases. In **Payments -> Settings**.
+- **Customers** - View item balances per customer, manually adjust quantities, and create checkout URLs. In **Payments -> Customers**. Granting a product without checkout is [SDK/API only](./granting-products).
+- **Transactions** - See all payment activity, filter by type and customer, export CSV, and issue [refunds](./refunds) on purchase rows. In **Payments -> Transactions**.
+- **Payouts** - View payout information. In **Payments -> Payouts**. Unavailable in development environments.
+- **Settings** - Connect your payment account, toggle test mode, configure payment methods, and **block new purchases** (existing subscriptions keep renewing). In **Payments -> Settings**.
 
 ### Payment emails
 
@@ -83,5 +90,6 @@ Email notifications are sent automatically on payment events:
 
 - **Payment Receipt** - Sent on successful payment with product details, amount, and receipt link
 - **Payment Failed** - Sent on failed payment with product name, amount, and failure reason
+- **Trial Ending Soon** - Sent before a [free trial](./products-and-pricing#free-trials) ends, so the customer knows the saved payment method will be charged
 
-These apply to both one-time purchases and subscription renewals. Customize them in **Emails -> Templates** (see the [Emails guide](/guides/apps/emails/guide)).
+These apply to both one-time purchases and subscription renewals (receipts and failures). Customize them in **Emails -> Templates** (see the [Emails guide](/guides/apps/emails/guide)).

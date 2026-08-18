@@ -143,6 +143,7 @@ const docsJson = {
                   "guides/apps/payments/checkout",
                   "guides/apps/payments/subscriptions",
                   "guides/apps/payments/billing-and-invoices",
+                  "guides/apps/payments/refunds",
                   "guides/apps/payments/granting-products",
                   "guides/apps/payments/customers"
                 ]
