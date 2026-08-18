@@ -34,8 +34,15 @@ describe("PageLayout shell attributes", () => {
       </PageLayout>,
     );
 
-    expect(container.querySelectorAll("[data-contained-height]")).toHaveLength(1);
-    expect(container.querySelectorAll("[data-full-bleed]")).toHaveLength(1);
+    const root = container.firstElementChild;
+    if (root == null) {
+      throw new Error("Expected the outer PageLayout to render a root element");
+    }
+
+    expect(root.getAttribute("data-contained-height")).toBe("true");
+    expect(root.getAttribute("data-full-bleed")).toBe("true");
+    expect(root.querySelector("[data-contained-height]")).toBeNull();
+    expect(root.querySelector("[data-full-bleed]")).toBeNull();
   });
 
   it("does not expose shell attributes from layouts in header props", () => {
@@ -47,7 +54,14 @@ describe("PageLayout shell attributes", () => {
       />,
     );
 
-    expect(container.querySelectorAll("[data-contained-height]")).toHaveLength(1);
-    expect(container.querySelectorAll("[data-full-bleed]")).toHaveLength(1);
+    const root = container.firstElementChild;
+    if (root == null) {
+      throw new Error("Expected the outer PageLayout to render a root element");
+    }
+
+    expect(root.getAttribute("data-contained-height")).toBe("true");
+    expect(root.getAttribute("data-full-bleed")).toBe("true");
+    expect(root.querySelector("[data-contained-height]")).toBeNull();
+    expect(root.querySelector("[data-full-bleed]")).toBeNull();
   });
 });
