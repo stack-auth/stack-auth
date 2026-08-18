@@ -2,7 +2,8 @@ import { traceSpan } from '@/utils/telemetry';
 import { getOptionalRequestAbortSignal } from '@/lib/runtime/request-context';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
 import { getEnvVariable, getNodeEnvironment } from '@hexclave/shared/dist/utils/env';
-import { HexclaveAssertionError, captureError } from '@hexclave/shared/dist/utils/errors';
+import { HexclaveAssertionError, captureError, captureWarning } from '@hexclave/shared/dist/utils/errors';
+import { globalVar } from '@hexclave/shared/dist/utils/globals';
 import { Result } from '@hexclave/shared/dist/utils/results';
 import { Sandbox } from '@vercel/sandbox';
 import { Freestyle as FreestyleClient } from 'freestyle';
@@ -158,20 +159,125 @@ function createVercelSandboxEngine(): JsEngine {
   };
 }
 
-async function stopVercelSandboxAfterExecution(sandbox: Sandbox): Promise<void> {
+// Kept below the standalone shutdown drain (drainInFlightPromises, 8s) so a
+// detached teardown can never outlive the process that owns it.
+const VERCEL_SANDBOX_CLEANUP_TIMEOUT_MS = 5000;
+
+/**
+ * Statuses for which stopping is a no-op because the sandbox is already
+ * terminating on its own: 410 SANDBOX_STOPPED and 422 SANDBOX_STOPPING.
+ *
+ * Both are the norm rather than the exception here. A sandbox is created with
+ * `timeout` equal to the caller's own deadline (for workflow steps, the engine
+ * backstop), so every execution that runs long enough to be cancelled loses
+ * its sandbox to Vercel's lifetime reaper at the very moment we decide to tear
+ * it down — the teardown then races a shutdown that has already begun.
+ */
+const VERCEL_SANDBOX_ALREADY_TERMINATING_STATUSES = [410, 422];
+
+/**
+ * `@vercel/sandbox` only exports `StreamError`, not the `APIError` its HTTP
+ * layer throws, so the status of a failed sandbox request is reachable only
+ * through the `response` the error carries.
+ */
+function getVercelSandboxErrorStatus(error: unknown): number | null {
+  if (typeof error !== "object" || error === null) return null;
+  const response: unknown = Reflect.get(error, "response");
+  if (typeof response !== "object" || response === null) return null;
+  const status: unknown = Reflect.get(response, "status");
+  return typeof status === "number" ? status : null;
+}
+
+type StoppableSandbox = Pick<Sandbox, "stop" | "sandboxId" | "status" | "timeout">;
+
+async function stopVercelSandboxAfterExecution(sandbox: StoppableSandbox): Promise<void> {
+  const startedAt = performance.now();
   try {
     // The operation signal may already be aborted, but stopping the
     // already-created sandbox is exactly the cleanup that still needs to run.
-    await sandbox.stop({ signal: AbortSignal.timeout(5000) });
+    await sandbox.stop({ signal: AbortSignal.timeout(VERCEL_SANDBOX_CLEANUP_TIMEOUT_MS) });
   } catch (error) {
+    if (VERCEL_SANDBOX_ALREADY_TERMINATING_STATUSES.includes(getVercelSandboxErrorStatus(error) ?? -1)) {
+      return;
+    }
     // Teardown failure is observable, but must not replace the execution
     // result or the original provider error that led us into `finally`.
-    captureError("js-execution-vercel-sandbox-cleanup-failed", new HexclaveAssertionError(
+    // Warning, not error: Vercel stops the sandbox at its `timeout` no matter
+    // what, so the cost of a failed teardown is bounded leftover compute, and
+    // never a wrong execution result.
+    captureWarning("js-execution-vercel-sandbox-cleanup-failed", new HexclaveAssertionError(
       "Failed to stop Vercel Sandbox after JavaScript execution",
-      { cause: error },
+      {
+        cause: error,
+        // Without these the report can't tell the failure modes apart: our own
+        // deadline firing part-way through the SDK's internal retry ladder
+        // (no status, elapsed ≈ the budget), an upstream rejection (status
+        // set), and a sandbox that was already unreachable for some status we
+        // don't yet treat as benign.
+        sandboxId: sandbox.sandboxId,
+        responseStatus: getVercelSandboxErrorStatus(error),
+        elapsedMs: Math.round(performance.now() - startedAt),
+        cleanupTimeoutMs: VERCEL_SANDBOX_CLEANUP_TIMEOUT_MS,
+        sandboxLifetimeMs: sandbox.timeout,
+        sandboxStatusAtCreation: sandbox.status,
+      },
     ));
   }
 }
+
+import.meta.vitest?.describe("stopVercelSandboxAfterExecution", () => {
+  const { test, expect, beforeEach } = import.meta.vitest!;
+
+  function sandboxStub(stopError: unknown): StoppableSandbox {
+    return {
+      stop: async () => { throw stopError; },
+      sandboxId: "sbx_test",
+      status: "running",
+      timeout: 630_000,
+    };
+  }
+
+  function apiErrorStub(status: number): Error {
+    return Object.assign(new Error(`Status code ${status} is not ok`), {
+      response: new Response(null, { status }),
+    });
+  }
+
+  function cleanupReports() {
+    return (globalVar.hexclaveCapturedErrors ?? [])
+      .filter((entry: { location: string }) => entry.location === "js-execution-vercel-sandbox-cleanup-failed");
+  }
+
+  beforeEach(() => {
+    globalVar.hexclaveCapturedErrors = [];
+  });
+
+  test.each([410, 422])("does not report a sandbox that is already stopped or stopping (%i)", async (status) => {
+    await stopVercelSandboxAfterExecution(sandboxStub(apiErrorStub(status)));
+    expect(cleanupReports()).toHaveLength(0);
+  });
+
+  test("reports other teardown failures as warnings, with the context needed to classify them", async () => {
+    await stopVercelSandboxAfterExecution(sandboxStub(apiErrorStub(500)));
+    expect(cleanupReports()).toMatchObject([{
+      level: "warning",
+      error: expect.objectContaining({
+        message: expect.stringContaining("Failed to stop Vercel Sandbox after JavaScript execution"),
+        extraData: expect.objectContaining({ sandboxId: "sbx_test", responseStatus: 500, sandboxLifetimeMs: 630_000 }),
+      }),
+    }]);
+  });
+
+  test("reports our own cleanup deadline without a response status", async () => {
+    await stopVercelSandboxAfterExecution(sandboxStub(new DOMException("The operation was aborted due to timeout", "TimeoutError")));
+    expect(cleanupReports()).toMatchObject([{
+      level: "warning",
+      error: expect.objectContaining({
+        extraData: expect.objectContaining({ responseStatus: null, cleanupTimeoutMs: VERCEL_SANDBOX_CLEANUP_TIMEOUT_MS }),
+      }),
+    }]);
+  });
+});
 
 const engineMap = new Map<string, JsEngine>([
   ['freestyle', createFreestyleEngine()],
