@@ -421,8 +421,9 @@ describe("growth workflow orchestration e2e (mock Eve)", { timeout: 90_000 }, ()
         predicate: (dispatch) => dispatch.path === "/runs/analysis-phase" && dispatch.body.project_id === projectId,
       });
       const runId = await completeOnboarding();
-      // The first tick creates the leg row before its first advance step ticks the bridge, so drive
-      // until integrations settles before asserting the explicit route's CAS response.
+      // One bridge tick computes metrics, which is what makes integrations auto-skippable; the skip
+      // itself lands on a following tick, so drive until it settles before asserting the explicit
+      // route's CAS response.
       expect((await bridgeCall("analysis/tick", { run_id: runId })).status).toBe(200);
       await waitForSettledIntegrationsPhase(expect, runId);
       const skipIntegrations = await niceBackendFetch(`${ADMIN_BASE}/runs/${runId}/integrations`, {
