@@ -1,5 +1,5 @@
-import { classifyTelemetrySignal, type LogLevel, type TelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
-import { TELEMETRY_MAX_LOG_MESSAGE_BYTES, truncateUtf8Bytes } from "@hexclave/shared/dist/utils/analytics-wire";
+import { classifyTelemetrySignal, TELEMETRY_MAX_LOG_MESSAGE_BYTES, truncateUtf8Bytes, type LogLevel, type TelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { createHash } from "crypto";
 import { stripLoneSurrogates, type ClickHouseClient } from "./clickhouse";
 import { computeGrouping, computeGroupingWithReadableConfigs, getGroupingHashProvenance } from "./issues/grouping";
@@ -172,6 +172,14 @@ function readBooleanField(data: unknown, key: string): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
+function requireBooleanField(data: unknown, key: string): boolean {
+  const value = readBooleanField(data, key);
+  if (value === null) {
+    throw new StatusError(StatusError.BadRequest, `$error event is missing a boolean ${key} field`);
+  }
+  return value;
+}
+
 function readStringField(data: unknown, key: string): string | null {
   if (typeof data !== "object" || data === null) return null;
   const value = (data as Record<string, unknown>)[key];
@@ -181,9 +189,9 @@ function readStringField(data: unknown, key: string): string | null {
 /**
  * Grouping output for one `$error` row, plus the columns derived from it.
  *
- * `computeGrouping` never throws and never returns an empty hash — it degrades
- * to a deterministic `sha256(type ‖ parameterizedMessage)` with
- * `variant: "degraded"`. That matters because the rollup materialized view
+ * `computeGrouping` degrades only for known fingerprint parse failures and
+ * otherwise never returns an empty hash — unexpected throws fail the
+ * occurrence write. That matters because the rollup materialized view
  * filters on `issue_hash != ''`, so an empty hash would silently drop the
  * occurrence out of every issue-level aggregate while leaving it visible in
  * `default.errors` — the worst of both worlds.
@@ -400,9 +408,7 @@ function collectIssueInputs(grouped: readonly GroupedErrorOccurrence[], context:
       deploymentEnvironmentName: context.deploymentEnvironmentName,
       release: readStringField(event.data, "release"),
       level: event.level ?? readStringField(event.data, "level") ?? "error",
-      // `handled` defaults to true when the SDK omitted it: an error we cannot
-      // prove crashed the caller should not be reported as a crash.
-      handled: readBooleanField(event.data, "handled") ?? true,
+      handled: requireBooleanField(event.data, "handled"),
       // The fingerprint variant may be `custom` even when the captured value
       // was synthetic; preserve the mechanism fact independently of which hash
       // won.

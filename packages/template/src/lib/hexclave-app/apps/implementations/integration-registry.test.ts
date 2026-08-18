@@ -444,7 +444,6 @@ describe("error integration registry", () => {
       {
         error: expect.any(Error),
         options: {
-          handled: true,
           level: "error",
           mechanism: "auto.node.library",
           contexts: { library: { name: "pg", operation: "query" } },

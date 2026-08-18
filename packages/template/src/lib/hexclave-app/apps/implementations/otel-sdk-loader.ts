@@ -4,6 +4,10 @@ type OtelSdkModule = {
   registerManagedOtel: (options: ManagedOtelOptions) => ManagedOtelRegistration,
 };
 
+type OtelSdkLoadAttempt =
+  | { module: OtelSdkModule }
+  | { module: null, errors: unknown[] };
+
 /**
  * Loads the Node-only managed OTel SDK without a static import edge.
  *
@@ -19,24 +23,37 @@ function otelSdkSpecifiers(): string[] {
   return [`./${base}.js`, `./${base}`];
 }
 
+function describeLoadError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isOtelSdkModule(value: unknown): value is OtelSdkModule {
+  return typeof value === "object" && value !== null && typeof Reflect.get(value, "registerManagedOtel") === "function";
+}
+
+function isCreateRequire(value: unknown): value is (url: string | URL) => (id: string) => unknown {
+  return typeof value === "function";
+}
+
 /**
  * Sync path for Node: `process.getBuiltinModule("module").createRequire` loads
  * the sibling CJS build without a static import graph. Returns null outside
  * Node, when createRequire cannot load ESM-only siblings, or under Vitest's
  * TypeScript source layout.
  */
-export function tryRequireOtelSdkSync(): OtelSdkModule | null {
+function tryRequireOtelSdkSyncAttempt(): OtelSdkLoadAttempt {
+  const errors: unknown[] = [];
   try {
     // Read `process` untyped: the ambient Node types claim it always exists,
     // but this guard is exactly for non-Node runtimes where it doesn't.
     const proc: unknown = Reflect.get(globalThis, "process");
-    if (proc == null || typeof proc !== "object") return null;
+    if (proc == null || typeof proc !== "object") return { module: null, errors };
     const getBuiltinModule = Reflect.get(proc, "getBuiltinModule");
-    if (typeof getBuiltinModule !== "function") return null;
-    const nodeModule = getBuiltinModule.call(proc, "module") as {
-      createRequire?: (url: string | URL) => (id: string) => OtelSdkModule,
-    } | null;
-    if (nodeModule == null || typeof nodeModule.createRequire !== "function") return null;
+    if (typeof getBuiltinModule !== "function") return { module: null, errors };
+    const nodeModule = getBuiltinModule.call(proc, "module");
+    if (nodeModule == null || typeof nodeModule !== "object") return { module: null, errors };
+    const createRequire = Reflect.get(nodeModule, "createRequire");
+    if (!isCreateRequire(createRequire)) return { module: null, errors };
 
     const urls = [import.meta.url];
     // dist/esm/... → dist/... CJS twin, which createRequire can load.
@@ -45,48 +62,63 @@ export function tryRequireOtelSdkSync(): OtelSdkModule | null {
     }
 
     for (const url of urls) {
-      const require = nodeModule.createRequire(url);
+      const require = createRequire.call(nodeModule, url);
       for (const id of otelSdkSpecifiers()) {
         try {
           const mod = require(id);
-          if (typeof mod.registerManagedOtel === "function") return mod;
-        } catch {
-          // try next candidate
+          if (isOtelSdkModule(mod)) return { module: mod };
+          errors.push(new Error(`${id} loaded but is missing registerManagedOtel`));
+        } catch (error) {
+          errors.push(error);
         }
       }
     }
-    return null;
-  } catch {
-    return null;
+    return { module: null, errors };
+  } catch (error) {
+    errors.push(error);
+    return { module: null, errors };
   }
 }
 
-let otelSdkImportPromise: Promise<OtelSdkModule | null> | null = null;
+export function tryRequireOtelSdkSync(): OtelSdkModule | null {
+  return tryRequireOtelSdkSyncAttempt().module;
+}
 
-/** Async load; works for ESM dist and Vitest source resolution. */
-export function importOtelSdk(): Promise<OtelSdkModule | null> {
+let otelSdkImportPromise: Promise<OtelSdkLoadAttempt> | null = null;
+
+function importOtelSdkAttempt(): Promise<OtelSdkLoadAttempt> {
   if (otelSdkImportPromise === null) {
-    otelSdkImportPromise = (async (): Promise<OtelSdkModule | null> => {
+    otelSdkImportPromise = (async (): Promise<OtelSdkLoadAttempt> => {
+      const errors: unknown[] = [];
       for (const specifier of otelSdkSpecifiers()) {
         try {
-          const mod = await import(/* @vite-ignore */ /* webpackIgnore: true */ specifier) as OtelSdkModule;
-          if (typeof mod.registerManagedOtel === "function") return mod;
-        } catch {
-          // try next candidate
+          const mod: unknown = await import(/* @vite-ignore */ /* webpackIgnore: true */ specifier);
+          if (isOtelSdkModule(mod)) return { module: mod };
+          errors.push(new Error(`${specifier} loaded but is missing registerManagedOtel`));
+        } catch (error) {
+          errors.push(error);
         }
       }
-      return null;
+      return { module: null, errors };
     })();
   }
   return otelSdkImportPromise;
 }
 
+/** Async load; works for ESM dist and Vitest source resolution. */
+export function importOtelSdk(): Promise<OtelSdkModule | null> {
+  return importOtelSdkAttempt().then((result) => result.module);
+}
+
 export async function registerManagedOtelAsync(options: ManagedOtelOptions): Promise<ManagedOtelRegistration> {
-  const sync = tryRequireOtelSdkSync();
-  if (sync !== null) return sync.registerManagedOtel(options);
-  const mod = await importOtelSdk();
-  if (mod === null) {
-    throw new Error("Hexclave managed OpenTelemetry requires a Node.js runtime; the Node OTel SDK could not be loaded");
-  }
-  return mod.registerManagedOtel(options);
+  const sync = tryRequireOtelSdkSyncAttempt();
+  if (sync.module !== null) return sync.module.registerManagedOtel(options);
+  const loaded = await importOtelSdkAttempt();
+  if (loaded.module !== null) return loaded.module.registerManagedOtel(options);
+  const details = [...sync.errors, ...loaded.errors].map(describeLoadError).filter((message) => message !== "");
+  throw new Error(
+    details.length === 0
+      ? "Hexclave managed OpenTelemetry requires a Node.js runtime; the Node OTel SDK could not be loaded"
+      : `Hexclave managed OpenTelemetry requires a Node.js runtime; the Node OTel SDK could not be loaded: ${details.join("; ")}`,
+  );
 }

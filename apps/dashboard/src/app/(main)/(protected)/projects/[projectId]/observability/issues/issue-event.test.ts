@@ -7,17 +7,15 @@ function occurrence(data: Record<string, unknown>): Pick<IssueOccurrence, "data"
 }
 
 describe("issue event payload", () => {
-  it("reads the rich exception bridge and only allowlists request fields", () => {
+  it("reads the top-level exception chain and only allowlists request fields", () => {
     const payload = getIssueEventPayload(occurrence({
       event_id: "0123456789abcdef0123456789abcdef",
-      extra: {
-        exception: {
-          values: [{
-            type: "TypeError",
-            value: "bad value",
-            stacktrace: { frames: [{ filename: "app.ts", function: "run", lineno: 4 }] },
-          }],
-        },
+      exception: {
+        values: [{
+          type: "TypeError",
+          value: "bad value",
+          stacktrace: { frames: [{ filename: "app.ts", function: "run", lineno: 4 }] },
+        }],
       },
       request: {
         url: "https://example.test/path?token=hidden",
@@ -38,6 +36,57 @@ describe("issue event payload", () => {
     ]);
     expect(JSON.stringify(payload.additionalData)).not.toContain("authorization");
     expect(JSON.stringify(payload.additionalData)).not.toContain("private");
+  });
+
+  it("does not treat camelCase frame or request aliases as the stored shape", () => {
+    const payload = getIssueEventPayload(occurrence({
+      exception: {
+        values: [{
+          type: "TypeError",
+          value: "bad value",
+          stacktrace: {
+            frames: [{
+              filename: "app.ts",
+              absPath: "https://ignored.example.com/camel.ts",
+              inApp: true,
+              debugId: "01234567-89ab-cdef-0123-456789abcdef",
+            }],
+          },
+        }],
+      },
+      request: {
+        url: "https://example.test/path",
+        method: "POST",
+        statusCode: 500,
+      },
+    }));
+
+    expect(payload.exceptionChain[0]?.frames[0]).toMatchObject({
+      filename: "app.ts",
+      abs_path: null,
+      in_app: false,
+    });
+    expect(payload.exceptionChain[0]?.frames[0]?.debug_id).toBeUndefined();
+    expect(payload.safeRequest?.fields).toEqual([
+      { key: "URL", value: "https://example.test/path" },
+      { key: "Method", value: "POST" },
+    ]);
+  });
+
+  it("does not treat extra.exception as the exception chain", () => {
+    const payload = getIssueEventPayload(occurrence({
+      extra: {
+        exception: {
+          values: [{
+            type: "TypeError",
+            value: "should not become the stack",
+            stacktrace: { frames: [{ filename: "app.ts", function: "run", lineno: 4 }] },
+          }],
+        },
+      },
+    }));
+
+    expect(payload.exceptionChain).toEqual([]);
   });
 
   it("does not expose opaque or sensitive fields through the display projection", () => {

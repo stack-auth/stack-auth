@@ -728,16 +728,24 @@ export function TraceWaterfall({
               const { span } = row.node;
               const hasChildren = row.node.children.length > 0 || row.node.events.length > 0;
               const collapsed = collapsedSpanIds.has(span.id);
-              const open = span.endMs == null;
-              const runsIntoFuture = !open && (span.endMs ?? 0) > nowMs;
-              const barEndMs = open || runsIntoFuture ? Math.min(nowMs, scaleEnd + viewSpanMs) : (span.endMs ?? scaleEnd);
+              const endMs = span.endMs;
+              const spanTiming = endMs == null
+                ? { kind: "open" as const }
+                : endMs > nowMs
+                  ? { kind: "future" as const, endMs }
+                  : { kind: "closed" as const, endMs };
+              const open = spanTiming.kind === "open";
+              const futureEndLabel = spanTiming.kind === "future"
+                ? `Ends ${new Date(spanTiming.endMs).toLocaleString()}`
+                : undefined;
+              const barEndMs = spanTiming.kind === "closed" ? spanTiming.endMs : Math.min(nowMs, scaleEnd + viewSpanMs);
               const rawLeftPct = toPct(span.startMs);
               const rawRightPct = toPct(barEndMs);
               const barVisible = rawRightPct > 0 && rawLeftPct < 100;
               const leftPct = Math.max(rawLeftPct, 0);
               const rightPct = Math.min(rawRightPct, 100);
               const widthPct = Math.max(rightPct - leftPct, 0.4);
-              const fades = open || runsIntoFuture;
+              const fades = open || futureEndLabel !== undefined;
               const hasError = spanHasError(span);
               const isHighlighted = highlightedRowIndex === rowIndex;
               return (
@@ -784,16 +792,16 @@ export function TraceWaterfall({
                         fades && "[mask-image:linear-gradient(to_right,black_60%,transparent_100%)]",
                       )}
                         style={{ left: `${leftPct}%`, width: `${widthPct}%`, minWidth: "3px" }}
-                        title={runsIntoFuture ? `Ends ${new Date(span.endMs ?? 0).toLocaleString()}` : undefined}
+                        title={futureEndLabel}
                       />
                     )}
                   </div>
                   <span className="font-mono text-[11px] text-muted-foreground text-right">
-                    {open
+                    {spanTiming.kind === "open"
                       ? "open"
-                      : runsIntoFuture
-                        ? <span title={`Ends ${new Date(span.endMs ?? 0).toLocaleString()}`}>{formatDuration(nowMs - span.startMs)} →</span>
-                        : formatDuration((span.endMs ?? scaleEnd) - span.startMs)}
+                      : spanTiming.kind === "future"
+                        ? <span title={futureEndLabel}>{formatDuration(nowMs - span.startMs)} →</span>
+                        : formatDuration(spanTiming.endMs - span.startMs)}
                   </span>
                 </div>
               );

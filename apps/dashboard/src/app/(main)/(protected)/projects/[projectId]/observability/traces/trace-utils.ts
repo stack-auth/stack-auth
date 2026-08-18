@@ -49,7 +49,6 @@ export type WaterfallRow =
   | { kind: "event", event: EventInput, depth: number };
 
 const GENERIC_HTTP_METHOD_SPAN = /^(?:DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT)$/;
-const LIBRARY_SPAN_TYPE = "$lib-span";
 // This SDK-native boundary deliberately keeps its semantic operation name so
 // the cross-tier tree reads naturally, but it is framework instrumentation —
 // not a custom span authored by the application using the SDK. Without this
@@ -72,9 +71,8 @@ function objectStringProperty(value: unknown, property: string): string | null {
 export function traceSpanDisplayName(span: SpanInput): string {
   // Instrumentation scope identifies library-generated spans. Their indexed
   // span_type is a normalized operation key, while data.name preserves the
-  // exact human-readable OTel operation. The legacy discriminator uses the
-  // same fallback so old rows remain useful instead of rendering "$lib-span".
-  if (span.spanType === LIBRARY_SPAN_TYPE || span.raw.scope_name != null) {
+  // exact human-readable OTel operation.
+  if (span.raw.scope_name != null) {
     return objectStringProperty(span.raw.data, "name") ?? span.spanType;
   }
   if (!GENERIC_HTTP_METHOD_SPAN.test(span.spanType)) return span.spanType;

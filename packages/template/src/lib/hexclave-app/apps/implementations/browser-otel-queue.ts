@@ -56,8 +56,12 @@ const QUEUE_BYTES_KEY = "queue-bytes";
 // changing their existing queue contents.
 const DATABASE_VERSION = 2;
 
-function normalizeQueueNumber(value: unknown, fallback: number): number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : fallback;
+function normalizeQueueNumber(value: unknown, fallback: number, name: string): number {
+  if (value === undefined) return fallback;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`IndexedDB ${name} must be a non-negative integer, received ${String(value)}`);
+  }
+  return value;
 }
 
 function cloneBatch(batch: BrowserOtlpQueueBatch): BrowserOtlpQueueBatch {
@@ -188,8 +192,8 @@ function readStoredBatchSummary(value: unknown): BrowserOtlpQueueDropSummary {
   return readStoredBatchAccounting(value).dropSummary;
 }
 
-function readMetaNumber(value: unknown, fallback: number): number {
-  return normalizeQueueNumber(value, fallback);
+function readMetaNumber(value: unknown, fallback: number, name: string): number {
+  return normalizeQueueNumber(value, fallback, name);
 }
 
 function getTransactionError(transaction: IDBTransaction): Error {
@@ -315,11 +319,21 @@ class IndexedDbBrowserOtlpOfflineQueue implements BrowserOtlpOfflineQueue {
         updateBytesRequest.onerror = () => fail(updateBytesRequest.error);
       };
       generationRequest.onsuccess = () => {
-        generation = readMetaNumber(generationRequest.result, 0);
+        try {
+          generation = readMetaNumber(generationRequest.result, 0, AUTH_GENERATION_KEY);
+        } catch (error) {
+          fail(error);
+          return;
+        }
         maybeAdd();
       };
       queueBytesRequest.onsuccess = () => {
-        queueBytes = readMetaNumber(queueBytesRequest.result, 0);
+        try {
+          queueBytes = readMetaNumber(queueBytesRequest.result, 0, QUEUE_BYTES_KEY);
+        } catch (error) {
+          fail(error);
+          return;
+        }
         maybeAdd();
       };
       countRequest.onsuccess = () => {
@@ -410,7 +424,13 @@ class IndexedDbBrowserOtlpOfflineQueue implements BrowserOtlpOfflineQueue {
         const bytesRequest = meta.get(QUEUE_BYTES_KEY);
         bytesRequest.onerror = () => fail(bytesRequest.error);
         bytesRequest.onsuccess = () => {
-          const currentBytes = readMetaNumber(bytesRequest.result, 0);
+          let currentBytes: number;
+          try {
+            currentBytes = readMetaNumber(bytesRequest.result, 0, QUEUE_BYTES_KEY);
+          } catch (error) {
+            fail(error);
+            return;
+          }
           const nextBytes = Math.max(0, currentBytes - storedBodyBytes);
           const updateBytesRequest = meta.put(nextBytes, QUEUE_BYTES_KEY);
           updateBytesRequest.onerror = () => fail(updateBytesRequest.error);
@@ -488,7 +508,11 @@ class IndexedDbBrowserOtlpOfflineQueue implements BrowserOtlpOfflineQueue {
       const request = transaction.objectStore(`${this._options.storeName}-meta`).get(AUTH_GENERATION_KEY);
       request.onerror = () => fail(request.error);
       request.onsuccess = () => {
-        result = readMetaNumber(request.result, 0);
+        try {
+          result = readMetaNumber(request.result, 0, AUTH_GENERATION_KEY);
+        } catch (error) {
+          fail(error);
+        }
       };
     });
   }
@@ -545,7 +569,12 @@ class IndexedDbBrowserOtlpOfflineQueue implements BrowserOtlpOfflineQueue {
         resetBytesRequest.onerror = () => fail(resetBytesRequest.error);
       };
       generationRequest.onsuccess = () => {
-        generation = readMetaNumber(generationRequest.result, 0);
+        try {
+          generation = readMetaNumber(generationRequest.result, 0, AUTH_GENERATION_KEY);
+        } catch (error) {
+          fail(error);
+          return;
+        }
         maybeAdvance();
       };
       entriesRequest.onsuccess = () => {

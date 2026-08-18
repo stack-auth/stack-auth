@@ -13,7 +13,6 @@ import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import * as yup from "yup";
 import { getClickhouseAdminClient } from "./clickhouse";
 import { getEndUserInfo } from "./end-users";
-import { dualWriteLegacyEvents } from "./legacy-telemetry-dual-write";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 import { resolveCustomerRequestObservability } from "./customer-request-observability";
 
@@ -565,9 +564,6 @@ export async function logEvent<T extends EventType[]>(
           async_insert: 1,
         },
       });
-      // Expand-phase mirror into the legacy physical events table (no-op once
-      // the cutover has retired it); see legacy-telemetry-dual-write.ts.
-      await dualWriteLegacyEvents(clickhouseClient, [telemetryRow]);
     }
 
     // log event in PostHog

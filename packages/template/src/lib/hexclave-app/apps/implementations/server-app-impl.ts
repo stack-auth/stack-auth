@@ -1876,25 +1876,32 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     // No request (or browser): the inherited withSpan handles global/enclosing
     // ambient parenting and forwards userId to the server startSpan at runtime.
     if (!options?.request || this._clientAnalytics) {
+      if (typeof fn !== "function") {
+        return rejectedPreCaught("withSpan() requires a callback function");
+      }
       // Framework-ambient fallback (see trackEvent): a bare server withSpan
       // outside any `{ request }` scope adopts the framework's ambient request
       // when a provider is registered, so route-handler code never threads the
       // request by hand. Nested withSpan calls inside an existing scope keep
       // the fast inherited path — the ALS context already attributes them.
-      if (!this._clientAnalytics && typeof fn === "function" && this._ambientRequestProvider !== null && getServerRequestContext() === null) {
+      if (!this._clientAnalytics && this._ambientRequestProvider !== null && getServerRequestContext() === null) {
         return (async () => {
           await this._ensureOtelReady([]);
           return await this._runWithAmbientRequestScope(options?.userId ?? null, (userId) =>
             withSpanImpl((type, opts) => this._startServerSpan(type, opts, userId), spanType, options ?? {}, fn));
         })();
       }
-      if (!this._clientAnalytics && typeof fn === "function") {
+      if (!this._clientAnalytics) {
         return (async () => {
           await this._ensureOtelReady([]);
-          return await super.withSpan(spanType, optionsOrFn as any, maybeFn as any);
+          return options === undefined
+            ? await super.withSpan(spanType, fn)
+            : await super.withSpan(spanType, options, fn);
         })();
       }
-      return super.withSpan(spanType, optionsOrFn as any, maybeFn as any);
+      return options === undefined
+        ? super.withSpan(spanType, fn)
+        : super.withSpan(spanType, options, fn);
     }
     // First `{ request }` scope on this app: also install the outbound-fetch
     // instrumentation (lazy so apps that never use request telemetry don't
@@ -1969,7 +1976,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   // called inside a request scope, null otherwise. Single slot with replace
   // semantics — one framework owns a runtime's ambient requests.
   private _ambientRequestProvider: (() => Promise<RequestLike | null>) | null = null;
-  private _warnedAmbientRequestResolveFailure = false;
 
   /** See getServerAppInstrumentation. Public-but-underscored. */
   _setAmbientRequestProvider(provider: (() => Promise<RequestLike | null>) | null): void {
@@ -1980,24 +1986,25 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
    * Runs `fn` inside the framework's ambient request scope, if one can be
    * resolved: provider yields a request → session + propagation header are
    * resolved exactly like an explicit `{ request }`. Every failure mode
-   * degrades to running `fn` WITHOUT request context (with a warn-once for
-   * genuine errors) — a bare telemetry call must never fail harder than it
-   * did before ambient attribution existed, since the caller never opted into
-   * request semantics.
+   * degrades to running `fn` WITHOUT request context and warns on every
+   * failure — a bare telemetry call must never fail harder than it did before
+   * ambient attribution existed, since the caller never opted into request
+   * semantics, but a once-and-forget warn would hide a permanently broken
+   * provider after the first miss.
    */
   private async _runWithAmbientRequestScope<T>(explicitUserId: string | null, fn: (userId: string | null) => Promise<T>): Promise<T> {
     let request: RequestLike | null = null;
     try {
       request = await (this._ambientRequestProvider?.() ?? null);
     } catch (error) {
-      this._warnAmbientRequestResolveFailureOnce(error);
+      this._warnAmbientRequestResolveFailure(error);
     }
     if (request !== null) {
       let context: ServerRequestSpanContext | null = null;
       try {
         context = await this._resolveServerRequestContext(request, explicitUserId);
       } catch (error) {
-        this._warnAmbientRequestResolveFailureOnce(error);
+        this._warnAmbientRequestResolveFailure(error);
       }
       if (context !== null) {
         const resolved = context;
@@ -2007,9 +2014,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     return await fn(explicitUserId);
   }
 
-  private _warnAmbientRequestResolveFailureOnce(error: unknown): void {
-    if (this._warnedAmbientRequestResolveFailure) return;
-    this._warnedAmbientRequestResolveFailure = true;
+  private _warnAmbientRequestResolveFailure(error: unknown): void {
     console.warn("Hexclave analytics: could not resolve the ambient request for telemetry attribution; continuing without request context:", error);
   }
 

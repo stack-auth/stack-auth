@@ -171,7 +171,7 @@ export function publicSearchAttachmentEventId(row: PublicSearchOccurrenceRow): s
 
 function sourceLink(value: unknown): PublicSearchSourceLink | null {
   if (!isRecord(value)) return null;
-  const path = sourcePath(value.absPath ?? value.abs_path ?? value.filename ?? value.code_file);
+  const path = sourcePath(value.absPath ?? value.filename ?? value.code_file);
   const link: PublicSearchSourceLink = {
     path,
     function: scrubPublicOptionalText(value.function),

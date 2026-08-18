@@ -146,6 +146,35 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   // a different claim.
   await sql`INSERT INTO "IssueMaterialization" ("tenancyId", "batchId") VALUES (${ctx.tenancyB}::uuid, ${batchId}::uuid)`;
 
+  // Batch identities are transport strings, not database UUIDs: Sentry
+  // envelope batches use a content-derived identifier and OTLP batches may use
+  // a deterministic request hash. The ledger must accept them directly or
+  // valid non-UUID protocol batches get rejected before materialization.
+  const transportBatchId = `sentry-envelope-${"a".repeat(64)}`;
+  const transportApply = await sql`
+    INSERT INTO "IssueMaterialization" ("tenancyId", "batchId") VALUES (${ctx.tenancyA}::uuid, ${transportBatchId})
+    ON CONFLICT DO NOTHING
+    RETURNING "batchId"
+  `;
+  expect(transportApply).toHaveLength(1);
+
+  // The replay-side-effect bookkeeping lives on the ledger row itself: stored
+  // outcomes plus one dispatch timestamp per notification phase, so webhook and
+  // alert dispatch are each independently idempotent on retry.
+  const sideEffectColumns = await sql<{ column_name: string, data_type: string }[]>`
+    SELECT column_name, data_type
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'IssueMaterialization'
+      AND column_name IN ('outcomes', 'webhooksDispatchedAt', 'alertsDispatchedAt')
+    ORDER BY column_name COLLATE "C"
+  `;
+  expect(sideEffectColumns).toEqual([
+    { column_name: "alertsDispatchedAt", data_type: "timestamp without time zone" },
+    { column_name: "outcomes", data_type: "jsonb" },
+    { column_name: "webhooksDispatchedAt", data_type: "timestamp without time zone" },
+  ]);
+
   // ---- Short ids ----
 
   // shortId is unique per tenancy (= per project AND branch, since a Tenancy is

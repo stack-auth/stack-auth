@@ -2481,6 +2481,7 @@ it("accepts $error events", async ({ expect }) => {
       data: {
         message: "boom",
         name: "TypeError",
+        handled: true,
         stack: "TypeError: boom\n    at explode (app.js:1:1)",
         mechanism: "global.onerror",
         fingerprint: "abc123",
@@ -2503,6 +2504,26 @@ it("accepts $error events", async ({ expect }) => {
     params: { segId: sessionReplaySegmentId },
   }, (response) => Array.isArray(response.body.result) && response.body.result.length === 1);
   expect(queryRes?.body.result[0]).toEqual({ event_type: "$error", message: "boom" });
+});
+
+it("rejects $error events that omit handled instead of inventing true", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    events: [{
+      event_type: "$error",
+      event_at_ms: Date.now(),
+      data: {
+        message: "boom",
+        name: "TypeError",
+      },
+    }],
+  });
+  expect(res.status).toBe(400);
+  expect(res.body?.code).toBe("SCHEMA_ERROR");
+  expect(res.body?.error).toContain("boolean handled");
 });
 
 it("requires schema version 3 and an explicit telemetry resource", async ({ expect }) => {

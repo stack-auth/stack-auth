@@ -151,15 +151,11 @@ function parseStoredFrames(raw: string): StoredIssueFrame[] {
       filename: typeof value.filename === "string" ? value.filename : null,
       function: typeof value.function === "string" ? value.function : null,
       module: typeof value.module === "string" ? value.module : null,
-      absPath: typeof value.absPath === "string"
-        ? value.absPath
-        : typeof value.abs_path === "string" ? value.abs_path : null,
+      absPath: typeof value.absPath === "string" ? value.absPath : null,
       lineno: typeof value.lineno === "number" ? value.lineno : null,
       colno: typeof value.colno === "number" ? value.colno : null,
-      inApp: value.inApp === true || value.in_app === true,
-      debugId: typeof value.debugId === "string"
-        ? value.debugId
-        : typeof value.debug_id === "string" ? value.debug_id : null,
+      inApp: value.inApp === true,
+      debugId: typeof value.debugId === "string" ? value.debugId : null,
     };
     return [frame];
   });

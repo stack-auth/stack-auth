@@ -43,7 +43,6 @@
     "db:seed": "pnpm pre && pnpm run --filter=@hexclave/backend db:seed",
     "db:init": "pnpm pre && pnpm run --filter=@hexclave/backend db:init",
     "db:migrate": "pnpm pre && pnpm run --filter=@hexclave/backend db:migrate",
-    "db:clickhouse-telemetry-cutover": "pnpm pre && pnpm run --filter=@hexclave/backend db:clickhouse-telemetry-cutover",
     "db:backfill-bulldozer-from-prisma": "pnpm pre && pnpm run --filter=@hexclave/backend db:backfill-bulldozer-from-prisma",
     "db:backfill-internal-free-plans": "pnpm pre && pnpm run --filter=@hexclave/backend db:backfill-internal-free-plans",
     "db:regen-internal-subscriptions-to-latest": "pnpm pre && pnpm run --filter=@hexclave/backend db:regen-internal-subscriptions-to-latest",

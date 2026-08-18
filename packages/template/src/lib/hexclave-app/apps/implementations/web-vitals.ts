@@ -156,7 +156,7 @@ const INP_LONGEST_KEPT = 10;
 type LongestInteraction = { id: number, durationMs: number };
 
 function supportsEntryType(type: string): boolean {
-  const supported: unknown = (PerformanceObserver as unknown as { supportedEntryTypes?: unknown }).supportedEntryTypes;
+  const supported: unknown = Reflect.get(PerformanceObserver, "supportedEntryTypes");
   return Array.isArray(supported) && supported.includes(type);
 }
 

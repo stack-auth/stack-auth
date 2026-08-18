@@ -183,13 +183,13 @@ const exceptionValueEncoder = new TextEncoder();
 function boundExceptionValue(value: CapturedExceptionValue): CapturedExceptionValue {
   const boundFrame = (frame: ErrorStackFrame): ErrorStackFrame => ({
     ...frame.filename === undefined ? {} : { filename: truncateUtf8Bytes(frame.filename, ERROR_TEXT_MAX_BYTES) },
-    ...frame.absPath === undefined ? {} : { absPath: truncateUtf8Bytes(frame.absPath, ERROR_TEXT_MAX_BYTES) },
+    ...frame.abs_path === undefined ? {} : { abs_path: truncateUtf8Bytes(frame.abs_path, ERROR_TEXT_MAX_BYTES) },
     ...frame.function === undefined ? {} : { function: truncateUtf8Bytes(frame.function, ERROR_TEXT_MAX_BYTES) },
     ...frame.module === undefined ? {} : { module: truncateUtf8Bytes(frame.module, ERROR_TEXT_MAX_BYTES) },
     ...frame.lineno === undefined ? {} : { lineno: frame.lineno },
     ...frame.colno === undefined ? {} : { colno: frame.colno },
-    ...frame.inApp === undefined ? {} : { inApp: frame.inApp },
-    ...frame.contextLine === undefined ? {} : { contextLine: truncateUtf8Bytes(frame.contextLine, ERROR_TEXT_MAX_BYTES) },
+    ...frame.in_app === undefined ? {} : { in_app: frame.in_app },
+    ...frame.context_line === undefined ? {} : { context_line: truncateUtf8Bytes(frame.context_line, ERROR_TEXT_MAX_BYTES) },
   });
   const boundMechanism = value.mechanism === undefined ? undefined : {
     ...value.mechanism.type === undefined ? {} : { type: truncateUtf8Bytes(value.mechanism.type, ERROR_TEXT_MAX_BYTES) },
@@ -438,7 +438,7 @@ function renderStackFrames(frames: readonly ErrorStackFrame[] | undefined): stri
   if (frames === undefined || frames.length === 0) return null;
   const lines = frames.map((frame) => {
     const functionName = frame.function ?? "?";
-    const filename = frame.absPath ?? frame.filename ?? "<unknown>";
+    const filename = frame.abs_path ?? frame.filename ?? "<unknown>";
     const location = frame.lineno === undefined
       ? filename
       : `${filename}:${frame.lineno}${frame.colno === undefined ? "" : `:${frame.colno}`}`;
@@ -468,6 +468,9 @@ export function buildCapturedEventData(event: CaptureEvent, options: {
   // this fallback, an adapter supplying only `stacktrace.raw` would produce an
   // event with no top-level stack at all.
   const stack = event.stack ?? exception?.stacktrace?.raw ?? renderStackFrames(exception?.stacktrace?.frames);
+  if (typeof event.handled !== "boolean") {
+    throw new Error("Hexclave captureEvent requires a boolean handled field");
+  }
   const data = buildErrorEventDataFromNormalized({
     name,
     message,
@@ -475,7 +478,7 @@ export function buildCapturedEventData(event: CaptureEvent, options: {
     synthetic: false,
   }, {
     mechanismType: event.mechanism ?? "captured.event",
-    handled: event.handled ?? true,
+    handled: event.handled,
     release: event.release ?? options.release,
     environment: event.environment ?? options.environment,
     sdkVersion: options.sdkVersion,

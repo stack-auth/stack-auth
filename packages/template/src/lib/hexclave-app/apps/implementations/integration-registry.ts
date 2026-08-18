@@ -598,7 +598,7 @@ function installNodeRequestErrors(context: ErrorIntegrationContext): ErrorIntegr
   const node = context.runtime.node;
   return installOptionalHook(node?.onRequestError, signal => {
     context.captureException(signal.error, {
-      handled: signal.handled ?? true,
+      ...signal.handled === undefined ? {} : { handled: signal.handled },
       level: "error",
       mechanism: "auto.node.request",
       contexts: { request: requestContext(signal) },
@@ -615,7 +615,7 @@ function installNodeLibraryErrors(context: ErrorIntegrationContext): ErrorIntegr
     if (library !== "") libraryContext.name = library;
     if (operation !== undefined && operation !== "") libraryContext.operation = operation;
     context.captureException(signal.error, {
-      handled: signal.handled ?? true,
+      ...signal.handled === undefined ? {} : { handled: signal.handled },
       level: "error",
       mechanism: "auto.node.library",
       ...Object.keys(libraryContext).length === 0 ? {} : { contexts: { library: libraryContext } },

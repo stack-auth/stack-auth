@@ -57,6 +57,18 @@ afterEach(async () => {
 });
 
 describe("managed browser OpenTelemetry", () => {
+  it("rejects present-but-invalid positive integer options instead of silently defaulting", () => {
+    const base = {
+      analyticsBaseUrl: "https://analytics.example.test",
+      projectId: "project",
+      clientVersion: "test",
+      getRequestHeaders: async () => ({}),
+    };
+    expect(() => createHexclaveBrowserOtlpLogExporter({ ...base, flushDeadlineMs: -1 })).toThrow(/flushDeadlineMs/);
+    expect(() => createHexclaveBrowserOtlpLogExporter({ ...base, shutdownDeadlineMs: 1.5 })).toThrow(/shutdownDeadlineMs/);
+    expect(() => createHexclaveBrowserOtlpLogExporter({ ...base, offlineQueue: { maxQueueSize: 0 } })).toThrow(/maxQueueSize/);
+  });
+
   it("keeps conflicting page ownership protection while allowing a fresh test lifecycle", async () => {
     const makeOptions = (projectId: string) => ({
       analyticsBaseUrl: "https://analytics.example.test",

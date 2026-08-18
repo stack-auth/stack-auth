@@ -64,6 +64,7 @@ describe("error processor pipeline", () => {
     });
     const data = buildCapturedEventData({
       message: "with attachment",
+      handled: true,
       attachments: [{ data: "trace", filename: "trace.txt" }],
     }, {
       eventId: event().event_id,

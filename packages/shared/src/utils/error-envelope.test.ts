@@ -135,6 +135,44 @@ describe("error envelope normalization", () => {
     }));
   });
 
+  it("reads only the canonical snake_case frame and request keys", () => {
+    const envelope = normalizeErrorEnvelope({
+      name: "TypeError",
+      message: "bad value",
+      handled: true,
+      exception: {
+        values: [{
+          type: "TypeError",
+          value: "bad value",
+          stacktrace: {
+            frames: [{
+              filename: "app.ts",
+              abs_path: "https://app.example.com/app.ts",
+              absPath: "https://ignored.example.com/camel.ts",
+              in_app: true,
+              inApp: false,
+              context_line: "throw new Error(\"bad value\");",
+              contextLine: "ignored",
+            }],
+          },
+        }],
+      },
+      request: {
+        url: "https://example.test/orders",
+        status_code: 502,
+        statusCode: 418,
+      },
+    });
+
+    expect(envelope.exception?.values[0]?.stacktrace?.frames).toEqual([{
+      filename: "app.ts",
+      abs_path: "https://app.example.com/app.ts",
+      in_app: true,
+      context_line: "throw new Error(\"bad value\");",
+    }]);
+    expect(envelope.request).toEqual({ url: "https://example.test/orders", status_code: 502 });
+  });
+
   it("does not retain request secrets or secret-shaped nested fields", () => {
     const envelope = normalizeErrorEnvelope({
       name: "RequestError",

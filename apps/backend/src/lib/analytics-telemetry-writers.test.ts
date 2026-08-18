@@ -71,6 +71,7 @@ describe("error grouping normalization", () => {
     const baseData = {
       name: "TypeError",
       message: "row is null",
+      handled: true,
       stack: [
         "TypeError: row is null",
         "    at renderRow (https://app.example.com/static/js/table.js:42:9)",
@@ -105,6 +106,7 @@ describe("error grouping normalization", () => {
       data: {
         name: "TypeError",
         message: "ordinary failure",
+        handled: true,
         synthetic: false,
       },
     }], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID);
@@ -183,6 +185,17 @@ describe("error grouping normalization", () => {
       eventId,
       status: "accepted",
     }]).idempotencyKey);
+  });
+
+  it("rejects $error events that omit handled instead of inventing true", () => {
+    expect(() => normalizeBatchEvents([{
+      event_type: "$error",
+      event_at_ms: 1_700_000_000_000,
+      data: {
+        name: "TypeError",
+        message: "row is null",
+      },
+    }], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID)).toThrow(/boolean handled field/);
   });
 });
 

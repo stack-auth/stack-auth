@@ -26,20 +26,7 @@ function event(eventType: string, opts: Partial<EventInput> = {}): EventInput {
 }
 
 describe("traceSpanDisplayName", () => {
-  it("shows the recorded library operation instead of the internal $lib-span discriminator", () => {
-    expect(traceSpanDisplayName(span("library", {
-      spanType: "$lib-span",
-      raw: {
-        data: {
-          name: "prisma:client:db_query",
-          tracer_name: "prisma",
-        },
-      },
-    }))).toBe("prisma:client:db_query");
-    expect(traceSpanDisplayName(span("unnamed-library", {
-      spanType: "$lib-span",
-      raw: { data: {} },
-    }))).toBe("$lib-span");
+  it("shows the recorded library operation when the span has an instrumentation scope", () => {
     expect(traceSpanDisplayName(span("normalized-library", {
       spanType: "STACK:-external-db-sync.poller.iteration",
       raw: {
@@ -47,6 +34,10 @@ describe("traceSpanDisplayName", () => {
         data: { name: "STACK: external-db-sync.poller.iteration" },
       },
     }))).toBe("STACK: external-db-sync.poller.iteration");
+    expect(traceSpanDisplayName(span("unnamed-library", {
+      spanType: "prisma:client:db_query",
+      raw: { scope_name: "prisma", data: {} },
+    }))).toBe("prisma:client:db_query");
   });
 
   it("adds a safe route to generic HTTP root names", () => {

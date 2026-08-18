@@ -1,6 +1,7 @@
 import { getSharedClickhouseAdminClient, type ClickHouseClient } from "@/lib/clickhouse";
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import {
   CLICKHOUSE_RANKED_SORT_FIELDS,
@@ -211,10 +212,21 @@ export function decodeIssueCursor(
       ...sortDir === undefined ? {} : { sortDir },
     };
   } catch {
-    // A malformed cursor is a client bug, not a server error: fall back to the
-    // first page rather than 500ing on a stale bookmark.
+    // A malformed cursor is a client bug, not a server error. Callers must
+    // treat null as invalid input (400), never as "start at page one".
     return null;
   }
+}
+
+export function requireIssueListCursor(
+  raw: string,
+  expected: { sort: IssueListSortField, sortDir: CursorDirection },
+): IssueListCursor {
+  const cursor = decodeIssueCursor(raw, expected);
+  if (cursor === null) {
+    throw new StatusError(StatusError.BadRequest, "cursor is invalid or was created for a different sort order");
+  }
+  return cursor;
 }
 
 /**
@@ -289,7 +301,7 @@ async function loadCandidateIssues(
   const isWindowRanked = rankedSort !== null;
   const cursor = filters.cursor === null || isWindowRanked
     ? null
-    : decodeIssueCursor(filters.cursor, { sort: filters.sort, sortDir: filters.sortDir });
+    : requireIssueListCursor(filters.cursor, { sort: filters.sort, sortDir: filters.sortDir });
   const cursorSql = cursor === null
     ? Prisma.sql``
     : filters.sortDir === "asc"

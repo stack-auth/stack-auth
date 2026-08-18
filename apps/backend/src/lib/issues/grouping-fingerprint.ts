@@ -175,13 +175,20 @@ export function resolveGroupingFingerprint(
   };
 }
 
+export class GroupingParseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GroupingParseError";
+  }
+}
+
 function parseTokenName(value: string): GroupingFingerprintTokenName | null {
   const match = /^\{\{\s*([^{}\s]+)\s*\}\}$/.exec(value);
   if (match === null) return null;
 
   const name = match[1];
   if (!isGroupingFingerprintTokenName(name)) {
-    throw new Error(`Unsupported grouping fingerprint token ${JSON.stringify(value)}`);
+    throw new GroupingParseError(`Unsupported grouping fingerprint token ${JSON.stringify(value)}`);
   }
   return name;
 }

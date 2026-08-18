@@ -9,7 +9,6 @@ import {
   EVENTS_COLUMNS,
   EVENTS_EVENT_TYPE_INDEX_DEFINITION_SQL,
   EVENTS_EVENT_TYPE_INDEX_NAME,
-  EVENTS_LEGACY_COLUMNS_TO_DROP,
   LOGS_COLUMNS,
   OTEL_LOG_COLUMNS,
   LOGS_ISSUE_HASH_INDEX_DEFINITION_SQL,
@@ -35,10 +34,8 @@ import {
   TRACE_SERVICES_COLUMNS,
   TRACE_SERVICES_SOURCE_SELECT_SQL,
   buildColumnUpgradeSql,
-  buildLegacyTelemetrySelectSql,
   computeIssuesSubsystemFingerprint,
   computeSpansSubsystemFingerprint,
-  buildEventsLegacyCleanupSql,
   buildIssueOccurrenceRollupCreateTableSql,
   buildIssueOccurrenceRollupMvSql,
   buildLogsCreateTableSql,
@@ -48,8 +45,6 @@ import {
   buildSpanWritesMvSql,
   buildSpansCreateTableSql,
   buildTelemetryCreateTableSql,
-  cutoverLegacyTelemetryTables,
-  migrateLegacyTelemetryTables,
   buildOtelMetricsCreateTableSql,
   buildTelemetryInsertDeduplicationSettingSql,
   buildTraceRootsCreateTableSql,
@@ -65,43 +60,6 @@ import {
 function names(columns: readonly ClickhouseColumn[]): string[] {
   return columns.map((column) => column.name);
 }
-
-describe("legacy telemetry copy contract", () => {
-  test("preserves the intermediate event body, severity, and source fields", () => {
-    const sql = buildLegacyTelemetrySelectSql("events", "analytics_internal.events");
-
-    expect(sql).toContain("if(legacy_source.message = '', legacy_source.body, legacy_source.message) AS message");
-    expect(sql).toContain("if(legacy_source.level = '', legacy_source.severity_text, legacy_source.level) AS level");
-    expect(sql).toContain("if(legacy_source.source = '', legacy_source.producer, legacy_source.source) AS producer");
-    expect(sql).toContain("legacy_source.body AS body");
-    expect(sql).toContain("CAST(legacy_source.data AS JSON) AS data");
-  });
-
-  test("maps an old log message into the OTel body without discarding an existing body", () => {
-    const sql = buildLegacyTelemetrySelectSql("logs", "analytics_internal.logs");
-
-    expect(sql).toContain("if(legacy_source.message = '', legacy_source.body, legacy_source.message) AS message");
-    expect(sql).toContain("if(legacy_source.level = '', legacy_source.severity_text, legacy_source.level) AS level");
-    expect(sql).toContain("if(legacy_source.body = '', legacy_source.message, legacy_source.body) AS body");
-    expect(sql).toContain("if(legacy_source.source = '', legacy_source.producer, legacy_source.source) AS producer");
-  });
-
-  test("the cutover backfill stamps the reserved marker and copies only the frozen non-dual-written slice", () => {
-    // These two options ARE the cutover's correctness story: the marker is what
-    // keeps the copied set identifiable among live telemetry rows (making the
-    // per-partition fingerprint verification possible), and the WHERE clause is
-    // what excludes dual-written rows whose canonical copy already reached
-    // telemetry through the primary write path.
-    const sql = buildLegacyTelemetrySelectSql("events", "analytics_internal.events", {
-      batchIdMarker: "legacy-telemetry-cutover:events",
-      whereSql: "dual_written = 0",
-    });
-
-    expect(sql).toContain("'legacy-telemetry-cutover:events' AS batch_id");
-    expect(sql).toMatch(/\nWHERE dual_written = 0$/);
-  });
-});
-
 
 describe("default.spans", () => {
   test("exposes physical spans plus the canonical W3C refresh-token root", () => {
@@ -195,7 +153,7 @@ describe("derived read models", () => {
   });
 });
 
-describe("error grouping columns on analytics_internal.logs", () => {
+describe("error grouping columns on analytics_internal.telemetry", () => {
   test("logs carries grouping and canonical OTel columns without the legacy message field", () => {
     // Fresh logs tables keep the structured `data` payload and omit only the
     // old human-readable `message` field. OTel columns are appended after the
@@ -242,6 +200,11 @@ describe("error grouping columns on analytics_internal.logs", () => {
     // released event projection; only issue-grouping internals are hidden.
     expect(ERRORS_VIEW_SQL).toContain("WHERE event_type = '$error'");
     expect(LOGS_VIEW_SQL).toContain("WHERE event_type = '$log'");
+    // Both read the canonical telemetry table directly. A frozen pre-telemetry
+    // `analytics_internal.events` table may still exist on old databases; it is
+    // deliberately not part of any view (see the note above EVENTS_VIEW_SQL).
+    expect(ERRORS_VIEW_SQL).toContain("FROM analytics_internal.telemetry");
+    expect(LOGS_VIEW_SQL).toContain("FROM analytics_internal.telemetry");
     expect(selectColumnNames(LOGS_COLUMNS, ERROR_GROUPING_COLUMN_NAMES)).toEqual([
       ...names(EVENTS_COLUMNS).filter((name) => name !== "message"),
       ...ERROR_ENVELOPE_COLUMN_NAMES,
@@ -532,77 +495,6 @@ describe("clickhouse upgrade helpers (integration)", () => {
     }
   }
 
-  async function createLegacySourceTable(
-    database: string,
-    table: string,
-    source: "events" | "logs",
-  ): Promise<void> {
-    const oldEventFields = source === "events"
-      ? `
-          body String DEFAULT '',
-          severity_text LowCardinality(String) DEFAULT '',
-          severity_number UInt8 DEFAULT 0,
-        `
-      : `
-          message String DEFAULT '',
-          level LowCardinality(String) DEFAULT '',
-        `;
-    await client.command({
-      query: `
-        CREATE TABLE ${database}.${table} (
-            event_type LowCardinality(String),
-            event_at DateTime64(3, 'UTC'),
-            ${oldEventFields}
-            data String DEFAULT '{}',
-            project_id String,
-            branch_id String,
-            user_id Nullable(String),
-            team_id Nullable(String),
-            refresh_token_id Nullable(String),
-            session_replay_id Nullable(String),
-            session_replay_segment_id Nullable(String),
-            parent_span_ids Array(String) DEFAULT [],
-            trace_id Nullable(String),
-            span_id Nullable(String),
-            trace_flags UInt8 DEFAULT 0,
-            source LowCardinality(String) DEFAULT '',
-            service_namespace LowCardinality(Nullable(String)),
-            service_name LowCardinality(Nullable(String)),
-            service_version Nullable(String),
-            service_instance_id Nullable(String),
-            deployment_environment_name LowCardinality(Nullable(String)),
-            resource_attributes String DEFAULT '{}',
-            resource_schema_url Nullable(String),
-            scope_name LowCardinality(Nullable(String)),
-            scope_version Nullable(String),
-            scope_attributes String DEFAULT '{}',
-            scope_schema_url Nullable(String),
-            dropped_attributes UInt32 DEFAULT 0,
-            created_at DateTime64(3, 'UTC') DEFAULT now64(3)
-        )
-        ENGINE MergeTree
-        PARTITION BY toYYYYMM(event_at)
-        ORDER BY (project_id, branch_id, event_at)
-      `,
-    });
-  }
-
-  async function physicalTableExists(database: string, table: string): Promise<boolean> {
-    const resultSet = await client.query({
-      query: `
-        SELECT count() AS count
-        FROM system.tables
-        WHERE database = {database:String}
-          AND name = {table:String}
-          AND engine NOT IN ('View', 'MaterializedView')
-      `,
-      query_params: { database, table },
-      format: "JSONEachRow",
-    });
-    const rows = await resultSet.json<{ count: string }>();
-    return Number(rows[0].count) !== 0;
-  }
-
   async function countRowsIn(database: string, table: string): Promise<number> {
     const resultSet = await client.query({
       query: `SELECT count() AS count FROM ${database}.${table}`,
@@ -611,179 +503,6 @@ describe("clickhouse upgrade helpers (integration)", () => {
     const rows = await resultSet.json<{ count: string }>();
     return Number(rows[0].count);
   }
-
-  async function seedLegacySources(database: string, eventsTable: string, logsTable: string): Promise<void> {
-    await createLegacySourceTable(database, eventsTable, "events");
-    await createLegacySourceTable(database, logsTable, "logs");
-    await client.command({
-      query: `
-        INSERT INTO ${database}.${eventsTable}
-          (event_type, event_at, body, severity_text, severity_number, data, project_id, branch_id, source)
-        VALUES
-          ('$click', '2026-08-11 10:00:00.000', 'legacy event body', 'warning', 4, '{"kind":"event"}', 'p', 'b', 'legacy-events')
-      `,
-    });
-    await client.command({
-      query: `
-        INSERT INTO ${database}.${logsTable}
-          (event_type, event_at, message, data, project_id, branch_id, source)
-        VALUES
-          ('$log', '2026-08-11 10:01:00.000', 'legacy log message', '{"kind":"log"}', 'p', 'b', 'legacy-logs')
-      `,
-    });
-  }
-
-  test("the startup migration only expands legacy sources: dual_written added, nothing copied or dropped", async () => {
-    await withThrowawayDatabase(async (database) => {
-      const eventsTable = "legacy_events_mapping_probe";
-      const logsTable = "legacy_logs_mapping_probe";
-      await seedLegacySources(database, eventsTable, logsTable);
-
-      await migrateLegacyTelemetryTables(client, { database, eventsTable, logsTable });
-
-      // The expand phase keeps both physical sources under their writable
-      // names, with every seeded row intact: old-release instances may still be
-      // writing, so any copy/drop here would race a committed source write.
-      expect(await physicalTableExists(database, eventsTable)).toBe(true);
-      expect(await physicalTableExists(database, logsTable)).toBe(true);
-      expect(await countRowsIn(database, eventsTable)).toBe(1);
-      expect(await countRowsIn(database, logsTable)).toBe(1);
-
-      // Both sources gain the dual-write marker, and pre-expand rows read back
-      // as the column default 0 — exactly the set the cutover must later copy.
-      for (const table of [eventsTable, logsTable]) {
-        const resultSet = await client.query({
-          query: `SELECT dual_written FROM ${database}.${table}`,
-          format: "JSONEachRow",
-        });
-        expect(await resultSet.json<{ dual_written: number }>()).toEqual([{ dual_written: 0 }]);
-      }
-
-      // Nothing was copied, staged, or checkpointed: no telemetry table, no
-      // stage tables of the retired copy/EXCHANGE flow, and no state rows for
-      // the migration id (the empty state TABLE itself may exist).
-      expect(await physicalTableExists(database, "telemetry")).toBe(false);
-      expect(await physicalTableExists(database, "telemetry_legacy_events_stage")).toBe(false);
-      expect(await physicalTableExists(database, "telemetry_legacy_logs_stage")).toBe(false);
-      expect(await physicalTableExists(database, "telemetry_legacy_target_stage")).toBe(false);
-      const stateSet = await client.query({
-        query: `
-          SELECT count() AS count
-          FROM ${database}.telemetry_legacy_migration_state
-          WHERE migration_id LIKE 'events-and-logs-to-telemetry-v1%'
-        `,
-        format: "JSONEachRow",
-      });
-      expect(Number((await stateSet.json<{ count: string }>())[0].count)).toBe(0);
-    });
-  });
-
-  test("the cutover backfills only pre-expand rows, drops the sources, checkpoints, and is idempotent", async () => {
-    await withThrowawayDatabase(async (database) => {
-      const eventsTable = "legacy_events_cutover_probe";
-      const logsTable = "legacy_logs_cutover_probe";
-      await createLegacySourceTable(database, eventsTable, "events");
-      // A pre-expand row: written before the dual_written column existed, so it
-      // reads back with the column default 0 after the expand upgrade.
-      await client.command({
-        query: `
-          INSERT INTO ${database}.${eventsTable}
-            (event_type, event_at, body, severity_text, severity_number, data, project_id, branch_id, source)
-          VALUES
-            ('$click', '2026-08-11 10:00:00.000', 'pre-expand body', 'warning', 4, '{"kind":"pre-expand"}', 'p', 'b', 'legacy-events')
-        `,
-      });
-
-      // The expand release deploys (adds the telemetry column set plus
-      // dual_written to the legacy source) and creates the canonical telemetry
-      // table it primary-writes to.
-      await migrateLegacyTelemetryTables(client, { database, eventsTable, logsTable });
-      await client.command({ query: buildTelemetryCreateTableSql(`${database}.telemetry`) });
-
-      // An expand-release write: mirrored into the legacy table with
-      // dual_written = 1 AND written to telemetry by the primary path.
-      await client.command({
-        query: `
-          INSERT INTO ${database}.${eventsTable}
-            (event_type, event_at, data, project_id, branch_id, dual_written)
-          VALUES
-            ('$click', '2026-08-11 11:00:00.000', '{"kind":"dual-written"}', 'p', 'b', 1)
-        `,
-      });
-      await client.command({
-        query: `
-          INSERT INTO ${database}.telemetry
-            (event_type, event_at, data, project_id, branch_id)
-          VALUES
-            ('$click', '2026-08-11 11:00:00.000', '{"kind":"dual-written"}', 'p', 'b')
-        `,
-      });
-
-      await cutoverLegacyTelemetryTables(client, { database, eventsTable, logsTable, minDrainSeconds: 0 });
-
-      // The sources are retired; the freed names are the migration phase's job.
-      expect(await physicalTableExists(database, eventsTable)).toBe(false);
-      expect(await physicalTableExists(database, logsTable)).toBe(false);
-
-      // Exactly the pre-expand row was copied, stamped with the reserved
-      // marker; the dual-written row appears exactly once (its canonical copy
-      // came from the primary write, and the mirror was NOT copied again).
-      const telemetrySet = await client.query({
-        query: `SELECT message, batch_id FROM ${database}.telemetry ORDER BY event_at`,
-        format: "JSONEachRow",
-      });
-      expect(await telemetrySet.json<{ message: string, batch_id: string }>()).toEqual([
-        // The copy expressions promote the old event `body` into `message`.
-        { message: "pre-expand body", batch_id: "legacy-telemetry-cutover:events" },
-        { message: "", batch_id: "" },
-      ]);
-
-      // Durable completion: the per-partition checkpoint plus the migration's
-      // completed marker (partition id 202608 = toYYYYMM of the seeded rows).
-      const stateSet = await client.query({
-        query: `SELECT migration_id, phase FROM ${database}.telemetry_legacy_migration_state FINAL ORDER BY migration_id`,
-        format: "JSONEachRow",
-      });
-      expect(await stateSet.json<{ migration_id: string, phase: string }>()).toEqual([
-        { migration_id: "events-and-logs-to-telemetry-v1", phase: "completed" },
-        { migration_id: "events-and-logs-to-telemetry-v1:events:202608", phase: "completed" },
-      ]);
-
-      // A second cutover run must be a no-op: the completed marker (with the
-      // sources absent) short-circuits before any DDL or copy.
-      await cutoverLegacyTelemetryTables(client, { database, eventsTable, logsTable, minDrainSeconds: 0 });
-      expect(await countRowsIn(database, "telemetry")).toBe(2);
-    });
-  });
-
-  test("the cutover refuses while a non-dual-written row is fresher than the drain window", async () => {
-    await withThrowawayDatabase(async (database) => {
-      const eventsTable = "legacy_events_drain_probe";
-      const logsTable = "legacy_logs_drain_probe";
-      await createLegacySourceTable(database, eventsTable, "events");
-      await migrateLegacyTelemetryTables(client, { database, eventsTable, logsTable });
-      await client.command({ query: buildTelemetryCreateTableSql(`${database}.telemetry`) });
-      // created_at is the server-stamped DEFAULT now64(3), so this row is
-      // seconds old — a pre-expand writer could still be running.
-      await client.command({
-        query: `
-          INSERT INTO ${database}.${eventsTable}
-            (event_type, event_at, data, project_id, branch_id)
-          VALUES
-            ('$click', now64(3), '{"kind":"fresh"}', 'p', 'b')
-        `,
-      });
-
-      await expect(cutoverLegacyTelemetryTables(client, { database, eventsTable, logsTable, minDrainSeconds: 3600 }))
-        .rejects.toThrow(/Refusing cutover/);
-
-      // The refusal happens before any copy or drop.
-      expect(await physicalTableExists(database, eventsTable)).toBe(true);
-      expect(await countRowsIn(database, eventsTable)).toBe(1);
-      expect(await countRowsIn(database, "telemetry")).toBe(0);
-    });
-  });
-
 
   test("the span_writes billing view meters only classified SDK spans", async () => {
     await client.command({ query: buildSpansCreateTableSql(`${testDatabase}.spans`) });
@@ -809,76 +528,6 @@ describe("clickhouse upgrade helpers (integration)", () => {
     // Exactly one billable write: both the SDK producer and the server-derived
     // item classification are required.
     expect(ledgerRows).toEqual([{ project_id: "billed-project" }]);
-  });
-
-  test("the events legacy cleanup drops the retired columns and the idx_source index", async () => {
-    const table = "events_cleanup_probe";
-    // A branch-vintage events table: retired log/tracing columns plus the old
-    // source skip index (which must be dropped before its column can be).
-    await client.command({
-      query: `
-        CREATE TABLE ${testDatabase}.${table} (
-            event_type LowCardinality(String),
-            event_at DateTime64(3, 'UTC'),
-            body String DEFAULT '',
-            severity_text LowCardinality(String) DEFAULT '',
-            severity_number UInt8 DEFAULT 0,
-            data String DEFAULT '{}',
-            project_id String,
-            branch_id String,
-            user_id Nullable(String),
-            team_id Nullable(String),
-            refresh_token_id Nullable(String),
-            session_replay_id Nullable(String),
-            session_replay_segment_id Nullable(String),
-            parent_span_ids Array(String) DEFAULT [],
-            trace_id Nullable(String),
-            span_id Nullable(String),
-            trace_flags UInt8 DEFAULT 0,
-            source LowCardinality(String) DEFAULT 'hexclave',
-            service_namespace LowCardinality(Nullable(String)),
-            service_name LowCardinality(Nullable(String)),
-            service_version Nullable(String),
-            service_instance_id Nullable(String),
-            deployment_environment_name LowCardinality(Nullable(String)),
-            resource_attributes String DEFAULT '{}',
-            resource_schema_url Nullable(String),
-            scope_name LowCardinality(Nullable(String)),
-            scope_version Nullable(String),
-            scope_attributes String DEFAULT '{}',
-            scope_schema_url Nullable(String),
-            dropped_attributes UInt32 DEFAULT 0,
-            created_at DateTime64(3, 'UTC') DEFAULT now64(3),
-            INDEX idx_source source TYPE set(0) GRANULARITY 4
-        )
-        ENGINE MergeTree
-        PARTITION BY toYYYYMM(event_at)
-        ORDER BY (project_id, branch_id, event_at)
-      `,
-    });
-    await client.command({
-      query: `INSERT INTO ${testDatabase}.${table} (event_type, event_at, project_id, branch_id, source) VALUES ('$click', now64(3), 'p', 'b', 'hexclave')`,
-    });
-
-    await client.command({ query: buildColumnUpgradeSql(`${testDatabase}.${table}`, EVENTS_COLUMNS) });
-    await client.command({ query: buildEventsLegacyCleanupSql(`${testDatabase}.${table}`) });
-
-    // Converges on exactly the canonical physical shape (order included) —
-    // the guarantee that matters, checked against a real ClickHouse rather than
-    // server, where DROP COLUMN ordering constraints actually bite.
-    expect(await getColumnNames(table)).toEqual(EVENTS_COLUMNS.map((column) => column.name));
-    const indexSet = await client.query({
-      query: "SELECT name FROM system.data_skipping_indices WHERE database = {database:String} AND table = {table:String}",
-      query_params: { database: testDatabase, table },
-      format: "JSONEachRow",
-    });
-    expect(await indexSet.json<{ name: string }>()).toEqual([]);
-    // Existing rows survive the cleanup.
-    expect(await countRows(table)).toBe(1);
-
-    // Idempotent: a second run (fully IF EXISTS actions) is a no-op.
-    await client.command({ query: buildEventsLegacyCleanupSql(`${testDatabase}.${table}`) });
-    expect(await getColumnNames(table)).toEqual(EVENTS_COLUMNS.map((column) => column.name));
   });
 
   test("ensureTableTtl applies the retention TTL exactly once, and re-applies on a changed retention", async () => {

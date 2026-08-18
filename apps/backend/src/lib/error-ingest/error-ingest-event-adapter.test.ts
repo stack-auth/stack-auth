@@ -77,11 +77,11 @@ describe("Sentry envelope event adapter", () => {
       header: { ...header, trace: null },
       item,
       receivedAtMs: 42_000,
-      event: scrubEvent({ event_id: eventId, message: "captured" }),
+      event: scrubEvent({ event_id: eventId, message: "captured", handled: true }),
     });
 
     expect(projected.event_at_ms).toBe(42_000);
-    expect(projected.data).toMatchObject({ name: "Error", message: "captured", kind: "message" });
+    expect(projected.data).toMatchObject({ name: "Error", message: "captured", kind: "message", handled: true });
     expect(projected.trace_id).toBeUndefined();
     expect(projected.span_id).toBeUndefined();
   });
@@ -92,7 +92,7 @@ describe("Sentry envelope event adapter", () => {
       header: { ...header, trace: null },
       item,
       receivedAtMs: 42_000,
-      event: scrubEvent({ event_id: eventId, timestamp: 9_000_000_000_000, message: "captured" }),
+      event: scrubEvent({ event_id: eventId, timestamp: 9_000_000_000_000, message: "captured", handled: true }),
     });
     expect(projected.event_at_ms).toBe(42_000);
   });
@@ -104,7 +104,7 @@ describe("Sentry envelope event adapter", () => {
       header,
       item,
       receivedAtMs: 1_000,
-      event: scrubEvent({ event_id: eventId, message: "captured" }),
+      event: scrubEvent({ event_id: eventId, message: "captured", handled: true }),
     });
     expect(traceOnly.trace_id).toBeUndefined();
     expect(traceOnly.span_id).toBeUndefined();
@@ -113,7 +113,7 @@ describe("Sentry envelope event adapter", () => {
       header: { ...header, trace: null },
       item,
       receivedAtMs: 1_000,
-      event: scrubEvent({ event_id: eventId, message: "captured", contexts: { trace: { span_id: "bbbbbbbbbbbbbbbb" } } }),
+      event: scrubEvent({ event_id: eventId, message: "captured", handled: true, contexts: { trace: { span_id: "bbbbbbbbbbbbbbbb" } } }),
     });
     expect(spanOnly.trace_id).toBeUndefined();
     expect(spanOnly.span_id).toBeUndefined();
@@ -124,9 +124,18 @@ describe("Sentry envelope event adapter", () => {
       header,
       item,
       receivedAtMs: 42_000,
-      event: scrubEvent({ event_id: eventId, timestamp: "2026-08-06T00:00:00.000Z", level: "fatal", message: "captured" }),
+      event: scrubEvent({ event_id: eventId, timestamp: "2026-08-06T00:00:00.000Z", level: "fatal", message: "captured", handled: true }),
     });
     expect(projected.event_at_ms).toBe(Date.parse("2026-08-06T00:00:00.000Z"));
     expect(projected.level).toBe("error");
+  });
+
+  it("rejects events that omit handled instead of inventing true", () => {
+    expect(() => projectSentryEnvelopeEvent({
+      header: { ...header, trace: null },
+      item,
+      receivedAtMs: 42_000,
+      event: scrubEvent({ event_id: eventId, message: "captured" }),
+    })).toThrow(/boolean handled field/);
   });
 });

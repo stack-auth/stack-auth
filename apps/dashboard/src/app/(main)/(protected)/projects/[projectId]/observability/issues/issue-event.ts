@@ -255,11 +255,11 @@ function parseSymbolicationDiagnostic(value: unknown): IssueSymbolicationDiagnos
     code,
     message: scrubDisplayString(stringValue(valueAt(record, "message")) ?? "Symbolication diagnostic unavailable."),
     debugId: (() => {
-      const value = stringValue(valueAt(record, "debug_id")) ?? stringValue(valueAt(record, "debugId"));
+      const value = stringValue(valueAt(record, "debug_id"));
       return value == null ? null : scrubDisplayString(value);
     })(),
     codeFile: (() => {
-      const value = stringValue(valueAt(record, "code_file")) ?? stringValue(valueAt(record, "codeFile"));
+      const value = stringValue(valueAt(record, "code_file"));
       return value == null ? null : scrubDisplayString(value);
     })(),
     line: numberValue(valueAt(record, "line")),
@@ -314,11 +314,11 @@ function parseFrameSymbolication(record: IssueEventRecord): IssueFrameSymbolicat
   return {
     status,
     sourceFile: (() => {
-      const value = stringValue(valueAt(symbolication, "source_file")) ?? stringValue(valueAt(symbolication, "sourceFile"));
+      const value = stringValue(valueAt(symbolication, "source_file"));
       return value == null ? null : scrubDisplayString(value);
     })(),
-    originalLine: numberValue(valueAt(symbolication, "original_line")) ?? numberValue(valueAt(symbolication, "originalLine")),
-    originalColumn: numberValue(valueAt(symbolication, "original_column")) ?? numberValue(valueAt(symbolication, "originalColumn")),
+    originalLine: numberValue(valueAt(symbolication, "original_line")),
+    originalColumn: numberValue(valueAt(symbolication, "original_column")),
     name: (() => {
       const value = stringValue(valueAt(symbolication, "name"));
       return value == null ? null : scrubDisplayString(value);
@@ -352,13 +352,13 @@ function displayFrame(raw: IssueFrame, symbolication: IssueFrameSymbolication | 
 function parseFrame(value: unknown): IssueEventFrame | null {
   const record = asIssueEventRecord(value);
   if (record == null) return null;
-  const debugId = stringValue(valueAt(record, "debug_id")) ?? stringValue(valueAt(record, "debugId"));
-  const inApp = booleanValue(valueAt(record, "in_app")) ?? booleanValue(valueAt(record, "inApp")) ?? false;
+  const debugId = stringValue(valueAt(record, "debug_id"));
+  const inApp = booleanValue(valueAt(record, "in_app")) ?? false;
   const raw: IssueFrame = {
     filename: stringValue(valueAt(record, "filename")),
     function: stringValue(valueAt(record, "function")),
     module: stringValue(valueAt(record, "module")),
-    abs_path: stringValue(valueAt(record, "abs_path")) ?? stringValue(valueAt(record, "absPath")),
+    abs_path: stringValue(valueAt(record, "abs_path")),
     lineno: numberValue(valueAt(record, "lineno")),
     colno: numberValue(valueAt(record, "colno")),
     in_app: inApp,
@@ -380,12 +380,10 @@ function parseMechanism(value: unknown): string | null {
 }
 
 function parseExceptionChain(data: IssueEventRecord | null): IssueExceptionValue[] {
-  // captureEvent keeps the rich exception chain in the legacy `extra` bridge,
-  // while versioned envelopes expose it at the top level. Read both shapes so
-  // the dashboard remains useful during the schema migration without rendering
-  // the entire opaque payload.
-  const exception = asIssueEventRecord(valueAt(data, "exception"))
-    ?? asIssueEventRecord(valueAt(asIssueEventRecord(valueAt(data, "extra")), "exception"));
+  // Both the Hexclave SDK and the Sentry envelope adapter persist the chain at
+  // `data.exception`. `extra.exception` is user-supplied context, not a second
+  // home for the stack — do not read it here.
+  const exception = asIssueEventRecord(valueAt(data, "exception"));
   const values = valueAt(exception, "values");
   if (!Array.isArray(values)) return [];
   return values.map((value, index) => {
@@ -406,7 +404,7 @@ function parseExceptionChain(data: IssueEventRecord | null): IssueExceptionValue
 function parseSafeRequest(data: IssueEventRecord | null): IssueSafeRequestContext | null {
   const request = asIssueEventRecord(valueAt(data, "request"));
   if (request == null) return null;
-  const statusCode = numberValue(valueAt(request, "status_code")) ?? numberValue(valueAt(request, "statusCode"));
+  const statusCode = numberValue(valueAt(request, "status_code"));
   const fields = [
     { key: "URL", value: (() => {
       const url = stringValue(valueAt(request, "url"));
@@ -516,8 +514,8 @@ export function getIssueEventPayload(occurrence: IssueEventOccurrenceProjection)
     fingerprintOverride: stringList(valueAt(data, "fingerprint_override")),
     additionalData: parseAdditionalData(data),
     symbolicationDiagnostics: deduplicateSymbolicationDiagnostics([
-      ...parseSymbolicationDiagnostics(valueAt(data, "symbolication_diagnostics") ?? valueAt(data, "symbolicationDiagnostics")),
-      ...parseSymbolicationDiagnostics(valueAt(occurrenceRecord, "symbolication_diagnostics") ?? valueAt(occurrenceRecord, "symbolicationDiagnostics")),
+      ...parseSymbolicationDiagnostics(valueAt(data, "symbolication_diagnostics")),
+      ...parseSymbolicationDiagnostics(valueAt(occurrenceRecord, "symbolication_diagnostics")),
       ...frameDiagnostics,
       ...projectionDiagnostics,
     ]),

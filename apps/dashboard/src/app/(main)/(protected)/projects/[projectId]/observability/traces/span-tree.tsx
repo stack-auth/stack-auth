@@ -167,7 +167,18 @@ function TraceRow({
 /** How many root activities happened on this page view, per the list query. */
 export function pageViewChildCount(trace: Trace): number {
   const raw = trace.root.span.raw.child_count;
-  return typeof raw === "number" ? raw : Number(raw ?? 0) || 0;
+  if (raw === undefined || raw === null) return 0;
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw)) {
+      throw new Error(`page view child_count must be a finite number, received ${String(raw)}`);
+    }
+    return raw;
+  }
+  if (typeof raw === "string" && raw.trim() !== "") {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  throw new Error(`page view child_count must be a finite number, received ${JSON.stringify(raw)}`);
 }
 
 type ListRow =

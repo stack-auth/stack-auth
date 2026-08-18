@@ -393,13 +393,13 @@ function normalizeFrames(value: unknown, state: NormalizationState, path: string
     if (!isRecord(rawFrame)) continue;
     const frame: ErrorEnvelopeStackFrame = {};
     const filename = stringValue(field(rawFrame, "filename"), state, `${path}[${index}].filename`, limits.maxStringBytes);
-    const absPath = stringValue(firstField([rawFrame], ["abs_path", "absPath"]), state, `${path}[${index}].abs_path`, limits.maxStringBytes);
+    const absPath = stringValue(field(rawFrame, "abs_path"), state, `${path}[${index}].abs_path`, limits.maxStringBytes);
     const functionName = stringValue(field(rawFrame, "function"), state, `${path}[${index}].function`, limits.maxStringBytes);
     const moduleName = stringValue(field(rawFrame, "module"), state, `${path}[${index}].module`, limits.maxStringBytes);
-    const contextLine = stringValue(firstField([rawFrame], ["context_line", "contextLine"]), state, `${path}[${index}].context_line`, limits.maxStringBytes);
+    const contextLine = stringValue(field(rawFrame, "context_line"), state, `${path}[${index}].context_line`, limits.maxStringBytes);
     const lineno = integer(field(rawFrame, "lineno"));
     const colno = integer(field(rawFrame, "colno"));
-    const inApp = booleanValue(firstField([rawFrame], ["in_app", "inApp"]));
+    const inApp = booleanValue(field(rawFrame, "in_app"));
     if (filename !== undefined) frame.filename = filename;
     if (absPath !== undefined) frame.abs_path = absPath;
     if (functionName !== undefined) frame.function = functionName;
@@ -449,8 +449,8 @@ function normalizeExceptionValues(value: unknown, state: NormalizationState, pat
     for (const [index, rawValue] of value.slice(0, limits.maxExceptionValues).entries()) {
       if (!isRecord(rawValue)) continue;
       const exception: ErrorEnvelopeExceptionValue = {};
-      const type = stringValue(firstField([rawValue], ["type", "name"]), state, `${path}[${index}].type`, limits.maxStringBytes);
-      const exceptionValue = stringValue(firstField([rawValue], ["value", "message"]), state, `${path}[${index}].value`, limits.maxStringBytes);
+      const type = stringValue(field(rawValue, "type"), state, `${path}[${index}].type`, limits.maxStringBytes);
+      const exceptionValue = stringValue(field(rawValue, "value"), state, `${path}[${index}].value`, limits.maxStringBytes);
       const moduleName = stringValue(field(rawValue, "module"), state, `${path}[${index}].module`, limits.maxStringBytes);
       const mechanism = normalizeMechanism(field(rawValue, "mechanism"), state, `${path}[${index}].mechanism`, limits);
       const stacktrace = normalizeStacktrace(field(rawValue, "stacktrace"), state, `${path}[${index}].stacktrace`, limits, remaining);
@@ -504,7 +504,7 @@ function normalizeRequest(value: unknown, state: NormalizationState, limits: typ
   const result: ErrorEnvelopeRequest = {};
   const url = safeRequestUrl(field(value, "url"), state, limits);
   const method = stringValue(field(value, "method"), state, "request.method", 32);
-  const statusCode = integer(firstField([value], ["status_code", "statusCode"]));
+  const statusCode = integer(field(value, "status_code"));
   if (url !== undefined) result.url = url;
   if (method !== undefined) result.method = method.toUpperCase();
   if (statusCode !== undefined && statusCode >= 100 && statusCode <= 599) result.status_code = statusCode;

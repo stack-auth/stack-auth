@@ -366,8 +366,12 @@ type PreparedOtlpSend = {
   batch?: PreparedOtlpBatch,
 };
 
-function normalizedPositiveInteger(value: number | undefined, fallback: number): number {
-  return value === undefined ? fallback : Number.isSafeInteger(value) && value > 0 ? value : fallback;
+function normalizedPositiveInteger(value: number | undefined, fallback: number, name: string): number {
+  if (value === undefined) return fallback;
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`Hexclave browser OTLP ${name} must be a positive integer, received ${String(value)}`);
+  }
+  return value;
 }
 
 function queueOptionsForExporter(options: HexclaveBrowserOtelExporterOptions, signal: BrowserOtlpSignal): {
@@ -382,8 +386,8 @@ function queueOptionsForExporter(options: HexclaveBrowserOtelExporterOptions, si
     // per-signal databases instead of silently starting a fresh queue.
     dbName: `${options.offlineQueue?.dbName ?? `hexclave-otlp-offline-${projectKey}`}-${signal}`,
     storeName: `batches-${signal}`,
-    maxQueueSize: normalizedPositiveInteger(options.offlineQueue?.maxQueueSize, OTLP_OFFLINE_QUEUE_MAX_SIZE),
-    maxQueueBytes: normalizedPositiveInteger(options.offlineQueue?.maxQueueBytes, OTLP_OFFLINE_QUEUE_MAX_BYTES),
+    maxQueueSize: normalizedPositiveInteger(options.offlineQueue?.maxQueueSize, OTLP_OFFLINE_QUEUE_MAX_SIZE, "offlineQueue.maxQueueSize"),
+    maxQueueBytes: normalizedPositiveInteger(options.offlineQueue?.maxQueueBytes, OTLP_OFFLINE_QUEUE_MAX_BYTES, "offlineQueue.maxQueueBytes"),
   };
 }
 
@@ -1431,8 +1435,8 @@ export function createHexclaveBrowserOtlpTraceExporter(options: HexclaveBrowserO
     "traces",
     options.onOutcome,
     createBrowserOtlpOfflineQueue(queueOptionsForExporter(options, "traces")),
-    normalizedPositiveInteger(options.flushDeadlineMs, OTLP_FLUSH_DEADLINE_MS),
-    normalizedPositiveInteger(options.shutdownDeadlineMs, OTLP_SHUTDOWN_DEADLINE_MS),
+    normalizedPositiveInteger(options.flushDeadlineMs, OTLP_FLUSH_DEADLINE_MS, "flushDeadlineMs"),
+    normalizedPositiveInteger(options.shutdownDeadlineMs, OTLP_SHUTDOWN_DEADLINE_MS, "shutdownDeadlineMs"),
     new URL(CLIENT_REPORTS_PATH, options.analyticsBaseUrl).toString(),
     options.sendClientReports === true,
   );
@@ -1447,8 +1451,8 @@ export function createHexclaveBrowserOtlpLogExporter(options: HexclaveBrowserOte
     "logs",
     options.onOutcome,
     createBrowserOtlpOfflineQueue(queueOptionsForExporter(options, "logs")),
-    normalizedPositiveInteger(options.flushDeadlineMs, OTLP_FLUSH_DEADLINE_MS),
-    normalizedPositiveInteger(options.shutdownDeadlineMs, OTLP_SHUTDOWN_DEADLINE_MS),
+    normalizedPositiveInteger(options.flushDeadlineMs, OTLP_FLUSH_DEADLINE_MS, "flushDeadlineMs"),
+    normalizedPositiveInteger(options.shutdownDeadlineMs, OTLP_SHUTDOWN_DEADLINE_MS, "shutdownDeadlineMs"),
     new URL(CLIENT_REPORTS_PATH, options.analyticsBaseUrl).toString(),
     options.sendClientReports === true,
   );
@@ -1474,8 +1478,8 @@ export function createHexclaveBrowserOtlpMetricExporter(options: HexclaveBrowser
     "metrics",
     options.onOutcome,
     createBrowserOtlpOfflineQueue(queueOptionsForExporter(options, "metrics")),
-    normalizedPositiveInteger(options.flushDeadlineMs, OTLP_FLUSH_DEADLINE_MS),
-    normalizedPositiveInteger(options.shutdownDeadlineMs, OTLP_SHUTDOWN_DEADLINE_MS),
+    normalizedPositiveInteger(options.flushDeadlineMs, OTLP_FLUSH_DEADLINE_MS, "flushDeadlineMs"),
+    normalizedPositiveInteger(options.shutdownDeadlineMs, OTLP_SHUTDOWN_DEADLINE_MS, "shutdownDeadlineMs"),
     new URL(CLIENT_REPORTS_PATH, options.analyticsBaseUrl).toString(),
     options.sendClientReports === true,
   );
@@ -1599,7 +1603,7 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
   const resource = resourceFromAttributes(browserResourceAttributes(options.resource));
   const metricReader = new PeriodicExportingMetricReader({
     exporter: metricExporter,
-    exportIntervalMillis: normalizedPositiveInteger(options.metricExportIntervalMillis, OTLP_METRIC_EXPORT_INTERVAL_MS),
+    exportIntervalMillis: normalizedPositiveInteger(options.metricExportIntervalMillis, OTLP_METRIC_EXPORT_INTERVAL_MS, "metricExportIntervalMillis"),
   });
   const meterProvider = new MeterProvider({ resource, readers: [metricReader] });
   const provider = new WebTracerProvider({
@@ -1733,7 +1737,7 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
     loggerProvider,
     meterProvider,
     forceFlush: async (timeoutMs) => {
-      const timeout = normalizedPositiveInteger(timeoutMs, normalizedPositiveInteger(options.flushDeadlineMs, OTLP_FLUSH_DEADLINE_MS));
+      const timeout = normalizedPositiveInteger(timeoutMs, normalizedPositiveInteger(options.flushDeadlineMs, OTLP_FLUSH_DEADLINE_MS, "flushDeadlineMs"), "timeoutMs");
       await withDeadline(Promise.all([
         provider.forceFlush(),
         loggerProvider.forceFlush(),
@@ -1748,7 +1752,7 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
     enableHttpInstrumentationForOwner: (ownerId) => ownerId === activeOwnerId && setHttpInstrumentationEnabled(true),
     claim,
     flushBeforeAuthenticationChange: async () => {
-      const flushResult = await Result.fromPromise(value.forceFlush(normalizedPositiveInteger(options.flushDeadlineMs, OTLP_FLUSH_DEADLINE_MS)));
+      const flushResult = await Result.fromPromise(value.forceFlush(normalizedPositiveInteger(options.flushDeadlineMs, OTLP_FLUSH_DEADLINE_MS, "flushDeadlineMs")));
       const advanceGeneration = async () => await Result.fromPromise(Promise.all([
         exporter.advanceAuthGeneration(),
         logExporter.advanceAuthGeneration(),
@@ -1775,7 +1779,7 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
       // that processor after credentials rotate could authenticate old-user
       // spans as the next user, so retire the entire provider before allowing
       // the auth transition to continue.
-      const shutdownTimeout = normalizedPositiveInteger(options.shutdownDeadlineMs, OTLP_SHUTDOWN_DEADLINE_MS);
+      const shutdownTimeout = normalizedPositiveInteger(options.shutdownDeadlineMs, OTLP_SHUTDOWN_DEADLINE_MS, "shutdownDeadlineMs");
       removeLifecycleListeners();
       const shutdownResult = await Result.fromPromise(withDeadline(
         Promise.all([provider.shutdown(), loggerProvider.shutdown(), meterProvider.shutdown()]),
@@ -1800,7 +1804,7 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
     updatePropagationPolicy,
     shutdown: async (timeoutMs) => {
       disableInstrumentations?.();
-      const timeout = normalizedPositiveInteger(timeoutMs, normalizedPositiveInteger(options.shutdownDeadlineMs, OTLP_SHUTDOWN_DEADLINE_MS));
+      const timeout = normalizedPositiveInteger(timeoutMs, normalizedPositiveInteger(options.shutdownDeadlineMs, OTLP_SHUTDOWN_DEADLINE_MS, "shutdownDeadlineMs"), "timeoutMs");
       const shutdownResult = await Result.fromPromise(withDeadline(
         Promise.all([provider.shutdown(), loggerProvider.shutdown(), meterProvider.shutdown()]),
         elapsedDeadline(timeout),

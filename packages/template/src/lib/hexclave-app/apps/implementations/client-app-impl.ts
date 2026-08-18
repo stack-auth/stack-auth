@@ -4571,7 +4571,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   async signOut(options?: { redirectUrl?: URL | string, tokenStore?: TokenStoreInit }): Promise<void> {
-    const user = await this.getUser({ tokenStore: options?.tokenStore ?? undefined as any });
+    const tokenStore = options?.tokenStore;
+    const user = tokenStore === undefined
+      ? await this.getUser()
+      : await this.getUser({ tokenStore });
     if (user) {
       await user.signOut({ redirectUrl: options?.redirectUrl });
     }
@@ -4809,7 +4812,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   async getAccessToken(options?: { tokenStore?: TokenStoreInit }): Promise<string | null> {
-    const user = await this.getUser({ tokenStore: options?.tokenStore ?? undefined as any });
+    const tokenStore = options?.tokenStore;
+    const user = tokenStore === undefined
+      ? await this.getUser()
+      : await this.getUser({ tokenStore });
     if (user) {
       return await user.getAccessToken();
     }
@@ -4818,7 +4824,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   // IF_PLATFORM react-like
   useAccessToken(options?: { tokenStore?: TokenStoreInit }): string | null {
-    const user = this.useUser({ tokenStore: options?.tokenStore ?? undefined as any });
+    const tokenStore = options?.tokenStore;
+    const user = tokenStore === undefined
+      ? this.useUser()
+      : this.useUser({ tokenStore });
     if (user) {
       return user.useAccessToken();
     }
@@ -4827,7 +4836,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   // END_PLATFORM
 
   async getRefreshToken(options?: { tokenStore?: TokenStoreInit }): Promise<string | null> {
-    const user = await this.getUser({ tokenStore: options?.tokenStore ?? undefined as any });
+    const tokenStore = options?.tokenStore;
+    const user = tokenStore === undefined
+      ? await this.getUser()
+      : await this.getUser({ tokenStore });
     if (user) {
       return await user.getRefreshToken();
     }
@@ -4836,7 +4848,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   // IF_PLATFORM react-like
   useRefreshToken(options?: { tokenStore?: TokenStoreInit }): string | null {
-    const user = this.useUser({ tokenStore: options?.tokenStore ?? undefined as any });
+    const tokenStore = options?.tokenStore;
+    const user = tokenStore === undefined
+      ? this.useUser()
+      : this.useUser({ tokenStore });
     if (user) {
       return user.useRefreshToken();
     }
@@ -4869,7 +4884,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   // END_PLATFORM
 
   async getAuthJson(options?: { tokenStore?: TokenStoreInit }): Promise<{ accessToken: string | null, refreshToken: string | null }> {
-    const user = await this.getUser({ tokenStore: options?.tokenStore ?? undefined as any });
+    const tokenStore = options?.tokenStore;
+    const user = tokenStore === undefined
+      ? await this.getUser()
+      : await this.getUser({ tokenStore });
     if (user) {
       return await user.getAuthJson();
     }
@@ -4878,7 +4896,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   // IF_PLATFORM react-like
   useAuthJson(options?: { tokenStore?: TokenStoreInit }): { accessToken: string | null, refreshToken: string | null } {
-    const user = this.useUser({ tokenStore: options?.tokenStore ?? undefined as any });
+    const tokenStore = options?.tokenStore;
+    const user = tokenStore === undefined
+      ? this.useUser()
+      : this.useUser({ tokenStore });
     if (user) {
       return user.useAuthJson();
     }

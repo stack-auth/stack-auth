@@ -1,4 +1,4 @@
-import { ignoreUnhandledRejection } from "@hexclave/shared/dist/utils/promises";
+import { ignoreUnhandledRejection, runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_NAME_RE, isW3cSpanId, isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
 import { generateOtelTraceId } from "./otel-context";
 
@@ -393,13 +393,13 @@ export async function withSpanImpl<T>(
   return await span.run(async () => {
     try {
       const result = await fn(span);
-      span.end().catch(() => {});
+      runAsynchronously(span.end());
       return result;
     } catch (error) {
       // Order matters: the merge lands before the end row is enqueued, so the
       // single deduped wire row carries both the error and the end time.
-      span.setData({ error: error instanceof Error ? error.message : String(error) }).catch(() => {});
-      span.end().catch(() => {});
+      runAsynchronously(span.setData({ error: error instanceof Error ? error.message : String(error) }));
+      runAsynchronously(span.end());
       throw error;
     }
   });

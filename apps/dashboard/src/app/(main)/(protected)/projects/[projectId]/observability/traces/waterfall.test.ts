@@ -76,16 +76,17 @@ describe("shouldShowCollapseControl", () => {
 });
 
 describe("TraceWaterfall span names", () => {
-  it("renders a library operation without exposing the internal $lib-span discriminator", () => {
+  it("renders a library operation from the recorded name instead of the indexed span type", () => {
     const librarySpan = {
       traceId: "trace",
       id: "library-root",
-      spanType: "$lib-span",
+      spanType: "prisma:client:db_query",
       startMs: 1000,
       endMs: 1010,
       parentSpanId: null,
       raw: {
         producer: "sdk",
+        scope_name: "prisma",
         data: {
           name: "prisma:client:db_query",
           tracer_name: "prisma",
@@ -109,7 +110,6 @@ describe("TraceWaterfall span names", () => {
     render(createElement(TraceWaterfall, waterfallProps(trace)));
 
     expect(screen.getAllByText("prisma:client:db_query")).toHaveLength(2);
-    expect(screen.queryByText("$lib-span")).toBeNull();
   });
 
   it("shows a linked span directly beneath its owner and opens it", () => {

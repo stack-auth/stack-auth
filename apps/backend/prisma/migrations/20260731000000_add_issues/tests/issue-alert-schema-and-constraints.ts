@@ -44,6 +44,17 @@ export const postMigration = async (
     ]
   `);
 
+  // The delivery row carries a scrubbed copy of the workflow payload so a
+  // replay does not depend on the 30-day WorkflowEvent retention window.
+  const payloadColumns = await sql<{ column_name: string, data_type: string }[]>`
+    SELECT column_name, data_type
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'IssueAlertDelivery'
+      AND column_name = 'workflowPayload'
+  `;
+  expect(payloadColumns).toEqual([{ column_name: "workflowPayload", data_type: "jsonb" }]);
+
   const enumLabels = await sql<{ typname: string, enumlabel: string }[]>`
     SELECT t.typname, e.enumlabel
     FROM pg_type t

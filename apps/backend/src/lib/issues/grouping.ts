@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { GROUPING_CONFIG_IDS, type GroupingConfigId, type GroupingConfigResolution } from "./grouping-config";
-import { resolveGroupingFingerprint } from "./grouping-fingerprint";
+import { GroupingParseError, resolveGroupingFingerprint } from "./grouping-fingerprint";
 import { parameterizeMessage } from "./parameterize";
 import { parseStack, hasUrlOrigin, normalizeFilenameForGrouping } from "./stack-parser";
 import type { GroupingHashProvenance, GroupingInput, GroupingResult, ParsedFrame } from "./types";
@@ -88,13 +88,14 @@ export function computeGrouping(input: GroupingInput, configId: GroupingConfigId
 
   try {
     return implementation(input, configId);
-  } catch {
-    // "No empty hash, ever" is the contract the rest of the system rests on:
-    // an occurrence with no owning hash is unreachable from every issue query.
-    // So a bug in here costs grouping *quality*, never queryability. The caller
-    // reports `variant === "degraded"` so the degraded population stays
-    // measurable and reprocessable.
-    return degradedResult(input, configId);
+  } catch (error) {
+    // Known parse failures (unsupported fingerprint tokens) still need a
+    // non-empty owner hash so the occurrence stays queryable. Unexpected
+    // throws are programmer bugs and must fail the occurrence write.
+    if (error instanceof GroupingParseError) {
+      return degradedResult(input, configId);
+    }
+    throw error;
   }
 }
 

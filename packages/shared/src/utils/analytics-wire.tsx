@@ -146,12 +146,7 @@ export type SystemEventType = typeof SYSTEM_EVENT_TYPES[number];
 export const CLIENT_SYSTEM_SPAN_TYPES = ["$page-view", "$away", "$offline"] as const;
 export type ClientSystemSpanType = typeof CLIENT_SYSTEM_SPAN_TYPES[number];
 
-export const SERVER_SYSTEM_SPAN_TYPES = ["$lib-span"] as const;
-export type ServerSystemSpanType = typeof SERVER_SYSTEM_SPAN_TYPES[number];
-
 const ANALYTICS_EVENT_TYPES = new Set<string>(SYSTEM_EVENT_TYPES.filter((type) => type !== "$log" && type !== "$error"));
-const ANALYTICS_SPAN_TYPES = new Set<string>(["$page-view", "$away", "$offline"]);
-const SERVER_SPAN_TYPES = new Set<string>(SERVER_SYSTEM_SPAN_TYPES);
 
 function describeSystemEvent(type: SystemEventType): TelemetrySignalDescriptor {
   if (type === "$log") return { kind: "log", lens: "observability", origin: "client", writableOrigins: ["client", "server"], billingItem: "analytics_events", displayName: "Log", description: "Structured SDK logger output or automatically captured console output." };
@@ -159,24 +154,21 @@ function describeSystemEvent(type: SystemEventType): TelemetrySignalDescriptor {
   return { kind: "event", lens: "analytics", origin: "client", writableOrigins: ["client"], billingItem: "analytics_events", displayName: type.slice(1).replaceAll("-", " "), description: "A product interaction captured by the Hexclave SDK." };
 }
 
-function describeSystemSpan(type: ClientSystemSpanType | ServerSystemSpanType): TelemetrySignalDescriptor {
-  const analyticsOwned = ANALYTICS_SPAN_TYPES.has(type);
-  const writableOrigins: readonly TelemetryWriterOrigin[] = type === "$lib-span" ? ["server"] : ["client"];
+function describeSystemSpan(type: ClientSystemSpanType): TelemetrySignalDescriptor {
   return {
     kind: "span",
-    lens: analyticsOwned ? "analytics" : "observability",
-    origin: SERVER_SPAN_TYPES.has(type) ? "server" : "client",
-    writableOrigins,
+    lens: "analytics",
+    origin: "client",
+    writableOrigins: ["client"],
     billingItem: null,
     displayName: type.slice(1).replaceAll("-", " "),
-    description: analyticsOwned ? "A product-session interval captured by the Hexclave SDK." : "A code-execution interval captured by the Hexclave SDK.",
+    description: "A product-session interval captured by the Hexclave SDK.",
   };
 }
 
 export const SYSTEM_SIGNALS: ReadonlyMap<string, TelemetrySignalDescriptor> = new Map([
   ...SYSTEM_EVENT_TYPES.map((type) => [`event:${type}`, describeSystemEvent(type)] as const),
   ...CLIENT_SYSTEM_SPAN_TYPES.map((type) => [`span:${type}`, describeSystemSpan(type)] as const),
-  ...SERVER_SYSTEM_SPAN_TYPES.map((type) => [`span:${type}`, describeSystemSpan(type)] as const),
 ]);
 
 export function classifyTelemetrySignal(type: string, wireKind: "event" | "span", origin?: TelemetrySignalOrigin): TelemetrySignalDescriptor {
@@ -327,7 +319,6 @@ export type LogLevel = typeof LOG_LEVELS[number];
 export const TELEMETRY_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const PAGE_VIEW_SPAN_TYPE = "$page-view";
-export const LIB_SPAN_TYPE = "$lib-span";
 
 // ---------------------------------------------------------------------------
 // Native W3C trace context.

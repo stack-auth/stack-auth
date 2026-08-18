@@ -1,8 +1,9 @@
 import type { BatchEventWireItem } from "@/lib/analytics-telemetry-writers";
 import type { LogLevel } from "@hexclave/shared/dist/utils/analytics-wire";
-import type {
-  ErrorIngestEnvelopeHeader,
-  ErrorIngestEnvelopeItem,
+import {
+  ErrorIngestEnvelopeError,
+  type ErrorIngestEnvelopeHeader,
+  type ErrorIngestEnvelopeItem,
 } from "./error-ingest-envelope";
 import type { ErrorIngestScrubbedValue } from "./error-ingest-scrubber";
 
@@ -118,7 +119,10 @@ export function projectSentryEnvelopeEvent(options: {
   const message = stringField(root, "value") ?? stringField(options.event, "message") ?? "";
   const rawStack = stringField(rootStacktrace, "raw") ?? stringField(options.event, "stack") ?? stackFromFrames(rootStacktrace);
   const mechanism = recordField(root, "mechanism") ?? recordField(options.event, "mechanism");
-  const handled = booleanField(mechanism, "handled") ?? booleanField(options.event, "handled") ?? true;
+  const handled = booleanField(mechanism, "handled") ?? booleanField(options.event, "handled");
+  if (handled === undefined) {
+    throw new ErrorIngestEnvelopeError("malformed", "Sentry envelope event is missing a boolean handled field");
+  }
   const synthetic = booleanField(mechanism, "synthetic") ?? booleanField(options.event, "synthetic");
   const level = sentryLevel(stringField(options.event, "level"));
 

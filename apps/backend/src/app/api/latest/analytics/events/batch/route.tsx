@@ -1,5 +1,4 @@
 import { buildTelemetryWritePlan, getBatchDestinationDeduplicationToken, insertBatchEvents, normalizeBatchEvents, type NormalizedEventBatch } from "@/lib/analytics-telemetry-writers";
-import { dualWriteLegacyEvents } from "@/lib/legacy-telemetry-dual-write";
 import { evaluateErrorIngestPolicy, persistErrorIngestClientReportProjection } from "@/lib/error-ingest";
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
 import { createLegacyBatchProtocolProjection } from "@/lib/error-ingest/error-ingest-protocol-projections";
@@ -15,7 +14,7 @@ import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { captureError, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
-import { CLIENT_SYSTEM_SPAN_TYPES, CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_NAME_RE, LOG_LEVELS, SERVER_SYSTEM_SPAN_TYPES, SYSTEM_EVENT_TYPES, TELEMETRY_MAX_LOG_MESSAGE_BYTES, TELEMETRY_SCOPE_NAME_MAX_BYTES, TELEMETRY_SCOPE_VERSION_MAX_BYTES, TELEMETRY_SPAN_KINDS, TELEMETRY_SPAN_STATUS_CODES, TELEMETRY_SPAN_STATUS_MESSAGE_MAX_BYTES, TELEMETRY_UUID_RE, W3C_SPAN_ID_RE, W3C_TRACE_ID_RE, canWriteTelemetrySignal, classifyTelemetrySignal, getTelemetryResourceError, isTelemetryResource, type TelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
+import { CLIENT_SYSTEM_SPAN_TYPES, CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_NAME_RE, LOG_LEVELS, SYSTEM_EVENT_TYPES, TELEMETRY_MAX_LOG_MESSAGE_BYTES, TELEMETRY_SCOPE_NAME_MAX_BYTES, TELEMETRY_SCOPE_VERSION_MAX_BYTES, TELEMETRY_SPAN_KINDS, TELEMETRY_SPAN_STATUS_CODES, TELEMETRY_SPAN_STATUS_MESSAGE_MAX_BYTES, TELEMETRY_UUID_RE, W3C_SPAN_ID_RE, W3C_TRACE_ID_RE, canWriteTelemetrySignal, classifyTelemetrySignal, getTelemetryResourceError, isTelemetryResource, type TelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
 import { Buffer } from "node:buffer";
 import * as zlib from "node:zlib";
 
@@ -89,16 +88,17 @@ const errorIngestCountsSchema = yupObject({
  * Deliberately permissive about EXTRA keys — the SDK adds mechanism metadata,
  * urls, route info, and (once source maps land) `debug_images`, and rejecting
  * unknown fields would make every SDK upgrade a breaking change. What it does
- * enforce is the type of the four fields the server actually reads, so a
+ * enforce is the type of the fields the server actually reads, so a
  * malformed payload is rejected at the boundary rather than silently producing
- * a degraded grouping hash.
+ * a degraded grouping hash. `handled` is required: missing must not become
+ * `true`.
  */
 function isValidErrorEventData(value: unknown): boolean {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const data = value as Record<string, unknown>;
   if (typeof data.name !== "string" || typeof data.message !== "string") return false;
   if (data.stack !== undefined && typeof data.stack !== "string") return false;
-  if (data.handled !== undefined && typeof data.handled !== "boolean") return false;
+  if (typeof data.handled !== "boolean") return false;
   return true;
 }
 
@@ -256,14 +256,14 @@ export const POST = createSmartRouteHandler({
           // (a browser fetch, a page view, a bare withSpan, or a request that
           // arrived with no traceparent).
           parent_span_id: yupString().nullable().defined().test("span-parent-span-id", `parent_span_id ${W3C_SPAN_ID_ERROR}`, (value) => value == null || isUsableW3cSpanId(value)),
-          // Custom operation names, client-writable system autocapture types,
-          // or the legacy server-SDK `$lib-span` type. New library spans put
-          // their actual operation here and carry their tracer in scope_name.
+          // Custom operation names or client-writable system autocapture types.
+          // Library spans put their actual operation here and carry their
+          // tracer in scope_name.
           span_type: yupString().defined().test(
             "span-type",
-            `span_type must be one of ${[...CLIENT_SYSTEM_SPAN_TYPES, ...SERVER_SYSTEM_SPAN_TYPES].join(", ")} or a custom name matching ${CUSTOM_TELEMETRY_NAME_RE}`,
+            `span_type must be one of ${CLIENT_SYSTEM_SPAN_TYPES.join(", ")} or a custom name matching ${CUSTOM_TELEMETRY_NAME_RE}`,
             // yup skips tests for undefined values, so `value` is always set here.
-            (value) => (CLIENT_SYSTEM_SPAN_TYPES as readonly string[]).includes(value) || (SERVER_SYSTEM_SPAN_TYPES as readonly string[]).includes(value) || CUSTOM_TELEMETRY_NAME_RE.test(value),
+            (value) => (CLIENT_SYSTEM_SPAN_TYPES as readonly string[]).includes(value) || CUSTOM_TELEMETRY_NAME_RE.test(value),
           ),
           started_at_ms: yupNumber().defined().integer().min(0),
           ended_at_ms: yupNumber().nullable().defined().integer().min(0),
@@ -637,8 +637,8 @@ export const POST = createSmartRouteHandler({
     ).length;
     const billableSpanCount = spans.filter(
       // Auto-instrumented library spans carry an authenticated server-only
-      // scope_name. Their operation-shaped span_type must not turn the same
-      // automatic work that `$lib-span` represented into billable custom spans.
+      // scope_name. Their operation-shaped span_type must not turn that
+      // automatic work into billable custom spans.
       (span) => span.scope_name === undefined
         && classifyTelemetrySignal(span.span_type, "span").billingItem === "analytics_spans",
     ).length;
@@ -729,12 +729,6 @@ export const POST = createSmartRouteHandler({
       // that already accepted this batch.
       await Promise.all([
         insertBatchEvents(clickhouseClient, buildTelemetryWritePlan(normalizedEvents, body.batch_id)),
-        // Expand-phase mirror of the product-event rows into the legacy
-        // physical events table, which stays the customer-visible
-        // `default.events` source until the cutover retires it (then this is a
-        // no-op). $log/$error rows are not mirrored: the legacy table never
-        // held them. See legacy-telemetry-dual-write.ts.
-        dualWriteLegacyEvents(clickhouseClient, normalizedEvents.productEvents),
         insertSpans(clickhouseClient, spanRows, {
           deduplicationToken: getBatchDestinationDeduplicationToken(body.batch_id, "analytics_internal.spans"),
         }),

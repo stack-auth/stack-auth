@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import {
   compareRankedIssues,
   decodeIssueCursor,
@@ -6,6 +7,7 @@ import {
   deriveSubstatus,
   encodeIssueCursor,
   encodeOccurrenceCursor,
+  requireIssueListCursor,
   rollupRangeStartSeconds,
 } from "./issue-queries";
 
@@ -47,6 +49,20 @@ describe("issue list cursors", () => {
     expect(decodeIssueCursor("not-a-cursor")).toBe(null);
     expect(decodeIssueCursor(tooFarInTheFuture)).toBe(null);
     expect(decodeIssueCursor(wrongId)).toBe(null);
+  });
+
+  it("treats a malformed list cursor as a 400 instead of restarting at page one", () => {
+    let thrown: unknown;
+    try {
+      requireIssueListCursor("not-a-cursor", { sort: "last_seen", sortDir: "desc" });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(StatusError);
+    if (!(thrown instanceof StatusError)) {
+      throw new Error("expected StatusError");
+    }
+    expect(thrown.statusCode).toBe(400);
   });
 });
 

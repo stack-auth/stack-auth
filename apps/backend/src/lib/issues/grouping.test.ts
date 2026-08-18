@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_GROUPING_CONFIG_ID, type GroupingConfigId } from "./grouping-config";
 import { computeGrouping } from "./grouping";
+import * as groupingFingerprint from "./grouping-fingerprint";
 import type { GroupingInput, GroupingResult } from "./types";
 
 const CONFIG = DEFAULT_GROUPING_CONFIG_ID;
@@ -259,6 +260,19 @@ describe("computeGrouping — degraded fallback", () => {
     const messageVariant = group({ type: "Error", message: "Payment 1 declined", stack: null });
     const alsoMessageVariant = group({ type: "Error", message: "Payment 2 declined", stack: null });
     expect(messageVariant.ownerHash).toBe(alsoMessageVariant.ownerHash);
+  });
+
+  it("lets unexpected throws fail the occurrence write instead of degrading", () => {
+    const spy = vi.spyOn(groupingFingerprint, "resolveGroupingFingerprint").mockImplementation(() => {
+      throw new Error("unexpected fingerprint resolver bug");
+    });
+    expect(() => computeGrouping({
+      type: "Error",
+      message: "boom",
+      stack: null,
+      platform: "javascript",
+    }, CONFIG)).toThrow("unexpected fingerprint resolver bug");
+    spy.mockRestore();
   });
 
   it("rejects an unknown config id loudly instead of degrading", () => {

@@ -162,6 +162,7 @@ describe("normalizeCapturedError + buildErrorEventData", () => {
 
   it("bounds adapter-supplied captureEvent exception values like every other path", () => {
     const data = buildCapturedEventData({
+      handled: true,
       exception: {
         values: [{
           type: "AdapterError",
@@ -185,9 +186,48 @@ describe("normalizeCapturedError + buildErrorEventData", () => {
     expect(new TextEncoder().encode(data.stack as string).length).toBeLessThanOrEqual(8_192);
   });
 
+  it("persists captureEvent frames with the envelope/Sentry snake_case keys", () => {
+    const data = buildCapturedEventData({
+      handled: true,
+      exception: {
+        values: [{
+          type: "Error",
+          value: "adapter",
+          stacktrace: {
+            frames: [{
+              filename: "src/pay.ts",
+              abs_path: "https://app.example.com/src/pay.ts",
+              function: "charge",
+              lineno: 12,
+              colno: 3,
+              in_app: true,
+              context_line: "throw new Error(\"adapter\");",
+            }],
+          },
+        }],
+      },
+    }, {
+      eventId: generateErrorEventId(),
+      release: null,
+      environment: null,
+      sdkVersion: "test",
+    });
+    expect(data.exception?.values[0]?.stacktrace?.frames).toEqual([{
+      filename: "src/pay.ts",
+      abs_path: "https://app.example.com/src/pay.ts",
+      function: "charge",
+      lineno: 12,
+      colno: 3,
+      in_app: true,
+      context_line: "throw new Error(\"adapter\");",
+    }]);
+    expect(data.stack).toBe("    at charge (https://app.example.com/src/pay.ts:12:3)");
+  });
+
   it("uses exception stacktrace.raw as the top-level stack when no stack or frames are supplied", () => {
     const raw = "Error: adapter\n    at f (https://app.example.com/a.js:1:1)";
     const data = buildCapturedEventData({
+      handled: true,
       exception: { values: [{ type: "Error", value: "adapter", stacktrace: { raw } }] },
     }, {
       eventId: generateErrorEventId(),
@@ -196,6 +236,17 @@ describe("normalizeCapturedError + buildErrorEventData", () => {
       sdkVersion: "test",
     });
     expect(data.stack).toBe(raw);
+  });
+
+  it("rejects captureEvent input that omits handled instead of inventing true", () => {
+    expect(() => buildCapturedEventData({
+      message: "captured",
+    }, {
+      eventId: generateErrorEventId(),
+      release: null,
+      environment: null,
+      sdkVersion: "test",
+    })).toThrow(/boolean handled field/);
   });
 });
 

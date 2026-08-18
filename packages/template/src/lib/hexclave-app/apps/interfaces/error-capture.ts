@@ -104,7 +104,13 @@ export type ErrorScopeData = {
 };
 
 export type CaptureExceptionOptions = ErrorScopeData & {
-  /** Whether the caller handled the exception before reporting it. @default true */
+  /**
+   * Whether the caller handled the exception before reporting it.
+   * The public `captureException` method defaults this to `true` because an
+   * explicit capture is handled. Ingest and adapter payloads must send a
+   * boolean; they must not invent `true` when the field is missing.
+   * @default true
+   */
   handled?: boolean,
   /** A stable integration/mechanism label, such as `captured` or `next.onRequestError`. */
   mechanism?: string,
@@ -114,15 +120,19 @@ export type CaptureMessageOptions = ErrorScopeData & {
   mechanism?: string,
 };
 
+/**
+ * Stored / wire frame shape. Matches `ErrorEnvelopeStackFrame` and Sentry's
+ * exception frame keys so ingest and the issue UI have one reader.
+ */
 export type ErrorStackFrame = {
   filename?: string,
-  absPath?: string,
+  abs_path?: string,
   function?: string,
   module?: string,
   lineno?: number,
   colno?: number,
-  inApp?: boolean,
-  contextLine?: string,
+  in_app?: boolean,
+  context_line?: string,
 };
 
 export type CapturedExceptionValue = {

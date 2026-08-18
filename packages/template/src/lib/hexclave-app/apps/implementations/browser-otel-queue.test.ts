@@ -219,4 +219,21 @@ describe("IndexedDB browser OTLP offline queue", () => {
     expect(await queue.enqueue(batch(1000))).toEqual({ status: "queued" });
     queue.close();
   });
+
+  it("rejects present-but-invalid persisted meta instead of silently defaulting", async () => {
+    const databases = installFakeIndexedDb();
+    const queue = createBrowserOtlpOfflineQueue({
+      dbName: "queue-test-invalid-meta",
+      storeName: "batches-logs",
+      maxQueueSize: 10,
+      maxQueueBytes: 100,
+    });
+    await queue.size();
+    const database = databases.get("queue-test-invalid-meta");
+    const meta = database?.stores.get("batches-logs-meta");
+    if (meta === undefined) throw new Error("expected the queue meta store");
+    meta.data.set("queue-bytes", -1);
+    await expect(queue.enqueue(batch(10))).rejects.toThrow(/non-negative integer/);
+    queue.close();
+  });
 });

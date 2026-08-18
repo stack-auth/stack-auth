@@ -116,6 +116,13 @@ CREATE TABLE "IssueMaterialization" (
     -- follow-up migration when this schema first reaches production.
     "batchId" VARCHAR(512) NOT NULL,
     "appliedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- Stored per-batch outcomes let a retried control-plane job replay
+    -- notifications (webhooks, alerts) without re-applying issue deltas; the
+    -- two dispatch timestamps make each side-effect phase independently
+    -- idempotent.
+    "outcomes" JSONB,
+    "webhooksDispatchedAt" TIMESTAMP(3),
+    "alertsDispatchedAt" TIMESTAMP(3),
 
     CONSTRAINT "IssueMaterialization_pkey" PRIMARY KEY ("tenancyId","batchId")
 );
@@ -199,6 +206,9 @@ CREATE TABLE "IssueAlertDelivery" (
     "state" "IssueAlertDeliveryState" NOT NULL DEFAULT 'CLAIMED',
     "outcome" "IssueAlertDeliveryOutcome" NOT NULL DEFAULT 'NONE',
     "workflowEventId" UUID,
+    -- Scrubbed copy of the workflow payload so replay does not depend on the
+    -- 30-day WorkflowEvent retention window.
+    "workflowPayload" JSONB,
     "attemptCount" INTEGER NOT NULL DEFAULT 0,
     "replayCount" INTEGER NOT NULL DEFAULT 0,
     "lastAttemptAt" TIMESTAMP(3),
