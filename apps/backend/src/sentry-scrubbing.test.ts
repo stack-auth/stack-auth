@@ -343,4 +343,40 @@ describe("prepareBackendSentryEvent", () => {
 
     expect(result.extra).toBeUndefined();
   });
+
+  it("truncates deeply nested diagnostic values before nicify", () => {
+    let nested: unknown = "leaf";
+    for (let depth = 0; depth < 20; depth++) {
+      nested = { child: nested };
+    }
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "deep-error" } },
+      { originalException: new HexclaveAssertionError("deep extraData", { nested }) },
+    );
+
+    expect(JSON.stringify(result.extra.errorProps)).toContain("[truncated]");
+    expect(JSON.stringify(result.extra.errorProps)).not.toContain("leaf");
+  });
+
+  it("truncates oversized diagnostic collections before nicify", () => {
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "wide-error" } },
+      {
+        originalException: new HexclaveAssertionError("wide extraData", {
+          items: Array.from({ length: 80 }, (_, index) => index),
+        }),
+      },
+    );
+
+    expect(result.extra).toEqual(expect.objectContaining({
+      errorProps: expect.objectContaining({
+        extraData: expect.objectContaining({
+          items: [
+            ...Array.from({ length: 50 }, (_, index) => index),
+            "[truncated]",
+          ],
+        }),
+      }),
+    }));
+  });
 });

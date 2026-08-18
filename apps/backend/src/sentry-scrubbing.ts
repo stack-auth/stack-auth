@@ -103,6 +103,9 @@ const sensitiveDiagnosticKeySegments = new Set([
   "credentials",
 ]);
 
+const maxDiagnosticDepth = 8;
+const maxDiagnosticCollectionSize = 50;
+
 function isSensitiveDiagnosticKey(key: string): boolean {
   const normalized = key
     .replaceAll(/([a-z0-9])([A-Z])/g, "$1_$2")
@@ -122,7 +125,12 @@ function scrubDiagnosticString(value: string): string {
   );
 }
 
-function scrubDiagnosticValue(value: unknown, key?: string, seen: WeakSet<object> = new WeakSet()): unknown {
+function scrubDiagnosticValue(
+  value: unknown,
+  key?: string,
+  seen: WeakSet<object> = new WeakSet(),
+  depth = 0,
+): unknown {
   if (key != null && isSensitiveDiagnosticKey(key) && value != null) {
     return "[redacted]";
   }
@@ -147,16 +155,29 @@ function scrubDiagnosticValue(value: unknown, key?: string, seen: WeakSet<object
   if (typeof value !== "object") {
     return value;
   }
+  if (depth >= maxDiagnosticDepth) {
+    return "[truncated]";
+  }
   if (seen.has(value)) {
     return "[circular]";
   }
   seen.add(value);
   if (Array.isArray(value)) {
-    return value.map((entry) => scrubDiagnosticValue(entry, undefined, seen));
+    const entries = value.slice(0, maxDiagnosticCollectionSize).map((entry) => (
+      scrubDiagnosticValue(entry, undefined, seen, depth + 1)
+    ));
+    if (value.length > maxDiagnosticCollectionSize) {
+      entries.push("[truncated]");
+    }
+    return entries;
   }
+  const keys = Object.keys(value);
   const scrubbed = new Map<string, unknown>();
-  for (const [nestedKey, nestedValue] of Object.entries(value)) {
-    scrubbed.set(nestedKey, scrubDiagnosticValue(nestedValue, nestedKey, seen));
+  for (const nestedKey of keys.slice(0, maxDiagnosticCollectionSize)) {
+    scrubbed.set(nestedKey, scrubDiagnosticValue(Reflect.get(value, nestedKey), nestedKey, seen, depth + 1));
+  }
+  if (keys.length > maxDiagnosticCollectionSize) {
+    scrubbed.set("[truncated]", true);
   }
   return Object.fromEntries(scrubbed);
 }
