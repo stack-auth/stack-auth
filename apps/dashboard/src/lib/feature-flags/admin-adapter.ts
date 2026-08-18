@@ -17,6 +17,16 @@ class AdapterResponseShapeError extends HexclaveAssertionError {
   }
 }
 
+async function readBackendErrorMessage(response: Response, fallback: string): Promise<string> {
+  const payload: unknown = await response.json().catch(() => null);
+  if (typeof payload === "string" && payload.trim().length > 0) return payload;
+  if (payload != null && typeof payload === "object" && !Array.isArray(payload)) {
+    const error = Reflect.get(payload, "error");
+    if (typeof error === "string" && error.trim().length > 0) return error;
+  }
+  return fallback;
+}
+
 function asRecord(value: unknown, path: string): Record<string, unknown> {
   if (value == null || typeof value !== "object" || Array.isArray(value)) throw new AdapterResponseShapeError(path, "an object");
   return Object.fromEntries(Object.entries(value));
@@ -83,13 +93,7 @@ async function requestJson(adminApp: object, path: string, init: RequestInit): P
   if (!(response instanceof Response)) throw new HexclaveAssertionError("Admin app sendRequest did not return a Response.");
   if (response.status === 404 || response.status === 501) throw new FeatureFlagsBackendUnavailableError();
   if (!response.ok) {
-    const payload: unknown = await response.json().catch(() => null);
-    const message = typeof payload === "string" && payload.trim().length > 0
-      ? payload
-      : payload != null && typeof payload === "object" && !Array.isArray(payload) && typeof Reflect.get(payload, "error") === "string"
-        ? String(Reflect.get(payload, "error"))
-        : `Feature-flags backend request failed: ${path} → ${response.status}`;
-    throw new Error(message);
+    throw new Error(await readBackendErrorMessage(response, `Feature-flags backend request failed: ${path} → ${response.status}`));
   }
   return await response.json();
 }

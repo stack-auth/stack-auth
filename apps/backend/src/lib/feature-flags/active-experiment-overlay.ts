@@ -1,5 +1,7 @@
+import { findFeatureFlagIdByKey } from "@hexclave/shared/dist/feature-flags/evaluator";
 import { getFeatureFlagsConfigErrors } from "@hexclave/shared/dist/feature-flags/schema";
 import type { FeatureFlagDefinition, FeatureFlagValue, FeatureFlagsConfig } from "@hexclave/shared/dist/feature-flags/types";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 
 export type ActiveExperimentSnapshot = {
   flag_id: string,
@@ -16,11 +18,6 @@ export type ActiveExperimentRunOverlay = {
   configRevisionHash: string,
   snapshot: ActiveExperimentSnapshot,
 };
-
-function findFlagId(config: FeatureFlagsConfig, configuredFlagId: string): string | undefined {
-  if (config.flags?.[configuredFlagId] !== undefined) return configuredFlagId;
-  return Object.entries(config.flags ?? {}).find(([, flag]) => flag?.key === configuredFlagId)?.[0];
-}
 
 /**
  * Pure overlay used by both the request path and tests. A run that would make
@@ -39,7 +36,9 @@ export function overlayActiveExperimentRuns(
   const activeFlagIds = new Set<string>();
   for (const run of runs) {
     const snapshot = run.snapshot;
-    const flagId = findFlagId({ ...config, flags }, snapshot.flag_id);
+    const flagId = flags[snapshot.flag_id] !== undefined
+      ? snapshot.flag_id
+      : findFeatureFlagIdByKey({ flags }, snapshot.flag_id);
     if (flagId === undefined) {
       // A pushed config can race a lifecycle request. The frozen run remains
       // intact for audit/results, but without the flag's public definition
@@ -60,12 +59,12 @@ export function overlayActiveExperimentRuns(
     // Freeze values on the overlay rule only. Mutating flag.variants would
     // rewrite the published meaning of those keys for holdout, fallback, and
     // every non-experiment rule while the run is RUNNING.
-    const variantWeights = Object.fromEntries(
-      Object.entries(snapshot.variants).map(([variantId, variant]) => [variantId, variant.weight_basis_points]),
-    );
-    const variantValues = Object.fromEntries(
-      Object.entries(snapshot.variants).map(([variantId, variant]) => [variantId, variant.flag_value]),
-    );
+    const variantWeights: Record<string, number> = {};
+    const variantValues: Record<string, FeatureFlagValue> = {};
+    for (const [variantId, variant] of Object.entries(snapshot.variants)) {
+      variantWeights[variantId] = variant.weight_basis_points;
+      variantValues[variantId] = variant.flag_value;
+    }
     const ruleId = `experiment_${run.id}`;
     const candidate: FeatureFlagsConfig = {
       ...config,
@@ -106,8 +105,8 @@ export function overlayActiveExperimentRuns(
     if (getFeatureFlagsConfigErrors(candidate).length > 0) {
       continue;
     }
-    flags = candidate.flags ?? flags;
-    experiments = candidate.experiments ?? experiments;
+    flags = candidate.flags ?? throwErr("Overlay candidate omitted flags after a successful validation");
+    experiments = candidate.experiments ?? throwErr("Overlay candidate omitted experiments after a successful validation");
     activeFlagIds.add(flagId);
   }
   return { ...config, flags, experiments };

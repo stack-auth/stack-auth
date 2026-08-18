@@ -327,7 +327,7 @@ export function getVariantOrThrow(flag: FlagConfig, variantId: string): FlagVari
 }
 
 // ---------------------------------------------------------------------------
-// Parsing the (not yet schema-backed) `featureFlags` section off CompleteConfig
+// Parsing the featureFlags section off CompleteConfig
 // ---------------------------------------------------------------------------
 
 class FeatureFlagsConfigShapeError extends HexclaveAssertionError {

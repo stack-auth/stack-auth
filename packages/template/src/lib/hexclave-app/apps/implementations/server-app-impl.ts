@@ -118,13 +118,12 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
           team: request.team_id === undefined ? undefined : { id: request.team_id },
           context: request.context,
         },
-        new Set(),
         // A stale snapshot can still contain overlay rules for a run that has
         // since paused or completed, and those assignments cannot mint
         // exposure tokens. Ignore experiment overlays so ordinary flags stay
         // available during the five-minute stale window without shipping
         // unauditable experiment traffic.
-        bootstrap.isStale,
+        { ignoreExperimentAssignments: bootstrap.isStale },
       );
       const localResult: FeatureFlagEvaluateResponse<Json>["results"][string] = {
         flag_key: evaluated.flagKey,

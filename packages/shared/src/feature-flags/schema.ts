@@ -315,6 +315,7 @@ export function getFeatureFlagsConfigErrors(config: FeatureFlagsConfig): string[
     }
   }
   const experimentKeys = new Set<string>();
+  const activeExperimentByFlagId = new Map<string, string>();
   for (const [experimentId, experiment] of Object.entries(config.experiments ?? {})) {
     if (experiment === undefined) continue;
     if (!isNonEmptyString(experiment.key)) {
@@ -330,11 +331,11 @@ export function getFeatureFlagsConfigErrors(config: FeatureFlagsConfig): string[
     if (experiment.controlVariantKey === undefined) errors.push(`Experiment "${experimentId}" must define a control variant`);
     if (experiment.flagId !== undefined && !hasRecordKey(config.flags, experiment.flagId)) errors.push(`Experiment "${experimentId}" references missing flag "${experiment.flagId}"`);
     if (experiment.archived !== true && experiment.flagId !== undefined) {
-      const siblingIds = Object.entries(config.experiments ?? {})
-        .filter(([otherId, other]) => otherId !== experimentId && other?.archived !== true && other?.flagId === experiment.flagId)
-        .map(([otherId]) => otherId);
-      if (siblingIds.length > 0) {
-        errors.push(`Experiment "${experimentId}" targets flag "${experiment.flagId}" which is already targeted by "${siblingIds[0]}"`);
+      const ownerId = activeExperimentByFlagId.get(experiment.flagId);
+      if (ownerId !== undefined) {
+        errors.push(`Experiment "${experimentId}" targets flag "${experiment.flagId}" which is already targeted by "${ownerId}"`);
+      } else {
+        activeExperimentByFlagId.set(experiment.flagId, experimentId);
       }
     }
 
@@ -458,10 +459,7 @@ import.meta.vitest?.test("feature flag schema validates operator types, referenc
   expect(getFeatureFlagsConfigErrors({
     flags: { shared: {} },
     experiments: { first: { flagId: "shared" }, second: { flagId: "shared" } },
-  })).toEqual(expect.arrayContaining([
-    'Experiment "first" targets flag "shared" which is already targeted by "second"',
-    'Experiment "second" targets flag "shared" which is already targeted by "first"',
-  ]));
+  })).toContain('Experiment "second" targets flag "shared" which is already targeted by "first"');
   expect(getFeatureFlagsConfigErrors({
     flags: { shared: {} },
     experiments: { archived: { flagId: "shared", archived: true }, next: { flagId: "shared" } },

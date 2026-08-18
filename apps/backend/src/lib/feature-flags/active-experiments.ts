@@ -5,7 +5,7 @@ import { overlayActiveExperimentRuns, type ActiveExperimentRunOverlay } from "./
 import { validateExperimentConfig } from "./experiment-config";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
-export { overlayActiveExperimentRuns, type ActiveExperimentRunOverlay } from "./active-experiment-overlay";
+const reportedInvalidSnapshots = new Set<string>();
 
 /**
  * Overlays currently running immutable experiment snapshots onto branch config.
@@ -28,27 +28,27 @@ export async function withActiveExperimentRuns(tenancy: Tenancy, config: Feature
   });
   if (runs.length === 0) return config;
 
-  const overlays: ActiveExperimentRunOverlay[] = [];
-  for (const run of runs) {
-    let snapshot;
+  const overlays = (await Promise.all(runs.map(async (run): Promise<ActiveExperimentRunOverlay | undefined> => {
     try {
-      snapshot = await validateExperimentConfig(run.configSnapshot);
+      return {
+        id: run.id,
+        experimentId: run.experimentId,
+        configRevisionHash: run.configRevisionHash,
+        snapshot: await validateExperimentConfig(run.configSnapshot),
+      };
     } catch (error) {
       // Schema tightening or a corrupt row must not 500 every evaluate and
-      // bootstrap request for the branch. Skip the run so other flags still
-      // evaluate; the frozen row remains for audit and results.
-      captureError("feature-flags-invalid-experiment-snapshot", new HexclaveAssertionError(
-        `Frozen experiment snapshot for run ${run.id} is invalid; skipping overlay so other flags still evaluate`,
-        { cause: error },
-      ));
-      continue;
+      // bootstrap request. Report once per process so a persistent bad row
+      // cannot flood telemetry on every bootstrap/evaluate.
+      if (!reportedInvalidSnapshots.has(run.id)) {
+        reportedInvalidSnapshots.add(run.id);
+        captureError("feature-flags-invalid-experiment-snapshot", new HexclaveAssertionError(
+          `Frozen experiment snapshot for run ${run.id} is invalid; skipping overlay so other flags still evaluate`,
+          { cause: error },
+        ));
+      }
+      return undefined;
     }
-    overlays.push({
-      id: run.id,
-      experimentId: run.experimentId,
-      configRevisionHash: run.configRevisionHash,
-      snapshot,
-    });
-  }
+  }))).filter((overlay): overlay is ActiveExperimentRunOverlay => overlay !== undefined);
   return overlayActiveExperimentRuns(config, overlays);
 }

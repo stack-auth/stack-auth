@@ -272,13 +272,19 @@ function getFlagAllocationSubject(flag: FeatureFlagDefinition, config: FeatureFl
   return assignmentUnits.values().next().value === "team" ? context.teamId : context.distinctId ?? context.userId;
 }
 
+export type EvaluateFeatureFlagOptions = {
+  seenFlagIds?: ReadonlySet<string>,
+  ignoreExperimentAssignments?: boolean,
+};
+
 export function evaluateFeatureFlag(
   flagId: string,
   config: FeatureFlagsConfig,
   context: FeatureFlagEvaluationContext,
-  seenFlagIds: ReadonlySet<string> = new Set(),
-  ignoreExperimentAssignments = false,
+  options: EvaluateFeatureFlagOptions = {},
 ): FeatureFlagEvaluationResult {
+  const seenFlagIds = options.seenFlagIds ?? new Set<string>();
+  const ignoreExperimentAssignments = options.ignoreExperimentAssignments === true;
   const flag = config.flags?.[flagId];
   if (flag === undefined) return { flagId, flagKey: flagId, reason: "missing" };
   if (seenFlagIds.has(flagId)) return defaultResult(flagId, flag, "dependency_cycle");
@@ -290,7 +296,10 @@ export function evaluateFeatureFlag(
   nextSeen.add(flagId);
   for (const prerequisite of Object.values(flag.prerequisites ?? {})) {
     if (prerequisite === undefined || prerequisite.flagId === undefined) return defaultResult(flagId, flag, "prerequisite_unmet");
-    const evaluated = evaluateFeatureFlag(prerequisite.flagId, config, context, nextSeen, ignoreExperimentAssignments);
+    const evaluated = evaluateFeatureFlag(prerequisite.flagId, config, context, {
+      seenFlagIds: nextSeen,
+      ignoreExperimentAssignments,
+    });
     if (evaluated.reason === "dependency_cycle") return defaultResult(flagId, flag, "dependency_cycle");
     if (evaluated.variantKey === undefined || prerequisite.variantKeys?.[evaluated.variantKey] !== true) {
       return defaultResult(flagId, flag, "prerequisite_unmet");
@@ -365,8 +374,9 @@ export function evaluateFeatureFlags(
   config: FeatureFlagsConfig,
   context: FeatureFlagEvaluationContext,
   flagIds: readonly string[] = Object.keys(config.flags ?? {}),
+  options: EvaluateFeatureFlagOptions = {},
 ): Map<string, FeatureFlagEvaluationResult> {
-  return new Map(flagIds.map((flagId) => [flagId, evaluateFeatureFlag(flagId, config, context)]));
+  return new Map(flagIds.map((flagId) => [flagId, evaluateFeatureFlag(flagId, config, context, options)]));
 }
 
 export function findFeatureFlagIdByKey(config: FeatureFlagsConfig, key: string): string | undefined {
@@ -551,7 +561,7 @@ import.meta.vitest?.test("rule-local variantValues apply only to the matching ex
   expect(inExperiment.ruleId).toBe("experiment");
   expect(["frozen-control", "frozen-treatment"]).toContain(inExperiment.value);
 
-  const ignored = evaluateFeatureFlag("copy", config, { distinctId: "user-a", userId: "user-a" }, new Set(), true);
+  const ignored = evaluateFeatureFlag("copy", config, { distinctId: "user-a", userId: "user-a" }, { ignoreExperimentAssignments: true });
   expect(ignored).toMatchObject({ reason: "matched_rule", ruleId: "everyone", value: "published-treatment" });
   expect(ignored.experimentRunId).toBeUndefined();
 });
