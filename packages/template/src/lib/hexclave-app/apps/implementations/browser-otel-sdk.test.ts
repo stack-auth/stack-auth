@@ -116,6 +116,25 @@ describe("managed browser OpenTelemetry", () => {
     expect(inject().get("baggage")).toContain("segment-1");
   });
 
+  it("does not let same-project owners disagree about the page-global baggage policy", async () => {
+    const makeOptions = (correlationBaggage: boolean) => ({
+      analyticsBaseUrl: "https://analytics.example.test",
+      projectId: "project-shared",
+      clientVersion: "test",
+      traceSampleRate: 1,
+      resource: { service: { name: "storefront" } },
+      getRequestHeaders: async () => ({}),
+      networkCapture: { enabled: true, allowOrigins: null, denyOrigins: null, ignoreUrls: [] },
+      getPropagationPolicy: () => ({ allowedOrigins: [], allowLocalhost: false, correlationBaggage }),
+      getAmbientOtelContext: () => null,
+    });
+
+    registerManagedBrowserOtel(makeOptions(true));
+    expect(() => registerManagedBrowserOtel(makeOptions(false))).toThrow(
+      "Hexclave browser OpenTelemetry is already configured for a different project or resource on this page",
+    );
+  });
+
   it("resolves rotating credentials for each OTLP export", async () => {
     const receivedUrls: string[] = [];
     const receivedAccessTokens: string[] = [];

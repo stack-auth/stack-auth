@@ -33,8 +33,8 @@ import type { GroupingHashProvenance, GroupingInput, GroupingResult, ParsedFrame
  * length-prefixed on top of that, which makes the encoding injective.
  *
  * Sentry hashes `md5("".join(leaves))`, which cannot distinguish `["ab","c"]`
- * from `["a","bc"]`. They are stuck with it after a decade of hash stability; we
- * are not, at v1.
+ * from `["a","bc"]`. They are stuck with it after a decade of hash stability;
+ * this encoder is not.
  */
 const LEAF_SEPARATOR = "\u001F";
 
@@ -70,7 +70,7 @@ const GROUPING_IMPLEMENTATIONS_BY_ID: Record<GroupingConfigId, GroupingImplement
 
 /**
  * The map is the runtime half. It exists rather than indexing the record
- * directly because `.get()` is honest about a miss — indexing a record typed on
+ * directly because a miss must be observable — indexing a record typed on
  * the union claims a value that a stale database row will not actually have.
  */
 const GROUPING_IMPLEMENTATIONS: ReadonlyMap<GroupingConfigId, GroupingImplementation> = new Map(
@@ -207,14 +207,19 @@ function computeDefaultGroupingV1(input: GroupingInput, configId: GroupingConfig
     const leaves = [
       "synthetic",
       parameterizeMessage(input.message),
-      topFrame?.absPath ?? topFrame?.filename ?? "",
+      // The same normalized file leaf the frame rules use, NOT the raw
+      // `absPath`: the raw path of a browser frame embeds the origin and the
+      // per-deploy chunk content hash, so hashing it verbatim would split every
+      // synthetic issue on every rebuild — exactly the instability the frame
+      // rules exist to prevent.
+      topFrame === undefined ? "" : frameFileLeaf(topFrame) ?? "",
     ];
     return {
       configId,
       ownerHash: hashLeaves(leaves),
       aliasHashes: [],
-      // `message`, not a variant of its own: the union in the plan is closed and
-      // this rule is message-derived. `synthetic` is already a column on the row.
+      // `message`, not a variant of its own: this rule is message-derived, and
+      // `synthetic` is already a column on the row.
       variant: "message",
       culprit,
       frames,

@@ -117,6 +117,65 @@ describe("customer request observability", () => {
     expect(rows[0]?.trace_id).toBe(traceId);
   });
 
+  it("does not combine a first user's identity with a conflicting refresh token", async () => {
+    const rows: SpanInsertRow[] = [];
+
+    await runWithCustomerRequestObservability(
+      request(),
+      async () => {
+        resolveCustomerRequestObservability({
+          projectId: "project",
+          branchId: "main",
+          userId: "user-a",
+          refreshTokenId: null,
+        });
+        // A later auth enrichment can describe a different principal. The
+        // request span must keep the first verified pair, not cross-wire user A
+        // with user B's refresh token.
+        resolveCustomerRequestObservability({
+          projectId: "project",
+          branchId: "main",
+          userId: "user-b",
+          refreshTokenId: "refresh-b",
+        });
+        return new Response(null, { status: 200 });
+      },
+      async (row) => {
+        rows.push(row);
+      },
+    );
+
+    expect(rows[0]).toMatchObject({ user_id: "user-a", refresh_token_id: null });
+  });
+
+  it("does not fill a missing pair member from an enrichment without its counterpart", async () => {
+    const rows: SpanInsertRow[] = [];
+
+    await runWithCustomerRequestObservability(
+      request(),
+      async () => {
+        resolveCustomerRequestObservability({
+          projectId: "project",
+          branchId: "main",
+          userId: "user-a",
+          refreshTokenId: null,
+        });
+        resolveCustomerRequestObservability({
+          projectId: "project",
+          branchId: "main",
+          userId: null,
+          refreshTokenId: "refresh-b",
+        });
+        return new Response(null, { status: 200 });
+      },
+      async (row) => {
+        rows.push(row);
+      },
+    );
+
+    expect(rows[0]).toMatchObject({ user_id: "user-a", refresh_token_id: null });
+  });
+
   it("starts a fresh rooted trace for an unsampled caller", async () => {
     const traceId = "55555555555555555555555555555555";
     const rows: SpanInsertRow[] = [];

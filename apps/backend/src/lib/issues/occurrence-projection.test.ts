@@ -7,9 +7,9 @@ import { PublicIssueOccurrenceSchema } from "@/app/api/latest/issues/contract";
 import {
   projectResolvedOccurrenceReplayIds,
   projectPublicIssueOccurrence,
-  type PublicIssueSymbolicator,
   type PublicOccurrenceRow,
-} from "./public-issue-api";
+} from "./occurrence-projection";
+import type { PublicIssueSymbolicator } from "./occurrence-symbolication";
 
 const DEBUG_ID = "01234567-89ab-cdef-0123-456789abcdef";
 const SCOPE = {
@@ -113,7 +113,6 @@ describe("public issue occurrence symbolication", () => {
         stack: "Error: boom\n    at a (static/chunk.js:2:1)",
         request: { authorization: "Bearer should-not-persist" },
       }),
-      "web@2026.08.06",
       { scope: SCOPE, symbolicator },
     );
 
@@ -171,7 +170,6 @@ describe("public issue occurrence symbolication", () => {
       occurrenceRow({
         debug_images: [{ code_file: "static/chunk.js", debug_id: DEBUG_ID }],
       }),
-      null,
       { scope: SCOPE, symbolicator },
     );
 
@@ -217,7 +215,7 @@ describe("public issue occurrence symbolication", () => {
       },
     }]);
 
-    const result = await projectPublicIssueOccurrence(row, null, { scope: SCOPE });
+    const result = await projectPublicIssueOccurrence(row, { scope: SCOPE });
 
     expect(result.grouping_provenance).toEqual([{
       hash: "a".repeat(32),
@@ -264,7 +262,7 @@ describe("public issue occurrence symbolication", () => {
       debug_meta: { images: [{ code_file: "static/chunk.js", debug_id: DEBUG_ID }] },
     });
 
-    await projectPublicIssueOccurrence(row, null, { scope: SCOPE, symbolicator });
+    await projectPublicIssueOccurrence(row, { scope: SCOPE, symbolicator });
 
     expect(request).toMatchObject({
       release: "web@2026.08.06",
@@ -277,7 +275,7 @@ describe("public issue occurrence symbolication", () => {
     const row = occurrenceRow({ stack: "Error: boom", safe: "retained" });
     row.error_envelope = "{".repeat(256 * 1024 + 1);
 
-    const result = await projectPublicIssueOccurrence(row, null, { scope: SCOPE });
+    const result = await projectPublicIssueOccurrence(row, { scope: SCOPE });
 
     expect(result.error_envelope).toBeNull();
     expect(result.raw_stack).toBe("Error: boom");
@@ -312,7 +310,6 @@ describe("public issue occurrence symbolication", () => {
         release: "web@2026.08.06",
         debug_images: [{ code_file: "static/chunk.js", debug_id: DEBUG_ID }],
       }),
-      "web@2026.08.06",
       { scope: SCOPE, symbolicator },
     );
 

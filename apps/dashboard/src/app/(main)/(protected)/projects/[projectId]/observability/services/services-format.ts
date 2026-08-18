@@ -1,23 +1,15 @@
 import {
   formatAbsoluteTimeFromMillis,
+  formatCount,
   formatDuration,
   formatRelativeTimeFromMillis,
 } from "../format";
 import { parseServiceTimestamp, type ServiceAttentionReason } from "./services-data";
 
-export { formatDuration };
-
-/**
- * Compact count formatting for dense table cells. Values below 10k stay exact
- * because at that size the digits are still readable and the precision matters
- * when comparing two similar services; above that the magnitude is what counts.
- */
-export function formatCount(value: number): string {
-  if (!Number.isFinite(value)) throw new Error(`Cannot format a non-finite count: ${value}`);
-  if (value < 10_000) return value.toLocaleString();
-  if (value < 1_000_000) return `${(value / 1_000).toFixed(value < 100_000 ? 1 : 0)}k`;
-  return `${(value / 1_000_000).toFixed(value < 10_000_000 ? 1 : 0)}M`;
-}
+// Count/duration rendering rules live in `../format` so every Observability
+// page compacts the same value to the same string; this module only re-exports
+// them for its existing call sites.
+export { formatCount, formatDuration };
 
 export function formatPercent(ratio: number, fractionDigits = 1): string {
   return `${(ratio * 100).toFixed(fractionDigits)}%`;

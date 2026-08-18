@@ -11,10 +11,12 @@ import { formatIssueCount, issueCulprit, issueShortIdLabel, issueSubtitle, issue
 import { issueDetailHref } from "./issue-links";
 import {
   issueStatusBadge,
+  nextStatusForAction,
   primaryIssueStatusAction,
   resolveIssueRowStatus,
   type IssueStatusOverrides,
 } from "./issue-status";
+import type { ObservabilityTimeRangeHours } from "../filters";
 import type { IssueListItem, IssueStatus } from "./issues-data";
 
 /**
@@ -31,6 +33,12 @@ import type { IssueListItem, IssueStatus } from "./issues-data";
 
 export type IssueCellContext = {
   projectId: string,
+  /**
+   * The list's selected time window, carried into each row's detail link so
+   * the detail page's window-scoped counts match the column the reader
+   * clicked.
+   */
+  rangeHours: ObservabilityTimeRangeHours,
   /** Fixed at load so a table of relative times shares one "now". */
   nowMs: number,
   overrides: IssueStatusOverrides,
@@ -69,7 +77,7 @@ function IssueCell({ issue, context }: { issue: IssueListItem, context: IssueCel
     >
       <div className="flex min-w-0 items-baseline gap-1.5">
         <Link
-          href={issueDetailHref(context.projectId, issue.id)}
+          href={issueDetailHref(context.projectId, issue.id, { rangeHours: context.rangeHours })}
           className="truncate text-[13px] font-semibold text-foreground hover:underline"
           title={title}
         >
@@ -96,9 +104,13 @@ function IssueCell({ issue, context }: { issue: IssueListItem, context: IssueCel
 function GraphCell({ issue, context }: { issue: IssueListItem, context: IssueCellContext }) {
   // An issue can own several hashes after a merge, so its series is the sum of
   // its hashes' series. Missing hashes mean "not loaded yet" — the whole cell
-  // stays pending rather than drawing half a chart.
+  // stays pending rather than drawing half a chart. An issue with NO hashes
+  // (a server anomaly — every issue owns at least one) must NOT be pending:
+  // the loader only ever resolves requested hashes, so nothing could ever
+  // complete that cell and it would read "Loading activity" forever instead of
+  // the honest empty hairline.
   const series = issue.issue_hashes.map((hash) => context.sparklinesByHash.get(hash));
-  const pending = issue.issue_hashes.length === 0 || series.some((entry) => entry == null);
+  const pending = series.some((entry) => entry == null);
   const merged = new Map<string | number, number>();
   if (!pending) {
     for (const buckets of series) {
@@ -141,7 +153,7 @@ function ActionsCell({ issue, context }: { issue: IssueListItem, context: IssueC
         variant="ghost"
         size="sm"
         className="h-7 px-2 text-[11px]"
-        onClick={() => context.onChangeStatus(issue, primary === "resolve" ? "resolved" : "unresolved")}
+        onClick={() => context.onChangeStatus(issue, nextStatusForAction(primary))}
       >
         {primary === "resolve" ? "Resolve" : "Undo"}
       </DesignButton>

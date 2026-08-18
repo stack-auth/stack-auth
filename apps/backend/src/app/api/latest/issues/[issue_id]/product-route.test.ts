@@ -8,6 +8,7 @@ import { GET as metadataRoute } from "./metadata/route";
 
 let tenancy: Tenancy;
 let issueId: string;
+let expectedDefaultTeamId: string | null;
 
 function request(body: unknown = undefined): SmartRequest {
   return {
@@ -24,11 +25,28 @@ function request(body: unknown = undefined): SmartRequest {
 }
 
 beforeAll(async () => {
-  const row = await globalPrismaClient.tenancy.findFirst({ orderBy: { id: "asc" }, select: { id: true } });
-  if (row === null) throw new Error("Issue product route tests need a seeded tenancy.");
-  const resolved = await getTenancy(row.id);
-  if (resolved === null) throw new Error("Issue product route test tenancy disappeared.");
-  tenancy = resolved;
+  // Not findFirst on its own: the routes under test require the observability
+  // app to be enabled for the project, and the first tenancy the database
+  // happens to return need not have it. Scan for one that does.
+  const rows = await globalPrismaClient.tenancy.findMany({ orderBy: { id: "asc" }, select: { id: true } });
+  let picked: Tenancy | null = null;
+  for (const row of rows) {
+    const resolved = await getTenancy(row.id);
+    if (resolved === null) continue;
+    if (resolved.config.apps.installed["observability"]?.enabled !== true) continue;
+    picked = resolved;
+    break;
+  }
+  if (picked === null) throw new Error("Issue product route tests need a seeded tenancy with the observability app enabled.");
+  tenancy = picked;
+  // Issues are attributed to the Hexclave project OWNER team (not a customer
+  // Team row), so the metadata read reports that team for projects that have
+  // one and null otherwise — the expectation must track the picked project.
+  const projectRow = await globalPrismaClient.project.findUnique({
+    where: { id: tenancy.project.id },
+    select: { ownerTeamId: true },
+  });
+  expectedDefaultTeamId = projectRow?.ownerTeamId ?? null;
   const prisma = await getPrismaClientForTenancy(tenancy);
   const [{ shortId }] = await prisma.$queryRaw<Array<{ shortId: bigint }>>`
     INSERT INTO "IssueCounter" ("tenancyId", "nextShortId") VALUES (${tenancy.id}::uuid, 2::bigint)
@@ -53,7 +71,7 @@ describe("issue product API routes", () => {
 
   it("returns bounded product metadata from the branch-scoped read entry point", async () => {
     const response = await metadataRoute.invoke(request());
-    expect(response.body).toMatchObject({ priority: "high", team_id: null, bookmarked_user_ids: [] });
+    expect(response.body).toMatchObject({ priority: "high", team_id: expectedDefaultTeamId, bookmarked_user_ids: [] });
     expect(response.body.activities).toEqual(expect.arrayContaining([expect.objectContaining({ type: "priority_changed" })]));
   });
 });

@@ -50,11 +50,29 @@ function readField(data: unknown, key: string): unknown {
   return isRecord(data) ? data[key] : undefined;
 }
 
+/**
+ * Wire bounds for a custom fingerprint. These exist because the durable
+ * provenance projection is READ back under hard caps (32 tokens per array and
+ * 64 KiB serialized, see `occurrence-projection.ts`): an unbounded fingerprint
+ * would be accepted, hashed, and persisted, and then silently VANISH from
+ * every occurrence API response — grouping the project by evidence nobody can
+ * inspect. An input outside these bounds is therefore ignored outright (the
+ * occurrence falls back to default grouping), which is at least observable in
+ * the provenance, instead of truncated (which would group on an arbitrary
+ * prefix of what the customer asked for).
+ */
+export const MAX_GROUPING_FINGERPRINT_TOKENS = 32;
+export const MAX_GROUPING_FINGERPRINT_TOKEN_BYTES = 512;
+export const MAX_GROUPING_FINGERPRINT_PROVENANCE_BYTES = 64 * 1024;
+const FINGERPRINT_TEXT_ENCODER = new TextEncoder();
+
 function readStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
+  if (value.length > MAX_GROUPING_FINGERPRINT_TOKENS) return undefined;
   const result: string[] = [];
   for (const item of value) {
     if (typeof item !== "string") return undefined;
+    if (FINGERPRINT_TEXT_ENCODER.encode(item).byteLength > MAX_GROUPING_FINGERPRINT_TOKEN_BYTES) return undefined;
     result.push(item);
   }
   return result;
@@ -68,8 +86,16 @@ function readStringArray(value: unknown): string[] | undefined {
  * canonical exception to that rule.
  */
 export function readGroupingFingerprint(data: unknown): readonly string[] | undefined {
-  const override = readStringArray(readField(data, "fingerprint_override"));
-  if (override !== undefined) return override;
+  const rawOverride = readField(data, "fingerprint_override");
+  if (rawOverride !== undefined) {
+    // An explicit but malformed override must not silently fall back to the
+    // rich envelope's `fingerprint`: the caller asked for one grouping rule,
+    // and accepting a different field would make invalid input regroup under
+    // an undisclosed contract. A valid empty array still means default
+    // grouping; malformed input remains undefined so the caller can fail
+    // closed without treating an invalid value as a usable fingerprint.
+    return readStringArray(rawOverride);
+  }
   return readStringArray(readField(data, "fingerprint"));
 }
 
@@ -114,6 +140,28 @@ export function resolveGroupingFingerprint(
     }
     if (name === "default") continue;
     resolvedValues.push(resolveToken(name, token, input, frames));
+  }
+
+  const durableFingerprint = {
+    type,
+    source: type === "default" ? "default" : "event",
+    tokens,
+    resolved_tokens: resolvedValues,
+  };
+  if (FINGERPRINT_TEXT_ENCODER.encode(JSON.stringify(durableFingerprint)).byteLength > MAX_GROUPING_FINGERPRINT_PROVENANCE_BYTES) {
+    // The occurrence projection has the same 64 KiB durable read cap. Hashing
+    // a value that cannot be returned as provenance creates an issue whose
+    // grouping decision cannot be explained, so degrade to the default owner
+    // before the oversized value reaches either the hash or storage layer.
+    return {
+      resolvedValues: [],
+      provenance: {
+        type: "default",
+        source: "degraded",
+        tokens: [],
+        resolvedTokens: [],
+      },
+    };
   }
 
   return {

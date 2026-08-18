@@ -17,6 +17,8 @@ import { dualWriteLegacyEvents } from "./legacy-telemetry-dual-write";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 import { resolveCustomerRequestObservability } from "./customer-request-observability";
 
+let hasReportedMissingRequestIpContext = false;
+
 export const endUserIpInfoSchema = yupObject({
   ip: yupString().defined(),
   isTrusted: yupBoolean().defined(),
@@ -324,7 +326,26 @@ export async function logEvent<T extends EventType[]>(
   // function's doc comment forbids wrapping it in waitUntil). Event types
   // whose data schema carries `ipInfo` already embed the same signal in their
   // validated data; the capture below covers every other event type.
-  const requestIpInfo = await getEndUserIpInfoForEvent();
+  let requestIpInfo: EndUserIpInfo | null = null;
+  try {
+    requestIpInfo = await getEndUserIpInfoForEvent();
+  } catch (error) {
+    // Some internal event producers run outside the request ALS scope. The
+    // request-local headers helper deliberately throws there; preserve that
+    // signal for observability while allowing the event itself to be written
+    // without request IP enrichment. Other failures must still fail loudly.
+    if (!(error instanceof Error) || error.message !== "Backend request context is only available while handling a backend request") {
+      throw error;
+    }
+    // This is an expected path for detached internal event producers. The
+    // normal error sink flushes through Vercel's waitUntil, which is itself
+    // unavailable here; report it once per process without re-entering that
+    // sink and turning a harmless enrichment miss into a recursive error.
+    if (!hasReportedMissingRequestIpContext) {
+      hasReportedMissingRequestIpContext = true;
+      console.warn("Event logging skipped request IP enrichment outside a backend request context", error);
+    }
+  }
 
   // rest is no more dynamic APIs so we can run it asynchronously
   runAsynchronouslyAndWaitUntil((async () => {
@@ -414,6 +435,7 @@ export async function logEvent<T extends EventType[]>(
           email,
           auth_method: authMethod,
           oauth_provider: oauthProvider,
+          ip_info: toClickhouseEndUserIpInfo(requestIpInfo),
         };
       } else if (matchingEventType.id === "$sign-in-attempt") {
         const outcome =

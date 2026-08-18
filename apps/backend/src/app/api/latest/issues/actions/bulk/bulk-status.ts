@@ -1,5 +1,6 @@
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { isUuid } from "@hexclave/shared/dist/utils/uuids";
+import { isValidShortId } from "@/lib/issues/issue-identity";
 import type { Tenancy } from "@/lib/tenancies";
 import {
   transitionIssueStatus,
@@ -41,11 +42,9 @@ export type BulkIssueStatusResult = {
   error: "not_found" | null,
 };
 
-function isValidShortId(value: string): boolean {
-  if (!/^\d+$/.test(value) || value.length > 19) return false;
-  return value.length < 19 || value <= "9223372036854775807";
-}
-
+// Pre-validating each identifier against the SAME grammar the canonical
+// resolver accepts keeps a malformed id a request-level 400 instead of the
+// resolver's per-item throw aborting the whole batch halfway through.
 export function isValidBulkIssueIdentifier(value: string): boolean {
   return value.length <= MAX_BULK_ISSUE_ID_LENGTH && (isUuid(value) || isValidShortId(value));
 }
@@ -53,7 +52,7 @@ export function isValidBulkIssueIdentifier(value: string): boolean {
 /**
  * This is intentionally shared by the route handler and the application
  * helper. Smart-route validation protects the public HTTP boundary, while the
- * helper guard keeps a future internal caller from bypassing the same ceiling
+ * helper guard keeps an internal caller from bypassing the same ceiling
  * and duplicate rejection.
  */
 export function assertBulkIssueIdentifiers(issueIds: readonly string[]): void {

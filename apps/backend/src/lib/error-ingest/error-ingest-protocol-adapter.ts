@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import {
   ERROR_INGEST_OUTCOME_STATUSES,
+  countErrorIngestOutcomes,
   summarizeErrorIngestOutcomes,
   type ErrorIngestBatchCounts,
   type ErrorIngestBatchStatus,
@@ -530,7 +531,7 @@ function otlpPartialSuccess(
   // Each OTLP signal reports only its own item types. Counting the whole batch
   // would let a rejected transaction surface as `rejectedLogRecords` (and vice
   // versa) in mixed batches, telling the client the wrong signal failed.
-  const counts = summarizeErrorIngestOutcomes(items.filter((item) => isSignalItemType(item.itemType, signal))).counts;
+  const counts = countErrorIngestOutcomes(items.filter((item) => isSignalItemType(item.itemType, signal)));
   const rejectedItems = rejectedItemCount(counts);
   const errorMessage = boundedErrorMessage(counts, maxErrorMessageBytes);
   if (rejectedItems === 0 || errorMessage === undefined) {

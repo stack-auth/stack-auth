@@ -78,6 +78,14 @@ function emptyCounts(): Record<ErrorIngestOutcomeStatus, number> {
   };
 }
 
+export function countErrorIngestOutcomes(
+  outcomes: readonly { status: ErrorIngestOutcomeStatus }[],
+): ErrorIngestBatchCounts {
+  const counts = emptyCounts();
+  for (const outcome of outcomes) counts[outcome.status] += 1;
+  return counts;
+}
+
 /**
  * The one canonical aggregation from item outcomes to a batch-level summary,
  * shared by every projection so status/count semantics cannot drift between
@@ -88,8 +96,7 @@ function emptyCounts(): Record<ErrorIngestOutcomeStatus, number> {
 export function summarizeErrorIngestOutcomes(
   outcomes: readonly { status: ErrorIngestOutcomeStatus }[],
 ): ErrorIngestOutcomeSummary {
-  const counts = emptyCounts();
-  for (const outcome of outcomes) counts[outcome.status] += 1;
+  const counts = countErrorIngestOutcomes(outcomes);
 
   if (outcomes.length === 0) return { status: "rejected", counts, reason: "empty_batch" };
   const firstStatus = outcomes[0].status;

@@ -57,6 +57,12 @@ describe("extractInnermostFrameFilename", () => {
     expect(extractInnermostFrameFilename("Error\n    at fn (http://localhost:3000/_next/static/chunks/main.js:12:34)")).toBe("http://localhost:3000/_next/static/chunks/main.js");
   });
 
+  it("allows whitespace inside the path (builds under directories with spaces)", () => {
+    expect(extractInnermostFrameFilename("Error\n    at fn (/Users/dev/My Projects/app.nosync /4/.next/server/chunks/1.js:1:2)")).toBe("/Users/dev/My Projects/app.nosync /4/.next/server/chunks/1.js");
+    expect(extractInnermostFrameFilename("Error\n    at fn (C:\\Program Files\\app\\x.js:1:2)")).toBe("C:\\Program Files\\app\\x.js");
+    expect(extractInnermostFrameFilename("fn@https://app.example.com/a%20b/c.js:1:2")).toBe("https://app.example.com/a%20b/c.js");
+  });
+
   it("accepts a frame with a line but no column", () => {
     expect(extractInnermostFrameFilename("Error\n    at https://app.example.com/a.js:11")).toBe("https://app.example.com/a.js");
   });
@@ -143,6 +149,42 @@ describe("getFilenameToDebugIdMap", () => {
     setDebugIdsGlobal({ [snippetStack("https://app.example.com/b.js")]: uuid(2) });
     expect([...getFilenameToDebugIdMap().keys()]).toEqual(["https://app.example.com/b.js"]);
   });
+
+  it("invalidates when an existing key's debug id is overwritten in place", () => {
+    // A dev-server rebuild can re-serve the same URL with an identical stack
+    // key but a NEW id — key count alone would serve the stale map here.
+    const key = snippetStack("https://app.example.com/a.js");
+    const registry: Record<string, string> = { [key]: uuid(1) };
+    setDebugIdsGlobal(registry);
+    expect(getFilenameToDebugIdMap().get("https://app.example.com/a.js")).toBe(uuid(1));
+    registry[key] = uuid(2);
+    expect(getFilenameToDebugIdMap().get("https://app.example.com/a.js")).toBe(uuid(2));
+  });
+
+  it("returns an empty map when the global is a throwing accessor", () => {
+    Object.defineProperty(globalThis, GLOBAL_KEY, {
+      configurable: true,
+      get() {
+        throw new Error("hostile accessor");
+      },
+    });
+    expect(getFilenameToDebugIdMap().size).toBe(0);
+  });
+
+  it("returns an empty map when the global is a Proxy that throws on enumeration or reads", () => {
+    setDebugIdsGlobal(new Proxy({}, {
+      ownKeys() {
+        throw new Error("hostile ownKeys");
+      },
+    }));
+    expect(getFilenameToDebugIdMap().size).toBe(0);
+    setDebugIdsGlobal(new Proxy({ [snippetStack("https://app.example.com/a.js")]: uuid(1) }, {
+      get() {
+        throw new Error("hostile get");
+      },
+    }));
+    expect(getFilenameToDebugIdMap().size).toBe(0);
+  });
 });
 
 describe("getDebugImagesForStack", () => {
@@ -160,6 +202,20 @@ describe("getDebugImagesForStack", () => {
     });
     expect(getDebugImagesForStack("Error: boom\n    at fn (https://app.example.com/used.js:1:2)")).toEqual([
       { code_file: "https://app.example.com/used.js", debug_id: uuid(1) },
+    ]);
+  });
+
+  it("requires a complete frame location, not a bare substring prefix", () => {
+    setDebugIdsGlobal({
+      [snippetStack("https://app.example.com/app.js")]: uuid(1),
+    });
+    // The registered filename is a strict PREFIX of this frame's file — a
+    // substring match would attach uuid(1)'s source map to a different file.
+    expect(getDebugImagesForStack("Error: boom\n    at fn (https://app.example.com/app.js.old:1:2)")).toEqual([]);
+    // A later complete occurrence is still found after skipping the prefix hit.
+    const stack = "Error: boom\n    at a (https://app.example.com/app.js.old:1:2)\n    at b (https://app.example.com/app.js:3:4)";
+    expect(getDebugImagesForStack(stack)).toEqual([
+      { code_file: "https://app.example.com/app.js", debug_id: uuid(1) },
     ]);
   });
 
@@ -224,6 +280,24 @@ describe("buildErrorEventData with debug images", () => {
       sdkVersion: "0.0.0-test",
       getDebugImages: () => [],
     });
+    expect("debug_images" in data).toBe(false);
+  });
+
+  it("still builds the event (without images) when the registry global is hostile", () => {
+    Object.defineProperty(globalThis, GLOBAL_KEY, {
+      configurable: true,
+      get() {
+        throw new Error("hostile accessor");
+      },
+    });
+    const data = buildErrorEventData(new Error("boom"), {
+      mechanismType: "captured",
+      handled: true,
+      release: null,
+      environment: null,
+      sdkVersion: "0.0.0-test",
+    });
+    expect(data.message).toBe("boom");
     expect("debug_images" in data).toBe(false);
   });
 

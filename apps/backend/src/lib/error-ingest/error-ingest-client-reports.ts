@@ -215,6 +215,7 @@ function parseReportEntries(value: unknown, field: string): ErrorIngestClientRep
 export function parseErrorIngestClientReportRequest(value: unknown): ErrorIngestClientReportRequest {
   if (!isRecord(value)) throw new ErrorIngestClientReportParseError("Error ingest client report must be an object");
   if (!isBoundedText(value.idempotency_key, ERROR_INGEST_CLIENT_REPORT_IDEMPOTENCY_KEY_MAX_BYTES)) throw new ErrorIngestClientReportParseError("Error ingest client report idempotency_key is required and must be bounded");
+  if (SECRET_TEXT_RE.test(value.idempotency_key)) throw new ErrorIngestClientReportParseError("Error ingest client report idempotency_key must not contain secret-bearing text");
   const timestampMs = parseReportTimestamp(value.timestamp);
   const clientReport = {
     discarded_events: parseReportEntries(value.discarded_events, "discarded_events"),

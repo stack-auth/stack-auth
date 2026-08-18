@@ -39,7 +39,7 @@ Leaves are length-prefixed and separated by `U+001F` before hashing, so the enco
 Two hashes are computed for every stack:
 
 - **`system`** — over every frame.
-- **`app`** — over the same list with non-in-app frames removed from the leaves.
+- **`app`** — over the same list with non-in-app frames zeroed: they contribute no leaves, but still occupy their positions so recursion collapse sees them.
 
 The `app` variant owns the occurrence whenever it exists and actually differs from `system`, because it answers the question you care about. Two different bugs in your components that both bottom out in the same `react-dom` frame must not merge; the same bug in your code reached through two different library call paths must. When every frame is in-app the two lists are identical and there is only one hash. When no in-app frame contributed, the `system` hash owns the occurrence.
 
@@ -111,7 +111,7 @@ The `issue_variant` column on every occurrence records which rule produced its o
 |---|---|
 | `app` | Hashed the in-app frames only. The normal, best case. |
 | `system` | Hashed every frame — either no in-app frame contributed, or both variants agreed. |
-| `message` | No frame contributed anything hashable (a stackless throw), or the synthetic rule fired. Grouped on exception type + parameterized message. |
+| `message` | No frame contributed anything hashable (a stackless throw, grouped on exception type + parameterized message), or the synthetic rule fired (grouped on `synthetic` + parameterized message + top frame path). |
 | `degraded` | Grouping itself threw. A deterministic hash of type + parameterized message was used instead, and `grouping_degraded = 1`. |
 
 `degraded` exists because the contract the rest of the system rests on is "**no empty hash, ever**" — an occurrence with no owning hash would be unreachable from every issue query. A bug in the grouper costs grouping *quality*, never queryability, and the degraded population stays measurable:

@@ -9,6 +9,7 @@ import {
   serviceIdentityToSelectValue,
   type ServiceIdentity,
 } from "../service-identity";
+import { DEFAULT_ISSUE_RANGE_HOURS, ISSUE_RANGE_PARAM_KEY } from "./issue-links";
 import {
   ISSUE_STATUSES, type IssueHandledFilter, type IssueListSortField,
   type IssueStatus,
@@ -42,8 +43,9 @@ export type IssueFilters = {
 export const DEFAULT_ISSUE_FILTERS: IssueFilters = {
   // 24h, not Logs' 720h. Logs is an archive you go digging in; Issues is a
   // triage queue, and a month-wide default buries today's regression under
-  // everything that has ever gone wrong.
-  hours: 24,
+  // everything that has ever gone wrong. (The value lives in `issue-links.ts`
+  // because the href builders there omit the param at the default.)
+  hours: DEFAULT_ISSUE_RANGE_HOURS,
   status: "unresolved",
   service: null,
   environment: null,
@@ -54,7 +56,7 @@ export const DEFAULT_ISSUE_FILTERS: IssueFilters = {
 };
 
 const PARAM_KEYS = {
-  hours: "range",
+  hours: ISSUE_RANGE_PARAM_KEY,
   status: "status",
   service: "service",
   environment: "environment",
@@ -69,13 +71,12 @@ const PARAM_KEYS = {
  * (Values that come from our own UI are validated at the point they're set.)
  */
 export function parseIssueFilters(params: URLSearchParams): IssueFilters {
-  const rawHours = Number(params.get(PARAM_KEYS.hours));
   const rawHandled = params.get(PARAM_KEYS.handled);
   const rawService = params.get(PARAM_KEYS.service);
   const rawEnvironment = params.get(PARAM_KEYS.environment);
 
   return {
-    hours: isObservabilityTimeRangeHours(rawHours) ? rawHours : DEFAULT_ISSUE_FILTERS.hours,
+    hours: parseIssueRangeHours(params),
     status: parseIssueStatusFilter(params.get(PARAM_KEYS.status)),
     service: rawService == null || rawService === ALL_SERVICES_SELECT_VALUE
       ? null
@@ -85,6 +86,17 @@ export function parseIssueFilters(params: URLSearchParams): IssueFilters {
       ?? DEFAULT_ISSUE_FILTERS.handled,
     search: params.get(PARAM_KEYS.search) ?? DEFAULT_ISSUE_FILTERS.search,
   };
+}
+
+/**
+ * The one filter the DETAIL page shares with the list. Split out of
+ * `parseIssueFilters` because the detail page carries only the range (its
+ * window-scoped counts must match the list the reader came from), and typed
+ * against the `get` shape so Next's read-only `useSearchParams` works too.
+ */
+export function parseIssueRangeHours(params: Pick<URLSearchParams, "get">): ObservabilityTimeRangeHours {
+  const rawHours = Number(params.get(PARAM_KEYS.hours));
+  return isObservabilityTimeRangeHours(rawHours) ? rawHours : DEFAULT_ISSUE_FILTERS.hours;
 }
 
 export function parseIssueStatusFilter(raw: string | null): IssueStatusFilter {
@@ -119,7 +131,12 @@ export function serializeIssueFilters(filters: IssueFilters, params: URLSearchPa
   setOrDelete(PARAM_KEYS.service, filters.service == null ? null : serviceIdentityToSelectValue(filters.service));
   setOrDelete(PARAM_KEYS.environment, filters.environment);
   setOrDelete(PARAM_KEYS.handled, filters.handled === DEFAULT_ISSUE_FILTERS.handled ? null : filters.handled);
-  setOrDelete(PARAM_KEYS.search, filters.search === "" ? null : filters.search);
+  // Whitespace-only search is the default: the page trims before fetching, so
+  // "   " sends an unfiltered request — persisting it (and letting
+  // `issueFiltersAreDefault` call the list "filtered") would mislabel an empty
+  // project as "No matching issues". The raw value is kept when non-blank so
+  // typing a trailing space mid-phrase never fights the input.
+  setOrDelete(PARAM_KEYS.search, filters.search.trim() === "" ? null : filters.search);
   return params;
 }
 

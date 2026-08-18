@@ -1,5 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { assertPublicIssueReadEnabled, loadPublicIssueOccurrences } from "@/lib/issues/public-issue-api";
+import { loadPublicIssueOccurrences } from "@/lib/issues/issue-occurrences";
+import { assertObservabilityEnabled } from "@/lib/issues/observability-gate";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import {
@@ -28,7 +29,7 @@ export const GET = createSmartRouteHandler({
     body: PublicIssueOccurrencesResponseSchema,
   }),
   async handler({ auth, params, query }) {
-    assertPublicIssueReadEnabled(auth.tenancy);
+    assertObservabilityEnabled(auth.tenancy);
     const parsedQuery = parsePublicIssueOccurrencesQuery(query);
     const result = await loadPublicIssueOccurrences({
       tenancy: auth.tenancy,

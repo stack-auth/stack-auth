@@ -69,8 +69,8 @@ describe("analytics batch wire-version data contract", () => {
   });
 
   it("applies the serialized-size cap to versioned batches only", async () => {
-    // One byte over the cap once serialized (the JSON envelope around the
-    // object adds its own bytes on top of the repeated payload).
+    // The serialized object is 11 bytes over the cap because the JSON
+    // envelope adds `{"blob":"` and the closing `"}` around the payload.
     const oversized = { blob: "x".repeat(CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES) };
     const withOversizedData = (base: typeof LEGACY_BODY) => ({
       ...base,

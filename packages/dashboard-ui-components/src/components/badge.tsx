@@ -13,7 +13,7 @@ const badgeStyles = new Map<DesignBadgeColor, string>([
   // locally, which is exactly what the Observability logs level chip used to
   // do. Same ring/bg/text ratios as the others so the two are metrically
   // identical when they sit in one row.
-  ["zinc", "text-zinc-600 dark:text-zinc-400 bg-zinc-500/15 dark:bg-zinc-500/10 ring-1 ring-zinc-500/25 dark:ring-zinc-500/20"],
+  ["zinc", "text-zinc-600 dark:text-zinc-400 bg-zinc-500/20 dark:bg-zinc-500/10 ring-1 ring-zinc-500/30 dark:ring-zinc-500/20"],
   ["blue", "text-blue-700 dark:text-blue-400 bg-blue-500/20 dark:bg-blue-500/10 ring-1 ring-blue-500/30 dark:ring-blue-500/20"],
   ["cyan", "text-cyan-700 dark:text-cyan-400 bg-cyan-500/20 dark:bg-cyan-500/10 ring-1 ring-cyan-500/30 dark:ring-cyan-500/20"],
   ["purple", "text-purple-700 dark:text-purple-400 bg-purple-500/20 dark:bg-purple-500/10 ring-1 ring-purple-500/30 dark:ring-purple-500/20"],

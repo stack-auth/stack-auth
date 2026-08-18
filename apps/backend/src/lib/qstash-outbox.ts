@@ -136,13 +136,15 @@ export function decodeQstashMessage(value: unknown): QstashMessage<Record<string
     delay = value.delay;
   }
 
-  return {
+  const message: QstashMessage<Record<string, unknown>> = {
     url,
     body,
     ...(flowControl === undefined ? {} : { flowControl }),
     ...(delay === undefined ? {} : { delay }),
     ...(job === undefined ? {} : { job }),
   };
+  assertMessage(message);
+  return message;
 }
 
 /**

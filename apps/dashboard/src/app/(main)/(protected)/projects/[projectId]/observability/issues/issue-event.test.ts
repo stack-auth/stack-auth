@@ -194,4 +194,32 @@ describe("issue event payload", () => {
       },
     });
   });
+
+  it("leads with the LAST chain entry — the canonical exception ingestion groups on", () => {
+    // Sentry orders `exception.values` root-cause-first; ingestion's
+    // `lastExceptionValue` takes the issue's type/message/stack from the last
+    // entry, so the hero stack must match it, not the root cause.
+    const stack = heroStack({
+      data: {
+        exception: {
+          values: [
+            {
+              type: "DatabaseError",
+              value: "connection reset",
+              stacktrace: { frames: [{ filename: "db.ts", function: "query", lineno: 7, in_app: true }] },
+            },
+            {
+              type: "CheckoutFailed",
+              value: "could not place order",
+              stacktrace: { frames: [{ filename: "checkout.ts", function: "submit", lineno: 42, in_app: true }] },
+            },
+          ],
+        },
+      },
+      frames: [],
+      raw_stack: null,
+    });
+
+    expect(stack.frames[0]).toMatchObject({ filename: "checkout.ts", function: "submit" });
+  });
 });

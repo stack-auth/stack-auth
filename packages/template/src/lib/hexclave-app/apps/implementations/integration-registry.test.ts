@@ -379,12 +379,18 @@ describe("error integration registry", () => {
     fixture.xhrBreadcrumb?.handler({ method: "post", url: "DATA:text/plain,secret", statusCode: 201 });
     fixture.xhrBreadcrumb?.handler({ method: "put", url: "blob:https://private.example.test/some-uuid", statusCode: 202 });
     fixture.xhrBreadcrumb?.handler({ method: "patch", url: "file:///Users/private/secret.txt", statusCode: 203 });
+    fixture.xhrBreadcrumb?.handler({ method: "delete", url: "file://[private/secret", statusCode: 204 });
+    fixture.xhrBreadcrumb?.handler({ method: "head", url: "\u0000data:text/plain,secret", statusCode: 205 });
+    fixture.xhrBreadcrumb?.handler({ method: "options", url: "  javascript:alert(secret)", statusCode: 206 });
 
     expect(fixture.breadcrumbs).toEqual([
       { category: "xhr", level: "info", data: { method: "GET", url: "<data-url>", status_code: 200 } },
       { category: "xhr", level: "info", data: { method: "POST", url: "<data-url>", status_code: 201 } },
       { category: "xhr", level: "info", data: { method: "PUT", url: "<blob-url>", status_code: 202 } },
       { category: "xhr", level: "info", data: { method: "PATCH", url: "<file-url>", status_code: 203 } },
+      { category: "xhr", level: "info", data: { method: "DELETE", url: "<file-url>", status_code: 204 } },
+      { category: "xhr", level: "info", data: { method: "HEAD", url: "<data-url>", status_code: 205 } },
+      { category: "xhr", level: "info", data: { method: "OPTIONS", url: "<javascript-url>", status_code: 206 } },
     ]);
   });
 
