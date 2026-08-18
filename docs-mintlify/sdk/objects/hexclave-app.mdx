@@ -93,6 +93,14 @@ If you're building a client-only app and don't have a `HEXCLAVE_SECRET_SERVER_KE
       <ParamField body="noAutomaticPrefetch" type="boolean">
         Disable automatic prefetching.
       </ParamField>
+
+      <ParamField body="automaticSideEffects" type="boolean">
+        Whether construction automatically processes authentication query parameters, accesses browser storage, records analytics or session replays, installs listeners, and mounts development UI. Defaults to `true`. Explicit method calls still work normally when set to `false`.
+      </ParamField>
+
+      <ParamField body="devTool" type='boolean | "auto"'>
+        Whether to show the [dev tool indicator](/guides/other/dev-tool) in browser-like environments. `"auto"` (the default) shows it only in development; `true` always shows it; `false` never does.
+      </ParamField>
     </ContentSection>
 
   </MethodContent>
@@ -112,6 +120,8 @@ If you're building a client-only app and don't have a `HEXCLAVE_SECRET_SERVER_KE
           urls?: object;
           analytics?: object;
           noAutomaticPrefetch?: boolean;
+          automaticSideEffects?: boolean;
+          devTool?: boolean | "auto";
         });
       }
       ```
@@ -573,6 +583,10 @@ Creates a new `HexclaveServerApp` instance.
       <ParamField body="noAutomaticPrefetch" type="boolean">
         Disable automatic prefetching.
       </ParamField>
+
+      <ParamField body="automaticSideEffects" type="boolean">
+        Whether inherited client-side constructor integrations run automatically. Defaults to `true`. Explicit method calls still work normally when set to `false`.
+      </ParamField>
     </ContentSection>
 
   </MethodContent>
@@ -592,6 +606,7 @@ Creates a new `HexclaveServerApp` instance.
           secretServerKey?: string;
           urls?: object;
           noAutomaticPrefetch?: boolean;
+          automaticSideEffects?: boolean;
         });
       }
       ```
@@ -687,7 +702,7 @@ Creates a new `HexclaveServerApp` instance.
       </ParamField>
 
       <ParamField body="options.limit" type="number">
-        Maximum number of items to return. If omitted, all users are returned.
+        Maximum number of items to return per page, up to 1000. For larger result sets, pass `limit` and paginate with `cursor`. If omitted, projects with more than 1000 users return an error requiring pagination.
       </ParamField>
 
       <ParamField body="options.orderBy" type='"signedUpAt"'>

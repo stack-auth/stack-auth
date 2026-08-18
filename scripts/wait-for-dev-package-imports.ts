@@ -1,3 +1,5 @@
+/// <reference types="node" />
+
 import { spawn } from "child_process";
 import path from "path";
 import { setTimeout as sleep } from "timers/promises";
@@ -39,7 +41,7 @@ const retryDelayMs = 1_000;
 
 const probeScript = `
 (async () => {
-  await import('@hexclave/next');
+  await import('@hexclave/js');
   await import('@hexclave/shared/dist/utils/env');
   const { existsSync, readdirSync } = await import('node:fs');
   const { join } = await import('node:path');

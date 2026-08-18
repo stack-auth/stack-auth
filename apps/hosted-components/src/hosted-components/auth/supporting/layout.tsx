@@ -49,31 +49,56 @@ export function HostedAuthHeading(props: {
   );
 }
 
+type HostedAuthMessageAction = () => Promise<void> | void;
+type HostedAuthMessageSecondaryActionProps =
+  | {
+    secondaryAction: HostedAuthMessageAction,
+    secondaryText: string,
+  }
+  | {
+    secondaryAction?: never,
+    secondaryText?: never,
+  };
+type HostedAuthMessageActionProps =
+  | ({
+    primaryAction: HostedAuthMessageAction,
+    primaryText: string,
+  } & HostedAuthMessageSecondaryActionProps)
+  | {
+    primaryAction?: never,
+    primaryText?: never,
+    secondaryAction?: never,
+    secondaryText?: never,
+  };
+
 export function HostedAuthMessage(props: {
   title: string,
   children: React.ReactNode,
-  primaryAction: () => Promise<void> | void,
-  primaryText: string,
-  secondaryAction?: () => Promise<void> | void,
-  secondaryText?: string,
   fullPage?: boolean,
-}) {
+} & HostedAuthMessageActionProps) {
+  const hasPrimaryAction = props.primaryAction != null;
+  const hasSecondaryAction = props.secondaryAction != null;
+
   return (
     <HostedAuthShell fullPage={props.fullPage}>
       <div className="text-center">
         <Typography type="h2" className="mb-2 text-xl font-semibold tracking-tight">{props.title}</Typography>
         <Typography className="text-sm text-muted-foreground">{props.children}</Typography>
       </div>
-      <div className="mt-6 flex flex-col gap-2.5">
-        <Button onClick={props.primaryAction} className="h-10 rounded-xl font-semibold shadow-sm hover:shadow">
-          {props.primaryText}
-        </Button>
-        {props.secondaryAction != null && props.secondaryText != null && (
-          <Button variant="secondary" onClick={props.secondaryAction} className="h-10 rounded-xl font-semibold">
-            {props.secondaryText}
-          </Button>
-        )}
-      </div>
+      {(hasPrimaryAction || hasSecondaryAction) && (
+        <div className="mt-6 flex flex-col gap-2.5">
+          {hasPrimaryAction && (
+            <Button onClick={props.primaryAction} className="h-10 rounded-xl font-semibold shadow-sm hover:shadow">
+              {props.primaryText}
+            </Button>
+          )}
+          {hasSecondaryAction && (
+            <Button variant="secondary" onClick={props.secondaryAction} className="h-10 rounded-xl font-semibold">
+              {props.secondaryText}
+            </Button>
+          )}
+        </div>
+      )}
     </HostedAuthShell>
   );
 }

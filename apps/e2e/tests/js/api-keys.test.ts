@@ -14,7 +14,7 @@ it("should be able to create and update user api keys", async ({ expect }) => {
   await clientApp.signUpWithCredential({
     email: "test@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
 
   await clientApp.signInWithCredential({
@@ -118,7 +118,7 @@ it("should be able to get user by api key from server app", async ({ expect }) =
   await clientApp.signUpWithCredential({
     email: "test@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
 
   await clientApp.signInWithCredential({
@@ -162,7 +162,7 @@ it("should be able to revoke an API key from the client and server should not be
   await clientApp.signUpWithCredential({
     email: "test@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
 
   await clientApp.signInWithCredential({
@@ -211,7 +211,7 @@ it("should be able to revoke an API key from the server", async ({ expect }) => 
   await clientApp.signUpWithCredential({
     email: "test@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
 
   await clientApp.signInWithCredential({
@@ -276,7 +276,7 @@ it("should be able to create a team, add an API key, and get the team from the A
   await clientApp.signUpWithCredential({
     email: "test@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
 
   await clientApp.signInWithCredential({
@@ -336,7 +336,7 @@ it("should not be able to get a user with a team API key", async ({ expect }) =>
   await clientApp.signUpWithCredential({
     email: "test@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
 
   await clientApp.signInWithCredential({
@@ -390,7 +390,7 @@ it("should not allow team members without manage API key permission to manage te
   await clientApp.signUpWithCredential({
     email: "owner@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
 
   await clientApp.signInWithCredential({
@@ -424,7 +424,7 @@ it("should not allow team members without manage API key permission to manage te
   await clientApp.signUpWithCredential({
     email: "member@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
 
   await clientApp.signInWithCredential({

@@ -1,4 +1,5 @@
 import { useStackApp, useUser } from "@hexclave/react";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import React, { Suspense, useEffect, useState } from "react";
 
@@ -23,6 +24,7 @@ import {
   authFooterClassName,
   authFooterLinkClassName,
 } from "./supporting/layout";
+import { HostedNoAuthMethods } from "./supporting/no-auth-methods";
 import { OAuthButtonGroup } from "./supporting/oauth-button";
 import { PasskeyButton } from "./supporting/passkey-button";
 import type { AuthProject, AuthType } from "./supporting/types";
@@ -55,6 +57,7 @@ function AutomaticRedirect(props: {
         );
         setResult({ status: "success" });
       } catch (error) {
+        captureError("Hosted automatic post-auth redirect", error);
         setResult({ status: "error" });
       }
     })());
@@ -64,8 +67,16 @@ function AutomaticRedirect(props: {
     return (
       <HostedAuthMessage
         title="Unable to redirect"
-        primaryAction={() => app.redirectToHome()}
-        primaryText="Go home"
+        primaryAction={() => (
+          props.isRestricted
+            ? app.redirectToOnboarding({ replace: true })
+            : props.type === "sign-in"
+              ? app.redirectToAfterSignIn({ replace: true })
+              : app.redirectToAfterSignUp({ replace: true })
+        )}
+        primaryText="Try again"
+        secondaryAction={() => window.history.back()}
+        secondaryText="Go back"
         fullPage={props.fullPage}
       >
         We could not continue automatically. Please try again.
@@ -109,8 +120,8 @@ function HostedAuthPageInner(props: {
     return (
       <HostedAuthMessage
         title="You're already signed in"
-        primaryAction={() => app.redirectToHome()}
-        primaryText="Go home"
+        primaryAction={() => app.redirectToAfterSignIn()}
+        primaryText="Continue"
         secondaryAction={() => app.redirectToSignOut()}
         secondaryText="Sign out"
         fullPage={props.fullPage}
@@ -137,6 +148,23 @@ function HostedAuthPageInner(props: {
   const hasPasskey = project.config.passkeyEnabled === true && props.type === "sign-in";
   const hasEmailMethods = project.config.credentialEnabled || project.config.magicLinkEnabled;
   const enableSeparator = hasEmailMethods && (hasOAuthProviders || hasPasskey);
+
+  // Note that we check passkeys regardless of `props.type` here (unlike `hasPasskey`); a project with only
+  // passkeys enabled can't sign up with them, but it is configured correctly, so the sign-up page should
+  // keep pointing at the sign-in page instead of claiming that the project is misconfigured.
+  const hasAnyAuthMethod = hasOAuthProviders
+    || project.config.passkeyEnabled === true
+    || hasEmailMethods;
+
+  if (!hasAnyAuthMethod) {
+    return (
+      <HostedNoAuthMethods
+        fullPage={props.fullPage}
+        projectId={app.projectId}
+        projectDisplayName={project.displayName}
+      />
+    );
+  }
 
   return (
     <HostedAuthShell fullPage={props.fullPage} paddedFullPage={false}>
@@ -181,7 +209,11 @@ function HostedAuthPageInner(props: {
       ) : project.config.magicLinkEnabled ? (
         <MagicLinkSignIn email={email} onEmailChange={setEmail} />
       ) : !(hasOAuthProviders || hasPasskey) ? (
-        <p className="py-4 text-center text-sm text-destructive">No authentication method enabled.</p>
+        // Only reachable on the sign-up page of a passkey-only project: the project is configured
+        // correctly, there is just no way to create an account with a passkey alone.
+        <p className="py-2 text-center text-sm text-muted-foreground">
+          New accounts can't be created with the sign-in methods enabled for this app. Sign in instead.
+        </p>
       ) : null}
 
       <div className={authFooterClassName}>

@@ -9,7 +9,7 @@ it("should list team invitations for the current user via the client SDK", { tim
   await clientApp.signUpWithCredential({
     email: "team-owner@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({
     email: "team-owner@test.com",
@@ -30,7 +30,7 @@ it("should list team invitations for the current user via the client SDK", { tim
   await clientApp.signUpWithCredential({
     email: "invited-user@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({
     email: "invited-user@test.com",
@@ -63,7 +63,7 @@ it("should return empty invitations when user has no matching invitations", asyn
   await clientApp.signUpWithCredential({
     email: "no-invites@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({
     email: "no-invites@test.com",
@@ -83,7 +83,7 @@ it("should list team invitations for a server user", async ({ expect }) => {
   await clientApp.signUpWithCredential({
     email: "server-owner@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({
     email: "server-owner@test.com",
@@ -123,7 +123,7 @@ it("should not return invitations for unverified emails", async ({ expect }) => 
   await clientApp.signUpWithCredential({
     email: "unverified-owner@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({
     email: "unverified-owner@test.com",
@@ -158,7 +158,7 @@ it("should list invitations from multiple teams", async ({ expect }) => {
   await clientApp.signUpWithCredential({
     email: "multi-owner@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({
     email: "multi-owner@test.com",
@@ -205,7 +205,7 @@ it("should accept a team invitation via the client SDK", { timeout: 120_000 }, a
   await clientApp.signUpWithCredential({
     email: "accept-owner@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({
     email: "accept-owner@test.com",
@@ -226,7 +226,7 @@ it("should accept a team invitation via the client SDK", { timeout: 120_000 }, a
   await clientApp.signUpWithCredential({
     email: "accept-user@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({
     email: "accept-user@test.com",
@@ -263,7 +263,7 @@ it("should accept a team invitation via the server SDK", async ({ expect }) => {
   await clientApp.signUpWithCredential({
     email: "server-accept-owner@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({
     email: "server-accept-owner@test.com",

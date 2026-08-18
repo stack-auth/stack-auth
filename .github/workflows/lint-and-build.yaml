@@ -7,12 +7,17 @@ on:
       - dev
   pull_request:
 
+# A concurrency group only ever runs one run at a time, so the sha is part of the group on main/dev:
+# otherwise consecutive dev pushes queue behind each other (and GitHub cancels the older queued run),
+# so one slow or hung run silently skips CI for every commit after it. PRs and feature branches stay
+# grouped per ref, where cancelling superseded runs is what we want.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 jobs:
   lint_and_build:
+    timeout-minutes: 60
     runs-on: ubuntu-latest
 
     strategy:
@@ -41,9 +46,6 @@ jobs:
       
       - name: Create .env.production.local file for apps/e2e
         run: cp apps/e2e/.env.development apps/e2e/.env.production.local
-
-      - name: Create .env.production.local file for docs
-        run: cp docs/.env.development docs/.env.production.local
 
       - name: Create .env.production.local file for examples/cjs-test
         run: cp examples/cjs-test/.env.development examples/cjs-test/.env.production.local

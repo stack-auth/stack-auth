@@ -44,7 +44,23 @@ Optional:
     Default: false
     If true, skip prefetching project info on construction.
 
-On construct: prefetch project info (GET /projects/current) unless noAutomaticPrefetch=true.
+  automaticSideEffects: bool [JS-ONLY]
+    Default: true
+    If false, construction must not start any automatic side effects. This includes
+    prefetching, processing authentication or redirect query parameters, reading
+    or writing browser storage or cookies, consuming `hexclave_action_id` browser
+    actions, recording analytics or session replays, installing browser listeners,
+    starting timers, or mounting development UI.
+    Explicit method calls retain their normal behavior and side effects. This
+    option makes construction inert.
+
+On construct: when automaticSideEffects=true, prefetch project info
+(GET /projects/current) unless noAutomaticPrefetch=true. When
+automaticSideEffects=false, perform no automatic side effects. Browser action
+initialization removes `hexclave_action_id` from the address bar before consuming
+it and retries that removal during the initial event-loop turns so framework
+routers cannot restore the action URL after hydration. If consumption reports an
+already-used or expired action, treat it as an expected no-op.
 
 
 ## Feature flags
@@ -316,6 +332,10 @@ Errors:
   UserWithEmailAlreadyExists
     code: "user_email_already_exists"
     message: "A user with this email address already exists."
+
+  ContactChannelAlreadyUsedForAuthBySomeoneElse
+    code: "contact_channel_already_used_for_auth_by_someone_else"
+    message: "This email is already used for authentication by another account."
     
   PasswordRequirementsNotMet
     code: "password_requirements_not_met"
@@ -1055,7 +1075,10 @@ All redirect methods take optional options:
 
 Options:
   replace: bool? - if true, replace current history entry instead of pushing
-  noRedirectBack: bool? - if true, don't set after_auth_return_to param
+  noRedirectBack: bool? - if true, don't return to the initiating page after auth. Same-domain
+    flows use their configured default destination. Cross-domain flows must still complete the
+    normal handoff back to the source app, with the source app's configured home URL as the final
+    after-callback destination.
 
 Methods:
   redirectToSignIn()         - redirect to signIn URL
@@ -1079,10 +1102,18 @@ Methods:
 Implementation:
 
 1. Get the target URL from the urls config
-2. For signIn/signUp/onboarding (unless noRedirectBack=true):
-   - Check if current URL has after_auth_return_to query param
-   - If yes: preserve it in the target URL
-   - If no: set after_auth_return_to to current page URL
+2. For signIn/signUp/onboarding:
+   - If noRedirectBack=true and the target is cross-domain, perform the normal cross-domain
+     callback/authorize handoff, but set its final after-callback destination to the source app's
+     configured home URL instead of the initiating page. The hosted URL may carry an internal
+     after_auth_return_to callback URL as part of that handoff, but it must not return to the
+     initiating deep link.
+   - If noRedirectBack=true and the target is same-domain, don't add redirect-back state; let the
+     auth flow use its configured default destination.
+   - Otherwise:
+     - Check if current URL has after_auth_return_to query param
+     - If yes: preserve it in the target URL
+     - If no: set after_auth_return_to to current page URL
 3. For afterSignIn/afterSignUp:
    - Check current URL for after_auth_return_to query param
    - If present: redirect to that URL instead of the default

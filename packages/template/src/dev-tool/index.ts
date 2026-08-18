@@ -3,9 +3,8 @@
 import type { StackClientApp } from "../lib/hexclave-app";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
+import { isLikelyDevelopmentEnvironment } from "../in-page-ui/dev-environment";
 import { canMountIntoDom } from "../in-page-ui/dom";
-import { envVars } from "../generated/env";
 import type { createDevTool as CreateDevToolFn } from "./dev-tool-core";
 
 // Hexclave rebrand: UI-only local pref — straight rename (one-time reset is harmless)
@@ -21,6 +20,7 @@ function getOverride(): boolean | null {
 }
 
 let activeDevToolOption: true | "auto" | undefined = undefined;
+let activeProjectIsDevelopmentEnvironment = false;
 
 function shouldShow(): boolean {
   const override = getOverride();
@@ -30,19 +30,13 @@ function shouldShow(): boolean {
   // If devTool was explicitly set to true, always show
   if (activeDevToolOption === true) return true;
 
-  // "auto" behavior (the default):
-  const nodeEnv = envVars.NODE_ENV;
-  if (nodeEnv !== undefined) {
-    // NODE_ENV is available (bundler/process env exists) — only show in development
-    return nodeEnv === "development";
-  }
+  // Development environment projects should expose the tool even when the
+  // consuming app itself was built or hosted as production.
+  if (activeProjectIsDevelopmentEnvironment) return true;
 
-  // NODE_ENV not found (no process.env/import.meta) — show on localhost or file: protocol
-  try {
-    const url = new URL(window.location.href);
-    if (url.protocol === "file:") return true;
-  } catch {}
-  return isLocalhost(window.location.href);
+  // "auto" behavior (the default): every in-page UI that is only appropriate while developing shares one heuristic, so
+  // the dev tool and the error cards can never disagree about whether this looks like a development environment.
+  return isLikelyDevelopmentEnvironment();
 }
 
 let activeCleanup: (() => void) | null = null;
@@ -100,7 +94,27 @@ function tryMount() {
 export function mountDevTool(app: StackClientApp<true>, devToolOption?: boolean | "auto"): () => void {
   activeApp = app;
   activeDevToolOption = devToolOption === false ? undefined : devToolOption ?? undefined;
+  activeProjectIsDevelopmentEnvironment = false;
   tryMount();
+
+  // The project endpoint is also the source of config warnings, so this uses
+  // the backend's development-environment flag instead of inferring it from
+  // the SDK's build or the current page's origin.
+  queueMicrotask(() => {
+    runAsynchronously(async () => {
+      const project = await app.getProject();
+      if (activeApp !== app) return;
+      activeProjectIsDevelopmentEnvironment = project.isDevelopmentEnvironment;
+      if (activeProjectIsDevelopmentEnvironment && activeCleanup === null) {
+        tryMount();
+      }
+    }, {
+      noErrorLogging: true,
+      onError: (error) => {
+        captureError("dev-tool-project-detection", error);
+      },
+    });
+  });
 
   // Capture the cleanup created by THIS specific mount call so that React
   // StrictMode's double-invoke doesn't let the first effect's cleanup tear
@@ -109,6 +123,7 @@ export function mountDevTool(app: StackClientApp<true>, devToolOption?: boolean 
 
   return () => {
     activeApp = null;
+    activeProjectIsDevelopmentEnvironment = false;
     if (activeCleanup === myCleanup && myCleanup != null) {
       activeCleanup = null;
       myCleanup();
@@ -147,7 +162,7 @@ if (typeof window !== 'undefined') {
         activeCleanup();
         activeCleanup = null;
       }
-      console.log('[Stack DevTool] Reset to default (auto-detect based on NODE_ENV or localhost/file: origin).');
+      console.log('[Stack DevTool] Reset to default (auto-detect based on project, NODE_ENV, or localhost/file: origin).');
     },
   };
 }

@@ -7,6 +7,7 @@ const endpoints = [
   "/api/latest/internal/external-db-sync/sequencer",
   "/api/latest/internal/external-db-sync/poller",
   "/api/latest/internal/feature-flags/experiment-schedule-processor",
+  "/api/latest/internal/workflow-engine-step",
 ];
 
 async function main() {
@@ -19,7 +20,11 @@ async function main() {
   console.log("Starting cron jobs...");
   const cronSecret = getEnvVariable('CRON_SECRET');
 
-  const baseUrl = `http://localhost:${getEnvVariable('NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX', '81')}02`;
+  // Cron jobs call the backend over HTTP, so they must follow the port the
+  // backend listens on (including fallback setups where the primary port is down).
+  const portPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
+  const backendPort = getEnvVariable("PORT", getEnvVariable("BACKEND_PORT", `${portPrefix}02`));
+  const baseUrl = `http://localhost:${backendPort}`;
 
   const run = async (endpoint: string) => {
     console.log(`Running ${endpoint}...`);

@@ -21,12 +21,15 @@ function runCli(
   args: string[],
   envOverrides?: Record<string, string>,
   cwd?: string,
+  // `deploy` waits for remote builds (Marshal's mock builder completes on the
+  // next poll at a 3s interval), so it needs more than the default.
+  timeout = 30_000,
 ): Promise<{ stdout: string, stderr: string, exitCode: number | null }> {
   return new Promise((resolve) => {
     execFile("node", [CLI_BIN, ...args], {
       env: { ...baseEnv, ...envOverrides },
       cwd,
-      timeout: 30_000,
+      timeout,
     }, (error, stdout, stderr) => {
       resolve({
         stdout: stdout.toString(),
@@ -68,7 +71,7 @@ describe("Stack CLI", () => {
     Result.orThrow(await internalApp.signUpWithCredential({
       email: fakeEmail,
       password: "test-password-123",
-      verificationCallbackUrl: "http://localhost:3000",
+      noVerificationCallback: true,
     }));
 
     const user = await internalApp.getUser({ or: "throw" });
@@ -399,7 +402,7 @@ describe("Stack CLI", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Config written to");
     const content = fs.readFileSync(configTsPath, "utf-8");
-    expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js/config";');
+    expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js";');
     expect(content).toContain("export const config: HexclaveConfig");
   });
 
@@ -420,6 +423,159 @@ describe("Stack CLI", () => {
     expect(exitCode).toBe(1);
     expect(stderr).toContain(".ts extension");
   });
+
+  it("deploy deploys the services export in dependency order and waits for the builds", async ({ expect }) => {
+    expect(createdProjectId).toBeDefined();
+    const deployDir = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-deploy-"));
+    try {
+      // web builds from an explicit Dockerfile (dockerfilePath + pre-flight);
+      // db has none, covering the Railpack auto-detection default. web's
+      // dockerfilePath is written relative to its rootDirectory ("./web"), so
+      // the bare "Dockerfile" below must reach the server as "web/Dockerfile"
+      // — this is the end-to-end proof that the CLI joins the two.
+      fs.mkdirSync(path.join(deployDir, "web"));
+      fs.writeFileSync(path.join(deployDir, "web", "index.html"), "<h1>web</h1>");
+      fs.writeFileSync(path.join(deployDir, "web", "Dockerfile"), "FROM nginx:alpine\n");
+      fs.mkdirSync(path.join(deployDir, "db"));
+      fs.writeFileSync(path.join(deployDir, "db", "index.html"), "<h1>db</h1>");
+      // Two files: the project config, and the deploy file holding the services.
+      const writeConfigFile = (allowClientTeamCreation: boolean) => fs.writeFileSync(path.join(deployDir, "hexclave.config.ts"),
+        `export const config = { teams: { allowClientTeamCreation: ${allowClientTeamCreation} } };\n`);
+      fs.writeFileSync(path.join(deployDir, "hexclave.deploy.ts"), [
+        // The `id` export names this deployment source — which deploy file (and
+        // so which repository) these services belong to.
+        'export const id = "cli-e2e";',
+        "export const deploy = ({ isDev, secret, service, hexclave }: any) => ({",
+        "  services: {",
+        "    web: {",
+        '      type: "serverless",',
+        '      ports: { 3000: { protocol: "http" } },',
+        '      rootDirectory: "./web",',
+        '      dockerfilePath: "Dockerfile",',
+        '      devCommand: "npm run dev",',
+        "      env: {",
+        '        DB_URL: service("db").url(5432),',
+        "        PROJECT_ID: hexclave.projectId,",
+        '        OPENAI: isDev ? null : secret("OPENAI_KEY", "sk-default"),',
+        "      },",
+        "    },",
+        '    db: { type: "serverless", ports: { 5432: { protocol: "http" } }, rootDirectory: "./db" },',
+        "  },",
+        "});",
+        "",
+      ].join("\n"));
+      writeConfigFile(true);
+      const { stdout, stderr, exitCode } = await runCli(
+        ["deploy", "--cloud-project-id", createdProjectId, "--deploy-file", path.join(deployDir, "hexclave.deploy.ts"), "--config-push"],
+        {},
+        deployDir,
+        90_000,
+      );
+      if (exitCode !== 0) {
+        throw new Error(`deploy exited ${exitCode}. stderr: ${stderr}\nstdout: ${stdout}`);
+      }
+      // stdout is the machine-readable summary; both services must have built
+      // to ready. Container services are private by default, so neither has a
+      // public URL until a custom domain is attached.
+      const summary = JSON.parse(stdout);
+      expect(summary.deploymentSourceId).toBe("cli-e2e");
+      expect(summary.status).toBe("deployed");
+      expect(summary.services.db.status).toBe("deployed");
+      expect(summary.services.web.status).toBe("deployed");
+      expect(summary.services.db.url).toBeNull();
+      expect(summary.services.web.url).toBeNull();
+      // Both services shipped from ONE deploy — one upload, one build. Assert
+      // this on the terminal output, which is always emitted; the in-progress
+      // "Building every service in one builder" line is not, because a fast
+      // build can go from queued to deploying between two 3s polls.
+      const occurrencesOf = (needle: string) => stderr.split(needle).length - 1;
+      expect(occurrencesOf("Uploading source...")).toBe(1);
+      expect(occurrencesOf("Waiting for the remote build...")).toBe(1);
+      expect(stderr).toContain("[web] deployed");
+      expect(stderr).toContain("[db] deployed");
+      // The definitions were synced server-side — but NOT the config file's
+      // `devCommand`, which `hexclave dev` runs locally and the CLI therefore
+      // never sends (the config above sets one, so this also covers that a
+      // devCommand in the config file doesn't trip the sync route).
+      // OPENAI also proves the secret-default path end to end: nothing set a
+      // value for OPENAI_KEY, so this deploy only succeeded because the CLI
+      // sent `secret("OPENAI_KEY", "sk-default")`'s default with the deploy
+      // request — while the SYNCED definition names the secret and nothing
+      // else, so the default was never persisted.
+      const execRes = await runCli([
+        "exec", "--cloud-project-id", createdProjectId,
+        "const p = await hexclaveServerApp.getProject(); const services = await p.listDeploymentServices(); const svc = services.find(s => s.id === 'web'); return JSON.stringify({ hasDevCommand: 'dev_command' in svc, keys: svc.env.map(e => e.key).sort(), openai: svc.env.find(e => e.key === 'OPENAI'), webDockerfile: svc.dockerfile_path, dbDockerfile: services.find(s => s.id === 'db').dockerfile_path });",
+      ]);
+      if (execRes.exitCode !== 0) {
+        throw new Error(`exec exited ${execRes.exitCode}. stderr: ${execRes.stderr}`);
+      }
+      expect(JSON.parse(JSON.parse(execRes.stdout.trim()))).toEqual({
+        hasDevCommand: false,
+        keys: ["DB_URL", "OPENAI", "PROJECT_ID"],
+        openai: { key: "OPENAI", type: "secret", value: null, secret_key: "OPENAI_KEY" },
+        // Authored as a bare "Dockerfile" under rootDirectory "./web" and stored with the
+        // root directory joined on — relative to the UPLOAD ROOT, because the build context
+        // is the whole upload (that is what lets a monorepo service COPY shared code from
+        // above its own directory), so this is the path the builder opens.
+        webDockerfile: "web/Dockerfile",
+        // No dockerfilePath at all: db is built by Railpack auto-detection.
+        dbDockerfile: null,
+      });
+
+      // A secret with NO default and no stored value fails before anything is
+      // packaged, naming every key that needs a dashboard value.
+      fs.writeFileSync(path.join(deployDir, "missing-secret.deploy.ts"), [
+        'export const id = "cli-e2e-missing-secret";',
+        "export const deploy = ({ secret }: any) => ({",
+        "  services: {",
+        '    web: { type: "serverless", ports: { 3000: { protocol: "http" } }, rootDirectory: "./web", env: { A: secret("NEEDS_A_VALUE"), B: secret("ALSO_NEEDED") } },',
+        "  },",
+        "});",
+        "",
+      ].join("\n"));
+      const missingSecretRes = await runCli(
+        ["deploy", "--cloud-project-id", createdProjectId, "--deploy-file", path.join(deployDir, "missing-secret.deploy.ts")],
+        {},
+        deployDir,
+      );
+      expect(missingSecretRes.exitCode).not.toBe(0);
+      expect(missingSecretRes.stderr).toContain("ALSO_NEEDED");
+      expect(missingSecretRes.stderr).toContain("NEEDS_A_VALUE");
+      expect(missingSecretRes.stderr).toContain("Project Settings > Secrets");
+
+      // The config export was pushed because --config-push was passed.
+      const readBranchConfig = async () => {
+        const configRes = await runCli([
+          "exec", "--cloud-project-id", createdProjectId,
+          "const p = await hexclaveServerApp.getProject(); return JSON.stringify(await p.getConfigOverride('branch'));",
+        ]);
+        if (configRes.exitCode !== 0) {
+          throw new Error(`exec exited ${configRes.exitCode}. stderr: ${configRes.stderr}`);
+        }
+        return JSON.parse(JSON.parse(configRes.stdout.trim()));
+      };
+      expect(await readBranchConfig()).toMatchObject({ teams: { allowClientTeamCreation: true } });
+
+      // --service-id deploys just that service, and a deploy without
+      // --config-push leaves the (changed) config export unpushed.
+      writeConfigFile(false);
+      const singleRun = await runCli(
+        ["deploy", "--cloud-project-id", createdProjectId, "--deploy-file", path.join(deployDir, "hexclave.deploy.ts"), "--service-id", "db"],
+        {},
+        deployDir,
+        90_000,
+      );
+      if (singleRun.exitCode !== 0) {
+        throw new Error(`deploy --service-id exited ${singleRun.exitCode}. stderr: ${singleRun.stderr}\nstdout: ${singleRun.stdout}`);
+      }
+      const singleSummary = JSON.parse(singleRun.stdout);
+      expect(Object.keys(singleSummary.services)).toEqual(["db"]);
+      expect(singleSummary.services.db.status).toBe("deployed");
+      expect(await readBranchConfig()).toMatchObject({ teams: { allowClientTeamCreation: true } });
+    } finally {
+      fs.rmSync(deployDir, { recursive: true, force: true });
+    }
+  }, 180_000);
 
   it("config push rejects array config export", async ({ expect }) => {
     const badConfigPath = path.join(tmpDir, "config-array.ts");
@@ -514,12 +670,13 @@ describe("Stack CLI", () => {
     expect(stdout).toContain("Config file written to");
 
     const content = fs.readFileSync(path.join(initDir, "stack.config.ts"), "utf-8");
-    expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js/config";');
+    expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js";');
     expect(content).toContain("export const config: HexclaveConfig");
     expect(JSON.parse(extractConfigObjectString(content))).toMatchObject({
       apps: {
         installed: {
           authentication: { enabled: true },
+          emails: { enabled: true },
           teams: { enabled: true },
         },
       },
@@ -541,6 +698,7 @@ describe("Stack CLI", () => {
       apps: {
         installed: {
           authentication: { enabled: true },
+          emails: { enabled: true },
         },
       },
     });
@@ -622,7 +780,7 @@ describe("Stack CLI", () => {
       "init", "--mode", "create", "--apps", "authentication", "--output-dir", initDir,
     ]);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("STACK AUTH SETUP INSTRUCTIONS");
+    expect(stdout).toContain("HEXCLAVE SETUP INSTRUCTIONS");
   });
 });
 

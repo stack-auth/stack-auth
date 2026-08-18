@@ -8,9 +8,9 @@ describe("config agent prompt", () => {
       completeConfig: { auth: { allowSignUp: false } },
       commandPolicy: "Do not run builds.",
     })).toMatchInlineSnapshot(`
-      "You are updating a Hexclave / Stack Auth configuration file.
+      "You are updating a Hexclave configuration file.
 
-      Current working directory: the repository root. Find the Hexclave / Stack Auth config file. It is usually a \`*.config.ts\` file exporting \`config\`, often wrapped in \`defineHexclaveConfig(...)\` or a similar helper.
+      Current working directory: the repository root. Find the Hexclave config file. It is usually a \`*.config.ts\` file exporting \`config\`, often wrapped in \`defineHexclaveConfig(...)\` or a similar helper.
 
       The exported config must end up deep-equal to this JSON value:
 

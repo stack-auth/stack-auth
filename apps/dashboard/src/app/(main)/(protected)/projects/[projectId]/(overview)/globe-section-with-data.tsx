@@ -26,8 +26,10 @@ export function GlobeSectionWithData({ includeAnonymous, interactive }: { includ
   );
 }
 
-function GlobeErrorComponent(props: { error: Error }) {
-  captureGlobeErrorOnce(props.error);
+function GlobeErrorComponent(props: { error: unknown }) {
+  if (props.error instanceof Error) {
+    captureGlobeErrorOnce(props.error);
+  }
   return <div className='text-center text-sm text-red-500'>Error initializing globe visualization. Please try updating your browser or enabling WebGL.</div>;
 }
 
@@ -41,7 +43,6 @@ function GlobeSectionWithMetrics({ includeAnonymous, interactive }: { includeAno
       <LiveUsersBadge count={data.live_users ?? 0} />
       <GlobeSection
         countryData={data.users_by_country}
-        totalUsers={data.total_users}
         activeUsersByCountry={data.active_users_by_country ?? {}}
         interactive={interactive}
         initialPointOfView={viewerLocation}

@@ -93,7 +93,10 @@ const branchApiKeysSchema = yupObject({
 const appIds = Object.keys(ALL_APPS) as (keyof typeof ALL_APPS)[];
 const branchAppsSchema = yupObject({
   installed: yupRecord(
-    yupString().oneOf(appIds),
+    // App config is persisted independently of backend releases. Retain app IDs
+    // introduced by newer releases so an older backend can still render the
+    // config; getIncompleteConfigWarnings reports IDs it does not recognize.
+    yupString(),
     yupObject({
       enabled: yupBoolean(),
     }),
@@ -294,7 +297,6 @@ const branchOnboardingSchema = yupObject({
   requireEmailVerification: yupBoolean(),
 });
 
-
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   "sourceOfTruth",
   "project",
@@ -379,6 +381,9 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
           }),
           facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional(),
           microsoftTenantId: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
+          appleTeamId: schemaFields.oauthAppleTeamIdSchema.optional(),
+          appleKeyId: schemaFields.oauthAppleKeyIdSchema.optional(),
+          applePrivateKey: schemaFields.oauthApplePrivateKeySchema.optional(),
           appleBundles: yupRecord(
             userSpecifiedIdSchema("appleBundleId"),
             yupObject({
@@ -391,7 +396,18 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
           displayName: yupString().optional(),
           allowSignIn: yupBoolean().optional(),
           allowConnectedAccounts: yupBoolean().optional(),
-        }),
+        }).test(
+          "apple-key-credentials",
+          "Apple providers must specify clientSecret or all of appleTeamId, appleKeyId, and applePrivateKey",
+          (provider) => {
+            if (provider.isShared || provider.type !== "apple") return true;
+            const hasClientSecret = provider.clientSecret != null && provider.clientSecret !== "";
+            const keyFields = [provider.appleTeamId, provider.appleKeyId, provider.applePrivateKey];
+            const hasAnyKeyField = keyFields.some(field => field != null && field !== "");
+            const hasAllKeyFields = keyFields.every(field => field != null && field !== "");
+            return (hasClientSecret || hasAllKeyFields) && (!hasAnyKeyField || hasAllKeyFields);
+          },
+        ),
       ),
     })),
   })),
@@ -457,6 +473,30 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
 }));
 
 export const organizationConfigSchema = environmentConfigSchema.concat(yupObject({}));
+
+import.meta.vitest?.test("Apple OAuth key credentials are all-or-nothing", async ({ expect }) => {
+  const config = {
+    auth: {
+      oauth: {
+        providers: {
+          apple: { type: "apple", isShared: false, clientId: "com.example.web" },
+        },
+      },
+    },
+  };
+  await expect(environmentConfigSchema.validate(config)).rejects.toThrow("Apple providers must specify");
+  await expect(environmentConfigSchema.validate({
+    ...config,
+    auth: { oauth: { providers: { apple: { ...config.auth.oauth.providers.apple, appleTeamId: "TEAM" } } } },
+  })).rejects.toThrow("Apple providers must specify");
+  await expect(environmentConfigSchema.validate({
+    ...config,
+    auth: { oauth: { providers: { apple: { ...config.auth.oauth.providers.apple, appleTeamId: "TEAM", appleKeyId: "KEY", applePrivateKey: "PEM" } } } },
+  })).resolves.toBeDefined();
+  await expect(environmentConfigSchema.validate({
+    auth: { oauth: { providers: { apple: { type: "apple", isShared: true } } } },
+  })).resolves.toBeDefined();
+});
 
 
 // Migration functions
@@ -577,6 +617,38 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // BEGIN 2026-07-24: the deployments app is now `deployments-alpha`, both as its
+  // `apps.installed` key and as its top-level config section, so the alpha stage is
+  // visible in every hexclave.config.ts that opts into it. Both renames are needed:
+  // an installed entry without the config section (or vice versa) is a valid state.
+  if (isBranchOrHigher) {
+    res = renameProperty(res, "deployments", "deployments-alpha");
+    res = renameProperty(res, "apps.installed.deployments", "deployments-alpha");
+  }
+  // END
+
+  // BEGIN 2026-07-28: deployment service definitions moved out of the config
+  // entirely — they now come from the `deploy` export and are stored in the
+  // backend database, synced by `hexclave deploy`. The
+  // stored config section is dropped, which in particular removes every
+  // config-era service: they were all `type: "vercel"`, a service type that no
+  // longer exists (containers on Marshal replaced it). The
+  // `apps.installed.deployments-alpha` entry stays for the later app-key
+  // migration — the app itself still exists. This runs after the 2026-07-24
+  // rename above, so pre-rename `deployments` sections are covered too.
+  if (isBranchOrHigher) {
+    res = removeProperty(res, p => p[0] === "deployments-alpha");
+  }
+  // END
+
+  // BEGIN 2026-08-14: the Deploy app's author-facing config key is now `deploy`.
+  // Only the installed-app entry remains in current configs; the legacy top-level
+  // deployment service section was removed by the migration immediately above.
+  if (isBranchOrHigher) {
+    res = renameProperty(res, "apps.installed.deployments-alpha", "deploy");
+  }
+  // END
+
   // return the result
   return res;
 };
@@ -597,6 +669,39 @@ import.meta.vitest?.test("migrateConfigOverride removes legacy sourceOfTruth ove
   })).toEqual({});
 });
 
+import.meta.vitest?.test("migrateConfigOverride removes legacy deployments config sections", ({ expect }) => {
+  // Post-rename section name, as an object and as dot-notation override keys.
+  // Every config-era service was `type: "vercel"` — a type that no longer
+  // exists — so this doubles as the guarantee that no vercel service survives
+  // migration.
+  expect(migrateConfigOverride("branch", {
+    "deployments-alpha": { services: { web: { type: "vercel" } } },
+  })).toEqual({});
+  expect(migrateConfigOverride("branch", {
+    "deployments-alpha.services.web.type": "vercel",
+    "deployments-alpha.services.web.env": { A: { value: "x" } },
+  })).toEqual({});
+  // Multiple vercel services, with the full vercel-era field set.
+  expect(migrateConfigOverride("branch", {
+    "deployments-alpha": {
+      services: {
+        web: { type: "vercel", framework: "nextjs", buildCommand: "pnpm build", outputDirectory: "dist" },
+        api: { type: "vercel", rootDirectory: "./api" },
+      },
+    },
+  })).toEqual({});
+  // Pre-rename name: the 2026-07-24 rename runs first, then the removal.
+  expect(migrateConfigOverride("branch", {
+    deployments: { services: { web: { type: "vercel" } } },
+  })).toEqual({});
+  // The app-installation entry must survive and receive its current name — only
+  // the legacy service config section is gone.
+  expect(migrateConfigOverride("branch", {
+    "apps.installed.deployments-alpha": { enabled: true },
+    "deployments-alpha": { services: {} },
+  })).toEqual({ "apps.installed.deploy": { enabled: true } });
+});
+
 import.meta.vitest?.test("migrateConfigOverride removes legacy branch-level dbSync overrides", ({ expect }) => {
   const dbSync = {
     externalDatabases: {
@@ -609,6 +714,52 @@ import.meta.vitest?.test("migrateConfigOverride removes legacy branch-level dbSy
 
   expect(migrateConfigOverride("branch", { dbSync })).toEqual({});
   expect(migrateConfigOverride("environment", { dbSync })).toEqual({ dbSync });
+});
+
+import.meta.vitest?.test("migrateConfigOverride renames legacy deployments app keys to deploy", ({ expect }) => {
+  const services = { web: { type: "vercel", rootDirectory: "./" } };
+
+  // The renamed CONFIG SECTION is subsequently dropped by the 2026-07-28
+  // removal migration (service definitions no longer live in the config), so
+  // only the installed-apps rename remains observable here.
+  expect(migrateConfigOverride("branch", {
+    deployments: { services },
+    apps: { installed: { deployments: { enabled: true } } },
+  })).toEqual({
+    apps: { installed: { deploy: { enabled: true } } },
+  });
+
+  // Dot-notation overrides, which is how the dashboard used to write single
+  // keys. The flat key form is preserved — only the renamed segment changes —
+  // so the override keeps overriding exactly one leaf rather than being
+  // widened into a whole subtree.
+  expect(migrateConfigOverride("branch", {
+    "deployments.services.web.buildCommand": "pnpm build",
+    "apps.installed.deployments.enabled": true,
+  })).toEqual({
+    "apps.installed.deploy.enabled": true,
+  });
+
+  // Project level is not branch-or-higher, so nothing is renamed there.
+  expect(migrateConfigOverride("project", { deployments: { services } })).toEqual({ deployments: { services } });
+});
+
+import.meta.vitest?.test("migrateConfigOverride renames deployments-alpha app installations to deploy", ({ expect }) => {
+  expect(migrateConfigOverride("branch", {
+    apps: { installed: { "deployments-alpha": { enabled: true } } },
+  })).toEqual({
+    apps: { installed: { deploy: { enabled: true } } },
+  });
+  expect(migrateConfigOverride("branch", {
+    "apps.installed.deployments-alpha.enabled": true,
+  })).toEqual({
+    "apps.installed.deploy.enabled": true,
+  });
+  expect(migrateConfigOverride("branch", {
+    "apps.installed.deploy.enabled": false,
+  })).toEqual({
+    "apps.installed.deploy.enabled": false,
+  });
 });
 
 function removeProperty(obj: Record<string, any>, pathCond: (path: (string | symbol)[]) => boolean): any {
@@ -758,7 +909,10 @@ const organizationConfigDefaults = {
   },
 
   apps: {
-    installed: typedFromEntries(appIds.map(appId => [appId, { enabled: false }])) as Record<string, { enabled: boolean } | undefined>,
+    installed: Object.assign(
+      (appId: string) => has(ALL_APPS, appId) ? { enabled: false } : undefined,
+      typedFromEntries(appIds.map(appId => [appId, { enabled: false }])),
+    ),
   },
 
   teams: {
@@ -802,6 +956,9 @@ const organizationConfigDefaults = {
         allowConnectedAccounts: false,
         clientId: undefined,
         clientSecret: undefined,
+        appleTeamId: undefined,
+        appleKeyId: undefined,
+        applePrivateKey: undefined,
         customCallbackUrl: undefined,
         facebookConfigId: undefined,
         microsoftTenantId: undefined,
@@ -1131,6 +1288,14 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
   }));
 
   const appSortIndices = new Map(Object.keys(ALL_APPS).map((appId, index) => [appId, index]));
+  const compareAppIds = (a: string, b: string) => {
+    const aIndex = appSortIndices.get(a);
+    const bIndex = appSortIndices.get(b);
+    if (aIndex != null && bIndex != null) return aIndex - bIndex;
+    if (aIndex != null) return -1;
+    if (bIndex != null) return 1;
+    return stringCompare(a, b);
+  };
 
   // Get all sign-up rules and sort by priority (descending), then by ID (alphabetically)
   // Note: We don't filter out disabled rules here because the dashboard needs to show them
@@ -1166,7 +1331,7 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     apps: {
       installed: typedFromEntries(
         typedEntries(prepared.apps.installed)
-          .sort(([a], [b]) => appSortIndices.get(a)! - appSortIndices.get(b)!)
+          .sort(([a], [b]) => compareAppIds(a, b))
       ),
     },
   };
@@ -1450,6 +1615,20 @@ export async function getIncompleteConfigWarnings<T extends yup.AnySchema>(schem
     throw error;
   }
 
+  const apps = normalized.apps;
+  const installedApps = isObjectLike(apps) && !Array.isArray(apps) ? apps.installed : undefined;
+  if (isObjectLike(installedApps)) {
+    const unknownAppIds = Object.keys(installedApps)
+      .filter(appId => !has(ALL_APPS, appId))
+      .sort(stringCompare);
+    if (unknownAppIds.length > 0) {
+      return Result.error(
+        `Unknown installed app ${unknownAppIds.length === 1 ? "ID" : "IDs"}: ${unknownAppIds.map(id => JSON.stringify(id)).join(", ")}. `
+        + "This config can still be rendered, but this version cannot validate or operate those apps.",
+      );
+    }
+  }
+
   // test the schema against the normalized config
   try {
     await schema.validate(normalized, {
@@ -1483,6 +1662,21 @@ import.meta.vitest?.test("feature flag definitions can be published as first-use
   expect(result.status).toBe("ok");
 });
 export type ValidatedToHaveNoIncompleteConfigWarnings<T extends yup.AnySchema> = yup.InferType<T>;
+
+import.meta.vitest?.test("unknown installed apps render with a config warning", async ({ expect }) => {
+  const config = {
+    apps: {
+      installed: {
+        "future-app": { enabled: true },
+      },
+    },
+  };
+
+  expect(await getConfigOverrideErrors(branchConfigSchema, config)).toEqual(Result.ok(null));
+  expect(await getIncompleteConfigWarnings(branchConfigSchema, config)).toEqual(Result.error(
+    "Unknown installed app ID: \"future-app\". This config can still be rendered, but this version cannot validate or operate those apps.",
+  ));
+});
 
 
 // Normalized overrides
