@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { KnownErrors } from "../known-errors";
 import { InternalSession, RefreshToken } from "../sessions";
 import { Result } from "../utils/results";
-import { HexclaveClientInterface } from "./client-interface";
+import { ApiUrlsFailedError, HexclaveClientInterface } from "./client-interface";
 
 function createClientInterface(options?: {
   baseUrl?: string,
@@ -526,6 +526,56 @@ describe("_withFallback", () => {
         expect(log.filter(u => urlIndex(urls, u) === i).length).toBe(2);
       }
     }
+  });
+
+  it("reports the primary URL and attributes every fallback failure", async () => {
+    const urls = urlList(3);
+    const attemptsByUrl = new Map<string, number>();
+    const log: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      log.push(url);
+      const attempt = (attemptsByUrl.get(url) ?? 0) + 1;
+      attemptsByUrl.set(url, attempt);
+      throw new TypeError(`Failed to fetch ${url} on attempt ${attempt}`);
+    }));
+
+    const iface = createClientInterface({ apiUrls: urls });
+    const request = sendRequest(iface);
+    await expect(request).rejects.toMatchObject({
+      name: "ApiUrlsFailedError",
+      message: expect.stringContaining(`primary URL ${urls[0]}`),
+    });
+
+    try {
+      await request;
+      throw new Error("Expected all API URLs to fail");
+    } catch (error) {
+      if (!(error instanceof ApiUrlsFailedError)) throw new Error("Expected an aggregate API URL error");
+      if (!(error.cause instanceof Error)) throw new Error("Expected the primary error as the aggregate cause");
+      expect(error.cause.message).toContain(`${urls[0]}/api/v1/users/me on attempt 2`);
+      expect(error.errors).toHaveLength(urls.length);
+      expect(error.urlFailures).toHaveLength(urls.length);
+      for (const [index, urlFailure] of error.urlFailures.entries()) {
+        expect(urlFailure.url).toBe(`${urls[index]}/api/v1`);
+        expect(urlFailure.error).toBe(error.errors[index]);
+        expect(urlFailure.error.message).toContain(`${urls[index]}/api/v1/users/me on attempt 2`);
+      }
+    }
+    expect(log).toHaveLength(urls.length * 2);
+  });
+
+  it("preserves framework error digests on the aggregate error", () => {
+    const dynamicError = Object.assign(new Error("Dynamic server usage"), {
+      digest: "DYNAMIC_SERVER_USAGE",
+    });
+
+    const error = new ApiUrlsFailedError([{
+      url: "http://primary.test/api/v1",
+      error: dynamicError,
+    }]);
+
+    expect(error.digest).toBe("DYNAMIC_SERVER_USAGE");
   });
 
   it("bypasses fallback when apiUrlOverride is provided", async () => {

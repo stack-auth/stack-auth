@@ -209,7 +209,7 @@ services:
     ports:
       - "${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}21:9090"
     environment:
-      - initialBuckets=stack-storage,stack-storage-private
+      - initialBuckets=stack-storage,stack-storage-private,marshal
       - root=s3mockroot
       - debug=false
     volumes:
@@ -246,10 +246,22 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
     environment:
-      DENO_DIR: /deno-cache
       HOST_ON_HOST: host.docker.internal
+      HEXCLAVE_FREESTYLE_MOCK_MAX_IN_FLIGHT: "4"
+      HEXCLAVE_FREESTYLE_MOCK_BRIDGE_ENABLED: "true"
+      HEXCLAVE_FREESTYLE_MOCK_BRIDGE_ORIGINS: "http://host.docker.internal:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02"
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    cpus: 4
+    pids_limit: 512
     volumes:
-      - deno-cache:/deno-cache
+      - freestyle-module-cache:/app/module-cache
 
   # ================= Vercel mock =================
 
@@ -260,6 +272,21 @@ services:
     image: vercel-mock
     ports:
       - "${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}26:8080"       # mock of the Vercel REST API for the Deployments app
+
+  # ================= Fly mock =================
+
+  fly-mock:
+    build:
+      context: ./fly-mock
+      dockerfile: Dockerfile
+    image: fly-mock
+    restart: unless-stopped                                    # a guarded handler shouldn't crash, but recover the container if it ever does
+    ports:
+      # Bound to LOOPBACK, unlike the other mocks: this one's /__mock introspection returns
+      # each machine's resolved environment, which in a deployments test run holds decrypted
+      # project secrets. Only Marshal (on the host) needs to reach it, so there is nothing to
+      # gain from publishing it to every interface.
+      - "127.0.0.1:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}48:8080"  # mock of the Fly.io Machines/GraphQL/logs APIs for Marshal
 
   # ================= Stripe =================
   
@@ -332,7 +359,7 @@ volumes:
   svix-redis-data:
   svix-postgres-data:
   s3mock-data:
-  deno-cache:
+  freestyle-module-cache:
   localstack-data:
   clickhouse-data:
   drizzle-gateway:

@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import { Link } from "@/components/link";
-import { ChartLineIcon, ChartPolarIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, ShieldWarningIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TreeStructureIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, ShieldWarningIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TreeStructureIcon, TrendUpIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
 import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
@@ -121,8 +121,8 @@ export function testItemPath(projectId: string, appFrontend: NavigableAppFronten
   const matched = matchedItemPathname(projectId, appFrontend, item, fullUrl);
   if (matched == null) return false;
 
-  // Nav items can nest: GTM's Admin lives at `gtm/admin`, underneath the Overview item's own `gtm`. A prefix
-  // match alone lights up both, so the most specific matching item wins — an item that only matches because
+  // Nav items can nest, for example Growth's settings under its overview root. A prefix match alone lights up
+  // both, so the most specific matching item wins — an item that only matches because
   // it is an ancestor of the sibling the user actually navigated to is not the current page. Siblings with a
   // custom `matchPath` are left out of the comparison, since they answer yes/no without a path to rank.
   return !appFrontend.navigationItems.some((sibling) => {
@@ -453,18 +453,23 @@ export const ALL_APPS_FRONTEND = {
     ),
   },
   gtm: {
-    icon: ChartPolarIcon,
+    icon: TrendUpIcon,
     href: "gtm",
     navigationItems: [
+      // Lifecycle and detail pages are deliberately not nav items. They are reached from the
+      // overview, and the most-specific-wins matching below highlights "Overview" for them.
       { displayName: "Overview", href: "." },
+      { displayName: "Chat", href: "chat" },
+      // { displayName: "Ad accounts", href: "ad-accounts" },
+      { displayName: "Settings", href: "settings" },
       { displayName: "Admin", href: "admin", internalOnly: true },
     ],
     screenshots: [],
     storeDescription: (
       <>
-        <p>GTM is an internal workspace for curating go-to-market insights, actions, and durable notes.</p>
-        <p>The overview presents the latest signals across the whole business, while the admin page owns all edits.</p>
-        <p>Actions in this initial version are inert records and never perform external side effects.</p>
+        <p>Growth analyzes your product and your project&apos;s data, interviews you about your business, and turns the result into a growth report with one-click actionable items.</p>
+        <p>Every day it delivers a brief comparing signups, returning users, transactions, and emails against the day before.</p>
+        <p>An AI assistant with full growth context and reviewable automations keep the loop running.</p>
       </>
     ),
   },
@@ -497,18 +502,18 @@ export const ALL_APPS_FRONTEND = {
       </>
     ),
   },
-  "deployments-alpha": {
+  "deploy": {
     icon: GraphIcon,
     // The route stays /projects/<id>/deployments — only the app id carries the
     // `-alpha` suffix, so existing links and bookmarks keep working.
     href: "deployments",
     navigationItems: [
-      { displayName: "Services", href: "." },
+      { displayName: "Deploy", href: "." },
     ],
     screenshots: [],
     storeDescription: (
       <>
-        <p>Deployments gives your project a visual canvas for the services that run your app.</p>
+        <p>Deploy gives your project a visual canvas for the services that run your app.</p>
         <p>Drag static sites, containers, and your Hexclave backend around a grid, then wire outputs from one service straight into another service&apos;s environment variables.</p>
         <p>Every project keeps exactly one Hexclave service at its center, so credentials like the secret server key are one reference away.</p>
       </>
@@ -516,7 +521,7 @@ export const ALL_APPS_FRONTEND = {
   },
   "workflows-alpha": {
     icon: TreeStructureIcon,
-    // Like Deployments, only the app id carries the `-alpha` suffix — the route
+    // Like Deploy, only the app id carries the `-alpha` suffix — the route
     // stays /projects/<id>/workflows, and the detail route /workflows/<id>
     // matches as a child of it.
     href: "workflows",

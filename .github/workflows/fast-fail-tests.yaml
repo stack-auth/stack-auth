@@ -17,8 +17,12 @@ on:
 permissions:
   contents: read
 
+# A concurrency group only ever runs one run at a time, so the sha is part of the group on main/dev:
+# otherwise consecutive dev pushes queue behind each other (and GitHub cancels the older queued run),
+# so one slow or hung run silently skips CI for every commit after it. PRs and feature branches stay
+# grouped per ref, where cancelling superseded runs is what we want.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 jobs:
@@ -54,7 +58,7 @@ jobs:
 
           git diff --name-only "$merge_base" "$HEAD_SHA" > changed-files.txt || true
           # Cap the patch so the prompt stays within a reasonable size.
-          git diff "$merge_base" "$HEAD_SHA" | head -c 200000 > diff.patch || true
+          git diff "$merge_base" "$HEAD_SHA" | head -c 60000 > diff.patch || true
 
           echo "Changed files:"
           cat changed-files.txt || true
@@ -146,13 +150,14 @@ jobs:
           # `codex exec` runs non-interactively. We keep it read-only and never
           # prompt for approvals so it can't hang CI. It's given the diff + test
           # list directly in the prompt, so it doesn't need to explore the repo.
-          codex exec \
+          # The prompt goes through stdin (`-`) because as a single argv entry it
+          # exceeds Linux's per-argument limit (MAX_ARG_STRLEN, 128 KiB).
+          codex exec - \
             --skip-git-repo-check \
             -s read-only \
             -c approval_policy="never" \
             --output-schema schema.json \
-            --output-last-message codex-out.json \
-            "$(cat prompt.txt)"
+            --output-last-message codex-out.json < prompt.txt
 
           echo "Codex raw output:"
           cat codex-out.json
@@ -187,6 +192,7 @@ jobs:
           echo "test_files=$selected" >> "$GITHUB_OUTPUT"
 
   fast-fail-tests:
+    timeout-minutes: 45
     name: fast-fail-tests
     needs: select-tests
     if: ${{ needs.select-tests.outputs.test_files != '' }}
@@ -207,7 +213,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: 22.x
+          node-version: 24.x
 
       - name: Setup pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -256,6 +262,12 @@ jobs:
       - name: Wait on ClickHouse
         run: pnpm exec wait-on http://localhost:8136/ping
 
+      - name: Wait on s3mock
+        run: pnpm exec wait-on http://localhost:8121/
+
+      - name: Wait on fly-mock
+        run: pnpm exec wait-on http://localhost:8148/health
+
       - name: Initialize database
         run: pnpm run db:init
 
@@ -264,7 +276,14 @@ jobs:
         env:
           HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB: "1"
         with:
-          run: pnpm run start:bulldozer &
+          run: |
+            bulldozer_log="$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
+            (
+              set +e
+              # Keep service output correlatable with the surrounding GitHub Actions logs.
+              pnpm run start:bulldozer 2>&1 | TZ=UTC awk '{ print strftime("%Y-%m-%dT%H:%M:%SZ"), $0; fflush() }' >"$bulldozer_log"
+              echo "${PIPESTATUS[0]}" > "$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt"
+            ) &
           wait-on: |
             tcp:localhost:8146
           tail: true
@@ -273,6 +292,18 @@ jobs:
 
       - name: Backfill Bulldozer from Postgres
         run: pnpm run db:backfill-bulldozer-from-prisma
+
+      # Marshal (the deployments runtime) talks to the fly-mock + s3mock
+      # containers; the deployments e2e tests drive it through the backend.
+      - name: Start marshal in background
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        with:
+          run: NODE_ENV=test pnpm run start:marshal &
+          wait-on: |
+            http://localhost:8147/health
+          tail: true
+          wait-for: 30s
+          log-output-if: true
 
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
@@ -340,8 +371,36 @@ jobs:
       - name: Run AI-selected subset of tests
         run: |
           set -euo pipefail
-          echo "Running fast-fail subset: $SELECTED_TEST_FILES"
-          pnpm test run $SELECTED_TEST_FILES --reporter=verbose
+          # Perf files are excluded by default and belong in the dedicated one-worker step.
+          selected_test_files=$(printf '%s\n' "$SELECTED_TEST_FILES" \
+            | tr ' ' '\n' \
+            | grep -Ev '\.perf\.test\.' \
+            | tr '\n' ' ' \
+            | sed 's/ *$//' || true)
+          if [ -z "$selected_test_files" ]; then
+            echo "Skipping fast-fail subset: the selector chose only perf files, which run in the dedicated one-worker step."
+            exit 0
+          fi
+          echo "Running fast-fail subset: $selected_test_files"
+          pnpm test run $selected_test_files --reporter=verbose
+
+      - name: Print bulldozer-js diagnostics
+        if: ${{ failure() }}
+        run: |
+          if [[ -f "$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt" ]]; then
+            echo "Bulldozer-js command exited with code $(<"$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt")"
+          else
+            echo "Bulldozer-js command is still running; a child process may have exited"
+          fi
+          tail -n 2000 "$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
+
+      - name: Upload bulldozer-js logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fast-fail-bulldozer
+          path: ${{ runner.temp }}/hexclave-bulldozer.untracked.log
+          if-no-files-found: error
 
       - name: Print Docker Compose logs
         if: always()

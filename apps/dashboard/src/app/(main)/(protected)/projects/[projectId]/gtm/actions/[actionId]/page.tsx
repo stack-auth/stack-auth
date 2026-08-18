@@ -1,28 +1,16 @@
-"use client";
+import Loading from "@/app/loading";
+import { Suspense } from "react";
+import PageClient from "./page-client";
 
-import { AppEnabledGuard } from "../../../app-enabled-guard";
-import { useAdminApp, useProjectId } from "../../../use-admin-app";
-import { GtmDataProvider } from "@/lib/gtm/gtm-data";
-import { isGtmDemoMode } from "@/lib/gtm/gtm-mode";
-import { notFound, useParams, useSearchParams } from "next/navigation";
-import { CustomerSuggestionReport } from "../../components/customer-suggestion-report";
+export const metadata = { title: "Growth Action" };
+// The page depends on the authenticated project provider in the parent layout,
+// so it cannot render an independently validated instant shell.
+export const instant = false;
 
 export default function Page() {
-  const projectId = useProjectId();
-  // A project's live GTM records only come back through its own admin app; the dashboard app is authenticated
-  // against the `internal` project and would read the internal workspace instead.
-  const app = useAdminApp();
-  const { actionId } = useParams<{ actionId: string }>();
-  const searchParams = useSearchParams();
-  const demo = isGtmDemoMode(projectId, searchParams.get("demo"));
-
-  if (projectId === "internal" && !demo) return notFound();
-
   return (
-    <AppEnabledGuard appId="gtm">
-      <GtmDataProvider demo={demo} app={app} target={{ kind: "own-project" }}>
-        <CustomerSuggestionReport id={actionId} type="action" />
-      </GtmDataProvider>
-    </AppEnabledGuard>
+    <Suspense fallback={<Loading />}>
+      <PageClient />
+    </Suspense>
   );
 }
