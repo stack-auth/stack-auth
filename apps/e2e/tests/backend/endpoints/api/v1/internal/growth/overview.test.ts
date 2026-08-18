@@ -56,7 +56,7 @@ describe("internal Growth overview", { timeout: 90_000 }, () => {
       headers: GROWTH_AGENT_AUTH,
       body: {
         ...scope,
-        source: "overview-e2e",
+        source: "website-research",
         findings: [
           { kind: "signal", category: "conversion", tags: ["Onboarding", " onboarding "], title: "First activation signal", body: "One", document: FINDING_DOCUMENT },
           { kind: "signal", category: "conversion", tags: [], title: "Second activation signal", body: "Two" },

@@ -463,13 +463,14 @@ describe("internal growth interview (no mock Eve)", { timeout: 90_000 }, () => {
     expect(afterRetake.status).toBe(404);
 
     // The run is running again with the question phase re-armed on a fresh attempt budget, while
-    // every other phase stays settled — retake must not re-run research.
+    // every other phase stays settled — retake must not re-run research. Integrations is
+    // intentionally auto-settled as skipped until its future customer flow is wired up.
     const run = await getRun(runId);
     expect(run.status).toBe("running");
     const questionPhase = run.phases.find((phase) => phase.phase_key === "interview-questions");
     expect(questionPhase).toMatchObject({ status: "pending", attempt: 0 });
     const researchPhases = run.phases.filter((phase) => phase.phase_key !== "interview-questions" && phase.phase_key !== "report");
-    expect(researchPhases.every((phase) => phase.status === "completed")).toBe(true);
+    expect(researchPhases.every((phase) => phase.status === "completed" || phase.status === "skipped")).toBe(true);
 
     // The finding is untouched.
     const findings = await niceBackendFetch(urlString`${AGENT_BASE}/context-bundle?project_id=${scope.project_id}&branch_id=${scope.branch_id}`, {
