@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   conciseServiceIdentitySummary,
+  namespacedSelectValue,
   parseServiceIdentityRow,
+  selectValueToNamespacedValue,
   selectValueToServiceIdentity,
   serviceIdentitiesFromTraceRow,
   serviceIdentityLabel,
@@ -9,6 +11,15 @@ import {
 } from "./service-identity";
 
 describe("observability service identities", () => {
+  it("shares the namespaced codec with scalar filters", () => {
+    const value = "production/eu-west:1";
+    const encoded = namespacedSelectValue(value, "env:");
+    expect(encoded).toBe("env:production%2Feu-west%3A1");
+    expect(selectValueToNamespacedValue(encoded, "env:")).toBe(value);
+    expect(selectValueToNamespacedValue("all", "env:")).toBeNull();
+    expect(() => selectValueToNamespacedValue("service:web/app", "env:")).toThrow("Unexpected namespaced select value");
+  });
+
   it("keeps equal names in different namespaces distinct", () => {
     const dashboard = { namespace: "web", name: "app" };
     const backend = { namespace: "api", name: "app" };

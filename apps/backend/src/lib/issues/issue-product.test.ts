@@ -21,30 +21,41 @@ let otherUserId: string;
 let ownerTeamId: string;
 
 beforeAll(async () => {
-  const project = await globalPrismaClient.project.findFirst({
+  // Not findFirst: the first owner-team project the database happens to return
+  // can be one with no seeded end users at all (e.g. the development
+  // environment fixture project), and this suite's whole precondition is a
+  // branch with at least two users. Scan the candidates and take the first one
+  // that actually satisfies it.
+  const projects = await globalPrismaClient.project.findMany({
     where: { ownerTeamId: { not: null }, id: { not: "internal" } },
     select: { id: true, ownerTeamId: true },
-  });
-  if (project === null || project.ownerTeamId === null) {
-    throw new Error("Issue product tests need a seeded project with an owner team.");
-  }
-  const tenancyRow = await globalPrismaClient.tenancy.findFirst({
-    where: { projectId: project.id },
     orderBy: { id: "asc" },
-    select: { id: true },
   });
-  if (tenancyRow === null) throw new Error("Issue product tests need a seeded tenancy.");
-  const resolved = await getTenancy(tenancyRow.id);
-  if (resolved === null) throw new Error("Issue product test tenancy disappeared.");
-  tenancy = resolved;
-  ownerTeamId = project.ownerTeamId;
+  let picked: { tenancy: Tenancy, ownerTeamId: string, userIds: [string, string] } | null = null;
+  for (const project of projects) {
+    if (project.ownerTeamId === null) continue;
+    const tenancyRow = await globalPrismaClient.tenancy.findFirst({
+      where: { projectId: project.id },
+      orderBy: { id: "asc" },
+      select: { id: true },
+    });
+    if (tenancyRow === null) continue;
+    const resolved = await getTenancy(tenancyRow.id);
+    if (resolved === null) continue;
+    const prisma = await getPrismaClientForTenancy(resolved);
+    const users = await prisma.projectUser.findMany({ where: { tenancyId: resolved.id }, select: { projectUserId: true }, take: 2 });
+    const user = users.at(0);
+    const otherUser = users.at(1);
+    if (user === undefined || otherUser === undefined) continue;
+    picked = { tenancy: resolved, ownerTeamId: project.ownerTeamId, userIds: [user.projectUserId, otherUser.projectUserId] };
+    break;
+  }
+  if (picked === null) throw new Error("Issue product tests need a seeded owner-team project whose branch has two users.");
+  tenancy = picked.tenancy;
+  ownerTeamId = picked.ownerTeamId;
+  userId = picked.userIds[0];
+  otherUserId = picked.userIds[1];
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const users = await prisma.projectUser.findMany({ where: { tenancyId: tenancy.id }, select: { projectUserId: true }, take: 2 });
-  const user = users.at(0);
-  const otherUser = users.at(1);
-  if (user === undefined || otherUser === undefined) throw new Error("Issue product tests need two users in the seeded branch.");
-  userId = user.projectUserId;
-  otherUserId = otherUser.projectUserId;
   const [{ shortId }] = await prisma.$queryRaw<Array<{ shortId: bigint }>>`
     INSERT INTO "IssueCounter" ("tenancyId", "nextShortId")
     VALUES (${tenancy.id}::uuid, 2::bigint)

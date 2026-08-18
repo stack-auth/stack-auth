@@ -186,6 +186,68 @@ describe("error grouping normalization", () => {
   });
 });
 
+describe("lens-scoped scrubbing and durable-storage data normalization", () => {
+  it("stores product-event data byte-identical, even when keys and values look sensitive", () => {
+    // Scrubbing is an error-pipeline control. Customers expect product
+    // analytics ($page-view/$click/custom events) stored exactly as captured —
+    // e.g. exact-match URL queries — so the error scrubber must never touch
+    // this lens, no matter how sensitive the keys look.
+    const data = { token: "secret", url: "https://x.example/path?token=abc" };
+    const { productEvents, logOccurrences } = normalizeBatchEvents(
+      [{ event_type: "checkout_completed", event_at_ms: 1_700_000_000_000, data }],
+      DRIFT_GUARD_CONTEXT,
+      DRIFT_GUARD_BATCH_ID,
+    );
+
+    expect(logOccurrences).toHaveLength(0);
+    expect(productEvents[0].data).toEqual({ token: "secret", url: "https://x.example/path?token=abc" });
+    // Byte-identical, not just structurally equal: key order and values
+    // survive the durable-storage normalization pass untouched.
+    expect(JSON.stringify(productEvents[0].data)).toBe(JSON.stringify(data));
+  });
+
+  it("still scrubs observability-lens occurrences before storage", () => {
+    const { logOccurrences } = normalizeBatchEvents([{
+      event_type: "$log",
+      event_at_ms: 1_700_000_000_000,
+      data: { token: "secret", url: "https://x.example/path?token=abc" },
+      message: "checkout failed",
+      level: "warn",
+    }], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID);
+
+    const serialized = JSON.stringify(logOccurrences[0].data);
+    // The sensitive key is dropped before its value is read, and the query
+    // secret is filtered out of the URL value.
+    expect(serialized).not.toContain("secret");
+    expect(serialized).not.toContain("token=abc");
+    expect(serialized).toContain("https://x.example/path");
+  });
+
+  it("wraps non-object product data for the typed JSON telemetry column", () => {
+    // The released pre-versioned wire contract accepted ANY JSON value as
+    // `data`, but the telemetry `data` column is typed ClickHouse JSON (objects
+    // only). Non-objects must survive losslessly under the reserved key rather
+    // than 400ing the batch or being dropped.
+    const { productEvents } = normalizeBatchEvents([
+      { event_type: "legacy_string_data", event_at_ms: 1_700_000_000_000, data: "just a string" },
+      { event_type: "legacy_number_data", event_at_ms: 1_700_000_000_000, data: 42 },
+      { event_type: "legacy_array_data", event_at_ms: 1_700_000_000_000, data: [1, "two"] },
+      { event_type: "legacy_null_data", event_at_ms: 1_700_000_000_000, data: null },
+      { event_type: "object_data", event_at_ms: 1_700_000_000_000, data: { kept: "as-is" } },
+    ], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID);
+
+    expect(productEvents.map((row) => row.data)).toEqual([
+      { "$value": "just a string" },
+      { "$value": 42 },
+      { "$value": [1, "two"] },
+      { "$value": null },
+      // Plain objects are stored unwrapped — wrapping is a projection for the
+      // values the typed column cannot hold, not a shape change for everyone.
+      { kept: "as-is" },
+    ]);
+  });
+});
+
 describe("analytics telemetry storage dispatch", () => {
   it("builds one canonical write plan after protocol-specific normalization", () => {
     const normalized = normalizeBatchEvents(

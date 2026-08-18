@@ -86,6 +86,39 @@ describe("Sentry envelope event adapter", () => {
     expect(projected.span_id).toBeUndefined();
   });
 
+  it("falls back to receipt time for numeric timestamps beyond the supported Date range", () => {
+    // 9e12 seconds is a safe integer in ms but past Date's ±8.64e15 ms range.
+    const projected = projectSentryEnvelopeEvent({
+      header: { ...header, trace: null },
+      item,
+      receivedAtMs: 42_000,
+      event: scrubEvent({ event_id: eventId, timestamp: 9_000_000_000_000, message: "captured" }),
+    });
+    expect(projected.event_at_ms).toBe(42_000);
+  });
+
+  it("emits the span identity only when both trace_id and span_id are present", () => {
+    // A DSC trace_id without a span_id would be an unjoinable partial identity
+    // under the wire contract, so neither half may be emitted.
+    const traceOnly = projectSentryEnvelopeEvent({
+      header,
+      item,
+      receivedAtMs: 1_000,
+      event: scrubEvent({ event_id: eventId, message: "captured" }),
+    });
+    expect(traceOnly.trace_id).toBeUndefined();
+    expect(traceOnly.span_id).toBeUndefined();
+
+    const spanOnly = projectSentryEnvelopeEvent({
+      header: { ...header, trace: null },
+      item,
+      receivedAtMs: 1_000,
+      event: scrubEvent({ event_id: eventId, message: "captured", contexts: { trace: { span_id: "bbbbbbbbbbbbbbbb" } } }),
+    });
+    expect(spanOnly.trace_id).toBeUndefined();
+    expect(spanOnly.span_id).toBeUndefined();
+  });
+
   it("accepts Sentry ISO timestamps and normalizes fatal levels to the telemetry vocabulary", () => {
     const projected = projectSentryEnvelopeEvent({
       header,

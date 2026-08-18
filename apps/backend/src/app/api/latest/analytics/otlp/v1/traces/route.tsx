@@ -1,10 +1,10 @@
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
-import { evaluateErrorIngestPolicy, persistErrorIngestClientReportProjection } from "@/lib/telemetry-ingest";
+import { evaluateErrorIngestPolicy, persistErrorIngestClientReportProjection } from "@/lib/error-ingest";
 import { createOtlpTraceProtocolProjection } from "@/lib/error-ingest/error-ingest-protocol-projections";
-import { createOtlpHttpResponse, decodeOtlpHttpRequest, getOtlpHttpEncoding, OtlpHttpError, scrubOtlpErrorMessage } from "@/lib/otlp-http";
-import { OtlpProtobufError } from "@/lib/otlp-protobuf";
-import { buildOtlpTraceRows, getOtlpSpanPolicyData, insertOtlpTraces, type OtlpTenantContext } from "@/lib/otlp-trace-writer";
-import { normalizeOtlpJsonTraceRequest, OtlpTraceRequestError, type CanonicalOtlpSpan } from "@/lib/otlp-traces";
+import { createOtlpHttpResponse, decodeOtlpHttpRequest, getOtlpHttpEncoding, OtlpHttpError, scrubOtlpErrorMessage } from "@/lib/otlp/http";
+import { OtlpProtobufError } from "@/lib/otlp/protobuf";
+import { buildOtlpTraceRows, getOtlpSpanPolicyData, insertOtlpTraces, type OtlpTenantContext } from "@/lib/otlp/trace-writer";
+import { normalizeOtlpJsonTraceRequest, OtlpTraceRequestError, type CanonicalOtlpSpan } from "@/lib/otlp/traces";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { tryDecreasePlanItemQuantities } from "@/lib/plan-metering";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -122,7 +122,11 @@ export const POST = createSmartRouteHandler({
           itemId: ITEM_IDS.analyticsSpans,
           quantity: 1,
           idempotency: {
-            key: `otlp-span:${spanIdentity}`,
+            // The tenancy id is part of the key because W3C span identity is
+            // CLIENT-chosen: two projects/branches billed to the same team may
+            // legitimately (or deliberately) carry identical trace/span ids,
+            // and each accepted span must debit its own metering row.
+            key: `otlp-span:${auth.tenancy.id}:${spanIdentity}`,
             createdAt: span.ended_at ?? span.started_at,
           },
         })),

@@ -481,13 +481,14 @@ export async function seed() {
       domains: [],
     },
   } satisfies AdminUserProjectsCrud["Admin"]["Create"];
+  // Create-only on purpose: development-environment projects have read-only
+  // environment config overrides (see getEnvironmentConfigWriteBlockReason),
+  // and the create path only works because it stamps isDevelopmentEnvironment
+  // AFTER writing the initial override. An update on a re-seed would hit the
+  // guard and abort the whole seed, so an existing project is left untouched —
+  // its config is a fixture; `db:reset` is the way to get a fresh one.
   if (await getProject(DEVELOPMENT_ENVIRONMENT_PROJECT_ID)) {
-    await createOrUpdateProjectWithLegacyConfig({
-      type: 'update',
-      projectId: DEVELOPMENT_ENVIRONMENT_PROJECT_ID,
-      branchId: DEFAULT_BRANCH_ID,
-      data: developmentEnvironmentProjectData,
-    });
+    console.log("Development environment project already exists, leaving it unchanged (its environment config is read-only).");
   } else {
     await createOrUpdateProjectWithLegacyConfig({
       type: 'create',

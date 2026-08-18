@@ -1,5 +1,5 @@
 import { listIssues } from "@/lib/issues/issue-queries";
-import { assertPublicIssueReadEnabled } from "@/lib/issues/public-issue-api";
+import { assertObservabilityEnabled } from "@/lib/issues/observability-gate";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import {
@@ -28,7 +28,7 @@ export const GET = createSmartRouteHandler({
     body: PublicIssueListResponseSchema,
   }),
   async handler({ auth, query }) {
-    assertPublicIssueReadEnabled(auth.tenancy);
+    assertObservabilityEnabled(auth.tenancy);
     const filters = parsePublicIssueListQuery(query);
     const result = await listIssues({ tenancy: auth.tenancy, filters });
 

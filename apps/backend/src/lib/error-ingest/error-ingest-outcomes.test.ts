@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  createErrorIngestBatchOutcome,
   createErrorIngestItemOutcome,
+  summarizeErrorIngestOutcomes,
   type ErrorIngestItemOutcome,
   type ErrorIngestItemDescriptor,
   type ErrorIngestOutcomeStatus,
@@ -24,12 +24,8 @@ describe("error-ingest outcomes", () => {
       createErrorIngestItemOutcome(item("queued"), { status: "queued", reason: "offline" }),
     ];
 
-    const batch = createErrorIngestBatchOutcome("batch-1", outcomes);
-
-    expect(batch).toEqual({
-      batchId: "batch-1",
+    expect(summarizeErrorIngestOutcomes(outcomes)).toEqual({
       status: "partial",
-      itemCount: 7,
       counts: {
         accepted: 1,
         filtered: 1,
@@ -39,7 +35,6 @@ describe("error-ingest outcomes", () => {
         dropped: 1,
         queued: 1,
       },
-      outcomes,
     });
   });
 
@@ -55,15 +50,13 @@ describe("error-ingest outcomes", () => {
 
   for (const { status, outcome } of homogeneousOutcomes) {
     it(`keeps a homogeneous ${status} batch precise`, () => {
-      expect(createErrorIngestBatchOutcome(`batch-${status}`, [outcome]).status).toBe(status);
+      expect(summarizeErrorIngestOutcomes([outcome]).status).toBe(status);
     });
   }
 
   it("marks an empty batch as an explicit rejection instead of an implicit success", () => {
-    expect(createErrorIngestBatchOutcome("empty", [])).toEqual({
-      batchId: "empty",
+    expect(summarizeErrorIngestOutcomes([])).toEqual({
       status: "rejected",
-      itemCount: 0,
       counts: {
         accepted: 0,
         filtered: 0,
@@ -73,7 +66,6 @@ describe("error-ingest outcomes", () => {
         dropped: 0,
         queued: 0,
       },
-      outcomes: [],
       reason: "empty_batch",
     });
   });

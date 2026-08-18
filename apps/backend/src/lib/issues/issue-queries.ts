@@ -136,7 +136,7 @@ export function deriveSubstatus(
  * leaves a window where the stored status says IGNORED but the user's intent
  * has expired, so the read path compensates.
  */
-function effectiveStatus(row: Pick<IssueRow, "status">, ignoredUntil: Date | null, now: Date): IssueStatus {
+export function effectiveStatus(row: Pick<IssueRow, "status">, ignoredUntil: Date | null, now: Date): IssueStatus {
   if (row.status === "IGNORED" && ignoredUntil !== null && ignoredUntil < now) return "unresolved";
   if (row.status === "RESOLVED") return "resolved";
   if (row.status === "IGNORED") return "ignored";
@@ -159,6 +159,20 @@ export type IssueListCursor = {
  */
 export function issueRangeStart(hours: number, now: Date): Date {
   return new Date(now.getTime() - hours * 60 * 60 * 1000);
+}
+
+/**
+ * The rollup's `bucket_start` is hour-truncated, so a range filter must align
+ * DOWN to the hour before comparing. Comparing against a raw wall-clock
+ * `rangeStart` (e.g. "now minus 24h" at 12:30) silently drops the whole bucket
+ * that contains it — up to an hour of genuinely in-window occurrences vanish
+ * from every windowed count. Aligning down instead admits up to an hour of
+ * pre-window occurrences, which is the lesser error: a "last 24h" number that
+ * includes 24.5h is approximately right, one that quietly loses the newestmost
+ * hour's worth of a partial bucket is misleading in the direction users act on.
+ */
+export function rollupRangeStartSeconds(rangeStart: Date): number {
+  return Math.floor(rangeStart.getTime() / 3_600_000) * 3600;
 }
 
 export function encodeIssueCursor(cursor: IssueListCursor): string {
@@ -340,7 +354,7 @@ async function loadMatchingHashes(
     query_params: {
       projectId,
       branchId,
-      rangeStart: Math.floor(rangeStart.getTime() / 1000),
+      rangeStart: rollupRangeStartSeconds(rangeStart),
       ...filters.serviceName === null ? {} : { service: filters.serviceName },
       ...filters.environment === null ? {} : { environment: filters.environment },
     },
@@ -397,7 +411,7 @@ async function loadWindowStats(
       branchId,
       hashes,
       issueIds,
-      rangeStart: Math.floor(rangeStart.getTime() / 1000),
+      rangeStart: rollupRangeStartSeconds(rangeStart),
       ...filters.serviceName === null ? {} : { service: filters.serviceName },
       ...filters.environment === null ? {} : { environment: filters.environment },
     },
@@ -474,7 +488,7 @@ export async function loadIssueWindowStats(options: {
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       hashes,
-      rangeStart: Math.floor(rangeStart.getTime() / 1000),
+      rangeStart: rollupRangeStartSeconds(rangeStart),
     },
     format: "JSONEachRow",
   });
@@ -563,9 +577,12 @@ export async function loadOccurrence(options: {
       : "AND (event_at, occurrence_id) > ({cursorAt:DateTime64(3)}, {cursorId:String})";
   const order = direction === "older" ? "DESC" : "ASC";
 
+  // `message` (not `body`): for `$error` rows the human-readable message is
+  // promoted server-side into the `message` column; `body` holds the OTLP
+  // AnyValue, which is the JSON null literal for everything that isn't `$log`.
   const resultSet = await clickhouse.query({
     query: `
-      SELECT occurrence_id, event_at, body AS message, level, data, error_envelope,
+      SELECT occurrence_id, event_at, message, level, data, error_envelope,
              issue_grouping_provenance, error_frames,
              trace_id, span_id, page_view_span_id, session_replay_id, session_replay_segment_id, user_id,
              service_name, deployment_environment_name
@@ -600,18 +617,25 @@ export async function loadOccurrence(options: {
   }
   const position = { eventAtMillis, occurrenceId: occurrence.occurrence_id };
   const hasAnotherInDirection = rows.length > 1;
-  const inputCursor = cursor === null ? null : encodeOccurrenceCursor(cursor);
+  const positionCursor = encodeOccurrenceCursor(position);
   return {
     occurrence,
-    // The second row is the next row in the requested direction. The input
-    // cursor is the immediate neighbor in the opposite direction, so this
-    // yields real terminal cursors without an extra query per navigation.
+    // The second row proves there is a next row in the requested direction.
+    //
+    // BOTH cursors anchor on the RETURNED occurrence's position, never on the
+    // request's input cursor: the comparisons above are strict, so an opposite
+    // cursor still holding the input anchor would skip the row the caller just
+    // navigated away from (older from C lands on P; "newer" must be `> P`,
+    // which returns C — `> C` would jump past it). The opposite direction is
+    // known non-terminal whenever an input cursor exists, because the row that
+    // cursor pointed past is itself the opposite neighbor; only the initial,
+    // cursorless page is terminal on that side.
     newerCursor: direction === "newer"
-      ? hasAnotherInDirection ? encodeOccurrenceCursor(position) : null
-      : inputCursor,
+      ? hasAnotherInDirection ? positionCursor : null
+      : cursor === null ? null : positionCursor,
     olderCursor: direction === "older"
-      ? hasAnotherInDirection ? encodeOccurrenceCursor(position) : null
-      : inputCursor,
+      ? hasAnotherInDirection ? positionCursor : null
+      : cursor === null ? null : positionCursor,
   };
 }
 

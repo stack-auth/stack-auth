@@ -14,6 +14,44 @@
 -- same key for their own scope foreign keys, so it lands here rather than
 -- being repeated.
 
+-- The FK adds below take brief SHARE ROW EXCLUSIVE locks on hot referenced
+-- tables (Tenancy, Project). Fail fast instead of queueing an exclusive lock
+-- request behind long-running production queries. SET LOCAL is
+-- transaction-scoped, so this covers every in-transaction chunk of this file.
+SET LOCAL lock_timeout = '2s';
+SET LOCAL statement_timeout = '5min';
+
+-- If a previous attempt's CREATE INDEX CONCURRENTLY crashed mid-build, it
+-- leaves an INVALID index behind. IF NOT EXISTS would then skip the rebuild,
+-- and the composite foreign keys below would fail with "no unique constraint
+-- matching given keys" on every retry, with no way to make progress without
+-- manual intervention. Drop such a leftover so the retry rebuilds it. The DROP
+-- takes a brief ACCESS EXCLUSIVE lock on Tenancy, but only in the
+-- crashed-previous-attempt case; the happy path takes no lock at all.
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+-- RUN_OUTSIDE_TRANSACTION_SENTINEL
+DO $$
+DECLARE
+  invalid_index_oid oid;
+BEGIN
+  -- This block runs outside the migration transaction so the invalid-index
+  -- cleanup can commit independently. Reapply the transaction-local timeout
+  -- here; otherwise a crashed-attempt retry can wait indefinitely for the
+  -- ACCESS EXCLUSIVE lock this DROP INDEX requires.
+  PERFORM set_config('lock_timeout', '2s', true);
+  SELECT i.indexrelid INTO invalid_index_oid
+  FROM pg_index i
+  JOIN pg_class c ON c.oid = i.indexrelid
+  WHERE i.indrelid = '/* SCHEMA_NAME_SENTINEL */."Tenancy"'::regclass
+    AND c.relname = 'Tenancy_id_projectId_branchId_key'
+    AND NOT i.indisvalid;
+  IF invalid_index_oid IS NOT NULL THEN
+    EXECUTE 'DROP INDEX ' || invalid_index_oid::regclass;
+  END IF;
+END
+$$;
+
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
 -- RUN_OUTSIDE_TRANSACTION_SENTINEL

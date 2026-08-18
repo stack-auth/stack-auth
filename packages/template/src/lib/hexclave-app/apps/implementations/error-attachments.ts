@@ -27,11 +27,12 @@ const DEFAULT_ATTACHMENT_TYPE = "event.attachment";
 const ATTACHMENT_TYPE_PATTERN = /^[a-z][a-z0-9_.-]{0,63}$/;
 
 export function cloneErrorAttachmentInput(input: ErrorAttachmentInput): ErrorAttachmentInput {
-  const normalized = normalizeErrorAttachmentInput(input);
-  return {
-    ...normalized,
-    data: typeof normalized.data === "string" ? normalized.data : new Uint8Array(normalized.data),
-  };
+  // normalizeErrorAttachmentInput already deep-copies binary data (see
+  // cloneAttachmentData), so this IS the clone — wrapping the bytes in another
+  // `new Uint8Array` would copy a potentially 2MB buffer a second time for no
+  // behavioral difference. The separate name stays because call sites use it to
+  // state intent ("give me an isolated copy"), not to re-validate.
+  return normalizeErrorAttachmentInput(input);
 }
 
 export function normalizeErrorAttachmentInput(input: ErrorAttachmentInput): ErrorAttachmentInput {
@@ -51,8 +52,7 @@ export function normalizeErrorAttachmentInput(input: ErrorAttachmentInput): Erro
   };
 }
 
-export function cloneErrorAttachmentInputs(inputs: readonly ErrorAttachmentInput[] | undefined): ErrorAttachmentInput[] | undefined {
-  if (inputs === undefined) return undefined;
+export function cloneErrorAttachmentInputs(inputs: readonly ErrorAttachmentInput[]): ErrorAttachmentInput[] {
   if (inputs.length > MAX_ERROR_ATTACHMENTS) {
     throw new Error(`Hexclave error capture supports at most ${MAX_ERROR_ATTACHMENTS} attachments per event`);
   }

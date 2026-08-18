@@ -96,9 +96,9 @@ export function validateArtifactManifest(input: unknown, scopeInput: ArtifactSco
     throw invalidManifest("Artifact manifest projectId does not match the authenticated project.");
   }
 
-  const release = readOptionalMetadata(record, "release", "Artifact manifest release");
-  const dist = readOptionalMetadata(record, "dist", "Artifact manifest dist");
-  const environment = readOptionalMetadata(record, "environment", "Artifact manifest environment");
+  const release = validateArtifactMetadata(record.release, "Artifact manifest release");
+  const dist = validateArtifactMetadata(record.dist, "Artifact manifest dist");
+  const environment = validateArtifactMetadata(record.environment, "Artifact manifest environment");
   if (dist !== null && release === null) {
     throw invalidManifest("Artifact manifest dist requires a release.");
   }
@@ -214,16 +214,6 @@ function validateScopePart(value: string, label: string): string {
   }
   if (Buffer.byteLength(value, "utf8") > MAX_METADATA_BYTES || /[\u0000-\u001f\u007f/\\]/u.test(value)) {
     throw invalidManifest(`Artifact ${label} contains unsafe characters.`);
-  }
-  return value;
-}
-
-function readOptionalMetadata(record: Record<string, unknown>, key: string, label: string): string | null {
-  const value = record[key];
-  if (value == null) return null;
-  if (typeof value !== "string") throw invalidManifest(`${label} must be a string or null.`);
-  if (value.length === 0 || Buffer.byteLength(value, "utf8") > MAX_METADATA_BYTES || /[\u0000-\u001f\u007f]/u.test(value)) {
-    throw invalidManifest(`${label} must be a non-empty value of at most ${MAX_METADATA_BYTES} UTF-8 bytes without control characters.`);
   }
   return value;
 }

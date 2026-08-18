@@ -1,14 +1,17 @@
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
-import { evaluateErrorIngestPolicy, persistErrorIngestClientReportProjection } from "@/lib/telemetry-ingest";
+import { evaluateErrorIngestPolicy, persistErrorIngestClientReportProjection } from "@/lib/error-ingest";
 import { createOtlpLogProtocolProjection } from "@/lib/error-ingest/error-ingest-protocol-projections";
-import { buildOtlpIssueInputs, getOtlpIssueBatchId, getOtlpLogPolicyData, insertOtlpLogs } from "@/lib/otlp-log-writer";
+import { buildOtlpIssueInputs, getOtlpIssueBatchId, getOtlpLogBillingDebits, getOtlpLogPolicyData, insertOtlpLogs } from "@/lib/otlp/log-writer";
+import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
+import { tryDecreasePlanItemQuantities } from "@/lib/plan-metering";
+import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { findRecentSessionReplay } from "@/lib/session-replays";
 import { buildTelemetryMaterializationMessage, enqueueQstashMessage } from "@/lib/qstash-outbox";
-import { createOtlpHttpResponse, decodeOtlpHttpRequest, getOtlpHttpEncoding, OtlpHttpError, scrubOtlpErrorMessage } from "@/lib/otlp-http";
-import { getHexclaveOtlpLogContractError, normalizeOtlpJsonLogsRequest, type CanonicalOtlpLogRecord } from "@/lib/otlp-logs";
-import { OtlpProtobufError } from "@/lib/otlp-protobuf";
-import { OtlpJsonRequestError } from "@/lib/otlp-json";
-import type { OtlpTenantContext } from "@/lib/otlp-trace-writer";
+import { createOtlpHttpResponse, decodeOtlpHttpRequest, getOtlpHttpEncoding, OtlpHttpError, scrubOtlpErrorMessage } from "@/lib/otlp/http";
+import { getHexclaveOtlpLogContractError, normalizeOtlpJsonLogsRequest, type CanonicalOtlpLogRecord } from "@/lib/otlp/logs";
+import { OtlpProtobufError } from "@/lib/otlp/protobuf";
+import { OtlpJsonRequestError } from "@/lib/otlp/json";
+import type { OtlpTenantContext } from "@/lib/otlp/trace-writer";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { KnownErrors } from "@hexclave/shared";
@@ -120,6 +123,45 @@ export const POST = createSmartRouteHandler({
       acceptedIndexes.add(itemIndex);
       const scrubbedData = policyDecision.scrubbedData.get(itemId);
       acceptedLogRecords.push(scrubbedData === undefined ? logRecord : { ...logRecord, policyScrubbedData: scrubbedData });
+    }
+    // Accepted OTLP log records are billable `analytics_events` occurrences,
+    // exactly like the same records arriving via the legacy events/batch
+    // route — this route must not be a quota bypass. The debit happens before
+    // the ClickHouse insert (fail-closed), and each occurrence has a stable
+    // idempotent metering row: OTLP exporters retry after ambiguous responses,
+    // and an identical retry (same content → same occurrence ids) must collapse
+    // onto the same debit. As on the traces route, a ClickHouse failure does
+    // NOT refund — the retry's identical debit collapsing while a refund
+    // remained would produce free usage.
+    const billingDebits = getOtlpLogBillingDebits(acceptedLogRecords, tenant);
+    const billingTeamId = getBillingTeamId(auth.tenancy.project);
+    if (
+      auth.tenancy.project.id !== "internal"
+      && billingTeamId != null
+      && billingDebits.length > 0
+      && arePlanLimitsEnforced()
+    ) {
+      const debit = await tryDecreasePlanItemQuantities(
+        billingTeamId,
+        billingDebits.map((billingDebit) => ({
+          itemId: ITEM_IDS.analyticsEvents,
+          quantity: 1,
+          idempotency: {
+            // Tenancy-scoped for the same reason as the traces route: the
+            // occurrence id can be client-chosen (Relay-compatible event ids),
+            // so two projects billed to one team must not collapse debits.
+            key: `otlp-log:${auth.tenancy.id}:${billingDebit.occurrenceId}`,
+            createdAt: billingDebit.eventAt,
+          },
+        })),
+      );
+      if (debit.insufficientItemId != null) {
+        throw new KnownErrors.ItemQuantityInsufficientAmount(
+          debit.insufficientItemId,
+          billingTeamId,
+          billingDebits.length,
+        );
+      }
     }
     const protocolProjection = createOtlpLogProtocolProjection(logRecords, acceptedIndexes, tenant, policyDecision.outcomes);
     runAsynchronouslyAndWaitUntil(persistErrorIngestClientReportProjection(

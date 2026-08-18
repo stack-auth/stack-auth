@@ -1,7 +1,8 @@
 import {
+  ErrorIngestClientReportParseError,
   parseErrorIngestClientReportRequest,
   persistErrorIngestClientReportRequest,
-} from "@/lib/telemetry-ingest";
+} from "@/lib/error-ingest";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -33,8 +34,13 @@ export const POST = createSmartRouteHandler({
     try {
       request = parseErrorIngestClientReportRequest(body);
     } catch (error) {
-      if (error instanceof Error) throw new StatusError(StatusError.BadRequest, error.message);
-      throw new StatusError(StatusError.BadRequest, "Invalid error-ingest client report");
+      // Only deliberate wire-parse rejections may be reflected to the client
+      // (mirroring ErrorIngestEnvelopeError handling in the envelope route);
+      // anything else is an internal failure whose message must not leak.
+      if (error instanceof ErrorIngestClientReportParseError) {
+        throw new StatusError(StatusError.BadRequest, error.message);
+      }
+      throw error;
     }
     const accepted = await persistErrorIngestClientReportRequest({
       tenancyId: auth.tenancy.id,

@@ -54,7 +54,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     ]
   `);
 
-  // Every index and unique/primary-key constraint the plan calls for. These are
+  // Every index and unique/primary-key constraint this migration creates. These are
   // load-bearing: the four Issue indexes are the four list-view sort orders, and
   // the unique ones are the concurrency controls (see the migration header).
   // COLLATE "C" so the ordering is plain byte order and the snapshot doesn't

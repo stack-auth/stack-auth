@@ -186,11 +186,22 @@ export class ArtifactUploadService {
       const bundleObjectKey = getContentObjectKey(scope, "bundle", artifact.bundleSha256);
       const bundleBytes = await this.readAndVerifyObject(bundleObjectKey, artifact.bundleBytes, artifact.bundleSha256, "bundle");
       if (artifact.sourceMapInline) {
-        const inlineMap = readInlineSourceMap(bundleBytes);
-        if (inlineMap === null) {
+        const inlineMapBytes = readInlineSourceMap(bundleBytes);
+        if (inlineMapBytes === null) {
           throw new ArtifactServiceError("integrity_mismatch", `Artifact ${artifact.debugId} does not contain its declared inline source map.`);
         }
-        verifySourceMap(inlineMap, artifact);
+        // The symbolicator re-derives these bytes at read time and rejects the
+        // artifact when they don't match the manifest digest — so a wrong
+        // inline digest/length must fail here, at finalization, instead of
+        // being reported finalized and then failing every runtime lookup.
+        if (inlineMapBytes.byteLength !== artifact.sourceMapBytes || sha256Hex(inlineMapBytes) !== artifact.sourceMapSha256) {
+          throw new ArtifactServiceError("integrity_mismatch", `Artifact ${artifact.debugId} inline source map does not match its manifest.`);
+        }
+        const inlineMapText = decodeStrictUtf8(inlineMapBytes);
+        if (inlineMapText === null) {
+          throw new ArtifactServiceError("integrity_mismatch", `Artifact ${artifact.debugId} inline source map is not valid UTF-8.`);
+        }
+        verifySourceMap(inlineMapText, artifact);
       } else {
         const sourceMapObjectKey = getContentObjectKey(scope, "source-map", artifact.sourceMapSha256);
         const compressedSourceMap = await this.readAndVerifyLengthOnly(sourceMapObjectKey, artifact.sourceMapGzippedBytes, "source map");
@@ -251,7 +262,17 @@ export class ArtifactUploadService {
     };
   }
 
-  /** Exact debug-ID lookup is scoped by tenant/project/branch and release/dist. */
+  /**
+   * Exact debug-ID lookup is scoped by tenant/project/branch and release/dist.
+   *
+   * Deliberately not gated on the manifest's finalize marker: index records are
+   * only ever written after *every* artifact in the manifest passed length,
+   * digest, and source-map verification, so an interrupted finalize can at
+   * worst publish a verified subset early — and the retried finalize completes
+   * the rest idempotently. Requiring the marker would double the reads per
+   * lookup without adding integrity (bytes are digest-verified again at
+   * symbolication time anyway).
+   */
   public async lookupArtifact(
     scopeInput: ArtifactScope,
     query: { debugId: string, release: string | null, dist: string | null },
@@ -297,9 +318,12 @@ export class ArtifactUploadService {
     if (info.byteLength !== expectedBytes) {
       throw new ArtifactServiceError("integrity_mismatch", `Uploaded ${kind} byte length does not match its manifest.`);
     }
-    const bytes = await this.storage.readObject(key);
-    if (bytes === null || bytes.byteLength !== expectedBytes) {
+    const bytes = await this.storage.readObject(key, info.eTag);
+    if (bytes === null) {
       throw new ArtifactServiceError("artifact_not_found", `Uploaded ${kind} is missing.`);
+    }
+    if (bytes.byteLength !== expectedBytes) {
+      throw new ArtifactServiceError("integrity_mismatch", `Uploaded ${kind} byte length changed while it was being read.`);
     }
     return bytes;
   }
@@ -507,20 +531,38 @@ function sameScope(left: ArtifactScope, right: ArtifactScope): boolean {
 }
 
 function verifySourceMap(sourceMapText: string, artifact: ArtifactManifestArtifact): void {
+  let record: Record<string, unknown>;
   try {
     const value: unknown = JSON.parse(sourceMapText);
     if (!isRecord(value)) throw new Error("not an object");
-    const record = value;
-    if (record.version !== 3 || (typeof record.mappings !== "string" && !Array.isArray(record.sections))) {
-      throw new Error("not a source map");
-    }
+    record = value;
   } catch {
+    throw new ArtifactServiceError("integrity_mismatch", `Artifact ${artifact.debugId} source map is not valid version-3 JSON.`);
+  }
+  // The runtime symbolicator's bounded VLQ reader deliberately rejects indexed
+  // (`sections`) source maps. Accepting them here would report the artifact as
+  // finalized even though it could never symbolicate, so fail the upload with
+  // an actionable message instead.
+  if (record.sections !== undefined) {
+    throw new ArtifactServiceError("unsupported_source_map", `Artifact ${artifact.debugId} uses an indexed (sections) source map, which symbolication does not support; upload a flattened version-3 map instead.`);
+  }
+  if (record.version !== 3 || typeof record.mappings !== "string") {
     throw new ArtifactServiceError("integrity_mismatch", `Artifact ${artifact.debugId} source map is not valid version-3 JSON.`);
   }
 }
 
-function readInlineSourceMap(bundleBytes: Uint8Array): string | null {
-  const source = new TextDecoder().decode(bundleBytes);
+/**
+ * Returns the raw inline source-map bytes, deriving them the same way the
+ * runtime symbolicator does (strict base64, byte-level payloads). Returning
+ * bytes rather than a decoded string matters: the manifest digest is defined
+ * over these bytes, and a lossy UTF-8 round-trip here could accept at
+ * finalization what the symbolicator would later reject.
+ */
+function readInlineSourceMap(bundleBytes: Uint8Array): Uint8Array | null {
+  const source = decodeStrictUtf8(bundleBytes);
+  if (source === null) {
+    throw new ArtifactServiceError("integrity_mismatch", "The uploaded bundle is not valid UTF-8.");
+  }
   const matcher = /^[ \t]*\/\/[#@][ \t]*sourceMappingURL=([^\s]*)[ \t]*$/gmu;
   let lastUrl: string | null = null;
   let match = matcher.exec(source);
@@ -534,14 +576,19 @@ function readInlineSourceMap(bundleBytes: Uint8Array): string | null {
   const metadata = lastUrl.slice(0, commaIndex);
   const payload = lastUrl.slice(commaIndex + 1);
   if (/;base64$/iu.test(metadata)) {
-    try {
-      return Buffer.from(payload, "base64").toString("utf8");
-    } catch {
-      return null;
-    }
+    if (!/^[A-Za-z0-9+/]*={0,2}$/u.test(payload) || payload.length % 4 === 1) return null;
+    return new Uint8Array(Buffer.from(payload, "base64"));
   }
   try {
-    return decodeURIComponent(payload);
+    return new TextEncoder().encode(decodeURIComponent(payload));
+  } catch {
+    return null;
+  }
+}
+
+function decodeStrictUtf8(bytes: Uint8Array): string | null {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
     return null;
   }

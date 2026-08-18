@@ -7,8 +7,8 @@ vi.mock("@/route-handlers/smart-route-handler", () => ({
     return { overloads: new Map([[undefined, definition]]) };
   },
 }));
-vi.mock("@/lib/issues/public-issue-api", () => ({
-  assertPublicIssueReadEnabled: vi.fn(),
+vi.mock("@/lib/issues/observability-gate", () => ({
+  assertObservabilityEnabled: vi.fn(),
 }));
 vi.mock("@/lib/issues/saved-search-views/api", () => ({
   createSavedIssueSearchViewResponse: vi.fn(),

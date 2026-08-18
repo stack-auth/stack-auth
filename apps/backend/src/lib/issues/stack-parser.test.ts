@@ -41,8 +41,8 @@ describe("parseStack — per-browser TraceKit fixtures", () => {
   it("parses webpack `devtool: eval` URLs", () => {
     expect(summarize(fixture("chrome-webpack-eval-devtool"))).toMatchInlineSnapshot(`
       [
-        "app TESTTESTTEST.proxiedMethod @ ~/react-proxy/modules/createPrototypeProxy 44:30",
-        "app TESTTESTTEST.tryRender @ ~/react-transform-catch-errors/lib/index 34:31",
+        "sys TESTTESTTEST.proxiedMethod @ ~/react-proxy/modules/createPrototypeProxy 44:30",
+        "sys TESTTESTTEST.tryRender @ ~/react-transform-catch-errors/lib/index 34:31",
         "app TESTTESTTEST.render @ src/components/test/test 272:32",
         "app TESTTESTTEST.eval @ src/components/test/test 295:108",
       ]
@@ -199,6 +199,26 @@ describe("parseStack — guards", () => {
     expect(frames.map((frame) => frame.absPath)).toMatchInlineSnapshot(`
       [
         "https://app.example.com/app.js",
+      ]
+    `);
+  });
+
+  it("skips a Node coded-error header rather than minting a frame from the message", () => {
+    // `Error [ERR_MODULE_NOT_FOUND]: …` neither contains `"Error: "` nor matched
+    // the plain header pattern, and ERR_MODULE_NOT_FOUND messages embed the
+    // importing file's path — so before the bracketed-code branch existed, the
+    // Gecko fallback minted a synthetic frame from that path and split the
+    // issue per call site.
+    const frames = parseStack(
+      [
+        "Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/app/dist/missing.js' imported from /app/dist/main.js",
+        "    at finalizeResolution (node:internal/modules/esm/resolve:264:11)",
+      ].join("\n"),
+      "node",
+    );
+    expect(frames.map((frame) => frame.absPath)).toMatchInlineSnapshot(`
+      [
+        "node:internal/modules/esm/resolve",
       ]
     `);
   });

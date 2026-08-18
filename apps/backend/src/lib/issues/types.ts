@@ -37,11 +37,11 @@ export type ParsedFrame = {
   lineno: number | null,
   colno: number | null,
   inApp: boolean,
-  /** Debug id of the emitting artifact, when the SDK shipped a debug-image map (Part C). */
+  /** Debug id of the emitting artifact, when the SDK shipped a debug-image map. */
   debugId?: string,
   /**
-   * Filled by symbolication (Part C). One optional sub-object, so the frame
-   * renderer branches on presence exactly once.
+   * Filled by symbolication. One optional sub-object, so the frame renderer
+   * branches on presence exactly once.
    */
   context?: { line: string, pre: string[], post: string[], symbolicated: true },
 };
@@ -140,6 +140,6 @@ export type GroupingResult = {
   /** Human-readable "where it happened", for list rows. Never participates in any hash. */
   culprit: string,
   frames: ParsedFrame[],
-  /** Explainable config/fingerprint inputs; storage v1 only persists its id and variant columns. */
+  /** Explainable config/fingerprint inputs; persistence currently stores only the id and variant columns. */
   provenance: GroupingProvenance,
 };

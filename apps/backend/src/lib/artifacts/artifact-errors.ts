@@ -6,6 +6,7 @@ export type ArtifactErrorCode =
   | "manifest_conflict"
   | "artifact_conflict"
   | "integrity_mismatch"
+  | "unsupported_source_map"
   | "storage_unavailable";
 
 /**

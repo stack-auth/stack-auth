@@ -14,7 +14,7 @@ import {
   runCopySpecifiedTenancySubscriptions,
 } from "./copy-specified-tenancy-subscriptions";
 import { parseBackfillResumeOptions, runBulldozerPaymentsInit } from "./bulldozer-payments-init";
-import { runClickhouseMigrations } from "./clickhouse-migrations";
+import { cutoverLegacyTelemetryTables, runClickhouseMigrations } from "./clickhouse-migrations";
 import { runRegenInternalSubscriptionsToLatest } from "./regen-internal-subscriptions-to-latest";
 
 const getClickhouseClient = () => getClickhouseAdminClient();
@@ -190,6 +190,10 @@ Commands:
   seed                             [Advanced] Run database seeding only
   init                             Apply migrations, then seed
   migrate                          Apply migrations
+  clickhouse-telemetry-cutover     Backfill pre-expand rows into analytics_internal.telemetry and retire the
+                                   legacy events/logs tables. Run only after the expand release's rollout is
+                                   complete everywhere. Optional --min-drain-seconds=<n> (default 900; 0 skips
+                                   the drain check, for fresh/pre-release environments only).
   backfill-bulldozer-from-prisma   One-way backfill of the payment tables from Postgres into bulldozer-js.
                                    In dev, run after restart-deps once the bulldozer-js server is running.
                                    Idempotent; safe to re-run. Optional resume for very large tables
@@ -255,6 +259,32 @@ const main = async () => {
     }
     case 'migrate': {
       await migrate(undefined, { interactive });
+      break;
+    }
+    case 'clickhouse-telemetry-cutover': {
+      // The contract phase of the legacy telemetry cutover: drain-checked,
+      // checkpointed, per-partition-verified backfill of the pre-expand rows
+      // into analytics_internal.telemetry, then retirement of the legacy
+      // events/logs tables. Run this ONLY once the expand release's rollout is
+      // complete everywhere (every writer dual-writes); the drain check
+      // enforces that with a silence window on non-dual-written rows.
+      // Optional --min-drain-seconds=<n> overrides the 15-minute default
+      // (0 skips the check; only for fresh/pre-release environments).
+      const drainArg = args.find((arg) => arg.startsWith('--min-drain-seconds='))?.split('=')[1];
+      const minDrainSeconds = drainArg === undefined ? undefined : Number(drainArg);
+      if (minDrainSeconds !== undefined && (!Number.isFinite(minDrainSeconds) || minDrainSeconds < 0)) {
+        throw new Error(`Invalid --min-drain-seconds value: ${JSON.stringify(drainArg)}`);
+      }
+      const clickhouseClient = getClickhouseAdminClient();
+      try {
+        await cutoverLegacyTelemetryTables(clickhouseClient, { minDrainSeconds });
+      } finally {
+        await clickhouseClient.close();
+      }
+      // Rerun the migration phase so the freed legacy names are immediately
+      // recreated as compatibility views — without this, default.events would
+      // point at a dropped table until the next deploy's db:migrate.
+      await runClickhouseMigrations();
       break;
     }
     case 'backfill-bulldozer-from-prisma': {

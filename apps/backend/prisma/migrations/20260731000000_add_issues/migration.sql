@@ -15,6 +15,13 @@
 
 -- SPLIT_STATEMENT_SENTINEL
 
+-- The FK adds below take brief SHARE ROW EXCLUSIVE locks on hot referenced
+-- tables (Tenancy, Project, ProjectUser). Fail fast instead of queueing an
+-- exclusive lock request behind long-running production queries for the
+-- lifetime of the deploy transaction.
+SET LOCAL lock_timeout = '2s';
+SET LOCAL statement_timeout = '5min';
+
 -- CreateEnum
 CREATE TYPE "IssueStatus" AS ENUM ('UNRESOLVED', 'RESOLVED', 'IGNORED');
 CREATE TYPE "IssueHashState" AS ENUM ('LOCKED');
@@ -377,8 +384,16 @@ CREATE UNIQUE INDEX "ErrorAttachment_scope_event_digest_filename_key"
 CREATE INDEX "ErrorAttachment_scope_event_createdAt_idx"
   ON "ErrorAttachment" ("tenancyId", "projectId", "branchId", "eventId", "createdAt" DESC);
 
+-- NULLS NOT DISTINCT is load-bearing: the owner CHECK constraint guarantees
+-- exactly one of ownerUserId/ownerTeamId is NULL on EVERY row, so with default
+-- NULLS-DISTINCT semantics this index would never reject anything and the
+-- read-then-create mutation path would have no database conflict winner under
+-- concurrency. Requires PostgreSQL 15+ (our minimum). Prisma cannot express
+-- this clause, so schema.prisma's @@unique is intentionally weaker — the SQL
+-- here is authoritative.
 CREATE UNIQUE INDEX "IssueOwner_scope_natural_key"
-  ON "IssueOwner" ("tenancyId", "projectId", "branchId", "issueId", "ownerType", "ownerUserId", "ownerTeamId", "source");
+  ON "IssueOwner" ("tenancyId", "projectId", "branchId", "issueId", "ownerType", "ownerUserId", "ownerTeamId", "source")
+  NULLS NOT DISTINCT;
 CREATE INDEX "IssueOwner_scope_issue_updatedAt_idx"
   ON "IssueOwner" ("tenancyId", "projectId", "branchId", "issueId", "updatedAt");
 CREATE UNIQUE INDEX "IssueActivity_scope_issue_idempotency_key"
@@ -389,8 +404,13 @@ CREATE UNIQUE INDEX "IssueComment_scope_issue_idempotency_key"
   ON "IssueComment" ("tenancyId", "projectId", "branchId", "issueId", "idempotencyKey");
 CREATE INDEX "IssueComment_scope_issue_createdAt_idx"
   ON "IssueComment" ("tenancyId", "projectId", "branchId", "issueId", "createdAt" DESC, "id" DESC);
+-- NULLS NOT DISTINCT for the same reason as IssueOwner_scope_natural_key: the
+-- subject CHECK constraint makes one of subjectUserId/subjectTeamId NULL on
+-- every row, so the default semantics would allow unlimited duplicate
+-- subscriptions per subject.
 CREATE UNIQUE INDEX "IssueSubscription_scope_natural_key"
-  ON "IssueSubscription" ("tenancyId", "projectId", "branchId", "issueId", "subjectType", "subjectUserId", "subjectTeamId");
+  ON "IssueSubscription" ("tenancyId", "projectId", "branchId", "issueId", "subjectType", "subjectUserId", "subjectTeamId")
+  NULLS NOT DISTINCT;
 CREATE INDEX "IssueSubscription_scope_issue_active_idx"
   ON "IssueSubscription" ("tenancyId", "projectId", "branchId", "issueId", "isActive");
 CREATE INDEX "IssueBookmark_scope_user_createdAt_idx"

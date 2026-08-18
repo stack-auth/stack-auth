@@ -1,5 +1,10 @@
-import { scrubErrorIngestPayload } from "@/lib/error-ingest";
 import { getErrorAttachmentEventId } from "@/lib/attachments/attachment-event-id";
+import {
+  isRecord,
+  scrubPublicOptionalText,
+  scrubPublicRecord,
+  scrubPublicText,
+} from "@/lib/issues/public-scrub";
 import type {
   PublicSearchAttachment,
   PublicSearchFilters,
@@ -54,26 +59,6 @@ export type PublicSearchIssueRow = {
   updatedAt: Date,
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function scrubText(value: string): string {
-  const scrubbed = scrubErrorIngestPayload(value).value;
-  return typeof scrubbed === "string" ? scrubbed : "";
-}
-
-function scrubOptionalText(value: unknown): string | null {
-  if (typeof value !== "string" || value.length === 0) return null;
-  const scrubbed = scrubErrorIngestPayload(value).value;
-  return typeof scrubbed === "string" && scrubbed.length > 0 ? scrubbed : null;
-}
-
-function scrubRecord(value: unknown): Record<string, unknown> {
-  const scrubbed = scrubErrorIngestPayload(value).value;
-  return isRecord(scrubbed) ? scrubbed : {};
-}
-
 function readString(record: Record<string, unknown>, key: string): string | null {
   const value = record[key];
   return typeof value === "string" && value.length > 0 ? value : null;
@@ -112,7 +97,7 @@ const PUBLIC_SEARCH_ERROR_ENVELOPE_MAX_BYTES = 256 * 1024;
 function storedErrorEnvelope(raw: string | null): Record<string, unknown> {
   if (raw === null || raw === "" || new TextEncoder().encode(raw).byteLength > PUBLIC_SEARCH_ERROR_ENVELOPE_MAX_BYTES) return {};
   const parsed = parseJson(raw);
-  return scrubRecord(parsed);
+  return scrubPublicRecord(parsed);
 }
 
 export function publicSearchTimestamp(raw: string): number {
@@ -137,7 +122,7 @@ function publicEventId(value: unknown): string | null {
 }
 
 function sourcePath(value: unknown): string | null {
-  const text = scrubOptionalText(value);
+  const text = scrubPublicOptionalText(value);
   if (text === null) return null;
 
   let path = text;
@@ -157,12 +142,12 @@ function sourcePath(value: unknown): string | null {
 export function toPublicSearchAttachmentMetadata(value: unknown): PublicSearchAttachment | null {
   if (!isRecord(value)) return null;
   return {
-    id: scrubOptionalText(value.id),
+    id: scrubPublicOptionalText(value.id),
     filename: sourcePath(value.filename),
-    content_type: scrubOptionalText(value.content_type ?? value.contentType),
+    content_type: scrubPublicOptionalText(value.content_type ?? value.contentType),
     size: readFiniteNonNegativeInteger(value.size ?? value.byte_length ?? value.byteLength),
-    checksum: scrubOptionalText(value.checksum ?? value.sha256),
-    attachment_type: scrubOptionalText(value.attachment_type ?? value.attachmentType),
+    checksum: scrubPublicOptionalText(value.checksum ?? value.sha256),
+    attachment_type: scrubPublicOptionalText(value.attachment_type ?? value.attachmentType),
   };
 }
 
@@ -179,7 +164,7 @@ function attachmentMetadata(value: unknown): PublicSearchAttachment[] {
 export function publicSearchAttachmentEventId(row: PublicSearchOccurrenceRow): string | null {
   return getErrorAttachmentEventId({
     occurrenceId: row.occurrence_id,
-    data: scrubRecord(row.data),
+    data: scrubPublicRecord(row.data),
     errorEnvelope: storedErrorEnvelope(row.error_envelope),
   });
 }
@@ -189,11 +174,11 @@ function sourceLink(value: unknown): PublicSearchSourceLink | null {
   const path = sourcePath(value.absPath ?? value.abs_path ?? value.filename ?? value.code_file);
   const link: PublicSearchSourceLink = {
     path,
-    function: scrubOptionalText(value.function),
-    module: scrubOptionalText(value.module),
+    function: scrubPublicOptionalText(value.function),
+    module: scrubPublicOptionalText(value.module),
     line: readFiniteNonNegativeInteger(value.lineno),
     column: readFiniteNonNegativeInteger(value.colno),
-    debug_id: scrubOptionalText(value.debugId ?? value.debug_id),
+    debug_id: scrubPublicOptionalText(value.debugId ?? value.debug_id),
   };
   return link.path === null
     && link.function === null
@@ -243,8 +228,8 @@ function matchedTag(filters: PublicSearchFilters, ...metadataRecords: readonly R
     }
   }
   if (typeof rawValue !== "string" || rawValue !== filters.tagValue) return null;
-  const key = scrubOptionalText(filters.tagKey);
-  const value = scrubOptionalText(rawValue);
+  const key = scrubPublicOptionalText(filters.tagKey);
+  const value = scrubPublicOptionalText(rawValue);
   return key === null || value === null ? null : { key, value };
 }
 
@@ -259,7 +244,7 @@ export function toPublicSearchFacets(rows: readonly PublicSearchFacetRow[]): Pub
   for (const row of rows) {
     if (row.facet_key.length === 0 || row.facet_key.length > 128) throw new Error("ClickHouse returned an invalid public search facet key");
     if (!Object.prototype.hasOwnProperty.call(facets, row.facet_key) && Object.keys(facets).length >= PUBLIC_SEARCH_FACET_REQUEST_CAP) continue;
-    const value = scrubText(row.facet_value).slice(0, 512);
+    const value = scrubPublicText(row.facet_value).slice(0, 512);
     if (value === "") continue;
     const values = facets[row.facet_key] ?? [];
     if (values.length >= PUBLIC_SEARCH_FACET_COUNT_CAP) continue;
@@ -286,7 +271,7 @@ export function toPublicSearchOccurrence(
   additionalAttachments: readonly PublicSearchAttachment[] = [],
 ): PublicSearchRecord {
   if (row.occurrence_id.length === 0) throw new Error("ClickHouse returned an empty public search occurrence id");
-  const data = scrubRecord(row.data);
+  const data = scrubPublicRecord(row.data);
   const envelope = storedErrorEnvelope(row.error_envelope);
   const dataMessage = readString(data, "message");
   const envelopeMessage = readString(envelope, "message");
@@ -318,12 +303,12 @@ export function toPublicSearchOccurrence(
     event_id: publicEventId(eventId),
     occurrence_id: row.occurrence_id,
     event_at_millis: publicSearchTimestamp(row.event_at),
-    message: message === null ? "" : scrubText(message),
-    level: envelopeLevel === null && dataLevel === null ? scrubText(row.level) : scrubText(envelopeLevel ?? dataLevel ?? row.level),
+    message: message === null ? "" : scrubPublicText(message),
+    level: envelopeLevel === null && dataLevel === null ? scrubPublicText(row.level) : scrubPublicText(envelopeLevel ?? dataLevel ?? row.level),
     handled: envelopeHandled ?? dataHandled,
-    service: scrubOptionalText(service),
-    environment: scrubOptionalText(rawEnvironment),
-    release: scrubOptionalText(release),
+    service: scrubPublicOptionalText(service),
+    environment: scrubPublicOptionalText(rawEnvironment),
+    release: scrubPublicOptionalText(release),
     matched_tag: matchedTag(filters, envelope, data),
     attachments: additionalAttachments.length > 0
       ? [...additionalAttachments]
@@ -354,9 +339,9 @@ export function toPublicSearchIssue(
   const fields: Pick<PublicSearchRecord, "issue_id" | "issue_short_id" | "issue_type" | "issue_value" | "issue_culprit" | "issue_status"> = {
     issue_id: row.id,
     issue_short_id: row.shortId.toString(),
-    issue_type: scrubText(row.type),
-    issue_value: scrubText(row.value),
-    issue_culprit: scrubText(row.culprit),
+    issue_type: scrubPublicText(row.type),
+    issue_value: scrubPublicText(row.value),
+    issue_culprit: scrubPublicText(row.culprit),
     issue_status: status,
   };
   return {
@@ -366,15 +351,15 @@ export function toPublicSearchIssue(
     event_id: null,
     occurrence_id: null,
     event_at_millis: publicDate(row.lastSeenAt, "lastSeenAt"),
-    message: scrubText(row.value),
+    message: scrubPublicText(row.value),
     level: "error",
     handled: row.handled,
-    service: scrubOptionalText(row.serviceName),
-    environment: scrubOptionalText(row.deploymentEnvironmentName),
-    release: scrubOptionalText(row.lastSeenRelease),
+    service: scrubPublicOptionalText(row.serviceName),
+    environment: scrubPublicOptionalText(row.deploymentEnvironmentName),
+    release: scrubPublicOptionalText(row.lastSeenRelease),
     matched_tag: filters.tagKey === null || filters.tagValue === null
       ? null
-      : { key: scrubText(filters.tagKey), value: scrubText(filters.tagValue) },
+      : { key: scrubPublicText(filters.tagKey), value: scrubPublicText(filters.tagValue) },
     attachments: [],
     source_links: [],
   };

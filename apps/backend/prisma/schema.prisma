@@ -1253,6 +1253,68 @@ enum DraftThemeMode {
   CUSTOM
 }
 
+//#region Legacy event storage (retained, read-only)
+// The application no longer reads or writes these tables — raw system events
+// moved to ClickHouse's canonical telemetry table, and
+// 20260810000001_remove_legacy_event_storage deliberately kept the tables as
+// the only rollback copy of historical data. They stay declared here with
+// @@ignore (no Prisma Client API) because `db:migration-gen` diffs the LIVE
+// database against this schema: without these models, the next generated
+// migration for any unrelated change would silently include
+// DROP TABLE "Event"/"EventIpInfo" and destroy that rollback copy. Remove
+// these models only together with the deliberate, separately reviewed
+// retention migration that drops the tables.
+
+model Event {
+  id String @id @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // if isWide == false, then eventEndedAt is always equal to eventStartedAt
+  isWide         Boolean
+  eventStartedAt DateTime
+  eventEndedAt   DateTime
+
+  // Prisma does not support nullable scalar lists. This ignored model is
+  // retained only so migration diff does not propose dropping the nullable
+  // legacy TEXT[] column; it has no Prisma Client API or write path.
+  systemEventTypeIds String[]
+  data               Json
+
+  // Note that the IP may have been spoofed, unless isEndUserIpInfoGuessTrusted is true
+  endUserIpInfoGuessId        String?      @db.Uuid
+  endUserIpInfoGuess          EventIpInfo? @relation("EventIpInfo", fields: [endUserIpInfoGuessId], references: [id])
+  isEndUserIpInfoGuessTrusted Boolean      @default(false)
+
+  @@index([data(ops: JsonbPathOps)], type: Gin)
+  @@index([createdAt])
+  @@index([createdAt, id])
+  @@ignore
+}
+
+model EventIpInfo {
+  id String @id @default(uuid()) @db.Uuid
+
+  ip String
+
+  countryCode  String?
+  regionCode   String?
+  cityName     String?
+  latitude     Float?
+  longitude    Float?
+  tzIdentifier String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events Event[] @relation("EventIpInfo")
+
+  @@ignore
+}
+
+//#endregion
+
 model CliAuthAttempt {
   tenancyId String @db.Uuid
 
@@ -1835,7 +1897,7 @@ model Release {
   tenancyId String @db.Uuid
   projectId String
   branchId  String
-  id        String @default(uuid()) @db.Uuid
+  id        String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   // Sentry treats this as an opaque version identifier: it may be a semantic
   // version, a commit SHA, or a provider-specific build identifier.
@@ -1851,7 +1913,7 @@ model Release {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  tenancy    Tenancy             @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
+  tenancy    Tenancy             @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade, map: "Release_tenancy_scope_fkey")
   project    Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   deployments ReleaseDeployment[]
   commits     ReleaseCommit[]
@@ -1867,7 +1929,7 @@ model ReleaseDeployment {
   tenancyId String @db.Uuid
   projectId String
   branchId  String
-  id        String @default(uuid()) @db.Uuid
+  id        String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   releaseId String @db.Uuid
 
@@ -1884,8 +1946,8 @@ model ReleaseDeployment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
-  release Release @relation(fields: [tenancyId, releaseId], references: [tenancyId, id], onDelete: Cascade)
+  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade, map: "ReleaseDeployment_tenancy_scope_fkey")
+  release Release @relation(fields: [tenancyId, releaseId], references: [tenancyId, id], onDelete: Cascade, map: "ReleaseDeployment_release_fkey")
 
   @@id([tenancyId, id])
   @@unique([tenancyId, deploymentKey], map: "ReleaseDeployment_tenancyId_deploymentKey_key")
@@ -1897,7 +1959,7 @@ model ReleaseCommit {
   tenancyId String @db.Uuid
   projectId String
   branchId  String
-  id        String @default(uuid()) @db.Uuid
+  id        String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   releaseId String @db.Uuid
   repository String @db.VarChar(256)
@@ -1912,8 +1974,8 @@ model ReleaseCommit {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
-  release Release @relation(fields: [tenancyId, releaseId], references: [tenancyId, id], onDelete: Cascade)
+  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade, map: "ReleaseCommit_tenancy_scope_fkey")
+  release Release @relation(fields: [tenancyId, releaseId], references: [tenancyId, id], onDelete: Cascade, map: "ReleaseCommit_release_fkey")
 
   @@id([tenancyId, id])
   @@unique([tenancyId, releaseId, repository, commitSha], map: "ReleaseCommit_release_repository_sha_key")
@@ -1928,7 +1990,7 @@ model ReleaseArtifact {
   tenancyId String @db.Uuid
   projectId String
   branchId  String
-  id        String @default(uuid()) @db.Uuid
+  id        String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   releaseId String @db.Uuid
   manifestSha256 String @db.VarChar(64)
@@ -1941,8 +2003,8 @@ model ReleaseArtifact {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenancy  Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
-  release  Release @relation(fields: [tenancyId, releaseId], references: [tenancyId, id], onDelete: Cascade)
+  tenancy  Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade, map: "ReleaseArtifact_tenancy_scope_fkey")
+  release  Release @relation(fields: [tenancyId, releaseId], references: [tenancyId, id], onDelete: Cascade, map: "ReleaseArtifact_release_fkey")
   debugIds ReleaseArtifactDebugId[]
 
   @@id([tenancyId, id])
@@ -1954,7 +2016,7 @@ model ReleaseArtifactDebugId {
   tenancyId String @db.Uuid
   projectId String
   branchId  String
-  id        String @default(uuid()) @db.Uuid
+  id        String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   releaseArtifactId String @db.Uuid
   debugId           String @db.VarChar(36)
@@ -1972,8 +2034,8 @@ model ReleaseArtifactDebugId {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenancy        Tenancy        @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
-  releaseArtifact ReleaseArtifact @relation(fields: [tenancyId, releaseArtifactId], references: [tenancyId, id], onDelete: Cascade)
+  tenancy        Tenancy        @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade, map: "ReleaseArtifactDebugId_tenancy_scope_fkey")
+  releaseArtifact ReleaseArtifact @relation(fields: [tenancyId, releaseArtifactId], references: [tenancyId, id], onDelete: Cascade, map: "ReleaseArtifactDebugId_artifact_fkey")
 
   @@id([tenancyId, id])
   @@unique([tenancyId, releaseArtifactId, debugId], map: "ReleaseArtifactDebugId_artifact_debugId_key")
@@ -1991,7 +2053,7 @@ model IssueAlertRule {
   tenancyId  String @db.Uuid
   projectId  String
   branchId   String
-  id         String @default(uuid()) @db.Uuid
+  id         String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   // ruleKey/version mirror IssueAlertRule.id/version in the stored DSL. The
   // database id identifies this immutable version row for delivery relations.
@@ -2004,7 +2066,7 @@ model IssueAlertRule {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenancy    Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
+  tenancy    Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade, map: "IssueAlertRule_tenancy_scope_fkey")
   project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   deliveries IssueAlertDelivery[]
   cooldownClaims IssueAlertCooldownClaim[]
@@ -2019,7 +2081,7 @@ model IssueAlertCooldownClaim {
   tenancyId String @db.Uuid
   projectId String
   branchId  String
-  id        String @default(uuid()) @db.Uuid
+  id        String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   ruleId     String @db.Uuid
   cooldownKey String @db.VarChar(256)
@@ -2029,9 +2091,9 @@ model IssueAlertCooldownClaim {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
+  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade, map: "IssueAlertCooldownClaim_tenancy_scope_fkey")
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  rule IssueAlertRule @relation(fields: [tenancyId, ruleId, projectId, branchId], references: [tenancyId, id, projectId, branchId], onDelete: Restrict)
+  rule IssueAlertRule @relation(fields: [tenancyId, ruleId, projectId, branchId], references: [tenancyId, id, projectId, branchId], onDelete: Restrict, map: "IssueAlertCooldownClaim_rule_scope_fkey")
   deliveries IssueAlertDelivery[]
 
   @@id([tenancyId, id])
@@ -2044,7 +2106,7 @@ model IssueAlertDelivery {
   tenancyId String @db.Uuid
   projectId String
   branchId  String
-  id        String @default(uuid()) @db.Uuid
+  id        String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   ruleId       String @db.Uuid
   issueId      String @db.Uuid
@@ -2077,11 +2139,11 @@ model IssueAlertDelivery {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
+  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade, map: "IssueAlertDelivery_tenancy_scope_fkey")
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  rule IssueAlertRule @relation(fields: [tenancyId, ruleId, projectId, branchId], references: [tenancyId, id, projectId, branchId], onDelete: Restrict)
-  issue Issue @relation(fields: [tenancyId, issueId], references: [tenancyId, id], onDelete: Cascade)
-  cooldownClaim IssueAlertCooldownClaim @relation(fields: [tenancyId, cooldownKey, projectId, branchId], references: [tenancyId, cooldownKey, projectId, branchId], onDelete: Restrict)
+  rule IssueAlertRule @relation(fields: [tenancyId, ruleId, projectId, branchId], references: [tenancyId, id, projectId, branchId], onDelete: Restrict, map: "IssueAlertDelivery_rule_scope_fkey")
+  issue Issue @relation(fields: [tenancyId, issueId], references: [tenancyId, id], onDelete: Cascade, map: "IssueAlertDelivery_issue_fkey")
+  cooldownClaim IssueAlertCooldownClaim @relation(fields: [tenancyId, cooldownKey, projectId, branchId], references: [tenancyId, cooldownKey, projectId, branchId], onDelete: Restrict, map: "IssueAlertDelivery_cooldown_scope_fkey")
 
   @@id([tenancyId, id])
   @@unique([tenancyId, deduplicationKey], map: "IssueAlertDelivery_tenancyId_deduplicationKey_key")
@@ -2098,7 +2160,7 @@ model ErrorIngestClientReport {
   tenancyId String @db.Uuid
   projectId String
   branchId  String
-  id        String @default(uuid()) @db.Uuid
+  id        String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   protocol       String @db.VarChar(32)
   bucket         String @db.VarChar(64)
@@ -2109,7 +2171,7 @@ model ErrorIngestClientReport {
   reportedAt     DateTime @default(now())
   createdAt      DateTime @default(now())
 
-  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
+  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade, map: "ErrorIngestClientReport_tenancy_scope_fkey")
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@id([tenancyId, id])
@@ -2124,7 +2186,7 @@ model ErrorAttachment {
   tenancyId String @db.Uuid
   projectId String
   branchId  String
-  id        String @default(uuid()) @db.Uuid
+  id        String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   eventId       String @db.VarChar(32)
   occurrenceId  String? @db.VarChar(256)
@@ -2779,7 +2841,7 @@ model IssueOwner {
   tenancyId String @db.Uuid
   projectId String
   branchId String
-  id String @default(uuid()) @db.Uuid
+  id String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   issueId String @db.Uuid
   ownerType IssueOwnerType
   ownerUserId String? @db.Uuid
@@ -2789,23 +2851,28 @@ model IssueOwner {
   source IssueOwnerSource
   context Json?
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 
-  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  issue Issue @relation(fields: [tenancyId, issueId], references: [tenancyId, id], onDelete: Cascade)
-  user ProjectUser? @relation(fields: [tenancyId, ownerUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade, map: "IssueOwner_tenancy_scope_fkey")
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade, map: "IssueOwner_project_fkey")
+  issue Issue @relation(fields: [tenancyId, issueId], references: [tenancyId, id], onDelete: Cascade, map: "IssueOwner_issue_fkey")
+  user ProjectUser? @relation(fields: [tenancyId, ownerUserId], references: [tenancyId, projectUserId], onDelete: Cascade, map: "IssueOwner_user_fkey")
 
   @@id([tenancyId, id])
-  @@unique([tenancyId, projectId, branchId, issueId, ownerType, ownerUserId, ownerTeamId, source])
-  @@index([tenancyId, projectId, branchId, issueId, updatedAt])
+  // In SQL this index is NULLS NOT DISTINCT (Prisma cannot express the clause;
+  // the hand-written migration is authoritative). That is load-bearing: the
+  // owner CHECK constraint forces one of ownerUserId/ownerTeamId to be NULL on
+  // every row, so a default nulls-distinct index would never reject anything.
+  // Don't let a future `prisma migrate diff` "simplify" it back.
+  @@unique([tenancyId, projectId, branchId, issueId, ownerType, ownerUserId, ownerTeamId, source], map: "IssueOwner_scope_natural_key")
+  @@index([tenancyId, projectId, branchId, issueId, updatedAt], map: "IssueOwner_scope_issue_updatedAt_idx")
 }
 
 model IssueActivity {
   tenancyId String @db.Uuid
   projectId String
   branchId String
-  id String @default(uuid()) @db.Uuid
+  id String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   issueId String @db.Uuid
   actorUserId String? @db.Uuid
   type IssueActivityType
@@ -2814,13 +2881,13 @@ model IssueActivity {
   occurredAt DateTime
   createdAt DateTime @default(now())
 
-  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  issue Issue @relation(fields: [tenancyId, issueId], references: [tenancyId, id], onDelete: Cascade)
+  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade, map: "IssueActivity_tenancy_scope_fkey")
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade, map: "IssueActivity_project_fkey")
+  issue Issue @relation(fields: [tenancyId, issueId], references: [tenancyId, id], onDelete: Cascade, map: "IssueActivity_issue_fkey")
 
   @@id([tenancyId, id])
-  @@unique([tenancyId, projectId, branchId, issueId, idempotencyKey])
-  @@index([tenancyId, projectId, branchId, issueId, occurredAt(sort: Desc), id(sort: Desc)])
+  @@unique([tenancyId, projectId, branchId, issueId, idempotencyKey], map: "IssueActivity_scope_issue_idempotency_key")
+  @@index([tenancyId, projectId, branchId, issueId, occurredAt(sort: Desc), id(sort: Desc)], map: "IssueActivity_scope_issue_occurredAt_idx")
 }
 
 // Versioned saved issue-search filters. The query is a canonical structured
@@ -2829,7 +2896,7 @@ model IssueSavedSearchView {
   tenancyId String @db.Uuid
   projectId String
   branchId  String
-  id String @default(uuid()) @db.Uuid
+  id String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   schemaVersion Int @default(1)
   name         String @db.VarChar(128)
@@ -2838,11 +2905,11 @@ model IssueSavedSearchView {
   ownerUserId  String? @db.Uuid
   query        Json
   createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  updatedAt    DateTime @default(now()) @updatedAt
 
-  tenancy  Tenancy  @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
-  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  ownerUser ProjectUser? @relation("IssueSavedSearchViewOwner", fields: [tenancyId, ownerUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+  tenancy  Tenancy  @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade, map: "IssueSavedSearchView_tenancy_scope_fkey")
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade, map: "IssueSavedSearchView_project_fkey")
+  ownerUser ProjectUser? @relation("IssueSavedSearchViewOwner", fields: [tenancyId, ownerUserId], references: [tenancyId, projectUserId], onDelete: Cascade, map: "IssueSavedSearchView_owner_fkey")
 
   @@id([tenancyId, id])
   @@unique([tenancyId, projectId, branchId, nameKey], map: "IssueSavedSearchView_scope_name_key")
@@ -2853,29 +2920,29 @@ model IssueComment {
   tenancyId String @db.Uuid
   projectId String
   branchId String
-  id String @default(uuid()) @db.Uuid
+  id String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   issueId String @db.Uuid
   authorUserId String @db.Uuid
   body String @db.Text
   idempotencyKey String @db.VarChar(128)
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 
-  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  issue Issue @relation(fields: [tenancyId, issueId], references: [tenancyId, id], onDelete: Cascade)
-  author ProjectUser @relation(fields: [tenancyId, authorUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade, map: "IssueComment_tenancy_scope_fkey")
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade, map: "IssueComment_project_fkey")
+  issue Issue @relation(fields: [tenancyId, issueId], references: [tenancyId, id], onDelete: Cascade, map: "IssueComment_issue_fkey")
+  author ProjectUser @relation(fields: [tenancyId, authorUserId], references: [tenancyId, projectUserId], onDelete: Cascade, map: "IssueComment_author_fkey")
 
   @@id([tenancyId, id])
-  @@unique([tenancyId, projectId, branchId, issueId, idempotencyKey])
-  @@index([tenancyId, projectId, branchId, issueId, createdAt(sort: Desc), id(sort: Desc)])
+  @@unique([tenancyId, projectId, branchId, issueId, idempotencyKey], map: "IssueComment_scope_issue_idempotency_key")
+  @@index([tenancyId, projectId, branchId, issueId, createdAt(sort: Desc), id(sort: Desc)], map: "IssueComment_scope_issue_createdAt_idx")
 }
 
 model IssueSubscription {
   tenancyId String @db.Uuid
   projectId String
   branchId String
-  id String @default(uuid()) @db.Uuid
+  id String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   issueId String @db.Uuid
   subjectType IssueSubjectType
   subjectUserId String? @db.Uuid
@@ -2885,16 +2952,19 @@ model IssueSubscription {
   isActive Boolean @default(true)
   reason String? @db.VarChar(64)
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 
-  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  issue Issue @relation(fields: [tenancyId, issueId], references: [tenancyId, id], onDelete: Cascade)
-  user ProjectUser? @relation("IssueSubscriptionUser", fields: [tenancyId, subjectUserId], references: [tenancyId, projectUserId], onDelete: Restrict)
+  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade, map: "IssueSubscription_tenancy_scope_fkey")
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade, map: "IssueSubscription_project_fkey")
+  issue Issue @relation(fields: [tenancyId, issueId], references: [tenancyId, id], onDelete: Cascade, map: "IssueSubscription_issue_fkey")
+  user ProjectUser? @relation("IssueSubscriptionUser", fields: [tenancyId, subjectUserId], references: [tenancyId, projectUserId], onDelete: Restrict, map: "IssueSubscription_user_fkey")
 
   @@id([tenancyId, id])
-  @@unique([tenancyId, projectId, branchId, issueId, subjectType, subjectUserId, subjectTeamId])
-  @@index([tenancyId, projectId, branchId, issueId, isActive])
+  // NULLS NOT DISTINCT in SQL, same as IssueOwner_scope_natural_key — the
+  // subject CHECK constraint makes one of subjectUserId/subjectTeamId NULL on
+  // every row, so the default semantics would enforce nothing.
+  @@unique([tenancyId, projectId, branchId, issueId, subjectType, subjectUserId, subjectTeamId], map: "IssueSubscription_scope_natural_key")
+  @@index([tenancyId, projectId, branchId, issueId, isActive], map: "IssueSubscription_scope_issue_active_idx")
 }
 
 model IssueBookmark {
@@ -2905,11 +2975,11 @@ model IssueBookmark {
   userId String @db.Uuid
   createdAt DateTime @default(now())
 
-  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  issue Issue @relation(fields: [tenancyId, issueId], references: [tenancyId, id], onDelete: Cascade)
-  user ProjectUser @relation(fields: [tenancyId, userId], references: [tenancyId, projectUserId], onDelete: Cascade)
+  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade, map: "IssueBookmark_tenancy_scope_fkey")
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade, map: "IssueBookmark_project_fkey")
+  issue Issue @relation(fields: [tenancyId, issueId], references: [tenancyId, id], onDelete: Cascade, map: "IssueBookmark_issue_fkey")
+  user ProjectUser @relation(fields: [tenancyId, userId], references: [tenancyId, projectUserId], onDelete: Cascade, map: "IssueBookmark_user_fkey")
 
   @@id([tenancyId, issueId, userId])
-  @@index([tenancyId, projectId, branchId, userId, createdAt(sort: Desc)])
+  @@index([tenancyId, projectId, branchId, userId, createdAt(sort: Desc)], map: "IssueBookmark_scope_user_createdAt_idx")
 }

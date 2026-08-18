@@ -72,6 +72,7 @@ function makeStore(
     workflowEventId: triggerEventId,
     state: initialState,
     nextRetryAt: null,
+    lastAttemptAt: null,
   };
   const updates: IssueAlertWorkflowUpdate[] = [];
   const store: IssueAlertWorkflowStatusStore = {
@@ -79,18 +80,25 @@ function makeStore(
       if (foundTenancyId !== tenancyId || foundWorkflowEventId !== delivery.workflowEventId) return null;
       return delivery;
     },
-    async applyWorkflowUpdate(updateScope, foundDeliveryId, expectedWorkflowEventId, update) {
+    async applyWorkflowUpdate(updateScope, foundDeliveryId, expectedWorkflowEventId, expectedDelivery, update) {
       expect(updateScope).toEqual(scope);
       expect(foundDeliveryId).toBe(deliveryId);
       expect(expectedWorkflowEventId).toBe(delivery.workflowEventId);
+      expect(expectedDelivery).toEqual({
+        state: delivery.state,
+        nextRetryAt: delivery.nextRetryAt,
+        lastAttemptAt: delivery.lastAttemptAt,
+      });
       if (!shouldApply) return false;
       updates.push(update);
       if (update.kind === "delivered") {
         delivery = { ...delivery, state: IssueAlertDeliveryState.DELIVERED, nextRetryAt: null };
       } else if (update.kind === "failed") {
-        delivery = { ...delivery, state: IssueAlertDeliveryState.FAILED, nextRetryAt: update.nextRetryAt };
+        // Mirrors the persistence layer, which stamps `lastAttemptAt` on every
+        // failure/retry it applies.
+        delivery = { ...delivery, state: IssueAlertDeliveryState.FAILED, nextRetryAt: update.nextRetryAt, lastAttemptAt: update.at ?? null };
       } else if (update.kind === "dropped") {
-        delivery = { ...delivery, state: IssueAlertDeliveryState.DROPPED, nextRetryAt: null };
+        delivery = { ...delivery, state: IssueAlertDeliveryState.DROPPED, nextRetryAt: null, lastAttemptAt: update.at ?? null };
       }
       return true;
     },
@@ -197,6 +205,65 @@ describe("issue-alert workflow lifecycle bridge", () => {
       store: compareAndApplyRace.store,
     });
     expect(raceResult).toEqual({ status: "ignored", reason: "stale_lifecycle" });
+  });
+
+  it("keeps the reducer monotonic across out-of-order failure/retry lifecycle events", async () => {
+    const buildLifecycleWith = (kind: WorkflowRunLifecycleKind, options: { occurredAt: Date, retryAt?: Date, attempt?: number }) => {
+      const built = buildWorkflowRunLifecycleEvent({
+        tenancy: { id: tenancyId },
+        workflowId: ISSUE_ALERT_EMAIL_WORKFLOW_ID,
+        runId,
+        workflowVersion: 1,
+        runKey: "issue-alert-cooldown",
+        triggerEventId,
+        triggerType: ISSUE_ALERT_WORKFLOW_EVENT_TYPE,
+        transition: {
+          kind,
+          attempt: options.attempt ?? 1,
+          retryEpoch: 0,
+          eventKey: `${kind}-${options.occurredAt.getTime()}`,
+          ...(options.retryAt === undefined ? {} : { retryAt: options.retryAt }),
+        },
+        occurredAt: options.occurredAt,
+      });
+      if (built.status !== "ok") throw new Error(`Could not build ${kind} lifecycle event: ${built.reason}`);
+      return built;
+    };
+    const reconcile = async (built: ReturnType<typeof buildLifecycleWith>, store: IssueAlertWorkflowStatusStore) =>
+      await reconcileIssueAlertWorkflowLifecycle({ tenancyId, type: built.type, payload: built.payload, store });
+
+    const { store, updates } = makeStore();
+
+    // The retry for attempt #1 is processed BEFORE its matching failure.
+    const firstRetry = await reconcile(buildLifecycleWith("retry", { occurredAt, retryAt, attempt: 2 }), store);
+    expect(firstRetry.status).toBe("reconciled");
+
+    // The matching failure (same scheduled retry, occurred just before the
+    // retry event) must be recognized as the same attempt, not applied again —
+    // applying it would increment `attemptCount` twice for one execution.
+    const lateFailure = await reconcile(
+      buildLifecycleWith("failure", { occurredAt: new Date(occurredAt.getTime() - 1_000), retryAt }),
+      store,
+    );
+    expect(lateFailure).toEqual({ status: "ignored", reason: "stale_lifecycle" });
+
+    // A newer retry legitimately moves the schedule forward...
+    const laterOccurredAt = new Date(occurredAt.getTime() + 60_000);
+    const laterRetryAt = new Date(retryAt.getTime() + 60_000);
+    const secondRetry = await reconcile(
+      buildLifecycleWith("retry", { occurredAt: laterOccurredAt, retryAt: laterRetryAt, attempt: 3 }),
+      store,
+    );
+    expect(secondRetry.status).toBe("reconciled");
+
+    // ...and a delayed failure from the FIRST attempt must not roll it back.
+    const veryLateFailure = await reconcile(
+      buildLifecycleWith("failure", { occurredAt: new Date(occurredAt.getTime() - 500), retryAt }),
+      store,
+    );
+    expect(veryLateFailure).toEqual({ status: "ignored", reason: "stale_lifecycle" });
+
+    expect(updates).toHaveLength(2);
   });
 
   it("dead-letters terminal failures and ignores a delayed retry lifecycle", async () => {

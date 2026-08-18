@@ -87,7 +87,10 @@ export function EventSparkline({
   const toneClasses = getToneClasses(tone);
 
   if (pending) return <SparklineHairline className={className} label="Loading activity" />;
-  if (buckets.length === 0) return <SparklineHairline className={className} label={null} />;
+  // A loaded-but-empty series keeps the caller's summary label: hiding the
+  // hairline from assistive tech would make "no activity" indistinguishable
+  // from "no chart here at all" for screen-reader users.
+  if (buckets.length === 0) return <SparklineHairline className={className} label={ariaLabel} />;
 
   return (
     <div className={cn("flex h-6 items-end gap-px", className)} role="img" aria-label={ariaLabel}>

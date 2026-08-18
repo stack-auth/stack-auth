@@ -14,21 +14,10 @@ export type TraceHighlight = {
   eventAtMs?: number | null,
 };
 
-export function issuesListHref(projectId: string): string {
-  return urlString`/projects/${projectId}/observability/issues`;
-}
-
-export function issueAlertRulesHref(projectId: string): string {
-  return urlString`/projects/${projectId}/observability/issues/alerts`;
-}
-
-export function issueSearchHref(projectId: string, search: string): string {
-  return `${issuesListHref(projectId)}?status=all&search=${encodeURIComponent(search)}`;
-}
-
-export function issueDetailHref(projectId: string, idOrShortId: string): string {
-  return urlString`/projects/${projectId}/observability/issues/${idOrShortId}`;
-}
+// Issue hrefs (issuesListHref, issueDetailHref, …) live in
+// ./issues/issue-links, which re-exports this module's traceDetailHref for the
+// Issues pages. They were briefly duplicated here as well; one home each keeps
+// the URL logic from silently diverging.
 
 export function tracesHref(projectId: string): string {
   return urlString`/projects/${projectId}/observability/traces`;

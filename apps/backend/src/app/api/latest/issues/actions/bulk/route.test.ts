@@ -28,8 +28,8 @@ vi.mock("@/prisma-client", () => ({
   retryTransaction: vi.fn(),
 }));
 
-vi.mock("@/lib/issues/public-issue-api", () => ({
-  assertPublicIssueReadEnabled: vi.fn(),
+vi.mock("@/lib/issues/observability-gate", () => ({
+  assertObservabilityEnabled: vi.fn(),
 }));
 
 vi.mock("@/lib/issues/issue-lifecycle", () => ({

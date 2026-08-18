@@ -28,7 +28,7 @@ function registerWithAmbient(
     resource: { service: { name: "storefront" } },
     getRequestHeaders: async () => ({ "x-hexclave-access-token": "token" }),
     networkCapture: { enabled: true, allowOrigins: null, denyOrigins: null, ignoreUrls: [] },
-    getPropagationPolicy: () => ({ allowedOrigins: [], allowLocalhost: false }),
+    getPropagationPolicy: () => ({ allowedOrigins: [], allowLocalhost: false, correlationBaggage: true }),
     getAmbientOtelContext,
     ...options,
   });
@@ -98,7 +98,7 @@ describe("managed browser HTTP instrumentation", () => {
       resource: { service: { name: "storefront" } },
       getRequestHeaders: async () => ({ "x-hexclave-access-token": "token" }),
       networkCapture: { enabled: true, allowOrigins: null, denyOrigins: null, ignoreUrls: [] },
-      getPropagationPolicy: () => ({ allowedOrigins: [], allowLocalhost: false }),
+      getPropagationPolicy: () => ({ allowedOrigins: [], allowLocalhost: false, correlationBaggage: true }),
       getAmbientOtelContext: () => null,
     });
 

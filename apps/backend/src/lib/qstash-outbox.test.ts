@@ -20,7 +20,7 @@ describe("QStash outbox job contracts", () => {
       batchId: "envelope:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     });
     expect(first.message.flowControl).toEqual({
-      key: "telemetry-materialization:00000000-0000-4000-8000-000000000001",
+      key: "telemetry-materialization.00000000-0000-4000-8000-000000000001",
       parallelism: 4,
     });
   });

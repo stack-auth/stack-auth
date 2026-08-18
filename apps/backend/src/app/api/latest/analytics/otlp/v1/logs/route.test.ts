@@ -1,5 +1,5 @@
-import type { OtlpTenantContext } from "@/lib/otlp-trace-writer";
-import type { CanonicalOtlpLogRecord } from "@/lib/otlp-logs";
+import type { OtlpTenantContext } from "@/lib/otlp/trace-writer";
+import type { CanonicalOtlpLogRecord } from "@/lib/otlp/logs";
 import { describe, expect, it } from "vitest";
 import { createErrorIngestPolicyStateStore, evaluateErrorIngestPolicy } from "@/lib/error-ingest";
 import { createOtlpLogProtocolProjection } from "@/lib/error-ingest/error-ingest-protocol-projections";

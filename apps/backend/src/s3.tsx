@@ -2,7 +2,7 @@ import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectComm
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
-import { ignoreUnhandledRejection } from "@hexclave/shared/dist/utils/promises";
+import { ignoreUnhandledRejection, wait } from "@hexclave/shared/dist/utils/promises";
 import { ImageProcessingError, parseBase64Image } from "./lib/images";
 import { getOptionalRequestAbortSignal } from "./lib/runtime/request-context";
 
@@ -73,6 +73,13 @@ export async function uploadBytes(options: {
   };
 }
 
+// How often a conditional PUT is retried after S3 reports a concurrent
+// conditional-write conflict (HTTP 409) before the error is surfaced. Each
+// retry backs off linearly by this base delay; conflicts resolve as soon as
+// the competing write commits or aborts, which is well within this window.
+const CONDITIONAL_PUT_CONFLICT_RETRIES = 3;
+const CONDITIONAL_PUT_CONFLICT_RETRY_BASE_MS = 100;
+
 /**
  * Writes one immutable object without allowing a retry or concurrent writer to
  * replace the bytes. Content-addressed callers use the false result to read
@@ -86,7 +93,7 @@ export async function uploadBytesIfAbsent(options: {
   private?: boolean,
 }): Promise<boolean> {
   const { client, bucket } = getS3Target(options.private === true);
-  try {
+  return await sendConditionalPutWithConflictRetry(async () => {
     await client.send(new PutObjectCommand({
       Bucket: bucket,
       Key: options.key,
@@ -95,14 +102,86 @@ export async function uploadBytesIfAbsent(options: {
       ...(options.contentType ? { ContentType: options.contentType } : {}),
       ...(options.contentEncoding ? { ContentEncoding: options.contentEncoding } : {}),
     }));
-    return true;
-  } catch (error) {
-    if (error instanceof S3ServiceException && [409, 412].includes(error.$metadata.httpStatusCode ?? 0)) {
-      return false;
+  });
+}
+
+/**
+ * S3 distinguishes two conditional-write failures, and only one of them means
+ * the key exists: 412 PreconditionFailed is "the object is already there" (the
+ * caller may safely read-and-compare), while 409 ConditionalRequestConflict
+ * means a CONCURRENT conditional write was in flight and the outcome is
+ * unknown — AWS documents that the request should be retried. Treating 409 as
+ * "exists" made the loser of a race between two identical registrations
+ * immediately read a key whose winning write may not have committed yet,
+ * turning a legitimate concurrent upload into a spurious not-found/conflict
+ * error. Retrying the PUT converges to either a plain success or a definitive
+ * 412 once the competing write commits or aborts.
+ */
+async function sendConditionalPutWithConflictRetry(sendConditionalPut: () => Promise<void>): Promise<boolean> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await sendConditionalPut();
+      return true;
+    } catch (error) {
+      if (error instanceof S3ServiceException) {
+        const statusCode = error.$metadata.httpStatusCode;
+        if (statusCode === 412) {
+          return false;
+        }
+        if (statusCode === 409 && attempt < CONDITIONAL_PUT_CONFLICT_RETRIES) {
+          await wait(CONDITIONAL_PUT_CONFLICT_RETRY_BASE_MS * (attempt + 1));
+          continue;
+        }
+      }
+      throw error;
     }
-    throw error;
   }
 }
+
+import.meta.vitest?.test("conditional PUT retries 409 conflicts and reserves false for 412", async ({ expect }) => {
+  const makeS3Error = (httpStatusCode: number) => new S3ServiceException({
+    name: "TestS3Error",
+    $fault: "client",
+    $metadata: { httpStatusCode },
+  });
+
+  // 412: the object definitively exists — no retry, report "not created".
+  let attempts412 = 0;
+  await expect(sendConditionalPutWithConflictRetry(async () => {
+    attempts412++;
+    throw makeS3Error(412);
+  })).resolves.toBe(false);
+  expect(attempts412).toBe(1);
+
+  // 409: outcome unknown — retry until the competing write settles (here: it
+  // committed, so the retry observes 412 and reports "not created").
+  const conflictThenExists = [makeS3Error(409), makeS3Error(412)];
+  await expect(sendConditionalPutWithConflictRetry(async () => {
+    const error = conflictThenExists.shift();
+    if (error !== undefined) throw error;
+    throw new Error("unexpected extra attempt");
+  })).resolves.toBe(false);
+
+  // 409 where the competing write aborted: the retry wins the key.
+  const conflictThenSuccess = [makeS3Error(409)];
+  await expect(sendConditionalPutWithConflictRetry(async () => {
+    const error = conflictThenSuccess.shift();
+    if (error !== undefined) throw error;
+  })).resolves.toBe(true);
+
+  // Persistent 409s eventually surface instead of being misreported as "exists".
+  let persistentAttempts = 0;
+  await expect(sendConditionalPutWithConflictRetry(async () => {
+    persistentAttempts++;
+    throw makeS3Error(409);
+  })).rejects.toBeInstanceOf(S3ServiceException);
+  expect(persistentAttempts).toBe(CONDITIONAL_PUT_CONFLICT_RETRIES + 1);
+
+  // Non-conditional failures propagate untouched.
+  await expect(sendConditionalPutWithConflictRetry(async () => {
+    throw makeS3Error(500);
+  })).rejects.toBeInstanceOf(S3ServiceException);
+});
 
 function getS3Target(privateBucket: boolean): { client: S3Client, bucket: string } {
   if (!s3Client) {
@@ -119,6 +198,14 @@ function getS3Target(privateBucket: boolean): { client: S3Client, bucket: string
  * Grants temporary write access to one exact object key without exposing the
  * backend's S3/R2 credentials. Callers must send the returned content type
  * because it is part of the signature.
+ *
+ * UPLOAD CONTRACT: the URL is create-only. `IfNoneMatch: "*"` is part of the
+ * signed canonical request, so every uploader must send the literal header
+ * `If-None-Match: *` (the signature fails without it) and must treat a 412
+ * response as "already uploaded" success. Without this, a presigned URL for a
+ * content-addressed object would be overwrite-capable: a same-tenant key
+ * holder could replace already-published bytes (an availability problem even
+ * though readers digest-verify what they download).
  */
 export async function createPresignedUploadUrl(options: {
   key: string,
@@ -134,11 +221,34 @@ export async function createPresignedUploadUrl(options: {
       Bucket: bucket,
       Key: options.key,
       ContentType: options.contentType,
+      IfNoneMatch: "*",
       ...(options.contentEncoding ? { ContentEncoding: options.contentEncoding } : {}),
     }),
     { expiresIn: options.expiresInSeconds },
   );
 }
+
+import.meta.vitest?.test("presigned upload URLs sign If-None-Match as a required header", async ({ expect }) => {
+  // The create-only contract only works if the SDK signs If-None-Match into
+  // the canonical request as a HEADER (so the object store rejects requests
+  // that omit it) rather than hoisting it into the query string. Signing is
+  // fully local, so this needs no S3 endpoint or real credentials.
+  const testClient = new S3Client({
+    region: "us-east-1",
+    endpoint: "https://s3.example.com",
+    forcePathStyle: true,
+    credentials: { accessKeyId: "test", secretAccessKey: "test" },
+  });
+  const url = await getSignedUrl(testClient, new PutObjectCommand({
+    Bucket: "test-bucket",
+    Key: "test-key.js",
+    ContentType: "application/javascript",
+    IfNoneMatch: "*",
+  }), { expiresIn: 900 });
+  const signedHeaders = new URL(url).searchParams.get("X-Amz-SignedHeaders")?.split(";") ?? [];
+  expect(signedHeaders).toContain("if-none-match");
+  expect(new URL(url).searchParams.has("If-None-Match")).toBe(false);
+});
 
 export async function headBytes(options: { key: string, private?: boolean, signal?: AbortSignal }): Promise<{
   byteLength: number,

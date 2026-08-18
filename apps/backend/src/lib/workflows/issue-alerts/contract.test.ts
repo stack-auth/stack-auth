@@ -38,11 +38,11 @@ function createSignal(): IssueAlertSignal {
   };
 }
 
-function createMatch(actionOverrides: {
+function createRule(actionOverrides: {
   subject?: string,
   html?: string,
-} = {}) {
-  const rule: IssueAlertRule = {
+} = {}): IssueAlertRule {
+  return {
     schemaVersion: 1,
     id: "notify-on-errors",
     version: 1,
@@ -57,7 +57,13 @@ function createMatch(actionOverrides: {
       notificationCategoryName: "observability",
     },
   };
-  const result = evaluateIssueAlertRule(rule, createSignal());
+}
+
+function createMatch(actionOverrides: {
+  subject?: string,
+  html?: string,
+} = {}) {
+  const result = evaluateIssueAlertRule(createRule(actionOverrides), createSignal());
   if (result.outcome !== "match") throw new Error("Test fixture must produce a matching issue alert");
   return result;
 }
@@ -151,6 +157,20 @@ describe("issue alert workflow event contract", () => {
     expect(result.payload.action.html).toContain("{{unknown}}");
     expect(result.payload.action.html).not.toContain("{{issue_url}}");
     expect(result.payload.action.html).not.toContain("{{summary}}");
+  });
+
+  it("drops signals with control characters so a rendered subject can never span mail header lines", () => {
+    // The email subject is interpolated from issue fields; this drop is what
+    // guarantees CR/LF (or any other control character) in attacker-controlled
+    // issue text can never reach the single-line subject header downstream.
+    const result = evaluateIssueAlertRule(createRule(), (() => {
+      const signal = createSignal();
+      signal.issue.value = "boom\r\nX-Injected: 1";
+      return signal;
+    })());
+
+    expect(result.outcome).toBe("drop");
+    if (result.outcome === "drop") expect(result.reason).toBe("invalid_signal");
   });
 
   it("rejects a tenancy mismatch before writing a workflow event", () => {

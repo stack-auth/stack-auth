@@ -6,9 +6,9 @@ import { suppressTracing, W3CTraceContextPropagator } from "@opentelemetry/core"
 import { recordBackendRequestMetrics } from "./backend-request-metrics";
 import { getVerifiedCustomerRequestLinkTarget, runWithCustomerRequestObservability } from "./customer-request-observability";
 import { runWithNodeTelemetrySuppressed } from "./node-telemetry-suppression";
-import { isTelemetryIngestionPath } from "./telemetry-ingestion-paths";
+import { isTelemetryIngestionPath } from "./telemetry/ingestion-paths";
 
-export { isTelemetryIngestionPath } from "./telemetry-ingestion-paths";
+export { isTelemetryIngestionPath } from "./telemetry/ingestion-paths";
 
 const TRUSTED_SPAN_LINK_WRITER = Symbol.for("hexclave.analytics.trusted-span-link-writer.v1");
 const traceContextPropagator = new W3CTraceContextPropagator();

@@ -61,6 +61,26 @@ function boundedKey(value: string): string | null {
   return value.length > 0 && bytes <= MAX_SIGNAL_KEY_BYTES ? value : null;
 }
 
+// Mirrors the evaluator's SAFE_TEXT_PATTERN: its `validateSignal` rejects the
+// WHOLE signal when any identifier contains a control character or exceeds
+// 256 bytes.
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
+
+/**
+ * Release/environment come from customer telemetry with no upstream bound
+ * tight enough for the evaluator's 256-byte identifier limit. They must be
+ * normalized to null HERE rather than handed through verbatim: an oversized
+ * (or control-character) release would fail `validateSignal` and silently
+ * suppress EVERY alert for the occurrence, when the honest outcome is "this
+ * occurrence has no usable release" — release/environment predicates then
+ * simply cannot match, and everything else still alerts.
+ */
+function boundedIdentifierOrNull(value: string | null): string | null {
+  if (value === null || value.length === 0) return null;
+  if (CONTROL_CHARACTER_PATTERN.test(value)) return null;
+  return new TextEncoder().encode(value).byteLength <= MAX_SIGNAL_KEY_BYTES ? value : null;
+}
+
 function boundedString(value: string): string | null {
   const bytes = new TextEncoder().encode(value).byteLength;
   return value.length > 0 && bytes <= MAX_SIGNAL_STRING_BYTES ? value : null;
@@ -170,8 +190,8 @@ export function buildIssueAlertSignal(input: IssueAlertSignalInput): IssueAlertS
       occurredAt: input.input.lastEventAt,
     },
     level: normalizeIssueAlertLevel(input.input.level),
-    environment: input.input.deploymentEnvironmentName,
-    release: input.input.release,
+    environment: boundedIdentifierOrNull(input.input.deploymentEnvironmentName),
+    release: boundedIdentifierOrNull(input.input.release),
     tags,
     attributes,
     frequencyCounts: input.frequencyCounts ?? new Map(),

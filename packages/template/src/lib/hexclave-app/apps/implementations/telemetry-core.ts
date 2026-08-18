@@ -69,9 +69,7 @@ export type Span = {
   setData(data: Record<string, unknown>): Promise<void>,
   /** Idempotent; repeated calls return the first call's promise. */
   end(options?: { endedAtMs?: number }): Promise<void>,
-  /** Tracks an event inside this span. */
   trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions): Promise<void>,
-  /** Starts a child span of this span. */
   startSpan(spanType: string, options?: StartSpanOptions): Span,
   /**
    * Runs `fn` inside a child span of this span (auto-ends, records errors —
@@ -341,15 +339,27 @@ export function resolveSpanParent(opts: {
       links.push({ traceId: context.traceId, spanId: context.spanId });
     }
   }
+  // Only CALLER-DECLARED links can exceed the cap loudly: the caller stated an
+  // intent we cannot honor, so failing the span is the honest outcome.
+  if (links.length > MAX_SPAN_LINKS) {
+    return { error: `A span may link to at most ${MAX_SPAN_LINKS} other spans` };
+  }
   if (parent !== null) {
+    // Ambient contexts demoted to links are best-effort provenance, not caller
+    // intent. The global-span registries soft-cap far above MAX_SPAN_LINKS, so
+    // erroring here would make every ordinary startSpan()/trackEvent() call
+    // fail once enough unrelated global spans are registered. Instead, fill the
+    // remaining link capacity preferring the NEAREST ambient contexts (the
+    // ambient list is outermost-first) and silently drop the farthest ones.
+    const demoted: StoredSpanLink[] = [];
     for (const context of ambient) {
       if (context.traceId === parent.traceId) continue;
       if (links.some((link) => link.spanId === context.spanId && link.traceId === context.traceId)) continue;
-      links.push({ traceId: context.traceId, spanId: context.spanId });
+      if (demoted.some((link) => link.spanId === context.spanId && link.traceId === context.traceId)) continue;
+      demoted.push({ traceId: context.traceId, spanId: context.spanId });
     }
-  }
-  if (links.length > MAX_SPAN_LINKS) {
-    return { error: `A span may link to at most ${MAX_SPAN_LINKS} other spans` };
+    const capacity = MAX_SPAN_LINKS - links.length;
+    links.push(...demoted.slice(Math.max(0, demoted.length - capacity)));
   }
 
   return {

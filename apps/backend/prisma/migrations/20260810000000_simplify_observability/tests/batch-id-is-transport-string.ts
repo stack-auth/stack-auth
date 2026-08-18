@@ -3,11 +3,24 @@ import type { Sql } from "postgres";
 import { expect } from "vitest";
 
 export const preMigration = async (sql: Sql) => {
+  // The test database is built from the CURRENT migration files, where
+  // 20260731000000_add_issues already creates batchId as VARCHAR(512) — so
+  // without intervention the migration's uuid->varchar compatibility branch
+  // would never fire and a regression in it would go undetected. Recreate the
+  // legacy pre-release shape (a genuine uuid column) first, so the migration
+  // under test performs the actual conversion. Earlier migrations' tests only
+  // ever insert uuid-shaped batch ids, so the USING cast cannot fail on their
+  // leftover rows.
+  await sql`
+    ALTER TABLE "IssueMaterialization"
+      ALTER COLUMN "batchId" TYPE UUID
+      USING "batchId"::uuid
+  `;
   const tenancyId = randomUUID();
   const legacyBatchId = randomUUID();
   await sql`
     INSERT INTO "IssueMaterialization" ("tenancyId", "batchId")
-    VALUES (${tenancyId}::uuid, ${legacyBatchId})
+    VALUES (${tenancyId}::uuid, ${legacyBatchId}::uuid)
   `;
   return { tenancyId, legacyBatchId };
 };

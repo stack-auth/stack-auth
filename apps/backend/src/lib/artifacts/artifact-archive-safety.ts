@@ -1,5 +1,6 @@
 import { gunzipSync } from "node:zlib";
 import { parseTar, type TarEntry } from "@hexclave/shared/dist/utils/tar";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { ArtifactServiceError } from "./artifact-errors";
 import { MAX_ARTIFACT_PATH_BYTES } from "./artifact-manifest";
 
@@ -82,7 +83,24 @@ export function validateGzipTarArtifactArchive(
       maxEntries: limits.maxEntries ?? MAX_ARCHIVE_ENTRIES,
       maxTotalBytes: maxBytes,
     });
-  } catch {
+  } catch (error) {
+    // Only forward static parseTar diagnostics. Its unsafe-path diagnostic
+    // includes the archive's raw entry name, which is attacker-controlled and
+    // must not be reflected through the API error response.
+    if (error instanceof StatusError && error.statusCode === 400) {
+      const safeMessages = new Set([
+        "Invalid tarball: not a ustar archive",
+        "Invalid tarball: header checksum mismatch",
+        "Invalid tarball: malformed octal header field",
+        "Invalid tarball: missing end-of-archive marker",
+        "Invalid tarball: only regular files and directories are supported",
+        "Invalid tarball: directory entry with non-zero size",
+      ]);
+      if (safeMessages.has(error.message)) throw invalidArchive(`Artifact archive is not a safe ustar archive: ${error.message}`);
+      if (/^(?:Tarball contains too many files|Tarball contents too large|Invalid tarball: truncated)/u.test(error.message)) {
+        throw invalidArchive(`Artifact archive is not a safe ustar archive: ${error.message}`);
+      }
+    }
     throw invalidArchive("Artifact archive is not a safe ustar archive.");
   }
   return validateArtifactArchiveEntries(entries.map((entry) => ({

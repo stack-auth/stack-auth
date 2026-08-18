@@ -1,4 +1,4 @@
-import { queryOtlpMetrics } from "@/lib/otlp-metric-query";
+import { OTLP_METRIC_TYPES, queryOtlpMetrics } from "@/lib/otlp/metric-query";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import {
@@ -25,6 +25,10 @@ export const POST = createSmartRouteHandler({
     body: yupObject({
       hours: yupNumber().integer().oneOf([1, 24, 168, 720]).default(24),
       metric_name: yupString().nonEmpty().max(255).optional(),
+      // One OTLP metric NAME can exist with several metric types, each being
+      // its own catalog entry/series — without the type the query could
+      // resolve a different entry than the one the selector shows.
+      metric_type: yupString().oneOf([...OTLP_METRIC_TYPES]).optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -45,6 +49,7 @@ export const POST = createSmartRouteHandler({
         request: {
           hours: body.hours,
           metricName: body.metric_name,
+          metricType: body.metric_type,
         },
       }),
     };

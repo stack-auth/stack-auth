@@ -40,6 +40,150 @@ describe("emitHexclaveOtelLog", () => {
     }]);
   });
 
+  it("supports explicit parent context and correlation attributes like the event emitter", async () => {
+    const exporter = new InMemoryLogRecordExporter();
+    const provider = new LoggerProvider({ processors: [new SimpleLogRecordProcessor({ exporter })] });
+    providers.push(provider);
+    logs.setGlobalLoggerProvider(provider);
+
+    // The server's request-scoped _emitLog resolves attribution itself instead
+    // of relying on the active OTel context; the log emitter must accept the
+    // same explicit parent + hexclave.* correlation scalars the event emitter
+    // does. Omitting `options` keeps the active-context default (covered by
+    // the first test in this file).
+    emitHexclaveOtelLog({
+      message: "payment retried",
+      level: "warn",
+      data: { attempt: 2 },
+      origin: "logger",
+    }, "test-version", {
+      parent: { traceId: "11111111111111111111111111111111", spanId: "2222222222222222", traceState: "vendor=value" },
+      correlationAttributes: {
+        "hexclave.user.id": "user-1",
+        "hexclave.session_replay.segment.id": "segment",
+      },
+    });
+    emitHexclaveOtelLog({
+      message: "rootless",
+      level: "info",
+      data: undefined,
+      origin: "logger",
+    }, "test-version", { parent: null });
+    await provider.forceFlush();
+
+    const records = exporter.getFinishedLogRecords();
+    expect(records).toMatchObject([
+      {
+        eventName: "$log",
+        severityText: "WARN",
+        body: "payment retried",
+        attributes: {
+          "hexclave.signal.type": "log",
+          "hexclave.data": { attempt: 2 },
+          "hexclave.user.id": "user-1",
+          "hexclave.session_replay.segment.id": "segment",
+        },
+        spanContext: {
+          traceId: "11111111111111111111111111111111",
+          spanId: "2222222222222222",
+        },
+      },
+      {
+        eventName: "$log",
+        body: "rootless",
+      },
+    ]);
+    // `parent: null` is an explicit root record: no span context at all.
+    expect(records[1]?.spanContext).toBeUndefined();
+  });
+
+  it("serializes toJSON()-bearing values (Date) with JSON semantics instead of {}", async () => {
+    const exporter = new InMemoryLogRecordExporter();
+    const provider = new LoggerProvider({ processors: [new SimpleLogRecordProcessor({ exporter })] });
+    providers.push(provider);
+    logs.setGlobalLoggerProvider(provider);
+
+    // The accepted-data contract is JSON serializability (validated with
+    // JSON.stringify, which consults toJSON), so the wire form must match it.
+    const selfReferential = {
+      toJSON(): unknown {
+        return selfReferential; // must not recurse forever (JSON.stringify does not)
+      },
+      kept: "value",
+    };
+    emitHexclaveOtelLog({
+      message: "with rich values",
+      level: "info",
+      data: {
+        at: new Date("2026-01-02T03:04:05.678Z"),
+        custom: { toJSON: () => ({ flattened: true }) },
+        selfReferential,
+      },
+      origin: "logger",
+    }, "test-version");
+    await provider.forceFlush();
+
+    expect(exporter.getFinishedLogRecords()).toMatchObject([{
+      attributes: {
+        "hexclave.data": {
+          at: "2026-01-02T03:04:05.678Z",
+          custom: { flattened: true },
+          selfReferential: { kept: "value" },
+        },
+      },
+    }]);
+  });
+
+  it("omits undefined object values and writes null for undefined array values", async () => {
+    const exporter = new InMemoryLogRecordExporter();
+    const provider = new LoggerProvider({ processors: [new SimpleLogRecordProcessor({ exporter })] });
+    providers.push(provider);
+    logs.setGlobalLoggerProvider(provider);
+    const sparse: unknown[] = [];
+    sparse[1] = undefined;
+
+    emitHexclaveOtelLog({
+      message: "undefined values",
+      level: "info",
+      data: {
+        omitted: { toJSON: () => undefined },
+        values: [undefined, ...sparse, { toJSON: () => undefined }],
+      },
+      origin: "logger",
+    }, "test-version");
+    await provider.forceFlush();
+
+    expect(exporter.getFinishedLogRecords()[0]?.attributes["hexclave.data"]).toEqual({
+      values: [null, null, null, null],
+    });
+  });
+
+  it("passes each property's JSON key to toJSON", async () => {
+    const exporter = new InMemoryLogRecordExporter();
+    const provider = new LoggerProvider({ processors: [new SimpleLogRecordProcessor({ exporter })] });
+    providers.push(provider);
+    logs.setGlobalLoggerProvider(provider);
+    const keys: string[] = [];
+
+    emitHexclaveOtelLog({
+      message: "key-aware value",
+      level: "info",
+      data: {
+        custom: {
+          toJSON(key: string): string {
+            keys.push(key);
+            return key;
+          },
+        },
+      },
+      origin: "logger",
+    }, "test-version");
+    await provider.forceFlush();
+
+    expect(keys).toEqual(["custom"]);
+    expect(exporter.getFinishedLogRecords()[0]?.attributes["hexclave.data"]).toMatchObject({ custom: "custom" });
+  });
+
   it("emits product events as named OTel LogRecords with explicit parent context", async () => {
     const exporter = new InMemoryLogRecordExporter();
     const provider = new LoggerProvider({ processors: [new SimpleLogRecordProcessor({ exporter })] });

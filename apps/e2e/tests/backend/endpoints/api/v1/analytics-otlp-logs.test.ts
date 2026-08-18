@@ -1,5 +1,5 @@
 import { it } from "../../../../helpers";
-import { Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
 it("accepts a standard empty OTLP/HTTP JSON logs export with server auth", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
@@ -15,9 +15,7 @@ it("accepts a standard empty OTLP/HTTP JSON logs export with server auth", async
     NiceResponse {
       "status": 200,
       "body": {},
-      "headers": Headers {
-        <some fields may have been hidden>,
-      },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
@@ -67,7 +65,7 @@ it("returns OTLP partialSuccess when only the Hexclave product marker contract r
   expect(response.body).toEqual({
     partialSuccess: {
       rejectedLogRecords: "1",
-      errorMessage: "Hexclave product event LogRecords require a valid custom eventName",
+      errorMessage: "Hexclave product event LogRecords require a known system event type or a valid custom eventName",
     },
   });
 });
@@ -75,6 +73,9 @@ it("returns OTLP partialSuccess when only the Hexclave product marker contract r
 it("accepts browser OTLP logs with an authenticated client session", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { observability: { enabled: true } } } });
+  // Client access alone is not enough: browser OTLP requires a user session
+  // (the sibling test below asserts the 401 without one).
+  await Auth.Otp.signIn();
   const response = await niceBackendFetch("/api/v1/analytics/otlp/v1/logs", {
     method: "POST",
     accessType: "client",

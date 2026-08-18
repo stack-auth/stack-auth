@@ -21,6 +21,7 @@ import {
   OTEL_METRICS_COLUMNS,
   SPANS_TRACE_MODEL_VERSION,
   SPANS_VIEW_SQL,
+  SPAN_EVENTS_VIEW_SQL,
   SPAN_LINKS_COLUMNS,
   SPAN_EVENTS_COLUMNS,
   SPAN_WRITES_TTL_DAYS,
@@ -47,6 +48,7 @@ import {
   buildSpanWritesMvSql,
   buildSpansCreateTableSql,
   buildTelemetryCreateTableSql,
+  cutoverLegacyTelemetryTables,
   migrateLegacyTelemetryTables,
   buildOtelMetricsCreateTableSql,
   buildTelemetryInsertDeduplicationSettingSql,
@@ -82,6 +84,21 @@ describe("legacy telemetry copy contract", () => {
     expect(sql).toContain("if(legacy_source.level = '', legacy_source.severity_text, legacy_source.level) AS level");
     expect(sql).toContain("if(legacy_source.body = '', legacy_source.message, legacy_source.body) AS body");
     expect(sql).toContain("if(legacy_source.source = '', legacy_source.producer, legacy_source.source) AS producer");
+  });
+
+  test("the cutover backfill stamps the reserved marker and copies only the frozen non-dual-written slice", () => {
+    // These two options ARE the cutover's correctness story: the marker is what
+    // keeps the copied set identifiable among live telemetry rows (making the
+    // per-partition fingerprint verification possible), and the WHERE clause is
+    // what excludes dual-written rows whose canonical copy already reached
+    // telemetry through the primary write path.
+    const sql = buildLegacyTelemetrySelectSql("events", "analytics_internal.events", {
+      batchIdMarker: "legacy-telemetry-cutover:events",
+      whereSql: "dual_written = 0",
+    });
+
+    expect(sql).toContain("'legacy-telemetry-cutover:events' AS batch_id");
+    expect(sql).toMatch(/\nWHERE dual_written = 0$/);
   });
 });
 
@@ -404,6 +421,10 @@ describe("telemetry table physical layout", () => {
     const sql = buildSpanEventsCreateTableSql("analytics_internal.span_events");
     expect(sql).toContain("ENGINE ReplacingMergeTree");
     expect(sql).toContain("ifNull(trace_id, ''), ifNull(span_id, ''), event_ordinal, event_at, event_type");
+    // The open-marker snapshot and the end-write re-insert the same events
+    // under different dedup tokens; without FINAL the public projection shows
+    // them twice until a background merge happens to run.
+    expect(SPAN_EVENTS_VIEW_SQL).toContain("FROM analytics_internal.span_events FINAL");
   });
 
   test("telemetry tables declare the retention TTL in their CREATE statements", () => {
@@ -612,26 +633,154 @@ describe("clickhouse upgrade helpers (integration)", () => {
     });
   }
 
-  test("refuses an automatic one-release cutover before copying or dropping anything", async () => {
+  test("the startup migration only expands legacy sources: dual_written added, nothing copied or dropped", async () => {
     await withThrowawayDatabase(async (database) => {
       const eventsTable = "legacy_events_mapping_probe";
       const logsTable = "legacy_logs_mapping_probe";
       await seedLegacySources(database, eventsTable, logsTable);
 
-      await expect(migrateLegacyTelemetryTables(client, { database, eventsTable, logsTable }))
-        .rejects.toThrow(/Deploy an expand\/dual-write release/);
+      await migrateLegacyTelemetryTables(client, { database, eventsTable, logsTable });
 
-      // The refusal happens before any state or staging DDL. Both source rows
-      // and their writable physical table names remain exactly as deployed.
+      // The expand phase keeps both physical sources under their writable
+      // names, with every seeded row intact: old-release instances may still be
+      // writing, so any copy/drop here would race a committed source write.
       expect(await physicalTableExists(database, eventsTable)).toBe(true);
       expect(await physicalTableExists(database, logsTable)).toBe(true);
       expect(await countRowsIn(database, eventsTable)).toBe(1);
       expect(await countRowsIn(database, logsTable)).toBe(1);
+
+      // Both sources gain the dual-write marker, and pre-expand rows read back
+      // as the column default 0 — exactly the set the cutover must later copy.
+      for (const table of [eventsTable, logsTable]) {
+        const resultSet = await client.query({
+          query: `SELECT dual_written FROM ${database}.${table}`,
+          format: "JSONEachRow",
+        });
+        expect(await resultSet.json<{ dual_written: number }>()).toEqual([{ dual_written: 0 }]);
+      }
+
+      // Nothing was copied, staged, or checkpointed: no telemetry table, no
+      // stage tables of the retired copy/EXCHANGE flow, and no state rows for
+      // the migration id (the empty state TABLE itself may exist).
       expect(await physicalTableExists(database, "telemetry")).toBe(false);
-      expect(await physicalTableExists(database, "telemetry_legacy_migration_state")).toBe(false);
       expect(await physicalTableExists(database, "telemetry_legacy_events_stage")).toBe(false);
       expect(await physicalTableExists(database, "telemetry_legacy_logs_stage")).toBe(false);
       expect(await physicalTableExists(database, "telemetry_legacy_target_stage")).toBe(false);
+      const stateSet = await client.query({
+        query: `
+          SELECT count() AS count
+          FROM ${database}.telemetry_legacy_migration_state
+          WHERE migration_id LIKE 'events-and-logs-to-telemetry-v1%'
+        `,
+        format: "JSONEachRow",
+      });
+      expect(Number((await stateSet.json<{ count: string }>())[0].count)).toBe(0);
+    });
+  });
+
+  test("the cutover backfills only pre-expand rows, drops the sources, checkpoints, and is idempotent", async () => {
+    await withThrowawayDatabase(async (database) => {
+      const eventsTable = "legacy_events_cutover_probe";
+      const logsTable = "legacy_logs_cutover_probe";
+      await createLegacySourceTable(database, eventsTable, "events");
+      // A pre-expand row: written before the dual_written column existed, so it
+      // reads back with the column default 0 after the expand upgrade.
+      await client.command({
+        query: `
+          INSERT INTO ${database}.${eventsTable}
+            (event_type, event_at, body, severity_text, severity_number, data, project_id, branch_id, source)
+          VALUES
+            ('$click', '2026-08-11 10:00:00.000', 'pre-expand body', 'warning', 4, '{"kind":"pre-expand"}', 'p', 'b', 'legacy-events')
+        `,
+      });
+
+      // The expand release deploys (adds the telemetry column set plus
+      // dual_written to the legacy source) and creates the canonical telemetry
+      // table it primary-writes to.
+      await migrateLegacyTelemetryTables(client, { database, eventsTable, logsTable });
+      await client.command({ query: buildTelemetryCreateTableSql(`${database}.telemetry`) });
+
+      // An expand-release write: mirrored into the legacy table with
+      // dual_written = 1 AND written to telemetry by the primary path.
+      await client.command({
+        query: `
+          INSERT INTO ${database}.${eventsTable}
+            (event_type, event_at, data, project_id, branch_id, dual_written)
+          VALUES
+            ('$click', '2026-08-11 11:00:00.000', '{"kind":"dual-written"}', 'p', 'b', 1)
+        `,
+      });
+      await client.command({
+        query: `
+          INSERT INTO ${database}.telemetry
+            (event_type, event_at, data, project_id, branch_id)
+          VALUES
+            ('$click', '2026-08-11 11:00:00.000', '{"kind":"dual-written"}', 'p', 'b')
+        `,
+      });
+
+      await cutoverLegacyTelemetryTables(client, { database, eventsTable, logsTable, minDrainSeconds: 0 });
+
+      // The sources are retired; the freed names are the migration phase's job.
+      expect(await physicalTableExists(database, eventsTable)).toBe(false);
+      expect(await physicalTableExists(database, logsTable)).toBe(false);
+
+      // Exactly the pre-expand row was copied, stamped with the reserved
+      // marker; the dual-written row appears exactly once (its canonical copy
+      // came from the primary write, and the mirror was NOT copied again).
+      const telemetrySet = await client.query({
+        query: `SELECT message, batch_id FROM ${database}.telemetry ORDER BY event_at`,
+        format: "JSONEachRow",
+      });
+      expect(await telemetrySet.json<{ message: string, batch_id: string }>()).toEqual([
+        // The copy expressions promote the old event `body` into `message`.
+        { message: "pre-expand body", batch_id: "legacy-telemetry-cutover:events" },
+        { message: "", batch_id: "" },
+      ]);
+
+      // Durable completion: the per-partition checkpoint plus the migration's
+      // completed marker (partition id 202608 = toYYYYMM of the seeded rows).
+      const stateSet = await client.query({
+        query: `SELECT migration_id, phase FROM ${database}.telemetry_legacy_migration_state FINAL ORDER BY migration_id`,
+        format: "JSONEachRow",
+      });
+      expect(await stateSet.json<{ migration_id: string, phase: string }>()).toEqual([
+        { migration_id: "events-and-logs-to-telemetry-v1", phase: "completed" },
+        { migration_id: "events-and-logs-to-telemetry-v1:events:202608", phase: "completed" },
+      ]);
+
+      // A second cutover run must be a no-op: the completed marker (with the
+      // sources absent) short-circuits before any DDL or copy.
+      await cutoverLegacyTelemetryTables(client, { database, eventsTable, logsTable, minDrainSeconds: 0 });
+      expect(await countRowsIn(database, "telemetry")).toBe(2);
+    });
+  });
+
+  test("the cutover refuses while a non-dual-written row is fresher than the drain window", async () => {
+    await withThrowawayDatabase(async (database) => {
+      const eventsTable = "legacy_events_drain_probe";
+      const logsTable = "legacy_logs_drain_probe";
+      await createLegacySourceTable(database, eventsTable, "events");
+      await migrateLegacyTelemetryTables(client, { database, eventsTable, logsTable });
+      await client.command({ query: buildTelemetryCreateTableSql(`${database}.telemetry`) });
+      // created_at is the server-stamped DEFAULT now64(3), so this row is
+      // seconds old — a pre-expand writer could still be running.
+      await client.command({
+        query: `
+          INSERT INTO ${database}.${eventsTable}
+            (event_type, event_at, data, project_id, branch_id)
+          VALUES
+            ('$click', now64(3), '{"kind":"fresh"}', 'p', 'b')
+        `,
+      });
+
+      await expect(cutoverLegacyTelemetryTables(client, { database, eventsTable, logsTable, minDrainSeconds: 3600 }))
+        .rejects.toThrow(/Refusing cutover/);
+
+      // The refusal happens before any copy or drop.
+      expect(await physicalTableExists(database, eventsTable)).toBe(true);
+      expect(await countRowsIn(database, eventsTable)).toBe(1);
+      expect(await countRowsIn(database, "telemetry")).toBe(0);
     });
   });
 

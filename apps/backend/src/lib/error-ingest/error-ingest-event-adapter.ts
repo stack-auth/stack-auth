@@ -85,7 +85,10 @@ function eventTimeMs(event: ErrorRecord, receivedAtMs: number): number {
   const timestamp = field(event, "timestamp");
   if (typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp >= 0) {
     const milliseconds = Math.round(timestamp * 1_000);
-    if (Number.isSafeInteger(milliseconds) && milliseconds >= 0) return milliseconds;
+    // Safe integers reach ~9.0e15 but Date only supports ±8.64e15, so a
+    // safe-integer ms value can still be an Invalid Date that ClickHouse would
+    // reject; treat that range as unusable and fall back to receipt time.
+    if (Number.isSafeInteger(milliseconds) && milliseconds >= 0 && Number.isFinite(new Date(milliseconds).getTime())) return milliseconds;
   }
   if (typeof timestamp === "string") {
     const milliseconds = Date.parse(timestamp);
@@ -132,12 +135,20 @@ export function projectSentryEnvelopeEvent(options: {
     ...(level === undefined ? {} : { level }),
   };
 
+  // The wire contract requires trace_id and span_id together or not at all: an
+  // event has no span identity of its own, so a lone half would persist an
+  // unjoinable partial identity (see BatchEventWireItem). Sentry events can
+  // legitimately carry only a trace_id (e.g. from the envelope DSC), so drop
+  // the partial pair rather than reject the event.
+  const traceId = traceIdFromEvent(options.event, options.header);
+  const spanId = spanIdFromEvent(options.event);
+  const spanIdentity = traceId !== undefined && spanId !== undefined ? { trace_id: traceId, span_id: spanId } : {};
+
   return {
     event_type: "$error",
     event_at_ms: eventTimeMs(options.event, options.receivedAtMs),
     data,
-    ...(traceIdFromEvent(options.event, options.header) === undefined ? {} : { trace_id: traceIdFromEvent(options.event, options.header) }),
-    ...(spanIdFromEvent(options.event) === undefined ? {} : { span_id: spanIdFromEvent(options.event) }),
+    ...spanIdentity,
     ...(level === undefined ? {} : { level }),
   };
 }

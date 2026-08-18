@@ -55,9 +55,12 @@ function FrameSourceContext({
   ];
   return (
     <div className="mt-1.5 overflow-x-auto rounded-lg bg-foreground/[0.03] ring-1 ring-foreground/[0.06]">
+      {/* Each line is a `span` (styled `flex`), not a `div`: `pre` only allows
+          phrasing content, and flow children inside it are invalid HTML that
+          browsers/AT may re-nest unpredictably. Visually identical. */}
       <pre className="min-w-full py-1.5 font-mono text-[11px] leading-[1.6]">
         {rows.map((row) => (
-          <div
+          <span
             key={row.key}
             className={row.current ? "flex bg-red-500/10 px-3 text-foreground" : "flex px-3 text-muted-foreground/70"}
           >
@@ -67,7 +70,7 @@ function FrameSourceContext({
               </span>
             )}
             <span className="min-w-0 whitespace-pre">{row.text}</span>
-          </div>
+          </span>
         ))}
       </pre>
     </div>
@@ -83,7 +86,14 @@ function StackFrameRow({ frame }: { frame: StackFrameView }) {
           {frameLocationLabel(frame)}
         </span>
         {frame.in_app && <DesignBadge label="App" color="blue" size="sm" />}
-        {frame.context?.symbolicated === true && <DesignBadge label="Mapped" color="green" size="sm" />}
+        {/* Symbolication status, not context presence: a frame whose mapped
+            source content couldn't be fetched still displays the MAPPED
+            filename/function/line, so it must still carry the badge. The
+            `context.symbolicated` check remains as the fallback for wire
+            frames that carry no symbolication object. */}
+        {(frame.symbolication?.status === "symbolicated" || frame.context?.symbolicated === true) && (
+          <DesignBadge label="Mapped" color="green" size="sm" />
+        )}
       </div>
       {frame.context != null && <FrameSourceContext context={frame.context} lineno={frame.lineno} />}
     </li>
@@ -118,6 +128,10 @@ function CollapsedFrameGroup({
       )}
     </li>
   );
+}
+
+function throwMissingCollapsedFrame(): never {
+  throw new Error("A collapsed frame group can never be empty — groupStackFrames only emits runs of two or more frames");
 }
 
 export function StackFrameList({
@@ -163,7 +177,13 @@ export function StackFrameList({
           ? <StackFrameRow key={`frame-${group.index}`} frame={group.frame} />
           : (
             <CollapsedFrameGroup
-              key={`collapsed-${group.startIndex}`}
+              // Keyed by content, not just position: `expanded` is component
+              // state seeded from `defaultExpanded`, so a positional key would
+              // carry one occurrence's expand/collapse choice (and a stale
+              // default) onto a DIFFERENT frame run after occurrence
+              // navigation swaps the stack. First/last location plus length is
+              // enough to distinguish runs without hashing every frame.
+              key={`collapsed-${group.startIndex}-${group.frames.length}-${group.defaultExpanded ? "expanded" : "collapsed"}-${frameLocationLabel(group.frames[0] ?? throwMissingCollapsedFrame())}-${frameLocationLabel(group.frames[group.frames.length - 1] ?? throwMissingCollapsedFrame())}`}
               frames={group.frames}
               defaultExpanded={group.defaultExpanded}
             />
