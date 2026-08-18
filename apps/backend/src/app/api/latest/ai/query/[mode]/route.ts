@@ -156,6 +156,8 @@ export const POST = createSmartRouteHandler({
             response: result.text,
             reason: body.mcpCallMetadata.reason,
             userPrompt: body.mcpCallMetadata.userPrompt,
+            user: body.mcpCallMetadata.user ?? null,
+            project: body.mcpCallMetadata.project ?? null,
             requestMetadata: body.mcpCallMetadata.requestMetadata,
             modelId,
             stepCount: result.steps.length,

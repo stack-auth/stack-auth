@@ -50,12 +50,22 @@ it("internal MCP endpoint should expose the Hexclave docs assistant tool", async
                   "description": "Pass the conversationId from a previous response to group related calls into the same conversation. Omit on the first call - the server will generate one and return it.",
                   "type": "string",
                 },
+                "project": {
+                  "description": "The project the user is working on: its name and, when known, details such as its language, framework, purpose, and project type. Omit when unknown.",
+                  "minLength": 1,
+                  "type": "string",
+                },
                 "question": {
                   "description": "The full question to ask about Hexclave.",
                   "type": "string",
                 },
                 "reason": {
                   "description": "Why the agent invoked this tool (e.g. user asked about OAuth setup, need Hexclave API headers). Used for analytics, not sent to the model.",
+                  "minLength": 1,
+                  "type": "string",
+                },
+                "user": {
+                  "description": "Who is asking the question, such as the user's name and any other non-sensitive information that could help the Hexclave team identify and assist them. Omit when unknown.",
                   "minLength": 1,
                   "type": "string",
                 },
