@@ -1,6 +1,7 @@
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import type { Event } from "@sentry/node";
 import { describe, expect, it } from "vitest";
-import { sanitizeBackendSentryEvent } from "./sentry-scrubbing";
+import { prepareBackendSentryEvent, sanitizeBackendSentryEvent } from "./sentry-scrubbing";
 
 describe("sanitizeBackendSentryEvent", () => {
   it("removes request and trace data that can contain credentials or PII", () => {
@@ -94,9 +95,7 @@ describe("sanitizeBackendSentryEvent", () => {
             "trace_id": "0123456789abcdef0123456789abcdef",
           },
         },
-        "extra": {
-          "location": "backend-global-error",
-        },
+        "extra": undefined,
         "request": {
           "method": "POST",
         },
@@ -232,5 +231,116 @@ describe("sanitizeBackendSentryEvent", () => {
       },
     });
     expect(JSON.stringify(result)).not.toContain("customer-secret");
+  });
+
+  it("clears all extras, including ones that look like diagnostics", () => {
+    const result = sanitizeBackendSentryEvent({
+      extra: {
+        location: "js-execution-freestyle-failed",
+        connectionString: "postgres://secret",
+        nicifiedError: "should not survive sanitize alone",
+      },
+    });
+
+    expect(result.extra).toBeUndefined();
+    expect(JSON.stringify(result)).not.toContain("postgres://secret");
+  });
+});
+
+describe("prepareBackendSentryEvent", () => {
+  it("rebuilds extra from location + exception diagnostics after scrubbing", () => {
+    const cause = new Error("upstream sandbox failure");
+    const error = new HexclaveAssertionError(
+      "JS execution freestyle engine failed, falling back to vercel sandbox engine",
+      { cause, innerCode: "<redacted workflow>", innerOptions: { timeoutMs: 1_000 } },
+    );
+
+    const result = prepareBackendSentryEvent(
+      {
+        request: {
+          method: "POST",
+          url: "https://api.example.com/api/latest/users?token=secret",
+          data: { password: "secret" },
+        },
+        extra: {
+          location: "js-execution-freestyle-failed",
+          connectionString: "postgres://secret",
+        },
+      },
+      { originalException: error },
+    );
+
+    expect(result.request).toEqual({ method: "POST" });
+    expect(result.extra).toEqual(expect.objectContaining({
+      location: "js-execution-freestyle-failed",
+      cause: {
+        name: "Error",
+        message: "upstream sandbox failure",
+      },
+      errorProps: expect.objectContaining({
+        extraData: {
+          cause: {
+            name: "Error",
+            message: "upstream sandbox failure",
+          },
+          innerCode: "<redacted workflow>",
+          innerOptions: { timeoutMs: 1_000 },
+        },
+      }),
+      nicifiedError: expect.stringContaining("innerCode"),
+    }));
+    expect(JSON.stringify(result)).not.toContain("postgres://secret");
+    expect(JSON.stringify(result)).not.toContain("token=secret");
+  });
+
+  it("redacts credential-shaped keys in the dashboard dump", () => {
+    const error = new HexclaveAssertionError(
+      "OAuth callback failed",
+      {
+        innerCode: "<safe>",
+        password: "hunter2",
+        connectionString: "postgres://user:hunter2@db/app",
+        authorization: "Bearer hunter2",
+        oauth: {
+          accessToken: "hunter2-token",
+          timeoutMs: 1_000,
+        },
+      },
+    );
+
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "oauth-callback" } },
+      { originalException: error },
+    );
+
+    expect(result.extra).toEqual(expect.objectContaining({
+      location: "oauth-callback",
+      errorProps: expect.objectContaining({
+        extraData: {
+          innerCode: "<safe>",
+          password: "[redacted]",
+          connectionString: "[redacted]",
+          authorization: "[redacted]",
+          oauth: {
+            accessToken: "[redacted]",
+            timeoutMs: 1_000,
+          },
+        },
+      }),
+    }));
+    expect(JSON.stringify(result)).not.toContain("hunter2");
+    const nicifiedError = result.extra.nicifiedError;
+    expect(nicifiedError).toEqual(expect.stringContaining("innerCode"));
+    expect(nicifiedError).toEqual(expect.not.stringContaining("hunter2"));
+  });
+
+  it("ignores non-string location values", () => {
+    const result = prepareBackendSentryEvent({
+      extra: {
+        location: { spoofed: true },
+      },
+    });
+
+    expect(result.extra).toBeUndefined();
   });
 });

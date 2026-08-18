@@ -1,5 +1,6 @@
 import { httpMethodNames } from "@/generated/route-modules";
-import type { Event } from "@sentry/node";
+import { nicify } from "@hexclave/shared/dist/utils/strings";
+import type { Event, EventHint } from "@sentry/node";
 
 const knownHttpMethods = new Set<string>(httpMethodNames);
 
@@ -77,10 +78,112 @@ export function sanitizeBackendSentrySpan(span: BackendSentrySpan): BackendSentr
   return span;
 }
 
+// Dashboard dump, then CLI-style extra scrub. Segment-split so "timeout" does
+// not match "token". Nested secrets under boring keys can still leak.
+const sensitiveDiagnosticKeySegments = new Set([
+  "password",
+  "passwd",
+  "secret",
+  "authorization",
+  "cookie",
+  "cookies",
+  "token",
+  "key",
+  "dsn",
+  "accesstoken",
+  "refreshtoken",
+  "idtoken",
+  "apikey",
+  "connectionstring",
+  "clientsecret",
+  "privatekey",
+  "setcookie",
+  "bearer",
+  "credential",
+  "credentials",
+]);
+
+function isSensitiveDiagnosticKey(key: string): boolean {
+  const normalized = key
+    .replaceAll(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replaceAll(/[^A-Za-z0-9]+/g, "_")
+    .toLowerCase();
+  const compact = normalized.replaceAll("_", "");
+  if (sensitiveDiagnosticKeySegments.has(compact)) {
+    return true;
+  }
+  return normalized.split("_").some((part) => part !== "" && sensitiveDiagnosticKeySegments.has(part));
+}
+
+function scrubDiagnosticString(value: string): string {
+  return value.replaceAll(
+    /\b(sk_[A-Za-z0-9_-]+|pk_[A-Za-z0-9_-]+|pck_[A-Za-z0-9_-]+|stk_[A-Za-z0-9_-]+|ssk_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b/g,
+    "[redacted]",
+  );
+}
+
+function scrubDiagnosticValue(value: unknown, key?: string, seen: WeakSet<object> = new WeakSet()): unknown {
+  if (key != null && isSensitiveDiagnosticKey(key) && value != null) {
+    return "[redacted]";
+  }
+  if (value == null || typeof value === "boolean" || typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "string") {
+    return scrubDiagnosticString(value);
+  }
+  if (typeof value === "bigint") {
+    return scrubDiagnosticString(value.toString());
+  }
+  if (typeof value === "symbol" || typeof value === "function") {
+    return `[${typeof value}]`;
+  }
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: scrubDiagnosticString(value.message),
+    };
+  }
+  if (typeof value !== "object") {
+    return value;
+  }
+  if (seen.has(value)) {
+    return "[circular]";
+  }
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.map((entry) => scrubDiagnosticValue(entry, undefined, seen));
+  }
+  const scrubbed = new Map<string, unknown>();
+  for (const [nestedKey, nestedValue] of Object.entries(value)) {
+    scrubbed.set(nestedKey, scrubDiagnosticValue(nestedValue, nestedKey, seen));
+  }
+  return Object.fromEntries(scrubbed);
+}
+
+/**
+ * Dashboard dump (cause, enumerable error props, nicify), then key-scrub.
+ * nicify runs on already-scrubbed errorProps so the string dump does not
+ * re-introduce redacted values.
+ */
+function getExceptionExtra(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) {
+    return {};
+  }
+
+  const errorProps = scrubDiagnosticValue({ ...error });
+  return {
+    cause: scrubDiagnosticValue(error.cause),
+    errorProps,
+    nicifiedError: nicify(errorProps, { maxDepth: 8 }),
+  };
+}
+
 /**
  * Keep the minimum metadata needed to correlate a backend error while ensuring
  * request bodies, credentials, query values, customer identities, and SQL never
- * cross the Sentry boundary.
+ * cross the Sentry boundary. Clears `extra` entirely — callers that need
+ * diagnostics should go through prepareBackendSentryEvent, which rebuilds it.
  */
 export function sanitizeBackendSentryEvent<T extends Event>(event: T): T {
   if (event.request != null) {
@@ -90,9 +193,7 @@ export function sanitizeBackendSentryEvent<T extends Event>(event: T): T {
   }
   event.user = undefined;
   event.tags = undefined;
-
-  const location = event.extra?.location;
-  event.extra = typeof location === "string" ? { location } : undefined;
+  event.extra = undefined;
 
   event.breadcrumbs = event.breadcrumbs?.map((breadcrumb) => ({
     type: breadcrumb.type,
@@ -159,5 +260,21 @@ export function sanitizeBackendSentryEvent<T extends Event>(event: T): T {
       ...(safeRequestContext == null ? {} : { "stack-request": safeRequestContext }),
     };
 
+  return event;
+}
+
+/**
+ * beforeSend entrypoint: scrub request/span PII, then rebuild `extra` as the
+ * dashboard dump plus captureError's `location`, then key-scrub that dump.
+ */
+export function prepareBackendSentryEvent<T extends Event>(event: T, hint?: EventHint): T {
+  const location = typeof event.extra?.location === "string" ? event.extra.location : undefined;
+  sanitizeBackendSentryEvent(event);
+
+  const extra = {
+    ...(location != null ? { location } : {}),
+    ...getExceptionExtra(hint?.originalException),
+  };
+  event.extra = Object.keys(extra).length > 0 ? extra : undefined;
   return event;
 }
