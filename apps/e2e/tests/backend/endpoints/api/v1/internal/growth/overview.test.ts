@@ -20,7 +20,7 @@ describe("internal Growth overview", () => {
     await createGrowthProjectScope();
     const held = await niceBackendFetch(OVERVIEW_PATH, { accessType: "admin" });
     expect(held.status).toBe(409);
-    expect(held.body).toMatchObject({ error: "Your growth report is still being prepared." });
+    expect(held.body).toBe("Your growth report is still being prepared.");
   });
 
   it("returns an honest bounded empty state", async ({ expect }) => {
@@ -53,7 +53,7 @@ describe("internal Growth overview", () => {
       headers: GROWTH_AGENT_AUTH,
       body: {
         ...scope,
-        source: "overview-e2e",
+        source: "report",
         findings: [
           { kind: "signal", category: "conversion", tags: ["Onboarding", " onboarding "], title: "First activation signal", body: "One", document: FINDING_DOCUMENT },
           { kind: "signal", category: "conversion", tags: [], title: "Second activation signal", body: "Two" },
