@@ -1,0 +1,145 @@
+apps/backend/src/lib/seed-dummy-data.ts
+  s_aa42fdde8f7ae0::t_e9faffaffcbe54 1509
+  s_aa42fdde8f7ae0::t_d2aa187f7b8b8d 1517
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/stack-frame-list.test.tsx
+  s_aa42fdde8f7ae0::t_a7f1fcdf02fbd7 4,50-52,54
+  s_aa42fdde8f7ae0::t_5bd4507ca4a1a5 1-3,5-49,55-56
+  s_aa42fdde8f7ae0::t_c02d74c24afd2f 53
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event-sections.test.tsx
+  s_aa42fdde8f7ae0::t_131ac32a9874b6 77-84,86-90,92-93
+  s_aa42fdde8f7ae0::t_387cf55adb41d7 76,85,91
+apps/backend/src/app/api/latest/internal/external-db-sync/sync-engine/route.tsx
+  s_3ee20509e3b48b::t_04ce205d60b81f 54-61
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.analytics.test.ts
+  s_3ee20509e3b48b::t_77994e63e409ee 109,301,331,394,522,558,608
+packages/template/src/integrations/next.test.ts
+  s_3ee20509e3b48b::t_be6c6d9f301bdd 153-155
+apps/backend/prisma/migrations/20260811000000_add_observability/migration.sql
+  s_69f41c51547cd6::t_c5f3bc2cb11a4f 1-795
+apps/dashboard/src/lib/apps-frontend.tsx
+  s_aa42fdde8f7ae0::t_e9faffaffcbe54 439
+apps/backend/src/scripts/regen-internal-subscriptions-to-latest.test.ts
+  s_3ee20509e3b48b::t_ecb53c12db0e89 490-492,498-511,513-514,531,545-552
+sdks/spec/src/apps/analytics.spec.md
+  s_3ee20509e3b48b::t_e3984305cb53be 117-122
+  s_3ee20509e3b48b::t_c4d3a956bb7e06 208-212
+packages/template/src/lib/hexclave-app/apps/implementations/server-lifecycle.test.ts
+  s_3ee20509e3b48b::t_77994e63e409ee 245
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event-sections.tsx
+  s_aa42fdde8f7ae0::t_7317577119f755 15,469,514-536,539,694
+docs-mintlify/guides/apps/analytics/errors-and-logs.mdx
+  s_3ee20509e3b48b::t_6b57f31aa51a10 13
+  s_3ee20509e3b48b::t_9377446d5a580a 10
+  s_3ee20509e3b48b::t_73f11c121884af 31
+  s_3ee20509e3b48b::t_c6827aa56b6963 73
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/[issueId]/page-client.tsx
+  s_aa42fdde8f7ae0::t_ed84f39d12e940 858
+  s_aa42fdde8f7ae0::t_01d1fba78e40a2 78,854-856,859
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/funnel-graph/page.tsx
+  s_3ee20509e3b48b::t_f9e818287692ea 11-14
+apps/backend/src/s3.tsx
+  s_3ee20509e3b48b::t_1b82e3c7304a0c 236-237
+  s_3ee20509e3b48b::t_730c1dbce52d4a 202-212,219,229
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-leading-up-to.test.tsx
+  s_aa42fdde8f7ae0::t_331269a4bab9a4 57
+  s_aa42fdde8f7ae0::t_a7f1fcdf02fbd7 4,52-54,58
+  s_aa42fdde8f7ae0::t_5bd4507ca4a1a5 1-3,5-37,42-51,59-60
+  s_aa42fdde8f7ae0::t_929595c30b24d6 38-41,55-56
+apps/bulldozer-js/src/payments/schema/index.ts
+  s_3ee20509e3b48b::t_0b7b4302d70514 771,779,781,912,917
+packages/template/src/lib/hexclave-app/apps/implementations/observability-config.ts
+  s_3ee20509e3b48b::t_c5d59d0dc5e35e 60-70
+  s_3ee20509e3b48b::t_9e9ae3d26732dc 114-123
+docs-mintlify/guides/apps/observability/overview.mdx
+  s_3ee20509e3b48b::t_91a7566484d30f 9
+docs-mintlify/guides/apps/analytics/cross-tier-tracing.mdx
+  s_3ee20509e3b48b::t_c6827aa56b6963 53,110
+  s_3ee20509e3b48b::t_2e8a9183fd1b39 37
+apps/backend/prisma/schema.prisma
+  s_3ee20509e3b48b::t_053345463e680c 1258-1260
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_3ee20509e3b48b::t_8b6d383e5f1bf5 49
+  s_3ee20509e3b48b::t_337d40b3f0a290 530
+  s_3ee20509e3b48b::t_88b9255d75eefa 2035,2270,2281,2485,2561,2602,2648
+apps/backend/src/lib/issues/issue-product.ts
+  s_69f41c51547cd6::t_184806d2bebdf1 282
+apps/backend/src/lib/artifacts/artifact-storage.ts
+  s_3ee20509e3b48b::t_d88878f349c068 55-58
+apps/dashboard/src/lib/apps-frontend.test.tsx
+  s_aa42fdde8f7ae0::t_d2aa187f7b8b8d 82
+apps/backend/src/lib/external-db-sync.ts
+  s_3ee20509e3b48b::t_760a36d763bcf4 1546-1547
+  s_3ee20509e3b48b::t_4f8e1ced79cee9 1535
+  s_3ee20509e3b48b::t_6c2fb5c5b556a6 1491
+apps/dashboard/src/components/router.test.tsx
+  s_aa42fdde8f7ae0::t_74b6aa30348458 8,12
+  s_aa42fdde8f7ae0::t_c9d32f4855bb3f 1-7,9-11,13-38,40,42-43
+  s_aa42fdde8f7ae0::t_e2d5272f518b59 39,41
+apps/backend/src/lib/payments.test.tsx
+  s_3ee20509e3b48b::t_0b7b4302d70514 92,237
+apps/dashboard/src/components/ui/tooltip.tsx
+  s_3ee20509e3b48b::t_e53faf959c9053 28-36
+.vscode/settings.json
+  s_3ee20509e3b48b::t_362b4dd0583def 187
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_3ee20509e3b48b::t_1b939d4b94290d 91
+  s_3ee20509e3b48b::t_4ac6318dc9ef4b 4604
+  s_3ee20509e3b48b::t_08c093dbaf518c 894,4680
+apps/dashboard/src/components/ui/simple-tooltip.tsx
+  s_3ee20509e3b48b::t_e53faf959c9053 5,44,50,54
+apps/dashboard/src/components/router.tsx
+  s_aa42fdde8f7ae0::t_02c99f4423464d 44
+  s_aa42fdde8f7ae0::t_c9d32f4855bb3f 20-43,45-49
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.http-client.test.ts
+  s_3ee20509e3b48b::t_77994e63e409ee 128
+packages/dashboard-ui-components/src/components/data-grid/data-grid.test.tsx
+  s_3ee20509e3b48b::t_1b68fbd7bb0cd5 601,604-606
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/stack-frame-list.tsx
+  s_aa42fdde8f7ae0::t_ed84f39d12e940 3,5-6,80-86,88-95,117,121,138,160-161,189-253
+package.json
+  s_3ee20509e3b48b::t_3ebd71aa044563 81
+packages/dashboard-ui-components/src/components/data-grid/data-grid.tsx
+  s_3ee20509e3b48b::t_f3cbf2a74ab82b 1365-1366,1385-1395
+docs-mintlify/guides/apps/analytics/overview.mdx
+  s_3ee20509e3b48b::t_e0de3a905c610c 203
+packages/dashboard-ui-components/src/components/data-grid/types.ts
+  s_3ee20509e3b48b::t_8f0e91290636e5 261,263-264
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-leading-up-to.tsx
+  s_aa42fdde8f7ae0::t_01d1fba78e40a2 3,5,7-8,20-23,25-28,30-31,35-41,43-46,48-50,52-84,86-91,115-116
+  s_aa42fdde8f7ae0::t_929595c30b24d6 4,10-12,14-18,32,92-96,98-112
+  s_aa42fdde8f7ae0::t_ed84f39d12e940 6,24,29,42,47
+apps/e2e/tests/backend/endpoints/api/v1/__snapshots__/internal-metrics.test.ts.snap
+  s_3ee20509e3b48b::t_7b420a3aae8a1b 9,12-137,2294,2297-2422,4387,4485,4657-4658,4691-4692,4725-4726,4759-4760,4793-4794,4829-4830,4863-4864,4897-4898,4931-4932,4965-4966,4999-5000,5033-5034,5067-5068,5101-5102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "18f7d86efdef2e76a44b024285c81b58d0c04ca9",
+  "prompts": {},
+  "sessions": {
+    "s_3ee20509e3b48b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70d93e36-42f6-467b-941e-40a8fc7be70e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_69f41c51547cd6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6ffc7273-2661-403d-b049-2262ed67aae1",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_aa42fdde8f7ae0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a016e9-73fb-7cf2-a140-d4bf513949e5",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
