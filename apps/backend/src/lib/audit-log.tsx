@@ -27,8 +27,6 @@ export const AUDIT_LOG_ACTIONS = [
   "team.created",
   "team.updated",
   "team.deleted",
-  "team.checkout.created",
-  "team.item_quantity.changed",
   "team_membership.created",
   "team_membership.deleted",
   "team_permission.granted",
@@ -38,6 +36,11 @@ export const AUDIT_LOG_ACTIONS = [
   "permission_definition.deleted",
   "project_permission.granted",
   "project_permission.revoked",
+  "payment.checkout.created",
+  "payment.item_quantity.changed",
+  "payment.refund.created",
+  "payment.stripe.setup_started",
+  "payment.method_config.updated",
 ] as const;
 
 export type AuditLogAction = typeof AUDIT_LOG_ACTIONS[number];

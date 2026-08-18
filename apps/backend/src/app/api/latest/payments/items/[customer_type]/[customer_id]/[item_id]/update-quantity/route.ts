@@ -130,8 +130,8 @@ export const POST = createSmartRouteHandler({
     });
     await bulldozerWriteItemQuantityChange(change);
 
-    // Teams Compliance audit only — user/custom quantity changes are out of scope for this action.
-    if (req.params.customer_type === "team" && shouldRecordAdminAudit(req.auth)) {
+    // Dashboard-only via recordAuditEvent (adminUser).
+    if (shouldRecordAdminAudit(req.auth)) {
       const quantityAfter = totalQuantity + req.body.delta;
       const metadata = buildUpdatedFieldsAuditMetadata({
         source: "payments.items.update_quantity",
@@ -144,10 +144,12 @@ export const POST = createSmartRouteHandler({
       await recordAuditEvent({
         tenancy,
         auth: req.auth,
-        action: "team.item_quantity.changed",
+        action: "payment.item_quantity.changed",
+        targetUserId: req.params.customer_type === "user" ? req.params.customer_id : null,
         metadata: {
           ...metadata,
-          team_id: req.params.customer_id,
+          customer_type: req.params.customer_type,
+          customer_id: req.params.customer_id,
           item_id: req.params.item_id,
           delta: req.body.delta,
           allow_negative: allowNegative,

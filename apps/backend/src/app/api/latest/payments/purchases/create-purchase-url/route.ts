@@ -160,24 +160,26 @@ export const POST = createSmartRouteHandler({
       url.searchParams.set("return_url", req.body.return_url);
     }
 
-    // Teams Compliance audit only — user/custom checkouts and client self-service are out of scope.
-    // Never persist the checkout URL or verification code.
-    if (req.body.customer_type === "team" && shouldRecordAdminAudit(req.auth)) {
+    // Dashboard-only via recordAuditEvent (adminUser). Never persist URL/code.
+    if (shouldRecordAdminAudit(req.auth)) {
       const metadata = buildCreatedFieldsAuditMetadata({
         source: "payments.create_purchase_url",
         fields: {
-          team_id: req.body.customer_id,
+          customer_type: req.body.customer_type,
+          customer_id: req.body.customer_id,
           ...(req.body.product_id != null ? { product_id: req.body.product_id } : {}),
           has_product_inline: req.body.product_inline != null,
         },
       }) ?? {
           source: "payments.create_purchase_url",
-          team_id: req.body.customer_id,
+          customer_type: req.body.customer_type,
+          customer_id: req.body.customer_id,
         };
       await recordAuditEvent({
         tenancy,
         auth: req.auth,
-        action: "team.checkout.created",
+        action: "payment.checkout.created",
+        targetUserId: req.body.customer_type === "user" ? req.body.customer_id : null,
         metadata,
       });
     }

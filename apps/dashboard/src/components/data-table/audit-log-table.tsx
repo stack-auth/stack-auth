@@ -37,8 +37,6 @@ export type AuditLogAction =
   | "team.created"
   | "team.updated"
   | "team.deleted"
-  | "team.checkout.created"
-  | "team.item_quantity.changed"
   | "team_membership.created"
   | "team_membership.deleted"
   | "team_permission.granted"
@@ -47,7 +45,12 @@ export type AuditLogAction =
   | "permission_definition.updated"
   | "permission_definition.deleted"
   | "project_permission.granted"
-  | "project_permission.revoked";
+  | "project_permission.revoked"
+  | "payment.checkout.created"
+  | "payment.item_quantity.changed"
+  | "payment.refund.created"
+  | "payment.stripe.setup_started"
+  | "payment.method_config.updated";
 
 export type AuditLogEvent = {
   id: string,
@@ -147,12 +150,6 @@ function formatAction(action: AuditLogAction): string {
     case "team.deleted": {
       return "Team deleted";
     }
-    case "team.checkout.created": {
-      return "Team checkout created";
-    }
-    case "team.item_quantity.changed": {
-      return "Team item quantity changed";
-    }
     case "team_membership.created": {
       return "Team member added";
     }
@@ -179,6 +176,21 @@ function formatAction(action: AuditLogAction): string {
     }
     case "project_permission.revoked": {
       return "Project permission revoked";
+    }
+    case "payment.checkout.created": {
+      return "Checkout created";
+    }
+    case "payment.item_quantity.changed": {
+      return "Item quantity changed";
+    }
+    case "payment.refund.created": {
+      return "Refund created";
+    }
+    case "payment.stripe.setup_started": {
+      return "Stripe setup started";
+    }
+    case "payment.method_config.updated": {
+      return "Payment methods updated";
     }
     default: {
       const _exhaustive: never = action;
@@ -233,6 +245,16 @@ const FIELD_LABELS = new Map<string, string>([
   ["scope", "Scope"],
   ["contained_permission_ids", "Contained permissions"],
   ["old_permission_id", "Previous permission ID"],
+  ["customer_type", "Customer type"],
+  ["customer_id", "Customer ID"],
+  ["amount_usd", "Amount (USD)"],
+  ["end_action", "End action"],
+  ["refund_transaction_id", "Refund transaction"],
+  ["purchase_type", "Purchase type"],
+  ["purchase_id", "Purchase ID"],
+  ["invoice_id", "Invoice ID"],
+  ["stripe_account_created", "Stripe account created"],
+  ["config_id", "Config ID"],
 ]);
 
 const OAUTH_PROVIDER_FIELD_LABELS = new Map<string, string>([

@@ -1,3 +1,4 @@
+import { buildUpdatedFieldsAuditMetadata, recordAuditEvent } from "@/lib/audit-log";
 import { isPreviewModeEnabled } from "@/lib/preview-mode";
 import { getHexclaveStripe } from "@/lib/stripe";
 import { globalPrismaClient } from "@/prisma-client";
@@ -117,6 +118,7 @@ export const PATCH = createSmartRouteHandler({
       type: adminAuthTypeSchema.defined(),
       project: adaptSchema.defined(),
       tenancy: adaptSchema.defined(),
+      adminUser: adaptSchema.optional(),
     }).defined(),
     body: yupObject({
       config_id: yupString().defined(),
@@ -161,6 +163,30 @@ export const PATCH = createSmartRouteHandler({
       stripeUpdates,
       { stripeAccount: project.stripeAccountId }
     );
+
+    // Stripe PMC toggles are not Hexclave config — dedicated Compliance event.
+    // before is unknown without a pre-read; record requested after values only.
+    const afterRoot: Record<string, unknown> = {};
+    for (const [methodId, preference] of Object.entries(body.updates)) {
+      afterRoot[`methods.${methodId}`] = preference;
+    }
+    const metadata = buildUpdatedFieldsAuditMetadata({
+      source: "internal.payments.method_configs.update",
+      patch: afterRoot,
+      beforeRoot: {},
+      afterRoot,
+    }) ?? {
+        source: "internal.payments.method_configs.update",
+      };
+    await recordAuditEvent({
+      tenancy: auth.tenancy,
+      auth,
+      action: "payment.method_config.updated",
+      metadata: {
+        ...metadata,
+        config_id: body.config_id,
+      },
+    });
 
     return {
       statusCode: 200,

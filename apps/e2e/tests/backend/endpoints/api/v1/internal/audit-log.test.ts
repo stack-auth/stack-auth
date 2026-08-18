@@ -1005,14 +1005,15 @@ it("records Teams admin mutations (create/update/delete, membership, permissions
     },
   });
 
-  const itemQuantity = await listAuditLog({ action: "team.item_quantity.changed" });
+  const itemQuantity = await listAuditLog({ action: "payment.item_quantity.changed" });
   expect(itemQuantity.status).toBe(200);
   expect(itemQuantity.body.items).toHaveLength(1);
   expect(itemQuantity.body.items[0]).toMatchObject({
-    action: "team.item_quantity.changed",
+    action: "payment.item_quantity.changed",
     metadata: {
       source: "payments.items.update_quantity",
-      team_id: teamId,
+      customer_type: "team",
+      customer_id: teamId,
       item_id: "team-credits",
       delta: 7,
       allow_negative: false,
@@ -1023,15 +1024,16 @@ it("records Teams admin mutations (create/update/delete, membership, permissions
     },
   });
 
-  const checkoutList = await listAuditLog({ action: "team.checkout.created" });
+  const checkoutList = await listAuditLog({ action: "payment.checkout.created" });
   expect(checkoutList.status).toBe(200);
   expect(checkoutList.body.items).toHaveLength(1);
   expect(checkoutList.body.items[0]).toMatchObject({
-    action: "team.checkout.created",
+    action: "payment.checkout.created",
     metadata: {
       source: "payments.create_purchase_url",
       changes: {
-        team_id: { before: null, after: teamId },
+        customer_type: { before: null, after: "team" },
+        customer_id: { before: null, after: teamId },
         product_id: { before: null, after: "team-product" },
         has_product_inline: { before: null, after: false },
       },
@@ -1256,4 +1258,211 @@ it("records RBAC permission definition and project permission changes only for d
       description: "Renamed audited project permission",
     },
   });
+});
+
+it("records Payments dashboard mutations (checkout, item quantity, stripe setup, method config, refund) and skips client checkout", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: true,
+      items: {
+        "user-credits": {
+          displayName: "User Credits",
+          customerType: "user",
+        },
+      },
+      products: {
+        "user-product": {
+          displayName: "User Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: true,
+          prices: {
+            monthly: {
+              USD: "1000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const setupList = await listAuditLog({ action: "payment.stripe.setup_started" });
+  expect(setupList.status).toBe(200);
+  expect(setupList.body.items.length).toBeGreaterThanOrEqual(1);
+  expect(setupList.body.items[0]).toMatchObject({
+    action: "payment.stripe.setup_started",
+    actor_type: "admin_user",
+    metadata: {
+      source: "internal.payments.setup",
+      changes: {
+        stripe_account_created: { before: null, after: expect.any(Boolean) },
+      },
+    },
+  });
+  expect(JSON.stringify(setupList.body.items[0].metadata)).not.toContain("account_links");
+  expect(JSON.stringify(setupList.body.items[0].metadata)).not.toContain("stripe.com");
+
+  const methodConfigs = await niceBackendFetch("/api/v1/internal/payments/method-configs", {
+    accessType: "admin",
+  });
+  expect(methodConfigs.status).toBe(200);
+  const configId = methodConfigs.body.config_id as string;
+  const methodPatch = await niceBackendFetch("/api/v1/internal/payments/method-configs", {
+    method: "PATCH",
+    accessType: "admin",
+    body: {
+      config_id: configId,
+      updates: {
+        card: "on",
+      },
+    },
+  });
+  expect(methodPatch.status).toBe(200);
+
+  const { userId } = await Auth.Password.signUpWithEmail();
+
+  const adminCheckout = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "user-product",
+    },
+  });
+  expect(adminCheckout.status).toBe(200);
+  const checkoutUrl = adminCheckout.body.url as string;
+
+  const quantityChange = await niceBackendFetch(`/api/v1/payments/items/user/${userId}/user-credits/update-quantity?allow_negative=false`, {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      delta: 3,
+      description: "manual user grant",
+    },
+  });
+  expect(quantityChange.status).toBe(200);
+
+  // Server-granted product (no Stripe money) — used so refund is dashboard-auditable without a live charge.
+  const grantRes = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "server",
+    method: "POST",
+    body: { product_id: "user-product" },
+  });
+  expect(grantRes.status).toBe(200);
+  const txnsRes = await niceBackendFetch("/api/v1/internal/payments/transactions", {
+    accessType: "admin",
+  });
+  expect(txnsRes.status).toBe(200);
+  const purchaseTxn = txnsRes.body.transactions.find((tx: { type: string }) => tx.type === "purchase");
+  expect(purchaseTxn).toBeDefined();
+
+  const refundRes = await niceBackendFetch("/api/v1/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: purchaseTxn.id,
+      amount_usd: "0",
+      end_action: "now",
+    },
+  });
+  expect(refundRes.status).toBe(200);
+  expect(refundRes.body.success).toBe(true);
+  const refundTransactionId = refundRes.body.refund_transaction_id as string;
+
+  // Client self-service checkout must not write Compliance events.
+  // Prefer backendContext userAuth (auto-refresh) over a captured access token —
+  // long admin steps above can outlive a short-lived JWT.
+  const clientCheckout = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
+    accessType: "client",
+    method: "POST",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "user-product",
+    },
+  });
+  expect(clientCheckout.status).toBe(200);
+
+  const checkoutList = await listAuditLog({ action: "payment.checkout.created" });
+  expect(checkoutList.status).toBe(200);
+  expect(checkoutList.body.items).toHaveLength(1);
+  expect(checkoutList.body.items[0]).toMatchObject({
+    action: "payment.checkout.created",
+    actor_type: "admin_user",
+    target_user_id: userId,
+    metadata: {
+      source: "payments.create_purchase_url",
+      changes: {
+        customer_type: { before: null, after: "user" },
+        customer_id: { before: null, after: userId },
+        product_id: { before: null, after: "user-product" },
+      },
+    },
+  });
+  expect(JSON.stringify(checkoutList.body.items[0].metadata)).not.toContain(checkoutUrl);
+  expect(JSON.stringify(checkoutList.body.items[0].metadata)).not.toContain("/purchase/");
+
+  const itemQuantity = await listAuditLog({ action: "payment.item_quantity.changed" });
+  expect(itemQuantity.status).toBe(200);
+  expect(itemQuantity.body.items).toHaveLength(1);
+  expect(itemQuantity.body.items[0]).toMatchObject({
+    action: "payment.item_quantity.changed",
+    actor_type: "admin_user",
+    target_user_id: userId,
+    metadata: {
+      source: "payments.items.update_quantity",
+      customer_type: "user",
+      customer_id: userId,
+      item_id: "user-credits",
+      delta: 3,
+      description: "manual user grant",
+      changes: {
+        quantity: { before: 0, after: 3 },
+      },
+    },
+  });
+
+  const methodConfigList = await listAuditLog({ action: "payment.method_config.updated" });
+  expect(methodConfigList.status).toBe(200);
+  expect(methodConfigList.body.items).toHaveLength(1);
+  expect(methodConfigList.body.items[0]).toMatchObject({
+    action: "payment.method_config.updated",
+    actor_type: "admin_user",
+    metadata: {
+      source: "internal.payments.method_configs.update",
+      config_id: configId,
+      changes: {
+        "methods.card": { before: null, after: "on" },
+      },
+    },
+  });
+
+  const refundList = await listAuditLog({ action: "payment.refund.created" });
+  expect(refundList.status).toBe(200);
+  expect(refundList.body.items).toHaveLength(1);
+  expect(refundList.body.items[0]).toMatchObject({
+    action: "payment.refund.created",
+    actor_type: "admin_user",
+    target_user_id: userId,
+    metadata: {
+      source: "internal.payments.transactions.refund",
+      changes: {
+        purchase_type: { before: null, after: "subscription" },
+        purchase_id: { before: null, after: purchaseTxn.id },
+        amount_usd: { before: null, after: "0" },
+        refund_transaction_id: { before: null, after: refundTransactionId },
+        end_action: { before: null, after: "now" },
+        customer_type: { before: null, after: "user" },
+        customer_id: { before: null, after: userId },
+      },
+    },
+  });
+  expect(JSON.stringify(refundList.body.items[0].metadata)).not.toContain("pi_");
+  expect(JSON.stringify(refundList.body.items[0].metadata)).not.toContain("payment_intent");
 });
