@@ -159,15 +159,16 @@ describe("growth workflow orchestration e2e (mock Eve)", { timeout: 90_000 }, ()
       const activationLeg = await pollWithTicks(expect, async () => await findAnalysisLegRun(runId, ANALYSIS_ACTIVATED_EVENT_TYPE), { timeoutMs: 120_000 });
       expect(activationLeg).toMatchObject({ run_key: `${runId}:${ANALYSIS_ACTIVATED_EVENT_TYPE}` });
 
-      // A fresh project has no ad-platform connection, so make the test's human choice explicit
-      // and unblock the analysis phases. The integrations route also enqueues the resume boundary
-      // event, which is part of the production lifecycle this full-path scenario is exercising.
+      // The workflow tick auto-skips integrations as soon as compute-metrics settles, so the
+      // explicit answer route can lose this race by design; keep the route for future integration
+      // flows while pinning that the analysis is already unblocked.
       const skipIntegrations = await niceBackendFetch(`${ADMIN_BASE}/runs/${runId}/integrations`, {
         accessType: "admin",
         method: "POST",
         body: { action: "skip" },
       });
-      expect(skipIntegrations.status).toBe(200);
+      expect(skipIntegrations.status).toBe(409);
+      expect(getRunPhase(await getRun(runId), "integrations")).toMatchObject({ status: "skipped" });
 
       // The workflow's bridge ticks dispatch the 6 immediate phases (attempt 1) to Eve.
       for (const phaseKey of IMMEDIATE_PHASE_KEYS) {
@@ -413,15 +414,16 @@ describe("growth workflow orchestration e2e (mock Eve)", { timeout: 90_000 }, ()
         predicate: (dispatch) => dispatch.path === "/runs/analysis-phase" && dispatch.body.project_id === projectId,
       });
       const runId = await completeOnboarding();
-      // The first tick computes metrics and leaves the run resting for its integrations choice.
-      // Skip it explicitly so the six immediate agent phases become ready for the failure waves.
+      // The first tick computes metrics and auto-skips integrations. The explicit answer route can
+      // lose this race by design; keep it for future integration flows and pin the settled state.
       expect((await bridgeCall("analysis/tick", { run_id: runId })).status).toBe(200);
       const skipIntegrations = await niceBackendFetch(`${ADMIN_BASE}/runs/${runId}/integrations`, {
         accessType: "admin",
         method: "POST",
         body: { action: "skip" },
       });
-      expect(skipIntegrations.status).toBe(200);
+      expect(skipIntegrations.status).toBe(409);
+      expect(getRunPhase(await getRun(runId), "integrations")).toMatchObject({ status: "skipped" });
       for (let attempt = 1; attempt <= 3; attempt++) {
         const tick = await bridgeCall("analysis/tick", { run_id: runId });
         expect(tick.status).toBe(200);
