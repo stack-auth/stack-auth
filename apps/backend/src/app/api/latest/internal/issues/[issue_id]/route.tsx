@@ -2,8 +2,8 @@ import { createProductionErrorAttachmentService } from "@/lib/attachments";
 import { getErrorAttachmentEventId } from "@/lib/attachments/attachment-event-id";
 import { validateErrorAttachmentScope } from "@/lib/attachments/attachment-contract";
 import { loadIssueDetailContext, projectIssueListItem } from "@/lib/issues/issue-detail";
-import { resolveIssueIdentity } from "@/lib/issues/issue-identity";
-import { IssueNotFoundError, transitionIssueStatus } from "@/lib/issues/issue-lifecycle";
+import { transitionIssueStatus } from "@/lib/issues/issue-lifecycle";
+import { withIssueActionTarget } from "@/app/api/latest/issues/[issue_id]/actions/_shared";
 import { decodeOccurrenceCursor, issueRangeStart, loadIssueWindowStats, loadOccurrence } from "@/lib/issues/issue-queries";
 import { loadIssueProductSnapshot } from "@/lib/issues/issue-product";
 import { serializeIssueProductSnapshot } from "@/lib/issues/issue-product-projection";
@@ -185,11 +185,6 @@ export const PATCH = createSmartRouteHandler({
     const tenancy = auth.tenancy;
     assertObservabilityEnabled(tenancy);
 
-    // Only the canonical id is needed for the mutation; the full aggregate row
-    // would be a wasted read here.
-    const identity = await resolveIssueIdentity(tenancy, params.issue_id);
-    if (identity === null) throw new StatusError(StatusError.NotFound, "Issue not found");
-
     const now = new Date();
 
     // Delegates to the ONE lifecycle implementation (the same one behind the
@@ -202,22 +197,19 @@ export const PATCH = createSmartRouteHandler({
     // later occurrence against it to decide whether a recurrence counts as a
     // regression — and `regressedAt` is cleared on resolve because the badge
     // describes the CURRENT unresolved state.
-    try {
-      await transitionIssueStatus({
+    const { target } = await withIssueActionTarget({
+      tenancy,
+      rawIssueId: params.issue_id,
+      action: (resolved) => transitionIssueStatus({
         tenancy,
-        issueId: identity.issueId,
+        issueId: resolved.issueId,
         mutation: {
           status: body.status,
           ignoredUntil: body.status === "ignored" && body.ignored_until_millis != null ? new Date(body.ignored_until_millis) : null,
         },
         changedAt: now,
-      });
-    } catch (error) {
-      // The row can vanish between identity resolution and the locked read if
-      // a concurrent merge deletes it — a not-found, not a server error.
-      if (error instanceof IssueNotFoundError) throw new StatusError(StatusError.NotFound, "Issue not found");
-      throw error;
-    }
+      }),
+    });
 
     // The `issue.resolved` / `issue.ignored` webhook is emitted by
     // `transitionIssueStatus` itself (fire-and-forget, only on a genuine
@@ -227,7 +219,7 @@ export const PATCH = createSmartRouteHandler({
     return {
       statusCode: 200,
       bodyType: "json",
-      body: { id: identity.issueId, status: body.status },
+      body: { id: target.issueId, status: body.status },
     } as const;
   },
 });

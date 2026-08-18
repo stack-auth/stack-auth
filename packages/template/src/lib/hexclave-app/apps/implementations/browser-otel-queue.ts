@@ -51,7 +51,10 @@ export type BrowserOtlpOfflineQueue = {
 
 const AUTH_GENERATION_KEY = "auth-generation";
 const QUEUE_BYTES_KEY = "queue-bytes";
-const DATABASE_VERSION = 1;
+// Version 2 adds the stores for every signal to whichever database is opened.
+// Keeping the version bump also upgrades older per-signal databases without
+// changing their existing queue contents.
+const DATABASE_VERSION = 2;
 
 function normalizeQueueNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : fallback;
@@ -205,11 +208,15 @@ function openDatabase(options: BrowserOtlpOfflineQueueOptions): Promise<IDBDatab
 
     request.onupgradeneeded = () => {
       const database = request.result;
-      if (!database.objectStoreNames.contains(options.storeName)) {
-        database.createObjectStore(options.storeName, { autoIncrement: true });
-      }
-      if (!database.objectStoreNames.contains(`${options.storeName}-meta`)) {
-        database.createObjectStore(`${options.storeName}-meta`);
+      const storeNames = new Set([options.storeName, "batches-traces", "batches-logs", "batches-metrics"]);
+      for (const storeName of storeNames) {
+        if (!database.objectStoreNames.contains(storeName)) {
+          database.createObjectStore(storeName, { autoIncrement: true });
+        }
+        const metaStoreName = `${storeName}-meta`;
+        if (!database.objectStoreNames.contains(metaStoreName)) {
+          database.createObjectStore(metaStoreName);
+        }
       }
     };
     request.onsuccess = () => {
@@ -217,8 +224,12 @@ function openDatabase(options: BrowserOtlpOfflineQueueOptions): Promise<IDBDatab
       database.onversionchange = () => database.close();
       resolve(database);
     };
+    // A previous SDK instance in another tab may still hold the old database
+    // version open. Do not reject here: IndexedDB keeps the request pending and
+    // fires `onsuccess` after that connection closes, which is the safe retry
+    // path. Leaving `onblocked` unset preserves that behavior; the caller's
+    // normal operation deadline remains the bound.
     request.onerror = () => reject(persistenceError("open", request.error));
-    request.onblocked = () => reject(new BrowserOtlpQueuePersistenceError("IndexedDB open was blocked by another connection"));
   });
 }
 

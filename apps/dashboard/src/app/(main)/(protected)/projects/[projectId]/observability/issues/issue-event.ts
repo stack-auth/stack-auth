@@ -136,8 +136,8 @@ const RESERVED_EVENT_KEYS = new Set([
 /**
  * Request data is allowlisted at the display boundary too. The current issue
  * response carries opaque occurrence data, so rendering `data.request` raw
- * would make a future or legacy payload capable of exposing headers, query
- * strings, cookies, or bodies in an authenticated dashboard.
+ * would let an opaque occurrence payload expose headers, query strings,
+ * cookies, or bodies in an authenticated dashboard.
  */
 function isSensitiveEventKey(key: string): boolean {
   return /(authorization|cookie|password|secret|token|header|query|body|credential|private[-_.]?key|form[-_.]?data)/i.test(key);
@@ -470,7 +470,12 @@ export function heroStack(occurrence: Pick<IssueOccurrence, "data" | "frames" | 
   rawStack: string | null,
 } {
   const payload = getIssueEventPayload(occurrence);
-  const primary = payload.exceptionChain.at(0);
+  // Sentry orders `exception.values` root-cause-first, with the LAST value
+  // being the exception that was actually thrown — ingestion's
+  // `lastExceptionValue` derives the issue's type/message/grouping stack from
+  // it. Leading with anything else would put a cause's stack under the primary
+  // exception's title. The earlier values render in "Additional causes".
+  const primary = payload.exceptionChain.at(-1);
   if (primary !== undefined && (primary.frames.length > 0 || (primary.rawStack != null && primary.rawStack.trim() !== ""))) {
     return { frames: primary.frames, rawStack: primary.rawStack };
   }

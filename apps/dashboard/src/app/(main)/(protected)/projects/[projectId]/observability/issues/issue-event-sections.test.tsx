@@ -183,9 +183,12 @@ describe("IssueExceptionCauses", () => {
         ...retainedOccurrence,
         data: {
           exception: {
+            // Sentry chain order: root cause first, the actually-thrown
+            // (primary) exception LAST — the primary belongs to the hero
+            // stack, everything before it is an additional cause.
             values: [
-              { type: "PrimaryError", value: "primary", stacktrace: { frames: [] } },
               { type: "CauseError", value: "cause", stacktrace: { frames: [] } },
+              { type: "PrimaryError", value: "primary", stacktrace: { frames: [] } },
             ],
           },
         },

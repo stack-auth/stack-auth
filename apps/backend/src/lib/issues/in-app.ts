@@ -26,7 +26,8 @@ import type { StackPlatform } from "./types";
  * meant `node_modules/pkg`), still seen from older toolchains; treating it as
  * app code would pull third-party frames into the `app` grouping hash.
  */
-const JAVASCRIPT_NOT_IN_APP_SUBSTRINGS = ["/node_modules/", "/~/"];
+const JAVASCRIPT_NOT_IN_APP_SUBSTRINGS = ["/node_modules/"];
+const LEGACY_WEBPACK_MODULE_PATH_RE = /^webpack:\/\/(?:[^/]+)?\/\.\/~\//;
 const JAVASCRIPT_NOT_IN_APP_PREFIXES = ["webpack-internal:", "node:"];
 /**
  * Next.js emits its own runtime into `framework-<hash>.js` under this directory.
@@ -62,6 +63,7 @@ export function isInAppPath(path: string, platform: StackPlatform): boolean {
     case "javascript": {
       if (JAVASCRIPT_NOT_IN_APP_PREFIXES.some((prefix) => path.startsWith(prefix))) return false;
       if (JAVASCRIPT_NOT_IN_APP_SUBSTRINGS.some((needle) => path.includes(needle))) return false;
+      if (LEGACY_WEBPACK_MODULE_PATH_RE.test(path)) return false;
       // Matched on the pathname so it holds for both `https://host/_next/...` and a bare `/_next/...`.
       if (path.includes(NEXT_FRAMEWORK_CHUNK_PREFIX)) return false;
       return true;

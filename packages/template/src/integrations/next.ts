@@ -3,6 +3,7 @@ import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import type { Instrumentation } from "@opentelemetry/instrumentation";
 import type { RequestLike } from "../lib/hexclave-app/common";
 import { getServerAppInstrumentation } from "../lib/hexclave-app/apps/implementations/server-app-impl";
+import { preCaught } from "../lib/hexclave-app/apps/implementations/telemetry-core";
 import { AdapterServerApp, AdapterTelemetryOptions, AdapterUser, HexclaveRequestContext, runGuardedCall, runGuardedRoute, UnauthorizedFactory } from "./adapter-core";
 
 /**
@@ -256,25 +257,23 @@ export function hexclaveInstrumentation(app: AdapterServerApp, options?: Hexclav
   }
   return {
     runWithTelemetrySuppressed: async (fn) => await instrumentation.runWithTelemetrySuppressed(fn),
-    // Returned directly (not wrapped in async/await): captureServerRequestError
-    // returns a PRE-CAUGHT promise, and an async wrapper would mint a new,
-    // un-caught promise whose rejection becomes an unhandled rejection for
-    // fire-and-forget callers. Callers that await it still observe failures.
-    captureHandledError: (error, info) => instrumentation.captureServerRequestError(error, {
+    // Promise.resolve().then() preserves the promise-returning contract even
+    // when the instrumentation seam throws synchronously. preCaught also
+    // covers callers that intentionally fire-and-forget this hook.
+    captureHandledError: (error, info) => preCaught(Promise.resolve().then(async () => await instrumentation.captureServerRequestError(error, {
       mechanism: "captured",
       handled: true,
       data: {
         ...info?.data ?? {},
         ...info?.location === undefined ? {} : { location: info.location },
-        // Re-asserted AFTER the user-data spread: captureServerRequestError
-        // merges `data` over the flattened $error payload, so without this a
-        // caller passing `data: { handled: false }` (or a custom
-        // mechanism_type) could flip the handled/unhandled classification
-        // that this API guarantees.
+        // Reserved mechanism fields are supplied separately below. The server
+        // capture seam also writes those authoritative fields after this
+        // metadata; keeping them here makes the adapter contract explicit even
+        // when the instrumentation seam is replaced by a structural test spy.
         mechanism_type: "captured",
         handled: true,
       },
-    }),
+    }))),
     register: async () => {
       instrumentation.ensureOpenTelemetryProvider();
       instrumentation.installServerErrorMonitor();

@@ -20,6 +20,7 @@ import { parseOwnershipRoutingMetadata } from "@/lib/issues/ownership/routing-me
 import {
   IssueAlertPersistenceInputError,
   issueAlertPersistenceService,
+  type IssueAlertWorkflowDeliveryExpectation,
   type IssueAlertWorkflowUpdate,
 } from "./persistence";
 import type { IssueAlertRuleScope } from "./types";
@@ -48,7 +49,13 @@ export type IssueAlertWorkflowDeliveryRef = {
 
 export type IssueAlertWorkflowStatusStore = {
   findDeliveryByWorkflowEventId(tenancyId: string, workflowEventId: string): Promise<IssueAlertWorkflowDeliveryRef | null>,
-  applyWorkflowUpdate(scope: IssueAlertRuleScope, deliveryId: string, expectedWorkflowEventId: string, update: IssueAlertWorkflowUpdate): Promise<boolean>,
+  applyWorkflowUpdate(
+    scope: IssueAlertRuleScope,
+    deliveryId: string,
+    expectedWorkflowEventId: string,
+    expectedDelivery: IssueAlertWorkflowDeliveryExpectation,
+    update: IssueAlertWorkflowUpdate,
+  ): Promise<boolean>,
 };
 
 export type IssueAlertWorkflowLifecycle = {
@@ -242,8 +249,14 @@ const defaultStatusStore: IssueAlertWorkflowStatusStore = {
       lastAttemptAt: row.lastAttemptAt,
     };
   },
-  async applyWorkflowUpdate(scope, deliveryId, expectedWorkflowEventId, update) {
-    const result = await issueAlertPersistenceService.recordWorkflowUpdateIfCurrent(scope, deliveryId, expectedWorkflowEventId, update);
+  async applyWorkflowUpdate(scope, deliveryId, expectedWorkflowEventId, expectedDelivery, update) {
+    const result = await issueAlertPersistenceService.recordWorkflowUpdateIfCurrent(
+      scope,
+      deliveryId,
+      expectedWorkflowEventId,
+      expectedDelivery,
+      update,
+    );
     return result !== null;
   },
 };
@@ -272,7 +285,17 @@ export async function reconcileIssueAlertWorkflowLifecycle(options: {
   if (isStaleLifecycle(delivery, lifecycle.payload.lifecycle, retryAt, lifecycleOccurredAt)) {
     return { status: "ignored", reason: "stale_lifecycle" };
   }
-  const applied = await store.applyWorkflowUpdate(delivery.scope, delivery.id, triggerEventId, update);
+  const applied = await store.applyWorkflowUpdate(
+    delivery.scope,
+    delivery.id,
+    triggerEventId,
+    {
+      state: delivery.state,
+      nextRetryAt: delivery.nextRetryAt,
+      lastAttemptAt: delivery.lastAttemptAt,
+    },
+    update,
+  );
   if (!applied) return { status: "ignored", reason: "stale_lifecycle" };
   return {
     status: "reconciled",

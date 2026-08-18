@@ -11,6 +11,7 @@ import { getBillingTeamId } from "@/lib/plan-entitlements";
 import { getPrismaClientForTenancy, isPrismaError, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import { deepPlainEquals } from "@hexclave/shared/dist/utils/objects";
 import { createHash, randomUUID } from "node:crypto";
+import { DEFAULT_BRANCH_ID } from "@/lib/branch-constants";
 import type { IssuePriority } from "./issue-lifecycle";
 import type { IssueActivitySubject } from "./issue-activity";
 
@@ -233,13 +234,28 @@ async function assertIssueExists(tx: PrismaClientTransaction, scope: IssueProduc
   if (issue === null) throw new IssueProductInputError("Issue was not found in the authenticated branch");
 }
 
-async function assertProjectUser(tx: PrismaClientTransaction, tenancy: Tenancy, userId: string, fieldName: string): Promise<void> {
+async function assertProjectUser(
+  tx: PrismaClientTransaction,
+  tenancy: Tenancy,
+  userId: string,
+  fieldName: string,
+  options: { allowInternalMirror?: boolean } = {},
+): Promise<void> {
   assertUuid(userId, fieldName);
-  const user = await tx.projectUser.findUnique({
-    where: { tenancyId_projectUserId: { tenancyId: tenancy.id, projectUserId: userId } },
-    select: { projectUserId: true },
-  });
-  if (user === null) throw new IssueProductInputError(`${fieldName} is not a member of the authenticated branch`);
+  const allowInternalMirror = options.allowInternalMirror ?? true;
+  const rows = await tx.$queryRaw<{ projectUserId: string }[]>`
+    SELECT "projectUserId"
+    FROM "ProjectUser"
+    WHERE "projectUserId" = ${userId}::uuid
+      AND (
+        "tenancyId" = ${tenancy.id}::uuid
+        ${allowInternalMirror ? Prisma.sql`OR ("mirroredProjectId" = 'internal' AND "mirroredBranchId" = ${DEFAULT_BRANCH_ID})` : Prisma.empty}
+      )
+    ORDER BY CASE WHEN "tenancyId" = ${tenancy.id}::uuid THEN 0 ELSE 1 END
+    LIMIT 1
+    FOR KEY SHARE
+  `;
+  if (rows.length === 0) throw new IssueProductInputError(`${fieldName} is not a member of the authenticated branch`);
 }
 
 /**
@@ -249,8 +265,14 @@ async function assertProjectUser(tx: PrismaClientTransaction, tenancy: Tenancy, 
  * purpose. Kept here rather than duplicated so "is this a project user?" is
  * answered by exactly one query shape.
  */
-export async function assertIssueProjectUserInTransaction(tx: PrismaClientTransaction, tenancy: Tenancy, userId: string, fieldName: string): Promise<void> {
-  await assertProjectUser(tx, tenancy, userId, fieldName);
+export async function assertIssueProjectUserInTransaction(
+  tx: PrismaClientTransaction,
+  tenancy: Tenancy,
+  userId: string,
+  fieldName: string,
+  options: { allowInternalMirror?: boolean } = {},
+): Promise<void> {
+  await assertProjectUser(tx, tenancy, userId, fieldName, options);
 }
 
 /**
@@ -351,6 +373,7 @@ export async function setIssuePriority(options: IssueProductScope & {
   assertScope(options);
   const actorUserId = actorId(options.actorUserId);
   const occurredAt = assertValidDate(options.occurredAt ?? new Date(), "occurredAt");
+  const actionId = randomUUID();
   const prisma = await getPrismaClientForTenancy(options.tenancy);
   return await retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
@@ -371,7 +394,7 @@ export async function setIssuePriority(options: IssueProductScope & {
     });
     await appendActivityInTransaction({
       tx, tenancy: options.tenancy, issueId: options.issueId, actorUserId,
-      type: "priority_changed", idempotencyKey: activityKey("priority", `${previousPriority ?? "none"}:${options.priority ?? "none"}:${occurredAt.toISOString()}`),
+      type: "priority_changed", idempotencyKey: activityKey("priority", `${previousPriority ?? "none"}:${options.priority ?? "none"}:${occurredAt.toISOString()}:${actionId}`),
       data: { from: previousPriority, to: options.priority }, occurredAt,
     });
     return {
@@ -397,6 +420,7 @@ export async function assignIssueToTeam(options: IssueProductScope & {
   const teamId = options.teamId ?? ownerTeamId;
   assertProjectOwnerTeam(options.tenancy, teamId, "teamId");
   const changedAt = assertValidDate(options.changedAt ?? new Date(), "changedAt");
+  const actionId = randomUUID();
   const prisma = await getPrismaClientForTenancy(options.tenancy);
   return await retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
@@ -416,7 +440,7 @@ export async function assignIssueToTeam(options: IssueProductScope & {
     });
     await appendActivityInTransaction({
       tx, tenancy: options.tenancy, issueId: options.issueId, actorUserId,
-      type: "team_changed", idempotencyKey: activityKey("team", `${current.assignedTeamId ?? "none"}:${teamId}:${changedAt.toISOString()}`),
+      type: "team_changed", idempotencyKey: activityKey("team", `${current.assignedTeamId ?? "none"}:${teamId}:${changedAt.toISOString()}:${actionId}`),
       data: { from: current.assignedTeamId, to: teamId }, occurredAt: changedAt,
     });
     return {
@@ -453,11 +477,12 @@ export async function setIssueOwner(options: IssueProductScope & {
       throw new IssueProductInputError("owner.type must be user or team");
     }
   }
+  const actionId = randomUUID();
   const prisma = await getPrismaClientForTenancy(options.tenancy);
   return await retryOnceOnUniqueConstraintRace(() => retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
     if (actorUserId !== null) await assertProjectUser(tx, options.tenancy, actorUserId, "actorUserId");
-    if (ownerUserId !== null) await assertProjectUser(tx, options.tenancy, ownerUserId, "owner.userId");
+    if (ownerUserId !== null) await assertProjectUser(tx, options.tenancy, ownerUserId, "owner.userId", { allowInternalMirror: false });
     if (ownerTeamId !== null) assertProjectOwnerTeam(options.tenancy, ownerTeamId, "owner.teamId");
     const ownerWhere = {
       tenancyId: options.tenancy.id,
@@ -475,7 +500,7 @@ export async function setIssueOwner(options: IssueProductScope & {
       : await tx.issueOwner.update({ where: { tenancyId_id: { tenancyId: options.tenancy.id, id: existingOwner.id } }, data: { context: options.owner.context ?? Prisma.JsonNull, updatedAt: occurredAt } });
     await appendActivityInTransaction({
       tx, tenancy: options.tenancy, issueId: options.issueId, actorUserId,
-      type: "owner_changed", idempotencyKey: activityKey("owner", `${owner.id}:${occurredAt.toISOString()}`),
+      type: "owner_changed", idempotencyKey: activityKey("owner", `${owner.id}:${occurredAt.toISOString()}:${actionId}`),
       data: { owner_type: ownerType, owner_id: ownerUserId ?? ownerTeamId, source: options.owner.source }, occurredAt,
     });
     return {
@@ -500,7 +525,7 @@ export async function addIssueComment(options: IssueProductScope & {
   const prisma = await getPrismaClientForTenancy(options.tenancy);
   return await retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
-    await assertProjectUser(tx, options.tenancy, options.actorUserId, "actorUserId");
+    await assertProjectUser(tx, options.tenancy, options.actorUserId, "actorUserId", { allowInternalMirror: false });
     const comment = await tx.issueComment.upsert({
       where: {
         tenancyId_projectId_branchId_issueId_idempotencyKey: {
@@ -551,7 +576,7 @@ export async function setIssueSubscription(options: IssueProductScope & {
   return await retryOnceOnUniqueConstraintRace(() => retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
     if (actorUserId !== null) await assertProjectUser(tx, options.tenancy, actorUserId, "actorUserId");
-    if (subjectUserId !== null) await assertProjectUser(tx, options.tenancy, subjectUserId, "subject.id");
+    if (subjectUserId !== null) await assertProjectUser(tx, options.tenancy, subjectUserId, "subject.id", { allowInternalMirror: false });
     if (subjectTeamId !== null) assertProjectOwnerTeam(options.tenancy, subjectTeamId, "subject.id");
     const subscriptionWhere = {
       tenancyId: options.tenancy.id, projectId: options.tenancy.project.id, branchId: options.tenancy.branchId,
@@ -590,7 +615,7 @@ export async function setIssueBookmark(options: IssueProductScope & {
   const prisma = await getPrismaClientForTenancy(options.tenancy);
   return await retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
-    await assertProjectUser(tx, options.tenancy, options.userId, "userId");
+    await assertProjectUser(tx, options.tenancy, options.userId, "userId", { allowInternalMirror: false });
     if (actorUserId !== null) await assertProjectUser(tx, options.tenancy, actorUserId, "actorUserId");
     // Atomic create-if-absent / delete-if-present, with `changed` derived from
     // the affected-row count. A read-then-decide-then-write here would let two
@@ -696,6 +721,7 @@ export async function removeIssueOwner(options: IssueProductScope & { ownerId: s
   assertUuid(options.ownerId, "ownerId");
   const actorUserId = actorId(options.actorUserId);
   const occurredAt = assertValidDate(options.occurredAt ?? new Date(), "occurredAt");
+  const actionId = randomUUID();
   const prisma = await getPrismaClientForTenancy(options.tenancy);
   await retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
@@ -705,7 +731,7 @@ export async function removeIssueOwner(options: IssueProductScope & { ownerId: s
     await tx.issueOwner.delete({ where: { tenancyId_id: { tenancyId: options.tenancy.id, id: options.ownerId } } });
     await appendActivityInTransaction({
       tx, tenancy: options.tenancy, issueId: options.issueId, actorUserId,
-      type: "owner_changed", idempotencyKey: activityKey("owner-remove", `${owner.id}:${occurredAt.toISOString()}`),
+      type: "owner_changed", idempotencyKey: activityKey("owner-remove", `${owner.id}:${occurredAt.toISOString()}:${actionId}`),
       data: { owner_id: owner.id, removed: true }, occurredAt,
     });
   });

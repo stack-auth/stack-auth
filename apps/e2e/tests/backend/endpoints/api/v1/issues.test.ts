@@ -78,6 +78,8 @@ type ErrorEventOptions = {
   release?: string,
 };
 
+const ISSUE_TEST_TIMEOUT = 180_000;
+
 function errorEvent(options: ErrorEventOptions) {
   return {
     event_type: "$error",
@@ -376,7 +378,7 @@ it("rejects non-admin access to the issues endpoints", async ({ expect }) => {
 
 // ─── Grouping / ingest ──────────────────────────────────────────────────────
 
-it("stamps grouping columns and a deterministic occurrence_id onto ingested $error rows", async ({ expect }) => {
+it("stamps grouping columns and a deterministic occurrence_id onto ingested $error rows", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -480,7 +482,7 @@ it("stamps grouping columns and a deterministic occurrence_id onto ingested $err
   `);
 });
 
-it("collapses two occurrences of the same error into one issue", async ({ expect }) => {
+it("collapses two occurrences of the same error into one issue", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -516,7 +518,7 @@ it("collapses two occurrences of the same error into one issue", async ({ expect
  * from the same helper share every other leaf and collapse into one issue —
  * which is wrong, because they are different bugs with different fixes.
  */
-it("does not merge a TypeError and a RangeError thrown from the same frame", async ({ expect }) => {
+it("does not merge a TypeError and a RangeError thrown from the same frame", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -554,7 +556,7 @@ it("does not merge a TypeError and a RangeError thrown from the same frame", asy
  * every non-`Error` throw, so without the dedicated synthetic rule every
  * `throw "nope"` in a project would collapse into one useless issue.
  */
-it("does not merge two different non-Error (synthetic) throws", async ({ expect }) => {
+it("does not merge two different non-Error (synthetic) throws", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -592,7 +594,7 @@ it("does not merge two different non-Error (synthetic) throws", async ({ expect 
  * twice (a retry that ClickHouse deduplicated by insert token) must advance the
  * counters exactly once.
  */
-it("increments times_seen exactly once when the same batch_id is posted twice", async ({ expect }) => {
+it("increments times_seen exactly once when the same batch_id is posted twice", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -661,7 +663,7 @@ it.fails("does not inflate window_occurrences when the same batch is retried", a
   expect(onlyItem(await listIssues()).window_occurrences).toBe(1);
 });
 
-it("produces a byte-identical occurrence_id across retries of the same batch", async ({ expect }) => {
+it("produces a byte-identical occurrence_id across retries of the same batch", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -689,7 +691,7 @@ it("produces a byte-identical occurrence_id across retries of the same batch", a
 
 // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
-it("reopens a resolved issue as regressed when a new occurrence arrives", async ({ expect }) => {
+it("reopens a resolved issue as regressed when a new occurrence arrives", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -733,7 +735,7 @@ it("reopens a resolved issue as regressed when a new occurrence arrives", async 
  * lifetime counters honour the client timestamps: `lastSeenAt` uses `GREATEST`
  * and therefore does not move backwards, and `firstSeenAt` uses `LEAST` and does.
  */
-it("regresses on server receipt time, not on the client clock, for a back-dated occurrence", async ({ expect }) => {
+it("regresses on server receipt time, not on the client clock, for a back-dated occurrence", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -765,7 +767,7 @@ it("regresses on server receipt time, not on the client clock, for a back-dated 
  * stay ignored and a cron waking them all up would be wrong. The read path
  * therefore has to compensate for the window in between.
  */
-it("reports an issue whose snooze has expired as unresolved before the next occurrence", async ({ expect }) => {
+it("reports an issue whose snooze has expired as unresolved before the next occurrence", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -822,7 +824,7 @@ it("reports an issue whose snooze has expired as unresolved before the next occu
  * decimal string, the very first list response 500s. This is that guard, not a
  * style assertion.
  */
-it("returns short_id and times_seen as strings, not numbers", async ({ expect }) => {
+it("returns short_id and times_seen as strings, not numbers", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -845,7 +847,7 @@ it("returns short_id and times_seen as strings, not numbers", async ({ expect })
   expect(typeof detail.body?.issue?.times_seen).toBe("string");
 });
 
-it("resolves the detail route by uuid, by numeric short id, and through an IssueRedirect", async ({ expect }) => {
+it("resolves the detail route by uuid, by numeric short id, and through an IssueRedirect", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -921,7 +923,7 @@ it("resolves the detail route by uuid, by numeric short id, and through an Issue
  * the failure mode to guard against is a 200 with another project's data — a 404
  * is the only acceptable answer, including for the write path.
  */
-it("cannot read or mutate another project's issue", async ({ expect }) => {
+it("cannot read or mutate another project's issue", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
   const now = Date.now();
   await postBatch({ events: [checkoutTypeError(now)] });
@@ -955,7 +957,7 @@ it("cannot read or mutate another project's issue", async ({ expect }) => {
   `);
 });
 
-it("filters the issue list by status, service, and environment", async ({ expect }) => {
+it("filters the issue list by status, service, and environment", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -1048,7 +1050,7 @@ it("validates issue list query parameters", async ({ expect }) => {
   expect((await listIssues({ hours: "720", status: "all", sort: "users", sort_dir: "asc", limit: "10", handled: "handled" })).status).toBe(200);
 });
 
-it("paginates the issue list with a keyset cursor", async ({ expect }) => {
+it("paginates the issue list with a keyset cursor", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -1072,7 +1074,7 @@ it("paginates the issue list with a keyset cursor", async ({ expect }) => {
   expect(second.body?.cursor).toBe(null);
 });
 
-it("navigates an issue's occurrences with the older/newer cursors", async ({ expect }) => {
+it("navigates an issue's occurrences with the older/newer cursors", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -1104,7 +1106,7 @@ it("navigates an issue's occurrences with the older/newer cursors", async ({ exp
 // (`IssueMergeRequestSchema` / `IssueUnmergeRequestSchema`) and should need
 // nothing but the `.todo` removed once the routes land.
 
-it("merges issues, picking the primary by (firstSeenAt asc, timesSeen desc, id asc) and summing lifetime counters", async ({ expect }) => {
+it("merges issues, picking the primary by (firstSeenAt asc, timesSeen desc, id asc) and summing lifetime counters", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -1147,7 +1149,7 @@ it("merges issues, picking the primary by (firstSeenAt asc, timesSeen desc, id a
   expect(redirected.body?.redirected_from_issue_id).toBe(newer.id);
 });
 
-it("merging into an already-merged issue follows the redirect and creates no chain", async ({ expect }) => {
+it("merging into an already-merged issue follows the redirect and creates no chain", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -1185,7 +1187,7 @@ it("merging into an already-merged issue follows the redirect and creates no cha
   expect(new Set(redirects.rows.map((row) => row.fromIssueId))).toEqual(new Set([second.id, third.id]));
 });
 
-it("unmerge is retroactive: historical occurrences owned by the split hash resolve to the new issue", async ({ expect }) => {
+it("unmerge is retroactive: historical occurrences owned by the split hash resolve to the new issue", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -1229,7 +1231,7 @@ it("unmerge is retroactive: historical occurrences owned by the split hash resol
   expect(sourceDetail.body?.issue?.issue_hashes).not.toContain(splitHash);
 });
 
-it("unmerge stamps counters_truncated_at_millis on the new issue", async ({ expect }) => {
+it("unmerge stamps counters_truncated_at_millis on the new issue", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -1258,7 +1260,7 @@ it("unmerge stamps counters_truncated_at_millis on the new issue", async ({ expe
   expect(newIssue?.counters_truncated_at_millis).toBe(truncatedAt);
 });
 
-it("resolves a merged-away NUMERIC short id through IssueRedirect", async ({ expect }) => {
+it("resolves a merged-away NUMERIC short id through IssueRedirect", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();

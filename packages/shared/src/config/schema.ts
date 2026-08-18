@@ -715,11 +715,11 @@ import.meta.vitest?.test("error-ingest policy schema matches the backend policy 
   const config = (errorIngest: unknown) => ({ observability: { errorIngest } });
 
   // `url` is a valid selector for URL scrubbing but reserved away from dropKeys.
-  await expect(environmentConfigSchema.validate(config({ finalScrub: { urlKeys: { url: true } } }))).resolves.toBeDefined();
-  await expect(environmentConfigSchema.validate(config({ finalScrub: { dropKeys: { url: true } } }))).rejects.toThrow("The url selector is only valid for URL scrubbing");
+  await expect(environmentConfigSchema.validate(config({ finalScrub: { urlKeys: { urlRule: "url" } } }))).resolves.toBeDefined();
+  await expect(environmentConfigSchema.validate(config({ finalScrub: { dropKeys: { urlRule: "url" } } }))).rejects.toThrow("The url selector is only valid for URL scrubbing");
 
   // At most 32 override keys per record, mirroring MAX_OVERRIDE_KEYS in the parser.
-  const manyKeys = Object.fromEntries(Array.from({ length: 33 }, (_, i) => [`tags.key-${i}`, true] as const));
+  const manyKeys = Object.fromEntries(Array.from({ length: 33 }, (_, i) => [`rule-${i}`, `tags.key-${i}`] as const));
   await expect(environmentConfigSchema.validate(config({ finalScrub: { dropKeys: manyKeys } }))).rejects.toThrow("must not contain more than 32 keys");
   await expect(environmentConfigSchema.validate(config({ finalScrub: { dropKeys: Object.fromEntries(Object.entries(manyKeys).slice(0, 32)) } }))).resolves.toBeDefined();
 
@@ -909,9 +909,177 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // BEGIN 2026-08-15: error-ingest scrub overrides now use dotless rule ids as
+  // record keys because config-override path notation cannot represent dotted
+  // selectors as keys. Convert the old `{ selector: true }` shape before the
+  // stricter schema validates the saved override. The generated ids are stable
+  // and collision-safe so rerunning this migration is idempotent.
+  if (isEnvironmentOrHigher) {
+    // Older override writes could flatten a selector below the record itself,
+    // for example `...dropKeys.user.email`. Reassemble those descendants under
+    // the record path before the record migrator turns selectors into rule ids;
+    // otherwise the current dotless-key schema sees the selector as a rule id
+    // and rejects a valid legacy override before migration can run.
+    res = reassembleFlattenedErrorIngestOverrideRecords(res);
+    res = mapProperty(
+      res,
+      (path) => path.join(".") === "observability.errorIngest.finalScrub.dropKeys"
+        || path.join(".") === "observability.errorIngest.finalScrub.urlKeys",
+      migrateLegacyErrorIngestOverrideRecord,
+    );
+  }
+  // END
+
   // return the result
   return res;
 };
+
+function migrateLegacyErrorIngestOverrideRecord(value: unknown): unknown {
+  if (!isObjectLike(value) || Array.isArray(value)) return value;
+
+  const migrated: Record<string, unknown> = {};
+  const usedRuleIds = new Set<string>();
+  const legacySelectors: string[] = [];
+
+  const collectLegacySelectors = (record: object, prefix: string[]): void => {
+    for (const [key, nestedValue] of Object.entries(record)) {
+      const selectorPath = [...prefix, ...key.split(".")];
+      if (nestedValue === true) {
+        legacySelectors.push(selectorPath.join("."));
+      } else if (isObjectLike(nestedValue) && !Array.isArray(nestedValue)) {
+        if (Object.keys(nestedValue).length === 0) {
+          // An empty nested object is still invalid under the current record
+          // schema. Preserve it so migration cannot turn malformed config into
+          // an apparently valid empty record by dropping the entry silently.
+          migrated[key] = nestedValue;
+          usedRuleIds.add(key);
+        } else {
+          collectLegacySelectors(nestedValue, selectorPath);
+        }
+      } else if (typeof nestedValue === "string" && prefix.length === 0) {
+        // New-format entries already have a dotless rule id and selector value.
+        migrated[key] = nestedValue;
+        usedRuleIds.add(key);
+      } else {
+        // Preserve invalid values so the current schema still rejects malformed
+        // legacy data instead of silently dropping it during migration.
+        migrated[key] = nestedValue;
+        usedRuleIds.add(key);
+      }
+    }
+  };
+
+  collectLegacySelectors(value, []);
+  for (const selector of legacySelectors) {
+    const readableBase = `legacy-${selector.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 56) || "rule"}`;
+    let ruleId = readableBase;
+    let suffix = 2;
+    while (usedRuleIds.has(ruleId)) {
+      const suffixText = `-${suffix}`;
+      ruleId = `${readableBase.slice(0, 64 - suffixText.length)}${suffixText}`;
+      suffix += 1;
+    }
+    usedRuleIds.add(ruleId);
+    migrated[ruleId] = selector;
+  }
+
+  return migrated;
+}
+
+const LEGACY_ERROR_INGEST_RECORD_PATHS = [
+  ["observability", "errorIngest", "finalScrub", "dropKeys"],
+  ["observability", "errorIngest", "finalScrub", "urlKeys"],
+] as const;
+
+function reassembleFlattenedErrorIngestOverrideRecords(value: unknown, path: string[] = []): unknown {
+  if (!isObjectLike(value) || Array.isArray(value)) return value;
+
+  const result: Record<string, unknown> = {};
+  const descendants = new Map<string, Record<string, unknown>>();
+  for (const [key, nestedValue] of Object.entries(value)) {
+    const fullPath = [...path, ...key.split(".")];
+    const targetPath = LEGACY_ERROR_INGEST_RECORD_PATHS.find((candidate) =>
+      fullPath.length >= candidate.length && candidate.every((segment, index) => fullPath[index] === segment),
+    );
+    if (targetPath !== undefined && fullPath.length > targetPath.length) {
+      const localTargetPath = targetPath.slice(path.length).join(".");
+      const record = descendants.get(localTargetPath) ?? {};
+      record[fullPath.slice(targetPath.length).join(".")] = nestedValue;
+      descendants.set(localTargetPath, record);
+      continue;
+    }
+
+    const isTargetPrefix = LEGACY_ERROR_INGEST_RECORD_PATHS.some((candidate) =>
+      fullPath.length < candidate.length && fullPath.every((segment, index) => candidate[index] === segment),
+    );
+    result[key] = isTargetPrefix ? reassembleFlattenedErrorIngestOverrideRecords(nestedValue, fullPath) : nestedValue;
+  }
+
+  for (const [targetPath, record] of descendants) {
+    const previous = result[targetPath];
+    result[targetPath] = isObjectLike(previous) && !Array.isArray(previous)
+      ? { ...previous, ...record }
+      : record;
+  }
+  return result;
+}
+
+import.meta.vitest?.test("migrateConfigOverride converts legacy error-ingest scrub override records", ({ expect }) => {
+  const migrated = migrateConfigOverride("environment", {
+    observability: {
+      errorIngest: {
+        finalScrub: {
+          dropKeys: {
+            "legacy-user-email": "tags.existing",
+            "user.email": true,
+            tags: { "foo.bar": true },
+          },
+          urlKeys: { "request.url": true },
+        },
+      },
+    },
+  });
+
+  expect(migrated).toEqual({
+    observability: {
+      errorIngest: {
+        finalScrub: {
+          dropKeys: {
+            "legacy-user-email": "tags.existing",
+            "legacy-user-email-2": "user.email",
+            "legacy-tags-foo-bar": "tags.foo.bar",
+          },
+          urlKeys: { "legacy-request-url": "request.url" },
+        },
+      },
+    },
+  });
+  expect(migrateConfigOverride("environment", migrated)).toEqual(migrated);
+});
+
+import.meta.vitest?.test("migrateConfigOverride reassembles flattened error-ingest selectors and preserves empty invalid entries", ({ expect }) => {
+  expect(migrateConfigOverride("environment", {
+    "observability.errorIngest.finalScrub.dropKeys.user.email": true,
+    observability: {
+      errorIngest: {
+        finalScrub: {
+          urlKeys: { tags: {} },
+        },
+      },
+    },
+  })).toEqual({
+    "observability.errorIngest.finalScrub.dropKeys": {
+      "legacy-user-email": "user.email",
+    },
+    observability: {
+      errorIngest: {
+        finalScrub: {
+          urlKeys: { tags: {} },
+        },
+      },
+    },
+  });
+});
 
 import.meta.vitest?.test("migrateConfigOverride removes legacy sourceOfTruth overrides", ({ expect }) => {
   expect(migrateConfigOverride("project", {

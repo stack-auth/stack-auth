@@ -508,7 +508,9 @@ export const POST = createSmartRouteHandler({
     const isErrorIngestPolicyEvent = (event: { event_type: string }) =>
       event.event_type === ERROR_EVENT_TYPE || event.event_type === LOG_EVENT_TYPE;
     const policyItems = events.flatMap((event, index) =>
-      isErrorIngestPolicyEvent(event) ? [{ itemId: `event:${index}`, itemType: "event" as const, data: event.data }] : []);
+      isErrorIngestPolicyEvent(event)
+        ? [{ itemId: `event:${index}`, itemType: event.event_type === LOG_EVENT_TYPE ? "log" as const : "event" as const, data: event.data }]
+        : []);
     const policyDecision = evaluateErrorIngestPolicy({
       config: auth.tenancy.config,
       scope: { tenancyId, projectId, branchId },
@@ -756,7 +758,7 @@ export const POST = createSmartRouteHandler({
     // ledger and sprout a bogus `ingest` block in the response.
     const protocolProjection = createLegacyBatchProtocolProjection(
       body.batch_id,
-      events.length,
+      body.events?.length ?? 0,
       spans.length,
       policyItems.length > 0 ? policyDecision.outcomes : undefined,
     );
@@ -773,12 +775,11 @@ export const POST = createSmartRouteHandler({
       statusCode: 200,
       bodyType: "json",
       body: {
-        // `inserted` keeps its released semantics: the number of events the
-        // request carried. Old SDKs may compare it against what they sent, and
-        // for legacy batches (only $page-view/$click, which the error-ingest
-        // policy never drops) it always equals the stored count anyway.
+        // Report the number of event rows that survived policy filtering. The
+        // previous request-count value over-reported storage when a versioned
+        // batch dropped or rate-limited an error/log item.
         // Item-level outcomes for versioned callers live in `ingest` below.
-        inserted: body.events?.length ?? 0,
+        inserted: events.length,
         accepted_spans: spans.length,
         ...(protocolProjection.status === "accepted" ? {} : {
           ingest: {

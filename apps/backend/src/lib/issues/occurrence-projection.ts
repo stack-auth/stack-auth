@@ -181,10 +181,10 @@ function toPublicFrame(frame: StoredIssueFrame, symbolication: PublicIssueFrameS
 
 /** The release recorded ON this occurrence row, from its data column or envelope. */
 function occurrenceRelease(row: PublicOccurrenceRow, envelope: PublicIssueErrorEnvelope | null): string | null {
-  const dataRelease = row.data.release;
-  if (typeof dataRelease === "string" && dataRelease !== "") return dataRelease;
   const envelopeRelease = envelope?.release;
   if (typeof envelopeRelease === "string" && envelopeRelease !== "") return envelopeRelease;
+  const dataRelease = row.data.release;
+  if (typeof dataRelease === "string" && dataRelease !== "") return dataRelease;
   return null;
 }
 
@@ -194,10 +194,13 @@ export async function projectPublicIssueOccurrence(
     scope: { tenantId: string, projectId: string, branchId: string },
     symbolicator?: PublicIssueSymbolicator,
     attachments?: readonly IssueAttachment[],
+    errorEnvelope?: PublicIssueErrorEnvelope | null,
   },
 ): Promise<PublicIssueOccurrence> {
   const storedFrames = parseStoredFrames(row.error_frames);
-  const errorEnvelope = parsePublicErrorEnvelope(row.error_envelope);
+  const errorEnvelope = options.errorEnvelope === undefined
+    ? parsePublicErrorEnvelope(row.error_envelope)
+    : options.errorEnvelope;
   const release = occurrenceRelease(row, errorEnvelope);
   const groupingProvenance = parsePublicGroupingProvenance(row.issue_grouping_provenance);
   const symbolication = await symbolicatePublicFrames({

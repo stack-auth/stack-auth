@@ -205,6 +205,7 @@ export async function emitIssueLifecycleWebhook(options: {
   issueId: string,
   event: "resolved" | "ignored" | "merged",
   now: Date,
+  eventId?: string,
 }): Promise<void> {
   const { tenancy, issueId, event, now } = options;
   if (!isWebhooksAppEnabled(tenancy)) return;
@@ -239,7 +240,7 @@ export async function emitIssueLifecycleWebhook(options: {
     ...buildIssueWebhookData(tenancy, row, "ongoing"),
     ...event === "merged" ? {} : { status: event },
   };
-  const eventId = `${row.id}:${event}:${now.getTime()}`;
+  const eventId = options.eventId ?? `${row.id}:${event}:${now.getTime()}`;
 
   switch (event) {
     case "resolved": {

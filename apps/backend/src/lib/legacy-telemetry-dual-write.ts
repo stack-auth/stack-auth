@@ -1,4 +1,4 @@
-import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { captureWarning } from "@hexclave/shared/dist/utils/errors";
 import { type ClickHouseClient } from "./clickhouse";
 
 /**
@@ -64,7 +64,10 @@ async function isLegacyEventsDualWriteEnabled(client: ClickHouseClient): Promise
 function isRetiredLegacyTableError(error: unknown): boolean {
   if (typeof error !== "object" || error === null || !("code" in error)) return false;
   const code: unknown = error.code;
-  return code === "60" || code === "48" || code === 60 || code === 48;
+  if (code === "60" || code === 60) return true;
+  if (code !== "48" && code !== 48) return false;
+  const message = "message" in error && typeof error.message === "string" ? error.message : "";
+  return /write is not supported.*view|storage view/i.test(message);
 }
 
 /**
@@ -94,6 +97,11 @@ export async function dualWriteLegacyEvents(
       clickhouse_settings: {
         date_time_input_format: "best_effort",
         async_insert: 1,
+        // The legacy table is the read surface until cutover. Do not let the
+        // ClickHouse client resolve before an async insert has been accepted;
+        // otherwise the request can report success while the mirror row is
+        // still only queued in the server-side async buffer.
+        wait_for_async_insert: 1,
       },
     });
   } catch (error) {
@@ -101,7 +109,7 @@ export async function dualWriteLegacyEvents(
       dualWriteEnabledCache = false;
       // Informational, not an incident: this is the expected way a process
       // that outlived the cutover learns dual-writing is over.
-      captureError("legacy-telemetry-dual-write-retired", error);
+      captureWarning("legacy-telemetry-dual-write-retired", error);
       return;
     }
     throw error;

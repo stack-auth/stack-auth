@@ -7,10 +7,12 @@ import {
   isSortableIssueColumn,
   issueFiltersAreDefault,
   parseIssueFilters,
+  parseIssueRangeHours,
   resolveIssueSort,
   serializeIssueFilters,
   type IssueFilters,
 } from "./issue-filters";
+import { issueDetailHref } from "./issue-links";
 
 function roundTrip(filters: IssueFilters): IssueFilters {
   return parseIssueFilters(serializeIssueFilters(filters, new URLSearchParams()));
@@ -67,6 +69,19 @@ describe("parse / serialize round trip", () => {
     serializeIssueFilters(DEFAULT_ISSUE_FILTERS, params);
     expect(params.toString()).toBe("");
   });
+
+  it("treats whitespace-only search as the default", () => {
+    // The page trims before fetching, so "   " requests an unfiltered list —
+    // persisting it would mark the list as filtered and mislabel an empty
+    // project as "No matching issues".
+    const filters: IssueFilters = { ...DEFAULT_ISSUE_FILTERS, search: "   " };
+    expect(serializeIssueFilters(filters, new URLSearchParams()).toString()).toBe("");
+    expect(issueFiltersAreDefault(filters)).toBe(true);
+    // A non-blank search keeps its raw value (trailing spaces included) so the
+    // controlled input never fights the user mid-phrase.
+    expect(serializeIssueFilters({ ...DEFAULT_ISSUE_FILTERS, search: "boom " }, new URLSearchParams()).get("search"))
+      .toBe("boom ");
+  });
 });
 
 describe("parseIssueFilters treats the URL as untrusted", () => {
@@ -79,6 +94,35 @@ describe("parseIssueFilters treats the URL as untrusted", () => {
 
   it("survives a service value with broken percent-encoding", () => {
     expect(parseIssueFilters(new URLSearchParams("service=svc%3A%E0%A4%A")).service).toBeNull();
+  });
+});
+
+describe("parseIssueRangeHours (the one filter the detail page shares)", () => {
+  it("reads an allowlisted range", () => {
+    expect(parseIssueRangeHours(new URLSearchParams("range=168"))).toBe(168);
+  });
+
+  it("falls back to the default for missing or unknown values", () => {
+    expect(parseIssueRangeHours(new URLSearchParams())).toBe(DEFAULT_ISSUE_FILTERS.hours);
+    expect(parseIssueRangeHours(new URLSearchParams("range=999"))).toBe(DEFAULT_ISSUE_FILTERS.hours);
+    expect(parseIssueRangeHours(new URLSearchParams("range=banana"))).toBe(DEFAULT_ISSUE_FILTERS.hours);
+  });
+
+  it("agrees with parseIssueFilters on the same URL", () => {
+    const params = new URLSearchParams("range=720");
+    expect(parseIssueRangeHours(params)).toBe(parseIssueFilters(params).hours);
+  });
+
+  it("round-trips the range a detail link carries", () => {
+    // The list → detail handoff: `issueDetailHref` writes the param this
+    // parser reads, so the detail page's window matches the list's.
+    const href = issueDetailHref("p1", "42", { rangeHours: 720 });
+    expect(parseIssueRangeHours(new URL(href, "http://localhost").searchParams)).toBe(720);
+  });
+
+  it("omits the param entirely at the default range", () => {
+    expect(issueDetailHref("p1", "42", { rangeHours: DEFAULT_ISSUE_FILTERS.hours })).toBe("/projects/p1/observability/issues/42");
+    expect(issueDetailHref("p1", "42")).toBe("/projects/p1/observability/issues/42");
   });
 });
 

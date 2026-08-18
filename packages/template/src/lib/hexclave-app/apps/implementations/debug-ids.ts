@@ -169,7 +169,12 @@ function indexOfFrameLocation(stack: string, codeFile: string): number {
     const index = stack.indexOf(codeFile, from);
     if (index < 0) return -1;
     const end = index + codeFile.length;
-    if (stack.charCodeAt(end) === 0x3a /* ":" */) {
+    const lineStart = stack.lastIndexOf("\n", index - 1) + 1;
+    const linePrefix = stack.slice(lineStart, index);
+    const hasFrameDelimiter = linePrefix.endsWith("at ")
+      || linePrefix.endsWith("(")
+      || linePrefix.endsWith("@");
+    if (hasFrameDelimiter && stack.charCodeAt(end) === 0x3a /* ":" */) {
       const digit = stack.charCodeAt(end + 1);
       if (digit >= 0x30 && digit <= 0x39) return index;
     }

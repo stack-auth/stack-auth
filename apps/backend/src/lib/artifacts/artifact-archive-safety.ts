@@ -84,12 +84,22 @@ export function validateGzipTarArtifactArchive(
       maxTotalBytes: maxBytes,
     });
   } catch (error) {
-    // parseTar throws StatusError(400, ...) with messages documented as safe
-    // to show the uploader (limit exceeded, unsafe path, checksum mismatch,
-    // truncation, ...). Forward them so a legitimate uploader can actually fix
-    // the archive; anything else stays behind the generic classification.
+    // Only forward static parseTar diagnostics. Its unsafe-path diagnostic
+    // includes the archive's raw entry name, which is attacker-controlled and
+    // must not be reflected through the API error response.
     if (error instanceof StatusError && error.statusCode === 400) {
-      throw invalidArchive(`Artifact archive is not a safe ustar archive: ${error.message}`);
+      const safeMessages = new Set([
+        "Invalid tarball: not a ustar archive",
+        "Invalid tarball: header checksum mismatch",
+        "Invalid tarball: malformed octal header field",
+        "Invalid tarball: missing end-of-archive marker",
+        "Invalid tarball: only regular files and directories are supported",
+        "Invalid tarball: directory entry with non-zero size",
+      ]);
+      if (safeMessages.has(error.message)) throw invalidArchive(`Artifact archive is not a safe ustar archive: ${error.message}`);
+      if (/^(?:Tarball contains too many files|Tarball contents too large|Invalid tarball: truncated)/u.test(error.message)) {
+        throw invalidArchive(`Artifact archive is not a safe ustar archive: ${error.message}`);
+      }
     }
     throw invalidArchive("Artifact archive is not a safe ustar archive.");
   }

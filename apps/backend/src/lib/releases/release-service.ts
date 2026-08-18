@@ -77,6 +77,7 @@ export type ReleaseDatabase = {
     findMany(args: Prisma.ReleaseDeploymentFindManyArgs): Promise<ReleaseDeployment[]>,
     findUnique(args: Prisma.ReleaseDeploymentFindUniqueArgs): Promise<ReleaseDeployment | null>,
     upsert(args: Prisma.ReleaseDeploymentUpsertArgs): Promise<ReleaseDeployment>,
+    update(args: Prisma.ReleaseDeploymentUpdateArgs): Promise<ReleaseDeployment>,
   },
   releaseCommit: {
     findMany(args: Prisma.ReleaseCommitFindManyArgs): Promise<ReleaseCommit[]>,
@@ -92,7 +93,7 @@ export type ReleaseDatabase = {
       // promises the ReleaseArtifactLookupRow relation shape, so the adapter
       // is the single owner of the matching `include` — callers cannot pass a
       // competing one that the adapter would silently overwrite.
-      findMany(args: Omit<Prisma.ReleaseArtifactDebugIdFindManyArgs, "include">): Promise<ReleaseArtifactLookupRow[]>,
+      findMany(args: Omit<Prisma.ReleaseArtifactDebugIdFindManyArgs, "select" | "include">): Promise<ReleaseArtifactLookupRow[]>,
   },
 };
 
@@ -393,6 +394,14 @@ export class ReleaseService {
     const metadata = input.metadata === undefined
       ? undefined
       : validateReleaseJson(input.metadata, "deployment metadata");
+    const mutableFields: Prisma.ReleaseDeploymentUpdateInput = {
+      environment,
+      ...(input.name === undefined ? {} : { name: input.name }),
+      ...(input.url === undefined ? {} : { url: input.url }),
+      ...(input.startedAt === undefined ? {} : { startedAt: input.startedAt }),
+      ...(input.finishedAt === undefined ? {} : { finishedAt: input.finishedAt }),
+      ...(metadata === undefined ? {} : { metadata }),
+    };
 
     const db = await this.resolveDatabase(scope);
     const existing = await db.releaseDeployment.findUnique({
@@ -415,32 +424,26 @@ export class ReleaseService {
         ...(input.finishedAt === undefined ? {} : { finishedAt: input.finishedAt }),
         ...(metadata === undefined ? {} : { metadata }),
       },
-      update: {
-        environment,
-        ...(input.name === undefined ? {} : { name: input.name }),
-        ...(input.url === undefined ? {} : { url: input.url }),
-        ...(input.startedAt === undefined ? {} : { startedAt: input.startedAt }),
-        ...(input.finishedAt === undefined ? {} : { finishedAt: input.finishedAt }),
-        ...(metadata === undefined ? {} : { metadata }),
-      },
+      // Do not mutate the conflict winner here. A concurrent request for a
+      // different release can win the unique-key race after the friendly
+      // pre-read; Prisma's upsert update branch would otherwise overwrite the
+      // winner's environment/name before the ownership check can reject us.
+      update: {},
     });
     // The pre-upsert ownership check above is a friendly early exit only: two
     // concurrent registrations that reuse one deploymentKey for different
-    // releases can both pass it (TOCTOU). The upsert's update clause never
-    // moves a row between releases, so re-checking the row we actually got
-    // back detects the loser of that race — it must fail loudly instead of
-    // reporting success against a deployment that is attached to another
-    // release. (The loser's mutable-field update may have landed on the
-    // winner's row inside the race window; both requests come from the same
-    // tenant reusing one idempotency key, so surfacing the conflict is the
-    // correct resolution and no cross-tenant data can be touched.)
-    if (deployment.tenancyId !== fields.tenancyId
-      || deployment.projectId !== fields.projectId
+    // releases can both pass it (TOCTOU). The conflict winner is immutable
+    // until this ownership check succeeds, so the loser cannot mutate the
+    // winner's fields before failing.
+    if (deployment.projectId !== fields.projectId
       || deployment.branchId !== fields.branchId
       || deployment.releaseId !== releaseId) {
       throw new ReleaseScopeInvariantError(`deploymentKey ${deploymentKey} is already attached to a different release scope`);
     }
-    return deployment;
+    return await db.releaseDeployment.update({
+      where: { tenancyId_id: { tenancyId: fields.tenancyId, id: deployment.id } },
+      data: mutableFields,
+    });
   }
 
   public async upsertCommit(scope: ReleaseScope, input: UpsertReleaseCommitInput): Promise<ReleaseCommit> {
@@ -703,6 +706,7 @@ function adaptPrismaClient(client: PrismaClientTransaction): ReleaseDatabase {
       findMany: async (args) => await client.releaseDeployment.findMany(args),
       findUnique: async (args) => await client.releaseDeployment.findUnique(args),
       upsert: async (args) => await client.releaseDeployment.upsert(args),
+      update: async (args) => await client.releaseDeployment.update(args),
     },
     releaseCommit: {
       findMany: async (args) => await client.releaseCommit.findMany(args),

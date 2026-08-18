@@ -106,7 +106,6 @@ export default function PageClient() {
         return { from_path, to_path, cnt: String(cnt) } satisfies TransitionRow;
       });
 
-      // Normalize paths and aggregate
       const edgeMap = new Map<string, Map<string, number>>();
       const nodeSet = new Set<string>();
 
@@ -163,7 +162,6 @@ export default function PageClient() {
         }
       }
 
-      // Build nodes
       const nodeArray: GraphNode[] = Array.from(nodeSet).map((path) => {
         const pvInfo = pageViewsMap.get(path);
         return {
@@ -177,7 +175,6 @@ export default function PageClient() {
         };
       });
 
-      // Build edges
       const allEdges: { from: string, to: string, count: number, weight: number }[] = [];
       for (const [from, outgoingEdges] of edgeMap) {
         for (const [to, count] of outgoingEdges) {

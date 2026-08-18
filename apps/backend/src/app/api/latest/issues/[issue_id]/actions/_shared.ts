@@ -11,12 +11,9 @@ import { IssueProductInputError } from "@/lib/issues/issue-product";
 import type { SmartRequest } from "@/route-handlers/smart-request";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { MAX_ISSUE_TIMESTAMP_MILLIS } from "@hexclave/shared/dist/interface/admin-issues";
 
-// 2100-01-01T00:00:00Z. Must stay equal to `MAX_ISSUE_TIMESTAMP_MILLIS` in
-// `@hexclave/shared`'s `interface/admin-issues` — the internal PATCH schema
-// bounds `ignored_until_millis` with that constant, and the public action
-// routes here must accept exactly the same timestamp range.
-export const MAX_ACTION_TIMESTAMP_MILLIS = 4_102_444_800_000;
+export const MAX_ACTION_TIMESTAMP_MILLIS = MAX_ISSUE_TIMESTAMP_MILLIS;
 const MAX_ACTION_ISSUE_ID_LENGTH = 64;
 
 export const IssueActionAuthSchema = yupObject({

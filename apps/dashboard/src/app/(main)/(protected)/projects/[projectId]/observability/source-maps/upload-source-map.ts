@@ -4,6 +4,14 @@ const SOURCE_MAP_EXTENSION_PATTERN = /\.map$/i;
 const URL_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//u;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
 const DEBUG_ID_IDENTIFIER_PREFIX = "hexclave-dbid-";
+// Matches only a COMPLETE injected identifier (prefix + UUID), mirroring the
+// CLI's detection in packages/cli/src/lib/source-maps.ts. A bare prefix
+// substring check would falsely reject a legitimate bundle that merely
+// mentions the literal "hexclave-dbid-" (e.g. tooling that reads
+// `_hexclaveDebugIdIdentifier`). The identifier check still matters alongside
+// the snippet marker: re-minifying an injected bundle strips the marker
+// comments but keeps the identifier string literal.
+const INJECTED_DEBUG_ID_IDENTIFIER_PATTERN = new RegExp(`${DEBUG_ID_IDENTIFIER_PREFIX}[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`);
 const SNIPPET_START_MARKER = "// hexclave:debug-id-injection:start";
 const SNIPPET_END_MARKER = "// hexclave:debug-id-injection:end";
 const SOURCE_MAPPING_URL_LINE_PATTERN = "^[ \\t]*\\/\\/[#@][ \\t]*sourceMappingURL=([^\\s]*)[ \\t]*$";
@@ -70,7 +78,7 @@ export async function prepareSourceMapUpload(input: {
   if (input.bundleSource.length === 0) {
     throw new Error("Bundle file must not be empty.");
   }
-  if (input.bundleSource.includes(SNIPPET_START_MARKER) || input.bundleSource.includes(`${DEBUG_ID_IDENTIFIER_PREFIX}`)) {
+  if (input.bundleSource.includes(SNIPPET_START_MARKER) || INJECTED_DEBUG_ID_IDENTIFIER_PATTERN.test(input.bundleSource)) {
     throw new Error("Bundle already contains a Hexclave debug ID. Choose the original bundle before debug-ID injection.");
   }
 
@@ -126,6 +134,41 @@ export async function prepareSourceMapUpload(input: {
     manifestJson,
     manifestSha256: await sha256Hex(encoder.encode(manifestJson)),
   };
+}
+
+export type PresignedArtifactPutResult = "uploaded" | "already-uploaded";
+
+/**
+ * PUTs one artifact to a backend-presigned URL.
+ *
+ * The backend signs `If-None-Match: *` into these URLs (see
+ * apps/backend/src/s3.tsx createPresignedUploadUrl) so a published artifact
+ * can never be overwritten. Two consequences for this client:
+ * - the header MUST be sent: it is part of the presigned signature, so
+ *   omitting it fails signature validation (and on URLs signed before that
+ *   change, sending it is harmless — unsigned extra headers are ignored by
+ *   SigV4 while S3/R2 still honor the conditional-write semantics);
+ * - a 412 Precondition Failed means the content-addressed object already
+ *   exists, which is success for this flow, not an error — the registration
+ *   and finalize steps verify the digests either way.
+ */
+export async function putPresignedArtifact(
+  url: string,
+  body: Blob,
+  headers: Record<string, string>,
+  what: string,
+): Promise<PresignedArtifactPutResult> {
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: { ...headers, "If-None-Match": "*" },
+    body,
+    credentials: "omit",
+  });
+  if (response.status === 412) return "already-uploaded";
+  if (!response.ok) {
+    throw new Error(`${what} failed with status ${response.status}`);
+  }
+  return "uploaded";
 }
 
 export async function deriveDebugId(
@@ -193,6 +236,13 @@ async function sha256(bytes: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayB
 }
 
 async function gzip(bytes: Uint8Array<ArrayBuffer>): Promise<ArrayBuffer> {
+  // All current evergreen browsers ship CompressionStream; a JS gzip fallback
+  // would mean vendoring a compression library for browsers we don't support.
+  // Failing with a clear compatibility message beats the bare ReferenceError
+  // the constructor call would otherwise surface in the upload error alert.
+  if (typeof CompressionStream === "undefined") {
+    throw new Error("This browser does not support gzip compression (CompressionStream), which source map uploads require. Please use a current version of Chrome, Edge, Firefox, or Safari.");
+  }
   const compression = new CompressionStream("gzip");
   const compressed = new Response(compression.readable).arrayBuffer();
   const writer = compression.writable.getWriter();

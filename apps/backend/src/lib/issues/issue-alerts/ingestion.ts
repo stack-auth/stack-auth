@@ -195,6 +195,27 @@ function ownershipRoutingKey(issueId: string, routing: NonNullable<Extract<Issue
   return JSON.stringify([issueId, routing]);
 }
 
+async function issueStillOwnsHashInTransaction(
+  tx: PrismaClientTransaction,
+  tenancy: Tenancy,
+  issueId: string,
+  hash: string,
+): Promise<boolean> {
+  // The ownership check is part of the same serializable transaction as the
+  // delivery claim. FOR UPDATE makes a concurrent unmerge linearize before or
+  // after this decision instead of moving the hash between the check and the
+  // durable enqueue.
+  const rows = await tx.$queryRaw<Array<{ hash: string }>>`
+    SELECT "hash"
+    FROM "IssueHash"
+    WHERE "tenancyId" = ${tenancy.id}::uuid
+      AND "issueId" = ${issueId}::uuid
+      AND "hash" = ${hash}
+    FOR UPDATE
+  `;
+  return rows.length > 0;
+}
+
 export async function dispatchIssueAlertsForMaterialization(options: {
   tenancy: Tenancy,
   outcomes: readonly IssueBatchApplyOutcome[],
@@ -229,26 +250,21 @@ export async function dispatchIssueAlertsForMaterialization(options: {
     select: { id: true, shortId: true, type: true, value: true, culprit: true, status: true },
   });
   const issues = new Map(issueRows.map((issue) => [issue.id, issue]));
-  // Frequency counts must be scoped to the hashes CURRENTLY owned by the
-  // materialized issue — never the occurrence's `[ownerHash, ...aliasHashes]`
-  // wire set. After an unmerge, an alias hash in that set can be owned by the
-  // split-off issue, and counting its occurrences here would let the other
-  // issue's traffic satisfy THIS issue's frequency threshold. Owned hashes are
-  // the same single-owner invariant every issue read path resolves by.
   const issueHashRows = await prisma.issueHash.findMany({
     where: { tenancyId: options.tenancy.id, issueId: { in: outcomeIds } },
     select: { issueId: true, hash: true },
   });
   const ownedHashesByIssueId = new Map<string, string[]>();
   for (const row of issueHashRows) {
-    const list = ownedHashesByIssueId.get(row.issueId) ?? [];
-    list.push(row.hash);
-    ownedHashesByIssueId.set(row.issueId, list);
+    const hashes = ownedHashesByIssueId.get(row.issueId);
+    if (hashes === undefined) ownedHashesByIssueId.set(row.issueId, [row.hash]);
+    else hashes.push(row.hash);
   }
   const rules = records.map((record) => record.rule);
   const frequencyWindows = collectIssueAlertFrequencyWindows(rules);
   const needsEnvelope = rules.some(ruleNeedsOccurrenceEnvelope);
   const ownershipResolutionCache = new Map<string, Promise<OwnershipRoutingResolution>>();
+  const frequencyCountsCache = new Map<string, Promise<ReadonlyMap<number, number>>>();
 
   for (const outcome of options.outcomes) {
     const input = inputsByHash.get(outcome.ownerHash);
@@ -258,11 +274,17 @@ export async function dispatchIssueAlertsForMaterialization(options: {
     const envelope = needsEnvelope
       ? await loadOccurrenceEnvelope(options.tenancy, input.occurrenceId ?? null)
       : undefined;
-    // Falls back to the delta's owner hash only if the owned set vanished
-    // mid-dispatch (a concurrent merge deleted the issue's rows) — that hash
-    // provably resolved to this issue when the batch materialized.
-    const ownedHashes = ownedHashesByIssueId.get(outcome.issueId) ?? [outcome.ownerHash];
-    const frequencyCounts = await loadFrequencyCounts(options.tenancy, ownedHashes, frequencyWindows, options.receivedAt);
+    // This batch snapshot supplies the signal and frequency cache without an
+    // N+1 lookup. The matched-delivery path below rechecks the exact hash under
+    // the claim transaction, because an unmerge can repoint it after this read.
+    const ownedHashes = ownedHashesByIssueId.get(outcome.issueId) ?? [];
+    if (!ownedHashes.includes(outcome.ownerHash)) continue;
+    const frequencyCacheKey = JSON.stringify([...ownedHashes].sort());
+    const cachedFrequencyCounts = frequencyCountsCache.get(frequencyCacheKey);
+    const pendingFrequencyCounts = cachedFrequencyCounts
+      ?? loadFrequencyCounts(options.tenancy, ownedHashes, frequencyWindows, options.receivedAt);
+    if (cachedFrequencyCounts === undefined) frequencyCountsCache.set(frequencyCacheKey, pendingFrequencyCounts);
+    const frequencyCounts = await pendingFrequencyCounts;
     const signal = buildIssueAlertSignal({
       scope,
       outcome,
@@ -289,15 +311,19 @@ export async function dispatchIssueAlertsForMaterialization(options: {
         routingResolution = await pending;
       }
 
-      const delivery = await retryTransaction(prisma, async (tx) => await enqueueMatchInTransaction(
-        tx,
-        options.tenancy,
-        scope,
-        record.databaseId,
-        evaluation,
-        options.receivedAt,
-        routingResolution,
-      ), { level: "serializable" });
+      const delivery = await retryTransaction(prisma, async (tx) => {
+        if (!await issueStillOwnsHashInTransaction(tx, options.tenancy, outcome.issueId, outcome.ownerHash)) return null;
+        return await enqueueMatchInTransaction(
+          tx,
+          options.tenancy,
+          scope,
+          record.databaseId,
+          evaluation,
+          options.receivedAt,
+          routingResolution,
+        );
+      }, { level: "serializable" });
+      if (delivery === null) continue;
       if (delivery.claim.status === "claimed") {
         result.claimed += 1;
         if (delivery.enqueued) result.enqueued += 1;

@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Project, niceBackendFetch } from "../../../backend-helpers";
 
@@ -85,6 +86,23 @@ async function querySpansUntil(traceId: string): Promise<{ status: number, body:
   return response;
 }
 
+async function queryEnvelopeErrorsUntil(batchId: string): Promise<{ status: number, body: { result?: Record<string, unknown>[] } }> {
+  let response: { status: number, body: { result?: Record<string, unknown>[] } } = { status: 0, body: {} };
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    response = await niceBackendFetch("/api/v1/analytics/query", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        query: "SELECT occurrence_id FROM logs WHERE batch_id = {batchId:String} AND event_type = '$error' ORDER BY occurrence_id LIMIT 2",
+        params: { batchId },
+      },
+    });
+    if (response.status === 200 && response.body.result?.length === 1) return response;
+    await wait(250);
+  }
+  return response;
+}
+
 it("accepts an authenticated Sentry envelope and returns itemized outcomes", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { observability: { enabled: true } } } });
@@ -130,6 +148,14 @@ it("accepts an authenticated Sentry envelope and returns itemized outcomes", asy
       idempotency_key: response.body.ingest.idempotency_key,
     },
   });
+
+  // The response is deterministic even if the retry writes a second row. Query
+  // the persisted view by the deterministic envelope batch id so this test
+  // proves ClickHouse deduplication, rather than only comparing recomputed
+  // response fields.
+  const persistedErrors = await queryEnvelopeErrorsUntil(response.body.batch_id);
+  expect(persistedErrors.status).toBe(200);
+  expect(persistedErrors.body.result).toHaveLength(1);
 
   const attachments = await niceBackendFetch(`/api/v1/analytics/attachments?event_id=${eventId}`, {
     method: "GET",

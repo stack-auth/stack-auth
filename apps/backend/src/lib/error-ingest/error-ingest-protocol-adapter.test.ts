@@ -54,7 +54,7 @@ describe("error-ingest protocol adapter", () => {
       ],
     });
     // Each OTLP signal counts only its own item types: the filtered log for
-    // `logs`, the sampled-out span for `traces`. The other five rejections are
+    // `logs`, the sampled-out span for `traces`. The other three rejections are
     // events/unknown items that no OTLP signal may claim.
     expect(projection.otlpPartialSuccess.logs).toEqual({
       rejectedItems: 1,

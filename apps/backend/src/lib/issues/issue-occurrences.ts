@@ -5,6 +5,7 @@ import {
 import { getErrorAttachmentEventId } from "@/lib/attachments/attachment-event-id";
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
 import type { Tenancy } from "@/lib/tenancies";
+import { mapWithConcurrency } from "@hexclave/shared/dist/utils/promises";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { loadIssueDetailContext } from "./issue-detail";
 import { encodeOccurrenceCursor, type OccurrenceCursor } from "./issue-queries";
@@ -77,29 +78,39 @@ export async function loadPublicIssueOccurrences(options: {
 
   const rows = await resultSet.json<PublicOccurrenceRow>();
   const page = await resolveOccurrenceReplayIds(options.tenancy, rows.slice(0, options.limit));
-  const attachmentEventIds = page.map((row) => getErrorAttachmentEventId({
-    occurrenceId: row.occurrence_id,
-    data: row.data,
-    errorEnvelope: parsePublicErrorEnvelope(row.error_envelope),
-  })).filter((eventId): eventId is string => eventId !== null);
+  const prepared = page.map((row) => {
+    const errorEnvelope = parsePublicErrorEnvelope(row.error_envelope);
+    return {
+      row,
+      errorEnvelope,
+      attachmentEventId: getErrorAttachmentEventId({
+        occurrenceId: row.occurrence_id,
+        data: row.data,
+        errorEnvelope,
+      }),
+    };
+  });
+  const attachmentEventIds = prepared
+    .map((entry) => entry.attachmentEventId)
+    .filter((eventId): eventId is string => eventId !== null);
   const attachmentsByEvent = await loadPublicIssueAttachments(options.tenancy, attachmentEventIds);
   const last = page.at(-1);
-  const items: PublicIssueOccurrence[] = [];
-  for (const row of page) {
-    const attachmentEventId = getErrorAttachmentEventId({
-      occurrenceId: row.occurrence_id,
-      data: row.data,
-      errorEnvelope: parsePublicErrorEnvelope(row.error_envelope),
-    });
-    items.push(await projectPublicIssueOccurrence(row, {
+  // Symbolication may perform an artifact lookup per frame. Keep the page
+  // responsive when one artifact store call is slow without opening an
+  // unbounded burst against the storage backend.
+  const items = await mapWithConcurrency(
+    prepared,
+    8,
+    async (entry) => await projectPublicIssueOccurrence(entry.row, {
       scope: {
         tenantId: options.tenancy.id,
         projectId: options.tenancy.project.id,
         branchId: options.tenancy.branchId,
       },
-      attachments: attachmentEventId === null ? [] : attachmentsByEvent.get(attachmentEventId) ?? [],
-    }));
-  }
+      errorEnvelope: entry.errorEnvelope,
+      attachments: entry.attachmentEventId === null ? [] : attachmentsByEvent.get(entry.attachmentEventId) ?? [],
+    }),
+  );
   return {
     items,
     next_cursor: rows.length > options.limit && last !== undefined

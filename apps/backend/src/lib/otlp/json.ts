@@ -16,6 +16,14 @@ export type OtlpAttributeValue =
   | { type: "null", value: null };
 export type OtlpAttributes = Map<string, OtlpAttributeValue>;
 
+// Shared with metrics normalization so logs and metrics enforce the same
+// recursive AnyValue collection bounds.
+export const DEFAULT_OTLP_ATTRIBUTE_LIMITS = {
+  maxDepth: 16,
+  maxAttributesPerList: 256,
+  maxAttributeArrayValues: 256,
+} as const;
+
 function isOtlpRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -88,9 +96,9 @@ export function otlpCanonicalUint64String(value: unknown, path: string): string 
 // the call stack, and the resulting RangeError is not an OtlpJsonRequestError —
 // so it would bypass the routes' 400 handling and surface as a 500. The
 // collection caps bound CPU/allocation before any per-record limit can run.
-const MAX_OTLP_ANY_VALUE_DEPTH = 16;
-const MAX_OTLP_ATTRIBUTES_PER_LIST = 256;
-const MAX_OTLP_ATTRIBUTE_ARRAY_VALUES = 256;
+const MAX_OTLP_ANY_VALUE_DEPTH = DEFAULT_OTLP_ATTRIBUTE_LIMITS.maxDepth;
+const MAX_OTLP_ATTRIBUTES_PER_LIST = DEFAULT_OTLP_ATTRIBUTE_LIMITS.maxAttributesPerList;
+const MAX_OTLP_ATTRIBUTE_ARRAY_VALUES = DEFAULT_OTLP_ATTRIBUTE_LIMITS.maxAttributeArrayValues;
 
 export function otlpAnyValue(value: unknown, path: string, depth = 0): OtlpAttributeValue {
   if (depth > MAX_OTLP_ANY_VALUE_DEPTH) throw new OtlpJsonRequestError(`${path} exceeds the maximum attribute depth of ${MAX_OTLP_ANY_VALUE_DEPTH}`);
@@ -127,6 +135,7 @@ export function otlpAnyValue(value: unknown, path: string, depth = 0): OtlpAttri
 }
 
 export function otlpAttributes(value: unknown, path: string, depth = 0): OtlpAttributes {
+  if (depth > MAX_OTLP_ANY_VALUE_DEPTH) throw new OtlpJsonRequestError(`${path} exceeds the maximum attribute depth of ${MAX_OTLP_ANY_VALUE_DEPTH}`);
   const result = new Map<string, OtlpAttributeValue>();
   const entries = otlpArray(value, path);
   if (entries.length > MAX_OTLP_ATTRIBUTES_PER_LIST) throw new OtlpJsonRequestError(`${path} must contain at most ${MAX_OTLP_ATTRIBUTES_PER_LIST} entries`);

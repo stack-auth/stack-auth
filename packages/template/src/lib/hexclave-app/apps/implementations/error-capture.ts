@@ -181,16 +181,43 @@ const exceptionValueEncoder = new TextEncoder();
  * Frames are capped at the raw-stack frame budget for the same reason.
  */
 function boundExceptionValue(value: CapturedExceptionValue): CapturedExceptionValue {
+  const boundFrame = (frame: ErrorStackFrame): ErrorStackFrame => ({
+    ...frame.filename === undefined ? {} : { filename: truncateUtf8Bytes(frame.filename, ERROR_TEXT_MAX_BYTES) },
+    ...frame.absPath === undefined ? {} : { absPath: truncateUtf8Bytes(frame.absPath, ERROR_TEXT_MAX_BYTES) },
+    ...frame.function === undefined ? {} : { function: truncateUtf8Bytes(frame.function, ERROR_TEXT_MAX_BYTES) },
+    ...frame.module === undefined ? {} : { module: truncateUtf8Bytes(frame.module, ERROR_TEXT_MAX_BYTES) },
+    ...frame.lineno === undefined ? {} : { lineno: frame.lineno },
+    ...frame.colno === undefined ? {} : { colno: frame.colno },
+    ...frame.inApp === undefined ? {} : { inApp: frame.inApp },
+    ...frame.contextLine === undefined ? {} : { contextLine: truncateUtf8Bytes(frame.contextLine, ERROR_TEXT_MAX_BYTES) },
+  });
+  const boundMechanism = value.mechanism === undefined ? undefined : {
+    ...value.mechanism.type === undefined ? {} : { type: truncateUtf8Bytes(value.mechanism.type, ERROR_TEXT_MAX_BYTES) },
+    ...value.mechanism.handled === undefined ? {} : { handled: value.mechanism.handled },
+    ...value.mechanism.data === undefined ? {} : jsonSafeMechanismData(value.mechanism.data),
+  };
   const stacktrace = value.stacktrace === undefined ? undefined : {
     ...value.stacktrace.raw === undefined ? {} : { raw: truncateUtf8Bytes(value.stacktrace.raw, ERROR_TEXT_MAX_BYTES) },
-    ...value.stacktrace.frames === undefined ? {} : { frames: value.stacktrace.frames.slice(0, ERROR_STACK_TRACE_LIMIT) },
+    ...value.stacktrace.frames === undefined ? {} : { frames: value.stacktrace.frames.slice(0, ERROR_STACK_TRACE_LIMIT).map(boundFrame) },
   };
   return {
-    ...value,
     ...value.type === undefined ? {} : { type: truncateUtf8Bytes(value.type, ERROR_TEXT_MAX_BYTES) },
     ...value.value === undefined ? {} : { value: truncateUtf8Bytes(value.value, ERROR_TEXT_MAX_BYTES) },
+    ...boundMechanism === undefined ? {} : { mechanism: boundMechanism },
     ...stacktrace === undefined ? {} : { stacktrace },
   };
+}
+
+function jsonSafeMechanismData(data: Record<string, unknown>): { data?: Record<string, unknown> } {
+  // Adapter metadata is outside the typed scalar fields and may contain a
+  // cycle or BigInt. Validate it once here; dropping only that optional field
+  // keeps capture synchronous and preserves the bounded exception identity.
+  try {
+    JSON.stringify(data);
+    return { data };
+  } catch {
+    return {};
+  }
 }
 
 /**
@@ -202,8 +229,20 @@ function boundExceptionValue(value: CapturedExceptionValue): CapturedExceptionVa
  * cap. The root always survives, even alone over budget: an over-budget event
  * beats silently losing the primary identity.
  */
-function boundExceptionValues(values: readonly CapturedExceptionValue[]): CapturedExceptionValue[] {
+function boundExceptionValues(values: readonly CapturedExceptionValue[], primaryMechanism: { type: string, handled: boolean }): CapturedExceptionValue[] {
   const bounded = values.slice(-MAX_LINKED_ERROR_VALUES).map(boundExceptionValue);
+  const primaryIndex = bounded.length - 1;
+  if (primaryIndex >= 0) {
+    const primary = bounded[primaryIndex];
+    bounded[primaryIndex] = {
+      ...primary,
+      mechanism: {
+        ...primary.mechanism,
+        type: truncateUtf8Bytes(primaryMechanism.type, ERROR_TEXT_MAX_BYTES),
+        handled: primaryMechanism.handled,
+      },
+    };
+  }
   const kept: CapturedExceptionValue[] = [];
   // Byte accounting mirrors what JSON.stringify(values) actually costs: the
   // enclosing `[]` plus one `,` between entries.
@@ -353,18 +392,10 @@ export function buildErrorEventDataFromNormalized(normalized: NormalizedError, o
   // Bounded at the single choke point every capture path funnels through, so
   // neither a deep automatic cause chain nor an adapter-supplied chain can
   // push the event past the shared item-data budget.
-  const exceptionValues = boundExceptionValues(options.exceptionValues ?? [exceptionValueFromNormalized(normalized)]);
-  const primaryExceptionIndex = exceptionValues.length - 1;
-  const exceptions = exceptionValues.map((exception, index) => index === primaryExceptionIndex
-    ? {
-      ...exception,
-      mechanism: {
-        ...exception.mechanism,
-        type: options.mechanismType,
-        handled: options.handled,
-      },
-    }
-    : exception);
+  const exceptionValues = boundExceptionValues(options.exceptionValues ?? [exceptionValueFromNormalized(normalized)], {
+    type: options.mechanismType,
+    handled: options.handled,
+  });
   return {
     event_id: options.eventId ?? generateErrorEventId(),
     message,
@@ -374,7 +405,7 @@ export function buildErrorEventDataFromNormalized(normalized: NormalizedError, o
     mechanism_type: options.mechanismType,
     handled: options.handled,
     ...normalized.synthetic || options.synthetic === true ? { synthetic: 1 } : {},
-    exception: { values: exceptions },
+    exception: { values: exceptionValues },
     // Fingerprint over the UNTRUNCATED inputs would differ from what a reader
     // can recompute from the row, so hash the bounded values.
     fingerprint: computeErrorFingerprint(normalized.name, message, stack),

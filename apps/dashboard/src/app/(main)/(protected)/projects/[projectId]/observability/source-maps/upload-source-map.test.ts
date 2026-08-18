@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   appendDebugIdSnippet,
   deriveDebugId,
   normalizeArtifactPath,
   prepareSourceMapUpload,
+  putPresignedArtifact,
 } from "./upload-source-map";
 
 const bundleSource = "console.log(1);";
@@ -67,10 +68,85 @@ describe("browser source-map preparation", () => {
     expect(injected.endsWith("//# sourceMappingURL=app.min.js.map")).toBe(true);
   });
 
+  it("rejects only fully injected debug-ID identifiers, not the bare prefix literal", async () => {
+    const prepare = (source: string) => prepareSourceMapUpload({
+      projectId: "project-source-map-test",
+      release: null,
+      environment: null,
+      codeFile: "static/app.min.js",
+      sourceMapFile: "static/app.min.js.map",
+      bundleSource: source,
+      sourceMapSource,
+    });
+
+    // A legitimate bundle may mention the prefix (e.g. tooling that reads
+    // `_hexclaveDebugIdIdentifier` values); only prefix + UUID means injected.
+    await expect(prepare(`const prefix = "hexclave-dbid-";\n${bundleSource}`))
+      .resolves.toMatchObject({ codeFile: "static/app.min.js" });
+    await expect(prepare(`g._hexclaveDebugIdIdentifier="hexclave-dbid-fdecadcc-fcec-429d-868f-cb6db59cb599";\n${bundleSource}`))
+      .rejects.toThrow("already contains a Hexclave debug ID");
+    await expect(prepare(`// hexclave:debug-id-injection:start\n${bundleSource}`))
+      .rejects.toThrow("already contains a Hexclave debug ID");
+  });
+
   it("rejects unsafe artifact paths before registration", () => {
     expect(() => normalizeArtifactPath("static/app.js")).not.toThrow();
     expect(() => normalizeArtifactPath("../app.js")).toThrow("..");
     expect(() => normalizeArtifactPath("/static/app.js")).toThrow("relative POSIX path");
     expect(() => normalizeArtifactPath("https://example.test/app.js")).toThrow("relative POSIX path");
+  });
+});
+
+describe("presigned artifact upload", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const putBody = new Blob(["bytes"], { type: "application/javascript" });
+
+  it("sends the signed If-None-Match header alongside the content headers", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(putPresignedArtifact(
+      "https://uploads.example.test/bundle",
+      putBody,
+      { "content-type": "application/javascript" },
+      "Uploading JavaScript bundle",
+    )).resolves.toBe("uploaded");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://uploads.example.test/bundle");
+    expect(init.method).toBe("PUT");
+    expect(init.credentials).toBe("omit");
+    // The backend signs If-None-Match into the presigned URL, so the request
+    // is rejected as a signature mismatch if the header is missing.
+    expect(init.headers).toEqual({
+      "content-type": "application/javascript",
+      "If-None-Match": "*",
+    });
+  });
+
+  it("treats 412 Precondition Failed as the artifact already being uploaded", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 412 })));
+
+    await expect(putPresignedArtifact(
+      "https://uploads.example.test/bundle",
+      putBody,
+      { "content-type": "application/javascript" },
+      "Uploading JavaScript bundle",
+    )).resolves.toBe("already-uploaded");
+  });
+
+  it("still fails loudly on any other non-2xx status", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 403 })));
+
+    await expect(putPresignedArtifact(
+      "https://uploads.example.test/bundle",
+      putBody,
+      { "content-type": "application/javascript" },
+      "Uploading JavaScript bundle",
+    )).rejects.toThrow("Uploading JavaScript bundle failed with status 403");
   });
 });

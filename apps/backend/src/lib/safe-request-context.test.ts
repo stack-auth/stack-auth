@@ -64,6 +64,15 @@ describe("safe request context", () => {
       headers: new Headers(),
     });
     expect(bounded.url.length).toBeLessThanOrEqual(512);
+
+    const encoded = createSafeRequestContext({
+      requestId: "request-encoded-path",
+      method: "GET",
+      url: "https://api.example.test/api/alice%40example.test/eyJhbGciOiJIUzI1NiJ9%2EeyJzdWIiOiIxIn0%2Esignature-material",
+      headers: new Headers(),
+    });
+    expect(encoded.url).not.toContain("alice@example.test");
+    expect(encoded.url).not.toContain("signature-material");
   });
 
   it("bounds and scrubs cookie names", () => {
@@ -81,6 +90,15 @@ describe("safe request context", () => {
     // …and the collection is bounded with an explicit truncation marker.
     expect(context.cookies.names.length).toBeLessThanOrEqual(51);
     expect(context.cookies.names).toContain("[Names limited]");
+
+    const encoded = createSafeRequestContext({
+      requestId: "request-encoded-cookie",
+      method: "GET",
+      url: "https://api.example.test/api/users",
+      headers: new Headers({ cookie: "alice%40example.test=1; eyJhbGciOiJIUzI1NiJ9%2EeyJzdWIiOiIxIn0%2Esignature-material=1" }),
+    });
+    expect(JSON.stringify(encoded.cookies)).not.toContain("alice@example.test");
+    expect(JSON.stringify(encoded.cookies)).not.toContain("signature-material");
   });
 
   it("recursively bounds and scrubs approved structured diagnostics", () => {

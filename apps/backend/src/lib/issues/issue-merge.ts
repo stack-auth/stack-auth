@@ -509,7 +509,7 @@ async function applyMerge(
         COALESCE(SUM("timesSeen"), 0)::bigint AS "timesSeen",
         MIN("firstSeenAt") AS "firstSeenAt",
         MAX("lastSeenAt") AS "lastSeenAt",
-        MAX("countersTruncatedAt") AS "countersTruncatedAt"
+        MIN("countersTruncatedAt") AS "countersTruncatedAt"
       FROM losers
     ),
     primary_updated AS (
@@ -519,15 +519,12 @@ async function applyMerge(
           "lastSeenAt"       = GREATEST(i."lastSeenAt", COALESCE(f."lastSeenAt", i."lastSeenAt")),
           -- An issue produced by unmergeIssue carries a windowed counter seed,
           -- marked by countersTruncatedAt. Folding such a loser in makes the
-          -- primary's counter approximate too, so the marker must survive the
-          -- merge (GREATEST skips NULLs; NULL only when no participant had
-          -- one) — otherwise the merged number would silently claim all-time
-          -- precision it does not have. The window-overlap double count when a
-          -- split issue is merged back into its original source is accepted,
-          -- as the corollary of unmerge deliberately leaving the source's
-          -- lifetime counter alone; the marker is what keeps the UI honest
-          -- ("N events since <date>") about that approximation.
-          "countersTruncatedAt" = GREATEST(i."countersTruncatedAt", f."countersTruncatedAt"),
+          -- primary's counter approximate too, so the EARLIEST marker must
+          -- survive the merge: the summed counter includes every event from
+          -- each participant's retained window, and the oldest boundary is the
+          -- only honest lower bound for that union. (LEAST skips NULLs; NULL
+          -- only when no participant had one.)
+          "countersTruncatedAt" = LEAST(i."countersTruncatedAt", f."countersTruncatedAt"),
           "assigneeUserId"   = ${metadata.assigneeUserId}::uuid,
           "firstSeenRelease" = ${metadata.firstSeenRelease},
           "lastSeenRelease"  = ${metadata.lastSeenRelease},
@@ -814,7 +811,9 @@ async function applyUnmerge(
     ),
     counter AS (
       INSERT INTO "IssueCounter" ("tenancyId", "nextShortId")
-      VALUES (${tenancyId}::uuid, 2::bigint)
+      SELECT ${tenancyId}::uuid, 2::bigint
+      FROM lease
+      WHERE "held"
       ON CONFLICT ("tenancyId") DO UPDATE
         SET "nextShortId" = "IssueCounter"."nextShortId" + 1
       RETURNING "nextShortId" - 1 AS "shortId"
@@ -859,6 +858,7 @@ async function applyUnmerge(
         AND h."hash" = ANY(${[...lockedHashes]}::text[])
         AND h."state" = 'LOCKED'::"IssueHashState"
         AND h."lockedAt" = ${now}::timestamptz
+        AND EXISTS (SELECT 1 FROM created)
       RETURNING h."hash"
     )
     SELECT c."id", c."shortId", (SELECT COUNT(*)::int FROM rebound) AS "reboundHashes"

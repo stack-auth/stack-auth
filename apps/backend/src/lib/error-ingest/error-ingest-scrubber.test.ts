@@ -38,7 +38,7 @@ describe("scrubErrorIngestPayload", () => {
 
   it("filters secrets in serialized JSON messages and protocol-relative URL credentials", () => {
     const result = scrubErrorIngestPayload({
-      message: 'sign-in failed: {"password":"hunter2","user":"bob"} via //login:hunter3@auth.example.test/callback',
+      message: 'sign-in failed: {"password":"hunter2","user":"bob"} via //login:hunter3@secret-suffix@auth.example.test/callback',
       detail: "config {'api_key':'abc123'}",
     });
 
@@ -50,6 +50,16 @@ describe("scrubErrorIngestPayload", () => {
     expect(serialized).not.toContain("hunter2");
     expect(serialized).not.toContain("hunter3");
     expect(serialized).not.toContain("abc123");
+  });
+
+  it("does not consume query or fragment at-signs as URL password text", () => {
+    const result = scrubErrorIngestPayload({
+      message: "redirect https://user:pass@example.test/callback?next=a@b#owner=c@d",
+    });
+
+    expect(result.value).toEqual({
+      message: "redirect https://[Filtered]@example.test/callback?next=a@b#owner=c@d",
+    });
   });
 
   it("keeps the built-in drop policy authoritative over urlKeys overrides", () => {

@@ -1,5 +1,5 @@
 import type { DesignBadgeColor } from "@/components/design-components";
-import type { IssueListItem, IssueStatus, IssueSubstatus } from "./issues-data";
+import type { IssueListItem, IssueStatus, IssueStatusCounts, IssueSubstatus } from "./issues-data";
 
 /**
  * The Issue lifecycle, as pure data.
@@ -28,18 +28,6 @@ export function nextStatusForAction(action: IssueStatusAction): IssueStatus {
       return "ignored";
     }
   }
-}
-
-export const ISSUE_STATUS_ACTION_LABELS = new Map<IssueStatusAction, string>([
-  ["resolve", "Resolve"],
-  ["unresolve", "Unresolve"],
-  ["ignore", "Ignore"],
-]);
-
-export function issueStatusActionLabel(action: IssueStatusAction): string {
-  const label = ISSUE_STATUS_ACTION_LABELS.get(action);
-  if (label == null) throw new Error(`Missing label for issue status action: ${action}`);
-  return label;
 }
 
 export type IssueStatusBadge = { label: string, color: DesignBadgeColor };
@@ -139,4 +127,26 @@ export function resolveIssueRowStatus(
  */
 export function primaryIssueStatusAction(status: IssueStatus): IssueStatusAction {
   return status === "unresolved" ? "resolve" : "unresolve";
+}
+
+/**
+ * Moves one issue between the status-tab counts, optimistically. The list page
+ * deliberately does not refetch after a single-row status change (a refetch
+ * would yank the row out from under the cursor mid-scan), so without this the
+ * tab counts would silently keep counting a resolved issue as Unresolved until
+ * the next natural refresh. `from === to` is a no-op so an idempotent click
+ * cannot drift the totals, and the caller reverts by calling this with the
+ * arguments swapped when the PATCH fails.
+ */
+export function adjustIssueStatusCounts(
+  counts: IssueStatusCounts | null,
+  from: IssueStatus,
+  to: IssueStatus,
+): IssueStatusCounts | null {
+  if (counts == null || from === to) return counts;
+  return {
+    ...counts,
+    [from]: Math.max(0, counts[from] - 1),
+    [to]: counts[to] + 1,
+  };
 }
