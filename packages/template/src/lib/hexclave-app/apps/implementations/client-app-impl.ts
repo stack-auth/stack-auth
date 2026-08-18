@@ -3321,6 +3321,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   protected async _getFeatureFlagIdentity() {
+    // Sticky assignment and exposure tokens need a durable subject. Creating
+    // or reusing the SDK's anonymous user is intentional: a missing identity
+    // would re-bucket on every call. Callers that must not materialize a user
+    // should evaluate flags on the server instead.
     const user = await this.getUser({ tokenStore: this._tokenStoreInit, or: "anonymous" });
     const verifiedEmail = user.primaryEmailVerified ? user.primaryEmail : null;
     return {

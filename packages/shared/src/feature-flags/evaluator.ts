@@ -272,12 +272,19 @@ function getFlagAllocationSubject(flag: FeatureFlagDefinition, config: FeatureFl
   return assignmentUnits.values().next().value === "team" ? context.teamId : context.distinctId ?? context.userId;
 }
 
+export type EvaluateFeatureFlagOptions = {
+  seenFlagIds?: ReadonlySet<string>,
+  ignoreExperimentAssignments?: boolean,
+};
+
 export function evaluateFeatureFlag(
   flagId: string,
   config: FeatureFlagsConfig,
   context: FeatureFlagEvaluationContext,
-  seenFlagIds: ReadonlySet<string> = new Set(),
+  options: EvaluateFeatureFlagOptions = {},
 ): FeatureFlagEvaluationResult {
+  const seenFlagIds = options.seenFlagIds ?? new Set<string>();
+  const ignoreExperimentAssignments = options.ignoreExperimentAssignments === true;
   const flag = config.flags?.[flagId];
   if (flag === undefined) return { flagId, flagKey: flagId, reason: "missing" };
   if (seenFlagIds.has(flagId)) return defaultResult(flagId, flag, "dependency_cycle");
@@ -289,7 +296,10 @@ export function evaluateFeatureFlag(
   nextSeen.add(flagId);
   for (const prerequisite of Object.values(flag.prerequisites ?? {})) {
     if (prerequisite === undefined || prerequisite.flagId === undefined) return defaultResult(flagId, flag, "prerequisite_unmet");
-    const evaluated = evaluateFeatureFlag(prerequisite.flagId, config, context, nextSeen);
+    const evaluated = evaluateFeatureFlag(prerequisite.flagId, config, context, {
+      seenFlagIds: nextSeen,
+      ignoreExperimentAssignments,
+    });
     if (evaluated.reason === "dependency_cycle") return defaultResult(flagId, flag, "dependency_cycle");
     if (evaluated.variantKey === undefined || prerequisite.variantKeys?.[evaluated.variantKey] !== true) {
       return defaultResult(flagId, flag, "prerequisite_unmet");
@@ -298,8 +308,12 @@ export function evaluateFeatureFlag(
 
   if (flag.holdoutId !== undefined) {
     const holdout = config.holdouts?.[flag.holdoutId];
-    const subjectId = getFlagAllocationSubject(flag, config, context);
-    if (holdout !== undefined && subjectId !== undefined) {
+    if (holdout !== undefined) {
+      const subjectId = getFlagAllocationSubject(flag, config, context);
+      // Mixed assignment units (or a missing subject) cannot compute a stable
+      // holdout bucket. Fail closed to the fallback rather than letting those
+      // subjects skip the holdout and enter targeting.
+      if (subjectId === undefined) return defaultResult(flagId, flag, "holdout");
       const allocation = holdout.allocationBasisPoints ?? 0;
       if (featureFlagBucket(subjectId, `holdout.${flag.holdoutId}.${holdout.allocationSalt ?? flag.holdoutId}`) * 10_000 < allocation) {
         return defaultResult(flagId, flag, "holdout");
@@ -317,6 +331,11 @@ export function evaluateFeatureFlag(
     .sort(([leftId, left], [rightId, right]) => (right.priority ?? 0) - (left.priority ?? 0) || lexicalCompare(leftId, rightId));
   for (const [ruleId, rule] of rules) {
     if (rule.enabled === false) continue;
+    // Stale server bootstrap still contains overlay rules, but those
+    // assignments cannot mint exposure tokens. Skip them so unauditable
+    // experiment traffic is not served from a snapshot that may also be
+    // paused or completed on the backend.
+    if (ignoreExperimentAssignments && rule.experimentRunId !== undefined) continue;
     if (selectedExperimentId !== undefined && rule.experimentId !== undefined && rule.experimentId !== selectedExperimentId) continue;
     const conditions = Object.values(rule.conditions ?? {}).filter((condition) => condition !== undefined);
     if (!conditions.every((condition) => conditionMatches(condition, config, context, new Set()))) continue;
@@ -334,11 +353,12 @@ export function evaluateFeatureFlag(
       ? rule.variantKey
       : chooseFeatureFlagVariant(subjectId, `variant.${flagId}.${ruleSalt}`, weightedVariants);
     if (variantKey === undefined || flag.variants?.[variantKey] === undefined) continue;
+    const override = rule.variantValues?.[variantKey];
     return {
       flagId,
       flagKey: flag.key ?? flagId,
       variantKey,
-      value: variantValue(flag, variantKey),
+      value: override !== undefined ? override : variantValue(flag, variantKey),
       reason: "matched_rule",
       ruleId,
       ...(rule.experimentId === undefined ? {} : { experimentId: rule.experimentId }),
@@ -354,8 +374,9 @@ export function evaluateFeatureFlags(
   config: FeatureFlagsConfig,
   context: FeatureFlagEvaluationContext,
   flagIds: readonly string[] = Object.keys(config.flags ?? {}),
+  options: EvaluateFeatureFlagOptions = {},
 ): Map<string, FeatureFlagEvaluationResult> {
-  return new Map(flagIds.map((flagId) => [flagId, evaluateFeatureFlag(flagId, config, context)]));
+  return new Map(flagIds.map((flagId) => [flagId, evaluateFeatureFlag(flagId, config, context, options)]));
 }
 
 export function findFeatureFlagIdByKey(config: FeatureFlagsConfig, key: string): string | undefined {
@@ -484,4 +505,63 @@ import.meta.vitest?.test("team experiments use the team for holdout and mutual-e
   const secondUser = { distinctId: "user-b", userId: "user-b", teamId: "shared-team" };
   expect(evaluateFeatureFlag("first", config, firstUser)).toEqual(evaluateFeatureFlag("first", config, secondUser));
   expect(evaluateFeatureFlag("second", config, firstUser)).toEqual(evaluateFeatureFlag("second", config, secondUser));
+});
+
+import.meta.vitest?.test("holdout fails closed when mixed assignment units make the subject unresolvable", ({ expect }) => {
+  const config: FeatureFlagsConfig = {
+    flags: {
+      mixed: {
+        key: "mixed",
+        fallbackVariantKey: "off",
+        holdoutId: "holdout",
+        variants: { on: { value: true }, off: { value: false } },
+        rules: {
+          userRule: { experimentId: "userExperiment", stickyBy: "userId", variantKey: "on" },
+          teamRule: { experimentId: "teamExperiment", stickyBy: "teamId", variantKey: "on" },
+        },
+      },
+    },
+    holdouts: { holdout: { allocationBasisPoints: 5_000 } },
+    experiments: {
+      userExperiment: { flagId: "mixed", assignmentUnit: "user" },
+      teamExperiment: { flagId: "mixed", assignmentUnit: "team" },
+    },
+  };
+  expect(evaluateFeatureFlag("mixed", config, { distinctId: "user-a", userId: "user-a", teamId: "team-a" }).reason).toBe("holdout");
+});
+
+import.meta.vitest?.test("rule-local variantValues apply only to the matching experiment rule", ({ expect }) => {
+  const config: FeatureFlagsConfig = {
+    flags: {
+      copy: {
+        key: "copy",
+        enabled: true,
+        fallbackVariantKey: "control",
+        allocationSalt: "copy",
+        variants: { control: { value: "published-control" }, treatment: { value: "published-treatment" } },
+        rules: {
+          experiment: {
+            priority: 2_000_000,
+            variantWeights: { control: 5_000, treatment: 5_000 },
+            variantValues: { control: "frozen-control", treatment: "frozen-treatment" },
+            experimentId: "copyExperiment",
+            experimentRunId: "run-1",
+            stickyBy: "userId",
+          },
+          everyone: { priority: 1, variantKey: "treatment" },
+        },
+      },
+    },
+    experiments: {
+      copyExperiment: { flagId: "copy", assignmentUnit: "user" },
+    },
+  };
+  const inExperiment = evaluateFeatureFlag("copy", config, { distinctId: "user-a", userId: "user-a" });
+  expect(inExperiment.reason).toBe("matched_rule");
+  expect(inExperiment.ruleId).toBe("experiment");
+  expect(["frozen-control", "frozen-treatment"]).toContain(inExperiment.value);
+
+  const ignored = evaluateFeatureFlag("copy", config, { distinctId: "user-a", userId: "user-a" }, { ignoreExperimentAssignments: true });
+  expect(ignored).toMatchObject({ reason: "matched_rule", ruleId: "everyone", value: "published-treatment" });
+  expect(ignored.experimentRunId).toBeUndefined();
 });

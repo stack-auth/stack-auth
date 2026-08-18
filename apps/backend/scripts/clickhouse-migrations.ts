@@ -887,9 +887,10 @@ ORDER BY (project_id, branch_id, toDate(event_at), path, viewport_width);
 // Order key: results queries always filter by project/branch/experiment/run
 // and then aggregate per subject, which is exactly the prefix order here.
 //
-// subject_hash is a project-scoped salted hash of the user/team id (computed
+// subject_hash is a project-scoped SHA-256 of the user/team id (computed
 // server-side at ingest) rather than the raw id, so experiment analytics
-// don't require the raw subject id and the table stays pseudonymous.
+// stay pseudonymous at rest. It is deliberately not secret-salted: results
+// queries recompute the same hash inside ClickHouse.
 //
 // No default.* view, row policy, or limited_user grant: exposures are consumed
 // exclusively by the internal experiment-results endpoints through the admin

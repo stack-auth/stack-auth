@@ -211,4 +211,9 @@ describe("feature flags admin adapter", () => {
   it("fails loudly when app internals are absent", async () => {
     await expect(listExperimentRuns({}, ["experiment-1"])).rejects.toThrowError(/internals/);
   });
+
+  it("surfaces the backend error body for failed lifecycle requests", async () => {
+    const { app } = makeAdminApp(() => jsonResponse("Another active run already targets this experiment or feature flag", 409));
+    await expect(listExperimentRuns(app, ["experiment-1"])).rejects.toThrow("Another active run already targets this experiment or feature flag");
+  });
 });

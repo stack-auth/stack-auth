@@ -79,6 +79,7 @@ const ruleSchema = yupObject({
   stickyBy: yupString().oneOf(stickyByValues),
   variantKey: configIdSchema,
   variantWeights: yupRecord(configIdSchema, basisPointsSchema),
+  variantValues: yupRecord(configIdSchema, jsonValueSchema),
   experimentId: configIdSchema,
 });
 
@@ -281,6 +282,12 @@ export function getFeatureFlagsConfigErrors(config: FeatureFlagsConfig): string[
       for (const variantKey of Object.keys(rule.variantWeights ?? {})) {
         if (!hasRecordKey(flag.variants, variantKey)) errors.push(`Rule "${ruleId}" references missing variant "${variantKey}"`);
       }
+      for (const [variantKey, value] of Object.entries(rule.variantValues ?? {})) {
+        if (!hasRecordKey(flag.variants, variantKey)) errors.push(`Rule "${ruleId}" variantValues references missing variant "${variantKey}"`);
+        if (value !== undefined && flag.type !== undefined && flag.type !== "json" && typeof value !== flag.type) {
+          errors.push(`Rule "${ruleId}" variantValues "${variantKey}" must have a ${flag.type} value`);
+        }
+      }
       if (rule.experimentId !== undefined && !hasRecordKey(config.experiments, rule.experimentId)) {
         errors.push(`Rule "${ruleId}" references missing experiment "${rule.experimentId}"`);
       } else if (rule.experimentId !== undefined && config.experiments?.[rule.experimentId]?.flagId !== flagId) {
@@ -308,6 +315,7 @@ export function getFeatureFlagsConfigErrors(config: FeatureFlagsConfig): string[
     }
   }
   const experimentKeys = new Set<string>();
+  const activeExperimentByFlagId = new Map<string, string>();
   for (const [experimentId, experiment] of Object.entries(config.experiments ?? {})) {
     if (experiment === undefined) continue;
     if (!isNonEmptyString(experiment.key)) {
@@ -322,6 +330,14 @@ export function getFeatureFlagsConfigErrors(config: FeatureFlagsConfig): string[
     if (experiment.trafficAllocationBasisPoints === undefined) errors.push(`Experiment "${experimentId}" must define a traffic allocation`);
     if (experiment.controlVariantKey === undefined) errors.push(`Experiment "${experimentId}" must define a control variant`);
     if (experiment.flagId !== undefined && !hasRecordKey(config.flags, experiment.flagId)) errors.push(`Experiment "${experimentId}" references missing flag "${experiment.flagId}"`);
+    if (experiment.archived !== true && experiment.flagId !== undefined) {
+      const ownerId = activeExperimentByFlagId.get(experiment.flagId);
+      if (ownerId !== undefined) {
+        errors.push(`Experiment "${experimentId}" targets flag "${experiment.flagId}" which is already targeted by "${ownerId}"`);
+      } else {
+        activeExperimentByFlagId.set(experiment.flagId, experimentId);
+      }
+    }
 
     const variantEntries = Object.entries(experiment.variantWeights ?? {});
     if (variantEntries.length < 2 || variantEntries.length > 10) errors.push(`Experiment "${experimentId}" must define between 2 and 10 variants`);
@@ -440,6 +456,26 @@ import.meta.vitest?.test("feature flag schema validates operator types, referenc
     experiments: { userExperiment: { flagId: "a", assignmentUnit: "user" }, teamExperiment: { flagId: "b", assignmentUnit: "team" } },
     mutualExclusionGroups: { mixed: { experimentWeights: { userExperiment: 5_000, teamExperiment: 5_000 } } },
   })).toContain('Mutual exclusion group "mixed" mixes user and team assignment units');
+  expect(getFeatureFlagsConfigErrors({
+    flags: { shared: {} },
+    experiments: { first: { flagId: "shared" }, second: { flagId: "shared" } },
+  })).toContain('Experiment "second" targets flag "shared" which is already targeted by "first"');
+  expect(getFeatureFlagsConfigErrors({
+    flags: { shared: {} },
+    experiments: { archived: { flagId: "shared", archived: true }, next: { flagId: "shared" } },
+  }).some((error) => error.includes("already targeted"))).toBe(false);
+  expect(getFeatureFlagsConfigErrors({
+    flags: {
+      flag: {
+        key: "checkout",
+        type: "boolean",
+        allocationSalt: "checkout",
+        fallbackVariantKey: "off",
+        variants: { on: { value: true }, off: { value: false } },
+        rules: { experiment: { variantWeights: { on: 5_000, off: 5_000 }, variantValues: { on: "on" } } },
+      },
+    },
+  })).toContain('Rule "experiment" variantValues "on" must have a boolean value');
 });
 
 import.meta.vitest?.test("whole-config validation rejects incomplete experiment definitions", ({ expect }) => {

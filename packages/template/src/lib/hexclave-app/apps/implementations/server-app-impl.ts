@@ -107,13 +107,24 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         continue;
       }
       const flagId = bootstrap.flag_ids_by_key[key];
-      const evaluated = evaluateFeatureFlag(flagId, bootstrap.config, {
-        distinctId: identity.userId,
-        userId: identity.userId,
-        teamId: request.team_id,
-        user: identity.user,
-        context: request.context,
-      });
+      const evaluated = evaluateFeatureFlag(
+        flagId,
+        bootstrap.config,
+        {
+          distinctId: identity.userId,
+          userId: identity.userId,
+          teamId: request.team_id,
+          user: identity.user,
+          team: request.team_id === undefined ? undefined : { id: request.team_id },
+          context: request.context,
+        },
+        // A stale snapshot can still contain overlay rules for a run that has
+        // since paused or completed, and those assignments cannot mint
+        // exposure tokens. Ignore experiment overlays so ordinary flags stay
+        // available during the five-minute stale window without shipping
+        // unauditable experiment traffic.
+        { ignoreExperimentAssignments: bootstrap.isStale },
+      );
       const localResult: FeatureFlagEvaluateResponse<Json>["results"][string] = {
         flag_key: evaluated.flagKey,
         value: evaluated.value === undefined ? request.fallbacks?.[key] ?? null : evaluated.value,
@@ -129,13 +140,11 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       // Server SDKs evaluate from the protected bootstrap. A signed exposure
       // credential still has to be minted by the backend; only experiment
       // assignments pay this extra request, while ordinary flags remain fully
-      // local. Returning the remote result also closes a run-transition race
-      // where a stale bootstrap could otherwise expose a paused experiment.
-      // A snapshot served specifically because revalidation failed must remain
-      // usable for its five-minute stale window. Avoid making the fallback
-      // contingent on a second call to the same unavailable backend; the
-      // exposure can only be recorded after a subsequent fresh evaluation.
-      if (evaluated.experimentRunId !== undefined && !bootstrap.isStale) {
+      // local. If the remote assignment no longer matches (run paused or
+      // config raced), keep the local result without a token rather than
+      // serving the remote value, which could disagree with the cached
+      // definitions the rest of this request already used.
+      if (evaluated.experimentRunId !== undefined) {
         const remote = await this._interface.evaluateFeatureFlags<Json>({
           flag_keys: [key],
           fallbacks: { [key]: request.fallbacks?.[key] ?? null },

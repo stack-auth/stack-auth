@@ -93,6 +93,10 @@ export type FeatureFlagRule = {
   stickyBy?: "distinctId" | "userId" | "teamId",
   variantKey?: string,
   variantWeights?: Record<string, number | undefined>,
+  // Overlay-only: experiment snapshots freeze values on the matching rule so
+  // published variants stay intact for holdout, fallback, and non-experiment
+  // traffic. Absent means "use flag.variants[variantKey].value".
+  variantValues?: Record<string, FeatureFlagValue | undefined>,
   experimentId?: string,
   experimentRunId?: string,
   experimentConfigRevision?: string,

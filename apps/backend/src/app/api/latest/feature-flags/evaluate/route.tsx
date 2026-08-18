@@ -172,6 +172,10 @@ export const POST = createSmartRouteHandler({
         signedUpAt: new Date(auth.user.signed_up_at_millis).toISOString(),
       },
       team: selectedTeamId === undefined ? undefined : { id: selectedTeamId },
+      // Context is first-party application data (locale, app version, plan
+      // the app already computed). It is not a substitute for `user`/`team`,
+      // which are stripped here. Operators must not treat `context.*` rules
+      // as an authorization boundary.
       context: body.context,
     };
 

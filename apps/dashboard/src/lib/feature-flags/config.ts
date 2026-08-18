@@ -4,17 +4,12 @@ import { isJsonSerializable, type Json } from "@hexclave/shared/dist/utils/json"
 import type { FeatureFlagCondition as SharedFeatureFlagCondition } from "@hexclave/shared/dist/feature-flags/types";
 
 /**
- * Frontend-local mirror of the *intended* `featureFlags` branch-config section.
+ * Dashboard UI model for the `featureFlags` branch-config section.
  *
- * INTEGRATION NOTE: the shared config schema (`packages/shared/src/config/schema.ts`)
- * does not have a `featureFlags` section yet — it is being added by the
- * config-schema workstream. Once that lands, the types in this file must be
- * replaced by (or type-checked against) the schema-derived types from
- * `@hexclave/shared/dist/config/schema`, and `parseFeatureFlagsSection` below
- * becomes a plain typed property read. Keep the shapes here in exact sync with
- * that schema; this module is the single boundary between the dashboard UI and
- * the config contract, so nothing outside `@/lib/feature-flags` should need to
- * change when the real schema arrives.
+ * The shared schema (`packages/shared/src/feature-flags/schema.ts`) is the
+ * publish contract. This module is the only dashboard boundary that maps
+ * between that camelCase config and the editor's UI types; keep the mapping
+ * exhaustive so a schema change cannot be absorbed by a silent default.
  *
  * All percentages in this contract are stored as basis points (1/100th of a
  * percent, 0..10_000) to avoid floating-point drift in config files. The UI
@@ -199,6 +194,10 @@ export function experimentConfigPath(experimentId: string): string {
   return `${FEATURE_FLAGS_CONFIG_PREFIX}.experiments.${experimentId}`;
 }
 
+// Stricter than shared `publicKeySchema` on purpose. Dashboard writes
+// `featureFlags.flags.${key}` with path notation, so dots would nest the
+// update instead of naming the flag. Underscores and mixed case are rejected
+// so created keys stay URL-safe and match `suggestFlagKey`.
 const FLAG_KEY_REGEX = /^[a-z][a-z0-9-]{0,63}$/;
 
 export function validateFlagKey(key: string): string | null {
@@ -328,7 +327,7 @@ export function getVariantOrThrow(flag: FlagConfig, variantId: string): FlagVari
 }
 
 // ---------------------------------------------------------------------------
-// Parsing the (not yet schema-backed) `featureFlags` section off CompleteConfig
+// Parsing the featureFlags section off CompleteConfig
 // ---------------------------------------------------------------------------
 
 class FeatureFlagsConfigShapeError extends HexclaveAssertionError {
@@ -523,16 +522,11 @@ function parseExperiment(value: unknown, path: string): ExperimentConfig {
 }
 
 /**
- * Reads the intended `featureFlags` section off the rendered project config
- * (`CompleteConfig` — typed as `object` here because the schema-derived type
- * gains the `featureFlags` property only once the config-schema workstream
- * merges; the structural validation below is the contract until then).
+ * Reads the `featureFlags` section off the rendered project config.
  *
- * A missing section is a valid state (the schema workstream hasn't merged, or
- * the project simply has no flags yet) and parses to empty maps — that is NOT
- * a silent fallback but the contract's empty value. A section that exists with
- * the wrong shape throws loudly, because that means the dashboard and schema
- * disagree about the frozen contract.
+ * A missing section is a valid empty project and parses to empty maps. A
+ * section that exists with the wrong shape throws, because that means the
+ * dashboard and published schema disagree about the frozen contract.
  */
 export function parseFeatureFlagsSection(config: object): FeatureFlagsSection {
   const raw: unknown = Reflect.get(config, FEATURE_FLAGS_CONFIG_PREFIX);
