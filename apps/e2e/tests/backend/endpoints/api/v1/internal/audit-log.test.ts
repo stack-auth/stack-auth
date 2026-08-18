@@ -1060,7 +1060,11 @@ it("records RBAC permission definition and project permission changes only for d
     config: { magic_link_enabled: true },
   });
   const projectKeys = backendContext.value.projectKeys;
-  expect(projectKeys).not.toBe("no-project");
+  // vitest expect().not.toBe() does not narrow the ProjectKeys union, so throw to
+  // exclude "no-project" before spreading keys or reading adminAccessToken.
+  if (projectKeys === "no-project") {
+    throw new Error("Expected project keys after Project.createAndSwitch");
+  }
   const dashboardAdminAccessToken = projectKeys.adminAccessToken;
   expect(typeof dashboardAdminAccessToken).toBe("string");
 
