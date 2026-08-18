@@ -3,6 +3,14 @@ import type { Event } from "@sentry/node";
 import { describe, expect, it } from "vitest";
 import { prepareBackendSentryEvent, sanitizeBackendSentryEvent } from "./sentry-scrubbing";
 
+function requireEventExtra(event: Event) {
+  const extra = event.extra;
+  if (extra == null) {
+    throw new Error("expected Sentry extra to be set");
+  }
+  return extra;
+}
+
 describe("sanitizeBackendSentryEvent", () => {
   it("removes request and trace data that can contain credentials or PII", () => {
     const event: Event = {
@@ -329,7 +337,7 @@ describe("prepareBackendSentryEvent", () => {
       }),
     }));
     expect(JSON.stringify(result)).not.toContain("hunter2");
-    const nicifiedError = result.extra.nicifiedError;
+    const nicifiedError = requireEventExtra(result).nicifiedError;
     expect(nicifiedError).toEqual(expect.stringContaining("innerCode"));
     expect(nicifiedError).toEqual(expect.not.stringContaining("hunter2"));
   });
@@ -399,8 +407,8 @@ describe("prepareBackendSentryEvent", () => {
       { originalException: new HexclaveAssertionError("deep extraData", { nested }) },
     );
 
-    expect(JSON.stringify(result.extra.errorProps)).toContain("[truncated]");
-    expect(JSON.stringify(result.extra.errorProps)).not.toContain("leaf");
+    expect(JSON.stringify(requireEventExtra(result).errorProps)).toContain("[truncated]");
+    expect(JSON.stringify(requireEventExtra(result).errorProps)).not.toContain("leaf");
   });
 
   it("truncates oversized diagnostic collections before nicify", () => {
@@ -464,7 +472,7 @@ describe("prepareBackendSentryEvent", () => {
         }),
       }),
     }));
-    expect(JSON.stringify(result.extra.errorProps)).not.toContain("field50");
+    expect(JSON.stringify(requireEventExtra(result).errorProps)).not.toContain("field50");
   });
 
   it("does not invoke throwing enumerable getters while building extras", () => {
@@ -498,5 +506,152 @@ describe("prepareBackendSentryEvent", () => {
         },
       }),
     }));
+  });
+
+  it("dumps a shared nested object on every path, not as circular", () => {
+    const shared = { leaf: "shared-value" };
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "diamond" } },
+      {
+        originalException: new HexclaveAssertionError("diamond extraData", {
+          a: shared,
+          b: shared,
+        }),
+      },
+    );
+
+    expect(result.extra).toEqual(expect.objectContaining({
+      errorProps: expect.objectContaining({
+        extraData: {
+          a: { leaf: "shared-value" },
+          b: { leaf: "shared-value" },
+        },
+      }),
+    }));
+  });
+
+  it("still marks true cycles as circular", () => {
+    const extraData: Record<string, unknown> = { name: "cycle-root" };
+    extraData.self = extraData;
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "cycle" } },
+      { originalException: new HexclaveAssertionError("cycle extraData", extraData) },
+    );
+
+    expect(result.extra).toEqual(expect.objectContaining({
+      errorProps: expect.objectContaining({
+        extraData: {
+          name: "cycle-root",
+          self: "[circular]",
+        },
+      }),
+    }));
+  });
+
+  it("does not treat a host followed by a prose email as URL userinfo", () => {
+    const prose = "failed to reach https://api.example.com, page ops@company.com";
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "url-prose" } },
+      {
+        originalException: new HexclaveAssertionError("url extraData", { note: prose }),
+      },
+    );
+
+    expect(result.extra).toEqual(expect.objectContaining({
+      errorProps: expect.objectContaining({
+        extraData: {
+          note: prose,
+        },
+      }),
+    }));
+    expect(JSON.stringify(result)).toContain("api.example.com");
+    expect(JSON.stringify(result)).toContain("ops@company.com");
+  });
+
+  it("caps oversized diagnostic strings and nicify output", () => {
+    const huge = "x".repeat(8_000);
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "huge-string" } },
+      { originalException: new HexclaveAssertionError("huge extraData", { dump: huge }) },
+    );
+
+    const extra = requireEventExtra(result);
+    expect(extra.errorProps).toEqual(expect.objectContaining({
+      extraData: {
+        dump: `${"x".repeat(5_000)}…`,
+      },
+    }));
+    expect(JSON.stringify(result)).not.toContain("x".repeat(5_001));
+    expect(typeof extra.nicifiedError).toBe("string");
+    expect((extra.nicifiedError as string).length).toBeLessThanOrEqual(20_000 + 1);
+  });
+
+  it("redacts backend admin keys and extra credential-shaped fields", () => {
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "admin-key" } },
+      {
+        originalException: new HexclaveAssertionError("key extraData", {
+          note: "issued sak_abcdefghijklmnopqrstuvwxyz",
+          pwd: "hunter2",
+          jwt: "header.payload.sig",
+          otp: "123456",
+          signature: "sig-value",
+        }),
+      },
+    );
+
+    expect(result.extra).toEqual(expect.objectContaining({
+      errorProps: expect.objectContaining({
+        extraData: {
+          note: "issued [redacted]",
+          pwd: "[redacted]",
+          jwt: "[redacted]",
+          otp: "[redacted]",
+          signature: "[redacted]",
+        },
+      }),
+    }));
+    expect(JSON.stringify(result)).not.toContain("sak_abcdefghijklmnopqrstuvwxyz");
+    expect(JSON.stringify(result)).not.toContain("hunter2");
+    expect(JSON.stringify(result)).not.toContain("123456");
+  });
+
+  it("serializes Dates and dumps non-Error throws", () => {
+    const occurredAt = new Date("2026-08-18T12:00:00.000Z");
+    const dateResult = prepareBackendSentryEvent(
+      { extra: { location: "date" } },
+      { originalException: new HexclaveAssertionError("date extraData", { occurredAt }) },
+    );
+    expect(dateResult.extra).toEqual(expect.objectContaining({
+      errorProps: expect.objectContaining({
+        extraData: {
+          occurredAt: "2026-08-18T12:00:00.000Z",
+        },
+      }),
+    }));
+
+    const thrownResult = prepareBackendSentryEvent(
+      { extra: { location: "non-error" } },
+      { originalException: { reason: "sandbox-timeout", attempt: 2 } },
+    );
+    expect(thrownResult.extra).toEqual(expect.objectContaining({
+      location: "non-error",
+      errorProps: {
+        reason: "sandbox-timeout",
+        attempt: 2,
+      },
+      nicifiedError: expect.stringContaining("sandbox-timeout"),
+    }));
+  });
+
+  it("omits empty errorProps for Errors with no enumerable own data", () => {
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "plain-error" } },
+      { originalException: new Error("plain") },
+    );
+
+    expect(result.extra).toEqual({
+      location: "plain-error",
+    });
   });
 });
