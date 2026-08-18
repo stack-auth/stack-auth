@@ -2064,6 +2064,37 @@ model AiMessage {
   @@index([conversationId, position])
 }
 
+// Durable, internal-only history for the public skill /ask endpoint and the
+// ask_hexclave MCP tool. Request metadata is deliberately allowlisted at the
+// transport boundary so credentials and arbitrary headers never reach this table.
+model AskHexclaveCall {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  transport     String
+  conversationId String
+  question      String @db.Text
+  response      String @db.Text
+  reason        String @db.Text
+  userPrompt    String @db.Text
+
+  requestIp         String?
+  requestIpSource   String?
+  userAgent         String? @db.Text
+  requestHost       String?
+  mcpProtocolVersion String?
+
+  modelId       String
+  stepCount     Int
+  durationMs    Int
+  innerToolCalls Json
+
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([transport, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([conversationId, createdAt(sort: Asc), id(sort: Asc)])
+}
+
 enum CustomerType {
   USER
   TEAM

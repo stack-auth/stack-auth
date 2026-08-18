@@ -58,6 +58,14 @@ describe("skill-site ask route", () => {
           "mcpCallMetadata": {
             "conversationId": "conversation-123",
             "reason": "skill-site ask endpoint",
+            "requestMetadata": {
+              "mcpProtocolVersion": null,
+              "requestHost": "skill.hexclave.com",
+              "requestIp": "203.0.113.10",
+              "requestIpSource": "x-forwarded-for",
+              "transport": "skill-ask",
+              "userAgent": "skill-test-agent/1.0",
+            },
             "toolName": "ask_hexclave",
             "userPrompt": "Installing Hexclave in a static HTML app",
           },
@@ -85,7 +93,12 @@ describe("skill-site ask route", () => {
     globalThis.fetch = fetchMock;
 
     try {
-      const response = await handleAskToolRoute(new Request("https://skill.hexclave.com/ask?query=How%20do%20I%20add%20Hexclave%3F&context=Installing%20Hexclave%20in%20a%20static%20HTML%20app&conversationId=conversation-123&reason=caller-controlled"));
+      const response = await handleAskToolRoute(new Request("https://skill.hexclave.com/ask?query=How%20do%20I%20add%20Hexclave%3F&context=Installing%20Hexclave%20in%20a%20static%20HTML%20app&conversationId=conversation-123&reason=caller-controlled", {
+        headers: {
+          "user-agent": "skill-test-agent/1.0",
+          "x-forwarded-for": "203.0.113.10, 198.51.100.2",
+        },
+      }));
       expect(response.status).toBe(200);
       const responseText = await response.text();
       expect(normalizeReminders(responseText)).toMatchInlineSnapshot(`
