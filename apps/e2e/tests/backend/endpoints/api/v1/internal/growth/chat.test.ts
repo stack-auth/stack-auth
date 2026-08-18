@@ -102,7 +102,12 @@ describe("internal growth chat (no mock Eve)", () => {
     expect(afterRetry.body).toEqual({ conversations: [] });
   });
 
-  it("keeps growth chat conversations isolated per project", async ({ expect }) => {
+  // The timeout is raised over the default because this test onboards TWO growth projects (every
+  // other test here onboards one), and growth onboarding is the expensive part of the fixture: it
+  // seeds the canonical workflows through the sandbox. Under the full e2e suite the sibling growth
+  // tests already land at ~60s, so the default timeout leaves this one no headroom even though it
+  // runs in a couple of seconds in isolation.
+  it("keeps growth chat conversations isolated per project", { timeout: 90_000 }, async ({ expect }) => {
     // Two growth projects; neither can ever see the other's (empty) conversation list, and a
     // conversation id from one project 404s on the other even if it existed. With no Eve available
     // no conversation can actually be created here, so this pins the empty-list scoping plus the
