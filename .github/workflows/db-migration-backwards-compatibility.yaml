@@ -158,16 +158,17 @@ jobs:
         run: pnpm exec wait-on http://localhost:8136/ping
 
       # The deployments e2e tests hit s3mock and fly-mock directly; marshal's /health does
-      # not touch either, so wait on them explicitly when the base branch provides them.
+      # not touch either, so wait on them explicitly. This job runs base-branch code, so the
+      # containers only exist once the base branch's compose file declares them.
       - name: Wait on s3mock
         run: |
-          if grep -q '^  s3mock:' docker/dependencies/docker.compose.yaml; then
+          if docker compose -f docker/dependencies/docker.compose.yaml config --services | grep -qx s3mock; then
             pnpm exec wait-on http://localhost:8121/
           fi
 
       - name: Wait on fly-mock
         run: |
-          if grep -q '^  fly-mock:' docker/dependencies/docker.compose.yaml; then
+          if docker compose -f docker/dependencies/docker.compose.yaml config --services | grep -qx fly-mock; then
             pnpm exec wait-on http://localhost:8148/health
           fi
 
