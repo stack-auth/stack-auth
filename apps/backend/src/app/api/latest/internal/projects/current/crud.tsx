@@ -44,12 +44,16 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
     });
     const tenancy = await getTenancy(auth.tenancy.id) ?? throwErr("Tenancy not found after project update?"); // since we updated the project, we need to re-fetch the new tenancy config
 
+    const afterProject = {
+      ...project,
+      config: renderedOrganizationConfigToProjectCrud(tenancy.config),
+    };
     const settingsMetadata = buildProjectSettingsAuditMetadata({
       source: "projects.current.update",
       writeMode: "merge",
       changedPaths: collectProjectUpdateFields(data as Record<string, unknown>),
       beforeRoot: beforeProject,
-      afterRoot: data,
+      afterRoot: afterProject,
     });
     if (settingsMetadata != null) {
       await recordAuditEvent({

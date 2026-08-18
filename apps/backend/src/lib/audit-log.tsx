@@ -13,6 +13,7 @@ export const AUDIT_LOG_ACTIONS = [
   "user.restricted",
   "user.unrestricted",
   "user.password.set",
+  "user.mfa.enabled",
   "user.mfa.removed",
   "user.password_reset.sent",
   "user.sign_in_invitation.sent",
@@ -71,10 +72,9 @@ export type AuditLogActor = {
   label: string,
 };
 
-// Used when an event has an actor but no separate *target* customer user
-// (e.g. project settings). Impersonation sets a real targetUserId; settings does not.
-// Sentinel avoids SQL NULL for older Prisma clients that still require the column.
-// The list API maps this back to null for the UI.
+// Legacy sentinel written before the targetUserId column was nullable.
+// New rows store SQL NULL. The list API still maps this sentinel to null so
+// historical project-scoped events render correctly.
 export const AUDIT_LOG_NO_TARGET_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 // Intentionally narrower than SmartRequestAuth: route handlers only declare the
@@ -131,6 +131,9 @@ const MAX_AUDIT_VALUE_STRING_LENGTH = 500;
 // `auth.password.allowSignIn` are fine — only the leaf is checked.
 const SENSITIVE_LEAF_SEGMENTS = new Set([
   "password",
+  "password_hash",
+  "totp_secret_base64",
+  "totpsecretbase64",
   "clientsecret",
   "client_secret",
   "secret",
@@ -154,6 +157,19 @@ const SENSITIVE_LEAF_SEGMENTS = new Set([
   "credential",
 ]);
 
+// Compact (no `_`/`-`) substrings that mean the leaf holds a secret even when
+// the key is not an exact match (`my_api_key`, `totp_secret_base64`).
+const SENSITIVE_LEAF_SUBSTRINGS = [
+  "password",
+  "secret",
+  "token",
+  "apikey",
+  "privatekey",
+  "credential",
+  "connectionstring",
+  "authorization",
+] as const;
+
 export type AuditFieldChange = {
   before: Prisma.JsonValue,
   after: Prisma.JsonValue,
@@ -162,6 +178,9 @@ export type AuditFieldChange = {
 /**
  * True when the path's leaf (or known secret-bearing prefixes) should never
  * have values persisted — path keys are still recorded in changed_paths.
+ *
+ * Boolean `has_*` flags and `*_id` identifiers are kept: they name a secret
+ * without being one (`has_secret_server_key`, `refresh_token_id`).
  */
 export function isAuditLogPathSensitive(path: string): boolean {
   const normalized = path.toLowerCase();
@@ -173,7 +192,55 @@ export function isAuditLogPathSensitive(path: string): boolean {
   }
   const segments = normalized.split(".");
   const leaf = segments[segments.length - 1] ?? "";
-  return SENSITIVE_LEAF_SEGMENTS.has(leaf);
+  if (leaf.startsWith("has_") || leaf.endsWith("_id") || leaf === "id") {
+    return false;
+  }
+  const compactLeaf = leaf.replace(/[_-]/g, "");
+  if (SENSITIVE_LEAF_SEGMENTS.has(leaf) || SENSITIVE_LEAF_SEGMENTS.has(compactLeaf)) {
+    return true;
+  }
+  return SENSITIVE_LEAF_SUBSTRINGS.some((token) => compactLeaf.includes(token));
+}
+
+/**
+ * Last-line sanitizer so a caller cannot persist a secret by stuffing it into
+ * `metadata`. Sensitive leaves are dropped; `changed_paths` keeps the path
+ * names (those strings are keys, not values).
+ */
+export function sanitizeAuditMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  const sanitized = sanitizeAuditJsonValue(metadata, "");
+  if (sanitized == null || typeof sanitized !== "object" || Array.isArray(sanitized)) {
+    return {};
+  }
+  return sanitized as Record<string, unknown>;
+}
+
+function sanitizeAuditJsonValue(value: unknown, path: string): unknown {
+  if (value == null) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    // Path names in `changed_paths` are not secret values.
+    if (path === "changed_paths" || path.endsWith(".changed_paths")) {
+      return value;
+    }
+    return value.map((item, index) => sanitizeAuditJsonValue(item, path === "" ? String(index) : `${path}.${index}`));
+  }
+  if (typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      const childPath = path === "" ? key : `${path}.${key}`;
+      if (isAuditLogPathSensitive(key) || isAuditLogPathSensitive(childPath)) {
+        continue;
+      }
+      const sanitizedChild = sanitizeAuditJsonValue(child, childPath);
+      if (sanitizedChild !== undefined) {
+        result[key] = sanitizedChild;
+      }
+    }
+    return result;
+  }
+  return value;
 }
 
 export function resolveAuditActor(auth: AuditActorSource): AuditLogActor {
@@ -543,11 +610,11 @@ export async function recordAuditEvent(options: {
         actorType: actor.type,
         actorUserId: actor.userId,
         actorLabel: actor.label,
-        targetUserId: options.targetUserId ?? AUDIT_LOG_NO_TARGET_USER_ID,
+        targetUserId: options.targetUserId ?? null,
         reason,
         metadata: options.metadata == null
           ? undefined
-          : (options.metadata as Prisma.InputJsonValue),
+          : (sanitizeAuditMetadata(options.metadata) as Prisma.InputJsonValue),
       },
     });
   } catch (error) {

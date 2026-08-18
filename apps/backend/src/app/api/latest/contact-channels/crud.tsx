@@ -1,4 +1,4 @@
-import { Prisma } from "@/generated/prisma/client";
+import { BooleanTrue, Prisma } from "@/generated/prisma/client";
 import { recordAuditEvent, shouldRecordAdminAudit } from "@/lib/audit-log";
 import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryById } from "@/lib/contact-channel";
 import { normalizeEmail } from "@/lib/emails";
@@ -115,7 +115,19 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
         },
       });
 
+      let previousPrimaryDemoted = false;
       if (data.is_primary) {
+        const otherPrimary = await tx.contactChannel.findFirst({
+          where: {
+            tenancyId: auth.tenancy.id,
+            projectUserId: data.user_id,
+            type: crudContactChannelTypeToPrisma(data.type),
+            isPrimary: BooleanTrue.TRUE,
+            id: { not: createdContactChannel.id },
+          },
+          select: { id: true },
+        });
+        previousPrimaryDemoted = otherPrimary != null;
         await setContactChannelAsPrimaryById(tx, {
           tenancyId: auth.tenancy.id,
           projectUserId: data.user_id,
@@ -129,7 +141,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
         projectUserId: data.user_id,
       });
 
-      return await tx.contactChannel.findUnique({
+      const created = await tx.contactChannel.findUnique({
         where: {
           tenancyId_projectUserId_id: {
             tenancyId: auth.tenancy.id,
@@ -138,9 +150,13 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
           },
         },
       }) || throwErr("Failed to create contact channel");
+      return {
+        channel: created,
+        previousPrimaryDemoted,
+      };
     });
 
-    const crud = contactChannelToCrud(contactChannel);
+    const crud = contactChannelToCrud(contactChannel.channel);
     if (shouldRecordAdminAudit(auth)) {
       await recordAuditEvent({
         tenancy: auth.tenancy,
@@ -154,6 +170,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
           is_primary: crud.is_primary,
           is_verified: crud.is_verified,
           used_for_auth: crud.used_for_auth,
+          ...(contactChannel.previousPrimaryDemoted ? { previous_primary_demoted: true } : {}),
         },
       });
     }
@@ -205,7 +222,19 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
         }
       }
 
+      let previousPrimaryDemoted = false;
       if (data.is_primary) {
+        const otherPrimary = await tx.contactChannel.findFirst({
+          where: {
+            tenancyId: auth.tenancy.id,
+            projectUserId: params.user_id,
+            type: data.type !== undefined ? crudContactChannelTypeToPrisma(data.type) : existingContactChannel.type,
+            isPrimary: BooleanTrue.TRUE,
+            id: { not: existingContactChannel.id },
+          },
+          select: { id: true },
+        });
+        previousPrimaryDemoted = otherPrimary != null;
         await demoteAllContactChannelsToNonPrimary(tx, {
           tenancyId: auth.tenancy.id,
           projectUserId: params.user_id,
@@ -234,12 +263,15 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
         projectUserId: params.user_id,
       });
 
-      return updated;
+      return { channel: updated, previousPrimaryDemoted };
     });
 
-    const crud = contactChannelToCrud(updatedContactChannel);
+    const crud = contactChannelToCrud(updatedContactChannel.channel);
     if (shouldRecordAdminAudit(auth)) {
-      const changedPaths = Object.keys(data);
+      const changedPaths = [
+        ...Object.keys(data),
+        ...(data.value !== undefined && data.is_verified === undefined ? ["is_verified"] : []),
+      ];
       await recordAuditEvent({
         tenancy: auth.tenancy,
         auth,
@@ -253,6 +285,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
           is_primary: crud.is_primary,
           is_verified: crud.is_verified,
           used_for_auth: crud.used_for_auth,
+          ...(updatedContactChannel.previousPrimaryDemoted ? { previous_primary_demoted: true } : {}),
         },
       });
     }

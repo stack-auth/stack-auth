@@ -7046,9 +7046,6 @@
                     "type": [
                       "string",
                       "null"
-                    ],
-                    "enum": [
-                      null
                     ]
                   }
                 },

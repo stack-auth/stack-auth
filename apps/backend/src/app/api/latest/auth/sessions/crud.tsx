@@ -79,12 +79,16 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
       refreshTokenId: params.id,
     });
 
-    await globalPrismaClient.projectUserRefreshToken.deleteMany({
+    const deleted = await globalPrismaClient.projectUserRefreshToken.deleteMany({
       where: {
         tenancyId: auth.tenancy.id,
         id: params.id,
       },
     });
+
+    if (deleted.count === 0) {
+      return;
+    }
 
     if (session.isImpersonation) {
       await recordAuditEvent({

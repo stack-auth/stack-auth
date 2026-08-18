@@ -6,6 +6,7 @@ import {
   type AuditActorSource,
 } from "@/lib/audit-log";
 import type { Tenancy } from "@/lib/tenancies";
+import { HexclaveAssertionError, captureError } from "@hexclave/shared/dist/utils/errors";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { typedEntries } from "@hexclave/shared/dist/utils/objects";
 
@@ -92,12 +93,28 @@ export async function recordPermissionDefinitionAudit(options: {
   if (action === "permission_definition.deleted") {
     const before = options.before;
     if (before == null) return;
+    const snapshot = {
+      scope,
+      permission_id: before.permission_id,
+      description: before.description,
+      contained_permission_ids: before.contained_permission_ids,
+    };
+    const metadata = buildUpdatedFieldsAuditMetadata({
+      source,
+      patch: snapshot,
+      beforeRoot: snapshot,
+      afterRoot: {},
+    }) ?? {
+        source,
+        scope,
+        permission_id: before.permission_id,
+      };
     await recordAuditEvent({
       tenancy: auth.tenancy,
       auth,
       action,
       metadata: {
-        source,
+        ...metadata,
         scope,
         permission_id: before.permission_id,
         description: before.description,
@@ -107,26 +124,36 @@ export async function recordPermissionDefinitionAudit(options: {
     return;
   }
 
-  // updated
+  // updated — always diff the full snapshots. The CRUD update is PUT-like:
+  // omitted description / contained_permission_ids are still rewritten.
   const before = options.before;
   const after = options.after;
-  if (before == null || after == null) return;
-
-  const patch: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(options.patch ?? {})) {
-    if (value !== undefined) {
-      // CRUD uses `id` for renames; audit snapshots use permission_id.
-      if (key === "id") {
-        patch.permission_id = value;
-      } else {
-        patch[key] = value;
-      }
-    }
+  if (before == null || after == null) {
+    // Scope mismatches are rejected before the mutation. A missing snapshot
+    // here is a programming error; don't fail the request (audit is fail-open)
+    // but don't silently drop the trail either.
+    captureError("admin-audit-log-write", new HexclaveAssertionError(
+      "Permission definition update succeeded without a before/after snapshot.",
+      { source, scope, beforeMissing: before == null, afterMissing: after == null },
+    ));
+    await recordAuditEvent({
+      tenancy: auth.tenancy,
+      auth,
+      action,
+      metadata: {
+        source,
+        scope,
+        permission_id: after?.permission_id ?? before?.permission_id ?? options.patch?.id,
+        before_unavailable: before == null,
+        after_unavailable: after == null,
+      },
+    });
+    return;
   }
-  // Always include scope so the details column shows team vs project.
+
   const metadata = buildUpdatedFieldsAuditMetadata({
     source,
-    patch: Object.keys(patch).length > 0 ? patch : {
+    patch: {
       permission_id: after.permission_id,
       description: after.description,
       contained_permission_ids: after.contained_permission_ids,

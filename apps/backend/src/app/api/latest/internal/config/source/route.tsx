@@ -96,18 +96,13 @@ export const DELETE = createSmartRouteHandler({
     bodyType: yupString().oneOf(["success"]).defined(),
   }),
   handler: async (req) => {
-    const beforeSource = await getBranchConfigOverrideSource({
-      projectId: req.auth.tenancy.project.id,
-      branchId: req.auth.tenancy.branchId,
-    });
-
-    await unlinkBranchConfigOverrideSource({
+    const { didUnlink, beforeSource } = await unlinkBranchConfigOverrideSource({
       projectId: req.auth.tenancy.project.id,
       branchId: req.auth.tenancy.branchId,
     });
 
     // Already-unlinked DELETE is a no-op for operators; skip a duplicate audit row.
-    if (beforeSource.type !== "unlinked") {
+    if (didUnlink) {
       const beforeFields = configSourceAuditFields(beforeSource);
       // Null out prior identity fields so details show owner/repo/branch as Removed,
       // not just `type: pushed-from-github → unlinked`.

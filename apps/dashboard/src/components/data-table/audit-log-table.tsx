@@ -23,6 +23,7 @@ export type AuditLogAction =
   | "user.restricted"
   | "user.unrestricted"
   | "user.password.set"
+  | "user.mfa.enabled"
   | "user.mfa.removed"
   | "user.password_reset.sent"
   | "user.sign_in_invitation.sent"
@@ -119,6 +120,9 @@ function formatAction(action: AuditLogAction): string {
     }
     case "user.password.set": {
       return "User password set";
+    }
+    case "user.mfa.enabled": {
+      return "User MFA enabled";
     }
     case "user.mfa.removed": {
       return "User MFA removed";

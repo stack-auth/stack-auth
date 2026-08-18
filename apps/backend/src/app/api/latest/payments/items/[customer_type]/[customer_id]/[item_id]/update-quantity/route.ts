@@ -131,13 +131,14 @@ export const POST = createSmartRouteHandler({
     await bulldozerWriteItemQuantityChange(change);
 
     // Dashboard-only via recordAuditEvent (adminUser).
+    // Quantity before/after is racy (concurrent grants, already-expired rows);
+    // persist the requested delta instead of a synthetic balance.
     if (shouldRecordAdminAudit(req.auth)) {
-      const quantityAfter = totalQuantity + req.body.delta;
       const metadata = buildUpdatedFieldsAuditMetadata({
         source: "payments.items.update_quantity",
-        patch: { quantity: quantityAfter },
-        beforeRoot: { quantity: totalQuantity },
-        afterRoot: { quantity: quantityAfter },
+        patch: { delta: req.body.delta },
+        beforeRoot: {},
+        afterRoot: { delta: req.body.delta },
       }) ?? {
           source: "payments.items.update_quantity",
         };

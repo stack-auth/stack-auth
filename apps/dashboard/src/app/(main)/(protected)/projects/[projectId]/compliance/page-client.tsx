@@ -11,6 +11,7 @@ import { Skeleton, Typography } from "@/components/ui";
 import { Card, CardContent } from "@/components/ui/card";
 import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import {
   ArrowLeftIcon,
@@ -303,7 +304,9 @@ function ComplianceContent() {
 type AdminAuditLoadState =
   | { status: "loading" }
   | { status: "error" }
-  | { status: "ok", events: AuditLogEvent[] };
+  | { status: "ok", events: AuditLogEvent[], nextCursor: string | null, loadingMore: boolean };
+
+const AUDIT_LOG_PAGE_SIZE = 200;
 
 function AdminAuditPanel({ internals }: { internals: AppInternals }) {
   const projectId = useProjectId();
@@ -315,12 +318,26 @@ function AdminAuditPanel({ internals }: { internals: AppInternals }) {
     runAsynchronously(async () => {
       setState({ status: "loading" });
       try {
-        const response = await internals.sendRequest("/internal/audit-log", { method: "GET" }, "admin");
+        const response = await internals.sendRequest(
+          urlString`/internal/audit-log?limit=${AUDIT_LOG_PAGE_SIZE}`,
+          { method: "GET" },
+          "admin",
+        );
         if (!response.ok) {
           throw new Error(`Failed to load admin audit log: ${response.status}`);
         }
-        const body = await response.json() as { items: AuditLogEvent[] };
-        if (!cancelled) setState({ status: "ok", events: body.items });
+        const body = await response.json() as {
+          items: AuditLogEvent[],
+          pagination?: { next_cursor: string | null },
+        };
+        if (!cancelled) {
+          setState({
+            status: "ok",
+            events: body.items,
+            nextCursor: body.pagination?.next_cursor ?? null,
+            loadingMore: false,
+          });
+        }
       } catch (error) {
         if (cancelled) return;
         captureError("compliance-admin-audit-load", error);
@@ -331,6 +348,36 @@ function AdminAuditPanel({ internals }: { internals: AppInternals }) {
       cancelled = true;
     };
   }, [internals, reloadKey]);
+
+  async function loadMore() {
+    if (state.status !== "ok" || state.nextCursor == null || state.loadingMore) {
+      return;
+    }
+    setState({ ...state, loadingMore: true });
+    try {
+      const response = await internals.sendRequest(
+        urlString`/internal/audit-log?limit=${AUDIT_LOG_PAGE_SIZE}&cursor=${state.nextCursor}`,
+        { method: "GET" },
+        "admin",
+      );
+      if (!response.ok) {
+        throw new Error(`Failed to load more admin audit log: ${response.status}`);
+      }
+      const body = await response.json() as {
+        items: AuditLogEvent[],
+        pagination?: { next_cursor: string | null },
+      };
+      setState({
+        status: "ok",
+        events: [...state.events, ...body.items],
+        nextCursor: body.pagination?.next_cursor ?? null,
+        loadingMore: false,
+      });
+    } catch (error) {
+      captureError("compliance-admin-audit-load-more", error);
+      setState({ ...state, loadingMore: false });
+    }
+  }
 
   if (state.status === "error") {
     return (
@@ -353,6 +400,18 @@ function AdminAuditPanel({ internals }: { internals: AppInternals }) {
         projectId={projectId}
         isLoading={state.status === "loading"}
       />
+      {state.status === "ok" && state.nextCursor != null && (
+        <div className="flex justify-center">
+          <DesignButton
+            size="sm"
+            variant="secondary"
+            disabled={state.loadingMore}
+            onClick={async () => { await loadMore(); }}
+          >
+            {state.loadingMore ? "Loading…" : "Load more"}
+          </DesignButton>
+        </div>
+      )}
     </div>
   );
 }

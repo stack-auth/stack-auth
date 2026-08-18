@@ -37,7 +37,9 @@ async function recordProjectSettingsConfigAudit(options: {
     source: options.source,
     writeMode: options.writeMode,
     level: options.level,
-    changedPaths: collectConfigPaths(options.config),
+    changedPaths: options.writeMode === "replace"
+      ? [...new Set([...collectConfigPaths(options.beforeConfig), ...collectConfigPaths(options.config)])]
+      : collectConfigPaths(options.config),
     beforeRoot: options.beforeConfig,
     afterRoot: options.config,
   });

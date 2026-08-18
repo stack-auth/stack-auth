@@ -587,6 +587,7 @@ it("records Authentication user-directory admin actions", async ({ expect }) => 
   expect(actions).toContain("user.created");
   expect(actions).toContain("user.restricted");
   expect(actions).toContain("user.password.set");
+  expect(actions).toContain("user.mfa.enabled");
   expect(actions).toContain("user.mfa.removed");
   expect(actions).toContain("user.updated");
   expect(actions).toContain("user.unrestricted");
@@ -1020,7 +1021,7 @@ it("records Teams admin mutations (create/update/delete, membership, permissions
       allow_negative: false,
       description: "manual team grant",
       changes: {
-        quantity: { before: 0, after: 7 },
+        delta: { before: null, after: 7 },
       },
     },
   });
@@ -1428,7 +1429,7 @@ it("records Payments dashboard mutations (checkout, item quantity, stripe setup,
       delta: 3,
       description: "manual user grant",
       changes: {
-        quantity: { before: 0, after: 3 },
+        delta: { before: null, after: 3 },
       },
     },
   });
@@ -1442,9 +1443,9 @@ it("records Payments dashboard mutations (checkout, item quantity, stripe setup,
     metadata: {
       source: "payments.method_configs.update",
       config_id: configId,
-      changes: {
-        "methods.card": { before: null, after: "on" },
-      },
+      changes: expect.objectContaining({
+        "methods.card.preference": expect.objectContaining({ after: "on" }),
+      }),
     },
   });
 

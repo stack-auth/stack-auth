@@ -77,7 +77,7 @@ async function recordUserDirectoryAuditsFromUpdate(options: {
     coveredBySpecializedAction.add("restricted_by_admin_private_details");
   }
 
-  if (data.password !== undefined) {
+  if (data.password !== undefined || data.password_hash !== undefined) {
     await recordAuditEvent({
       tenancy: auth.tenancy,
       auth,
@@ -86,6 +86,7 @@ async function recordUserDirectoryAuditsFromUpdate(options: {
       metadata: { source: "users.update" },
     });
     coveredBySpecializedAction.add("password");
+    coveredBySpecializedAction.add("password_hash");
   }
 
   if (data.totp_secret_base64 === null) {
@@ -93,6 +94,15 @@ async function recordUserDirectoryAuditsFromUpdate(options: {
       tenancy: auth.tenancy,
       auth,
       action: "user.mfa.removed",
+      targetUserId,
+      metadata: { source: "users.update" },
+    });
+    coveredBySpecializedAction.add("totp_secret_base64");
+  } else if (data.totp_secret_base64 !== undefined) {
+    await recordAuditEvent({
+      tenancy: auth.tenancy,
+      auth,
+      action: "user.mfa.enabled",
       targetUserId,
       metadata: { source: "users.update" },
     });
@@ -1025,6 +1035,20 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
       const config = auth.tenancy.config;
 
+      const oldUser = await tx.projectUser.findUnique({
+        where: {
+          tenancyId_projectUserId: {
+            tenancyId: auth.tenancy.id,
+            projectUserId: params.user_id,
+          },
+        },
+        include: userFullInclude,
+      });
+
+      if (!oldUser) {
+        throw new HexclaveAssertionError("User not found");
+      }
+
       if (data.selected_team_id !== undefined) {
         if (data.selected_team_id !== null) {
           await ensureTeamMembershipExists(tx, {
@@ -1075,20 +1099,6 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
             });
           }
         }
-      }
-
-      const oldUser = await tx.projectUser.findUnique({
-        where: {
-          tenancyId_projectUserId: {
-            tenancyId: auth.tenancy.id,
-            projectUserId: params.user_id,
-          },
-        },
-        include: userFullInclude,
-      });
-
-      if (!oldUser) {
-        throw new HexclaveAssertionError("User not found");
       }
 
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
