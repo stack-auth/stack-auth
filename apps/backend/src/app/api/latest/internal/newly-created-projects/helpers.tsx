@@ -286,36 +286,35 @@ export async function loadProjectActivityMetrics(projectIds: string[]): Promise<
         const [userRowsResult, activityRowsResult] = await Promise.all([
           clickhouse.query({
             // Deduplicate the ReplacingMergeTree rows to each user's latest
-            // version with an explicit argMax GROUP BY instead of `FINAL`.
-            // `FINAL` merges parts outside the aggregation pipeline. The
-            // candidate window can therefore exceed the per-query
-            // max_memory_usage cap even though a manual argMax dedup can spill
-            // to disk. Batching project IDs bounds the number of groups in
-            // each query; `(project_id, branch_id, id)` is the table's ORDER BY
-            // / dedup key, so grouping by it reproduces FINAL exactly. Since
-            // the grouping key matches that ORDER BY, this setting also lets
-            // ClickHouse stream the inner aggregation in order.
-            // Re-seeded rows can share a version, so break ties by insertion time.
+            // version with `FINAL` rather than an explicit argMax GROUP BY on
+            // the dedup key. The argMax approach materializes one aggregation
+            // state per user; over user-heavy projects those per-user states
+            // exceed the per-query max_memory_usage cap regardless of
+            // max_bytes_before_external_group_by (pre-aggregation spills to
+            // disk, but the post-spill merge of millions of UUID-keyed groups
+            // does not stay under the cap, and the in-order pipeline cannot
+            // spill at all). `FINAL` instead deduplicates as a streaming merge
+            // of sorted parts — memory scales with part count, not user count —
+            // and the outer GROUP BY only has one group per project. FINAL over
+            // the *unbatched* candidate window was too heavy historically, but
+            // combined with the project-ID batching below it stays far below
+            // the cap (validated empirically on a 5M-row seeded table under a
+            // 300 MB cap: every argMax variant OOMs, FINAL passes with
+            // headroom and identical results). This also matches the dedup
+            // semantics of the public `default.users` view, which reads the
+            // same table with FINAL.
             query: `
               SELECT
                 project_id AS projectId,
-                countIf(isAnonymous = 0) AS nonAnon,
-                countIf(isAnonymous = 1) AS anon
-              FROM (
-                SELECT
-                  project_id,
-                  argMax(is_anonymous, (sync_sequence_id, sync_created_at)) AS isAnonymous,
-                  argMax(sync_is_deleted, (sync_sequence_id, sync_created_at)) AS syncIsDeleted
-                FROM analytics_internal.users
-                WHERE branch_id = {branchId:String}
-                  AND project_id IN {projectIds:Array(String)}
-                GROUP BY project_id, branch_id, id
-              )
-              WHERE syncIsDeleted = 0
+                countIf(is_anonymous = 0) AS nonAnon,
+                countIf(is_anonymous = 1) AS anon
+              FROM analytics_internal.users FINAL
+              WHERE branch_id = {branchId:String}
+                AND project_id IN {projectIds:Array(String)}
+                AND sync_is_deleted = 0
               GROUP BY project_id
             `,
             query_params: { branchId, projectIds: projectIdChunk },
-            clickhouse_settings: { optimize_aggregation_in_order: 1 },
             format: "JSONEachRow",
           }),
           clickhouse.query({
