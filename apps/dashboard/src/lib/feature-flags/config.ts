@@ -194,6 +194,10 @@ export function experimentConfigPath(experimentId: string): string {
   return `${FEATURE_FLAGS_CONFIG_PREFIX}.experiments.${experimentId}`;
 }
 
+// Stricter than shared `publicKeySchema` on purpose. Dashboard writes
+// `featureFlags.flags.${key}` with path notation, so dots would nest the
+// update instead of naming the flag. Underscores and mixed case are rejected
+// so created keys stay URL-safe and match `suggestFlagKey`.
 const FLAG_KEY_REGEX = /^[a-z][a-z0-9-]{0,63}$/;
 
 export function validateFlagKey(key: string): string | null {

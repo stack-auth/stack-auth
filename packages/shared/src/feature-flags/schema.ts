@@ -79,6 +79,7 @@ const ruleSchema = yupObject({
   stickyBy: yupString().oneOf(stickyByValues),
   variantKey: configIdSchema,
   variantWeights: yupRecord(configIdSchema, basisPointsSchema),
+  variantValues: yupRecord(configIdSchema, jsonValueSchema),
   experimentId: configIdSchema,
 });
 
@@ -281,6 +282,12 @@ export function getFeatureFlagsConfigErrors(config: FeatureFlagsConfig): string[
       for (const variantKey of Object.keys(rule.variantWeights ?? {})) {
         if (!hasRecordKey(flag.variants, variantKey)) errors.push(`Rule "${ruleId}" references missing variant "${variantKey}"`);
       }
+      for (const [variantKey, value] of Object.entries(rule.variantValues ?? {})) {
+        if (!hasRecordKey(flag.variants, variantKey)) errors.push(`Rule "${ruleId}" variantValues references missing variant "${variantKey}"`);
+        if (value !== undefined && flag.type !== undefined && flag.type !== "json" && typeof value !== flag.type) {
+          errors.push(`Rule "${ruleId}" variantValues "${variantKey}" must have a ${flag.type} value`);
+        }
+      }
       if (rule.experimentId !== undefined && !hasRecordKey(config.experiments, rule.experimentId)) {
         errors.push(`Rule "${ruleId}" references missing experiment "${rule.experimentId}"`);
       } else if (rule.experimentId !== undefined && config.experiments?.[rule.experimentId]?.flagId !== flagId) {
@@ -459,6 +466,18 @@ import.meta.vitest?.test("feature flag schema validates operator types, referenc
     flags: { shared: {} },
     experiments: { archived: { flagId: "shared", archived: true }, next: { flagId: "shared" } },
   }).some((error) => error.includes("already targeted"))).toBe(false);
+  expect(getFeatureFlagsConfigErrors({
+    flags: {
+      flag: {
+        key: "checkout",
+        type: "boolean",
+        allocationSalt: "checkout",
+        fallbackVariantKey: "off",
+        variants: { on: { value: true }, off: { value: false } },
+        rules: { experiment: { variantWeights: { on: 5_000, off: 5_000 }, variantValues: { on: "on" } } },
+      },
+    },
+  })).toContain('Rule "experiment" variantValues "on" must have a boolean value');
 });
 
 import.meta.vitest?.test("whole-config validation rejects incomplete experiment definitions", ({ expect }) => {
