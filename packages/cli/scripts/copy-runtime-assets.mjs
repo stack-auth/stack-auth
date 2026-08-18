@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { cpSync, existsSync, mkdirSync, readlinkSync, readdirSync, rmSync } from "fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readlinkSync, readdirSync, rmSync } from "fs";
 import { dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
 
@@ -141,7 +141,50 @@ function getPackageNameFromPnpmSpecifier(specifier) {
   return nameWithPlus;
 }
 
-function hoistPnpmStorePackages(pnpmDir) {
+function getMaterializedStandalonePackageNames(nextNodeModulesDir) {
+  const packageNames = new Set();
+  if (!existsSync(nextNodeModulesDir)) {
+    return packageNames;
+  }
+
+  for (const scopeEntry of readdirSync(nextNodeModulesDir, { withFileTypes: true })) {
+    const scopePath = join(nextNodeModulesDir, scopeEntry.name);
+    const packageEntries = scopeEntry.name.startsWith("@") && scopeEntry.isDirectory()
+      ? readdirSync(scopePath, { withFileTypes: true }).map((entry) => ({
+          entry,
+          packagePath: join(scopePath, entry.name),
+          packageName: join(scopeEntry.name, entry.name),
+        }))
+      : [{ entry: scopeEntry, packagePath: scopePath, packageName: scopeEntry.name }];
+
+    for (const { entry, packagePath, packageName } of packageEntries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const packageJsonPath = join(packagePath, "package.json");
+      if (!existsSync(packageJsonPath)) {
+        continue;
+      }
+      const declaredPackageName = JSON.parse(readFileSync(packageJsonPath, "utf8")).name;
+      const directoryName = packageName.split("/").at(-1);
+      const declaredName = typeof declaredPackageName === "string"
+        ? declaredPackageName.split("/").at(-1)
+        : undefined;
+      if (
+        typeof declaredPackageName === "string" &&
+        declaredName != null &&
+        directoryName !== declaredName &&
+        directoryName.startsWith(`${declaredName}-`)
+      ) {
+        packageNames.add(declaredPackageName);
+      }
+    }
+  }
+
+  return packageNames;
+}
+
+function hoistPnpmStorePackages(pnpmDir, materializedPackageNames) {
   // Each .pnpm/<specifier>/node_modules/<name>/ contains the primary package
   // for that specifier. When serverExternalPackages are used, these directories
   // hold the actual module files (including non-imported assets like cli.js)
@@ -153,7 +196,11 @@ function hoistPnpmStorePackages(pnpmDir) {
       continue;
     }
     const packageName = getPackageNameFromPnpmSpecifier(entry.name);
-    if (packageName == null || EXCLUDED_RUNTIME_PACKAGES.has(packageName)) {
+    if (
+      packageName == null ||
+      EXCLUDED_RUNTIME_PACKAGES.has(packageName) ||
+      materializedPackageNames.has(packageName)
+    ) {
       continue;
     }
     const packageDir = join(pnpmDir, entry.name, "node_modules", ...packageName.split("/"));
@@ -171,13 +218,13 @@ function hoistPnpmStorePackages(pnpmDir) {
   }
 }
 
-function removePnpmStore(nodeModulesDir) {
+function removePnpmStore(nodeModulesDir, materializedPackageNames) {
   const pnpmDir = join(nodeModulesDir, ".pnpm");
   if (!existsSync(pnpmDir)) {
     return;
   }
   hoistPnpmNodeModules(pnpmDir);
-  hoistPnpmStorePackages(pnpmDir);
+  hoistPnpmStorePackages(pnpmDir, materializedPackageNames);
   rmSync(pnpmDir, { recursive: true, force: true });
 }
 
@@ -207,6 +254,23 @@ function removeNftJsonFiles(dir) {
   }
 }
 
+function removeMapFiles(dir) {
+  // Browser source maps are not needed by the staged runtime. Remove them
+  // after copying all assets so generated or public maps cannot leak into the
+  // release regardless of which build produced them.
+  if (!existsSync(dir)) {
+    return;
+  }
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      removeMapFiles(path);
+    } else if (entry.isFile() && entry.name.endsWith(".map")) {
+      rmSync(path);
+    }
+  }
+}
+
 function copyDashboardAssets() {
   assertExists(
     join(dashboardStandaloneSrc, "apps/dashboard/server.js"),
@@ -230,9 +294,16 @@ function copyDashboardAssets() {
   // duplicate content (~113 MB). We first hoist any shared packages that only
   // exist inside .pnpm/node_modules/ to the top-level node_modules/.
   const dashboardNodeModules = join(dashboardDist, "node_modules");
-  removePnpmStore(dashboardNodeModules);
+  const materializedPackageNames = getMaterializedStandalonePackageNames(
+    join(dashboardDist, "apps/dashboard/.next/node_modules"),
+  );
+  // Next aliases external packages as <name>-<hash> under .next/node_modules.
+  // Those traced copies already contain the complete package, so hoisting the
+  // same package to top-level would create a second copy after .pnpm removal.
+  removePnpmStore(dashboardNodeModules, materializedPackageNames);
   removeExcludedPackages(dashboardNodeModules);
   removeNftJsonFiles(join(dashboardDist, "apps/dashboard/.next"));
+  removeMapFiles(dashboardDist);
 
   console.log(`Copied dashboard standalone runtime into ${dashboardDist}.`);
 }

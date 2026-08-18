@@ -128,7 +128,7 @@ function ConfigOverrideEditor(props: {
   const displayError = loadError ?? (saveError instanceof Error ? saveError.message : saveError ? String(saveError) : null);
 
   return (
-    <Card className="flex flex-col">
+    <Card className="hexclave-sensitive flex flex-col">
       <CardHeader>
         <CardTitle>{props.title}</CardTitle>
         <Typography variant="secondary" type="footnote">
@@ -205,7 +205,7 @@ function ExpertContent() {
         ))}
 
         {/* Complete Rendered Config (read-only) */}
-        <Card className="flex flex-col">
+        <Card className="hexclave-sensitive flex flex-col">
           <CardHeader>
             <CardTitle>Complete Rendered Config</CardTitle>
             <Typography variant="secondary" type="footnote">

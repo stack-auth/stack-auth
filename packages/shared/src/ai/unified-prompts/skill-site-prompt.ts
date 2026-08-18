@@ -6,8 +6,10 @@ import { cliHelpPrompt } from "./skill-site-prompt-parts/cli-help";
 import { configDocsPrompt } from "./skill-site-prompt-parts/config-docs";
 import { customComponentsInstructionsPrompt } from "./skill-site-prompt-parts/custom-components-instructions";
 import { dashboardInstructionsPrompt } from "./skill-site-prompt-parts/dashboard-instructions";
+import { deploymentsSkillSection } from "./skill-site-prompt-parts/deployments-skill";
 import { docsIndexPrompt } from "./skill-site-prompt-parts/docs-index";
 import { sdkInterfaceSourcePrompt } from "./skill-site-prompt-parts/sdk-interface-source";
+import { workflowsSkillSection } from "./skill-site-prompt-parts/workflows-skill";
 
 export function buildSkillSitePrompt(docsIndexPromptValue = docsIndexPrompt) {
   return deindent`
@@ -73,3 +75,32 @@ export function buildSkillSitePrompt(docsIndexPromptValue = docsIndexPrompt) {
 }
 
 export const skillSitePrompt = buildSkillSitePrompt();
+
+// The /deployments variant of the skill: the entire base skill, followed by the
+// Deployments-specific addendum. Served at https://skill.hexclave.com/deployments
+// so an agent pointed at that URL gets the full Hexclave skill plus the deeper
+// Deployments material in one document.
+export function buildDeploymentsSkillSitePrompt(baseSkillPrompt = skillSitePrompt) {
+  return deindent`
+    ${baseSkillPrompt}
+
+    ${deploymentsSkillSection}
+  `;
+}
+
+export const deploymentsSkillSitePrompt = buildDeploymentsSkillSitePrompt();
+
+// Same shape as the /deployments variant above, for the Workflows app. Served at
+// https://skill.hexclave.com/workflows. Workflows are unusual among apps in that
+// their source lives only in the dashboard (no config section, no CLI command),
+// so the addendum's main job is telling the agent to write the file and hand it
+// to the user rather than looking for a command that does not exist.
+export function buildWorkflowsSkillSitePrompt(baseSkillPrompt = skillSitePrompt) {
+  return deindent`
+    ${baseSkillPrompt}
+
+    ${workflowsSkillSection}
+  `;
+}
+
+export const workflowsSkillSitePrompt = buildWorkflowsSkillSitePrompt();

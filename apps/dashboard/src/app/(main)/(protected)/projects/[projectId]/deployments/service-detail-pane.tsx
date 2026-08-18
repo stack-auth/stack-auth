@@ -1,0 +1,116 @@
+"use client";
+
+import { DesignBadge, DesignButton } from "@/components/design-components";
+import { Typography, cn } from "@/components/ui";
+import type { AdminDeploymentServiceOutcomeJson, AdminProject } from "@hexclave/next";
+import { XIcon } from "@phosphor-icons/react";
+import { useEffect, useState } from "react";
+import { getServiceTypeMeta, type BoardService } from "./board-model";
+import {
+  BuildLogsContent,
+  DomainsContent,
+  OverviewContent,
+  SettingsContent,
+  VariablesContent,
+} from "./panel-content";
+import { STATUS_META, getAccentClasses } from "./variants";
+
+// Note: service definitions (name, build config, env vars) are read-only here
+// — they come from the deploy file's `services` export and are synced by
+// `hexclave deploy`. Domains are operational state and stay editable.
+
+type ServiceDetailPaneProps = {
+  service: BoardService,
+  services: BoardService[],
+  project: AdminProject,
+  // The run THIS deployment gave this service, or null when it never started one (and for the
+  // managed hexclave node, which is not deployed at all). Owns the Build logs tab.
+  deploymentId: string | null,
+  outcome: AdminDeploymentServiceOutcomeJson | null,
+  onClose: () => void,
+  refresh: () => Promise<void>,
+};
+
+// No "Deployments" tab listing every past run of this service: the page is already scoped to
+// ONE deployment, so the only run that belongs here is that deploy's. It gets a Build logs tab
+// instead — the thing you actually open a failed service to read.
+type PanelTabId = "overview" | "build-logs" | "variables" | "domains" | "settings";
+
+const TABS: { id: PanelTabId, label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "build-logs", label: "Build logs" },
+  { id: "variables", label: "Variables" },
+  { id: "domains", label: "Domains" },
+  { id: "settings", label: "Settings" },
+];
+
+export function ServiceDetailPane(props: ServiceDetailPaneProps) {
+  const { service, services, project, refresh } = props;
+  const [tab, setTab] = useState<PanelTabId>("overview");
+
+  const isHexclave = service.type === "hexclave";
+  const meta = getServiceTypeMeta(service.type);
+  const accent = getAccentClasses(meta.accent);
+  const Icon = meta.icon;
+  const status = STATUS_META.get(service.status);
+
+  // When a different service is selected, jump back to Overview.
+  useEffect(() => {
+    setTab("overview");
+  }, [service.id]);
+
+  const selectTab = (id: PanelTabId) => {
+    setTab(id);
+  };
+
+  const content = (() => {
+    switch (tab) {
+      case "overview": { return <OverviewContent service={service} project={project} isHexclave={isHexclave} />; }
+      case "build-logs": { return <BuildLogsContent deploymentId={props.deploymentId} outcome={props.outcome} project={project} isHexclave={isHexclave} />; }
+      case "variables": { return <VariablesContent service={service} services={services} isHexclave={isHexclave} />; }
+      case "domains": { return <DomainsContent service={service} project={project} isHexclave={isHexclave} refresh={refresh} />; }
+      case "settings": { return <SettingsContent service={service} isHexclave={isHexclave} />; }
+    }
+  })();
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex items-start gap-3 border-b border-border/60 p-4">
+        <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", accent.chip)}>
+          <Icon className="h-5 w-5" weight="fill" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <DesignBadge label={meta.label} color={meta.accent} size="sm" />
+            {status && <DesignBadge label={status.label} color={status.color} size="sm" />}
+          </div>
+          <Typography type="h3" className="mt-1 truncate text-base font-semibold">{service.name}</Typography>
+        </div>
+        <DesignButton variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={props.onClose} aria-label="Close">
+          <XIcon className="h-4 w-4" />
+        </DesignButton>
+      </div>
+
+      <div className="flex gap-0.5 overflow-x-auto border-b border-border/60 px-1.5">
+        {TABS.map((t) => {
+          const active = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              onClick={() => selectTab(t.id)}
+              className={cn(
+                "relative flex shrink-0 whitespace-nowrap px-2.5 py-2 text-xs font-medium transition-colors duration-150 hover:transition-none",
+                active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {t.label}
+              {active && <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-primary" />}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="min-h-0 flex-1">{content}</div>
+    </div>
+  );
+}

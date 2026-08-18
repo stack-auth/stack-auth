@@ -1,9 +1,58 @@
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordLocalDashboardProcess } from "../lib/dev-env-state.js";
-import { configErrorLogPrefix, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, shouldRestartDashboard } from "./dev.js";
+import { composeDevChildEnv, configErrorLogPrefix, dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, runChildProcess, shellChildCommand, shouldRestartDashboard, validateDevCommandSelection } from "./dev.js";
+
+describe("validateDevCommandSelection", () => {
+  it("rejects combining --service-id with a positional command", () => {
+    expect(() => validateDevCommandSelection("web", ["pnpm", "dev"]))
+      .toThrow("Cannot combine --service-id <id> with a positional command after --");
+  });
+
+  it("preserves service-only and command-only modes", () => {
+    expect(() => validateDevCommandSelection("web", [])).not.toThrow();
+    expect(() => validateDevCommandSelection(undefined, ["pnpm", "dev"])).not.toThrow();
+  });
+});
+
+describe("shellChildCommand", () => {
+  it("wraps the command line in /bin/sh on POSIX platforms", () => {
+    expect(shellChildCommand("pnpm dev --port 3000", "darwin")).toEqual({
+      command: "/bin/sh",
+      args: ["-c", "pnpm dev --port 3000"],
+    });
+  });
+
+  it("defers to spawn's shell mode on Windows (quoting-safe)", () => {
+    // Hand-rolling the cmd.exe argv would make Node MSVCRT-escape embedded
+    // double quotes (`"` -> `\"`), which cmd does not parse — spawn's own
+    // shell mode is the only quoting-safe way to run a command line.
+    expect(shellChildCommand('node -e "console.log(1)"', "win32")).toEqual({
+      command: 'node -e "console.log(1)"',
+      args: [],
+      shell: true,
+    });
+  });
+});
+
+describe("composeDevChildEnv", () => {
+  it("lets the session credentials win over service env vars, which win over the process env", () => {
+    // The ordering IS the contract: a stale hexclave.* value baked into the
+    // config file must not shadow the dev session's live credentials.
+    expect(composeDevChildEnv(
+      { FROM_PROCESS: "process", SHADOWED_BY_SERVICE: "process", HEXCLAVE_PROJECT_ID: "process" },
+      { SHADOWED_BY_SERVICE: "service", HEXCLAVE_PROJECT_ID: "stale-config-value", FROM_SERVICE: "service" },
+      { HEXCLAVE_PROJECT_ID: "session" },
+    )).toEqual({
+      FROM_PROCESS: "process",
+      SHADOWED_BY_SERVICE: "service",
+      FROM_SERVICE: "service",
+      HEXCLAVE_PROJECT_ID: "session",
+    });
+  });
+});
 
 describe("isVersionNewer", () => {
   it("compares core versions numerically", () => {
@@ -85,6 +134,91 @@ describe("devDashboardCommandFromEnv", () => {
   it("ignores missing and blank custom dashboard commands", () => {
     expect(devDashboardCommandFromEnv({})).toBeUndefined();
     expect(devDashboardCommandFromEnv({ HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND: "   " })).toBeUndefined();
+  });
+});
+
+describe("dashboardEnvWithStatePath", () => {
+  it("passes the resolved state path to the dashboard child", () => {
+    expect(dashboardEnvWithStatePath({ NODE_ENV: "production" }, "C:\\Users\\Test\\AppData\\Local\\Hexclave\\dev-envs.json")).toEqual({
+      NODE_ENV: "production",
+      STACK_DEV_ENVS_PATH: "C:\\Users\\Test\\AppData\\Local\\Hexclave\\dev-envs.json",
+    });
+  });
+
+  it("preserves an explicit state path override", () => {
+    expect(dashboardEnvWithStatePath({
+      STACK_DEV_ENVS_PATH: "C:\\custom\\dev-envs.json",
+    }, "C:\\Users\\Test\\AppData\\Local\\Hexclave\\dev-envs.json").STACK_DEV_ENVS_PATH).toBe("C:\\custom\\dev-envs.json");
+  });
+});
+
+describe("runChildProcess", () => {
+  const args = [
+    "plain",
+    "space containing argument",
+    "a&b",
+    "%PATH%",
+    "!PATH!",
+    "^caret",
+    'a"quoted"b',
+    '{"json":"value"}',
+    "trailing\\",
+    'back\\slash"quote',
+    "",
+  ];
+
+  function createArgvShim() {
+    const tempDir = mkdtempSync(join(tmpdir(), "hexclave-windows-argv-"));
+    const outputPath = join(tempDir, "argv.json");
+    const scriptPath = join(tempDir, "print-argv.cjs");
+    const shimPath = join(tempDir, "print-argv.cmd");
+
+    writeFileSync(scriptPath, [
+      'const fs = require("node:fs");',
+      "const args = process.argv.slice(2);",
+      'fs.writeFileSync(process.env.HEXCLAVE_TEST_ARGV_OUTPUT, JSON.stringify(args));',
+    ].join("\n"));
+    writeFileSync(shimPath, [
+      "@echo off",
+      `node "%~dp0print-argv.cjs" %*`,
+    ].join("\r\n"));
+
+    return { outputPath, shimPath, tempDir };
+  }
+
+  it.skipIf(process.platform !== "win32")("preserves argv through a Windows command shim", async () => {
+    const { outputPath, shimPath, tempDir } = createArgvShim();
+
+    try {
+      await expect(runChildProcess({
+        command: shimPath,
+        args,
+      }, {
+        ...process.env,
+        HEXCLAVE_TEST_ARGV_OUTPUT: outputPath,
+      })).resolves.toBe(0);
+      expect(JSON.parse(readFileSync(outputPath, "utf8"))).toEqual(args);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform !== "win32")("resolves a bare command name to its Windows shim", async () => {
+    const { outputPath, tempDir } = createArgvShim();
+
+    try {
+      await expect(runChildProcess({
+        command: "print-argv",
+        args,
+      }, {
+        ...process.env,
+        PATH: `;${tempDir};${process.env.PATH ?? ""}`,
+        HEXCLAVE_TEST_ARGV_OUTPUT: outputPath,
+      })).resolves.toBe(0);
+      expect(JSON.parse(readFileSync(outputPath, "utf8"))).toEqual(args);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
 

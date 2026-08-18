@@ -21,7 +21,8 @@ import {
 } from "@/components/ui";
 import { WalkthroughProvider } from "@/components/walkthrough/walkthrough-provider";
 import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, hasNavigationItems, testAppPath, testItemPath, type NavigableAppFrontend } from "@/lib/apps-frontend";
-import { getEnabledAppIds, getEnabledNavigableAppIds } from "@/lib/apps-utils";
+import { getAppEnableConfigUpdate, getEnabledAppIds, getEnabledNavigableAppIds } from "@/lib/apps-utils";
+import { isAppNavigationItemVisible } from "@/lib/app-navigation-visibility";
 import { useUpdateConfig } from "@/components/config-update";
 import { cn } from "@/lib/utils";
 import {
@@ -125,6 +126,16 @@ const internalToolsItem: AppSection = {
       href: "/platform-analytics",
       match: (fullUrl: URL) => /^\/projects\/[^\/]+\/platform-analytics(\/.*)?$/.test(fullUrl.pathname),
     },
+    {
+      name: "Newly Created Projects",
+      href: "/newly-created-projects",
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/newly-created-projects(\/.*)?$/.test(fullUrl.pathname),
+    },
+    {
+      name: "Ask Hexclave History",
+      href: "/ask-hexclave-history",
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/ask-hexclave-history(\/.*)?$/.test(fullUrl.pathname),
+    },
   ],
 };
 
@@ -142,6 +153,11 @@ const projectSettingsItem: AppSection = {
       name: "Billing & Usage",
       href: "/project-settings/usage",
       match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings\/usage(\/.*)?$/.test(fullUrl.pathname),
+    },
+    {
+      name: "Secrets",
+      href: "/project-settings/secrets",
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings\/secrets(\/.*)?$/.test(fullUrl.pathname),
     },
     {
       name: "Project Keys",
@@ -430,12 +446,14 @@ function AppNavItem({
       return null;
     }
     const navigableFrontend: NavigableAppFrontend = appFrontend;
-    const items = navigableFrontend.navigationItems.map((navItem) => ({
-      name: navItem.displayName,
-      href: getItemPath(projectId, navigableFrontend, navItem),
-      external: navItem.external,
-      match: (fullUrl: URL) => testItemPath(projectId, navigableFrontend, navItem, fullUrl),
-    }));
+    const items = navigableFrontend.navigationItems
+      .filter((navItem) => isAppNavigationItemVisible(projectId, navItem))
+      .map((navItem) => ({
+        name: navItem.displayName,
+        href: getItemPath(projectId, navigableFrontend, navItem),
+        external: navItem.external,
+        match: (fullUrl: URL) => testItemPath(projectId, navigableFrontend, navItem, fullUrl),
+      }));
     return {
       name: app.displayName,
       appId,
@@ -507,7 +525,7 @@ function SidebarContent({
     /^\/projects\/[^\/]+\/(project-settings|project-keys|domains)(\/.*)?$/.test(pathname)
   );
   const [isInternalToolsExpanded, setIsInternalToolsExpanded] = useState(() =>
-    /^\/projects\/[^\/]+\/(platform-analytics|external-db-sync)(\/.*)?$/.test(pathname)
+    /^\/projects\/[^\/]+\/(platform-analytics|external-db-sync|newly-created-projects|ask-hexclave-history)(\/.*)?$/.test(pathname)
   );
   const internalToolsSection = useMemo<AppSection>(() => ({
     ...internalToolsItem,
@@ -614,7 +632,7 @@ function SidebarContent({
       </div>
 
       <div className={cn(
-        "sticky bottom-0 border-t border-black/[0.06] dark:border-foreground/10 py-3 transition-all duration-200 dark:backdrop-blur-xl",
+        "sticky bottom-0 border-t border-black/[0.06] dark:border-foreground/10 py-3 transition-all duration-200 bg-black/[0.03] dark:bg-foreground/[0.06] dark:backdrop-blur-xl",
         !isDrawer && "dark:rounded-b-2xl",
         isCollapsed ? "px-2" : "px-3",
       )}>
@@ -694,7 +712,7 @@ function SpotlightSearchWrapper({ projectId }: { projectId: string }) {
   const handleEnableApp = useCallback(async (appId: AppId) => {
     await updateConfig({
       adminApp: hexclaveAdminApp,
-      configUpdate: { [`apps.installed.${appId}.enabled`]: true },
+      configUpdate: getAppEnableConfigUpdate(appId),
       pushable: true,
     });
   }, [hexclaveAdminApp, updateConfig]);

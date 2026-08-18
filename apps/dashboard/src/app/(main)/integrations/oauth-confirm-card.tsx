@@ -7,7 +7,7 @@ import { Button, Card, CardContent, CardFooter, CardHeader, Input, Select, Selec
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
-import NeonLogo from "../../../../public/neon.png";
+import NeonLogo from "../../../../public/neon.webp";
 
 export default function ConfirmCard(props: {
   onContinue: (options: { projectId: string, projectName?: string }) => Promise<{ error: string } | undefined>,

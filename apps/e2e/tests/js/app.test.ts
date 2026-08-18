@@ -1,4 +1,5 @@
 import { isUuid } from "@hexclave/shared/dist/utils/uuids";
+import { KnownErrors } from "@hexclave/shared";
 import { it } from "../helpers";
 import { createApp, scaffoldProject } from "./js-helpers";
 
@@ -13,7 +14,7 @@ it("should sign up with credential", async ({ expect }) => {
   const result1 = await clientApp.signUpWithCredential({
     email: "test@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
 
   expect(result1).toMatchInlineSnapshot(`
@@ -60,6 +61,45 @@ it("should sign up without a verification callback when disabled", async ({ expe
     {
       "data": undefined,
       "status": "ok",
+    }
+  `);
+});
+
+it("should return a known error when signing up with an email used by another account", async ({ expect }) => {
+  const { clientApp } = await createApp();
+  const email = "already-used@test.com";
+
+  expect(await clientApp.signUpWithCredential({
+    email,
+    password: "password",
+    noVerificationCallback: true,
+  })).toMatchInlineSnapshot(`
+    {
+      "data": undefined,
+      "status": "ok",
+    }
+  `);
+
+  await clientApp.signOut();
+
+  const result = await clientApp.signUpWithCredential({
+    email,
+    password: "password",
+    noVerificationCallback: true,
+  });
+
+  expect(result.status).toBe("error");
+  if (result.status !== "error") {
+    throw new Error("Expected credential signup to return a known error");
+  }
+  expect(KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse.isInstance(result.error)).toBe(true);
+  expect({
+    status: result.status,
+    errorCode: result.error.errorCode,
+  }).toMatchInlineSnapshot(`
+    {
+      "errorCode": "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
+      "status": "error",
     }
   `);
 });
@@ -137,7 +177,7 @@ it("should throw a helpful error when destructuring user", async ({ expect }) =>
   const signUpResult = await clientApp.signUpWithCredential({
     email,
     password,
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   expect(signUpResult.status).toBe("ok");
 

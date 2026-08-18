@@ -1,8 +1,14 @@
-import { callHexclaveAskAi, type HexclaveAskDiagnostic } from "../../../packages/shared/src/ai/hexclave-ask";
+import {
+  callHexclaveAskAi,
+  getHexclaveAskRequestMetadata,
+  type HexclaveAskDiagnostic,
+  type HexclaveAskRequestMetadata,
+} from "../../../packages/shared/src/ai/hexclave-ask";
 import { remindersPrompt } from "@hexclave/shared/dist/ai/unified-prompts/reminders";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { createMcpHandler } from "@vercel/mcp-adapter";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
 
 import withPostHog from "@/analytics";
@@ -19,6 +25,15 @@ function getBackendApiBaseUrl(): string {
 
 const skillResourceUri = "https://skill.hexclave.com/full";
 const MAX_DIAGNOSTIC_BODY_LENGTH = 4_000;
+const requestMetadataStorage = new AsyncLocalStorage<HexclaveAskRequestMetadata>();
+
+function getCurrentRequestMetadata(): HexclaveAskRequestMetadata {
+  const metadata = requestMetadataStorage.getStore();
+  if (metadata == null) {
+    throw new HexclaveAssertionError("ask_hexclave was invoked without MCP request metadata");
+  }
+  return metadata;
+}
 
 async function fetchSkill(): Promise<string> {
   const res = await fetch(skillResourceUri, {
@@ -71,7 +86,7 @@ function logAskDiagnostic(diagnostic: HexclaveAskDiagnostic): void {
 }
 
 export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: string }) {
-  return createMcpHandler(
+  const handler = createMcpHandler(
     async (server) => {
       server.resource(
         "skill",
@@ -143,6 +158,7 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
             reason,
             userPrompt,
             conversationId,
+            requestMetadata: getCurrentRequestMetadata(),
             onDiagnostic: logAskDiagnostic,
           });
 
@@ -157,7 +173,7 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
             ? ""
             : `\n\n[conversationId: ${result.conversationId} - pass this value as the conversationId parameter in your next ask_hexclave call to continue this conversation]`;
           return {
-            content: [{ type: "text", text: `${result.text}${continuation}` }],
+            content: [{ type: "text", text: `${result.text}${continuation}\n\n---\n\n${remindersPrompt}` }],
           };
         },
       );
@@ -176,5 +192,10 @@ ${remindersPrompt}`,
       verboseLogs: true,
       maxDuration: 180,
     },
+  );
+
+  return (request: Request) => requestMetadataStorage.run(
+    getHexclaveAskRequestMetadata(request, "mcp-ask-hexclave"),
+    () => handler(request),
   );
 }

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { remindersPrompt } from "@hexclave/shared/dist/ai/unified-prompts/reminders";
 import { globalVar } from "@hexclave/shared/dist/utils/globals";
 
 import { handleAskToolRoute } from "./ask-route";
@@ -9,6 +10,14 @@ function restoreEnvVariable(name: string, value: string | undefined) {
   } else {
     process.env[name] = value;
   }
+}
+
+function normalizeReminders(responseText: string): string {
+  const remindersSuffix = `\n\n---\n\n${remindersPrompt}`;
+  if (!responseText.endsWith(remindersSuffix)) {
+    throw new Error("Expected ask response to end with the reminders prompt.");
+  }
+  return `${responseText.slice(0, -remindersSuffix.length)}\n\n<reminders>`;
 }
 
 describe("skill-site ask route", () => {
@@ -49,6 +58,14 @@ describe("skill-site ask route", () => {
           "mcpCallMetadata": {
             "conversationId": "conversation-123",
             "reason": "skill-site ask endpoint",
+            "requestMetadata": {
+              "mcpProtocolVersion": null,
+              "requestHost": "skill.hexclave.com",
+              "requestIp": "203.0.113.10",
+              "requestIpSource": "x-forwarded-for",
+              "transport": "skill-ask",
+              "userAgent": "skill-test-agent/1.0",
+            },
             "toolName": "ask_hexclave",
             "userPrompt": "Installing Hexclave in a static HTML app",
           },
@@ -76,12 +93,20 @@ describe("skill-site ask route", () => {
     globalThis.fetch = fetchMock;
 
     try {
-      const response = await handleAskToolRoute(new Request("https://skill.hexclave.com/ask?query=How%20do%20I%20add%20Hexclave%3F&context=Installing%20Hexclave%20in%20a%20static%20HTML%20app&conversationId=conversation-123&reason=caller-controlled"));
+      const response = await handleAskToolRoute(new Request("https://skill.hexclave.com/ask?query=How%20do%20I%20add%20Hexclave%3F&context=Installing%20Hexclave%20in%20a%20static%20HTML%20app&conversationId=conversation-123&reason=caller-controlled", {
+        headers: {
+          "user-agent": "skill-test-agent/1.0",
+          "x-forwarded-for": "203.0.113.10, 198.51.100.2",
+        },
+      }));
       expect(response.status).toBe(200);
-      expect(await response.text()).toMatchInlineSnapshot(`
+      const responseText = await response.text();
+      expect(normalizeReminders(responseText)).toMatchInlineSnapshot(`
         "Use the JS SDK or REST API.
 
-        [conversationId: conversation-123 - pass this value as the conversationId parameter in your next /ask request to continue this conversation]"
+        [conversationId: conversation-123 - pass this value as the conversationId parameter in your next /ask request to continue this conversation]
+
+        <reminders>"
       `);
       expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {
@@ -214,10 +239,13 @@ describe("skill-site ask route", () => {
     try {
       const response = await handleAskToolRoute(new Request("https://skill.hexclave.com/ask?question=Hello"));
       expect(response.status).toBe(200);
-      expect(await response.text()).toMatchInlineSnapshot(`
+      const responseText = await response.text();
+      expect(normalizeReminders(responseText)).toMatchInlineSnapshot(`
         "(empty response)
 
-        [conversationId: conversation-123 - pass this value as the conversationId parameter in your next /ask request to continue this conversation]"
+        [conversationId: conversation-123 - pass this value as the conversationId parameter in your next /ask request to continue this conversation]
+
+        <reminders>"
       `);
     } finally {
       globalThis.fetch = previousFetch;
@@ -234,7 +262,12 @@ describe("skill-site ask route", () => {
     try {
       const response = await handleAskToolRoute(new Request("https://skill.hexclave.com/ask?question=Hello"));
       expect(response.status).toBe(200);
-      expect(await response.text()).toBe("Start with the JavaScript SDK.");
+      const responseText = await response.text();
+      expect(normalizeReminders(responseText)).toMatchInlineSnapshot(`
+        "Start with the JavaScript SDK.
+
+        <reminders>"
+      `);
     } finally {
       globalThis.fetch = previousFetch;
     }
@@ -256,7 +289,7 @@ describe("skill-site ask route", () => {
         location: "skill-site-ask-request-error",
         level: "error",
         error: expect.objectContaining({
-          message: "Hexclave AI ask endpoint request failed",
+          message: expect.stringContaining("Hexclave AI ask endpoint request failed"),
           name: "HexclaveAssertionError",
         }),
       });

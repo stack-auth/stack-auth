@@ -4,6 +4,7 @@ import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { getJwtInfo } from "@hexclave/shared/dist/utils/jwt";
 import { publishableClientKeyNotNecessarySentinel } from "@hexclave/shared/dist/utils/oauth";
 import { filterUndefined, omit } from "@hexclave/shared/dist/utils/objects";
 import { wait } from "@hexclave/shared/dist/utils/promises";
@@ -88,6 +89,16 @@ export async function withInternalProject<T>(fn: () => Promise<T>): Promise<T> {
   return await backendContext.with({ projectKeys: InternalProjectKeys, userAuth: null }, fn);
 }
 
+/**
+ * Team that owns the internal project, mirroring `internalTeamId` in `apps/backend/prisma/seed.ts`.
+ *
+ * Platform-wide endpoints authorize on membership of this team (see `isPlatformAdmin` on the backend),
+ * not on merely holding an internal-project session — the internal publishable key is public, so any
+ * signed-in internal user would otherwise qualify. Tests that need a platform admin must therefore join
+ * the seeded team rather than just signing up.
+ */
+export const INTERNAL_PROJECT_OWNER_TEAM_ID = "a23e1b7f-ab18-41fc-9ee6-7a9ca9fa543c";
+
 export const InternalProjectClientKeys = Object.freeze({
   projectId: STACK_INTERNAL_PROJECT_ID,
   publishableClientKey: STACK_INTERNAL_PROJECT_CLIENT_KEY,
@@ -153,7 +164,34 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
     expectSnakeCase(body, "req.body");
   }
   const projectKeys = backendContext.value.projectKeys;
-  const userAuth = userAuthOverride ?? backendContext.value.userAuth;
+  let userAuth = userAuthOverride ?? backendContext.value.userAuth;
+  // Access tokens live for only 60s in dev/CI (HEXCLAVE_ACCESS_TOKEN_EXPIRATION_TIME), and every request we send carries
+  // the context user's access token, even server-access ones. So any test that spends more than a minute between signing a
+  // user up and its next request fails with ACCESS_TOKEN_EXPIRED, no matter which access type it uses. Refresh the token
+  // the way a real client would instead. Tests that want to observe an expired token can pass an explicit `userAuth`
+  // (skipped below) or leave the refresh token unset.
+  if (userAuthOverride === undefined && projectKeys !== "no-project" && userAuth?.accessToken && userAuth.refreshToken) {
+    const jwtInfo = await getJwtInfo({ jwt: userAuth.accessToken });
+    const expiresAt = jwtInfo.status === "ok" && typeof jwtInfo.data.payload.exp === "number"
+      ? jwtInfo.data.payload.exp * 1000
+      : undefined;
+    if (expiresAt !== undefined && expiresAt <= Date.now() + 5_000) {
+      const refreshResponse = await niceBackendFetch("/api/v1/auth/sessions/current/refresh", {
+        method: "POST",
+        accessType: "client",
+        userAuth: {
+          refreshToken: userAuth.refreshToken,
+        },
+      });
+      if (refreshResponse.status === 200 && typeof refreshResponse.body === "object" && refreshResponse.body !== null && "access_token" in refreshResponse.body && typeof refreshResponse.body.access_token === "string") {
+        userAuth = {
+          ...userAuth,
+          accessToken: refreshResponse.body.access_token,
+        };
+        backendContext.set({ userAuth });
+      }
+    }
+  }
   const fullUrl = new URL(url, STACK_BACKEND_BASE_URL);
   if (fullUrl.origin !== new URL(STACK_BACKEND_BASE_URL).origin) throw new HexclaveAssertionError(`Invalid niceBackendFetch origin: ${fullUrl.origin}`);
   if (fullUrl.protocol !== new URL(STACK_BACKEND_BASE_URL).protocol) throw new HexclaveAssertionError(`Invalid niceBackendFetch protocol: ${fullUrl.protocol}`);
@@ -297,6 +335,13 @@ export namespace Auth {
       accessToken: sessionResponse.body.access_token,
       refreshToken: sessionResponse.body.refresh_token,
     };
+  }
+
+  export async function fastSignUpWithEmail(email = backendContext.value.mailbox.emailAddress) {
+    return await fastSignUp({
+      primary_email: email,
+      primary_email_verified: true,
+    });
   }
 
   export async function ensureParsableAccessToken() {
@@ -560,7 +605,7 @@ export namespace Auth {
   }
 
   export namespace Password {
-    export async function signUpWithEmail(options: { password?: string, noWaitForEmail?: boolean, turnstileToken?: string } = {}) {
+    export async function signUpWithEmail(options: { password?: string, sendVerificationEmail?: boolean, waitForVerificationEmail?: boolean, turnstileToken?: string } = {}) {
       const mailbox = backendContext.value.mailbox;
       const email = mailbox.emailAddress;
       const password = options.password ?? generateSecureRandomString();
@@ -570,7 +615,7 @@ export namespace Auth {
         body: filterUndefined({
           email,
           password,
-          verification_callback_url: "http://localhost:12345/some-callback-url",
+          verification_callback_url: options.sendVerificationEmail ? "http://localhost:12345/some-callback-url" : undefined,
           bot_challenge_token: options.turnstileToken ?? mockTurnstileTokens.signUpOk,
         }),
       });
@@ -584,8 +629,9 @@ export namespace Auth {
         headers: expect.anything(),
       });
 
-      // Wait for the verification email to arrive (unless explicitly disabled)
-      if (!options.noWaitForEmail) {
+      // Verification emails dominated the baseline outbox and slowed the suite,
+      // so only tests asserting verification behavior opt into sending one.
+      if (options.sendVerificationEmail && options.waitForVerificationEmail !== false) {
         await mailbox.waitForMessagesWithSubject("Verify your email");
       }
 
@@ -782,6 +828,7 @@ export namespace Auth {
     export async function authorize(options: TurnstileTestOptions & {
       redirectUrl?: string,
       errorRedirectUrl?: string,
+      afterCallbackRedirectUrl?: string,
       forceBranchId?: string,
       includeClientSecret?: boolean,
     } = {}) {
@@ -792,6 +839,7 @@ export namespace Auth {
           ...filterUndefined({
             redirect_uri: options.redirectUrl ?? undefined,
             error_redirect_uri: options.errorRedirectUrl ?? undefined,
+            after_callback_redirect_url: options.afterCallbackRedirectUrl ?? undefined,
           }),
         },
       });
@@ -1305,36 +1353,67 @@ export namespace InternalApiKey {
 // appears, the cap adds no latency on the happy path; it only bounds the wait when
 // materialization has genuinely stalled.
 //
-// The cap is half of Vitest's per-test timeout (see apps/e2e/vitest.config.ts: 60s in CI,
-// 30s locally). This wait runs *inside* Project.create, so a cap at or above the test
-// timeout would turn slow materialization into a hard test timeout — even for tests that
-// never touch billing (e.g. outbox rendering-state tests). Bounding it at half the budget
-// guarantees the wait alone can never time a test out and still leaves ample time for the
-// test body, while giving a stalled TimeFold a fair chance to catch up.
+// The cap is fixed below the 30s minimum timeout declared by any e2e test. This wait runs
+// *inside* Project.create, so keeping it below the suite-wide minimum ensures that slow
+// materialization cannot consume an entire test budget — even for tests that never touch
+// billing (e.g. outbox rendering-state tests). The deadline is enforced before each poll,
+// by aborting the request when its remaining budget expires, and by clamping the sleep
+// between polls to that remaining budget.
 async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<void> {
   const pollIntervalMs = 200;
-  const timeoutMs = (process.env.CI ? 60_000 : 30_000) / 2;
+  const timeoutMs = 15_000;
   const startedAt = performance.now();
+  const deadline = startedAt + timeoutMs;
+  const warnTimeout = () => {
+    const elapsedMs = performance.now() - startedAt;
+    console.warn(
+      `[billing-entitlement-wait] Timed out waiting for team ${ownerTeamId} after ${elapsedMs.toFixed(0)} ms`,
+    );
+  };
 
   while (true) {
-    const quantity = await withInternalProject(async () => {
-      const response = await niceBackendFetch(
-        `/api/v1/payments/items/team/${encodeURIComponent(ownerTeamId)}/${ITEM_IDS.analyticsTimeoutSeconds}`,
-        { accessType: "server" },
-      );
-      if (response.status !== 200) {
-        throw new HexclaveAssertionError("Failed to read billing-team item quantity while waiting for plan entitlement", { ownerTeamId, response });
+    const remainingMs = deadline - performance.now();
+    if (remainingMs <= 0) {
+      warnTimeout();
+      return;
+    }
+
+    const abortController = new AbortController();
+    const abortTimeout = setTimeout(() => abortController.abort(), remainingMs);
+    let quantity: number;
+    try {
+      quantity = await withInternalProject(async () => {
+        const response = await niceBackendFetch(
+          `/api/v1/payments/items/team/${encodeURIComponent(ownerTeamId)}/${ITEM_IDS.analyticsTimeoutSeconds}`,
+          { accessType: "server", signal: abortController.signal },
+        );
+        if (response.status !== 200) {
+          throw new HexclaveAssertionError("Failed to read billing-team item quantity while waiting for plan entitlement", { ownerTeamId, response });
+        }
+        const quantity = response.body.quantity;
+        if (typeof quantity !== "number") {
+          throw new HexclaveAssertionError("Expected billing-team item quantity to be a number", { ownerTeamId, quantity });
+        }
+        return quantity;
+      });
+    } catch (error) {
+      if (abortController.signal.aborted) {
+        warnTimeout();
+        return;
       }
-      const quantity = response.body.quantity;
-      if (typeof quantity !== "number") {
-        throw new HexclaveAssertionError("Expected billing-team item quantity to be a number", { ownerTeamId, quantity });
-      }
-      return quantity;
-    });
+      throw error;
+    } finally {
+      clearTimeout(abortTimeout);
+    }
     if (quantity > 0) return;
 
-    if (performance.now() - startedAt > timeoutMs) return;
-    await wait(pollIntervalMs);
+    const remainingAfterPollMs = deadline - performance.now();
+    if (remainingAfterPollMs <= 0) {
+      warnTimeout();
+      return;
+    }
+
+    await wait(Math.min(pollIntervalMs, remainingAfterPollMs));
   }
 }
 

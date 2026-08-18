@@ -22,7 +22,7 @@ function codeBlock(language: string, value: string): string {
 
 function getCursorInstallUrl(mcpUrl: string): string {
   const url = new URL("cursor://anysphere.cursor-deeplink/mcp/install");
-  url.searchParams.set("name", "stack-auth");
+  url.searchParams.set("name", "hexclave");
   url.searchParams.set("config", Buffer.from(JSON.stringify({ url: mcpUrl })).toString("base64url"));
   return url.toString();
 }
@@ -31,7 +31,7 @@ function getVsCodeInstallUrl(mcpUrl: string): string {
   const url = new URL("https://insiders.vscode.dev/redirect");
   const installPayload = JSON.stringify({
     type: "http",
-    name: "stack-auth",
+    name: "hexclave",
     url: mcpUrl,
   });
   url.searchParams.set("url", `vscode:mcp/install?${encodeURIComponent(installPayload)}`);
@@ -49,7 +49,7 @@ function getTabs(mcpUrl: string, cursorInstallUrl: string, vsCodeInstallUrl: str
         <p>Add the following to your <code>mcp.json</code> file:</p>
         ${codeBlock("mcp.json", `{
   "mcpServers": {
-    "stack-auth": {
+    "hexclave": {
       "url": "${mcpUrl}"
     }
   }
@@ -62,7 +62,7 @@ function getTabs(mcpUrl: string, cursorInstallUrl: string, vsCodeInstallUrl: str
         <p><a class="button" href="${escapeHtml(vsCodeInstallUrl)}"><span class="button-icon">VS</span>Add to VS Code</a></p>
         <h2>Manual Installation</h2>
         <p>Open a terminal and run the following command:</p>
-        ${codeBlock("Terminal", `code --add-mcp '{"type":"http","name":"stack-auth","url":"${mcpUrl}"}'`)}
+        ${codeBlock("Terminal", `code --add-mcp '{"type":"http","name":"hexclave","url":"${mcpUrl}"}'`)}
         <p>Then, from inside VS Code, open the <code>.vscode/mcp.json</code> file and click "Start server".</p>`,
     },
     {
@@ -70,26 +70,26 @@ function getTabs(mcpUrl: string, cursorInstallUrl: string, vsCodeInstallUrl: str
       label: "Codex",
       content: `<p>Configure Hexclave MCP in Codex CLI and the Codex IDE extension. The configuration is shared between both.</p>
         <p>Open a terminal and run the following command:</p>
-        ${codeBlock("Terminal", `codex mcp add stack-auth --url ${mcpUrl}`)}
+        ${codeBlock("Terminal", `codex mcp add hexclave --url ${mcpUrl}`)}
         <p>Verify it is configured:</p>
         ${codeBlock("Terminal", "codex mcp list")}
         <h2>Manual Installation</h2>
         <p>Alternatively, add the following to <code>~/.codex/config.toml</code>:</p>
-        ${codeBlock("config.toml", `[mcp_servers.stack-auth]
+        ${codeBlock("config.toml", `[mcp_servers.hexclave]
 url = "${mcpUrl}"`)}`,
     },
     {
       id: "claudecode",
       label: "Claude Code",
       content: `<p>Open a terminal and run the following command:</p>
-        ${codeBlock("Terminal", `claude mcp add --transport http stack-auth ${mcpUrl}`)}
+        ${codeBlock("Terminal", `claude mcp add --transport http hexclave ${mcpUrl}`)}
         <p>From within Claude Code, you can use the <code>/mcp</code> command to get more information about the server.</p>`,
     },
     {
       id: "claudedesktop",
       label: "Claude Desktop",
       content: `<p>Open Claude Desktop and navigate to Settings &gt; Connectors &gt; Add Custom Connector.</p>
-        <p>Enter the name as <code>stack-auth</code> and the remote MCP server URL as <code>${escapeHtml(mcpUrl)}</code>.</p>`,
+        <p>Enter the name as <code>hexclave</code> and the remote MCP server URL as <code>${escapeHtml(mcpUrl)}</code>.</p>`,
     },
     {
       id: "windsurf",
@@ -97,7 +97,7 @@ url = "${mcpUrl}"`)}`,
       content: `<p>Copy the following JSON to your Windsurf MCP config file:</p>
         ${codeBlock("mcp.json", `{
   "mcpServers": {
-    "stack-auth": {
+    "hexclave": {
       "serverUrl": "${mcpUrl}"
     }
   }
@@ -118,7 +118,7 @@ url = "${mcpUrl}"`)}`,
       content: `<p>Add the following JSON to your Gemini CLI configuration file (<code>~/.gemini/settings.json</code>):</p>
         ${codeBlock("settings.json", `{
   "mcpServers": {
-    "stack-auth": {
+    "hexclave": {
       "httpUrl": "${mcpUrl}",
       "headers": {
         "Accept": "application/json, text/event-stream"
@@ -143,7 +143,7 @@ Add the following to your \`mcp.json\` file:
 \`\`\`json
 {
   "mcpServers": {
-    "stack-auth": {
+    "hexclave": {
       "url": "${mcpUrl}"
     }
   }
@@ -161,7 +161,7 @@ Add the following to your \`mcp.json\` file:
 Open a terminal and run the following command:
 
 \`\`\`
-code --add-mcp '{"type":"http","name":"stack-auth","url":"${mcpUrl}"}'
+code --add-mcp '{"type":"http","name":"hexclave","url":"${mcpUrl}"}'
 \`\`\`
 
 Then, from inside VS Code, open the .vscode/mcp.json file and click "Start server".
@@ -172,7 +172,7 @@ Then, from inside VS Code, open the .vscode/mcp.json file and click "Start serve
 
 Open a terminal and run the following command:
 \`\`\`
-codex mcp add stack-auth --url ${mcpUrl}
+codex mcp add hexclave --url ${mcpUrl}
 \`\`\`
 
 Verify it is configured:
@@ -182,7 +182,7 @@ codex mcp list
 
 Alternatively, add the following to \`~/.codex/config.toml\`:
 \`\`\`toml
-[mcp_servers.stack-auth]
+[mcp_servers.hexclave]
 url = "${mcpUrl}"
 \`\`\`
 </details>
@@ -192,7 +192,7 @@ url = "${mcpUrl}"
 
 Open a terminal and run the following command:
 \`\`\`
-claude mcp add --transport http stack-auth ${mcpUrl}
+claude mcp add --transport http hexclave ${mcpUrl}
 \`\`\`
 From within Claude Code, you can use the \`/mcp\` command to get more information about the server.
 </details>
@@ -202,7 +202,7 @@ From within Claude Code, you can use the \`/mcp\` command to get more informatio
 
 Open Claude Desktop and navigate to Settings > Connectors > Add Custom Connector.
 
-Enter the name as \`stack-auth\` and the remote MCP server URL as \`${mcpUrl}\`.
+Enter the name as \`hexclave\` and the remote MCP server URL as \`${mcpUrl}\`.
 </details>
 
 <details name="mcp-install-instructions">
@@ -212,7 +212,7 @@ Copy the following JSON to your Windsurf MCP config file:
 \`\`\`json
 {
   "mcpServers": {
-    "stack-auth": {
+    "hexclave": {
       "serverUrl": "${mcpUrl}"
     }
   }
@@ -240,7 +240,7 @@ Add the following JSON to your Gemini CLI configuration file (\`~/.gemini/settin
 \`\`\`json
 {
   "mcpServers": {
-    "stack-auth": {
+    "hexclave": {
       "httpUrl": "${mcpUrl}",
       "headers": {
         "Accept": "application/json, text/event-stream"

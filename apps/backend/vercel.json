@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "elysia",
   "crons": [
     {
       "path": "/api/latest/internal/email-queue-step",
@@ -11,6 +12,10 @@
     },
     {
       "path": "/api/latest/internal/external-db-sync/sequencer",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/latest/internal/workflow-engine-step",
       "schedule": "* * * * *"
     }
   ],

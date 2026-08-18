@@ -14,13 +14,23 @@ import { StripePaymentElementOptions } from "@stripe/stripe-js";
 import { FlaskIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
-const paymentElementOptions = {
+const paymentElementOptionsWithWallets = {
   layout: "auto",
   defaultValues: {
   },
   wallets: {
     applePay: "auto",
     googlePay: "auto",
+  },
+} satisfies StripePaymentElementOptions;
+
+const paymentElementOptionsCardsOnly = {
+  layout: "auto",
+  defaultValues: {
+  },
+  wallets: {
+    applePay: "never",
+    googlePay: "never",
   },
 } satisfies StripePaymentElementOptions;
 
@@ -42,17 +52,23 @@ function getStripeConfirmationError(result: unknown) {
   return {
     type: "type" in error && typeof error.type === "string" ? error.type : null,
     message: "message" in error && typeof error.message === "string" ? error.message : null,
+    code: "code" in error && typeof error.code === "string" ? error.code : null,
   };
 }
 
 type Props = {
-  setupSubscription: () => Promise<string | null>,
+  setupSubscription: () => Promise<{ clientSecret: string, stripeIntentType: "payment" | "setup" } | null>,
   stripeAccountId: string,
   fullCode: string,
   returnUrl?: string,
   disabled?: boolean,
   chargesEnabled: boolean,
   isFree: boolean,
+  /**
+   * When true, Payment Element is collecting a SetupIntent (free trial). Disable
+   * wallet buttons — they often 400 elements/sessions for setup mode on Connect.
+   */
+  setupMode?: boolean,
 };
 
 export function PaymentsNotEnabledCard() {
@@ -78,9 +94,16 @@ export function PaymentsNotEnabledCard() {
 export function TestModeBypassForm({
   onBypass,
   disabled,
+  ignoresFreeTrial,
 }: {
   onBypass: () => Promise<void>,
   disabled?: boolean,
+  /**
+   * When the selected product/price has a free trial configured, test mode
+   * still grants access immediately (no Stripe trial). Surface that so buyers
+   * don't think the trial path was exercised.
+   */
+  ignoresFreeTrial?: boolean,
 }) {
   const [bypassError, setBypassError] = useState<string | null>(null);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -110,6 +133,15 @@ export function TestModeBypassForm({
         </Typography>
       </div>
 
+      {ignoresFreeTrial === true && (
+        <DesignAlert
+          variant="warning"
+          title="Free trial skipped in test mode"
+          description="Test mode grants the product immediately. It does not create a free trial or defer the first charge. Turn off test mode to exercise the real free-trial checkout."
+          className="w-full max-w-xs text-left"
+        />
+      )}
+
       <DesignButton
         disabled={disabled || isCompleting}
         loading={isCompleting}
@@ -138,6 +170,7 @@ export function CheckoutForm({
   disabled,
   chargesEnabled,
   isFree,
+  setupMode = false,
 }: Props) {
   const stripe = useStripe();
   const elements = useElements();
@@ -195,19 +228,32 @@ export function CheckoutForm({
       setMessage(getErrorMessage(setupResult.error, "We couldn't complete the purchase. Please try again."));
       return;
     }
-    const clientSecret = setupResult.data;
+    const setupData = setupResult.data;
 
-    if (clientSecret == null) {
+    if (setupData == null) {
       setMessage("We couldn't complete the purchase. Please try again.");
       return;
     }
-    const confirmResult = await Result.fromPromise(activeStripe.confirmPayment({
-      elements: activeElements,
-      clientSecret,
-      confirmParams: {
-        return_url: stripeReturnUrl.toString(),
-      },
-    }));
+    // Free trials return a SetupIntent (seti_…) so we collect a card without
+    // charging; paid starts return a PaymentIntent (pi_…). confirmPayment on a
+    // setup secret fails with "No such payment_intent".
+    const confirmResult = await Result.fromPromise(
+      setupData.stripeIntentType === "setup"
+        ? activeStripe.confirmSetup({
+          elements: activeElements,
+          clientSecret: setupData.clientSecret,
+          confirmParams: {
+            return_url: stripeReturnUrl.toString(),
+          },
+        })
+        : activeStripe.confirmPayment({
+          elements: activeElements,
+          clientSecret: setupData.clientSecret,
+          confirmParams: {
+            return_url: stripeReturnUrl.toString(),
+          },
+        })
+    );
     if (confirmResult.status === "error") {
       setMessage(getErrorMessage(confirmResult.error, "An unexpected error occurred."));
       return;
@@ -217,11 +263,9 @@ export function CheckoutForm({
     if (error == null) {
       return;
     }
-    if (error.type === "card_error" || error.type === "validation_error") {
-      setMessage(error.message ?? "An unexpected error occurred.");
-    } else {
-      setMessage("An unexpected error occurred.");
-    }
+    // Always surface Stripe's message — invalid_request_error / mode mismatches
+    // used to collapse to a useless "unexpected error" and hide the real cause.
+    setMessage(error.message ?? "An unexpected error occurred.");
   };
 
   if (!chargesEnabled) {
@@ -230,7 +274,15 @@ export function CheckoutForm({
 
   return (
     <DesignCard glassmorphic contentClassName="space-y-5 p-5 sm:p-6">
-      {!isFree && <PaymentElement options={paymentElementOptions} />}
+      {!isFree && (
+        <PaymentElement
+          options={setupMode ? paymentElementOptionsCardsOnly : paymentElementOptionsWithWallets}
+          onLoadError={(event) => {
+            const loadMessage = event.error.message;
+            setMessage(loadMessage != null && loadMessage !== "" ? loadMessage : "Stripe payment form failed to load.");
+          }}
+        />
+      )}
       <DesignButton
         disabled={(!isFree && (!stripe || !elements)) || disabled || !chargesEnabled}
         onClick={handleSubmit}

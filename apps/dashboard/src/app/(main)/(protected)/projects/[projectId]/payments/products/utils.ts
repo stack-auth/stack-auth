@@ -1,7 +1,13 @@
 import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import { getStripeOneTimeMinAmount } from "@hexclave/shared/dist/payments/stripe-limits";
-import { isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@hexclave/shared/dist/schema-fields";
+import { isValidUserSpecifiedId, moneyAmountSchema, sanitizeUserSpecifiedId } from "@hexclave/shared/dist/schema-fields";
+import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
+import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
 import type { DayInterval } from "@hexclave/shared/dist/utils/dates";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+
+const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "USD")
+  ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
 
 // ============================================================================
 // Types
@@ -161,16 +167,20 @@ export function createFreePrice(): { [priceId: string]: Price } {
  * stack-shared/payments/stripe-limits; recurring $0 subs are allowed.
  */
 export function getPriceCheckoutError(price: Price): string | null {
-  const amount = Number(price.USD);
-  if (!Number.isFinite(amount) || amount < 0) {
+  if (price.USD == null || !moneyAmountSchema(USD_CURRENCY).defined().isValidSync(price.USD)) {
     return `Price amount is not a valid non-negative number (got ${JSON.stringify(price.USD)})`;
   }
+  const amountStripeUnits = moneyAmountToStripeUnits(price.USD as MoneyAmount, USD_CURRENCY);
   if (!price.interval) {
     const minOneTime = getStripeOneTimeMinAmount('USD');
-    if (amount === 0) {
+    const minOneTimeStripeUnits = moneyAmountToStripeUnits(
+      minOneTime.toFixed(USD_CURRENCY.decimals) as MoneyAmount,
+      USD_CURRENCY,
+    );
+    if (amountStripeUnits === 0) {
       return "$0 one-time prices can't be checked out — switch to a recurring interval to offer it for free.";
     }
-    if (amount < minOneTime) {
+    if (amountStripeUnits < minOneTimeStripeUnits) {
       return `One-time prices must be at least $${minOneTime.toFixed(2)} (Stripe minimum) — customers can't complete checkout below this amount.`;
     }
   }
