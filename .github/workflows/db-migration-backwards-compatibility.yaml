@@ -157,6 +157,20 @@ jobs:
       - name: Wait on ClickHouse
         run: pnpm exec wait-on http://localhost:8136/ping
 
+      # The deployments e2e tests hit s3mock and fly-mock directly; marshal's /health does
+      # not touch either, so wait on them explicitly when the base branch provides them.
+      - name: Wait on s3mock
+        run: |
+          if grep -q '^  s3mock:' docker/dependencies/docker.compose.yaml; then
+            pnpm exec wait-on http://localhost:8121/
+          fi
+
+      - name: Wait on fly-mock
+        run: |
+          if grep -q '^  fly-mock:' docker/dependencies/docker.compose.yaml; then
+            pnpm exec wait-on http://localhost:8148/health
+          fi
+
       - name: Initialize database
         run: pnpm run db:init
 
@@ -188,6 +202,19 @@ jobs:
       - name: Backfill Bulldozer from Postgres
         if: ${{ hashFiles('apps/bulldozer-js/package.json') != '' }}
         run: pnpm run db:backfill-bulldozer-from-prisma
+
+      # Marshal (the deployments runtime) talks to the fly-mock + s3mock
+      # containers; the deployments e2e tests drive it through the backend.
+      - name: Start marshal in background
+        if: ${{ hashFiles('apps/marshal/package.json') != '' }}
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        with:
+          run: NODE_ENV=test pnpm run start:marshal &
+          wait-on: |
+            http://localhost:8147/health
+          tail: true
+          wait-for: 30s
+          log-output-if: true
 
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
@@ -408,6 +435,14 @@ jobs:
       - name: Wait on ClickHouse
         run: pnpm exec wait-on http://localhost:8136/ping
 
+      # The deployments e2e tests hit s3mock and fly-mock directly; marshal's /health does
+      # not touch either, so wait on them explicitly (fly-mock is a build:-from-context image).
+      - name: Wait on s3mock
+        run: pnpm exec wait-on http://localhost:8121/
+
+      - name: Wait on fly-mock
+        run: pnpm exec wait-on http://localhost:8148/health
+
       - name: Initialize database
         run: pnpm run db:init
   
@@ -434,6 +469,18 @@ jobs:
       # fresh bulldozer-js store so the backend's payment reads aren't empty.
       - name: Backfill Bulldozer from Postgres
         run: pnpm run db:backfill-bulldozer-from-prisma
+
+      # Marshal (the deployments runtime) talks to the fly-mock + s3mock
+      # containers; the deployments e2e tests drive it through the backend.
+      - name: Start marshal in background
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        with:
+          run: NODE_ENV=test pnpm run start:marshal &
+          wait-on: |
+            http://localhost:8147/health
+          tail: true
+          wait-for: 30s
+          log-output-if: true
 
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
