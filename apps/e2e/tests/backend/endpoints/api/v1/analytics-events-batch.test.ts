@@ -110,7 +110,7 @@ it("returns ACCESS_TYPE_REQUIRED instead of crashing when no project access is p
         "code": "ACCESS_TYPE_REQUIRED",
         "error": deindent\`
           You must specify an access level for this Hexclave project. Make sure project API keys are provided (eg. x-hexclave-publishable-client-key) and you set the x-hexclave-access-type header to 'client', 'server', or 'admin'. (The legacy x-stack-* equivalents are also accepted.)
-
+          
           For more information, see the docs on REST API authentication: https://docs.hexclave.com/api/overview#authentication
         \`,
       },
@@ -2380,7 +2380,10 @@ it("accepts $log events with message/level and stamps producer/runtime server-si
   `);
 
   const queryRes = await queryAnalyticsUntil({
-    query: "SELECT event_type, message, level, producer, runtime, service_namespace, service_name, service_version, deployment_environment_name, JSONExtractString(resource_attributes, 'suite') AS resource_suite FROM logs WHERE session_replay_segment_id = {segId:String}",
+    // The log message lives in the canonical OTel `body` column (a JSON
+    // envelope of {type, value}); `logs` deliberately exposes no `message`
+    // column — that name belongs to the events surface.
+    query: "SELECT event_type, JSONExtractString(body, 'value') AS message, level, producer, runtime, service_namespace, service_name, service_version, deployment_environment_name, JSONExtractString(resource_attributes, 'suite') AS resource_suite FROM logs WHERE session_replay_segment_id = {segId:String}",
     params: { segId: sessionReplaySegmentId },
   }, (r) => Array.isArray(r.body.result) && r.body.result.length === 1);
   // producer/runtime come from the route, never from the client: client auth

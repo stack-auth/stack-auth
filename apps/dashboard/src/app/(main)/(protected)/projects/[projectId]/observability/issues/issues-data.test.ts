@@ -111,27 +111,81 @@ describe("getIssueFacetsQuery", () => {
 });
 
 describe("parseIssueSparklineRows", () => {
-  it("returns an empty series for a requested hash with no occurrences", () => {
-    const parsed = parseIssueSparklineRows([], [SAMPLE_HASH_A, SAMPLE_HASH_B]);
-    expect(parsed.get(SAMPLE_HASH_A)).toEqual([]);
-    expect(parsed.get(SAMPLE_HASH_B)).toEqual([]);
+  // 12:30 UTC — deliberately mid-bucket so the tests exercise the flooring.
+  const NOW_MS = Date.parse("2026-07-31T12:30:00.000Z");
+  const LATEST_BUCKET_MS = Date.parse("2026-07-31T12:00:00.000Z");
+  const EARLIEST_BUCKET_MS = LATEST_BUCKET_MS - 23 * 3_600_000;
+
+  it("returns a dense zero-filled grid for a requested hash with no occurrences", () => {
+    const parsed = parseIssueSparklineRows([], [SAMPLE_HASH_A, SAMPLE_HASH_B], 24, NOW_MS);
+    const series = parsed.get(SAMPLE_HASH_A);
+    expect(series).toHaveLength(24);
+    expect(series?.[0]).toEqual({ bucketMs: EARLIEST_BUCKET_MS, occurrences: 0 });
+    expect(series?.[23]).toEqual({ bucketMs: LATEST_BUCKET_MS, occurrences: 0 });
+    expect(series?.every((bucket) => bucket.occurrences === 0)).toBe(true);
+    expect(parsed.get(SAMPLE_HASH_B)).toHaveLength(24);
   });
 
-  it("parses ClickHouse timestamps as UTC and string counts as numbers", () => {
+  it("places parsed rows onto the grid, leaving gaps at zero", () => {
     const parsed = parseIssueSparklineRows(
       [{ issue_hash: SAMPLE_HASH_A, bucket_start: "2026-07-31 12:00:00.000", occurrences: "17" }],
       [SAMPLE_HASH_A],
+      24,
+      NOW_MS,
     );
-    expect(parsed.get(SAMPLE_HASH_A)).toEqual([
-      { bucketMs: Date.parse("2026-07-31T12:00:00.000Z"), occurrences: 17 },
-    ]);
+    const series = parsed.get(SAMPLE_HASH_A);
+    expect(series?.[23]).toEqual({ bucketMs: LATEST_BUCKET_MS, occurrences: 17 });
+    // Every other bucket still exists and is zero — the sparkline renders
+    // buckets adjacently, so a missing bucket would misplace every later bar.
+    expect(series?.filter((bucket) => bucket.occurrences !== 0)).toHaveLength(1);
+  });
+
+  it("anchors the grid to ClickHouse time when the browser clock differs", () => {
+    const parsed = parseIssueSparklineRows(
+      [{
+        issue_hash: SAMPLE_HASH_A,
+        bucket_start: "2026-07-31 14:00:00.000",
+        occurrences: 3,
+        query_now: "2026-07-31 14:30:00.000",
+      }],
+      [SAMPLE_HASH_A],
+      24,
+      NOW_MS,
+    );
+    const series = parsed.get(SAMPLE_HASH_A);
+    expect(series?.[23]).toEqual({
+      bucketMs: Date.parse("2026-07-31T14:00:00.000Z"),
+      occurrences: 3,
+    });
+  });
+
+  it("drops the clipped partial bucket outside the grid instead of misplacing it", () => {
+    const beforeEarliest = new Date(EARLIEST_BUCKET_MS - 3_600_000).toISOString().replace("T", " ").replace("Z", "");
+    const parsed = parseIssueSparklineRows(
+      [{ issue_hash: SAMPLE_HASH_A, bucket_start: beforeEarliest, occurrences: 5 }],
+      [SAMPLE_HASH_A],
+      24,
+      NOW_MS,
+    );
+    expect(parsed.get(SAMPLE_HASH_A)?.every((bucket) => bucket.occurrences === 0)).toBe(true);
   });
 
   it("throws when a row carries a hash nobody asked for", () => {
     expect(() => parseIssueSparklineRows(
       [{ issue_hash: SAMPLE_HASH_B, bucket_start: "2026-07-31 12:00:00.000", occurrences: 1 }],
       [SAMPLE_HASH_A],
+      24,
+      NOW_MS,
     )).toThrow(/unrequested issue hash/);
+  });
+
+  it("throws on a bucket that is not aligned to the grid", () => {
+    expect(() => parseIssueSparklineRows(
+      [{ issue_hash: SAMPLE_HASH_A, bucket_start: "2026-07-31 11:30:00.000", occurrences: 1 }],
+      [SAMPLE_HASH_A],
+      24,
+      NOW_MS,
+    )).toThrow(/not aligned/);
   });
 });
 

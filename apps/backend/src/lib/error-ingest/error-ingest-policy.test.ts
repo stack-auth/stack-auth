@@ -24,8 +24,10 @@ describe("server-side error-ingest policy", () => {
         observability: {
           errorIngest: {
             finalScrub: {
-              dropKeys: { "user.email": true },
-              urlKeys: { url: true },
+              // Record keys are user-chosen dotless rule ids (config overrides
+              // cannot address dotted record keys); the selector is the value.
+              dropKeys: { dropEmail: "user.email" },
+              urlKeys: { pathOnlyUrl: "url" },
             },
           },
         },
@@ -42,11 +44,20 @@ describe("server-side error-ingest policy", () => {
 
   it("rejects unsafe override selectors without echoing configuration values", () => {
     expect(() => parseErrorIngestPolicyConfig({
-      observability: { errorIngest: { finalScrub: { dropKeys: { "request.headers.authorization": true } } } },
+      observability: { errorIngest: { finalScrub: { dropKeys: { dropAuth: "request.headers.authorization" } } } },
     })).toThrowError(ErrorIngestPolicyConfigError);
     expect(() => parseErrorIngestPolicyConfig({
-      observability: { errorIngest: { finalScrub: { dropKeys: { "request.headers.authorization": true } } } },
+      observability: { errorIngest: { finalScrub: { dropKeys: { dropAuth: "request.headers.authorization" } } } },
     })).toThrow("Unsupported error-ingest scrub override key");
+    expect(() => parseErrorIngestPolicyConfig({
+      observability: { errorIngest: { finalScrub: { dropKeys: { "dotted.rule.id": "user.email" } } } },
+    })).toThrow("rule ids must be short dotless identifiers");
+    expect(() => parseErrorIngestPolicyConfig({
+      observability: { errorIngest: { finalScrub: { dropKeys: { legacyShape: true } } } },
+    })).toThrow("Unsupported error-ingest scrub override key");
+    expect(() => parseErrorIngestPolicyConfig({
+      observability: { errorIngest: { finalScrub: { dropUrl: { dropRule: "url" } } } },
+    })).toThrow("Unsupported finalScrub policy field");
     expect(() => parseErrorIngestPolicyConfig({
       observability: { errorIngest: { unsupported: "raw-value" } },
     })).toThrow("Unsupported error-ingest policy field");
@@ -76,6 +87,25 @@ describe("server-side error-ingest policy", () => {
       stateStore: createErrorIngestPolicyStateStore(),
     });
     expect(quota.outcomes[0]).toMatchObject({ status: "rate_limited", reason: "quota" });
+  });
+
+  it("keeps the quota byte counter across rate-limit window rollovers", () => {
+    const store = createErrorIngestPolicyStateStore();
+    const config = {
+      observability: {
+        errorIngest: {
+          rateLimit: { maxItemsPerWindow: 100, windowSeconds: 1 },
+          quota: { maxBytesPerWindow: 40, windowSeconds: 3_600 },
+        },
+      },
+    };
+    const item = [items()[1]]; // {"message":"ok"} scrubs to 16 bytes
+
+    expect(evaluateErrorIngestPolicy({ config, scope, items: item, nowMs: 0, stateStore: store }).outcomes[0].status).toBe("accepted");
+    expect(evaluateErrorIngestPolicy({ config, scope, items: item, nowMs: 500, stateStore: store }).outcomes[0].status).toBe("accepted");
+    // A new 1s rate window must NOT reset the 1h byte quota (32 + 16 > 40).
+    const rolled = evaluateErrorIngestPolicy({ config, scope, items: item, nowMs: 1_500, stateStore: store });
+    expect(rolled.outcomes[0]).toMatchObject({ status: "rate_limited", reason: "quota" });
   });
 
   it("shares counters only within the exact tenant, project, and branch scope", () => {
@@ -165,9 +195,11 @@ describe("server-side error-ingest policy", () => {
       sampleRate: 0.5,
     };
     expect(deterministicErrorIngestSamplingDecision(input)).toEqual(deterministicErrorIngestSamplingDecision(input));
-    expect(deterministicErrorIngestSamplingDecision({ ...input, scope: { ...scope, tenancyId: "tenancy-2" } })).not.toEqual(
-      deterministicErrorIngestSamplingDecision({ ...input, sampleRate: 0 }),
-    );
+    // The scope participates in the sampling hash: seed "event-id-2" at rate
+    // 0.5 lands on opposite sides of the threshold for these two tenancies
+    // (precomputed; deterministic because the hash input is fully fixed).
+    expect(deterministicErrorIngestSamplingDecision({ ...input, seed: "event-id-2" })).toMatchObject({ decision: "keep" });
+    expect(deterministicErrorIngestSamplingDecision({ ...input, seed: "event-id-2", scope: { ...scope, tenancyId: "tenancy-2" } })).toMatchObject({ decision: "drop" });
     expect(deterministicErrorIngestSamplingDecision({ ...input, sampleRate: 0 })).toMatchObject({ decision: "drop", sampleRate: 0 });
     expect(deterministicErrorIngestSamplingDecision({ ...input, sampleRate: 1 })).toMatchObject({ decision: "keep", sampleRate: 1 });
 

@@ -43,6 +43,64 @@ describe("safe request context", () => {
     expect(JSON.stringify(context)).not.toContain("limit=10");
   });
 
+  it("scrubs and bounds caller-controlled URL path segments", () => {
+    const context = createSafeRequestContext({
+      requestId: "request-path",
+      method: "GET",
+      url: "https://api.example.test/api/users/user@example.test/tokens/eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature-material",
+      headers: new Headers(),
+    });
+    // Dynamic/catch-all segments are request data: value-shaped secrets and
+    // PII in the path must not reach the error-context boundary verbatim.
+    expect(context.url).not.toContain("user@example.test");
+    expect(context.url).not.toContain("signature-material");
+    expect(context.url).toContain("/api/users/");
+
+    const longSegment = "a".repeat(2_000);
+    const bounded = createSafeRequestContext({
+      requestId: "request-long-path",
+      method: "GET",
+      url: `https://api.example.test/api/${longSegment}`,
+      headers: new Headers(),
+    });
+    expect(bounded.url.length).toBeLessThanOrEqual(512);
+
+    const encoded = createSafeRequestContext({
+      requestId: "request-encoded-path",
+      method: "GET",
+      url: "https://api.example.test/api/alice%40example.test/eyJhbGciOiJIUzI1NiJ9%2EeyJzdWIiOiIxIn0%2Esignature-material",
+      headers: new Headers(),
+    });
+    expect(encoded.url).not.toContain("alice@example.test");
+    expect(encoded.url).not.toContain("signature-material");
+  });
+
+  it("bounds and scrubs cookie names", () => {
+    const jwtName = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature-material";
+    const manyCookies = Array.from({ length: 80 }, (_, index) => `cookie-${String(index).padStart(2, "0")}=x`).join("; ");
+    const context = createSafeRequestContext({
+      requestId: "request-cookies",
+      method: "GET",
+      url: "https://api.example.test/api/users",
+      headers: new Headers({ cookie: `${jwtName}=1; ${manyCookies}` }),
+    });
+    // Value-shaped secrets smuggled into the NAME half of a pair are scrubbed…
+    expect(JSON.stringify(context.cookies)).not.toContain("signature-material");
+    expect(context.cookies.names).toContain("[Filtered]");
+    // …and the collection is bounded with an explicit truncation marker.
+    expect(context.cookies.names.length).toBeLessThanOrEqual(51);
+    expect(context.cookies.names).toContain("[Names limited]");
+
+    const encoded = createSafeRequestContext({
+      requestId: "request-encoded-cookie",
+      method: "GET",
+      url: "https://api.example.test/api/users",
+      headers: new Headers({ cookie: "alice%40example.test=1; eyJhbGciOiJIUzI1NiJ9%2EeyJzdWIiOiIxIn0%2Esignature-material=1" }),
+    });
+    expect(JSON.stringify(encoded.cookies)).not.toContain("alice@example.test");
+    expect(JSON.stringify(encoded.cookies)).not.toContain("signature-material");
+  });
+
   it("recursively bounds and scrubs approved structured diagnostics", () => {
     const privateKey = "-----BEGIN PRIVATE KEY-----\nprivate-key-material\n-----END PRIVATE KEY-----";
     const value = scrubContextValue({

@@ -134,25 +134,28 @@ export async function lookupArtifact(
   );
 }
 
+// Validation labels use the documented snake_case field name (the camelCase
+// key is a compatibility alias), so 400s reference the name API consumers see
+// in the docs.
 export function parseArtifactManifestRegistrationRequest(input: unknown): ArtifactManifestRegistrationRequest {
   const record = readRecord(input, "Artifact registration request");
   return {
     manifest: record.manifest,
-    manifestSha256: readRequiredAliasedString(record, "manifest_sha256", "manifestSha256", "manifestSha256"),
+    manifestSha256: readRequiredAliasedString(record, "manifest_sha256", "manifestSha256", "manifest_sha256"),
   };
 }
 
 export function parseArtifactManifestFinalizeRequest(input: unknown): ArtifactManifestFinalizeRequest {
   const record = readRecord(input, "Artifact finalize request");
   return {
-    manifestSha256: readRequiredAliasedString(record, "manifest_sha256", "manifestSha256", "manifestSha256"),
+    manifestSha256: readRequiredAliasedString(record, "manifest_sha256", "manifestSha256", "manifest_sha256"),
   };
 }
 
 export function parseArtifactLookupQuery(input: unknown): { debugId: string, release: string | null, dist: string | null } {
   const record = readRecord(input, "Artifact lookup query");
   return {
-    debugId: readRequiredAliasedString(record, "debug_id", "debugId", "debugId"),
+    debugId: readRequiredAliasedString(record, "debug_id", "debugId", "debug_id"),
     release: validateArtifactMetadata(record.release, "release"),
     dist: validateArtifactMetadata(record.dist, "dist"),
   };
@@ -179,6 +182,9 @@ export function throwArtifactRouteError(error: unknown): never {
     }
     case "artifact_conflict": {
       throw new StatusError(StatusError.Conflict, error.message);
+    }
+    case "unsupported_source_map": {
+      throw new StatusError(StatusError.BadRequest, error.message);
     }
     case "storage_unavailable": {
       throw new StatusError(StatusError.ServiceUnavailable, error.message);

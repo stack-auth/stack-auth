@@ -24,6 +24,16 @@ describe("error attachment contract", () => {
     );
   });
 
+  it("rejects storage keys that would exceed the persisted column bound", () => {
+    const eventId = "a".repeat(32);
+    const sha256 = "b".repeat(64);
+    // 400 characters of "/" percent-encode to 1200 bytes, blowing past the
+    // VARCHAR(1024) storageKey column even though each scope part is valid.
+    const scope = { tenantId: "/".repeat(400), projectId: "project", branchId: "main" };
+    expect(() => getErrorAttachmentObjectKey(scope, eventId, sha256)).toThrow(/storage key exceeds/);
+    expect(getErrorAttachmentObjectKey({ tenantId: "tenant-a", projectId: "project", branchId: "main" }, eventId, sha256).length).toBeLessThanOrEqual(1024);
+  });
+
   it("rejects path traversal, active URL-shaped metadata, and oversized bytes", () => {
     expect(() => validateErrorAttachmentUpload({ eventId: "a".repeat(32), filename: "../secret", data_base64: "YQ==" })).toThrow();
     expect(() => validateErrorAttachmentUpload({ eventId: "a".repeat(32), filename: "report.json", contentType: "https://example.test", data_base64: "YQ==" })).toThrow();

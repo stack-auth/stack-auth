@@ -5,7 +5,17 @@ import type { IssueFrame } from "./issues-data";
  * `heroStack` omit the API's nested symbolication object after flattening it
  * onto filename/lineno/context, so this pick is the shared contract.
  */
-export type StackFrameView = Pick<IssueFrame, "filename" | "function" | "module" | "abs_path" | "lineno" | "colno" | "in_app" | "debug_id" | "context">;
+export type StackFrameView = Pick<IssueFrame, "filename" | "function" | "module" | "abs_path" | "lineno" | "colno" | "in_app" | "debug_id" | "context"> & {
+  /**
+   * Only `status` is read by the renderer (for the "Mapped" badge). Declared
+   * structurally rather than via `Pick` because the wire `IssueFrame` and the
+   * flattened `IssueEventFrame` carry differently-shaped symbolication objects
+   * that agree on this field. The badge cannot key off `context.symbolicated`
+   * alone: a frame can be successfully mapped while its source context is
+   * unavailable, and its filename/line are still the mapped ones.
+   */
+  symbolication?: { status: "symbolicated" | "unsymbolicated" | "not_attempted" } | null,
+};
 
 /**
  * How a stack trace is laid out for reading.
@@ -112,7 +122,12 @@ function frameOrigin(frame: StackFrameView): string | null {
   return originMatch?.[1] ?? null;
 }
 
-/** The bold half of a frame row: the function, or the file when unnamed. */
+/**
+ * The bold half of a frame row: the function, or `<anonymous>` when unnamed.
+ * Deliberately NOT the file path as a fallback — `frameLocationLabel` already
+ * renders the location right next to this label, and repeating the path in
+ * bold would say one thing twice while hiding that the function is unnamed.
+ */
 export function frameFunctionLabel(frame: StackFrameView): string {
   const fn = frame.function?.trim();
   if (fn != null && fn !== "") return fn;

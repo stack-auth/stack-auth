@@ -4,6 +4,7 @@ import { getPrismaClientForTenancy, retryTransaction, type PrismaClientTransacti
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Prisma } from "@/generated/prisma/client";
 import type { IssueBatchDelta } from "./issue-materialization-contract";
+import { ISSUE_LOCK_LEASE_MS } from "./issue-merge";
 import { emitIssueWebhooks } from "./issue-webhooks";
 import { dispatchIssueAlertsForMaterialization } from "./issue-alerts/ingestion";
 import { randomUUID } from "node:crypto";
@@ -254,6 +255,40 @@ export function shouldDeferIssueMaterialization(
 }
 
 /**
+ * Clears EXPIRED merge/unmerge leases on the given hashes so materialization
+ * can proceed.
+ *
+ * `lockedAt` is a lease (see `issue-merge.ts`): a process that dies between
+ * acquiring the lock and finishing its work leaves the rows `LOCKED` forever,
+ * and only another merge attempt on the same hashes would ever steal the stale
+ * lease. Without this reclamation the materializer and the reconciler would
+ * defer those hashes on every run, indefinitely — a crashed merge would
+ * silently stop the affected errors from ever materializing again.
+ *
+ * Safe against a zombie holder that is merely slow rather than dead: its final
+ * statement re-validates `state = 'LOCKED' AND lockedAt = <its own acquisition
+ * instant>` and no-ops when the lease was taken away — the exact same contract
+ * `acquireHashLocks` relies on when IT steals a stale lease.
+ */
+async function reclaimExpiredIssueHashLeases(
+  tx: PrismaClientTransaction,
+  tenancyId: string,
+  hashes: readonly string[],
+  now: Date,
+): Promise<void> {
+  if (hashes.length === 0) return;
+  const leaseCutoff = new Date(now.getTime() - ISSUE_LOCK_LEASE_MS);
+  await tx.$executeRaw`
+    UPDATE "IssueHash"
+    SET "state" = NULL, "lockedAt" = NULL
+    WHERE "tenancyId" = ${tenancyId}::uuid
+      AND "hash" = ANY(${[...hashes]}::text[])
+      AND "state" IS NOT NULL
+      AND ("lockedAt" IS NULL OR "lockedAt" < ${leaseCutoff}::timestamptz)
+  `;
+}
+
+/**
  * Resolves owning hashes to issues, creating any that don't exist yet.
  *
  * Hashes whose `IssueHash` row is `LOCKED` (a merge or unmerge is in flight)
@@ -274,6 +309,10 @@ async function resolveOrCreateIssues(
     const resolved = new Map<string, { issueId: string, shortId: bigint, isNew: boolean }>();
     const uniqueInputs = deduplicateIssueMaterializationInputs(inputs);
     const ownerHashes = uniqueInputs.map((input) => input.ownerHash);
+
+    // Wall clock, not `receivedAt`: the reconciler replays batches with their
+    // original (old) receipt time, and lease expiry is a wall-clock contract.
+    await reclaimExpiredIssueHashLeases(tx, tenancyId, ownerHashes, new Date());
 
     const existing = await tx.$queryRaw<{ hash: string, issueId: string, shortId: bigint, state: string | null }[]>`
       SELECT h."hash", h."issueId", i."shortId", h."state"::text AS "state"
@@ -554,6 +593,10 @@ async function claimAndApply(
     const existingLedger = await readMaterializationLedger(tx, tenancyId, batchId);
     if (existingLedger !== null) return { status: "already_applied", ledger: existingLedger };
 
+    // Same reclamation as `resolveOrCreateIssues`: a lease that expired between
+    // the resolve transaction and this one must not defer the batch forever.
+    await reclaimExpiredIssueHashLeases(tx, tenancyId, ownerHashes, new Date());
+
     const lockedHashes = await tx.$queryRaw<{ hash: string, state: string | null }[]>(Prisma.sql`
       SELECT h."hash", h."state"::text AS "state"
       FROM "IssueHash" AS h
@@ -733,6 +776,28 @@ export async function materializeIssuesFromBatchSafely(options: {
   try {
     const result = await materializeIssuesFromBatchWithStatus(options);
     if (result.status === "deferred_locked") return;
+    // Alert email never calls a provider from ingestion. The dispatcher claims
+    // a typed delivery row and writes the Workflows event in the same
+    // serializable transaction; the built-in workflow owns the existing
+    // ServerApp -> EmailOutbox delivery boundary.
+    //
+    // Alerts run BEFORE webhooks for the same reason as the reconciler's
+    // `dispatchMaterializationSideEffects`: webhook emission talks to Svix, and
+    // a Svix outage in a shared try path must not prevent the Postgres-only
+    // alert rows from being written.
+    if (result.sideEffects.alertsDispatchedAt === null) {
+      await dispatchIssueAlertsForMaterialization({
+        tenancy: options.tenancy,
+        outcomes: result.outcomes,
+        inputs: options.inputs,
+        receivedAt: options.receivedAt,
+      });
+      await markIssueMaterializationSideEffect({
+        tenancy: options.tenancy,
+        batchId: options.batchId,
+        sideEffect: "alerts",
+      });
+    }
     if (result.sideEffects.webhooksDispatchedAt === null) {
       await emitIssueWebhooks({
         tenancy: options.tenancy,
@@ -745,23 +810,6 @@ export async function materializeIssuesFromBatchSafely(options: {
         tenancy: options.tenancy,
         batchId: options.batchId,
         sideEffect: "webhooks",
-      });
-    }
-    // Alert email never calls a provider from ingestion. The dispatcher claims
-    // a typed delivery row and writes the Workflows event in the same
-    // serializable transaction; the built-in workflow owns the existing
-    // ServerApp -> EmailOutbox delivery boundary.
-    if (result.sideEffects.alertsDispatchedAt === null) {
-      await dispatchIssueAlertsForMaterialization({
-        tenancy: options.tenancy,
-        outcomes: result.outcomes,
-        inputs: options.inputs,
-        receivedAt: options.receivedAt,
-      });
-      await markIssueMaterializationSideEffect({
-        tenancy: options.tenancy,
-        batchId: options.batchId,
-        sideEffect: "alerts",
       });
     }
   } catch (error) {

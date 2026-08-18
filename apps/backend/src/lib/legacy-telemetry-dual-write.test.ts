@@ -44,6 +44,10 @@ describe("dualWriteLegacyEvents", () => {
     expect(insert).toHaveBeenCalledWith(expect.objectContaining({
       table: "analytics_internal.events",
       values: [{ ...ROW, dual_written: 1 }],
+      clickhouse_settings: expect.objectContaining({
+        async_insert: 1,
+        wait_for_async_insert: 1,
+      }),
     }));
 
     // The probe is cached: a second batch must not re-query system.tables.
@@ -97,12 +101,21 @@ describe("dualWriteLegacyEvents", () => {
   it("treats the recreated read-only view rejecting the write (code 48) the same way", async () => {
     const { client, insert } = createFakeClickhouseClient({
       engineRows: [{ engine: "MergeTree" }],
-      insertError: { code: 48 },
+      insertError: { code: 48, message: "Method write is not supported by storage View" },
     });
 
     await expect(dualWriteLegacyEvents(client, [ROW])).resolves.toBeUndefined();
     await dualWriteLegacyEvents(client, [ROW]);
     expect(insert).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not hide an unrelated NOT_IMPLEMENTED error", async () => {
+    const { client } = createFakeClickhouseClient({
+      engineRows: [{ engine: "MergeTree" }],
+      insertError: { code: 48, message: "This feature is not implemented" },
+    });
+
+    await expect(dualWriteLegacyEvents(client, [ROW])).rejects.toMatchObject({ code: 48 });
   });
 
   it("propagates every other insert failure — the legacy table is the customer-visible read surface", async () => {

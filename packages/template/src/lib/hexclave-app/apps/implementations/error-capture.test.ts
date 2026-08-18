@@ -2,10 +2,13 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildCapturedEventData,
   buildErrorEventData,
   buildLinkedExceptionValues,
   computeErrorFingerprint,
+  createClientErrorCapturePolicy,
   DEFAULT_IGNORE_ERRORS,
+  ERROR_EXCEPTION_VALUES_MAX_BYTES,
   generateErrorEventId,
   installClientErrorCapture,
   installServerErrorMonitor,
@@ -129,6 +132,129 @@ describe("normalizeCapturedError + buildErrorEventData", () => {
     expect(data.exception?.values).toHaveLength(2);
     expect(data.exception?.values.at(-1)?.mechanism).toMatchObject({ type: "captured.exception", handled: true });
   });
+
+  it("trims a deep cause chain to the aggregate exception byte budget, keeping the root last", () => {
+    // Each link carries ~14KB of bounded text; ten of them would sum to ~140KB
+    // and push the whole event past the shared 64KB item-data contract.
+    const root = new Error(`root ${"r".repeat(7_000)}`);
+    root.stack = `Error: root\n    at f (https://app.example.com/a.js:1:1)\n${"x".repeat(7_000)}`;
+    let current = root;
+    for (let i = 0; i < 9; i++) {
+      const cause = new Error(`cause ${i} ${"c".repeat(7_000)}`);
+      cause.stack = `Error: cause ${i}\n    at g (https://app.example.com/b.js:2:2)\n${"y".repeat(7_000)}`;
+      Object.defineProperty(current, "cause", { value: cause, enumerable: false });
+      current = cause;
+    }
+    const data = buildErrorEventData(root, {
+      mechanismType: "captured.exception",
+      handled: true,
+      release: null,
+      environment: null,
+      sdkVersion: "test",
+      getDebugImages: () => [],
+    });
+    const values = data.exception?.values ?? [];
+    expect(values.length).toBeGreaterThan(0);
+    expect(values.length).toBeLessThan(10);
+    expect(values.at(-1)?.value?.startsWith("root ")).toBe(true);
+    expect(new TextEncoder().encode(JSON.stringify(values)).length).toBeLessThanOrEqual(ERROR_EXCEPTION_VALUES_MAX_BYTES);
+  });
+
+  it("bounds adapter-supplied captureEvent exception values like every other path", () => {
+    const data = buildCapturedEventData({
+      exception: {
+        values: [{
+          type: "AdapterError",
+          value: `boom ${"v".repeat(20_000)}`,
+          stacktrace: { raw: `Error: boom\n    at f (https://app.example.com/a.js:1:1)\n${"s".repeat(20_000)}` },
+        }],
+      },
+    }, {
+      eventId: generateErrorEventId(),
+      release: null,
+      environment: null,
+      sdkVersion: "test",
+    });
+    const value = data.exception?.values.at(-1);
+    expect(new TextEncoder().encode(value?.value ?? "").length).toBeLessThanOrEqual(8_192);
+    expect(new TextEncoder().encode(value?.stacktrace?.raw ?? "").length).toBeLessThanOrEqual(8_192);
+    // The top-level stack falls back to the raw stack (bounded), so grouping
+    // and debug-image lookup still receive one.
+    expect(typeof data.stack).toBe("string");
+    expect((data.stack as string).startsWith("Error: boom")).toBe(true);
+    expect(new TextEncoder().encode(data.stack as string).length).toBeLessThanOrEqual(8_192);
+  });
+
+  it("uses exception stacktrace.raw as the top-level stack when no stack or frames are supplied", () => {
+    const raw = "Error: adapter\n    at f (https://app.example.com/a.js:1:1)";
+    const data = buildCapturedEventData({
+      exception: { values: [{ type: "Error", value: "adapter", stacktrace: { raw } }] },
+    }, {
+      eventId: generateErrorEventId(),
+      release: null,
+      environment: null,
+      sdkVersion: "test",
+    });
+    expect(data.stack).toBe(raw);
+  });
+});
+
+describe("createClientErrorCapturePolicy", () => {
+  function makePolicy(overrides?: { ignoreErrors?: readonly string[], getCurrentPageViewSpanId?: () => string | null }) {
+    return createClientErrorCapturePolicy({
+      ignoreErrors: overrides?.ignoreErrors ?? normalizeErrorCaptureOptions(undefined).ignoreErrors,
+      getCurrentPageViewSpanId: overrides?.getCurrentPageViewSpanId ?? (() => null),
+    });
+  }
+
+  it("admits an error once and rejects the same OBJECT afterwards (captured marker)", () => {
+    const policy = makePolicy();
+    const error = new Error("only once");
+    expect(policy.admit(error)).not.toBeNull();
+    expect(policy.admit(error)).toBeNull();
+  });
+
+  it("drops identical back-to-back signatures but keeps alternating errors", () => {
+    const policy = makePolicy();
+    const stack = "Error: same\n    at f (https://app.example.com/a.js:1:1)";
+    const first = new Error("same");
+    first.stack = stack;
+    const duplicate = new Error("same");
+    duplicate.stack = stack;
+    const other = new Error("different");
+    expect(policy.admit(first)).not.toBeNull();
+    expect(policy.admit(duplicate)).toBeNull();
+    expect(policy.admit(other)).not.toBeNull();
+  });
+
+  it("drops messages matching the ignore substrings", () => {
+    const policy = makePolicy();
+    expect(policy.admit(new Error("ResizeObserver loop completed with undelivered notifications"))).toBeNull();
+  });
+
+  it("caps admissions per fingerprint and resets on page-view rollover", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    let pageViewSpanId: string | null = "page-1";
+    const policy = makePolicy({ getCurrentPageViewSpanId: () => pageViewSpanId });
+    let floodIndex = 0;
+    const admitFlood = () => {
+      const error = new Error("flood");
+      // The fingerprint only hashes the FIRST `at` line, so varying a DEEPER
+      // frame keeps all of these in one flood-control bucket while the
+      // distinct full stacks defeat the single-slot dedupe.
+      floodIndex += 1;
+      error.stack = `Error: flood\n    at f (https://app.example.com/a.js:1:1)\n    at g (https://app.example.com/b.js:${floodIndex}:1)`;
+      return policy.admit(error);
+    };
+    let admitted = 0;
+    for (let i = 0; i < 15; i++) {
+      if (admitFlood() !== null) admitted += 1;
+    }
+    expect(admitted).toBe(10);
+    pageViewSpanId = "page-2";
+    expect(admitFlood()).not.toBeNull();
+    vi.restoreAllMocks();
+  });
 });
 
 describe("installClientErrorCapture", () => {
@@ -244,6 +370,18 @@ describe("installClientErrorCapture", () => {
     expect(emitted).toHaveLength(1);
     expect(emitted[0].message).toBe("Object captured as exception with keys: code, details");
     expect(emitted[0].synthetic).toBe(1);
+    capture.uninstall();
+  });
+
+  it("shares an injected policy so a pre-admitted error (console promotion) is not double-captured", () => {
+    const policy = createClientErrorCapturePolicy({ ignoreErrors: [], getCurrentPageViewSpanId: () => null });
+    const { emitted, capture } = installWithDeps({ policy });
+    const error = new Error("promoted via console.error first");
+    // Simulates ClientAnalytics.captureConsoleError admitting through the
+    // shared instance before the same Error surfaces at window.onerror.
+    expect(policy.admit(error)).not.toBeNull();
+    fireOnError(error);
+    expect(emitted).toHaveLength(0);
     capture.uninstall();
   });
 

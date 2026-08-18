@@ -12,13 +12,16 @@ import { Auth, Project, flushBackgroundTasks, niceBackendFetch } from "../../../
  *
  * Three things about this file are load-bearing and easy to break:
  *
- *  1. Issue materialization runs off the request path inside
- *     `runAsynchronouslyAndWaitUntil`, so every assertion about Issue state must
- *     be preceded by `flushBackgroundTasks()`. Without it these tests are
- *     timing-dependent and will pass locally and fail in CI (or vice versa).
- *  2. The `/internal/issues*` routes gate on `apps.installed.observability`,
- *     while the ingest route gates on `apps.installed.analytics`. Both have to be
- *     on, or one half of every test 400s with `ANALYTICS_NOT_ENABLED`.
+ *  1. Issue materialization runs off the request path through the transactional
+ *     outbox and QStash (with a debounce delay), so every assertion about Issue
+ *     state must be preceded by `postBatch`'s ledger-row wait — an in-process
+ *     flush alone cannot see that pipeline. The ClickHouse occurrence insert IS
+ *     still in-process background work, which is what `flushBackgroundTasks()`
+ *     covers.
+ *  2. The `/internal/issues*` routes gate on `apps.installed.observability`
+ *     (`OBSERVABILITY_NOT_ENABLED`), while the ingest route gates on
+ *     `apps.installed.analytics` (`ANALYTICS_NOT_ENABLED`). Both have to be on,
+ *     or one half of every test 400s.
  *  3. Grouping hashes are deterministic but are NOT asserted literally anywhere
  *     here. They are an implementation detail of `lib/issues/grouping.ts`, and
  *     pinning them in a snapshot would turn every legitimate grouping change
@@ -74,6 +77,8 @@ type ErrorEventOptions = {
   synthetic?: boolean,
   release?: string,
 };
+
+const ISSUE_TEST_TIMEOUT = 180_000;
 
 function errorEvent(options: ErrorEventOptions) {
   return {
@@ -142,10 +147,43 @@ async function postBatch(options: { events: BatchEvent[], batchId?: string, sent
   if (response.status !== 200) {
     throw new HexclaveAssertionError("Telemetry batch upload failed", { response });
   }
-  // Issue materialization is fire-and-forget via `runAsynchronouslyAndWaitUntil`.
-  // Every Issue assertion in this file depends on this line.
+  // The ClickHouse insert still runs behind `runAsynchronouslyAndWaitUntil`, so
+  // this flush is what makes the occurrence rows queryable below.
   await flushBackgroundTasks();
+  // Issue materialization, however, is NOT in-process work anymore: the batch
+  // route enqueues it into the transactional outbox, the poller publishes it to
+  // QStash with a deliberate debounce delay, and a signed delivery applies it.
+  // `flushBackgroundTasks()` cannot see any of that, so the only reliable
+  // "this batch was applied" signal is the batch's exactly-once ledger row.
+  if (options.events.some((event) => event.event_type === "$error")) {
+    await waitForIssueMaterialization(batchId);
+  }
   return { batchId, response };
+}
+
+/**
+ * Polls the primary for the batch's `IssueMaterialization` ledger row. The row
+ * is written in the same transaction as the Issue mutations, and the backend's
+ * replication-wait strategy gives read-your-writes on the replica afterwards,
+ * so once the row exists the API surface reflects the batch. `batchId` is a
+ * fresh UUID per batch, so no tenancy filter is needed. The generous deadline
+ * covers the outbox poller cadence plus QStash's delivery delay.
+ */
+async function waitForIssueMaterialization(batchId: string): Promise<void> {
+  await withInternalDatabase(async (client) => {
+    // Generous: the delivery path is outbox poller cadence + QStash's debounce
+    // delay, and in dev the cron runner can additionally pause for a few
+    // seconds when its watcher restarts it.
+    const deadline = performance.now() + 120_000;
+    while (true) {
+      const result = await client.query(`SELECT 1 FROM "IssueMaterialization" WHERE "batchId" = $1 LIMIT 1`, [batchId]);
+      if ((result.rowCount ?? 0) > 0) return;
+      if (performance.now() > deadline) {
+        throw new HexclaveAssertionError(`Issue materialization for batch ${batchId} did not complete within 120s`, { batchId });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  });
 }
 
 function issuesUrl(query: Record<string, string> = {}) {
@@ -290,7 +328,7 @@ async function withInternalDatabase<T>(fn: (client: Client) => Promise<T>): Prom
 
 // ─── Gating and access control ──────────────────────────────────────────────
 
-it("returns ANALYTICS_NOT_ENABLED when the observability app is not installed", async ({ expect }) => {
+it("returns OBSERVABILITY_NOT_ENABLED when the observability app is not installed", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   // Analytics on, observability off: the ingest half would work, the read half must not.
   await Project.updateConfig({ "apps.installed.analytics.enabled": true });
@@ -300,11 +338,11 @@ it("returns ANALYTICS_NOT_ENABLED when the observability app is not installed", 
     NiceResponse {
       "status": 400,
       "body": {
-        "code": "ANALYTICS_NOT_ENABLED",
-        "error": "Analytics is not enabled for this project.",
+        "code": "OBSERVABILITY_NOT_ENABLED",
+        "error": "Observability is not enabled for this project.",
       },
       "headers": Headers {
-        "x-stack-known-error": "ANALYTICS_NOT_ENABLED",
+        "x-stack-known-error": "OBSERVABILITY_NOT_ENABLED",
         <some fields may have been hidden>,
       },
     }
@@ -340,14 +378,14 @@ it("rejects non-admin access to the issues endpoints", async ({ expect }) => {
 
 // ─── Grouping / ingest ──────────────────────────────────────────────────────
 
-it("stamps grouping columns and a deterministic occurrence_id onto ingested $error rows", async ({ expect }) => {
+it("stamps grouping columns and a deterministic occurrence_id onto ingested $error rows", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
   const { batchId } = await postBatch({ events: [checkoutTypeError(now)] });
 
   const rows = analyticsRows(await queryAnalytics(
-    `SELECT occurrence_id, batch_id, event_type, error_type, error_culprit, message, level,
+    `SELECT occurrence_id, batch_id, event_type, error_type, error_culprit, data.message AS message, level,
             issue_hash, length(issue_hashes) AS owned_hash_count, issue_grouping_config, issue_variant, grouping_degraded
      FROM errors
      WHERE batch_id = {batchId:String}`,
@@ -365,8 +403,10 @@ it("stamps grouping columns and a deterministic occurrence_id onto ingested $err
     event_type: row.event_type,
     error_type: row.error_type,
     error_culprit: row.error_culprit,
-    // `message`/`level` are promoted out of `data` SERVER-side for `$error`; the
-    // wire schema forbids the client from sending them on anything but `$log`.
+    // `level` is promoted out of `data` server-side for `$error`; `message`
+    // stays inside the `data` JSON (the consolidated telemetry table has no
+    // message column). The wire schema forbids the client from sending
+    // `message`/`level` on anything but `$log`.
     message: row.message,
     level: row.level,
     owned_hash_count: row.owned_hash_count,
@@ -400,6 +440,20 @@ it("stamps grouping columns and a deterministic occurrence_id onto ingested $err
         "in_app": true,
         "lineno": 22,
         "module": "static/checkout",
+        "symbolication": {
+          "context": null,
+          "diagnostics": [
+            {
+              "code": "missing_release_metadata",
+              "message": "The occurrence projection and canonical error envelope do not contain an exact release value, so source-map lookup was not attempted.",
+            },
+          ],
+          "name": null,
+          "original_column": null,
+          "original_line": null,
+          "source_file": null,
+          "status": "not_attempted",
+        },
       },
       {
         "abs_path": "https://app.example.com/static/checkout.js",
@@ -409,12 +463,26 @@ it("stamps grouping columns and a deterministic occurrence_id onto ingested $err
         "in_app": true,
         "lineno": 10,
         "module": "static/checkout",
+        "symbolication": {
+          "context": null,
+          "diagnostics": [
+            {
+              "code": "missing_release_metadata",
+              "message": "The occurrence projection and canonical error envelope do not contain an exact release value, so source-map lookup was not attempted.",
+            },
+          ],
+          "name": null,
+          "original_column": null,
+          "original_line": null,
+          "source_file": null,
+          "status": "not_attempted",
+        },
       },
     ]
   `);
 });
 
-it("collapses two occurrences of the same error into one issue", async ({ expect }) => {
+it("collapses two occurrences of the same error into one issue", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -450,7 +518,7 @@ it("collapses two occurrences of the same error into one issue", async ({ expect
  * from the same helper share every other leaf and collapse into one issue —
  * which is wrong, because they are different bugs with different fixes.
  */
-it("does not merge a TypeError and a RangeError thrown from the same frame", async ({ expect }) => {
+it("does not merge a TypeError and a RangeError thrown from the same frame", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -488,7 +556,7 @@ it("does not merge a TypeError and a RangeError thrown from the same frame", asy
  * every non-`Error` throw, so without the dedicated synthetic rule every
  * `throw "nope"` in a project would collapse into one useless issue.
  */
-it("does not merge two different non-Error (synthetic) throws", async ({ expect }) => {
+it("does not merge two different non-Error (synthetic) throws", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -526,7 +594,7 @@ it("does not merge two different non-Error (synthetic) throws", async ({ expect 
  * twice (a retry that ClickHouse deduplicated by insert token) must advance the
  * counters exactly once.
  */
-it("increments times_seen exactly once when the same batch_id is posted twice", async ({ expect }) => {
+it("increments times_seen exactly once when the same batch_id is posted twice", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -553,7 +621,7 @@ it("increments times_seen exactly once when the same batch_id is posted twice", 
   // Exactly one ledger row for the batch, which is what made the second run a no-op.
   const ledgerRows = await withInternalDatabase(async (client) => {
     return await client.query<{ count: string }>(
-      `SELECT count(*)::text AS count FROM "IssueMaterialization" WHERE "batchId" = $1::uuid`,
+      `SELECT count(*)::text AS count FROM "IssueMaterialization" WHERE "batchId" = $1`,
       [batchId],
     );
   });
@@ -595,7 +663,7 @@ it.fails("does not inflate window_occurrences when the same batch is retried", a
   expect(onlyItem(await listIssues()).window_occurrences).toBe(1);
 });
 
-it("produces a byte-identical occurrence_id across retries of the same batch", async ({ expect }) => {
+it("produces a byte-identical occurrence_id across retries of the same batch", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -623,7 +691,7 @@ it("produces a byte-identical occurrence_id across retries of the same batch", a
 
 // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
-it("reopens a resolved issue as regressed when a new occurrence arrives", async ({ expect }) => {
+it("reopens a resolved issue as regressed when a new occurrence arrives", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -667,7 +735,7 @@ it("reopens a resolved issue as regressed when a new occurrence arrives", async 
  * lifetime counters honour the client timestamps: `lastSeenAt` uses `GREATEST`
  * and therefore does not move backwards, and `firstSeenAt` uses `LEAST` and does.
  */
-it("regresses on server receipt time, not on the client clock, for a back-dated occurrence", async ({ expect }) => {
+it("regresses on server receipt time, not on the client clock, for a back-dated occurrence", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -699,7 +767,7 @@ it("regresses on server receipt time, not on the client clock, for a back-dated 
  * stay ignored and a cron waking them all up would be wrong. The read path
  * therefore has to compensate for the window in between.
  */
-it("reports an issue whose snooze has expired as unresolved before the next occurrence", async ({ expect }) => {
+it("reports an issue whose snooze has expired as unresolved before the next occurrence", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -756,7 +824,7 @@ it("reports an issue whose snooze has expired as unresolved before the next occu
  * decimal string, the very first list response 500s. This is that guard, not a
  * style assertion.
  */
-it("returns short_id and times_seen as strings, not numbers", async ({ expect }) => {
+it("returns short_id and times_seen as strings, not numbers", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -779,7 +847,7 @@ it("returns short_id and times_seen as strings, not numbers", async ({ expect })
   expect(typeof detail.body?.issue?.times_seen).toBe("string");
 });
 
-it("resolves the detail route by uuid, by numeric short id, and through an IssueRedirect", async ({ expect }) => {
+it("resolves the detail route by uuid, by numeric short id, and through an IssueRedirect", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -814,7 +882,16 @@ it("resolves the detail route by uuid, by numeric short id, and through an Issue
     );
   });
 
-  const byRedirect = await getIssue(mergedAwayIssueId);
+  // The redirect row went straight into the primary above, which bypasses the
+  // backend's replication-wait strategy — so the replica-reading detail route
+  // may briefly not see it. Retry bounded; a real merge (which writes through
+  // the backend) does not have this window.
+  let byRedirect = await getIssue(mergedAwayIssueId);
+  const redirectDeadline = performance.now() + 15_000;
+  while (byRedirect.status === 404 && performance.now() < redirectDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    byRedirect = await getIssue(mergedAwayIssueId);
+  }
   expect(byRedirect.status).toBe(200);
   expect(byRedirect.body?.issue?.id).toBe(issue.id);
   expect(byRedirect.body?.redirected_from_issue_id).toBe(mergedAwayIssueId);
@@ -846,7 +923,7 @@ it("resolves the detail route by uuid, by numeric short id, and through an Issue
  * the failure mode to guard against is a 200 with another project's data — a 404
  * is the only acceptable answer, including for the write path.
  */
-it("cannot read or mutate another project's issue", async ({ expect }) => {
+it("cannot read or mutate another project's issue", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
   const now = Date.now();
   await postBatch({ events: [checkoutTypeError(now)] });
@@ -880,7 +957,7 @@ it("cannot read or mutate another project's issue", async ({ expect }) => {
   `);
 });
 
-it("filters the issue list by status, service, and environment", async ({ expect }) => {
+it("filters the issue list by status, service, and environment", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -973,7 +1050,7 @@ it("validates issue list query parameters", async ({ expect }) => {
   expect((await listIssues({ hours: "720", status: "all", sort: "users", sort_dir: "asc", limit: "10", handled: "handled" })).status).toBe(200);
 });
 
-it("paginates the issue list with a keyset cursor", async ({ expect }) => {
+it("paginates the issue list with a keyset cursor", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -997,7 +1074,7 @@ it("paginates the issue list with a keyset cursor", async ({ expect }) => {
   expect(second.body?.cursor).toBe(null);
 });
 
-it("navigates an issue's occurrences with the older/newer cursors", async ({ expect }) => {
+it("navigates an issue's occurrences with the older/newer cursors", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -1029,7 +1106,7 @@ it("navigates an issue's occurrences with the older/newer cursors", async ({ exp
 // (`IssueMergeRequestSchema` / `IssueUnmergeRequestSchema`) and should need
 // nothing but the `.todo` removed once the routes land.
 
-it("merges issues, picking the primary by (firstSeenAt asc, timesSeen desc, id asc) and summing lifetime counters", async ({ expect }) => {
+it("merges issues, picking the primary by (firstSeenAt asc, timesSeen desc, id asc) and summing lifetime counters", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -1072,7 +1149,7 @@ it("merges issues, picking the primary by (firstSeenAt asc, timesSeen desc, id a
   expect(redirected.body?.redirected_from_issue_id).toBe(newer.id);
 });
 
-it("merging into an already-merged issue follows the redirect and creates no chain", async ({ expect }) => {
+it("merging into an already-merged issue follows the redirect and creates no chain", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -1110,7 +1187,7 @@ it("merging into an already-merged issue follows the redirect and creates no cha
   expect(new Set(redirects.rows.map((row) => row.fromIssueId))).toEqual(new Set([second.id, third.id]));
 });
 
-it("unmerge is retroactive: historical occurrences owned by the split hash resolve to the new issue", async ({ expect }) => {
+it("unmerge is retroactive: historical occurrences owned by the split hash resolve to the new issue", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -1154,7 +1231,7 @@ it("unmerge is retroactive: historical occurrences owned by the split hash resol
   expect(sourceDetail.body?.issue?.issue_hashes).not.toContain(splitHash);
 });
 
-it("unmerge stamps counters_truncated_at_millis on the new issue", async ({ expect }) => {
+it("unmerge stamps counters_truncated_at_millis on the new issue", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();
@@ -1183,7 +1260,7 @@ it("unmerge stamps counters_truncated_at_millis on the new issue", async ({ expe
   expect(newIssue?.counters_truncated_at_millis).toBe(truncatedAt);
 });
 
-it("resolves a merged-away NUMERIC short id through IssueRedirect", async ({ expect }) => {
+it("resolves a merged-away NUMERIC short id through IssueRedirect", { timeout: ISSUE_TEST_TIMEOUT }, async ({ expect }) => {
   await setUpIssuesProject();
 
   const now = Date.now();

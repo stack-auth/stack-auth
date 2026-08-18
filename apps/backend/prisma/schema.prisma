@@ -1276,6 +1276,9 @@ model Event {
   eventStartedAt DateTime
   eventEndedAt   DateTime
 
+  // Prisma does not support nullable scalar lists. This ignored model is
+  // retained only so migration diff does not propose dropping the nullable
+  // legacy TEXT[] column; it has no Prisma Client API or write path.
   systemEventTypeIds String[]
   data               Json
 

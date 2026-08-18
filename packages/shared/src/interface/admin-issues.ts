@@ -24,6 +24,15 @@ import type { Json } from "../utils/json";
 export const IssueStatusSchema = yupString().oneOf(["unresolved", "resolved", "ignored"]).defined();
 
 /**
+ * Upper bound for every millisecond-epoch timestamp a client may send on an
+ * issue mutation (2100-01-01T00:00:00Z). Request validation must reject values
+ * beyond it: an unbounded number reaches `new Date(...)` in the handlers, and
+ * anything past ±8.64e15 produces an Invalid Date that only fails later, deep
+ * inside a database write — a 500 for what is really malformed client input.
+ */
+export const MAX_ISSUE_TIMESTAMP_MILLIS = 4_102_444_800_000;
+
+/**
  * Statuses accepted by the bounded bulk triage action. Keep this contract
  * beside the issue list/detail schemas so dashboard clients cannot silently
  * drift from the authenticated mutation route.
@@ -402,8 +411,12 @@ export const IssueUpdateRequestSchema = yupObject({
    * An ignored issue whose snooze has expired wakes up on its next occurrence —
    * there is deliberately no cron for this, because an ignored issue that never
    * recurs *should* stay ignored.
+   *
+   * Bounded like the public snooze action's `ignored_until_millis`: the value
+   * becomes a `Date` in the handler, so it must be rejected here rather than
+   * surfacing as a database-write failure.
    */
-  ignored_until_millis: yupNumber().nullable().optional(),
+  ignored_until_millis: yupNumber().integer().min(0).max(MAX_ISSUE_TIMESTAMP_MILLIS).nullable().optional(),
 }).defined();
 
 export const IssueMergeRequestSchema = yupObject({
@@ -412,8 +425,13 @@ export const IssueMergeRequestSchema = yupObject({
    * `(firstSeenAt asc, timesSeen desc, id asc)` — Sentry's rule — rather than
    * by the caller, so the outcome is deterministic and the oldest issue (which
    * carries the most history and the most inbound links) survives.
+   *
+   * UUIDs only (unlike the bulk-status route, which also takes short ids):
+   * `mergeIssues` feeds these straight into `::uuid[]` casts, so a malformed
+   * id must be rejected at the API boundary instead of becoming a Postgres
+   * cast error (a 500 for what is really bad client input).
    */
-  issue_ids: yupArray(yupString().defined()).min(2).defined(),
+  issue_ids: yupArray(yupString().uuid().defined()).min(2).defined(),
 }).defined();
 
 export const IssueUnmergeRequestSchema = yupObject({

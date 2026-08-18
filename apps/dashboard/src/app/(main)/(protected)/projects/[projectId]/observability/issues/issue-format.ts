@@ -1,11 +1,9 @@
+import { formatCount } from "../format";
 import type { IssueFrame } from "./issues-data";
 
 /**
- * How an Issue is named and described in the UI.
- *
- * All pure, all tested: these three functions decide what a triager reads
- * first, and every one of them has a degenerate input that the obvious
- * implementation gets subtly wrong.
+ * How an Issue is named and described in the UI. Each helper has a degenerate
+ * input that the obvious implementation gets subtly wrong.
  */
 
 const UNKNOWN_ISSUE_TITLE = "Unknown error";
@@ -75,6 +73,15 @@ function stringField(data: Record<string, unknown> | null | undefined, key: stri
 }
 
 /**
+ * The backend's grouping fallback stamps this exact sentinel as the culprit
+ * when it could not derive one (see `degradedResult` in
+ * `apps/backend/src/lib/issues/grouping.ts`). It is non-empty, so without
+ * special-casing it here a degraded browser error would render "<unknown>"
+ * even when the occurrence still carries a usable `data.url`/`data.path`.
+ */
+const SERVER_UNKNOWN_CULPRIT_SENTINEL = "<unknown>";
+
+/**
  * "Where did this happen" — the line under the title.
  *
  * Falls back through the whole chain rather than trusting any single source:
@@ -84,9 +91,10 @@ function stringField(data: Record<string, unknown> | null | undefined, key: stri
  * culprit renders as a blank second line, which reads as a layout bug rather
  * than as missing data, so the terminal fallback is a visible word.
  */
+
 export function issueCulprit(input: IssueCulpritInput): string {
   const explicit = input.culprit?.trim();
-  if (explicit != null && explicit !== "") return explicit;
+  if (explicit != null && explicit !== "" && explicit !== SERVER_UNKNOWN_CULPRIT_SENTINEL) return explicit;
 
   const frames = input.frames ?? [];
   const topInApp = [...frames].reverse().find((frame) => frame.in_app);
@@ -112,18 +120,16 @@ export function issueShortIdLabel(shortId: string): string {
  * Counts that may exceed `Number.MAX_SAFE_INTEGER`.
  *
  * Lifetime counters arrive as decimal strings because they are Postgres
- * `BigInt`s. Below 10k the exact digits matter (you compare two similar issues
- * by eye); above it only the magnitude does, and the compaction step converts
- * to `Number`, which is lossy past 2^53 — irrelevant when the output is
- * "9007199254.7M" either way.
+ * `BigInt`s. This wrapper only normalizes that input; the compaction rules live
+ * in the shared `formatCount` so Issues and Services can never disagree about
+ * what "125k" means. Converting the BigInt to `Number` for the shared formatter
+ * is lossy past 2^53 — irrelevant because below 10k (where exact digits render)
+ * a BigInt fits a double exactly, and past 2^53 the output is "9007199254.7M"
+ * either way. Negative counts are rejected by the shared formatter.
  */
 export function formatIssueCount(value: number | string): string {
   const asBigInt = typeof value === "string" ? parseDecimalStringOrThrow(value) : BigInt(Math.round(value));
-  if (asBigInt < BigInt(0)) throw new Error(`Cannot format a negative issue count: ${value}`);
-  if (asBigInt < BigInt(10_000)) return asBigInt.toLocaleString();
-  const asNumber = Number(asBigInt);
-  if (asNumber < 1_000_000) return `${(asNumber / 1_000).toFixed(asNumber < 100_000 ? 1 : 0)}k`;
-  return `${(asNumber / 1_000_000).toFixed(asNumber < 10_000_000 ? 1 : 0)}M`;
+  return formatCount(Number(asBigInt));
 }
 
 function parseDecimalStringOrThrow(value: string): bigint {
@@ -140,7 +146,13 @@ function parseDecimalStringOrThrow(value: string): bigint {
  */
 export type IssueRouteId = { kind: "uuid", value: string } | { kind: "short-id", value: string };
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Matches the backend's `isUuid` contract (v4 only, see
+// `@hexclave/shared/utils/uuids`): issue ids are backend-minted v4 uuids, and a
+// uuid-shaped-but-not-v4 segment would only be rejected server-side with a
+// generic load error — catching it here shows the precise "not a valid issue
+// reference" page instead. Case-insensitive because the value is lowercased
+// below before it is sent anywhere.
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function parseIssueRouteId(raw: string): IssueRouteId | null {
   const trimmed = raw.trim();

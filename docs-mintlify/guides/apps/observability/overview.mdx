@@ -37,7 +37,7 @@ Three properties of that pipeline are worth knowing, because they explain most o
 | Capturing Next.js request errors | Requires [`hexclaveInstrumentation`](/guides/apps/analytics/cross-tier-tracing#server-side-instrumentation) |
 | Stack parsing, grouping, and issue creation | Automatic, server-side |
 | Correlation to trace / session replay / user | Automatic |
-| `release` and `environment` on every occurrence | Automatic on Vercel; [set them explicitly](/guides/apps/analytics/errors-and-logs#configuration) elsewhere |
+| `release` and `environment` on every occurrence | Automatic on Vercel; elsewhere, [set `release` explicitly](/guides/apps/analytics/errors-and-logs#configuration) (`environment` falls back to `NODE_ENV`) |
 | Naming the service an error came from | Inferred; [set `telemetry.resource`](/guides/apps/analytics/overview#identify-every-service) when several apps share a project |
 | Dropping known-noisy errors | Opt-in via `observability.errorCapture.ignoreErrors` |
 | `issue.*` webhooks | Requires the Webhooks app enabled |

@@ -95,7 +95,7 @@ export type ErrorScopeData = {
   extra?: Record<string, unknown>,
   breadcrumbs?: readonly ErrorBreadcrumb[],
   level?: ErrorLevel,
-  /** Preserved for the grouping layer; server-side custom-fingerprint rules follow in M3. */
+  /** Sentry-compatible grouping override. The server hashes these tokens as the issue key. */
   fingerprint?: readonly string[],
   /** Processors captured with this scope and run before the app-level beforeSend hook. */
   eventProcessors?: readonly ErrorEventProcessor[],

@@ -479,15 +479,28 @@ async function applyMerge(
   const { tenancyId, primaryId, loserIds, lockedHashes, metadata, now } = options;
   const rows = await prisma.$queryRaw<MergeCounts[]>(Prisma.sql`
     WITH lease AS (
+      -- FOR UPDATE, not a plain read: the lease was VALIDATED here from the
+      -- statement's snapshot, but the statement then runs several dependent
+      -- CTEs. If our lease had expired and a concurrent merge stole it while
+      -- this statement was executing, a snapshot read could still say "held"
+      -- while the hash rows were already repointed — and the gated deletes
+      -- below would run against the thief's state. Locking the rows (in hash
+      -- order, matching acquireHashLocks) makes the check current AND keeps
+      -- the rows frozen until this statement commits.
       SELECT COUNT(*) = ${lockedHashes.length} AS "held"
-      FROM "IssueHash"
-      WHERE "tenancyId" = ${tenancyId}::uuid
-        AND "hash" = ANY(${[...lockedHashes]}::text[])
-        AND "state" = 'LOCKED'::"IssueHashState"
-        AND "lockedAt" = ${now}::timestamptz
+      FROM (
+        SELECT 1
+        FROM "IssueHash"
+        WHERE "tenancyId" = ${tenancyId}::uuid
+          AND "hash" = ANY(${[...lockedHashes]}::text[])
+          AND "state" = 'LOCKED'::"IssueHashState"
+          AND "lockedAt" = ${now}::timestamptz
+        ORDER BY "hash"
+        FOR UPDATE
+      ) AS locked_lease_rows
     ),
     losers AS (
-      SELECT "id", "shortId", "timesSeen", "firstSeenAt", "lastSeenAt"
+      SELECT "id", "shortId", "timesSeen", "firstSeenAt", "lastSeenAt", "countersTruncatedAt"
       FROM "Issue"
       WHERE "tenancyId" = ${tenancyId}::uuid AND "id" = ANY(${[...loserIds]}::uuid[])
     ),
@@ -495,7 +508,8 @@ async function applyMerge(
       SELECT
         COALESCE(SUM("timesSeen"), 0)::bigint AS "timesSeen",
         MIN("firstSeenAt") AS "firstSeenAt",
-        MAX("lastSeenAt") AS "lastSeenAt"
+        MAX("lastSeenAt") AS "lastSeenAt",
+        MIN("countersTruncatedAt") AS "countersTruncatedAt"
       FROM losers
     ),
     primary_updated AS (
@@ -503,6 +517,14 @@ async function applyMerge(
       SET "timesSeen"        = i."timesSeen" + f."timesSeen",
           "firstSeenAt"      = LEAST(i."firstSeenAt", COALESCE(f."firstSeenAt", i."firstSeenAt")),
           "lastSeenAt"       = GREATEST(i."lastSeenAt", COALESCE(f."lastSeenAt", i."lastSeenAt")),
+          -- An issue produced by unmergeIssue carries a windowed counter seed,
+          -- marked by countersTruncatedAt. Folding such a loser in makes the
+          -- primary's counter approximate too, so the EARLIEST marker must
+          -- survive the merge: the summed counter includes every event from
+          -- each participant's retained window, and the oldest boundary is the
+          -- only honest lower bound for that union. (LEAST skips NULLs; NULL
+          -- only when no participant had one.)
+          "countersTruncatedAt" = LEAST(i."countersTruncatedAt", f."countersTruncatedAt"),
           "assigneeUserId"   = ${metadata.assigneeUserId}::uuid,
           "firstSeenRelease" = ${metadata.firstSeenRelease},
           "lastSeenRelease"  = ${metadata.lastSeenRelease},
@@ -772,16 +794,26 @@ async function applyUnmerge(
   const { tenancyId, source, movedHashes, lockedHashes, assignedTeamId, timesSeen, firstSeenAt, lastSeenAt, countersTruncatedAt, now } = options;
   const rows = await prisma.$queryRaw<{ id: string, shortId: bigint, reboundHashes: number }[]>(Prisma.sql`
     WITH lease AS (
+      -- Locked, not merely read — same reasoning as applyMerge's lease CTE: a
+      -- stale lease stolen mid-statement must fail the whole statement, not
+      -- leave a freshly created issue whose hashes a thief already repointed.
       SELECT COUNT(*) = ${lockedHashes.length} AS "held"
-      FROM "IssueHash"
-      WHERE "tenancyId" = ${tenancyId}::uuid
-        AND "hash" = ANY(${[...lockedHashes]}::text[])
-        AND "state" = 'LOCKED'::"IssueHashState"
-        AND "lockedAt" = ${now}::timestamptz
+      FROM (
+        SELECT 1
+        FROM "IssueHash"
+        WHERE "tenancyId" = ${tenancyId}::uuid
+          AND "hash" = ANY(${[...lockedHashes]}::text[])
+          AND "state" = 'LOCKED'::"IssueHashState"
+          AND "lockedAt" = ${now}::timestamptz
+        ORDER BY "hash"
+        FOR UPDATE
+      ) AS locked_lease_rows
     ),
     counter AS (
       INSERT INTO "IssueCounter" ("tenancyId", "nextShortId")
-      VALUES (${tenancyId}::uuid, 2::bigint)
+      SELECT ${tenancyId}::uuid, 2::bigint
+      FROM lease
+      WHERE "held"
       ON CONFLICT ("tenancyId") DO UPDATE
         SET "nextShortId" = "IssueCounter"."nextShortId" + 1
       RETURNING "nextShortId" - 1 AS "shortId"
@@ -826,6 +858,7 @@ async function applyUnmerge(
         AND h."hash" = ANY(${[...lockedHashes]}::text[])
         AND h."state" = 'LOCKED'::"IssueHashState"
         AND h."lockedAt" = ${now}::timestamptz
+        AND EXISTS (SELECT 1 FROM created)
       RETURNING h."hash"
     )
     SELECT c."id", c."shortId", (SELECT COUNT(*)::int FROM rebound) AS "reboundHashes"

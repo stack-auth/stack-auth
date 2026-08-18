@@ -1,4 +1,4 @@
-import { getSoleTenancyFromProjectBranch, DEFAULT_BRANCH_ID, type Tenancy } from "@/lib/tenancies";
+import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import { globalPrismaClient } from "@/prisma-client";
 import { IssueOwnerSource, IssueOwnerType } from "@/generated/prisma/client";
 import { randomUUID } from "node:crypto";
@@ -15,7 +15,28 @@ let otherBranchUserId: string;
 let teamId: string;
 
 beforeAll(async () => {
-  tenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
+  // Deliberately NOT the internal tenancy: the ownership resolver rejects
+  // member snapshots above OWNERSHIP_RESOLVER_MAX_MEMBERS (512) by design, and
+  // a seeded dev database gives the internal project 1000+ users — which turns
+  // every hydration into the over-limit rejection instead of exercising the
+  // routing under test. Any small tenancy works; the fixture creates its own
+  // users, team, and issue inside it.
+  const tenancyRows = await globalPrismaClient.tenancy.findMany({
+    where: { projectId: { not: "internal" } },
+    orderBy: { id: "asc" },
+    select: { id: true },
+  });
+  let picked: Tenancy | null = null;
+  for (const row of tenancyRows) {
+    const memberCount = await globalPrismaClient.projectUser.count({ where: { tenancyId: row.id } });
+    if (memberCount > 400) continue;
+    const resolved = await getTenancy(row.id);
+    if (resolved === null) continue;
+    picked = resolved;
+    break;
+  }
+  if (picked === null) throw new Error("Ownership hydration tests need a seeded tenancy with fewer than 400 users.");
+  tenancy = picked;
   issueId = randomUUID();
   currentUserId = randomUUID();
   otherBranchUserId = randomUUID();
@@ -79,6 +100,30 @@ beforeAll(async () => {
       source: IssueOwnerSource.OWNERSHIP_RULE,
     },
   });
+
+  // Hydration deliberately reads membership through the read replica, and the
+  // dev/CI replica is asynchronous with no replication-wait strategy — so a
+  // read issued immediately after the seed writes above can legitimately miss
+  // them. That staleness is acceptable for alert delivery in production, but
+  // this fixture must not start until the replica has caught up, or the tests
+  // race replication instead of testing hydration. (Skipped implicitly when no
+  // replica is configured: $replica() then falls back to the primary.)
+  const replicaDeadline = performance.now() + 30_000;
+  while (true) {
+    const replicatedMember = await globalPrismaClient.$replica().teamMember.findFirst({
+      where: { tenancyId: tenancy.id, teamId, projectUserId: currentUserId },
+      select: { projectUserId: true },
+    });
+    const replicatedOwner = await globalPrismaClient.$replica().issueOwner.findFirst({
+      where: { tenancyId: tenancy.id, issueId },
+      select: { id: true },
+    });
+    if (replicatedMember !== null && replicatedOwner !== null) break;
+    if (performance.now() > replicaDeadline) {
+      throw new Error("The read replica did not catch up with the seeded ownership fixtures within 30s");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
 });
 
 afterAll(async () => {

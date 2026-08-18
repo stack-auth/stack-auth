@@ -34,6 +34,7 @@ export type JavaScriptSymbolicationLimits = Readonly<{
   maxPathBytes: number,
   maxNameBytes: number,
   maxMappingSegments: number,
+  maxMappingLines: number,
   maxSourceContentBytes: number,
   maxContextLines: number,
   maxContextLineBytes: number,
@@ -49,6 +50,12 @@ export const DEFAULT_JAVASCRIPT_SYMBOLICATION_LIMITS: JavaScriptSymbolicationLim
   maxPathBytes: 4_096,
   maxNameBytes: 2_048,
   maxMappingSegments: 200_000,
+  // Bounds generated (semicolon-delimited) lines separately from segments: a
+  // size-valid, semicolon-only `mappings` string contains no segments at all,
+  // so without this bound it could materialize millions of empty mapping lines
+  // (memory-amplification DoS on the error path). Any real map whose mapped
+  // content is dense enough to matter hits maxMappingSegments long before this.
+  maxMappingLines: 1_000_000,
   maxSourceContentBytes: 128 * 1024,
   maxContextLines: 5,
   maxContextLineBytes: 512,
@@ -290,11 +297,17 @@ export class JavaScriptSymbolicationService {
     }
     if (!loaded.ok) return frameFailure(raw, [loaded.diagnostic]);
 
-    const generatedColumn = raw.colno === null ? 0 : Math.max(0, raw.colno - 1);
-    if (raw.colno === null) {
+    // Raw columns are one-based, so 0 is out of convention — but browsers
+    // genuinely report `colno: 0` when the column is unknown (e.g. legacy
+    // window.onerror). Treat it exactly like a missing column (first generated
+    // column + diagnostic) instead of rejecting the whole frame, which would
+    // drop otherwise-symbolicatable real-world frames.
+    const oneBasedColumn = raw.colno !== null && raw.colno >= 1 ? raw.colno : null;
+    const generatedColumn = oneBasedColumn === null ? 0 : oneBasedColumn - 1;
+    if (oneBasedColumn === null) {
       frameDiagnostics.push({
         code: "invalid_frame_location",
-        message: "JavaScript frame has no column; the first generated column was used.",
+        message: "JavaScript frame has no usable one-based column; the first generated column was used.",
         line: raw.lineno,
         column: raw.colno,
       });
@@ -511,7 +524,10 @@ export class JavaScriptSymbolicationService {
     }
     let bytes: Uint8Array | null;
     try {
-      bytes = await this.storage.readObject(key);
+      // Preserve the version observed by the size check. Without the ETag,
+      // storage re-HEADs the key and a replacement can pass the new size
+      // check before the old artifact's read limit is applied.
+      bytes = await this.storage.readObject(key, info.eTag);
     } catch (error) {
       if (!(error instanceof ArtifactServiceError) || error.code !== "storage_unavailable") throw error;
       return { ok: false, diagnostic: artifactDiagnostic("artifact_storage_unavailable", "Artifact storage is unavailable.", lookup.artifact.debugId, lookup.artifact.codeFile) };
@@ -624,7 +640,7 @@ export function parseStandardSourceMap(
 
   const sourceContentResult = readSourceContents(value.sourcesContent, sources.values.length, limits);
   if (!sourceContentResult.ok) return sourceContentResult;
-  const mappings = parseMappings(value.mappings, sources.values.length, names.values.length, limits.maxMappingSegments);
+  const mappings = parseMappings(value.mappings, sources.values.length, names.values.length, limits.maxMappingSegments, limits.maxMappingLines);
   if (!mappings.ok) return mappings;
   return {
     ok: true,
@@ -704,11 +720,17 @@ type MappingParseResult =
   | Readonly<{ ok: true, values: (readonly MappingSegment[])[] }>
   | Readonly<{ ok: false, diagnostic: SymbolicationDiagnostic }>;
 
+// Shared by every generated line without segments so that sparse maps (and
+// hostile all-semicolon ones, up to maxMappingLines) cost one array slot per
+// line instead of one array allocation per line.
+const EMPTY_MAPPING_LINE: readonly MappingSegment[] = Object.freeze([]);
+
 function parseMappings(
   mappings: string,
   sourceCount: number,
   nameCount: number,
   maxSegments: number,
+  maxLines: number,
 ): MappingParseResult {
   const lines: (readonly MappingSegment[])[] = [];
   let sourceIndex = 0;
@@ -717,10 +739,24 @@ function parseMappings(
   let nameIndex = 0;
   let segmentCount = 0;
 
-  for (const lineText of mappings.split(";")) {
+  // Deliberately scans with indexOf instead of split(";")/split(","): splitting
+  // materializes one string per delimiter, so a delimiter-only `mappings` field
+  // would allocate millions of entries before any per-segment limit could fire.
+  let position = 0;
+  while (true) {
+    const lineSeparator = mappings.indexOf(";", position);
+    const lineEnd = lineSeparator === -1 ? mappings.length : lineSeparator;
+    if (lines.length >= maxLines) {
+      return { ok: false, diagnostic: { code: "invalid_source_map", message: "The source map contains too many generated lines." } };
+    }
     let generatedColumn = 0;
-    const line: MappingSegment[] = [];
-    for (const segmentText of lineText.split(",")) {
+    let line: MappingSegment[] | null = null;
+    let segmentStart = position;
+    while (segmentStart < lineEnd) {
+      let segmentEnd = segmentStart;
+      while (segmentEnd < lineEnd && mappings.charCodeAt(segmentEnd) !== 0x2c /* "," */) segmentEnd += 1;
+      const segmentText = mappings.slice(segmentStart, segmentEnd);
+      segmentStart = segmentEnd + 1;
       if (segmentText === "") continue;
       segmentCount += 1;
       if (segmentCount > maxSegments) {
@@ -738,7 +774,7 @@ function parseMappings(
       }
       generatedColumn = nextGeneratedColumn;
       if (values.length === 1) {
-        line.push({ generatedColumn, sourceIndex: null, originalLine: null, originalColumn: null, nameIndex: null });
+        (line ??= []).push({ generatedColumn, sourceIndex: null, originalLine: null, originalColumn: null, nameIndex: null });
         continue;
       }
       const nextSourceIndex = sourceIndex + values[1];
@@ -767,7 +803,7 @@ function parseMappings(
         nameIndex = nextNameIndex;
         mappedNameIndex = nameIndex;
       }
-      line.push({
+      (line ??= []).push({
         generatedColumn,
         sourceIndex,
         originalLine,
@@ -775,7 +811,9 @@ function parseMappings(
         nameIndex: mappedNameIndex,
       });
     }
-    lines.push(line);
+    lines.push(line ?? EMPTY_MAPPING_LINE);
+    if (lineSeparator === -1) break;
+    position = lineSeparator + 1;
   }
   return { ok: true, values: lines };
 }
@@ -956,6 +994,17 @@ export function artifactCodeFileMatchesFrame(artifactCodeFile: string, frameCode
   } catch {
     return false;
   }
+  // URL.pathname keeps percent-encoding, but the CLI manifest stores decoded
+  // relative paths, so a served URL like `.../my%20file.js` must be decoded
+  // before comparing. Malformed escapes fall back to the raw pathname (an
+  // exact-encoded manifest path can still match). Decoding `%2F` into extra
+  // slashes is fine here: the frame is client-supplied anyway and this check
+  // only gates which already-authenticated artifact symbolizes it.
+  try {
+    pathname = decodeURIComponent(pathname);
+  } catch {
+    // keep the encoded pathname
+  }
   const relative = pathname.startsWith("/") ? pathname.slice(1) : pathname;
   return relative === artifactCodeFile || relative.endsWith(`/${artifactCodeFile}`);
 }
@@ -992,10 +1041,27 @@ function resolveLimits(input: Partial<JavaScriptSymbolicationLimits>): JavaScrip
     maxPathBytes: positiveLimit(input.maxPathBytes, DEFAULT_JAVASCRIPT_SYMBOLICATION_LIMITS.maxPathBytes, "maxPathBytes"),
     maxNameBytes: positiveLimit(input.maxNameBytes, DEFAULT_JAVASCRIPT_SYMBOLICATION_LIMITS.maxNameBytes, "maxNameBytes"),
     maxMappingSegments: positiveLimit(input.maxMappingSegments, DEFAULT_JAVASCRIPT_SYMBOLICATION_LIMITS.maxMappingSegments, "maxMappingSegments"),
+    maxMappingLines: positiveLimit(input.maxMappingLines, DEFAULT_JAVASCRIPT_SYMBOLICATION_LIMITS.maxMappingLines, "maxMappingLines"),
     maxSourceContentBytes: positiveLimit(input.maxSourceContentBytes, DEFAULT_JAVASCRIPT_SYMBOLICATION_LIMITS.maxSourceContentBytes, "maxSourceContentBytes"),
     maxContextLines: positiveLimit(input.maxContextLines, DEFAULT_JAVASCRIPT_SYMBOLICATION_LIMITS.maxContextLines, "maxContextLines"),
-    maxContextLineBytes: positiveLimit(input.maxContextLineBytes, DEFAULT_JAVASCRIPT_SYMBOLICATION_LIMITS.maxContextLineBytes, "maxContextLineBytes"),
+    maxContextLineBytes: contextLineBytesLimit(input.maxContextLineBytes),
   };
+}
+
+/**
+ * trimContextLine can honor a 14-byte line by retaining the two six-byte
+ * markers and their separating spaces while shrinking the excerpt to the
+ * smallest representable boundary. Rejecting smaller configs up front keeps
+ * the "output is at most maxContextLineBytes" invariant explicit.
+ */
+const MIN_CONTEXT_LINE_BYTES = 2 * utf8ByteLength(SOURCE_MAP_SNIP_MARKER) + 2;
+
+function contextLineBytesLimit(value: number | undefined): number {
+  const limit = positiveLimit(value, DEFAULT_JAVASCRIPT_SYMBOLICATION_LIMITS.maxContextLineBytes, "maxContextLineBytes");
+  if (limit < MIN_CONTEXT_LINE_BYTES) {
+    throw new Error(`maxContextLineBytes must be at least ${MIN_CONTEXT_LINE_BYTES} to fit the snip markers around one code point.`);
+  }
+  return limit;
 }
 
 function positiveLimit(value: number | undefined, fallback: number, label: string): number {

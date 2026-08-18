@@ -1,170 +1,32 @@
-import { Prisma } from "@/generated/prisma/client";
 import { createProductionErrorAttachmentService } from "@/lib/attachments";
 import { getErrorAttachmentEventId } from "@/lib/attachments/attachment-event-id";
 import { validateErrorAttachmentScope } from "@/lib/attachments/attachment-contract";
-import { decodeOccurrenceCursor, deriveSubstatus, issueRangeStart, loadIssueWindowStats, loadOccurrence } from "@/lib/issues/issue-queries";
-import { emitIssueLifecycleWebhook } from "@/lib/issues/issue-webhooks";
+import { loadIssueDetailContext, projectIssueListItem } from "@/lib/issues/issue-detail";
+import { transitionIssueStatus } from "@/lib/issues/issue-lifecycle";
+import { withIssueActionTarget } from "@/app/api/latest/issues/[issue_id]/actions/_shared";
+import { decodeOccurrenceCursor, issueRangeStart, loadIssueWindowStats, loadOccurrence } from "@/lib/issues/issue-queries";
 import { loadIssueProductSnapshot } from "@/lib/issues/issue-product";
 import { serializeIssueProductSnapshot } from "@/lib/issues/issue-product-projection";
-import { projectPublicIssueOccurrence } from "@/lib/issues/public-issue-api";
+import { assertObservabilityEnabled } from "@/lib/issues/observability-gate";
+import { projectPublicIssueOccurrence } from "@/lib/issues/occurrence-projection";
 import { loadIssueReleaseContext } from "@/lib/releases/issue-release-context";
-import { getPrismaClientForTenancy } from "@/prisma-client";
-import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@hexclave/shared";
 import { scrubErrorIngestPayload } from "@/lib/error-ingest";
+import { parsePublicIssueHours } from "@/app/api/latest/issues/contract";
 import {
   IssueDetailResponseSchema,
   IssueUpdateRequestSchema,
   type IssueAttachment,
-  type IssueListItem,
 } from "@hexclave/shared/dist/interface/admin-issues";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import { isUuid } from "@hexclave/shared/dist/utils/uuids";
-import type { Tenancy } from "@/lib/tenancies";
-
-type ResolvedIssue = {
-  item: IssueListItem,
-  hashes: string[],
-  firstSeenRelease: string | null,
-  lastSeenRelease: string | null,
-  ignoredUntil: Date | null,
-  /** Non-null when the requested id was a merged-away issue. */
-  redirectedFromIssueId: string | null,
-};
 
 /**
- * Resolves the `[issue_id]` segment, which accepts three forms:
- *   - a uuid (the primary key)
- *   - an all-digits short id (what the UI shows and what people paste in chat)
- *   - a uuid that has since been merged away, via `IssueRedirect`
- *
- * The short-id form is why this is a lookup rather than a `findUnique`: short
- * ids are per-tenancy `BigInt`s, so `42` is only meaningful together with the
- * authenticated tenancy.
- *
- * Redirects are followed exactly ONE hop by design — merge rewrites inbound
- * redirects rather than chaining them, so a chain would indicate a bug rather
- * than a state to traverse. Looping here would hide that.
+ * The dashboard's own error-envelope parse, kept separate from the public
+ * `parsePublicErrorEnvelope` on purpose: the internal view has no size cap and
+ * no JSON-serializability narrowing (the dashboard renders whatever was
+ * stored), and it treats a stored "{}" as absent.
  */
-async function resolveIssue(
-  tenancy: Tenancy,
-  rawId: string,
-  rangeStart: Date,
-  hopsRemaining: number = 1,
-): Promise<ResolvedIssue | null> {
-  const prisma = await getPrismaClientForTenancy(tenancy);
-  const isShortId = /^\d+$/.test(rawId);
-  if (!isShortId && !isUuid(rawId)) {
-    throw new StatusError(StatusError.BadRequest, "issue_id must be a UUID or a numeric short id");
-  }
-
-  // Two distinct predicates rather than one clause with a runtime branch: the
-  // columns have different types (`bigint` vs `uuid`), so a single query would
-  // have to cast one of them per row and lose its index.
-  const identityPredicate = isShortId
-    ? Prisma.sql`i."shortId" = ${rawId}::bigint`
-    : Prisma.sql`i."id" = ${rawId}::uuid`;
-
-  const rows = await prisma.$queryRaw<{
-    id: string, shortId: bigint, type: string, value: string, culprit: string,
-    status: string, firstSeenAt: Date, lastSeenAt: Date, regressedAt: Date | null,
-    timesSeen: bigint, countersTruncatedAt: Date | null, ignoredUntil: Date | null,
-    serviceName: string | null, deploymentEnvironmentName: string | null,
-    firstSeenRelease: string | null, lastSeenRelease: string | null, updatedAt: Date,
-    handled: boolean, synthetic: boolean, hashes: string[],
-  }[]>(Prisma.sql`
-    SELECT i."id", i."shortId", i."type", i."value", i."culprit", i."status"::text AS "status",
-           i."firstSeenAt", i."lastSeenAt", i."regressedAt", i."timesSeen",
-           i."countersTruncatedAt", i."ignoredUntil", i."serviceName",
-           i."deploymentEnvironmentName", i."firstSeenRelease", i."lastSeenRelease", i."updatedAt",
-           i."handled", i."synthetic",
-           COALESCE(
-             (SELECT array_agg(h."hash") FROM "IssueHash" h
-              WHERE h."tenancyId" = i."tenancyId" AND h."issueId" = i."id"),
-             ARRAY[]::text[]
-           ) AS "hashes"
-    FROM "Issue" i
-    WHERE i."tenancyId" = ${tenancy.id}::uuid AND ${identityPredicate}
-    LIMIT 1
-  `);
-
-  let redirectedFromIssueId: string | null = null;
-
-  if (rows.length === 0) {
-    // Short ids resolve through redirects too. They are the ids users actually
-    // type and paste into chat, so a merged-away short id 404ing would break
-    // exactly the links people share — which is why `IssueRedirect` carries
-    // `fromShortId` with its own unique constraint.
-    const redirectPredicate = isShortId
-      ? Prisma.sql`"fromShortId" = ${rawId}::bigint`
-      : Prisma.sql`"fromIssueId" = ${rawId}::uuid`;
-    const redirected = await prisma.$queryRaw<{ fromIssueId: string, toIssueId: string }[]>(Prisma.sql`
-      SELECT "fromIssueId", "toIssueId" FROM "IssueRedirect"
-      WHERE "tenancyId" = ${tenancy.id}::uuid AND ${redirectPredicate}
-      LIMIT 1
-    `);
-    if (redirected.length === 0) return null;
-    // Merge REWRITES inbound redirects instead of chaining them, so a second
-    // hop would mean the redirect table is corrupt. Refuse to walk it rather
-    // than recursing without a bound — an accidental cycle would otherwise hang
-    // the request until the connection times out.
-    if (hopsRemaining <= 0) return null;
-    // The merged-away ISSUE's id, not the raw path segment — the segment may
-    // have been a short id, and the field's whole purpose is letting the
-    // dashboard rewrite the URL to the surviving issue.
-    redirectedFromIssueId = redirected[0].fromIssueId;
-    const followed = await resolveIssue(tenancy, redirected[0].toIssueId, rangeStart, hopsRemaining - 1);
-    if (followed === null) return null;
-    return { ...followed, redirectedFromIssueId };
-  }
-
-  if (rows.length === 0) return null;
-  const resolvedRow = rows[0];
-
-  const now = new Date();
-  // Shared with the list so a detail page can never disagree with the row that
-  // linked to it.
-  const substatus = deriveSubstatus(resolvedRow, rangeStart);
-  const status = resolvedRow.status === "IGNORED" && resolvedRow.ignoredUntil !== null && resolvedRow.ignoredUntil < now
-    ? "unresolved"
-    : resolvedRow.status.toLowerCase() as IssueListItem["status"];
-
-  return {
-    hashes: resolvedRow.hashes,
-    firstSeenRelease: resolvedRow.firstSeenRelease,
-    lastSeenRelease: resolvedRow.lastSeenRelease,
-    ignoredUntil: resolvedRow.ignoredUntil,
-    redirectedFromIssueId,
-    item: {
-      id: resolvedRow.id,
-      short_id: resolvedRow.shortId.toString(),
-      type: resolvedRow.type,
-      value: resolvedRow.value,
-      culprit: resolvedRow.culprit,
-      level: "error",
-      status,
-      substatus,
-      first_seen_at_millis: resolvedRow.firstSeenAt.getTime(),
-      last_seen_at_millis: resolvedRow.lastSeenAt.getTime(),
-      times_seen: resolvedRow.timesSeen.toString(),
-      counters_truncated_at_millis: resolvedRow.countersTruncatedAt?.getTime() ?? null,
-      // Filled in by the caller from the rollup; the resolver itself only
-      // touches Postgres.
-      window_occurrences: 0,
-      window_users: 0,
-      service_name: resolvedRow.serviceName,
-      environment: resolvedRow.deploymentEnvironmentName,
-      release: resolvedRow.lastSeenRelease,
-      handled: resolvedRow.handled,
-      synthetic: resolvedRow.synthetic,
-      updated_at_millis: resolvedRow.updatedAt.getTime(),
-      issue_hashes: resolvedRow.hashes,
-    },
-  };
-}
-
 function parseErrorEnvelope(raw: string): Record<string, unknown> | null {
   if (raw === "" || raw === "{}") return null;
   let parsed: unknown;
@@ -215,6 +77,10 @@ export const GET = createSmartRouteHandler({
     query: yupObject({
       occurrence: yupString().optional(),
       direction: yupString().optional(),
+      // Same allowlisted vocabulary as the list route (and the dashboard's
+      // time-range toggle); parsed through the shared contract so an invalid
+      // value 400s instead of silently falling back to 24h.
+      hours: yupString().optional(),
     }).optional(),
   }),
   response: yupObject({
@@ -224,12 +90,13 @@ export const GET = createSmartRouteHandler({
   }),
   async handler({ auth, params, query }) {
     const tenancy = auth.tenancy;
-    if (tenancy.config.apps.installed["observability"]?.enabled !== true) {
-      throw new KnownErrors.ObservabilityNotEnabled();
-    }
+    assertObservabilityEnabled(tenancy);
 
-    const rangeStart = issueRangeStart(24, new Date());
-    const resolved = await resolveIssue(tenancy, params.issue_id, rangeStart);
+    const now = new Date();
+    // The window is caller-selected so the detail header's counts can match
+    // whatever time range the issue list is showing, rather than always 24h.
+    const rangeStart = issueRangeStart(parsePublicIssueHours(query.hours), now);
+    const resolved = await loadIssueDetailContext(tenancy, params.issue_id);
     if (resolved === null) throw new StatusError(StatusError.NotFound, "Issue not found");
 
     const cursor = query.occurrence === undefined ? null : decodeOccurrenceCursor(query.occurrence);
@@ -244,12 +111,13 @@ export const GET = createSmartRouteHandler({
     // so they come from the same rollup rather than being recomputed (or, as
     // they briefly were, left at zero).
     const windowStats = await loadIssueWindowStats({ tenancy, hashes: resolved.hashes, rangeStart });
-    const product = await loadIssueProductSnapshot({ tenancy, issueId: resolved.item.id });
+    const issue = projectIssueListItem(resolved.row, { rangeStart, now, stats: windowStats });
+    const product = await loadIssueProductSnapshot({ tenancy, issueId: issue.id });
     const releaseContext = await loadIssueReleaseContext({
       tenancy,
-      issueId: resolved.item.id,
-      firstSeenRelease: resolved.firstSeenRelease,
-      lastSeenRelease: resolved.lastSeenRelease,
+      issueId: issue.id,
+      firstSeenRelease: resolved.row.firstSeenRelease,
+      lastSeenRelease: resolved.row.lastSeenRelease,
     });
     const errorEnvelope = occurrence === null ? null : parseErrorEnvelope(occurrence.error_envelope);
     const attachmentEventId = occurrence === null ? null : getErrorAttachmentEventId({
@@ -269,7 +137,6 @@ export const GET = createSmartRouteHandler({
       );
     const projectedOccurrence = occurrence === null ? null : await projectPublicIssueOccurrence(
       occurrence,
-      resolved.item.release,
       {
         scope: {
           tenantId: tenancy.id,
@@ -284,11 +151,7 @@ export const GET = createSmartRouteHandler({
       statusCode: 200,
       bodyType: "json",
       body: {
-        issue: {
-          ...resolved.item,
-          window_occurrences: windowStats.occurrences,
-          window_users: windowStats.users,
-        },
+        issue,
         occurrence: projectedOccurrence === null ? null : {
           ...projectedOccurrence,
           error_envelope: errorEnvelope,
@@ -320,51 +183,43 @@ export const PATCH = createSmartRouteHandler({
   }),
   async handler({ auth, params, body }) {
     const tenancy = auth.tenancy;
-    if (tenancy.config.apps.installed["observability"]?.enabled !== true) {
-      throw new KnownErrors.ObservabilityNotEnabled();
-    }
+    assertObservabilityEnabled(tenancy);
 
-    const resolved = await resolveIssue(tenancy, params.issue_id, issueRangeStart(24, new Date()));
-    if (resolved === null) throw new StatusError(StatusError.NotFound, "Issue not found");
-
-    const prisma = await getPrismaClientForTenancy(tenancy);
     const now = new Date();
-    const nextStatus = body.status.toUpperCase();
 
-    // `resolvedAt` is set on every transition INTO resolved, because it is what
-    // the ingest path compares a later occurrence against to decide whether a
-    // recurrence counts as a regression. Clearing `regressedAt` on resolve is
-    // deliberate too: the badge describes the CURRENT unresolved state, and a
-    // resolved issue that still advertised a past regression would be confusing.
-    await prisma.$executeRaw`
-      UPDATE "Issue"
-      SET "status" = ${nextStatus}::"IssueStatus",
-          "statusChangedAt" = ${now}::timestamptz,
-          "resolvedAt" = CASE WHEN ${nextStatus} = 'RESOLVED' THEN ${now}::timestamptz ELSE "resolvedAt" END,
-          "regressedAt" = CASE WHEN ${nextStatus} = 'RESOLVED' THEN NULL ELSE "regressedAt" END,
-          "ignoredUntil" = CASE
-            WHEN ${nextStatus} = 'IGNORED' THEN ${body.ignored_until_millis == null ? null : new Date(body.ignored_until_millis)}::timestamptz
-            ELSE NULL
-          END,
-          "updatedAt" = ${now}::timestamptz
-      WHERE "tenancyId" = ${tenancy.id}::uuid AND "id" = ${resolved.item.id}::uuid
-    `;
-
-    // Fire-and-forget: a webhook delivery failure must not fail the user's
-    // status change, which is already committed above.
-    if (body.status === "resolved" || body.status === "ignored") {
-      runAsynchronouslyAndWaitUntil(emitIssueLifecycleWebhook({
+    // Delegates to the ONE lifecycle implementation (the same one behind the
+    // public issue action routes) rather than a hand-rolled UPDATE. This is
+    // what makes the mutation idempotent: a retried PATCH with an identical
+    // body derives `status_unchanged`, so it neither re-stamps
+    // `statusChangedAt`/`resolvedAt` (which the substatus and regression logic
+    // read) nor emits a duplicate lifecycle webhook. `resolvedAt` is still set
+    // on every genuine transition INTO resolved — the ingest path compares a
+    // later occurrence against it to decide whether a recurrence counts as a
+    // regression — and `regressedAt` is cleared on resolve because the badge
+    // describes the CURRENT unresolved state.
+    const { target } = await withIssueActionTarget({
+      tenancy,
+      rawIssueId: params.issue_id,
+      action: (resolved) => transitionIssueStatus({
         tenancy,
-        issueId: resolved.item.id,
-        event: body.status,
-        now,
-      }));
-    }
+        issueId: resolved.issueId,
+        mutation: {
+          status: body.status,
+          ignoredUntil: body.status === "ignored" && body.ignored_until_millis != null ? new Date(body.ignored_until_millis) : null,
+        },
+        changedAt: now,
+      }),
+    });
+
+    // The `issue.resolved` / `issue.ignored` webhook is emitted by
+    // `transitionIssueStatus` itself (fire-and-forget, only on a genuine
+    // transition), so every route that performs this lifecycle action — this
+    // one and the public status/snooze/bulk actions — behaves identically.
 
     return {
       statusCode: 200,
       bodyType: "json",
-      body: { id: resolved.item.id, status: body.status },
+      body: { id: target.issueId, status: body.status },
     } as const;
   },
 });

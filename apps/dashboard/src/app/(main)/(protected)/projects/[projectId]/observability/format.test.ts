@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatAbsoluteTimeFromMillis,
+  formatCount,
   formatDateFromMillis,
   formatDuration,
   formatRelativeTimeFromMillis,
@@ -51,6 +52,31 @@ describe("formatDuration", () => {
     expect(formatDuration(null)).toBe("—");
     expect(formatDuration(0.4)).toBe("400µs");
     expect(formatDuration(90_000)).toBe("1m 30s");
+  });
+});
+
+describe("formatCount", () => {
+  it("keeps small counts exact and compacts large ones", () => {
+    expect(formatCount(0)).toBe("0");
+    expect(formatCount(1_203)).toBe("1,203");
+    expect(formatCount(9_999)).toBe("9,999");
+    expect(formatCount(10_000)).toBe("10.0k");
+    expect(formatCount(125_000)).toBe("125k");
+    expect(formatCount(1_500_000)).toBe("1.5M");
+    expect(formatCount(15_000_000)).toBe("15M");
+  });
+
+  it("drops the decimal exactly at the 100k / 10M readability boundaries", () => {
+    expect(formatCount(99_999)).toBe("100.0k");
+    expect(formatCount(100_000)).toBe("100k");
+    expect(formatCount(9_999_999)).toBe("10.0M");
+    expect(formatCount(10_000_000)).toBe("10M");
+  });
+
+  it("throws on non-finite and negative input rather than rendering nonsense", () => {
+    expect(() => formatCount(Number.NaN)).toThrow();
+    expect(() => formatCount(Number.POSITIVE_INFINITY)).toThrow();
+    expect(() => formatCount(-4)).toThrow();
   });
 });
 

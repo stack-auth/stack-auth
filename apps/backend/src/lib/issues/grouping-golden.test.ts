@@ -109,11 +109,16 @@ describe("golden vectors — hexclave-js:2026-08-01", () => {
   });
 
   it("a synthetic object throw", () => {
+    // This vector was re-committed once BEFORE the feature shipped: the
+    // synthetic rule originally hashed the top frame's raw `absPath`, which
+    // embeds the origin and the per-deploy chunk content hash — every rebuild
+    // split every synthetic issue. The leaf is now the same normalized file
+    // leaf the frame rules use. No customer hashes existed under the old value.
     expect(golden(SYNTHETIC_OBJECT_THROW_FIXTURE)).toMatchInlineSnapshot(`
       {
         "aliasHashes": [],
         "culprit": "/_next/static/chunks/main-app-1c0f0d3b9a7e4f21.js",
-        "ownerHash": "117b29b5894bd3ccd29334e8fb48eeb8",
+        "ownerHash": "97c1b9df8d70f48cef46f653d5d3fae7",
         "variant": "message",
       }
     `);

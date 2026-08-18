@@ -23,8 +23,8 @@ export type DurableGroupingHashProvenance = {
 /**
  * A transition currently has one primary and a small readable secondary set.
  * This bound is deliberately independent of the event payload cap: it protects
- * the durable issue/hash row if a future grouping implementation exposes more
- * variants than the current app/system pair.
+ * the durable issue/hash row even if grouping emits more variants than the
+ * current app/system pair.
  */
 export const MAX_GROUPING_PROVENANCE_ENTRIES = 16;
 
