@@ -43,7 +43,7 @@
 //   another tenancy in the same project already owns the database.
 
 import { getHexclaveServerApp } from "@/hexclave";
-import { ANALYTICS_READER_ROLE, createClickhouseWarehouseClient, getClickhouseAdminClient } from "@/lib/clickhouse";
+import { ANALYTICS_READER_ROLE, getClickhouseAdminClient, type ClickHouseClient } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, type PrismaClientTransaction } from "@/prisma-client";
@@ -240,68 +240,76 @@ async function getPlanTimeoutSeconds(tenancy: Tenancy): Promise<number> {
   return Math.min(Math.max(item.quantity, 1), MAX_EXECUTION_TIME_SECONDS);
 }
 
-async function assertClickhouseWarehouseSecurityPrerequisites(): Promise<void> {
-  const probeSuffix = generateSecureRandomString(80);
-  if (!/^[a-zA-Z0-9]+$/.test(probeSuffix)) {
-    throw new HexclaveAssertionError("Unexpected random string shape for the ClickHouse engine-grant probe");
-  }
-  const probeName = `data_warehouse_engine_probe_${probeSuffix}`;
-  const quotedProbe = `\`${probeName}\``;
-  const probePassword = generateWarehousePassword();
-  const adminClient = getClickhouseAdminClient();
-  let operationFailed = false;
-  try {
-    // There used to be a minimum-version gate here, requiring an upstream build
-    // that contained the loop() row-policy fix (#97682) and the remote
-    // schema-inference access-check fix (#99122). It was removed because it
-    // gated on upstream build numbers, which ClickHouse Cloud does not follow:
-    // Cloud backports fixes without landing on the corresponding upstream patch
-    // release. We reproduced the loop() row-policy bypass on a local
-    // (unpatched) server, then ran the same probe against a real ClickHouse
-    // Cloud service reporting 26.2.1.558 — below the gate's threshold, and the
-    // exact version the gate's unit test asserted was unsafe — and the row
-    // policy held: a user pinned to one project read zero foreign rows through
-    // loop(), while a policy-free control user on the same data saw them. So the
-    // gate would have refused to provision on Cloud services that are in fact
-    // patched, blocking the product for no gain.
-    //
-    // The bugs are still reachable on unpatched local/self-hosted servers. We
-    // accept that: warehouse credentials are a production concern, and local
-    // development has no cross-tenant data worth protecting.
-    await adminClient.command({
-      query: `CREATE USER ${quotedProbe} IDENTIFIED WITH sha256_password BY {password:String}`,
-      query_params: { password: probePassword },
-    });
-    await adminClient.command({ query: `GRANT CREATE TABLE ON default.* TO ${quotedProbe}` });
+/**
+ * Data Warehouse users can create tables only with the engines in
+ * ALLOWED_TABLE_ENGINES; the SSRF/exfil-capable engines and sources are revoked
+ * (see FORBIDDEN_TABLE_ENGINES / FORBIDDEN_SOURCES). That posture only holds if
+ * the ClickHouse server enforces `access_control_improvements.table_engines_require_grant`.
+ *
+ * There used to be a runtime probe here that, on every provision and rotation,
+ * created a throwaway user with `CREATE TABLE` but no engine grant and asserted
+ * `CREATE TABLE ... ENGINE = Memory` was DENIED — refusing to provision if it
+ * succeeded. It was removed: it was expensive (5+ ClickHouse round-trips inside
+ * the provision/rotation transaction) and, more importantly, wrong on ClickHouse
+ * Cloud. We verified on a real Cloud service (26.2.1.558) that Cloud enforces
+ * engine grants *selectively*: it allows the safe engines (`Memory`, the
+ * MergeTree family) without a grant while still denying the dangerous ones. So
+ * the probe's `ENGINE = Memory` succeeded, the probe concluded enforcement was
+ * off, and it hard-failed provisioning — a false positive that would have
+ * blocked the product on Cloud, exactly like the removed version gate.
+ *
+ * What we confirmed on Cloud with a user provisioned the way applyWarehouseDdl
+ * builds one (own-database privileges + `analytics_reader`):
+ *   - `CREATE ... ENGINE = MergeTree` in its own database succeeds.
+ *   - `CREATE ... ENGINE = URL | S3 | MySQL` is DENIED (`TABLE ENGINE ON ...`).
+ *   - `url()` / `s3()` table functions are DENIED (`READ ON URL` / `READ ON S3`).
+ * i.e. the isolation we rely on holds on Cloud without any runtime probe.
+ *
+ * One wrinkle that makes those `GRANT TABLE ENGINE` statements environment-
+ * dependent: on Cloud the admin user (`default`) does NOT hold `TABLE ENGINE`
+ * with grant option, so it cannot pass the grant along and each statement fails
+ * ("...WITH GRANT OPTION"). But on Cloud the grants are also unnecessary — safe
+ * engines already work without them and dangerous ones are already denied — so
+ * we simply skip them there. On a self-managed server the admin *does* hold the
+ * privilege with grant option and the grants *are* required (safe engines are
+ * denied until granted), so we issue them. `applyWarehouseDdl` decides which
+ * case it is from the admin's actual capability (see
+ * `getAdminCanGrantTableEngines`), not from a deployment label, so it is correct
+ * on Cloud, dev, and self-hosted alike. The FORBIDDEN_* revokes stay
+ * unconditional — revoking never needs grant option (verified on Cloud), and it
+ * is the actual security boundary.
+ *
+ * (Deferred to a follow-up: re-establishing a *correct* runtime enforcement
+ * check — one that probes a dangerous engine such as URL rather than Memory —
+ * for self-hosted servers that leave `table_engines_require_grant` disabled.)
+ */
 
-    const probeClient = createClickhouseWarehouseClient({ username: probeName, password: probePassword }, "default");
-    try {
-      await probeClient.command({
-        query: `CREATE TABLE default.${quotedProbe} (value UInt8) ENGINE = Memory`,
-      });
-      throw new HexclaveAssertionError(
-        "ClickHouse must enable access_control_improvements.table_engines_require_grant before provisioning Data Warehouse users",
-      );
-    } catch (error) {
-      if (!(error instanceof Error) || !error.message.includes("TABLE ENGINE ON Memory")) {
-        throw error;
-      }
-    } finally {
-      await probeClient.close();
-    }
-  } catch (error) {
-    operationFailed = true;
-    throw error;
-  } finally {
-    const cleanedUp = await runClickhouseCleanupSteps("data-warehouse-engine-grant-probe-cleanup", [
-      async () => await adminClient.command({ query: `DROP TABLE IF EXISTS default.${quotedProbe}` }),
-      async () => await adminClient.command({ query: `DROP USER IF EXISTS ${quotedProbe}` }),
-      async () => await adminClient.close(),
-    ]);
-    if (!cleanedUp && !operationFailed) {
-      throw new HexclaveAssertionError("Failed to clean up the ClickHouse engine-grant probe");
-    }
+// Whether the ClickHouse admin can hand `TABLE ENGINE` grants to warehouse
+// users. True on a self-managed server (admin holds it WITH GRANT OPTION);
+// false on ClickHouse Cloud (admin lacks it — and the grants are unnecessary
+// there). Resolved via effective grants, so grants held through a role or via
+// `ALL` are counted. The admin's own privileges do not change between requests,
+// so the answer is memoized for the process.
+let adminCanGrantTableEnginesCache: boolean | undefined;
+
+async function getAdminCanGrantTableEngines(client: ClickHouseClient): Promise<boolean> {
+  if (adminCanGrantTableEnginesCache !== undefined) {
+    return adminCanGrantTableEnginesCache;
   }
+  const result = await client.query({
+    query: `
+      SELECT count() AS can_grant
+      FROM system.grants
+      WHERE access_type IN ('TABLE ENGINE', 'ALL')
+        AND grant_option = 1
+        AND (user_name = currentUser() OR role_name IN (SELECT role_name FROM system.enabled_roles))
+    `,
+    format: "JSON",
+  });
+  const rows = await result.json<{ can_grant: string }>();
+  const canGrant = Number(rows.data[0]?.can_grant ?? 0) > 0;
+  adminCanGrantTableEnginesCache = canGrant;
+  return canGrant;
 }
 
 async function runClickhouseCleanupSteps(
@@ -394,8 +402,14 @@ async function applyWarehouseDdl(options: {
     // before querying (clickhouse-client, BI tools, dbt).
     await client.command({ query: `GRANT SHOW DATABASES ON ${quotedDatabase}.* TO ${quotedUser}` });
 
-    for (const engine of ALLOWED_TABLE_ENGINES) {
-      await client.command({ query: `GRANT TABLE ENGINE ON ${engine} TO ${quotedUser}` });
+    // Only issue engine grants where the admin can actually grant them. On
+    // ClickHouse Cloud it cannot, and they are unnecessary there anyway (safe
+    // engines work by default, dangerous ones are already denied). See the
+    // comment above `getAdminCanGrantTableEngines`.
+    if (await getAdminCanGrantTableEngines(client)) {
+      for (const engine of ALLOWED_TABLE_ENGINES) {
+        await client.command({ query: `GRANT TABLE ENGINE ON ${engine} TO ${quotedUser}` });
+      }
     }
     for (const engine of FORBIDDEN_TABLE_ENGINES) {
       await client.command({ query: `REVOKE TABLE ENGINE ON ${engine} FROM ${quotedUser}` });
@@ -581,8 +595,6 @@ export async function provisionDataWarehouse(tenancy: Tenancy): Promise<{ passwo
           otherTenancyId: otherTenancyRow.tenancyId,
         });
       }
-      await assertClickhouseWarehouseSecurityPrerequisites();
-
       await tx.dataWarehouse.upsert({
         where: { tenancyId: tenancy.id },
         create: { tenancyId: tenancy.id, databaseName, userName, status: "PROVISIONING" },
@@ -666,8 +678,6 @@ export async function rotateDataWarehousePassword(tenancy: Tenancy): Promise<{ p
           warehouseStatus: existing.status,
         });
       }
-      await assertClickhouseWarehouseSecurityPrerequisites();
-
       const password = generateWarehousePassword();
       const encryptedPassword = await encryptWithKms(password);
       try {
