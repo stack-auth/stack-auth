@@ -10,9 +10,10 @@ import {
   useDataGridUrlState,
   useDataSource,
   type DataGridDataSource,
+  type DataGridState,
   type DataGridToolbarContext,
 } from "@hexclave/dashboard-ui-components";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useDebounce } from "use-debounce";
 import { Link } from "@/components/link";
 import { AppEnabledGuard } from "../../app-enabled-guard";
@@ -24,10 +25,14 @@ import {
   ALL_SERVICES_SELECT_VALUE,
   OBSERVABILITY_TIME_RANGE_OPTIONS,
   parseObservabilityTimeRangeId,
+  readLocationSearch,
+  replaceLocationSearch,
 } from "../filters";
 import {
   serviceIdentityLabel,
   serviceIdentityToSelectValue,
+  namespacedSelectValue,
+  selectValueToNamespacedValue,
   selectValueToServiceIdentity,
 } from "../service-identity";
 import {
@@ -50,10 +55,12 @@ import {
   type IssueFilters,
 } from "./issue-filters";
 import {
+  adjustIssueStatusCounts,
   applyOptimisticStatus,
   clearOptimisticStatus,
   NO_ISSUE_STATUS_OVERRIDES,
   reconcileIssueStatusOverrides,
+  resolveIssueRowStatus,
   type IssueStatusOverrides,
 } from "./issue-status";
 import {
@@ -71,7 +78,13 @@ import { useIssueFacets, useIssueSparklines } from "./use-issue-data";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
-const ALL_ENVIRONMENTS_SELECT_VALUE = "all";
+/**
+ * Environment dropdown values are namespaced so a real environment literally
+ * named "all" can never collide with the "All environments" sentinel (which
+ * would make it impossible to filter on). The prefix only lives inside the
+ * dropdown — the URL codec and the API both carry the raw environment name.
+ */
+const ENVIRONMENT_SELECT_VALUE_PREFIX = "env:";
 
 const HANDLED_FILTER_LABELS = new Map([
   ["all", "Handled & unhandled"],
@@ -86,8 +99,7 @@ function handledFilterLabel(value: string): string {
 }
 
 function readFiltersFromLocation(): IssueFilters {
-  if (typeof window === "undefined") return DEFAULT_ISSUE_FILTERS;
-  return parseIssueFilters(new URLSearchParams(window.location.search));
+  return parseIssueFilters(readLocationSearch());
 }
 
 /**
@@ -141,27 +153,29 @@ export default function PageClient() {
   const overridesRef = useRef(overrides);
   overridesRef.current = overrides;
 
-  // Filters are written back with `history.replaceState`, NOT `router.replace`:
-  // `useDataGridUrlState` writes the grid's own params the same way, and Next's
-  // router would rebuild the query string from its cached `useSearchParams`,
-  // which has never seen those params — silently dropping the user's column and
-  // sort choices on the next filter change.
+  // Filters are written back with `history.replaceState` (via the shared
+  // `replaceLocationSearch`), NOT `router.replace`: `useDataGridUrlState`
+  // writes the grid's own params the same way, and Next's router would rebuild
+  // the query string from its cached `useSearchParams`, which has never seen
+  // those params — silently dropping the user's column and sort choices on the
+  // next filter change.
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = serializeIssueFilters(filters, new URLSearchParams(window.location.search));
-    const next = params.toString();
-    if (next === window.location.search.replace(/^\?/, "")) return;
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${window.location.pathname}${next === "" ? "" : `?${next}`}${window.location.hash}`,
-    );
+    replaceLocationSearch(serializeIssueFilters(filters, readLocationSearch()));
   }, [filters]);
 
   const facetsState = useIssueFacets(adminApp, filters.hours);
 
+  // Counts and the approximate-ranking banner are side effects applied BEFORE
+  // the generator yields, so `useDataSource`'s own abort guard never sees them.
+  // Without a guard of our own, a slow fetch for an old filter that resolves
+  // after a newer one would stamp its stale metadata over the visible list.
+  // Monotonic sequence: only the most recently started request may apply.
+  const listRequestSeqRef = useRef(0);
+  const countsRevisionRef = useRef(0);
+
   const dataSource = useMemo<DataGridDataSource<IssueListItem>>(() => {
     return async function* (params) {
+      const requestId = ++listRequestSeqRef.current;
       const sort = resolveIssueSort(params.sorting);
       const response = await fetchIssueList(adminApp, {
         hours: filters.hours,
@@ -175,8 +189,11 @@ export default function PageClient() {
         cursor: typeof params.cursor === "string" ? params.cursor : null,
         limit: params.pagination.pageSize,
       });
-      setCounts(response.counts);
-      setApproximate(response.approximate);
+      if (listRequestSeqRef.current === requestId) {
+        countsRevisionRef.current += 1;
+        setCounts(response.counts);
+        setApproximate(response.approximate);
+      }
       yield {
         rows: response.items,
         nextCursor: response.cursor,
@@ -193,19 +210,46 @@ export default function PageClient() {
     debouncedSearch,
   ]);
 
+  // Issue ids with a status PATCH in flight. A row exposes two independent
+  // status controls (the primary button and the actions menu); letting them
+  // race would allow the server's final status to differ from the user's last
+  // click while the optimistic row shows otherwise. One in-flight mutation per
+  // row keeps the outcome deterministic; extra clicks during it are no-ops (the
+  // primary button also shows its own loading state meanwhile).
+  const pendingStatusIssueIdsRef = useRef(new Set<string>());
+  const pendingStatusCountRevisionsRef = useRef(new Map<string, number>());
+
   const changeStatus = useCallback(async (issue: IssueListItem, status: IssueStatus) => {
+    if (pendingStatusIssueIdsRef.current.has(issue.id)) return;
+    pendingStatusIssueIdsRef.current.add(issue.id);
+    const countRevisionAtStart = countsRevisionRef.current;
+    pendingStatusCountRevisionsRef.current.set(issue.id, countRevisionAtStart);
     setStatusError(null);
+    // `from` is the status the user acted on (override included), so chained
+    // optimistic count adjustments telescope correctly.
+    const from = resolveIssueRowStatus(issue, overridesRef.current).status;
     setOverrides(applyOptimisticStatus(overridesRef.current, issue.id, status, issue.updated_at_millis));
+    setCounts((current) => adjustIssueStatusCounts(current, from, status));
     try {
       await updateIssueStatus(adminApp, issue.id, status);
       // Deliberately no refetch: under the default Unresolved filter a refetch
       // would yank the row out from under the cursor mid-scan. The override is
-      // versioned, so the next natural refresh reconciles it.
+      // versioned, so the next natural refresh reconciles it (and brings exact
+      // counts with it).
     } catch (error) {
       // Narrow catch around one call: revert and surface. Never swallowed, and
       // never a toast — a failed state change must stay on screen.
       setOverrides(clearOptimisticStatus(overridesRef.current, issue.id));
+      // A list refresh may have replaced the optimistic counts while the PATCH
+      // was in flight. Reversing against that fresh server snapshot would
+      // subtract a real row, so only undo the delta on the revision it changed.
+      if (pendingStatusCountRevisionsRef.current.get(issue.id) === countsRevisionRef.current) {
+        setCounts((current) => adjustIssueStatusCounts(current, status, from));
+      }
       setStatusError(error instanceof Error ? error.message : String(error));
+    } finally {
+      pendingStatusIssueIdsRef.current.delete(issue.id);
+      pendingStatusCountRevisionsRef.current.delete(issue.id);
     }
   }, [adminApp]);
 
@@ -219,12 +263,13 @@ export default function PageClient() {
 
   const cellContext = useMemo<IssueCellContext>(() => ({
     projectId,
+    rangeHours: filters.hours,
     nowMs,
     overrides,
     sparklinesByHash: sparklines.byHash,
     bucketLabel,
     onChangeStatus: changeStatus,
-  }), [projectId, nowMs, overrides, sparklines.byHash, bucketLabel, changeStatus]);
+  }), [projectId, filters.hours, nowMs, overrides, sparklines.byHash, bucketLabel, changeStatus]);
 
   const columns = useMemo(() => buildIssueColumns(cellContext), [cellContext]);
 
@@ -235,6 +280,18 @@ export default function PageClient() {
       columnVisibility: INITIAL_ISSUE_COLUMN_VISIBILITY,
     },
   });
+
+  // The issues request carries exactly one (field, direction) and the backend
+  // orders by it alone, but DataGrid's shift-click multi-sort would happily
+  // DISPLAY a secondary sort column the server never applied. Clamping the
+  // model to the most recently toggled column keeps the indicators honest —
+  // shift-click simply behaves like a plain click on this grid.
+  const handleGridStateChange = useCallback<Dispatch<SetStateAction<DataGridState>>>((action) => {
+    setGridState((current) => {
+      const next = typeof action === "function" ? action(current) : action;
+      return next.sorting.length <= 1 ? next : { ...next, sorting: next.sorting.slice(-1) };
+    });
+  }, [setGridState]);
 
   const getRowId = useCallback((row: IssueListItem) => row.id, []);
 
@@ -360,15 +417,15 @@ export default function PageClient() {
             disabled={facetsState.loading}
           />
           <DesignSelectorDropdown
-            value={filters.environment ?? ALL_ENVIRONMENTS_SELECT_VALUE}
+            value={namespacedSelectValue(filters.environment, ENVIRONMENT_SELECT_VALUE_PREFIX)}
             onValueChange={(value) => setFilters((current) => ({
               ...current,
-              environment: value === ALL_ENVIRONMENTS_SELECT_VALUE ? null : value,
+              environment: selectValueToNamespacedValue(value, ENVIRONMENT_SELECT_VALUE_PREFIX),
             }))}
             options={[
-              { value: ALL_ENVIRONMENTS_SELECT_VALUE, label: "All environments" },
+              { value: "all", label: "All environments" },
               ...facetsState.facets.environments.map((environment) => ({
-                value: environment,
+                value: namespacedSelectValue(environment, ENVIRONMENT_SELECT_VALUE_PREFIX),
                 label: environment,
               })),
             ]}
@@ -588,7 +645,7 @@ export default function PageClient() {
                 hasMore={gridData.hasMore}
                 onLoadMore={gridData.loadMore}
                 state={gridState}
-                onChange={setGridState}
+                onChange={handleGridStateChange}
                 paginationMode="infinite"
                 selectionMode="multiple"
                 rowHeight={56}
@@ -598,7 +655,7 @@ export default function PageClient() {
                 toolbar={renderToolbar}
                 footer={false}
                 exportFilename="issues-export"
-                onRowClick={(row) => router.push(issueDetailHref(projectId, row.id))}
+                onRowClick={(row) => router.push(issueDetailHref(projectId, row.id, { rangeHours: filters.hours }))}
                 emptyState={<IssuesEmptyState filtered={filtersActive} />}
               />
             </div>

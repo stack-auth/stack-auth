@@ -272,10 +272,15 @@ const main = async () => {
       // (0 skips the check; only for fresh/pre-release environments).
       const drainArg = args.find((arg) => arg.startsWith('--min-drain-seconds='))?.split('=')[1];
       const minDrainSeconds = drainArg === undefined ? undefined : Number(drainArg);
-      if (minDrainSeconds !== undefined && !Number.isFinite(minDrainSeconds)) {
+      if (minDrainSeconds !== undefined && (!Number.isFinite(minDrainSeconds) || minDrainSeconds < 0)) {
         throw new Error(`Invalid --min-drain-seconds value: ${JSON.stringify(drainArg)}`);
       }
-      await cutoverLegacyTelemetryTables(getClickhouseAdminClient(), { minDrainSeconds });
+      const clickhouseClient = getClickhouseAdminClient();
+      try {
+        await cutoverLegacyTelemetryTables(clickhouseClient, { minDrainSeconds });
+      } finally {
+        await clickhouseClient.close();
+      }
       // Rerun the migration phase so the freed legacy names are immediately
       // recreated as compatibility views — without this, default.events would
       // point at a dropped table until the next deploy's db:migrate.

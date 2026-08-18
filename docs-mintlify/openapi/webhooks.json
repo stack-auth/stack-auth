@@ -1293,7 +1293,7 @@
                           "ongoing",
                           "regressed"
                         ],
-                        "example": "regressed",
+                        "example": "new",
                         "description": "A finer-grained view of an unresolved issue, derived from its timestamps"
                       },
                       "first_seen_at_millis": {
@@ -1601,7 +1601,7 @@
                           "resolved",
                           "ignored"
                         ],
-                        "example": "unresolved",
+                        "example": "resolved",
                         "description": "The lifecycle status of the issue"
                       },
                       "substatus": {
@@ -1611,7 +1611,7 @@
                           "ongoing",
                           "regressed"
                         ],
-                        "example": "regressed",
+                        "example": "ongoing",
                         "description": "A finer-grained view of an unresolved issue, derived from its timestamps"
                       },
                       "first_seen_at_millis": {
@@ -1760,7 +1760,7 @@
                           "resolved",
                           "ignored"
                         ],
-                        "example": "unresolved",
+                        "example": "ignored",
                         "description": "The lifecycle status of the issue"
                       },
                       "substatus": {
@@ -1770,7 +1770,7 @@
                           "ongoing",
                           "regressed"
                         ],
-                        "example": "regressed",
+                        "example": "ongoing",
                         "description": "A finer-grained view of an unresolved issue, derived from its timestamps"
                       },
                       "first_seen_at_millis": {
@@ -1929,7 +1929,7 @@
                           "ongoing",
                           "regressed"
                         ],
-                        "example": "regressed",
+                        "example": "ongoing",
                         "description": "A finer-grained view of an unresolved issue, derived from its timestamps"
                       },
                       "first_seen_at_millis": {

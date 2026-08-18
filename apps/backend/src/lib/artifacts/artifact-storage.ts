@@ -14,6 +14,8 @@ export type ArtifactStorageObject = {
 
 export type ArtifactStorageObjectInfo = {
   byteLength: number,
+  /** The object version observed by the size check, when the provider exposes one. */
+  eTag?: string,
 };
 
 export type ArtifactObjectStorage = {
@@ -24,7 +26,7 @@ export type ArtifactObjectStorage = {
     contentEncoding?: "gzip",
   }): Promise<string>;
   headObject(key: string): Promise<ArtifactStorageObjectInfo | null>;
-  readObject(key: string): Promise<Uint8Array | null>;
+  readObject(key: string, expectedETag?: string): Promise<Uint8Array | null>;
 };
 
 /** The production adapter: private S3/R2 is the durable artifact registry. */
@@ -59,30 +61,30 @@ export function createS3ArtifactObjectStorage(): ArtifactObjectStorage {
     async headObject(key) {
       try {
         const result = await headBytes({ key, private: true });
-        return result === null ? null : { byteLength: result.byteLength };
+        return result === null ? null : { byteLength: result.byteLength, eTag: result.eTag };
       } catch (error) {
         throw translateStorageConfigurationError(error);
       }
     },
-    async readObject(key) {
+    async readObject(key, expectedETag) {
       try {
-        // The HEAD here is not redundant with the callers' own headObject size
-        // checks: it captures the ETag of the exact version those checks (and
-        // this read) must observe. Presigned upload URLs stay valid for a while
-        // after registration, so without If-Match a concurrent overwrite could
-        // hand the GET a different (possibly far larger) body than the size
-        // check approved.
-        const info = await headBytes({ key, private: true });
-        if (info === null) return null;
+        // If the caller already performed a size check, carry its ETag through
+        // to the conditional GET. Re-HEADing here would leave a TOCTOU window:
+        // a replacement could be observed by this second HEAD and then be
+        // downloaded before the caller's original byte limit is applied.
+        const eTag = expectedETag ?? (await headBytes({ key, private: true }))?.eTag;
+        if (eTag === undefined) return null;
         try {
-          return await downloadBytes({ key, private: true, ifMatch: info.eTag });
+          return await downloadBytes({ key, private: true, ifMatch: eTag });
         } catch (error) {
-          // 412 = the object was replaced between the HEAD and the GET; 404 =
-          // it was deleted in that window. Both mean "the version we vetted is
-          // gone" — return null so callers fail their read loudly instead of
-          // consuming bytes that bypassed the pre-read checks.
-          if (error instanceof S3ServiceException && [404, 412].includes(error.$metadata.httpStatusCode ?? 0)) {
+          // A deleted object is a not-found result. A failed If-Match means the
+          // object still exists but changed after validation, so preserve that
+          // distinction for callers that report integrity/concurrency errors.
+          if (error instanceof S3ServiceException && error.$metadata.httpStatusCode === 404) {
             return null;
+          }
+          if (error instanceof S3ServiceException && error.$metadata.httpStatusCode === 412) {
+            throw new ArtifactServiceError("integrity_mismatch", "The artifact object changed while it was being read.");
           }
           throw error;
         }

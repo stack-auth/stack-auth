@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  adjustIssueStatusCounts,
   applyOptimisticStatus,
   clearOptimisticStatus,
   issueStatusBadge,
@@ -110,6 +111,58 @@ describe("optimistic overrides", () => {
     const row = issue({ status: "resolved" });
     const overrides = applyOptimisticStatus(NO_ISSUE_STATUS_OVERRIDES, row.id, "resolved", row.updated_at_millis);
     expect(resolveIssueRowStatus(row, overrides)).toEqual({ status: "resolved", isOptimistic: false });
+  });
+
+  it("reconciles only the stale override, leaving still-live siblings untouched", () => {
+    const a = applyOptimisticStatus(NO_ISSUE_STATUS_OVERRIDES, "a", "resolved", 2_000);
+    const both = applyOptimisticStatus(a, "b", "ignored", 2_000);
+
+    // Only "a" moved server-side; "b" is still at the version the user clicked.
+    const rowA = issue({ id: "a", updated_at_millis: 5_000 });
+    const rowB = issue({ id: "b", updated_at_millis: 2_000 });
+    const reconciled = reconcileIssueStatusOverrides(both, [rowA, rowB]);
+
+    expect(reconciled.has("a")).toBe(false);
+    expect(reconciled.get("b")?.status).toBe("ignored");
+    // Immutability: the input map is never mutated in place.
+    expect(both.has("a")).toBe(true);
+  });
+
+  it("keeps the same map reference when the overridden rows are not in the fetched page", () => {
+    const a = applyOptimisticStatus(NO_ISSUE_STATUS_OVERRIDES, "a", "resolved", 2_000);
+    const both = applyOptimisticStatus(a, "b", "ignored", 2_000);
+
+    // The fetched page contains neither overridden issue (e.g. it scrolled out
+    // of the window) — nothing to reconcile, identity must be preserved.
+    const reconciled = reconcileIssueStatusOverrides(both, [issue({ id: "c", updated_at_millis: 9_000 })]);
+
+    expect(reconciled).toBe(both);
+    expect(reconciled.size).toBe(2);
+  });
+});
+
+describe("adjustIssueStatusCounts", () => {
+  it("moves one issue between buckets", () => {
+    expect(adjustIssueStatusCounts({ unresolved: 5, resolved: 2, ignored: 1 }, "unresolved", "resolved"))
+      .toEqual({ unresolved: 4, resolved: 3, ignored: 1 });
+  });
+
+  it("is a no-op for same-status transitions and missing counts", () => {
+    const counts = { unresolved: 5, resolved: 2, ignored: 1 };
+    expect(adjustIssueStatusCounts(counts, "resolved", "resolved")).toBe(counts);
+    expect(adjustIssueStatusCounts(null, "unresolved", "resolved")).toBeNull();
+  });
+
+  it("never drives a count below zero, even if the server count was already stale", () => {
+    expect(adjustIssueStatusCounts({ unresolved: 0, resolved: 0, ignored: 0 }, "unresolved", "ignored"))
+      .toEqual({ unresolved: 0, resolved: 0, ignored: 1 });
+  });
+
+  it("telescopes across chained optimistic transitions", () => {
+    const start = { unresolved: 3, resolved: 0, ignored: 0 };
+    const afterResolve = adjustIssueStatusCounts(start, "unresolved", "resolved");
+    const afterUndo = adjustIssueStatusCounts(afterResolve, "resolved", "unresolved");
+    expect(afterUndo).toEqual(start);
   });
 });
 

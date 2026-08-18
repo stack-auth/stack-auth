@@ -38,9 +38,22 @@ export function createLegacyBatchProtocolProjection(
   policyOutcomes?: readonly ErrorIngestPolicyItemOutcome[],
 ): ErrorIngestProtocolProjection {
   if (policyOutcomes !== undefined) {
+    const outcomes: ErrorIngestItemOutcome[] = policyOutcomes.map(({ scrubbed: _scrubbed, scrubbedBytes: _scrubbedBytes, ...outcome }) => outcome);
+    const policyItemIds = new Set(outcomes.map((outcome) => outcome.itemId));
+    // Policy evaluation only sees `$error`/`$log` records. Add the product
+    // events and spans that bypass that policy so the legacy projection and
+    // durable client-report ledger describe the complete batch.
+    for (let itemIndex = 0; itemIndex < eventCount; itemIndex++) {
+      if (!policyItemIds.has(`event:${itemIndex}`)) {
+        outcomes.push(createErrorIngestItemOutcome({ itemId: `event:${itemIndex}`, itemType: "event" }, { status: "accepted" }));
+      }
+    }
+    for (let itemIndex = 0; itemIndex < spanCount; itemIndex++) {
+      outcomes.push(createErrorIngestItemOutcome({ itemId: `span:${itemIndex}`, itemType: "span" }, { status: "accepted" }));
+    }
     return createErrorIngestProtocolProjection(
       batchId,
-      policyOutcomes.map(({ scrubbed: _scrubbed, scrubbedBytes: _scrubbedBytes, ...outcome }) => outcome),
+      outcomes,
     );
   }
   const outcomes: ErrorIngestItemOutcome[] = [];

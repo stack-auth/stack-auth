@@ -38,6 +38,7 @@ const SOURCE_MAP = new TextEncoder().encode(JSON.stringify({
 
 class MemoryArtifactStorage implements ArtifactObjectStorage {
   private readonly objects = new Map<string, Uint8Array>();
+  public readonly readExpectedETags: string[] = [];
 
   public async putImmutableObject(object: ArtifactStorageObject): Promise<boolean> {
     if (this.objects.has(object.key)) return false;
@@ -51,10 +52,11 @@ class MemoryArtifactStorage implements ArtifactObjectStorage {
 
   public async headObject(key: string): Promise<ArtifactStorageObjectInfo | null> {
     const body = this.objects.get(key);
-    return body === undefined ? null : { byteLength: body.byteLength };
+    return body === undefined ? null : { byteLength: body.byteLength, eTag: `etag:${key}` };
   }
 
-  public async readObject(key: string): Promise<Uint8Array | null> {
+  public async readObject(key: string, expectedETag?: string): Promise<Uint8Array | null> {
+    if (expectedETag !== undefined) this.readExpectedETags.push(expectedETag);
     const body = this.objects.get(key);
     return body === undefined ? null : new Uint8Array(body);
   }
@@ -168,6 +170,8 @@ describe("JavaScriptSymbolicationService", () => {
       },
       diagnostics: [],
     });
+    expect(fixture.storage.readExpectedETags.length).toBeGreaterThan(0);
+    expect(fixture.storage.readExpectedETags.every((etag) => etag.startsWith("etag:"))).toBe(true);
   });
 
   it("preserves raw frames and diagnoses missing, mismatched, and invalid artifacts", async () => {

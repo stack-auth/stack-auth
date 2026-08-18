@@ -80,10 +80,15 @@ function makeStore(
       if (foundTenancyId !== tenancyId || foundWorkflowEventId !== delivery.workflowEventId) return null;
       return delivery;
     },
-    async applyWorkflowUpdate(updateScope, foundDeliveryId, expectedWorkflowEventId, update) {
+    async applyWorkflowUpdate(updateScope, foundDeliveryId, expectedWorkflowEventId, expectedDelivery, update) {
       expect(updateScope).toEqual(scope);
       expect(foundDeliveryId).toBe(deliveryId);
       expect(expectedWorkflowEventId).toBe(delivery.workflowEventId);
+      expect(expectedDelivery).toEqual({
+        state: delivery.state,
+        nextRetryAt: delivery.nextRetryAt,
+        lastAttemptAt: delivery.lastAttemptAt,
+      });
       if (!shouldApply) return false;
       updates.push(update);
       if (update.kind === "delivered") {

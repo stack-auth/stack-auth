@@ -2,6 +2,7 @@ import { IssueStatus as PrismaIssueStatus } from "@/generated/prisma/enums";
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
+import { randomUUID } from "node:crypto";
 import { appendIssueActivityInTransaction, assertIssueProjectUserInTransaction, assignIssueToTeam as persistIssueTeamAssignment, setIssuePriority as persistIssuePriority } from "./issue-product";
 import { emitIssueLifecycleWebhook } from "./issue-webhooks";
 
@@ -335,6 +336,7 @@ export async function assignIssue(options: IssueScope & {
   const actorUserId = validateActorUserId(options.actorUserId);
   if (options.assigneeUserId !== null) assertUuid(options.assigneeUserId, "assigneeUserId");
   const changedAt = resolveAt(options.changedAt, "changedAt");
+  const actionId = randomUUID();
   const scope: IssueScope = { tenancy: options.tenancy, issueId: options.issueId };
 
   return await withLockedIssue(scope, async (tx, current) => {
@@ -344,7 +346,7 @@ export async function assignIssue(options: IssueScope & {
     // mutations) so a user deleted concurrently cannot slip through; throws
     // `IssueProductInputError`, which the action routes map to 400.
     if (options.assigneeUserId !== null) {
-      await assertIssueProjectUserInTransaction(tx, scope.tenancy, options.assigneeUserId, "assigneeUserId");
+      await assertIssueProjectUserInTransaction(tx, scope.tenancy, options.assigneeUserId, "assigneeUserId", { allowInternalMirror: false });
     }
     if (actorUserId !== null) {
       await assertIssueProjectUserInTransaction(tx, scope.tenancy, actorUserId, "actorUserId");
@@ -361,7 +363,7 @@ export async function assignIssue(options: IssueScope & {
         issueId: scope.issueId,
         actorUserId,
         type: "assignment_changed",
-        idempotencyKey: `assignment:${current.assigneeUserId ?? "none"}:${options.assigneeUserId ?? "none"}:${changedAt.toISOString()}`,
+        idempotencyKey: `assignment:${current.assigneeUserId ?? "none"}:${options.assigneeUserId ?? "none"}:${changedAt.toISOString()}:${actionId}`,
         data: { previous_assignee_user_id: current.assigneeUserId, assignee_user_id: options.assigneeUserId },
         occurredAt: changedAt,
       });
@@ -408,6 +410,7 @@ export async function transitionIssueStatus(options: IssueScope & {
   onlyIfCurrentStatus?: readonly IssueLifecycleStatus[],
 }): Promise<IssueLifecycleTransition> {
   const changedAt = resolveAt(options.changedAt, "changedAt");
+  const actionId = randomUUID();
   if (options.mutation.status === "ignored" && options.mutation.ignoredUntil !== undefined && options.mutation.ignoredUntil !== null) {
     assertDate(options.mutation.ignoredUntil, "ignoredUntil");
   }
@@ -452,7 +455,7 @@ export async function transitionIssueStatus(options: IssueScope & {
       issueId: scope.issueId,
       actorUserId: null,
       type: "status_changed",
-      idempotencyKey: `status:${transition.previous.status}:${transition.current.status}:${changedAt.toISOString()}`,
+      idempotencyKey: `status:${transition.previous.status}:${transition.current.status}:${changedAt.toISOString()}:${actionId}`,
       data: {
         from: transition.previous.status,
         to: transition.current.status,
@@ -476,6 +479,7 @@ export async function transitionIssueStatus(options: IssueScope & {
       issueId: options.issueId,
       event: transition.current.status,
       now: changedAt,
+      eventId: `${options.issueId}.${transition.current.status}.${changedAt.getTime()}`,
     }));
   }
   return transition;
@@ -485,6 +489,7 @@ export async function applyIssueOccurrenceLifecycle(options: IssueScope & {
   receivedAt: Date,
 }): Promise<IssueLifecycleTransition> {
   const receivedAt = resolveAt(options.receivedAt, "receivedAt");
+  const actionId = randomUUID();
   const scope: IssueScope = { tenancy: options.tenancy, issueId: options.issueId };
 
   return await withLockedIssue(scope, async (tx, current) => {
@@ -515,7 +520,7 @@ export async function applyIssueOccurrenceLifecycle(options: IssueScope & {
       issueId: scope.issueId,
       actorUserId: null,
       type: "regressed",
-      idempotencyKey: `regressed:${transition.kind}:${receivedAt.toISOString()}`,
+      idempotencyKey: `regressed:${transition.kind}:${receivedAt.toISOString()}:${actionId}`,
       data: { kind: transition.kind, received_at: receivedAt.toISOString() },
       occurredAt: receivedAt,
     });

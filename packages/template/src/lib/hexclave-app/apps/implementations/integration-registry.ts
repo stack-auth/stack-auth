@@ -295,8 +295,17 @@ function safeText(value: string, maxBytes: number): string {
 function safeUrlPath(value: string | undefined, maxBytes: number): string | undefined {
   if (value === undefined || value === "") return undefined;
 
+  // URL parsing ignores leading C0 controls and spaces, but the fallback
+  // relative-URL interpretation below would otherwise expose a non-HTTP
+  // payload as a pathname. Normalize that prefix before classifying the scheme.
+  const normalized = value.replace(/^[\u0000-\u0020]+/u, "");
+  const explicitScheme = /^([a-z][a-z\d+.-]*):/iu.exec(normalized)?.[1]?.toLowerCase();
+  if (explicitScheme !== undefined && explicitScheme !== "http" && explicitScheme !== "https") {
+    return truncateUtf8Bytes(`<${explicitScheme}-url>`, maxBytes);
+  }
+
   try {
-    const parsed = new URL(value, "https://hexclave.invalid");
+    const parsed = new URL(normalized, "https://hexclave.invalid");
     // Only http(s) pathnames are structural route information. For every other
     // scheme, `pathname` IS the URL's payload — a data: URL's inlined content,
     // a blob: URL's inner origin, a file: URL's local path, javascript: code —

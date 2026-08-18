@@ -56,6 +56,7 @@ const DEBUG_ID_IDENTIFIER_PREFIX = "hexclave-dbid-";
 // what makes `appendDebugIdSnippet` safe to call repeatedly on the same file.
 const SNIPPET_START_MARKER = "// hexclave:debug-id-injection:start";
 const SNIPPET_END_MARKER = "// hexclave:debug-id-injection:end";
+const SNIPPET_SEPARATOR_MARKER = "// hexclave:debug-id-injection:separator";
 
 /** The exact next.config line to print when a server chunk has no source map. */
 export const NEXT_SERVER_SOURCE_MAPS_CONFIG_HINT = "experimental: { serverSourceMaps: true }";
@@ -136,7 +137,7 @@ function buildDebugIdSnippet(debugId: string): string {
   return `${SNIPPET_START_MARKER}\n${snippet}\n//# debugId=${debugId}\n${SNIPPET_END_MARKER}\n`;
 }
 
-const SNIPPET_BLOCK_RE = new RegExp(`${SNIPPET_START_MARKER}\\n[\\s\\S]*?\\n${SNIPPET_END_MARKER}\\n?`, "g");
+const SNIPPET_BLOCK_RE = new RegExp(`(?:${SNIPPET_SEPARATOR_MARKER}\\n)?${SNIPPET_START_MARKER}\\n[\\s\\S]*?\\n${SNIPPET_END_MARKER}\\n?`, "g");
 
 // Matches a `//# sourceMappingURL=` / `//@ sourceMappingURL=` line. Anchored to
 // whole lines so a URL appearing inside a string literal cannot match.
@@ -181,7 +182,8 @@ export function appendDebugIdSnippet(source: string, debugId: string): string {
   const block = buildDebugIdSnippet(debugId);
   const sourceMappingUrl = findLastSourceMappingUrlMatch(stripped);
   if (sourceMappingUrl === null) {
-    return stripped.endsWith("\n") || stripped === "" ? `${stripped}${block}` : `${stripped}\n${block}`;
+    if (stripped.endsWith("\n") || stripped === "") return `${stripped}${block}`;
+    return `${stripped}\n${SNIPPET_SEPARATOR_MARKER}\n${block}`;
   }
   // `lineStart` is a line boundary (the regex is `^`-anchored with `m`), so the
   // slice before it already ends in a newline unless it is empty.
@@ -192,16 +194,13 @@ export function appendDebugIdSnippet(source: string, debugId: string): string {
  * The bundle as it was BEFORE any debug-id injection, normalized so that
  * `stripDebugIdSnippet(appendDebugIdSnippet(x, id))` round-trips exactly.
  *
- * `appendDebugIdSnippet` adds a trailing newline before its block only in the
- * EOF branch (a bundle with no `//# sourceMappingURL=` comment). Reproducing
- * that one normalization here is what lets `deriveBundleDebugId` derive the SAME
- * id on the first run and on every unchanged rerun — the derivation basis is
- * identical whether or not a previous run already injected a block.
+ * The EOF branch records a separator marker only when injection had to add a
+ * newline to a bundle that did not already end in one. Removing that marker
+ * with the block preserves the exact clean bytes, so bundles differing only by
+ * an EOF newline retain distinct ids on fallback-map uploads.
  */
 function canonicalCleanSource(source: string): string {
   const stripped = source.replace(SNIPPET_BLOCK_RE, "");
-  const hasSourceMappingUrl = findLastSourceMappingUrlMatch(stripped) !== null;
-  if (!hasSourceMappingUrl && stripped !== "" && !stripped.endsWith("\n")) return `${stripped}\n`;
   return stripped;
 }
 
@@ -262,7 +261,7 @@ export type DetermineSourceMapPathOptions = {
   containingDir?: string,
 };
 
-function isInside(candidate: string, containingDir: string): boolean {
+export function isInside(candidate: string, containingDir: string): boolean {
   const relative = path.relative(containingDir, candidate);
   return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }

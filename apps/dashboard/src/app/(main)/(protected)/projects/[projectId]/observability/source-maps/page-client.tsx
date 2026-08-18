@@ -21,7 +21,7 @@ import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { prepareSourceMapUpload } from "./upload-source-map";
+import { prepareSourceMapUpload, putPresignedArtifact } from "./upload-source-map";
 
 const ReleaseSchema = yup.object({
   id: yup.string().defined(),
@@ -79,23 +79,6 @@ type UploadResult = {
 async function readJsonOrThrow(response: Response, what: string): Promise<unknown> {
   if (!response.ok) throw new HexclaveAssertionError(`${what} failed with status ${response.status}`);
   return await response.json();
-}
-
-async function putPresigned(
-  url: string,
-  body: Blob,
-  headers: HeadersInit,
-  what: string,
-): Promise<void> {
-  const response = await fetch(url, {
-    method: "PUT",
-    headers,
-    body,
-    credentials: "omit",
-  });
-  if (!response.ok) {
-    throw new HexclaveAssertionError(`${what} failed with status ${response.status}`);
-  }
 }
 
 function selectedFilePath(file: File): string {
@@ -189,13 +172,16 @@ export default function PageClient() {
         if (descriptor.source_map_upload_url === null) {
           throw new HexclaveAssertionError("Source map registration did not return a source map upload URL.");
         }
-        await putPresigned(
+        // A 412 ("already-uploaded") from either PUT is fine here: the objects
+        // are content-addressed, and the finalize step below confirms the
+        // digests regardless of who uploaded the bytes first.
+        await putPresignedArtifact(
           descriptor.bundle_upload_url,
           prepared.bundleUploadBody,
           { "content-type": "application/javascript" },
           "Uploading JavaScript bundle",
         );
-        await putPresigned(
+        await putPresignedArtifact(
           descriptor.source_map_upload_url,
           prepared.sourceMapUploadBody,
           {

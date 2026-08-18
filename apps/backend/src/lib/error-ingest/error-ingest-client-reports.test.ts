@@ -150,6 +150,10 @@ describe("error ingest client report persistence contract", () => {
     }
     expect(thrown).toBeInstanceOf(ErrorIngestClientReportParseError);
     expect(String(thrown)).toContain("secret-bearing");
+    expect(() => parseErrorIngestClientReportRequest({
+      idempotency_key: "Bearer secret-token",
+      discarded_events: [],
+    })).toThrow(/secret-bearing/iu);
     expect(() => parseErrorIngestClientReportRequest("not-an-object")).toThrow(ErrorIngestClientReportParseError);
   });
 

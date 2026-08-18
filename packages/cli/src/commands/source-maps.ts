@@ -17,6 +17,7 @@ import {
   deriveBundleDebugId,
   findIntegrityManifests,
   findNextBuildRoots,
+  isInside,
   isDebugId,
   NEXT_SERVER_SOURCE_MAPS_CONFIG_HINT,
   normalizeArtifactRelativePath,
@@ -823,12 +824,29 @@ export function prepareArtifacts(candidates: readonly SourceMapArtifactCandidate
     let mapText: string;
     let mapDir: string;
     if (candidate.sourceMapPath !== null) {
+      let realMapPath: string;
       try {
-        mapText = fs.readFileSync(candidate.sourceMapPath, "utf-8");
+        // Resolve and validate the canonical path before opening it. Opening
+        // the original symlink first lets a swap between openSync and
+        // realpathSync validate a different target from the bytes we read.
+        realMapPath = fs.realpathSync(candidate.sourceMapPath);
+        const realScanDir = fs.realpathSync(candidate.scanDir);
+        if (!isInside(realMapPath, realScanDir)) {
+          throw new CliError(`Source map ${candidate.sourceMapPath} is outside the scanned build directory.`);
+        }
+        // The final-component guard closes the remaining replacement window:
+        // a watcher may replace the canonical path with a symlink after
+        // realpathSync, but must not make this read escape the validated tree.
+        const mapFd = fs.openSync(realMapPath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+        try {
+          mapText = fs.readFileSync(mapFd, "utf-8");
+        } finally {
+          fs.closeSync(mapFd);
+        }
       } catch (error) {
         throw new CliError(`Could not read source map ${candidate.sourceMapPath}: ${error instanceof Error ? error.message : String(error)}`);
       }
-      mapDir = path.dirname(candidate.sourceMapPath);
+      mapDir = path.dirname(realMapPath);
     } else {
       const inline = readInlineSourceMap(source);
       if (inline === null) {
@@ -917,13 +935,6 @@ export function registerSourceMapsCommand(program: Command) {
       const release = normalizeOptionalMetadata(opts.release, "--release");
       const dist = normalizeOptionalMetadata(opts.dist, "--dist");
       const environment = normalizeOptionalMetadata(opts.environment, "--environment");
-      // Best-effort project id for the informational manifest that gets printed
-      // (dry-run, or a real run that prepared nothing). `resolveOptionalProjectId`
-      // never throws, so the printed manifest carries the resolved id in both
-      // cases instead of a bogus `null` on a real no-op run. The upload path does
-      // NOT use this — it re-resolves through `auth.projectId`, which is the
-      // authenticated tenancy.
-      const projectId = resolveOptionalProjectId(opts.cloudProjectId);
       if (dist !== null && release === null) {
         throw new CliError("Distribution is only meaningful with a release. Supply --release together with --dist.");
       }
@@ -1021,6 +1032,11 @@ export function registerSourceMapsCommand(program: Command) {
         // prepared). The upload path derives and validates its own plan inside
         // `uploadPreparedSourceMaps`, so computing the manifest there too would
         // validate, normalize and sort every artifact a second time.
+        // A real upload with prepared artifacts already resolved the project
+        // through authenticated credentials; a dry-run or no-op print still
+        // resolves the optional CLI/env value here, where a conflicting env
+        // configuration is relevant to the output and cannot affect uploads.
+        const projectId = auth === null ? resolveOptionalProjectId(opts.cloudProjectId) : auth.projectId;
         const manifest = createSourceMapManifest(artifacts, release, environment, {
           projectId,
           dist,

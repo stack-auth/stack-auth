@@ -154,7 +154,6 @@ export function PathsGraphCanvas({
       .slice(0, 8);
   }, [edges, focusedNode, weakEdges]);
 
-  // Compute bundle offsets for parallel edges
   const edgeBundleOffsets = useMemo(() => {
     const pairCounts = new Map<string, number>();
     const offsets = new Map<string, number>();

@@ -9,6 +9,7 @@ import {
   scrubErrorIngestPayload,
   type ErrorIngestScrubbedValue,
 } from "./error-ingest-scrubber";
+import { isW3cSpanId, isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
 
 const TEXT_ENCODER = new TextEncoder();
 const EVENT_ID_RE = /^[0-9a-f]{32}$/u;
@@ -411,18 +412,18 @@ function parseTransactionSpan(
   if (!isRecord(value) || !isScrubbedRecord(scrubbedValue)) {
     throw new ErrorIngestEnvelopeError("malformed", `Transaction span ${index} must be an object`);
   }
-  const traceId = transactionId(value.trace_id, `Transaction span ${index} trace_id`, /^[0-9a-f]{32}$/u);
+  const traceId = transactionId(value.trace_id, `Transaction span ${index} trace_id`, /^[0-9a-f]{32}$/u, isW3cTraceId);
   if (traceId !== transaction.traceId) {
     throw new ErrorIngestEnvelopeError("malformed", `Transaction span ${index} trace_id does not match the transaction`);
   }
-  const spanId = transactionId(value.span_id, `Transaction span ${index} span_id`, /^[0-9a-f]{16}$/u);
+  const spanId = transactionId(value.span_id, `Transaction span ${index} span_id`, /^[0-9a-f]{16}$/u, isW3cSpanId);
   if (spanId === transaction.spanId) {
     throw new ErrorIngestEnvelopeError("malformed", `Transaction span ${index} reuses the transaction span_id`);
   }
 
   let parentSpanId: string | null = null;
   if (value.parent_span_id !== undefined && value.parent_span_id !== null) {
-    parentSpanId = transactionId(value.parent_span_id, `Transaction span ${index} parent_span_id`, /^[0-9a-f]{16}$/u);
+    parentSpanId = transactionId(value.parent_span_id, `Transaction span ${index} parent_span_id`, /^[0-9a-f]{16}$/u, isW3cSpanId);
     if (parentSpanId === spanId) {
       throw new ErrorIngestEnvelopeError("malformed", `Transaction span ${index} is self-parented`);
     }
@@ -470,8 +471,8 @@ function parseTransactionSpan(
   };
 }
 
-function transactionId(value: unknown, name: string, pattern: RegExp): string {
-  if (typeof value !== "string" || !pattern.test(value)) {
+function transactionId(value: unknown, name: string, pattern: RegExp, validator: (value: unknown) => boolean = () => true): string {
+  if (typeof value !== "string" || !pattern.test(value) || !validator(value)) {
     throw new ErrorIngestEnvelopeError("malformed", `${name} is not a valid Sentry trace identifier`);
   }
   return value;
@@ -514,11 +515,11 @@ function parseTransactionMetadata(
   if (!isRecord(rawContexts)) throw new ErrorIngestEnvelopeError("malformed", "Transaction contexts are required");
   const rawTrace = rawContexts.trace;
   if (!isRecord(rawTrace)) throw new ErrorIngestEnvelopeError("malformed", "Transaction trace context is required");
-  const traceId = transactionId(rawTrace.trace_id, "Transaction trace_id", /^[0-9a-f]{32}$/u);
-  const spanId = transactionId(rawTrace.span_id, "Transaction span_id", /^[0-9a-f]{16}$/u);
+  const traceId = transactionId(rawTrace.trace_id, "Transaction trace_id", /^[0-9a-f]{32}$/u, isW3cTraceId);
+  const spanId = transactionId(rawTrace.span_id, "Transaction span_id", /^[0-9a-f]{16}$/u, isW3cSpanId);
   let parentSpanId: string | null = null;
   if (rawTrace.parent_span_id !== undefined && rawTrace.parent_span_id !== null) {
-    parentSpanId = transactionId(rawTrace.parent_span_id, "Transaction parent_span_id", /^[0-9a-f]{16}$/u);
+    parentSpanId = transactionId(rawTrace.parent_span_id, "Transaction parent_span_id", /^[0-9a-f]{16}$/u, isW3cSpanId);
     if (parentSpanId === spanId) {
       throw new ErrorIngestEnvelopeError("malformed", "Transaction is self-parented");
     }

@@ -3,6 +3,7 @@ import { scrubErrorIngestPayload } from "./error-ingest-scrubber";
 import type { ErrorIngestEnvelopeTransactionMetadata } from "./error-ingest-envelope";
 import type { CanonicalOtlpSpan, CanonicalOtlpSpanEvent, CanonicalOtlpSpanLink } from "@/lib/otlp/traces";
 import type { OtlpAttributeValue, OtlpAttributes } from "@/lib/otlp/json";
+import { isW3cSpanId } from "@hexclave/shared/dist/utils/analytics-wire";
 
 const MAX_OTLP_TIMESTAMP_NANO = 18_446_744_073_709_551_615n;
 const MAX_ATTRIBUTE_DEPTH = 8;
@@ -165,6 +166,9 @@ export function sentryTransactionToCanonicalOtlpSpans(
 ): CanonicalOtlpSpan[] {
   if (transaction.name === null) {
     throw new ErrorIngestTransactionAdapterError("invalid", "Transaction name is required");
+  }
+  if (transaction.parentSpanId !== null && !isW3cSpanId(transaction.parentSpanId)) {
+    throw new ErrorIngestTransactionAdapterError("invalid", "Transaction parent_span_id must be a valid W3C span id");
   }
 
   const seenSpanIds = new Set<string>([transaction.spanId]);

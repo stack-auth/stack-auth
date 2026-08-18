@@ -8,7 +8,6 @@ import {
   serviceIdentityToSelectValue,
   type ServiceIdentity,
 } from "../service-identity";
-import type { TraceHighlight } from "../observability-links";
 
 /**
  * Traces page URL state: inbox filters plus the currently viewed trace/event.
@@ -97,14 +96,4 @@ export function serializeTracePageUrlState(state: TracePageUrlState, params: URL
   setOrDelete(PARAM_KEYS.eventType, state.eventType);
   setOrDelete(PARAM_KEYS.eventAtMs, state.eventAtMs == null ? null : String(state.eventAtMs));
   return params;
-}
-
-export function traceHighlightFromUrlState(state: TracePageUrlState): TraceHighlight | null {
-  if (state.traceId == null) return null;
-  return {
-    traceId: state.traceId,
-    spanId: state.spanId,
-    eventType: state.eventType,
-    eventAtMs: state.eventAtMs,
-  };
 }

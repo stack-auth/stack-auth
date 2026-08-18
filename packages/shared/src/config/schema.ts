@@ -28,22 +28,51 @@ const providerIdRegex = /^[a-z0-9_-]+$/;
 // Error-ingest policy is intentionally a small, positive-only DSL. These
 // selectors can add final scrubbing but cannot disable the built-in scrubber
 // or execute arbitrary predicates against event data.
+//
+// The shape must stay in lockstep with `parseErrorIngestPolicyConfig` in
+// `apps/backend/src/lib/error-ingest/error-ingest-policy.ts`: anything this
+// schema admits but the parser rejects would be saveable configuration that
+// then fails every ingest request at runtime instead of failing the save.
 const errorIngestOverrideKeySchema = yupString().matches(
   /^(?:user\.(?:email|username|ip_address)|request\.url|url|tags\.[a-zA-Z0-9_.-]{1,64}|contexts\.[a-zA-Z0-9_.-]{1,64}|extra\.[a-zA-Z0-9_.-]{1,64})$/,
   "Unsupported error-ingest scrub override key",
 );
+// Record keys are user-chosen DOTLESS rule ids and the field selector is the
+// record VALUE: config-override normalization splits every dotted key into
+// nested objects, so a selector-as-key encoding (`{"user.email": true}`) is
+// unrepresentable through the override API. Mirrors SAFE_OVERRIDE_RULE_ID in
+// the backend policy parser.
+const errorIngestOverrideRuleIdSchema = yupString().matches(
+  /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/,
+  "Error-ingest scrub override rule ids must be short dotless identifiers",
+);
+// Mirrors MAX_OVERRIDE_KEYS in the backend policy parser, so an oversized
+// record fails at configuration save time instead of at ingest time.
+const errorIngestScrubOverrideRecordSchema = (selectorSchema: yup.StringSchema) => yupRecord(errorIngestOverrideRuleIdSchema, selectorSchema).test(
+  "max-error-ingest-override-keys",
+  "${path} must not contain more than 32 keys",
+  // `value` is typed non-nullable by yupRecord, but yup still invokes tests
+  // with `undefined` for absent optional fields, so widen and guard; non-object
+  // values are rejected by the record's own test.
+  (value: unknown) => !isObjectLike(value) || Object.keys(value).length <= 32,
+);
 const errorIngestPolicySchema = yupObject({
   finalScrub: yupObject({
-    dropKeys: yupRecord(errorIngestOverrideKeySchema, yupBoolean().isTrue()).optional(),
-    urlKeys: yupRecord(errorIngestOverrideKeySchema, yupBoolean().isTrue()).optional(),
+    // The bare `url` selector is reserved for URL scrubbing (`urlKeys`); the
+    // backend parser rejects it in `dropKeys`, so the schema must too.
+    dropKeys: errorIngestScrubOverrideRecordSchema(errorIngestOverrideKeySchema.defined().notOneOf(["url"], "The url selector is only valid for URL scrubbing")).optional(),
+    urlKeys: errorIngestScrubOverrideRecordSchema(errorIngestOverrideKeySchema.defined()).optional(),
   }).optional(),
+  // Both bounds are required whenever a window object is present: the backend
+  // parser throws on a missing half rather than defaulting it, and "absent
+  // object" is already the way to express "no limit".
   rateLimit: yupObject({
-    maxItemsPerWindow: yupNumber().integer().min(1).max(100_000).optional(),
-    windowSeconds: yupNumber().integer().min(1).max(86_400).optional(),
+    maxItemsPerWindow: yupNumber().integer().min(1).max(100_000).defined(),
+    windowSeconds: yupNumber().integer().min(1).max(86_400).defined(),
   }).optional(),
   quota: yupObject({
-    maxBytesPerWindow: yupNumber().integer().min(1).max(50 * 1024 * 1024).optional(),
-    windowSeconds: yupNumber().integer().min(1).max(86_400).optional(),
+    maxBytesPerWindow: yupNumber().integer().min(1).max(50 * 1024 * 1024).defined(),
+    windowSeconds: yupNumber().integer().min(1).max(86_400).defined(),
   }).optional(),
 });
 
@@ -509,7 +538,7 @@ const environmentWarehouseSchema = yupObject({
 
 // --- Observability Schema (environment config only - not pushable) ---
 //
-// This lives at the environment level, next to `analytics`, rather than at the branch level with the rest of
+// This lives at the environment level, next to `warehouse`, rather than at the branch level with the rest of
 // the pushable config. Which error-grouping algorithm a project runs is an operational rollout knob owned by
 // us: we need to be able to move a project off a retired algorithm without a customer deploy, and a committed
 // `hexclave.config.ts` must never be able to pin a project to an algorithm we no longer run.
@@ -517,7 +546,7 @@ const environmentWarehouseSchema = yupObject({
 // Error grouping config ids. The source of truth for what these ids *mean* is the registry in
 // `apps/backend/src/lib/issues/grouping-config.ts`; this list is a deliberate duplicate, because
 // `packages/shared` must not depend on the backend. Adding an algorithm there requires adding its id here too.
-const GROUPING_CONFIG_IDS = ["hexclave-js:2026-08-01"] as const;
+const GROUPING_CONFIG_IDS = ["hexclave-js:2026-08-01", "hexclave-js:2026-08-06"] as const;
 
 const environmentObservabilitySchema = yupObject({
   errorIngest: errorIngestPolicySchema.optional(),
@@ -529,8 +558,8 @@ const environmentObservabilitySchema = yupObject({
     // This is a record, not the array you might expect from the name, because config values may not be arrays
     // (`getRestrictedSchemaBase` throws "Arrays are not supported in config JSON files (besides tuples). Use a
     // record instead." for any array-typed leaf, so an array here would make the field unsettable through the
-    // config-override API). Shaped exactly like `apps.installed` for that reason. Lookup *order* — the plan
-    // calls for oldest-last — therefore comes from the backend registry's own ordering, filtered by this set,
+    // config-override API). Shaped exactly like `apps.installed` for that reason. Lookup *order*
+    // (oldest-last) comes from the backend registry's own ordering, filtered by this set,
     // rather than from the config; that is the more robust source anyway, since it can't be scrambled by a
     // caller writing the keys in the wrong order.
     readableConfigIds: yupRecord(
@@ -678,6 +707,30 @@ import.meta.vitest?.test("Apple OAuth key credentials are all-or-nothing", async
   })).resolves.toBeDefined();
 });
 
+// Keep these assertions in lockstep with `parseErrorIngestPolicyConfig` in
+// `apps/backend/src/lib/error-ingest/error-ingest-policy.ts` — the schema must
+// reject everything the runtime parser rejects, or a saveable config would 500
+// every ingest request.
+import.meta.vitest?.test("error-ingest policy schema matches the backend policy parser's constraints", async ({ expect }) => {
+  const config = (errorIngest: unknown) => ({ observability: { errorIngest } });
+
+  // `url` is a valid selector for URL scrubbing but reserved away from dropKeys.
+  await expect(environmentConfigSchema.validate(config({ finalScrub: { urlKeys: { urlRule: "url" } } }))).resolves.toBeDefined();
+  await expect(environmentConfigSchema.validate(config({ finalScrub: { dropKeys: { urlRule: "url" } } }))).rejects.toThrow("The url selector is only valid for URL scrubbing");
+
+  // At most 32 override keys per record, mirroring MAX_OVERRIDE_KEYS in the parser.
+  const manyKeys = Object.fromEntries(Array.from({ length: 33 }, (_, i) => [`rule-${i}`, `tags.key-${i}`] as const));
+  await expect(environmentConfigSchema.validate(config({ finalScrub: { dropKeys: manyKeys } }))).rejects.toThrow("must not contain more than 32 keys");
+  await expect(environmentConfigSchema.validate(config({ finalScrub: { dropKeys: Object.fromEntries(Object.entries(manyKeys).slice(0, 32)) } }))).resolves.toBeDefined();
+
+  // rateLimit/quota require both bounds whenever the object is present; the
+  // parser throws on a missing half instead of defaulting it.
+  await expect(environmentConfigSchema.validate(config({ rateLimit: { maxItemsPerWindow: 100 } }))).rejects.toThrow("windowSeconds must be defined");
+  await expect(environmentConfigSchema.validate(config({ rateLimit: { maxItemsPerWindow: 100, windowSeconds: 60 } }))).resolves.toBeDefined();
+  await expect(environmentConfigSchema.validate(config({ quota: { windowSeconds: 60 } }))).rejects.toThrow("maxBytesPerWindow must be defined");
+  await expect(environmentConfigSchema.validate(config({ quota: { maxBytesPerWindow: 1024, windowSeconds: 60 } }))).resolves.toBeDefined();
+});
+
 
 // Migration functions
 //
@@ -811,20 +864,222 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // The schema changed at the same time as the dashboard route, so migrate nested and
   // dot-notation overrides before the current environment schema validates them.
   if (isEnvironmentOrHigher) {
+    // Whether the override subtree contains actual content (a non-null value, including empty objects
+    // deeper than the prefix — an empty folder still renders via record defaults) at a path strictly
+    // below `prefix`. Keys may be dotted, so each key contributes all of its segments to the path.
+    const hasContentUnder = (obj: unknown, prefix: string[], path: string[] = []): boolean => {
+      if (!isObjectLike(obj)) return false;
+      return Object.entries(obj).some(([key, value]) => {
+        if (value == null) return false;
+        const newPath = [...path, ...key.split(".")];
+        const matchesPrefix = newPath.length > prefix.length && prefix.every((segment, i) => newPath[i] === segment);
+        return matchesPrefix || hasContentUnder(value, prefix, newPath);
+      });
+    };
+    // Whether any override key path reaches `prefix` at all — including a `null` deletion marker or an
+    // empty object at exactly that path. Unlike `hasContentUnder`, presence alone counts: an explicit
+    // setting at the path (even a disable or a delete) must never be overridden by a migration.
+    const hasPathTouching = (obj: unknown, prefix: string[], path: string[] = []): boolean => {
+      if (!isObjectLike(obj)) return false;
+      return Object.entries(obj).some(([key, value]) => {
+        const newPath = [...path, ...key.split(".")];
+        if (newPath.length >= prefix.length && prefix.every((segment, i) => newPath[i] === segment)) return true;
+        // Only keep descending while the path could still reach the prefix.
+        return newPath.every((segment, i) => prefix[i] === segment) && hasPathTouching(value, prefix, newPath);
+      });
+    };
     // Analytics has no environment-scoped configuration left once queryFolders
     // moves, so renaming its root is both complete and supports dotted keys.
     const hasWarehouseOverride = typedEntries(res).some(([key]) =>
       typeof key === "string" && (key === "warehouse" || key.startsWith("warehouse."))
     );
+    const hadSavedQueries = !hasWarehouseOverride && hasContentUnder(res, ["analytics", "queryFolders"]);
     res = hasWarehouseOverride
       ? removeProperty(res, (path) => path[0] === "analytics")
       : renameProperty(res, "analytics", "warehouse");
+    // Saved queries used to be reachable through the Analytics app; after the move they are only
+    // reachable through the Warehouse app, which existing projects have not installed. Enable it for
+    // any override whose queries actually moved, so the migration never strands content behind an
+    // app the user must discover and enable by hand. Written as the same dotted leaf key the
+    // dashboard's own app-enable flow writes, and skipped when the override already carries an
+    // explicit `apps.installed.warehouse` setting (an explicit disable must win over the migration).
+    if (hadSavedQueries && !hasPathTouching(res, ["apps", "installed", "warehouse"])) {
+      res = { ...res, "apps.installed.warehouse.enabled": true };
+    }
+  }
+  // END
+
+  // BEGIN 2026-08-15: error-ingest scrub overrides now use dotless rule ids as
+  // record keys because config-override path notation cannot represent dotted
+  // selectors as keys. Convert the old `{ selector: true }` shape before the
+  // stricter schema validates the saved override. The generated ids are stable
+  // and collision-safe so rerunning this migration is idempotent.
+  if (isEnvironmentOrHigher) {
+    // Older override writes could flatten a selector below the record itself,
+    // for example `...dropKeys.user.email`. Reassemble those descendants under
+    // the record path before the record migrator turns selectors into rule ids;
+    // otherwise the current dotless-key schema sees the selector as a rule id
+    // and rejects a valid legacy override before migration can run.
+    res = reassembleFlattenedErrorIngestOverrideRecords(res);
+    res = mapProperty(
+      res,
+      (path) => path.join(".") === "observability.errorIngest.finalScrub.dropKeys"
+        || path.join(".") === "observability.errorIngest.finalScrub.urlKeys",
+      migrateLegacyErrorIngestOverrideRecord,
+    );
   }
   // END
 
   // return the result
   return res;
 };
+
+function migrateLegacyErrorIngestOverrideRecord(value: unknown): unknown {
+  if (!isObjectLike(value) || Array.isArray(value)) return value;
+
+  const migrated: Record<string, unknown> = {};
+  const usedRuleIds = new Set<string>();
+  const legacySelectors: string[] = [];
+
+  const collectLegacySelectors = (record: object, prefix: string[]): void => {
+    for (const [key, nestedValue] of Object.entries(record)) {
+      const selectorPath = [...prefix, ...key.split(".")];
+      if (nestedValue === true) {
+        legacySelectors.push(selectorPath.join("."));
+      } else if (isObjectLike(nestedValue) && !Array.isArray(nestedValue)) {
+        if (Object.keys(nestedValue).length === 0) {
+          // An empty nested object is still invalid under the current record
+          // schema. Preserve it so migration cannot turn malformed config into
+          // an apparently valid empty record by dropping the entry silently.
+          migrated[key] = nestedValue;
+          usedRuleIds.add(key);
+        } else {
+          collectLegacySelectors(nestedValue, selectorPath);
+        }
+      } else if (typeof nestedValue === "string" && prefix.length === 0) {
+        // New-format entries already have a dotless rule id and selector value.
+        migrated[key] = nestedValue;
+        usedRuleIds.add(key);
+      } else {
+        // Preserve invalid values so the current schema still rejects malformed
+        // legacy data instead of silently dropping it during migration.
+        migrated[key] = nestedValue;
+        usedRuleIds.add(key);
+      }
+    }
+  };
+
+  collectLegacySelectors(value, []);
+  for (const selector of legacySelectors) {
+    const readableBase = `legacy-${selector.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 56) || "rule"}`;
+    let ruleId = readableBase;
+    let suffix = 2;
+    while (usedRuleIds.has(ruleId)) {
+      const suffixText = `-${suffix}`;
+      ruleId = `${readableBase.slice(0, 64 - suffixText.length)}${suffixText}`;
+      suffix += 1;
+    }
+    usedRuleIds.add(ruleId);
+    migrated[ruleId] = selector;
+  }
+
+  return migrated;
+}
+
+const LEGACY_ERROR_INGEST_RECORD_PATHS = [
+  ["observability", "errorIngest", "finalScrub", "dropKeys"],
+  ["observability", "errorIngest", "finalScrub", "urlKeys"],
+] as const;
+
+function reassembleFlattenedErrorIngestOverrideRecords(value: unknown, path: string[] = []): unknown {
+  if (!isObjectLike(value) || Array.isArray(value)) return value;
+
+  const result: Record<string, unknown> = {};
+  const descendants = new Map<string, Record<string, unknown>>();
+  for (const [key, nestedValue] of Object.entries(value)) {
+    const fullPath = [...path, ...key.split(".")];
+    const targetPath = LEGACY_ERROR_INGEST_RECORD_PATHS.find((candidate) =>
+      fullPath.length >= candidate.length && candidate.every((segment, index) => fullPath[index] === segment),
+    );
+    if (targetPath !== undefined && fullPath.length > targetPath.length) {
+      const localTargetPath = targetPath.slice(path.length).join(".");
+      const record = descendants.get(localTargetPath) ?? {};
+      record[fullPath.slice(targetPath.length).join(".")] = nestedValue;
+      descendants.set(localTargetPath, record);
+      continue;
+    }
+
+    const isTargetPrefix = LEGACY_ERROR_INGEST_RECORD_PATHS.some((candidate) =>
+      fullPath.length < candidate.length && fullPath.every((segment, index) => candidate[index] === segment),
+    );
+    result[key] = isTargetPrefix ? reassembleFlattenedErrorIngestOverrideRecords(nestedValue, fullPath) : nestedValue;
+  }
+
+  for (const [targetPath, record] of descendants) {
+    const previous = result[targetPath];
+    result[targetPath] = isObjectLike(previous) && !Array.isArray(previous)
+      ? { ...previous, ...record }
+      : record;
+  }
+  return result;
+}
+
+import.meta.vitest?.test("migrateConfigOverride converts legacy error-ingest scrub override records", ({ expect }) => {
+  const migrated = migrateConfigOverride("environment", {
+    observability: {
+      errorIngest: {
+        finalScrub: {
+          dropKeys: {
+            "legacy-user-email": "tags.existing",
+            "user.email": true,
+            tags: { "foo.bar": true },
+          },
+          urlKeys: { "request.url": true },
+        },
+      },
+    },
+  });
+
+  expect(migrated).toEqual({
+    observability: {
+      errorIngest: {
+        finalScrub: {
+          dropKeys: {
+            "legacy-user-email": "tags.existing",
+            "legacy-user-email-2": "user.email",
+            "legacy-tags-foo-bar": "tags.foo.bar",
+          },
+          urlKeys: { "legacy-request-url": "request.url" },
+        },
+      },
+    },
+  });
+  expect(migrateConfigOverride("environment", migrated)).toEqual(migrated);
+});
+
+import.meta.vitest?.test("migrateConfigOverride reassembles flattened error-ingest selectors and preserves empty invalid entries", ({ expect }) => {
+  expect(migrateConfigOverride("environment", {
+    "observability.errorIngest.finalScrub.dropKeys.user.email": true,
+    observability: {
+      errorIngest: {
+        finalScrub: {
+          urlKeys: { tags: {} },
+        },
+      },
+    },
+  })).toEqual({
+    "observability.errorIngest.finalScrub.dropKeys": {
+      "legacy-user-email": "user.email",
+    },
+    observability: {
+      errorIngest: {
+        finalScrub: {
+          urlKeys: { tags: {} },
+        },
+      },
+    },
+  });
+});
 
 import.meta.vitest?.test("migrateConfigOverride removes legacy sourceOfTruth overrides", ({ expect }) => {
   expect(migrateConfigOverride("project", {
@@ -910,16 +1165,21 @@ import.meta.vitest?.test("migrateConfigOverride moves saved queries from Analyti
     },
   };
 
+  // Moving saved queries also enables the Warehouse app: the queries used to be
+  // reachable through Analytics, and without this the migration would strand
+  // them behind an app the user never installed.
   expect(migrateConfigOverride("environment", {
     analytics: { queryFolders },
   })).toEqual({
     warehouse: { queryFolders },
+    "apps.installed.warehouse.enabled": true,
   });
 
   expect(migrateConfigOverride("environment", {
     "analytics.queryFolders.favorites.displayName": "Favorites",
   })).toEqual({
     "warehouse.queryFolders.favorites.displayName": "Favorites",
+    "apps.installed.warehouse.enabled": true,
   });
 
   expect(migrateConfigOverride("environment", {
@@ -933,6 +1193,41 @@ import.meta.vitest?.test("migrateConfigOverride moves saved queries from Analyti
     analytics: { queryFolders },
   })).toEqual({
     analytics: { queryFolders },
+  });
+
+  // An analytics override without any saved-query content moves without
+  // enabling the app: there is nothing whose access would be lost.
+  expect(migrateConfigOverride("environment", {
+    analytics: { queryFolders: {} },
+  })).toEqual({
+    warehouse: { queryFolders: {} },
+  });
+
+  // An explicit apps.installed.warehouse setting always wins over the
+  // migration, whether written nested or as a dotted leaf.
+  expect(migrateConfigOverride("environment", {
+    analytics: { queryFolders },
+    "apps.installed.warehouse.enabled": false,
+  })).toEqual({
+    warehouse: { queryFolders },
+    "apps.installed.warehouse.enabled": false,
+  });
+  expect(migrateConfigOverride("environment", {
+    analytics: { queryFolders },
+    apps: { installed: { warehouse: { enabled: false } } },
+  })).toEqual({
+    warehouse: { queryFolders },
+    apps: { installed: { warehouse: { enabled: false } } },
+  });
+
+  // Idempotent: re-running the migration on its own output changes nothing
+  // (migrations run on every read).
+  expect(migrateConfigOverride("environment", {
+    warehouse: { queryFolders },
+    "apps.installed.warehouse.enabled": true,
+  })).toEqual({
+    warehouse: { queryFolders },
+    "apps.installed.warehouse.enabled": true,
   });
 });
 
@@ -1249,7 +1544,7 @@ const organizationConfigDefaults = {
       activeConfigId: GROUPING_CONFIG_IDS[0],
       // Total map over the known ids, mirroring `apps.installed`, so a reader never has to distinguish
       // "not listed" from "listed but off". All false means "nothing but the active config is consulted",
-      // which is correct at v1: there is no older algorithm to fall back to yet.
+      // which is correct while there is no older algorithm to fall back to.
       readableConfigIds: typedFromEntries(GROUPING_CONFIG_IDS.map(configId => [configId, { enabled: false }])) as Record<string, { enabled: boolean } | undefined>,
     },
   },

@@ -14,7 +14,7 @@
 -- in-transaction index rebuild is O(small). Fail quickly instead of waiting
 -- behind live traffic if one of those environments has a busy table.
 SET LOCAL lock_timeout = '2s';
-SET LOCAL statement_timeout = '5min';
+SET LOCAL statement_timeout = '60s';
 
 -- The DO block below must be its own single statement: the migration runner
 -- wraps non-single-statement chunks in its own dollar-quoted DO envelope, and

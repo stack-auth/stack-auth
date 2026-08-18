@@ -1,5 +1,5 @@
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
-import type { IssueOccurrence } from "./issues-data";
+import { parseClickHouseUtc, type IssueOccurrence } from "./issues-data";
 
 /**
  * "Leading up to this" — the log lines immediately before an error occurrence.
@@ -111,18 +111,8 @@ export function parseLeadingUpToLogRows(
   rows: readonly Record<string, unknown>[],
 ): LeadingUpToLogLine[] {
   return rows.map((row) => {
-    const rawEventAt = row.event_at;
-    if (typeof rawEventAt !== "string") {
-      throw new HexclaveAssertionError("Expected log row event_at to be a ClickHouse timestamp string");
-    }
-    const trimmed = rawEventAt.trim();
-    const normalized = trimmed.replace(" ", "T") + (trimmed.includes("Z") || trimmed.includes("+") ? "" : "Z");
-    const eventAtMillis = new Date(normalized).getTime();
-    if (Number.isNaN(eventAtMillis)) {
-      throw new HexclaveAssertionError(`Invalid log row event_at: ${rawEventAt}`);
-    }
     return {
-      eventAtMillis,
+      eventAtMillis: parseClickHouseUtc(row.event_at, "log row event_at"),
       level: typeof row.level === "string" ? row.level : "",
       message: typeof row.message === "string" ? row.message : "",
       serviceName: typeof row.service_name === "string" && row.service_name !== "" ? row.service_name : null,

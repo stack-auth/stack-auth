@@ -326,9 +326,8 @@ function parseFacets(raw: string | undefined, record: PublicSearchRecordType): s
       // schema caps at 128 characters — a key that fits on its own but not
       // with its prefix would pass request validation and then fail response
       // validation, turning a valid-looking search into a server error.
-      if (key === "" || facet.length > 128) {
-        return badRequest("dynamic facets must be between 1 and 128 characters including their prefix");
-      }
+      if (key === "") return badRequest(`${dynamicPrefix} facets require a non-empty key`);
+      if (facet.length > 128) return badRequest("dynamic facet identifiers must be at most 128 characters including their prefix");
       if (record === "issue") return badRequest(`${facet.split(":", 1)[0]} facets are only supported for event and occurrence records`);
       continue;
     }

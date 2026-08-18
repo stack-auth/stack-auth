@@ -524,7 +524,10 @@ export class JavaScriptSymbolicationService {
     }
     let bytes: Uint8Array | null;
     try {
-      bytes = await this.storage.readObject(key);
+      // Preserve the version observed by the size check. Without the ETag,
+      // storage re-HEADs the key and a replacement can pass the new size
+      // check before the old artifact's read limit is applied.
+      bytes = await this.storage.readObject(key, info.eTag);
     } catch (error) {
       if (!(error instanceof ArtifactServiceError) || error.code !== "storage_unavailable") throw error;
       return { ok: false, diagnostic: artifactDiagnostic("artifact_storage_unavailable", "Artifact storage is unavailable.", lookup.artifact.debugId, lookup.artifact.codeFile) };
@@ -750,8 +753,8 @@ function parseMappings(
     let line: MappingSegment[] | null = null;
     let segmentStart = position;
     while (segmentStart < lineEnd) {
-      const segmentSeparator = mappings.indexOf(",", segmentStart);
-      const segmentEnd = segmentSeparator === -1 || segmentSeparator > lineEnd ? lineEnd : segmentSeparator;
+      let segmentEnd = segmentStart;
+      while (segmentEnd < lineEnd && mappings.charCodeAt(segmentEnd) !== 0x2c /* "," */) segmentEnd += 1;
       const segmentText = mappings.slice(segmentStart, segmentEnd);
       segmentStart = segmentEnd + 1;
       if (segmentText === "") continue;
@@ -1046,12 +1049,12 @@ function resolveLimits(input: Partial<JavaScriptSymbolicationLimits>): JavaScrip
 }
 
 /**
- * trimContextLine's worst-case output is `{snip} <one code point> {snip}`, so
- * a limit below that width could not be honored (the markers alone would
- * exceed it). Rejecting such configs up front keeps the "output is at most
- * maxContextLineBytes" invariant true instead of silently violating it.
+ * trimContextLine can honor a 14-byte line by retaining the two six-byte
+ * markers and their separating spaces while shrinking the excerpt to the
+ * smallest representable boundary. Rejecting smaller configs up front keeps
+ * the "output is at most maxContextLineBytes" invariant explicit.
  */
-const MIN_CONTEXT_LINE_BYTES = 2 * utf8ByteLength(SOURCE_MAP_SNIP_MARKER) + 3;
+const MIN_CONTEXT_LINE_BYTES = 2 * utf8ByteLength(SOURCE_MAP_SNIP_MARKER) + 2;
 
 function contextLineBytesLimit(value: number | undefined): number {
   const limit = positiveLimit(value, DEFAULT_JAVASCRIPT_SYMBOLICATION_LIMITS.maxContextLineBytes, "maxContextLineBytes");

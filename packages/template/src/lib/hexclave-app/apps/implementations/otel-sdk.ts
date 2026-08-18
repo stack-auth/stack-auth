@@ -266,13 +266,23 @@ export function registerManagedOtel(options: ManagedOtelOptions): ManagedOtelReg
   const installedInstrumentationNames = new Set<string>();
   const instrumentationDisposers: (() => void)[] = [];
   const installInstrumentations = (instrumentations: NonNullable<ManagedOtelOptions["instrumentations"]>): void => {
-    const missing = instrumentations.filter((instrumentation) => !installedInstrumentationNames.has(instrumentation.instrumentationName));
+    const requestedNames = new Set<string>();
+    const missing = instrumentations.filter((instrumentation) => {
+      if (installedInstrumentationNames.has(instrumentation.instrumentationName) || requestedNames.has(instrumentation.instrumentationName)) return false;
+      requestedNames.add(instrumentation.instrumentationName);
+      return true;
+    });
     if (missing.length === 0) return;
-    for (const instrumentation of missing) installedInstrumentationNames.add(instrumentation.instrumentationName);
-    instrumentationDisposers.push(registerInstrumentations({
-      instrumentations: missing,
-      tracerProvider: provider,
-    }));
+    // Register one at a time so a failure after an earlier enable cannot leave
+    // an enabled instrumentation unmarked. A later HMR retry must skip only the
+    // instrumentations that actually succeeded, or it will double-patch them.
+    for (const instrumentation of missing) {
+      instrumentationDisposers.push(registerInstrumentations({
+        instrumentations: [instrumentation],
+        tracerProvider: provider,
+      }));
+      installedInstrumentationNames.add(instrumentation.instrumentationName);
+    }
   };
   installInstrumentations([httpInstrumentation, ...options.instrumentations ?? []]);
   const value: ManagedOtelRegistration = {

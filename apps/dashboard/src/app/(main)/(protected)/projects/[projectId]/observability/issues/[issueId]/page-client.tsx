@@ -22,7 +22,7 @@ import {
   SpinnerGapIcon,
 } from "@phosphor-icons/react";
 import { useRouter } from "@/components/router";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../../../app-enabled-guard";
 import { PageLayout } from "../../../page-layout";
@@ -44,9 +44,10 @@ import {
   type LeadingUpToLogLine,
 } from "../correlation";
 import { formatIssueCount, issueCulprit, issueShortIdLabel, issueSubtitle, issueTitle, parseIssueRouteId } from "../issue-format";
+import { parseIssueRangeHours } from "../issue-filters";
 import { issueDetailHref, issuesListHref, traceDetailHref } from "../issue-links";
 import { sessionReplayHref } from "../../observability-links";
-import { issueStatusBadge, primaryIssueStatusAction } from "../issue-status";
+import { issueStatusBadge, nextStatusForAction, primaryIssueStatusAction } from "../issue-status";
 import {
   fetchIssueDetail,
   addIssueComment,
@@ -174,15 +175,43 @@ export default function PageClient() {
   const projectId = adminApp.projectId;
   const rawIssueId = params.issueId;
   const routeId = useMemo(() => parseIssueRouteId(rawIssueId), [rawIssueId]);
+  // The list forwards its selected time window via `?range=` (see
+  // `issueDetailHref`) so the Impact card's window-scoped counts match the
+  // numbers the reader just clicked. `useSearchParams` (not a one-shot
+  // location read) so a client-side navigation between issues re-reads it.
+  // Unlike the list page there is no `history.replaceState` writer here, so
+  // Next's cached search params cannot go stale.
+  const searchParams = useSearchParams();
+  const rangeHours = parseIssueRangeHours(searchParams);
 
   const [detail, setDetail] = useState<IssueDetailResponse | null>(null);
   // The cursor alone is ambiguous — the same `(event_at, occurrence_id)` pair
   // means "the one before" or "the one after" depending on the direction, so
-  // both travel together.
-  const [occurrenceStep, setOccurrenceStep] = useState<{ cursor: string, direction: IssueOccurrenceDirection } | null>(null);
+  // both travel together. The step is additionally stamped with the route
+  // segment it belongs to and IGNORED for any other segment: a client-side
+  // navigation to another issue keeps this component mounted, and without the
+  // stamp the previous issue's cursor would be forwarded with the new issue's
+  // id, opening it at an unrelated occurrence (or failing to find one at all).
+  const [occurrenceStepState, setOccurrenceStepState] = useState<{
+    routeKey: string,
+    cursor: string,
+    direction: IssueOccurrenceDirection,
+  } | null>(null);
+  const occurrenceStep = occurrenceStepState != null && occurrenceStepState.routeKey === rawIssueId
+    ? occurrenceStepState
+    : null;
+  const setOccurrenceStep = useCallback((step: { cursor: string, direction: IssueOccurrenceDirection } | null) => {
+    setOccurrenceStepState(step == null ? null : { routeKey: rawIssueId, ...step });
+  }, [rawIssueId]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  // Serializes the four status mutations (resolve/ignore/snooze/regress): each
+  // one snapshots `detail` for its rollback, so two racing mutations could
+  // resolve/revert independently and leave the page showing a state the server
+  // never settled on. While one is in flight the other controls no-op, same
+  // pattern as `productSaving` below.
+  const [statusSaving, setStatusSaving] = useState(false);
   const [productError, setProductError] = useState<string | null>(null);
   const [productSaving, setProductSaving] = useState(false);
   const [frameOrder, setFrameOrder] = useState<StackFrameOrder>(DEFAULT_STACK_FRAME_ORDER);
@@ -203,12 +232,24 @@ export default function PageClient() {
         const next = await fetchIssueDetail(
           adminApp,
           routeId.value,
-          occurrenceStep == null ? {} : { occurrence: occurrenceStep.cursor, direction: occurrenceStep.direction },
+          {
+            hours: rangeHours,
+            ...occurrenceStep == null ? {} : { occurrence: occurrenceStep.cursor, direction: occurrenceStep.direction },
+          },
         );
         if (cancelled) return;
         setDetail(next);
         setError(null);
         setNowMs(Date.now());
+        // A merged-away link resolves to the surviving issue but keeps the
+        // obsolete URL, so sharing/bookmarking it would rely on the server
+        // redirect forever. Swap the URL to the survivor's canonical id; the
+        // resulting params change re-runs this load once with the new id,
+        // after which `redirected_from_issue_id` is null and the URL is stable.
+        if (next.redirected_from_issue_id != null) {
+          // Keep the selected range across the canonical-id rewrite.
+          router.replace(issueDetailHref(projectId, next.issue.id, { rangeHours }));
+        }
       } catch (caught) {
         if (cancelled) return;
         setError(caught instanceof Error ? caught.message : String(caught));
@@ -219,7 +260,7 @@ export default function PageClient() {
     return () => {
       cancelled = true;
     };
-  }, [adminApp, routeId, occurrenceStep]);
+  }, [adminApp, routeId, occurrenceStep, rangeHours, router, projectId]);
 
   useEffect(() => load(), [load]);
 
@@ -260,8 +301,9 @@ export default function PageClient() {
   }, [adminApp, anchor, occurrence]);
 
   const changeStatus = useCallback(async (status: IssueStatus) => {
-    if (detail == null) return;
+    if (detail == null || statusSaving) return;
     setStatusError(null);
+    setStatusSaving(true);
     const previous = detail;
     setDetail({ ...detail, issue: { ...detail.issue, status } });
     try {
@@ -272,12 +314,15 @@ export default function PageClient() {
     } catch (caught) {
       setDetail(previous);
       setStatusError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setStatusSaving(false);
     }
-  }, [adminApp, detail]);
+  }, [adminApp, detail, statusSaving]);
 
   const changeSnooze = useCallback(async (durationMs: number) => {
-    if (detail == null) return;
+    if (detail == null || statusSaving) return;
     setStatusError(null);
+    setStatusSaving(true);
     const previous = detail;
     setDetail({ ...detail, issue: { ...detail.issue, status: "ignored" } });
     try {
@@ -289,12 +334,15 @@ export default function PageClient() {
     } catch (caught) {
       setDetail(previous);
       setStatusError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setStatusSaving(false);
     }
-  }, [adminApp, detail]);
+  }, [adminApp, detail, statusSaving]);
 
   const changeUnsnooze = useCallback(async () => {
-    if (detail == null) return;
+    if (detail == null || statusSaving) return;
     setStatusError(null);
+    setStatusSaving(true);
     const previous = detail;
     setDetail({ ...detail, issue: { ...detail.issue, status: "unresolved" } });
     try {
@@ -306,12 +354,15 @@ export default function PageClient() {
     } catch (caught) {
       setDetail(previous);
       setStatusError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setStatusSaving(false);
     }
-  }, [adminApp, detail]);
+  }, [adminApp, detail, statusSaving]);
 
   const changeRegress = useCallback(async () => {
-    if (detail == null) return;
+    if (detail == null || statusSaving) return;
     setStatusError(null);
+    setStatusSaving(true);
     const previous = detail;
     setDetail({ ...detail, issue: { ...detail.issue, status: "unresolved", substatus: "regressed" } });
     try {
@@ -330,8 +381,10 @@ export default function PageClient() {
     } catch (caught) {
       setDetail(previous);
       setStatusError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setStatusSaving(false);
     }
-  }, [adminApp, detail]);
+  }, [adminApp, detail, statusSaving]);
 
   const changePriority = useCallback(async (priority: IssuePriority | null) => {
     if (detail == null) return;
@@ -510,13 +563,16 @@ export default function PageClient() {
     setProductSaving(true);
     try {
       const result = await unmergeIssue(adminApp, detail.issue.id, hashes);
-      router.push(issueDetailHref(projectId, result.new_issue_id));
-    } catch (caught) {
-      setProductError(caught instanceof Error ? caught.message : String(caught));
+      router.push(issueDetailHref(projectId, result.new_issue_id, { rangeHours }));
     } finally {
+      // Deliberately no catch: the unmerge dialog (GroupingSection) awaits this
+      // callback and shows the failure inside the still-open dialog, preserving
+      // the user's hash selection for a retry. Swallowing the rejection here
+      // would read as success to the dialog, closing it and clearing the
+      // selection while the error appeared elsewhere on the page.
       setProductSaving(false);
     }
-  }, [adminApp, detail, productSaving, projectId, router]);
+  }, [adminApp, detail, productSaving, projectId, rangeHours, router]);
 
   if (routeId == null) {
     return (
@@ -548,7 +604,7 @@ export default function PageClient() {
           <DesignButton
             variant="secondary"
             size="sm"
-            onClick={() => changeStatus(primaryAction === "resolve" ? "resolved" : "unresolved")}
+            onClick={() => changeStatus(nextStatusForAction(primaryAction))}
           >
             {primaryAction === "resolve" ? "Resolve" : "Unresolve"}
           </DesignButton>

@@ -32,15 +32,11 @@ export type AnalyticsReplayOptions = {
   /**
    * A CSS class name or RegExp. Elements with a matching class will be blocked
    * (replaced with a placeholder in the recording).
-   *
-   * @default undefined
    */
   blockClass?: string | RegExp,
   /**
    * A CSS selector string. Elements matching this selector will be blocked
    * (replaced with a placeholder in the recording).
-   *
-   * @default undefined
    */
   blockSelector?: string,
 };
