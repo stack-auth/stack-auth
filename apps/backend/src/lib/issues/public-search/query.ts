@@ -189,26 +189,28 @@ async function loadPublicSearchAttachmentMetadata(options: {
   return attachmentsByEvent;
 }
 
+// The error envelope is the ONLY payload read model these expressions consult.
+// Both ingest paths build `error_envelope` from the same event data on every
+// `$error` row, so a raw-`data` fallback could never fire for a real row — and
+// worse, it would re-expose fields the envelope limiter deliberately dropped or
+// truncated. Physical columns (service_name, deployment_environment_name,
+// level, body) remain genuine fallbacks because they are populated
+// independently of the envelope.
 function errorEnvelopeFieldExpression(field: "event_id" | "release" | "environment"): string {
-  const envelopeValue = `JSONExtractString(error_envelope, '${field}')`;
-  const dataValue = `JSONExtractString(toJSONString(data), '${field}')`;
-  return `if(${envelopeValue} != '', ${envelopeValue}, ${dataValue})`;
+  return `JSONExtractString(error_envelope, '${field}')`;
 }
 
 function searchMessageExpression(): string {
   const envelopeMessage = "JSONExtractString(error_envelope, 'message')";
-  const dataMessage = "JSONExtractString(toJSONString(data), 'message')";
-  return `if(${envelopeMessage} != '', ${envelopeMessage}, if(${dataMessage} != '', ${dataMessage}, body))`;
+  return `if(${envelopeMessage} != '', ${envelopeMessage}, body)`;
 }
 
 function searchTagExpression(keyParameter = "tagKey"): string {
-  const envelopeTag = `JSONExtractString(JSONExtractRaw(error_envelope, 'tags'), {${keyParameter}:String})`;
-  const dataTag = `JSONExtractString(JSONExtractRaw(toJSONString(data), 'tags'), {${keyParameter}:String})`;
-  return `if(${envelopeTag} != '', ${envelopeTag}, ${dataTag})`;
+  return `JSONExtractString(JSONExtractRaw(error_envelope, 'tags'), {${keyParameter}:String})`;
 }
 
 function searchServiceExpression(): string {
-  return "if(service_name != '', service_name, if(JSONExtractString(JSONExtractRaw(error_envelope, 'runtime'), 'service_name') != '', JSONExtractString(JSONExtractRaw(error_envelope, 'runtime'), 'service_name'), JSONExtractString(JSONExtractRaw(toJSONString(data), 'runtime'), 'service_name')))";
+  return "if(service_name != '', service_name, JSONExtractString(JSONExtractRaw(error_envelope, 'runtime'), 'service_name'))";
 }
 
 function searchEnvironmentExpression(): string {
@@ -216,28 +218,23 @@ function searchEnvironmentExpression(): string {
 }
 
 function searchLevelExpression(): string {
-  return `if(JSONExtractString(error_envelope, 'level') != '', JSONExtractString(error_envelope, 'level'), if(JSONExtractString(toJSONString(data), 'level') != '', JSONExtractString(toJSONString(data), 'level'), level))`;
+  return `if(JSONExtractString(error_envelope, 'level') != '', JSONExtractString(error_envelope, 'level'), level)`;
 }
 
 function searchHandledExpression(): string {
   const envelope = "JSONExtractRaw(error_envelope, 'handled')";
-  const data = "JSONExtractRaw(toJSONString(data), 'handled')";
-  return `if(${envelope} = 'true', 1, if(${envelope} = 'false', 0, if(${data} = 'true', 1, if(${data} = 'false', 0, -1))))`;
+  return `if(${envelope} = 'true', 1, if(${envelope} = 'false', 0, -1))`;
 }
 
 function searchUserExpression(field: "id" | "email" | "username"): string {
-  const envelope = `JSONExtractString(JSONExtractRaw(error_envelope, 'user'), '${field}')`;
-  const data = `JSONExtractString(JSONExtractRaw(toJSONString(data), 'user'), '${field}')`;
-  return `if(${envelope} != '', ${envelope}, ${data})`;
+  return `JSONExtractString(JSONExtractRaw(error_envelope, 'user'), '${field}')`;
 }
 
 function searchObjectStringExpression(container: "contexts" | "extra", keyParameter: string): string {
   // Only direct scalar strings are searchable here. Nested context/extra JSON is
   // intentionally not traversed so a public filter cannot become an arbitrary
   // payload path or force unbounded JSON extraction work.
-  const envelope = `JSONExtractString(JSONExtractRaw(error_envelope, '${container}'), {${keyParameter}:String})`;
-  const data = `JSONExtractString(JSONExtractRaw(toJSONString(data), '${container}'), {${keyParameter}:String})`;
-  return `if(${envelope} != '', ${envelope}, ${data})`;
+  return `JSONExtractString(JSONExtractRaw(error_envelope, '${container}'), {${keyParameter}:String})`;
 }
 
 function facetExpression(facet: string, keyParameter: string): string {
@@ -626,7 +623,7 @@ async function searchOccurrences(options: {
   }));
   const rows = await resultSet.json<PublicSearchOccurrenceRow>();
   const pageRows = rows.slice(0, options.filters.limit);
-  const pageAttachmentEventIds = [...new Set(pageRows.map(publicSearchAttachmentEventId).filter((eventId): eventId is string => eventId !== null))];
+  const pageAttachmentEventIds = [...new Set(pageRows.map(publicSearchAttachmentEventId))];
   const attachmentsByEvent = hasPublicSearchAttachmentFilter(options.filters)
     ? await loadPublicSearchAttachmentMetadata({
       query: createPublicSearchRawQuery(options.prisma ?? throwMissingAttachmentSearchPrisma()),
@@ -639,7 +636,7 @@ async function searchOccurrences(options: {
     items: pageRows.map((row) => toPublicSearchOccurrence(
       row,
       options.filters,
-      attachmentsByEvent.get(publicSearchAttachmentEventId(row) ?? "") ?? [],
+      attachmentsByEvent.get(publicSearchAttachmentEventId(row)) ?? [],
     )),
     hasMore: rows.length > options.filters.limit,
   };

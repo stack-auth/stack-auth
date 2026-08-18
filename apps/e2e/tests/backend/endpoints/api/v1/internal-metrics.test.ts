@@ -23,15 +23,6 @@ async function uploadAnalyticsEventBatch(options: {
     method: "POST",
     accessType: "client",
     body: {
-      // `schema_version` and `resource` are both required by the batch contract;
-      // these referrer metrics only care that the events land, so the resource is
-      // a minimal stand-in rather than anything metrics-specific.
-      schema_version: 3,
-      resource: {
-        service: { namespace: "e2e", name: "test-client", version: "test" },
-        deploymentEnvironmentName: "test",
-        attributes: { suite: "internal-metrics" },
-      },
       session_replay_segment_id: options.sessionReplaySegmentId,
       batch_id: options.batchId,
       sent_at_ms: options.sentAtMs,

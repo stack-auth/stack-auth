@@ -161,12 +161,8 @@ function attachmentMetadata(value: unknown): PublicSearchAttachment[] {
   return result;
 }
 
-export function publicSearchAttachmentEventId(row: PublicSearchOccurrenceRow): string | null {
-  return getErrorAttachmentEventId({
-    occurrenceId: row.occurrence_id,
-    data: scrubPublicRecord(row.data),
-    errorEnvelope: storedErrorEnvelope(row.error_envelope),
-  });
+export function publicSearchAttachmentEventId(row: PublicSearchOccurrenceRow): string {
+  return getErrorAttachmentEventId(row.occurrence_id);
 }
 
 function sourceLink(value: unknown): PublicSearchSourceLink | null {

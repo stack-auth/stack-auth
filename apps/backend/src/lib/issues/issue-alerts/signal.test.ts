@@ -22,6 +22,13 @@ function makeInput(overrides: Partial<IssueAlertSignalInput> = {}): IssueAlertSi
       aliasHashes: [],
       occurrenceId: "event-alert-1",
       groupingConfigId: "hexclave-js:2026-08-01",
+      groupingProvenance: [{
+        hash: "a".repeat(32),
+        role: "primary",
+        configId: "hexclave-js:2026-08-01",
+        variant: "app",
+        fingerprint: { type: "default", source: "default", tokens: [], resolvedTokens: [] },
+      }],
       type: "TypeError",
       value: "bad input",
       culprit: "app.ts",
@@ -78,7 +85,7 @@ describe("buildIssueAlertSignal", () => {
     expect(signal.frequencyCounts).toEqual(new Map([[60, 4]]));
   });
 
-  it("uses a stable bounded occurrence identity when a legacy input omitted one", () => {
+  it("derives a stable bounded occurrence identity for reconciler-aggregated deltas that have no single occurrence", () => {
     const first = buildIssueAlertSignal(makeInput({ input: { ...makeInput().input, occurrenceId: undefined } }));
     const second = buildIssueAlertSignal(makeInput({ input: { ...makeInput().input, occurrenceId: undefined } }));
     expect(first.occurrence.id).toMatch(/^[0-9a-f]{32}$/);

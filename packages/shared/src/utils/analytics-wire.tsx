@@ -179,10 +179,6 @@ export function classifyTelemetrySignal(type: string, wireKind: "event" | "span"
     : { kind: "span", lens: "observability", origin: origin ?? "client", writableOrigins: ["client", "server"], billingItem: "analytics_spans", displayName: type, description: "A custom code-execution interval recorded by the application." };
 }
 
-export function isTelemetrySignalOwnedBy(type: string, wireKind: "event" | "span", lens: TelemetryLens): boolean {
-  return classifyTelemetrySignal(type, wireKind).lens === lens;
-}
-
 export function canWriteTelemetrySignal(type: string, wireKind: "event" | "span", origin: TelemetryWriterOrigin): boolean {
   return classifyTelemetrySignal(type, wireKind).writableOrigins.includes(origin);
 }
@@ -207,12 +203,6 @@ export const CUSTOM_TELEMETRY_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/;
 // same ceiling for every event/span preserves its generated payloads while
 // giving current custom telemetry one bounded validation contract.
 export const CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES = 64_000;
-// Instrumentation scope names identify the library/tracer that emitted a span.
-// They ride on the SDK wire so operation names can live in `span_type` without
-// losing the distinction between customer-authored and auto-instrumented work.
-export const TELEMETRY_SCOPE_NAME_MAX_BYTES = 1_024;
-// Companion to scope_name: the OTel tracer/instrumentation version string.
-export const TELEMETRY_SCOPE_VERSION_MAX_BYTES = 1_024;
 // First-class OpenTelemetry span kind / status columns. Kept out of opaque
 // `data` so ClickHouse filters and the traces UI can use typed LowCardinality
 // columns instead of JSON extraction. `internal` / `unset` are the schema
@@ -221,7 +211,6 @@ export const TELEMETRY_SPAN_KINDS = ["internal", "server", "client", "producer",
 export type TelemetrySpanKind = (typeof TELEMETRY_SPAN_KINDS)[number];
 export const TELEMETRY_SPAN_STATUS_CODES = ["unset", "ok", "error"] as const;
 export type TelemetrySpanStatusCode = (typeof TELEMETRY_SPAN_STATUS_CODES)[number];
-export const TELEMETRY_SPAN_STATUS_MESSAGE_MAX_BYTES = 1_024;
 // Cap on a `$log` event's message (the human-readable text; structured
 // attributes ride in `data` under the normal item-data cap). Shared so the SDK
 // truncates to exactly what the route accepts instead of 400ing the batch.

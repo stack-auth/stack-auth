@@ -84,10 +84,11 @@ function getOtlpLogIdentity(log: CanonicalOtlpLogRecord, ordinal: number): strin
     // enriched by a retrying producer without creating a second occurrence.
     return `event:${log.errorEnvelope.eventId}`;
   }
-  // Vanilla OTLP and legacy flat errors without an event ID have no natural
-  // identity. Keep their old deterministic content fallback, but include the
-  // ordinal so equal records in one batch remain distinct.
-  return `legacy:${ordinal}:${JSON.stringify({
+  // Vanilla OTLP records and `$error` records without an event ID have no
+  // natural identity, so derive a deterministic one from the record content;
+  // the ordinal keeps equal records in one batch distinct. This string is only
+  // hashed into the batch id / deduplication token, never persisted verbatim.
+  return `derived:${ordinal}:${JSON.stringify({
     ...log,
     body: log.body === null ? null : taggedValue(log.body),
     attributes: attributesJson(log.attributes),

@@ -1,14 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  adaptLegacyErrorEvent,
-  adaptOtlpErrorLogRecord,
   deriveErrorEnvelopeEventId,
   normalizeErrorEnvelope,
 } from "./error-envelope";
 
 describe("error envelope normalization", () => {
-  it("preserves the rich event contract and adapts a flat legacy error", () => {
-    const envelope = adaptLegacyErrorEvent({
+  it("preserves the rich event contract when normalizing a flat error payload", () => {
+    const envelope = normalizeErrorEnvelope({
       event_id: "ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF",
       name: "DatabaseError",
       message: "query failed",
@@ -52,34 +50,19 @@ describe("error envelope normalization", () => {
     expect(envelope.item_metadata.length).toBe(123);
   });
 
-  it("adapts OTLP attributes without making OTel the product schema", () => {
-    const envelope = adaptOtlpErrorLogRecord({
-      eventName: "$error",
-      traceId: "0123456789abcdef0123456789abcdef",
-      spanId: "0123456789abcdef",
-      severityText: "ERROR",
-      attributes: {
-        "hexclave.signal.type": "error",
-        "hexclave.data": {
-          type: "kvlist",
-          value: {
-            name: { type: "string", value: "TypeError" },
-            message: { type: "string", value: "bad value" },
-            handled: { type: "bool", value: true },
-            release: { type: "string", value: "release-1" },
-          },
-        },
-      },
-      resource: { attributes: { "service.name": "api", "service.version": "9.1.0" } },
-      scope: { name: "hexclave-sdk", version: "2.0.0", attributes: {} },
+  it("does not shape-sniff customer payloads that resemble OTLP records", () => {
+    // `eventName: "$error"` here is customer data on a flat payload, not an
+    // OTLP LogRecord: normalization must treat it as an opaque field instead
+    // of routing the payload through a different adapter.
+    const envelope = normalizeErrorEnvelope({
+      name: "TypeError",
+      message: "bad value",
+      extra: { eventName: "$error" },
     });
 
     expect(envelope.kind).toBe("exception");
     expect(envelope.message).toBe("bad value");
-    expect(envelope.release).toBe("release-1");
-    expect(envelope.runtime).toEqual({ service_name: "api", service_version: "9.1.0" });
-    expect(envelope.sdk).toEqual({ name: "hexclave-sdk", version: "2.0.0" });
-    expect(envelope.correlation).toEqual({ trace_id: "0123456789abcdef0123456789abcdef", span_id: "0123456789abcdef" });
+    expect(envelope.extra).toEqual({ eventName: "$error" });
   });
 
   it("bounds strings, collections, recursion, and total size with visible drop metadata", () => {

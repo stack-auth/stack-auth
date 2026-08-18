@@ -22,7 +22,7 @@
  * stays a pure function of its arguments.
  */
 
-export const GROUPING_CONFIG_IDS = ["hexclave-js:2026-08-01", "hexclave-js:2026-08-06"] as const;
+export const GROUPING_CONFIG_IDS = ["hexclave-js:2026-08-01"] as const;
 
 export type GroupingConfigId = typeof GROUPING_CONFIG_IDS[number];
 
@@ -41,14 +41,6 @@ export const GROUPING_CONFIGS: ReadonlyMap<GroupingConfigId, GroupingConfig> = n
       id: "hexclave-js:2026-08-01",
       introducedAt: "2026-08-01",
       description: "Initial JS/Node grouping: exception type + normalized stack frames, app/system variants, length-prefixed SHA-256 leaves.",
-    },
-  ],
-  [
-    "hexclave-js:2026-08-06",
-    {
-      id: "hexclave-js:2026-08-06",
-      introducedAt: "2026-08-06",
-      description: "Transition grouping: retains the initial frame contract and includes the parameterized message for non-empty stacks.",
     },
   ],
 ]);

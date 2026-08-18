@@ -159,7 +159,7 @@ function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefine
 
 const MIN_GZIP_JSON_BODY_BYTES = 1024;
 
-export async function encodeGzipJsonBody(
+async function encodeGzipJsonBody(
   jsonBody: string,
   options: { keepalive: boolean },
 ): Promise<{ body: BodyInit, contentType: string }> {

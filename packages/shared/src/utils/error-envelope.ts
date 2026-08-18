@@ -1,6 +1,6 @@
 import type { ReadonlyJson } from "./json";
 
-/** Stable product schema identifier. OTel and the legacy batch are adapters, not the product schema. */
+/** Stable product schema identifier, stamped onto every normalized envelope. */
 export const ERROR_ENVELOPE_SCHEMA = "hexclave.error-envelope";
 export const ERROR_ENVELOPE_VERSION = 1;
 
@@ -184,7 +184,14 @@ export type ErrorEnvelopeV1 = {
   normalization: ErrorEnvelopeNormalization,
 };
 
-export type LegacyErrorEventInput = {
+/**
+ * The flat `$error` payload as produced by our SDKs on the wire (either
+ * directly or projected out of an OTLP LogRecord's `hexclave.data` attribute
+ * by the OTLP receiver). Every field is `unknown` because this is the
+ * untrusted pre-normalization shape; `normalizeErrorEnvelope` bounds and types
+ * it into `ErrorEnvelopeV1`.
+ */
+export type FlatErrorEventInput = {
   event_id?: unknown,
   kind?: unknown,
   level?: unknown,
@@ -223,24 +230,7 @@ export type LegacyErrorEventInput = {
   item_metadata?: unknown,
 };
 
-export type OtlpErrorLogRecordInput = {
-  eventName?: unknown,
-  event_name?: unknown,
-  attributes?: unknown,
-  resource?: unknown,
-  scope?: unknown,
-  traceId?: unknown,
-  trace_id?: unknown,
-  spanId?: unknown,
-  span_id?: unknown,
-  severityText?: unknown,
-  severity_text?: unknown,
-  severityNumber?: unknown,
-  severity_number?: unknown,
-  body?: unknown,
-};
-
-export type ErrorEnvelopeInput = ErrorEnvelopeV1 | LegacyErrorEventInput | OtlpErrorLogRecordInput;
+export type ErrorEnvelopeInput = ErrorEnvelopeV1 | FlatErrorEventInput;
 
 export type ErrorEnvelopeNormalizationOptions = Partial<ErrorEnvelopeLimits>;
 
@@ -687,100 +677,7 @@ function normalizeEventId(value: unknown, fallback: unknown): string {
   return deriveErrorEnvelopeEventId(fallback);
 }
 
-function readMapLike(value: unknown, key: string): unknown {
-  if (value instanceof Map) return value.get(key);
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      if (isRecord(item) && field(item, "key") === key) return unwrapOtlpValue(field(item, "value"));
-    }
-    return undefined;
-  }
-  return unwrapOtlpValue(field(value, key));
-}
-
-function unwrapOtlpValue(value: unknown): unknown {
-  if (!isRecord(value)) return value;
-  const type = field(value, "type");
-  const typedValue = field(value, "value");
-  if (type === "string" || type === "bool" || type === "int" || type === "double" || type === "bytes") return typedValue;
-  if (type === "array") return Array.isArray(typedValue) ? typedValue.map(unwrapOtlpValue) : typedValue;
-  if (type === "kvlist") {
-    const result: Record<string, unknown> = {};
-    if (typedValue instanceof Map) {
-      for (const [key, item] of typedValue.entries()) if (typeof key === "string") result[key] = unwrapOtlpValue(item);
-    } else if (isRecord(typedValue)) {
-      for (const key of Object.keys(typedValue)) result[key] = unwrapOtlpValue(Reflect.get(typedValue, key));
-    }
-    return result;
-  }
-  return value;
-}
-
-function isOtlpErrorRecord(value: Record<string, unknown>): boolean {
-  const eventName = firstField([value], ["eventName", "event_name"]);
-  const signalType = readMapLike(field(value, "attributes"), "hexclave.signal.type");
-  return eventName === "$error" || signalType === "error";
-}
-
-function adaptOtlpErrorRecord(value: Record<string, unknown>): LegacyErrorEventInput {
-  if (!isOtlpErrorRecord(value)) throw new Error("OTLP record is not a Hexclave $error record");
-  const attributes = field(value, "attributes");
-  const data = unwrapOtlpValue(readMapLike(attributes, "hexclave.data"));
-  const resource = field(value, "resource");
-  const resourceAttributes = field(resource, "attributes");
-  const scope = field(value, "scope");
-  const scopeAttributes = field(scope, "attributes");
-  const source = isRecord(data) ? data : {};
-  return {
-    event_id: firstField([source, attributes], ["event_id", "hexclave.event.id"]),
-    name: field(source, "name"),
-    message: field(source, "message") ?? (typeof unwrapOtlpValue(field(value, "body")) === "string" ? unwrapOtlpValue(field(value, "body")) : undefined),
-    stack: field(source, "stack"),
-    handled: field(source, "handled"),
-    synthetic: field(source, "synthetic"),
-    mechanism_type: field(source, "mechanism_type"),
-    user: field(source, "user"),
-    tags: field(source, "tags"),
-    contexts: field(source, "contexts"),
-    extra: field(source, "extra"),
-    breadcrumbs: field(source, "breadcrumbs"),
-    fingerprint: field(source, "fingerprint"),
-    release: field(source, "release"),
-    environment: field(source, "environment") ?? readMapLike(resourceAttributes, "deployment.environment.name"),
-    sdk: { name: field(scope, "name") ?? readMapLike(scopeAttributes, "hexclave.sdk.name"), version: field(scope, "version") },
-    runtime: {
-      service_name: readMapLike(resourceAttributes, "service.name"),
-      service_version: readMapLike(resourceAttributes, "service.version"),
-    },
-    trace_id: firstField([value, attributes], ["traceId", "trace_id"]),
-    span_id: firstField([value, attributes], ["spanId", "span_id"]),
-    debug_images: field(source, "debug_images"),
-    attachments: field(source, "attachments"),
-    item_metadata: field(source, "item_metadata"),
-    level: field(source, "level") ?? severityToLevel(firstField([value], ["severityText", "severity_text", "severityNumber", "severity_number"])),
-  };
-}
-
-function severityToLevel(value: unknown): ErrorEnvelopeLevel {
-  if (typeof value === "string") {
-    const lower = value.toLowerCase();
-    if (lower.includes("fatal")) return "fatal";
-    if (lower.includes("error")) return "error";
-    if (lower.includes("warn")) return "warning";
-    if (lower.includes("debug") || lower.includes("trace")) return "debug";
-    if (lower.includes("info")) return "info";
-  }
-  if (typeof value === "number") {
-    if (value >= 21) return "fatal";
-    if (value >= 17) return "error";
-    if (value >= 13) return "warning";
-    if (value >= 9) return "info";
-    if (value >= 5) return "debug";
-  }
-  return "error";
-}
-
-function adaptLegacyInput(input: Record<string, unknown>): Record<string, unknown> {
+function adaptFlatErrorInput(input: Record<string, unknown>): Record<string, unknown> {
   const data = field(input, "data");
   const source = isRecord(data) ? data : input;
   const pick = (key: string): unknown => firstField([source, input], [key]);
@@ -981,25 +878,17 @@ function normalizeToEnvelope(input: Record<string, unknown>, limits: typeof ERRO
   return fitEnvelope(envelope, limits, state);
 }
 
-/** Normalize v1, flat legacy `$error`, or canonical OTLP error input into the typed v1 contract. */
+/** Normalize a flat `$error` payload into the typed v1 contract. */
 export function normalizeErrorEnvelope(input: unknown, options?: ErrorEnvelopeNormalizationOptions): ErrorEnvelopeV1 {
+  // The input here is always the flat product payload (`FlatErrorEventInput`):
+  // the OTLP receiver projects `hexclave.data` out of the LogRecord before
+  // calling this, and nothing re-normalizes an already-serialized envelope. So
+  // no shape sniffing belongs here — sniffing on payload contents (e.g. an
+  // `eventName: "$error"` field in customer data) would mis-route legitimate
+  // flat payloads through a different adapter.
   const raw = normalizeInputRecord(input);
   const limits = mergeLimits(options);
   const state = new NormalizationState();
-  const adapted = field(raw, "schema") === ERROR_ENVELOPE_SCHEMA && field(raw, "version") === ERROR_ENVELOPE_VERSION
-    ? raw
-    : (isOtlpErrorRecord(raw) ? adaptOtlpErrorRecord(raw) : adaptLegacyInput(raw));
-  const envelope = normalizeToEnvelope(adapted, limits, state);
+  const envelope = normalizeToEnvelope(adaptFlatErrorInput(raw), limits, state);
   return envelope;
-}
-
-/** Explicit adapter for callers that have a legacy flat `$error` payload. */
-export function adaptLegacyErrorEvent(input: LegacyErrorEventInput | unknown, options?: ErrorEnvelopeNormalizationOptions): ErrorEnvelopeV1 {
-  return normalizeErrorEnvelope(input, options);
-}
-
-/** Explicit adapter for a canonical OTLP LogRecord whose event is `$error`. */
-export function adaptOtlpErrorLogRecord(input: OtlpErrorLogRecordInput | unknown, options?: ErrorEnvelopeNormalizationOptions): ErrorEnvelopeV1 {
-  const raw = normalizeInputRecord(input);
-  return normalizeErrorEnvelope(adaptOtlpErrorRecord(raw), options);
 }

@@ -26,9 +26,9 @@ export type CanonicalOtlpLogRecord = {
     schemaUrl: string,
   },
   /**
-   * Compatibility projection for the current flat error payload or the
-   * version-marked rich envelope. Keeping this behind a discriminant means the
-   * OTLP writer never has to inspect raw attribute maps again.
+   * Projection of the flat `$error` payload carried in `hexclave.data`.
+   * Materializing it here means the OTLP writer never has to inspect raw
+   * attribute maps again.
    */
   errorEnvelope: OtlpErrorEnvelope | null,
   /** Server-owned final policy projection; never comes from the OTLP wire. */
@@ -37,12 +37,8 @@ export type CanonicalOtlpLogRecord = {
 
 /** Relay-compatible, lowercase, dashless event ID. */
 export const HEXCLAVE_ERROR_EVENT_ID_RE = /^[0-9a-f]{32}$/;
-export const HEXCLAVE_ERROR_ENVELOPE_ATTRIBUTE = "hexclave.error.envelope";
-export const HEXCLAVE_ERROR_ENVELOPE_VERSION_ATTRIBUTE = "hexclave.error.envelope.version";
-export const HEXCLAVE_ERROR_ENVELOPE_VERSION = "1";
 
 export type OtlpErrorEnvelope = {
-  format: "flat" | "v1",
   fields: OtlpAttributes,
   eventId: string | null,
   identityError: string | null,
@@ -59,53 +55,26 @@ function readFlatErrorEventId(fields: OtlpAttributes, key: string): { value: str
 }
 
 /**
- * Adapts the existing flat `$error` projection into a stable seam for the
- * versioned ErrorEnvelope planned by the error contract. The SDK currently
- * emits the same event ID both as `hexclave.event.id` and inside the flat
- * `hexclave.data.event_id`; accepting either keeps old producers readable,
- * while rejecting disagreement prevents two occurrence identities for one
- * event.
+ * Projects the flat `$error` payload out of a LogRecord's `hexclave.data`
+ * attribute. The SDK emits the same event ID both as `hexclave.event.id` and
+ * inside the flat `hexclave.data.event_id`; accepting either keeps all
+ * producers readable, while rejecting disagreement prevents two occurrence
+ * identities for one event.
  */
 export function getOtlpErrorEnvelope(log: Pick<CanonicalOtlpLogRecord, "eventName" | "attributes">): OtlpErrorEnvelope | null {
   if (log.eventName !== "$error" || log.attributes.get("hexclave.signal.type")?.type !== "string" || log.attributes.get("hexclave.signal.type")?.value !== "error") return null;
-  const richEnvelope = log.attributes.get(HEXCLAVE_ERROR_ENVELOPE_ATTRIBUTE);
-  const envelopeVersion = log.attributes.get(HEXCLAVE_ERROR_ENVELOPE_VERSION_ATTRIBUTE);
   const flatData = log.attributes.get("hexclave.data");
-  let fields: OtlpAttributes | null = null;
-  let format: OtlpErrorEnvelope["format"] = "flat";
-  let identityError: string | null = null;
-
-  // During rollout a producer may carry both projections. The version-marked
-  // envelope wins; silently falling back to stale flat fields would let the
-  // same event group differently depending on which adapter read it first.
-  if (richEnvelope !== undefined || envelopeVersion !== undefined) {
-    format = "v1";
-    if (envelopeVersion?.type !== "string" || envelopeVersion.value !== HEXCLAVE_ERROR_ENVELOPE_VERSION) {
-      identityError = `Hexclave error envelope requires ${HEXCLAVE_ERROR_ENVELOPE_VERSION_ATTRIBUTE}=${JSON.stringify(HEXCLAVE_ERROR_ENVELOPE_VERSION)}`;
-    }
-    if (richEnvelope?.type !== "kvlist") {
-      identityError ??= `Hexclave error envelope ${HEXCLAVE_ERROR_ENVELOPE_ATTRIBUTE} must be a kvlist`;
-    } else {
-      fields = richEnvelope.value;
-    }
-  } else if (flatData?.type === "kvlist") {
-    fields = flatData.value;
-  } else {
-    return null;
-  }
+  if (flatData?.type !== "kvlist") return null;
+  const fields = flatData.value;
 
   const attributeEventId = readFlatErrorEventId(log.attributes, "hexclave.event.id");
-  const dataEventId = readFlatErrorEventId(fields ?? new Map(), "event_id");
-  identityError ??= attributeEventId.error ?? dataEventId.error;
+  const dataEventId = readFlatErrorEventId(fields, "event_id");
+  let identityError = attributeEventId.error ?? dataEventId.error;
   if (identityError === null && attributeEventId.value !== null && dataEventId.value !== null && attributeEventId.value !== dataEventId.value) {
     identityError = "Hexclave error event_id must match between hexclave.event.id and error payload event_id";
   }
   return {
-    format,
-    // The route rejects an invalid envelope before the writer is called. Keep
-    // an empty map for direct callers so malformed input is observable through
-    // `identityError` rather than causing an unsafe legacy fallback.
-    fields: fields ?? new Map(),
+    fields,
     eventId: identityError === null ? attributeEventId.value ?? dataEventId.value : null,
     identityError,
   };
@@ -211,17 +180,12 @@ export function getHexclaveOtlpLogContractError(log: CanonicalOtlpLogRecord, ori
   }
   if (signalType.value === "error") {
     if (log.eventName !== "$error") return "Hexclave error LogRecords require eventName $error";
+    // With eventName and signal type already validated, a null projection can
+    // only mean the flat payload attribute is missing or mis-shaped.
     const errorEnvelope = getOtlpErrorEnvelope(log);
-    if (errorEnvelope?.identityError != null) return errorEnvelope.identityError;
-    if (errorEnvelope !== null) {
-      if (errorEnvelope.fields.get("name")?.type !== "string" || errorEnvelope.fields.get("message")?.type !== "string" || errorEnvelope.fields.get("handled")?.type !== "boolean") {
-        return "Hexclave error LogRecords require string name/message and boolean handled fields";
-      }
-      return null;
-    }
-    const data = log.attributes.get("hexclave.data");
-    if (data?.type !== "kvlist") return "Hexclave error LogRecords require a hexclave.data kvlist attribute";
-    if (data.value.get("name")?.type !== "string" || data.value.get("message")?.type !== "string" || data.value.get("handled")?.type !== "boolean") {
+    if (errorEnvelope === null) return "Hexclave error LogRecords require a hexclave.data kvlist attribute";
+    if (errorEnvelope.identityError != null) return errorEnvelope.identityError;
+    if (errorEnvelope.fields.get("name")?.type !== "string" || errorEnvelope.fields.get("message")?.type !== "string" || errorEnvelope.fields.get("handled")?.type !== "boolean") {
       return "Hexclave error LogRecords require string name/message and boolean handled fields";
     }
     return null;

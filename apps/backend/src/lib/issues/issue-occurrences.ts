@@ -83,16 +83,10 @@ export async function loadPublicIssueOccurrences(options: {
     return {
       row,
       errorEnvelope,
-      attachmentEventId: getErrorAttachmentEventId({
-        occurrenceId: row.occurrence_id,
-        data: row.data,
-        errorEnvelope,
-      }),
+      attachmentEventId: getErrorAttachmentEventId(row.occurrence_id),
     };
   });
-  const attachmentEventIds = prepared
-    .map((entry) => entry.attachmentEventId)
-    .filter((eventId): eventId is string => eventId !== null);
+  const attachmentEventIds = prepared.map((entry) => entry.attachmentEventId);
   const attachmentsByEvent = await loadPublicIssueAttachments(options.tenancy, attachmentEventIds);
   const last = page.at(-1);
   // Symbolication may perform an artifact lookup per frame. Keep the page
@@ -108,7 +102,7 @@ export async function loadPublicIssueOccurrences(options: {
         branchId: options.tenancy.branchId,
       },
       errorEnvelope: entry.errorEnvelope,
-      attachments: entry.attachmentEventId === null ? [] : attachmentsByEvent.get(entry.attachmentEventId) ?? [],
+      attachments: attachmentsByEvent.get(entry.attachmentEventId) ?? [],
     }),
   );
   return {

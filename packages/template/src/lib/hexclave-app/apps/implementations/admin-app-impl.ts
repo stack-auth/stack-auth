@@ -1426,6 +1426,7 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
       last_event_at_from_millis: options?.lastEventAtFromMillis,
       last_event_at_to_millis: options?.lastEventAtToMillis,
       click_count_min: options?.clickCountMin,
+      user_kind: options?.userKind,
     });
 
     const items: AdminSessionReplay[] = response.items.map((r) => ({

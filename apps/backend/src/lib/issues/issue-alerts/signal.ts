@@ -22,8 +22,9 @@ function normalizeIssueAlertLevel(value: string): IssueAlertLevel | undefined {
     case "warning": { return "warn"; }
     case "fatal": { return "error"; }
     default: {
-      // A malformed legacy level must not make otherwise valid issue
-      // materialization fail; it simply cannot satisfy a level predicate.
+      // Levels arrive from untrusted customer telemetry, so an unrecognized
+      // spelling must not make otherwise valid issue materialization fail; it
+      // simply cannot satisfy a level predicate.
       return undefined;
     }
   }
@@ -134,6 +135,10 @@ function signalEnvelope(value: unknown): Record<string, unknown> {
 }
 
 function eventOccurrenceId(outcome: IssueBatchApplyOutcome, input: IssueBatchDelta): string {
+  // The reconciler coalesces MANY occurrences into one delta per owning hash,
+  // so a delta legitimately has no single occurrence id. Alerts still need a
+  // stable identity for deduplication, so derive one from the (issue, hash)
+  // pair the delta describes.
   if (input.occurrenceId !== undefined && input.occurrenceId.length > 0) return input.occurrenceId;
   return createHash("sha256")
     .update(`issue-alert:${outcome.issueId}:${outcome.ownerHash}`, "utf8")

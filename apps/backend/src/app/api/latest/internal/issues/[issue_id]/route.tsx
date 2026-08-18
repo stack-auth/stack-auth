@@ -120,11 +120,7 @@ export const GET = createSmartRouteHandler({
       lastSeenRelease: resolved.row.lastSeenRelease,
     });
     const errorEnvelope = occurrence === null ? null : parseErrorEnvelope(occurrence.error_envelope);
-    const attachmentEventId = occurrence === null ? null : getErrorAttachmentEventId({
-      occurrenceId: occurrence.occurrence_id,
-      data: occurrence.data,
-      errorEnvelope,
-    });
+    const attachmentEventId = occurrence === null ? null : getErrorAttachmentEventId(occurrence.occurrence_id);
     const attachments = attachmentEventId === null
       ? []
       : await (await createProductionErrorAttachmentService(tenancy)).list(

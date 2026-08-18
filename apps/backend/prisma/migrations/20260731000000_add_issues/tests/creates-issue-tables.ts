@@ -94,8 +94,8 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     VALUES (${issueId}::uuid, ${ctx.tenancyId}::uuid, 1, 'TypeError', 'x is not a function', 'app/page.tsx', 'javascript', NOW(), NOW(), NOW())
   `;
   await sql`
-    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId")
-    VALUES (${ctx.tenancyId}::uuid, ${"a".repeat(32)}, ${issueId}::uuid, 'v1')
+    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId", "groupingRole", "groupingVariant", "groupingProvenance")
+    VALUES (${ctx.tenancyId}::uuid, ${"a".repeat(32)}, ${issueId}::uuid, 'v1', 'PRIMARY', 'app', '[]'::jsonb)
   `;
   await sql`
     INSERT INTO "IssueMaterialization" ("tenancyId", "batchId")

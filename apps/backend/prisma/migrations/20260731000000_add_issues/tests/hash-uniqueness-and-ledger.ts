@@ -39,15 +39,15 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   // ---- IssueHash: the (tenancyId, hash) primary key ----
 
   await sql`
-    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId")
-    VALUES (${ctx.tenancyA}::uuid, ${sharedHash}, ${issueA}::uuid, 'v1')
+    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId", "groupingRole", "groupingVariant", "groupingProvenance")
+    VALUES (${ctx.tenancyA}::uuid, ${sharedHash}, ${issueA}::uuid, 'v1', 'PRIMARY', 'app', '[]'::jsonb)
   `;
 
   // The same error hashes identically for every project, so the hash space MUST
   // be per tenancy — otherwise one project's error would claim another's.
   await sql`
-    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId")
-    VALUES (${ctx.tenancyB}::uuid, ${sharedHash}, ${issueB}::uuid, 'v1')
+    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId", "groupingRole", "groupingVariant", "groupingProvenance")
+    VALUES (${ctx.tenancyB}::uuid, ${sharedHash}, ${issueB}::uuid, 'v1', 'PRIMARY', 'app', '[]'::jsonb)
   `;
 
   // ...and exactly once within a tenancy. This rejection IS the first-sighting
@@ -56,15 +56,15 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   // creating a duplicate issue.
   const secondIssueA = await insertIssue(sql, ctx.tenancyA, 2);
   await expect(sql`
-    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId")
-    VALUES (${ctx.tenancyA}::uuid, ${sharedHash}, ${secondIssueA}::uuid, 'v1')
+    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId", "groupingRole", "groupingVariant", "groupingProvenance")
+    VALUES (${ctx.tenancyA}::uuid, ${sharedHash}, ${secondIssueA}::uuid, 'v1', 'PRIMARY', 'app', '[]'::jsonb)
   `).rejects.toThrow(/IssueHash_pkey/);
 
   // The losing writer's actual recovery path: ON CONFLICT DO NOTHING reports
   // zero rows and the caller re-reads the winner's issue.
   const contended = await sql`
-    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId")
-    VALUES (${ctx.tenancyA}::uuid, ${sharedHash}, ${secondIssueA}::uuid, 'v1')
+    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId", "groupingRole", "groupingVariant", "groupingProvenance")
+    VALUES (${ctx.tenancyA}::uuid, ${sharedHash}, ${secondIssueA}::uuid, 'v1', 'PRIMARY', 'app', '[]'::jsonb)
     ON CONFLICT ("tenancyId", "hash") DO NOTHING
     RETURNING "issueId"
   `;
@@ -77,15 +77,15 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   // ---- IssueHash: the issueId foreign key ----
 
   await expect(sql`
-    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId")
-    VALUES (${ctx.tenancyA}::uuid, ${"0".repeat(32)}, ${randomUUID()}::uuid, 'v1')
+    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId", "groupingRole", "groupingVariant", "groupingProvenance")
+    VALUES (${ctx.tenancyA}::uuid, ${"0".repeat(32)}, ${randomUUID()}::uuid, 'v1', 'PRIMARY', 'app', '[]'::jsonb)
   `).rejects.toThrow(/IssueHash_tenancyId_issueId_fkey/);
 
   // The FK is composite, so it also stops a hash in tenancy A from pointing at
   // an issue that exists but belongs to tenancy B.
   await expect(sql`
-    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId")
-    VALUES (${ctx.tenancyA}::uuid, ${"1".repeat(32)}, ${issueB}::uuid, 'v1')
+    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId", "groupingRole", "groupingVariant", "groupingProvenance")
+    VALUES (${ctx.tenancyA}::uuid, ${"1".repeat(32)}, ${issueB}::uuid, 'v1', 'PRIMARY', 'app', '[]'::jsonb)
   `).rejects.toThrow(/IssueHash_tenancyId_issueId_fkey/);
 
   // ---- IssueHash: the committed lease ----

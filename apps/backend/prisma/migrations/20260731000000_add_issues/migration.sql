@@ -80,11 +80,12 @@ CREATE TABLE "IssueHash" (
     "hash" TEXT NOT NULL,
     "issueId" UUID NOT NULL,
     "groupingConfigId" TEXT NOT NULL,
-    -- Nullable for legacy rows created before durable grouping provenance. New
-    -- rows record whether this hash was the owning primary or a transition alias.
-    "groupingRole" "IssueHashGroupingRole",
-    "groupingVariant" VARCHAR(32),
-    "groupingProvenance" JSONB,
+    -- Recorded on every row: materialization always knows the decision that
+    -- produced a hash (owning primary or transition alias), so these are NOT
+    -- NULL from day one rather than storing rows without their evidence.
+    "groupingRole" "IssueHashGroupingRole" NOT NULL,
+    "groupingVariant" VARCHAR(32) NOT NULL,
+    "groupingProvenance" JSONB NOT NULL,
     -- A committed lease, not an in-transaction flag: set in one transaction and
     -- cleared in another so concurrent ingest can actually observe it and skip
     -- the hash. "lockedAt" is what makes a crashed merge recoverable by a sweep

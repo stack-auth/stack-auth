@@ -14,10 +14,11 @@ export type IssueBatchDelta = {
   groupingConfigId: GroupingConfigId,
   /**
    * Ordered primary/secondary decisions retained for issue-hash explainability.
-   * Older reconciliation callers may omit this when the source row predates
-   * provenance storage.
+   * Always present: ingest computes it inline with the hashes, and the
+   * reconciler projects it back out of the occurrence's
+   * `issue_grouping_provenance` column.
    */
-  groupingProvenance?: GroupingHashProvenance[],
+  groupingProvenance: GroupingHashProvenance[],
   type: string,
   value: string,
   culprit: string,

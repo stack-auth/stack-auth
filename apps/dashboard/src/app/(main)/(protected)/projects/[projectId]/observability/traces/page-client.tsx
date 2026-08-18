@@ -149,7 +149,6 @@ SELECT
   u.display_name AS user_display_name,
   u.primary_email AS user_primary_email,
   u.profile_image_url AS user_profile_image_url,
-  'span' AS root_source,
   -- How many other root activities happened on this page view. Only ever
   -- non-zero for a $page-view row, because a page view is the only root that
   -- other roots point at; drives the expand affordance in the list.
@@ -225,7 +224,6 @@ SELECT
   u.display_name AS user_display_name,
   u.primary_email AS user_primary_email,
   u.profile_image_url AS user_profile_image_url,
-  'span' AS root_source,
   0 AS child_count,
   arrayMap(service -> service.1, ts.services) AS trace_service_namespaces,
   arrayMap(service -> service.2, ts.services) AS trace_service_names
@@ -342,7 +340,7 @@ export const SPAN_DETAIL_COLUMNS: readonly string[] = [
 // Raw identifiers and instrumentation plumbing — collapsed behind the
 // "Technical details" disclosure in the shared RowDetailDialog. Also applies
 // to event rows (which share the dialog): only the columns present on the
-// row are rendered. root_source/user_display_name etc. are grid-only helper
+// row are rendered. user_display_name etc. are grid-only helper
 // columns on preloaded root rows; they're hidden with the identifiers too.
 export const SPAN_TECHNICAL_DETAIL_COLUMNS: readonly string[] = [
   "trace_id",
@@ -359,7 +357,6 @@ export const SPAN_TECHNICAL_DETAIL_COLUMNS: readonly string[] = [
   "resource_attributes",
   "producer",
   "created_at",
-  "root_source",
   "user_display_name",
   "user_primary_email",
   "user_profile_image_url",
@@ -400,8 +397,9 @@ export function getSelectedTraceEventQuery(
     // `default.errors` exposes the server-side grouping columns that the other
     // three views do not — so `SELECT *` makes the branches different widths
     // and the query fails with "UNION different number of columns". The
-    // compatibility branches synthesize `body` and zero severity for the
-    // event-shaped views; OTel log/error branches provide their canonical body
+    // event-shaped views (`events`, `span_events`) are not OTel log records
+    // and carry no body/severity, so those branches synthesize an empty body
+    // and zero severity; the log/error branches provide their canonical body
     // and severity fields.
     //
     // The time bound is derived from the SELECTED TRACE's interval (plus skew
@@ -416,7 +414,7 @@ export function getSelectedTraceEventQuery(
     // we rank that event first so the cap cannot hide it.
     query: `
 WITH correlated AS (
-  SELECT event_type, event_at, data, message AS body, level,
+  SELECT event_type, event_at, data, CAST('' AS String) AS body, level,
          CAST(0 AS UInt8) AS severity_number, CAST('' AS String) AS severity_text,
          user_id, trace_id, span_id, page_view_span_id,
          refresh_token_id, session_replay_id, session_replay_segment_id
@@ -432,7 +430,7 @@ WITH correlated AS (
          refresh_token_id, session_replay_id, session_replay_segment_id
   FROM default.errors
   UNION ALL
-  SELECT event_type, event_at, data, message AS body, level,
+  SELECT event_type, event_at, data, CAST('' AS String) AS body, level,
          CAST(0 AS UInt8) AS severity_number, CAST('' AS String) AS severity_text,
          user_id, trace_id, span_id, page_view_span_id,
          refresh_token_id, session_replay_id, session_replay_segment_id

@@ -39,11 +39,6 @@ export type ParsedFrame = {
   inApp: boolean,
   /** Debug id of the emitting artifact, when the SDK shipped a debug-image map. */
   debugId?: string,
-  /**
-   * Filled by symbolication. One optional sub-object, so the frame renderer
-   * branches on presence exactly once.
-   */
-  context?: { line: string, pre: string[], post: string[], symbolicated: true },
 };
 
 /**

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   createErrorIngestPolicyStateStore,
-  deterministicErrorIngestSamplingDecision,
   evaluateErrorIngestPolicy,
   parseErrorIngestPolicyConfig,
   ErrorIngestPolicyConfigError,
@@ -53,7 +52,7 @@ describe("server-side error-ingest policy", () => {
       observability: { errorIngest: { finalScrub: { dropKeys: { "dotted.rule.id": "user.email" } } } },
     })).toThrow("rule ids must be short dotless identifiers");
     expect(() => parseErrorIngestPolicyConfig({
-      observability: { errorIngest: { finalScrub: { dropKeys: { legacyShape: true } } } },
+      observability: { errorIngest: { finalScrub: { dropKeys: { nonStringSelector: true } } } },
     })).toThrow("Unsupported error-ingest scrub override key");
     expect(() => parseErrorIngestPolicyConfig({
       observability: { errorIngest: { finalScrub: { dropUrl: { dropRule: "url" } } } },
@@ -134,91 +133,12 @@ describe("server-side error-ingest policy", () => {
     expect(store.buckets.size).toBe(0);
   });
 
-  it("applies selector-scoped filters after scrubbing and never returns the raw payload", () => {
-    const config = {
-      observability: {
-        errorIngest: {
-          version: 1,
-          selectors: { tenancyIds: [scope.tenancyId], projectIds: [scope.projectId], branchIds: [scope.branchId] },
-          filters: [{ id: "ignore-health", field: "message", operator: "contains", value: "health check" }],
-        },
-      },
-    };
-    const decision = evaluateErrorIngestPolicy({
-      config,
-      scope,
-      items: [{ itemId: "event:0", itemType: "event", data: { message: "health check token=raw-secret", authorization: "Bearer raw-secret" } }],
-      nowMs: 1_000,
-      stateStore: createErrorIngestPolicyStateStore(),
-    });
-
-    expect(decision.outcomes[0]).toMatchObject({ status: "filtered", reason: "configured_filter", filterId: "ignore-health" });
-    expect(decision.metadata).toEqual({
-      policyVersion: 1,
-      normalizationVersion: 1,
-      scrubberVersion: 1,
-      selectorsMatched: true,
-      filterIds: ["ignore-health"],
-      sampling: { sampleRate: null, decision: "disabled" },
-    });
-    expect(JSON.stringify(decision)).not.toContain("raw-secret");
-  });
-
-  it("fails closed for a selector miss while retaining built-in secret scrubbing", () => {
-    const decision = evaluateErrorIngestPolicy({
-      config: {
-        observability: {
-          errorIngest: {
-            selectors: { projectIds: ["another-project"] },
-            filters: [{ id: "drop-all", field: "message", operator: "contains", value: "hello" }],
-          },
-        },
-      },
-      scope,
-      items: [{ itemId: "event:0", itemType: "event", data: { message: "hello", token: "raw-secret" } }],
-      nowMs: 1_000,
-      stateStore: createErrorIngestPolicyStateStore(),
-    });
-
-    expect(decision.outcomes[0]).toMatchObject({ status: "accepted", scrubbed: true });
-    expect(decision.scrubbedData.get("event:0")).toEqual({ message: "hello" });
-    expect(decision.metadata).toMatchObject({ selectorsMatched: false, filterIds: [], sampling: { sampleRate: null, decision: "disabled" } });
-  });
-
-  it("provides deterministic, scope-isolated sampling decisions with boundary rates", () => {
-    const input = {
-      scope,
-      itemId: "event:0",
-      itemType: "event" as const,
-      seed: "event-id-1",
-      seedKind: "event_id" as const,
-      sampleRate: 0.5,
-    };
-    expect(deterministicErrorIngestSamplingDecision(input)).toEqual(deterministicErrorIngestSamplingDecision(input));
-    // The scope participates in the sampling hash: seed "event-id-2" at rate
-    // 0.5 lands on opposite sides of the threshold for these two tenancies
-    // (precomputed; deterministic because the hash input is fully fixed).
-    expect(deterministicErrorIngestSamplingDecision({ ...input, seed: "event-id-2" })).toMatchObject({ decision: "keep" });
-    expect(deterministicErrorIngestSamplingDecision({ ...input, seed: "event-id-2", scope: { ...scope, tenancyId: "tenancy-2" } })).toMatchObject({ decision: "drop" });
-    expect(deterministicErrorIngestSamplingDecision({ ...input, sampleRate: 0 })).toMatchObject({ decision: "drop", sampleRate: 0 });
-    expect(deterministicErrorIngestSamplingDecision({ ...input, sampleRate: 1 })).toMatchObject({ decision: "keep", sampleRate: 1 });
-
-    const decision = evaluateErrorIngestPolicy({
-      config: { observability: { errorIngest: { sampling: { sampleRate: 0, seed: "event_id" } } } },
-      scope,
-      items: [{ itemId: "event:0", itemType: "event", data: { event_id: "event-id-1", message: "safe" } }],
-      nowMs: 1_000,
-      stateStore: createErrorIngestPolicyStateStore(),
-    });
-    expect(decision.outcomes[0]).toMatchObject({ status: "filtered", reason: "sampling", sampling: { decision: "drop", sampleRate: 0, seedKind: "event_id" } });
-    expect(decision.metadata.sampling).toEqual({ sampleRate: 0, decision: "drop", seedKind: "event_id" });
-  });
-
-  it("rejects unsupported policy versions, unbounded selectors, and unsafe filter fields", () => {
+  it("rejects malformed configs and keys outside the declarable policy surface", () => {
     expect(() => parseErrorIngestPolicyConfig(null)).toThrow(ErrorIngestPolicyConfigError);
     expect(() => parseErrorIngestPolicyConfig("not-a-config")).toThrow("observability config must be an object");
-    expect(() => parseErrorIngestPolicyConfig({ observability: { errorIngest: { version: 2 } } })).toThrow("Unsupported error-ingest policy version");
-    expect(() => parseErrorIngestPolicyConfig({ observability: { errorIngest: { selectors: { branchIds: ["branch with spaces"] } } } })).toThrow("unsupported selector");
-    expect(() => parseErrorIngestPolicyConfig({ observability: { errorIngest: { filters: [{ id: "secret", field: "request.body", operator: "contains", value: "x" }] } } })).toThrow("unsupported field");
+    // `version` (like `selectors`/`filters`/`sampling`) is not declared by
+    // errorIngestPolicySchema in packages/shared/src/config/schema.ts, so it
+    // can never be stored and the parser treats it as any other unknown key.
+    expect(() => parseErrorIngestPolicyConfig({ observability: { errorIngest: { version: 1 } } })).toThrow("Unsupported error-ingest policy field");
   });
 });

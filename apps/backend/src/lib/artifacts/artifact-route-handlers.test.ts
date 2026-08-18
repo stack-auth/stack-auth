@@ -24,15 +24,11 @@ describe("artifact route contracts", () => {
     });
   });
 
-  it("accepts the API's snake-case fields and the typed service aliases", () => {
+  it("accepts the API's snake_case fields", () => {
     const manifest = { schemaVersion: 1 };
     expect(parseArtifactManifestRegistrationRequest({
       manifest,
       manifest_sha256: MANIFEST_SHA256,
-    })).toEqual({ manifest, manifestSha256: MANIFEST_SHA256 });
-    expect(parseArtifactManifestRegistrationRequest({
-      manifest,
-      manifestSha256: MANIFEST_SHA256,
     })).toEqual({ manifest, manifestSha256: MANIFEST_SHA256 });
     expect(parseArtifactManifestFinalizeRequest({ manifest_sha256: MANIFEST_SHA256 })).toEqual({ manifestSha256: MANIFEST_SHA256 });
     expect(parseArtifactLookupQuery({ debug_id: DEBUG_ID, release: "release-1", dist: "dist-1" })).toEqual({
@@ -42,11 +38,14 @@ describe("artifact route contracts", () => {
     });
   });
 
-  it("rejects ambiguous identifiers and unsafe lookup metadata", () => {
+  it("rejects missing identifiers and unsafe lookup metadata", () => {
+    // camelCase request keys are not part of the contract (the CLI, dashboard,
+    // and OpenAPI spec all speak snake_case), so a camelCase-only request is
+    // simply missing the required field.
     expect(() => parseArtifactManifestFinalizeRequest({
-      manifest_sha256: MANIFEST_SHA256,
-      manifestSha256: "b".repeat(64),
+      manifestSha256: MANIFEST_SHA256,
     })).toThrowError(ArtifactServiceError);
+    expect(() => parseArtifactLookupQuery({ debugId: DEBUG_ID })).toThrowError(ArtifactServiceError);
     expect(() => parseArtifactLookupQuery({ debug_id: DEBUG_ID, release: "release\u0000escape" })).toThrowError(ArtifactServiceError);
   });
 

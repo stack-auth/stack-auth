@@ -31,6 +31,12 @@ import { SessionReplayLimitBanner } from "../analytics/shared";
 import { replaceLocationSearch } from "../observability/filters";
 import { sessionReplayHref } from "../observability/observability-links";
 import { ReplayActivityMetrics } from "./replay-activity-metrics";
+import {
+  EMPTY_REPLAY_FILTERS,
+  replayFiltersActiveCount,
+  replayUserKindLabel,
+  type ReplayFilters,
+} from "./replay-list-filters";
 import { ReplayUserOverview, ReplayUserOverviewSkeleton } from "./replay-user-overview";
 import { parseReplaySeekAt, replaySeekOffsetMs } from "./replay-url-state";
 import {
@@ -121,6 +127,7 @@ type AdminAppWithSessionReplays = ReturnType<typeof useAdminApp> & {
     lastEventAtFromMillis?: number,
     lastEventAtToMillis?: number,
     clickCountMin?: number,
+    userKind?: "anonymous" | "verified",
   }) => Promise<{
     items: RecordingRow[],
     nextCursor: string | null,
@@ -130,28 +137,6 @@ type AdminAppWithSessionReplays = ReturnType<typeof useAdminApp> & {
     chunks: ChunkRow[],
     chunkEvents: Array<{ chunkId: string, events: unknown[] }>,
   }>,
-};
-
-type ReplayFilters = {
-  userId: string,
-  userLabel: string,
-  teamId: string,
-  teamLabel: string,
-  durationMinSeconds: string,
-  durationMaxSeconds: string,
-  lastActivePreset: "" | "24h" | "7d" | "30d",
-  clickCountMin: string,
-};
-
-const EMPTY_FILTERS: ReplayFilters = {
-  userId: "",
-  userLabel: "",
-  teamId: "",
-  teamLabel: "",
-  durationMinSeconds: "",
-  durationMaxSeconds: "",
-  lastActivePreset: "",
-  clickCountMin: "",
 };
 
 function coerceRrwebEvents(raw: unknown[]): RrwebEventWithTime[] {
@@ -176,16 +161,6 @@ function formatTimelineMs(ms: number) {
     return `${h}:${(m % 60).toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   }
   return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
-function filtersActiveCount(filters: ReplayFilters): number {
-  let count = 0;
-  if (filters.userId) count += 1;
-  if (filters.teamId) count += 1;
-  if (filters.durationMinSeconds || filters.durationMaxSeconds) count += 1;
-  if (filters.lastActivePreset) count += 1;
-  if (filters.clickCountMin) count += 1;
-  return count;
 }
 
 type TimelineEvent = {
@@ -572,7 +547,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
   const isStandaloneReplayPage = initialReplayId != null;
   const isEmbedded = lockedUserId != null;
   const baseFilters = useMemo<ReplayFilters>(
-    () => lockedUserId ? { ...EMPTY_FILTERS, userId: lockedUserId } : EMPTY_FILTERS,
+    () => lockedUserId ? { ...EMPTY_REPLAY_FILTERS, userId: lockedUserId } : EMPTY_REPLAY_FILTERS,
     [lockedUserId],
   );
 
@@ -583,7 +558,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
-  const [activeFilterDialog, setActiveFilterDialog] = useState<null | "user" | "team" | "duration" | "lastActive" | "clicks">(null);
+  const [activeFilterDialog, setActiveFilterDialog] = useState<null | "user" | "team" | "duration" | "lastActive" | "clicks" | "userKind">(null);
   const [appliedFilters, setAppliedFilters] = useState<ReplayFilters>(baseFilters);
   const [draftFilters, setDraftFilters] = useState<ReplayFilters>(baseFilters);
 
@@ -658,6 +633,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
         durationMsMax: appliedFilters.durationMaxSeconds ? Number(appliedFilters.durationMaxSeconds) * 1000 : undefined,
         lastEventAtFromMillis: lastActiveFromMillis,
         clickCountMin: appliedFilters.clickCountMin ? Number(appliedFilters.clickCountMin) : undefined,
+        userKind: appliedFilters.userKind || undefined,
       });
       setRecordings((prev) => {
         const items = cursor ? [...prev, ...res.items] : res.items;
@@ -1598,11 +1574,11 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
   }, [timelineEvents, ms.globalStartTs, ms.globalTotalMs]);
 
   const activeFilterCount = useMemo(() => {
-    const count = filtersActiveCount(appliedFilters);
+    const count = replayFiltersActiveCount(appliedFilters);
     return isEmbedded && appliedFilters.userId === lockedUserId ? Math.max(0, count - 1) : count;
   }, [appliedFilters, isEmbedded, lockedUserId]);
 
-  const openFilterDialog = useCallback((dialog: "user" | "team" | "duration" | "lastActive" | "clicks") => {
+  const openFilterDialog = useCallback((dialog: "user" | "team" | "duration" | "lastActive" | "clicks" | "userKind") => {
     setDraftFilters(appliedFilters);
     setActiveFilterDialog(dialog);
   }, [appliedFilters]);
@@ -1679,6 +1655,9 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                                 User
                               </DropdownMenuItem>
                             )}
+                            <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("userKind")); }}>
+                              User type
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("team")); }}>
                               Team
                             </DropdownMenuItem>
@@ -1720,6 +1699,11 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                           {appliedFilters.clickCountMin && (
                             <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
                               clicks
+                            </span>
+                          )}
+                          {appliedFilters.userKind && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
+                              {replayUserKindLabel(appliedFilters.userKind)}
                             </span>
                           )}
                           <button
@@ -1915,6 +1899,43 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                             <Button type="submit" size="sm" className="h-8">Apply</Button>
                           </div>
                         </form>
+                      </DialogContent>
+                    </Dialog>
+
+                    <Dialog open={activeFilterDialog === "userKind"} onOpenChange={(open) => setActiveFilterDialog(open ? "userKind" : null)}>
+                      <DialogContent className="max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>User Type Filter</DialogTitle>
+                        </DialogHeader>
+                        <div className="flex flex-wrap gap-2 pt-2">
+                          {(["anonymous", "verified"] as const).map((value) => (
+                            <Button
+                              key={value}
+                              variant={appliedFilters.userKind === value ? "default" : "outline"}
+                              size="sm"
+                              className="h-8"
+                              onClick={() => {
+                          setAppliedFilters((prev) => ({ ...prev, userKind: value }));
+                          setActiveFilterDialog(null);
+                              }}
+                            >
+                              {replayUserKindLabel(value)}
+                            </Button>
+                          ))}
+                        </div>
+                        <div className="pt-1 flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8"
+                            onClick={() => {
+                        setAppliedFilters((prev) => ({ ...prev, userKind: "" }));
+                        setActiveFilterDialog(null);
+                            }}
+                          >
+                            Clear
+                          </Button>
+                        </div>
                       </DialogContent>
                     </Dialog>
 

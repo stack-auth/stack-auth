@@ -145,11 +145,11 @@ export function effectiveStatus(row: Pick<IssueRow, "status">, ignoredUntil: Dat
 }
 
 export type IssueListCursor = {
-  /** Kept under this name for compatibility with already-issued opaque cursors. */
-  lastSeenAtMillis: number,
+  /** The value of whichever column the ordering used (firstSeenAt or lastSeenAt). */
+  sortValueMillis: number,
   id: string,
-  sort?: IssueListSortField,
-  sortDir?: CursorDirection,
+  sort: IssueListSortField,
+  sortDir: CursorDirection,
 };
 
 /**
@@ -189,28 +189,20 @@ export function decodeIssueCursor(
     const parsed: unknown = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
     if (!isRecord(parsed)) return null;
 
-    const { lastSeenAtMillis, id, sort, sortDir } = parsed;
+    const { sortValueMillis, id, sort, sortDir } = parsed;
     if (
-      typeof lastSeenAtMillis !== "number"
-      || !Number.isSafeInteger(lastSeenAtMillis)
-      || lastSeenAtMillis < 0
-      || lastSeenAtMillis > 8_640_000_000_000_000
+      typeof sortValueMillis !== "number"
+      || !Number.isSafeInteger(sortValueMillis)
+      || sortValueMillis < 0
+      || sortValueMillis > 8_640_000_000_000_000
       || typeof id !== "string"
       || !isUuid(id)
     ) return null;
-    if (sort !== undefined && !isIssueListSortField(sort)) return null;
-    if (sortDir !== undefined && !isCursorDirection(sortDir)) return null;
-    if (expected !== undefined && (
-      (sort !== undefined && sort !== expected.sort)
-      || (sortDir !== undefined && sortDir !== expected.sortDir)
-    )) return null;
+    if (!isIssueListSortField(sort)) return null;
+    if (!isCursorDirection(sortDir)) return null;
+    if (expected !== undefined && (sort !== expected.sort || sortDir !== expected.sortDir)) return null;
 
-    return {
-      lastSeenAtMillis,
-      id,
-      ...sort === undefined ? {} : { sort },
-      ...sortDir === undefined ? {} : { sortDir },
-    };
+    return { sortValueMillis, id, sort, sortDir };
   } catch {
     // A malformed cursor is a client bug, not a server error. Callers must
     // treat null as invalid input (400), never as "start at page one".
@@ -305,8 +297,8 @@ async function loadCandidateIssues(
   const cursorSql = cursor === null
     ? Prisma.sql``
     : filters.sortDir === "asc"
-      ? Prisma.sql`AND (${filters.sort === "first_seen" ? Prisma.sql`i."firstSeenAt"` : Prisma.sql`i."lastSeenAt"`}, i."id") > (${new Date(cursor.lastSeenAtMillis)}::timestamptz, ${cursor.id}::uuid)`
-      : Prisma.sql`AND (${filters.sort === "first_seen" ? Prisma.sql`i."firstSeenAt"` : Prisma.sql`i."lastSeenAt"`}, i."id") < (${new Date(cursor.lastSeenAtMillis)}::timestamptz, ${cursor.id}::uuid)`;
+      ? Prisma.sql`AND (${filters.sort === "first_seen" ? Prisma.sql`i."firstSeenAt"` : Prisma.sql`i."lastSeenAt"`}, i."id") > (${new Date(cursor.sortValueMillis)}::timestamptz, ${cursor.id}::uuid)`
+      : Prisma.sql`AND (${filters.sort === "first_seen" ? Prisma.sql`i."firstSeenAt"` : Prisma.sql`i."lastSeenAt"`}, i."id") < (${new Date(cursor.sortValueMillis)}::timestamptz, ${cursor.id}::uuid)`;
 
   // The cursor must be keyed on the SAME column the rows are ordered by, or the
   // next page silently skips or repeats rows. `sortColumn` is chosen from a
@@ -546,7 +538,12 @@ type OccurrenceRow = {
   data: Record<string, unknown>,
   /** Bounded canonical ErrorEnvelope JSON stored as one stable read-model column. */
   error_envelope: string,
-  /** Ordered primary/secondary grouping evidence; `[]` for legacy rows. */
+  /**
+   * Ordered primary/secondary grouping evidence, written on every `$error`
+   * occurrence at ingest. Consumers still parse it defensively (bounded size,
+   * `[]` on malformed JSON) because it round-trips through a ClickHouse string
+   * column on a public read path.
+   */
   issue_grouping_provenance: string,
   error_frames: string,
   trace_id: string | null,
@@ -737,9 +734,7 @@ export async function listIssues(options: {
     items: page,
     cursor: hasMore && last !== undefined
       ? encodeIssueCursor({
-        // Named `lastSeenAtMillis` for wire compatibility, but it carries the
-        // value of whichever column the ordering used.
-        lastSeenAtMillis: filters.sort === "first_seen" ? last.first_seen_at_millis : last.last_seen_at_millis,
+        sortValueMillis: filters.sort === "first_seen" ? last.first_seen_at_millis : last.last_seen_at_millis,
         id: last.id,
         sort: filters.sort,
         sortDir: filters.sortDir,

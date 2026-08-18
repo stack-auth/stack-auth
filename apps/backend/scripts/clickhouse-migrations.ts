@@ -115,7 +115,7 @@ export async function runClickhouseMigrations() {
       table: "telemetry",
       indexName: LOGS_ISSUE_HASH_INDEX_NAME,
       indexDefinitionSql: LOGS_ISSUE_HASH_INDEX_DEFINITION_SQL,
-      // `issue_hash` was just added by LOGS_SCHEMA_UPGRADE_SQL above with a
+      // `issue_hash` was just added by TELEMETRY_SCHEMA_UPGRADE_SQL above with a
       // constant '' default, so every pre-existing row holds the same value.
       // A bloom filter over them prunes exactly nothing, while MATERIALIZE
       // INDEX would rewrite index granules across a production-sized table for
@@ -174,13 +174,11 @@ export async function runClickhouseMigrations() {
     client.command({ query: TRACE_SERVICES_VIEW_SQL }),
   ]);
 
-  // Historical event-shape rewrites are intentionally not automatic. On a TB
-  // table each ALTER UPDATE rewrites matching parts asynchronously, and the
-  // token-id backfill depends on the token JSON normalization finishing first.
-  // Enqueuing all three at boot used to race those two mutations and could
-  // leave refresh_token_id NULL permanently. New writes already use the
-  // canonical shape; any historical repair must be a separately checkpointed,
-  // partition-scoped operator job with mutation completion monitoring.
+  // Historical row rewrites (ALTER UPDATE and friends) are intentionally never
+  // enqueued at boot: on a TB table each one rewrites matching parts
+  // asynchronously, and unordered mutations can race each other. Any historical
+  // repair must be a separately checkpointed, partition-scoped operator job
+  // with mutation completion monitoring.
 
   // Add column comments to all views so DESCRIBE TABLE returns useful descriptions.
   // Comments are lost on CREATE OR REPLACE VIEW, so we re-apply them every migration run.
@@ -263,19 +261,13 @@ const SPANS_SUBSYSTEM_FINGERPRINT_TABLE = "analytics_internal.spans_schema_finge
 
 const SPANS_SUBSYSTEM_MATERIALIZED_VIEWS = ["trace_roots_mv", "trace_services_mv", "span_writes_mv"] as const;
 const SPANS_SUBSYSTEM_TABLES = ["derived_span_backfill_state", "trace_roots", "trace_services", "span_writes", "span_links", "span_events", "spans"] as const;
-export const SPANS_TRACE_MODEL_VERSION = "session-hierarchy-w3c-v1";
 
 /**
  * Everything whose change requires an explicit online migration: the physical
  * layout of every table plus the exact text of every materialized view.
  */
-export function computeSpansSubsystemFingerprint(traceModelVersion = SPANS_TRACE_MODEL_VERSION): string {
+export function computeSpansSubsystemFingerprint(): string {
   const canonical = JSON.stringify([
-    // Unlike a column/layout change, a trace-boundary change leaves every row
-    // structurally valid while making old and new rows semantically
-    // incompatible. Version it explicitly so startup refuses to combine trace
-    // identities produced under different models.
-    traceModelVersion,
     SPANS_TABLE_BASE_SQL,
     SPAN_EVENTS_TABLE_BASE_SQL,
     SPAN_LINKS_TABLE_SQL,
@@ -732,8 +724,11 @@ function pickColumns(columns: readonly ClickhouseColumn[], names: readonly strin
 // `EventColumnName` and friends at compile time — see
 // analytics-telemetry-writers.test.ts and spans.test.ts.
 //
-// `message`/`level` are the log fields (`$log` rows and backend-captured console
-// output); non-log events leave them at their empty defaults. `producer` says
+// `message` is the human-readable text of an occurrence: the ingest-time error
+// grouper promotes it out of the `$error` payload server-side (for `$log` rows
+// the message lives in the OTLP `body` column instead). `level` is the
+// severity of `$log`/`$error` rows. Rows that carry neither leave both at
+// their empty defaults. `producer` says
 // WHO wrote the row ('sdk' = the customer's app via the Hexclave SDK,
 // 'hexclave-backend' = Hexclave's own backend writing on the project's behalf:
 // system events like $token-refresh, backend logs, span milestones). `runtime`
@@ -775,10 +770,10 @@ export type EventColumnName = (typeof EVENTS_COLUMNS)[number]["name"];
 // in the time range. `set(0)` stores the full per-granule value set, which
 // stays small because event types are low-cardinality by construction (system
 // types plus a bounded set of customer-defined names). A `producer` index was
-// considered as the successor of the old `source` index and rejected: within a
-// customer project virtually every row is producer='sdk', so it would prune
-// nothing. Declared here AND applied to pre-existing tables via
-// ensureSkipIndex, which also materializes it for historical parts.
+// considered and rejected: within a customer project virtually every row is
+// producer='sdk', so it would prune nothing. Declared here AND applied to
+// pre-existing tables via ensureSkipIndex (without materializing historical
+// parts — existing parts acquire it through normal merges).
 export const EVENTS_EVENT_TYPE_INDEX_NAME = "idx_event_type";
 export const EVENTS_EVENT_TYPE_INDEX_DEFINITION_SQL = "event_type TYPE set(0) GRANULARITY 4";
 
@@ -849,18 +844,16 @@ export const ERROR_ENVELOPE_COLUMNS = [
 
 export const ERROR_ENVELOPE_COLUMN_NAMES = ERROR_ENVELOPE_COLUMNS.map((column) => column.name);
 
-// Logs and error occurrences share one log-shaped physical table. The new log
+// Logs and error occurrences share one log-shaped physical table. The log
 // shape is OTel-first: `body`, `attributes`, and the raw OTLP fields carry the
 // LogRecord; `data` remains the structured application/error payload needed by
-// issue details. `message` is not part of a fresh logs schema. Existing
-// development tables may still physically contain it; it is intentionally left
-// in place and omitted from the new public view and insert contract.
+// issue details, and `message` (an EVENTS_COLUMNS field) carries the
+// server-promoted human-readable text of `$error` occurrences.
 //
 // Appended AFTER `created_at` (the last EVENTS_COLUMNS entry) rather than
-// slotted in beside the other error-ish fields: this keeps the new OTel columns
-// in the same relative order on fresh and upgraded tables. An upgraded table
-// may still have the omitted legacy `message` column earlier in its physical
-// order; explicit views and named inserts keep that difference invisible.
+// slotted in beside the other error-ish fields: this keeps the OTel columns
+// in the same relative order on fresh tables and tables grown by
+// buildColumnUpgradeSql.
 export const OTEL_LOG_COLUMNS = [
   { name: "time_unix_nano", type: "String", default: "''" },
   { name: "observed_time_unix_nano", type: "String", default: "''" },
@@ -880,8 +873,7 @@ export const OTEL_LOG_COLUMNS = [
   { name: "scope_schema_url", type: "String", default: "''" },
 ] as const satisfies readonly ClickhouseColumn[];
 
-const LOGS_EVENT_COLUMNS = EVENTS_COLUMNS.filter((column) => column.name !== "message");
-export const LOGS_COLUMNS = [...LOGS_EVENT_COLUMNS, ...ERROR_GROUPING_COLUMNS, ...ERROR_ENVELOPE_COLUMNS, ...OTEL_LOG_COLUMNS] as const satisfies readonly ClickhouseColumn[];
+export const LOGS_COLUMNS = [...EVENTS_COLUMNS, ...ERROR_GROUPING_COLUMNS, ...ERROR_ENVELOPE_COLUMNS, ...OTEL_LOG_COLUMNS] as const satisfies readonly ClickhouseColumn[];
 export type LogColumnName = (typeof LOGS_COLUMNS)[number]["name"];
 
 // Bloom filter on the SCALAR `issue_hash` — the column every issue query
@@ -894,32 +886,18 @@ export type LogColumnName = (typeof LOGS_COLUMNS)[number]["name"];
 export const LOGS_ISSUE_HASH_INDEX_NAME = "idx_issue_hash";
 export const LOGS_ISSUE_HASH_INDEX_DEFINITION_SQL = "issue_hash TYPE bloom_filter(0.01) GRANULARITY 4";
 
-// Exported as a builder so the migration test can create the real shape under a
-// throwaway name and compare it against the ALTER-grown one.
-export function buildLogsCreateTableSql(fullTableName: string): string {
-  return buildCreateTableSql(fullTableName, LOGS_COLUMNS, `
-ENGINE MergeTree
-PARTITION BY toYYYYMM(event_at)
-ORDER BY (project_id, branch_id, event_at)
-TTL ${buildRetentionTtlSql(TELEMETRY_TTL_DAYS)}`, [
-    `INDEX ${EVENTS_EVENT_TYPE_INDEX_NAME} ${EVENTS_EVENT_TYPE_INDEX_DEFINITION_SQL}`,
-    `INDEX ${LOGS_ISSUE_HASH_INDEX_NAME} ${LOGS_ISSUE_HASH_INDEX_DEFINITION_SQL}`,
-  ]);
-}
-
 /**
  * Canonical row store for event-shaped telemetry. Product events, logs, and
  * errors share the same tenancy/time layout; the error and OTLP columns simply
- * retain their defaults for rows that do not use them. Public `events`, `logs`,
- * and `errors` views preserve the old query contracts without maintaining two
- * append-only tables with nearly identical prefixes.
+ * retain their defaults for rows that do not use them. Of the public views,
+ * only `default.events` preserves a pre-existing query contract (the shape of
+ * the frozen `analytics_internal.events` table, see EVENTS_VIEW_SQL); `logs`
+ * and `errors` are new surfaces that simply project slices of this table.
+ *
+ * The full log/error row shape IS the physical table shape, so this is the
+ * same list as LOGS_COLUMNS — kept as one value so the two can never drift.
  */
-export const TELEMETRY_COLUMNS = [
-  ...EVENTS_COLUMNS,
-  ...ERROR_GROUPING_COLUMNS,
-  ...ERROR_ENVELOPE_COLUMNS,
-  ...OTEL_LOG_COLUMNS,
-] as const satisfies readonly ClickhouseColumn[];
+export const TELEMETRY_COLUMNS = LOGS_COLUMNS;
 
 export type TelemetryColumnName = (typeof TELEMETRY_COLUMNS)[number]["name"];
 
@@ -937,10 +915,15 @@ TTL ${buildRetentionTtlSql(TELEMETRY_TTL_DAYS)}`, [
 const TELEMETRY_TABLE_BASE_SQL = buildTelemetryCreateTableSql("analytics_internal.telemetry");
 const TELEMETRY_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.telemetry", TELEMETRY_COLUMNS);
 
-// Span events use the existing event-shaped columns so trace detail queries stay
-// backwards compatible, and append the complete OTLP event representation. The
-// tagged `attributes` JSON preserves AnyValue types (including int64 vs string
-// and bytes), while `event_at` remains the product-query projection.
+// Span events reuse the shared event-shaped columns (EVENTS_COLUMNS) so trace
+// detail queries can project events and span events through one shape, and
+// append the complete OTLP event representation. The tagged `attributes` JSON
+// preserves AnyValue types (including int64 vs string and bytes), while
+// `event_at` remains the product-query projection. Some inherited columns
+// (`message`, `level`, `team_id`, `session_replay_*`) have no span-event writer
+// today and always hold their defaults; they are kept because splitting a
+// bespoke column list off EVENTS_COLUMNS would cost the shared-shape guarantee
+// for four cheap defaulted columns.
 export const SPAN_EVENTS_COLUMNS = [
   ...EVENTS_COLUMNS,
   { name: "event_ordinal", type: "UInt32", default: "0" },
@@ -960,16 +943,18 @@ const SPAN_EVENTS_TABLE_BASE_SQL = buildSpanEventsCreateTableSql("analytics_inte
 const SPAN_EVENTS_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.span_events", SPAN_EVENTS_COLUMNS);
 
 // Reads the canonical telemetry table directly. On a database that predates
-// telemetry, a frozen physical `analytics_internal.events` (and possibly
-// `analytics_internal.logs`) table may still sit next to it holding the
-// pre-telemetry rows. Those tables are deliberately left exactly as they are:
-// nothing writes to them anymore, nothing here unions them in, and their rows
-// stay directly queryable (by operators/self-hosters) until their retention
-// TTL ages them out — at which point a separately reviewed operator action can
-// drop them. Backfilling them into telemetry was considered and rejected: a
-// verified copy of a production-sized append-only table is a heavyweight
-// operator job, and the query surface only promises the new schema going
-// forward.
+// telemetry, a frozen physical `analytics_internal.events` table may still sit
+// next to it holding the pre-telemetry rows. That table is deliberately left
+// exactly as it is: nothing writes to it anymore, nothing here unions it in,
+// and its rows stay directly queryable (by operators/self-hosters) until their
+// retention TTL ages them out — at which point a separately reviewed operator
+// action can drop them. Backfilling them into telemetry was considered and
+// rejected: a verified copy of a production-sized append-only table is a
+// heavyweight operator job, and the query surface only promises the new schema
+// going forward.
+// `message` is excluded: it is the log/error occurrence text (exposed via
+// default.logs / default.errors) and this view's pre-existing contract — the
+// frozen events table's shape — never had it. Every row here would read ''.
 // `$page-view` is a SPAN (see default.spans) — never project spans into this
 // view or the traces UI shows the same fact twice (event diamond + span bar).
 // Metrics that need page views query spans directly.
@@ -978,7 +963,7 @@ CREATE OR REPLACE VIEW default.events
 SQL SECURITY DEFINER
 AS
 SELECT
-  ${buildViewSelectList(EVENTS_COLUMNS)}
+  ${buildViewSelectList(EVENTS_COLUMNS, ["message"])}
 FROM analytics_internal.telemetry
 WHERE event_type NOT IN ('$log', '$error');
 `;
@@ -1256,9 +1241,8 @@ export type SpanColumnName = (typeof SPANS_COLUMNS)[number]["name"];
 // do_not_merge_across_partitions_select_final=1 — the standard FINAL
 // optimization that a correctly-partitioned table is supposed to enable.
 // `started_at` is immutable across re-upserts of one span identity (and matches
-// how trace_roots is partitioned). Exported as a builder because the
-// pre-release layout migration needs to create the same shape under a
-// temporary name.
+// how trace_roots is partitioned). buildSpansCreateTableSql is exported so the
+// migration test can create the real shape under a throwaway name.
 const SPANS_TABLE_ENGINE_SQL = `
 ENGINE ReplacingMergeTree(version)
 PARTITION BY toYYYYMM(started_at)
@@ -1344,17 +1328,12 @@ export function buildOtelMetricsCreateTableSql(fullTableName: string): string {
 const OTEL_METRICS_TABLE_BASE_SQL = buildOtelMetricsCreateTableSql("analytics_internal.metrics");
 const OTEL_METRICS_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.metrics", OTEL_METRICS_COLUMNS);
 
-// `otel_kind` was part of an unreleased intermediate schema. It is deliberately
-// not in the canonical column list anymore: `kind` is the OTel-compatible string
-// representation we actually query and expose. We do not drop the old physical
-// column from already-upgraded development tables; that would be a needless
-// mutation boundary for data that is not part of the released contract. Explicit
-// view column lists keep it invisible, while fresh tables never create it.
 const SPANS_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.spans", SPANS_COLUMNS);
 
 // Link trace state, flags, attributes, and dropped counts are canonical OTLP
-// fields. Defaults keep the released legacy batch adapter source-compatible;
-// the OTLP writer always populates them.
+// fields. The OTLP writer always populates them; the defaults exist so
+// buildColumnUpgradeSql can ADD them as a metadata-only change (see the
+// per-column notes below).
 export const SPAN_LINKS_COLUMNS = [
   { name: "project_id", type: "String" },
   { name: "branch_id", type: "String" },
@@ -1512,14 +1491,6 @@ const TRACE_SERVICES_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_inter
 
 // The output column order must match TRACE_SERVICES_COLUMNS exactly: the
 // backfill runs this as a positional `INSERT INTO ... SELECT`.
-//
-// Known, accepted divergence for pre-release databases: an existing
-// trace_services_mv was created from an earlier revision of this SELECT
-// (without `created_at`) and `CREATE MATERIALIZED VIEW IF NOT EXISTS` will not
-// update it, so its inserts fall back to the column's now64(3) default. That is
-// the same ingestion-time semantics, just measured at the trace_services write
-// instead of the span write — a sub-second difference that cannot matter for a
-// 90-day TTL.
 export const TRACE_SERVICES_SOURCE_SELECT_SQL = `
 SELECT
   project_id,
@@ -1564,8 +1535,8 @@ const SPAN_WRITES_TABLE_SQL = buildSpanWritesCreateTableSql("analytics_internal"
 
 // Billing classification is stamped by authenticated ingestion code rather than
 // inferred from a span name or instrumentation scope. This keeps the immutable
-// usage ledger aligned across the legacy adapter and canonical OTLP ingestion,
-// and prevents resource/span attributes supplied by an exporter from selecting
+// usage ledger independent of which ingestion surface accepted the span, and
+// prevents resource/span attributes supplied by an exporter from selecting
 // a billable product item.
 export function buildSpanWritesMvSql(database: string): string {
   return `
@@ -2209,8 +2180,7 @@ const COLUMN_COMMENT_STATEMENTS: string[] = [
   // ── events ──
   `ALTER TABLE default.events COMMENT COLUMN event_type 'Event type identifier. Known system types: \$click, \$keystroke, \$form-submit, \$window-resize, \$copy, \$cut, \$paste, \$context-menu, \$print, \$fullscreen-exit, \$token-refresh, \$sign-up-rule-trigger, \$log (log lines), \$error (captured errors); other values are customer-defined custom events. Page views are NOT events — query default.spans WHERE span_type = \$page-view'`,
   `ALTER TABLE default.events COMMENT COLUMN event_at 'When the event occurred (UTC)'`,
-  `ALTER TABLE default.events COMMENT COLUMN message 'Human-readable log text for \$log events (explicit logger calls and auto-captured console output). Empty for events that only carry structured data'`,
-  `ALTER TABLE default.events COMMENT COLUMN level 'Log level for \$log events: trace, debug, info, warn, or error. Empty for non-log events'`,
+  `ALTER TABLE default.events COMMENT COLUMN level 'Log severity level (trace, debug, info, warn, or error). Always empty here: \$log and \$error rows are exposed via default.logs and default.errors instead of this view'`,
   `ALTER TABLE default.events COMMENT COLUMN data 'Event payload as JSON. MUST use toString(data) before JSONExtract* functions. Payload varies by event_type: \$click → {is_anonymous, selector, url, viewport_width, viewport_height, x, y, ...}; \$token-refresh → {is_anonymous, refresh_token_id, ip_info: {country_code, city_name, region_code, is_trusted, latitude, longitude, tz_identifier, ip}}'`,
   `ALTER TABLE default.events COMMENT COLUMN producer 'Who wrote the row: sdk = the application via the Hexclave SDK; hexclave-backend = Hexclave itself on the project behalf (system events like \$token-refresh, platform-produced logs)'`,
   `ALTER TABLE default.events COMMENT COLUMN runtime 'Where the producing code ran: browser (client-side SDK), server (server-side SDK), or system (written by Hexclave itself)'`,

@@ -2,7 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { EVENTS_COLUMNS, LOGS_COLUMNS, type ClickhouseColumn, type EventColumnName, type LogColumnName } from "../../scripts/clickhouse-migrations";
 import {
   buildTelemetryWritePlan,
-  getBatchDestinationDeduplicationToken,
+  getBatchDeduplicationToken,
   getTelemetryLens,
   normalizeBatchEvents,
 } from "./analytics-telemetry-writers";
@@ -44,24 +44,24 @@ const DRIFT_GUARD_CONTEXT = {
 const DRIFT_GUARD_BATCH_ID = "00000000-0000-4000-8000-000000000000";
 
 describe("SDK ingest insert rows vs. ClickHouse column declarations", () => {
-  it("product-event rows cover the events table", () => {
+  it("product-event rows cover the event-shaped telemetry columns", () => {
     const { productEvents } = normalizeBatchEvents(
       [{ event_type: "checkout_completed", event_at_ms: 1_700_000_000_000, data: {} }],
       DRIFT_GUARD_CONTEXT,
       DRIFT_GUARD_BATCH_ID,
     );
-    expectRowMatchesColumns(productEvents[0], EVENTS_COLUMNS, "analytics_internal.events");
+    expectRowMatchesColumns(productEvents[0], EVENTS_COLUMNS, "analytics_internal.telemetry (product-event projection)");
     // Same guarantee at compile time.
     expectTypeOf<Exclude<keyof typeof productEvents[number], EventColumnName>>().toEqualTypeOf<never>();
   });
 
-  it("log-occurrence rows cover the logs table", () => {
+  it("log-occurrence rows cover the log-shaped telemetry columns", () => {
     const { logOccurrences } = normalizeBatchEvents(
       [{ event_type: "$log", event_at_ms: 1_700_000_000_000, data: {}, message: "m", level: "warn" }],
       DRIFT_GUARD_CONTEXT,
       DRIFT_GUARD_BATCH_ID,
     );
-    expectRowMatchesColumns(logOccurrences[0], LOGS_COLUMNS, "analytics_internal.logs");
+    expectRowMatchesColumns(logOccurrences[0], LOGS_COLUMNS, "analytics_internal.telemetry (log-occurrence projection)");
     expectTypeOf<Exclude<keyof typeof logOccurrences[number], LogColumnName>>().toEqualTypeOf<never>();
   });
 });
@@ -291,20 +291,10 @@ describe("analytics telemetry storage dispatch", () => {
     expect(getTelemetryLens("$error")).toBe("observability");
   });
 
-  it("gives each destination of one wire batch its own idempotency token", () => {
-    // The property that matters is DISTINCTNESS, not the exact format: one wire
-    // batch fans out to several tables, and a retry must be able to finish only
-    // the destination that previously failed. Asserting the concatenated string
-    // literal instead just restated the implementation.
-    // `as const` so the table names stay their literal types rather than widening
-    // to `string`, which the destination parameter deliberately does not accept.
-    const tokens = (["analytics_internal.telemetry", "analytics_internal.spans"] as const)
-      .map((table) => getBatchDestinationDeduplicationToken("batch-1", table));
-    expect(new Set(tokens).size).toBe(tokens.length);
-    // Distinct across batches too, or a retry of batch-2 would be swallowed as
-    // a duplicate of batch-1.
-    expect(getBatchDestinationDeduplicationToken("batch-2", "analytics_internal.telemetry"))
-      .not.toBe(getBatchDestinationDeduplicationToken("batch-1", "analytics_internal.telemetry"));
+  it("gives each wire batch its own idempotency token", () => {
+    // Distinct across batches, or a retry of batch-2 would be swallowed as a
+    // duplicate of batch-1.
+    expect(getBatchDeduplicationToken("batch-2")).not.toBe(getBatchDeduplicationToken("batch-1"));
   });
 
   it("stores the enclosing span identity verbatim and dispatches by taxonomy", () => {

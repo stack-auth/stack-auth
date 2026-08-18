@@ -62,21 +62,19 @@ export function getTelemetryLens(eventType: string): TelemetryLens {
     : "observability";
 }
 
-export function getBatchDestinationDeduplicationToken(
-  batchId: string,
-  table: "analytics_internal.events" | "analytics_internal.logs" | "analytics_internal.telemetry" | "analytics_internal.spans",
-): string {
-  const canonicalTable = table === "analytics_internal.events" || table === "analytics_internal.logs"
-    ? "analytics_internal.telemetry"
-    : table;
-  return `${batchId}:${canonicalTable}`;
+// The `:analytics_internal.telemetry` suffix namespaces this token against
+// other ClickHouse insert paths that derive their own tokens from related ids
+// (e.g. the OTLP trace writer's `${requestToken}:spans`), so two writers can
+// never collide on a bare batch id.
+export function getBatchDeduplicationToken(batchId: string): string {
+  return `${batchId}:analytics_internal.telemetry`;
 }
 
 /**
  * Deterministic identity for one occurrence.
  *
- * `analytics_internal.logs` has no natural key — no id, no ordinal — so before
- * this existed there was no way to keyset-paginate occurrences with equal
+ * A telemetry occurrence row has no natural key — no id, no ordinal — so
+ * without this there would be no way to keyset-paginate occurrences with equal
  * timestamps, and no way to make Postgres materialization exactly-once.
  *
  * Derived from `(batch_id, ordinal)` rather than randomly generated so that a
@@ -315,7 +313,7 @@ function buildBaseEventRow(event: BatchEventWireItem, context: BatchSignalContex
 }
 
 /**
- * A row destined for `analytics_internal.logs`, i.e. `LOGS_COLUMNS`.
+ * A log/error occurrence row for `analytics_internal.telemetry`, i.e. `LOGS_COLUMNS`.
  *
  * Occurrence identity is a logs-table concept: `events` and `span_events` share
  * the plain `EVENTS_COLUMNS` shape and have no such columns, so stamping these
@@ -378,10 +376,6 @@ function collectIssueInputs(grouped: readonly GroupedErrorOccurrence[], context:
       if (eventAt > existing.lastEventAt) existing.lastEventAt = eventAt;
       existing.aliasHashes = [...new Set([...existing.aliasHashes, ...grouping.aliasHashes])];
       const incomingProvenance = getGroupingHashProvenance(grouping);
-      if (existing.groupingProvenance === undefined) {
-        existing.groupingProvenance = incomingProvenance;
-        continue;
-      }
       for (const candidate of incomingProvenance) {
         const alreadyRecorded = existing.groupingProvenance.some((recorded) =>
           serializeGroupingProvenance([recorded]) === serializeGroupingProvenance([candidate])
@@ -471,7 +465,7 @@ export function buildTelemetryWritePlan(
     destinations: [{
       table: "analytics_internal.telemetry",
       values: [...normalized.productEvents, ...normalized.logOccurrences],
-      deduplicationToken: getBatchDestinationDeduplicationToken(batchId, "analytics_internal.telemetry"),
+      deduplicationToken: getBatchDeduplicationToken(batchId),
     }],
     issueInputs: normalized.issueInputs,
   };

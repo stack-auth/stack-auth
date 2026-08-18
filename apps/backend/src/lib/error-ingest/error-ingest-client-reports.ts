@@ -9,7 +9,8 @@ import type {
   ErrorIngestProtocolProjection,
 } from "./error-ingest-protocol-adapter";
 
-export type ErrorIngestClientReportProtocol = "legacy_batch" | "otlp_logs" | "otlp_traces" | "sentry_envelope" | "client_report";
+export const ERROR_INGEST_CLIENT_REPORT_PROTOCOLS = ["otlp_logs", "otlp_traces", "sentry_envelope", "client_report"] as const;
+export type ErrorIngestClientReportProtocol = typeof ERROR_INGEST_CLIENT_REPORT_PROTOCOLS[number];
 
 export type ErrorIngestClientReportScope = {
   tenancyId: string,
@@ -88,7 +89,9 @@ function validateScope(scope: ErrorIngestClientReportScope): void {
 }
 
 function validateProtocol(protocol: ErrorIngestClientReportProtocol): void {
-  if (!["legacy_batch", "otlp_logs", "otlp_traces", "sentry_envelope", "client_report"].includes(protocol)) {
+  // The runtime check exists because callers may pass strings that only claim
+  // to be ErrorIngestClientReportProtocol (e.g. values read back from storage).
+  if (!ERROR_INGEST_CLIENT_REPORT_PROTOCOLS.includes(protocol)) {
     throw new Error("Error ingest client report protocol is invalid");
   }
 }

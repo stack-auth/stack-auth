@@ -6,11 +6,11 @@ propagation. Client-side autocapture ($page-view, $click, session replay, web
 vitals) is browser-only; the APIs below exist on both app classes unless marked
 otherwise.
 
-All telemetry ships through the analytics batch route:
-
-  POST /api/v1/analytics/events/batch
-  (client access with the client app's credentials; server access with
-  secretServerKey for the server-side buffer)
+All new SDK telemetry ships over OTLP/HTTP to the standard `/v1/traces` and
+`/v1/logs` signal endpoints (see "Signal wire formats and compatibility"). The
+released POST /api/v1/analytics/events/batch route is kept only as a
+receiver-side compatibility adapter for already-deployed SDKs; new SDK code
+never sends to it.
 
 Telemetry must NEVER throw into or otherwise affect user code, except where a
 method's contract explicitly says it throws/rejects on invalid input.
@@ -19,8 +19,8 @@ method's contract explicitly says it throws/rejects on invalid input.
 ## Shared validation rules
 
 These are enforced identically by the SDK (locally, before buffering) and the
-batch route (an invalid item 400s the whole batch, so local validation must not
-drift):
+server at the OTLP ingestion boundary (an invalid item is rejected there, so
+local validation must not drift):
 
 - Custom event/span type names: regex ^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$.
   "$"-prefixed names are reserved for system telemetry and rejected for custom
@@ -284,7 +284,7 @@ On ingestion, copy the structured resource fields to the corresponding
 service_namespace, service_name, service_version, service_instance_id, and
 deployment_environment_name columns, and store only the remaining custom
 attributes in resource_attributes. Missing/invalid resource or an empty
-service.name rejects the entire v3 batch. Never infer a value during ingestion
+service.name rejects the entire replay batch. Never infer a value during ingestion
 and never place such rows into an "unknown" or generic service bucket.
 
 In a browser the current `$page-view` span is the enclosing span of last resort

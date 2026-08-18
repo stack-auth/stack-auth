@@ -8,7 +8,8 @@ import { KnownErrors } from "@hexclave/shared/dist/known-errors";
  * (event-tracker, server-app-impl) depend on the browser replay module for
  * primitives — the wrong direction: replay is an optional, browser-only
  * feature, while these helpers are needed by every telemetry path on every
- * runtime. session-replay.ts re-exports them for compatibility.
+ * runtime. session-replay.ts re-exports them so its existing import sites
+ * stay stable across the split.
  */
 
 export function generateUuid() {

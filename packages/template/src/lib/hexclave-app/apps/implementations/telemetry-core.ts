@@ -9,7 +9,7 @@ import { generateOtelTraceId } from "./otel-context";
  * ship the browser tracker (server bundles) — and browser bundles BEFORE the
  * lazily-loaded tracker module arrives — can validate input and build span
  * handles without pulling in ~1.5k lines of autocapture code. event-tracker.ts
- * re-exports everything here for compatibility.
+ * re-exports everything here so its import sites stay stable across the split.
  */
 
 /**
@@ -205,7 +205,7 @@ export function getCustomTelemetryDataError(data: unknown): string | null {
 
 // Moved to the shared wire-contract module so the backend's console log
 // capture can bound bodies with the exact same truncation as the SDK.
-// Re-exported here for compatibility with the existing SDK import sites.
+// Re-exported here so the SDK's existing internal import sites stay stable.
 export { truncateUtf8Bytes } from "@hexclave/shared/dist/utils/analytics-wire";
 
 export function resolveEndedAtMs(startedAtMs: number, endedAtMs: number | undefined): number {

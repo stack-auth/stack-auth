@@ -6,6 +6,7 @@ import {
   querySessionReplayAdminRows,
   sessionReplayAdminRowToApiItem,
 } from "./session-replay-admin-rows";
+import { parseSessionReplayUserKind, sessionReplayUserKindIsAnonymous } from "./session-replay-list-query";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -100,6 +101,7 @@ export const GET = createSmartRouteHandler({
       last_event_at_from_millis: yupString().optional(),
       last_event_at_to_millis: yupString().optional(),
       click_count_min: yupString().optional(),
+      user_kind: yupString().optional(),
     }).optional(),
   }),
   response: yupObject({
@@ -141,6 +143,7 @@ export const GET = createSmartRouteHandler({
     const clickCountMin = parseNonNegativeInt("click_count_min", query.click_count_min);
     const lastEventAtFrom = parseMillis("last_event_at_from_millis", query.last_event_at_from_millis);
     const lastEventAtTo = parseMillis("last_event_at_to_millis", query.last_event_at_to_millis);
+    const userKind = parseSessionReplayUserKind(query.user_kind);
 
     if (durationMsMin !== null && durationMsMax !== null && durationMsMin > durationMsMax) {
       throw new StatusError(StatusError.BadRequest, "duration_ms_min must be less than or equal to duration_ms_max");
@@ -182,14 +185,17 @@ export const GET = createSmartRouteHandler({
           ...userIdsFilter.length > 0 ? { projectUserId: { in: userIdsFilter } } : {},
           ...lastEventAtFrom ? { lastEventAt: { gte: lastEventAtFrom } } : {},
           ...lastEventAtTo ? { lastEventAt: { lte: lastEventAtTo } } : {},
-          ...teamIdsFilter.length > 0 ? {
+          ...teamIdsFilter.length > 0 || userKind !== null ? {
             projectUser: {
-              teamMembers: {
-                some: {
-                  tenancyId: auth.tenancy.id,
-                  teamId: { in: teamIdsFilter },
+              ...userKind !== null ? { isAnonymous: sessionReplayUserKindIsAnonymous(userKind) } : {},
+              ...teamIdsFilter.length > 0 ? {
+                teamMembers: {
+                  some: {
+                    tenancyId: auth.tenancy.id,
+                    teamId: { in: teamIdsFilter },
+                  },
                 },
-              },
+              } : {},
             },
           } : {},
         },
@@ -218,6 +224,7 @@ export const GET = createSmartRouteHandler({
             AND tm."tenancyId" = sr."tenancyId"
             AND tm."teamId" IN (${Prisma.join(teamIdsFilter)})
         )` : Prisma.empty}
+        ${userKind !== null ? Prisma.sql`AND pu."isAnonymous" = ${sessionReplayUserKindIsAnonymous(userKind)}` : Prisma.empty}
         ${clickQualifiedIds ? Prisma.sql`AND sr."id" IN (${Prisma.join(clickQualifiedIds)})` : Prisma.empty}
         ${durationMsMin !== null ? Prisma.sql`AND EXTRACT(EPOCH FROM (sr."lastEventAt" - sr."startedAt")) * 1000 >= ${durationMsMin}` : Prisma.empty}
         ${durationMsMax !== null ? Prisma.sql`AND EXTRACT(EPOCH FROM (sr."lastEventAt" - sr."startedAt")) * 1000 <= ${durationMsMax}` : Prisma.empty}

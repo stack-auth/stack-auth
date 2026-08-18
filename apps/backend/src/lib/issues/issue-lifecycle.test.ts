@@ -125,8 +125,8 @@ async function createTestIssue(target: Tenancy = tenancy): Promise<string> {
     },
   });
   await prisma.$executeRaw`
-    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId")
-    VALUES (${target.id}::uuid, ${hash}, ${issueId}::uuid, 'test:issue-lifecycle')
+    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId", "groupingRole", "groupingVariant", "groupingProvenance")
+    VALUES (${target.id}::uuid, ${hash}, ${issueId}::uuid, 'test:issue-lifecycle', 'PRIMARY', 'app', '[]'::jsonb)
   `;
   createdIssueIds.push({ tenancyId: target.id, issueId });
   return issueId;

@@ -5,12 +5,18 @@ import type { IssueFrame } from "./issues-data";
  * `heroStack` omit the API's nested symbolication object after flattening it
  * onto filename/lineno/context, so this pick is the shared contract.
  */
-export type StackFrameView = Pick<IssueFrame, "filename" | "function" | "module" | "abs_path" | "lineno" | "colno" | "in_app" | "debug_id" | "context"> & {
+export type StackFrameView = Pick<IssueFrame, "filename" | "function" | "module" | "abs_path" | "lineno" | "colno" | "in_app" | "debug_id"> & {
+  /**
+   * Display-flattened source context. Only display frames (`IssueEventFrame`)
+   * carry it — on the wire, source context lives inside `symbolication.context`
+   * and `displayFrame` copies it here for rendering.
+   */
+  context?: { line: string, pre: string[], post: string[], symbolicated: true } | null,
   /**
    * Only `status` is read by the renderer (for the "Mapped" badge). Declared
    * structurally rather than via `Pick` because the wire `IssueFrame` and the
    * flattened `IssueEventFrame` carry differently-shaped symbolication objects
-   * that agree on this field. The badge cannot key off `context.symbolicated`
+   * that agree on this field. The badge cannot key off `context` presence
    * alone: a frame can be successfully mapped while its source context is
    * unavailable, and its filename/line are still the mapped ones.
    */

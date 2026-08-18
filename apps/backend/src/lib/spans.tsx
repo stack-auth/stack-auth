@@ -1,15 +1,11 @@
-import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import {
-  classifyTelemetrySignal,
-  TELEMETRY_SPAN_KINDS,
-  TELEMETRY_SPAN_STATUS_CODES,
   uuidToW3cSpanId,
   uuidToW3cTraceId,
   type TelemetryResource,
   type TelemetrySpanKind,
   type TelemetrySpanStatusCode,
 } from "@hexclave/shared/dist/utils/analytics-wire";
-import { stripLoneSurrogates, type ClickHouseClient } from "./clickhouse";
+import { type ClickHouseClient } from "./clickhouse";
 import { buildTelemetryResourceFields } from "./telemetry/resource";
 
 /**
@@ -31,8 +27,9 @@ import { buildTelemetryResourceFields } from "./telemetry/resource";
  * One row of `analytics_internal.spans`. `created_at` is omitted (the table
  * defaults it to now64(3) = ingested-at). `version` decides which row the
  * ReplacingMergeTree keeps per span_id (highest wins) and MUST come from a named
- * version builder in this file (`clientUpdatedAtSpanVersion`) rather than inline
- * math: mixing versioning schemes for one span id silently corrupts upserts.
+ * version builder (`monotoneEndSpanVersion` here, or the OTLP trace writer's
+ * equivalent) rather than inline math: mixing versioning schemes for one span id
+ * silently corrupts upserts.
  */
 export type SpanInsertRow = {
   trace_id: string,
@@ -131,63 +128,6 @@ export function monotoneEndSpanVersion(spanEndedAt: Date): number {
 }
 
 /**
- * One span as it arrives on the wire from the SDK (inside the analytics events
- * batch): either a user-defined custom span, a client-minted system autocapture
- * span ($page-view/$away/$offline), or a server-SDK library
- * operation carrying its OTel tracer in `scope_name`.
- *
- * Identity is W3C and arrives COMPLETE: the SDK owns `trace_id`, `span_id` and
- * `parent_span_id` (null = trace root), and this route never rewrites them.
- * `page_view_span_id` is correlation in addition to ancestry — it names the `$page-view`
- * span the item happened on, which is client tab state the server cannot derive,
- * so it rides per-item (a batch can straddle a navigation).
- */
-export type BatchSpanWireItem = {
-  trace_id: string,
-  span_id: string,
-  parent_span_id: string | null,
-  span_type: string,
-  started_at_ms: number,
-  ended_at_ms: number | null,
-  data: unknown,
-  updated_at_ms: number,
-  /** Server-authenticated OTel instrumentation scope; absent for native custom/system spans. */
-  scope_name?: string | null,
-  /** OTel tracer/instrumentation version accompanying `scope_name`. */
-  scope_version?: string | null,
-  /** OpenTelemetry span kind; omitted legacy values mean "internal". */
-  kind?: TelemetrySpanKind | null,
-  /** OpenTelemetry status; omitted means "unset". */
-  status_code?: TelemetrySpanStatusCode | null,
-  status_message?: string | null,
-  page_view_span_id?: string | null,
-  links?: {
-    trace_id: string,
-    span_id: string,
-    linked_project_id?: string,
-    linked_branch_id?: string,
-  }[] | null,
-};
-
-const SPAN_KIND_SET: ReadonlySet<TelemetrySpanKind> = new Set(TELEMETRY_SPAN_KINDS);
-const SPAN_STATUS_CODE_SET: ReadonlySet<TelemetrySpanStatusCode> = new Set(TELEMETRY_SPAN_STATUS_CODES);
-
-function resolveBatchSpanKind(span: BatchSpanWireItem): TelemetrySpanKind {
-  if (span.kind != null && SPAN_KIND_SET.has(span.kind)) {
-    return span.kind;
-  }
-  // The released batch format predates an explicit OTel kind field.
-  return "internal";
-}
-
-function resolveBatchSpanStatusCode(span: BatchSpanWireItem): TelemetrySpanStatusCode {
-  if (span.status_code != null && SPAN_STATUS_CODE_SET.has(span.status_code)) {
-    return span.status_code;
-  }
-  return "unset";
-}
-
-/**
  * One row of `analytics_internal.span_links` — a non-hierarchical reference from
  * one span to another (see TrackOptions.links in the SDK). Kept separate from the
  * span row because links are many-per-span and the table is keyed by the link's
@@ -207,144 +147,6 @@ export type SpanLinkInsertRow = {
   attributes?: string,
   dropped_attributes?: number,
 };
-
-/**
- * Duplicate-detection is all that survives of the old cross-item validation: with
- * a scalar parent there are no ancestry PATHS to cross-check, so the remaining
- * per-item rules (hex shape, all-zero rejection, parent != self) are field-level
- * and live in the route schema. Two rows sharing a span id in one batch would
- * silently collapse in the ReplacingMergeTree, so it is still worth rejecting.
- */
-export function getBatchDuplicateSpanIdError(spans: readonly BatchSpanWireItem[]): string | null {
-  const seen = new Set<string>();
-  for (const span of spans) {
-    if (seen.has(span.span_id)) return `Duplicate span_id ${JSON.stringify(span.span_id)} in one batch`;
-    seen.add(span.span_id);
-  }
-  return null;
-}
-
-// How far into the future a client-supplied `updated_at_ms` may run before we
-// clamp it. A skewed clock only corrupts ordering among that user's own span
-// re-writes; the clamp just bounds how long a bogus future version could mask
-// legitimate later updates.
-const CUSTOM_SPAN_VERSION_MAX_FUTURE_MS = 5 * 60 * 1000;
-
-/**
- * Version builder for SDK-created custom spans: the client's `updated_at_ms`,
- * clamped to [1, serverNow + 5min]. Custom spans re-write their `data` while
- * still open, so an end-time-derived version is unusable here — two data
- * re-writes of an open span would collide at the same (null-end-derived) version.
- * The SDK bumps `updated_at_ms` on every mutation, making it per-span monotonic,
- * so the latest client-side state wins in the ReplacingMergeTree regardless of
- * insert order.
- */
-export function clientUpdatedAtSpanVersion(updatedAtMs: number, serverNowMs: number): number {
-  return Math.min(Math.max(updatedAtMs, 1), serverNowMs + CUSTOM_SPAN_VERSION_MAX_FUTURE_MS);
-}
-
-/**
- * Builds `analytics_internal.spans` rows for SDK-sent wire spans (custom spans,
- * client-minted system autocapture spans, and server library operations).
- *
- * Identity passes through UNTOUCHED — `trace_id`, `span_id` and `parent_span_id`
- * are exactly what the SDK sent. Session and page identity are also stamped as
- * scalar correlation columns for direct filtering.
- *
- * The version is the client's `updated_at_ms` — per-span monotonic by SDK
- * construction, so the row carrying the latest update wins in the
- * ReplacingMergeTree regardless of insert order (an end row can never be shadowed
- * by a late-arriving open row). An end-time-as-version scheme is unusable here:
- * two data re-writes while the span is still open would collide at the same
- * version.
- */
-export function buildBatchSpanRows(opts: {
-  spans: BatchSpanWireItem[],
-  projectId: string,
-  branchId: string,
-  userId: string | null,
-  refreshTokenId: string | null,
-  sessionReplayId: string | null,
-  sessionReplaySegmentId: string | null,
-  resource: TelemetryResource,
-  serverNowMs: number,
-}): SpanInsertRow[] {
-  const duplicateError = getBatchDuplicateSpanIdError(opts.spans);
-  if (duplicateError !== null) {
-    throw new HexclaveAssertionError(duplicateError);
-  }
-
-  return opts.spans.map((span) => {
-    // A `$page-view` span IS the page, so naming itself as its own page would make
-    // the correlation column self-referential. The route schema rejects this;
-    // assert so a future non-route caller cannot reintroduce it.
-    if (span.page_view_span_id != null && span.page_view_span_id === span.span_id) {
-      throw new HexclaveAssertionError("A span must not name itself as its page_view_span_id");
-    }
-    // Same reasoning for self-parenting: the route schema rejects it, and a
-    // self-parented row would make the dashboard's cycle-cut logic do real work
-    // for what is really malformed input.
-    if (span.parent_span_id != null && span.parent_span_id === span.span_id) {
-      throw new HexclaveAssertionError("A span must not name itself as its parent_span_id");
-    }
-    return {
-      trace_id: span.trace_id,
-      span_id: span.span_id,
-      parent_span_id: span.parent_span_id,
-      span_type: span.span_type,
-      billing_item: span.scope_name == null
-        && classifyTelemetrySignal(span.span_type, "span").billingItem === "analytics_spans"
-        ? "analytics_spans"
-        : null,
-      started_at: new Date(span.started_at_ms),
-      ended_at: span.ended_at_ms == null ? null : new Date(span.ended_at_ms),
-      data: JSON.stringify(stripLoneSurrogates(span.data)),
-      // Typed OTel columns — not JSON `data`. Library spans put copies in
-      // `data` for local sampling, but ClickHouse filters and the traces UI
-      // read these columns. Never promote similarly-named fields from opaque data.
-      kind: resolveBatchSpanKind(span),
-      status_code: resolveBatchSpanStatusCode(span),
-      status_message: span.status_message ?? null,
-      scope_name: span.scope_name ?? null,
-      scope_version: span.scope_version ?? null,
-      ...buildTelemetryResourceFields(opts.resource),
-      producer: "sdk" as const,
-      project_id: opts.projectId,
-      branch_id: opts.branchId,
-      user_id: opts.userId,
-      team_id: null,
-      refresh_token_id: opts.refreshTokenId,
-      session_replay_id: opts.sessionReplayId,
-      session_replay_segment_id: opts.sessionReplaySegmentId,
-      page_view_span_id: span.page_view_span_id ?? null,
-      version: clientUpdatedAtSpanVersion(span.updated_at_ms, opts.serverNowMs),
-    };
-  });
-}
-
-/** Flattens every wire span's `links` into `analytics_internal.span_links` rows. */
-export function buildBatchSpanLinkRows(opts: {
-  spans: BatchSpanWireItem[],
-  projectId: string,
-  branchId: string,
-}): SpanLinkInsertRow[] {
-  return opts.spans.flatMap((span) => (span.links ?? []).map((link) => ({
-    project_id: opts.projectId,
-    branch_id: opts.branchId,
-    // The OWNER's trace, not the link target's: the table is read as "which links
-    // does this trace's span have", so keying by the target's trace would hide
-    // every cross-trace link from the trace that actually declared it.
-    trace_id: span.trace_id,
-    owner_span_id: span.span_id,
-    linked_trace_id: link.trace_id,
-    linked_span_id: link.span_id,
-    // Public SDK links have no target-tenancy claim surface and therefore stay
-    // inside their authenticated owner scope. Only the internal platform SDK
-    // can send the explicitly validated override fields.
-    linked_project_id: link.linked_project_id ?? opts.projectId,
-    linked_branch_id: link.linked_branch_id ?? opts.branchId,
-  })));
-}
 
 export async function insertSpanLinks(
   client: ClickHouseClient,

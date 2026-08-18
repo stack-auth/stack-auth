@@ -15,7 +15,7 @@ const ISSUE_ID = "00000000-0000-4000-8000-000000000001";
 describe("public issue read routes", () => {
   it("accepts the list happy path and binds the cursor to its sort order", () => {
     const cursor = encodeIssueCursor({
-      lastSeenAtMillis: 1_754_502_400_000,
+      sortValueMillis: 1_754_502_400_000,
       id: ISSUE_ID,
       sort: "first_seen",
       sortDir: "asc",
@@ -50,7 +50,7 @@ describe("public issue read routes", () => {
     expect(() => parsePublicIssueListQuery({ cursor: "not-a-cursor" })).toThrow("cursor is invalid");
 
     const cursor = encodeIssueCursor({
-      lastSeenAtMillis: 1_754_502_400_000,
+      sortValueMillis: 1_754_502_400_000,
       id: ISSUE_ID,
       sort: "first_seen",
       sortDir: "asc",

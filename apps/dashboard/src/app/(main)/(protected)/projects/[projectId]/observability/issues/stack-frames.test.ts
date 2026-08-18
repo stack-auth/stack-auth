@@ -5,10 +5,10 @@ import {
   frameLocationLabel,
   groupStackFrames,
   orderStackFrames,
+  type StackFrameView,
 } from "./stack-frames";
-import type { IssueFrame } from "./issues-data";
 
-function frame(overrides: Partial<IssueFrame> = {}): IssueFrame {
+function frame(overrides: Partial<StackFrameView> = {}): StackFrameView {
   return {
     filename: null,
     function: null,

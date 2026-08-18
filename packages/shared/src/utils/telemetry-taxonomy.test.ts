@@ -31,7 +31,6 @@ describe("telemetry taxonomy", () => {
     for (const type of CLIENT_SYSTEM_SPAN_TYPES) {
       expect(SYSTEM_SIGNALS.has(`span:${type}`)).toBe(true);
     }
-    expect(SYSTEM_SIGNALS.has("span:$lib-span")).toBe(false);
   });
 
   it("declares client and server write permissions for every wire signal", () => {

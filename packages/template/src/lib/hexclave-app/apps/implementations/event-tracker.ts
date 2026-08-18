@@ -18,8 +18,8 @@ import { OtlpWebVitalsMetricRecorder, startWebVitalsCollector, type WebVitalsCol
 // The environment-independent core of the custom telemetry API (types,
 // validation, parent resolution, withSpanImpl) moved to telemetry-core.ts so
 // this module — with its ~1.5k lines of autocapture — can be lazy-loaded.
-// Re-exported for compatibility (span-propagation.ts and external consumers
-// import the types from here).
+// Re-exported so the SDK's existing import sites (e.g. span-propagation.ts)
+// stay stable across that lazy-load module boundary.
 export {
   getCustomTelemetryDataError,
   getCustomTelemetryNameError,

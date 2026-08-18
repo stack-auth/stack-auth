@@ -32,7 +32,6 @@ describe("grouping config registry", () => {
     expect([...GROUPING_CONFIG_IDS]).toMatchInlineSnapshot(`
       [
         "hexclave-js:2026-08-01",
-        "hexclave-js:2026-08-06",
       ]
     `);
   });
@@ -41,7 +40,6 @@ describe("grouping config registry", () => {
 describe("isGroupingConfigId", () => {
   it.each([
     ["a known id", "hexclave-js:2026-08-01", true],
-    ["a transition id", "hexclave-js:2026-08-06", true],
     ["a retired-looking id", "hexclave-js:1999-01-01", false],
     ["the empty string", "", false],
     ["a number", 42, false],
@@ -100,18 +98,5 @@ describe("resolveGroupingConfig", () => {
     expect(() => resolveGroupingConfig({
       readableConfigIds: { "hexclave-js:retired": { enabled: true } },
     })).toThrow("Unknown readable grouping config id");
-  });
-
-  it("keeps an explicitly configured historical id readable during a transition", () => {
-    expect(resolveGroupingConfig({
-      activeConfigId: "hexclave-js:2026-08-06",
-      readableConfigIds: {
-        "hexclave-js:2026-08-01": { enabled: true },
-      },
-    })).toEqual({
-      activeConfigId: "hexclave-js:2026-08-06",
-      readableConfigIds: ["hexclave-js:2026-08-01"],
-      provenance: { active: "configured", readable: "configured" },
-    });
   });
 });

@@ -43,17 +43,14 @@ const artifactManifestArtifactResponseSchema = yupObject({
 const artifactRegistrationBodySchema = yupObject({
   manifest: yupMixed().defined(),
   manifest_sha256: yupString().optional(),
-  manifestSha256: yupString().optional(),
 }).defined();
 
 const artifactFinalizeBodySchema = yupObject({
   manifest_sha256: yupString().optional(),
-  manifestSha256: yupString().optional(),
 }).defined();
 
 const artifactLookupQuerySchema = yupObject({
   debug_id: yupString().optional(),
-  debugId: yupString().optional(),
   release: yupString().optional(),
   dist: yupString().optional(),
 }).defined();
@@ -134,28 +131,25 @@ export async function lookupArtifact(
   );
 }
 
-// Validation labels use the documented snake_case field name (the camelCase
-// key is a compatibility alias), so 400s reference the name API consumers see
-// in the docs.
 export function parseArtifactManifestRegistrationRequest(input: unknown): ArtifactManifestRegistrationRequest {
   const record = readRecord(input, "Artifact registration request");
   return {
     manifest: record.manifest,
-    manifestSha256: readRequiredAliasedString(record, "manifest_sha256", "manifestSha256", "manifest_sha256"),
+    manifestSha256: readRequiredString(record, "manifest_sha256"),
   };
 }
 
 export function parseArtifactManifestFinalizeRequest(input: unknown): ArtifactManifestFinalizeRequest {
   const record = readRecord(input, "Artifact finalize request");
   return {
-    manifestSha256: readRequiredAliasedString(record, "manifest_sha256", "manifestSha256", "manifest_sha256"),
+    manifestSha256: readRequiredString(record, "manifest_sha256"),
   };
 }
 
 export function parseArtifactLookupQuery(input: unknown): { debugId: string, release: string | null, dist: string | null } {
   const record = readRecord(input, "Artifact lookup query");
   return {
-    debugId: readRequiredAliasedString(record, "debug_id", "debugId", "debug_id"),
+    debugId: readRequiredString(record, "debug_id"),
     release: validateArtifactMetadata(record.release, "release"),
     dist: validateArtifactMetadata(record.dist, "dist"),
   };
@@ -309,22 +303,10 @@ function isRecord(input: unknown): input is Record<string, unknown> {
   return typeof input === "object" && input !== null && !Array.isArray(input);
 }
 
-function readRequiredAliasedString(
-  record: Record<string, unknown>,
-  primaryKey: string,
-  alternateKey: string,
-  label: string,
-): string {
-  const primary = record[primaryKey];
-  const alternate = record[alternateKey];
-  if (primary !== undefined && alternate !== undefined) {
-    if (typeof primary !== "string" || typeof alternate !== "string" || primary !== alternate) {
-      throw new ArtifactServiceError("invalid_manifest", `${label} must be supplied once with one consistent value.`);
-    }
-  }
-  const value = primary !== undefined ? primary : alternate;
+function readRequiredString(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
   if (typeof value !== "string" || value.length === 0) {
-    throw new ArtifactServiceError("invalid_manifest", `${label} must be a non-empty string.`);
+    throw new ArtifactServiceError("invalid_manifest", `${key} must be a non-empty string.`);
   }
   return value;
 }

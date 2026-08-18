@@ -124,7 +124,10 @@ export type IssueAlertSignal = {
     id: string,
     occurredAt: Date,
   },
-  /** Optional for legacy callers; native materialization always supplies it. */
+  /**
+   * Absent when the occurrence's level string (untrusted customer input) was
+   * not a recognized level; level predicates then simply cannot match.
+   */
   level?: IssueAlertLevel,
   environment: string | null,
   release: string | null,

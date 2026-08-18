@@ -5,7 +5,11 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 
 type BackgroundJobStatsRow = {
-  job_type: string,
+  /**
+   * NULL for rows that predate the `job` envelope (possible only for messages
+   * in flight across a deploy; see decodeQstashMessage's tolerance for them).
+   */
+  job_type: string | null,
   total: bigint | number | string,
   pending: bigint | number | string,
   in_flight: bigint | number | string,
@@ -47,7 +51,7 @@ export const GET = createSmartRouteHandler({
 
     const rows = await globalPrismaClient.$replica().$queryRaw<BackgroundJobStatsRow[]>`
       SELECT
-        COALESCE("qstashOptions"->'job'->>'jobType', "qstashOptions"->>'jobType', 'legacy') AS job_type,
+        "qstashOptions"->'job'->>'jobType' AS job_type,
         COUNT(*)::bigint AS total,
         COUNT(*) FILTER (WHERE "startedFulfillingAt" IS NULL)::bigint AS pending,
         COUNT(*) FILTER (WHERE "startedFulfillingAt" IS NOT NULL)::bigint AS in_flight,

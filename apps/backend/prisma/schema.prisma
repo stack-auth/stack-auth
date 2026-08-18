@@ -2728,16 +2728,17 @@ model IssueHash {
   /// can re-point hashes incrementally instead of all at once.
   groupingConfigId String
 
-  /// Nullable for legacy rows created before durable grouping provenance. New
-  /// rows record whether this hash was the owning primary or a transition alias.
-  groupingRole IssueHashGroupingRole?
+  /// Whether this hash was the owning primary or a transition alias. Recorded
+  /// on every row: materialization always knows the decision that produced a
+  /// hash, so a row without one would be a writer bug, not a data state.
+  groupingRole IssueHashGroupingRole
   /// The grouping variant that produced this hash (app/system/message/custom,
   /// or a future variant). Kept as text so adding a grouping variant is not a
   /// blocking database enum migration.
-  groupingVariant String? @db.VarChar(32)
+  groupingVariant String @db.VarChar(32)
   /// Bounded snake-case grouping decision records, including fingerprint tokens
   /// and resolved values. The same shape is written to ClickHouse occurrences.
-  groupingProvenance Json?
+  groupingProvenance Json
 
   /// A COMMITTED LEASE, not an in-transaction flag. It is set in one transaction
   /// and cleared in another, precisely so that concurrent ingest transactions can

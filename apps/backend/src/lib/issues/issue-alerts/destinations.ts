@@ -7,9 +7,9 @@
 export type IssueAlertEmailAction = {
   type: "email",
   /**
-   * Explicit recipients. The dashboard picker stores owner-team member IDs
-   * (dashboard collaborators). Legacy rules may still store customer-project
-   * user IDs; send-time resolution keeps both executable.
+   * Explicit recipients: owner-team member IDs (dashboard collaborators), the
+   * only shape the dashboard picker stores and rule validation accepts.
+   * Send-time resolution turns them into primary emails on the owner team.
    */
   userIds?: readonly string[],
   /**

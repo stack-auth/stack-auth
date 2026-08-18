@@ -181,18 +181,18 @@ type StoredIssueHashValues = {
   hash: string,
   issueId: string,
   groupingConfigId: string,
-  groupingRole: "PRIMARY" | "SECONDARY" | null,
-  groupingVariant: string | null,
-  groupingProvenance: ReturnType<typeof toDurableGroupingProvenance> | null,
+  groupingRole: "PRIMARY" | "SECONDARY",
+  groupingVariant: string,
+  groupingProvenance: ReturnType<typeof toDurableGroupingProvenance>,
 };
 
 /**
  * Selects the decision records for one stored hash. A hash can be observed
  * under more than one config during a transition, so the JSON column retains
  * every matching observation while the direct columns expose the first one for
- * cheap issue/hash reads. Materialization inputs from canonical ingest include
- * provenance; older reconciliation callers may omit it, in which case the new
- * nullable columns remain null instead of storing an invented decision.
+ * cheap issue/hash reads. Every materialization input carries provenance for
+ * its owner hash and every alias — a hash we cannot explain is a caller bug,
+ * never a row to store with an invented (or missing) decision.
  */
 function issueHashValues(
   input: IssueBatchDelta,
@@ -200,20 +200,10 @@ function issueHashValues(
   role: IssueHashRole,
   issueId: string,
 ): StoredIssueHashValues {
-  const matching = input.groupingProvenance?.filter((entry) => entry.hash === hash && entry.role === role) ?? [];
+  const matching = input.groupingProvenance.filter((entry) => entry.hash === hash && entry.role === role);
   const first = matching.at(0);
   if (first === undefined) {
-    if (input.groupingProvenance !== undefined) {
-      throw new Error(`Missing ${role} grouping provenance for hash ${JSON.stringify(hash)}`);
-    }
-    return {
-      hash,
-      issueId,
-      groupingConfigId: input.groupingConfigId,
-      groupingRole: null,
-      groupingVariant: null,
-      groupingProvenance: null,
-    };
+    throw new Error(`Missing ${role} grouping provenance for hash ${JSON.stringify(hash)}`);
   }
   const observedConfigId = String(first.configId);
   const expectedConfigId = String(input.groupingConfigId);

@@ -97,10 +97,10 @@ function parseSuspectCommitReference(owner: IssueSuspectOwner): SuspectCommitRef
   const serialized = JSON.stringify(owner.context);
   if (Buffer.byteLength(serialized, "utf8") > MAX_CONTEXT_BYTES) return null;
 
-  const commitId = boundedToken(owner.context.commit_id ?? owner.context.commitId ?? owner.context.release_commit_id ?? owner.context.releaseCommitId);
-  const commitSha = boundedToken(owner.context.commit_sha ?? owner.context.commitSha);
+  const commitId = boundedToken(owner.context.commit_id);
+  const commitSha = boundedToken(owner.context.commit_sha);
   const repository = boundedToken(owner.context.repository);
-  const strategy = boundedToken(owner.context.strategy ?? owner.context.suspectCommitStrategy);
+  const strategy = boundedToken(owner.context.strategy);
   if (commitId === null && commitSha === null) return null;
   return { commitId, commitSha, repository, strategy };
 }

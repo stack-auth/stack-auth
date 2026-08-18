@@ -182,32 +182,20 @@ export async function assertIssueAlertRecipients(tenancy: Tenancy, rule: IssueAl
   if (rule.action.type !== "email") return;
   const prisma = await getPrismaClientForTenancy(tenancy);
   if (rule.action.userIds !== undefined) {
+    // Explicit recipients are owner-team member IDs (dashboard collaborators),
+    // the only shape the dashboard picker stores and the only one send-time
+    // resolution executes. Anything else is rejected here so a rule can never
+    // be saved with recipients that delivery cannot resolve to an email.
     const userIds = [...rule.action.userIds];
     const ownerTeamEmails = await loadOwnerTeamMemberEmailsByUserId(tenancy);
-    // Validation must mirror delivery: `resolveIssueAlertOwnerTeamEmails`
-    // treats EVERY non-ok owner-team match the same (fall back to the legacy
-    // customer-project user_ids path). `matchOwnerTeamRecipients` returns the
-    // FIRST failure it encounters, so treating `missing_email` as a hard
-    // reject while `missing_member` fell through made the accept/reject
-    // decision depend on the ORDER of `userIds` for a recipient who is both
-    // an owner-team member without a primary email and a customer project
-    // user. Any non-ok match therefore falls through to the legacy check; the
-    // email-specific message is kept for the case where that check fails too.
-    const ownerTeamMatch = ownerTeamEmails == null ? null : matchOwnerTeamRecipients(userIds, ownerTeamEmails);
-    if (ownerTeamMatch?.status === "ok") return;
-    const users = await prisma.projectUser.findMany({
-      where: {
-        tenancyId: tenancy.id,
-        mirroredProjectId: tenancy.project.id,
-        mirroredBranchId: tenancy.branchId,
-        projectUserId: { in: userIds },
-      },
-      select: { projectUserId: true },
-    });
-    if (users.length !== userIds.length) {
-      if (ownerTeamMatch?.status === "missing_email") {
-        throw new StatusError(StatusError.BadRequest, "Issue alert recipients must have a primary email on this project's team");
-      }
+    if (ownerTeamEmails == null) {
+      throw new StatusError(StatusError.BadRequest, "Issue alert recipients must be members of this project's team");
+    }
+    const ownerTeamMatch = matchOwnerTeamRecipients(userIds, ownerTeamEmails);
+    if (ownerTeamMatch.status === "missing_email") {
+      throw new StatusError(StatusError.BadRequest, "Issue alert recipients must have a primary email on this project's team");
+    }
+    if (ownerTeamMatch.status === "missing_member") {
       throw new StatusError(StatusError.BadRequest, "Issue alert recipients must be members of this project's team");
     }
     return;

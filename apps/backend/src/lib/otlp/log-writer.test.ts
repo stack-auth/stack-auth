@@ -191,39 +191,6 @@ describe("OTLP log storage mapping", () => {
     expect(buildOtlpIssueInputs(canonical, TENANT)).toHaveLength(1);
   });
 
-  it("stores the versioned rich envelope fields instead of a stale flat projection", () => {
-    const eventId = EVENT_ID;
-    const canonical = normalizeOtlpJsonLogsRequest({
-      resourceLogs: [{ scopeLogs: [{ logRecords: [{
-        timeUnixNano: "1785888000000000001",
-        eventName: "$error",
-        attributes: [
-          { key: "hexclave.signal.type", value: { stringValue: "error" } },
-          { key: "hexclave.event.id", value: { stringValue: eventId } },
-          { key: "hexclave.error.envelope.version", value: { stringValue: "1" } },
-          { key: "hexclave.error.envelope", value: { kvlistValue: { values: [
-            { key: "event_id", value: { stringValue: eventId } },
-            { key: "name", value: { stringValue: "RichPaymentError" } },
-            { key: "message", value: { stringValue: "rich payload" } },
-            { key: "handled", value: { boolValue: true } },
-          ] } } },
-          { key: "hexclave.data", value: { kvlistValue: { values: [
-            { key: "name", value: { stringValue: "StaleLegacyName" } },
-            { key: "message", value: { stringValue: "stale legacy payload" } },
-            { key: "handled", value: { boolValue: true } },
-          ] } } },
-        ],
-      }] }] }],
-    });
-    const [row] = buildOtlpLogRows(canonical, TENANT);
-
-    expect(row).toMatchObject({
-      occurrence_id: eventId,
-      data: { name: "RichPaymentError", message: "rich payload", handled: true },
-      error_type: "RichPaymentError",
-    });
-  });
-
   it("keeps identity and deduplication stable across protobuf round trips and changed retry payloads", () => {
     const encoded = encodeOtlpProtobufRequest("logs", {
       resourceLogs: [{

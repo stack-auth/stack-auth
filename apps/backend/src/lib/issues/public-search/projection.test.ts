@@ -166,7 +166,7 @@ describe("public observability search projection", () => {
     });
   });
 
-  it("uses the stored error message before the legacy body wrapper", () => {
+  it("uses the stored error message before the OTel log body", () => {
     const filters = parsePublicSearchQuery({});
     const row: PublicSearchOccurrenceRow = {
       occurrence_id: "c".repeat(32),

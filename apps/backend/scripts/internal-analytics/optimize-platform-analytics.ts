@@ -46,14 +46,14 @@ async function seed() {
   log("CH: (re)create bench_pa.events");
   await chAdmin.command({ query: "DROP DATABASE IF EXISTS bench_pa" });
   await chAdmin.command({ query: "CREATE DATABASE bench_pa" });
-  await chAdmin.command({ query: "CREATE TABLE bench_pa.events AS analytics_internal.events" });
+  await chAdmin.command({ query: "CREATE TABLE bench_pa.events AS analytics_internal.telemetry" });
   const projExpr = (k: string) => `concat('bench-proj-', toString(toUInt32(floor(${NUM_PROJECTS} * pow((cityHash64(${k}) % 1000000)/1000000.0, ${ZIPF_K})))))`;
   const cc = `['US','DE','IN','BR','GB','FR','JP','CA','AU','NL'][(cityHash64(number,'cc') % 10)+1]`;
   const CHUNK = 5_000_000;
   for (let off = 0; off < NUM_EVENTS; off += CHUNK) {
     const n = Math.min(CHUNK, NUM_EVENTS - off);
     await chAdmin.command({ query: `
-      INSERT INTO bench_pa.events SELECT
+      INSERT INTO bench_pa.events (event_type, event_at, data, project_id, branch_id, user_id, team_id, refresh_token_id, session_replay_id, session_replay_segment_id, created_at) SELECT
         ['$token-refresh','$token-refresh','$token-refresh','$token-refresh','$token-refresh','$token-refresh','$token-refresh','$page-view','$page-view','$click'][((number+${off}) % 10)+1],
         now64(3,'UTC') - toIntervalSecond(cityHash64(number+${off},'t') % (90*86400)),
         CAST(concat('{"is_anonymous":', toString(toUInt8(cityHash64((number+${off}) % ${NUM_USERS},'a') % 10 = 0)), ',"ip_info":{"country_code":"', ${cc}, '"},"referrer":""}'), 'JSON'),

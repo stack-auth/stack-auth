@@ -46,8 +46,9 @@ export type OtlpMetricQueryRequest = {
    * OTLP allows one metric NAME to exist with several metric types, and each
    * (name, type) pair is a separate catalog entry with its own series. Without
    * this, selecting such an entry could silently return a sibling type's data.
-   * Optional for compatibility: name-only requests resolve to the pair with
-   * the most points, exactly like the catalog ordering the selector shows.
+   * Optional because a caller may query by name only, in which case the request
+   * resolves to the pair with the most points — exactly like the catalog
+   * ordering the selector shows.
    */
   metricType?: string,
 };

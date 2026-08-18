@@ -115,7 +115,7 @@ export type PublicIssueFrameSymbolication = {
   diagnostics: PublicIssueSymbolicationDiagnostic[],
 };
 
-export type PublicIssueFrame = Omit<IssueFrame, "context" | "symbolication"> & {
+export type PublicIssueFrame = Omit<IssueFrame, "symbolication"> & {
   symbolication: PublicIssueFrameSymbolication,
 };
 

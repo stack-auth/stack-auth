@@ -51,10 +51,7 @@ export type BrowserOtlpOfflineQueue = {
 
 const AUTH_GENERATION_KEY = "auth-generation";
 const QUEUE_BYTES_KEY = "queue-bytes";
-// Version 2 adds the stores for every signal to whichever database is opened.
-// Keeping the version bump also upgrades older per-signal databases without
-// changing their existing queue contents.
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 1;
 
 function normalizeQueueNumber(value: unknown, fallback: number, name: string): number {
   if (value === undefined) return fallback;

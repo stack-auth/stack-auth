@@ -175,12 +175,15 @@ function toPublicFrame(frame: StoredIssueFrame, symbolication: PublicIssueFrameS
   };
 }
 
-/** The release recorded ON this occurrence row, from its data column or envelope. */
-function occurrenceRelease(row: PublicOccurrenceRow, envelope: PublicIssueErrorEnvelope | null): string | null {
+/**
+ * The release recorded ON this occurrence row. The envelope is the sole read
+ * model for payload fields: it is built from the same event data at ingest, so
+ * a raw `data.release` fallback could never fire for a real row and would
+ * bypass the envelope limiter's scrubbing.
+ */
+function occurrenceRelease(envelope: PublicIssueErrorEnvelope | null): string | null {
   const envelopeRelease = envelope?.release;
   if (typeof envelopeRelease === "string" && envelopeRelease !== "") return envelopeRelease;
-  const dataRelease = row.data.release;
-  if (typeof dataRelease === "string" && dataRelease !== "") return dataRelease;
   return null;
 }
 
@@ -197,7 +200,7 @@ export async function projectPublicIssueOccurrence(
   const errorEnvelope = options.errorEnvelope === undefined
     ? parsePublicErrorEnvelope(row.error_envelope)
     : options.errorEnvelope;
-  const release = occurrenceRelease(row, errorEnvelope);
+  const release = occurrenceRelease(errorEnvelope);
   const groupingProvenance = parsePublicGroupingProvenance(row.issue_grouping_provenance);
   const symbolication = await symbolicatePublicFrames({
     frames: storedFrames,

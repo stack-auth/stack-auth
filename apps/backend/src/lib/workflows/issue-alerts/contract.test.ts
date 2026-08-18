@@ -198,7 +198,12 @@ describe("issue alert workflow event contract", () => {
     expect(write.payload.action.user_ids).toEqual(["user-1"]);
   });
 
-  it("preserves a non-email destination reference for the Workflows boundary", () => {
+  it("drops webhook destinations at evaluation until an executor exists", () => {
+    // The evaluator refuses to match a destination it cannot execute (see the
+    // comment in `evaluateIssueAlertRule`): a match would persist a delivery
+    // row and enqueue a durable workflow event that can only fail. The
+    // Workflows payload arm for webhooks stays in place for when an
+    // integration registry lands, but nothing may reach it today.
     const rule: IssueAlertRule = {
       schemaVersion: 1,
       id: "notify-on-errors-webhook",
@@ -209,13 +214,7 @@ describe("issue alert workflow event contract", () => {
       action: { type: "webhook", integrationId: "integration-prod-errors" },
     };
     const evaluation = evaluateIssueAlertRule(rule, createSignal());
-    if (evaluation.outcome !== "match") throw new Error("Test fixture must produce a matching issue alert");
-    const result = buildIssueAlertWorkflowPayload(evaluation);
-    expect(result.status).toBe("ok");
-    if (result.status === "ok") {
-      expect(result.payload.action).toEqual({ type: "webhook", integration_id: "integration-prod-errors" });
-      expect(JSON.stringify(result.payload)).not.toContain("https://");
-    }
+    expect(evaluation).toMatchObject({ outcome: "drop", reason: "unsupported_action" });
   });
 
   it("projects resolved owner routing into bounded recipients and explainable metadata", () => {

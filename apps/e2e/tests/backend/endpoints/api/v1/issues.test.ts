@@ -4,42 +4,49 @@ import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { createHash, randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { it } from "../../../../helpers";
-import { Auth, Project, flushBackgroundTasks, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, Project, niceBackendFetch } from "../../../backend-helpers";
 
 /**
- * End-to-end coverage for the Issues surface: `$error` ingest -> server-side
- * grouping -> exactly-once Postgres materialization -> `/internal/issues*`.
+ * End-to-end coverage for the Issues surface: `$error` ingest (via OTLP logs)
+ * -> server-side grouping -> exactly-once Postgres materialization ->
+ * `/internal/issues*`.
  *
- * Three things about this file are load-bearing and easy to break:
+ * Four things about this file are load-bearing and easy to break:
  *
- *  1. Issue materialization runs off the request path through the transactional
+ *  1. `$error` telemetry enters ONLY through the OTLP logs route (or the Sentry
+ *     envelope route) — the legacy `/analytics/events/batch` route speaks the
+ *     shipped events-only contract and does not accept `$error` at all. So
+ *     `postBatch` posts an ExportLogsServiceRequest whose LogRecords carry the
+ *     Hexclave error markers (`hexclave.signal.type="error"`, `hexclave.data`
+ *     flat error payload, `hexclave.event.id` 32-hex identity).
+ *  2. OTLP has no client-supplied batch id: the server derives a retry-stable
+ *     UUID batch id from the tenant identity plus the per-record identities
+ *     (see `getOtlpLogsBatchId` in `lib/otlp/log-writer.ts`). Everything
+ *     downstream — occurrence rows, the `IssueMaterialization` ledger — is
+ *     keyed by that derived id, so `postBatch` discovers it from ClickHouse
+ *     instead of mirroring the server's hash construction here.
+ *  3. Issue materialization runs off the request path through the transactional
  *     outbox and QStash (with a debounce delay), so every assertion about Issue
- *     state must be preceded by `postBatch`'s ledger-row wait — an in-process
- *     flush alone cannot see that pipeline. The ClickHouse occurrence insert IS
- *     still in-process background work, which is what `flushBackgroundTasks()`
- *     covers.
- *  2. The `/internal/issues*` routes gate on `apps.installed.observability`
- *     (`OBSERVABILITY_NOT_ENABLED`), while the ingest route gates on
- *     `apps.installed.analytics` (`ANALYTICS_NOT_ENABLED`). Both have to be on,
- *     or one half of every test 400s.
- *  3. Grouping hashes are deterministic but are NOT asserted literally anywhere
+ *     state must be preceded by `postBatch`'s ledger-row wait — nothing
+ *     in-process can see that pipeline.
+ *  4. Grouping hashes are deterministic but are NOT asserted literally anywhere
  *     here. They are an implementation detail of `lib/issues/grouping.ts`, and
  *     pinning them in a snapshot would turn every legitimate grouping change
  *     into a diff in this file. Tests assert hash RELATIONSHIPS (same/different)
  *     instead, which is the property the product actually promises.
  */
 
-const TELEMETRY_RESOURCE = {
-  service: { namespace: "e2e", name: "issues-e2e", version: "test" },
-  deploymentEnvironmentName: "test",
-  attributes: { suite: "issues" },
-} as const;
-
-/** The events/spans batch body is at schema_version 3 (W3C span identity). */
-const BATCH_FIELDS = {
-  schema_version: 3,
-  resource: TELEMETRY_RESOURCE,
-} as const;
+/**
+ * OTLP resource attributes mirroring what the SDK's exporter stamps. The
+ * service/environment values surface as `service_name`/`environment` on the
+ * issues the tests assert on.
+ */
+const OTLP_RESOURCE_ATTRIBUTES = [
+  { key: "service.namespace", value: { stringValue: "e2e" } },
+  { key: "service.name", value: { stringValue: "issues-e2e" } },
+  { key: "service.version", value: { stringValue: "test" } },
+  { key: "deployment.environment.name", value: { stringValue: "test" } },
+] as const;
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -108,7 +115,11 @@ function checkoutTypeError(eventAtMs: number, message = "cart.total is not a fun
 // ─── Wiring ─────────────────────────────────────────────────────────────────
 
 /**
- * A fresh project with both apps on and a signed-in user.
+ * A fresh project with both apps on and a signed-in user. Both apps are needed:
+ * the OTLP ingest route and the `/internal/issues*` read routes gate on
+ * `apps.installed.observability` (`OBSERVABILITY_NOT_ENABLED`), while the
+ * `/analytics/query` route the ClickHouse assertions go through gates on
+ * `apps.installed.analytics` (`ANALYTICS_NOT_ENABLED`).
  *
  * Path notation rather than a nested `{ apps: { installed: … } }` object: the
  * config override is merged by path, and writing the nested form would replace
@@ -127,39 +138,103 @@ async function setUpIssuesProject() {
 type BatchEvent = ReturnType<typeof errorEvent>;
 
 /**
- * Posts a telemetry batch and then drains the background materializer.
- *
- * Returns the batch id so callers can retry the exact same batch (the
- * exactly-once tests) or look the occurrences up in ClickHouse by it.
+ * The error payload fields the SDK sends are all strings and booleans; anything
+ * else showing up here means `errorEvent` grew a field this OTLP projection
+ * does not know how to encode, so fail loudly instead of guessing.
  */
-async function postBatch(options: { events: BatchEvent[], batchId?: string, sentAtMs?: number }) {
-  const batchId = options.batchId ?? randomUUID();
-  const response = await niceBackendFetch("/api/v1/analytics/events/batch", {
+function toOtlpKvlistValues(data: Record<string, unknown>) {
+  return Object.entries(data).map(([key, value]) => {
+    if (typeof value === "string") return { key, value: { stringValue: value } };
+    if (typeof value === "boolean") return { key, value: { boolValue: value } };
+    throw new HexclaveAssertionError(`Unsupported OTLP kvlist value type for ${key}: ${typeof value}`);
+  });
+}
+
+/**
+ * One `$error` LogRecord as the SDK's OTLP exporter emits it: the event id is
+ * stamped both as the `hexclave.event.id` attribute and as `event_id` inside
+ * the flat `hexclave.data` payload (the server rejects the record if the two
+ * ever disagree).
+ */
+function errorLogRecord(event: BatchEvent, eventId: string) {
+  return {
+    timeUnixNano: `${event.event_at_ms}000000`,
+    eventName: "$error",
+    severityNumber: 17, // OTLP SEVERITY_NUMBER_ERROR; `level` is promoted server-side for `$error` regardless
+    attributes: [
+      { key: "hexclave.signal.type", value: { stringValue: "error" } },
+      { key: "hexclave.event.id", value: { stringValue: eventId } },
+      { key: "hexclave.data", value: { kvlistValue: { values: toOtlpKvlistValues({ ...event.data, event_id: eventId }) } } },
+    ],
+  };
+}
+
+/**
+ * Posts the errors as an OTLP logs export and then waits for the background
+ * materializer.
+ *
+ * `clientBatchId` seeds the client-owned event ids (see `expectedOccurrenceId`),
+ * so posting twice with the same seed and events is a byte-identical retry —
+ * same record identities, hence the same server-derived batch id — while a
+ * fresh seed is a genuinely new batch. The returned `batchId` is the
+ * SERVER-derived one, which is what the occurrence rows and the
+ * `IssueMaterialization` ledger are keyed by.
+ */
+async function postBatch(options: { events: BatchEvent[], clientBatchId?: string }) {
+  const clientBatchId = options.clientBatchId ?? randomUUID();
+  const response = await niceBackendFetch("/api/v1/analytics/otlp/v1/logs", {
     method: "POST",
     accessType: "client",
     body: {
-      ...BATCH_FIELDS,
-      session_replay_segment_id: randomUUID(),
-      batch_id: batchId,
-      sent_at_ms: options.sentAtMs ?? Date.now(),
-      events: options.events,
+      resourceLogs: [{
+        resource: { attributes: OTLP_RESOURCE_ATTRIBUTES },
+        scopeLogs: [{
+          logRecords: options.events.map((event, ordinal) => errorLogRecord(event, expectedOccurrenceId(clientBatchId, ordinal))),
+        }],
+      }],
     },
   });
-  if (response.status !== 200) {
-    throw new HexclaveAssertionError("Telemetry batch upload failed", { response });
+  // A contract- or policy-rejected record comes back as a 200 with an OTLP
+  // partialSuccess body, so a status check alone would silently drop events.
+  if (response.status !== 200 || response.body?.partialSuccess != null) {
+    throw new HexclaveAssertionError("OTLP error ingest failed", { response });
   }
-  // The ClickHouse insert still runs behind `runAsynchronouslyAndWaitUntil`, so
-  // this flush is what makes the occurrence rows queryable below.
-  await flushBackgroundTasks();
-  // Issue materialization, however, is NOT in-process work anymore: the batch
-  // route enqueues it into the transactional outbox, the poller publishes it to
-  // QStash with a deliberate debounce delay, and a signed delivery applies it.
-  // `flushBackgroundTasks()` cannot see any of that, so the only reliable
-  // "this batch was applied" signal is the batch's exactly-once ledger row.
-  if (options.events.some((event) => event.event_type === "$error")) {
-    await waitForIssueMaterialization(batchId);
+  // The ClickHouse insert is awaited on the request path, but the table uses
+  // async inserts, so visibility can lag: discovering the server-derived batch
+  // id doubles as the wait for the occurrence rows to become queryable.
+  const batchId = await discoverServerBatchId(expectedOccurrenceId(clientBatchId, 0));
+  // Issue materialization is NOT in-process work: the OTLP route enqueues it
+  // into the transactional outbox, the poller publishes it to QStash with a
+  // deliberate debounce delay, and a signed delivery applies it. The only
+  // reliable "this batch was applied" signal is the batch's exactly-once
+  // ledger row.
+  await waitForIssueMaterialization(batchId);
+  return { batchId, clientBatchId, response };
+}
+
+/**
+ * Looks up the server-derived batch id through the first record's occurrence id
+ * (the OTLP error path preserves client event ids verbatim as `occurrence_id`).
+ * Polls because the telemetry table's async inserts may briefly not be visible
+ * to the query endpoint.
+ */
+async function discoverServerBatchId(occurrenceId: string): Promise<string> {
+  const deadline = performance.now() + 60_000;
+  while (true) {
+    const rows = analyticsRows(await queryAnalytics(
+      `SELECT DISTINCT batch_id FROM errors WHERE occurrence_id = {occurrenceId:String}`,
+      { occurrenceId },
+    ));
+    if (rows.length > 1) {
+      throw new HexclaveAssertionError(`Occurrence ${occurrenceId} unexpectedly appears under multiple batch ids`, { rows });
+    }
+    const batchId = rows.length === 1 ? rows[0].batch_id : undefined;
+    if (typeof batchId === "string") return batchId;
+    if (performance.now() > deadline) {
+      throw new HexclaveAssertionError(`Occurrence ${occurrenceId} did not become queryable in ClickHouse within 60s`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  return { batchId, response };
 }
 
 /**
@@ -297,9 +372,16 @@ function summarize(issue: ListedIssue) {
   };
 }
 
-/** Mirrors `computeOccurrenceId` in `lib/analytics-telemetry-writers.ts`. */
-function expectedOccurrenceId(batchId: string, ordinal: number): string {
-  return createHash("sha256").update(`${batchId}:${ordinal}`, "utf8").digest("hex").slice(0, 32);
+/**
+ * The deterministic 32-hex client event id the tests mint for the record at
+ * `ordinal` of the batch seeded by `clientBatchId`. The OTLP error path keeps
+ * client event ids verbatim as `occurrence_id`, so this doubles as the expected
+ * occurrence id. (The derivation mirrors `computeOccurrenceId` in
+ * `lib/analytics-telemetry-writers.ts` — the server-side fallback for id-less
+ * records — purely so retried batches stay byte-identical per seed.)
+ */
+function expectedOccurrenceId(clientBatchId: string, ordinal: number): string {
+  return createHash("sha256").update(`${clientBatchId}:${ordinal}`, "utf8").digest("hex").slice(0, 32);
 }
 
 function internalDatabaseConnectionString(): string {
@@ -331,7 +413,8 @@ async function withInternalDatabase<T>(fn: (client: Client) => Promise<T>): Prom
 
 it("returns OBSERVABILITY_NOT_ENABLED when the observability app is not installed", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  // Analytics on, observability off: the ingest half would work, the read half must not.
+  // Analytics on, observability off: the OTLP ingest and issues read routes
+  // both gate on the observability app, so the read half must 400 here.
   await Project.updateConfig({ "apps.installed.analytics.enabled": true });
 
   const res = await listIssues();
@@ -383,7 +466,7 @@ it("stamps grouping columns and a deterministic occurrence_id onto ingested $err
   await setUpIssuesProject();
 
   const now = Date.now();
-  const { batchId } = await postBatch({ events: [checkoutTypeError(now)] });
+  const { batchId, clientBatchId } = await postBatch({ events: [checkoutTypeError(now)] });
 
   const rows = analyticsRows(await queryAnalytics(
     `SELECT occurrence_id, batch_id, event_type, error_type, error_culprit, data.message AS message, level,
@@ -395,9 +478,10 @@ it("stamps grouping columns and a deterministic occurrence_id onto ingested $err
   expect(rows).toHaveLength(1);
   const row = rows[0];
 
-  // `occurrence_id` is sha256(batch_id ‖ ordinal), which is what makes a retried
-  // batch produce byte-identical occurrence identities in both stores.
-  expect(row.occurrence_id).toBe(expectedOccurrenceId(batchId, 0));
+  // `occurrence_id` is the client-owned event id (here sha256(clientBatchId ‖
+  // ordinal)), preserved verbatim by the OTLP path — which is what makes a
+  // retried batch produce byte-identical occurrence identities in both stores.
+  expect(row.occurrence_id).toBe(expectedOccurrenceId(clientBatchId, 0));
   expect(row.issue_hash).toMatch(/^[0-9a-f]{32}$/);
 
   expect({
@@ -599,15 +683,17 @@ it("increments times_seen exactly once when the same batch_id is posted twice", 
   await setUpIssuesProject();
 
   const now = Date.now();
-  const batchId = randomUUID();
+  const clientBatchId = randomUUID();
   const events = [checkoutTypeError(now)];
 
-  await postBatch({ batchId, events });
+  const { batchId } = await postBatch({ clientBatchId, events });
   const afterFirst = onlyItem(await listIssues());
   expect(afterFirst.times_seen).toBe("1");
 
-  // Byte-identical retry of the same batch.
-  await postBatch({ batchId, events });
+  // Byte-identical retry of the same batch. Identical record identities make
+  // the server derive the same batch id again, which is what the ledger keys on.
+  const { batchId: retryBatchId } = await postBatch({ clientBatchId, events });
+  expect(retryBatchId).toBe(batchId);
   const afterRetry = onlyItem(await listIssues());
 
   expect({ times_seen: afterRetry.times_seen, substatus: afterRetry.substatus }).toMatchInlineSnapshot(`
@@ -656,10 +742,10 @@ it("increments times_seen exactly once when the same batch_id is posted twice", 
 it.fails("does not inflate window_occurrences when the same batch is retried", async ({ expect }) => {
   await setUpIssuesProject();
 
-  const batchId = randomUUID();
+  const clientBatchId = randomUUID();
   const events = [checkoutTypeError(Date.now())];
-  await postBatch({ batchId, events });
-  await postBatch({ batchId, events });
+  await postBatch({ clientBatchId, events });
+  await postBatch({ clientBatchId, events });
 
   expect(onlyItem(await listIssues()).window_occurrences).toBe(1);
 });
@@ -668,16 +754,17 @@ it("produces a byte-identical occurrence_id across retries of the same batch", {
   await setUpIssuesProject();
 
   const now = Date.now();
-  const batchId = randomUUID();
+  const clientBatchId = randomUUID();
   const events = [checkoutTypeError(now), checkoutTypeError(now + 1, "other failure")];
 
-  await postBatch({ batchId, events });
+  const { batchId } = await postBatch({ clientBatchId, events });
   const first = analyticsRows(await queryAnalytics(
     `SELECT occurrence_id FROM errors WHERE batch_id = {batchId:String} ORDER BY occurrence_id`,
     { batchId },
   )).map((row) => row.occurrence_id);
 
-  await postBatch({ batchId, events });
+  const { batchId: retryBatchId } = await postBatch({ clientBatchId, events });
+  expect(retryBatchId).toBe(batchId);
   const second = analyticsRows(await queryAnalytics(
     `SELECT occurrence_id FROM errors WHERE batch_id = {batchId:String} ORDER BY occurrence_id`,
     { batchId },
@@ -687,7 +774,7 @@ it("produces a byte-identical occurrence_id across retries of the same batch", {
   // unchanged AND the ids are the same values, not merely the same count.
   expect(second).toEqual(first);
   expect(new Set(first).size).toBe(2);
-  expect(new Set(first)).toEqual(new Set([expectedOccurrenceId(batchId, 0), expectedOccurrenceId(batchId, 1)]));
+  expect(new Set(first)).toEqual(new Set([expectedOccurrenceId(clientBatchId, 0), expectedOccurrenceId(clientBatchId, 1)]));
 });
 
 // ─── Lifecycle ──────────────────────────────────────────────────────────────

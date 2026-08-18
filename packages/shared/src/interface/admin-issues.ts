@@ -118,10 +118,9 @@ export const IssueFrameSymbolicationSchema = yupObject({
 }).defined();
 
 /**
- * A stack frame after server-side parsing. `context` is absent until source
- * maps land (it is filled by symbolication); the field exists in the contract
- * from day one so shipping source maps is a pure data change with no schema or
- * renderer rewrite.
+ * A stack frame after server-side parsing. Every projected frame carries its
+ * symbolication result (an unsymbolicated frame still gets a status object);
+ * source context, when available, lives inside `symbolication.context`.
  */
 export const IssueFrameSchema = yupObject({
   filename: yupString().nullable().defined(),
@@ -132,13 +131,7 @@ export const IssueFrameSchema = yupObject({
   colno: yupNumber().nullable().defined(),
   in_app: yupBoolean().defined(),
   debug_id: yupString().optional(),
-  context: yupObject({
-    line: yupString().defined(),
-    pre: yupArray(yupString().defined()).defined(),
-    post: yupArray(yupString().defined()).defined(),
-    symbolicated: yupBoolean().defined(),
-  }).optional(),
-  symbolication: IssueFrameSymbolicationSchema.optional(),
+  symbolication: IssueFrameSymbolicationSchema.defined(),
 }).defined();
 
 /**

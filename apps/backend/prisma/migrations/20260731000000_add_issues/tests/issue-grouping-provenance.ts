@@ -41,9 +41,9 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     ORDER BY column_name COLLATE "C"
   `;
   expect(columns).toEqual([
-    { column_name: "groupingProvenance", data_type: "jsonb", udt_name: "jsonb", is_nullable: "YES" },
-    { column_name: "groupingRole", data_type: "USER-DEFINED", udt_name: "IssueHashGroupingRole", is_nullable: "YES" },
-    { column_name: "groupingVariant", data_type: "character varying", udt_name: "varchar", is_nullable: "YES" },
+    { column_name: "groupingProvenance", data_type: "jsonb", udt_name: "jsonb", is_nullable: "NO" },
+    { column_name: "groupingRole", data_type: "USER-DEFINED", udt_name: "IssueHashGroupingRole", is_nullable: "NO" },
+    { column_name: "groupingVariant", data_type: "character varying", udt_name: "varchar", is_nullable: "NO" },
   ]);
 
   const issueId = randomUUID();
@@ -112,19 +112,12 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     },
   ]);
 
-  // Rows written by older materializers remain valid and explicitly have no
-  // provenance rather than receiving a guessed primary/secondary label.
-  const legacyHash = "c".repeat(32);
-  await sql`
+  // Provenance is NOT NULL from day one: a hash row without its grouping
+  // decision would be a writer bug, so the database rejects it outright.
+  await expect(sql`
     INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId")
-    VALUES (${ctx.tenancyId}::uuid, ${legacyHash}, ${issueId}::uuid, 'hexclave-js:2026-08-01')
-  `;
-  const legacy = await sql<{ groupingRole: string | null, groupingVariant: string | null, groupingProvenance: string | null }[]>`
-    SELECT "groupingRole"::text AS "groupingRole", "groupingVariant", "groupingProvenance"::text AS "groupingProvenance"
-    FROM "IssueHash"
-    WHERE "tenancyId" = ${ctx.tenancyId}::uuid AND "hash" = ${legacyHash}
-  `;
-  expect(legacy).toEqual([{ groupingRole: null, groupingVariant: null, groupingProvenance: null }]);
+    VALUES (${ctx.tenancyId}::uuid, ${"c".repeat(32)}, ${issueId}::uuid, 'hexclave-js:2026-08-01')
+  `).rejects.toThrow(/null value in column "groupingRole"/);
 
   await expect(sql`
     INSERT INTO "IssueHash" (

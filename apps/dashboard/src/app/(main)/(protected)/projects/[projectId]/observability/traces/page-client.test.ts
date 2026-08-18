@@ -219,7 +219,10 @@ describe("analytics trace row parsing", () => {
   it("selects the enclosing span and page-view correlation on events, not an ancestry array", () => {
     const { query } = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef", null, { startMs: 1_720_000_000_000, endMs: 1_720_000_100_000 });
     expect(query).toContain("trace_id, span_id, page_view_span_id");
-    expect(query).toContain("message AS body");
+    // The event-shaped branches are not OTel log records: they synthesize an
+    // empty body instead of projecting a column no writer populates for them.
+    expect(query).toContain("CAST('' AS String) AS body");
+    expect(query).not.toContain("message AS body");
     expect(query).toContain("severity_number");
     expect(query).toContain("severity_text");
     expect(query).toContain("WHERE trace_id = {traceId:String}");

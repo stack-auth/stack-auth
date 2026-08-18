@@ -321,8 +321,7 @@ contracts in analytics.spec.md:
   mode, await trackEvent/withSpan or call flush() when remote acknowledgement is
   required; telemetry.waitUntil carries that flush through serverless request
   teardown. Existing-provider mode leaves lifecycle ownership with the host
-  application. New SDK telemetry never uses the legacy schema-versioned event
-  batch envelope.
+  application.
 
   Auto-instrumentation seams (official server Undici spans, the uncaught-exception $error
   monitor, Next.js hexclaveInstrumentation, the ambient request provider) are

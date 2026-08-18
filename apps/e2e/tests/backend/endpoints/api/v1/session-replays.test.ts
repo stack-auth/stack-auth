@@ -24,20 +24,13 @@ const TELEMETRY_RESOURCE = {
 } as const;
 
 /**
- * The two telemetry batch routes are versioned INDEPENDENTLY, so this file needs
- * both constants. The session-replay body carries rrweb chunks and did not change
- * when span identity moved to W3C, so its route still accepts only `[2]` and the
- * SDK's recorder still sends 2; the events/spans body did change, so that route
- * requires 3. Using one shared constant for both makes one of the two 400 on every
- * request.
+ * Only the session-replay batch route is versioned: its body carries rrweb
+ * chunks under the live `schema_version: 2` contract. The events batch route
+ * speaks the shipped legacy contract with no version or resource fields at
+ * all, so these fields must never leak into `uploadEventBatch` below.
  */
 const DEFAULT_REPLAY_TELEMETRY_FIELDS = {
   schema_version: 2,
-  resource: TELEMETRY_RESOURCE,
-} as const;
-
-const DEFAULT_EVENT_TELEMETRY_FIELDS = {
-  schema_version: 3,
   resource: TELEMETRY_RESOURCE,
 } as const;
 
@@ -1395,7 +1388,6 @@ async function uploadEventBatch(options: {
     method: "POST",
     accessType: "client",
     body: {
-      ...DEFAULT_EVENT_TELEMETRY_FIELDS,
       session_replay_segment_id: options.sessionReplaySegmentId,
       batch_id: options.batchId,
       sent_at_ms: options.sentAtMs,
@@ -1485,6 +1477,81 @@ it("admin list session replays filters by user_ids", async ({ expect }) => {
   const resNone = await listReplays({ user_ids: randomUUID() });
   expect(resNone.status).toBe(200);
   expect(resNone.body?.items?.length).toBe(0);
+});
+
+it("admin list session replays filters by anonymous vs verified users", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+
+  const anonymousUser = await Auth.Anonymous.signUp();
+  const uploadAnonymous = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: 1_700_000_000_000,
+    sentAtMs: 1_700_000_000_500,
+    events: [{ type: 1, timestamp: 1_700_000_000_100 }],
+  });
+  expect(uploadAnonymous.status).toBe(200);
+  const anonymousReplayId = uploadAnonymous.body?.session_replay_id;
+
+  const verifiedUser = await Auth.fastSignUp();
+  const uploadVerified = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: 1_700_000_000_000,
+    sentAtMs: 1_700_000_000_600,
+    events: [{ type: 1, timestamp: 1_700_000_000_200 }],
+  });
+  expect(uploadVerified.status).toBe(200);
+  const verifiedReplayId = uploadVerified.body?.session_replay_id;
+
+  const resBoth = await listReplaysWithRetry(
+    {},
+    (res) => {
+      const ids = getReplayListItems(res.body?.items).map((item) => item.id);
+      return res.status === 200 && ids.includes(anonymousReplayId) && ids.includes(verifiedReplayId);
+    },
+  );
+  expect(resBoth.status).toBe(200);
+
+  const resAnonymous = await listReplays({ user_kind: "anonymous" });
+  expect(resAnonymous.status).toBe(200);
+  expect(getReplayListItems(resAnonymous.body?.items).map((item) => item.id)).toEqual([anonymousReplayId]);
+  expect(resAnonymous.body?.items?.[0]?.project_user?.id).toBe(anonymousUser.userId);
+
+  const resVerified = await listReplays({ user_kind: "verified" });
+  expect(resVerified.status).toBe(200);
+  expect(getReplayListItems(resVerified.body?.items).map((item) => item.id)).toEqual([verifiedReplayId]);
+  expect(resVerified.body?.items?.[0]?.project_user?.id).toBe(verifiedUser.userId);
+
+  const resAnonymousUserVerifiedKind = await listReplays({
+    user_ids: anonymousUser.userId,
+    user_kind: "verified",
+  });
+  expect(resAnonymousUserVerifiedKind.status).toBe(200);
+  expect(resAnonymousUserVerifiedKind.body?.items?.length).toBe(0);
+
+  if (typeof verifiedReplayId !== "string") {
+    throw new Error("Expected verified session replay id.");
+  }
+  const mismatchedCursor = await listReplays({
+    user_kind: "anonymous",
+    cursor: verifiedReplayId,
+  });
+  expect(mismatchedCursor).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 404,
+      "body": {
+        "code": "ITEM_NOT_FOUND",
+        "details": { "item_id": "<stripped UUID>" },
+        "error": "Item with ID \\"<stripped UUID>\\" not found.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ITEM_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("admin list session replays filters by team_ids", async ({ expect }) => {
@@ -2009,6 +2076,15 @@ it("admin list session replays rejects invalid filter parameters", async ({ expe
     NiceResponse {
       "status": 400,
       "body": "click_count_min must be a non-negative integer",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const res9 = await listReplays({ user_kind: "email_verified" });
+  expect(res9).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "user_kind must be anonymous or verified",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);

@@ -217,7 +217,7 @@ function requiredMetricType(value: unknown, field: string): PerformanceMetricTyp
   return value;
 }
 
-function isPerformanceMetricType(value: string): value is PerformanceMetricType {
+export function isPerformanceMetricType(value: string): value is PerformanceMetricType {
   return PERFORMANCE_METRIC_TYPES.some((metricType) => metricType === value);
 }
 
@@ -308,12 +308,26 @@ export function parsePerformanceMetricResponse(value: unknown): PerformanceMetri
 
 export async function fetchPerformanceMetrics(
   adminApp: object,
-  request: { hours: PerformanceTimeRangeHours, metricName: string | null },
+  request: {
+    hours: PerformanceTimeRangeHours,
+    metricName: string | null,
+    /**
+     * OTLP allows one metric NAME to exist with several metric types, and the
+     * selector keys entries by (name, type) — so the type must be sent along
+     * or selecting a non-busiest pair charts a sibling type's data. Null means
+     * "resolve by name only" (the backend picks the pair with the most points).
+     */
+    metricType: PerformanceMetricType | null,
+  },
 ): Promise<PerformanceMetricResponse> {
   const response = await sendInternalAdminRequest(adminApp, "/internal/analytics/metrics", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ hours: request.hours, ...(request.metricName == null ? {} : { metric_name: request.metricName }) }),
+    body: JSON.stringify({
+      hours: request.hours,
+      ...(request.metricName == null ? {} : { metric_name: request.metricName }),
+      ...(request.metricType == null ? {} : { metric_type: request.metricType }),
+    }),
   });
   if (!response.ok) throw new Error("Native metrics could not be loaded");
   return parsePerformanceMetricResponse(await response.json());
@@ -326,6 +340,9 @@ export async function fetchWebVitals(
   const responses = await Promise.all(WEB_VITAL_METRICS.map((metric) => fetchPerformanceMetrics(adminApp, {
     hours,
     metricName: metric.metricName,
+    // Web vitals are exported under exactly one type per name, so name-only
+    // resolution is unambiguous here.
+    metricType: null,
   })));
   const result = new Map<WebVitalMetricKey, PerformanceMetricResponse>();
   for (const [index, metric] of WEB_VITAL_METRICS.entries()) {

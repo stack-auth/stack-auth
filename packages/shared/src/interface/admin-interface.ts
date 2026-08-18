@@ -1219,6 +1219,7 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     if (typeof params?.last_event_at_from_millis === "number") qs.set("last_event_at_from_millis", String(params.last_event_at_from_millis));
     if (typeof params?.last_event_at_to_millis === "number") qs.set("last_event_at_to_millis", String(params.last_event_at_to_millis));
     if (typeof params?.click_count_min === "number") qs.set("click_count_min", String(params.click_count_min));
+    if (params?.user_kind) qs.set("user_kind", params.user_kind);
     const response = await this.sendAdminRequest(
       `/internal/session-replays${qs.size ? `?${qs.toString()}` : ""}`,
       { method: "GET" },

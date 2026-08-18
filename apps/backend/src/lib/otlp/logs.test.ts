@@ -67,59 +67,8 @@ describe("OTLP JSON logs normalization", () => {
       }] }] }],
     });
 
-    expect(log.errorEnvelope).toMatchObject({ format: "flat", eventId, identityError: null });
+    expect(log.errorEnvelope).toMatchObject({ eventId, identityError: null });
     expect(getHexclaveOtlpLogContractError(log, "client")).toBeNull();
-  });
-
-  it("adapts a versioned rich envelope without mixing in stale flat compatibility fields", () => {
-    const eventId = "0123456789abcdef0123456789abcdef";
-    const [log] = normalizeOtlpJsonLogsRequest({
-      resourceLogs: [{ scopeLogs: [{ logRecords: [{
-        timeUnixNano: "1",
-        eventName: "$error",
-        attributes: [
-          { key: "hexclave.signal.type", value: { stringValue: "error" } },
-          { key: "hexclave.event.id", value: { stringValue: eventId } },
-          { key: "hexclave.error.envelope.version", value: { stringValue: "1" } },
-          { key: "hexclave.error.envelope", value: { kvlistValue: { values: [
-            { key: "event_id", value: { stringValue: eventId } },
-            { key: "name", value: { stringValue: "RichPaymentError" } },
-            { key: "message", value: { stringValue: "rich payload" } },
-            { key: "handled", value: { boolValue: true } },
-          ] } } },
-          // This is retained only as a rollout compatibility projection. The
-          // versioned envelope is authoritative for grouping and storage data.
-          { key: "hexclave.data", value: { kvlistValue: { values: [
-            { key: "name", value: { stringValue: "StaleLegacyName" } },
-            { key: "message", value: { stringValue: "stale legacy payload" } },
-            { key: "handled", value: { boolValue: true } },
-          ] } } },
-        ],
-      }] }] }],
-    });
-
-    expect(log.errorEnvelope).toMatchObject({ format: "v1", eventId, identityError: null });
-    expect(getHexclaveOtlpLogContractError(log, "client")).toBeNull();
-  });
-
-  it("rejects an unsupported rich envelope version as a record-level contract error", () => {
-    const [log] = normalizeOtlpJsonLogsRequest({
-      resourceLogs: [{ scopeLogs: [{ logRecords: [{
-        timeUnixNano: "1",
-        eventName: "$error",
-        attributes: [
-          { key: "hexclave.signal.type", value: { stringValue: "error" } },
-          { key: "hexclave.error.envelope.version", value: { stringValue: "2" } },
-          { key: "hexclave.error.envelope", value: { kvlistValue: { values: [
-            { key: "name", value: { stringValue: "PaymentError" } },
-            { key: "message", value: { stringValue: "unsupported" } },
-            { key: "handled", value: { boolValue: true } },
-          ] } } },
-        ],
-      }] }] }],
-    });
-
-    expect(getHexclaveOtlpLogContractError(log, "client")).toMatch(/envelope.*version/);
   });
 
   it("rejects malformed or conflicting flat error identities as a per-record contract error", () => {

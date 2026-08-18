@@ -23,7 +23,6 @@ import {
 } from "./issue-queries";
 import { loadPublicIssueAttachments } from "./occurrence-attachments";
 import {
-  parsePublicErrorEnvelope,
   projectPublicIssueOccurrence,
   resolveOccurrenceReplayIds,
 } from "./occurrence-projection";
@@ -208,11 +207,7 @@ export async function loadPublicIssueDetail(options: {
     ? null
     : (await resolveOccurrenceReplayIds(options.tenancy, [occurrence.occurrence]))[0]
       ?? throwErr("resolveOccurrenceReplayIds returned an empty array for a single-row input");
-  const attachmentEventId = resolvedOccurrence === null ? null : getErrorAttachmentEventId({
-    occurrenceId: resolvedOccurrence.occurrence_id,
-    data: resolvedOccurrence.data,
-    errorEnvelope: parsePublicErrorEnvelope(resolvedOccurrence.error_envelope),
-  });
+  const attachmentEventId = resolvedOccurrence === null ? null : getErrorAttachmentEventId(resolvedOccurrence.occurrence_id);
   const attachmentsByEvent = await loadPublicIssueAttachments(
     options.tenancy,
     attachmentEventId === null ? [] : [attachmentEventId],

@@ -69,14 +69,6 @@ describe("error-ingest protocol adapter", () => {
       rejectedSpans: "1",
       errorMessage: "error ingest rejected 1 item(s): filtered=1",
     });
-    expect(projection.legacyBatch).toMatchObject({
-      batchId: "batch-1",
-      itemCount: 8,
-      acceptedItems: 1,
-      deduplicatedItems: 1,
-      queuedItems: 1,
-      rejectedItems: 5,
-    });
     expect(JSON.stringify(projection)).not.toContain("stack");
     expect(JSON.stringify(projection)).not.toContain("message");
   });
@@ -146,8 +138,6 @@ describe("error-ingest protocol adapter", () => {
     ]);
     expect(projection.clientReport.rate_limited_events).toEqual([]);
     expect(projection.truncation).toEqual({ clientReportEntries: 2, clientReportItems: 2 });
-    expect(projection.legacyBatch.truncatedClientReportEntries).toBe(2);
-    expect(projection.legacyBatch.truncatedClientReportItems).toBe(2);
   });
 
   it("bounds OTLP error text without copying item reasons or payloads", () => {

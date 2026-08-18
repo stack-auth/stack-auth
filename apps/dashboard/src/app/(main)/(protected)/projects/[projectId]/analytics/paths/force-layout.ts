@@ -66,9 +66,7 @@ function findLandingPages(nodes: GraphNode[], edges: GraphEdge[]): Set<string> {
 
   if (landings.size === 0) {
     const sorted = [...nodes].sort((a, b) => (outbound.get(b.id) ?? 0) - (outbound.get(a.id) ?? 0));
-    for (let i = 0; i < Math.min(3, sorted.length); i++) {
-      const node = sorted[i];
-      if (node === undefined) break;
+    for (const node of sorted.slice(0, 3)) {
       landings.add(node.id);
     }
   }
@@ -193,7 +191,6 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
       for (let j = i + 1; j < simNodes.length; j++) {
         const a = simNodes[i];
         const b = simNodes[j];
-        if (a === undefined || b === undefined) break;
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         let dist = Math.sqrt(dx * dx + dy * dy);
@@ -230,7 +227,6 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
 
       const a = simNodes[ai];
       const b = simNodes[bi];
-      if (a === undefined || b === undefined) continue;
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
@@ -254,7 +250,6 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
 
       const a = simNodes[ai];
       const b = simNodes[bi];
-      if (a === undefined || b === undefined) continue;
       const dy = b.y - a.y;
 
       const relWeight = edge.weight / maxWeight;

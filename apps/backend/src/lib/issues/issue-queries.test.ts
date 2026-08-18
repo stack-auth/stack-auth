@@ -17,7 +17,7 @@ const ISSUE_B = "00000000-0000-4000-8000-000000000002";
 describe("issue list cursors", () => {
   it("round-trips the ordered column and direction with the opaque cursor", () => {
     const cursor = {
-      lastSeenAtMillis: 1_754_502_400_000,
+      sortValueMillis: 1_754_502_400_000,
       id: ISSUE_A,
       sort: "first_seen" as const,
       sortDir: "asc" as const,
@@ -30,23 +30,28 @@ describe("issue list cursors", () => {
     expect(decodeIssueCursor(encoded, { sort: "first_seen", sortDir: "desc" })).toBe(null);
   });
 
-  it("continues to read legacy cursors while rejecting malformed values", () => {
-    const legacy = encodeIssueCursor({ lastSeenAtMillis: 1_754_502_400_000, id: ISSUE_A });
-    expect(decodeIssueCursor(legacy, { sort: "last_seen", sortDir: "desc" })).toEqual({
-      lastSeenAtMillis: 1_754_502_400_000,
-      id: ISSUE_A,
-    });
-
-    const tooFarInTheFuture = Buffer.from(JSON.stringify({
-      lastSeenAtMillis: 8_640_000_000_000_001,
+  it("rejects malformed cursors, including ones missing the sort identity", () => {
+    // A cursor always names its sort order; one without it was never issued.
+    const missingSort = Buffer.from(JSON.stringify({
+      sortValueMillis: 1_754_502_400_000,
       id: ISSUE_A,
     }), "utf8").toString("base64url");
+    const tooFarInTheFuture = Buffer.from(JSON.stringify({
+      sortValueMillis: 8_640_000_000_000_001,
+      id: ISSUE_A,
+      sort: "last_seen",
+      sortDir: "desc",
+    }), "utf8").toString("base64url");
     const wrongId = Buffer.from(JSON.stringify({
-      lastSeenAtMillis: 1_754_502_400_000,
+      sortValueMillis: 1_754_502_400_000,
       id: "not-an-issue-id",
+      sort: "last_seen",
+      sortDir: "desc",
     }), "utf8").toString("base64url");
 
     expect(decodeIssueCursor("not-a-cursor")).toBe(null);
+    expect(decodeIssueCursor(missingSort)).toBe(null);
+    expect(decodeIssueCursor(missingSort, { sort: "last_seen", sortDir: "desc" })).toBe(null);
     expect(decodeIssueCursor(tooFarInTheFuture)).toBe(null);
     expect(decodeIssueCursor(wrongId)).toBe(null);
   });

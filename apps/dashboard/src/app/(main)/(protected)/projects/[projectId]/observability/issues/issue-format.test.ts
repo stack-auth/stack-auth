@@ -18,6 +18,15 @@ function frame(overrides: Partial<IssueFrame> = {}): IssueFrame {
     lineno: null,
     colno: null,
     in_app: false,
+    symbolication: {
+      status: "not_attempted",
+      source_file: null,
+      original_line: null,
+      original_column: null,
+      name: null,
+      context: null,
+      diagnostics: [],
+    },
     ...overrides,
   };
 }

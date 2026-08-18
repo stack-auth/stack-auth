@@ -4,6 +4,7 @@ import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import type { IssueBatchDelta } from "./issue-materialization-contract";
 import { isGroupingConfigId } from "./grouping-config";
+import { fromDurableGroupingProvenance, parseDurableGroupingProvenance } from "./grouping-provenance";
 import {
   markIssueMaterializationSideEffect,
   materializeIssuesFromBatchWithStatus,
@@ -80,8 +81,9 @@ type CandidateRow = { project_id: string, branch_id: string, batch_id: string };
 type OccurrenceGroupRow = {
   batch_id: string,
   issue_hash: string,
-  issue_hashes: string[],
   grouping_config: string,
+  /** Durable JSON written by `serializeGroupingProvenance` at ingest. */
+  grouping_provenance: string,
   // 64-bit integers come back as either a decimal string or a number depending on
   // the server's `output_format_json_quote_64bit_integers`; both are accepted.
   occurrences: string | number,
@@ -165,7 +167,8 @@ async function findAppliedBatchIds(tenancy: Tenancy, batchIds: readonly string[]
 /**
  * Rebuilds the per-batch materialization inputs from the occurrence columns.
  *
- * Everything the live path passed to `materializeIssuesFromBatch` was written to
+ * Everything the live path passed to `materializeIssuesFromBatch` — including
+ * the grouping decision records in `issue_grouping_provenance` — was written to
  * a typed ClickHouse column precisely so this is a projection rather than a
  * re-derivation: no stack is re-parsed and no hash is recomputed here, so a
  * replay can never disagree with the original grouping even if the grouping code
@@ -194,8 +197,14 @@ async function rebuildInputs(options: {
       SELECT
         batch_id,
         issue_hash,
-        any(issue_hashes) AS issue_hashes,
         any(issue_grouping_config) AS grouping_config,
+        -- \`any\` matches the neighboring column projections. The alias hashes are
+        -- deliberately NOT selected from \`issue_hashes\`: the provenance column
+        -- records every hash of the decision (owner primary + alias secondaries),
+        -- and reading aliases out of the same value that carries their decision
+        -- records keeps the two consistent even when two \`any(...)\` aggregates
+        -- would have picked different rows of the group.
+        any(issue_grouping_provenance) AS grouping_provenance,
         count() AS occurrences,
         toUnixTimestamp64Milli(min(event_at)) AS first_event_at_millis,
         toUnixTimestamp64Milli(max(event_at)) AS last_event_at_millis,
@@ -240,13 +249,21 @@ async function rebuildInputs(options: {
   const byBatch = new Map<string, { inputs: IssueBatchDelta[], receivedAt: Date }>();
   let skipped = 0;
   for (const row of rows) {
-    if (!isGroupingConfigId(row.grouping_config)) {
-      // A config id we no longer ship. Deliberately not defaulted: binding these
-      // hashes to the current config would claim they were produced by an
+    const durableProvenance = parseDurableGroupingProvenance(row.grouping_provenance);
+    if (!isGroupingConfigId(row.grouping_config) || durableProvenance.some((entry) => !isGroupingConfigId(entry.config_id))) {
+      // A config id we no longer ship (as the row's primary config, or inside a
+      // readable-chain secondary decision). Deliberately not defaulted: binding
+      // these hashes to the current config would claim they were produced by an
       // algorithm that never saw them, and would silently re-group the project's
       // history the next time anything walked `IssueHash.groupingConfigId`.
       skipped += 1;
       continue;
+    }
+    const groupingProvenance = fromDurableGroupingProvenance(durableProvenance);
+    const primary = groupingProvenance.find((entry) => entry.role === "primary")
+      ?? throwErr("Stored grouping provenance has no primary entry; ingest always records the owner hash's decision first");
+    if (primary.hash !== row.issue_hash) {
+      throw new Error("Stored grouping provenance's primary hash does not match the row's issue_hash; both are written from the same grouping result at ingest");
     }
     const receivedAt = new Date(Number(row.received_at_millis));
     const entry = byBatch.get(row.batch_id) ?? { inputs: [], receivedAt };
@@ -255,8 +272,12 @@ async function rebuildInputs(options: {
     if (receivedAt > entry.receivedAt) entry.receivedAt = receivedAt;
     entry.inputs.push({
       ownerHash: row.issue_hash,
-      aliasHashes: row.issue_hashes.filter((hash) => hash !== row.issue_hash),
+      aliasHashes: [...new Set(groupingProvenance
+        .filter((provenanceEntry) => provenanceEntry.role === "secondary")
+        .map((provenanceEntry) => provenanceEntry.hash))]
+        .filter((hash) => hash !== row.issue_hash),
       groupingConfigId: row.grouping_config,
+      groupingProvenance,
       type: row.error_type,
       value: row.message,
       culprit: row.culprit,
@@ -336,11 +357,11 @@ async function dispatchMaterializationSideEffects(options: {
 /**
  * Applies one known telemetry batch from a durable queue delivery.
  *
- * The legacy reconciler scans a time window because it has no durable job
- * pointer. New callers already know the exact batch, so this path performs one
- * bounded ClickHouse lookup and lets QStash retry only when the batch is not
- * visible yet. The scan-based reconciler remains available for old rows during
- * migration, but it is no longer required for normal delivery.
+ * This is the primary delivery path: the caller already knows the exact batch,
+ * so it performs one bounded ClickHouse lookup and lets QStash retry only when
+ * the batch is not visible yet. The scan-based `reconcileIssues` sweep exists
+ * alongside it as a safety net — it has no durable job pointer, so it scans a
+ * time window to catch batches whose queue delivery was lost entirely.
  */
 export async function processIssueMaterializationBatch(options: {
   tenancy: Tenancy,

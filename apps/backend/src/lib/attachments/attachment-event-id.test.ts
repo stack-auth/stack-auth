@@ -4,24 +4,19 @@ import { getErrorAttachmentEventId } from "./attachment-event-id";
 const EVENT_ID = "0123456789abcdef0123456789abcdef";
 
 describe("getErrorAttachmentEventId", () => {
-  it("prefers the canonical envelope event id", () => {
-    expect(getErrorAttachmentEventId({
-      occurrenceId: "f".repeat(32),
-      data: { event_id: "e".repeat(32) },
-      errorEnvelope: { event_id: EVENT_ID },
-    })).toBe(EVENT_ID);
+  it("returns the occurrence id, which is the event id by construction", () => {
+    expect(getErrorAttachmentEventId(EVENT_ID)).toBe(EVENT_ID);
+    expect(getErrorAttachmentEventId("f".repeat(32))).toBe("f".repeat(32));
   });
 
-  it("uses strict legacy event-id fallbacks", () => {
-    expect(getErrorAttachmentEventId({ occurrenceId: EVENT_ID, data: {}, errorEnvelope: null })).toBe(EVENT_ID);
-    expect(getErrorAttachmentEventId({ occurrenceId: "occurrence-1", data: { event_id: EVENT_ID.toUpperCase() }, errorEnvelope: null })).toBe(EVENT_ID);
-  });
-
-  it("does not guess from arbitrary occurrence identifiers", () => {
-    expect(getErrorAttachmentEventId({
-      occurrenceId: "occurrence-1",
-      data: { event_id: "not-an-event" },
-      errorEnvelope: { event_id: "also-not-an-event" },
-    })).toBeNull();
+  it("fails loudly on anything that is not a strict 32-hex id", () => {
+    // Every ingest path derives occurrence ids from a validated client event id
+    // or a SHA-256 digest, so a malformed id means a writer bug — never a row
+    // to silently render without its attachments.
+    expect(() => getErrorAttachmentEventId("occurrence-1")).toThrow("not a 32-hex event id");
+    expect(() => getErrorAttachmentEventId("")).toThrow("not a 32-hex event id");
+    expect(() => getErrorAttachmentEventId(EVENT_ID.toUpperCase())).toThrow("not a 32-hex event id");
+    expect(() => getErrorAttachmentEventId(EVENT_ID.slice(0, 31))).toThrow("not a 32-hex event id");
+    expect(() => getErrorAttachmentEventId(`${EVENT_ID}0`)).toThrow("not a 32-hex event id");
   });
 });

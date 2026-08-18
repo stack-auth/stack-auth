@@ -22,10 +22,10 @@ import {
 } from "./issue-event";
 import { formatAbsoluteTimeFromMillis, formatRelativeTimeFromMillis } from "../format";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import type { IssueDetailResponse, IssueFrame, IssueListItem, IssueOccurrence, IssuePriority } from "./issues-data";
+import type { IssueDetailResponse, IssueListItem, IssueOccurrence, IssuePriority } from "./issues-data";
 import { LogLevelChip } from "../log-level";
 import { StackFrameList } from "./stack-frame-list";
-import type { StackFrameOrder } from "./stack-frames";
+import type { StackFrameOrder, StackFrameView } from "./stack-frames";
 import { IssueReleaseContextSection } from "./issue-release-context";
 import { useMemo, useState } from "react";
 
@@ -44,7 +44,7 @@ function ownerSourceLabel(source: string): string {
   return OWNER_SOURCE_LABELS.get(source) ?? source;
 }
 
-function stackFrameView(frame: IssueExceptionValue["frames"][number]): IssueFrame {
+function stackFrameView(frame: IssueExceptionValue["frames"][number]): StackFrameView {
   return {
     filename: frame.filename,
     function: frame.function,
@@ -55,6 +55,9 @@ function stackFrameView(frame: IssueExceptionValue["frames"][number]): IssueFram
     in_app: frame.in_app,
     ...(frame.debug_id === undefined ? {} : { debug_id: frame.debug_id }),
     ...(frame.context === undefined ? {} : { context: frame.context }),
+    // Passed through so the "Mapped" badge keys off symbolication status even
+    // when the mapped source content (and therefore `context`) is unavailable.
+    symbolication: frame.symbolication,
   };
 }
 

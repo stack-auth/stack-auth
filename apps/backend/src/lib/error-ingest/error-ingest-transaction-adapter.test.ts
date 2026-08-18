@@ -174,7 +174,10 @@ describe("Sentry transaction to canonical OTLP adapter", () => {
     });
     expect(() => sentryTransactionToCanonicalOtlpSpans(outsideOtlpRange, context)).toThrow(/OTLP timestamp range/iu);
 
-    const zeroParent = parseTransaction({
+    // An all-zero parent span id is rejected at the envelope parse boundary
+    // (`isW3cSpanId` refuses the all-zero id), so the adapter never sees the
+    // transaction; the item comes back rejected instead.
+    const zeroParentParsed = parseErrorIngestEnvelope(envelope(transactionPayload({
       contexts: {
         trace: {
           trace_id: TRACE_ID,
@@ -184,7 +187,8 @@ describe("Sentry transaction to canonical OTLP adapter", () => {
           status: "ok",
         },
       },
-    });
-    expect(() => sentryTransactionToCanonicalOtlpSpans(zeroParent, context)).toThrow(/valid W3C span id/iu);
+    })));
+    expect(zeroParentParsed.items[0]?.transaction).toBeUndefined();
+    expect(zeroParentParsed.items[0]?.outcome).toMatchObject({ status: "rejected", reason: "invalid" });
   });
 });

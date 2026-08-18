@@ -28,8 +28,8 @@ const seedIssueWithHashes = async (sql: Sql, tenancyId: string, shortId: number,
   // cascade is exercised on more than the trivial 1:1 case.
   for (const suffix of ["1", "2"]) {
     await sql`
-      INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId")
-      VALUES (${tenancyId}::uuid, ${`${hashPrefix}${suffix}`}, ${issueId}::uuid, 'v1')
+      INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId", "groupingRole", "groupingVariant", "groupingProvenance")
+      VALUES (${tenancyId}::uuid, ${`${hashPrefix}${suffix}`}, ${issueId}::uuid, 'v1', 'PRIMARY', 'app', '[]'::jsonb)
     `;
   }
   return issueId;

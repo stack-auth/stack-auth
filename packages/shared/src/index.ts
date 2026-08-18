@@ -18,8 +18,6 @@ export {
   ERROR_ENVELOPE_LIMITS,
   ERROR_ENVELOPE_SCHEMA,
   ERROR_ENVELOPE_VERSION,
-  adaptLegacyErrorEvent,
-  adaptOtlpErrorLogRecord,
   deriveErrorEnvelopeEventId,
   normalizeErrorEnvelope,
 } from "./utils/error-envelope";
@@ -45,6 +43,5 @@ export type {
   ErrorEnvelopeStacktrace,
   ErrorEnvelopeUser,
   ErrorEnvelopeV1,
-  LegacyErrorEventInput,
-  OtlpErrorLogRecordInput,
+  FlatErrorEventInput,
 } from "./utils/error-envelope";

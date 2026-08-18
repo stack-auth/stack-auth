@@ -33,7 +33,6 @@ export type IssueSymbolicationDiagnosticCode =
   | "missing_source_content"
   | "source_content_too_large"
   | "source_context_unavailable"
-  | "projection_missing"
   | "unknown";
 
 export type IssueSymbolicationDiagnostic = {
@@ -60,10 +59,19 @@ export type IssueFrameSymbolication = {
   diagnostics: IssueSymbolicationDiagnostic[],
 };
 
-export type IssueEventFrame = Omit<IssueFrame, "symbolication"> & {
+/** The parse-side frame shape: the wire frame fields minus the nested symbolication object. */
+export type IssueRawFrame = Omit<IssueFrame, "symbolication">;
+
+export type IssueEventFrame = IssueRawFrame & {
   /** Raw frame fields remain available even when the visible location is mapped. */
-  raw: IssueFrame,
+  raw: IssueRawFrame,
   symbolication: IssueFrameSymbolication | null,
+  /**
+   * Display-flattened source context, copied out of `symbolication.context` by
+   * `displayFrame`. Present only when the frame was symbolicated AND its
+   * mapped source content was available.
+   */
+  context?: { line: string, pre: string[], post: string[], symbolicated: true },
 };
 
 export type IssueExceptionValue = {
@@ -240,7 +248,7 @@ const ISSUE_SYMBOLICATION_DIAGNOSTIC_CODES: ReadonlySet<string> = new Set([
   "source_context_unavailable",
 ]);
 
-function isKnownIssueSymbolicationDiagnosticCode(value: string): value is Exclude<IssueSymbolicationDiagnosticCode, "unknown" | "projection_missing"> {
+function isKnownIssueSymbolicationDiagnosticCode(value: string): value is Exclude<IssueSymbolicationDiagnosticCode, "unknown"> {
   return ISSUE_SYMBOLICATION_DIAGNOSTIC_CODES.has(value);
 }
 
@@ -328,7 +336,7 @@ function parseFrameSymbolication(record: IssueEventRecord): IssueFrameSymbolicat
   };
 }
 
-function displayFrame(raw: IssueFrame, symbolication: IssueFrameSymbolication | null): IssueEventFrame {
+function displayFrame(raw: IssueRawFrame, symbolication: IssueFrameSymbolication | null): IssueEventFrame {
   if (symbolication?.status !== "symbolicated") return { ...raw, raw, symbolication };
   return {
     ...raw,
@@ -342,7 +350,7 @@ function displayFrame(raw: IssueFrame, symbolication: IssueFrameSymbolication | 
       context: {
         ...symbolication.context,
         symbolicated: true,
-      },
+      } satisfies NonNullable<IssueEventFrame["context"]>,
     }),
     raw,
     symbolication,
@@ -354,7 +362,7 @@ function parseFrame(value: unknown): IssueEventFrame | null {
   if (record == null) return null;
   const debugId = stringValue(valueAt(record, "debug_id"));
   const inApp = booleanValue(valueAt(record, "in_app")) ?? false;
-  const raw: IssueFrame = {
+  const raw: IssueRawFrame = {
     filename: stringValue(valueAt(record, "filename")),
     function: stringValue(valueAt(record, "function")),
     module: stringValue(valueAt(record, "module")),
@@ -489,17 +497,6 @@ export function getIssueEventPayload(occurrence: IssueEventOccurrenceProjection)
     ...occurrenceFrames.flatMap((frame) => frame.symbolication?.diagnostics ?? []),
     ...exceptionChain.flatMap((exception) => exception.frames.flatMap((frame) => frame.symbolication?.diagnostics ?? [])),
   ];
-  const projectionDiagnostics: IssueSymbolicationDiagnostic[] = occurrenceFrames.length > 0 && occurrenceFrames.every((frame) => frame.symbolication == null)
-    ? [{
-      code: "projection_missing",
-      message: "The dashboard occurrence projection exposes raw frames but no symbolication fields; the internal issue route/schema must expose the public symbolication projection before source-map results can render.",
-      debugId: null,
-      codeFile: null,
-      line: null,
-      column: null,
-      source: null,
-    }]
-    : [];
   return {
     data,
     eventId: stringValue(valueAt(data, "event_id")),
@@ -514,10 +511,10 @@ export function getIssueEventPayload(occurrence: IssueEventOccurrenceProjection)
     fingerprintOverride: stringList(valueAt(data, "fingerprint_override")),
     additionalData: parseAdditionalData(data),
     symbolicationDiagnostics: deduplicateSymbolicationDiagnostics([
-      ...parseSymbolicationDiagnostics(valueAt(data, "symbolication_diagnostics")),
+      // Occurrence-level diagnostics are a SIBLING of `data` on the projected
+      // occurrence, never nested inside it.
       ...parseSymbolicationDiagnostics(valueAt(occurrenceRecord, "symbolication_diagnostics")),
       ...frameDiagnostics,
-      ...projectionDiagnostics,
     ]),
   };
 }

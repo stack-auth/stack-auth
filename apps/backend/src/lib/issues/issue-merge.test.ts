@@ -163,8 +163,8 @@ async function seedIssue(options: SeedOptions = {}): Promise<{ id: string, short
   createdIssueIds.push(id);
 
   await prisma.$executeRaw`
-    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId")
-    SELECT ${target.id}::uuid, h, ${id}::uuid, 'hexclave-js:2026-08-01'
+    INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId", "groupingRole", "groupingVariant", "groupingProvenance")
+    SELECT ${target.id}::uuid, h, ${id}::uuid, 'hexclave-js:2026-08-01', 'PRIMARY', 'app', '[]'::jsonb
     FROM unnest(${hashes}::text[]) AS h
   `;
 
@@ -215,6 +215,13 @@ function materializationInput(ownerHash: string, count = 1): IssueBatchDelta {
     ownerHash,
     aliasHashes: [],
     groupingConfigId: DEFAULT_GROUPING_CONFIG_ID,
+    groupingProvenance: [{
+      hash: ownerHash,
+      role: "primary",
+      configId: DEFAULT_GROUPING_CONFIG_ID,
+      variant: "app",
+      fingerprint: { type: "default", source: "default", tokens: [], resolvedTokens: [] },
+    }],
     type: "TypeError",
     value: "x is not a function",
     culprit: "app/page.tsx in render",

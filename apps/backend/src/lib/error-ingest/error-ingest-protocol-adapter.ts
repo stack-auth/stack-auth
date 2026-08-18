@@ -120,24 +120,6 @@ export type ErrorIngestProtocolTruncation = {
   clientReportItems: number,
 };
 
-/**
- * Count-only legacy projection. It intentionally contains no event, message,
- * stack, request, user, or arbitrary reason payload.
- */
-export type ErrorIngestLegacyBatchOutcomeProjection = {
-  batchId: string,
-  status: ErrorIngestBatchStatus,
-  itemCount: number,
-  counts: ErrorIngestBatchCounts,
-  acceptedItems: number,
-  deduplicatedItems: number,
-  queuedItems: number,
-  rejectedItems: number,
-  truncatedClientReportEntries: number,
-  truncatedClientReportItems: number,
-  reason?: "empty_batch",
-};
-
 export type ErrorIngestProtocolAdapterLimits = {
   maxBatchIdBytes: number,
   maxItemIdBytes: number,
@@ -172,7 +154,6 @@ export type ErrorIngestProtocolProjection = {
     logs: ErrorIngestOtlpPartialSuccessProjection,
     traces: ErrorIngestOtlpPartialSuccessProjection,
   },
-  legacyBatch: ErrorIngestLegacyBatchOutcomeProjection,
   truncation: ErrorIngestProtocolTruncation,
   /** Stable for retries of the same batch and outcome decisions. */
   idempotencyKey: string,
@@ -558,19 +539,6 @@ export function createErrorIngestProtocolProjection(
   const items = outcomes.map((outcome, itemIndex) => normalizeItem(outcome, itemIndex, limits));
   const { counts, ...status } = summarizeErrorIngestOutcomes(items);
   const report = aggregateClientReport(items, limits.maxClientReportEntries);
-  const legacyBatch: ErrorIngestLegacyBatchOutcomeProjection = {
-    batchId: normalizedBatchId,
-    status: status.status,
-    itemCount: items.length,
-    counts,
-    acceptedItems: counts.accepted,
-    deduplicatedItems: counts.deduplicated,
-    queuedItems: counts.queued,
-    rejectedItems: rejectedItemCount(counts),
-    truncatedClientReportEntries: report.truncation.clientReportEntries,
-    truncatedClientReportItems: report.truncation.clientReportItems,
-    ...(status.reason === undefined ? {} : { reason: status.reason }),
-  };
 
   return {
     batchId: normalizedBatchId,
@@ -583,7 +551,6 @@ export function createErrorIngestProtocolProjection(
       logs: otlpPartialSuccess(items, "logs", limits.maxErrorMessageBytes),
       traces: otlpPartialSuccess(items, "traces", limits.maxErrorMessageBytes),
     },
-    legacyBatch,
     truncation: report.truncation,
     idempotencyKey: idempotencyKey(normalizedBatchId, items),
   };

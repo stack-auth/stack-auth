@@ -25,7 +25,7 @@ describe("QStash outbox job contracts", () => {
     });
   });
 
-  it("decodes legacy outbox rows while validating the optional job envelope", () => {
+  it("decodes outbox rows without a job envelope while validating the envelope when present", () => {
     expect(decodeQstashMessage({
       url: "/api/latest/internal/external-db-sync/sync-engine",
       body: { tenancyId: "tenancy-id" },

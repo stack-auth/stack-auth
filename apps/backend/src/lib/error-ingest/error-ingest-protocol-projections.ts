@@ -2,7 +2,6 @@ import {
   createErrorIngestItemOutcome,
   createErrorIngestProtocolProjection,
   type ErrorIngestItemDescriptor,
-  type ErrorIngestItemOutcome,
   type ErrorIngestItemOutcomeDetails,
   type ErrorIngestProtocolProjection,
 } from "@/lib/error-ingest";
@@ -23,47 +22,6 @@ function policyDetails(outcome: ErrorIngestPolicyItemOutcome): ErrorIngestItemOu
     case "dropped": { return { status: "dropped", reason: outcome.reason }; }
     case "queued": { return { status: "queued", reason: outcome.reason, retryAfterMs: outcome.retryAfterMs }; }
   }
-}
-
-/**
- * The legacy request schema validates every row before the handler runs, so
- * the current path can only prove accepted rows here. Keep the protocol
- * projection at the write boundary so future item-level normalization can add
- * filtered/rejected rows without changing the successful response contract.
- */
-export function createLegacyBatchProtocolProjection(
-  batchId: string,
-  eventCount: number,
-  spanCount: number,
-  policyOutcomes?: readonly ErrorIngestPolicyItemOutcome[],
-): ErrorIngestProtocolProjection {
-  if (policyOutcomes !== undefined) {
-    const outcomes: ErrorIngestItemOutcome[] = policyOutcomes.map(({ scrubbed: _scrubbed, scrubbedBytes: _scrubbedBytes, ...outcome }) => outcome);
-    const policyItemIds = new Set(outcomes.map((outcome) => outcome.itemId));
-    // Policy evaluation only sees `$error`/`$log` records. Add the product
-    // events and spans that bypass that policy so the legacy projection and
-    // durable client-report ledger describe the complete batch.
-    for (let itemIndex = 0; itemIndex < eventCount; itemIndex++) {
-      if (!policyItemIds.has(`event:${itemIndex}`)) {
-        outcomes.push(createErrorIngestItemOutcome({ itemId: `event:${itemIndex}`, itemType: "event" }, { status: "accepted" }));
-      }
-    }
-    for (let itemIndex = 0; itemIndex < spanCount; itemIndex++) {
-      outcomes.push(createErrorIngestItemOutcome({ itemId: `span:${itemIndex}`, itemType: "span" }, { status: "accepted" }));
-    }
-    return createErrorIngestProtocolProjection(
-      batchId,
-      outcomes,
-    );
-  }
-  const outcomes: ErrorIngestItemOutcome[] = [];
-  for (let itemIndex = 0; itemIndex < eventCount; itemIndex++) {
-    outcomes.push(createErrorIngestItemOutcome({ itemId: `event:${itemIndex}`, itemType: "event" }, { status: "accepted" }));
-  }
-  for (let itemIndex = 0; itemIndex < spanCount; itemIndex++) {
-    outcomes.push(createErrorIngestItemOutcome({ itemId: `span:${itemIndex}`, itemType: "span" }, { status: "accepted" }));
-  }
-  return createErrorIngestProtocolProjection(batchId, outcomes);
 }
 
 /**

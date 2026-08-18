@@ -56,7 +56,7 @@ export type ManagedEmailProviderListItem = {
 };
 
 import type { AdminSessionReplay, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
-export type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplaysOptions, ListSessionReplaysResult, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, SessionReplayAllEventsResult } from "../../session-replays";
+export type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplaysOptions, ListSessionReplaysResult, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, SessionReplayAllEventsResult, SessionReplayUserKind } from "../../session-replays";
 export type { AdminWorkflow, AdminWorkflowDivergenceDiagnostic, AdminWorkflowRun, AdminWorkflowRunDetails, AdminWorkflowRunsFilter, AdminWorkflowRunState, AdminWorkflowStep, AdminWorkflowStepAttempt, AdminWorkflowSyncResult, AdminWorkflowTrigger, AdminWorkflowUpgradeResult, AdminWorkflowVersion } from "../../workflows";
 
 

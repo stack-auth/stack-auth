@@ -58,7 +58,7 @@ describe("public observability search query plans", () => {
     expect(plan.query).toContain("event_at <= {rangeEnd:DateTime}");
     expect(plan.query).toContain("JSONExtractString(error_envelope, 'event_id')");
     expect(plan.query).toContain("JSONExtractString(JSONExtractRaw(error_envelope, 'tags'), {tagKey:String})");
-    expect(plan.query).toContain("JSONExtractString(toJSONString(data), 'message')");
+    expect(plan.query).toContain("JSONExtractString(error_envelope, 'message')");
     expect(plan.query).toContain("JSONExtractString(JSONExtractRaw(error_envelope, 'contexts'), {contextKey:String})");
     expect(plan.query).toContain("JSONExtractString(JSONExtractRaw(error_envelope, 'extra'), {propertyKey:String})");
     expect(plan.query).toContain("JSONExtractRaw(error_envelope, 'handled')");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { IssueFrame, IssueOccurrence } from "./issues-data";
+import type { IssueOccurrence } from "./issues-data";
 import { getIssueEventPayload, heroStack } from "./issue-event";
 
 function occurrence(data: Record<string, unknown>): Pick<IssueOccurrence, "data"> {
@@ -181,25 +181,6 @@ describe("issue event payload", () => {
     });
     expect(frame.symbolication?.diagnostics[0].message).toBe("artifact mismatch for Bearer [Filtered]");
     expect(payload.symbolicationDiagnostics[0]?.code).toBe("artifact_mismatch");
-  });
-
-  it("reports the current raw-frame projection as an explicit no-op seam", () => {
-    const rawFrame: IssueFrame = {
-      filename: "static/chunk.js",
-      function: "a",
-      module: null,
-      abs_path: "static/chunk.js",
-      lineno: 2,
-      colno: 1,
-      in_app: true,
-    };
-    const payload = getIssueEventPayload({ data: {}, frames: [rawFrame] });
-
-    expect(payload.occurrenceFrames[0]?.symbolication).toBeNull();
-    expect(payload.symbolicationDiagnostics).toContainEqual(expect.objectContaining({
-      code: "projection_missing",
-      message: expect.stringContaining("internal issue route/schema"),
-    }));
   });
 
   it("flattens symbolicated source onto the hero stack", () => {

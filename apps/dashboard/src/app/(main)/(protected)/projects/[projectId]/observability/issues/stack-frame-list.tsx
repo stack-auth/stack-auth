@@ -88,10 +88,8 @@ function StackFrameRow({ frame }: { frame: StackFrameView }) {
         {frame.in_app && <DesignBadge label="App" color="blue" size="sm" />}
         {/* Symbolication status, not context presence: a frame whose mapped
             source content couldn't be fetched still displays the MAPPED
-            filename/function/line, so it must still carry the badge. The
-            `context.symbolicated` check remains as the fallback for wire
-            frames that carry no symbolication object. */}
-        {(frame.symbolication?.status === "symbolicated" || frame.context?.symbolicated === true) && (
+            filename/function/line, so it must still carry the badge. */}
+        {frame.symbolication?.status === "symbolicated" && (
           <DesignBadge label="Mapped" color="green" size="sm" />
         )}
       </div>

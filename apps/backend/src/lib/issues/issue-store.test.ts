@@ -105,6 +105,9 @@ async function seedIssue(hash: string, options: { timesSeen?: bigint, value?: st
       hash,
       issueId: id,
       groupingConfigId: "hexclave-js:2026-08-01",
+      groupingRole: "PRIMARY",
+      groupingVariant: "app",
+      groupingProvenance: [],
     },
   });
   return id;

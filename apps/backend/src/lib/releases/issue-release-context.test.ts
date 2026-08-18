@@ -31,7 +31,7 @@ function owner(context: Record<string, string>): IssueSuspectOwner {
 describe("issue release suspect-commit joins", () => {
   it("joins a persisted suspect owner by release commit id and preserves the strategy", () => {
     const result = joinSuspectCommits({
-      owners: [owner({ commitId: COMMIT_ID, suspectCommitStrategy: "scm_based" })],
+      owners: [owner({ commit_id: COMMIT_ID, strategy: "scm_based" })],
       commits: [commit()],
     });
 

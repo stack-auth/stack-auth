@@ -3,6 +3,8 @@ import { DEFAULT_GROUPING_CONFIG_ID } from "./grouping-config";
 import { computeGrouping, getGroupingHashProvenance } from "./grouping";
 import {
   MAX_GROUPING_PROVENANCE_ENTRIES,
+  fromDurableGroupingProvenance,
+  parseDurableGroupingProvenance,
   serializeGroupingProvenance,
   toDurableGroupingProvenance,
 } from "./grouping-provenance";
@@ -90,5 +92,55 @@ describe("durable grouping provenance", () => {
     }));
 
     expect(() => toDurableGroupingProvenance(provenance)).toThrow(/16-entry limit/);
+  });
+
+  it("round-trips through the durable serialization without loss", () => {
+    const provenance: GroupingHashProvenance[] = [{
+      hash: "a".repeat(32),
+      role: "primary",
+      configId: DEFAULT_GROUPING_CONFIG_ID,
+      variant: "app",
+      fingerprint: { ...fingerprint, tokens: ["{{ default }}"], resolvedTokens: ["value"] },
+    }, {
+      hash: "b".repeat(32),
+      role: "secondary",
+      configId: DEFAULT_GROUPING_CONFIG_ID,
+      variant: "system",
+      fingerprint,
+    }];
+
+    const roundTripped = fromDurableGroupingProvenance(parseDurableGroupingProvenance(serializeGroupingProvenance(provenance)));
+    expect(roundTripped).toEqual(provenance);
+  });
+
+  it("fails loudly on values no writer produces", () => {
+    // Empty means the occurrence row was written without its decision record.
+    expect(() => parseDurableGroupingProvenance("")).toThrow(/issue_grouping_provenance/);
+    expect(() => parseDurableGroupingProvenance("[]")).toThrow(/between 1 and/);
+    expect(() => parseDurableGroupingProvenance(JSON.stringify([{ hash: "a".repeat(32), role: "owner" }]))).toThrow(/malformed entry/);
+    expect(() => parseDurableGroupingProvenance(JSON.stringify([{
+      hash: "a".repeat(32),
+      role: "primary",
+      config_id: DEFAULT_GROUPING_CONFIG_ID,
+      variant: "app",
+      fingerprint: { type: "default", source: "default", tokens: "nope", resolved_tokens: [] },
+    }]))).toThrow(/fingerprint token/);
+  });
+
+  it("refuses to narrow entries the caller has not vetted", () => {
+    const durable = parseDurableGroupingProvenance(serializeGroupingProvenance([{
+      hash: "a".repeat(32),
+      role: "primary",
+      configId: DEFAULT_GROUPING_CONFIG_ID,
+      variant: "app",
+      fingerprint,
+    }]));
+
+    expect(() => fromDurableGroupingProvenance([{ ...durable[0], config_id: "hexclave-js:retired" }])).toThrow(/unknown config id/);
+    expect(() => fromDurableGroupingProvenance([{ ...durable[0], variant: "surprise" }])).toThrow(/unknown variant/);
+    expect(() => fromDurableGroupingProvenance([{
+      ...durable[0],
+      fingerprint: { ...durable[0].fingerprint, type: "surprise" },
+    }])).toThrow(/unknown fingerprint type/);
   });
 });

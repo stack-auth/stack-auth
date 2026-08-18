@@ -64,8 +64,7 @@ type GroupingImplementation = (input: GroupingInput, configId: GroupingConfigId)
  * than a runtime surprise on the ingest path.
  */
 const GROUPING_IMPLEMENTATIONS_BY_ID: Record<GroupingConfigId, GroupingImplementation> = {
-  "hexclave-js:2026-08-01": computeGroupingV1,
-  "hexclave-js:2026-08-06": computeGroupingV2,
+  "hexclave-js:2026-08-01": computeGroupingHexclaveJs,
 };
 
 /**
@@ -124,17 +123,9 @@ export function computeGroupingWithReadableConfigs(input: GroupingInput, resolut
   return { ...primary, aliasHashes, secondaryProvenance };
 }
 
-function computeGroupingV1(input: GroupingInput, configId: GroupingConfigId): GroupingResult {
-  return computeGroupingWithRules(input, configId, false);
-}
-
-function computeGroupingV2(input: GroupingInput, configId: GroupingConfigId): GroupingResult {
-  return computeGroupingWithRules(input, configId, true);
-}
-
-function computeGroupingWithRules(input: GroupingInput, configId: GroupingConfigId, includeMessageForStackedErrors: boolean): GroupingResult {
+function computeGroupingHexclaveJs(input: GroupingInput, configId: GroupingConfigId): GroupingResult {
   const frames = input.stack === null ? [] : parseStack(input.stack, input.platform);
-  const defaultResult = computeDefaultGroupingV1(input, configId, frames, includeMessageForStackedErrors);
+  const defaultResult = computeDefaultGrouping(input, configId, frames);
   const fingerprint = resolveGroupingFingerprint(input.fingerprint, input, frames);
 
   if (fingerprint.provenance.type === "default") {
@@ -159,7 +150,7 @@ function computeGroupingWithRules(input: GroupingInput, configId: GroupingConfig
   // The occurrence schema has one config id and one alias array, not a
   // per-component provenance record. The smallest compatible representation is
   // therefore `variant: "custom"` plus the explainable in-process provenance;
-  // the normalized row persists the owner/config/variant columns already in v1.
+  // the normalized row already persists the owner/config/variant columns.
   const fingerprintLeaves = fingerprint.provenance.type === "hybrid"
     ? ["custom-fingerprint", defaultResult.ownerHash, ...fingerprint.resolvedValues]
     : ["custom-fingerprint", ...fingerprint.resolvedValues];
@@ -194,7 +185,7 @@ export function getGroupingHashProvenance(grouping: GroupingResult): GroupingHas
   ];
 }
 
-function computeDefaultGroupingV1(input: GroupingInput, configId: GroupingConfigId, frames: ParsedFrame[], includeMessageForStackedErrors: boolean): DefaultGroupingResult {
+function computeDefaultGrouping(input: GroupingInput, configId: GroupingConfigId, frames: ParsedFrame[]): DefaultGroupingResult {
   const culprit = deriveCulprit(frames);
 
   if (input.synthetic === true) {
@@ -237,7 +228,7 @@ function computeDefaultGroupingV1(input: GroupingInput, configId: GroupingConfig
   const appTuples = collapseConsecutive(frames.map((frame) => frame.inApp ? frameLeafTuple(frame) : []));
   const appFrameLeaves = appTuples.flat();
 
-  const systemHash = hashLeaves(buildLeaves(input, systemFrameLeaves, includeMessageForStackedErrors));
+  const systemHash = hashLeaves(buildLeaves(input, systemFrameLeaves));
 
   if (systemFrameLeaves.length === 0) {
     // No frame contributed anything hashable (stackless throw, or a stack of
@@ -252,7 +243,7 @@ function computeDefaultGroupingV1(input: GroupingInput, configId: GroupingConfig
   // variant's hash, and attaching that as an alias would let an unrelated
   // stackless error of the same type and message resolve to this issue.
   const hasAppVariant = frames.some((frame) => frame.inApp) && appFrameLeaves.length > 0;
-  const appHash = hasAppVariant ? hashLeaves(buildLeaves(input, appFrameLeaves, includeMessageForStackedErrors)) : null;
+  const appHash = hasAppVariant ? hashLeaves(buildLeaves(input, appFrameLeaves)) : null;
 
   // The app variant only wins when it says something different. If every frame
   // is in-app the two lists are identical, and emitting the same hash twice as
@@ -276,19 +267,27 @@ function computeDefaultGroupingV1(input: GroupingInput, configId: GroupingConfig
  * `TypeError` and a `RangeError` thrown from the same helper are different bugs
  * with different fixes, and without this leaf they share every other leaf and
  * collapse into one issue.
+ *
+ * The message deliberately does NOT contribute when frames did: messages vary
+ * per occurrence (ids, URLs, counts) far more than stacks do, and hashing them
+ * alongside a usable stack would split one bug into an issue per message shape.
  */
-function buildLeaves(input: GroupingInput, frameLeaves: string[], includeMessageForStackedErrors = false): string[] {
+function buildLeaves(input: GroupingInput, frameLeaves: string[]): string[] {
   if (frameLeaves.length === 0) return [input.type, parameterizeMessage(input.message)];
-  return includeMessageForStackedErrors
-    ? [input.type, parameterizeMessage(input.message), ...frameLeaves]
-    : [input.type, ...frameLeaves];
+  return [input.type, ...frameLeaves];
 }
 
 /**
- * The leaves one frame contributes: `[module ?? filename, function, contextLine?]`.
- * A frame that contributes none of the three contributes nothing at all — it
- * still occupies a position in the tuple list so that recursion collapse can see
- * it, but it adds no leaves.
+ * The leaves one frame contributes: `[module ?? filename, function]`.
+ * A frame that contributes neither contributes nothing at all — it still
+ * occupies a position in the tuple list so that recursion collapse can see it,
+ * but it adds no leaves.
+ *
+ * ⚠️ Symbolication is read-time and its output (mapped names, source context)
+ * never reaches this ingest-time function. Feeding any symbolication-derived
+ * value in here would change every hash in every project with no error
+ * anywhere, so doing that requires a new `GroupingConfigId`, exactly like
+ * editing the rules would.
  */
 function frameLeafTuple(frame: ParsedFrame): string[] {
   const tuple: string[] = [];
@@ -298,18 +297,6 @@ function frameLeafTuple(frame: ParsedFrame): string[] {
 
   const functionLeaf = frameFunctionLeaf(frame);
   if (functionLeaf !== null) tuple.push(functionLeaf);
-
-  // ⚠️ `context` is filled by SYMBOLICATION, which is read-time — so at ingest,
-  // where this runs, it is always absent and this branch never fires today. It
-  // is here because the leaf order is part of the config's contract and must be
-  // written down once.
-  //
-  // The trap it guards: if a future change ever symbolicates BEFORE grouping,
-  // this leaf starts contributing and every hash in every project changes with
-  // no error anywhere. Populating `context` before `computeGrouping` therefore
-  // requires a new `GroupingConfigId`, exactly like editing the rules would.
-  const contextLine = frame.context?.line.trim();
-  if (contextLine !== undefined && contextLine !== "") tuple.push(contextLine);
 
   // `lineno`/`colno` are deliberately absent from every branch above: they move
   // on any edit to the file, which would split an issue on an unrelated commit.

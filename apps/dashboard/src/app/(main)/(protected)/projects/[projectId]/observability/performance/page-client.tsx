@@ -45,6 +45,7 @@ import {
   fetchPerformanceMetrics,
   fetchPerformancePageModel,
   formatWebVitalValue,
+  isPerformanceMetricType,
   PERFORMANCE_TIME_RANGES,
   rankPageInsights,
   sumPageBehavior,
@@ -830,9 +831,17 @@ function PerformancePageClient() {
   const [timelineMetric, setTimelineMetric] = useState<"lcp" | "inp">("lcp");
   const requestSequence = useRef(0);
 
-  const selectedMetricName = useMemo(() => {
+  // The selector keys entries by `${metric_name}::${metric_type}` (one metric
+  // NAME can exist with several types), so both halves must reach the request
+  // or selecting a non-busiest (name, type) pair would chart a sibling type.
+  const selectedMetric = useMemo(() => {
     const separator = metricSelector.lastIndexOf("::");
-    return separator < 0 ? null : metricSelector.slice(0, separator);
+    if (separator < 0) return null;
+    const type = metricSelector.slice(separator + 2);
+    if (!isPerformanceMetricType(type)) {
+      throw new Error(`Metric selector value carries an unknown metric type; selector values are built from catalog entries so this should be impossible: ${metricSelector}`);
+    }
+    return { name: metricSelector.slice(0, separator), type };
   }, [metricSelector]);
 
   const loadRum = useCallback(async () => {
@@ -859,7 +868,11 @@ function PerformancePageClient() {
   const loadMetrics = useCallback(async () => {
     setMetricsError(null);
     try {
-      const next = await fetchPerformanceMetrics(adminApp, { hours, metricName: selectedMetricName });
+      const next = await fetchPerformanceMetrics(adminApp, {
+        hours,
+        metricName: selectedMetric?.name ?? null,
+        metricType: selectedMetric?.type ?? null,
+      });
       setMetricsResponse(next);
       const customCatalog = customMetricCatalog(next.catalog);
       const selected = selectedCatalogEntry(next);
@@ -873,7 +886,7 @@ function PerformancePageClient() {
     } catch (caught) {
       setMetricsError(caught instanceof Error ? caught.message : "Native metrics could not be loaded");
     }
-  }, [adminApp, hours, selectedMetricName]);
+  }, [adminApp, hours, selectedMetric]);
 
   const load = useCallback(async () => {
     await Promise.all([loadRum(), loadMetrics()]);

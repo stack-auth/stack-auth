@@ -178,7 +178,6 @@ export async function enqueueQstashMessage<TPayload extends Record<string, unkno
       ${JSON.stringify({
         url: options.message.url,
         body: options.message.body,
-        jobType: options.jobType,
         job,
         ...(options.message.flowControl === undefined ? {} : { flowControl: options.message.flowControl }),
         ...(options.message.delay === undefined ? {} : { delay: options.message.delay }),

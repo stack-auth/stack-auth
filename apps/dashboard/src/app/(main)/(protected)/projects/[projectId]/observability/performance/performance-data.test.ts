@@ -87,11 +87,21 @@ describe("performance metrics data contract", () => {
 
   it("uses the typed admin route and sends no arbitrary SQL", async () => {
     sendInternalAdminRequestMock.mockImplementation(() => Promise.resolve(new Response(JSON.stringify(responseBody()), { status: 200 })));
-    const result = await fetchPerformanceMetrics({}, { hours: 1, metricName: "queue.depth" });
+    const result = await fetchPerformanceMetrics({}, { hours: 1, metricName: "queue.depth", metricType: "gauge" });
 
     expect(result.selected_metric_name).toBe("queue.depth");
     expect(sendInternalAdminRequestMock).toHaveBeenCalledWith({}, "/internal/analytics/metrics", expect.objectContaining({
       method: "POST",
+      body: JSON.stringify({ hours: 1, metric_name: "queue.depth", metric_type: "gauge" }),
+    }));
+  });
+
+  it("resolves by name only when no metric type is selected", async () => {
+    sendInternalAdminRequestMock.mockClear();
+    sendInternalAdminRequestMock.mockImplementation(() => Promise.resolve(new Response(JSON.stringify(responseBody()), { status: 200 })));
+    await fetchPerformanceMetrics({}, { hours: 1, metricName: "queue.depth", metricType: null });
+
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith({}, "/internal/analytics/metrics", expect.objectContaining({
       body: JSON.stringify({ hours: 1, metric_name: "queue.depth" }),
     }));
   });

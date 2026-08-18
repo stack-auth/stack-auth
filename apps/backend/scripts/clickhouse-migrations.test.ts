@@ -18,7 +18,6 @@ import {
   REFRESH_TOKEN_SPAN_SELECT_SQL,
   SPANS_COLUMNS,
   OTEL_METRICS_COLUMNS,
-  SPANS_TRACE_MODEL_VERSION,
   SPANS_VIEW_SQL,
   SPAN_EVENTS_VIEW_SQL,
   SPAN_LINKS_COLUMNS,
@@ -38,7 +37,6 @@ import {
   computeSpansSubsystemFingerprint,
   buildIssueOccurrenceRollupCreateTableSql,
   buildIssueOccurrenceRollupMvSql,
-  buildLogsCreateTableSql,
   buildSpanEventsCreateTableSql,
   buildSpanLinksCreateTableSql,
   buildSpanWritesCreateTableSql,
@@ -80,11 +78,10 @@ describe("default.spans", () => {
 });
 
 describe("spans subsystem fingerprint", () => {
-  test("changes when the semantic trace model changes, even if the physical schema does not", () => {
+  test("is a stable digest of the physical spans-subsystem definitions", () => {
     const current = computeSpansSubsystemFingerprint();
     expect(current).toMatch(/^[0-9a-f]{32}$/);
-    expect(current).toBe(computeSpansSubsystemFingerprint(SPANS_TRACE_MODEL_VERSION));
-    expect(current).not.toBe(computeSpansSubsystemFingerprint("legacy-session-trace"));
+    expect(current).toBe(computeSpansSubsystemFingerprint());
   });
 });
 
@@ -154,12 +151,13 @@ describe("derived read models", () => {
 });
 
 describe("error grouping columns on analytics_internal.telemetry", () => {
-  test("logs carries grouping and canonical OTel columns without the legacy message field", () => {
-    // Fresh logs tables keep the structured `data` payload and omit only the
-    // old human-readable `message` field. OTel columns are appended after the
-    // event-shaped tenancy/correlation fields; public views define the stable
-    // contract even when an upgraded table retains extra physical columns.
-    expect(names(LOGS_COLUMNS)).toEqual([...names(EVENTS_COLUMNS).filter((name) => name !== "message"), ...ERROR_GROUPING_COLUMN_NAMES, ...ERROR_ENVELOPE_COLUMN_NAMES, ...names(OTEL_LOG_COLUMNS)]);
+  test("logs carries the full event shape plus grouping and canonical OTel columns", () => {
+    // The log/error row shape is the entire event shape — including `message`,
+    // the server-promoted human-readable occurrence text — followed by the
+    // grouping, envelope, and OTel columns appended after the event-shaped
+    // tenancy/correlation fields.
+    expect(names(LOGS_COLUMNS)).toEqual([...names(EVENTS_COLUMNS), ...ERROR_GROUPING_COLUMN_NAMES, ...ERROR_ENVELOPE_COLUMN_NAMES, ...names(OTEL_LOG_COLUMNS)]);
+    expect(names(LOGS_COLUMNS)).toContain("message");
     expect(names(EVENTS_COLUMNS).at(-1)).toBe("created_at");
 
     // The other two telemetry destinations keep the plain event shape. Errors
@@ -206,7 +204,7 @@ describe("error grouping columns on analytics_internal.telemetry", () => {
     expect(ERRORS_VIEW_SQL).toContain("FROM analytics_internal.telemetry");
     expect(LOGS_VIEW_SQL).toContain("FROM analytics_internal.telemetry");
     expect(selectColumnNames(LOGS_COLUMNS, ERROR_GROUPING_COLUMN_NAMES)).toEqual([
-      ...names(EVENTS_COLUMNS).filter((name) => name !== "message"),
+      ...names(EVENTS_COLUMNS),
       ...ERROR_ENVELOPE_COLUMN_NAMES,
       ...names(OTEL_LOG_COLUMNS),
     ]);
@@ -217,7 +215,7 @@ describe("error grouping columns on analytics_internal.telemetry", () => {
     // never filtered on, so indexing it would be pure write amplification.
     expect(LOGS_ISSUE_HASH_INDEX_DEFINITION_SQL).toBe("issue_hash TYPE bloom_filter(0.01) GRANULARITY 4");
     expect(LOGS_ISSUE_HASH_INDEX_DEFINITION_SQL).not.toContain("issue_hashes");
-    expect(buildLogsCreateTableSql("t")).toContain(`INDEX ${LOGS_ISSUE_HASH_INDEX_NAME} ${LOGS_ISSUE_HASH_INDEX_DEFINITION_SQL}`);
+    expect(buildTelemetryCreateTableSql("t")).toContain(`INDEX ${LOGS_ISSUE_HASH_INDEX_NAME} ${LOGS_ISSUE_HASH_INDEX_DEFINITION_SQL}`);
   });
 });
 
@@ -332,11 +330,11 @@ describe("issues subsystem fingerprint", () => {
     for (const name of ERROR_GROUPING_COLUMN_NAMES.filter((n) => n !== "issue_hash")) {
       expect(fingerprintInputs, `${name} must not feed the issues fingerprint`).not.toContain(name);
     }
-    // Adding a grouping column to logs changes the logs upgrade path and
-    // nothing else.
+    // Adding a grouping column to the telemetry table changes its upgrade path
+    // and nothing else.
     const baseline = computeIssuesSubsystemFingerprint();
     const widenedLogs: ClickhouseColumn[] = [...LOGS_COLUMNS, { name: "issue_platform", type: "LowCardinality(String)", default: "''" }];
-    expect(buildColumnUpgradeSql("analytics_internal.logs", widenedLogs)).toContain("issue_platform");
+    expect(buildColumnUpgradeSql("analytics_internal.telemetry", widenedLogs)).toContain("issue_platform");
     expect(computeIssuesSubsystemFingerprint()).toBe(baseline);
   });
 });
@@ -445,15 +443,6 @@ describe("clickhouse upgrade helpers (integration)", () => {
     return rows[0];
   }
 
-  async function getColumnNames(table: string): Promise<string[]> {
-    const resultSet = await client.query({
-      query: "SELECT name FROM system.columns WHERE database = {database:String} AND table = {table:String} ORDER BY position",
-      query_params: { database: testDatabase, table },
-      format: "JSONEachRow",
-    });
-    return (await resultSet.json<{ name: string }>()).map((row) => row.name);
-  }
-
   async function countRows(table: string, options: { final?: boolean } = {}): Promise<number> {
     const resultSet = await client.query({
       query: `SELECT count() AS count FROM ${testDatabase}.${table}${options.final ? " FINAL" : ""}`,
@@ -486,7 +475,7 @@ describe("clickhouse upgrade helpers (integration)", () => {
   const toClickhouseDateTime = (date: Date) => date.toISOString().replace("T", " ").replace("Z", "");
 
   async function withThrowawayDatabase<T>(callback: (database: string) => Promise<T>): Promise<T> {
-    const database = `analytics_legacy_migration_test_${randomUUID().replaceAll("-", "")}`;
+    const database = `clickhouse_migrations_test_${randomUUID().replaceAll("-", "")}`;
     await client.command({ query: `CREATE DATABASE ${database}` });
     try {
       return await callback(database);
@@ -714,63 +703,6 @@ describe("clickhouse upgrade helpers (integration)", () => {
       expect(await countRowsIn(database, "derived_probe")).toBe(3);
       expect(await countRowsIn(database, "derived_span_backfill_state")).toBe(3);
     });
-  });
-
-  test("a pre-grouping logs table receives the new columns without dropping old physical columns", async () => {
-    const upgraded = "logs_grouping_upgrade_probe";
-    const fresh = "logs_grouping_fresh_probe";
-    // The vintage that predates the grouping columns: `logs` was a byte-for-byte
-    // alias of the events shape. The additive upgrade must preserve those old
-    // physical columns while fresh tables use the OTel-first log shape.
-    await client.command({
-      query: `
-        CREATE TABLE ${testDatabase}.${upgraded} (
-            ${(EVENTS_COLUMNS as readonly ClickhouseColumn[]).map((column) => `${column.name} ${column.type}${column.default == null ? "" : ` DEFAULT ${column.default}`}`).join(",\n            ")}
-        )
-        ENGINE MergeTree
-        PARTITION BY toYYYYMM(event_at)
-        ORDER BY (project_id, branch_id, event_at)
-      `,
-    });
-    await client.command({
-      query: `INSERT INTO ${testDatabase}.${upgraded} (event_type, event_at, data, project_id, branch_id) VALUES ('$error', now64(3), '{}', 'p', 'b')`,
-    });
-
-    await client.command({ query: buildColumnUpgradeSql(`${testDatabase}.${upgraded}`, LOGS_COLUMNS) });
-    await client.command({ query: buildLogsCreateTableSql(`${testDatabase}.${fresh}`) });
-
-    // The fresh table's order is the public insert/view contract. The upgraded
-    // table keeps old message/data columns because this migration deliberately
-    // does not backfill or rewrite historical parts.
-    expect(await getColumnNames(upgraded)).toEqual([
-      ...names(EVENTS_COLUMNS),
-      ...ERROR_GROUPING_COLUMN_NAMES,
-      ...ERROR_ENVELOPE_COLUMN_NAMES,
-      ...names(OTEL_LOG_COLUMNS),
-    ]);
-    expect(await getColumnNames(fresh)).toEqual(names(LOGS_COLUMNS));
-    expect(await getColumnNames(fresh)).not.toContain("message");
-    expect(await getColumnNames(fresh)).toContain("data");
-    expect(await getColumnNames(fresh)).toContain("body");
-
-    // The pre-existing row survives and reads back as the empty defaults rather
-    // than NULL — this is what lets `issue_hash != ''` be the one and only
-    // "grouped?" predicate.
-    const resultSet = await client.query({
-      query: `SELECT occurrence_id, batch_id, issue_hash, issue_hashes, issue_variant, issue_grouping_provenance, grouping_degraded, error_frames, error_envelope FROM ${testDatabase}.${upgraded}`,
-      format: "JSONEachRow",
-    });
-    expect(await resultSet.json()).toEqual([{
-      occurrence_id: "",
-      batch_id: "",
-      issue_hash: "",
-      issue_hashes: [],
-      issue_variant: "",
-      issue_grouping_provenance: "[]",
-      grouping_degraded: 0,
-      error_frames: "",
-      error_envelope: "{}",
-    }]);
   });
 
   test("the rollup materialized view's output types match its target table exactly", async () => {
