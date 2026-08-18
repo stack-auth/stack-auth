@@ -11,10 +11,17 @@ export type { ClickHouseClient } from "@clickhouse/client";
  * The `default.*` views that customers can read through `/analytics/query`.
  * Row policies scope every one of them to `SQL_project_id`/`SQL_branch_id`.
  */
+// Drives both the row policies and the GRANT SELECT loop in
+// scripts/clickhouse-migrations.ts. Keep this list in sync with
+// GROWTH_AGENT_QUERYABLE_TABLES in src/lib/growth/metric-catalog.ts (pinned by
+// metric-catalog.test.ts): the growth agent's catalog assumes exactly these
+// tables are readable, so a table here without a policy — or a policy without a
+// catalog entry — is a bug.
 export const ANALYTICS_TABLES = [
   "events", "users", "contact_channels", "teams", "team_member_profiles",
   "team_permissions", "team_invitations", "email_outboxes",
   "project_permissions", "notification_preferences", "refresh_tokens", "connected_accounts",
+  "growth_daily_metrics", "growth_daily_ad_metrics",
 ] as const;
 
 /**
@@ -73,8 +80,29 @@ export function getClickhouseAdminClient() {
   return createClickhouseClient("admin", getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"));
 }
 
+const BOUNDED_ANALYTICS_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
+  max_bytes_before_external_group_by: "256000000",
+  max_memory_usage: "512000000",
+  max_memory_usage_for_user: "9000000000",
+  // SDK type narrows to a single algorithm; the server accepts a fallback list.
+  join_algorithm: "grace_hash,parallel_hash,hash" as ClickHouseSettings["join_algorithm"],
+};
+
+// Every query through limited_user is ultimately user- or agent-authored, including the dashboard
+// analytics endpoint and both AI SQL tools. Keep the resource ceiling at the client boundary so a
+// new caller cannot accidentally bypass it by omitting per-query settings. GROUP BYs spill before
+// reaching the per-query cap, large joins use bounded partitions, and the shared-user cap prevents
+// concurrent external queries from exhausting the whole ClickHouse cluster.
+export const EXTERNAL_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
+  ...BOUNDED_ANALYTICS_CLICKHOUSE_SETTINGS,
+};
+
 export function getClickhouseExternalClient() {
-  return createClickhouseClient("external", getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"));
+  return createClickhouseClient(
+    "external",
+    getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"),
+    EXTERNAL_CLICKHOUSE_SETTINGS,
+  );
 }
 
 // Safety net for heavy analytical reads against `analytics_internal.events`:
@@ -89,11 +117,7 @@ export function getClickhouseExternalClient() {
 // client's — count toward the same 9 GB budget. With the 30-day bounds each
 // metrics query peaks well under 100 MiB, so practical interference is low.
 export const METRICS_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
-  max_bytes_before_external_group_by: "256000000",
-  max_memory_usage: "512000000",
-  max_memory_usage_for_user: "9000000000",
-  // SDK type narrows to a single algorithm; the server accepts a fallback list.
-  join_algorithm: "grace_hash,parallel_hash,hash" as ClickHouseSettings["join_algorithm"],
+  ...BOUNDED_ANALYTICS_CLICKHOUSE_SETTINGS,
 };
 
 export function getClickhouseAdminClientForMetrics() {

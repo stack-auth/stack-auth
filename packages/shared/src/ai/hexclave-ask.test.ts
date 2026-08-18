@@ -1,6 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { callHexclaveAskAi, HEXCLAVE_ASK_PUBLIC_ERROR_MESSAGE } from "./hexclave-ask";
+import {
+  callHexclaveAskAi,
+  HEXCLAVE_ASK_PUBLIC_ERROR_MESSAGE,
+  type HexclaveAskRequestMetadata,
+} from "./hexclave-ask";
+
+const TEST_REQUEST_METADATA: HexclaveAskRequestMetadata = {
+  transport: "skill-ask",
+  requestIp: null,
+  requestIpSource: null,
+  userAgent: "test-agent",
+  requestHost: "skill.hexclave.test",
+  mcpProtocolVersion: null,
+};
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -19,6 +32,7 @@ describe("callHexclaveAskAi", () => {
       question: "How do I configure OAuth?",
       reason: "test",
       userPrompt: "How do I configure OAuth?",
+      requestMetadata: TEST_REQUEST_METADATA,
       onDiagnostic,
     })).resolves.toEqual({
       status: "error",
@@ -41,6 +55,7 @@ describe("callHexclaveAskAi", () => {
       question: "How do I configure OAuth?",
       reason: "test",
       userPrompt: "How do I configure OAuth?",
+      requestMetadata: TEST_REQUEST_METADATA,
     })).resolves.toEqual({
       status: "ok",
       text: "Use the OAuth provider configuration.",
