@@ -6,6 +6,7 @@ import {
   TV_CELEBRATION_ANIMATION_DURATION_SECONDS,
   TV_EVENT_HIGHLIGHT_DURATION_SECONDS,
   TV_TAKEOVER_DURATION_SECONDS,
+  normalizeTvProfileDisplayName,
   TvProfileConfigurationSchema,
   TvProfilePlaylistSchema,
   TvInterruptionPreferencesSchema,
@@ -53,10 +54,6 @@ export async function lockTvProfileDisplayAssignment(
       hashtextextended(${`tv-profile-display-assignment:${tenancyId}:${profileId}`}, 0)
     )
   `;
-}
-
-export function normalizeTvProfileName(displayName: string): string {
-  return displayName.normalize("NFKC").trim().toLocaleLowerCase("en-US");
 }
 
 const LegacyTvInterruptionPreferencesSchema = yupObject({
@@ -202,7 +199,7 @@ async function rowToResource(row: TvProfileDatabaseRow): Promise<TvSavedProfileR
   };
 }
 
-async function profileTableIsReady(tenancy: Tenancy): Promise<boolean> {
+export async function tvProfilePersistenceIsReady(tenancy: Tenancy): Promise<boolean> {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
   // Migration readiness gates authoritative configuration writes, so checking a
@@ -214,7 +211,7 @@ async function profileTableIsReady(tenancy: Tenancy): Promise<boolean> {
 }
 
 async function querySavedProfileRows(tenancy: Tenancy, profileId?: string): Promise<TvProfileDatabaseRow[]> {
-  if (!(await profileTableIsReady(tenancy))) return [];
+  if (!(await tvProfilePersistenceIsReady(tenancy))) return [];
   const prisma = await getPrismaClientForTenancy(tenancy);
   if (profileId == null) {
     return await prisma.tvPresentationProfile.findMany({
@@ -236,7 +233,7 @@ export async function listTvProfiles(tenancy: Tenancy): Promise<{
   savedProfiles: TvSavedProfileResource[],
   templates: TvBuiltInProfileResource[],
 }> {
-  const persistenceReady = await profileTableIsReady(tenancy);
+  const persistenceReady = await tvProfilePersistenceIsReady(tenancy);
   const rows = persistenceReady ? await querySavedProfileRows(tenancy) : [];
   return {
     persistenceReady,
@@ -262,7 +259,7 @@ export async function resolveTvProfile(
   return row == null ? null : await rowToResource(row);
 }
 
-function isSavedTvProfileId(profileId: string): boolean {
+export function isSavedTvProfileId(profileId: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(profileId);
 }
 
@@ -270,7 +267,7 @@ export async function createTvProfile(
   tenancy: Tenancy,
   configurationInput: TvProfileConfiguration,
 ): Promise<TvSavedProfileResource | null> {
-  if (!(await profileTableIsReady(tenancy))) return null;
+  if (!(await tvProfilePersistenceIsReady(tenancy))) return null;
   const configuration = await validateConfiguration(configurationInput);
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
@@ -282,7 +279,7 @@ export async function createTvProfile(
     )
     VALUES (
       ${id}::UUID, ${tenancy.id}::UUID, ${configuration.displayName},
-      ${normalizeTvProfileName(configuration.displayName)}, ${configuration.description}, 'GENERAL'::${sqlQuoteIdent(schema)}."TvPresentationMode",
+      ${normalizeTvProfileDisplayName(configuration.displayName)}, ${configuration.description}, 'GENERAL'::${sqlQuoteIdent(schema)}."TvPresentationMode",
       ${configuration.defaultDurationSeconds}, ${JSON.stringify(configuration.playlist)}::JSONB,
       ${JSON.stringify(configuration.interruptionPreferences)}::JSONB,
       ${configuration.financialVisibility === "exact" ? "EXACT" : "REDACTED"}::${sqlQuoteIdent(schema)}."TvFinancialVisibility",
@@ -297,6 +294,50 @@ export async function createTvProfile(
   return await rowToResource(row);
 }
 
+export async function duplicateSavedTvProfile(
+  tenancy: Tenancy,
+  sourceProfileId: string,
+  expectedSourceVersion: number,
+  configurationInput: TvProfileConfiguration,
+): Promise<TvSavedProfileResource | null> {
+  if (!isSavedTvProfileId(sourceProfileId)) return null;
+  if (!(await tvProfilePersistenceIsReady(tenancy))) return null;
+  const configuration = await validateConfiguration(configurationInput);
+  const schema = await getPrismaSchemaForTenancy(tenancy);
+  const prisma = await getPrismaClientForTenancy(tenancy);
+  const id = generateUuid();
+  // The source-version predicate and clone insert share one statement snapshot.
+  // A concurrent source update therefore linearizes wholly before or after the
+  // duplicate instead of allowing a stale configuration read to be inserted.
+  const rows = await prisma.$queryRaw<TvProfileDatabaseRow[]>`
+    INSERT INTO ${sqlQuoteIdent(schema)}."TvPresentationProfile" (
+      "id", "tenancyId", "displayName", "normalizedDisplayName", "description", "mode",
+      "defaultDurationSeconds", "playlist", "interruptionPreferences", "financialVisibility", "updatedAt"
+    )
+    SELECT
+      ${id}::UUID, ${tenancy.id}::UUID, ${configuration.displayName},
+      ${normalizeTvProfileDisplayName(configuration.displayName)}, ${configuration.description},
+      'GENERAL'::${sqlQuoteIdent(schema)}."TvPresentationMode",
+      ${configuration.defaultDurationSeconds}, ${JSON.stringify(configuration.playlist)}::JSONB,
+      ${JSON.stringify(configuration.interruptionPreferences)}::JSONB,
+      ${configuration.financialVisibility === "exact" ? "EXACT" : "REDACTED"}::${sqlQuoteIdent(schema)}."TvFinancialVisibility",
+      CURRENT_TIMESTAMP
+    FROM ${sqlQuoteIdent(schema)}."TvPresentationProfile" AS source_profile
+    WHERE source_profile."tenancyId" = ${tenancy.id}::UUID
+      AND source_profile."id" = ${sourceProfileId}::UUID
+      AND source_profile."version" = ${expectedSourceVersion}
+    ON CONFLICT ("tenancyId", "normalizedDisplayName") DO NOTHING
+    RETURNING "id", "displayName", "description", "mode", "defaultDurationSeconds",
+      "playlist", "interruptionPreferences", "financialVisibility", "version", "createdAt", "updatedAt"
+  `;
+  const row = rows.at(0);
+  if (row != null) return await rowToResource(row);
+  const current = (await querySavedProfileRows(tenancy, sourceProfileId)).at(0);
+  if (current == null) return null;
+  if (current.version !== expectedSourceVersion) throw new TvProfileVersionConflictError();
+  throw new TvProfileNameConflictError();
+}
+
 export async function updateTvProfile(
   tenancy: Tenancy,
   profileId: string,
@@ -305,14 +346,14 @@ export async function updateTvProfile(
 ): Promise<TvSavedProfileResource | null> {
   if (getTvBuiltInProfile(profileId) != null) throw new TvBuiltInProfileMutationError();
   if (!isSavedTvProfileId(profileId)) return null;
-  if (!(await profileTableIsReady(tenancy))) return null;
+  if (!(await tvProfilePersistenceIsReady(tenancy))) return null;
   const configuration = await validateConfiguration(configurationInput);
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
   const rows = await prisma.$queryRaw<TvProfileDatabaseRow[]>`
     UPDATE ${sqlQuoteIdent(schema)}."TvPresentationProfile"
     SET "displayName" = ${configuration.displayName},
-      "normalizedDisplayName" = ${normalizeTvProfileName(configuration.displayName)},
+      "normalizedDisplayName" = ${normalizeTvProfileDisplayName(configuration.displayName)},
       "description" = ${configuration.description},
       "defaultDurationSeconds" = ${configuration.defaultDurationSeconds},
       "playlist" = ${JSON.stringify(configuration.playlist)}::JSONB,
@@ -327,7 +368,7 @@ export async function updateTvProfile(
         SELECT 1
         FROM ${sqlQuoteIdent(schema)}."TvPresentationProfile" AS conflicting_profile
         WHERE conflicting_profile."tenancyId" = ${tenancy.id}::UUID
-          AND conflicting_profile."normalizedDisplayName" = ${normalizeTvProfileName(configuration.displayName)}
+          AND conflicting_profile."normalizedDisplayName" = ${normalizeTvProfileDisplayName(configuration.displayName)}
           AND conflicting_profile."id" <> ${profileId}::UUID
       )
     RETURNING "id", "displayName", "description", "mode", "defaultDurationSeconds",
@@ -348,27 +389,39 @@ export async function deleteTvProfile(
 ): Promise<boolean | null> {
   if (getTvBuiltInProfile(profileId) != null) throw new TvBuiltInProfileMutationError();
   if (!isSavedTvProfileId(profileId)) return false;
-  if (!(await profileTableIsReady(tenancy))) return null;
+  if (!(await tvProfilePersistenceIsReady(tenancy))) return null;
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const deleted = await retryTransaction(globalPrismaClient, async (transaction) => {
     await lockTvProfileDisplayAssignment(transaction, tenancy.id, profileId);
-    const assignedRows = await transaction.$queryRaw<Array<{ count: bigint }>>`
-      SELECT (
-        SELECT COUNT(*) FROM "TvDisplay"
+    const relationRows = await transaction.$queryRaw<Array<{
+      display_table: string | null,
+      pairing_table: string | null,
+      presentation_table: string | null,
+    }>>`
+      SELECT
+        to_regclass(${`${schema}."TvDisplay"`})::text AS display_table,
+        to_regclass(${`${schema}."TvDisplayPairingChallenge"`})::text AS pairing_table,
+        to_regclass(${`${schema}."TvProfileEventPresentation"`})::text AS presentation_table
+    `;
+    const relations = relationRows.at(0) ?? throwErr("TV profile deletion readiness returned no row.");
+    let assignedDisplayCount = 0;
+    if (relations.display_table != null) {
+      assignedDisplayCount += Number((await transaction.$queryRaw<Array<{ count: bigint }>>`
+        SELECT COUNT(*) AS "count" FROM ${sqlQuoteIdent(schema)}."TvDisplay"
         WHERE "tenancyId" = ${tenancy.id}::UUID
           AND "profileId" = ${profileId}
           AND "revokedAt" IS NULL
-      ) + (
-        SELECT COUNT(*) FROM "TvDisplayPairingChallenge"
+      `).at(0)?.count ?? 0n);
+    }
+    if (relations.pairing_table != null) {
+      assignedDisplayCount += Number((await transaction.$queryRaw<Array<{ count: bigint }>>`
+        SELECT COUNT(*) AS "count" FROM ${sqlQuoteIdent(schema)}."TvDisplayPairingChallenge"
         WHERE "approvedTenancyId" = ${tenancy.id}::UUID
           AND "approvedProfileId" = ${profileId}
-          AND "state" = 'APPROVED'::"TvDisplayPairingState"
+          AND "state" = 'APPROVED'::${sqlQuoteIdent(schema)}."TvDisplayPairingState"
           AND "expiresAt" > NOW()
-      ) AS "count"
-    `;
-    const assignedDisplayCount = Number(
-      (assignedRows.at(0) ?? throwErr("TV profile display-assignment count returned no row.")).count,
-    );
+      `).at(0)?.count ?? 0n);
+    }
     if (assignedDisplayCount > 0) throw new TvProfileAssignedToDisplaysError(assignedDisplayCount);
     const rows = await transaction.$queryRaw<Array<{ id: string }>>`
       DELETE FROM ${sqlQuoteIdent(schema)}."TvPresentationProfile"
@@ -380,11 +433,13 @@ export async function deleteTvProfile(
     if (rows.length === 0) return false;
     // Presentation rows also represent virtual built-in profiles, so there is
     // intentionally no profile foreign key to cascade this cleanup for us.
-    await transaction.$executeRaw`
-      DELETE FROM ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"
-      WHERE "tenancyId" = ${tenancy.id}::UUID
-        AND "profileId" = ${profileId}
-    `;
+    if (relations.presentation_table != null) {
+      await transaction.$executeRaw`
+        DELETE FROM ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"
+        WHERE "tenancyId" = ${tenancy.id}::UUID
+          AND "profileId" = ${profileId}
+      `;
+    }
     return true;
   });
   if (deleted) return true;

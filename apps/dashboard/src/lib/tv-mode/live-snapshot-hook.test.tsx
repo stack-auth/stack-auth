@@ -138,6 +138,34 @@ describe("useTvLiveSnapshot", () => {
     });
   });
 
+  it("replaces an initial request error with offline state when connectivity drops", async () => {
+    fetchTvSnapshotMock.mockRejectedValueOnce(new Error("request failed"));
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    const observedStates: TvLiveSnapshotState[] = [];
+
+    await act(async () => {
+      root.render(<Probe onState={(state) => {
+        observedStates.push(state);
+      }} />);
+      await Promise.resolve();
+    });
+    expect(observedStates.at(-1)?.unavailableReason).toBe("error");
+
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: false });
+    await act(async () => {
+      window.dispatchEvent(new Event("offline"));
+    });
+    expect(observedStates.at(-1)).toMatchObject({
+      snapshot: null,
+      unavailableReason: "offline",
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it("marks retained data stale and offline without discarding it", async () => {
     const container = document.createElement("div");
     const root = createRoot(container);

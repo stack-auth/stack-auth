@@ -1,6 +1,8 @@
 import {
   deleteTvProfile,
+  isSavedTvProfileId,
   resolveTvProfile,
+  tvProfilePersistenceIsReady,
   TvBuiltInProfileMutationError,
   TvProfileNameConflictError,
   TvProfileAssignedToDisplaysError,
@@ -53,6 +55,9 @@ export const GET = createSmartRouteHandler({
     body: yupObject({ profile: TvProfileResourceSchema }).noUnknown().defined(),
   }),
   handler: async ({ auth: { tenancy }, params }) => {
+    if (isSavedTvProfileId(params.profileId) && !(await tvProfilePersistenceIsReady(tenancy))) {
+      throw new StatusError(StatusError.ServiceUnavailable, "tv_profile_persistence_not_ready");
+    }
     const profile = await resolveTvProfile(tenancy, params.profileId);
     if (profile == null) throw new StatusError(StatusError.NotFound, "tv_profile_not_found");
     return { statusCode: 200, bodyType: "json", body: { profile } };
@@ -76,6 +81,9 @@ export const PATCH = createSmartRouteHandler({
   }),
   handler: async ({ auth: { tenancy }, params, body }) => {
     try {
+      if (isSavedTvProfileId(params.profileId) && !(await tvProfilePersistenceIsReady(tenancy))) {
+        throw new StatusError(StatusError.ServiceUnavailable, "tv_profile_persistence_not_ready");
+      }
       const profile = await updateTvProfile(
         tenancy,
         params.profileId,

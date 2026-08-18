@@ -24,7 +24,9 @@ import {
 import {
   createTvProfile,
   deleteTvProfile,
+  duplicateSavedTvProfile,
   TvBuiltInProfileMutationError,
+  TvProfileVersionConflictError,
   updateTvProfile,
 } from "@/lib/tv-mode/profiles";
 import { globalPrismaClient } from "@/prisma-client";
@@ -447,6 +449,39 @@ describe.sequential("TV presentation persistence (real DB)", () => {
     if (profile == null) throw new Error("TV profile persistence is unavailable");
 
     await expect(deleteTvProfile(firstTenancy, profile.id, profile.version)).resolves.toBe(true);
+  });
+
+  it("conditions a saved-profile duplicate on the source version in the insert", async () => {
+    const template = getTvBuiltInProfile("company-pulse");
+    if (template == null) throw new Error("Company Pulse TV template is missing");
+    const source = await createTvProfile(firstTenancy, {
+      ...template.configuration,
+      displayName: "Atomic Duplicate Source",
+    });
+    if (source == null) throw new Error("TV profile persistence is unavailable");
+    const updated = await updateTvProfile(firstTenancy, source.id, source.version, {
+      ...source.configuration,
+      description: "Changed after the duplicate form loaded.",
+    });
+    if (updated == null) throw new Error("TV profile update unexpectedly returned no resource");
+
+    await expect(duplicateSavedTvProfile(firstTenancy, source.id, source.version, {
+      ...source.configuration,
+      displayName: "Stale Atomic Duplicate",
+    })).rejects.toBeInstanceOf(TvProfileVersionConflictError);
+    await expect(globalPrismaClient.tvPresentationProfile.count({
+      where: { tenancyId: firstTenancy.id, displayName: "Stale Atomic Duplicate" },
+    })).resolves.toBe(0);
+
+    await expect(duplicateSavedTvProfile(firstTenancy, source.id, updated.version, {
+      ...updated.configuration,
+      displayName: "Current Atomic Duplicate",
+    })).resolves.toMatchObject({
+      configuration: {
+        displayName: "Current Atomic Duplicate",
+        description: "Changed after the duplicate form loaded.",
+      },
+    });
   });
 
   it("rejects malformed saved-profile IDs before PostgreSQL UUID casts", async () => {

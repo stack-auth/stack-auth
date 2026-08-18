@@ -27,7 +27,8 @@ export const GET = createSmartRouteHandler({
     body: TvSnapshotSchema,
   }),
   handler: async ({ auth: { tenancy }, params: { profileId } }, fullRequest) => {
-    const snapshotContract = fullRequest.headers["x-hexclave-tv-snapshot-contract"]?.at(0);
+    const snapshotContract = fullRequest.headers["x-hexclave-tv-snapshot-contract"]?.at(0)
+      ?? fullRequest.headers["x-stack-tv-snapshot-contract"]?.at(0);
     const snapshot = await buildLiveTvSnapshot({
       tenancy,
       profileId,

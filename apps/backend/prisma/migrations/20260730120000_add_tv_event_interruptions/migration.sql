@@ -57,11 +57,15 @@ CREATE TABLE "TvEventOccurrence" (
       (
         "presentationClass" = 'CELEBRATION'
         AND "lifecycle" = 'OCCURRED'
+        AND "resolvedAt" IS NULL
       )
       OR
       (
         "presentationClass" IN ('INCIDENT', 'CRITICAL_INCIDENT')
-        AND "lifecycle" IN ('ACTIVE', 'RESOLVED')
+        AND (
+          ("lifecycle" = 'ACTIVE' AND "resolvedAt" IS NULL)
+          OR ("lifecycle" = 'RESOLVED' AND "resolvedAt" IS NOT NULL)
+        )
       )
     ),
 

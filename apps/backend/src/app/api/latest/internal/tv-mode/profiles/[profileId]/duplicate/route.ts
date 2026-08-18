@@ -1,11 +1,17 @@
 import {
   createTvProfile,
+  duplicateSavedTvProfile,
+  isSavedTvProfileId,
   resolveTvProfile,
+  tvProfilePersistenceIsReady,
   TvProfileNameConflictError,
   TvProfileVersionConflictError,
 } from "@/lib/tv-mode/profiles";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { TvSavedProfileResourceSchema } from "@hexclave/shared/dist/interface/admin-tv-mode";
+import {
+  TvProfileDisplayNameSchema,
+  TvSavedProfileResourceSchema,
+} from "@hexclave/shared/dist/interface/admin-tv-mode";
 import {
   adaptSchema,
   adminAuthTypeSchema,
@@ -24,7 +30,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
     params: yupObject({ profileId: yupString().defined() }).defined(),
     body: yupObject({
-      displayName: yupString().trim().min(1).max(80).defined(),
+      displayName: TvProfileDisplayNameSchema,
       expectedSourceVersion: yupNumber().integer().min(1).nullable().defined(),
     }).noUnknown().defined(),
   }),
@@ -34,6 +40,9 @@ export const POST = createSmartRouteHandler({
     body: yupObject({ profile: TvSavedProfileResourceSchema }).noUnknown().defined(),
   }),
   handler: async ({ auth: { tenancy }, params, body }) => {
+    if (isSavedTvProfileId(params.profileId) && !(await tvProfilePersistenceIsReady(tenancy))) {
+      throw new StatusError(StatusError.ServiceUnavailable, "tv_profile_persistence_not_ready");
+    }
     const source = await resolveTvProfile(tenancy, params.profileId);
     if (source == null) throw new StatusError(StatusError.NotFound, "tv_profile_not_found");
     if (source.origin === "saved" && body.expectedSourceVersion !== source.version) {
@@ -43,12 +52,20 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, "Built-in TV templates do not have a version.");
     }
     try {
-      const profile = await createTvProfile(tenancy, {
+      const duplicateConfiguration = {
         ...source.configuration,
         displayName: body.displayName,
-      });
+      };
+      const profile = source.origin === "saved"
+        ? await duplicateSavedTvProfile(
+          tenancy,
+          source.id,
+          body.expectedSourceVersion ?? source.version,
+          duplicateConfiguration,
+        )
+        : await createTvProfile(tenancy, duplicateConfiguration);
       if (profile == null) {
-        throw new StatusError(StatusError.ServiceUnavailable, "tv_profile_persistence_not_ready");
+        throw new StatusError(StatusError.NotFound, "tv_profile_not_found");
       }
       return { statusCode: 200, bodyType: "json", body: { profile } };
     } catch (error) {

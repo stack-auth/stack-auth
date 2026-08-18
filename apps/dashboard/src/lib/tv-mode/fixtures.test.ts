@@ -61,6 +61,11 @@ describe("TV Mode centralized fixtures", () => {
 
   it("keeps reporting windows and deterministic evidence in the snapshot", () => {
     const snapshot = createTvFixtureSnapshot("project-fixture", getProfile());
+    expect(snapshot.screens.find((screen) => screen.id === "live-pulse")?.window.current).toMatchObject({
+      startsAt: "2026-07-23T00:00:00.000Z",
+      endsAt: "2026-07-23T14:32:00.000Z",
+      label: "Today · UTC",
+    });
     expect(snapshot.screens.map((screen) => ({
       id: screen.id,
       window: screen.window.current.label,
@@ -154,6 +159,10 @@ describe("TV Mode centralized fixtures", () => {
       revenueInsight: revenue?.insight,
       emailStatus: email?.sourceStatus,
       sends: email?.data?.sent,
+      inProgress: email?.data?.inProgress,
+      trendTotal: email?.data?.statusTrend.reduce((total, point) => (
+        total + point.primary + point.secondary + point.tertiary
+      ), 0),
       delivery: email?.data?.deliveryRatePercent,
       emailInsight: email?.insight,
     }).toMatchInlineSnapshot(`
@@ -162,10 +171,12 @@ describe("TV Mode centralized fixtures", () => {
         "delivery": null,
         "emailInsight": null,
         "emailStatus": "insufficient-data",
+        "inProgress": 0,
         "paymentSuccess": null,
         "revenueInsight": null,
         "revenueStatus": "insufficient-data",
         "sends": 19,
+        "trendTotal": 19,
       }
     `);
   });
@@ -194,9 +205,11 @@ describe("TV Mode centralized fixtures", () => {
     expect(JSON.stringify(revenue)).not.toContain("4823100");
     expect(JSON.stringify(revenue)).not.toContain("3128000");
 
-    const profileRedacted = createTvFixtureSnapshot("project-fixture", getProfile("engineering-office"));
-    const profileRevenue = profileRedacted.screens.find((screen) => screen.id === "revenue-payments");
-    expect(profileRevenue?.data?.financials.visibility).toBe("redacted");
+    for (const profileId of ["engineering-office", "company-pulse"]) {
+      const profileRedacted = createTvFixtureSnapshot("project-fixture", getProfile(profileId));
+      const profileRevenue = profileRedacted.screens.find((screen) => screen.id === "revenue-payments");
+      expect(profileRevenue?.data?.financials.visibility).toBe("redacted");
+    }
   });
 
   it("builds each interruption treatment centrally", () => {
@@ -311,7 +324,11 @@ describe("TV Mode centralized fixtures", () => {
       "project-fixture",
       getProfile(),
       "celebration-replaced",
-    ).presentation.highlight?.event.id).toBe("fixture-user-milestone-1000");
+    ).presentation.highlight).toMatchObject({
+      event: { id: "fixture-user-milestone-1000", occurredAt: "2026-07-23T14:31:00.000Z" },
+      animationExpiresAt: "2026-07-23T15:31:00.000Z",
+      expiresAt: "2026-07-23T20:31:00.000Z",
+    });
   });
 
   it("keeps celebration deadlines anchored to the occurrence", () => {

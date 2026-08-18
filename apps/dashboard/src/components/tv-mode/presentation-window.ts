@@ -43,7 +43,6 @@ export function useTvPresentationLauncher(projectId: string) {
   return {
     launchPresentation,
     popupBlocked,
-    dismissPopupBlocked: () => setPopupBlocked(false),
   };
 }
 

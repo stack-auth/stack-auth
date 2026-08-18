@@ -345,7 +345,7 @@ export default function PageClient() {
             description="Allow popups for this dashboard, then launch the presentation again. Your profile changes remain on this page."
           />
         ) : null}
-        {savedNoticeVisible ? (
+        {savedNoticeVisible && !hasChanges ? (
           <DesignAlert variant="success" title="Profile Saved" description="The project profile and its optimistic-concurrency version were updated." />
         ) : null}
         {saveError != null ? <DesignAlert variant="error" title="Profile Was Not Saved" description={saveError} /> : null}

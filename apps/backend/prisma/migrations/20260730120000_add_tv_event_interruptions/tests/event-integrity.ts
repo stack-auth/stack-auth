@@ -36,13 +36,17 @@ async function insertOccurrence(sql: Sql, options: {
   eventType: "USER_MILESTONE" | "EMAIL_DELIVERY_DEGRADATION",
   presentationClass: "CELEBRATION" | "INCIDENT" | "CRITICAL_INCIDENT",
   lifecycle: "OCCURRED" | "ACTIVE" | "RESOLVED",
+  resolvedAt?: Date | null,
 }): Promise<string> {
   const occurrenceId = options.occurrenceId ?? randomUUID();
+  const resolvedAt = options.resolvedAt === undefined
+    ? options.lifecycle === "RESOLVED" ? new Date() : null
+    : options.resolvedAt;
   await sql`
     INSERT INTO "TvEventOccurrence" (
       "id", "tenancyId", "eventType", "presentationClass", "lifecycle",
       "deduplicationKey", "title", "summary", "metricLabel", "metricValue",
-      "sourceLabel", "aggregateEvidence", "occurredAt", "detectedAt", "updatedAt"
+      "sourceLabel", "aggregateEvidence", "occurredAt", "detectedAt", "resolvedAt", "updatedAt"
     )
     VALUES (
       ${occurrenceId}::uuid,
@@ -59,6 +63,7 @@ async function insertOccurrence(sql: Sql, options: {
       '{}'::jsonb,
       NOW(),
       NOW(),
+      ${resolvedAt},
       NOW()
     )
   `;
@@ -98,6 +103,23 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       lifecycle,
     })).rejects.toThrow(/TvEventOccurrence_lifecycle_class_check/);
   }
+
+  await expect(insertOccurrence(sql, {
+    tenancyId: ctx.first.tenancyId,
+    deduplicationKey: "invalid-active-resolution-timestamp",
+    eventType: "EMAIL_DELIVERY_DEGRADATION",
+    presentationClass: "INCIDENT",
+    lifecycle: "ACTIVE",
+    resolvedAt: new Date(),
+  })).rejects.toThrow(/TvEventOccurrence_lifecycle_class_check/);
+  await expect(insertOccurrence(sql, {
+    tenancyId: ctx.first.tenancyId,
+    deduplicationKey: "invalid-resolved-missing-timestamp",
+    eventType: "EMAIL_DELIVERY_DEGRADATION",
+    presentationClass: "INCIDENT",
+    lifecycle: "RESOLVED",
+    resolvedAt: null,
+  })).rejects.toThrow(/TvEventOccurrence_lifecycle_class_check/);
 
   const invalidClasses = [
     ["USER_MILESTONE", "INCIDENT", "ACTIVE"],

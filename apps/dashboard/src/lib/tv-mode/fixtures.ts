@@ -37,7 +37,9 @@ export function calculateFixtureEmailRates(assessableSends: number, delivered: n
 
 function windowFrom(days: number, comparison = true) {
   const endsAt = new Date(FIXTURE_NOW);
-  const startsAt = new Date(endsAt.getTime() - days * DAY);
+  const startsAt = days === 1
+    ? new Date(Date.UTC(endsAt.getUTCFullYear(), endsAt.getUTCMonth(), endsAt.getUTCDate()))
+    : new Date(endsAt.getTime() - days * DAY);
   const comparisonEndsAt = new Date(startsAt);
   const comparisonStartsAt = new Date(comparisonEndsAt.getTime() - days * DAY);
   return {
@@ -231,7 +233,7 @@ export const TV_PROFILE_FIXTURES = [
     incidentTypes: { emailDeliveryDegradation: true, subscriptionCollectionDegradation: true },
     celebrations: { userMilestone: true, revenueMilestone: true },
     interruptionTiming: companyPulseProfile.configuration.interruptionPreferences.timing,
-    showExactFinancialValues: true,
+    showExactFinancialValues: companyPulseProfile.configuration.financialVisibility === "exact",
   },
 ] satisfies readonly TvProfileFixture[];
 
@@ -337,11 +339,14 @@ function celebrationHighlightWith(options: {
   expiresAt?: string,
   animationExpiresAt?: string,
 }): TvPresentedEventHighlight {
+  const event = options.event ?? userMilestoneEvent;
+  const occurredAt = new Date(event.occurredAt).getTime();
+  const timing = companyPulseProfile.configuration.interruptionPreferences.timing.celebration;
   return {
-    event: options.event ?? userMilestoneEvent,
+    event,
     variant: "celebration",
-    expiresAt: options.expiresAt ?? "2026-07-23T20:30:00.000Z",
-    animationExpiresAt: options.animationExpiresAt ?? "2026-07-23T15:30:00.000Z",
+    expiresAt: options.expiresAt ?? new Date(occurredAt + timing.highlightSeconds * 1000).toISOString(),
+    animationExpiresAt: options.animationExpiresAt ?? new Date(occurredAt + timing.animationSeconds * 1000).toISOString(),
   };
 }
 
@@ -411,6 +416,13 @@ export function createTvFixtureSnapshot(projectId: string, profile: TvProfileFix
       email.data.delivered = 19;
       email.data.bounced = 0;
       email.data.errors = 0;
+      email.data.inProgress = 0;
+      email.data.statusTrend = email.data.statusTrend.map((point, index, points) => ({
+        ...point,
+        primary: index === points.length - 1 ? 19 : 0,
+        secondary: 0,
+        tertiary: 0,
+      }));
       Object.assign(email.data, calculateFixtureEmailRates(19, 19, 0));
     }
   }

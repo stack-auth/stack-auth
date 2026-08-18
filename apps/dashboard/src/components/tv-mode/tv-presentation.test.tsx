@@ -8,6 +8,8 @@ import { getTvInsightPresentation, renderTvScreen } from "./screen-registry";
 import { TvPresentation } from "./tv-presentation";
 
 beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-07-23T14:32:00.000Z"));
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
 });
 
@@ -26,7 +28,6 @@ describe("TvPresentation rotation", () => {
   });
 
   it("does not restart rotation or reset the current screen when polling replaces the snapshot", async () => {
-    vi.useFakeTimers();
     const fixtureSnapshot = getTvFixtureSnapshot("project-a", "company-pulse");
     if (fixtureSnapshot == null) throw new Error("Missing company-pulse fixture");
     // Keep this polling-regression test on a uniform clock. Per-screen timing
@@ -134,6 +135,27 @@ describe("TV chart headers", () => {
 });
 
 describe("TV metric semantics", () => {
+  it("renders zero-activity stacked trend days without invalid heights", () => {
+    const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
+    const audience = snapshot?.screens.find((candidate) => candidate.id === "audience-momentum");
+    if (audience?.id !== "audience-momentum" || audience.data == null) {
+      throw new Error("Missing Audience fixture data");
+    }
+    const { container } = render(renderTvScreen({
+      ...audience,
+      data: {
+        ...audience.data,
+        lifecycle: audience.data.lifecycle.map((point) => ({
+          ...point,
+          primary: 0,
+          secondary: 0,
+          tertiary: 0,
+        })),
+      },
+    }));
+    expect(container.innerHTML).not.toContain("NaN");
+  });
+
   it("uses precise Audience, gross-revenue, and delivered-series wording", () => {
     const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
     if (snapshot == null) throw new Error("Missing company-pulse fixture");
@@ -282,7 +304,6 @@ describe("TV interruption presentation", () => {
   });
 
   it("treats escalation and recovery as new phases of the same occurrence", async () => {
-    vi.useFakeTimers();
     const incident = getTvFixtureSnapshot("project-a", "company-pulse", "incident-takeover");
     const critical = getTvFixtureSnapshot("project-a", "company-pulse", "critical-takeover");
     const recovery = getTvFixtureSnapshot("project-a", "company-pulse", "critical-recovery");
@@ -324,7 +345,6 @@ describe("TV interruption presentation", () => {
   });
 
   it("does not let rotation pause extend an absolute takeover deadline", async () => {
-    vi.useFakeTimers();
     const rotation = getTvFixtureSnapshot("project-a", "company-pulse");
     const incident = getTvFixtureSnapshot("project-a", "company-pulse", "incident-takeover");
     if (rotation == null || incident == null) throw new Error("Missing rotation-pause fixtures");
@@ -347,6 +367,19 @@ describe("TV interruption presentation", () => {
     expect(screen.getByText("Active Critical Incident")).toBeDefined();
     expect(screen.getByRole("heading", { name: "Email Delivery Degraded" })).toBeDefined();
     expect(screen.getByRole("heading", { name: "Live Pulse" })).toBeDefined();
+  });
+
+  it("subtracts snapshot transport delay from absolute takeover deadlines", async () => {
+    vi.setSystemTime(new Date("2026-07-23T14:32:30.000Z"));
+    const incident = getTvFixtureSnapshot("project-a", "company-pulse", "incident-takeover");
+    if (incident == null) throw new Error("Missing incident takeover fixture");
+
+    render(<TvPresentation snapshot={incident} onExit={() => undefined} />);
+    expect(screen.getByRole("heading", { name: "Email Delivery Degraded" })).toBeDefined();
+    await act(() => vi.advanceTimersByTime(29_999));
+    expect(screen.getByRole("heading", { name: "Email Delivery Degraded" })).toBeDefined();
+    await act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByLabelText("Screen 1 of 4")).toBeDefined();
   });
 
   it("renders recovery-specific takeover and Highlight presentations", () => {
@@ -381,7 +414,6 @@ describe("TV interruption presentation", () => {
   });
 
   it("preserves celebration canvases across polling and screen rotation", async () => {
-    vi.useFakeTimers();
     const snapshot = getTvFixtureSnapshot("project-a", "company-pulse", "celebration-highlight");
     if (snapshot == null) throw new Error("Missing celebration Highlight fixture");
 

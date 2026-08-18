@@ -66,7 +66,7 @@ function PresentationStatus({ snapshot }: { snapshot: TvSnapshot }) {
     );
   }
   return (
-    <div className="flex items-center gap-2 text-[clamp(0.68rem,0.78vw,1.8rem)] text-white/38">
+    <div className="flex items-center gap-2 text-[clamp(0.68rem,0.78vw,1.8rem)] text-white/[0.38]">
       <WifiHighIcon className="h-[1.15em] w-[1.15em] text-emerald-300/70" weight="bold" />
       Updated {formatFixtureTime(snapshot.generatedAt)}
     </div>
@@ -107,7 +107,7 @@ function EventHighlight({ highlight }: { highlight: TvPresentedEventHighlight })
             <span className="truncate text-white/40">{highlight.event.sourceLabel}</span>
             <span className="shrink-0 text-right font-semibold tabular-nums text-white/85">
               {highlight.event.metricLabel} · {highlight.event.metricValue}
-              {highlight.event.expectedRange == null ? null : <span className="ml-2 font-normal text-white/38">· {highlight.event.expectedRange}</span>}
+              {highlight.event.expectedRange == null ? null : <span className="ml-2 font-normal text-white/[0.38]">· {highlight.event.expectedRange}</span>}
             </span>
           </div>
         </div>
@@ -158,15 +158,15 @@ function EventTakeover({ takeover }: { takeover: TvPresentedTakeover }) {
         <h1 className="max-w-[14ch] text-[clamp(3rem,7vw,9rem)] font-semibold leading-[0.9] tracking-[-0.065em] text-white">
           {takeover.event.title}
         </h1>
-        <p className="mt-[clamp(1.5rem,3vh,3rem)] max-w-[48rem] text-[clamp(1rem,1.5vw,1.8rem)] leading-relaxed text-white/52">
+        <p className="mt-[clamp(1.5rem,3vh,3rem)] max-w-[48rem] text-[clamp(1rem,1.5vw,1.8rem)] leading-relaxed text-white/[0.52]">
           {takeover.event.summary}
         </p>
         <div className="mt-[clamp(2rem,5vh,5rem)]">
-          <p className="text-[clamp(0.68rem,0.85vw,1rem)] font-semibold uppercase tracking-[0.2em] text-white/38">{takeover.event.metricLabel}</p>
+          <p className="text-[clamp(0.68rem,0.85vw,1rem)] font-semibold uppercase tracking-[0.2em] text-white/[0.38]">{takeover.event.metricLabel}</p>
           <p className={`mt-2 text-[clamp(2.5rem,5vw,6rem)] font-semibold tabular-nums tracking-[-0.045em] ${isCelebration ? "text-amber-100" : isRecovery ? "text-emerald-100" : "text-rose-100"}`}>
             {takeover.event.metricValue}
           </p>
-          {takeover.event.expectedRange == null ? null : <p className="mt-3 text-[clamp(0.75rem,0.9vw,1.25rem)] text-white/42">{takeover.event.expectedRange}</p>}
+          {takeover.event.expectedRange == null ? null : <p className="mt-3 text-[clamp(0.75rem,0.9vw,1.25rem)] text-white/[0.42]">{takeover.event.expectedRange}</p>}
         </div>
       </div>
 
@@ -450,26 +450,39 @@ function CelebrationFireworks({
   );
 }
 
+function getDeadlineReferenceTime(generatedAt: string | null, previewData: boolean): number {
+  return previewData && generatedAt != null
+    ? new Date(generatedAt).getTime()
+    : new Date().getTime();
+}
+
 function useAuthoritativeDeadlineActive(
   deadline: string | null,
   generatedAt: string | null,
+  previewData: boolean,
 ): boolean {
   const [active, setActive] = useState(() => (
     deadline != null
     && generatedAt != null
-    && new Date(deadline).getTime() > new Date(generatedAt).getTime()
+    && new Date(deadline).getTime() > getDeadlineReferenceTime(generatedAt, previewData)
   ));
   useEffect(() => {
     if (deadline == null || generatedAt == null) {
       setActive(false);
       return;
     }
-    const remainingMilliseconds = Math.max(0, new Date(deadline).getTime() - new Date(generatedAt).getTime());
+    // Synthetic previews use their deterministic fixture clock. Live playback
+    // compares with receipt-time wall clock so transport latency cannot extend
+    // a server-assigned absolute presentation deadline.
+    const remainingMilliseconds = Math.max(
+      0,
+      new Date(deadline).getTime() - getDeadlineReferenceTime(generatedAt, previewData),
+    );
     setActive(remainingMilliseconds > 0);
     if (remainingMilliseconds === 0) return;
     const timeout = window.setTimeout(() => setActive(false), remainingMilliseconds);
     return () => window.clearTimeout(timeout);
-  }, [deadline, generatedAt]);
+  }, [deadline, generatedAt, previewData]);
   return active;
 }
 
@@ -556,10 +569,10 @@ export function TvPresentation({
     : null;
   const generatedAt = snapshot?.generatedAt ?? null;
   const highlight = snapshot?.presentation.highlight ?? null;
-  const timedHighlightVisible = useAuthoritativeDeadlineActive(highlight?.expiresAt ?? null, generatedAt);
+  const timedHighlightVisible = useAuthoritativeDeadlineActive(highlight?.expiresAt ?? null, generatedAt, previewData);
   const highlightVisible = highlight != null
     && (highlight.expiresAt == null || timedHighlightVisible);
-  const animationVisible = useAuthoritativeDeadlineActive(highlight?.animationExpiresAt ?? null, generatedAt);
+  const animationVisible = useAuthoritativeDeadlineActive(highlight?.animationExpiresAt ?? null, generatedAt, previewData);
   const takeoverIsCelebration = view?.type === "takeover" && view.presentedTakeover.variant === "celebration";
   const celebrationAnimationEligible = highlight?.variant === "celebration" && animationVisible;
   const celebrationAnimationActive = reducedMotion !== true
@@ -574,14 +587,15 @@ export function TvPresentation({
 
   useEffect(() => {
     if (viewType !== "takeover" || takeoverEndsAt == null || generatedAt == null || takeoverKey == null) return;
-    const remainingMilliseconds = Math.max(0, new Date(takeoverEndsAt).getTime() - new Date(generatedAt).getTime());
+    const referenceTime = previewData ? new Date(generatedAt).getTime() : new Date().getTime();
+    const remainingMilliseconds = Math.max(0, new Date(takeoverEndsAt).getTime() - referenceTime);
     if (remainingMilliseconds === 0) {
       setCompletedTakeoverKey(takeoverKey);
       return;
     }
     const timeout = window.setTimeout(() => setCompletedTakeoverKey(takeoverKey), remainingMilliseconds);
     return () => window.clearTimeout(timeout);
-  }, [generatedAt, takeoverEndsAt, takeoverKey, viewType]);
+  }, [generatedAt, previewData, takeoverEndsAt, takeoverKey, viewType]);
 
   useEffect(() => {
     if (viewType !== "screen" || playlistLength == null || rotationDurationSeconds == null) return;
@@ -711,7 +725,7 @@ export function TvPresentation({
           </div>
           <div className="flex items-center gap-2" aria-label={`Screen ${screenIndex + 1} of ${snapshot.profile.playlist.length}`}>
             {snapshot.profile.playlist.map((screenId, index) => (
-              <span key={screenId} className={`h-1.5 rounded-full transition-[width,background-color] duration-300 motion-reduce:transition-none ${index === screenIndex ? "w-8 bg-white/75" : "w-1.5 bg-white/18"}`} />
+              <span key={screenId} className={`h-1.5 rounded-full transition-[width,background-color] duration-300 motion-reduce:transition-none ${index === screenIndex ? "w-8 bg-white/75" : "w-1.5 bg-white/[0.18]"}`} />
             ))}
           </div>
           <PresentationStatus snapshot={snapshot} />

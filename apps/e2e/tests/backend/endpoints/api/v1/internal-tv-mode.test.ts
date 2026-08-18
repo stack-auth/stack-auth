@@ -5,6 +5,7 @@ import {
 } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { it } from "../../../../helpers";
 import { Project, niceBackendFetch } from "../../../backend-helpers";
+import { createLiveModeOneTimePurchaseTransaction } from "../../../helpers/payments";
 
 it("returns one validated, project-scoped TV snapshot for an admin", async ({ expect }) => {
   const firstProject = await Project.createAndSwitch();
@@ -20,6 +21,18 @@ it("returns one validated, project-scoped TV snapshot for an admin", async ({ ex
     presentation: { highlight: null, takeover: null },
   });
 
+  const legacyContractResponse = await niceBackendFetch(
+    "/api/v1/internal/tv-mode/profiles/company-pulse/snapshot",
+    {
+      accessType: "admin",
+      headers: { "x-stack-tv-snapshot-contract": "2" },
+    },
+  );
+  expect(legacyContractResponse.status).toBe(200);
+  expect(legacyContractResponse.body.profile.screenDurations).toHaveLength(
+    legacyContractResponse.body.profile.playlist.length,
+  );
+
   const secondProject = await Project.createAndSwitch();
   const secondResponse = await niceBackendFetch(
     "/api/v1/internal/tv-mode/profiles/company-pulse/snapshot",
@@ -32,7 +45,7 @@ it("returns one validated, project-scoped TV snapshot for an admin", async ({ ex
 });
 
 it("persists project-scoped TV profiles with duplication and optimistic concurrency", async ({ expect }) => {
-  await Project.createAndSwitch();
+  await createLiveModeOneTimePurchaseTransaction();
   const template = getTvBuiltInProfile("company-pulse");
   if (template == null) throw new Error("Company Pulse must exist.");
 
@@ -141,9 +154,12 @@ it("persists project-scoped TV profiles with duplication and optimistic concurre
     { strict: true },
   );
   const revenueScreen = immediateRedactedSnapshot.screens.find((screen) => screen.id === "revenue-payments");
-  if (revenueScreen?.data != null) {
-    expect(revenueScreen.data.financials.visibility).toBe("redacted");
+  if (revenueScreen?.id !== "revenue-payments" || revenueScreen.data == null) {
+    throw new Error(
+      `The live payment fixture must produce Revenue & Payments data for redaction coverage (status: ${revenueScreen?.sourceStatus ?? "missing"}, diagnostic: ${revenueScreen?.diagnosticCode ?? "missing"}).`,
+    );
   }
+  expect(revenueScreen.data.financials.visibility).toBe("redacted");
 
   const staleUpdateResponse = await niceBackendFetch(`/api/v1/internal/tv-mode/profiles/${created.id}`, {
     method: "PATCH",
@@ -240,6 +256,21 @@ it("rejects non-admin access and unknown TV profile resources", async ({ expect 
     { accessType: "server" },
   );
   expect(nonAdminResponse.status).toBe(401);
+
+  const expandedNormalizedNameResponse = await niceBackendFetch(
+    "/api/v1/internal/tv-mode/profiles",
+    {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        configuration: {
+          ...template.configuration,
+          displayName: "ﷺ".repeat(5),
+        },
+      },
+    },
+  );
+  expect(expandedNormalizedNameResponse.status).toBe(400);
 
   const unknownProfileResponse = await niceBackendFetch(
     "/api/v1/internal/tv-mode/profiles/unknown%20profile/snapshot",

@@ -248,11 +248,28 @@ describe("TvSnapshotSchema", () => {
           event,
           variant: "critical-incident",
           startedAt: snapshot.generatedAt,
-          endsAt: null,
+          endsAt: snapshot.generatedAt,
         },
         highlight: null,
       },
     }, { strict: true })).rejects.toThrow();
+    await expect(TvSnapshotSchema.validate({
+      ...snapshot,
+      presentation: {
+        takeover: null,
+        highlight: {
+          event: {
+            ...event,
+            presentationClass: "celebration",
+            status: "resolved",
+            type: "user-milestone",
+          },
+          variant: "celebration",
+          expiresAt: "2026-07-25T14:00:00.000Z",
+          animationExpiresAt: "2026-07-25T13:00:00.000Z",
+        },
+      },
+    }, { strict: true })).rejects.toThrow("inconsistent");
     await expect(TvSnapshotSchema.validate({
       ...snapshot,
       presentation: {
@@ -314,6 +331,16 @@ describe("TvProfileConfigurationSchema", () => {
         },
       },
     }, { strict: true })).rejects.toThrow("must not outlive");
+  });
+
+  it("rejects display names whose normalized uniqueness key exceeds storage", async () => {
+    const companyPulse = getTvBuiltInProfile("company-pulse");
+    if (companyPulse == null) throw new Error("Company Pulse must exist.");
+    await expect(TvProfileConfigurationSchema.validate({
+      ...companyPulse.configuration,
+      // Each character expands to an 18-character Arabic phrase under NFKC.
+      displayName: "ﷺ".repeat(5),
+    }, { strict: true })).rejects.toThrow("after normalization");
   });
 });
 

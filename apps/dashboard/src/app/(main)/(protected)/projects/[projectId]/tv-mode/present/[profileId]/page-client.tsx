@@ -57,23 +57,29 @@ export default function PageClient() {
   const screenParam = useSearchParams().get("screen");
   const fixtureVariant = isTvFixtureVariant(fixtureParam) ? fixtureParam : null;
   const adminApp = useAdminApp();
-  const [fixtureProfile, setFixtureProfile] = useState<TvProfileResource | null>(null);
-  const [fixtureLoadFailed, setFixtureLoadFailed] = useState(false);
+  const fixtureLoadKey = fixtureVariant == null ? null : `${profileId}\u0000${fixtureVariant}`;
+  const [fixtureLoad, setFixtureLoad] = useState<{
+    key: string,
+    profile: TvProfileResource | null,
+    failed: boolean,
+  } | null>(null);
+  const fixtureProfile = fixtureLoad?.key === fixtureLoadKey ? fixtureLoad.profile : null;
+  const fixtureLoadFailed = fixtureLoad?.key === fixtureLoadKey && fixtureLoad.failed;
   useEffect(() => {
-    if (fixtureVariant == null) return;
+    if (fixtureLoadKey == null) return;
     let active = true;
     runAsynchronously(async () => {
       try {
         const profile = await fetchTvProfileOrThrow(adminApp, profileId);
-        if (active) setFixtureProfile(profile);
+        if (active) setFixtureLoad({ key: fixtureLoadKey, profile, failed: false });
       } catch {
-        if (active) setFixtureLoadFailed(true);
+        if (active) setFixtureLoad({ key: fixtureLoadKey, profile: null, failed: true });
       }
     });
     return () => {
       active = false;
     };
-  }, [adminApp, fixtureVariant, profileId]);
+  }, [adminApp, fixtureLoadKey, profileId]);
   const liveSnapshot = useTvLiveSnapshot({
     adminApp,
     profileId,
@@ -91,7 +97,7 @@ export default function PageClient() {
   return (
     <TvPresentation
       snapshot={snapshot}
-      loading={fixtureVariant === "loading" || (fixtureVariant != null && fixtureProfile == null && !fixtureLoadFailed) || (fixtureVariant == null && liveSnapshot.loading)}
+      loading={(fixtureVariant === "loading" && !fixtureLoadFailed) || (fixtureVariant != null && fixtureProfile == null && !fixtureLoadFailed) || (fixtureVariant == null && liveSnapshot.loading)}
       unavailableReason={fixtureVariant == null
         ? liveSnapshot.unavailableReason
         : fixtureLoadFailed

@@ -133,7 +133,7 @@ function TvMetric({ label, value, detail, hero = false }: {
 }) {
   return (
     <div className="min-w-0">
-      <p className="text-[clamp(0.68rem,0.8vw,2rem)] font-semibold uppercase tracking-[0.18em] text-white/42">{label}</p>
+      <p className="text-[clamp(0.68rem,0.8vw,2rem)] font-semibold uppercase tracking-[0.18em] text-white/[0.42]">{label}</p>
       <p className={`${hero ? "mt-3 text-[clamp(3.5rem,6.8vw,17rem)]" : "mt-2 text-[clamp(1.45rem,2.2vw,5.6rem)]"} font-semibold leading-none tabular-nums tracking-[-0.055em] text-white`}>
         {value}
       </p>
@@ -159,7 +159,7 @@ function TvScreenFrame({ eyebrow, title, description, icon, accentClassName, hea
             {icon}{eyebrow}
           </div>
           <h1 className="text-[clamp(2.2rem,4vw,10rem)] font-semibold leading-none tracking-[-0.05em] text-white">{title}</h1>
-          <p className="mt-[clamp(0.55rem,1.2vh,1.5rem)] max-w-[clamp(32rem,42vw,84rem)] text-[clamp(0.8rem,1vw,2.5rem)] leading-relaxed text-white/46">{description}</p>
+          <p className="mt-[clamp(0.55rem,1.2vh,1.5rem)] max-w-[clamp(32rem,42vw,84rem)] text-[clamp(0.8rem,1vw,2.5rem)] leading-relaxed text-white/[0.46]">{description}</p>
         </div>
         {headerAccessory == null ? null : (
           <div className="shrink-0">{headerAccessory}</div>
@@ -185,7 +185,7 @@ function TvChartHeader({
     <div className="flex items-end justify-between">
       <div>
         <p className={`text-[clamp(0.68rem,0.8vw,2rem)] font-semibold uppercase tracking-[0.18em] ${accentClassName}`}>{title}</p>
-        <p className="mt-1 text-[clamp(0.75rem,0.9vw,2.2rem)] text-white/38">{subtitle}</p>
+        <p className="mt-1 text-[clamp(0.75rem,0.9vw,2.2rem)] text-white/[0.38]">{subtitle}</p>
       </div>
       {trailing}
     </div>
@@ -203,7 +203,7 @@ function TvLineChart({ points, color, label }: { points: TvTrendPoint[], color: 
   const yAxisValues = scale.ticks;
   return (
     <div className="relative h-full min-h-[11rem] pl-[clamp(2.4rem,2.8vw,6rem)]" role="img" aria-label={label}>
-      <div className="absolute bottom-[12%] left-0 top-[12%] flex flex-col justify-between text-right text-[clamp(0.66rem,0.72vw,1.75rem)] font-medium tabular-nums text-white/38">
+      <div className="absolute bottom-[12%] left-0 top-[12%] flex flex-col justify-between text-right text-[clamp(0.66rem,0.72vw,1.75rem)] font-medium tabular-nums text-white/[0.38]">
         {yAxisValues.map((value) => <span key={value}>{formatCompact(Math.round(value))}</span>)}
       </div>
       <div className="relative h-full">
@@ -219,7 +219,7 @@ function TvLineChart({ points, color, label }: { points: TvTrendPoint[], color: 
           <polygon points={`0,100 ${coordinates} 100,100`} fill={`url(#${gradientId})`} />
           <polyline points={coordinates} fill="none" stroke={color} strokeWidth="2.4" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        <div className="absolute inset-x-0 bottom-0 flex justify-between text-[clamp(0.68rem,0.76vw,1.85rem)] font-medium text-white/48">
+        <div className="absolute inset-x-0 bottom-0 flex justify-between text-[clamp(0.68rem,0.76vw,1.85rem)] font-medium text-white/[0.48]">
           {points.map((point) => <span key={point.label}>{point.label}</span>)}
         </div>
       </div>
@@ -245,21 +245,24 @@ function TvStackedBars({ points, colors, labels }: {
           </span>
         ))}
       </div>
-      <div className="absolute bottom-0 left-0 top-[clamp(2rem,3vw,6rem)] flex flex-col justify-between text-right text-[clamp(0.66rem,0.72vw,1.75rem)] font-medium tabular-nums text-white/38">
+      <div className="absolute bottom-0 left-0 top-[clamp(2rem,3vw,6rem)] flex flex-col justify-between text-right text-[clamp(0.66rem,0.72vw,1.75rem)] font-medium tabular-nums text-white/[0.38]">
         {yAxisValues.map((value) => <span key={value}>{formatCompact(Math.round(value))}</span>)}
       </div>
       <div className="relative flex min-h-0 flex-1 items-end justify-around gap-[clamp(0.5rem,1.5vw,2rem)] border-b border-white/[0.08]">
         {yAxisValues.map((value) => <div key={value} className="pointer-events-none absolute inset-x-0 border-t border-dashed border-white/[0.06]" style={{ bottom: `${(value / chartMaximum) * 100}%` }} />)}
-        {points.map((point) => (
-          <div key={point.label} className="relative z-10 flex h-full flex-1 flex-col items-center justify-end">
-            <div className="flex w-[clamp(1.2rem,2.2vw,6rem)] flex-col-reverse overflow-hidden rounded-t-lg shadow-[0_0_30px_rgba(139,92,246,0.08)]" style={{ height: `${((point.primary + point.secondary + point.tertiary) / chartMaximum) * 88}%` }}>
-              {[point.primary, point.secondary, point.tertiary].map((value, index) => (
-                <span key={colors[index]} style={{ height: `${(value / (point.primary + point.secondary + point.tertiary)) * 100}%`, backgroundColor: colors[index] }} />
-              ))}
+        {points.map((point) => {
+          const pointTotal = point.primary + point.secondary + point.tertiary;
+          return (
+            <div key={point.label} className="relative z-10 flex h-full flex-1 flex-col items-center justify-end">
+              <div className="flex w-[clamp(1.2rem,2.2vw,6rem)] flex-col-reverse overflow-hidden rounded-t-lg shadow-[0_0_30px_rgba(139,92,246,0.08)]" style={{ height: `${(pointTotal / chartMaximum) * 88}%` }}>
+                {[point.primary, point.secondary, point.tertiary].map((value, index) => (
+                  <span key={colors[index]} style={{ height: `${pointTotal === 0 ? 0 : (value / pointTotal) * 100}%`, backgroundColor: colors[index] }} />
+                ))}
+              </div>
+              <span className="mt-2 text-[clamp(0.68rem,0.76vw,1.85rem)] font-medium text-white/[0.48]">{point.label}</span>
             </div>
-            <span className="mt-2 text-[clamp(0.68rem,0.76vw,1.85rem)] font-medium text-white/48">{point.label}</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -285,7 +288,7 @@ function Insight({
       {explanatory
         ? <InfoIcon className="mt-0.5 h-[clamp(1.25rem,1.1vw,2.5rem)] w-[clamp(1.25rem,1.1vw,2.5rem)] shrink-0" weight="fill" />
         : <CheckCircleIcon className="mt-0.5 h-[clamp(1.25rem,1.1vw,2.5rem)] w-[clamp(1.25rem,1.1vw,2.5rem)] shrink-0" weight="fill" />}
-      <p className="text-[clamp(0.78rem,0.95vw,2.24rem)] leading-relaxed text-white/76">{children}</p>
+      <p className="text-[clamp(0.78rem,0.95vw,2.24rem)] leading-relaxed text-white/[0.76]">{children}</p>
     </div>
   );
 }
@@ -357,10 +360,10 @@ function GlassPanel({
   children: ReactNode,
 }) {
   const toneClass = {
-    cyan: "border-cyan-300/12 bg-[radial-gradient(circle_at_12%_8%,rgba(34,211,238,0.13),transparent_42%),linear-gradient(145deg,rgba(34,211,238,0.055),rgba(255,255,255,0.018))] shadow-[0_30px_100px_rgba(8,145,178,0.08)]",
-    violet: "border-violet-300/12 bg-[radial-gradient(circle_at_12%_8%,rgba(139,92,246,0.16),transparent_42%),linear-gradient(145deg,rgba(139,92,246,0.065),rgba(255,255,255,0.018))] shadow-[0_30px_100px_rgba(109,40,217,0.09)]",
-    emerald: "border-emerald-300/12 bg-[radial-gradient(circle_at_12%_8%,rgba(52,211,153,0.14),transparent_42%),linear-gradient(145deg,rgba(52,211,153,0.055),rgba(255,255,255,0.018))] shadow-[0_30px_100px_rgba(5,150,105,0.08)]",
-    amber: "border-amber-300/12 bg-[radial-gradient(circle_at_12%_8%,rgba(251,191,36,0.15),transparent_42%),linear-gradient(145deg,rgba(251,191,36,0.055),rgba(255,255,255,0.018))] shadow-[0_30px_100px_rgba(217,119,6,0.08)]",
+    cyan: "border-cyan-300/[0.12] bg-[radial-gradient(circle_at_12%_8%,rgba(34,211,238,0.13),transparent_42%),linear-gradient(145deg,rgba(34,211,238,0.055),rgba(255,255,255,0.018))] shadow-[0_30px_100px_rgba(8,145,178,0.08)]",
+    violet: "border-violet-300/[0.12] bg-[radial-gradient(circle_at_12%_8%,rgba(139,92,246,0.16),transparent_42%),linear-gradient(145deg,rgba(139,92,246,0.065),rgba(255,255,255,0.018))] shadow-[0_30px_100px_rgba(109,40,217,0.09)]",
+    emerald: "border-emerald-300/[0.12] bg-[radial-gradient(circle_at_12%_8%,rgba(52,211,153,0.14),transparent_42%),linear-gradient(145deg,rgba(52,211,153,0.055),rgba(255,255,255,0.018))] shadow-[0_30px_100px_rgba(5,150,105,0.08)]",
+    amber: "border-amber-300/[0.12] bg-[radial-gradient(circle_at_12%_8%,rgba(251,191,36,0.15),transparent_42%),linear-gradient(145deg,rgba(251,191,36,0.055),rgba(255,255,255,0.018))] shadow-[0_30px_100px_rgba(217,119,6,0.08)]",
   }[tone];
   return (
     <div className={`relative min-h-0 overflow-hidden rounded-[clamp(1.5rem,2vw,5rem)] border backdrop-blur-sm ${toneClass} ${className ?? ""}`}>
@@ -661,8 +664,8 @@ function SourceStateScreen({
       <div className="flex h-full items-center justify-center rounded-[2rem] border border-white/[0.08] bg-white/[0.025]">
         <div className="max-w-3xl text-center">
           <ShieldWarningIcon className="mx-auto h-12 w-12 text-white/25" weight="duotone" />
-          <p className="mt-5 text-[clamp(1.5rem,2.8vw,7rem)] font-medium tracking-[-0.03em] text-white/82">{presentation.message}</p>
-          <p className="mt-4 text-[clamp(0.75rem,0.95vw,2.2rem)] text-white/38">{screen.sourceLabel} · {presentation.detail}</p>
+          <p className="mt-5 text-[clamp(1.5rem,2.8vw,7rem)] font-medium tracking-[-0.03em] text-white/[0.82]">{presentation.message}</p>
+          <p className="mt-4 text-[clamp(0.75rem,0.95vw,2.2rem)] text-white/[0.38]">{screen.sourceLabel} · {presentation.detail}</p>
         </div>
       </div>
     </TvScreenFrame>

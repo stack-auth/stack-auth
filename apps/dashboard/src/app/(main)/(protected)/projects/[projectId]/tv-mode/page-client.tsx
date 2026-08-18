@@ -36,6 +36,7 @@ export default function PageClient() {
   const adminApp = useAdminApp();
   const { launchPresentation, popupBlocked } = useTvPresentationLauncher(projectId);
   const [profiles, setProfiles] = useState<TvProfileResource[] | null>(null);
+  const [loadedProjectId, setLoadedProjectId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [persistenceReady, setPersistenceReady] = useState(true);
 
@@ -46,15 +47,23 @@ export default function PageClient() {
         const result = await fetchTvProfilesOrThrow(adminApp);
         if (!active) return;
         setProfiles([...result.savedProfiles, ...result.templates]);
+        setLoadedProjectId(projectId);
         setPersistenceReady(result.persistenceReady);
+        setLoadError(false);
       } catch {
-        if (active) setLoadError(true);
+        if (active) {
+          setProfiles(null);
+          setLoadedProjectId(projectId);
+          setLoadError(true);
+        }
       }
     });
     return () => {
       active = false;
     };
-  }, [adminApp]);
+  }, [adminApp, projectId]);
+  const visibleProfiles = loadedProjectId === projectId ? profiles : null;
+  const visibleLoadError = loadedProjectId === projectId && loadError;
 
   return (
     <PageLayout
@@ -79,8 +88,8 @@ export default function PageClient() {
         title="Project Presentation Profiles"
         description="Choose a ready-to-use template or create a profile tailored to this project."
       />
-      {!persistenceReady ? <DesignAlert variant="error" title="Profile Storage Isn’t Ready" description="TV Mode needs its profile storage update before you can save changes." /> : null}
-      {loadError ? <DesignAlert variant="error" title="Profiles Couldn’t Be Loaded" description="Refresh the page to try again. Your existing profiles and presentations are unchanged." /> : null}
+      {loadedProjectId === projectId && !persistenceReady ? <DesignAlert variant="error" title="Profile Storage Isn’t Ready" description="TV Mode needs its profile storage update before you can save changes." /> : null}
+      {visibleLoadError ? <DesignAlert variant="error" title="Profiles Couldn’t Be Loaded" description="Refresh the page to try again. Your existing profiles and presentations are unchanged." /> : null}
       {popupBlocked ? (
         <DesignAlert
           variant="error"
@@ -90,12 +99,12 @@ export default function PageClient() {
       ) : null}
 
       <div className="space-y-4">
-        {profiles == null && !loadError ? (
+        {visibleProfiles == null && !visibleLoadError ? (
           <DesignCard gradient="default" glassmorphic>
             <Typography variant="secondary">Loading Presentation Profiles…</Typography>
           </DesignCard>
         ) : null}
-        {profiles?.map((profile) => {
+        {visibleProfiles?.map((profile) => {
           const configuration = profile.configuration;
           const enabledScreens = configuration.playlist;
           return (

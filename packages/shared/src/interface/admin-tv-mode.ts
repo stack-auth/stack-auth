@@ -327,6 +327,7 @@ const TvPresentedEventHighlightSchema = yupObject({
     ) return false;
     if (highlight.variant === "celebration") {
       return highlight.event.presentationClass === "celebration"
+        && highlight.event.status === "active"
         && expiresAt != null
         && animationExpiresAt != null
         && animationExpiresAt <= expiresAt;
@@ -409,6 +410,23 @@ export type TvProfileSnapshot = yup.InferType<typeof TvProfileSnapshotSchema>;
 export type TvSnapshot = yup.InferType<typeof TvSnapshotSchema>;
 
 export const TV_PROFILE_DURATION_SECONDS = [15, 16, 18, 20, 30] as const;
+export const TV_PROFILE_DISPLAY_NAME_MAX_LENGTH = 80;
+
+export function normalizeTvProfileDisplayName(displayName: string): string {
+  return displayName.normalize("NFKC").trim().toLocaleLowerCase("en-US");
+}
+
+export const TvProfileDisplayNameSchema = yupString()
+  .trim()
+  .min(1)
+  .max(TV_PROFILE_DISPLAY_NAME_MAX_LENGTH)
+  .test(
+    "normalized-display-name-length",
+    `TV profile names must remain within ${TV_PROFILE_DISPLAY_NAME_MAX_LENGTH} characters after normalization`,
+    (displayName) => displayName == null
+      || Array.from(normalizeTvProfileDisplayName(displayName)).length <= TV_PROFILE_DISPLAY_NAME_MAX_LENGTH,
+  )
+  .defined();
 
 export const TvProfilePlaylistEntrySchema = yupObject({
   screenId: TvScreenIdSchema,
@@ -453,7 +471,7 @@ export const TvInterruptionPreferencesSchema = yupObject({
 );
 
 export const TvProfileConfigurationSchema = yupObject({
-  displayName: yupString().trim().min(1).max(80).defined(),
+  displayName: TvProfileDisplayNameSchema,
   description: yupString().max(240).defined(),
   mode: yupString().oneOf(["general"]).defined(),
   defaultDurationSeconds: yupNumber().integer().oneOf(TV_PROFILE_DURATION_SECONDS).defined(),

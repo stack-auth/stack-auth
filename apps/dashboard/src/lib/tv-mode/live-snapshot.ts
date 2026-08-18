@@ -110,7 +110,11 @@ export function useTvSnapshotPolling(options: {
     const updateConnectionState = () => {
       const retained = snapshotRef.current;
       if (retained == null) {
-        if (navigator.onLine) runAsynchronously(refresh());
+        if (navigator.onLine) {
+          runAsynchronously(refresh());
+        } else {
+          setUnavailableReason("offline");
+        }
         return;
       }
       const nextSnapshot = getRetainedSnapshotState(retained, new Date(), navigator.onLine);
