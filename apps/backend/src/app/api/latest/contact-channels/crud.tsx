@@ -239,12 +239,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
 
     const crud = contactChannelToCrud(updatedContactChannel);
     if (shouldRecordAdminAudit(auth)) {
-      const changedPaths: string[] = [];
-      for (const [key, value] of Object.entries(data)) {
-        if (value !== undefined) {
-          changedPaths.push(key);
-        }
-      }
+      const changedPaths = Object.keys(data);
       await recordAuditEvent({
         tenancy: auth.tenancy,
         auth,

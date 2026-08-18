@@ -103,7 +103,6 @@ async function recordUserDirectoryAuditsFromUpdate(options: {
   // from the pre/post CRUD snapshots so the Compliance details column can render them.
   const patchForAudit: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
-    if (value === undefined) continue;
     if (USER_UPDATE_AUDIT_EXCLUDED_FIELDS.has(key)) continue;
     if (coveredBySpecializedAction.has(key)) continue;
     patchForAudit[key] = value;

@@ -267,12 +267,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     // Renames, profile image, and client / client-read-only / server metadata share
     // one team.updated event with field-level before/after (same shape as user.updated).
     if (shouldRecordAdminAudit(auth)) {
-      const patchForAudit: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(data)) {
-        if (value !== undefined) {
-          patchForAudit[key] = value;
-        }
-      }
+      const patchForAudit: Record<string, unknown> = { ...data };
       const metadata = buildUpdatedFieldsAuditMetadata({
         source: "teams.update",
         patch: patchForAudit,

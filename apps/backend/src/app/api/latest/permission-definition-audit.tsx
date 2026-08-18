@@ -23,8 +23,12 @@ function snapshotPermissionDefinitionFromConfig(
   permissionId: string,
   scope: PermissionDefinitionScope,
 ): PermissionDefinitionSnapshot | null {
-  const definition = tenancy.config.rbac.permissions[permissionId];
-  if (definition == null || definition.scope !== scope) {
+  const permissions = tenancy.config.rbac.permissions;
+  if (!(permissionId in permissions)) {
+    return null;
+  }
+  const definition = permissions[permissionId];
+  if (definition.scope !== scope) {
     return null;
   }
   return {

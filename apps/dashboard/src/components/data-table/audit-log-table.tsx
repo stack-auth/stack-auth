@@ -382,14 +382,11 @@ function parseFieldPathParts(path: string): FieldPathParts {
     return { groupLabel: null, fieldLabel: known, fullLabel: known };
   }
 
-  const oauthMatch = /^auth\.oauth\.providers\.([^.]+)(?:\.(.+))?$/.exec(path);
-  if (oauthMatch != null) {
-    const providerLabel = humanizeProviderId(oauthMatch[1] ?? "");
+  const oauthFieldMatch = /^auth\.oauth\.providers\.([^.]+)\.(.+)$/.exec(path);
+  if (oauthFieldMatch != null) {
+    const providerLabel = humanizeProviderId(oauthFieldMatch[1]);
     const groupLabel = `OAuth · ${providerLabel}`;
-    const fieldPath = oauthMatch[2];
-    if (fieldPath == null || fieldPath === "") {
-      return { groupLabel: null, fieldLabel: groupLabel, fullLabel: groupLabel };
-    }
+    const fieldPath = oauthFieldMatch[2];
     const fieldLabel = OAUTH_PROVIDER_FIELD_LABELS.get(fieldPath)
       ?? fieldPath.split(".").map(humanizeSegment).join(" · ");
     return {
@@ -398,15 +395,17 @@ function parseFieldPathParts(path: string): FieldPathParts {
       fullLabel: `${groupLabel} · ${fieldLabel}`,
     };
   }
+  const oauthProviderMatch = /^auth\.oauth\.providers\.([^.]+)$/.exec(path);
+  if (oauthProviderMatch != null) {
+    const groupLabel = `OAuth · ${humanizeProviderId(oauthProviderMatch[1])}`;
+    return { groupLabel: null, fieldLabel: groupLabel, fullLabel: groupLabel };
+  }
 
-  const domainMatch = /^domains\.trustedDomains\.([^.]+)(?:\.(.+))?$/.exec(path);
-  if (domainMatch != null) {
-    const domainId = humanizeSegment(domainMatch[1] ?? "");
+  const domainFieldMatch = /^domains\.trustedDomains\.([^.]+)\.(.+)$/.exec(path);
+  if (domainFieldMatch != null) {
+    const domainId = humanizeSegment(domainFieldMatch[1]);
     const groupLabel = `Trusted domain · ${domainId}`;
-    const fieldPath = domainMatch[2];
-    if (fieldPath == null || fieldPath === "") {
-      return { groupLabel: null, fieldLabel: groupLabel, fullLabel: groupLabel };
-    }
+    const fieldPath = domainFieldMatch[2];
     const fieldLabel = TRUSTED_DOMAIN_FIELD_LABELS.get(fieldPath)
       ?? fieldPath.split(".").map(humanizeSegment).join(" · ");
     return {
@@ -414,6 +413,11 @@ function parseFieldPathParts(path: string): FieldPathParts {
       fieldLabel,
       fullLabel: `${groupLabel} · ${fieldLabel}`,
     };
+  }
+  const domainOnlyMatch = /^domains\.trustedDomains\.([^.]+)$/.exec(path);
+  if (domainOnlyMatch != null) {
+    const groupLabel = `Trusted domain · ${humanizeSegment(domainOnlyMatch[1])}`;
+    return { groupLabel: null, fieldLabel: groupLabel, fullLabel: groupLabel };
   }
 
   const fullLabel = path.split(".").map(humanizeSegment).join(" · ");
