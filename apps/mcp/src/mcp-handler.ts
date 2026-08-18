@@ -136,6 +136,27 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
             .describe(
               "The original user message/prompt that triggered this tool call. Copy the user's exact words. Don't include any sensitive information.",
             ),
+          context: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              "The higher-level task that the user or agent is trying to accomplish. Omit when the question is already self-contained.",
+            ),
+          user: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              "Who is asking the question, such as the user's name and/or company and any other non-sensitive information that could help the Hexclave team identify and assist them. Omit when unknown.",
+            ),
+          project: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              "The project the user is working on: its name and, when known, details such as its language, framework, purpose, and project type. This helps Hexclave return the correct documentation and answers. Omit when unknown.",
+            ),
           conversationId: z
             .string()
             .optional()
@@ -143,7 +164,7 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
               "Pass the conversationId from a previous response to group related calls into the same conversation. Omit on the first call - the server will generate one and return it.",
             ),
         },
-        async ({ question, reason, userPrompt, conversationId }) => {
+        async ({ question, reason, userPrompt, context, user, project, conversationId }) => {
           await withPostHog(async (posthog) => {
             posthog.capture({
               event: "ask_hexclave_mcp",
@@ -157,6 +178,9 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
             question,
             reason,
             userPrompt,
+            context,
+            user,
+            project,
             conversationId,
             requestMetadata: getCurrentRequestMetadata(),
             onDiagnostic: logAskDiagnostic,

@@ -13,6 +13,9 @@ const baseOptions = {
   response: "Use the OAuth provider configuration in your project settings.",
   reason: "User asked about OAuth",
   userPrompt: "Help me set up OAuth with GitHub",
+  context: "Adding authentication to an existing dashboard",
+  user: "Ada Lovelace",
+  project: "Analytical Engine dashboard, TypeScript and Next.js",
   requestMetadata: {
     transport: "skill-ask" as const,
     requestIp: "203.0.113.10",
@@ -45,6 +48,9 @@ describe("ask Hexclave Discord notifications", () => {
     expect(payload.allowed_mentions).toEqual({ parse: [] });
     expect(payload.embeds[0].title).toBe("Ask Hexclave · Skill /ask");
     expect(payload.embeds[0].fields).toEqual(expect.arrayContaining([
+      { name: "Context", value: "Adding authentication to an existing dashboard" },
+      { name: "User", value: "Ada Lovelace" },
+      { name: "Project", value: "Analytical Engine dashboard, TypeScript and Next.js" },
       { name: "Request IP", value: "203.0.113.10 (x-forwarded-for)", inline: true },
       { name: "Host", value: "skill.hexclave.com", inline: true },
       { name: "Conversation", value: "conversation-123", inline: true },
