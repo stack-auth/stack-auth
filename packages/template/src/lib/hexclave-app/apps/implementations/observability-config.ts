@@ -108,7 +108,3 @@ export function normalizeTraceSampleRate(options: ObservabilityOptions | undefin
   }
   return sampleRate;
 }
-
-// Error processors are runtime callbacks. They are intentionally omitted by the
-// client JSON serializer; a callback cannot safely cross an SSR serialization
-// boundary. The other observability fields remain JSON-native.

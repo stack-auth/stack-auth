@@ -1,9 +1,6 @@
 /**
- * Path graph layout using ForceAtlas2-style simulation with:
- * 1. Landing page detection → average distance for soft x-position
- * 2. ForceAtlas2 forces with collision avoidance
- * 3. Spring strength proportional to log(clicks)
- * 4. Edge bundling for parallel edges
+ * Path graph layout: landing-page distance for a soft x-position, ForceAtlas2
+ * forces with collision avoidance, and spring strength proportional to traffic.
  */
 
 export type GraphNode = {
@@ -20,11 +17,9 @@ export type GraphEdge = {
   from: string,
   to: string,
   count: number,
-  /** Weight (linear): raw transition count */
   weight: number,
 };
 
-// Layout constants
 const CARD_HEIGHT = 60;
 const ITERATIONS = 500;
 const GRAVITY = 0.005;
@@ -42,10 +37,6 @@ function stableUnitValue(value: string, salt: number): number {
   return (hash >>> 0) / 4294967295;
 }
 
-/**
- * Detect landing pages: pages with high outbound relative to inbound,
- * or common root paths like "/", "/home", etc.
- */
 function findLandingPages(nodes: GraphNode[], edges: GraphEdge[]): Set<string> {
   const inbound = new Map<string, number>();
   const outbound = new Map<string, number>();
@@ -76,16 +67,15 @@ function findLandingPages(nodes: GraphNode[], edges: GraphEdge[]): Set<string> {
   if (landings.size === 0) {
     const sorted = [...nodes].sort((a, b) => (outbound.get(b.id) ?? 0) - (outbound.get(a.id) ?? 0));
     for (let i = 0; i < Math.min(3, sorted.length); i++) {
-      landings.add(sorted[i]!.id);
+      const node = sorted[i];
+      if (node === undefined) break;
+      landings.add(node.id);
     }
   }
 
   return landings;
 }
 
-/**
- * Compute average shortest-path distance from landing pages using BFS.
- */
 function computeDistanceFromLandings(
   nodes: GraphNode[],
   edges: GraphEdge[],
@@ -110,8 +100,10 @@ function computeDistanceFromLandings(
     dist.set(landing, 0);
 
     while (queue.length > 0) {
-      const current = queue.shift()!;
-      const currentDist = dist.get(current)!;
+      const current = queue.shift();
+      if (current === undefined) break;
+      const currentDist = dist.get(current);
+      if (currentDist === undefined) continue;
       const neighbors = adj.get(current) ?? [];
       for (const { to } of neighbors) {
         if (!dist.has(to)) {
@@ -129,20 +121,13 @@ function computeDistanceFromLandings(
   const avgDist = new Map<string, number>();
   let maxDist = 0;
   for (const [nodeId, dists] of distances) {
-    if (dists.length > 0) {
-      const avg = dists.reduce((a, b) => a + b, 0) / dists.length;
-      avgDist.set(nodeId, avg);
-      maxDist = Math.max(maxDist, avg);
-    } else {
-      avgDist.set(nodeId, maxDist + 1);
-    }
+    if (dists.length === 0) continue;
+    const avg = dists.reduce((a, b) => a + b, 0) / dists.length;
+    avgDist.set(nodeId, avg);
+    maxDist = Math.max(maxDist, avg);
   }
-
-  // Normalize unreachable nodes
-  for (const [nodeId, d] of avgDist) {
-    if (d > maxDist) {
-      avgDist.set(nodeId, maxDist + 1);
-    }
+  for (const n of nodes) {
+    if (!avgDist.has(n.id)) avgDist.set(n.id, maxDist + 1);
   }
 
   return avgDist;
@@ -159,28 +144,18 @@ type SimNode = {
   targetX: number,
 };
 
-/**
- * ForceAtlas2-style layout with:
- * - Soft x-constraint from landing page distance
- * - Repulsion inversely proportional to distance
- * - Spring attraction proportional to log(clicks)
- * - Collision avoidance based on card dimensions
- */
 export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode[] {
   if (nodes.length === 0) return [];
 
-  // Find landing pages and compute distances
   const landings = findLandingPages(nodes, edges);
   const distFromLanding = computeDistanceFromLandings(nodes, edges, landings);
 
-  // Normalize distances to x-range
   const maxDist = Math.max(...distFromLanding.values(), 1);
   // The old node-count-based spread made a 150-page graph roughly 7,500px
   // wide before fitting. Stage count describes navigation depth; node count
   // does not, so cap the overview around a readable desktop canvas.
   const xSpread = Math.max(720, Math.min(2200, (maxDist + 1) * 320));
 
-  // Initialize simulation nodes
   const simNodes: SimNode[] = nodes.map((n, i) => {
     const dist = distFromLanding.get(n.id) ?? 0;
     const targetX = (dist / maxDist) * xSpread;
@@ -200,13 +175,12 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
   });
 
   const nodeIndex = new Map<string, number>();
-  for (let i = 0; i < simNodes.length; i++) {
-    nodeIndex.set(simNodes[i]!.id, i);
+  for (const [i, node] of simNodes.entries()) {
+    nodeIndex.set(node.id, i);
   }
 
   const maxWeight = edges.reduce((m, e) => Math.max(m, e.weight), 1);
 
-  // Collision padding
   const collisionPadX = 30;
   const collisionPadY = 25;
   const collisionH = CARD_HEIGHT / 2 + collisionPadY;
@@ -215,17 +189,16 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
     const alpha = 1 - iter / ITERATIONS;
     const cool = 0.1 + 0.9 * alpha;
 
-    // Repulsion between all pairs + collision avoidance
     for (let i = 0; i < simNodes.length; i++) {
       for (let j = i + 1; j < simNodes.length; j++) {
-        const a = simNodes[i]!;
-        const b = simNodes[j]!;
+        const a = simNodes[i];
+        const b = simNodes[j];
+        if (a === undefined || b === undefined) break;
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         let dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < MIN_DIST) dist = MIN_DIST;
 
-        // Repulsion
         const repForce = REPULSION_SCALE * cool / (dist * dist);
         const fx = (dx / dist) * repForce;
         const fy = (dy / dist) * repForce;
@@ -235,8 +208,6 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
         b.vx += fx;
         b.vy += fy;
 
-        // Collision avoidance: push apart if rectangular bounds overlap
-        // Use per-node width for accurate collision detection
         const collisionW = (a.width + b.width) / 2 + collisionPadX;
         const overlapX = collisionW - Math.abs(dx);
         const overlapY = collisionH * 2 - Math.abs(dy);
@@ -251,15 +222,15 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
       }
     }
 
-    // Spring attraction along edges, strength ∝ log(clicks)
-    // Reverse x-force when arrow points left to bias left-to-right flow
+    // Reverse x-force when the arrow points left so the layout stays left-to-right.
     for (const edge of edges) {
       const ai = nodeIndex.get(edge.from);
       const bi = nodeIndex.get(edge.to);
       if (ai == null || bi == null) continue;
 
-      const a = simNodes[ai]!;
-      const b = simNodes[bi]!;
+      const a = simNodes[ai];
+      const b = simNodes[bi];
+      if (a === undefined || b === undefined) continue;
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
@@ -267,8 +238,7 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
 
       const strength = 0.008 * (edge.weight / maxWeight) * cool;
       const fy = dy * strength;
-      // Reverse x-component when edge points left (to.x < from.x)
-      // This makes backward edges repulsive on x, reinforcing left-to-right flow
+      // Backward edges repel on x so they cannot fold the graph right-to-left.
       const fx = dx < 0 ? -(dx * strength) : dx * strength;
 
       a.vx += fx;
@@ -277,39 +247,33 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
       b.vy -= fy;
     }
 
-    // Horizontal alignment bias: strong edges pull nodes toward same y-level
-    // Weak edges don't care about vertical alignment
     for (const edge of edges) {
       const ai = nodeIndex.get(edge.from);
       const bi = nodeIndex.get(edge.to);
       if (ai == null || bi == null) continue;
 
-      const a = simNodes[ai]!;
-      const b = simNodes[bi]!;
+      const a = simNodes[ai];
+      const b = simNodes[bi];
+      if (a === undefined || b === undefined) continue;
       const dy = b.y - a.y;
 
-      // Strength proportional to normalized edge weight (squared for emphasis)
       const relWeight = edge.weight / maxWeight;
       const alignStrength = 0.012 * relWeight * relWeight * cool;
       const fy = dy * alignStrength;
 
-      // Pull both nodes toward their shared y-midpoint
       a.vy += fy;
       b.vy -= fy;
     }
 
-    // Soft x-constraint: pull toward target x based on distance from landings
     for (const node of simNodes) {
       const xDiff = node.targetX - node.x;
       node.vx += xDiff * X_CONSTRAINT_STRENGTH * cool;
     }
 
-    // Gravity toward center (y-axis only)
     for (const node of simNodes) {
       node.vy -= node.y * GRAVITY * cool;
     }
 
-    // Apply velocity with damping
     for (const node of simNodes) {
       node.vx *= DAMPING;
       node.vy *= DAMPING;
@@ -318,11 +282,10 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
     }
   }
 
-  // Restore full node data with updated positions
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
-  return simNodes.map((n) => ({
-    ...nodeById.get(n.id)!,
-    x: n.x,
-    y: n.y,
-  }));
+  return simNodes.flatMap((n) => {
+    const original = nodeById.get(n.id);
+    if (original === undefined) return [];
+    return [{ ...original, x: n.x, y: n.y }];
+  });
 }

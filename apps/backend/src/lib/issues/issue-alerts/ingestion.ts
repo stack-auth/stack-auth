@@ -17,7 +17,15 @@ import type { IssueBatchDelta } from "../issue-materialization-contract";
 import type { IssueBatchApplyOutcome } from "../issue-store";
 import type { IssueAlertMatch, IssueAlertPredicate, IssueAlertRule, IssueAlertRuleScope } from "./types";
 
-const MAX_FREQUENCY_WINDOWS = 64;
+/**
+ * Per-QUERY chunk size, not a cap on how many windows get counted. Every
+ * configured window must produce a count: the evaluator treats a missing
+ * window as `frequency_unavailable`, so silently truncating the collected set
+ * would make rules beyond the truncation point never alert, with no error
+ * anywhere. Windows beyond one chunk cost one extra ClickHouse query each —
+ * acceptable for the rare tenant with >64 distinct windows.
+ */
+const MAX_FREQUENCY_WINDOWS_PER_QUERY = 64;
 const MAX_FREQUENCY_COUNT = 1_000_000_000;
 
 type IssueAlertOccurrenceRow = { error_envelope: string | null };
@@ -51,9 +59,11 @@ export function collectIssueAlertFrequencyWindows(rules: readonly IssueAlertRule
     for (const predicate of rulePredicates(rule)) {
       if (predicate.type !== "frequency") continue;
       windows.add(predicate.windowSeconds);
-      if (windows.size >= MAX_FREQUENCY_WINDOWS) return [...windows];
     }
   }
+  // The total is bounded by rule count × predicate cap, both enforced at rule
+  // save time, so collecting everything cannot run away; loadFrequencyCounts
+  // chunks the ClickHouse work.
   return [...windows];
 }
 
@@ -104,37 +114,41 @@ async function loadOccurrenceEnvelope(tenancy: Tenancy, occurrenceId: string | n
 
 async function loadFrequencyCounts(
   tenancy: Tenancy,
-  input: IssueBatchDelta,
+  hashes: readonly string[],
   windows: readonly number[],
   now: Date,
 ): Promise<ReadonlyMap<number, number>> {
-  if (windows.length === 0) return new Map();
-  const hashes = [input.ownerHash, ...input.aliasHashes];
+  if (windows.length === 0 || hashes.length === 0) return new Map();
   const client = getSharedClickhouseAdminClient();
-  const rangeStarts = windows.map((windowSeconds) => Math.floor((now.getTime() - windowSeconds * 1000) / 1000));
-  // Alert rules can request up to 64 windows. Scanning the same issue rows once
-  // per window multiplied ClickHouse I/O by the number of rules; conditional
+  const counts = new Map<number, number>();
+  // One query per chunk of windows. Scanning the same issue rows once per
+  // window multiplied ClickHouse I/O by the number of rules; conditional
   // aggregates keep every second-precise window exact while reading the widest
-  // requested window once.
-  const result = await client.query({
-    query: buildIssueAlertFrequencyCountsQuery(windows),
-    query_params: {
-      projectId: tenancy.project.id,
-      branchId: tenancy.branchId,
-      hashes,
-      earliestRangeStart: Math.min(...rangeStarts),
-      ...Object.fromEntries(rangeStarts.map((rangeStart, index) => [`rangeStart${index}`, rangeStart])),
-    },
-    format: "JSONEachRow",
-  });
-  const rows = await result.json<Record<string, string | number>>();
-  const row = rows[0] ?? {};
-  return new Map(windows.map((windowSeconds, index) => {
-    const raw = row[`count_${index}`] ?? "0";
-    const count = Number(raw);
-    if (!Number.isSafeInteger(count) || count < 0) throw new Error("ClickHouse returned an invalid issue-alert frequency count");
-    return [windowSeconds, Math.min(count, MAX_FREQUENCY_COUNT)] as const;
-  }));
+  // requested window once per chunk.
+  for (let offset = 0; offset < windows.length; offset += MAX_FREQUENCY_WINDOWS_PER_QUERY) {
+    const chunk = windows.slice(offset, offset + MAX_FREQUENCY_WINDOWS_PER_QUERY);
+    const rangeStarts = chunk.map((windowSeconds) => Math.floor((now.getTime() - windowSeconds * 1000) / 1000));
+    const result = await client.query({
+      query: buildIssueAlertFrequencyCountsQuery(chunk),
+      query_params: {
+        projectId: tenancy.project.id,
+        branchId: tenancy.branchId,
+        hashes: [...hashes],
+        earliestRangeStart: Math.min(...rangeStarts),
+        ...Object.fromEntries(rangeStarts.map((rangeStart, index) => [`rangeStart${index}`, rangeStart])),
+      },
+      format: "JSONEachRow",
+    });
+    const rows = await result.json<Record<string, string | number>>();
+    const row = rows[0] ?? {};
+    for (const [index, windowSeconds] of chunk.entries()) {
+      const raw = row[`count_${index}`] ?? "0";
+      const count = Number(raw);
+      if (!Number.isSafeInteger(count) || count < 0) throw new Error("ClickHouse returned an invalid issue-alert frequency count");
+      counts.set(windowSeconds, Math.min(count, MAX_FREQUENCY_COUNT));
+    }
+  }
+  return counts;
 }
 
 async function enqueueMatchInTransaction(
@@ -181,6 +195,27 @@ function ownershipRoutingKey(issueId: string, routing: NonNullable<Extract<Issue
   return JSON.stringify([issueId, routing]);
 }
 
+async function issueStillOwnsHashInTransaction(
+  tx: PrismaClientTransaction,
+  tenancy: Tenancy,
+  issueId: string,
+  hash: string,
+): Promise<boolean> {
+  // The ownership check is part of the same serializable transaction as the
+  // delivery claim. FOR UPDATE makes a concurrent unmerge linearize before or
+  // after this decision instead of moving the hash between the check and the
+  // durable enqueue.
+  const rows = await tx.$queryRaw<Array<{ hash: string }>>`
+    SELECT "hash"
+    FROM "IssueHash"
+    WHERE "tenancyId" = ${tenancy.id}::uuid
+      AND "issueId" = ${issueId}::uuid
+      AND "hash" = ${hash}
+    FOR UPDATE
+  `;
+  return rows.length > 0;
+}
+
 export async function dispatchIssueAlertsForMaterialization(options: {
   tenancy: Tenancy,
   outcomes: readonly IssueBatchApplyOutcome[],
@@ -215,10 +250,21 @@ export async function dispatchIssueAlertsForMaterialization(options: {
     select: { id: true, shortId: true, type: true, value: true, culprit: true, status: true },
   });
   const issues = new Map(issueRows.map((issue) => [issue.id, issue]));
+  const issueHashRows = await prisma.issueHash.findMany({
+    where: { tenancyId: options.tenancy.id, issueId: { in: outcomeIds } },
+    select: { issueId: true, hash: true },
+  });
+  const ownedHashesByIssueId = new Map<string, string[]>();
+  for (const row of issueHashRows) {
+    const hashes = ownedHashesByIssueId.get(row.issueId);
+    if (hashes === undefined) ownedHashesByIssueId.set(row.issueId, [row.hash]);
+    else hashes.push(row.hash);
+  }
   const rules = records.map((record) => record.rule);
   const frequencyWindows = collectIssueAlertFrequencyWindows(rules);
   const needsEnvelope = rules.some(ruleNeedsOccurrenceEnvelope);
   const ownershipResolutionCache = new Map<string, Promise<OwnershipRoutingResolution>>();
+  const frequencyCountsCache = new Map<string, Promise<ReadonlyMap<number, number>>>();
 
   for (const outcome of options.outcomes) {
     const input = inputsByHash.get(outcome.ownerHash);
@@ -228,7 +274,17 @@ export async function dispatchIssueAlertsForMaterialization(options: {
     const envelope = needsEnvelope
       ? await loadOccurrenceEnvelope(options.tenancy, input.occurrenceId ?? null)
       : undefined;
-    const frequencyCounts = await loadFrequencyCounts(options.tenancy, input, frequencyWindows, options.receivedAt);
+    // This batch snapshot supplies the signal and frequency cache without an
+    // N+1 lookup. The matched-delivery path below rechecks the exact hash under
+    // the claim transaction, because an unmerge can repoint it after this read.
+    const ownedHashes = ownedHashesByIssueId.get(outcome.issueId) ?? [];
+    if (!ownedHashes.includes(outcome.ownerHash)) continue;
+    const frequencyCacheKey = JSON.stringify([...ownedHashes].sort());
+    const cachedFrequencyCounts = frequencyCountsCache.get(frequencyCacheKey);
+    const pendingFrequencyCounts = cachedFrequencyCounts
+      ?? loadFrequencyCounts(options.tenancy, ownedHashes, frequencyWindows, options.receivedAt);
+    if (cachedFrequencyCounts === undefined) frequencyCountsCache.set(frequencyCacheKey, pendingFrequencyCounts);
+    const frequencyCounts = await pendingFrequencyCounts;
     const signal = buildIssueAlertSignal({
       scope,
       outcome,
@@ -255,15 +311,19 @@ export async function dispatchIssueAlertsForMaterialization(options: {
         routingResolution = await pending;
       }
 
-      const delivery = await retryTransaction(prisma, async (tx) => await enqueueMatchInTransaction(
-        tx,
-        options.tenancy,
-        scope,
-        record.databaseId,
-        evaluation,
-        options.receivedAt,
-        routingResolution,
-      ), { level: "serializable" });
+      const delivery = await retryTransaction(prisma, async (tx) => {
+        if (!await issueStillOwnsHashInTransaction(tx, options.tenancy, outcome.issueId, outcome.ownerHash)) return null;
+        return await enqueueMatchInTransaction(
+          tx,
+          options.tenancy,
+          scope,
+          record.databaseId,
+          evaluation,
+          options.receivedAt,
+          routingResolution,
+        );
+      }, { level: "serializable" });
+      if (delivery === null) continue;
       if (delivery.claim.status === "claimed") {
         result.claimed += 1;
         if (delivery.enqueued) result.enqueued += 1;

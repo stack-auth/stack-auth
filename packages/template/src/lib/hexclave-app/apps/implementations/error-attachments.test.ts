@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ErrorAttachmentInput, PendingErrorAttachment } from "../interfaces/error-capture";
 import {
   assertErrorAttachmentDeliveryConfigured,
@@ -13,6 +13,12 @@ import {
 const EVENT_ID = "0123456789abcdef0123456789abcdef";
 
 describe("error attachments", () => {
+  afterEach(() => {
+    // The retry test fakes global timers; leaked fake timers would make any
+    // later real-timeout test hang or silently mis-order.
+    vi.useRealTimers();
+  });
+
   it("clones bounded string and binary inputs without putting bytes in event data", () => {
     const bytes = new Uint8Array([1, 2, 3]);
     const input: ErrorAttachmentInput = { data: bytes, filename: "dump.bin", contentType: "application/octet-stream" };

@@ -1,4 +1,3 @@
-import { TraceFlags } from "@opentelemetry/api";
 import { generateOtelSpanId } from "./otel-context";
 import { assertValidSpanStartInput, getCustomTelemetryDataError, rejectedPreCaught, resolveEndedAtMs, withSpanImpl, type Span, type SpanContext, type StartSpanOptions } from "./telemetry-core";
 
@@ -14,13 +13,23 @@ export function createInertSpanHandle(options: {
   startedAtMs: number,
   parentSpanId: string | null,
   initialData: Record<string, unknown>,
+  /** The resolved parent's flags/state, when known. See SpanContext for the omitted-flags contract. */
+  traceFlags?: number,
+  traceState?: string,
 }): Span {
   let accumulatedData = { ...options.initialData };
   let ended = false;
+  // The inert handle must not DOWNGRADE the trace decision it inherited: a
+  // hardcoded TraceFlags.NONE here would make every later real span that uses
+  // spanContext() as its parent unsampled (parent-based samplers drop it) even
+  // when the upstream context was sampled. Pass the resolved flags through
+  // when known, and otherwise omit them — omitted flags mean "sampled" per the
+  // SpanContext contract.
   const context: SpanContext = {
     traceId: options.traceId,
     spanId: options.spanId,
-    traceFlags: TraceFlags.NONE,
+    ...options.traceFlags === undefined ? {} : { traceFlags: options.traceFlags },
+    ...options.traceState === undefined ? {} : { traceState: options.traceState },
   };
 
   let span!: Span;
@@ -53,6 +62,9 @@ export function createInertSpanHandle(options: {
         startedAtMs: startOptions?.startedAtMs ?? Date.now(),
         parentSpanId: options.spanId,
         initialData: { ...startOptions?.data ?? {} },
+        // Children stay in the same trace, so they inherit its sampling state.
+        ...options.traceFlags === undefined ? {} : { traceFlags: options.traceFlags },
+        ...options.traceState === undefined ? {} : { traceState: options.traceState },
       });
     },
     withSpan: <T,>(spanType: string, optionsOrFn: StartSpanOptions | ((child: Span) => Promise<T> | T), maybeFn?: (child: Span) => Promise<T> | T) =>

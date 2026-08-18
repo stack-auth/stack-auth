@@ -39,7 +39,7 @@ import { PageLayout } from "../../page-layout";
 import { StickyPageHeader } from "../../sticky-page-header";
 import { useAdminApp } from "../../use-admin-app";
 import { getBucketGranularity } from "../bucket-granularity";
-import { formatDuration } from "../format";
+import { formatCount, formatDuration } from "../format";
 import { traceDetailHref } from "../issues/issue-links";
 import {
   fetchPerformanceMetrics,
@@ -105,13 +105,9 @@ function customMetricCatalog(catalog: readonly PerformanceMetricCatalogEntry[]):
   return catalog.filter((entry) => !WEB_VITAL_METRICS.some((metric) => metric.metricName === entry.metric_name));
 }
 
-function formatCount(value: number): string {
-  if (!Number.isFinite(value)) throw new Error(`Cannot format a non-finite count: ${value}`);
-  if (value < 10_000) return value.toLocaleString();
-  if (value < 1_000_000) return `${(value / 1_000).toFixed(value < 100_000 ? 1 : 0)}k`;
-  return `${(value / 1_000_000).toFixed(value < 10_000_000 ? 1 : 0)}M`;
-}
-
+// Rounds to whole percents on purpose: these are coarse summary shares, not
+// the dense one-decimal cells the Services table renders. Count formatting, by
+// contrast, is shared — see `formatCount` in `../format`.
 function formatPercent(ratio: number): string {
   return `${Math.round(ratio * 100)}%`;
 }

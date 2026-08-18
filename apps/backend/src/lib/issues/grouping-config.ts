@@ -85,8 +85,8 @@ export type GroupingConfigResolution = {
  * defaulted, because defaulting would re-group the project's whole history.
  */
 export function isGroupingConfigId(value: unknown): value is GroupingConfigId {
-  // Comparing against the literal array (rather than `GROUPING_CONFIGS.has(value as ...)`)
-  // keeps this free of type casts.
+  // Compare against the literal array rather than `GROUPING_CONFIGS.has(...)`,
+  // which would need a cast because Map.has() takes the key type.
   return typeof value === "string" && GROUPING_CONFIG_IDS.some((id): boolean => id === value);
 }
 

@@ -42,12 +42,9 @@ export type ErrorIngestBatchStatus = ErrorIngestOutcomeStatus | "partial";
 
 export type ErrorIngestBatchCounts = Readonly<Record<ErrorIngestOutcomeStatus, number>>;
 
-export type ErrorIngestBatchOutcome = {
-  batchId: string,
+export type ErrorIngestOutcomeSummary = {
   status: ErrorIngestBatchStatus,
-  itemCount: number,
   counts: ErrorIngestBatchCounts,
-  outcomes: readonly ErrorIngestItemOutcome[],
   reason?: "empty_batch",
 };
 
@@ -81,37 +78,30 @@ function emptyCounts(): Record<ErrorIngestOutcomeStatus, number> {
   };
 }
 
-function batchStatus(
-  outcomes: readonly ErrorIngestItemOutcome[],
-): { status: ErrorIngestBatchStatus, reason?: "empty_batch" } {
-  if (outcomes.length === 0) return { status: "rejected", reason: "empty_batch" };
-
-  const firstStatus = outcomes[0].status;
-  for (const outcome of outcomes.slice(1)) {
-    if (outcome.status !== firstStatus) return { status: "partial" };
-  }
-  return { status: firstStatus };
+export function countErrorIngestOutcomes(
+  outcomes: readonly { status: ErrorIngestOutcomeStatus }[],
+): ErrorIngestBatchCounts {
+  const counts = emptyCounts();
+  for (const outcome of outcomes) counts[outcome.status] += 1;
+  return counts;
 }
 
 /**
- * Summarizes item outcomes without collapsing the item list. Mixed outcomes
- * are represented as `partial`; homogeneous filtered/rate-limited/deduplicated
- * batches retain their precise status.
+ * The one canonical aggregation from item outcomes to a batch-level summary,
+ * shared by every projection so status/count semantics cannot drift between
+ * protocols. Mixed outcomes are represented as `partial`; homogeneous
+ * filtered/rate-limited/deduplicated batches retain their precise status, and
+ * an empty batch is a rejection with the `empty_batch` reason.
  */
-export function createErrorIngestBatchOutcome(
-  batchId: string,
-  outcomes: readonly ErrorIngestItemOutcome[],
-): ErrorIngestBatchOutcome {
-  const counts = emptyCounts();
-  for (const outcome of outcomes) counts[outcome.status] += 1;
+export function summarizeErrorIngestOutcomes(
+  outcomes: readonly { status: ErrorIngestOutcomeStatus }[],
+): ErrorIngestOutcomeSummary {
+  const counts = countErrorIngestOutcomes(outcomes);
 
-  const status = batchStatus(outcomes);
-  return {
-    batchId,
-    status: status.status,
-    itemCount: outcomes.length,
-    counts,
-    outcomes: outcomes.map((outcome) => ({ ...outcome })),
-    ...(status.reason === undefined ? {} : { reason: status.reason }),
-  };
+  if (outcomes.length === 0) return { status: "rejected", counts, reason: "empty_batch" };
+  const firstStatus = outcomes[0].status;
+  for (const outcome of outcomes.slice(1)) {
+    if (outcome.status !== firstStatus) return { status: "partial", counts };
+  }
+  return { status: firstStatus, counts };
 }

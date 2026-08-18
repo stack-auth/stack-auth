@@ -34,6 +34,20 @@ describe("rebuild stability", () => {
     expect(buildA).toBe(buildB);
   });
 
+  it("hashes a synthetic (non-Error) throw identically before and after a rebuild", () => {
+    // The synthetic rule hashes its own file leaf rather than going through the
+    // frame rules, so it needs its own rebuild-stability proof: hashing the raw
+    // `absPath` here would split every `throw {…}` issue on every deploy.
+    const synthetic = (chunk: string) => ownerHash({
+      type: "Error",
+      message: "Object captured as exception with keys: code, detail",
+      stack: `Error: Object captured as exception with keys: code, detail\n    at https://app.example.com/_next/static/chunks/${chunk}:1:4711`,
+      platform: "javascript",
+      synthetic: true,
+    });
+    expect(synthetic("main-app-1c0f0d3b9a7e4f21.js")).toBe(synthetic("main-app-99ffaa3b9a7e4f21.js"));
+  });
+
   it("still separates genuinely different errors within one build", () => {
     const hashes = new Set([
       ownerHash(buildRebuildFixture(WEBPACK_CHUNK_NAMES_BUILD_A, { type: "TypeError" })),

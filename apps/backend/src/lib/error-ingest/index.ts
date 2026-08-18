@@ -9,11 +9,11 @@ export {
 } from "./error-ingest-scrubber";
 export {
   ERROR_INGEST_OUTCOME_STATUSES,
-  createErrorIngestBatchOutcome,
   createErrorIngestItemOutcome,
+  summarizeErrorIngestOutcomes,
   type ErrorIngestBatchCounts,
-  type ErrorIngestBatchOutcome,
   type ErrorIngestBatchStatus,
+  type ErrorIngestOutcomeSummary,
   type ErrorIngestDropReason,
   type ErrorIngestFilterReason,
   type ErrorIngestItemDescriptor,
@@ -47,6 +47,7 @@ export {
   type ErrorIngestUnknownDropOutcome,
 } from "./error-ingest-protocol-adapter";
 export {
+  ErrorIngestClientReportParseError,
   buildErrorIngestClientReportRows,
   buildErrorIngestClientReportRequestRows,
   normalizeErrorIngestClientReportReportedAt,

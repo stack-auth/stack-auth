@@ -305,6 +305,7 @@ const LEGACY_TELEMETRY_MIGRATION_STATE_TABLE = "telemetry_legacy_migration_state
 const LEGACY_TELEMETRY_EVENTS_STAGE_TABLE = "telemetry_legacy_events_stage";
 const LEGACY_TELEMETRY_LOGS_STAGE_TABLE = "telemetry_legacy_logs_stage";
 const LEGACY_TELEMETRY_TARGET_STAGE_TABLE = "telemetry_legacy_target_stage";
+const LEGACY_TELEMETRY_RETIRING_SUFFIX = "_legacy_cutover_retiring";
 
 const LEGACY_EVENTS_MIGRATION_COLUMNS = [
   { name: "body", type: "String", default: "''" },
@@ -511,7 +512,7 @@ function assertLegacyTelemetryFingerprintsEqual(
 }
 
 type LegacyTelemetryMigrationState = {
-  phase: "prepared" | "completed",
+  phase: "prepared" | "fenced" | "completed",
   fingerprint: LegacyTelemetryFingerprint,
 };
 
@@ -574,7 +575,7 @@ async function getLegacyTelemetryMigrationState(
   }>();
   const row = rows.at(0);
   if (row === undefined) return null;
-  if (row.phase !== "prepared" && row.phase !== "completed") {
+  if (row.phase !== "prepared" && row.phase !== "fenced" && row.phase !== "completed") {
     throwErr(`Legacy telemetry migration has an invalid phase: ${JSON.stringify(row.phase)}`);
   }
   return {
@@ -614,6 +615,28 @@ async function writeLegacyTelemetryMigrationState(
 
 async function dropLegacyTelemetryTable(client: ClickHouseClient, table: string): Promise<void> {
   await client.command({ query: `DROP TABLE IF EXISTS ${table}` });
+}
+
+function legacyTelemetryRetiringTableName(tableName: string): string {
+  if (!/^[A-Za-z0-9_]+$/.test(tableName)) {
+    throwErr(`Invalid legacy telemetry table name: ${JSON.stringify(tableName)}`);
+  }
+  return `${tableName}${LEGACY_TELEMETRY_RETIRING_SUFFIX}`;
+}
+
+async function fenceLegacyTelemetrySources(
+  client: ClickHouseClient,
+  sources: readonly { table: string, retiringTable: string }[],
+): Promise<void> {
+  if (sources.length === 0) return;
+  // RENAME is the write fence: an old writer that already acquired the old
+  // name finishes into the retiring table and is copied below; a writer that
+  // starts after this metadata operation can only fail against the freed name.
+  // Dropping after a plain drain check has a gap where the latter write can be
+  // accepted and then destroyed before the source is copied.
+  await client.command({
+    query: `RENAME TABLE ${sources.map(({ table, retiringTable }) => `${table} TO ${retiringTable}`).join(", ")}`,
+  });
 }
 
 /**
@@ -682,6 +705,9 @@ export async function migrateLegacyTelemetryTables(
         throwErr("Legacy telemetry migration is marked complete but analytics_internal.telemetry is missing");
       }
       return;
+    }
+    if (migrationState?.phase === "fenced") {
+      throwErr("Legacy telemetry cutover is fenced; finish the cutover before recreating compatibility views");
     }
     if (migrationState?.phase === "prepared") {
       throwErr("Legacy telemetry migration is prepared but its source tables are missing before completion");
@@ -776,21 +802,25 @@ export async function migrateLegacyTelemetryTables(
  *
  * 1. Drain check: rows without the `dual_written` marker can only come from
  *    pre-expand instances, so requiring the newest such row to be at least
- *    `minDrainSeconds` old proves every writer is on the expand release. From
- *    that point the `dual_written = 0` set is frozen.
- * 2. Checkpointed partition backfill: each source partition's frozen
+ *    `minDrainSeconds` old proves every writer is on the expand release.
+ * 2. Rename fence: the legacy names are atomically moved to retiring names.
+ *    An old writer that already acquired the name finishes in the retiring
+ *    table; a writer that starts afterwards fails instead of producing a row
+ *    that a later DROP could destroy.
+ * 3. Checkpointed partition backfill: each fenced source partition's
  *    `dual_written = 0` rows are copied straight into telemetry, stamped with
  *    a reserved `batch_id` marker so the copy stays identifiable among live
  *    rows. Each partition INSERT carries a deterministic
  *    `insert_deduplication_token`, so a crash between the INSERT and its
  *    checkpoint row retries as a no-op instead of duplicating.
- * 3. Per-partition verification: the frozen source slice and the marker slice
+ * 4. Per-partition verification: the frozen source slice and the marker slice
  *    in telemetry must fingerprint identically before the checkpoint is
  *    written. A mismatch (e.g. a dedup token evicted between crash and retry)
  *    aborts with the exact recovery statement instead of guessing.
- * 4. Only after every partition is verified are the sources dropped and the
- *    completed marker stamped. Callers should rerun the normal migration phase
- *    afterwards so the freed names are recreated as compatibility views.
+ * 5. Only after every partition is verified are the retiring sources dropped
+ *    and the completed marker stamped. Callers should rerun the normal
+ *    migration phase afterwards so the freed names are recreated as
+ *    compatibility views.
  *
  * Dual-written rows (`dual_written = 1`) are intentionally NOT copied — their
  * canonical copy already reached telemetry through the primary write path.
@@ -800,23 +830,55 @@ export async function cutoverLegacyTelemetryTables(
   options: LegacyTelemetryMigrationOptions & { minDrainSeconds?: number } = {},
 ): Promise<void> {
   const database = options.database ?? "analytics_internal";
-  const eventsTable = qualifiedClickhouseTable(database, options.eventsTable ?? "events");
-  const logsTable = qualifiedClickhouseTable(database, options.logsTable ?? "logs");
+  const eventsTableName = options.eventsTable ?? "events";
+  const logsTableName = options.logsTable ?? "logs";
+  if (eventsTableName === logsTableName) throwErr("Legacy telemetry events and logs tables must have different names");
+  const sourceDefinitions: Array<{
+    source: LegacyTelemetrySource,
+    tableName: string,
+    table: string,
+    retiringTableName: string,
+    retiringTable: string,
+  }> = [
+    {
+      source: "events",
+      tableName: eventsTableName,
+      table: qualifiedClickhouseTable(database, eventsTableName),
+      retiringTableName: legacyTelemetryRetiringTableName(eventsTableName),
+      retiringTable: qualifiedClickhouseTable(database, legacyTelemetryRetiringTableName(eventsTableName)),
+    },
+    {
+      source: "logs",
+      tableName: logsTableName,
+      table: qualifiedClickhouseTable(database, logsTableName),
+      retiringTableName: legacyTelemetryRetiringTableName(logsTableName),
+      retiringTable: qualifiedClickhouseTable(database, legacyTelemetryRetiringTableName(logsTableName)),
+    },
+  ];
   const telemetryTable = qualifiedClickhouseTable(database, "telemetry");
   const stateTable = qualifiedClickhouseTable(database, LEGACY_TELEMETRY_MIGRATION_STATE_TABLE);
   const minDrainSeconds = options.minDrainSeconds ?? 15 * 60;
+  if (!Number.isFinite(minDrainSeconds) || minDrainSeconds < 0) {
+    throwErr(`Invalid minDrainSeconds value: ${String(minDrainSeconds)}`);
+  }
 
-  const [eventsExists, logsExists, telemetryExists] = await Promise.all([
-    clickhousePhysicalTableExists(client, { database, table: options.eventsTable ?? "events" }),
-    clickhousePhysicalTableExists(client, { database, table: options.logsTable ?? "logs" }),
-    clickhousePhysicalTableExists(client, { database, table: "telemetry" }),
-  ]);
+  const sourcePresence = await Promise.all(sourceDefinitions.map(async definition => ({
+    definition,
+    sourceExists: await clickhousePhysicalTableExists(client, { database, table: definition.tableName }),
+    retiringExists: await clickhousePhysicalTableExists(client, { database, table: definition.retiringTableName }),
+  })));
+  const telemetryExists = await clickhousePhysicalTableExists(client, { database, table: "telemetry" });
   const migrationState = await getLegacyTelemetryMigrationState(client, stateTable);
+  const originalSources = sourcePresence.filter(({ sourceExists }) => sourceExists).map(({ definition }) => definition);
+  const retiredSources = sourcePresence.filter(({ retiringExists }) => retiringExists).map(({ definition }) => definition);
 
-  if (!eventsExists && !logsExists) {
+  if (originalSources.length === 0 && retiredSources.length === 0) {
     if (migrationState?.phase === "completed") {
       console.log("[Clickhouse] Legacy telemetry cutover already completed; nothing to do.");
       return;
+    }
+    if (migrationState?.phase === "fenced") {
+      throwErr("Legacy telemetry cutover is fenced but its retiring source tables are missing; inspect telemetry before retrying");
     }
     if (migrationState?.phase === "prepared") {
       throwErr("Legacy telemetry migration is prepared but its source tables are missing; run the normal migration phase first");
@@ -831,20 +893,37 @@ export async function cutoverLegacyTelemetryTables(
     throwErr("A retired copy/EXCHANGE attempt left a prepared marker; run the normal migration phase to finish it before the cutover");
   }
 
-  await ensureLegacyTelemetryMigrationStateTable(client, stateTable);
-  const sources = [
-    ...eventsExists ? [{ source: "events" as const, table: eventsTable, tableName: options.eventsTable ?? "events" }] : [],
-    ...logsExists ? [{ source: "logs" as const, table: logsTable, tableName: options.logsTable ?? "logs" }] : [],
-  ];
-
-  // Idempotent: the expand phase normally already ran this, but the cutover
-  // must not depend on it (pre-release environments may skip straight here).
-  for (const { source, table } of sources) {
-    await client.command({ query: buildLegacyTelemetrySourceUpgradeSql(source, table) });
+  if (originalSources.length > 0 && retiredSources.length > 0) {
+    throwErr("Legacy telemetry cutover found both active and retiring source tables; refuse to guess which set is authoritative");
+  }
+  if (migrationState?.phase === "completed" && originalSources.length > 0) {
+    throwErr("Legacy telemetry cutover is marked complete, but a physical legacy source exists again");
   }
 
-  for (const { table } of sources) {
-    await assertLegacyTelemetrySourceDrained(client, table, minDrainSeconds);
+  await ensureLegacyTelemetryMigrationStateTable(client, stateTable);
+  let sources: Array<{ source: LegacyTelemetrySource, table: string, tableName: string }>;
+  if (retiredSources.length > 0) {
+    if (migrationState?.phase !== "fenced") {
+      // A process can die between the atomic rename and the fenced marker. The
+      // reserved retiring suffix makes that state recoverable without copying
+      // from a table that an old writer can still mutate.
+      await writeLegacyTelemetryMigrationState(client, stateTable, "fenced", { count: 0n, sum: 0n, xor: 0n });
+    }
+    sources = retiredSources.map(({ source, retiringTable, retiringTableName }) => ({ source, table: retiringTable, tableName: retiringTableName }));
+  } else {
+    // Idempotent: the expand phase normally already ran this, but the cutover
+    // must not depend on it (pre-release environments may skip straight here).
+    for (const { source, table } of originalSources) {
+      await client.command({ query: buildLegacyTelemetrySourceUpgradeSql(source, table) });
+    }
+
+    for (const { table } of originalSources) {
+      await assertLegacyTelemetrySourceDrained(client, table, minDrainSeconds);
+    }
+
+    await fenceLegacyTelemetrySources(client, originalSources.map(({ table, retiringTable }) => ({ table, retiringTable })));
+    await writeLegacyTelemetryMigrationState(client, stateTable, "fenced", { count: 0n, sum: 0n, xor: 0n });
+    sources = originalSources.map(({ source, retiringTable, retiringTableName }) => ({ source, table: retiringTable, tableName: retiringTableName }));
   }
 
   let combinedFingerprint: LegacyTelemetryFingerprint | undefined = undefined;
@@ -853,9 +932,9 @@ export async function cutoverLegacyTelemetryTables(
     combinedFingerprint = combineLegacyTelemetryFingerprints(combinedFingerprint, copied);
   }
 
-  // The commit point: sources are dropped only after every partition above has
-  // been verified, and the marker is stamped only after the drops so a crash
-  // in between leaves a state the startup integrity check can explain.
+  // The commit point: fenced sources are dropped only after every partition
+  // above has been verified, and the marker is stamped only after the drops so
+  // a crash in between leaves a state the startup integrity check can explain.
   await Promise.all(sources.map(({ table }) => dropLegacyTelemetryTable(client, table)));
   await writeLegacyTelemetryMigrationState(
     client,
@@ -2938,6 +3017,63 @@ FINAL
 WHERE sync_is_deleted = 0;
 `;
 
+const OTEL_VIEW_COLUMN_DESCRIPTIONS = new Map<string, string>([
+  ["event_type", "Event or log classification emitted by the OpenTelemetry producer"],
+  ["event_at", "Time at which the OpenTelemetry record occurred (UTC)"],
+  ["message", "Human-readable message associated with the record, when present"],
+  ["level", "Normalized severity level reported by the producer"],
+  ["data", "Structured application payload as JSON"],
+  ["body", "OpenTelemetry log body serialized as JSON"],
+  ["attributes", "OpenTelemetry record attributes as JSON"],
+  ["resource_attributes", "OpenTelemetry resource attributes as JSON"],
+  ["scope_attributes", "OpenTelemetry instrumentation-scope attributes as JSON"],
+  ["trace_id", "Trace identity shared by all spans and records in the trace"],
+  ["span_id", "Span identity associated with this record, when present"],
+  ["parent_span_id", "Immediate parent span identity, when present"],
+  ["span_type", "OpenTelemetry span name"],
+  ["started_at", "Time at which the span started (UTC)"],
+  ["ended_at", "Time at which the span ended (UTC)"],
+  ["kind", "OpenTelemetry span kind"],
+  ["status_code", "OpenTelemetry operation status"],
+  ["status_message", "Optional OpenTelemetry operation status message"],
+  ["service_namespace", "Logical namespace of the producing service, when reported"],
+  ["service_name", "Name of the producing service"],
+  ["service_version", "Version of the producing service, when reported"],
+  ["deployment_environment_name", "Deployment environment reported by the producer"],
+  ["project_id", "Project identifier, automatically constrained by row-level security"],
+  ["branch_id", "Branch identifier, automatically constrained by row-level security"],
+  ["user_id", "User associated with the record, when known"],
+  ["refresh_token_id", "Session refresh-token identifier, when known"],
+  ["session_replay_id", "Session replay identifier, when known"],
+  ["session_replay_segment_id", "Session replay segment identifier, when known"],
+  ["page_view_span_id", "Page-view span associated with the record, when known"],
+  ["created_at", "Time at which the record was inserted (UTC)"],
+]);
+
+function buildOtelViewColumnCommentStatements(
+  table: string,
+  columns: readonly ClickhouseColumn[],
+  omittedColumns: readonly string[] = [],
+): string[] {
+  const omitted = new Set(omittedColumns);
+  return columns
+    .filter((column) => !omitted.has(column.name))
+    .map((column) => {
+      const description = OTEL_VIEW_COLUMN_DESCRIPTIONS.get(column.name)
+        ?? `OpenTelemetry ${column.name.replace(/_/g, " ")} value exposed by the ${table} view`;
+      return `ALTER TABLE default.${table} COMMENT COLUMN ${column.name} '${description}'`;
+    });
+}
+
+const OTEL_VIEW_COLUMN_COMMENT_STATEMENTS = [
+  ...buildOtelViewColumnCommentStatements("logs", LOGS_COLUMNS, [...ERROR_GROUPING_COLUMN_NAMES, ...ERROR_ENVELOPE_COLUMN_NAMES]),
+  ...buildOtelViewColumnCommentStatements("errors", LOGS_COLUMNS),
+  ...buildOtelViewColumnCommentStatements("span_events", SPAN_EVENTS_COLUMNS),
+  ...buildOtelViewColumnCommentStatements("span_links", SPAN_LINKS_COLUMNS),
+  ...buildOtelViewColumnCommentStatements("trace_roots", TRACE_ROOTS_COLUMNS, ["version"]),
+  ...buildOtelViewColumnCommentStatements("trace_services", TRACE_SERVICES_COLUMNS, ["created_at", "version"]),
+];
+
 // ─── Column comments ────────────────────────────────────────────────
 // Applied to the default.* views after creation so that DESCRIBE TABLE
 // returns useful descriptions for each column. The AI assistant uses
@@ -3134,6 +3270,8 @@ const COLUMN_COMMENT_STATEMENTS: string[] = [
   `ALTER TABLE default.connected_accounts COMMENT COLUMN provider 'OAuth/SSO provider name, e.g. google, github'`,
   `ALTER TABLE default.connected_accounts COMMENT COLUMN provider_account_id 'User account ID at the external provider'`,
   `ALTER TABLE default.connected_accounts COMMENT COLUMN created_at 'When this account was linked (UTC)'`,
+
+  ...OTEL_VIEW_COLUMN_COMMENT_STATEMENTS,
 ];
 
 const COLUMN_COMMENT_TABLES = [
@@ -3150,6 +3288,12 @@ const COLUMN_COMMENT_TABLES = [
   "notification_preferences",
   "refresh_tokens",
   "connected_accounts",
+  "logs",
+  "errors",
+  "span_events",
+  "span_links",
+  "trace_roots",
+  "trace_services",
 ];
 
 function buildColumnCommentSql(): string[] {

@@ -173,10 +173,16 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
      */
     captureException(error: unknown, options?: CaptureExceptionOptions): ErrorEventId,
 
-    /** Captures a message as a first-class error event and returns its event UUID. */
+    /**
+     * Captures a message through the `$error` pipeline. Same pre-delivery UUID
+     * contract as `captureException`.
+     */
     captureMessage(message: string, options?: CaptureMessageOptions): ErrorEventId,
 
-    /** Captures a normalized event/exception chain and returns its event UUID. */
+    /**
+     * Captures a pre-normalized event or exception chain through the `$error`
+     * pipeline. Same pre-delivery UUID contract as `captureException`.
+     */
     captureEvent(event: CaptureEvent): ErrorEventId,
 
     /** Returns the most recently attempted error event ID, if any. Delivery may still drop it later. */

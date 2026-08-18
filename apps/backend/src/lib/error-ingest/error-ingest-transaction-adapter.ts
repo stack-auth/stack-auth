@@ -1,8 +1,9 @@
 import type { ErrorIngestScrubbedValue } from "./error-ingest-scrubber";
 import { scrubErrorIngestPayload } from "./error-ingest-scrubber";
 import type { ErrorIngestEnvelopeTransactionMetadata } from "./error-ingest-envelope";
-import type { CanonicalOtlpSpan, CanonicalOtlpSpanEvent, CanonicalOtlpSpanLink } from "../otlp-traces";
-import type { OtlpAttributeValue, OtlpAttributes } from "../otlp-json";
+import type { CanonicalOtlpSpan, CanonicalOtlpSpanEvent, CanonicalOtlpSpanLink } from "@/lib/otlp/traces";
+import type { OtlpAttributeValue, OtlpAttributes } from "@/lib/otlp/json";
+import { isW3cSpanId } from "@hexclave/shared/dist/utils/analytics-wire";
 
 const MAX_OTLP_TIMESTAMP_NANO = 18_446_744_073_709_551_615n;
 const MAX_ATTRIBUTE_DEPTH = 8;
@@ -166,6 +167,9 @@ export function sentryTransactionToCanonicalOtlpSpans(
   if (transaction.name === null) {
     throw new ErrorIngestTransactionAdapterError("invalid", "Transaction name is required");
   }
+  if (transaction.parentSpanId !== null && !isW3cSpanId(transaction.parentSpanId)) {
+    throw new ErrorIngestTransactionAdapterError("invalid", "Transaction parent_span_id must be a valid W3C span id");
+  }
 
   const seenSpanIds = new Set<string>([transaction.spanId]);
   for (const span of transaction.spans) {
@@ -179,7 +183,13 @@ export function sentryTransactionToCanonicalOtlpSpans(
     ...baseSpan(context),
     traceId: transaction.traceId,
     spanId: transaction.spanId,
-    parentSpanId: null,
+    // A distributed transaction keeps its upstream ancestor from the trace
+    // context. This matches OTLP-path behavior: if the upstream service never
+    // reports here, the segment is not a trace root (trace_roots is
+    // parent IS NULL) — same as an OTLP span whose parent never arrives —
+    // whereas nulling it would split one trace into multiple fake roots when
+    // both services DO report.
+    parentSpanId: transaction.parentSpanId,
     name: transaction.name,
     startTimeUnixNano: timestampToUnixNano(transaction.startTimestampMs, "Transaction start_timestamp"),
     endTimeUnixNano: timestampToUnixNano(transaction.timestampMs, "Transaction timestamp"),

@@ -117,4 +117,32 @@ describe("error processor pipeline", () => {
     expect(result).toEqual(expect.objectContaining({ status: "dropped", reason: "processor_limit" }));
     expect(onFailure).toHaveBeenCalledOnce();
   });
+
+  it("runs a fully loaded legitimate pipeline (max per source + beforeSend) without dropping", async () => {
+    const calls: string[] = [];
+    const processor = (label: string) => (current: ReturnType<typeof event>) => {
+      calls.push(label);
+      return current;
+    };
+    const result = await Promise.resolve(processErrorEvent(event(), options({
+      eventProcessors: Array.from({ length: 20 }, (_, index) => processor(`configured-${index}`)),
+      scopeProcessors: Array.from({ length: 20 }, (_, index) => processor(`scope-${index}`)),
+      beforeSend: processor("before-send"),
+    })));
+
+    expect(result).toMatchObject({ status: "accepted" });
+    expect(calls).toHaveLength(41);
+    expect(calls.at(-1)).toBe("before-send");
+  });
+
+  it("enforces the per-source budget for scope processors too", () => {
+    const onFailure = vi.fn();
+    const result = processErrorEvent(event(), options({
+      scopeProcessors: Array.from({ length: 21 }, () => () => event()),
+      onFailure,
+    }));
+
+    expect(result).toEqual(expect.objectContaining({ status: "dropped", reason: "processor_limit" }));
+    expect(onFailure).toHaveBeenCalledOnce();
+  });
 });

@@ -6,7 +6,13 @@ import type {
   ErrorProcessorResult,
 } from "../interfaces/error-capture";
 
-/** Maximum number of callbacks a single capture may execute. */
+/**
+ * Maximum number of processors PER SOURCE (the configured app-level list and
+ * the capture-scope list each get this budget; `beforeSend` never counts).
+ * A combined budget would drop captures from perfectly legitimate setups —
+ * e.g. a framework that accumulated the full scope allowance plus one
+ * configured processor — even though each source obeys its own bound.
+ */
 export const MAX_ERROR_PROCESSORS = 20;
 
 /** Total wall-clock budget for one capture's processor pipeline. */
@@ -239,22 +245,34 @@ export function processErrorEvent(
   event: CapturedErrorEvent,
   options: ErrorProcessingOptions,
 ): ErrorProcessingResult | PromiseLike<ErrorProcessingResult> {
+  // Defensive backstop for the bounds the SDK already enforces upstream
+  // (normalizeErrorCaptureOptions throws for configured processors,
+  // addEventProcessor/mergeErrorScopeData bound scope processors). Checked PER
+  // SOURCE — never as one combined budget — so a fully loaded but legitimate
+  // configuration (MAX configured + MAX scope + beforeSend) runs instead of
+  // being silently dropped. An over-limit source here can only mean upstream
+  // validation was bypassed, so fail loud with a typed drop.
+  for (const [source, processors] of [
+    ["configured", options.eventProcessors ?? []],
+    ["scope", options.scopeProcessors ?? []],
+  ] as const) {
+    if (processors.length > MAX_ERROR_PROCESSORS) {
+      const detail = `${source} pipeline has ${processors.length} processors; maximum is ${MAX_ERROR_PROCESSORS} per source`;
+      reportFailure({
+        stage: "event_processor",
+        reason: "processor_limit",
+        processorName: "pipeline",
+        error: new Error(detail),
+      }, options.onFailure);
+      return { status: "dropped", reason: "processor_limit", detail };
+    }
+  }
+
   const steps: ProcessorStep[] = [
     ...(options.eventProcessors ?? []).map((processor) => ({ stage: "event_processor" as const, processor })),
     ...(options.scopeProcessors ?? []).map((processor) => ({ stage: "event_processor" as const, processor })),
     ...options.beforeSend === undefined ? [] : [{ stage: "before_send" as const, processor: options.beforeSend }],
   ];
-
-  if (steps.length > MAX_ERROR_PROCESSORS) {
-    const detail = `configured ${steps.length} processors; maximum is ${MAX_ERROR_PROCESSORS}`;
-    reportFailure({
-      stage: "event_processor",
-      reason: "processor_limit",
-      processorName: "pipeline",
-      error: new Error(detail),
-    }, options.onFailure);
-    return { status: "dropped", reason: "processor_limit", detail };
-  }
 
   const deadline = now() + MAX_ERROR_PROCESSING_TIME_MS;
   const run = (index: number, current: CapturedErrorEvent): ErrorProcessingResult | PromiseLike<ErrorProcessingResult> => {

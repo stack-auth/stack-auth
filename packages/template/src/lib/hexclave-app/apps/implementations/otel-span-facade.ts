@@ -9,6 +9,16 @@ export type OtelSpanFacadeCapabilities = {
   trackEvent: (eventType: string, data: Record<string, unknown> | undefined, options: TrackOptions) => Promise<void>,
   getSpanPropagationHeaders: (span: Span) => Record<string, string>,
   fetch: (span: Span, input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  /**
+   * Invoked once for EVERY facade this factory creates — including children
+   * minted through the recursive `startSpan`/`withSpan`, which reuse the same
+   * capabilities object. The tracker needs this to register child facades in
+   * its live-span registries (`_liveSpanControls`/global sweep): without it a
+   * never-ended CHILD facade is invisible to the sign-out/clearBuffer inert
+   * sweep, because only the top-level `startSpan` call site could register
+   * the handles it created itself.
+   */
+  onStarted?: (span: Span) => void,
   onEnded?: (span: Span) => void,
 };
 
@@ -54,6 +64,16 @@ export function createOtelSpanFacade(options: {
   startOptions?: StartSpanOptions,
   parentContext?: Context,
   correlationAttributes?: Record<string, string>,
+  /**
+   * `spanPropagation.enabled` threading (default true). When false, the facade
+   * stops CONSTRUCTING Hexclave correlation baggage: the execution context no
+   * longer carries the correlationAttributes as baggage entries, and
+   * getSpanPropagationHeaders() skips the correlation-fallback merge. The
+   * correlationAttributes still stamp the span's own wire-row ATTRIBUTES —
+   * this flag gates propagation, not row data — and W3C trace context
+   * (traceparent/tracestate) is untouched.
+   */
+  correlationBaggage?: boolean,
   capabilities: OtelSpanFacadeCapabilities,
 }): Span {
   assertValidSpanStartInput(options.spanType, options.startOptions);
@@ -77,13 +97,20 @@ export function createOtelSpanFacade(options: {
   const spanContext = otelSpan.spanContext();
   let ended = false;
 
+  const correlationBaggageEnabled = options.correlationBaggage !== false;
+
   const executionContext = (base: Context): Context => {
     let scoped = trace.setSpan(base, otelSpan);
-    let baggage = propagation.getBaggage(scoped) ?? propagation.createBaggage();
-    for (const [key, value] of Object.entries(options.correlationAttributes ?? {})) {
-      baggage = baggage.setEntry(key, { value });
+    // Gated: pre-existing baggage on the base context belongs to the app (or
+    // the ambient session anchor) and passes through untouched either way —
+    // only OUR correlation entries stop being attached when disabled.
+    if (correlationBaggageEnabled) {
+      let baggage = propagation.getBaggage(scoped) ?? propagation.createBaggage();
+      for (const [key, value] of Object.entries(options.correlationAttributes ?? {})) {
+        baggage = baggage.setEntry(key, { value });
+      }
+      scoped = propagation.setBaggage(scoped, baggage);
     }
-    scoped = propagation.setBaggage(scoped, baggage);
     return scoped;
   };
 
@@ -115,6 +142,7 @@ export function createOtelSpanFacade(options: {
       startOptions,
       parentContext: executionContext(context.active()),
       correlationAttributes: options.correlationAttributes,
+      ...options.correlationBaggage === undefined ? {} : { correlationBaggage: options.correlationBaggage },
       capabilities: options.capabilities,
     }),
     withSpan: <T,>(spanType: string, optionsOrFn: StartSpanOptions | ((span: Span) => Promise<T> | T), maybeFn?: (span: Span) => Promise<T> | T) =>
@@ -128,10 +156,14 @@ export function createOtelSpanFacade(options: {
           target.set(key, value);
         },
       });
-      const correlation = decodeCorrelationBaggage(fallback[BAGGAGE_HEADER]);
-      if (correlation !== null) {
-        const baggage = mergeCorrelationBaggage(carrier.get(BAGGAGE_HEADER) ?? null, correlation);
-        if (baggage !== null) carrier.set(BAGGAGE_HEADER, baggage);
+      // The correlation-fallback merge builds baggage header values directly
+      // (outside any propagator), so it needs its own gate.
+      if (correlationBaggageEnabled) {
+        const correlation = decodeCorrelationBaggage(fallback[BAGGAGE_HEADER]);
+        if (correlation !== null) {
+          const baggage = mergeCorrelationBaggage(carrier.get(BAGGAGE_HEADER) ?? null, correlation);
+          if (baggage !== null) carrier.set(BAGGAGE_HEADER, baggage);
+        }
       }
       return { ...fallback, ...Object.fromEntries(carrier) };
     },
@@ -154,6 +186,27 @@ export function createOtelSpanFacade(options: {
       return Promise.resolve();
     },
   });
+
+  // Fired LAST so the observer always receives a fully constructed handle
+  // (including the trusted link writer). Child facades run through this same
+  // factory, so every span in the tree announces itself here.
+  try {
+    options.capabilities.onStarted?.(facade);
+  } catch (error) {
+    // Registration is part of span creation. If it fails, do not leave an
+    // already-exportable span alive without a caller that can end it; close it
+    // through the same lifecycle hook used by ordinary callers, then preserve
+    // the registration failure for the caller.
+    ended = true;
+    otelSpan.end();
+    try {
+      options.capabilities.onEnded?.(facade);
+    } catch {
+      // Cleanup must not replace the registration failure that caused span
+      // creation to fail; callers need the original error for diagnosis.
+    }
+    throw error;
+  }
 
   return facade;
 }

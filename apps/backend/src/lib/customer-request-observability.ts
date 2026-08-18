@@ -7,7 +7,7 @@ import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { getSharedClickhouseAdminClient } from "./clickhouse";
 import { insertSpans, type SpanInsertRow } from "./spans";
-import { isTelemetryIngestionPath } from "./telemetry-ingestion-paths";
+import { isTelemetryIngestionPath } from "./telemetry/ingestion-paths";
 
 const idGenerator = new RandomIdGenerator();
 const traceContextPropagator = new W3CTraceContextPropagator();
@@ -47,14 +47,39 @@ type CustomerRequestSpanWriter = (row: SpanInsertRow) => Promise<void>;
 const customerRequestStorage = new AsyncLocalStorage<CustomerRequestObservabilityHolder>();
 
 function mergeTrustedIdentity(
-  current: string | null,
-  incoming: string | null,
-  field: "userId" | "refreshTokenId",
-): string | null {
-  if (current !== null && incoming !== null && current !== incoming) {
-    throw new Error(`Customer request observability ${field} changed within one request`);
+  current: CustomerRequestTenancy | null,
+  incoming: Pick<CustomerRequestTenancy, "userId" | "refreshTokenId">,
+): Pick<CustomerRequestTenancy, "userId" | "refreshTokenId"> {
+  if (current === null) return incoming;
+
+  const userConflict = current.userId !== null
+    && incoming.userId !== null
+    && current.userId !== incoming.userId;
+  const refreshTokenConflict = current.refreshTokenId !== null
+    && incoming.refreshTokenId !== null
+    && current.refreshTokenId !== incoming.refreshTokenId;
+  if (userConflict || refreshTokenConflict) {
+    // NOT an invariant violation: auth endpoints can mint tokens for a
+    // DIFFERENT principal than the (incidental) session that authenticated
+    // the request. Keep the first verified pair together; merging fields
+    // independently could combine user A with user B's refresh token.
+    return {
+      userId: current.userId,
+      refreshTokenId: current.refreshTokenId,
+    };
   }
-  return incoming ?? current;
+  return {
+    userId: current.userId ?? (
+      current.refreshTokenId === null || incoming.refreshTokenId === current.refreshTokenId
+        ? incoming.userId
+        : null
+    ),
+    refreshTokenId: current.refreshTokenId ?? (
+      current.userId === null || incoming.userId === current.userId
+        ? incoming.refreshTokenId
+        : null
+    ),
+  };
 }
 
 /**
@@ -84,12 +109,16 @@ export function resolveCustomerRequestObservability(options: {
   const labels = options.headers === undefined
     ? null
     : decodeCorrelationBaggage(readBaggageHeader(options.headers));
+  const identity = mergeTrustedIdentity(current, {
+    userId: options.userId,
+    refreshTokenId: options.refreshTokenId,
+  });
 
   holder.tenancy = {
     projectId: options.projectId,
     branchId: options.branchId,
-    userId: mergeTrustedIdentity(current?.userId ?? null, options.userId, "userId"),
-    refreshTokenId: mergeTrustedIdentity(current?.refreshTokenId ?? null, options.refreshTokenId, "refreshTokenId"),
+    userId: identity.userId,
+    refreshTokenId: identity.refreshTokenId,
     sessionReplayId: current?.sessionReplayId ?? labels?.sessionReplayId ?? null,
     sessionReplaySegmentId: current?.sessionReplaySegmentId ?? labels?.sessionReplaySegmentId ?? null,
     pageViewSpanId: current?.pageViewSpanId ?? labels?.pageViewSpanId ?? null,

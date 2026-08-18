@@ -300,6 +300,36 @@ describe("determineSourceMapPathFromBundle", () => {
     const bundlePath = writeFile(dir, "a.js", `console.log(1)\n//# sourceMappingURL=${outside}\n`);
     expect(determineSourceMapPathFromBundle(bundlePath, fs.readFileSync(bundlePath, "utf-8"), { containingDir: dir })).toBeNull();
   });
+
+  it("rejects an in-root symlink whose target escapes the scanned directory", () => {
+    // Lexically the symlink lives inside the scan root and passes the
+    // path.relative containment check; only resolving the real path reveals
+    // that reading it would follow the link to a secret file outside the build.
+    const dir = makeTempDir();
+    const outsideDir = makeTempDir();
+    const secret = writeFile(outsideDir, "secret.map", JSON.stringify({ version: 3, sourcesContent: ["secret"] }));
+    const bundlePath = writeFile(dir, "build/a.js", "console.log(1)\n//# sourceMappingURL=a.js.map\n");
+    fs.symlinkSync(secret, path.join(dir, "build/a.js.map"));
+    expect(determineSourceMapPathFromBundle(bundlePath, fs.readFileSync(bundlePath, "utf-8"), { containingDir: path.join(dir, "build") })).toBeNull();
+  });
+
+  it("rejects the <bundle>.map fallback when it is a symlink escaping the scan root", () => {
+    const dir = makeTempDir();
+    const outsideDir = makeTempDir();
+    const secret = writeFile(outsideDir, "secret.map", JSON.stringify({ version: 3 }));
+    const bundlePath = writeFile(dir, "a.js", "console.log(1)\n");
+    fs.symlinkSync(secret, `${bundlePath}.map`);
+    expect(determineSourceMapPathFromBundle(bundlePath, fs.readFileSync(bundlePath, "utf-8"), { containingDir: dir })).toBeNull();
+  });
+
+  it("still follows an in-root symlink whose target stays inside the scan root", () => {
+    const dir = makeTempDir();
+    const realMap = writeFile(dir, "maps/a.js.map", "{}");
+    const bundlePath = writeFile(dir, "chunks/a.js", "console.log(1)\n//# sourceMappingURL=../linked.map\n");
+    fs.symlinkSync(realMap, path.join(dir, "linked.map"));
+    expect(determineSourceMapPathFromBundle(bundlePath, fs.readFileSync(bundlePath, "utf-8"), { containingDir: dir }))
+      .toBe(path.join(dir, "linked.map"));
+  });
 });
 
 describe("readInlineSourceMap", () => {
@@ -377,6 +407,19 @@ describe("prepareSourceMapForUpload", () => {
     expect(() => prepareSourceMapForUpload({ version: 3, mappings: "AAAA", debug_id: DEBUG_ID_B }, DEBUG_ID_A, options))
       .toThrow(/does not match bundle debug id/);
   });
+
+  it("rejects an index-map section whose offset lacks non-negative integer line/column", () => {
+    const withOffset = (offset: unknown) => ({
+      version: 3,
+      sections: [{ offset, map: { version: 3, mappings: "AAAA", sources: [] } }],
+    });
+    expect(() => prepareSourceMapForUpload(withOffset({ line: 0 }), DEBUG_ID_A, options)).toThrow(/non-negative integer/);
+    expect(() => prepareSourceMapForUpload(withOffset({ line: -1, column: 0 }), DEBUG_ID_A, options)).toThrow(/non-negative integer/);
+    expect(() => prepareSourceMapForUpload(withOffset({ line: 1.5, column: 0 }), DEBUG_ID_A, options)).toThrow(/non-negative integer/);
+    expect(() => prepareSourceMapForUpload(withOffset("nope"), DEBUG_ID_A, options)).toThrow(CliError);
+    // A well-formed offset still passes.
+    expect(() => prepareSourceMapForUpload(withOffset({ line: 0, column: 0 }), DEBUG_ID_A, options)).not.toThrow();
+  });
 });
 
 describe("normalizeSourcePath", () => {
@@ -450,6 +493,20 @@ describe("findIntegrityManifests / findNextBuildRoots", () => {
     expect(findIntegrityManifests([path.join(dir, ".next")])).toEqual([path.join(dir, ".next/app-build-manifest.json")]);
   });
 
+  it("detects integrity in a JavaScript manifest with unquoted or single-quoted keys", () => {
+    // `.js` manifests are scanned too; a JSON-only pattern would miss a JS
+    // object literal's unquoted/single-quoted `integrity` field and then let us
+    // silently rewrite the bundle and break SRI.
+    const dir = makeTempDir();
+    writeFile(dir, ".next/unquoted-manifest.js", "self.__M = { chunk: { integrity: \"sha384-abc\" } };");
+    writeFile(dir, ".next/single-quoted-manifest.js", "self.__M = { chunk: { 'integrity': 'sha384-def' } };");
+    writeFile(dir, ".next/clean-manifest.js", "self.__BUILD_MANIFEST = { \"/\": [\"static/chunks/main.js\"] };");
+    expect(findIntegrityManifests([path.join(dir, ".next")])).toEqual([
+      path.join(dir, ".next/single-quoted-manifest.js"),
+      path.join(dir, ".next/unquoted-manifest.js"),
+    ]);
+  });
+
   it("walks up to the enclosing .next directory", () => {
     const dir = makeTempDir();
     fs.mkdirSync(path.join(dir, ".next/static/chunks"), { recursive: true });
@@ -479,6 +536,22 @@ describe("prepareArtifacts (the whole --dry-run path)", () => {
     expect(fs.readFileSync(path.join(dir, ".next/static/chunks/main.js"), "utf-8")).toBe(before);
   });
 
+  it("tracks mapless client bundles separately from server ones so --strict can catch them", () => {
+    const dir = makeTempDir();
+    // A client chunk with a map, a client chunk WITHOUT one, and a server chunk
+    // without one. The mapless client chunk must be reported (otherwise strict
+    // CI passes on an unsymbolicatable client build); the server chunk keeps its
+    // Next.js-specific hint path.
+    writeFile(dir, ".next/static/chunks/main.js", FIXTURE_BUNDLE.replace("minified-chunk.js.map", "main.js.map"));
+    writeFile(dir, ".next/static/chunks/main.js.map", FIXTURE_MAP_TEXT);
+    writeFile(dir, ".next/static/chunks/nomap.js", "console.log(1)\n");
+    writeFile(dir, ".next/server/chunks/9.js", "module.exports = 9;\n");
+
+    const result = prepareArtifacts(collectArtifacts([path.join(dir, ".next")]), { repoRoot: dir, dryRun: true });
+    expect(result.clientBundlesWithoutMaps).toEqual([path.join("static", "chunks", "nomap.js")]);
+    expect(result.serverBundlesWithoutMaps).toEqual([path.join("server", "chunks", "9.js")]);
+  });
+
   it("writes the snippet once and re-uses the same debug id on a second run", () => {
     const dir = makeTempDir();
     const bundlePath = writeFile(dir, "static/main.js", FIXTURE_BUNDLE.replace("minified-chunk.js.map", "main.js.map"));
@@ -493,19 +566,44 @@ describe("prepareArtifacts (the whole --dry-run path)", () => {
     expect(fs.readFileSync(bundlePath, "utf-8")).toBe(afterFirst);
   });
 
-  it("rejects conflicting duplicate debug IDs before rewriting any bundle", () => {
+  it("re-derives distinct ids for different bundles a previous run injected with the same id", () => {
+    // A stale/hand-edited bundle can carry any embedded id. Because the id is
+    // re-derived from the CLEAN bundle + current map (never trusted from the
+    // embedded marker), two genuinely different bundles that both happen to
+    // carry DEBUG_ID_A get distinct content-addressed ids — not a false clash.
     const dir = makeTempDir();
-    const firstPath = writeFile(dir, "static/a.js", appendDebugIdSnippet(FIXTURE_BUNDLE.replace("minified-chunk.js.map", "a.js.map"), DEBUG_ID_A));
-    const secondPath = writeFile(dir, "static/b.js", appendDebugIdSnippet(FIXTURE_BUNDLE.replace("minified-chunk.js.map", "b.js.map"), DEBUG_ID_A));
+    writeFile(dir, "static/a.js", appendDebugIdSnippet(FIXTURE_BUNDLE.replace("minified-chunk.js.map", "a.js.map"), DEBUG_ID_A));
+    writeFile(dir, "static/b.js", appendDebugIdSnippet(FIXTURE_BUNDLE.replace("minified-chunk.js.map", "b.js.map"), DEBUG_ID_A));
     writeFile(dir, "static/a.js.map", FIXTURE_MAP_TEXT);
     writeFile(dir, "static/b.js.map", FIXTURE_MAP_TEXT);
-    const beforeFirst = fs.readFileSync(firstPath, "utf-8");
-    const beforeSecond = fs.readFileSync(secondPath, "utf-8");
 
-    expect(() => prepareArtifacts(collectArtifacts([path.join(dir, "static")]), { repoRoot: dir, dryRun: false }))
-      .toThrow(/Duplicate debug ID/);
-    expect(fs.readFileSync(firstPath, "utf-8")).toBe(beforeFirst);
-    expect(fs.readFileSync(secondPath, "utf-8")).toBe(beforeSecond);
+    const result = prepareArtifacts(collectArtifacts([path.join(dir, "static")]), { repoRoot: dir, dryRun: false });
+    const ids = result.artifacts.map((artifact) => artifact.debugId);
+    expect(new Set(ids).size).toBe(2);
+    expect(ids).not.toContain(DEBUG_ID_A);
+  });
+
+  it("re-mints the debug id (and re-injects) when only the source map changed", () => {
+    // The core stale-id guarantee: if the MAP is rebuilt/replaced under an
+    // otherwise-identical bundle, reusing the embedded id would upload the new
+    // map under the old id and leave symbolication on the previous map. Instead
+    // the id must change and the bundle must be re-injected with it.
+    const dir = makeTempDir();
+    const bundlePath = writeFile(dir, "static/main.js", FIXTURE_BUNDLE.replace("minified-chunk.js.map", "main.js.map"));
+    const mapPath = writeFile(dir, "static/main.js.map", FIXTURE_MAP_TEXT);
+
+    const first = prepareArtifacts(collectArtifacts([path.join(dir, "static")]), { repoRoot: dir, dryRun: false });
+    const firstId = first.artifacts[0].debugId;
+    expect(determineDebugIdFromBundleSource(fs.readFileSync(bundlePath, "utf-8"))).toBe(firstId);
+
+    // Rewrite ONLY the map with different bytes (a trailing space keeps it valid
+    // JSON) and re-run. The bundle bytes are unchanged apart from the earlier
+    // injection, so a stale-id implementation would keep firstId.
+    fs.writeFileSync(mapPath, `${FIXTURE_MAP_TEXT} `, "utf-8");
+    const second = prepareArtifacts(collectArtifacts([path.join(dir, "static")]), { repoRoot: dir, dryRun: false });
+    const secondId = second.artifacts[0].debugId;
+    expect(secondId).not.toBe(firstId);
+    expect(determineDebugIdFromBundleSource(fs.readFileSync(bundlePath, "utf-8"))).toBe(secondId);
   });
 
   it("does not partially rewrite earlier bundles when a later map is invalid", () => {
@@ -622,6 +720,22 @@ describe("hexclave sourcemaps upload — command wiring", () => {
     expect(fs.readFileSync(path.join(dir, ".next/static/chunks/main.js"), "utf-8")).toBe(before);
   });
 
+  it("warns and sets a nonzero exit code under --strict when a client bundle has no map", async () => {
+    const dir = makeTempDir();
+    // A client chunk without any source map. Under --strict this must surface as
+    // a warning and a nonzero exit code, not silently pass.
+    writeFile(dir, ".next/static/chunks/nomap.js", "console.log(1)\n");
+    const previousExitCode = process.exitCode;
+    process.exitCode = undefined;
+    try {
+      const { stderr } = await run(["sourcemaps", "upload", path.join(dir, ".next"), "--dry-run", "--strict"]);
+      expect(stderr).toContain("will not be symbolicated");
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = previousExitCode;
+    }
+  });
+
   it("fails loud when the build uses subresource integrity", async () => {
     const dir = makeTempDir();
     writeFile(dir, ".next/static/chunks/main.js", "console.log(1)\n");
@@ -707,11 +821,15 @@ describe("hexclave sourcemaps upload — command wiring", () => {
     const bundleHeaders = new Headers(fetchCalls[1]?.init?.headers);
     expect(bundleHeaders.get("content-type")).toBe("application/javascript");
     expect(bundleHeaders.get("content-length")).toBe(String(artifact.bundleBytes));
+    // Signed into the presigned URL server-side; omitting it would invalidate
+    // the signature, so every object PUT must carry it.
+    expect(bundleHeaders.get("if-none-match")).toBe("*");
     expect(bundleHeaders.get("x-stack-secret-server-key")).toBeNull();
     const mapHeaders = new Headers(fetchCalls[2]?.init?.headers);
     expect(mapHeaders.get("content-type")).toBe("application/json");
     expect(mapHeaders.get("content-encoding")).toBe("gzip");
     expect(mapHeaders.get("content-length")).toBe(String(artifact.sourceMapGzipped.length));
+    expect(mapHeaders.get("if-none-match")).toBe("*");
     const uploadedBundle = new Uint8Array(await new Response(fetchCalls[1]?.init?.body).arrayBuffer());
     expect(uploadedBundle.byteLength).toBe(artifact.bundleBytes);
     expect(new TextDecoder().decode(uploadedBundle)).toContain(artifact.debugId);
@@ -771,6 +889,68 @@ describe("hexclave sourcemaps upload — command wiring", () => {
       operation: `bundle ${artifact.bundleRelativePath}`,
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats a 412 from object storage as already-uploaded and still finalizes", async () => {
+    // The presigned URLs carry a signed `If-None-Match: "*"`, so object storage
+    // answers 412 when the (content-addressed, immutable) object already exists
+    // — e.g. a rerun after a network failure between a completed PUT and its
+    // response. That is success, not an error: the stored bytes ARE the bytes
+    // we were about to upload, and the flow must proceed to finalize.
+    const dir = makeTempDir();
+    writeFile(dir, "static/main.js", FIXTURE_BUNDLE.replace("minified-chunk.js.map", "main.js.map"));
+    writeFile(dir, "static/main.js.map", FIXTURE_MAP_TEXT);
+    const artifacts = prepareArtifacts(collectArtifacts([path.join(dir, "static")]), { repoRoot: dir, dryRun: false }).artifacts;
+    const artifact = artifacts.at(0);
+    if (artifact === undefined) throw new Error("fixture did not produce an artifact");
+    const requestInput = {
+      auth: {
+        apiUrl: "https://api.example.com",
+        dashboardUrl: "https://app.example.com",
+        publishableClientKey: "pck_test",
+        projectId: "project-test",
+        secretServerKey: "ssk_test",
+      },
+      getAuthHeaders: async () => ({}),
+      release: "v1",
+      dist: null,
+      environment: null,
+      artifacts,
+    };
+    const plan = createSourceMapUploadPlan(requestInput);
+    const fetchMock = vi.fn<[string | URL | Request, RequestInit?], Promise<Response>>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        manifest_sha256: plan.manifestSha256,
+        status: "registered",
+        finalize_path: "/api/latest/source-maps/artifacts/finalize",
+        artifacts: [{
+          debug_id: artifact.debugId,
+          code_file: artifact.bundleRelativePath,
+          source_map_file: artifact.sourceMapRelativePath,
+          bundle_object_key: "bundles/bundle.js",
+          bundle_upload_url: "https://storage.example/bundle",
+          source_map_upload_url: "https://storage.example/map",
+          source_map_object_key: "maps/map.json.gz",
+          already_finalized: false,
+        }],
+      }), { status: 201 }))
+      .mockResolvedValueOnce(new Response("precondition failed", { status: 412 }))
+      .mockResolvedValueOnce(new Response("precondition failed", { status: 412 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        manifest_sha256: plan.manifestSha256,
+        status: "finalized",
+        uploaded: [artifact.debugId],
+        already_uploaded: [],
+      }), { status: 200 }));
+
+    const result = await uploadPreparedSourceMaps({
+      ...requestInput,
+      plan,
+      transport: { fetch: fetchMock, sleep: async () => undefined },
+    });
+
+    expect(result.uploaded).toEqual([artifact.debugId]);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("rejects a malformed registration response before uploading any object", async () => {
@@ -865,12 +1045,29 @@ describe("hexclave sourcemaps upload — command wiring", () => {
   });
 
   it("fails before auth when the project is not configured", async () => {
-    const dir = makeTempDir();
-    const bundlePath = writeFile(dir, ".next/static/chunks/main.js", FIXTURE_BUNDLE.replace("minified-chunk.js.map", "main.js.map"));
-    writeFile(dir, ".next/static/chunks/main.js.map", FIXTURE_MAP_TEXT);
-    const before = fs.readFileSync(bundlePath, "utf-8");
+    // Hermetic regardless of the surrounding shell: a dev box or CI that exports
+    // a project-ID variable (which the CLI reads for real uploads) would
+    // otherwise satisfy `resolveProjectId` and never reach the expected error.
+    // `vi.stubEnv(name, undefined)` sets the string "undefined" in vitest 1.x
+    // rather than deleting, so the vars are removed and restored by hand.
+    const saved = new Map<string, string | undefined>([
+      ["HEXCLAVE_PROJECT_ID", process.env.HEXCLAVE_PROJECT_ID],
+      ["STACK_PROJECT_ID", process.env.STACK_PROJECT_ID],
+    ]);
+    for (const key of saved.keys()) delete process.env[key];
+    try {
+      const dir = makeTempDir();
+      const bundlePath = writeFile(dir, ".next/static/chunks/main.js", FIXTURE_BUNDLE.replace("minified-chunk.js.map", "main.js.map"));
+      writeFile(dir, ".next/static/chunks/main.js.map", FIXTURE_MAP_TEXT);
+      const before = fs.readFileSync(bundlePath, "utf-8");
 
-    await expect(run(["sourcemaps", "upload", path.join(dir, ".next")])).rejects.toThrow(/No project ID provided/);
-    expect(fs.readFileSync(bundlePath, "utf-8")).toBe(before);
+      await expect(run(["sourcemaps", "upload", path.join(dir, ".next")])).rejects.toThrow(/No project ID provided/);
+      expect(fs.readFileSync(bundlePath, "utf-8")).toBe(before);
+    } finally {
+      for (const [key, value] of saved) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 });

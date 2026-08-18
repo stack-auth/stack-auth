@@ -4,6 +4,7 @@ import {
   createErrorIngestItemOutcome,
   createErrorIngestProtocolProjection,
   evaluateErrorIngestPolicy,
+  ErrorIngestEnvelopeError,
   parseErrorIngestEnvelope,
   persistErrorIngestClientReportProjection,
   persistErrorIngestClientReportRequest,
@@ -12,7 +13,7 @@ import {
   type ErrorIngestEnvelopeAttachmentPayload,
   type ErrorIngestEnvelopeItem,
   type ErrorIngestItemOutcome,
-} from "@/lib/telemetry-ingest";
+} from "@/lib/error-ingest";
 import { projectSentryEnvelopeEvent } from "@/lib/error-ingest/error-ingest-event-adapter";
 import {
   ErrorIngestTransactionAdapterError,
@@ -20,7 +21,7 @@ import {
 } from "@/lib/error-ingest/error-ingest-transaction-adapter";
 import { buildErrorIngestRateLimitHeaders } from "@/lib/error-ingest/error-ingest-rate-limits";
 import { buildTelemetryWritePlan, insertBatchEvents, normalizeBatchEvents } from "@/lib/analytics-telemetry-writers";
-import { insertOtlpTraces, type OtlpTenantContext } from "@/lib/otlp-trace-writer";
+import { insertOtlpTraces, type OtlpTenantContext } from "@/lib/otlp/trace-writer";
 import { buildTelemetryMaterializationMessage, enqueueQstashMessage } from "@/lib/qstash-outbox";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
@@ -135,8 +136,12 @@ export const POST = createSmartRouteHandler({
       });
     } catch (error) {
       if (error instanceof StatusError) throw error;
-      if (error instanceof Error) throw new StatusError(StatusError.BadRequest, error.message);
-      throw new StatusError(StatusError.BadRequest, "Invalid Sentry envelope");
+      // Only reflect ErrorIngestEnvelopeError messages: they are fixed strings
+      // authored in the envelope parser, so they are safe to show callers.
+      // Any other error is an unexpected internal failure — rethrow so the
+      // generic 500 handler logs it instead of echoing internal text as a 400.
+      if (error instanceof ErrorIngestEnvelopeError) throw new StatusError(StatusError.BadRequest, error.message);
+      throw error;
     }
 
     let userId: string | null = null;

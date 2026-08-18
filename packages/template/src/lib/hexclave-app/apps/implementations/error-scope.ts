@@ -30,11 +30,17 @@ function copyScopeData(data: ErrorScopeData | undefined): ErrorScopeData {
     ...data.tags === undefined ? {} : { tags: { ...data.tags } },
     ...data.contexts === undefined ? {} : { contexts: Object.fromEntries(Object.entries(data.contexts).map(([key, value]) => [key, { ...value }])) },
     ...data.extra === undefined ? {} : { extra: { ...data.extra } },
-    ...data.breadcrumbs === undefined ? {} : { breadcrumbs: data.breadcrumbs.map((breadcrumb) => ({ ...breadcrumb, ...breadcrumb.data === undefined ? {} : { data: { ...breadcrumb.data } } })) },
+    // `.slice(-MAX_BREADCRUMBS)` FIRST: a scope constructed with oversized
+    // initial data must obey the same bound addBreadcrumb enforces, otherwise
+    // createErrorScope(initial) becomes a bypass that emits arbitrarily large
+    // error payloads. Newest breadcrumbs win, matching addBreadcrumb.
+    ...data.breadcrumbs === undefined ? {} : { breadcrumbs: data.breadcrumbs.slice(-MAX_BREADCRUMBS).map((breadcrumb) => ({ ...breadcrumb, ...breadcrumb.data === undefined ? {} : { data: { ...breadcrumb.data } } })) },
     ...data.level === undefined ? {} : { level: data.level },
     ...data.fingerprint === undefined ? {} : { fingerprint: [...data.fingerprint] },
-    ...data.eventProcessors === undefined ? {} : { eventProcessors: [...data.eventProcessors] },
-    ...data.attachments === undefined ? {} : { attachments: cloneErrorAttachmentInputs(data.attachments) ?? [] },
+    // Match addEventProcessor and preserve the newest processors when a
+    // caller seeds an oversized initial scope.
+    ...data.eventProcessors === undefined ? {} : { eventProcessors: data.eventProcessors.slice(-MAX_EVENT_PROCESSORS) },
+    ...data.attachments === undefined ? {} : { attachments: cloneErrorAttachmentInputs(data.attachments) },
   };
 }
 

@@ -1,4 +1,4 @@
-import { trace } from "@opentelemetry/api";
+import { context, propagation, trace } from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
 import { BatchLogRecordProcessor, LoggerProvider } from "@opentelemetry/sdk-logs";
 import { createServer } from "node:http";
@@ -66,7 +66,7 @@ describe("managed browser OpenTelemetry", () => {
       resource: { service: { name: "storefront" } },
       getRequestHeaders: async () => ({}),
       networkCapture: { enabled: true, allowOrigins: null, denyOrigins: null, ignoreUrls: [] },
-      getPropagationPolicy: () => ({ allowedOrigins: [], allowLocalhost: false }),
+      getPropagationPolicy: () => ({ allowedOrigins: [], allowLocalhost: false, correlationBaggage: true }),
       getAmbientOtelContext: () => null,
     });
 
@@ -78,6 +78,61 @@ describe("managed browser OpenTelemetry", () => {
     await resetManagedBrowserOtelForTesting();
     const secondRegistration = registerManagedBrowserOtel(makeOptions("project-b"));
     expect(secondRegistration).not.toBe(firstRegistration);
+  });
+
+  it("omits the baggage propagator half when correlation baggage is disabled", async () => {
+    const makeOptions = (correlationBaggage: boolean) => ({
+      analyticsBaseUrl: "https://analytics.example.test",
+      projectId: "project-baggage",
+      clientVersion: "test",
+      traceSampleRate: 1,
+      resource: { service: { name: "storefront" } },
+      getRequestHeaders: async () => ({}),
+      networkCapture: { enabled: true, allowOrigins: null, denyOrigins: null, ignoreUrls: [] },
+      getPropagationPolicy: () => ({ allowedOrigins: [], allowLocalhost: false, correlationBaggage }),
+      getAmbientOtelContext: () => null,
+    });
+    const inject = (): Map<string, string> => {
+      const baggageContext = propagation.setBaggage(
+        context.active(),
+        propagation.createBaggage({ "hexclave.session_replay.segment.id": { value: "segment-1" } }),
+      );
+      const carrier = new Map<string, string>();
+      propagation.inject(baggageContext, carrier, {
+        set(target, key, value) {
+          target.set(key, value);
+        },
+      });
+      return carrier;
+    };
+
+    registerManagedBrowserOtel(makeOptions(false));
+    // spanPropagation.enabled=false: the whole baggage half is uninstalled —
+    // every managed-browser baggage entry is Hexclave-minted correlation.
+    expect(inject().get("baggage")).toBeUndefined();
+
+    await resetManagedBrowserOtelForTesting();
+    registerManagedBrowserOtel(makeOptions(true));
+    expect(inject().get("baggage")).toContain("segment-1");
+  });
+
+  it("does not let same-project owners disagree about the page-global baggage policy", async () => {
+    const makeOptions = (correlationBaggage: boolean) => ({
+      analyticsBaseUrl: "https://analytics.example.test",
+      projectId: "project-shared",
+      clientVersion: "test",
+      traceSampleRate: 1,
+      resource: { service: { name: "storefront" } },
+      getRequestHeaders: async () => ({}),
+      networkCapture: { enabled: true, allowOrigins: null, denyOrigins: null, ignoreUrls: [] },
+      getPropagationPolicy: () => ({ allowedOrigins: [], allowLocalhost: false, correlationBaggage }),
+      getAmbientOtelContext: () => null,
+    });
+
+    registerManagedBrowserOtel(makeOptions(true));
+    expect(() => registerManagedBrowserOtel(makeOptions(false))).toThrow(
+      "Hexclave browser OpenTelemetry is already configured for a different project or resource on this page",
+    );
   });
 
   it("resolves rotating credentials for each OTLP export", async () => {
@@ -114,7 +169,7 @@ describe("managed browser OpenTelemetry", () => {
       resource: { service: { name: "storefront" } },
       getRequestHeaders,
       networkCapture: { enabled: true, allowOrigins: null, denyOrigins: null, ignoreUrls: [] },
-      getPropagationPolicy: () => ({ allowedOrigins: [], allowLocalhost: false }),
+      getPropagationPolicy: () => ({ allowedOrigins: [], allowLocalhost: false, correlationBaggage: true }),
       getAmbientOtelContext: () => null,
     });
 
@@ -178,7 +233,7 @@ describe("managed browser OpenTelemetry", () => {
       resource: { service: { name: "storefront" } },
       getRequestHeaders: async () => ({}),
       networkCapture: { enabled: true, allowOrigins: null, denyOrigins: null, ignoreUrls: [] },
-      getPropagationPolicy: () => ({ allowedOrigins: [], allowLocalhost: false }),
+      getPropagationPolicy: () => ({ allowedOrigins: [], allowLocalhost: false, correlationBaggage: true }),
       getAmbientOtelContext: () => null,
     });
 
@@ -448,6 +503,26 @@ describe("managed browser OpenTelemetry", () => {
     expect(outcomes).toMatchObject([{ outcome: "partial", reason: "partial_failure", droppedItemCount: 1, message: "one invalid record" }]);
   });
 
+  it("recognizes the metrics partial-success field (rejectedDataPoints)", async () => {
+    // The backend's OTLP metrics route reports partial success via the
+    // standard `rejectedDataPoints` field (traces use rejectedSpans, logs use
+    // rejectedLogRecords); ignoring it would record rejected data points as
+    // fully accepted. The parser is shared across all three signal exporters,
+    // so exercising it through the log fixture pins the field handling itself.
+    const fetchMock = stubResponses([
+      response(200, JSON.stringify({ partialSuccess: { rejectedDataPoints: "1", errorMessage: "one invalid point" } }), { "content-type": "application/json" }),
+    ]);
+    const outcomes: BrowserOtlpDeliveryOutcome[] = [];
+    const provider = makeLogProvider(outcomes, 2);
+
+    provider.getLogger("transport-fixture").emit({ body: "partially accepted" });
+    provider.getLogger("transport-fixture").emit({ body: "also accepted" });
+    await provider.forceFlush();
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(outcomes).toMatchObject([{ outcome: "partial", reason: "partial_failure", droppedItemCount: 1, message: "one invalid point" }]);
+  });
+
   it("preserves the serialized event identity across retries", async () => {
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0);
@@ -537,7 +612,7 @@ describe("managed browser OpenTelemetry", () => {
       flushDeadlineMs: 25,
       shutdownDeadlineMs: 25,
       networkCapture: { enabled: true, allowOrigins: null, denyOrigins: null, ignoreUrls: [] },
-      getPropagationPolicy: () => ({ allowedOrigins: [], allowLocalhost: false }),
+      getPropagationPolicy: () => ({ allowedOrigins: [], allowLocalhost: false, correlationBaggage: true }),
       getAmbientOtelContext: () => null,
     });
 

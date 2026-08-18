@@ -1,4 +1,4 @@
-import type { Attributes, Gauge, Meter } from "@opentelemetry/api";
+import type { Attributes, Histogram, Meter } from "@opentelemetry/api";
 
 /**
  * Minimal web-vitals collection (TTFB / FCP / LCP / CLS / INP / FPS) built directly on
@@ -50,71 +50,87 @@ export type WebVitalsCollector = {
 };
 
 type WebVitalsMetricKey = "ttfb_ms" | "fcp_ms" | "lcp_ms" | "cls" | "inp_ms" | "fps";
-type WebVitalsGauge = Pick<Gauge, "record">;
-type WebVitalsMeter = Pick<Meter, "createGauge">;
+type WebVitalsHistogram = Pick<Histogram, "record">;
+type WebVitalsMeter = Pick<Meter, "createHistogram">;
 
+// Bucket boundaries always include the metric's Google field thresholds
+// (good / needs-improvement), so the good/needs-work/poor split is exactly
+// recoverable from the bucket counts alone; the remaining boundaries spread
+// the realistic value range so tail behavior stays visible.
 const WEB_VITAL_METRICS: readonly {
   key: WebVitalsMetricKey,
   name: string,
   description: string,
   unit: string,
+  bucketBoundaries: number[],
 }[] = [
   {
     key: "lcp_ms",
     name: "hexclave.web.vitals.lcp",
     description: "Largest Contentful Paint observed in a browser page view",
     unit: "ms",
+    bucketBoundaries: [250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 6000, 8000, 12000],
   },
   {
     key: "fcp_ms",
     name: "hexclave.web.vitals.fcp",
     description: "First Contentful Paint observed in a browser page view",
     unit: "ms",
+    bucketBoundaries: [100, 250, 500, 900, 1200, 1800, 2400, 3000, 4000, 6000],
   },
   {
     key: "cls",
     name: "hexclave.web.vitals.cls",
     description: "Cumulative Layout Shift observed in a browser page view",
     unit: "1",
+    bucketBoundaries: [0.01, 0.025, 0.05, 0.1, 0.15, 0.25, 0.4, 0.6, 1],
   },
   {
     key: "inp_ms",
     name: "hexclave.web.vitals.inp",
     description: "Interaction to Next Paint observed in a browser page view",
     unit: "ms",
+    bucketBoundaries: [16, 40, 80, 120, 200, 300, 500, 800, 1200],
   },
   {
     key: "ttfb_ms",
     name: "hexclave.web.vitals.ttfb",
     description: "Time to First Byte observed in a browser page view",
     unit: "ms",
+    bucketBoundaries: [50, 100, 200, 400, 800, 1200, 1800, 2500, 4000],
   },
   {
     key: "fps",
     name: "hexclave.web.vitals.fps",
     description: "Animation frame rate observed while a browser page view was visible",
     unit: "frame/s",
+    bucketBoundaries: [5, 10, 15, 20, 25, 30, 40, 50, 55, 60],
   },
 ];
 
 /**
- * Web Vitals are page-view samples, so gauges preserve each observation as a
- * native Metrics point without pretending that the browser collector is a
- * request-duration histogram. The low-cardinality navigation attribute keeps
- * hard loads and SPA navigation samples distinguishable for future queries.
+ * Web Vitals are per-page-view DISTRIBUTION samples, so they are recorded as
+ * histograms: every observation contributes to sum/count/buckets, and averages
+ * and threshold splits stay truthful. A gauge would be wrong here — OTel's
+ * synchronous Gauge keeps only the LAST value per attribute set within an
+ * export interval (several SPA navigations within one interval would collapse
+ * to one sample) and cumulative last-value re-exports a stale reading every
+ * interval afterwards. The low-cardinality navigation attribute keeps hard
+ * loads and SPA navigation samples distinguishable for queries.
  */
 export class OtlpWebVitalsMetricRecorder {
-  private readonly _gauges: Map<WebVitalsMetricKey, WebVitalsGauge>;
+  private readonly _histograms: Map<WebVitalsMetricKey, WebVitalsHistogram>;
 
   constructor(meter: WebVitalsMeter) {
-    const gauges = new Map<WebVitalsMetricKey, WebVitalsGauge>();
+    const histograms = new Map<WebVitalsMetricKey, WebVitalsHistogram>();
     for (const metric of WEB_VITAL_METRICS) {
-      gauges.set(metric.key, meter.createGauge(metric.name, {
+      histograms.set(metric.key, meter.createHistogram(metric.name, {
         description: metric.description,
         unit: metric.unit,
+        advice: { explicitBucketBoundaries: metric.bucketBoundaries },
       }));
     }
-    this._gauges = gauges;
+    this._histograms = histograms;
   }
 
   record(snapshot: WebVitalsSnapshot): void {
@@ -124,7 +140,7 @@ export class OtlpWebVitalsMetricRecorder {
     for (const metric of WEB_VITAL_METRICS) {
       const value = snapshot[metric.key];
       if (value === undefined || !Number.isFinite(value)) continue;
-      this._gauges.get(metric.key)?.record(value, attributes);
+      this._histograms.get(metric.key)?.record(value, attributes);
     }
   }
 }

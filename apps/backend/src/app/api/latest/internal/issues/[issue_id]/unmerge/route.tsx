@@ -1,8 +1,10 @@
+import { resolveIssueIdentity } from "@/lib/issues/issue-identity";
 import { unmergeIssue } from "@/lib/issues/issue-merge";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { IssueUnmergeRequestSchema, IssueUnmergeResponseSchema } from "@hexclave/shared/dist/interface/admin-issues";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 /**
  * Split a strict subset of an issue's owned hashes out into a new issue.
@@ -26,7 +28,10 @@ export const POST = createSmartRouteHandler({
     }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
     params: yupObject({
-      issue_id: yupString().uuid().defined(),
+      // Not `.uuid()`: like the sibling detail and PATCH routes, this accepts
+      // the numeric short id the UI displays, and follows merge redirects —
+      // `resolveIssueIdentity` in the handler is the one grammar authority.
+      issue_id: yupString().defined(),
     }).defined(),
     body: IssueUnmergeRequestSchema,
   }),
@@ -43,9 +48,15 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.ObservabilityNotEnabled();
     }
 
+    // Resolving here (rather than `.uuid()` in the schema) also follows a
+    // merge redirect: unmerging via a merged-away issue's retained id operates
+    // on the survivor, which is the issue that actually owns the hashes now.
+    const identity = await resolveIssueIdentity(auth.tenancy, params.issue_id);
+    if (identity === null) throw new StatusError(StatusError.NotFound, "Issue not found");
+
     const { sourceIssueId, newIssueId, countersTruncatedAt } = await unmergeIssue({
       tenancy: auth.tenancy,
-      issueId: params.issue_id,
+      issueId: identity.issueId,
       hashes: body.hashes,
     });
     return {

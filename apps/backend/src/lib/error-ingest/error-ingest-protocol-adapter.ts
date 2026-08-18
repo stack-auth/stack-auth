@@ -2,6 +2,8 @@ import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import {
   ERROR_INGEST_OUTCOME_STATUSES,
+  countErrorIngestOutcomes,
+  summarizeErrorIngestOutcomes,
   type ErrorIngestBatchCounts,
   type ErrorIngestBatchStatus,
   type ErrorIngestDropReason,
@@ -199,18 +201,6 @@ const REJECTED_STATUSES: readonly ErrorIngestOutcomeStatus[] = [
   "dropped",
 ];
 
-function emptyCounts(): Record<ErrorIngestOutcomeStatus, number> {
-  return {
-    accepted: 0,
-    filtered: 0,
-    rate_limited: 0,
-    rejected: 0,
-    deduplicated: 0,
-    dropped: 0,
-    queued: 0,
-  };
-}
-
 function validatePositiveLimit(value: number, name: string): number {
   if (!Number.isSafeInteger(value) || value <= 0) {
     throw new ErrorIngestProtocolAdapterError(`${name} must be a positive safe integer`);
@@ -404,22 +394,18 @@ function normalizeItem(
   };
 }
 
-function deriveBatchStatus(outcomes: readonly ErrorIngestProtocolOutcomeInput[]): {
-  status: ErrorIngestBatchStatus,
-  reason?: "empty_batch",
-} {
-  if (outcomes.length === 0) return { status: "rejected", reason: "empty_batch" };
-  const first = outcomes[0];
-  for (const outcome of outcomes.slice(1)) {
-    if (outcome.status !== first.status) return { status: "partial" };
-  }
-  return { status: first.status };
-}
-
 function encodeCanonicalPart(value: string): string {
   return `${Buffer.byteLength(value, "utf8")}:${value}`;
 }
 
+// This key is stable across retries of the same batch AND outcome decisions —
+// deliberately including each item's status/reason. A byte-identical retry
+// whose policy decisions changed in between (e.g. a rate-limit window opened)
+// therefore produces a NEW key and a second loss-ledger row: the ledger counts
+// decisions, and making it count "first decision per batch" instead would
+// require durably persisting that first decision before policy reruns, which
+// this stateless projection layer intentionally does not do. The ClickHouse
+// write path stays idempotent separately via the batch identity.
 function idempotencyKey(
   batchId: string,
   items: readonly ErrorIngestProtocolItemProjection[],
@@ -531,11 +517,21 @@ function boundedErrorMessage(counts: ErrorIngestBatchCounts, maxBytes: number): 
   return result;
 }
 
+function isSignalItemType(itemType: ErrorIngestItemType, signal: "logs" | "traces"): boolean {
+  return signal === "logs"
+    ? itemType === "log"
+    : itemType === "span" || itemType === "transaction";
+}
+
 function otlpPartialSuccess(
-  counts: ErrorIngestBatchCounts,
+  items: readonly ErrorIngestProtocolItemProjection[],
   signal: "logs" | "traces",
   maxErrorMessageBytes: number,
 ): ErrorIngestOtlpPartialSuccessProjection {
+  // Each OTLP signal reports only its own item types. Counting the whole batch
+  // would let a rejected transaction surface as `rejectedLogRecords` (and vice
+  // versa) in mixed batches, telling the client the wrong signal failed.
+  const counts = countErrorIngestOutcomes(items.filter((item) => isSignalItemType(item.itemType, signal)));
   const rejectedItems = rejectedItemCount(counts);
   const errorMessage = boundedErrorMessage(counts, maxErrorMessageBytes);
   if (rejectedItems === 0 || errorMessage === undefined) {
@@ -560,9 +556,7 @@ export function createErrorIngestProtocolProjection(
   const limits = resolveLimits(options);
   const normalizedBatchId = validateIdentifier(batchId, "batchId", limits.maxBatchIdBytes);
   const items = outcomes.map((outcome, itemIndex) => normalizeItem(outcome, itemIndex, limits));
-  const counts = emptyCounts();
-  for (const item of items) counts[item.status] += 1;
-  const status = deriveBatchStatus(outcomes);
+  const { counts, ...status } = summarizeErrorIngestOutcomes(items);
   const report = aggregateClientReport(items, limits.maxClientReportEntries);
   const legacyBatch: ErrorIngestLegacyBatchOutcomeProjection = {
     batchId: normalizedBatchId,
@@ -586,8 +580,8 @@ export function createErrorIngestProtocolProjection(
     items,
     clientReport: report.report,
     otlpPartialSuccess: {
-      logs: otlpPartialSuccess(counts, "logs", limits.maxErrorMessageBytes),
-      traces: otlpPartialSuccess(counts, "traces", limits.maxErrorMessageBytes),
+      logs: otlpPartialSuccess(items, "logs", limits.maxErrorMessageBytes),
+      traces: otlpPartialSuccess(items, "traces", limits.maxErrorMessageBytes),
     },
     legacyBatch,
     truncation: report.truncation,

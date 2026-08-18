@@ -68,12 +68,17 @@ function isExpectedRegistrationRace(error: unknown): boolean {
 }
 
 function canReplaceInstalledSource(source: string): boolean {
-  // The workflow id is shared. Ownership is "this is still the built-in
-  // issue-alert email workflow": it must pass the same email-boundary
-  // validator as the source we are about to install. That lets us publish a
-  // new built-in version without treating an older generated source as a
-  // foreign collision, while still refusing to overwrite a user-owned
-  // definition that happens to reuse the id.
+  // The workflow id is shared. Ownership is approximated as "this is still
+  // the built-in issue-alert email workflow": it must pass the same
+  // email-boundary validator as the source we are about to install. That lets
+  // us publish a new built-in version without treating an older generated
+  // source as a foreign collision. Note the deliberate limit of this
+  // heuristic: a user-owned workflow that reuses this id AND happens to pass
+  // the validator (subscribes to the issue-alert custom event and sends via
+  // hexclaveApp.sendEmail) is indistinguishable from an old built-in version
+  // and will be upgraded over. The schema has no real ownership column today,
+  // so we accept that tradeoff; sources that fail the validator — the common
+  // shape of a hand-written workflow — are still a hard conflict.
   return validateIssueAlertWorkflowSource(source).status === "ok";
 }
 

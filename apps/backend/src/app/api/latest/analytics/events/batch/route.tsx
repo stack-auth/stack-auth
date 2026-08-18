@@ -1,5 +1,6 @@
 import { buildTelemetryWritePlan, getBatchDestinationDeduplicationToken, insertBatchEvents, normalizeBatchEvents, type NormalizedEventBatch } from "@/lib/analytics-telemetry-writers";
-import { evaluateErrorIngestPolicy, persistErrorIngestClientReportProjection } from "@/lib/telemetry-ingest";
+import { dualWriteLegacyEvents } from "@/lib/legacy-telemetry-dual-write";
+import { evaluateErrorIngestPolicy, persistErrorIngestClientReportProjection } from "@/lib/error-ingest";
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
 import { createLegacyBatchProtocolProjection } from "@/lib/error-ingest/error-ingest-protocol-projections";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
@@ -222,10 +223,6 @@ export const POST = createSmartRouteHandler({
           ),
           level: yupString().optional().oneOf(LOG_LEVELS),
         }).defined().test(
-          "custom-event-data",
-          `Event data must be a JSON object of at most ${CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES} serialized bytes`,
-          (event) => isPlainObjectWithinLimit(event.data),
-        ).test(
           // A lone trace_id or span_id cannot be joined to anything, so it is
           // malformed rather than partially useful.
           "event-span-identity-pairing",
@@ -373,6 +370,24 @@ export const POST = createSmartRouteHandler({
         }
         return body.schema_version === 3 && isTelemetryResource(body.resource);
       },
+    ).test(
+      // Body-level rather than item-level because it is wire-version-dependent:
+      // the released pre-versioned contract accepted ANY JSON value as `data`
+      // (yupMixed) with no size cap, and old SDKs are embedded in customer apps
+      // indefinitely, so that leniency is permanent for legacy batches — a 400
+      // here would reject the whole batch for every old caller forever. Legacy
+      // non-object data is wrapped into an object at the write boundary (the
+      // telemetry `data` column is typed JSON and only stores objects); the
+      // strict plain-object + size contract applies to versioned batches only.
+      "custom-event-data",
+      `Event data must be a JSON object of at most ${CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES} serialized bytes`,
+      (body) => {
+        if (body.schema_version === undefined) return true;
+        const events = Array.isArray(body.events) ? body.events : [];
+        // Yup can run this parent test before child item validation.
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        return events.every((event) => event == null || isPlainObjectWithinLimit(event.data));
+      },
     ).transform((_value, originalValue) => maybeDecodeBinaryBody(originalValue)),
   }).test(
     // Auth-type-dependent body rules live here in the schema (not the handler) so
@@ -466,7 +481,7 @@ export const POST = createSmartRouteHandler({
     }
 
     let events = body.events ?? [];
-    let spans = body.spans ?? [];
+    const spans = body.spans ?? [];
     const tenancyId = auth.tenancy.id;
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const projectId = auth.tenancy.project.id;
@@ -475,29 +490,40 @@ export const POST = createSmartRouteHandler({
     // Keep this rollout at the legacy batch seam. OTLP retains its existing
     // request contract until it can expose the same item-level outcomes; this
     // avoids silently changing a different protocol in the same change.
+    //
+    // The error-ingest policy (scrubbing, filters, sampling, rate limits) is an
+    // error-pipeline control, so it applies to `$error`/`$log` items only.
+    // Product analytics items ($page-view, $click, custom events, and all
+    // spans) are stored byte-identical to what the SDK captured: scrubbing them
+    // would silently rewrite customer analytics (e.g. redact query strings out
+    // of $page-view URLs) and create a permanent discontinuity for exact-match
+    // dashboard queries — and error-policy limits must not drop analytics
+    // traffic either.
+    //
+    // Results are matched back by itemId, NOT via accepted*Indexes: those are
+    // positions in the items array handed to the policy, which do not line up
+    // with positions in `events` once the policy sees a subset (and never lined
+    // up with positions in `spans`, which used to silently drop every span in
+    // a batch that also contained events).
+    const isErrorIngestPolicyEvent = (event: { event_type: string }) =>
+      event.event_type === ERROR_EVENT_TYPE || event.event_type === LOG_EVENT_TYPE;
+    const policyItems = events.flatMap((event, index) =>
+      isErrorIngestPolicyEvent(event)
+        ? [{ itemId: `event:${index}`, itemType: event.event_type === LOG_EVENT_TYPE ? "log" as const : "event" as const, data: event.data }]
+        : []);
     const policyDecision = evaluateErrorIngestPolicy({
       config: auth.tenancy.config,
       scope: { tenancyId, projectId, branchId },
-      items: [
-        ...events.map((event, index) => ({ itemId: `event:${index}`, itemType: "event" as const, data: event.data })),
-        ...spans.map((span, index) => ({ itemId: `span:${index}`, itemType: "span" as const, data: span.data })),
-      ],
+      items: policyItems,
       nowMs: new Date().getTime(),
     });
-    const acceptedEventIndexes = new Set(policyDecision.acceptedEventIndexes);
-    const acceptedSpanIndexes = new Set(policyDecision.acceptedSpanIndexes);
+    const acceptedPolicyItemIds = new Set(policyDecision.acceptedItemIds);
     events = events
       .map((event, index) => {
         const scrubbedData = policyDecision.scrubbedData.get(`event:${index}`);
         return scrubbedData === undefined ? event : { ...event, data: scrubbedData };
       })
-      .filter((_event, index) => acceptedEventIndexes.has(index));
-    spans = spans
-      .map((span, index) => {
-        const scrubbedData = policyDecision.scrubbedData.get(`span:${index}`);
-        return scrubbedData === undefined ? span : { ...span, data: scrubbedData };
-      })
-      .filter((_span, index) => acceptedSpanIndexes.has(index));
+      .filter((event, index) => !isErrorIngestPolicyEvent(event) || acceptedPolicyItemIds.has(`event:${index}`));
 
     // Client auth is the browser tracker: identity comes from the session (user +
     // refresh token, always present) and batches are tied to a per-tab segment.
@@ -703,6 +729,12 @@ export const POST = createSmartRouteHandler({
       // that already accepted this batch.
       await Promise.all([
         insertBatchEvents(clickhouseClient, buildTelemetryWritePlan(normalizedEvents, body.batch_id)),
+        // Expand-phase mirror of the product-event rows into the legacy
+        // physical events table, which stays the customer-visible
+        // `default.events` source until the cutover retires it (then this is a
+        // no-op). $log/$error rows are not mirrored: the legacy table never
+        // held them. See legacy-telemetry-dual-write.ts.
+        dualWriteLegacyEvents(clickhouseClient, normalizedEvents.productEvents),
         insertSpans(clickhouseClient, spanRows, {
           deduplicationToken: getBatchDestinationDeduplicationToken(body.batch_id, "analytics_internal.spans"),
         }),
@@ -719,11 +751,16 @@ export const POST = createSmartRouteHandler({
       throw error;
     }
 
+    // Policy outcomes only exist for `$error`/`$log` items. A batch with none
+    // of those must fall back to the counts-based accepted projection: handing
+    // the projection an empty outcome list would classify the whole (perfectly
+    // fine) analytics batch as `rejected: empty_batch` in the client-report
+    // ledger and sprout a bogus `ingest` block in the response.
     const protocolProjection = createLegacyBatchProtocolProjection(
       body.batch_id,
-      events.length,
+      body.events?.length ?? 0,
       spans.length,
-      policyDecision.outcomes,
+      policyItems.length > 0 ? policyDecision.outcomes : undefined,
     );
     runAsynchronouslyAndWaitUntil(persistErrorIngestClientReportProjection(
       {
@@ -738,6 +775,10 @@ export const POST = createSmartRouteHandler({
       statusCode: 200,
       bodyType: "json",
       body: {
+        // Report the number of event rows that survived policy filtering. The
+        // previous request-count value over-reported storage when a versioned
+        // batch dropped or rate-limited an error/log item.
+        // Item-level outcomes for versioned callers live in `ingest` below.
         inserted: events.length,
         accepted_spans: spans.length,
         ...(protocolProjection.status === "accepted" ? {} : {

@@ -14,10 +14,10 @@ import { AuthError, CliError, errorMessage } from "../lib/errors.js";
 import {
   appendDebugIdSnippet,
   collectArtifacts,
-  deriveDebugId,
-  determineDebugIdFromBundleSource,
+  deriveBundleDebugId,
   findIntegrityManifests,
   findNextBuildRoots,
+  isInside,
   isDebugId,
   NEXT_SERVER_SOURCE_MAPS_CONFIG_HINT,
   normalizeArtifactRelativePath,
@@ -475,12 +475,23 @@ async function uploadPresignedObject(
       // headers: object storage must see only the signed content headers.
       "content-type": contentType,
       "content-length": bytes.byteLength.toString(),
+      // The backend signs `If-None-Match: "*"` into the presigned URL so a
+      // published (content-addressed, immutable) object can never be
+      // overwritten. Sending it is REQUIRED, not defensive: omitting a signed
+      // header invalidates the presigned signature and the PUT is rejected.
+      "if-none-match": "*",
       ...(contentEncoding === null ? {} : { "content-encoding": contentEncoding }),
     },
     // A copied ArrayBuffer satisfies Node's BodyInit type and prevents a
     // caller-owned Buffer from being mutated while fetch is in flight.
     body: new Uint8Array(bytes).slice().buffer,
   }, operation);
+  // 412 Precondition Failed means the object already exists. Keys are derived
+  // from the content SHA-256, so an existing object IS the bytes we were about
+  // to upload — mirroring the server's `uploadBytesIfAbsent` semantics this is
+  // an already-uploaded success, not an error (e.g. a retry after a network
+  // failure that happened between a completed PUT and its response).
+  if (response.status === 412) return;
   if (!response.ok) {
     const responseText = await readResponseText(response, operation);
     throw new SourceMapUploadHttpError(operation, response.status, describeResponseBody(responseText, response.statusText));
@@ -578,6 +589,14 @@ function createSourceMapApiUrl(auth: ProjectAuth, apiPath: string, operation: st
   return `${auth.apiUrl.replace(/\/+$/, "")}${apiPath}`;
 }
 
+// Deliberately surfaces the (bounded) upstream body. Unlike a public API — where
+// forwarding an upstream provider's error to an END USER can leak internals — the
+// only reader here is the authenticated operator running the CLI, debugging their
+// OWN upload. The API body is Hexclave's own structured error, and an
+// object-storage body describes a request against a presigned URL the operator
+// already holds, so it reveals nothing new. Hiding it behind a generic string
+// would just make upload failures undebuggable. The body is capped at 1 KiB and
+// the structured `error`/`message` fields are preferred.
 function describeResponseBody(text: string, statusText: string): string {
   if (text.trim() === "") return statusText || "empty response";
   try {
@@ -768,8 +787,14 @@ export type PreparationResult = {
   artifacts: PreparedSourceMapArtifact[],
   /** Human-readable warnings; `--strict` turns a non-empty list into exit code 1. */
   warnings: string[],
-  /** Bundles that were injected but had no map, split out so the hint can be specific. */
+  /** Server chunks with no map, split out so the Next.js-specific hint can be printed. */
   serverBundlesWithoutMaps: string[],
+  /**
+   * Non-server bundles with no map. Tracked so `--strict` (documented to fail on
+   * "missing source maps") actually catches an unsymbolicatable client build,
+   * rather than silently skipping every mapless client chunk.
+   */
+  clientBundlesWithoutMaps: string[],
 };
 
 /**
@@ -782,6 +807,7 @@ export function prepareArtifacts(candidates: readonly SourceMapArtifactCandidate
   const artifacts: PreparedSourceMapArtifact[] = [];
   const warnings: string[] = [];
   const serverBundlesWithoutMaps: string[] = [];
+  const clientBundlesWithoutMaps: string[] = [];
   const stagedWrites: Array<{ path: string, contents: string }> = [];
   const uniqueCandidates = [...new Map(candidates.map((candidate) => [candidate.bundlePath, candidate])).values()]
     .sort((left, right) => compareStrings(left.bundlePath, right.bundlePath));
@@ -798,32 +824,46 @@ export function prepareArtifacts(candidates: readonly SourceMapArtifactCandidate
     let mapText: string;
     let mapDir: string;
     if (candidate.sourceMapPath !== null) {
+      let realMapPath: string;
       try {
-        mapText = fs.readFileSync(candidate.sourceMapPath, "utf-8");
+        // Resolve and validate the canonical path before opening it. Opening
+        // the original symlink first lets a swap between openSync and
+        // realpathSync validate a different target from the bytes we read.
+        realMapPath = fs.realpathSync(candidate.sourceMapPath);
+        const realScanDir = fs.realpathSync(candidate.scanDir);
+        if (!isInside(realMapPath, realScanDir)) {
+          throw new CliError(`Source map ${candidate.sourceMapPath} is outside the scanned build directory.`);
+        }
+        // The final-component guard closes the remaining replacement window:
+        // a watcher may replace the canonical path with a symlink after
+        // realpathSync, but must not make this read escape the validated tree.
+        const mapFd = fs.openSync(realMapPath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+        try {
+          mapText = fs.readFileSync(mapFd, "utf-8");
+        } finally {
+          fs.closeSync(mapFd);
+        }
       } catch (error) {
         throw new CliError(`Could not read source map ${candidate.sourceMapPath}: ${error instanceof Error ? error.message : String(error)}`);
       }
-      mapDir = path.dirname(candidate.sourceMapPath);
+      mapDir = path.dirname(realMapPath);
     } else {
       const inline = readInlineSourceMap(source);
       if (inline === null) {
         if (candidate.isServerBundle) serverBundlesWithoutMaps.push(relativePath);
+        else clientBundlesWithoutMaps.push(relativePath);
         continue;
       }
       mapText = inline;
       mapDir = path.dirname(candidate.bundlePath);
     }
 
-    // An id already present in the file wins over a freshly derived one. That
-    // is what makes re-running the command on the same build output a true
-    // no-op: the bytes changed the moment we first injected, so re-deriving
-    // would mint a new id (and orphan the map already uploaded for the old one).
-    const existingDebugId = determineDebugIdFromBundleSource(source);
-    // Hashing the utf-8 re-encoding of the decoded text rather than the raw file
-    // bytes: JS sources are utf-8 by definition, so the round trip is lossless
-    // and — the property that matters — deterministic, which is all a derived id
-    // needs.
-    const debugId = existingDebugId ?? deriveDebugId(Buffer.from(source, "utf-8"), Buffer.from(mapText, "utf-8"));
+    // Derive the id from the CLEAN bundle (any previous injection stripped)
+    // paired with the CURRENT map. This keeps a rerun on unchanged output a true
+    // no-op, yet re-mints the id when only the map changed — so a stale embedded
+    // id can never cause a changed map to be uploaded under the old id (which
+    // would leave symbolication on the previous map). See `deriveBundleDebugId`.
+    const debugId = deriveBundleDebugId(source, mapText);
 
     let parsedMap: unknown;
     try {
@@ -870,7 +910,7 @@ export function prepareArtifacts(candidates: readonly SourceMapArtifactCandidate
 
   for (const write of stagedWrites) fs.writeFileSync(write.path, write.contents, "utf-8");
 
-  return { artifacts, warnings, serverBundlesWithoutMaps };
+  return { artifacts, warnings, serverBundlesWithoutMaps, clientBundlesWithoutMaps };
 }
 
 export function registerSourceMapsCommand(program: Command) {
@@ -895,7 +935,6 @@ export function registerSourceMapsCommand(program: Command) {
       const release = normalizeOptionalMetadata(opts.release, "--release");
       const dist = normalizeOptionalMetadata(opts.dist, "--dist");
       const environment = normalizeOptionalMetadata(opts.environment, "--environment");
-      const projectId = dryRun ? resolveOptionalProjectId(opts.cloudProjectId) : null;
       if (dist !== null && release === null) {
         throw new CliError("Distribution is only meaningful with a release. Supply --release together with --dist.");
       }
@@ -920,13 +959,17 @@ export function registerSourceMapsCommand(program: Command) {
         throw new CliError(`No .js/.mjs/.cjs files found under ${scanDirs.join(", ")}. Did you run your build first?`);
       }
 
-      // Resolve credentials before rewriting any build file. If auth or session
-      // refresh fails, the caller keeps an untouched build and can retry after
-      // fixing credentials. The actual short-lived header is still fetched per
-      // API request below.
-      const auth = dryRun ? null : resolveAuth(resolveProjectId(opts.cloudProjectId));
+      // A build with no source maps at all is a true no-op: `prepareArtifacts`
+      // rewrites nothing (mapless bundles are skipped), and there is nothing to
+      // upload. Such a run must not authenticate or refresh a session just to
+      // print "Nothing to upload". Only when there IS a map do we resolve
+      // credentials — and we do so BEFORE `prepareArtifacts` rewrites any
+      // bundle, so a failed auth still leaves the build untouched. The
+      // short-lived header is fetched per API request below.
+      const hasAnySourceMap = candidates.some((candidate) => candidate.sourceMapPath !== null || candidate.hasInlineSourceMap);
+      const auth = dryRun || !hasAnySourceMap ? null : resolveAuth(resolveProjectId(opts.cloudProjectId));
       const getAuthHeaders = auth === null ? null : await createSourceMapAuthHeadersFactory(auth);
-      const { artifacts, warnings, serverBundlesWithoutMaps } = prepareArtifacts(candidates, { repoRoot: process.cwd(), dryRun });
+      const { artifacts, warnings, serverBundlesWithoutMaps, clientBundlesWithoutMaps } = prepareArtifacts(candidates, { repoRoot: process.cwd(), dryRun });
 
       if (serverBundlesWithoutMaps.length > 0) {
         // Next.js does not emit server source maps unless this is enabled, so
@@ -937,15 +980,18 @@ export function registerSourceMapsCommand(program: Command) {
           + `Next.js does not emit them unless you add \`${NEXT_SERVER_SOURCE_MAPS_CONFIG_HINT}\` to your next.config.js; without it, server-side stack traces stay minified.`,
         );
       }
+      if (clientBundlesWithoutMaps.length > 0) {
+        // Without this warning `--strict` (documented to fail on missing source
+        // maps) would pass on a build whose client chunks cannot be symbolicated.
+        warnings.push(
+          `${clientBundlesWithoutMaps.length} bundle(s) have no source map (e.g. ${clientBundlesWithoutMaps[0]}) and will not be symbolicated. `
+          + "Configure your bundler to emit source maps for these files (or scan only the directories that contain them).",
+        );
+      }
       if (artifacts.length === 0) {
         warnings.push(`No source maps found under ${scanDirs.join(", ")}. Nothing to upload.`);
       }
       for (const warning of warnings) console.error(`Warning: ${warning}`);
-
-      const manifest = createSourceMapManifest(artifacts, release, environment, {
-        projectId,
-        dist,
-      });
 
       const totalBytes = artifacts.reduce((sum, artifact) => sum + artifact.sourceMapBytes, 0);
       const totalGzippedBytes = artifacts.reduce((sum, artifact) => sum + artifact.sourceMapGzipped.length, 0);
@@ -982,6 +1028,19 @@ export function registerSourceMapsCommand(program: Command) {
           alreadyUploaded: result.alreadyUploaded,
         }, null, 2));
       } else {
+        // Only computed on the print path (dry-run, or a real run with nothing
+        // prepared). The upload path derives and validates its own plan inside
+        // `uploadPreparedSourceMaps`, so computing the manifest there too would
+        // validate, normalize and sort every artifact a second time.
+        // A real upload with prepared artifacts already resolved the project
+        // through authenticated credentials; a dry-run or no-op print still
+        // resolves the optional CLI/env value here, where a conflicting env
+        // configuration is relevant to the output and cannot affect uploads.
+        const projectId = auth === null ? resolveOptionalProjectId(opts.cloudProjectId) : auth.projectId;
+        const manifest = createSourceMapManifest(artifacts, release, environment, {
+          projectId,
+          dist,
+        });
         console.log(JSON.stringify({
           dryRun,
           release: manifest.release,

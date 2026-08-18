@@ -10,13 +10,13 @@ import {
   type TelemetrySpanStatusCode,
 } from "@hexclave/shared/dist/utils/analytics-wire";
 import { stripLoneSurrogates, type ClickHouseClient } from "./clickhouse";
-import { buildTelemetryResourceFields } from "./telemetry-resource";
+import { buildTelemetryResourceFields } from "./telemetry/resource";
 
 /**
  * Spans are telemetry facts (time intervals) — the sibling of events. They are
  * written DIRECTLY to ClickHouse (`analytics_internal.spans`), the same way
  * events are, and never go through the ext-db-sync (that is a dimension
- * replicator, not a telemetry pipe). See the plan/notes in
+ * replicator, not a telemetry pipe). See
  * `apps/backend/scripts/clickhouse-migrations.ts` for the table + `default.spans` view.
  *
  * Span IDENTITY IS W3C trace context: a 32-hex `trace_id`, a 16-hex `span_id`, and
@@ -99,14 +99,20 @@ export async function insertSpans(
     format: "JSONEachRow",
     clickhouse_settings: {
       date_time_input_format: "best_effort",
-      async_insert: options?.deduplicationToken == null ? 1 : 0,
       wait_for_async_insert: 1,
-      // A retry must deduplicate dependent trace-root/service materialized
-      // views as well as the source span table.
-      deduplicate_blocks_in_dependent_materialized_views: 1,
+      // With a token, a retry must deduplicate dependent trace-root/service
+      // materialized views as well as the source span table — and the insert
+      // must be synchronous, because ClickHouse rejects the MV-dedup flag in
+      // combination with async_insert (so the flag must not be set on the
+      // tokenless async path either; token-less inserts have no retry
+      // deduplication to extend into the MVs anyway).
       ...options?.deduplicationToken == null
-        ? {}
-        : { insert_deduplication_token: options.deduplicationToken },
+        ? { async_insert: 1 }
+        : {
+          async_insert: 0,
+          deduplicate_blocks_in_dependent_materialized_views: 1,
+          insert_deduplication_token: options.deduplicationToken,
+        },
     },
   });
 }
@@ -352,12 +358,16 @@ export async function insertSpanLinks(
     format: "JSONEachRow",
     clickhouse_settings: {
       date_time_input_format: "best_effort",
-      async_insert: options?.deduplicationToken == null ? 1 : 0,
       wait_for_async_insert: 1,
-      deduplicate_blocks_in_dependent_materialized_views: 1,
+      // See insertSpans: the MV-dedup flag is only valid (and only useful)
+      // together with a synchronous tokened insert.
       ...options?.deduplicationToken == null
-        ? {}
-        : { insert_deduplication_token: options.deduplicationToken },
+        ? { async_insert: 1 }
+        : {
+          async_insert: 0,
+          deduplicate_blocks_in_dependent_materialized_views: 1,
+          insert_deduplication_token: options.deduplicationToken,
+        },
     },
   });
 }

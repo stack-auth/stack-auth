@@ -51,7 +51,10 @@ export type BrowserOtlpOfflineQueue = {
 
 const AUTH_GENERATION_KEY = "auth-generation";
 const QUEUE_BYTES_KEY = "queue-bytes";
-const DATABASE_VERSION = 1;
+// Version 2 adds the stores for every signal to whichever database is opened.
+// Keeping the version bump also upgrades older per-signal databases without
+// changing their existing queue contents.
+const DATABASE_VERSION = 2;
 
 function normalizeQueueNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : fallback;
@@ -141,7 +144,13 @@ function readStoredBatch(value: unknown, id: IDBValidKey): BrowserOtlpQueueEntry
   };
 }
 
-function readStoredBatchSummary(value: unknown): BrowserOtlpQueueDropSummary {
+// Byte accounting and drop-OUTCOME accounting are different concerns: client
+// reports are excluded from drop summaries (a report about drops must never
+// manufacture another drop report), but their bytes WERE reserved against the
+// queue capacity at enqueue, so removal must always release `storedBodyBytes`
+// — otherwise every delivered client report would leak reserved capacity until
+// the queue falsely reports queue_overflow.
+function readStoredBatchAccounting(value: unknown): { dropSummary: BrowserOtlpQueueDropSummary, storedBodyBytes: number } {
   if (
     typeof value !== "object"
     || value === null
@@ -162,14 +171,21 @@ function readStoredBatchSummary(value: unknown): BrowserOtlpQueueDropSummary {
     throw new Error("IndexedDB contained an invalid browser OTLP queue item kind");
   }
   if (kind === "client_report") {
-    return { queueEntryCount: 0, itemCount: 0, bodyBytes: 0 };
+    return { dropSummary: { queueEntryCount: 0, itemCount: 0, bodyBytes: 0 }, storedBodyBytes: value.bodyBytes };
   }
 
   return {
-    queueEntryCount: 1,
-    itemCount: value.itemCount,
-    bodyBytes: value.bodyBytes,
+    dropSummary: {
+      queueEntryCount: 1,
+      itemCount: value.itemCount,
+      bodyBytes: value.bodyBytes,
+    },
+    storedBodyBytes: value.bodyBytes,
   };
+}
+
+function readStoredBatchSummary(value: unknown): BrowserOtlpQueueDropSummary {
+  return readStoredBatchAccounting(value).dropSummary;
 }
 
 function readMetaNumber(value: unknown, fallback: number): number {
@@ -192,11 +208,15 @@ function openDatabase(options: BrowserOtlpOfflineQueueOptions): Promise<IDBDatab
 
     request.onupgradeneeded = () => {
       const database = request.result;
-      if (!database.objectStoreNames.contains(options.storeName)) {
-        database.createObjectStore(options.storeName, { autoIncrement: true });
-      }
-      if (!database.objectStoreNames.contains(`${options.storeName}-meta`)) {
-        database.createObjectStore(`${options.storeName}-meta`);
+      const storeNames = new Set([options.storeName, "batches-traces", "batches-logs", "batches-metrics"]);
+      for (const storeName of storeNames) {
+        if (!database.objectStoreNames.contains(storeName)) {
+          database.createObjectStore(storeName, { autoIncrement: true });
+        }
+        const metaStoreName = `${storeName}-meta`;
+        if (!database.objectStoreNames.contains(metaStoreName)) {
+          database.createObjectStore(metaStoreName);
+        }
       }
     };
     request.onsuccess = () => {
@@ -204,8 +224,12 @@ function openDatabase(options: BrowserOtlpOfflineQueueOptions): Promise<IDBDatab
       database.onversionchange = () => database.close();
       resolve(database);
     };
+    // A previous SDK instance in another tab may still hold the old database
+    // version open. Do not reject here: IndexedDB keeps the request pending and
+    // fires `onsuccess` after that connection closes, which is the safe retry
+    // path. Leaving `onblocked` unset preserves that behavior; the caller's
+    // normal operation deadline remains the bound.
     request.onerror = () => reject(persistenceError("open", request.error));
-    request.onblocked = () => reject(new BrowserOtlpQueuePersistenceError("IndexedDB open was blocked by another connection"));
   });
 }
 
@@ -374,9 +398,11 @@ class IndexedDbBrowserOtlpOfflineQueue implements BrowserOtlpOfflineQueue {
       getRequest.onsuccess = () => {
         stored = getRequest.result;
         if (stored === undefined) return;
-        let summary: BrowserOtlpQueueDropSummary;
+        let storedBodyBytes: number;
         try {
-          summary = readStoredBatchSummary(stored);
+          // The full stored bytes, NOT the drop summary's: client reports have
+          // an all-zero drop summary but still reserved real queue bytes.
+          storedBodyBytes = readStoredBatchAccounting(stored).storedBodyBytes;
         } catch (error) {
           fail(error);
           return;
@@ -385,7 +411,7 @@ class IndexedDbBrowserOtlpOfflineQueue implements BrowserOtlpOfflineQueue {
         bytesRequest.onerror = () => fail(bytesRequest.error);
         bytesRequest.onsuccess = () => {
           const currentBytes = readMetaNumber(bytesRequest.result, 0);
-          const nextBytes = Math.max(0, currentBytes - summary.bodyBytes);
+          const nextBytes = Math.max(0, currentBytes - storedBodyBytes);
           const updateBytesRequest = meta.put(nextBytes, QUEUE_BYTES_KEY);
           updateBytesRequest.onerror = () => fail(updateBytesRequest.error);
           const deleteRequest = store.delete(id);

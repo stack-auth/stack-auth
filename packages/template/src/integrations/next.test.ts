@@ -290,7 +290,11 @@ describe("hexclaveInstrumentation", () => {
       const error = new Error("background job failed");
       await instrumentation.captureHandledError(error, {
         location: "jobs/send-receipt",
-        data: { queue: "receipts" },
+        // `handled`/`mechanism_type` in user data must NOT be able to flip the
+        // classification this API guarantees — _captureServerRequestError
+        // merges `data` over the flattened $error payload, so the adapter
+        // re-asserts the reserved fields after the user-data spread.
+        data: { queue: "receipts", handled: false, mechanism_type: "spoofed" },
       });
 
       expect(captureSpy).toHaveBeenCalledWith(error, {
@@ -299,6 +303,8 @@ describe("hexclaveInstrumentation", () => {
         data: {
           location: "jobs/send-receipt",
           queue: "receipts",
+          handled: true,
+          mechanism_type: "captured",
         },
       });
     } finally {

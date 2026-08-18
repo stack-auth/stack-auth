@@ -4,7 +4,7 @@ import {
   buildBackgroundJobKey,
   type BackgroundJobEnvelope,
   type BackgroundJobType,
-} from "./telemetry-contract";
+} from "./telemetry/contract";
 
 export type QstashFlowControl = {
   key: string;
@@ -77,7 +77,13 @@ export function decodeBackgroundJobEnvelope(value: unknown): BackgroundJobEnvelo
 function assertMessage(message: QstashMessage<Record<string, unknown>>): void {
   if (!message.url.startsWith("/")) throw new Error("QStash outbox URLs must be internal relative paths");
   if (message.flowControl !== undefined) {
-    if (message.flowControl.key.length === 0) throw new Error("QStash flow-control keys must not be empty");
+    // Mirror QStash's own server-side key alphabet so a bad key fails loudly at
+    // enqueue time. A key the server rejects is worse than a throw here: the
+    // poller would re-publish the same 400-rejected row forever and the job
+    // would never run.
+    if (!/^[a-zA-Z0-9._-]+$/.test(message.flowControl.key)) {
+      throw new Error("QStash flow-control keys must be non-empty and contain only alphanumerics, hyphens, underscores, or periods");
+    }
     if (!Number.isSafeInteger(message.flowControl.parallelism) || message.flowControl.parallelism < 1) {
       throw new Error("QStash flow-control parallelism must be a positive integer");
     }
@@ -130,13 +136,15 @@ export function decodeQstashMessage(value: unknown): QstashMessage<Record<string
     delay = value.delay;
   }
 
-  return {
+  const message: QstashMessage<Record<string, unknown>> = {
     url,
     body,
     ...(flowControl === undefined ? {} : { flowControl }),
     ...(delay === undefined ? {} : { delay }),
     ...(job === undefined ? {} : { job }),
   };
+  assertMessage(message);
+  return message;
 }
 
 /**
@@ -203,7 +211,11 @@ export function buildTelemetryMaterializationMessage(options: {
         batchId: options.batchId,
       },
       flowControl: {
-        key: `telemetry-materialization:${options.tenancyId}`,
+        // Period separator, NOT a colon: QStash restricts flow-control keys to
+        // alphanumerics plus `-`/`_`/`.`, and rejects the whole publish with a
+        // 400 otherwise — which silently starves every materialization for the
+        // tenancy because the outbox retries the same rejected key forever.
+        key: `telemetry-materialization.${options.tenancyId}`,
         parallelism: 4,
       },
       delay: "5s",

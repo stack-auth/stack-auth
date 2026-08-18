@@ -15,12 +15,18 @@
  *    alternation, one pass, a hard input cap.
  */
 
+import { truncateUtf8Bytes } from "@hexclave/shared/dist/utils/analytics-wire";
+
 /**
- * 8 KB. The SDK already truncates `data.message` well below this
- * (`ERROR_TEXT_MAX_BYTES`); the cap is a floor under the regex cost for
- * anything that reaches us by another route.
+ * 8 KB, measured in UTF-8 BYTES — the same unit and limit the durable `message`
+ * column uses (`TELEMETRY_MAX_LOG_MESSAGE_BYTES`, and the SDK's
+ * `ERROR_TEXT_MAX_BYTES`). Bounding in bytes rather than UTF-16 code units
+ * keeps the hash input consistent with the stored representation: two messages
+ * whose stored (truncated) forms are identical must not group differently based
+ * on content that was truncated away before persistence. It doubles as the
+ * floor under the regex cost for anything that reaches us by another route.
  */
-const MAX_MESSAGE_LENGTH = 8 * 1024;
+const MAX_MESSAGE_BYTES = 8 * 1024;
 
 /**
  * One alternation, evaluated left to right, so ORDER IS THE SPEC:
@@ -75,7 +81,7 @@ const PLACEHOLDERS: ReadonlyMap<string, string> = new Map([
 ]);
 
 export function parameterizeMessage(message: string): string {
-  const bounded = message.length > MAX_MESSAGE_LENGTH ? message.slice(0, MAX_MESSAGE_LENGTH) : message;
+  const bounded = truncateUtf8Bytes(message, MAX_MESSAGE_BYTES);
   return bounded.replace(PARAMETERIZE_RE, (match, ...args) => {
     // The named-groups object is the last argument when the pattern has named
     // groups. Everything before it is positional and irrelevant here.

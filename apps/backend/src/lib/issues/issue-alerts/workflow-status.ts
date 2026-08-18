@@ -20,6 +20,7 @@ import { parseOwnershipRoutingMetadata } from "@/lib/issues/ownership/routing-me
 import {
   IssueAlertPersistenceInputError,
   issueAlertPersistenceService,
+  type IssueAlertWorkflowDeliveryExpectation,
   type IssueAlertWorkflowUpdate,
 } from "./persistence";
 import type { IssueAlertRuleScope } from "./types";
@@ -42,11 +43,19 @@ export type IssueAlertWorkflowDeliveryRef = {
   workflowEventId: string,
   state: IssueAlertDeliveryStateValue,
   nextRetryAt: Date | null,
+  /** When the last applied failure/retry lifecycle occurred; the reducer's monotonic clock. */
+  lastAttemptAt: Date | null,
 };
 
 export type IssueAlertWorkflowStatusStore = {
   findDeliveryByWorkflowEventId(tenancyId: string, workflowEventId: string): Promise<IssueAlertWorkflowDeliveryRef | null>,
-  applyWorkflowUpdate(scope: IssueAlertRuleScope, deliveryId: string, expectedWorkflowEventId: string, update: IssueAlertWorkflowUpdate): Promise<boolean>,
+  applyWorkflowUpdate(
+    scope: IssueAlertRuleScope,
+    deliveryId: string,
+    expectedWorkflowEventId: string,
+    expectedDelivery: IssueAlertWorkflowDeliveryExpectation,
+    update: IssueAlertWorkflowUpdate,
+  ): Promise<boolean>,
 };
 
 export type IssueAlertWorkflowLifecycle = {
@@ -191,11 +200,23 @@ function isStaleLifecycle(
   delivery: IssueAlertWorkflowDeliveryRef,
   lifecycle: WorkflowRunLifecyclePayload["lifecycle"],
   retryAt: Date | null,
+  occurredAt: Date,
 ): boolean {
   if (delivery.state === IssueAlertDeliveryState.DELIVERED) return true;
   if (delivery.state === IssueAlertDeliveryState.DROPPED) return true;
+  // Lifecycle events arrive over an at-least-once channel with no ordering
+  // guarantee, so the reducer must be monotonic in two ways:
+  //  - An event that OCCURRED before the last applied attempt is history — a
+  //    delayed failure must not overwrite a newer retry's `nextRetryAt`.
+  //  - A failure/retry pair for the SAME attempt shares its retry timestamp;
+  //    once one of them recorded it, the other is a duplicate. Without this,
+  //    a retry processed before its matching failure would let the failure
+  //    apply again and increment `attemptCount` twice for one execution.
+  if ((lifecycle === "failure" || lifecycle === "retry")
+    && delivery.lastAttemptAt !== null
+    && occurredAt.getTime() < delivery.lastAttemptAt.getTime()) return true;
   if (lifecycle === "failure" && delivery.state === IssueAlertDeliveryState.FAILED && delivery.nextRetryAt === null) return true;
-  if (lifecycle === "retry"
+  if ((lifecycle === "failure" || lifecycle === "retry")
     && delivery.state === IssueAlertDeliveryState.FAILED
     && delivery.nextRetryAt?.getTime() === retryAt?.getTime()) return true;
   return false;
@@ -215,6 +236,7 @@ const defaultStatusStore: IssueAlertWorkflowStatusStore = {
         workflowEventId: true,
         state: true,
         nextRetryAt: true,
+        lastAttemptAt: true,
       },
     });
     if (row === null || row.workflowEventId === null) return null;
@@ -224,10 +246,17 @@ const defaultStatusStore: IssueAlertWorkflowStatusStore = {
       workflowEventId: row.workflowEventId,
       state: row.state,
       nextRetryAt: row.nextRetryAt,
+      lastAttemptAt: row.lastAttemptAt,
     };
   },
-  async applyWorkflowUpdate(scope, deliveryId, expectedWorkflowEventId, update) {
-    const result = await issueAlertPersistenceService.recordWorkflowUpdateIfCurrent(scope, deliveryId, expectedWorkflowEventId, update);
+  async applyWorkflowUpdate(scope, deliveryId, expectedWorkflowEventId, expectedDelivery, update) {
+    const result = await issueAlertPersistenceService.recordWorkflowUpdateIfCurrent(
+      scope,
+      deliveryId,
+      expectedWorkflowEventId,
+      expectedDelivery,
+      update,
+    );
     return result !== null;
   },
 };
@@ -249,10 +278,24 @@ export async function reconcileIssueAlertWorkflowLifecycle(options: {
   if (delivery === null) return { status: "ignored", reason: "delivery_not_found" };
   const update = updateForLifecycle(lifecycle.payload);
   const retryAt = update.kind === "failed" ? update.nextRetryAt : null;
-  if (isStaleLifecycle(delivery, lifecycle.payload.lifecycle, retryAt)) {
+  // Recomputed from the payload rather than read off `update.at`, because the
+  // update union types `at` as optional even though `updateForLifecycle`
+  // always sets it.
+  const lifecycleOccurredAt = toLifecycleDate(lifecycle.payload.occurred_at_millis, "workflow lifecycle time");
+  if (isStaleLifecycle(delivery, lifecycle.payload.lifecycle, retryAt, lifecycleOccurredAt)) {
     return { status: "ignored", reason: "stale_lifecycle" };
   }
-  const applied = await store.applyWorkflowUpdate(delivery.scope, delivery.id, triggerEventId, update);
+  const applied = await store.applyWorkflowUpdate(
+    delivery.scope,
+    delivery.id,
+    triggerEventId,
+    {
+      state: delivery.state,
+      nextRetryAt: delivery.nextRetryAt,
+      lastAttemptAt: delivery.lastAttemptAt,
+    },
+    update,
+  );
   if (!applied) return { status: "ignored", reason: "stale_lifecycle" };
   return {
     status: "reconciled",

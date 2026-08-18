@@ -7,8 +7,12 @@
  * "400µs" in the other — the same span could show two different durations
  * depending on which page you were looking at.
  *
- * Only genuinely cross-page helpers belong here. Count/percent formatting is
- * still services-local because nothing else renders those yet.
+ * Only genuinely cross-page helpers belong here. Count formatting lives here
+ * too, because Services, Performance, and Issues all render compact counts and
+ * had each grown an identical copy. Percent formatting stays page-local: the
+ * pages render percents at deliberately different precision (Services shows one
+ * decimal in dense cells, Performance rounds to whole percents in summaries),
+ * so there is no single shared rule to lift.
  *
  * The time formatters take epoch milliseconds rather than a ClickHouse
  * timestamp string: Issues gets its timestamps from a REST payload (`*_millis`
@@ -49,6 +53,27 @@ export function formatDuration(ms: number | null): string {
   const days = Math.floor(totalHours / 24);
   const hours = totalHours % 24;
   return hours === 0 ? `${days}d` : `${days}d ${hours}h`;
+}
+
+/**
+ * Compact count formatting for dense table cells. Values below 10k stay exact
+ * because at that size the digits are still readable and the precision matters
+ * when comparing two similar rows; above that only the magnitude counts, so
+ * 10k–100k keeps one decimal ("12.5k"), then "125k", "1.5M", "15M".
+ *
+ * Counts are non-negative by definition, so a negative value means an upstream
+ * aggregation bug — fail loudly rather than rendering "-50,000" (the thresholds
+ * only make sense for positive magnitudes anyway).
+ */
+export function formatCount(value: number): string {
+  if (!Number.isFinite(value)) throw new Error(`Cannot format a non-finite count: ${value}`);
+  if (value < 0) throw new Error(`Cannot format a negative count: ${value}`);
+  if (value < 10_000) return value.toLocaleString();
+  if (value < 1_000_000) {
+    const thousands = (value / 1_000).toFixed(value < 100_000 ? 1 : 0);
+    return thousands === "1000" ? "1.0M" : `${thousands}k`;
+  }
+  return `${(value / 1_000_000).toFixed(value < 10_000_000 ? 1 : 0)}M`;
 }
 
 const RELATIVE_TIME_UNITS: readonly { limitMs: number, divisorMs: number, unit: Intl.RelativeTimeFormatUnit }[] = [

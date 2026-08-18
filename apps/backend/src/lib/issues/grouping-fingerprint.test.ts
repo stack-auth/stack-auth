@@ -4,6 +4,7 @@ import {
   GROUPING_FINGERPRINT_TOKENS,
   classifyGroupingFingerprint,
   readGroupingFingerprint,
+  resolveGroupingFingerprint,
 } from "./grouping-fingerprint";
 import { computeGrouping } from "./grouping";
 import type { GroupingInput } from "./types";
@@ -138,6 +139,31 @@ describe("readGroupingFingerprint", () => {
 
   it("fails closed for a malformed fingerprint array", () => {
     expect(readGroupingFingerprint({ fingerprint_override: ["{{ type }}", 42] })).toBeUndefined();
+  });
+
+  it("ignores fingerprints outside the durable provenance bounds instead of persisting unreadable evidence", () => {
+    // The occurrence read model caps token arrays at 32 entries and the whole
+    // serialized provenance at 64 KiB; input beyond the wire bounds would be
+    // hashed and persisted but silently vanish from every occurrence response.
+    expect(readGroupingFingerprint({ fingerprint: Array.from({ length: 33 }, (_, index) => `token-${index}`) })).toBeUndefined();
+    expect(readGroupingFingerprint({ fingerprint: ["x".repeat(513)] })).toBeUndefined();
+    expect(readGroupingFingerprint({ fingerprint: Array.from({ length: 32 }, (_, index) => `token-${index}`) })).toHaveLength(32);
+  });
+
+  it("marks an oversized durable fingerprint as degraded provenance", () => {
+    const resolved = resolveGroupingFingerprint(["{{ stack }}"], input(), [{
+      function: "renderRow",
+      filename: "x".repeat(70_000),
+      absPath: null,
+      module: null,
+      lineno: null,
+      colno: null,
+      inApp: true,
+    }]);
+
+    expect(resolved.provenance.source).toBe("degraded");
+    expect(resolved.provenance.tokens).toEqual([]);
+    expect(resolved.resolvedValues).toEqual([]);
   });
 });
 

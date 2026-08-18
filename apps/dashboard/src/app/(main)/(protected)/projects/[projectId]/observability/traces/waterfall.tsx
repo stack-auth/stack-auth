@@ -209,14 +209,20 @@ function flattenSignalTrace(
   linksByOwnerSpanId: ReadonlyMap<string, readonly TraceWaterfallLink[]>,
 ): TraceWaterfallRow[] {
   const signalIds = traceSignalSpanIds(trace, 20, needle);
-  const promoteLinkedOwners = (node: TraceNode, ancestors: readonly TraceNode[]) => {
+  // Shared push/pop ancestry stack instead of copying an ancestors array per
+  // child: copying makes the walk O(spans x depth), which is quadratic for the
+  // deep chains pathological traces produce.
+  const ancestry: TraceNode[] = [];
+  const promoteLinkedOwners = (node: TraceNode) => {
     if (linksByOwnerSpanId.has(node.span.id)) {
       signalIds.add(node.span.id);
-      for (const ancestor of ancestors) signalIds.add(ancestor.span.id);
+      for (const ancestor of ancestry) signalIds.add(ancestor.span.id);
     }
-    for (const child of node.children) promoteLinkedOwners(child, [...ancestors, node]);
+    ancestry.push(node);
+    for (const child of node.children) promoteLinkedOwners(child);
+    ancestry.pop();
   };
-  promoteLinkedOwners(trace.root, []);
+  promoteLinkedOwners(trace.root);
 
   const rows: TraceWaterfallRow[] = [];
   const walk = (node: TraceNode, visibleDepth: number) => {
@@ -372,6 +378,20 @@ export function TraceWaterfall({
   const signalSpanCount = signalRows.filter((row) => row.kind === "span").length;
   const hiddenSignalSpanCount = trace.spanCount - signalSpanCount;
   const errorCount = useMemo(() => traceErrorCount(trace), [trace]);
+  // Links whose owner span is not part of this tree (the owner fell outside the
+  // 10,000-span fetch cap, or belongs to a disconnected fragment of the same
+  // trace id) have no row to hang from. Like unattached events, they are
+  // surfaced as a count rather than silently dropped, so the page-level link
+  // total never claims links the waterfall cannot show.
+  const unplacedLinkCount = useMemo(() => {
+    const spanIds = new Set<string>();
+    const walk = (node: TraceNode) => {
+      spanIds.add(node.span.id);
+      for (const child of node.children) walk(child);
+    };
+    walk(trace.root);
+    return links.filter((link) => !spanIds.has(link.ownerSpanId)).length;
+  }, [links, trace.root]);
 
   // Windowed rendering: only the rows inside the scrollport (± overscan) are
   // mounted; spacer divs stand in for the rest so a 10k-span trace doesn't
@@ -611,6 +631,13 @@ export function TraceWaterfall({
                     label={`${unattachedEventCount} ${unattachedEventCount === 1 ? "event has" : "events have"} no enclosing span in this trace, so ${unattachedEventCount === 1 ? "it is" : "they are"} not placed in the waterfall`}
                   />
                 )}
+                {unplacedLinkCount > 0 && (
+                  <TraceHeaderStat
+                    icon={<LinkSimpleIcon className="h-3.5 w-3.5" />}
+                    value={`+${unplacedLinkCount}`}
+                    label={`${unplacedLinkCount} span ${unplacedLinkCount === 1 ? "link's owner span is" : "links' owner spans are"} not in the loaded waterfall (for example beyond the 10,000-span cap), so ${unplacedLinkCount === 1 ? "that link is" : "those links are"} not shown as rows`}
+                  />
+                )}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="inline-flex items-center rounded p-1 text-muted-foreground">
@@ -776,7 +803,14 @@ export function TraceWaterfall({
               const isHighlighted = highlightedRowIndex === rowIndex;
               return (
                 <div
-                  key={`event-${event.spanId ?? "none"}-${event.eventType}-${event.atMs}`}
+                  // Keyed by the absolute row index, not the event's identity:
+                  // two events under one span can share type AND epoch-ms (a
+                  // burst of identical trackEvent calls), which made an
+                  // identity key collide. The absolute index is unique and
+                  // stays stable as the render window scrolls; it only shifts
+                  // when the rows array itself changes (mode/collapse/trace),
+                  // where remounting these stateless rows is fine.
+                  key={`event-${rowIndex}`}
                   aria-current={isHighlighted ? "true" : undefined}
                   className={cn(
                     "w-full grid gap-3 px-4 items-center h-7 border-b border-border/20 hover:bg-muted/30 transition-colors hover:transition-none text-left cursor-pointer",

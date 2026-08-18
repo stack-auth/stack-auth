@@ -1,4 +1,4 @@
-import { SpanKind, SpanStatusCode, type Attributes, type Counter, type Histogram, type HrTime, type Meter, type MetricOptions } from "@opentelemetry/api";
+import { SpanKind, SpanStatusCode, type Attributes, type BatchObservableCallback, type Counter, type Gauge, type Histogram, type HrTime, type Meter, type MetricOptions, type Observable, type ObservableCallback, type ObservableCounter, type ObservableGauge, type ObservableUpDownCounter, type UpDownCounter } from "@opentelemetry/api";
 import { describe, expect, it } from "vitest";
 import { createHexclaveHttpMetricSpanProcessor, type HttpClientMetricSpan } from "./otel-http-metrics";
 
@@ -28,7 +28,23 @@ class FakeHistogram implements Pick<Histogram, "record"> {
   }
 }
 
-class FakeMeter implements Pick<Meter, "createCounter" | "createHistogram"> {
+/**
+ * Inert stand-in for the async instruments (`ObservableGauge`, `ObservableCounter`,
+ * `ObservableUpDownCounter` are all aliases of `Observable`). The processor under
+ * test never registers callbacks, so nothing needs to be recorded here.
+ */
+class FakeObservable implements Observable {
+  addCallback(_callback: ObservableCallback): void {}
+  removeCallback(_callback: ObservableCallback): void {}
+}
+
+// Implements the full `Meter` interface so the processor factory accepts it without
+// casts. Only counters and histograms are exercised by these tests; the remaining
+// instruments are minimal fakes. `Gauge` shares `record` with `Histogram` and
+// `UpDownCounter` shares `add` with `Counter`, so the existing fakes cover them
+// (their measurements would land in `values` too, which is fine — the tests assert
+// on specific metric names).
+class FakeMeter implements Meter {
   readonly values = new Map<string, { value: number, attributes: Attributes }[]>();
 
   createCounter(name: string, _options?: MetricOptions): Counter {
@@ -38,6 +54,30 @@ class FakeMeter implements Pick<Meter, "createCounter" | "createHistogram"> {
   createHistogram(name: string, _options?: MetricOptions): Histogram {
     return new FakeHistogram(name, this.values);
   }
+
+  createGauge(name: string, _options?: MetricOptions): Gauge {
+    return new FakeHistogram(name, this.values);
+  }
+
+  createUpDownCounter(name: string, _options?: MetricOptions): UpDownCounter {
+    return new FakeCounter(name, this.values);
+  }
+
+  createObservableGauge(_name: string, _options?: MetricOptions): ObservableGauge {
+    return new FakeObservable();
+  }
+
+  createObservableCounter(_name: string, _options?: MetricOptions): ObservableCounter {
+    return new FakeObservable();
+  }
+
+  createObservableUpDownCounter(_name: string, _options?: MetricOptions): ObservableUpDownCounter {
+    return new FakeObservable();
+  }
+
+  addBatchObservableCallback(_callback: BatchObservableCallback, _observables: Observable[]): void {}
+
+  removeBatchObservableCallback(_callback: BatchObservableCallback, _observables: Observable[]): void {}
 }
 
 function span(overrides: {

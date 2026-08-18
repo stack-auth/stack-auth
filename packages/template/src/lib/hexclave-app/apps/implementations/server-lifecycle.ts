@@ -147,15 +147,19 @@ type DeadlineResult =
 function settleWithinDeadline(work: () => Promise<void> | void, deadlineMs: number): Promise<DeadlineResult> {
   return new Promise<DeadlineResult>((resolve) => {
     let settled = false;
+    // Deliberately NOT unref'd: this timer is the only GUARANTEED event-loop
+    // handle for the shutdown window. Delivery work may await promises whose
+    // only pending handles are themselves unref'd (OTel batch processors unref
+    // their flush timers), and with an uncaughtException listener installed an
+    // empty loop makes Node exit with code 0 — masking the crash and skipping
+    // the handoffFatal/handoffSignal ownership decision entirely. Worst case
+    // the referenced timer keeps an otherwise-done process alive for
+    // deadlineMs (bounded at 30s), which is exactly the advertised contract.
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
       resolve({ status: "timed_out" });
     }, deadlineMs);
-
-    const timerObject = Object(timer);
-    const maybeUnref = Reflect.get(timerObject, "unref");
-    if (typeof maybeUnref === "function") Reflect.apply(maybeUnref, timerObject, []);
 
     const finish = (result: DeadlineResult): void => {
       if (settled) return;

@@ -101,13 +101,17 @@ function buildIssueWebhookData(tenancy: Tenancy, row: IssueWebhookRow, substatus
  * write would let two concurrent batches both observe a stale `lastWebhookAt`
  * and both fire.
  *
- * `issue.created` deliberately bypasses the throttle: an issue is created once,
- * so there is nothing to throttle, and suppressing it would mean a brand-new
- * issue that happened to arrive alongside a regression went unannounced.
+ * `issue.created` deliberately bypasses the throttle in BOTH directions: an
+ * issue is created once, so there is nothing to throttle (its `lastWebhookAt`
+ * is still NULL and the claim always succeeds) — and its claim must not START
+ * the window either. A brand-new issue is materialized alongside its first
+ * occurrence, so if creation consumed the throttle, a resolve-and-regress
+ * within the window would silently lose its `issue.regressed` event.
  */
 async function claimWebhookSlots(
   tenancy: Tenancy,
   issueIds: readonly string[],
+  createdIssueIds: ReadonlySet<string>,
   now: Date,
   force: boolean,
 ): Promise<Map<string, IssueWebhookRow>> {
@@ -116,7 +120,10 @@ async function claimWebhookSlots(
 
   const rows = await prisma.$queryRaw<IssueWebhookRow[]>`
     UPDATE "Issue"
-    SET "lastWebhookAt" = ${now}::timestamptz
+    SET "lastWebhookAt" = CASE
+        WHEN "id" = ANY(${[...createdIssueIds]}::uuid[]) THEN "lastWebhookAt"
+        ELSE ${now}::timestamptz
+      END
     WHERE "tenancyId" = ${tenancy.id}::uuid
       AND "id" = ANY(${issueIds}::uuid[])
       AND (
@@ -145,7 +152,13 @@ export async function emitIssueWebhooks(options: {
   const notable = outcomes.filter((outcome) => outcome.isNew || outcome.isRegression);
   if (notable.length === 0) return;
 
-  const claimed = await claimWebhookSlots(tenancy, notable.map((outcome) => outcome.issueId), now, force);
+  const claimed = await claimWebhookSlots(
+    tenancy,
+    notable.map((outcome) => outcome.issueId),
+    new Set(notable.filter((outcome) => outcome.isNew).map((outcome) => outcome.issueId)),
+    now,
+    force,
+  );
   if (claimed.size === 0) return;
 
   await Promise.all(notable.flatMap((outcome) => {
@@ -192,11 +205,17 @@ export async function emitIssueLifecycleWebhook(options: {
   issueId: string,
   event: "resolved" | "ignored" | "merged",
   now: Date,
+  eventId?: string,
 }): Promise<void> {
   const { tenancy, issueId, event, now } = options;
   if (!isWebhooksAppEnabled(tenancy)) return;
 
   const prisma = await getPrismaClientForTenancy(tenancy);
+  // Deliberately NOT `$replica()` despite being a read-only query: the caller
+  // invokes this immediately after committing the lifecycle transition on the
+  // primary, and the webhook payload must reflect that just-committed state.
+  // A lagging replica could still report the PREVIOUS status (or miss a
+  // just-created survivor entirely), making the webhook stream lie.
   const rows = await prisma.$queryRaw<IssueWebhookRow[]>`
     SELECT "id", "shortId", "type", "value", "culprit", "status"::text AS "status",
            "firstSeenAt", "lastSeenAt", "timesSeen", "regressedAt",
@@ -210,8 +229,18 @@ export async function emitIssueLifecycleWebhook(options: {
 
   // An issue that was just resolved or merged away is no longer "new" or
   // "regressed" from a consumer's point of view.
-  const data = buildIssueWebhookData(tenancy, row, "ongoing");
-  const eventId = `${row.id}:${event}:${now.getTime()}`;
+  //
+  // For resolved/ignored the payload's `status` comes from the EVENT, not from
+  // the row re-read above: this emission is fire-and-forget after the commit,
+  // so by the time it runs a concurrent transition (or a regression on the
+  // ingest path) may already have moved the row on — and an `issue.resolved`
+  // event whose payload says `status: "unresolved"` reads as a contradiction.
+  // `issue.merged` is not a status transition, so it keeps the row's status.
+  const data = {
+    ...buildIssueWebhookData(tenancy, row, "ongoing"),
+    ...event === "merged" ? {} : { status: event },
+  };
+  const eventId = options.eventId ?? `${row.id}:${event}:${now.getTime()}`;
 
   switch (event) {
     case "resolved": {

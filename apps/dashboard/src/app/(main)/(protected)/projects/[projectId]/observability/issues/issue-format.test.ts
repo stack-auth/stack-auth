@@ -86,6 +86,14 @@ describe("issueCulprit", () => {
       .toBe("unhandledrejection");
   });
 
+  it("treats the backend's degraded-grouping sentinel as missing", () => {
+    // `degradedResult` in the backend's grouping stamps exactly "<unknown>";
+    // it must not shadow a real locator the occurrence still carries.
+    expect(issueCulprit({ culprit: "<unknown>", data: { url: "https://app.test/checkout" } }))
+      .toBe("https://app.test/checkout");
+    expect(issueCulprit({ culprit: "<unknown>" })).toBe("unknown");
+  });
+
   it("NEVER returns an empty string", () => {
     const degenerate = [
       { culprit: null },
@@ -111,6 +119,7 @@ describe("formatIssueCount", () => {
     expect(formatIssueCount("9999")).toBe("9,999");
     expect(formatIssueCount("10000")).toBe("10.0k");
     expect(formatIssueCount("125000")).toBe("125k");
+    expect(formatIssueCount("999500")).toBe("1.0M");
     expect(formatIssueCount("1500000")).toBe("1.5M");
   });
 
@@ -126,10 +135,10 @@ describe("formatIssueCount", () => {
 });
 
 describe("parseIssueRouteId", () => {
-  it("accepts a uuid and an all-digits short id", () => {
-    expect(parseIssueRouteId("3F2504E0-4F89-11D3-9A0C-0305E82C3301")).toEqual({
+  it("accepts a v4 uuid and an all-digits short id", () => {
+    expect(parseIssueRouteId("3F2504E0-4F89-41D3-9A0C-0305E82C3301")).toEqual({
       kind: "uuid",
-      value: "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+      value: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
     });
     expect(parseIssueRouteId("42")).toEqual({ kind: "short-id", value: "42" });
   });
@@ -139,6 +148,14 @@ describe("parseIssueRouteId", () => {
     expect(parseIssueRouteId("")).toBeNull();
     expect(parseIssueRouteId("not-an-id")).toBeNull();
     expect(parseIssueRouteId("../secrets")).toBeNull();
+  });
+
+  it("rejects uuid-shaped-but-not-v4 ids, matching the backend's isUuid contract", () => {
+    // v1 version digit — the backend would 404 this anyway; catching it here
+    // gives the precise "not a valid issue reference" page instead.
+    expect(parseIssueRouteId("3f2504e0-4f89-11d3-9a0c-0305e82c3301")).toBeNull();
+    // wrong variant digit
+    expect(parseIssueRouteId("3f2504e0-4f89-41d3-7a0c-0305e82c3301")).toBeNull();
   });
 });
 

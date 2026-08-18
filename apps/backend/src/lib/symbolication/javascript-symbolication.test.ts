@@ -38,6 +38,7 @@ const SOURCE_MAP = new TextEncoder().encode(JSON.stringify({
 
 class MemoryArtifactStorage implements ArtifactObjectStorage {
   private readonly objects = new Map<string, Uint8Array>();
+  public readonly readExpectedETags: string[] = [];
 
   public async putImmutableObject(object: ArtifactStorageObject): Promise<boolean> {
     if (this.objects.has(object.key)) return false;
@@ -51,10 +52,11 @@ class MemoryArtifactStorage implements ArtifactObjectStorage {
 
   public async headObject(key: string): Promise<ArtifactStorageObjectInfo | null> {
     const body = this.objects.get(key);
-    return body === undefined ? null : { byteLength: body.byteLength };
+    return body === undefined ? null : { byteLength: body.byteLength, eTag: `etag:${key}` };
   }
 
-  public async readObject(key: string): Promise<Uint8Array | null> {
+  public async readObject(key: string, expectedETag?: string): Promise<Uint8Array | null> {
+    if (expectedETag !== undefined) this.readExpectedETags.push(expectedETag);
     const body = this.objects.get(key);
     return body === undefined ? null : new Uint8Array(body);
   }
@@ -168,6 +170,8 @@ describe("JavaScriptSymbolicationService", () => {
       },
       diagnostics: [],
     });
+    expect(fixture.storage.readExpectedETags.length).toBeGreaterThan(0);
+    expect(fixture.storage.readExpectedETags.every((etag) => etag.startsWith("etag:"))).toBe(true);
   });
 
   it("preserves raw frames and diagnoses missing, mismatched, and invalid artifacts", async () => {
@@ -253,7 +257,7 @@ describe("JavaScriptSymbolicationService", () => {
 
   it("retains a resolved location when source context is unavailable", async () => {
     const fixture = await createFixture();
-    const mapWithoutSources = new TextEncoder().encode(JSON.stringify({
+    const mapWithoutSourcesContent = new TextEncoder().encode(JSON.stringify({
       version: 3,
       sources: ["src/original.ts"],
       names: ["boom"],
@@ -266,18 +270,18 @@ describe("JavaScriptSymbolicationService", () => {
       dist: "production",
     });
     if (lookedUp === null) throw new Error("Expected the fixture artifact to be indexed.");
-    const compressedMapWithoutSources = gzipSync(mapWithoutSources);
-    const lookupWithoutSources: ArtifactLookup = {
+    const compressedMapWithoutSourcesContent = gzipSync(mapWithoutSourcesContent);
+    const lookupWithoutSourcesContent: ArtifactLookup = {
       ...lookedUp,
       artifact: {
         ...lookedUp.artifact,
-        sourceMapSha256: sha256Hex(mapWithoutSources),
-        sourceMapBytes: mapWithoutSources.byteLength,
-        sourceMapGzippedBytes: compressedMapWithoutSources.byteLength,
+        sourceMapSha256: sha256Hex(mapWithoutSourcesContent),
+        sourceMapBytes: mapWithoutSourcesContent.byteLength,
+        sourceMapGzippedBytes: compressedMapWithoutSourcesContent.byteLength,
       },
     };
-    fixture.storage.upload(fixture.sourceMapKey, compressedMapWithoutSources);
-    const service = new JavaScriptSymbolicationService(new LookupOnlyArtifactService(lookupWithoutSources), fixture.storage);
+    fixture.storage.upload(fixture.sourceMapKey, compressedMapWithoutSourcesContent);
+    const service = new JavaScriptSymbolicationService(new LookupOnlyArtifactService(lookupWithoutSourcesContent), fixture.storage);
 
     const result = await service.symbolicate({
       scope: SCOPE,
@@ -290,6 +294,50 @@ describe("JavaScriptSymbolicationService", () => {
       location: { source: "src/original.ts", line: 2, column: 1, name: "boom" },
       diagnostics: [{ code: "missing_source_content" }],
     });
+  });
+
+  it("bounds generated mapping lines so delimiter-only mappings cannot amplify memory", () => {
+    const floodedLines = JSON.stringify({ version: 3, sources: [], names: [], mappings: ";".repeat(64) });
+    expect(parseStandardSourceMap(floodedLines, { maxMappingLines: 64 })).toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid_source_map", message: "The source map contains too many generated lines." },
+    });
+
+    // Within the bound, sparse and delimiter-heavy maps still parse; empty
+    // lines share one frozen array instead of allocating per line.
+    const sparse = parseStandardSourceMap(JSON.stringify({
+      version: 3,
+      sources: ["src.ts"],
+      names: [],
+      mappings: `;;${",".repeat(32)}AACA;`,
+    }), { maxMappingLines: 64 });
+    if (!sparse.ok) throw new Error("Expected the sparse map to parse.");
+    expect(sparse.map.mappings).toHaveLength(4);
+    expect(sparse.map.mappings[0]).toBe(sparse.map.mappings[1]);
+    expect(sparse.map.mappings[2]).toMatchObject([{ generatedColumn: 0, sourceIndex: 0, originalLine: 1, originalColumn: 0 }]);
+  });
+
+  it("treats an out-of-convention zero column like a missing column instead of failing the frame", async () => {
+    const fixture = await createFixture();
+    const zeroColumnRaw = frame({ colno: 0 });
+    const result = await fixture.service.symbolicate({
+      scope: SCOPE,
+      release: "web@2026.08.06",
+      dist: "production",
+      frames: [zeroColumnRaw],
+    });
+    expect(result.frames[0]).toMatchObject({
+      location: { source: "src/original.ts", line: 2, column: 1 },
+      diagnostics: [{ code: "invalid_frame_location", column: 0 }],
+    });
+  });
+
+  it("rejects context-line byte limits too small to honor the snip markers", () => {
+    expect(() => new JavaScriptSymbolicationService(
+      new ArtifactUploadService(new MemoryArtifactStorage()),
+      new MemoryArtifactStorage(),
+      { maxContextLineBytes: 8 },
+    )).toThrowError(/maxContextLineBytes/u);
   });
 
   it("joins a browser stack URL onto the relative emitted artifact path", async () => {
@@ -311,6 +359,14 @@ describe("artifactCodeFileMatchesFrame", () => {
     expect(artifactCodeFileMatchesFrame("static/chunk.js", "static/chunk.js")).toBe(true);
     expect(artifactCodeFileMatchesFrame("static/chunk.js", "https://cdn.example.test/static/chunk.js")).toBe(true);
     expect(artifactCodeFileMatchesFrame("static/chunk.js", "https://cdn.example.test/_next/static/chunk.js")).toBe(true);
+  });
+
+  it("decodes percent-encoded URL pathnames before comparing with the manifest path", () => {
+    expect(artifactCodeFileMatchesFrame("static/my file.js", "https://cdn.example.test/static/my%20file.js")).toBe(true);
+    expect(artifactCodeFileMatchesFrame("static/chunk.js", "https://cdn.example.test/st%61tic/chunk.js")).toBe(true);
+    // Malformed escapes keep the raw pathname rather than failing the frame.
+    expect(artifactCodeFileMatchesFrame("static/%zz.js", "https://cdn.example.test/static/%zz.js")).toBe(true);
+    expect(artifactCodeFileMatchesFrame("static/other.js", "https://cdn.example.test/static/my%20file.js")).toBe(false);
   });
 
   it("rejects a different relative path or a URL that does not end at the artifact", () => {

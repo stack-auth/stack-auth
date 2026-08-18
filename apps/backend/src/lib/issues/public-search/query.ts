@@ -251,6 +251,20 @@ function facetExpression(facet: string, keyParameter: string): string {
   throw new Error(`Unsupported public search facet: ${facet}`);
 }
 
+/**
+ * The predicates for one occurrence query, split by WHICH CLAUSE each belongs
+ * in. The split is part of each predicate's construction rather than a
+ * positional slice over one array, so inserting or reordering a predicate can
+ * never silently move a JSON/payload filter into PREWHERE (changing semantics
+ * and performance) without the author choosing a group.
+ */
+type OccurrenceFilterClauses = {
+  /** Sorting-key/time predicates only — ClickHouse uses these to reject granules before reading payload columns. */
+  prewhere: string[],
+  /** Everything that reads error envelopes or JSON payloads. Never empty: `issue_hash != ''` is always present. */
+  where: string[],
+};
+
 function buildOccurrenceWhere(
   filters: PublicSearchFilters,
   params: Record<string, ClickHouseParameter>,
@@ -259,17 +273,19 @@ function buildOccurrenceWhere(
   rangeStart: Date,
   rangeEnd: Date,
   attachmentEventIds: readonly string[] | undefined,
-): string[] {
+): OccurrenceFilterClauses {
   params.projectId = projectId;
   params.branchId = branchId;
   params.rangeStart = Math.floor(rangeStart.getTime() / 1000);
   params.rangeEnd = Math.floor(rangeEnd.getTime() / 1000);
-  const where = [
+  const prewhere = [
     "project_id = {projectId:String}",
     "branch_id = {branchId:String}",
     "event_type = '$error'",
     "event_at >= {rangeStart:DateTime}",
     "event_at <= {rangeEnd:DateTime}",
+  ];
+  const where = [
     "issue_hash != ''",
   ];
 
@@ -329,7 +345,7 @@ function buildOccurrenceWhere(
     params.attachmentEventIds = [...attachmentEventIds];
     where.push(`(${errorEnvelopeFieldExpression("event_id")} IN {attachmentEventIds:Array(String)} OR occurrence_id IN {attachmentEventIds:Array(String)})`);
   }
-  return where;
+  return { prewhere, where };
 }
 
 function occurrenceSelect(): string {
@@ -339,14 +355,8 @@ function occurrenceSelect(): string {
       FROM analytics_internal.telemetry`;
 }
 
-function occurrenceFilterSql(where: readonly string[]): string {
-  // These first five predicates are always supplied by buildOccurrenceWhere.
-  // Keep the sorting-key/time predicates in PREWHERE so ClickHouse rejects
-  // unrelated granules before reading error envelopes and JSON payloads used by
-  // the remaining public-search filters.
-  const prewhere = where.slice(0, 5);
-  const payloadWhere = where.slice(5);
-  return `PREWHERE ${prewhere.join("\n        AND ")}\n      WHERE ${payloadWhere.join("\n        AND ")}`;
+function occurrenceFilterSql(clauses: OccurrenceFilterClauses): string {
+  return `PREWHERE ${clauses.prewhere.join("\n        AND ")}\n      WHERE ${clauses.where.join("\n        AND ")}`;
 }
 
 export function buildPublicSearchOccurrencePlan(options: {
@@ -360,7 +370,7 @@ export function buildPublicSearchOccurrencePlan(options: {
   const params: Record<string, ClickHouseParameter> = {
     resultLimit: options.filters.limit + 1,
   };
-  const where = buildOccurrenceWhere(
+  const clauses = buildOccurrenceWhere(
     options.filters,
     params,
     options.tenancy.project.id,
@@ -369,7 +379,7 @@ export function buildPublicSearchOccurrencePlan(options: {
     options.rangeEnd,
     options.attachmentEventIds,
   );
-  if (options.filters.record === "event") where.push(`${errorEnvelopeFieldExpression("event_id")} != ''`);
+  if (options.filters.record === "event") clauses.where.push(`${errorEnvelopeFieldExpression("event_id")} != ''`);
 
   let cursorSql = "";
   if (options.cursor !== null) {
@@ -381,7 +391,7 @@ export function buildPublicSearchOccurrencePlan(options: {
 
   return {
     query: `${occurrenceSelect()}
-      ${occurrenceFilterSql(where)}
+      ${occurrenceFilterSql(clauses)}
         ${cursorSql}
       ORDER BY event_at DESC, occurrence_id DESC
       LIMIT {resultLimit:UInt32}`,
@@ -411,7 +421,7 @@ export function buildPublicSearchFacetPlan(options: {
   };
   const facetKey = dynamicFacetKey(options.facet);
   if (facetKey !== null) params.facetKey = facetKey;
-  const where = buildOccurrenceWhere(
+  const clauses = buildOccurrenceWhere(
     options.filters,
     params,
     options.tenancy.project.id,
@@ -420,13 +430,13 @@ export function buildPublicSearchFacetPlan(options: {
     options.rangeEnd,
     options.attachmentEventIds,
   );
-  if (options.filters.record === "event") where.push(`${errorEnvelopeFieldExpression("event_id")} != ''`);
+  if (options.filters.record === "event") clauses.where.push(`${errorEnvelopeFieldExpression("event_id")} != ''`);
   const expression = facetExpression(options.facet, "facetKey");
   return {
     query: `
       SELECT {facetName:String} AS facet_key, ${expression} AS facet_value, toUInt64(count()) AS count
       FROM analytics_internal.telemetry
-      ${occurrenceFilterSql(where)}
+      ${occurrenceFilterSql(clauses)}
         AND ${expression} != ''
       GROUP BY facet_value
       ORDER BY count DESC, facet_value ASC
@@ -446,7 +456,7 @@ export function buildPublicSearchIssueHashPlan(options: {
   const params: Record<string, ClickHouseParameter> = {
     resultLimit: PUBLIC_SEARCH_HASH_MATCH_CAP + 1,
   };
-  const where = buildOccurrenceWhere(
+  const clauses = buildOccurrenceWhere(
     options.filters,
     params,
     options.tenancy.project.id,
@@ -459,7 +469,7 @@ export function buildPublicSearchIssueHashPlan(options: {
     query: `
       SELECT DISTINCT issue_hash AS issueHash
       FROM analytics_internal.telemetry
-      ${occurrenceFilterSql(where)}
+      ${occurrenceFilterSql(clauses)}
       LIMIT {resultLimit:UInt32}`,
     query_params: params,
     format: "JSONEachRow",

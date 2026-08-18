@@ -14,6 +14,11 @@ const MAX_SELECTOR_VALUES = 32;
 const MAX_FILTER_RULES = 32;
 const MAX_FILTER_TEXT_BYTES = 256;
 const SAFE_OVERRIDE_KEY = /^(?:user\.(?:email|username|ip_address)|request\.url|url|tags\.[a-zA-Z0-9_.-]{1,64}|contexts\.[a-zA-Z0-9_.-]{1,64}|extra\.[a-zA-Z0-9_.-]{1,64})$/;
+// Rule ids are deliberately dotless: the config-override API addresses record
+// entries with dot-separated path notation, so a dotted record key (like the
+// selectors themselves) would be unrepresentable in a config override. The
+// selector therefore lives in the record VALUE, keyed by a user-chosen id.
+const SAFE_OVERRIDE_RULE_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 const SAFE_SELECTOR_VALUE = /^[a-zA-Z0-9][a-zA-Z0-9_.:/-]{0,255}$/;
 const SAFE_FILTER_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$/;
 const SAFE_FILTER_FIELD = /^(?:message|level|release|environment|service|event\.(?:type|handled)|tags\.[a-zA-Z0-9_.-]{1,64}|contexts\.[a-zA-Z0-9_.-]{1,64})$/;
@@ -152,6 +157,11 @@ export function createErrorIngestPolicyStateStore(): ErrorIngestPolicyStateStore
   return { buckets: new Map() };
 }
 
+// Rate/quota counters are deliberately best-effort and instance-local: they
+// bound the work a single backend process performs, not a global budget. With
+// N instances a tenant can ingest up to N× the configured limit; making the
+// limit globally exact would require an atomic shared store (or enforcement at
+// durable ingress) and is a deliberate non-goal of this in-process layer.
 const defaultStateStore = createErrorIngestPolicyStateStore();
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -188,22 +198,22 @@ function parseOverrideKeys(value: unknown, field: "dropKeys" | "urlKeys"): reado
   if (entries.length > MAX_OVERRIDE_KEYS) {
     throw new ErrorIngestPolicyConfigError("Too many error-ingest scrub override keys");
   }
-  const keys: string[] = [];
-  for (const [key, enabled] of entries) {
-    if (Buffer.byteLength(key, "utf8") > MAX_OVERRIDE_KEY_BYTES || !SAFE_OVERRIDE_KEY.test(key)) {
+  const keys = new Set<string>();
+  for (const [ruleId, selector] of entries) {
+    if (!SAFE_OVERRIDE_RULE_ID.test(ruleId)) {
       // Never echo a configured key: configuration values are not guaranteed
       // to be harmless labels and policy errors must remain payload-free.
+      throw new ErrorIngestPolicyConfigError("Error-ingest scrub override rule ids must be short dotless identifiers");
+    }
+    if (typeof selector !== "string" || Buffer.byteLength(selector, "utf8") > MAX_OVERRIDE_KEY_BYTES || !SAFE_OVERRIDE_KEY.test(selector)) {
       throw new ErrorIngestPolicyConfigError("Unsupported error-ingest scrub override key");
     }
-    if (enabled !== true) {
-      throw new ErrorIngestPolicyConfigError("Error-ingest scrub overrides must be enabled explicitly");
-    }
-    if (field === "dropKeys" && key === "url") {
+    if (field === "dropKeys" && selector === "url") {
       throw new ErrorIngestPolicyConfigError("The url selector is only valid for URL scrubbing");
     }
-    keys.push(key);
+    keys.add(selector);
   }
-  return keys.sort();
+  return [...keys].sort();
 }
 
 function parseWindow(value: unknown, field: string): number {
@@ -465,14 +475,17 @@ function retryAfterMs(nowMs: number, seconds: number): number {
   return Math.max(0, windowStart(nowMs, seconds) + seconds * 1000 - nowMs);
 }
 
-function stateKey(scope: ErrorIngestPolicyScope, config: ErrorIngestPolicyConfig, nowMs: number): string {
-  const rateStart = config.rateLimit === null ? "none" : String(windowStart(nowMs, config.rateLimit.windowSeconds));
-  const quotaStart = config.quota === null ? "none" : String(windowStart(nowMs, config.quota.windowSeconds));
-  // Relay carries scoping as a typed tuple. Encode the tuple structurally here
-  // instead of joining untrusted identifiers with a delimiter: otherwise
-  // tenant/project/branch values containing `:` could alias another tenant's
-  // counter and weaken quota isolation.
-  return JSON.stringify([scope.tenancyId, scope.projectId, scope.branchId, rateStart, quotaStart]);
+// Each limit kind gets its own counter bucket keyed by its own window start.
+// A combined key would reset the quota byte counter whenever the (usually
+// shorter) rate-limit window rolled over, multiplying the effective byte
+// budget by the window ratio.
+//
+// Relay carries scoping as a typed tuple. Encode the tuple structurally here
+// instead of joining untrusted identifiers with a delimiter: otherwise
+// tenant/project/branch values containing `:` could alias another tenant's
+// counter and weaken quota isolation.
+function limitStateKey(kind: "rate" | "quota", scope: ErrorIngestPolicyScope, windowStartMs: number): string {
+  return JSON.stringify([kind, scope.tenancyId, scope.projectId, scope.branchId, windowStartMs]);
 }
 
 function pruneState(store: ErrorIngestPolicyStateStore, nowMs: number, config: ErrorIngestPolicyConfig): void {
@@ -487,6 +500,9 @@ function pruneState(store: ErrorIngestPolicyStateStore, nowMs: number, config: E
 function getBucket(store: ErrorIngestPolicyStateStore, key: string): CounterBucket {
   const existing = store.buckets.get(key);
   if (existing !== undefined) return existing;
+  if (store.buckets.size >= MAX_COUNTER_BUCKETS) {
+    throw new ErrorIngestPolicyStateError("Error-ingest policy counter capacity exhausted");
+  }
   const created = { itemCount: 0, byteCount: 0, touchedAtMs: 0 };
   store.buckets.set(key, created);
   return created;
@@ -527,16 +543,12 @@ export function evaluateErrorIngestPolicy(options: {
   const store = options.stateStore ?? defaultStateStore;
   const hasLimits = config.rateLimit !== null || config.quota !== null;
   if (hasLimits) pruneState(store, options.nowMs, config);
-  let bucket: CounterBucket;
-  if (hasLimits) {
-    const key = stateKey(options.scope, config, options.nowMs);
-    if (!store.buckets.has(key) && store.buckets.size >= MAX_COUNTER_BUCKETS) {
-      throw new ErrorIngestPolicyStateError("Error-ingest policy counter capacity exhausted");
-    }
-    bucket = getBucket(store, key);
-  } else {
-    bucket = { itemCount: 0, byteCount: 0, touchedAtMs: options.nowMs };
-  }
+  const rateBucket = config.rateLimit === null
+    ? null
+    : getBucket(store, limitStateKey("rate", options.scope, windowStart(options.nowMs, config.rateLimit.windowSeconds)));
+  const quotaBucket = config.quota === null
+    ? null
+    : getBucket(store, limitStateKey("quota", options.scope, windowStart(options.nowMs, config.quota.windowSeconds)));
   const outcomes: ErrorIngestPolicyItemOutcome[] = [];
   const acceptedItemIds: string[] = [];
   const acceptedEventIndexes: number[] = [];
@@ -603,10 +615,10 @@ export function evaluateErrorIngestPolicy(options: {
       }
     }
 
-    const itemCountExceeded = config.rateLimit !== null
-      && bucket.itemCount >= config.rateLimit.maxItemsPerWindow;
-    const quotaExceeded = config.quota !== null
-      && bucket.byteCount + scrubbed.byteLength > config.quota.maxBytesPerWindow;
+    const itemCountExceeded = config.rateLimit !== null && rateBucket !== null
+      && rateBucket.itemCount >= config.rateLimit.maxItemsPerWindow;
+    const quotaExceeded = config.quota !== null && quotaBucket !== null
+      && quotaBucket.byteCount + scrubbed.byteLength > config.quota.maxBytesPerWindow;
     if (quotaExceeded || itemCountExceeded) {
       const reason = quotaExceeded ? "quota" : "rate_limit";
       const retryAfter = quotaExceeded
@@ -616,10 +628,13 @@ export function evaluateErrorIngestPolicy(options: {
       continue;
     }
 
-    if (hasLimits) {
-      bucket.itemCount += 1;
-      bucket.byteCount += scrubbed.byteLength;
-      bucket.touchedAtMs = options.nowMs;
+    if (rateBucket !== null) {
+      rateBucket.itemCount += 1;
+      rateBucket.touchedAtMs = options.nowMs;
+    }
+    if (quotaBucket !== null) {
+      quotaBucket.byteCount += scrubbed.byteLength;
+      quotaBucket.touchedAtMs = options.nowMs;
     }
     acceptedItemIds.push(item.itemId);
     scrubbedData.set(item.itemId, scrubbed.value);

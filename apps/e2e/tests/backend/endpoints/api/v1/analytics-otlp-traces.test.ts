@@ -1,5 +1,5 @@
 import { it } from "../../../../helpers";
-import { Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
 it("accepts a standard empty OTLP/HTTP JSON trace export with server auth", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
@@ -15,9 +15,7 @@ it("accepts a standard empty OTLP/HTTP JSON trace export with server auth", asyn
     NiceResponse {
       "status": 200,
       "body": {},
-      "headers": Headers {
-        <some fields may have been hidden>,
-      },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
@@ -43,6 +41,9 @@ it("accepts OTLP/HTTP protobuf and returns an empty protobuf success message", a
 it("accepts browser OTLP with an authenticated client session", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { observability: { enabled: true } } } });
+  // Client access alone is not enough: browser OTLP requires a user session
+  // (the sibling test below asserts the 401 without one).
+  await Auth.Otp.signIn();
 
   const response = await niceBackendFetch("/api/v1/analytics/otlp/v1/traces", {
     method: "POST",

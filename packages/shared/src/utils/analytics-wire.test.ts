@@ -55,6 +55,10 @@ describe("truncateUtf8Bytes", () => {
     expect(truncateUtf8Bytes("", 0)).toBe("");
   });
 
+  it("rejects a NaN byte budget instead of bypassing the cap", () => {
+    expect(truncateUtf8Bytes("sensitive payload", Number.NaN)).toBe("");
+  });
+
   it("truncates by bytes, not characters", () => {
     // "€" is 3 UTF-8 bytes, so a 3000-char string is 9000 bytes. The result
     // is a prefix within budget; the 64-char chop step means the cut can land

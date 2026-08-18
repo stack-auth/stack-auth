@@ -78,6 +78,15 @@ describe("parameterizeMessage", () => {
     expect(result.includes("<int>")).toBe(false);
   });
 
+  it("caps the input in UTF-8 bytes, matching the stored message representation", () => {
+    // `é` is 1 UTF-16 code unit but 2 UTF-8 bytes. The durable `message` column
+    // truncates at 8 KiB of UTF-8, so the hash input must be bounded in the
+    // same unit — otherwise two occurrences whose stored messages are identical
+    // could group differently based on truncated-away content.
+    const result = parameterizeMessage("é".repeat(10_000));
+    expect(new TextEncoder().encode(result).length).toBeLessThanOrEqual(8 * 1024);
+  });
+
   it("leaves a message with nothing variable untouched", () => {
     expect(parameterizeMessage("Cannot read properties of undefined")).toMatchInlineSnapshot(`"Cannot read properties of undefined"`);
   });

@@ -13,8 +13,11 @@ import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import * as yup from "yup";
 import { getClickhouseAdminClient } from "./clickhouse";
 import { getEndUserInfo } from "./end-users";
+import { dualWriteLegacyEvents } from "./legacy-telemetry-dual-write";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 import { resolveCustomerRequestObservability } from "./customer-request-observability";
+
+let hasReportedMissingRequestIpContext = false;
 
 export const endUserIpInfoSchema = yupObject({
   ip: yupString().defined(),
@@ -315,6 +318,34 @@ export async function logEvent<T extends EventType[]>(
       ? dataRecord.userId
       : "";
 
+  // The relational Event row used to store the requester's IP guess AND its
+  // spoof-trust bit (isEndUserIpInfoGuessTrusted) for every event; the
+  // ClickHouse rows must not silently lose that signal. Captured here rather
+  // than in the block below because headers() is a dynamic API that is only
+  // available in the synchronous request scope (which is also why this
+  // function's doc comment forbids wrapping it in waitUntil). Event types
+  // whose data schema carries `ipInfo` already embed the same signal in their
+  // validated data; the capture below covers every other event type.
+  let requestIpInfo: EndUserIpInfo | null = null;
+  try {
+    requestIpInfo = await getEndUserIpInfoForEvent();
+  } catch (error) {
+    // Some internal event producers run outside the request ALS scope. The
+    // request-local headers helper deliberately throws there; preserve that
+    // signal for observability while allowing the event itself to be written
+    // without request IP enrichment. Other failures must still fail loudly.
+    if (!(error instanceof Error) || error.message !== "Backend request context is only available while handling a backend request") {
+      throw error;
+    }
+    // This is an expected path for detached internal event producers. The
+    // normal error sink flushes through Vercel's waitUntil, which is itself
+    // unavailable here; report it once per process without re-entering that
+    // sink and turning a harmless enrichment miss into a recursive error.
+    if (!hasReportedMissingRequestIpContext) {
+      hasReportedMissingRequestIpContext = true;
+      console.warn("Event logging skipped request IP enrichment outside a backend request context", error);
+    }
+  }
 
   // rest is no more dynamic APIs so we can run it asynchronously
   runAsynchronouslyAndWaitUntil((async () => {
@@ -351,7 +382,14 @@ export async function logEvent<T extends EventType[]>(
     for (const matchingEventType of eventTypesArray) {
       let clickhouseEventData: Record<string, unknown>;
       if (!clickhouseEventTypes.has(matchingEventType.id)) {
-        clickhouseEventData = dataRecord ?? {};
+        // Rows whose validated data already carries `ipInfo` (the auth-flow
+        // event chains) keep it there; everything else gets the request
+        // capture under the same `ip_info` key the $token-refresh branch uses,
+        // so the spoof-trust bit survives the move off the relational store.
+        const dataCarriesIpInfo = typeof dataRecord === "object" && dataRecord != null && "ipInfo" in dataRecord;
+        clickhouseEventData = dataCarriesIpInfo || requestIpInfo === null
+          ? dataRecord ?? {}
+          : { ...dataRecord ?? {}, ip_info: toClickhouseEndUserIpInfo(requestIpInfo) };
       } else if (matchingEventType.id === "$token-refresh") {
         const refreshTokenId =
           typeof dataRecord === "object" && dataRecord && typeof dataRecord.refreshTokenId === "string"
@@ -397,6 +435,7 @@ export async function logEvent<T extends EventType[]>(
           email,
           auth_method: authMethod,
           oauth_provider: oauthProvider,
+          ip_info: toClickhouseEndUserIpInfo(requestIpInfo),
         };
       } else if (matchingEventType.id === "$sign-in-attempt") {
         const outcome =
@@ -502,29 +541,33 @@ export async function logEvent<T extends EventType[]>(
         });
       }
 
+      const telemetryRow = {
+        event_type: matchingEventType.id,
+        event_at: timeRange.end,
+        data: clickhouseEventData,
+        project_id: projectId,
+        branch_id: branchId,
+        user_id: userId || null,
+        team_id: resolvedTeamId ?? null,
+        refresh_token_id: resolvedRefreshTokenId ?? null,
+        session_replay_id: options.sessionReplayId ?? null,
+        session_replay_segment_id: options.sessionReplaySegmentId ?? null,
+        // No trace/span ids: a backend-produced system event like this happens
+        // outside any span, and an event never roots a trace of its own. The
+        // session columns above are how it is correlated.
+      };
       await clickhouseClient.insert({
         table: "analytics_internal.telemetry",
-        values: [{
-          event_type: matchingEventType.id,
-          event_at: timeRange.end,
-          data: clickhouseEventData,
-          project_id: projectId,
-          branch_id: branchId,
-          user_id: userId || null,
-          team_id: resolvedTeamId ?? null,
-          refresh_token_id: resolvedRefreshTokenId ?? null,
-          session_replay_id: options.sessionReplayId ?? null,
-          session_replay_segment_id: options.sessionReplaySegmentId ?? null,
-          // No trace/span ids: a backend-produced system event like this happens
-          // outside any span, and an event never roots a trace of its own. The
-          // session columns above are how it is correlated.
-        }],
+        values: [telemetryRow],
         format: "JSONEachRow",
         clickhouse_settings: {
           date_time_input_format: "best_effort",
           async_insert: 1,
         },
       });
+      // Expand-phase mirror into the legacy physical events table (no-op once
+      // the cutover has retired it); see legacy-telemetry-dual-write.ts.
+      await dualWriteLegacyEvents(clickhouseClient, [telemetryRow]);
     }
 
     // log event in PostHog

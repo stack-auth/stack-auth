@@ -21,7 +21,7 @@ import {
   type IssueAlertTagFilter,
   type IssueAlertValueOperator,
 } from "./types";
-import { isIssueAlertAction } from "./destinations";
+import { describeIssueAlertDestination, isIssueAlertAction } from "./destinations";
 
 const MAX_RULE_ID_BYTES = 128;
 const MAX_IDENTIFIER_BYTES = 256;
@@ -463,6 +463,12 @@ export function evaluateIssueAlertRule(rule: IssueAlertRule, signal: IssueAlertS
   if (!ruleValidation.valid) return drop(rule, ruleValidation.reason);
   if (!validateSignal(signal)) return drop(rule, "invalid_signal");
   if (!rule.enabled) return noMatch(rule, "rule_disabled");
+  // A destination without an executor (webhook, until an integration registry
+  // exists) must drop HERE rather than match: a match is persisted as a
+  // delivery row and enqueued as a durable workflow event, and every such
+  // workflow would then fail non-retryably — burning delivery rows and
+  // cooldown slots on an action that can never be performed.
+  if (describeIssueAlertDestination(rule.action).status === "unsupported") return drop(rule, "unsupported_action");
 
   const filters = rule.filters;
   if (filters?.projectIds !== undefined && !filters.projectIds.includes(signal.projectId)) return noMatch(rule, "project_filter");

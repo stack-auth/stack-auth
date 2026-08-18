@@ -17,7 +17,7 @@ import {
 import { yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import type { Json } from "@hexclave/shared/dist/utils/json";
-import { scrubErrorIngestPayload } from "@/lib/error-ingest";
+import { scrubPublicText } from "@/lib/issues/public-scrub";
 import type { SymbolicationDiagnosticCode } from "@/lib/symbolication";
 import {
   decodeIssueCursor,
@@ -331,6 +331,11 @@ export type PublicIssueListQuery = yup.InferType<typeof PublicIssueListQuerySche
 export type PublicIssueDetailQuery = yup.InferType<typeof PublicIssueDetailQuerySchema>;
 export type PublicIssueOccurrencesQuery = yup.InferType<typeof PublicIssueOccurrencesQuerySchema>;
 
+// Mirrors OBSERVABILITY_TIME_RANGES in the dashboard. Enumerated rather than
+// free-form because `hours` reaches a raw ClickHouse predicate: an allowlist is
+// a cheaper guarantee than trusting a numeric parse. This is the ONE allowlist
+// for every issue-list surface — the internal dashboard route parses its query
+// through this module too.
 const ALLOWED_HOURS = [1, 24, 168, 720] as const;
 const DEFAULT_HOURS = 24;
 export const PUBLIC_ISSUE_PAGE_SIZE = ISSUE_LIST_PAGE_SIZE;
@@ -465,17 +470,13 @@ export function parsePublicIssueOccurrencesQuery(query: PublicIssueOccurrencesQu
 }
 
 export function toPublicIssue(item: IssueListItem): PublicIssue {
-  const scrubText = (value: string): string => {
-    const result = scrubErrorIngestPayload(value);
-    return typeof result.value === "string" ? result.value : "";
-  };
   return {
     id: item.id,
     short_id: item.short_id,
-    type: scrubText(item.type),
-    value: scrubText(item.value),
-    culprit: scrubText(item.culprit),
-    level: scrubText(item.level),
+    type: scrubPublicText(item.type),
+    value: scrubPublicText(item.value),
+    culprit: scrubPublicText(item.culprit),
+    level: scrubPublicText(item.level),
     status: item.status,
     substatus: item.substatus,
     first_seen_at_millis: item.first_seen_at_millis,
@@ -483,9 +484,9 @@ export function toPublicIssue(item: IssueListItem): PublicIssue {
     times_seen: item.times_seen,
     window_occurrences: item.window_occurrences,
     window_users: item.window_users,
-    service_name: item.service_name === null ? null : scrubText(item.service_name),
-    environment: item.environment === null ? null : scrubText(item.environment),
-    release: item.release === null ? null : scrubText(item.release),
+    service_name: item.service_name === null ? null : scrubPublicText(item.service_name),
+    environment: item.environment === null ? null : scrubPublicText(item.environment),
+    release: item.release === null ? null : scrubPublicText(item.release),
     handled: item.handled,
     synthetic: item.synthetic,
     updated_at_millis: item.updated_at_millis,

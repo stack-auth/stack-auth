@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { propagation, trace } from "@opentelemetry/api";
+import { CompositePropagator, W3CBaggagePropagator, W3CTraceContextPropagator } from "@opentelemetry/core";
 import { logs } from "@opentelemetry/api-logs";
 import { InMemoryLogRecordExporter, LoggerProvider, SimpleLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
@@ -51,15 +52,47 @@ function makeTracker(overrides?: Partial<EventTrackerDeps>): EventTracker {
   });
 }
 
+// Minimal PerformanceObserver stand-in (same contract as web-vitals.test.ts):
+// one instance per observed type, entries injected by the test.
+class MockPerformanceObserver {
+  static supportedEntryTypes = ["navigation", "paint", "largest-contentful-paint", "layout-shift", "event", "first-input"];
+  static instances: MockPerformanceObserver[] = [];
+
+  observedType: string | null = null;
+
+  constructor(private readonly callback: (list: { getEntries: () => unknown[] }) => void) {
+    MockPerformanceObserver.instances.push(this);
+  }
+
+  observe(options: { type: string }) {
+    this.observedType = options.type;
+  }
+
+  disconnect() {}
+
+  emit(entries: unknown[]) {
+    this.callback({ getEntries: () => entries });
+  }
+
+  static byType(type: string): MockPerformanceObserver {
+    const instance = MockPerformanceObserver.instances.find((candidate) => candidate.observedType === type);
+    if (!instance) throw new Error(`No observer registered for ${type}`);
+    return instance;
+  }
+}
+
 afterEach(async () => {
   vi.useRealTimers();
   document.body.replaceChildren();
   Reflect.set(globalThis, "hexclaveCapturedErrors", []);
+  MockPerformanceObserver.instances = [];
   trace.disable();
   logs.disable();
+  propagation.disable();
   await Promise.all(loggerProviders.splice(0).map(async (provider) => await provider.shutdown()));
   await Promise.all(tracerProviders.splice(0).map(async (provider) => await provider.shutdown()));
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("EventTracker OTel autocapture", () => {
@@ -99,6 +132,101 @@ describe("EventTracker OTel autocapture", () => {
         "hexclave.data": { amount: 42 },
       },
     }]);
+  });
+
+  it("inert-ifies never-ended CHILD facades on the sign-out sweep", async () => {
+    installOtel();
+    const tracker = makeTracker();
+    const parent = tracker.startSpan("parent-op");
+    const child = parent.startSpan("child-op");
+    const grandchild = child.startSpan("grandchild-op");
+    expect(grandchild.isEnded).toBe(false);
+
+    tracker.clearBuffer();
+    // markInert ends spans through runAsynchronously; give the microtask/timer
+    // turn a chance to run.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(parent.isEnded).toBe(true);
+    expect(child.isEnded).toBe(true);
+    expect(grandchild.isEnded).toBe(true);
+  });
+
+  it("keeps the parent registered for the sign-out sweep after a child ends", async () => {
+    installOtel();
+    const tracker = makeTracker();
+    const parent = tracker.startSpan("parent-op");
+    const child = parent.startSpan("child-op");
+    await child.end();
+    expect(parent.isEnded).toBe(false);
+
+    tracker.clearBuffer();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(parent.isEnded).toBe(true);
+  });
+
+  it("sends the real W3C traceparent (not correlation-only baggage) on span.fetch", async () => {
+    installOtel();
+    propagation.setGlobalPropagator(new W3CTraceContextPropagator());
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("{}"));
+    const tracker = makeTracker({
+      getPropagationPolicy: () => ({ selfOrigin: "https://app.example.com", allowedOrigins: ["https://api.example.com"], allowLocalhost: false, correlationBaggage: true }),
+    });
+
+    const span = tracker.startSpan("db.query");
+    await span.fetch("https://api.example.com/data");
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const headers = new Headers(fetchSpy.mock.calls[0]?.[1]?.headers);
+    const traceparent = headers.get("traceparent");
+    // The whole point of span.fetch() is cross-tier HIERARCHY: baggage alone
+    // (the correlation-only fallback) would leave the backend span parentless.
+    expect(traceparent).toBe(`00-${span.traceId}-${span.spanId}-01`);
+    expect(headers.get("baggage")).toContain(SEGMENT_ID);
+    await span.end();
+  });
+
+  it("spanPropagation.enabled=false strips correlation baggage from span.fetch but keeps traceparent", async () => {
+    installOtel();
+    // BOTH propagator halves installed, like an existing-provider app: proves
+    // the facade's executionContext gate (not just the fallback gate) — with
+    // correlation entries still in context, the baggage propagator would leak
+    // them into the header.
+    propagation.setGlobalPropagator(new CompositePropagator({
+      propagators: [new W3CTraceContextPropagator(), new W3CBaggagePropagator()],
+    }));
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("{}"));
+    const tracker = makeTracker({
+      getPropagationPolicy: () => ({ selfOrigin: "https://app.example.com", allowedOrigins: ["https://api.example.com"], allowLocalhost: false, correlationBaggage: false }),
+    });
+
+    const span = tracker.startSpan("db.query");
+    await span.fetch("https://api.example.com/data");
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const headers = new Headers(fetchSpy.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("traceparent")).toBe(`00-${span.traceId}-${span.spanId}-01`);
+    expect(headers.get("baggage")).toBeNull();
+    await span.end();
+  });
+
+  it("records web-vitals metrics once per page view at span end, not per intermediate update", () => {
+    vi.stubGlobal("PerformanceObserver", MockPerformanceObserver);
+    installOtel();
+    const tracker = makeTracker();
+    const recorder = Reflect.get(tracker, "_webVitalsMetricRecorder");
+    const record = vi.spyOn(recorder, "record");
+    tracker.start();
+
+    MockPerformanceObserver.byType("largest-contentful-paint").emit([{ startTime: 900.2 }]);
+    MockPerformanceObserver.byType("largest-contentful-paint").emit([{ startTime: 1500.7 }]);
+    // Histogram semantics: each record() is a separate sample, so intermediate
+    // snapshots must NOT be recorded — only the final one at page-view end.
+    expect(record).not.toHaveBeenCalled();
+
+    tracker.stop();
+    expect(record).toHaveBeenCalledOnce();
+    expect(record.mock.calls[0]?.[0]).toMatchObject({ lcp_ms: 1501 });
   });
 
   it("rejects invalid public event names and cyclic structured data before OTel", async () => {

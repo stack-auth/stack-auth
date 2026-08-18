@@ -1,36 +1,43 @@
-import type { SmartRequest } from "@/route-handlers/smart-request";
+import type { SavedIssueSearchViewRouteHandlerOptions } from "@/lib/issues/saved-search-views/route-handlers";
 import {
-  adaptSchema,
   clientOrHigherAuthTypeSchema,
   serverOrHigherAuthTypeSchema,
-  yupObject,
 } from "@hexclave/shared/dist/schema-fields";
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import {
-  createSavedIssueSearchViewMutationAuthorization,
-  type SavedIssueSearchViewMutationAuthorization,
-} from "@/lib/issues/saved-search-views/persistence";
 
-export const SavedIssueSearchViewAuthSchema = yupObject({
-  type: serverOrHigherAuthTypeSchema.defined(),
-  tenancy: adaptSchema.defined(),
-}).defined();
-
-export const SavedIssueSearchViewMutationAuthSchema = yupObject({
-  type: clientOrHigherAuthTypeSchema.defined(),
-  tenancy: adaptSchema.defined(),
-}).defined();
-
-export function savedIssueSearchViewActorUserId(fullReq: SmartRequest): string | null {
-  return fullReq.auth?.user?.id ?? null;
-}
-
-export function savedIssueSearchViewMutationAuthorization(fullReq: SmartRequest): SavedIssueSearchViewMutationAuthorization {
-  if (fullReq.auth === null) {
-    throw new StatusError(StatusError.Forbidden, "saved issue search view mutation requires authenticated access");
-  }
-  return createSavedIssueSearchViewMutationAuthorization({
-    authType: fullReq.auth.type,
-    actorUserId: savedIssueSearchViewActorUserId(fullReq),
-  });
-}
+/**
+ * Public machine-key tree. Mutations deliberately accept client-or-higher
+ * auth while list/get/create require server-or-higher: an end user may update
+ * or delete their own views (ownership is enforced by the shared mutation
+ * authorization), but browsing and creating views is a machine-key surface.
+ */
+export const publicSavedIssueSearchViewRouteOptions: SavedIssueSearchViewRouteHandlerOptions = {
+  authTypeSchema: serverOrHigherAuthTypeSchema,
+  mutationAuthTypeSchema: clientOrHigherAuthTypeSchema,
+  metadata: {
+    list: {
+      summary: "List saved issue search views",
+      description: "Lists bounded saved issue-search filters visible in the authenticated project branch. Private views are returned only to their owner; project views are branch-scoped.",
+      tags: ["Issues"],
+    },
+    create: {
+      summary: "Create a saved issue search view",
+      description: "Creates a versioned, bounded saved issue-search filter in the authenticated project branch. The body cannot provide tenancy, project, branch, or owner identifiers.",
+      tags: ["Issues"],
+    },
+    get: {
+      summary: "Get a saved issue search view",
+      description: "Returns one saved issue-search filter only when it is visible in the authenticated project branch.",
+      tags: ["Issues"],
+    },
+    update: {
+      summary: "Update a saved issue search view",
+      description: "Updates a saved issue-search filter only when the authenticated user owns it or the caller has explicit admin access.",
+      tags: ["Issues"],
+    },
+    delete: {
+      summary: "Delete a saved issue search view",
+      description: "Deletes a saved issue-search filter only when the authenticated user owns it or the caller has explicit admin access.",
+      tags: ["Issues"],
+    },
+  },
+};

@@ -1,4 +1,5 @@
 import { createServer, type Server } from "node:http";
+import type { Instrumentation } from "@opentelemetry/instrumentation";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { StackServerApp } from "../interfaces/server-app";
 import { getServerAppInstrumentation } from "./server-app-impl";
@@ -274,6 +275,131 @@ describe("server OTel integration", () => {
     expect(typeof message).toBe("string");
     if (typeof message !== "string") throw new Error("Expected bounded error message");
     expect(message.length).toBeLessThanOrEqual(8_192);
+  });
+
+  it("installs late-supplied instrumentations on the cached provider, deduped by name", async () => {
+    const collector = await startCollector();
+    // makeReadyApp registers eagerly with NO instrumentations — the exact state
+    // a framework register() call arrives into.
+    const app = await makeReadyApp(collector.baseUrl);
+    const instrumentation = getServerAppInstrumentation(app);
+    if (instrumentation === null) throw new Error("Expected a real server app instrumentation facade");
+
+    const calls: string[] = [];
+    const makeFakeInstrumentation = (name: string): Instrumentation => ({
+      instrumentationName: name,
+      instrumentationVersion: "0.0.0-test",
+      enable: () => {
+        calls.push(`enable:${name}`);
+      },
+      disable: () => {
+        calls.push(`disable:${name}`);
+      },
+      setTracerProvider: () => {
+        calls.push(`tracer:${name}`);
+      },
+      setMeterProvider: () => {},
+      getConfig: () => ({}),
+      setConfig: () => {},
+    });
+
+    await instrumentation.registerOpenTelemetry([makeFakeInstrumentation("test-late-instrumentation")]);
+    expect(calls).toContain("tracer:test-late-instrumentation");
+    const callsAfterFirstInstall = calls.length;
+
+    // Same instrumentationName again (HMR re-runs construct NEW instances):
+    // must not patch twice.
+    await instrumentation.registerOpenTelemetry([makeFakeInstrumentation("test-late-instrumentation")]);
+    expect(calls.length).toBe(callsAfterFirstInstall);
+  });
+
+  it("keeps capture metadata authoritative over colliding adapter-supplied data", async () => {
+    const collector = await startCollector();
+    const app = await makeReadyApp(collector.baseUrl);
+    const instrumentation = getServerAppInstrumentation(app);
+    if (instrumentation === null) throw new Error("Expected a real server app instrumentation facade");
+
+    await instrumentation.captureServerRequestError(new Error("boom"), {
+      mechanism: "next.onRequestError",
+      handled: false,
+      // A hostile or buggy adapter must not be able to reclassify the event:
+      // `handled` at the capture seam is what crash-free rates trust.
+      data: { handled: true, mechanism_type: "spoofed.mechanism", level: "info" },
+    });
+    await app.flush();
+
+    const error = logRecords(collector.requests).find((record) => record.eventName === "$error");
+    if (error === undefined) throw new Error("Expected the captured error LogRecord");
+    const errorData = attributeValue(error, "hexclave.data");
+    if (!(errorData instanceof Map)) throw new Error("Expected structured Hexclave error data");
+    expect(errorData.get("handled")).toBe(false);
+    expect(errorData.get("mechanism_type")).toBe("next.onRequestError");
+    // Non-authoritative extras still flow through.
+    expect(errorData.get("level")).toBe("info");
+  });
+
+  it("stamps request correlation and the incoming parent onto logger records inside a request scope", async () => {
+    const collector = await startCollector();
+    const app = await makeReadyApp(collector.baseUrl);
+    const context = requestContext({
+      userId: "99999999-9999-4999-8999-999999999999",
+      refreshTokenId: "44444444-4444-4444-8444-444444444444",
+      sessionReplaySegmentId: "55555555-5555-4555-8555-555555555555",
+      pageViewSpanId: "6666666666666666",
+      incomingParent: CLIENT_FETCH,
+    });
+
+    await runWithServerRequestContext(context, async () => {
+      app.logger.warn("scoped log", { key: "user:42" });
+    });
+    await app.flush();
+
+    const log = logRecords(collector.requests).find((record) => record.eventName === "$log");
+    if (log === undefined) throw new Error("Expected the scoped logger LogRecord");
+    // No OTel span was active, so the record joins the caller's trace via the
+    // request's incoming W3C parent — mirroring trackEvent.
+    expect(log).toMatchObject({
+      traceId: CLIENT_FETCH.traceId,
+      spanId: CLIENT_FETCH.spanId,
+      body: { stringValue: "scoped log" },
+    });
+    expect(attributeValue(log, "hexclave.user.id")).toBe(context.userId);
+    expect(attributeValue(log, "hexclave.refresh_token.id")).toBe(context.refreshTokenId);
+    expect(attributeValue(log, "hexclave.session_replay.segment.id")).toBe(context.sessionReplaySegmentId);
+    expect(attributeValue(log, "hexclave.page_view.span_id")).toBe(context.pageViewSpanId);
+  });
+
+  it("attributes bare ambient-request logger calls asynchronously via the framework provider", async () => {
+    const collector = await startCollector();
+    const app = await makeReadyApp(collector.baseUrl);
+    const instrumentation = getServerAppInstrumentation(app);
+    if (instrumentation === null) throw new Error("Expected a real server app instrumentation facade");
+    const context = requestContext({
+      userId: "99999999-9999-4999-8999-999999999999",
+      pageViewSpanId: "6666666666666666",
+      incomingParent: CLIENT_FETCH,
+    });
+    // Shadow the session-resolving half: this unit is about the logger's
+    // ambient wiring, not session resolution (covered elsewhere).
+    Reflect.set(app, "_resolveServerRequestContext", async () => context);
+    instrumentation.setAmbientRequestProvider(async () => ({ headers: new Headers() }));
+
+    try {
+      app.logger.info("ambient log");
+      // The ambient resolution is fire-and-forget; poll until the attributed
+      // record lands at the collector.
+      await vi.waitFor(async () => {
+        await app.flush();
+        expect(logRecords(collector.requests).find((record) => record.eventName === "$log")).toBeDefined();
+      });
+      const log = logRecords(collector.requests).find((record) => record.eventName === "$log");
+      if (log === undefined) throw new Error("Expected the ambient logger LogRecord");
+      expect(log).toMatchObject({ traceId: CLIENT_FETCH.traceId, spanId: CLIENT_FETCH.spanId });
+      expect(attributeValue(log, "hexclave.user.id")).toBe(context.userId);
+      expect(attributeValue(log, "hexclave.page_view.span_id")).toBe(context.pageViewSpanId);
+    } finally {
+      instrumentation.setAmbientRequestProvider(null);
+    }
   });
 
   it("emits public manual captures with scoped enrichment and event IDs", async () => {

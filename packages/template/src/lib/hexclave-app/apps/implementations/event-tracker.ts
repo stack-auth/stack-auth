@@ -86,11 +86,9 @@ const CLICKMAP_SCALE_FACTOR = 16;
 // still pending when the page unloads led to that navigation, alive by
 // definition.
 //
-// NOTE — blocker for any future real-time / "live clicks" view: a click that
-// is still unclassified when its natural flush fires arrives up to one extra
-// FLUSH_INTERVAL_MS late. A surface showing clicks as they happen must either
-// accept that lag or emit a provisional $click plus a later dead-click
-// reconciliation event.
+// A click still unclassified when its natural flush fires arrives up to one
+// extra FLUSH_INTERVAL_MS late. A live-clicks surface must accept that lag or
+// emit a provisional $click plus a later dead-click reconciliation event.
 const DEAD_CLICK_SCROLL_THRESHOLD_MS = 100;
 const DEAD_CLICK_SELECTION_CHANGED_THRESHOLD_MS = 100;
 const DEAD_CLICK_VISIBILITY_CHANGE_THRESHOLD_MS = 100;
@@ -162,7 +160,7 @@ export type EventTrackerDeps = {
   registerBackgroundTask?: (promise: Promise<unknown>) => void,
   // Origin policy for span.fetch / propagation headers (same-origin default +
   // exact-origin allowlist). Provided by the app from observability.spanPropagation.
-  getPropagationPolicy?: () => { selfOrigin: string | null, allowedOrigins: readonly string[], allowLocalhost: boolean },
+  getPropagationPolicy?: () => { selfOrigin: string | null, allowedOrigins: readonly string[], allowLocalhost: boolean, correlationBaggage: boolean },
   // Opt-in presence/integrity signals ($away, clipboard, context-menu, print,
   // fullscreen-exit). Default OFF: they are surveillance-adjacent, so capturing
   // them must be a deliberate customer decision
@@ -319,6 +317,11 @@ export class EventTracker {
   // Live (un-ended) span handles' inert switches; flipped on clearBuffer so a
   // span started before sign-out can never be re-written under the next user.
   private _liveSpanControls = new Set<{ markInert: () => void }>();
+  // Reverse lookup for the deregistration in startSpan's onEnded. A WeakMap on
+  // purpose: _settleAllPending / _capLiveSpanRegistries only maintain the Set,
+  // and stale weak entries are harmless (a late lookup just deletes a control
+  // that is no longer in the Set).
+  private readonly _liveSpanControlBySpan = new WeakMap<Span, { markInert: () => void }>();
   // See _capLiveSpanRegistries.
   private _warnedLiveSpanRegistryCap = false;
 
@@ -620,11 +623,7 @@ export class EventTracker {
         ...resolved.traceFlags === undefined ? {} : { traceFlags: resolved.traceFlags },
         ...resolved.traceState === undefined ? {} : { traceState: resolved.traceState },
       };
-    let span!: Span;
-    const control = {
-      markInert: () => runAsynchronously(async () => await span.end(), { noErrorLogging: true }),
-    };
-    span = createOtelSpanFacade({
+    return createOtelSpanFacade({
       tracer: otelTrace.getTracer("@hexclave/sdk-browser"),
       spanType,
       startOptions: {
@@ -632,6 +631,9 @@ export class EventTracker {
         ...parent === undefined ? { root: true } : { parent, root: false },
         links: resolved.links,
       },
+      // `correlationBaggage: undefined` (no policy dep) keeps the facade's
+      // enabled-by-default behavior.
+      ...this._deps.getPropagationPolicy === undefined ? {} : { correlationBaggage: this._deps.getPropagationPolicy().correlationBaggage },
       correlationAttributes: {
         "hexclave.session_replay.segment.id": this._sessionReplaySegmentId,
         ...pageViewSpanId === null ? {} : { "hexclave.page_view.span_id": pageViewSpanId },
@@ -639,16 +641,33 @@ export class EventTracker {
       capabilities: {
         trackEvent: (eventType, data, trackOptions) => this.trackCustomEvent(eventType, data, trackOptions),
         getSpanPropagationHeaders: (span) => this._spanPropagationHeaders(span, pageViewSpanId),
-        fetch: (span, input, init) => this._spanFetch(span, pageViewSpanId, input, init),
-        onEnded: () => {
-          this._globalSpans.delete(span);
-          this._liveSpanControls.delete(control);
+        fetch: (span, input, init) => this._spanFetch(span, input, init),
+        // The facade reuses this capabilities object for every DESCENDANT span
+        // it creates, so registration lives in onStarted (fired once per
+        // facade, children included) rather than at this call site — a
+        // never-ended CHILD facade must be just as visible to clearBuffer()'s
+        // sign-out inert sweep as its parent, or it could export under the
+        // next identity.
+        onStarted: (startedSpan) => {
+          const control = {
+            markInert: () => runAsynchronously(async () => await startedSpan.end(), { noErrorLogging: true }),
+          };
+          this._liveSpanControls.add(control);
+          this._liveSpanControlBySpan.set(startedSpan, control);
+          this._capLiveSpanRegistries();
+        },
+        // Always receives the span that actually ended: deregister exactly
+        // that one — a closure over the top-level handle here would let a
+        // child's end unregister its still-live parent.
+        onEnded: (endedSpan) => {
+          this._globalSpans.delete(endedSpan);
+          const endedControl = this._liveSpanControlBySpan.get(endedSpan);
+          if (endedControl !== undefined) {
+            this._liveSpanControls.delete(endedControl);
+          }
         },
       },
     });
-    this._liveSpanControls.add(control);
-    this._capLiveSpanRegistries();
-    return span;
   }
 
   /**
@@ -726,6 +745,9 @@ export class EventTracker {
    * row will survive a healthy flush.
    */
   private _spanPropagationHeaders(span: Span, pageViewSpanId: string | null): Record<string, string> {
+    // spanPropagation.enabled=false gates ONLY this correlation-baggage
+    // fallback — the facade still injects W3C trace context independently.
+    if (this._deps.getPropagationPolicy?.().correlationBaggage === false) return {};
     return buildPropagationHeaderValues({
       // createOtelSpanFacade injects the official active trace context after
       // merging this correlation-only fallback.
@@ -734,7 +756,7 @@ export class EventTracker {
     });
   }
 
-  private _spanFetch(span: Span, pageViewSpanId: string | null, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  private _spanFetch(span: Span, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     try {
       const policy = this._deps.getPropagationPolicy?.() ?? {
         selfOrigin: typeof window !== "undefined" ? window.location.origin : null,
@@ -744,7 +766,13 @@ export class EventTracker {
       const initWithHeader = buildFetchInitWithSpanContext({
         input,
         init,
-        headerValues: this._spanPropagationHeaders(span, pageViewSpanId),
+        // The facade's getSpanPropagationHeaders(), NOT the correlation-only
+        // _spanPropagationHeaders fallback: the facade merges the real W3C
+        // context (traceparent/tracestate) on top of that fallback, and using
+        // the fallback directly here would send baggage with no traceparent —
+        // the whole point of span.fetch() is cross-tier hierarchy. Mirrors the
+        // server span.fetch path in server-app-impl.ts.
+        headerValues: span.getSpanPropagationHeaders(),
         selfOrigin: policy.selfOrigin,
         allowedOrigins: policy.allowedOrigins,
         allowLocalhost: policy.allowLocalhost,
@@ -1001,7 +1029,11 @@ export class EventTracker {
     // flagged `soft_nav: 1` so dashboards never mix them into load metrics.
     // Values are absorbed into the span's data as they finalize and frozen
     // when the span ends (updates within a flush window coalesce into one wire
-    // row, so no extra throttling is needed).
+    // row, so no extra throttling is needed). The METRIC recorder is NOT fed
+    // here: under histogram semantics every record() is a separate sample, so
+    // recording each intermediate snapshot (CLS/INP update repeatedly while
+    // the page lives) would inflate counts — the single per-page-view sample
+    // is recorded once, from the final snapshot in _endPageViewSpan.
     if (this._webVitals !== null) {
       // _endPageViewSpan (called above) already froze + disconnected the
       // previous span's collector; this guards the paths where the previous
@@ -1016,7 +1048,6 @@ export class EventTracker {
       (snapshot) => {
         if (collector !== null && !span.isEnded()) {
           span.setData({ web_vitals: snapshot });
-          this._webVitalsMetricRecorder.record(snapshot);
         }
       },
       entryType === "initial"
@@ -1814,7 +1845,6 @@ export class EventTracker {
     this._recentClicks = [];
     this._lastCopyHash = null;
 
-    // Restore history methods
     const historyObject = window.history;
     if (hasHistoryMethods(historyObject)) {
       if (this._originalPushState) {
