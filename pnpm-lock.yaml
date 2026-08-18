@@ -745,6 +745,9 @@ importers:
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
+      dotenv-cli:
+        specifier: ^7.3.0
+        version: 7.4.1
       typescript:
         specifier: 6.0.3
         version: 6.0.3

@@ -21,6 +21,7 @@ describe("GROWTH_ANALYSIS_TOPICS", () => {
 
 describe("assertGrowthAnalysisTopicId", () => {
   it("accepts known ids and rejects unknown ones with a 400", () => {
+    expect(() => assertGrowthAnalysisTopicId("first-screen-audit")).not.toThrow();
     expect(() => assertGrowthAnalysisTopicId("traffic-quality")).not.toThrow();
     expect(() => assertGrowthAnalysisTopicId("nonsense")).toThrow(/Unknown growth analysis topic id/);
   });

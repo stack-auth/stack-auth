@@ -23,7 +23,7 @@ const AGENT_BASE = "/api/latest/internal/growth-agent";
 const PRE_INTERVIEW_PHASE_KEYS = [
   "website-research",
   "data-analysis",
-  "analysis:optimize-above-the-fold",
+  "analysis:first-screen-audit",
   "analysis:seo-aeo-strategy",
   "analysis:traffic-quality",
   "analysis:icp-visitor-outreach",

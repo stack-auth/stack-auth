@@ -14,7 +14,7 @@ export type GrowthAnalysisTopic = {
 };
 
 export const GROWTH_ANALYSIS_TOPICS = new Map<string, GrowthAnalysisTopic>([
-  ["optimize-above-the-fold", { id: "optimize-above-the-fold", title: "Optimize above-the-fold", skillName: "optimize-above-the-fold" }],
+  ["first-screen-audit", { id: "first-screen-audit", title: "First-screen audit", skillName: "first-screen-audit" }],
   ["seo-aeo-strategy", { id: "seo-aeo-strategy", title: "SEO & AEO strategy", skillName: "seo-aeo-strategy" }],
   ["traffic-quality", { id: "traffic-quality", title: "Traffic quality", skillName: "traffic-quality" }],
   ["icp-visitor-outreach", { id: "icp-visitor-outreach", title: "ICP visitor outreach", skillName: "icp-visitor-outreach" }],

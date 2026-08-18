@@ -23,9 +23,9 @@ export type GrowthAnalysisTopic = {
  * the agent side.
  */
 export const GROWTH_ANALYSIS_TOPICS = new Map<string, GrowthAnalysisTopic>([
-  ["optimize-above-the-fold", {
-    id: "optimize-above-the-fold",
-    title: "Optimize above-the-fold",
+  ["first-screen-audit", {
+    id: "first-screen-audit",
+    title: "First-screen audit",
     description: "Audits the first screen of your landing page — headline, subheadline and main call to action — against who actually signs up and sticks around. It proposes exact replacement copy rather than vague directions, with the evidence behind each change.",
   }],
   ["seo-aeo-strategy", {

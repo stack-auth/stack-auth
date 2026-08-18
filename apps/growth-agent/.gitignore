@@ -1,7 +1,8 @@
-# local env overrides (secrets / per-machine) — committed dev env lives in .env
-# (eve loads only .env and .env.local, so unlike other apps there is no .env.development here)
-.env.local
-.env*.local
+# Environment templates and development defaults are committed; every other
+# environment file remains local.
+.env*
+!.env
+!.env.development
 
 # eve build/runtime output
 .eve
@@ -10,4 +11,3 @@
 .vercel
 dist
 *.tsbuildinfo
-.env*
