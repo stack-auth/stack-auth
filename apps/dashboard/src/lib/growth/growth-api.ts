@@ -727,17 +727,31 @@ export async function setGrowthAdminCategoryScore(app: object, projectId: string
   await requestGrowthAdminJson(app, "/category-scores", { method: "PUT", body: JSON.stringify({ target_project_id: projectId, category, score }) });
 }
 
-export type GrowthAdminManualStep = "analysis_tick" | "project_recovery";
+export type GrowthAdminSchedulerResult = {
+  readonly didWork: boolean,
+  /**
+   * Whether the project's analysis leg is live now. `null` when there was no leg to start. `false`
+   * means the work is queued but did not start inside the request's budget — which must NOT be
+   * reported to the operator as a completed run.
+   */
+  readonly legStarted: boolean | null,
+};
 
-export async function runGrowthAdminManualStep(app: object, projectId: string, step: GrowthAdminManualStep): Promise<{ didWork: boolean }> {
+/**
+ * Runs one scheduler pass for a single project: the same work Vercel Cron drives in production,
+ * scoped to this project so an operator can move a run forward where no cron is invoking the
+ * engine (Preview, and local development).
+ */
+export async function runGrowthAdminSchedulerStep(app: object, projectId: string): Promise<GrowthAdminSchedulerResult> {
   const response = z.object({
-    step: z.enum(["analysis_tick", "project_recovery"]),
+    step: z.string(),
     did_work: z.boolean(),
+    leg_started: z.boolean().nullable(),
   }).parse(await requestGrowthAdminJson(app, "/run-now", {
     method: "POST",
-    body: JSON.stringify({ step, target_project_id: projectId }),
+    body: JSON.stringify({ step: "project_recovery", target_project_id: projectId }),
   }));
-  return { didWork: response.did_work };
+  return { didWork: response.did_work, legStarted: response.leg_started };
 }
 
 export type GrowthAdminFunctionalActionFields = {
