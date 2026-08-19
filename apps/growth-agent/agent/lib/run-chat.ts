@@ -182,11 +182,9 @@ export async function executeChatTurn(input: ChatTurnRequest, helpers: { readonl
         throw new Error(`Chat turn session failed: session=${session.id} code=${event.data.code} message=${event.data.message}`);
       }
       case "session.waiting": {
-        // Task mode should never park; treat it as a failure rather than hanging to the timeout.
         throw new Error(`Chat turn session parked waiting for input in task mode: session=${session.id}`);
       }
       default: {
-        // Progress events (turn/step/deltas/...) — keep waiting.
         break;
       }
     }

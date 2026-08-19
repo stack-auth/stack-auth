@@ -33,9 +33,6 @@ export const POST = createSmartRouteHandler({
   handler: async ({ auth, body }) => {
     if (auth.user == null) throw new KnownErrors.UserAuthenticationRequired();
     const tenancy = await requireGrowthAdminTenancy(auth.project.id, auth.user, body.target_project_id);
-    // `leg_started` is only meaningful for a repair: it reports whether the analysis leg was
-    // observed live before the call returned, so the UI can stop describing a queued-but-unstarted
-    // repair as a completed one. An analysis tick starts no leg and always reports null.
     const result = body.step === "analysis_tick"
       ? { ...await runGrowthProjectAnalysisStep(tenancy), legStarted: null }
       : await repairGrowthProject(tenancy);

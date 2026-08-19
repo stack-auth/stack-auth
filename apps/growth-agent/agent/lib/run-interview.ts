@@ -106,9 +106,6 @@ export async function executeInterviewTurn(input: InterviewTurnRequest, helpers:
   let cancelledAfterTurnEndingTool = false;
   const seenTextParts = new Set<string>();
 
-  // This turn ends by cancelling the session itself, and its exits (`turn.cancelled`, or the
-  // `session.waiting` that follows it) settle the turn but not the session — so without this the
-  // follower would fire a second, redundant cancel on every single turn.
   collect: for await (const event of followSessionEvents({
     session,
     label: "Interview turn",
@@ -150,9 +147,6 @@ export async function executeInterviewTurn(input: InterviewTurnRequest, helpers:
           part.output = result.output;
           if (!cancelledAfterTurnEndingTool && TURN_ENDING_INTERVIEW_TOOLS.has(toolNamesByCallId.get(result.callId) ?? "")) {
             await session.cancel();
-            // Set only once the cancel landed. The flag doubles as the follower's `isAlreadyStopped`
-            // answer, and a cancel that threw leaves the session running — that case must fall
-            // through to the follower's cleanup cancel rather than silently opting out of it.
             cancelledAfterTurnEndingTool = true;
           }
         } else {

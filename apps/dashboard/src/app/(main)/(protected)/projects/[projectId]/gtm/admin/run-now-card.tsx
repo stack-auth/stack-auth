@@ -8,24 +8,6 @@ import { useState } from "react";
 
 type RunState = { status: "idle" } | { status: "running" } | { status: "success", result: GrowthAdminSchedulerResult } | { status: "error", message: string };
 
-/**
- * One button, deliberately.
- *
- * This card used to offer two: "Advance selected analysis" (a direct orchestration tick that
- * explicitly bypassed the workflow engine) and "Repair selected project" (which queued the missing
- * boundary event). Neither ran the engine, which is the thing production's per-minute cron actually
- * does — so on a deployment without cron the queued event sat there and the run never moved, while
- * the UI reported success. Choosing between two buttons that both failed to do the one necessary
- * step was not a choice worth offering.
- *
- * The single action now runs a full scheduler pass for this project: seed any missing growth
- * workflows, queue the boundary event if its leg is absent, drive the project-scoped workflow
- * engine until that leg is live, then tick the run. It is idempotent, so pressing it repeatedly is
- * how you simulate cron ticking.
- *
- * Not covered: the growth watchdog (stuck-phase reaping, orphan resurrection, daily-brief catch-up)
- * runs on its own 5-minute cron and is global rather than per-project, so it has no button here.
- */
 export function GrowthAdminRunNowCard(props: { app: object, projectId: string, projectName: string, onCompleted: () => Promise<void> }) {
   const [state, setState] = useState<RunState>({ status: "idle" });
 

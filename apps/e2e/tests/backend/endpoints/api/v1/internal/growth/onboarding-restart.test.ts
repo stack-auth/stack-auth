@@ -5,8 +5,6 @@ import { createGrowthProject, requireRunId } from "./growth-helpers";
 
 const BASE_PATH = "/api/latest/internal/growth";
 
-// Same 300s budget as the other onboarding suites: POST /onboarding compiles the two canonical
-// workflows in the sandbox (60s backstop each), and this file onboards twice per test.
 
 function requireItems(body: unknown): unknown[] {
   if (typeof body !== "object" || body == null || !("items" in body) || !Array.isArray(body.items)) {
@@ -53,8 +51,6 @@ describe("internal growth onboarding restart", { timeout: 90_000 }, () => {
     expect(restart.status).toBe(200);
     expect(restart.body).toMatchObject({ cancelled_run_ids: [firstRunId] });
 
-    // The form is back, and the cancelled run reads as no run at all rather than as a stuck one —
-    // the status body deliberately treats CANCELLED that way (see getGrowthStatusBody).
     const afterRestart = await niceBackendFetch(`${BASE_PATH}/status`, { accessType: "admin" });
     expect(afterRestart.status).toBe(200);
     expect(afterRestart.body).toMatchObject({
@@ -62,8 +58,6 @@ describe("internal growth onboarding restart", { timeout: 90_000 }, () => {
       analysis: { state: "none", run_id: null, trigger: null },
     });
 
-    // The whole point: the one-active-run unique index no longer blocks a second onboarding, and
-    // the new run is an "initial" one against the corrected details.
     const second = await niceBackendFetch(`${BASE_PATH}/onboarding`, {
       accessType: "admin",
       method: "POST",
@@ -88,9 +82,6 @@ describe("internal growth onboarding restart", { timeout: 90_000 }, () => {
       body: { website_url: "https://plannery.example.com" },
     });
 
-    // Milestones are seeded during onboarding and are the cheapest observable stand-in for "growth
-    // history survives": re-onboarding must neither wipe them nor duplicate them (the seeder
-    // early-returns when any milestone already exists).
     const before = await niceBackendFetch(`${BASE_PATH}/milestones`, { accessType: "admin" });
     expect(before.status).toBe(200);
     expect(requireItems(before.body)).toHaveLength(3);

@@ -729,19 +729,9 @@ export async function setGrowthAdminCategoryScore(app: object, projectId: string
 
 export type GrowthAdminSchedulerResult = {
   readonly didWork: boolean,
-  /**
-   * Whether the project's analysis leg is live now. `null` when there was no leg to start. `false`
-   * means the work is queued but did not start inside the request's budget — which must NOT be
-   * reported to the operator as a completed run.
-   */
   readonly legStarted: boolean | null,
 };
 
-/**
- * Runs one scheduler pass for a single project: the same work Vercel Cron drives in production,
- * scoped to this project so an operator can move a run forward where no cron is invoking the
- * engine (Preview, and local development).
- */
 export async function runGrowthAdminSchedulerStep(app: object, projectId: string): Promise<GrowthAdminSchedulerResult> {
   const response = z.object({
     step: z.string(),
