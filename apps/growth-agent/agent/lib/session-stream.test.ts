@@ -119,6 +119,9 @@ async function collect(session: Session, options?: {
   /** Which event the consumer treats as its exit. Defaults to the real terminal event. */
   readonly stopOn?: SessionStreamEvent["type"],
   readonly cancelWaitMs?: number,
+  readonly isAlreadyStopped?: () => boolean,
+  /** Runs on every event, so a test can mimic a consumer that stops the session mid-iteration. */
+  readonly onEvent?: (event: SessionStreamEvent) => void,
 }): Promise<SessionStreamEvent[]> {
   const seen: SessionStreamEvent[] = [];
   for await (const event of followSessionEvents({
@@ -127,8 +130,10 @@ async function collect(session: Session, options?: {
     maxSessionMs: options?.maxSessionMs ?? 60_000,
     reconnect: options?.reconnect ?? INSTANT_RETRIES,
     cancelWaitMs: options?.cancelWaitMs ?? 50,
+    isAlreadyStopped: options?.isAlreadyStopped,
   })) {
     seen.push(event);
+    options?.onEvent?.(event);
     if (event.type === (options?.stopOn ?? "session.completed")) break;
   }
   return seen;
@@ -342,6 +347,82 @@ describe("followSessionEvents", () => {
 
     expect(seen.map((event) => event.type)).toEqual(["session.waiting"]);
     expect(fake.cancelCalls()).toBe(1);
+  });
+
+  it("skips the cleanup cancel when the caller says it already stopped the session", async () => {
+    // The interview turn's shape: it cancels the session itself the moment a turn-ending tool
+    // returns, then reads on until `turn.cancelled` and bails. That exit is not a settled session,
+    // so without this option the follower would cancel a second time on every single turn — a
+    // wasted round-trip on a path where a founder is waiting for the reply.
+    const fake = createFakeSession({
+      log: [waitingEvent(0)],
+      connections: [{ deliver: 1, end: { kind: "close" } }],
+    });
+    let stoppedByCaller = false;
+
+    const seen = await collect(fake.session, {
+      stopOn: "session.waiting",
+      // Deliberately flipped mid-iteration, after the options object was handed over: the follower
+      // must read the callback when it cleans up, not when it was called.
+      onEvent: () => {
+        stoppedByCaller = true;
+      },
+      isAlreadyStopped: () => stoppedByCaller,
+    });
+
+    expect(seen.map((event) => event.type)).toEqual(["session.waiting"]);
+    expect(fake.cancelCalls()).toBe(0);
+  });
+
+  it("still cancels every abandonment the caller has not stopped itself", async () => {
+    // The guard is opt-in per exit, not a blanket opt-out: a caller that has not yet stopped the
+    // session gets the old behaviour, including on the error paths it never reaches by choice.
+    const bailsEarly = createFakeSession({
+      log: [waitingEvent(0)],
+      connections: [{ deliver: 1, end: { kind: "close" } }],
+    });
+    await collect(bailsEarly.session, { stopOn: "session.waiting", isAlreadyStopped: () => false });
+    expect(bailsEarly.cancelCalls()).toBe(1);
+
+    const timesOut = createFakeSession({
+      log: [],
+      connections: [{ deliver: 0, end: { kind: "close" }, open: { kind: "hang" } }],
+    });
+    await expect(collect(timesOut.session, { maxSessionMs: 20, isAlreadyStopped: () => false })).rejects.toThrow(SessionTimeoutError);
+    expect(timesOut.cancelCalls()).toBe(1);
+  });
+
+  it("still cleans up when the caller's own stop attempt failed", async () => {
+    // The guard reports what the caller achieved, not what it tried: a `cancel()` that rejected
+    // leaves the session running, so the caller keeps its flag down and the cleanup cancel — the
+    // last thing that can still stop it — has to run anyway.
+    const fake = createFakeSession({
+      log: [waitingEvent(0)],
+      connections: [{ deliver: 1, end: { kind: "close" } }],
+      onCancel: () => Promise.reject(new Error("cancel route returned 503")),
+    });
+    let stoppedByCaller = false;
+
+    const follow = async () => {
+      for await (const event of followSessionEvents({
+        session: fake.session,
+        label: "Test run",
+        maxSessionMs: 60_000,
+        reconnect: INSTANT_RETRIES,
+        cancelWaitMs: 50,
+        isAlreadyStopped: () => stoppedByCaller,
+      })) {
+        if (event.type !== "session.waiting") continue;
+        await fake.session.cancel();
+        stoppedByCaller = true;
+        break;
+      }
+    };
+
+    await expect(follow()).rejects.toThrow("cancel route returned 503");
+    // The caller's failed attempt plus the follower's, and the follower's own failure stays in its
+    // log rather than replacing the error the caller is already propagating.
+    expect(fake.cancelCalls()).toBe(2);
   });
 
   it("leaves a session that failed on its own alone", async () => {

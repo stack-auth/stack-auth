@@ -11,7 +11,7 @@ import { formatGrowthBriefDateHeadline } from "@/lib/growth/growth-format";
 import { completeGrowthOnboarding, resolveGrowthIntegrations, restartGrowthOnboarding, retryGrowthAnalysis } from "@/lib/growth/growth-api";
 import { getGrowthComputeMetricsTickerFrame, GROWTH_COMPUTE_METRICS_TICK_MILLIS } from "@/lib/growth/growth-compute-metrics-ticker";
 import { getGrowthTimelineStepStates, type GrowthTimelineStepState } from "@/lib/growth/growth-timeline";
-import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import type { GrowthAnalysisStep, GrowthComputeMetrics, GrowthIntegrations, GrowthStatus } from "@/lib/growth/growth-types";
 import {
   ArrowRightIcon,
@@ -173,14 +173,12 @@ function RestartOnboardingButton() {
   const app = useAdminApp();
   const { demo, refresh } = useGrowthStatus();
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [restartError, setRestartError] = useState<string | null>(null);
 
   if (demo) return null;
 
   return (
     <>
       <DesignButton variant="ghost" size="sm" onClick={() => setConfirmOpen(true)}>Restart onboarding</DesignButton>
-      {restartError != null && <DesignAlert variant="error">Could not restart onboarding: {restartError}</DesignAlert>}
       <ActionDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
@@ -190,14 +188,7 @@ function RestartOnboardingButton() {
         okButton={{
           label: "Restart onboarding",
           onClick: async () => {
-            setRestartError(null);
-            try {
-              await restartGrowthOnboarding(app);
-            } catch (error) {
-              captureError("growth-onboarding-restart", error);
-              setRestartError(error instanceof Error ? error.message : String(error));
-              return;
-            }
+            await restartGrowthOnboarding(app);
             await refresh();
           },
         }}

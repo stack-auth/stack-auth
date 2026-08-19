@@ -404,7 +404,11 @@ export async function restartGrowthOnboarding(options: { tenancy: Tenancy }): Pr
   });
   for (const runId of cancelledRunIds) {
     for (const runKey of getGrowthAnalysisLegRunKeys(runId)) {
-      await cancelWorkflowRuns(options.tenancy, { workflowId: GROWTH_ANALYSIS_WORKFLOW_ID, runKey });
+      try {
+        await cancelWorkflowRuns(options.tenancy, { workflowId: GROWTH_ANALYSIS_WORKFLOW_ID, runKey });
+      } catch (error) {
+        captureError("growth-onboarding-restart", new HexclaveAssertionError(`Failed to cancel growth analysis workflow leg "${runKey}" of run ${runId} after restarting onboarding for project ${projectId} branch ${branchId}`, { cause: error, projectId, branchId, runId, runKey }));
+      }
     }
   }
 

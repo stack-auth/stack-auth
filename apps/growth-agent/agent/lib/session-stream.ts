@@ -62,6 +62,7 @@ export type FollowSessionOptions = {
   readonly maxSessionMs: number,
   readonly reconnect?: SessionStreamReconnectPolicy,
   readonly cancelWaitMs?: number,
+  readonly isAlreadyStopped?: () => boolean,
 };
 
 
@@ -141,6 +142,8 @@ export async function* followSessionEvents(options: FollowSessionOptions): Async
     }
   } finally {
     if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
-    if (!sessionSettled) await cancelAbandonedSession(session, label, cancelWaitMs);
+    // Evaluated here, at cleanup time, so the caller's decision to stop the session mid-iteration counts.
+    const alreadyStopped = sessionSettled || (options.isAlreadyStopped?.() ?? false);
+    if (!alreadyStopped) await cancelAbandonedSession(session, label, cancelWaitMs);
   }
 }
