@@ -103,4 +103,75 @@ describe("durable issue product metadata", () => {
     await expect(setIssueOwner({ tenancy, issueId, owner: { type: "user", teamId: foreignTeamId, source: "manual" } })).rejects.toThrow(/requires only userId/);
     await expect(loadIssueProductSnapshot({ tenancy, issueId: randomUUID() })).rejects.toThrow(/not found/);
   });
+
+  it("replays subscription and bookmark results without reapplying stale mutations", async () => {
+    const firstAt = new Date("2026-08-06T12:02:00.000Z");
+    const secondAt = new Date("2026-08-06T12:03:00.000Z");
+    const subscriptionOptions: Parameters<typeof setIssueSubscription>[0] = {
+      tenancy,
+      issueId,
+      subject: { type: "user", id: otherUserId },
+      subscribed: true,
+      reason: "manual",
+      actorUserId: userId,
+      idempotencyKey: "subscription-replay-original",
+      occurredAt: firstAt,
+    };
+    const firstSubscription = await setIssueSubscription(subscriptionOptions);
+    await setIssueSubscription({
+      ...subscriptionOptions,
+      subscribed: false,
+      idempotencyKey: "subscription-replay-opposite",
+      occurredAt: secondAt,
+    });
+    await expect(setIssueSubscription(subscriptionOptions)).resolves.toEqual(firstSubscription);
+
+    const bookmarkOptions = {
+      tenancy,
+      issueId,
+      userId: otherUserId,
+      bookmarked: true,
+      actorUserId: userId,
+      idempotencyKey: "bookmark-replay-original",
+      occurredAt: firstAt,
+    };
+    const firstBookmark = await setIssueBookmark(bookmarkOptions);
+    await setIssueBookmark({
+      ...bookmarkOptions,
+      bookmarked: false,
+      idempotencyKey: "bookmark-replay-opposite",
+      occurredAt: secondAt,
+    });
+    await expect(setIssueBookmark(bookmarkOptions)).resolves.toEqual(firstBookmark);
+
+    const snapshot = await loadIssueProductSnapshot({ tenancy, issueId });
+    expect(snapshot.subscriptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: otherUserId, isActive: false }),
+    ]));
+    expect(snapshot.bookmarkedUserIds).not.toContain(otherUserId);
+  });
+
+  it("serializes concurrent priority changes before deriving activity history", async () => {
+    const firstAt = new Date("2026-08-06T12:04:00.000Z");
+    const secondAt = new Date("2026-08-06T12:04:00.001Z");
+    await setIssuePriority({ tenancy, issueId, priority: "high", actorUserId: userId, occurredAt: new Date(firstAt.getTime() - 1) });
+
+    await Promise.all([
+      setIssuePriority({ tenancy, issueId, priority: "medium", actorUserId: userId, occurredAt: firstAt }),
+      setIssuePriority({ tenancy, issueId, priority: "low", actorUserId: userId, occurredAt: secondAt }),
+    ]);
+
+    const prisma = await getPrismaClientForTenancy(tenancy);
+    const activities = await prisma.issueActivity.findMany({
+      where: {
+        tenancyId: tenancy.id,
+        issueId,
+        type: "PRIORITY_CHANGED",
+        occurredAt: { in: [firstAt, secondAt] },
+      },
+      select: { data: true },
+    });
+    expect(activities).toHaveLength(2);
+    expect(activities.filter((activity) => JSON.stringify(activity.data).includes('"from":"high"'))).toHaveLength(1);
+  });
 });

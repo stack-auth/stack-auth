@@ -226,6 +226,15 @@ function activityKey(prefix: string, key: string): string {
   return `${prefix}:${digest}`;
 }
 
+function isJsonObject(value: Prisma.JsonValue): value is Prisma.JsonObject {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function receiptDate(value: Prisma.JsonValue | undefined, fieldName: string): Date {
+  if (typeof value !== "string") throw new IssueProductInputError(`Stored ${fieldName} receipt is invalid`);
+  return assertValidDate(new Date(value), fieldName);
+}
+
 async function assertIssueExists(tx: PrismaClientTransaction, scope: IssueProductScope): Promise<void> {
   const issue = await tx.issue.findUnique({
     where: { tenancyId_id: { tenancyId: scope.tenancy.id, id: scope.issueId } },
@@ -378,10 +387,15 @@ export async function setIssuePriority(options: IssueProductScope & {
   return await retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
     if (actorUserId !== null) await assertProjectUser(tx, options.tenancy, actorUserId, "actorUserId");
-    const current = await tx.issue.findUniqueOrThrow({
-      where: { tenancyId_id: { tenancyId: options.tenancy.id, id: options.issueId } },
-      select: { priority: true },
-    });
+    const rows = await tx.$queryRaw<Array<{ priority: PrismaIssuePriority | null }>>`
+      SELECT "priority"
+      FROM "Issue"
+      WHERE "tenancyId" = ${options.tenancy.id}::uuid
+        AND "id" = ${options.issueId}::uuid
+      FOR UPDATE
+    `;
+    if (rows.length === 0) throw new IssueProductInputError("Issue was not found in the authenticated branch");
+    const [current] = rows;
     const previousPriority = priorityFromPrisma(current.priority);
     const changed = previousPriority !== options.priority;
     if (!changed) return {
@@ -572,12 +586,37 @@ export async function setIssueSubscription(options: IssueProductScope & {
   const subjectType = subjectTypeToPrisma(options.subject.type);
   const subjectUserId = options.subject.type === "user" ? options.subject.id : null;
   const subjectTeamId = options.subject.type === "team" ? options.subject.id : null;
+  const idempotencyKey = activityKey("subscription", options.idempotencyKey);
   const prisma = await getPrismaClientForTenancy(options.tenancy);
   return await retryOnceOnUniqueConstraintRace(() => retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
     if (actorUserId !== null) await assertProjectUser(tx, options.tenancy, actorUserId, "actorUserId");
     if (subjectUserId !== null) await assertProjectUser(tx, options.tenancy, subjectUserId, "subject.id", { allowInternalMirror: false });
     if (subjectTeamId !== null) assertProjectOwnerTeam(options.tenancy, subjectTeamId, "subject.id");
+    const receipt = await tx.issueActivity.findUnique({
+      where: { tenancyId_projectId_branchId_issueId_idempotencyKey: {
+        tenancyId: options.tenancy.id, projectId: options.tenancy.project.id,
+        branchId: options.tenancy.branchId, issueId: options.issueId, idempotencyKey,
+      } },
+    });
+    if (receipt !== null) {
+      if (receipt.type !== PrismaIssueActivityType.SUBSCRIPTION_CHANGED
+        || receipt.actorUserId !== actorUserId || !isJsonObject(receipt.data)
+        || receipt.data.subject_type !== options.subject.type || receipt.data.subject_id !== options.subject.id
+        || receipt.data.subscribed !== options.subscribed || receipt.data.reason !== (options.reason ?? null)
+        || typeof receipt.data.result_is_active !== "boolean"
+        || (receipt.data.result_reason !== null && typeof receipt.data.result_reason !== "string")) {
+        throw new IssueProductInputError("idempotencyKey was already used for a different subscription mutation");
+      }
+      return {
+        type: options.subject.type,
+        id: options.subject.id,
+        isActive: receipt.data.result_is_active,
+        reason: receipt.data.result_reason,
+        createdAt: receiptDate(receipt.data.result_created_at, "subscription createdAt"),
+        updatedAt: receiptDate(receipt.data.result_updated_at, "subscription updatedAt"),
+      };
+    }
     const subscriptionWhere = {
       tenancyId: options.tenancy.id, projectId: options.tenancy.project.id, branchId: options.tenancy.branchId,
       issueId: options.issueId, subjectType, subjectUserId, subjectTeamId,
@@ -585,11 +624,23 @@ export async function setIssueSubscription(options: IssueProductScope & {
     const existingSubscription = await tx.issueSubscription.findFirst({ where: subscriptionWhere });
     const subscription = existingSubscription === null
       ? await tx.issueSubscription.create({ data: { ...subscriptionWhere, isActive: options.subscribed, reason: options.reason, createdAt: occurredAt, updatedAt: occurredAt } })
-      : await tx.issueSubscription.update({ where: { tenancyId_id: { tenancyId: options.tenancy.id, id: existingSubscription.id } }, data: { isActive: options.subscribed, reason: options.reason, updatedAt: occurredAt } });
+      : existingSubscription.isActive === options.subscribed && existingSubscription.reason === (options.reason ?? null)
+        ? existingSubscription
+        : await tx.issueSubscription.update({ where: { tenancyId_id: { tenancyId: options.tenancy.id, id: existingSubscription.id } }, data: { isActive: options.subscribed, reason: options.reason, updatedAt: occurredAt } });
     await appendActivityInTransaction({
       tx, tenancy: options.tenancy, issueId: options.issueId, actorUserId,
-      type: "subscription_changed", idempotencyKey: activityKey("subscription", options.idempotencyKey),
-      data: { subject_type: options.subject.type, subject_id: options.subject.id, subscribed: options.subscribed }, occurredAt,
+      type: "subscription_changed", idempotencyKey,
+      data: {
+        subject_type: options.subject.type,
+        subject_id: options.subject.id,
+        subscribed: options.subscribed,
+        reason: options.reason ?? null,
+        result_is_active: subscription.isActive,
+        result_reason: subscription.reason,
+        result_created_at: subscription.createdAt.toISOString(),
+        result_updated_at: subscription.updatedAt.toISOString(),
+      },
+      occurredAt,
     });
     return {
       type: subjectTypeFromPrisma(subscription.subjectType),
@@ -612,11 +663,32 @@ export async function setIssueBookmark(options: IssueProductScope & {
   const actorUserId = actorId(options.actorUserId);
   assertBoundedString(options.idempotencyKey, "idempotencyKey", 128);
   const occurredAt = assertValidDate(options.occurredAt ?? new Date(), "occurredAt");
+  const idempotencyKey = activityKey("bookmark", options.idempotencyKey);
   const prisma = await getPrismaClientForTenancy(options.tenancy);
-  return await retryTransaction(prisma, async (tx) => {
+  return await retryOnceOnUniqueConstraintRace(() => retryTransaction(prisma, async (tx) => {
     await assertIssueExists(tx, options);
     await assertProjectUser(tx, options.tenancy, options.userId, "userId", { allowInternalMirror: false });
     if (actorUserId !== null) await assertProjectUser(tx, options.tenancy, actorUserId, "actorUserId");
+    const receipt = await tx.issueActivity.findUnique({
+      where: { tenancyId_projectId_branchId_issueId_idempotencyKey: {
+        tenancyId: options.tenancy.id, projectId: options.tenancy.project.id,
+        branchId: options.tenancy.branchId, issueId: options.issueId, idempotencyKey,
+      } },
+    });
+    if (receipt !== null) {
+      if (receipt.type !== PrismaIssueActivityType.BOOKMARK_CHANGED
+        || receipt.actorUserId !== actorUserId || !isJsonObject(receipt.data)
+        || receipt.data.user_id !== options.userId || receipt.data.bookmarked !== options.bookmarked
+        || typeof receipt.data.result_changed !== "boolean") {
+        throw new IssueProductInputError("idempotencyKey was already used for a different bookmark mutation");
+      }
+      return {
+        userId: options.userId,
+        bookmarked: options.bookmarked,
+        changed: receipt.data.result_changed,
+        changedAt: receiptDate(receipt.data.result_changed_at, "bookmark changedAt"),
+      };
+    }
     // Atomic create-if-absent / delete-if-present, with `changed` derived from
     // the affected-row count. A read-then-decide-then-write here would let two
     // overlapping requests that observed the same pre-state race each other
@@ -635,13 +707,19 @@ export async function setIssueBookmark(options: IssueProductScope & {
       });
       changed = deleted.count > 0;
     }
-    if (changed) await appendActivityInTransaction({
+    await appendActivityInTransaction({
       tx, tenancy: options.tenancy, issueId: options.issueId, actorUserId,
-      type: "bookmark_changed", idempotencyKey: activityKey("bookmark", options.idempotencyKey),
-      data: { user_id: options.userId, bookmarked: options.bookmarked }, occurredAt,
+      type: "bookmark_changed", idempotencyKey,
+      data: {
+        user_id: options.userId,
+        bookmarked: options.bookmarked,
+        result_changed: changed,
+        result_changed_at: occurredAt.toISOString(),
+      },
+      occurredAt,
     });
     return { userId: options.userId, bookmarked: options.bookmarked, changed, changedAt: occurredAt };
-  });
+  }));
 }
 
 export async function appendIssueActivity(options: IssueProductScope & {

@@ -57,4 +57,20 @@ describe("IssueLeadingUpTo", () => {
     expect(within(dialog).getByText(/AsyncCache/)).toBeDefined();
     expect(within(dialog).getByText("dashboard")).toBeDefined();
   });
+
+  it("closes a selected log when the occurrence dataset changes", () => {
+    const first = [{ eventAtMillis: 1, level: "warn", message: "first", serviceName: null }];
+    const view = render(<IssueLeadingUpTo lines={first} error={null} hasCorrelation />);
+    fireEvent.click(screen.getByRole("button", { name: "View log event 1" }));
+    expect(screen.getByRole("dialog")).toBeDefined();
+
+    view.rerender(<IssueLeadingUpTo lines={[{ eventAtMillis: 2, level: "error", message: "second", serviceName: null }]} error={null} hasCorrelation />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("does not render the raw query error", () => {
+    render(<IssueLeadingUpTo lines={null} error="private database detail" hasCorrelation />);
+    expect(screen.queryByText("private database detail")).toBeNull();
+    expect(screen.getByText("The log excerpt could not be loaded.")).toBeDefined();
+  });
 });

@@ -17,6 +17,7 @@ describe("issue alert workflow source", () => {
     expect(ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE).toContain('customEvent("hexclave.issue-alert")');
     expect(ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE).toContain('step.run("send-email"');
     expect(ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE).toContain("hexclaveApp.sendEmail({");
+    expect(ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE).toContain('idempotencyKey: event.id + ":send-email"');
     expect(ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE).toContain("emails: event.data.action.emails");
     expect(ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE).toContain("userIds: event.data.action.user_ids");
     expect(ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE).toContain("routing_resolution");

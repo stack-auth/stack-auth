@@ -80,6 +80,19 @@ describe("computeGrouping — frame normalization", () => {
     expect(first.ownerHash).toBe(second.ownerHash);
   });
 
+  it("keeps Node directory identity while ignoring checkout roots", () => {
+    const nodeStack = (file: string) => [
+      "TypeError: boom",
+      `    at loadConfig (${file}:42:9)`,
+    ].join("\n");
+    const source = group({ type: "TypeError", message: "boom", platform: "node", stack: nodeStack("/srv/checkout/src/auth/config.ts") });
+    const sameSource = group({ type: "TypeError", message: "boom", platform: "node", stack: nodeStack("/tmp/another-checkout/src/auth/config.ts") });
+    const differentDirectory = group({ type: "TypeError", message: "boom", platform: "node", stack: nodeStack("/srv/checkout/src/billing/config.ts") });
+
+    expect(source.ownerHash).toBe(sameSource.ownerHash);
+    expect(source.ownerHash).not.toBe(differentDirectory.ownerHash);
+  });
+
   it("collapses consecutive identical frames so recursion depth does not split the issue", () => {
     const recursive = (depth: number) => [
       "RangeError: Maximum call stack size exceeded",

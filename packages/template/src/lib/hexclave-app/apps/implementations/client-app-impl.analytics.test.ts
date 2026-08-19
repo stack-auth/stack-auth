@@ -120,6 +120,22 @@ describe("browser analytics startup", () => {
     expect(makeApp(false).getSpanPropagationHeaders()).toEqual({});
   });
 
+  it("does not emit manual propagation headers when observability is omitted", () => {
+    const app = new StackClientApp({
+      projectId: "00000000-0000-4000-8000-000000000006",
+      publishableClientKey: "pck_test",
+      baseUrl: "https://api.example.test",
+      tokenStore: null,
+      noAutomaticPrefetch: true,
+      automaticSideEffects: false,
+      devTool: false,
+      analytics: { enabled: true },
+      telemetry: TEST_TELEMETRY,
+    });
+
+    expect(app.getSpanPropagationHeaders()).toEqual({});
+  });
+
   it("preserves an explicitly-unsampled parent on the inert span handle", () => {
     const app = new StackClientApp({
       projectId: "00000000-0000-4000-8000-000000000002",

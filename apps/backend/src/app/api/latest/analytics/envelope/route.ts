@@ -23,10 +23,13 @@ import { buildErrorIngestRateLimitHeaders } from "@/lib/error-ingest/error-inges
 import { buildTelemetryWritePlan, insertBatchEvents, normalizeBatchEvents } from "@/lib/analytics-telemetry-writers";
 import { insertOtlpTraces, type OtlpTenantContext } from "@/lib/otlp/trace-writer";
 import { buildTelemetryMaterializationMessage, enqueueQstashMessage } from "@/lib/qstash-outbox";
+import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
+import { tryDecreasePlanItemQuantities, type PlanItemDebit } from "@/lib/plan-metering";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import type { TelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
 import { KnownErrors } from "@hexclave/shared";
+import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { captureError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { globalPrismaClient } from "@/prisma-client";
@@ -190,7 +193,10 @@ export const POST = createSmartRouteHandler({
     };
     const transactionContext = envelopeOtlpContext(envelope);
     let transactionSpanCount = 0;
-    let acceptedTransactions = 0;
+    const preparedTransactions: Array<{
+      item: ErrorIngestEnvelopeItem,
+      spans: ReturnType<typeof sentryTransactionToCanonicalOtlpSpans>,
+    }> = [];
     for (const item of envelope.items) {
       if (item.wireType !== "transaction" || item.outcome.status !== "accepted" || item.transaction === undefined) continue;
       try {
@@ -198,9 +204,8 @@ export const POST = createSmartRouteHandler({
         if (transactionSpanCount + spans.length > MAX_TRANSACTION_SPANS_PER_ENVELOPE) {
           throw new ErrorIngestTransactionAdapterError("payload_too_large", "Sentry envelope transaction span limit exceeded");
         }
-        await insertOtlpTraces(getSharedClickhouseAdminClient(), spans, transactionTenant);
         transactionSpanCount += spans.length;
-        acceptedTransactions += 1;
+        preparedTransactions.push({ item, spans });
         transactionOutcomes.set(item.itemId, createErrorIngestItemOutcome(
           { itemId: item.itemId, itemType: "transaction", eventId: item.transaction.eventId },
           { status: "accepted" },
@@ -213,6 +218,65 @@ export const POST = createSmartRouteHandler({
           ));
           continue;
         }
+        captureError("sentry-envelope-transaction-storage", error);
+        transactionOutcomes.set(item.itemId, createErrorIngestItemOutcome(
+          { itemId: item.itemId, itemType: "transaction", eventId: item.transaction.eventId },
+          { status: "dropped", reason: "delivery_failed" },
+        ));
+      }
+    }
+
+    const billingTeamId = getBillingTeamId(auth.tenancy.project);
+    if (
+      auth.tenancy.project.id !== "internal"
+      && billingTeamId != null
+      && arePlanLimitsEnforced()
+      && (acceptedEvents.length > 0 || transactionSpanCount > 0)
+    ) {
+      const timestampCandidates = [
+        ...acceptedEvents.map(({ event_at_ms }) => event_at_ms),
+        ...preparedTransactions.flatMap(({ item }) => item.transaction === undefined ? [] : [item.transaction.startTimestampMs]),
+      ];
+      const meteredAt = envelope.header.sentAt === null
+        ? new Date(Math.min(...timestampCandidates))
+        : new Date(envelope.header.sentAt);
+      const debits: PlanItemDebit[] = [
+        ...(acceptedEvents.length === 0 ? [] : [{
+          itemId: ITEM_IDS.analyticsEvents,
+          quantity: acceptedEvents.length,
+          idempotency: {
+            key: `sentry-envelope-events:${auth.tenancy.id}:${envelope.batchId}`,
+            createdAt: meteredAt,
+          },
+        }]),
+        ...(transactionSpanCount === 0 ? [] : [{
+          itemId: ITEM_IDS.analyticsSpans,
+          quantity: transactionSpanCount,
+          idempotency: {
+            key: `sentry-envelope-spans:${auth.tenancy.id}:${envelope.batchId}`,
+            createdAt: meteredAt,
+          },
+        }]),
+      ];
+      const debit = await tryDecreasePlanItemQuantities(billingTeamId, debits);
+      if (debit.insufficientItemId != null) {
+        const requested = debits.find(({ itemId }) => itemId === debit.insufficientItemId);
+        if (requested === undefined) throw new Error("Plan metering returned an item outside the Sentry envelope debit");
+        throw new KnownErrors.ItemQuantityInsufficientAmount(
+          debit.insufficientItemId,
+          billingTeamId,
+          requested.quantity,
+        );
+      }
+    }
+
+    let acceptedTransactions = 0;
+    for (const { item, spans } of preparedTransactions) {
+      if (item.transaction === undefined) throw new Error("Prepared Sentry transaction metadata is missing");
+      try {
+        await insertOtlpTraces(getSharedClickhouseAdminClient(), spans, transactionTenant);
+        acceptedTransactions += 1;
+      } catch (error) {
         captureError("sentry-envelope-transaction-storage", error);
         transactionOutcomes.set(item.itemId, createErrorIngestItemOutcome(
           { itemId: item.itemId, itemType: "transaction", eventId: item.transaction.eventId },

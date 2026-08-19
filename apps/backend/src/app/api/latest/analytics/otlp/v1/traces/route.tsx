@@ -13,6 +13,7 @@ import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { otlpSpanPolicyItemId, selectOtlpSpansAcceptedByPolicy } from "./policy-selection";
 
 const MAX_SPANS_PER_REQUEST = 10_000;
 
@@ -88,20 +89,14 @@ export const POST = createSmartRouteHandler({
         projectId: auth.tenancy.project.id,
         branchId: auth.tenancy.branchId,
       },
-      items: spans.map((span) => ({
-        itemId: `span:${span.traceId}:${span.spanId}`,
+      items: spans.map((span, index) => ({
+        itemId: otlpSpanPolicyItemId(span, index),
         itemType: "span" as const,
         data: getOtlpSpanPolicyData(span),
       })),
       nowMs: new Date().getTime(),
     });
-    const acceptedItemIds = new Set(policyDecision.acceptedItemIds);
-    const acceptedSpans = spans.flatMap((span) => {
-      const itemId = `span:${span.traceId}:${span.spanId}`;
-      if (!acceptedItemIds.has(itemId)) return [];
-      const scrubbedData = policyDecision.scrubbedData.get(itemId);
-      return [scrubbedData === undefined ? span : { ...span, policyScrubbedData: scrubbedData }];
-    });
+    const acceptedSpans = selectOtlpSpansAcceptedByPolicy(spans, policyDecision);
     const rows = buildOtlpTraceRows(acceptedSpans, tenant);
     const billableSpansByIdentity = new Map(
       rows.spans

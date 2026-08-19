@@ -1,10 +1,6 @@
 import type { BatchEventWireItem } from "@/lib/analytics-telemetry-writers";
 import type { LogLevel } from "@hexclave/shared/dist/utils/analytics-wire";
-import {
-  ErrorIngestEnvelopeError,
-  type ErrorIngestEnvelopeHeader,
-  type ErrorIngestEnvelopeItem,
-} from "./error-ingest-envelope";
+import type { ErrorIngestEnvelopeHeader, ErrorIngestEnvelopeItem } from "./error-ingest-envelope";
 import type { ErrorIngestScrubbedValue } from "./error-ingest-scrubber";
 
 type ErrorRecord = { [key: string]: ErrorIngestScrubbedValue };
@@ -119,10 +115,10 @@ export function projectSentryEnvelopeEvent(options: {
   const message = stringField(root, "value") ?? stringField(options.event, "message") ?? "";
   const rawStack = stringField(rootStacktrace, "raw") ?? stringField(options.event, "stack") ?? stackFromFrames(rootStacktrace);
   const mechanism = recordField(root, "mechanism") ?? recordField(options.event, "mechanism");
-  const handled = booleanField(mechanism, "handled") ?? booleanField(options.event, "handled");
-  if (handled === undefined) {
-    throw new ErrorIngestEnvelopeError("malformed", "Sentry envelope event is missing a boolean handled field");
-  }
+  // Sentry's event protocol makes mechanism.handled optional, including for
+  // captureMessage and generic exception payloads. An absent flag represents
+  // an explicitly captured (handled) event; SDKs mark unhandled crashes false.
+  const handled = booleanField(mechanism, "handled") ?? booleanField(options.event, "handled") ?? true;
   const synthetic = booleanField(mechanism, "synthetic") ?? booleanField(options.event, "synthetic");
   const level = sentryLevel(stringField(options.event, "level"));
 

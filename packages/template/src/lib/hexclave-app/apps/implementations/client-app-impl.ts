@@ -78,7 +78,7 @@ import { normalizeErrorCaptureOptions } from "./error-capture";
 import { createErrorAttachmentTransport } from "./error-attachments";
 import { createLogger, type LogEmitItem, type Logger } from "./logs";
 import { emitHexclaveOtelLog } from "./otel-log-facade";
-import { generateOtelSpanId } from "./otel-context";
+import { generateOtelSpanId, traceFlagsForSampleRate } from "./otel-context";
 import { normalizeNetworkCaptureOptions, type NetworkCaptureConfig } from "./network-capture";
 import { createInertSpanHandle } from "./span-handle";
 import { buildPropagationHeaderValues, trustedDomainsToPropagationOrigins, type SpanPropagationContext } from "./span-propagation";
@@ -914,9 +914,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           const tokens = await session.getOrFetchLikelyValidTokens(20_000, 75_000);
           const refreshTokenId = tokens?.accessToken.payload.refresh_token_id
             ?? throwErr("Analytics session did not provide the refresh-token id required for trace parenting");
+          const traceId = uuidToW3cTraceId(refreshTokenId);
           return {
-            traceId: uuidToW3cTraceId(refreshTokenId),
+            traceId,
             spanId: uuidToW3cSpanId(refreshTokenId),
+            traceFlags: traceFlagsForSampleRate(traceId, this._traceSampleRate),
           };
         },
         getCachedSessionRootContext: () => {
@@ -945,9 +947,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           const accessToken = session.getAccessTokenIfNotExpiredYet(0, null);
           if (accessToken === null) return null;
           const refreshTokenId = accessToken.payload.refresh_token_id;
+          const traceId = uuidToW3cTraceId(refreshTokenId);
           return {
-            traceId: uuidToW3cTraceId(refreshTokenId),
+            traceId,
             spanId: uuidToW3cSpanId(refreshTokenId),
+            traceFlags: traceFlagsForSampleRate(traceId, this._traceSampleRate),
           };
         },
         replayOptions: sessionReplayOptions,
@@ -4781,6 +4785,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
    * a trace id here would fabricate a parent span that never exists.
    */
   getSpanPropagationHeaders(options?: { parent?: ParentRef, root?: boolean }): Record<string, string> {
+    if (!isObservabilityEnabled(this._observabilityOptions)) return {};
     const tracker = this._clientAnalytics;
     const context = this._getSpanPropagationContext();
     const resolved = tracker === null ? null : resolveSpanParent({

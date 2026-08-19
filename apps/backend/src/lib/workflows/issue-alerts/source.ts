@@ -178,6 +178,7 @@ export default workflow<IssueAlertPayload>("issue-alert-email", {
   await step.run("send-email", async () => {
     if (event.data.action.emails !== undefined && event.data.action.emails.length > 0) {
       await hexclaveApp.sendEmail({
+        idempotencyKey: event.id + ":send-email",
         emails: event.data.action.emails,
         html: event.data.action.html,
         subject: event.data.action.subject,
@@ -186,6 +187,7 @@ export default workflow<IssueAlertPayload>("issue-alert-email", {
       return;
     }
     await hexclaveApp.sendEmail({
+      idempotencyKey: event.id + ":send-email",
       userIds: event.data.action.user_ids,
       html: event.data.action.html,
       subject: event.data.action.subject,

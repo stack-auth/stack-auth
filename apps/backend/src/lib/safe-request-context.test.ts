@@ -143,6 +143,16 @@ describe("safe request context", () => {
     expect(FILTERED_VALUE).toBe("[Filtered]");
   });
 
+  it("scrubs quoted credentials containing whitespace and delimiters", () => {
+    const value = scrubContextValue({
+      diagnostic: String.raw`password="two words,still secret" api_key='alpha;beta' token=bare-secret`,
+    });
+
+    expect(value).toEqual({
+      diagnostic: 'password="[Filtered]" api_key=\'[Filtered]\' token=[Filtered]',
+    });
+  });
+
   it("projects smart requests to bounded shape metadata and safe auth correlation", () => {
     const requestType: "server" = "server";
     const smartRequest = {

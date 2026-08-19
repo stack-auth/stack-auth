@@ -126,7 +126,11 @@ function sanitizeLifecycleError(error: string | null | undefined): string | null
   if (error == null || error.length === 0) return null;
   const sanitized = error
     .replace(/\b(Bearer|Basic|Digest)\s+[^\s,;]+/giu, "$1 [Filtered]")
-    .replace(/\b(authorization|access[_-]?token|api[_-]?key|client[_-]?secret|password|refresh[_-]?token|secret|token)\s*[:=]\s*[^\s,;]+/giu, "$1=[Filtered]");
+    .replace(/\b(authorization|access[_-]?token|api[_-]?key|client[_-]?secret|password|refresh[_-]?token|secret|token)\s*[:=]\s*[^\s,;]+/giu, "$1=[Filtered]")
+    // The parser deliberately rejects control characters. Normalize them at
+    // the producer so an ordinary multiline error cannot make its own durable
+    // lifecycle update unreadable.
+    .replace(/[\u0000-\u001f\u007f]/gu, " ");
   if (WORKFLOW_LIFECYCLE_TEXT_ENCODER.encode(sanitized).byteLength <= WORKFLOW_INTERNAL_RUN_LIFECYCLE_MAX_ERROR_BYTES) return sanitized;
   let truncated = "";
   let byteLength = 0;

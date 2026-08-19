@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   WORKFLOW_INTERNAL_RUN_LIFECYCLE_PREFIX,
+  buildWorkflowRunLifecycleEvent,
   parseWorkflowRunLifecycleEvent,
   type WorkflowRunLifecyclePayload,
 } from "./events";
@@ -26,6 +27,28 @@ function validPayload(): WorkflowRunLifecyclePayload {
 }
 
 describe("parseWorkflowRunLifecycleEvent", () => {
+  it("normalizes control characters in errors into a payload the parser accepts", () => {
+    const built = buildWorkflowRunLifecycleEvent({
+      tenancy: { id: "33333333-3333-4333-8333-333333333333" },
+      workflowId: "issue-alert-email",
+      runId: RUN_ID,
+      workflowVersion: 1,
+      runKey: "issue-alert-key",
+      triggerEventId: TRIGGER_EVENT_ID,
+      triggerType: "custom.hexclave.issue-alert",
+      transition: {
+        kind: "failure",
+        attempt: 1,
+        retryEpoch: 0,
+        retryAt: null,
+        error: "first line\nsecond\u0000line",
+      },
+    });
+    expect(built).toMatchObject({ status: "ok", payload: { error: "first line second line" } });
+    if (built.status !== "ok") throw new Error("Expected lifecycle event to be built");
+    expect(parseWorkflowRunLifecycleEvent(built.type, built.payload).status).toBe("ok");
+  });
+
   it("returns a typed payload after validating every wire field", () => {
     const result = parseWorkflowRunLifecycleEvent(
       `${WORKFLOW_INTERNAL_RUN_LIFECYCLE_PREFIX}success`,

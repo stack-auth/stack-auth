@@ -4,7 +4,11 @@ import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import type { IssueBatchDelta } from "./issue-materialization-contract";
 import { isGroupingConfigId } from "./grouping-config";
-import { fromDurableGroupingProvenance, parseDurableGroupingProvenance } from "./grouping-provenance";
+import {
+  fromDurableGroupingProvenance,
+  parseDurableGroupingProvenance,
+  type DurableGroupingHashProvenance,
+} from "./grouping-provenance";
 import {
   markIssueMaterializationSideEffect,
   materializeIssuesFromBatchWithStatus,
@@ -105,6 +109,36 @@ type OccurrenceGroupRow = {
   handled: boolean,
   synthetic: boolean,
 };
+
+export function groupingProvenanceForReconciliation(row: Pick<OccurrenceGroupRow, "grouping_config" | "grouping_provenance" | "issue_hash">): DurableGroupingHashProvenance[] {
+  if (row.grouping_provenance !== "[]") return parseDurableGroupingProvenance(row.grouping_provenance);
+  // The first observability migration gave historical rows an empty JSON
+  // default. Their owner hash/config are still durable, so repair them as a
+  // single degraded primary instead of treating valid retained history as
+  // corruption or silently dropping it from the claimed batch.
+  return [{
+    hash: row.issue_hash,
+    role: "primary",
+    config_id: row.grouping_config,
+    variant: "degraded",
+    fingerprint: {
+      type: "default",
+      source: "degraded",
+      tokens: [],
+      resolved_tokens: [],
+    },
+  }];
+}
+
+export function completeBatchRebuildOptions(options: {
+  projectId: string,
+  branchId: string,
+  batchIds: readonly string[],
+  from: Date,
+  to: Date,
+}): { projectId: string, branchId: string, batchIds: readonly string[] } {
+  return { projectId: options.projectId, branchId: options.branchId, batchIds: options.batchIds };
+}
 
 /**
  * `runtime` (where the code ran) → `platform` (what the grouper called it).
@@ -249,7 +283,7 @@ async function rebuildInputs(options: {
   const byBatch = new Map<string, { inputs: IssueBatchDelta[], receivedAt: Date }>();
   let skipped = 0;
   for (const row of rows) {
-    const durableProvenance = parseDurableGroupingProvenance(row.grouping_provenance);
+    const durableProvenance = groupingProvenanceForReconciliation(row);
     if (!isGroupingConfigId(row.grouping_config) || durableProvenance.some((entry) => !isGroupingConfigId(entry.config_id))) {
       // A config id we no longer ship (as the row's primary config, or inside a
       // readable-chain secondary decision). Deliberately not defaulted: binding
@@ -530,13 +564,13 @@ async function reconcileTenancy(options: {
   if (unapplied.length === 0) return { batchesRepaired: 0, batchesDeferred: 0, occurrencesSkipped: 0 };
 
   const attempted = unapplied.slice(0, ISSUE_RECONCILER_MAX_BATCHES_PER_TENANCY);
-  const { byBatch, skipped } = await rebuildInputs({
-    projectId: options.projectId,
-    branchId: options.branchId,
+  // The window finds candidate batch ids only. Once a batch is selected, read
+  // every occurrence carrying that id or claiming the batch would permanently
+  // discard its older/newer rows.
+  const { byBatch, skipped } = await rebuildInputs(completeBatchRebuildOptions({
+    ...options,
     batchIds: attempted,
-    from: options.from,
-    to: options.to,
-  });
+  }));
 
   let batchesRepaired = 0;
   for (const [batchId, { inputs, receivedAt }] of byBatch) {

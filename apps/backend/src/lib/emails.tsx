@@ -9,6 +9,7 @@ import { Json } from '@hexclave/shared/dist/utils/json';
 import { runEmailQueueStep, serializeRecipient } from './email-queue-step';
 import { LowLevelEmailConfig, isSecureEmailPort } from './emails-low-level';
 import { Tenancy } from './tenancies';
+import { createHash } from 'node:crypto';
 
 
 /**
@@ -49,9 +50,16 @@ export async function sendEmailToMany(options: {
   createdWith: { type: "draft", draftId: string } | { type: "programmatic-call", templateId: string | null },
   overrideSubject?: string,
   overrideNotificationCategoryId?: string,
+  idempotencyKey?: string,
 }) {
+  if (options.idempotencyKey !== undefined && (options.idempotencyKey.length === 0 || options.idempotencyKey.length > 256)) {
+    throw new HexclaveAssertionError("Email idempotency keys must contain 1-256 characters");
+  }
   await globalPrismaClient.emailOutbox.createMany({
-    data: options.recipients.map(recipient => ({
+    data: options.recipients.map((recipient, recipientIndex) => ({
+      ...(options.idempotencyKey === undefined ? {} : {
+        id: emailOutboxIdForIdempotencyKey(options.tenancy.id, options.idempotencyKey, recipientIndex),
+      }),
       tenancyId: options.tenancy.id,
       tsxSource: options.tsxSource,
       themeId: options.themeId,
@@ -66,6 +74,10 @@ export async function sendEmailToMany(options: {
       overrideSubject: options.overrideSubject,
       overrideNotificationCategoryId: options.overrideNotificationCategoryId,
     })),
+    // A keyed retry derives the same composite recipient IDs. The EmailOutbox
+    // primary key is therefore the durable deduplication boundary without a
+    // second ledger or a large-table migration.
+    skipDuplicates: options.idempotencyKey !== undefined,
   });
 
   if (!getEnvBoolean("STACK_EMAIL_BRANCHING_DISABLE_QUEUE_AUTO_TRIGGER")) {
@@ -73,6 +85,23 @@ export async function sendEmailToMany(options: {
     // who didn't set up the cron job correctly, and also just in case something happens to the cron job.
     runAsynchronouslyAndWaitUntil(runEmailQueueStep());
   }
+}
+
+export function emailOutboxIdForIdempotencyKey(tenancyId: string, idempotencyKey: string, recipientIndex: number): string {
+  const digest = createHash("sha256")
+    .update(tenancyId)
+    .update("\0")
+    .update(idempotencyKey)
+    .update("\0")
+    .update(String(recipientIndex))
+    .digest();
+  // RFC 4122 variant + v5 bits make the deterministic digest a valid UUID for
+  // the existing EmailOutbox primary key. SHA-256 retains substantially more
+  // collision resistance than the 122 UUID payload bits can represent.
+  digest[6] = digest[6] & 0x0f | 0x50;
+  digest[8] = digest[8] & 0x3f | 0x80;
+  const hex = digest.subarray(0, 16).toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 export async function sendEmailFromDefaultTemplate(options: {

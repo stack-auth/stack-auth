@@ -160,8 +160,10 @@ function parseMember(value: unknown): OwnershipMemberInput | null {
   const scope = parseScope(value.scope);
   const userId = parseIdentifier(value.userId);
   const lastActiveAt = parseTimestamp(value.lastActiveAt);
-  if (scope === null || userId === null || typeof value.isActive !== "boolean" || lastActiveAt === undefined) return null;
-  return { scope, userId, isActive: value.isActive, lastActiveAt };
+  const eligibleForFallthrough = value.eligibleForFallthrough ?? true;
+  if (scope === null || userId === null || typeof value.isActive !== "boolean"
+    || typeof eligibleForFallthrough !== "boolean" || lastActiveAt === undefined) return null;
+  return { scope, userId, isActive: value.isActive, lastActiveAt, eligibleForFallthrough };
 }
 
 function parseTeam(value: unknown): OwnershipTeamInput | null {
@@ -464,8 +466,8 @@ export function resolveOwnershipRecipients(value: unknown): OwnershipResolution 
   }
 
   const fallbackMembers = input.target.fallthrough === "active_members"
-    ? [...input.members].filter((member) => member.isActive).sort(compareMembersByActivity)
-    : [...input.members].sort((left, right) => compareStrings(left.userId, right.userId));
+    ? [...input.members].filter((member) => member.isActive && member.eligibleForFallthrough !== false).sort(compareMembersByActivity)
+    : [...input.members].filter((member) => member.eligibleForFallthrough !== false).sort((left, right) => compareStrings(left.userId, right.userId));
   traceBuilder.add("fallthrough", "selected", "fallthrough_selected", {
     targetType: "issue_owners",
     count: fallbackMembers.length,

@@ -575,7 +575,7 @@ export type IssuePublicSearchRequest = {
   status: IssueStatus | "all",
   service: ServiceIdentity | null,
   environment: string | null,
-  handled: IssueHandledFilter,
+  handled: boolean | "all",
   search: string,
   level: string | null,
   release: string | null,
@@ -635,7 +635,7 @@ export async function searchPublicIssues(
   if (request.status !== "all") params.set("status", request.status);
   if (request.service != null) params.set("service", request.service.name);
   if (request.environment != null) params.set("environment", request.environment);
-  if (request.handled !== "all") params.set("handled", request.handled);
+  if (request.handled !== "all") params.set("handled", String(request.handled));
   if (request.search !== "") params.set("message", request.search);
   if (request.level != null) params.set("level", request.level);
   if (request.release != null) params.set("release", request.release);

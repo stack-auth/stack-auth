@@ -183,6 +183,8 @@ describe("bulk issue status action contract", () => {
         },
       ],
     });
+    expect(response.body.results[0]).not.toHaveProperty("previous_assignee_user_id");
+    expect(response.body.results[0]).not.toHaveProperty("assignee_user_id");
     expect(mocks.assertIssueActionsEnabled).toHaveBeenCalledWith(tenancy);
   });
 

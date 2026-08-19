@@ -70,7 +70,7 @@ const URL_AUTH_PATTERN = /((?:[a-z][a-z\d+.-]*:)?\/\/)(?:[^/@\s:]+):(?:[^/\s?#]+
 // The optional quote around the key (backreference \2) covers serialized JSON
 // embedded in message strings (`{"password":"..."}`), which the bare-key form
 // cannot reach because the closing key quote sits between the key and the colon.
-const SENSITIVE_ASSIGNMENT_PATTERN = /((["']?)(?:access[-_.]?token|api[-_.]?key|authorization|client[-_.]?secret|cookie|credential|id[-_.]?token|password|passwd|private[-_.]?key|refresh[-_.]?token|secret|session[-_.]?token|signature|token)\2\s*[:=]\s*)(["']?)(?:(Bearer|Basic|Digest)\s+)?([^\s"'&,;}\]]+)\3/gi;
+const SENSITIVE_ASSIGNMENT_PATTERN = /((["']?)(?:access[-_.]?token|api[-_.]?key|authorization|client[-_.]?secret|cookie|credential|id[-_.]?token|password|passwd|private[-_.]?key|refresh[-_.]?token|secret|session[-_.]?token|signature|token)\2\s*[:=]\s*)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:(?:Bearer|Basic|Digest)\s+)?[^\s"'&,;}\]]+)/gi;
 const SENSITIVE_QUERY_VALUE_PATTERN = /([?&](?:access[-_.]?token|api[-_.]?key|authorization|client[-_.]?secret|id[-_.]?token|password|refresh[-_.]?token|secret|signature|token)=)[^&#\s]*/gi;
 const SENSITIVE_COMPACT_KEY_PARTS: readonly string[] = [
   "access_token",
@@ -173,7 +173,12 @@ function scrubString(value: string, state: ScrubState, path: string, maxBytes: n
     .replace(PRIVATE_KEY_PATTERN, FILTERED_VALUE)
     .replace(
       SENSITIVE_ASSIGNMENT_PATTERN,
-      (_match: string, prefix: string, _keyQuote: string, valueQuote: string, scheme: string | undefined) => `${prefix}${valueQuote}${scheme === undefined ? FILTERED_VALUE : `${scheme} ${FILTERED_VALUE}`}${valueQuote}`,
+      (_match: string, prefix: string, _keyQuote: string, assignment: string) => {
+        const quote = assignment.startsWith('"') ? '"' : assignment.startsWith("'") ? "'" : "";
+        const unquoted = quote === "" ? assignment : assignment.slice(1, -1);
+        const scheme = /^(Bearer|Basic|Digest)\s+/iu.exec(unquoted)?.[1];
+        return `${prefix}${quote}${scheme === undefined ? FILTERED_VALUE : `${scheme} ${FILTERED_VALUE}`}${quote}`;
+      },
     )
     .replace(AUTH_SCHEME_PATTERN, "$1 " + FILTERED_VALUE)
     .replace(SENSITIVE_QUERY_VALUE_PATTERN, "$1" + FILTERED_VALUE)

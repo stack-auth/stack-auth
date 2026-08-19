@@ -959,6 +959,7 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
     variables?: Record<string, any>,
     draftId?: string,
     scheduledAt?: Date,
+    idempotencyKey?: string,
   }): Promise<Result<void, KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"] | KnownErrors["UserIdDoesNotExist"]>> {
     const res = await this.sendServerRequest(
       "/emails/send-email",
@@ -979,6 +980,7 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
           variables: options.variables,
           draft_id: options.draftId,
           scheduled_at_millis: options.scheduledAt?.getTime(),
+          idempotency_key: options.idempotencyKey,
         }),
       },
       null,

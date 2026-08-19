@@ -130,12 +130,24 @@ describe("Sentry envelope event adapter", () => {
     expect(projected.level).toBe("error");
   });
 
-  it("rejects events that omit handled instead of inventing true", () => {
-    expect(() => projectSentryEnvelopeEvent({
+  it("defaults valid message and exception events without handled metadata to handled", () => {
+    const message = projectSentryEnvelopeEvent({
       header: { ...header, trace: null },
       item,
       receivedAtMs: 42_000,
       event: scrubEvent({ event_id: eventId, message: "captured" }),
-    })).toThrow(/boolean handled field/);
+    });
+    const exception = projectSentryEnvelopeEvent({
+      header: { ...header, trace: null },
+      item,
+      receivedAtMs: 42_000,
+      event: scrubEvent({
+        event_id: eventId,
+        exception: { values: [{ type: "Error", value: "captured", mechanism: { type: "generic" } }] },
+      }),
+    });
+
+    expect(message.data).toMatchObject({ kind: "message", handled: true });
+    expect(exception.data).toMatchObject({ kind: "exception", handled: true });
   });
 });

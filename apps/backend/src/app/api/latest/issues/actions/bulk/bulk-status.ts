@@ -124,8 +124,13 @@ export async function applyBulkIssueStatusItem(options: {
       }),
     });
     const response = transitionActionResponse({ target, action, transition: result });
+    const {
+      previous_assignee_user_id: _previousAssigneeUserId,
+      assignee_user_id: _assigneeUserId,
+      ...bulkResponse
+    } = response;
     return {
-      ...response,
+      ...bulkResponse,
       input_issue_id: options.inputIssueId,
       error: null,
       action,

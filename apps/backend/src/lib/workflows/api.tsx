@@ -70,6 +70,19 @@ export type WorkflowSourceSyncOptions = {
   expectedLatestSource?: string | null,
 };
 
+async function lockWorkflowMutation(
+  tx: PrismaClientTransaction,
+  tenancyId: string,
+  workflowId: string,
+): Promise<void> {
+  // Definition rows do not exist on first registration, so row locks alone
+  // cannot coordinate create/delete. The shared advisory key covers both the
+  // absent-row and present-row states for this workflow identity.
+  await tx.$queryRaw`
+    SELECT pg_advisory_xact_lock(hashtextextended(${`${tenancyId}:${workflowId}`}, 0))
+  `;
+}
+
 async function assertExpectedLatestWorkflowSource(
   tx: PrismaClientTransaction,
   tenancyId: string,
@@ -154,6 +167,7 @@ export async function syncWorkflowSource(tenancy: Pick<Tenancy, "id">, options: 
   const expectedLatestSource = options.expectedLatestSource;
   try {
     await retryTransaction(globalPrismaClient, async (tx) => {
+      await lockWorkflowMutation(tx, tenancy.id, options.workflowId);
       if (expectedLatestSource !== undefined) {
         const expectedSource = expectedLatestSource;
         await assertExpectedLatestWorkflowSource(tx, tenancy.id, options.workflowId, expectedSource);
@@ -338,6 +352,7 @@ export async function deleteWorkflow(tenancy: Tenancy, workflowId: string): Prom
   }
 
   await retryTransaction(globalPrismaClient, async (tx) => {
+    await lockWorkflowMutation(tx, tenancy.id, workflowId);
     // Remove the definition first so subsequent engine ticks stop matching
     // new events while the historical rows are being removed.
     await tx.workflowDefinition.delete({

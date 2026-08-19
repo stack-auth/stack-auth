@@ -304,15 +304,18 @@ async function resolveOrCreateIssues(
     // original (old) receipt time, and lease expiry is a wall-clock contract.
     await reclaimExpiredIssueHashLeases(tx, tenancyId, ownerHashes, new Date());
 
-    const existing = await tx.$queryRaw<{ hash: string, issueId: string, shortId: bigint, state: string | null }[]>`
-      SELECT h."hash", h."issueId", i."shortId", h."state"::text AS "state"
+    const existing = await tx.$queryRaw<{ hash: string, issueId: string, shortId: bigint, timesSeen: bigint, state: string | null }[]>`
+      SELECT h."hash", h."issueId", i."shortId", i."timesSeen", h."state"::text AS "state"
       FROM "IssueHash" h
       JOIN "Issue" i ON i."tenancyId" = h."tenancyId" AND i."id" = h."issueId"
       WHERE h."tenancyId" = ${tenancyId}::uuid AND h."hash" = ANY(${ownerHashes}::text[])
     `;
     for (const row of existing) {
       if (row.state !== null) continue; // LOCKED — see the doc comment above.
-      resolved.set(row.hash, { issueId: row.issueId, shortId: row.shortId, isNew: false });
+      // A prior attempt may have committed issue/hash creation and then lost
+      // the ledger-claim race. Until any batch increments the counter, that
+      // issue is still awaiting its one `issue.created` outcome.
+      resolved.set(row.hash, { issueId: row.issueId, shortId: row.shortId, isNew: row.timesSeen === 0n });
     }
 
     // A materialization batch is the unit of ledger idempotency. Claiming it while

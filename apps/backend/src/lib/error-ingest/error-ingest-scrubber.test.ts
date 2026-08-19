@@ -52,6 +52,19 @@ describe("scrubErrorIngestPayload", () => {
     expect(serialized).not.toContain("abc123");
   });
 
+  it("filters quoted assignment values containing whitespace and delimiters", () => {
+    const result = scrubErrorIngestPayload({
+      message: String.raw`password="two words,still secret" api_key='alpha;beta' token=bare-secret`,
+    });
+
+    expect(result.value).toEqual({
+      message: 'password="[Filtered]" api_key=\'[Filtered]\' token=[Filtered]',
+    });
+    expect(JSON.stringify(result.value)).not.toContain("two words");
+    expect(JSON.stringify(result.value)).not.toContain("alpha;beta");
+    expect(JSON.stringify(result.value)).not.toContain("bare-secret");
+  });
+
   it("does not consume query or fragment at-signs as URL password text", () => {
     const result = scrubErrorIngestPayload({
       message: "redirect https://user:pass@example.test/callback?next=a@b#owner=c@d",

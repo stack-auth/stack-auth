@@ -4,6 +4,7 @@ import {
 } from "@/generated/prisma/client";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import type { Tenancy } from "@/lib/tenancies";
+import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import type { IssueAlertEmailRouting } from "@/lib/issues/issue-alerts/destinations";
 import {
   OWNERSHIP_RESOLVER_MAX_ISSUE_OWNERS,
@@ -39,6 +40,7 @@ export type OwnershipHydrationMemberRow = {
   lastActiveAt: Date,
   restrictedByAdmin: boolean,
   isAnonymous: boolean,
+  eligibleForFallthrough?: boolean,
 };
 
 export type OwnershipHydrationTeamRow = {
@@ -168,6 +170,7 @@ export function buildOwnershipResolverInput(
     userId: member.projectUserId,
     isActive: true,
     lastActiveAt: timestampForResolver(member.lastActiveAt),
+    eligibleForFallthrough: member.eligibleForFallthrough ?? true,
   }));
   const issueOwners = rows.issueOwners.map(issueOwnerInput);
   return {
@@ -241,38 +244,78 @@ export async function hydrateIssueAlertOwnership(
     if (owner.ownerType === PrismaIssueOwnerType.TEAM && owner.ownerTeamId !== null) teamIds.add(owner.ownerTeamId);
   }
   const requestedTeamIds = [...teamIds].sort();
-  const teamRows = requestedTeamIds.length === 0
+  const internalTenancy = requestedTeamIds.length === 0
+    ? null
+    : await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID, true);
+  const internalReplica = internalTenancy === null
+    ? null
+    : (await getPrismaClientForTenancy(internalTenancy)).$replica();
+  const internalTeamRows = internalReplica === null
     ? []
-    : await replica.team.findMany({
+    : await internalReplica.team.findMany({
       where: {
-        tenancyId: scope.tenancyId,
-        mirroredProjectId: scope.projectId,
-        mirroredBranchId: scope.branchId,
+        tenancyId: internalTenancy?.id,
         teamId: { in: requestedTeamIds },
       },
       orderBy: { teamId: "asc" },
       take: MAX_TEAM_ROWS,
       select: {
-        tenancyId: true,
-        mirroredProjectId: true,
-        mirroredBranchId: true,
         teamId: true,
       },
     });
-  const teamMemberRows = (await Promise.all(teamRows.map(async (team) => await replica.teamMember.findMany({
-    where: {
+  const internalTeamMemberRows = internalReplica === null
+    ? []
+    : (await Promise.all(internalTeamRows.map(async (team) => await internalReplica.teamMember.findMany({
+      where: {
+        tenancyId: internalTenancy?.id,
+        teamId: team.teamId,
+      },
+      orderBy: { projectUserId: "asc" },
+      take: MAX_TEAM_MEMBER_ROWS,
+      select: {
+        teamId: true,
+        projectUser: {
+          select: {
+            projectUserId: true,
+            lastActiveAt: true,
+            restrictedByAdmin: true,
+            isAnonymous: true,
+          },
+        },
+      },
+    })))).flat();
+
+  // Issue team IDs live in the internal owner-team namespace. Re-scope those
+  // collaborators into the customer snapshot for resolver validation while
+  // keeping them out of customer-member fallthrough.
+  const teamRows: OwnershipHydrationTeamRow[] = internalTeamRows.map((team) => ({
+    tenancyId: scope.tenancyId,
+    mirroredProjectId: scope.projectId,
+    mirroredBranchId: scope.branchId,
+    teamId: team.teamId,
+  }));
+  const teamMemberRows: OwnershipHydrationTeamMemberRow[] = internalTeamMemberRows.map((member) => ({
+    tenancyId: scope.tenancyId,
+    teamId: member.teamId,
+    projectUserId: member.projectUser.projectUserId,
+  }));
+  const internalMembersById = new Map<string, OwnershipHydrationMemberRow>();
+  for (const member of internalTeamMemberRows) {
+    internalMembersById.set(member.projectUser.projectUserId, {
       tenancyId: scope.tenancyId,
-      teamId: team.teamId,
-      team: { mirroredProjectId: scope.projectId, mirroredBranchId: scope.branchId },
-      projectUser: { mirroredProjectId: scope.projectId, mirroredBranchId: scope.branchId },
-    },
-    orderBy: { projectUserId: "asc" },
-    take: MAX_TEAM_MEMBER_ROWS,
-    select: { tenancyId: true, teamId: true, projectUserId: true },
-  })))).flat();
+      mirroredProjectId: scope.projectId,
+      mirroredBranchId: scope.branchId,
+      projectUserId: member.projectUser.projectUserId,
+      lastActiveAt: member.projectUser.lastActiveAt,
+      restrictedByAdmin: member.projectUser.restrictedByAdmin,
+      isAnonymous: member.projectUser.isAnonymous,
+      eligibleForFallthrough: false,
+    });
+  }
+  const internalMemberRows = [...internalMembersById.values()];
 
   const input = buildOwnershipResolverInput(scope, target, {
-    members: memberRows,
+    members: [...memberRows, ...internalMemberRows],
     teams: teamRows,
     teamMembers: teamMemberRows,
     issueOwners: issueOwnerRows,

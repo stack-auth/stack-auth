@@ -25,6 +25,9 @@ export type OwnershipMemberInput = {
   userId: string,
   isActive: boolean,
   lastActiveAt: string | null,
+  /** Internal owner-team collaborators can be selected by a team owner, but
+   * must never enlarge a customer project's member fallthrough. */
+  eligibleForFallthrough?: boolean,
 };
 
 export type OwnershipTeamInput = {

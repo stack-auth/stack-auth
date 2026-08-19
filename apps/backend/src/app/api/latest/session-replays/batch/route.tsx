@@ -3,7 +3,7 @@ import { uploadBytes } from "@/s3";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
-import { increasePlanItemQuantity, tryDecreasePlanItemQuantities } from "@/lib/plan-metering";
+import { rollbackPlanItemDebits, tryDecreasePlanItemQuantities, type PlanItemDebit } from "@/lib/plan-metering";
 import { findRecentSessionReplay, upsertSessionReplaySegmentBounds } from "@/lib/session-replays";
 import { insertSessionReplaySpans } from "@/lib/spans";
 import { KnownErrors } from "@hexclave/shared";
@@ -166,11 +166,17 @@ export const POST = createSmartRouteHandler({
 
     const isNewSession = recentSession == null;
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
+    const sessionReplayDebit: PlanItemDebit = {
+      itemId: ITEM_IDS.sessionReplays,
+      quantity: 1,
+      idempotency: {
+        key: `session-replay:${tenancyId}:${batchId}`,
+        createdAt: new Date(body.sent_at_ms),
+      },
+    };
     let sessionReplayQuotaDebited = false;
     if (isNewSession && billingTeamId != null && arePlanLimitsEnforced()) {
-      const debitResult = await tryDecreasePlanItemQuantities(billingTeamId, [
-        { itemId: ITEM_IDS.sessionReplays, quantity: 1 },
-      ]);
+      const debitResult = await tryDecreasePlanItemQuantities(billingTeamId, [sessionReplayDebit]);
       if (debitResult.insufficientItemId != null) {
         throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.sessionReplays, billingTeamId, 1);
       }
@@ -209,7 +215,7 @@ export const POST = createSmartRouteHandler({
       } catch (error) {
         if (sessionReplayQuotaDebited && billingTeamId != null) {
           try {
-            await increasePlanItemQuantity(billingTeamId, ITEM_IDS.sessionReplays, 1);
+            await rollbackPlanItemDebits(billingTeamId, [sessionReplayDebit]);
           } catch (refundError) {
             captureError("session-replay-create-refund", refundError);
           }

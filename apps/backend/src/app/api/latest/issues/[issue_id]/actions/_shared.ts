@@ -91,7 +91,12 @@ export async function withIssueActionTarget<T>(options: {
   // helper's lock. Retrying resolution once follows the new redirect without
   // hiding a genuine not-found or retrying an arbitrary failed mutation.
   for (let attempt = 0; attempt < 2; attempt++) {
-    const target = await resolveIssueIdentity(options.tenancy, options.rawIssueId);
+    const target = await resolveIssueIdentity(options.tenancy, options.rawIssueId, {
+      // The retry is a read-after-write check for a merge redirect. A replica
+      // may still expose the deleted source row, so only that second lookup
+      // must bypass it; ordinary action resolution remains replica-routed.
+      consistency: attempt === 0 ? "replica" : "primary",
+    });
     if (target === null) throw new StatusError(StatusError.NotFound, "Issue not found");
     try {
       return { target, result: await options.action(target) };

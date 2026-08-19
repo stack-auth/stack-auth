@@ -5,6 +5,7 @@ import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-tr
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOtelSpanFacade, type OtelSpanFacadeCapabilities } from "./otel-span-facade";
+import { getAmbientSpanContexts } from "./span-context";
 
 const providers: NodeTracerProvider[] = [];
 const contextManagers: AsyncLocalStorageContextManager[] = [];
@@ -42,6 +43,22 @@ function fixture() {
 }
 
 describe("OTel Span facade", () => {
+  it("binds the facade to both OTel and Hexclave ambient context during run", async () => {
+    const { provider, capabilities } = fixture();
+    const span = createOtelSpanFacade({
+      tracer: provider.getTracer("facade-test"),
+      spanType: "bound",
+      capabilities,
+    });
+
+    await span.run(async () => {
+      expect(trace.getSpan(context.active())?.spanContext().spanId).toBe(span.spanId);
+      expect(getAmbientSpanContexts()).toEqual([span.spanContext()]);
+    });
+    expect(getAmbientSpanContexts()).toEqual([]);
+    await span.end();
+  });
+
   it("uses real OTel hierarchy, context, attributes, links, and lifecycle", async () => {
     const { exporter, provider, capabilities } = fixture();
     const tracer = provider.getTracer("facade-test", "1.0.0");

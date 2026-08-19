@@ -311,12 +311,25 @@ function frameFileLeaf(frame: ParsedFrame): string | null {
   const filename = frame.filename;
   if (filename === null || filename === "") return null;
 
-  const basename = filename.split(/[/\\]/).at(-1)?.toLowerCase() ?? "";
+  const normalizedPath = filename.replaceAll("\\", "/");
+  const pathSegments = normalizedPath.split("/").filter((segment) => segment !== "");
+  const basename = pathSegments.at(-1)?.toLowerCase() ?? "";
   if (basename === "") return null;
   if (NON_CONTRIBUTING_FILENAMES.has(basename)) return null;
   // A URL-origin frame's basename is deployment noise (`main-a1b2c3.js`); the
   // module derived from the same path is the stable form and was preferred above.
   if (frame.absPath !== null && hasUrlOrigin(frame.absPath)) return null;
+
+  if (frame.absPath !== null && !hasUrlOrigin(frame.absPath)) {
+    const workspaceRoot = pathSegments.findIndex((segment) => segment === "apps" || segment === "packages" || segment === "node_modules");
+    const sourceRoot = pathSegments.findLastIndex((segment) => segment === "app" || segment === "build" || segment === "dist" || segment === "lib" || segment === "server" || segment === "src");
+    const stableRoot = workspaceRoot === -1 ? sourceRoot : workspaceRoot;
+    const stableSegments = stableRoot === -1 ? pathSegments.slice(-3) : pathSegments.slice(stableRoot);
+    const lastIndex = stableSegments.length - 1;
+    const last = stableSegments.at(lastIndex);
+    if (last !== undefined) stableSegments[lastIndex] = normalizeFilenameForGrouping(last.toLowerCase());
+    return stableSegments.join("/");
+  }
 
   return normalizeFilenameForGrouping(basename);
 }

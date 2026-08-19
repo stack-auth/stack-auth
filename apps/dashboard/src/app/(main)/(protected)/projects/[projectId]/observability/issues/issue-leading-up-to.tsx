@@ -28,14 +28,15 @@ export function IssueLeadingUpTo({
   subtitle?: string,
   hasCorrelation: boolean,
 }) {
-  const [selectedLine, setSelectedLine] = useState<LeadingUpToLogLine | null>(null);
+  const [selection, setSelection] = useState<{ line: LeadingUpToLogLine, lines: readonly LeadingUpToLogLine[] } | null>(null);
+  const selectedLine = selection?.lines === lines ? selection.line : null;
   const structuredMessage = selectedLine == null ? null : parseStructuredLogMessage(selectedLine.message);
 
   return (
     <>
       <DesignCard title="Leading up to this" icon={ClockCounterClockwiseIcon} subtitle={subtitle}>
         {error != null && (
-          <DesignAlert variant="warning" title="Couldn't load logs" description={error} />
+          <DesignAlert variant="warning" title="Couldn't load logs" description="The log excerpt could not be loaded." />
         )}
         {error == null && lines == null && (
           <div className="flex items-center justify-center py-6">
@@ -57,7 +58,7 @@ export function IssueLeadingUpTo({
                   type="button"
                   className="group flex w-full min-w-0 items-baseline gap-2 rounded-lg px-2 py-1 text-left transition-colors duration-150 hover:transition-none hover:bg-foreground/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   aria-label={`View log event ${index + 1}`}
-                  onClick={() => setSelectedLine(line)}
+                  onClick={() => setSelection({ line, lines })}
                 >
                   <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground/60">
                     {formatAbsoluteTimeFromMillis(line.eventAtMillis)}
@@ -76,7 +77,7 @@ export function IssueLeadingUpTo({
       <DesignDialog
         open={selectedLine != null}
         onOpenChange={(open) => {
-          if (!open) setSelectedLine(null);
+          if (!open) setSelection(null);
         }}
         size="lg"
         icon={ClockCounterClockwiseIcon}

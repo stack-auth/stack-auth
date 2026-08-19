@@ -242,6 +242,24 @@ describe("materializeIssuesFromBatch", () => {
     expect((await readIssueRowsForValue(value))[0]?.timesSeen).toBe(2n);
   });
 
+  it("retains new-issue semantics when creation committed before the batch claim", async () => {
+    const target = getTestTenancy();
+    const ownerHash = RUN_PREFIX + "-unclaimed-created";
+    const issueId = await seedIssue(ownerHash, { timesSeen: 0n });
+    const batchId = randomUUID();
+    createdBatchIds.push(batchId);
+
+    const [outcome] = await materializeIssuesFromBatch({
+      tenancy: target,
+      batchId,
+      inputs: [makeInput(ownerHash)],
+      receivedAt: new Date("2026-08-06T12:02:30Z"),
+    });
+
+    expect(outcome).toMatchObject({ issueId, isNew: true });
+    expect(await readTimesSeen(issueId)).toBe(1n);
+  });
+
   it("persists primary and secondary grouping provenance supplied by canonical ingest", async () => {
     const target = getTestTenancy();
     const ownerHash = RUN_PREFIX + "-provenance-owner";

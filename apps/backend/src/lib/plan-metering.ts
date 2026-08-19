@@ -1,7 +1,7 @@
 import { ensureCustomerExists } from "@/lib/payments";
-import { bulldozerDeleteItemQuantityChanges, bulldozerTryDecreaseItemQuantityChanges, bulldozerWriteItemQuantityChanges } from "@/lib/payments/bulldozer-dual-write";
+import { bulldozerDeleteItemQuantityChanges, bulldozerTryDecreaseItemQuantityChanges } from "@/lib/payments/bulldozer-dual-write";
 import { getItemQuantitiesForCustomer } from "@/lib/payments/customer-data";
-import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
@@ -20,7 +20,7 @@ export type AnalyticsPlanItemId =
   | MeteredPlanItemId
   | typeof ITEM_IDS.analyticsTimeoutSeconds;
 
-type PlanItemDebit = {
+export type PlanItemDebit = {
   itemId: MeteredPlanItemId,
   quantity: number,
   /**
@@ -47,6 +47,18 @@ type PlanItemQuantityChange = {
 };
 
 const inFlightPlanQuantityReads = new Map<string, Promise<Map<AnalyticsPlanItemId, number>>>();
+
+async function lockPlanMeteringCustomer(
+  tx: PrismaClientTransaction,
+  tenancyId: string,
+  billingTeamId: string,
+): Promise<void> {
+  // A refund/rollback must not expose temporary capacity that a concurrent
+  // debit can consume before Postgres persistence is durable. This lock is
+  // shared by debits and rollbacks across backend instances and remains held
+  // while Bulldozer and the source-of-truth row are changed.
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`plan-metering:${tenancyId}:${billingTeamId}`}, 0))`;
+}
 
 function deterministicPlanChangeId(parts: readonly string[]): string {
   const hex = createHash("sha256").update(parts.join("\0")).digest("hex").slice(0, 32);
@@ -179,74 +191,90 @@ export async function tryDecreasePlanItemQuantities(
     createdAt: debit.idempotency?.createdAt ?? new Date(),
   }));
 
-  // Bulldozer owns the current balance. Its conditional batch endpoint applies
-  // all rows to one candidate snapshot, checks the resulting balances, and
-  // commits or rejects under the service's existing global write lock. This is
-  // one HTTP round trip instead of the former GET + POST pair.
-  const debitResult = await bulldozerTryDecreaseItemQuantityChanges(changes);
-  if (debitResult.insufficientItemId != null) {
-    const insufficientDebit = nonZeroDebits.find(({ itemId }) => itemId === debitResult.insufficientItemId);
-    if (insufficientDebit == null) {
-      throw new HexclaveAssertionError("Bulldozer reported an insufficient item that was not part of the requested plan debit", {
-        insufficientItemId: debitResult.insufficientItemId,
-        requestedItemIds: nonZeroDebits.map(({ itemId }) => itemId),
-      });
+  return await retryTransaction(prisma, async (tx) => {
+    await lockPlanMeteringCustomer(tx, tenancy.id, billingTeamId);
+
+    // Bulldozer owns the current balance. Its conditional batch endpoint
+    // applies all rows to one candidate snapshot and commits or rejects under
+    // its global write lock. The Postgres advisory lock extends serialization
+    // through source-of-truth persistence and compensating rollback.
+    const debitResult = await bulldozerTryDecreaseItemQuantityChanges(changes);
+    if (debitResult.insufficientItemId != null) {
+      const insufficientDebit = nonZeroDebits.find(({ itemId }) => itemId === debitResult.insufficientItemId);
+      if (insufficientDebit == null) {
+        throw new HexclaveAssertionError("Bulldozer reported an insufficient item that was not part of the requested plan debit", {
+          insufficientItemId: debitResult.insufficientItemId,
+          requestedItemIds: nonZeroDebits.map(({ itemId }) => itemId),
+        });
+      }
+      return { insufficientItemId: insufficientDebit.itemId };
     }
-    return { insufficientItemId: insufficientDebit.itemId };
-  }
 
-  await persistPlanItemChangesOrRollback(prisma, changes);
-  return { insufficientItemId: null };
-}
-
-export async function increasePlanItemQuantity(
-  billingTeamId: string,
-  itemId: MeteredPlanItemId,
-  quantity: number,
-): Promise<void> {
-  if (!Number.isSafeInteger(quantity) || quantity <= 0) {
-    throw new HexclaveAssertionError("Plan item refund must be a positive safe integer", {
-      itemId,
-      quantity,
-    });
-  }
-  const { tenancy, prisma } = await getBillingContext(billingTeamId, [itemId]);
-  const change: PlanItemQuantityChange = {
-    id: randomUUID(),
-    tenancyId: tenancy.id,
-    customerId: billingTeamId,
-    customerType: typedToUppercase("team"),
-    itemId,
-    quantity,
-    description: null,
-    expiresAt: null,
-    createdAt: new Date(),
-  };
-  await bulldozerWriteItemQuantityChanges([change]);
-  await persistPlanItemChangesOrRollback(prisma, [change]);
-}
-
-async function persistPlanItemChangesOrRollback(
-  prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
-  changes: PlanItemQuantityChange[],
-): Promise<void> {
-  const persistResult = await Result.fromPromise(retryTransaction(prisma, async (tx) => {
-    await tx.itemQuantityChange.createMany({
+    const persistResult = await Result.fromPromise(tx.itemQuantityChange.createMany({
       data: changes,
       // Fixed row ids make transaction retries safe even if the client receives
       // an ambiguous commit result.
       skipDuplicates: true,
-    });
-  }));
-  if (persistResult.status === "ok") return;
+    }));
+    if (persistResult.status === "ok") return { insufficientItemId: null };
 
-  const rollbackResult = await Result.fromPromise(bulldozerDeleteItemQuantityChanges(changes));
-  if (rollbackResult.status === "error") {
-    throw new HexclaveAssertionError("Failed to persist plan item quantity changes to Postgres and failed to roll them back from Bulldozer", {
-      cause: persistResult.error,
-      rollbackError: rollbackResult.error,
-      changeIds: changes.map((change) => change.id),
+    const rollbackResult = await Result.fromPromise(bulldozerDeleteItemQuantityChanges(changes));
+    if (rollbackResult.status === "error") {
+      throw new HexclaveAssertionError("Failed to persist plan item quantity changes to Postgres and failed to roll them back from Bulldozer", {
+        cause: persistResult.error,
+        rollbackError: rollbackResult.error,
+        changeIds: changes.map((change) => change.id),
+      });
+    }
+    throw persistResult.error;
+  });
+}
+
+/** Removes a retry-stable debit instead of publishing a temporary credit. */
+export async function rollbackPlanItemDebits(
+  billingTeamId: string,
+  debits: readonly PlanItemDebit[],
+): Promise<void> {
+  const idempotentDebits = debits.filter(({ quantity }) => quantity !== 0);
+  if (idempotentDebits.some((debit) => debit.idempotency == null)) {
+    throw new HexclaveAssertionError("Only retry-stable plan item debits can be rolled back", {
+      itemIds: idempotentDebits.map(({ itemId }) => itemId),
     });
   }
-  throw persistResult.error;
+  if (idempotentDebits.length === 0) return;
+
+  const { tenancy, prisma } = await getBillingContext(billingTeamId, idempotentDebits.map(({ itemId }) => itemId));
+  const changes: PlanItemQuantityChange[] = idempotentDebits.map((debit) => {
+    if (debit.idempotency == null) {
+      throw new HexclaveAssertionError("Plan debit idempotency was validated but is missing", { itemId: debit.itemId });
+    }
+    return {
+      id: deterministicPlanChangeId([
+        "hexclave-plan-debit-v1",
+        tenancy.id,
+        billingTeamId,
+        debit.itemId,
+        debit.idempotency.key,
+      ]),
+      tenancyId: tenancy.id,
+      customerId: billingTeamId,
+      customerType: typedToUppercase("team"),
+      itemId: debit.itemId,
+      quantity: -debit.quantity,
+      description: null,
+      expiresAt: null,
+      createdAt: debit.idempotency.createdAt,
+    };
+  });
+
+  await retryTransaction(prisma, async (tx) => {
+    await lockPlanMeteringCustomer(tx, tenancy.id, billingTeamId);
+    await bulldozerDeleteItemQuantityChanges(changes);
+    await tx.itemQuantityChange.deleteMany({
+      where: {
+        tenancyId: tenancy.id,
+        id: { in: changes.map(({ id }) => id) },
+      },
+    });
+  });
 }

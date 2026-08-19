@@ -138,6 +138,23 @@ describe("resolveOwnershipRecipients", () => {
     expect(result.trace.some((entry) => entry.code === "fallthrough_selected")).toBe(false);
   });
 
+  it("selects internal team members without admitting them to customer fallthrough", () => {
+    const internalMember = member("internal-collaborator", { eligibleForFallthrough: false });
+    expect(resolveOwnershipRecipients(input({
+      target: { type: "team", teamId: "owner-team" },
+      members: [internalMember],
+      teams: [team("owner-team", [internalMember.userId])],
+      issueOwners: [],
+    })).recipients).toEqual([{ userId: internalMember.userId }]);
+
+    expect(resolveOwnershipRecipients(input({
+      target: { type: "issue_owners", fallthrough: "all_members" },
+      members: [member("customer-member"), internalMember],
+      teams: [],
+      issueOwners: [],
+    })).recipients).toEqual([{ userId: "customer-member" }]);
+  });
+
   it("supports no-recipient fallthrough as an explicit decision", () => {
     const result = resolveOwnershipRecipients(input({
       target: { type: "issue_owners", fallthrough: "none" },

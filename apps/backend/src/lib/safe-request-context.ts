@@ -61,7 +61,7 @@ const SAFE_HEADER_NAMES = new Set([
 // Unknown keys are still bounded; they are not treated as safe credentials.
 const SENSITIVE_KEY_PATTERN = /(?:access[-_.]?token|api[-_.]?key|authorization|client[-_.]?secret|cookie|credential|id[-_.]?token|password|passwd|private[-_.]?key|refresh[-_.]?token|secret|session(?:[-_.]?(?:id|key|token|value|secret))?|signing[-_.]?key|token)/i;
 const PII_KEY_PATTERN = /(?:e[-_. ]?mail|phone|telephone|mobile|ip(?:v4|v6)?|street|address|city|postal|zip|ssn|social[-_. ]?security|date[-_. ]?of[-_. ]?birth|birth[-_. ]?date|first[-_. ]?name|last[-_. ]?name|full[-_. ]?name)/i;
-const SENSITIVE_ASSIGNMENT_PATTERN = /((?:access[-_.]?token|api[-_.]?key|authorization|client[-_.]?secret|cookie|credential|id[-_.]?token|password|passwd|private[-_.]?key|refresh[-_.]?token|secret|session[-_.]?token|signing[-_.]?key|token)\s*[:=]\s*)(["']?)([^\s"'&,;}\]]+)\2/gi;
+const SENSITIVE_ASSIGNMENT_PATTERN = /((?:access[-_.]?token|api[-_.]?key|authorization|client[-_.]?secret|cookie|credential|id[-_.]?token|password|passwd|private[-_.]?key|refresh[-_.]?token|secret|session[-_.]?token|signing[-_.]?key|token)\s*[:=]\s*)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:(?:Bearer|Basic|Digest)\s+)?[^\s"'&,;}\]]+)/gi;
 const AUTH_SCHEME_PATTERN = /\b(Bearer|Basic|Digest)\s+[^\s,;]+/gi;
 const PRIVATE_KEY_PATTERN = /-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g;
 const JWT_PATTERN = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
@@ -82,7 +82,10 @@ function scrubString(value: string, budget: ScrubBudget): string {
   const scrubbed = value
     .replace(PRIVATE_KEY_PATTERN, FILTERED_VALUE)
     .replace(AUTH_SCHEME_PATTERN, "$1 " + FILTERED_VALUE)
-    .replace(SENSITIVE_ASSIGNMENT_PATTERN, "$1" + FILTERED_VALUE)
+    .replace(SENSITIVE_ASSIGNMENT_PATTERN, (_match, prefix: string, assignment: string) => {
+      const quote = assignment.startsWith('"') ? '"' : assignment.startsWith("'") ? "'" : "";
+      return `${prefix}${quote}${FILTERED_VALUE}${quote}`;
+    })
     .replace(JWT_PATTERN, FILTERED_VALUE)
     .replace(URL_AUTH_PATTERN, "$1" + FILTERED_VALUE + "@")
     .replace(EMAIL_PATTERN, FILTERED_VALUE);

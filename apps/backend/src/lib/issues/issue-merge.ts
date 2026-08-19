@@ -567,11 +567,132 @@ async function applyMerge(
       ON CONFLICT ("tenancyId", "fromIssueId") DO UPDATE SET "toIssueId" = EXCLUDED."toIssueId"
       RETURNING "fromIssueId"
     ),
+    comments_moved AS (
+      UPDATE "IssueComment" c
+      SET "issueId" = ${primaryId}::uuid,
+          -- Keys were scoped to the old issue. Preserve every comment even
+          -- when two merged issues happened to reuse the same request key.
+          "idempotencyKey" = 'merged:' || c."id"::text
+      WHERE c."tenancyId" = ${tenancyId}::uuid
+        AND c."issueId" = ANY(${[...loserIds]}::uuid[])
+        AND EXISTS (SELECT 1 FROM primary_updated)
+      RETURNING c."id"
+    ),
+    activities_moved AS (
+      UPDATE "IssueActivity" a
+      SET "issueId" = ${primaryId}::uuid,
+          "idempotencyKey" = 'merged:' || a."id"::text
+      WHERE a."tenancyId" = ${tenancyId}::uuid
+        AND a."issueId" = ANY(${[...loserIds]}::uuid[])
+        AND EXISTS (SELECT 1 FROM primary_updated)
+      RETURNING a."id"
+    ),
+    bookmark_duplicates_deleted AS (
+      DELETE FROM "IssueBookmark" b
+      WHERE b."tenancyId" = ${tenancyId}::uuid
+        AND b."issueId" = ANY(${[...loserIds]}::uuid[])
+        AND EXISTS (
+          SELECT 1
+          FROM "IssueBookmark" keep
+          WHERE keep."tenancyId" = b."tenancyId"
+            AND keep."userId" = b."userId"
+            AND keep."issueId" = ANY(${[primaryId, ...loserIds]}::uuid[])
+            AND (keep."issueId" = ${primaryId}::uuid OR keep."issueId"::text < b."issueId"::text)
+        )
+        AND EXISTS (SELECT 1 FROM primary_updated)
+      RETURNING b."userId"
+    ),
+    bookmarks_moved AS (
+      UPDATE "IssueBookmark" b
+      SET "issueId" = ${primaryId}::uuid
+      WHERE b."tenancyId" = ${tenancyId}::uuid
+        AND b."issueId" = ANY(${[...loserIds]}::uuid[])
+        AND NOT EXISTS (
+          SELECT 1 FROM bookmark_duplicates_deleted d WHERE d."userId" = b."userId"
+        )
+        AND EXISTS (SELECT 1 FROM primary_updated)
+      RETURNING b."userId"
+    ),
+    subscription_duplicates_deleted AS (
+      DELETE FROM "IssueSubscription" s
+      WHERE s."tenancyId" = ${tenancyId}::uuid
+        AND s."issueId" = ANY(${[...loserIds]}::uuid[])
+        AND EXISTS (
+          SELECT 1
+          FROM "IssueSubscription" keep
+          WHERE keep."tenancyId" = s."tenancyId"
+            AND keep."subjectType" = s."subjectType"
+            AND keep."subjectUserId" IS NOT DISTINCT FROM s."subjectUserId"
+            AND keep."subjectTeamId" IS NOT DISTINCT FROM s."subjectTeamId"
+            AND keep."issueId" = ANY(${[primaryId, ...loserIds]}::uuid[])
+            AND (keep."issueId" = ${primaryId}::uuid OR keep."issueId"::text < s."issueId"::text)
+        )
+        AND EXISTS (SELECT 1 FROM primary_updated)
+      RETURNING s."id"
+    ),
+    subscriptions_moved AS (
+      UPDATE "IssueSubscription" s
+      SET "issueId" = ${primaryId}::uuid
+      WHERE s."tenancyId" = ${tenancyId}::uuid
+        AND s."issueId" = ANY(${[...loserIds]}::uuid[])
+        AND NOT EXISTS (
+          SELECT 1 FROM subscription_duplicates_deleted d WHERE d."id" = s."id"
+        )
+        AND EXISTS (SELECT 1 FROM primary_updated)
+      RETURNING s."id"
+    ),
+    owner_duplicates_deleted AS (
+      DELETE FROM "IssueOwner" o
+      WHERE o."tenancyId" = ${tenancyId}::uuid
+        AND o."issueId" = ANY(${[...loserIds]}::uuid[])
+        AND EXISTS (
+          SELECT 1
+          FROM "IssueOwner" keep
+          WHERE keep."tenancyId" = o."tenancyId"
+            AND keep."ownerType" = o."ownerType"
+            AND keep."ownerUserId" IS NOT DISTINCT FROM o."ownerUserId"
+            AND keep."ownerTeamId" IS NOT DISTINCT FROM o."ownerTeamId"
+            AND keep."source" = o."source"
+            AND keep."issueId" = ANY(${[primaryId, ...loserIds]}::uuid[])
+            AND (keep."issueId" = ${primaryId}::uuid OR keep."issueId"::text < o."issueId"::text)
+        )
+        AND EXISTS (SELECT 1 FROM primary_updated)
+      RETURNING o."id"
+    ),
+    owners_moved AS (
+      UPDATE "IssueOwner" o
+      SET "issueId" = ${primaryId}::uuid
+      WHERE o."tenancyId" = ${tenancyId}::uuid
+        AND o."issueId" = ANY(${[...loserIds]}::uuid[])
+        AND NOT EXISTS (
+          SELECT 1 FROM owner_duplicates_deleted d WHERE d."id" = o."id"
+        )
+        AND EXISTS (SELECT 1 FROM primary_updated)
+      RETURNING o."id"
+    ),
+    deliveries_moved AS (
+      UPDATE "IssueAlertDelivery" d
+      SET "issueId" = ${primaryId}::uuid
+      WHERE d."tenancyId" = ${tenancyId}::uuid
+        AND d."issueId" = ANY(${[...loserIds]}::uuid[])
+        AND EXISTS (SELECT 1 FROM primary_updated)
+      RETURNING d."id"
+    ),
     deleted AS (
       DELETE FROM "Issue" i
       WHERE i."tenancyId" = ${tenancyId}::uuid
         AND i."id" = ANY(${[...loserIds]}::uuid[])
         AND EXISTS (SELECT 1 FROM primary_updated)
+        -- Force every hash and issue-scoped child move to complete before the
+        -- parent delete can fire its cascades. The exact hash count also turns
+        -- a partial repoint into a failed merge instead of silent data loss.
+        AND (SELECT COUNT(*) FROM repointed) = ${lockedHashes.length}
+        AND (SELECT COUNT(*) FROM comments_moved) >= 0
+        AND (SELECT COUNT(*) FROM activities_moved) >= 0
+        AND (SELECT COUNT(*) FROM bookmarks_moved) >= 0
+        AND (SELECT COUNT(*) FROM subscriptions_moved) >= 0
+        AND (SELECT COUNT(*) FROM owners_moved) >= 0
+        AND (SELECT COUNT(*) FROM deliveries_moved) >= 0
       RETURNING i."id"
     )
     SELECT

@@ -404,12 +404,12 @@ payload is the `hexclave.data` attribute. Contract:
 
 ### Console capture (observability.logs.captureConsole)
 
-DEFAULT ON with levels ["warn", "error"] — automatic log capture is a
-zero-setup product guarantee. Users widen with the full level list or opt out
-with []. Capture only INSTALLS where the app has a real delivery path:
+When observability is enabled, capture defaults to levels ["warn", "error"].
+Users widen with the full level list or opt out with []. Capture only INSTALLS
+when `observability.enabled: true` and the app has a real delivery path:
 
-- Browser: an active client analytics facade (analytics enabled + browser +
-  a refreshable client session). Owner-session admin apps never install.
+- Browser: an active client observability facade (browser + a refreshable
+  client session). Owner-session admin apps never install.
 - Server: a non-browser server app with a secret server key (the same
   exclusions as the eager fetch/error instrumentation).
 
@@ -702,7 +702,7 @@ data shared by all capture paths:
     //   route_type?, digest?
   }
 
-Client capture (browser; errorCapture.enabled):
+Client capture (browser; observability.enabled and errorCapture.enabled):
 - Patch the window.onerror and window.onunhandledrejection PROPERTY slots
   (never addEventListener): chain to any previous handler and forward its
   return value; restore on uninstall only if the slot is still ours.

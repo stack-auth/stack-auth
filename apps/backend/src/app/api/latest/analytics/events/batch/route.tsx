@@ -1,14 +1,14 @@
 import { buildTelemetryWritePlan, insertBatchEvents, normalizeBatchEvents } from "@/lib/analytics-telemetry-writers";
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
-import { increasePlanItemQuantity, tryDecreasePlanItemQuantities } from "@/lib/plan-metering";
+import { tryDecreasePlanItemQuantities } from "@/lib/plan-metering";
 import { findRecentSessionReplay } from "@/lib/session-replays";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { captureError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { TELEMETRY_UUID_RE } from "@hexclave/shared/dist/utils/analytics-wire";
 import * as zlib from "node:zlib";
 
@@ -111,7 +111,6 @@ export const POST = createSmartRouteHandler({
     const sessionReplaySegmentId = body.session_replay_segment_id;
 
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
-    let eventsBillingTeamIdForRefund: string | null = null;
     // The internal project is the platform's own observability sink, not a
     // customer billing scope. Metering it would make telemetry ingestion
     // depend on Bulldozer and create a startup failure loop: the backend emits
@@ -120,7 +119,14 @@ export const POST = createSmartRouteHandler({
     // continue through the normal fail-closed quota path below.
     if (projectId !== "internal" && billingTeamId != null && arePlanLimitsEnforced()) {
       const debitResult = await tryDecreasePlanItemQuantities(billingTeamId, [
-        { itemId: ITEM_IDS.analyticsEvents, quantity: events.length },
+        {
+          itemId: ITEM_IDS.analyticsEvents,
+          quantity: events.length,
+          idempotency: {
+            key: `analytics-events:${tenancyId}:${body.batch_id}`,
+            createdAt: new Date(body.sent_at_ms),
+          },
+        },
       ]);
       if (debitResult.insufficientItemId != null) {
         throw new KnownErrors.ItemQuantityInsufficientAmount(
@@ -129,50 +135,36 @@ export const POST = createSmartRouteHandler({
           events.length,
         );
       }
-      eventsBillingTeamIdForRefund = billingTeamId;
     }
 
     // Shared (never-closed) client: this is the batch-ingest hot path, where a
     // per-request connection pool would leak sockets and cost a handshake.
     const clickhouseClient = getSharedClickhouseAdminClient();
 
-    try {
-      // The producer/runtime stamps come from the ROUTE (never the client), so a
-      // client cannot spoof platform-produced rows or clear the defaults. This
-      // route only serves the browser tracker, so the runtime is always
-      // "browser".
-      const normalizedEvents = normalizeBatchEvents(events, {
-        projectId,
-        branchId,
-        userId,
-        refreshTokenId,
-        sessionReplayId,
-        sessionReplaySegmentId,
-        runtime: "browser",
-        // Released analytics batches predate the resource envelope; their rows
-        // keep nullable resource columns rather than an invented service name.
-        resource: null,
-        // The authenticated SDK path is always an SDK producer. Metering is
-        // decided above; internal platform telemetry is explicitly unmetered.
-        producer: "sdk",
-        groupingConfig: auth.tenancy.config.observability.errorGrouping,
-      }, body.batch_id);
-      await insertBatchEvents(clickhouseClient, buildTelemetryWritePlan(normalizedEvents, body.batch_id));
-    } catch (error) {
-      // The batch is atomic billing-wise: events are debited before the
-      // ClickHouse insert, so an insert failure refunds the debit and rejects
-      // the request — a failed batch never burns quota.
-      if (eventsBillingTeamIdForRefund != null) {
-        try {
-          await increasePlanItemQuantity(eventsBillingTeamIdForRefund, ITEM_IDS.analyticsEvents, events.length);
-        } catch (refundError) {
-          // Preserve the operation's original failure while surfacing a failed
-          // compensation separately for operators to repair.
-          captureError("analytics-events-clickhouse-refund", refundError);
-        }
-      }
-      throw error;
-    }
+    // The producer/runtime stamps come from the ROUTE (never the client), so a
+    // client cannot spoof platform-produced rows or clear the defaults. This
+    // route only serves the browser tracker, so the runtime is always
+    // "browser".
+    const normalizedEvents = normalizeBatchEvents(events, {
+      projectId,
+      branchId,
+      userId,
+      refreshTokenId,
+      sessionReplayId,
+      sessionReplaySegmentId,
+      runtime: "browser",
+      // Released analytics batches predate the resource envelope; their rows
+      // keep nullable resource columns rather than an invented service name.
+      resource: null,
+      // The authenticated SDK path is always an SDK producer. Metering is
+      // decided above; internal platform telemetry is explicitly unmetered.
+      producer: "sdk",
+      groupingConfig: auth.tenancy.config.observability.errorGrouping,
+    }, body.batch_id);
+    // ClickHouse failures are ambiguous: the server may have committed the
+    // deduplicated batch before the transport failed. Keep the retry-stable
+    // debit above rather than refunding usage that may already be durable.
+    await insertBatchEvents(clickhouseClient, buildTelemetryWritePlan(normalizedEvents, body.batch_id));
 
     return {
       statusCode: 200,

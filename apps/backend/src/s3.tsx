@@ -211,24 +211,30 @@ function getS3Target(privateBucket: boolean): { client: S3Client, bucket: string
  * CLI versions) sign plain PUTs; forcing the header on them would 403 every
  * upload from an older CLI.
  */
-export async function createPresignedUploadUrl(options: {
+type PresignedUploadOptions = {
   key: string,
   expiresInSeconds: number,
   contentType: string,
   contentEncoding?: string,
   createOnly?: boolean,
   private?: boolean,
-}): Promise<string> {
+};
+
+export function createPresignedUploadCommand(options: PresignedUploadOptions, bucket: string): PutObjectCommand {
+  return new PutObjectCommand({
+    Bucket: bucket,
+    Key: options.key,
+    ContentType: options.contentType,
+    ...(options.createOnly === true ? { IfNoneMatch: "*" } : {}),
+    ...(options.contentEncoding ? { ContentEncoding: options.contentEncoding } : {}),
+  });
+}
+
+export async function createPresignedUploadUrl(options: PresignedUploadOptions): Promise<string> {
   const { client, bucket } = getS3Target(options.private === true);
   return await getSignedUrl(
     client,
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: options.key,
-      ContentType: options.contentType,
-      ...(options.createOnly === true ? { IfNoneMatch: "*" } : {}),
-      ...(options.contentEncoding ? { ContentEncoding: options.contentEncoding } : {}),
-    }),
+    createPresignedUploadCommand(options, bucket),
     { expiresIn: options.expiresInSeconds },
   );
 }
@@ -244,12 +250,15 @@ import.meta.vitest?.test("create-only presigned upload URLs sign If-None-Match a
     forcePathStyle: true,
     credentials: { accessKeyId: "test", secretAccessKey: "test" },
   });
-  const url = await getSignedUrl(testClient, new PutObjectCommand({
-    Bucket: "test-bucket",
-    Key: "test-key.js",
-    ContentType: "application/javascript",
-    IfNoneMatch: "*",
-  }), { expiresIn: 900 });
+  const options = {
+    key: "test-key.js",
+    contentType: "application/javascript",
+    expiresInSeconds: 900,
+    createOnly: true,
+  };
+  const command = createPresignedUploadCommand(options, "test-bucket");
+  expect(command.input.IfNoneMatch).toBe("*");
+  const url = await getSignedUrl(testClient, command, { expiresIn: options.expiresInSeconds });
   const signedHeaders = new URL(url).searchParams.get("X-Amz-SignedHeaders")?.split(";") ?? [];
   expect(signedHeaders).toContain("if-none-match");
   expect(new URL(url).searchParams.has("If-None-Match")).toBe(false);

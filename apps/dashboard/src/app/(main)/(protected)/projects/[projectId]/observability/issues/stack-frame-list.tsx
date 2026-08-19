@@ -157,7 +157,9 @@ export function StackFrameList({
   rawStack: string | null,
   order: StackFrameOrder,
 }) {
-  const [selectedFrame, setSelectedFrame] = useState<StackFrameView | null>(null);
+  const [selection, setSelection] = useState<{ frame: StackFrameView, frames: readonly StackFrameView[], rawStack: string | null } | null>(null);
+  const selectedFrame = selection?.frames === frames && selection.rawStack === rawStack ? selection.frame : null;
+  const selectFrame = (frame: StackFrameView) => setSelection({ frame, frames, rawStack });
 
   if (frames.length === 0) {
     if (rawStack == null || rawStack.trim() === "") {
@@ -190,7 +192,7 @@ export function StackFrameList({
       <ul className="divide-y divide-foreground/[0.06] overflow-hidden rounded-xl ring-1 ring-foreground/[0.08]">
         {groups.map((group) => (
           group.kind === "frame"
-            ? <StackFrameRow key={`frame-${group.index}`} frame={group.frame} onSelect={setSelectedFrame} />
+            ? <StackFrameRow key={`frame-${group.index}`} frame={group.frame} onSelect={selectFrame} />
             : (
               <CollapsedFrameGroup
                 // Keyed by content, not just position: `expanded` is component
@@ -202,7 +204,7 @@ export function StackFrameList({
                 key={`collapsed-${group.startIndex}-${group.frames.length}-${group.defaultExpanded ? "expanded" : "collapsed"}-${frameLocationLabel(group.frames[0] ?? throwMissingCollapsedFrame())}-${frameLocationLabel(group.frames[group.frames.length - 1] ?? throwMissingCollapsedFrame())}`}
                 frames={group.frames}
                 defaultExpanded={group.defaultExpanded}
-                onSelect={setSelectedFrame}
+                onSelect={selectFrame}
               />
             )
         ))}
@@ -211,7 +213,7 @@ export function StackFrameList({
       <DesignDialog
         open={selectedFrame != null}
         onOpenChange={(open) => {
-          if (!open) setSelectedFrame(null);
+          if (!open) setSelection(null);
         }}
         size="xl"
         icon={CodeIcon}

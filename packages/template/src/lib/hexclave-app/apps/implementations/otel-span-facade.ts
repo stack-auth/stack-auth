@@ -2,6 +2,7 @@ import { context, createTraceState, propagation, ROOT_CONTEXT, SpanStatusCode, t
 import { isW3cSpanId, isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
 import { BAGGAGE_HEADER, decodeCorrelationBaggage, mergeCorrelationBaggage } from "@hexclave/shared/dist/utils/span-context-codec";
 import { assertValidSpanStartInput, getCustomTelemetryDataError, rejectedPreCaught, withSpanImpl, type Span, type SpanContext, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
+import { runWithSpanFrame } from "./span-context";
 
 const TRUSTED_SPAN_LINK_WRITER = Symbol.for("hexclave.analytics.trusted-span-link-writer.v1");
 
@@ -147,7 +148,10 @@ export function createOtelSpanFacade(options: {
     }),
     withSpan: <T,>(spanType: string, optionsOrFn: StartSpanOptions | ((span: Span) => Promise<T> | T), maybeFn?: (span: Span) => Promise<T> | T) =>
       withSpanImpl((childType, childOptions) => facade.startSpan(childType, childOptions), spanType, optionsOrFn, maybeFn),
-    run: async <T,>(fn: () => T): Promise<Awaited<T>> => await context.with(executionContext(context.active()), fn),
+    run: async <T,>(fn: () => T): Promise<Awaited<T>> => await runWithSpanFrame(
+      facade.spanContext(),
+      () => context.with(executionContext(context.active()), fn),
+    ),
     getSpanPropagationHeaders: () => {
       const fallback = options.capabilities.getSpanPropagationHeaders(facade);
       const carrier = new Map<string, string>();

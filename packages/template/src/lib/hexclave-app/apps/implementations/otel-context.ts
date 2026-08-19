@@ -1,5 +1,5 @@
-import { context, isSpanContextValid, propagation, ROOT_CONTEXT, trace, TraceFlags, type Context } from "@opentelemetry/api";
-import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
+import { context, isSpanContextValid, propagation, ROOT_CONTEXT, SamplingDecision, SpanKind, trace, TraceFlags, type Context } from "@opentelemetry/api";
+import { RandomIdGenerator, TraceIdRatioBasedSampler, type Sampler } from "@opentelemetry/sdk-trace-base";
 import { HEXCLAVE_PAGE_VIEW_SPAN_ID_BAGGAGE_KEY, HEXCLAVE_SESSION_REPLAY_SEGMENT_ID_BAGGAGE_KEY } from "@hexclave/shared/dist/utils/span-context-codec";
 import type { SpanContext } from "./telemetry-core";
 
@@ -12,6 +12,25 @@ export function generateOtelTraceId(): string {
 
 export function generateOtelSpanId(): string {
   return idGenerator.generateSpanId();
+}
+
+export function traceFlagsForSampleRate(traceId: string, traceSampleRate: number): TraceFlags {
+  // Deliberately typed as the `Sampler` interface rather than the concrete
+  // class: since sdk-trace 2.10 `TraceIdRatioBasedSampler` narrows its own
+  // `shouldSample` to `(context, traceId)` because the ratio decision only
+  // depends on the trace ID. Calling the concrete type with the full
+  // six-argument contract is a compile error, so we go through the interface
+  // the sampler implements. Do not "simplify" this annotation away.
+  const sampler: Sampler = new TraceIdRatioBasedSampler(traceSampleRate);
+  const sampling = sampler.shouldSample(
+    ROOT_CONTEXT,
+    traceId,
+    "$session-root",
+    SpanKind.INTERNAL,
+    {},
+    [],
+  );
+  return sampling.decision === SamplingDecision.RECORD_AND_SAMPLED ? TraceFlags.SAMPLED : TraceFlags.NONE;
 }
 
 /**
@@ -35,7 +54,10 @@ export function buildAmbientSessionContext(options: {
   const withSpan = trace.setSpanContext(ROOT_CONTEXT, {
     traceId: options.anchor.traceId,
     spanId: options.anchor.spanId,
-    traceFlags: options.anchor.traceFlags ?? TraceFlags.SAMPLED,
+    // Every synthetic session anchor must carry the explicit decision derived
+    // from traceSampleRate. Missing flags fail closed instead of turning a
+    // head-dropped session into an always-sampled parent.
+    traceFlags: options.anchor.traceFlags ?? TraceFlags.NONE,
     isRemote: false,
   });
   return propagation.setBaggage(withSpan, propagation.createBaggage({

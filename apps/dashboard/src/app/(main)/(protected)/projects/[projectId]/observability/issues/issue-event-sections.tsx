@@ -516,7 +516,7 @@ export function IssueProductSection({
             type="button"
             variant="ghost"
             size="icon"
-            aria-controls="issue-triage-content"
+            aria-controls={triageOpen ? "issue-triage-content" : undefined}
             aria-expanded={triageOpen}
             aria-label={triageOpen ? "Collapse triage panel" : "Expand triage panel"}
             onClick={() => setTriageOpen((open) => !open)}

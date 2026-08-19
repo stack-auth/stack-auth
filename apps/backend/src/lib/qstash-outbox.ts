@@ -75,7 +75,10 @@ export function decodeBackgroundJobEnvelope(value: unknown): BackgroundJobEnvelo
 }
 
 function assertMessage(message: QstashMessage<Record<string, unknown>>): void {
-  if (!message.url.startsWith("/")) throw new Error("QStash outbox URLs must be internal relative paths");
+  // `new URL("//host", origin)` and the WHATWG-normalized `/\\host` form both
+  // escape to a network-path reference. The poller resolves persisted paths
+  // against its public origin, so accept exactly one leading slash here.
+  if (!/^\/(?![\\/])/u.test(message.url)) throw new Error("QStash outbox URLs must be internal relative paths");
   if (message.flowControl !== undefined) {
     // Mirror QStash's own server-side key alphabet so a bad key fails loudly at
     // enqueue time. A key the server rejects is worse than a throw here: the

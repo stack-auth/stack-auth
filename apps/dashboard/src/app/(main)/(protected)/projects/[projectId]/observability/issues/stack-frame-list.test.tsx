@@ -53,4 +53,15 @@ describe("StackFrameList", () => {
     expect(within(dialog).getByText("app/client.ts:42:7", { selector: "dd" })).toBeDefined();
     expect(within(dialog).getByText("Mapped")).toBeDefined();
   });
+
+  it("closes frame details when the occurrence stack changes", () => {
+    const view = render(<StackFrameList frames={[frame]} rawStack={null} order="innermost-first" />);
+    fireEvent.click(screen.getByRole("button", { name: "View stack frame fetchData" }));
+    expect(screen.getByRole("dialog")).toBeDefined();
+
+    view.rerender(<StackFrameList frames={[]} rawStack={null} order="innermost-first" />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    view.rerender(<StackFrameList frames={[{ ...frame, function: "nextFrame" }]} rawStack={null} order="innermost-first" />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
 });

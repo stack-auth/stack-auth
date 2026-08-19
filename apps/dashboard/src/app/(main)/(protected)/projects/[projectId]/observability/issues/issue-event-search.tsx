@@ -40,7 +40,7 @@ export function IssueEventSearch({
       status: filters.status,
       service: filters.service,
       environment: filters.environment,
-      handled: filters.handled,
+      handled: filters.handled === "all" ? "all" : filters.handled === "handled",
       search: filters.search,
       level: level.trim() === "" ? null : level.trim(),
       release: release.trim() === "" ? null : release.trim(),
