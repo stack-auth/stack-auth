@@ -1,0 +1,35 @@
+docs-mintlify/snippets/hexclave-agent-reminders.jsx
+  s_cc2f62794067d6::t_9d3be8e94a8ab2 1
+docs-mintlify/guides/getting-started/setup.mdx
+  s_cc2f62794067d6::t_9d3be8e94a8ab2 9
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_cc2f62794067d6::t_9d3be8e94a8ab2 3
+apps/growth-agent/package.json
+  s_cc2f62794067d6::t_c1b9c329973c08 27-28
+apps/mcp/src/mcp-handler.ts
+  s_cc2f62794067d6::t_dce2cd7fcdbbad 151,158
+docs-mintlify/llms.txt
+  s_cc2f62794067d6::t_35be8fd4571b69 8
+packages/shared/src/ai/unified-prompts/reminders.ts
+  s_cc2f62794067d6::t_661d91fea11f89 8
+packages/shared/src/ai/unified-prompts/skill-site-prompt-parts/ai-setup-prompt.ts
+  s_cc2f62794067d6::t_215370a1c7acda 523
+pnpm-lock.yaml
+  s_cc2f62794067d6::t_07ef09e242cb02 766-767,769-770,3091-3092,3121-3122,3131-3132,10921-10922,12910-12911,12916,18089-18092,19149,19151-19152,19191,19193,19203,30169,30171-30173,32777,32779,32781,39878-39879
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "e6d72858ba829dd5cfb23bdcc9f17481aa7ce7be",
+  "prompts": {},
+  "sessions": {
+    "s_cc2f62794067d6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "25681cfa-e019-42e5-9904-aa8d456789cd",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
