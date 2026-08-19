@@ -1,6 +1,6 @@
 import { globalPrismaClient } from "@/prisma-client";
-import type { Tenancy } from "@/lib/tenancies";
-import { syncWorkflowSource, type WorkflowSourceSyncOptions } from "@/lib/workflows/api";
+import { getTenancy, type Tenancy } from "@/lib/tenancies";
+import { syncWorkflowSource } from "@/lib/workflows/api";
 import type { WorkflowSyncResultJson } from "@hexclave/shared/dist/interface/workflows";
 import { HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import {
@@ -20,9 +20,16 @@ export type IssueAlertWorkflowLatestSource = {
   source: string,
 };
 
+export type IssueAlertWorkflowSyncOptions = {
+  workflowId: string,
+  source: string,
+  displayName?: string,
+  mustBeNew: boolean,
+};
+
 export type IssueAlertWorkflowRegistrationDependencies = {
   readLatest: (tenancyId: string, workflowId: string) => Promise<IssueAlertWorkflowLatestSource | null>,
-  sync: (tenancy: Pick<Tenancy, "id">, options: WorkflowSourceSyncOptions) => Promise<WorkflowSyncResultJson>,
+  sync: (tenancy: Pick<Tenancy, "id">, options: IssueAlertWorkflowSyncOptions) => Promise<WorkflowSyncResultJson>,
 };
 
 export type IssueAlertWorkflowRegistrationResult = WorkflowSyncResultJson & {
@@ -46,9 +53,22 @@ async function readLatestWorkflowSource(tenancyId: string, workflowId: string): 
   return { version: definition.latestVersion, source: version.source };
 }
 
+async function syncThroughPublicWorkflowApi(
+  tenancy: Pick<Tenancy, "id">,
+  options: IssueAlertWorkflowSyncOptions,
+): Promise<WorkflowSyncResultJson> {
+  const loaded = await getTenancy(tenancy.id);
+  if (loaded == null) {
+    throw new HexclaveAssertionError("Cannot register the issue-alert workflow because the tenancy no longer exists", {
+      tenancyId: tenancy.id,
+    });
+  }
+  return await syncWorkflowSource(loaded, options);
+}
+
 const productionDependencies: IssueAlertWorkflowRegistrationDependencies = {
   readLatest: readLatestWorkflowSource,
-  sync: syncWorkflowSource,
+  sync: syncThroughPublicWorkflowApi,
 };
 
 function assertBuiltInSourceIsSafe(): void {
@@ -95,9 +115,9 @@ function throwWorkflowIdCollision(current: IssueAlertWorkflowLatestSource): neve
  * The workflow id is the only built-in ownership marker available in the
  * current schema. A source that still passes the email-boundary validator is
  * treated as a previous built-in version and may be upgraded; any other
- * occupant is a hard conflict rather than an overwrite. The sync API's
- * expectedLatestSource guard closes the read/check/write race, while the
- * bounded retry handles two first-time registrations arriving together.
+ * occupant is a hard conflict rather than an overwrite. Registration goes
+ * through the existing syncWorkflowSource API. Concurrent first installs
+ * retry on the public "already exists" / "not found" errors.
  */
 export async function ensureIssueAlertEmailWorkflow(
   tenancy: Pick<Tenancy, "id">,
@@ -111,12 +131,11 @@ export async function ensureIssueAlertEmailWorkflow(
       return throwWorkflowIdCollision(current);
     }
 
-    const syncOptions: WorkflowSourceSyncOptions = {
+    const syncOptions: IssueAlertWorkflowSyncOptions = {
       workflowId: ISSUE_ALERT_EMAIL_WORKFLOW_ID,
       source: ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE,
       displayName: ISSUE_ALERT_EMAIL_WORKFLOW_DISPLAY_NAME,
       mustBeNew: current === null,
-      expectedLatestSource: current?.source ?? null,
     };
 
     try {

@@ -1,3 +1,4 @@
+import { reconcilePendingIssueAlertWorkflowDeliveries } from "@/lib/issues/issue-alerts/workflow-status";
 import { reconcileIssues } from "@/lib/issues/issue-reconciler";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupBoolean, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
@@ -85,6 +86,7 @@ export const GET = createSmartRouteHandler({
     lastRunAt = nowTicks;
 
     const result = await reconcileIssues();
+    await reconcilePendingIssueAlertWorkflowDeliveries();
     return {
       statusCode: 200,
       bodyType: "json",

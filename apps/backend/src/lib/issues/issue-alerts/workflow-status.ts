@@ -1,22 +1,19 @@
 import {
   IssueAlertDeliveryOutcome,
   IssueAlertDeliveryState,
+  WorkflowRunState,
   type IssueAlertDeliveryState as IssueAlertDeliveryStateValue,
 } from "@/generated/prisma/enums";
 import { globalPrismaClient, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import { scrubErrorIngestPayload, type ErrorIngestScrubbedValue } from "@/lib/error-ingest";
-import {
-  deterministicWorkflowUuid,
-  parseWorkflowRunLifecycleEvent,
-  type WorkflowRunLifecycleEventType,
-  type WorkflowRunLifecyclePayload,
-} from "@/lib/workflows/events";
+import { deterministicWorkflowUuid } from "@/lib/workflows/events";
 import {
   ISSUE_ALERT_EMAIL_WORKFLOW_ID,
   ISSUE_ALERT_WORKFLOW_PAYLOAD_VERSION,
   ISSUE_ALERT_WORKFLOW_EVENT_TYPE,
 } from "@/lib/workflows/issue-alerts/contract";
 import { parseOwnershipRoutingMetadata } from "@/lib/issues/ownership/routing-metadata";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import {
   IssueAlertPersistenceInputError,
   issueAlertPersistenceService,
@@ -43,12 +40,23 @@ export type IssueAlertWorkflowDeliveryRef = {
   workflowEventId: string,
   state: IssueAlertDeliveryStateValue,
   nextRetryAt: Date | null,
-  /** When the last applied failure/retry lifecycle occurred; the reducer's monotonic clock. */
   lastAttemptAt: Date | null,
+};
+
+export type IssueAlertWorkflowRunObservation =
+  | { status: "missing" }
+  | { status: "in_flight" }
+  | { status: "completed" }
+  | { status: "failed", error: string | null }
+  | { status: "canceled" };
+
+export type IssueAlertWorkflowRunLookup = {
+  findRunByTriggerEventId(tenancyId: string, workflowEventId: string): Promise<IssueAlertWorkflowRunObservation>,
 };
 
 export type IssueAlertWorkflowStatusStore = {
   findDeliveryByWorkflowEventId(tenancyId: string, workflowEventId: string): Promise<IssueAlertWorkflowDeliveryRef | null>,
+  listEnqueuedDeliveries(limit: number): Promise<IssueAlertWorkflowDeliveryRef[]>,
   applyWorkflowUpdate(
     scope: IssueAlertRuleScope,
     deliveryId: string,
@@ -58,25 +66,17 @@ export type IssueAlertWorkflowStatusStore = {
   ): Promise<boolean>,
 };
 
-export type IssueAlertWorkflowLifecycle = {
-  type: WorkflowRunLifecycleEventType,
-  payload: WorkflowRunLifecyclePayload,
-};
-
-export type IssueAlertWorkflowLifecycleParseResult =
-  | { status: "ignored", reason: "not_internal_lifecycle" | "not_issue_alert_workflow" }
-  | { status: "invalid", reason: string }
-  | { status: "ok", lifecycle: IssueAlertWorkflowLifecycle };
-
 export type IssueAlertWorkflowStatusResult =
-  | { status: "ignored", reason: "not_internal_lifecycle" | "not_issue_alert_workflow" | "delivery_not_found" | "stale_lifecycle" }
+  | { status: "ignored", reason: "delivery_not_found" | "run_not_ready" | "stale_observation" }
   | { status: "invalid", reason: string }
   | {
     status: "reconciled",
     deliveryId: string,
-    lifecycle: WorkflowRunLifecyclePayload["lifecycle"],
+    observation: IssueAlertWorkflowRunObservation["status"],
     update: IssueAlertWorkflowUpdate,
   };
+
+export const ISSUE_ALERT_WORKFLOW_RECONCILE_BATCH_SIZE = 200;
 
 function isObject(value: unknown): value is { readonly [key: string]: ErrorIngestScrubbedValue } {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -111,122 +111,101 @@ function validateDate(value: Date, field: string): void {
   if (!Number.isFinite(value.getTime())) throw new IssueAlertPersistenceInputError(`${field} must be a valid date`);
 }
 
-function defaultLifecycleError(kind: WorkflowRunLifecyclePayload["lifecycle"]): string {
-  switch (kind) {
-    case "failure": {
-      return "Workflow run failed before issue-alert email delivery completed";
+function observationFromRunState(state: WorkflowRunState, errorSummary: string | null): IssueAlertWorkflowRunObservation {
+  switch (state) {
+    case WorkflowRunState.QUEUED:
+    case WorkflowRunState.RUNNING:
+    case WorkflowRunState.SLEEPING: {
+      return { status: "in_flight" };
     }
-    case "retry": {
-      return "Workflow run retry scheduled for issue-alert email delivery";
+    case WorkflowRunState.COMPLETED: {
+      return { status: "completed" };
     }
-    case "cancel": {
-      return "Workflow run was canceled before issue-alert email delivery completed";
+    case WorkflowRunState.FAILED: {
+      return { status: "failed", error: errorSummary };
     }
-    case "success": {
-      return "";
+    case WorkflowRunState.CANCELED: {
+      return { status: "canceled" };
+    }
+    default: {
+      const exhaustive: never = state;
+      throw new HexclaveAssertionError(`Unhandled workflow run state: ${exhaustive}`);
     }
   }
 }
 
-function parseIssueAlertWorkflowLifecycleFromPayload(
-  type: string,
-  payload: unknown,
-): IssueAlertWorkflowLifecycleParseResult {
-  const parsed = parseWorkflowRunLifecycleEvent(type, payload);
-  if (parsed.status === "ignored") return { status: "ignored", reason: "not_internal_lifecycle" };
-  if (parsed.status === "invalid") return parsed;
-  if (parsed.payload.workflow_id !== ISSUE_ALERT_EMAIL_WORKFLOW_ID
-    || parsed.payload.trigger_type !== ISSUE_ALERT_WORKFLOW_EVENT_TYPE
-    || parsed.payload.trigger_event_id === null) {
-    return { status: "ignored", reason: "not_issue_alert_workflow" };
-  }
-  return { status: "ok", lifecycle: { type: parsed.type, payload: parsed.payload } };
-}
-
-export function parseIssueAlertWorkflowLifecycle(
-  type: string,
-  payload: unknown,
-): IssueAlertWorkflowLifecycleParseResult {
-  return parseIssueAlertWorkflowLifecycleFromPayload(type, payload);
-}
-
-function toLifecycleDate(milliseconds: number, field: string): Date {
-  const result = new Date(milliseconds);
-  validateDate(result, field);
-  return result;
-}
-
-function updateForLifecycle(payload: WorkflowRunLifecyclePayload): IssueAlertWorkflowUpdate {
-  const at = toLifecycleDate(payload.occurred_at_millis, "workflow lifecycle time");
-  switch (payload.lifecycle) {
-    case "success": {
+function updateForObservation(observation: IssueAlertWorkflowRunObservation, at: Date): IssueAlertWorkflowUpdate | null {
+  switch (observation.status) {
+    case "missing":
+    case "in_flight": {
+      return null;
+    }
+    case "completed": {
       return { kind: "delivered", at };
     }
-    case "failure": {
-      // Workflows emits a separate `retry` lifecycle event whenever another
-      // execution is scheduled. A terminal failure therefore has no retry
-      // timestamp and must enter the existing DROPPED state so it is visible
-      // as a dead letter instead of being mistaken for an endlessly retryable
-      // delivery.
-      if (payload.retry_at_millis === null) {
-        return {
-          kind: "dropped",
-          error: payload.error ?? defaultLifecycleError(payload.lifecycle),
-          at,
-        };
-      }
+    case "failed": {
       return {
-        kind: "failed",
-        error: payload.error ?? defaultLifecycleError(payload.lifecycle),
-        nextRetryAt: toLifecycleDate(payload.retry_at_millis, "workflow retry time"),
+        kind: "dropped",
+        error: observation.error ?? "Workflow run failed before issue-alert email delivery completed",
         at,
       };
     }
-    case "retry": {
+    case "canceled": {
       return {
-        kind: "failed",
-        error: payload.error ?? defaultLifecycleError(payload.lifecycle),
-        nextRetryAt: payload.retry_at_millis === null ? null : toLifecycleDate(payload.retry_at_millis, "workflow retry time"),
+        kind: "dropped",
+        error: "Workflow run was canceled before issue-alert email delivery completed",
         at,
       };
     }
-    case "cancel": {
-      return { kind: "dropped", error: defaultLifecycleError(payload.lifecycle), at };
+    default: {
+      const exhaustive: never = observation.status;
+      throw new HexclaveAssertionError(`Unhandled workflow run observation: ${exhaustive}`);
     }
   }
 }
 
-function isStaleLifecycle(
-  delivery: IssueAlertWorkflowDeliveryRef,
-  lifecycle: WorkflowRunLifecyclePayload["lifecycle"],
-  retryAt: Date | null,
-  occurredAt: Date,
-): boolean {
-  if (delivery.state === IssueAlertDeliveryState.DELIVERED) return true;
-  if (delivery.state === IssueAlertDeliveryState.DROPPED) return true;
-  // Lifecycle events arrive over an at-least-once channel with no ordering
-  // guarantee, so the reducer must be monotonic in two ways:
-  //  - An event that OCCURRED before the last applied attempt is history — a
-  //    delayed failure must not overwrite a newer retry's `nextRetryAt`.
-  //  - A failure/retry pair for the SAME attempt shares its retry timestamp;
-  //    once one of them recorded it, the other is a duplicate. Without this,
-  //    a retry processed before its matching failure would let the failure
-  //    apply again and increment `attemptCount` twice for one execution.
-  if ((lifecycle === "failure" || lifecycle === "retry")
-    && delivery.lastAttemptAt !== null
-    && occurredAt.getTime() < delivery.lastAttemptAt.getTime()) return true;
-  if (lifecycle === "failure" && delivery.state === IssueAlertDeliveryState.FAILED && delivery.nextRetryAt === null) return true;
-  if ((lifecycle === "failure" || lifecycle === "retry")
-    && delivery.state === IssueAlertDeliveryState.FAILED
-    && delivery.nextRetryAt?.getTime() === retryAt?.getTime()) return true;
-  return false;
+function isTerminalDelivery(state: IssueAlertDeliveryStateValue): boolean {
+  return state === IssueAlertDeliveryState.DELIVERED || state === IssueAlertDeliveryState.DROPPED;
 }
+
+function toDeliveryRef(row: {
+  id: string,
+  tenancyId: string,
+  projectId: string,
+  branchId: string,
+  workflowEventId: string | null,
+  state: IssueAlertDeliveryStateValue,
+  nextRetryAt: Date | null,
+  lastAttemptAt: Date | null,
+}): IssueAlertWorkflowDeliveryRef | null {
+  if (row.workflowEventId === null) return null;
+  return {
+    id: row.id,
+    scope: { tenancyId: row.tenancyId, projectId: row.projectId, branchId: row.branchId },
+    workflowEventId: row.workflowEventId,
+    state: row.state,
+    nextRetryAt: row.nextRetryAt,
+    lastAttemptAt: row.lastAttemptAt,
+  };
+}
+
+const defaultRunLookup: IssueAlertWorkflowRunLookup = {
+  async findRunByTriggerEventId(tenancyId, workflowEventId) {
+    // The engine assigns this id at run creation. Using it is a primary-key
+    // read. Listing by triggerEventId is not a public filter and has no index.
+    const runId = deterministicWorkflowUuid(`run:${tenancyId}:${workflowEventId}:${ISSUE_ALERT_EMAIL_WORKFLOW_ID}`);
+    const run = await globalPrismaClient.workflowRun.findUnique({
+      where: { tenancyId_id: { tenancyId, id: runId } },
+      select: { state: true, errorSummary: true },
+    });
+    if (run === null) return { status: "missing" };
+    return observationFromRunState(run.state, run.errorSummary);
+  },
+};
 
 const defaultStatusStore: IssueAlertWorkflowStatusStore = {
   async findDeliveryByWorkflowEventId(tenancyId, workflowEventId) {
     const row = await globalPrismaClient.issueAlertDelivery.findFirst({
-      // This read controls an immediate durable state transition. It must use
-      // the primary so a fresh lifecycle event cannot race a lagging replica.
       where: { tenancyId, workflowEventId },
       select: {
         id: true,
@@ -239,15 +218,34 @@ const defaultStatusStore: IssueAlertWorkflowStatusStore = {
         lastAttemptAt: true,
       },
     });
-    if (row === null || row.workflowEventId === null) return null;
-    return {
-      id: row.id,
-      scope: { tenancyId: row.tenancyId, projectId: row.projectId, branchId: row.branchId },
-      workflowEventId: row.workflowEventId,
-      state: row.state,
-      nextRetryAt: row.nextRetryAt,
-      lastAttemptAt: row.lastAttemptAt,
-    };
+    if (row === null) return null;
+    return toDeliveryRef(row);
+  },
+  async listEnqueuedDeliveries(limit) {
+    const rows = await globalPrismaClient.issueAlertDelivery.findMany({
+      where: {
+        state: IssueAlertDeliveryState.ENQUEUED,
+        workflowEventId: { not: null },
+      },
+      orderBy: { enqueuedAt: "asc" },
+      take: limit,
+      select: {
+        id: true,
+        tenancyId: true,
+        projectId: true,
+        branchId: true,
+        workflowEventId: true,
+        state: true,
+        nextRetryAt: true,
+        lastAttemptAt: true,
+      },
+    });
+    const deliveries: IssueAlertWorkflowDeliveryRef[] = [];
+    for (const row of rows) {
+      const delivery = toDeliveryRef(row);
+      if (delivery !== null) deliveries.push(delivery);
+    }
+    return deliveries;
   },
   async applyWorkflowUpdate(scope, deliveryId, expectedWorkflowEventId, expectedDelivery, update) {
     const result = await issueAlertPersistenceService.recordWorkflowUpdateIfCurrent(
@@ -261,48 +259,75 @@ const defaultStatusStore: IssueAlertWorkflowStatusStore = {
   },
 };
 
-export async function reconcileIssueAlertWorkflowLifecycle(options: {
-  tenancyId: string,
-  type: string,
-  payload: unknown,
-  store?: IssueAlertWorkflowStatusStore,
+async function applyRunObservation(options: {
+  delivery: IssueAlertWorkflowDeliveryRef,
+  observation: IssueAlertWorkflowRunObservation,
+  store: IssueAlertWorkflowStatusStore,
+  at: Date,
 }): Promise<IssueAlertWorkflowStatusResult> {
-  const parsed = parseIssueAlertWorkflowLifecycleFromPayload(options.type, options.payload);
-  if (parsed.status !== "ok") return parsed;
-  if (!UUID_PATTERN.test(options.tenancyId)) return { status: "invalid", reason: "workflow lifecycle tenancy id is invalid" };
-  const lifecycle = parsed.lifecycle;
-  const triggerEventId = lifecycle.payload.trigger_event_id;
-  if (triggerEventId === null) return { status: "ignored", reason: "not_issue_alert_workflow" };
-  const store = options.store ?? defaultStatusStore;
-  const delivery = await store.findDeliveryByWorkflowEventId(options.tenancyId, triggerEventId);
-  if (delivery === null) return { status: "ignored", reason: "delivery_not_found" };
-  const update = updateForLifecycle(lifecycle.payload);
-  const retryAt = update.kind === "failed" ? update.nextRetryAt : null;
-  // Recomputed from the payload rather than read off `update.at`, because the
-  // update union types `at` as optional even though `updateForLifecycle`
-  // always sets it.
-  const lifecycleOccurredAt = toLifecycleDate(lifecycle.payload.occurred_at_millis, "workflow lifecycle time");
-  if (isStaleLifecycle(delivery, lifecycle.payload.lifecycle, retryAt, lifecycleOccurredAt)) {
-    return { status: "ignored", reason: "stale_lifecycle" };
+  if (isTerminalDelivery(options.delivery.state)) {
+    return { status: "ignored", reason: "stale_observation" };
   }
-  const applied = await store.applyWorkflowUpdate(
-    delivery.scope,
-    delivery.id,
-    triggerEventId,
+  const update = updateForObservation(options.observation, options.at);
+  if (update === null) return { status: "ignored", reason: "run_not_ready" };
+  const applied = await options.store.applyWorkflowUpdate(
+    options.delivery.scope,
+    options.delivery.id,
+    options.delivery.workflowEventId,
     {
-      state: delivery.state,
-      nextRetryAt: delivery.nextRetryAt,
-      lastAttemptAt: delivery.lastAttemptAt,
+      state: options.delivery.state,
+      nextRetryAt: options.delivery.nextRetryAt,
+      lastAttemptAt: options.delivery.lastAttemptAt,
     },
     update,
   );
-  if (!applied) return { status: "ignored", reason: "stale_lifecycle" };
+  if (!applied) return { status: "ignored", reason: "stale_observation" };
   return {
     status: "reconciled",
-    deliveryId: delivery.id,
-    lifecycle: lifecycle.payload.lifecycle,
+    deliveryId: options.delivery.id,
+    observation: options.observation.status,
     update,
   };
+}
+
+export async function reconcileIssueAlertWorkflowRun(options: {
+  tenancyId: string,
+  workflowEventId: string,
+  store?: IssueAlertWorkflowStatusStore,
+  runs?: IssueAlertWorkflowRunLookup,
+  at?: Date,
+}): Promise<IssueAlertWorkflowStatusResult> {
+  if (!UUID_PATTERN.test(options.tenancyId)) return { status: "invalid", reason: "workflow run tenancy id is invalid" };
+  if (!UUID_PATTERN.test(options.workflowEventId)) return { status: "invalid", reason: "workflow event id is invalid" };
+  const store = options.store ?? defaultStatusStore;
+  const runs = options.runs ?? defaultRunLookup;
+  const at = options.at ?? new Date();
+  validateDate(at, "issue alert workflow reconcile time");
+  const delivery = await store.findDeliveryByWorkflowEventId(options.tenancyId, options.workflowEventId);
+  if (delivery === null) return { status: "ignored", reason: "delivery_not_found" };
+  const observation = await runs.findRunByTriggerEventId(options.tenancyId, options.workflowEventId);
+  return await applyRunObservation({ delivery, observation, store, at });
+}
+
+export async function reconcilePendingIssueAlertWorkflowDeliveries(options?: {
+  store?: IssueAlertWorkflowStatusStore,
+  runs?: IssueAlertWorkflowRunLookup,
+  limit?: number,
+  at?: Date,
+}): Promise<{ scanned: number, reconciled: number }> {
+  const store = options?.store ?? defaultStatusStore;
+  const runs = options?.runs ?? defaultRunLookup;
+  const at = options?.at ?? new Date();
+  validateDate(at, "issue alert workflow reconcile time");
+  const limit = options?.limit ?? ISSUE_ALERT_WORKFLOW_RECONCILE_BATCH_SIZE;
+  const deliveries = await store.listEnqueuedDeliveries(limit);
+  let reconciled = 0;
+  for (const delivery of deliveries) {
+    const observation = await runs.findRunByTriggerEventId(delivery.scope.tenancyId, delivery.workflowEventId);
+    const result = await applyRunObservation({ delivery, observation, store, at });
+    if (result.status === "reconciled") reconciled += 1;
+  }
+  return { scanned: deliveries.length, reconciled };
 }
 
 export type IssueAlertWorkflowReplayPlan = {

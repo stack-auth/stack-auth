@@ -1,5 +1,4 @@
 import type { Tenancy } from "@/lib/tenancies";
-import type { WorkflowSourceSyncOptions } from "@/lib/workflows/api";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import type { WorkflowSyncResultJson } from "@hexclave/shared/dist/interface/workflows";
 import { describe, expect, it } from "vitest";
@@ -7,6 +6,7 @@ import {
   ensureIssueAlertEmailWorkflow,
   type IssueAlertWorkflowLatestSource,
   type IssueAlertWorkflowRegistrationDependencies,
+  type IssueAlertWorkflowSyncOptions,
 } from "./registration";
 import {
   ISSUE_ALERT_EMAIL_WORKFLOW_ID,
@@ -38,7 +38,7 @@ function dependencies(options: {
 describe("ensureIssueAlertEmailWorkflow", () => {
   it("creates the built-in source through the existing workflow sync API", async () => {
     let current: IssueAlertWorkflowLatestSource | null = null;
-    const calls: WorkflowSourceSyncOptions[] = [];
+    const calls: IssueAlertWorkflowSyncOptions[] = [];
     const result = await ensureIssueAlertEmailWorkflow(tenancy, dependencies({
       readLatest: async () => current,
       sync: async (_, options) => {
@@ -63,7 +63,6 @@ describe("ensureIssueAlertEmailWorkflow", () => {
       source: ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE,
       displayName: "Issue alert email",
       mustBeNew: true,
-      expectedLatestSource: null,
     });
   });
 
@@ -75,7 +74,6 @@ describe("ensureIssueAlertEmailWorkflow", () => {
       sync: async (_, options) => {
         syncCalls++;
         expect(options.mustBeNew).toBe(false);
-        expect(options.expectedLatestSource).toBe(ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE);
         return syncResult(false, current.version);
       },
     }));
@@ -106,7 +104,7 @@ describe("ensureIssueAlertEmailWorkflow", () => {
   it("upgrades an older built-in source that still passes the email-boundary validator", async () => {
     const previousSource = 'customEvent("hexclave.issue-alert"); hexclaveApp.sendEmail({ userIds: event.data.action.user_ids });';
     let current: IssueAlertWorkflowLatestSource = { version: 3, source: previousSource };
-    const calls: WorkflowSourceSyncOptions[] = [];
+    const calls: IssueAlertWorkflowSyncOptions[] = [];
     const result = await ensureIssueAlertEmailWorkflow(tenancy, dependencies({
       readLatest: async () => current,
       sync: async (_, options) => {
@@ -123,7 +121,6 @@ describe("ensureIssueAlertEmailWorkflow", () => {
       workflowId: ISSUE_ALERT_EMAIL_WORKFLOW_ID,
       source: ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE,
       mustBeNew: false,
-      expectedLatestSource: previousSource,
     });
   });
 
@@ -143,7 +140,6 @@ describe("ensureIssueAlertEmailWorkflow", () => {
           throw new StatusError(StatusError.Conflict, "Workflow was created concurrently");
         }
         expect(options.mustBeNew).toBe(false);
-        expect(options.expectedLatestSource).toBe(ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE);
         return syncResult(false, 1);
       },
     });

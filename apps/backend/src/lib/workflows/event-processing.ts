@@ -5,12 +5,6 @@ export type WorkflowEventForMatching = {
   payload: unknown,
 };
 
-export const WORKFLOW_EVENT_MAX_PROCESSING_ATTEMPTS = 10;
-
-export function workflowEventShouldDeadLetter(nextAttempt: number): boolean {
-  return nextAttempt >= WORKFLOW_EVENT_MAX_PROCESSING_ATTEMPTS;
-}
-
 export function workflowDefinitionMatchesEvent(
   workflowId: string,
   manifest: WorkflowManifestJson,

@@ -8,7 +8,7 @@ import { ensureIssueAlertEmailWorkflow } from "./registration";
 import { deleteWorkflow } from "../api";
 import { ISSUE_ALERT_EMAIL_WORKFLOW_ID, ISSUE_ALERT_WORKFLOW_EVENT_TYPE, enqueueIssueAlertWorkflowEventWithWriter } from "./contract";
 import { runWorkflowEngineStep } from "../engine";
-import { deterministicWorkflowUuid, enqueueWorkflowEvent, buildWorkflowRunLifecycleEvent } from "../events";
+import { deterministicWorkflowUuid, enqueueWorkflowEvent } from "../events";
 import { evaluateIssueAlertRule } from "@/lib/issues/issue-alerts/evaluator";
 import {
   claimIssueAlertDeliveryInTransaction,
@@ -17,7 +17,7 @@ import {
   type IssueAlertRuleRecord,
 } from "@/lib/issues/issue-alerts/persistence";
 import {
-  reconcileIssueAlertWorkflowLifecycle,
+  reconcileIssueAlertWorkflowRun,
   replayIssueAlertWorkflowDelivery,
 } from "@/lib/issues/issue-alerts/workflow-status";
 import type {
@@ -42,13 +42,6 @@ const eventIds: string[] = [];
 const runIds: string[] = [];
 const deliveryIds: string[] = [];
 const subjects: string[] = [];
-
-function lifecycleEventBelongsToRun(payload: unknown, runId: string): boolean {
-  return payload !== null
-    && typeof payload === "object"
-    && !Array.isArray(payload)
-    && Reflect.get(payload, "run_id") === runId;
-}
 
 function getScope(): IssueAlertRuleScope {
   if (scope === undefined) throw new Error("Issue alert delivery proof scope was not initialized");
@@ -173,11 +166,14 @@ async function createEnqueuedDelivery(match: IssueAlertMatch, scheduledAt?: Date
   return result;
 }
 
-async function tickUntil(check: () => Promise<boolean>): Promise<void> {
+async function tickUntil(check: () => Promise<boolean>, workflowEventId?: string): Promise<void> {
   if (await check()) return;
   const deadline = performance.now() + TEST_TIMEOUT_MS;
   while (performance.now() < deadline) {
     await runWorkflowEngineStep({ deadlineMs: Date.now() + 5_000 });
+    if (workflowEventId !== undefined) {
+      await reconcileIssueAlertWorkflowRun({ tenancyId: getTenancy().id, workflowEventId });
+    }
     if (await check()) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -230,36 +226,6 @@ async function terminalizeWorkflowRun(run: { runId: string }): Promise<void> {
     });
     throw new Error(`Expected proof run ${run.runId} to become terminal; existing=${JSON.stringify(existing)}`);
   }
-}
-
-async function lifecycleEvent(options: {
-  eventId: string,
-  runId: string,
-  kind: "failure" | "retry",
-  retryAt?: Date | null,
-  occurredAt: Date,
-  eventKey: string,
-}) {
-  const result = buildWorkflowRunLifecycleEvent({
-    tenancy: getTenancy(),
-    workflowId: ISSUE_ALERT_EMAIL_WORKFLOW_ID,
-    runId: options.runId,
-    workflowVersion: 1,
-    runKey: getScope().projectId,
-    triggerEventId: options.eventId,
-    triggerType: ISSUE_ALERT_WORKFLOW_EVENT_TYPE,
-    transition: {
-      kind: options.kind,
-      attempt: 1,
-      retryEpoch: 0,
-      retryAt: options.retryAt,
-      error: `proof ${options.eventKey}`,
-      eventKey: options.eventKey,
-    },
-    occurredAt: options.occurredAt,
-  });
-  if (result.status !== "ok") throw new Error(`Could not build ${options.kind} lifecycle event: ${result.reason}`);
-  return result;
 }
 
 async function outboxRows(subject: string) {
@@ -336,16 +302,6 @@ describe.sequential("issue alert workflow delivery proof", () => {
       if (runIds.length > 0) {
         await globalPrismaClient.workflowRun.deleteMany({ where: { tenancyId: tenancy.id, id: { in: runIds } } });
       }
-      const lifecycleEvents = await globalPrismaClient.workflowEvent.findMany({
-        where: { tenancyId: tenancy.id, type: { startsWith: "workflow.internal.run." } },
-        select: { id: true, payload: true },
-      });
-      const lifecycleEventIds = lifecycleEvents
-        .filter((event) => runIds.some((runId) => lifecycleEventBelongsToRun(event.payload, runId)))
-        .map((event) => event.id);
-      if (lifecycleEventIds.length > 0) {
-        await globalPrismaClient.workflowEvent.deleteMany({ where: { tenancyId: tenancy.id, id: { in: lifecycleEventIds } } });
-      }
       if (deliveryIds.length > 0) {
         await globalPrismaClient.issueAlertDelivery.deleteMany({ where: { tenancyId: tenancy.id, id: { in: deliveryIds } } });
       }
@@ -384,7 +340,7 @@ describe.sequential("issue alert workflow delivery proof", () => {
         && delivery.outcome === IssueAlertDeliveryOutcome.WORKFLOW_DELIVERED
         && run?.state === WorkflowRunState.COMPLETED
         && rows.length === recipientIds.length;
-    });
+    }, created.eventId);
 
     const rows = await outboxRows(subjects[0]);
     expect(rows).toHaveLength(recipientIds.length);
@@ -398,64 +354,27 @@ describe.sequential("issue alert workflow delivery proof", () => {
     });
   }, TEST_TIMEOUT_MS);
 
-  it("records retryable failure, terminal drop, stale retry, and durable replay", async () => {
+  it("drops a terminal workflow failure and still accepts a durable replay", async () => {
     const created = await createEnqueuedDelivery(makeMatch("lifecycle"), new Date("2099-01-01T00:00:00.000Z"));
     await materializeWorkflowRun(created);
-    const retryAt = new Date("2026-08-06T12:01:00.000Z");
-    const failed = await lifecycleEvent({
-      eventId: created.eventId,
-      runId: created.runId,
-      kind: "failure",
-      retryAt,
-      occurredAt: new Date("2026-08-06T12:00:10.000Z"),
-      eventKey: "retryable",
-    });
-    expect(await reconcileIssueAlertWorkflowLifecycle({ tenancyId: getTenancy().id, type: failed.type, payload: failed.payload })).toMatchObject({
-      status: "reconciled",
-      lifecycle: "failure",
-      update: { kind: "failed", nextRetryAt: retryAt },
-    });
-    await expect(getService().inspectDelivery(getScope(), created.deliveryId)).resolves.toMatchObject({
-      state: IssueAlertDeliveryState.FAILED,
-      nextRetryAt: retryAt,
-      attemptCount: 1,
-    });
+    expect(await reconcileIssueAlertWorkflowRun({
+      tenancyId: getTenancy().id,
+      workflowEventId: created.eventId,
+    })).toEqual({ status: "ignored", reason: "run_not_ready" });
 
-    const terminal = await lifecycleEvent({
-      eventId: created.eventId,
-      runId: created.runId,
-      kind: "failure",
-      retryAt: null,
-      occurredAt: new Date("2026-08-06T12:00:20.000Z"),
-      eventKey: "terminal",
-    });
-    expect(await reconcileIssueAlertWorkflowLifecycle({ tenancyId: getTenancy().id, type: terminal.type, payload: terminal.payload })).toMatchObject({
+    await terminalizeWorkflowRun(created);
+    expect(await reconcileIssueAlertWorkflowRun({
+      tenancyId: getTenancy().id,
+      workflowEventId: created.eventId,
+    })).toMatchObject({
       status: "reconciled",
-      lifecycle: "failure",
+      observation: "failed",
       update: { kind: "dropped" },
     });
     await expect(getService().inspectDelivery(getScope(), created.deliveryId)).resolves.toMatchObject({
       state: IssueAlertDeliveryState.DROPPED,
       outcome: IssueAlertDeliveryOutcome.WORKFLOW_DROPPED,
       nextRetryAt: null,
-    });
-    // A replay is only a new active run after the failed original is terminal.
-    // The lifecycle reducer is intentionally tested independently above, so
-    // make that durable run precondition explicit instead of waiting until
-    // the Workflows onConflict=skip policy suppresses the replay forever.
-    await terminalizeWorkflowRun(created);
-
-    const staleRetry = await lifecycleEvent({
-      eventId: created.eventId,
-      runId: created.runId,
-      kind: "retry",
-      retryAt,
-      occurredAt: new Date("2026-08-06T12:00:30.000Z"),
-      eventKey: "stale-retry",
-    });
-    expect(await reconcileIssueAlertWorkflowLifecycle({ tenancyId: getTenancy().id, type: staleRetry.type, payload: staleRetry.payload })).toEqual({
-      status: "ignored",
-      reason: "stale_lifecycle",
     });
 
     const replayed = await replayIssueAlertWorkflowDelivery(getScope(), created.deliveryId, new Date("2099-01-01T00:00:40.000Z"));
@@ -471,7 +390,7 @@ describe.sequential("issue alert workflow delivery proof", () => {
       const delivery = await getService().inspectDelivery(getScope(), created.deliveryId);
       const rows = await outboxRows(subjects[1]);
       return delivery?.state === IssueAlertDeliveryState.DELIVERED && rows.length === recipientIds.length;
-    });
+    }, replayed.workflowEventId);
 
     const rows = await outboxRows(subjects[1]);
     expect(rows).toHaveLength(recipientIds.length);

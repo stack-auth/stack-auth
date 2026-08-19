@@ -3445,8 +3445,6 @@ model WorkflowEvent {
   // oldest outbox batch and starve unrelated tenants forever.
   processingAttempts Int      @default(0)
   retryAt            DateTime @default(now())
-  deadLetteredAt     DateTime?
-  lastProcessingError String? @db.VarChar(2048)
 
   createdAt DateTime @default(now())
 

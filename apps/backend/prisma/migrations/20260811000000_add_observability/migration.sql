@@ -658,13 +658,6 @@ CREATE UNIQUE INDEX "ErrorIngestClientReport_scope_idempotency_key"
 CREATE INDEX "ErrorIngestClientReport_scope_reportedAt_idx"
   ON "ErrorIngestClientReport" ("tenancyId", "projectId", "branchId", "reportedAt" DESC, "id" DESC);
 
--- Keep poison workflow events visible without retrying them forever.
--- WorkflowEvent predates this release, so unlike the issue tables (which
--- create these dead-letter-adjacent fields directly above) it needs an ALTER.
-ALTER TABLE "WorkflowEvent"
-  ADD COLUMN IF NOT EXISTS "deadLetteredAt" TIMESTAMP(3),
-  ADD COLUMN IF NOT EXISTS "lastProcessingError" VARCHAR(2048);
-
 ALTER TABLE "SessionReplaySegment" ADD CONSTRAINT "SessionReplaySegment_tenancyId_sessionReplayId_fkey"
   FOREIGN KEY ("tenancyId", "sessionReplayId") REFERENCES "SessionReplay"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "SessionReplaySegment" ADD CONSTRAINT "SessionReplaySegment_tenancyId_fkey"

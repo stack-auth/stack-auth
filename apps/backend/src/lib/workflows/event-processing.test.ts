@@ -1,6 +1,6 @@
 import type { WorkflowManifestJson } from "@hexclave/shared/dist/interface/workflows";
 import { describe, expect, it } from "vitest";
-import { workflowDefinitionMatchesEvent, workflowEventRetryDelayMs, workflowEventShouldDeadLetter } from "./event-processing";
+import { workflowDefinitionMatchesEvent, workflowEventRetryDelayMs } from "./event-processing";
 
 describe("workflowDefinitionMatchesEvent", () => {
   it("matches schedule events only to the exact workflow and trigger revision", () => {
@@ -52,12 +52,5 @@ describe("workflowEventRetryDelayMs", () => {
       3_600_000,
       3_600_000,
     ]);
-  });
-});
-
-describe("workflowEventShouldDeadLetter", () => {
-  it("allows bounded retries and dead-letters the next attempt after the limit", () => {
-    expect(workflowEventShouldDeadLetter(9)).toBe(false);
-    expect(workflowEventShouldDeadLetter(10)).toBe(true);
   });
 });
