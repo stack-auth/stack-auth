@@ -1,6 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { GrowthPhaseStatus, GrowthRunStatus, WorkflowRunState } from "@/generated/prisma/enums";
 import type { Tenancy } from "@/lib/tenancies";
+import { cancelWorkflowRuns } from "@/lib/workflows/engine";
 import { enqueueWorkflowEvent } from "@/lib/workflows/events";
 import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -354,6 +355,62 @@ export async function completeGrowthOnboardingAndStartRun(options: {
   return await createGrowthAnalysisRun({ tenancyId: options.tenancy.id, projectId: options.tenancy.project.id, branchId: options.tenancy.branchId, trigger: "initial" });
 }
 
+export async function restartGrowthOnboarding(options: { tenancy: Tenancy }): Promise<{ cancelledRunIds: string[] }> {
+  const projectId = options.tenancy.project.id;
+  const branchId = options.tenancy.branchId;
+  const onboarding = await globalPrismaClient.growthOnboarding.findUnique({
+    where: { projectId_branchId: { projectId, branchId } },
+    select: { id: true },
+  });
+  if (onboarding == null) {
+    throw new StatusError(400, "Growth onboarding has not been completed for this project.");
+  }
+
+  const activeRuns = await globalPrismaClient.growthAnalysisRun.findMany({
+    where: {
+      projectId,
+      branchId,
+      status: { in: [GrowthRunStatus.PENDING, GrowthRunStatus.RUNNING, GrowthRunStatus.AWAITING_INTERVIEW, GrowthRunStatus.COMPOSING_REPORT] },
+    },
+    select: { id: true },
+  });
+  const activeRunIds = activeRuns.map((run) => run.id);
+
+  const cancelledRunIds = await retryTransaction(globalPrismaClient, async (tx) => {
+    const cancelled: string[] = [];
+    for (const runId of activeRunIds) {
+      for (const type of [GROWTH_EVENT_TYPES.analysisRunActivated, GROWTH_EVENT_TYPES.interviewFinished]) {
+        await tx.workflowEvent.updateMany({
+          where: {
+            tenancyId: options.tenancy.id,
+            type,
+            processedAt: null,
+            payload: { path: ["growth_run_id"], equals: runId },
+          },
+          data: { processedAt: new Date() },
+        });
+      }
+      const result = await tx.growthAnalysisRun.updateMany({
+        where: {
+          id: runId,
+          status: { in: [GrowthRunStatus.PENDING, GrowthRunStatus.RUNNING, GrowthRunStatus.AWAITING_INTERVIEW, GrowthRunStatus.COMPOSING_REPORT] },
+        },
+        data: { status: GrowthRunStatus.CANCELLED, completedAt: new Date() },
+      });
+      if (result.count === 1) cancelled.push(runId);
+    }
+    await tx.growthOnboarding.deleteMany({ where: { projectId, branchId } });
+    return cancelled;
+  });
+  for (const runId of cancelledRunIds) {
+    for (const runKey of getGrowthAnalysisLegRunKeys(runId)) {
+      await cancelWorkflowRuns(options.tenancy, { workflowId: GROWTH_ANALYSIS_WORKFLOW_ID, runKey });
+    }
+  }
+
+  return { cancelledRunIds };
+}
+
 export async function startGrowthManualRun(options: { tenancy: Tenancy }): Promise<{ runId: string }> {
   const onboarding = await globalPrismaClient.growthOnboarding.findUnique({
     where: { projectId_branchId: { projectId: options.tenancy.project.id, branchId: options.tenancy.branchId } },
@@ -376,8 +433,6 @@ export async function retryGrowthAnalysis(options: { tenancy: Tenancy }): Promis
   }
   try {
     await retryTransaction(globalPrismaClient, async (tx) => {
-      // Claim the retry before replacing any phases. Two concurrent retry requests may both have
-      // observed FAILED above, but only one may revive the run and enqueue its activation event.
       const revived = await tx.growthAnalysisRun.updateMany({
         where: { id: latestRun.id, status: GrowthRunStatus.FAILED },
         data: { status: GrowthRunStatus.PENDING, errorMessage: null },

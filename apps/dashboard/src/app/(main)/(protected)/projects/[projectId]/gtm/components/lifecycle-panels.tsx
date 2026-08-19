@@ -4,13 +4,14 @@ import { DesignAlert, DesignBadge, DesignButton, DesignCard, DesignInput, Design
 import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
+import { ActionDialog } from "@/components/ui/action-dialog";
 import { TooltipPortal } from "@radix-ui/react-tooltip";
 import { useGrowthStatus } from "@/lib/growth/growth-data";
 import { formatGrowthBriefDateHeadline } from "@/lib/growth/growth-format";
-import { completeGrowthOnboarding, resolveGrowthIntegrations, retryGrowthAnalysis } from "@/lib/growth/growth-api";
+import { completeGrowthOnboarding, resolveGrowthIntegrations, restartGrowthOnboarding, retryGrowthAnalysis } from "@/lib/growth/growth-api";
 import { getGrowthComputeMetricsTickerFrame, GROWTH_COMPUTE_METRICS_TICK_MILLIS } from "@/lib/growth/growth-compute-metrics-ticker";
 import { getGrowthTimelineStepStates, type GrowthTimelineStepState } from "@/lib/growth/growth-timeline";
-import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import type { GrowthAnalysisStep, GrowthComputeMetrics, GrowthIntegrations, GrowthStatus } from "@/lib/growth/growth-types";
 import {
   ArrowRightIcon,
@@ -168,6 +169,43 @@ function OnboardingForm() {
     </DesignCard>
   );
 }
+function RestartOnboardingButton() {
+  const app = useAdminApp();
+  const { demo, refresh } = useGrowthStatus();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
+
+  if (demo) return null;
+
+  return (
+    <>
+      <DesignButton variant="ghost" size="sm" onClick={() => setConfirmOpen(true)}>Restart onboarding</DesignButton>
+      {restartError != null && <DesignAlert variant="error">Could not restart onboarding: {restartError}</DesignAlert>}
+      <ActionDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Restart onboarding?"
+        description="You'll be asked for your website and description again, and any analysis still running will stop. Your existing findings, reports, and action items are kept."
+        danger
+        okButton={{
+          label: "Restart onboarding",
+          onClick: async () => {
+            setRestartError(null);
+            try {
+              await restartGrowthOnboarding(app);
+            } catch (error) {
+              captureError("growth-onboarding-restart", error);
+              setRestartError(error instanceof Error ? error.message : String(error));
+              return;
+            }
+            await refresh();
+          },
+        }}
+        cancelButton
+      />
+    </>
+  );
+}
 
 function SetUpStep(props: { status: GrowthStatus, state: GrowthTimelineStepState }) {
   if (props.state === "done") {
@@ -176,7 +214,9 @@ function SetUpStep(props: { status: GrowthStatus, state: GrowthTimelineStepState
         state="done"
         title="Set up"
         summary={props.status.onboarding.websiteUrl ?? undefined}
-      />
+      >
+        <RestartOnboardingButton />
+      </GrowthTimelineStep>
     );
   }
   // "Set up" is the first step and is never phase-backed, so the derivation can only ever give it

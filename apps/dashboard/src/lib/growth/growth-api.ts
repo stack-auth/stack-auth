@@ -151,6 +151,8 @@ const runSchema = z.object({
 
 const runIdResponseSchema = z.object({ run_id: z.string() });
 
+const restartOnboardingResponseSchema = z.object({ cancelled_run_ids: z.array(z.string()) });
+
 // The HTTP layer (GrowthApiError, the 4xx conversion, and the content-type quirk) lives in
 // growth-api-client.ts so the Games section's fetchers can share it. Re-exported here because this
 // module has always been the public entry point for them.
@@ -247,6 +249,11 @@ export async function completeGrowthOnboarding(app: object, input: { websiteUrl:
     body: JSON.stringify({ website_url: input.websiteUrl, company_summary: input.companySummary }),
   }));
   return { runId: response.run_id };
+}
+
+export async function restartGrowthOnboarding(app: object): Promise<{ cancelledRunIds: string[] }> {
+  const response = restartOnboardingResponseSchema.parse(await requestJson(app, "/onboarding/restart", { method: "POST" }));
+  return { cancelledRunIds: response.cancelled_run_ids };
 }
 
 export async function startGrowthRun(app: object): Promise<{ runId: string }> {
