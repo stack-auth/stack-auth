@@ -23,6 +23,23 @@ async function findActiveGrowthRun(tenancy: Tenancy) {
   });
 }
 
+export async function hasPendingGrowthBoundaryEvent(options: {
+  tenancyId: string,
+  growthRunId: string,
+  type: typeof GROWTH_EVENT_TYPES.analysisRunActivated | typeof GROWTH_EVENT_TYPES.interviewFinished,
+}): Promise<boolean> {
+  const event = await globalPrismaClient.workflowEvent.findFirst({
+    where: {
+      tenancyId: options.tenancyId,
+      type: options.type,
+      processedAt: null,
+      payload: { path: ["growth_run_id"], equals: options.growthRunId },
+    },
+    select: { id: true },
+  });
+  return event != null;
+}
+
 /** Advances the selected project's active Growth run without touching the shared workflow engine. */
 export async function runGrowthProjectAnalysisStep(tenancy: Tenancy): Promise<{ didWork: boolean }> {
   const run = await findActiveGrowthRun(tenancy);
@@ -67,9 +84,18 @@ export async function repairGrowthProject(tenancy: Tenancy): Promise<{ didWork: 
     return { didWork: tick.didWork || didWork };
   }
 
+  const eventType = leg === "activation" ? GROWTH_EVENT_TYPES.analysisRunActivated : GROWTH_EVENT_TYPES.interviewFinished;
+  // A boundary event is durable before its WorkflowRun is materialized. Treat that pending event
+  // as an active leg: enqueueing a second event here can leave it behind the original until after
+  // the first leg completes, at which point runKey's active-only conflict check no longer dedupes it.
+  if (await hasPendingGrowthBoundaryEvent({ tenancyId: tenancy.id, growthRunId: run.id, type: eventType })) {
+    const tick = await runGrowthProjectAnalysisStep(tenancy);
+    return { didWork: tick.didWork || didWork };
+  }
+
   const enqueued = await enqueueWorkflowEvent(globalPrismaClient, {
     tenancy,
-    type: leg === "activation" ? GROWTH_EVENT_TYPES.analysisRunActivated : GROWTH_EVENT_TYPES.interviewFinished,
+    type: eventType,
     payload: leg === "activation" ? { growth_run_id: run.id, trigger: run.trigger } : { growth_run_id: run.id },
   });
   const tick = await runGrowthProjectAnalysisStep(tenancy);
