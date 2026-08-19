@@ -690,12 +690,14 @@ class RuntimeCache {
   }
 
   evict(entry) {
-    if (this.entries.get(entry.hash) !== entry) return;
-    // Remove it before disposal so the next acquire can create a replacement;
-    // release must not recycle an entry already known to be unusable.
-    this.entries.delete(entry.hash);
+    // Mark before the map check: an entry that was already replaced in the
+    // cache still must not be recycled once we know its runtime is unusable.
     entry.evicted = true;
     entry.retiring = true;
+    // Remove it before disposal so the next acquire can create a replacement.
+    if (this.entries.get(entry.hash) === entry) {
+      this.entries.delete(entry.hash);
+    }
     this.disposeEntry(entry);
   }
 
