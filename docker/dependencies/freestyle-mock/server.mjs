@@ -209,7 +209,6 @@ function isDeadRuntimeError(error) {
   }
   const message = formatError(error).toLowerCase();
   return (
-    message.includes("timed out waiting for sidecar protocol frame") ||
     message.includes("resident runner exited before completing request") ||
     message.includes("resident runner is not running") ||
     message.includes("sidecar protocol stream ended") ||
@@ -1324,6 +1323,7 @@ class JobQueue {
   async execute(job) {
     let entry;
     let dependency;
+    let executionError = null;
     try {
       dependency = await this.dependencyCache.get(
         job.config.nodeModules,
@@ -1341,15 +1341,17 @@ class JobQueue {
       job.entry = entry;
       if (job.timer) clearTimeout(job.timer);
       this.armExecutionTimeout(job);
-      const result = await executeScript(entry.runtime, job);
-      if (job.cleanupError) this.runtimeCache.evict(entry);
-      return result;
+      return await executeScript(entry.runtime, job);
     } catch (error) {
-      if (entry && isDeadRuntimeError(error)) {
-        this.runtimeCache.evict(entry);
-      }
+      executionError = error;
       throw error;
     } finally {
+      if (
+        entry &&
+        (job.cleanupError || isDeadRuntimeError(executionError))
+      ) {
+        this.runtimeCache.evict(entry);
+      }
       if (entry) this.runtimeCache.release(entry);
       dependency?.release();
     }
