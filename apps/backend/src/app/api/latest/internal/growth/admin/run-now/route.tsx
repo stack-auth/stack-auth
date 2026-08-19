@@ -2,7 +2,7 @@ import { repairGrowthProject, runGrowthProjectAnalysisStep } from "@/lib/growth/
 import { requireGrowthAdminTenancy } from "@/lib/growth/admin";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
