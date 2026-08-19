@@ -241,6 +241,9 @@ services:
       context: ./freestyle-mock
       dockerfile: Dockerfile
     image: freestyle-mock
+    # The mock is stateless apart from its module-cache volume, so restart it
+    # automatically if a process failure occurs during CI.
+    restart: unless-stopped
     ports:
       - "${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}22:8080"       # POST http://localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}19/execute/v1/script
     extra_hosts:
