@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { growthRequestHeaders, parseGrowthAdsBody } from "./growth-api";
+import { growthRequestHeaders, mapGrowthReport, parseGrowthAdsBody, reportSchema } from "./growth-api";
 
 // Regression coverage for a bug that silently broke every bodyless growth mutation — retry, skip,
 // retake, activate, dismiss, mark-brief-read. Declaring `content-type: application/json` with no
@@ -132,5 +132,72 @@ describe("parseGrowthAdsBody", () => {
     expect(parseGrowthAdsBody(adsWire({
       execution: { mode: "sideways", attempt: null, status: null, dispatched_at_millis: null, lease_expires_at_millis: null, agent_reported_ids: {} },
     })).execution.mode).toBeNull();
+  });
+});
+
+describe("GrowthReport wire mapping", () => {
+  const base = {
+    id: "report-1",
+    run_id: "run-1",
+    title: "Growth report",
+    summary: "Summary",
+    created_at_millis: 1_700_000_000_000,
+    action_items: [],
+  };
+
+  test("maps a presentation-backed report without exposing legacy analysis fields", () => {
+    const report = mapGrowthReport(reportSchema.parse({
+      ...base,
+      action_items: [{
+        id: "action-1",
+        type_id: "custom",
+        title: "Review activation",
+        description: "Review activation flow",
+        status: "proposed",
+        has_workflow: true,
+        created_at_millis: 1_700_000_000_000,
+        activated_at_millis: null,
+        completed_at_millis: null,
+      }],
+      presentation: {
+        format: "sandboxed-tsx-v1",
+        version: 3,
+        tsx_source: "const Dashboard = () => <div />;",
+      },
+    }));
+    expect(report.content).toEqual({
+      type: "presentation",
+      format: "sandboxed-tsx-v1",
+      version: 3,
+      tsxSource: "const Dashboard = () => <div />;",
+    });
+    expect(report.content.type).toBe("presentation");
+    expect(report.actionItems).toEqual([{
+      id: "action-1",
+      typeId: "custom",
+      title: "Review activation",
+      description: "Review activation flow",
+      status: "proposed",
+      hasWorkflow: true,
+      createdAtMillis: 1_700_000_000_000,
+      activatedAtMillis: null,
+      completedAtMillis: null,
+    }]);
+  });
+
+  test("maps a grandfathered legacy report's document content", () => {
+    const report = mapGrowthReport(reportSchema.parse({
+      ...base,
+      content_md: "# Analysis",
+      document: null,
+      sections: [{ id: "section-1", kind: "insight", title: "Insight", body_markdown: "Body" }],
+    }));
+    expect(report.content).toEqual({
+      type: "legacy",
+      contentMd: "# Analysis",
+      document: null,
+      sections: [{ id: "section-1", kind: "insight", title: "Insight", bodyMd: "Body" }],
+    });
+    expect(report.content.type).toBe("legacy");
   });
 });

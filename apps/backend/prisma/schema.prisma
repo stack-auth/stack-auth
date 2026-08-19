@@ -459,10 +459,35 @@ model GrowthReport {
   readAt DateTime?
 
   run GrowthAnalysisRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  presentations GrowthReportPresentation[]
 
   @@index([projectId, branchId, createdAt(sort: Desc), id(sort: Desc)])
   // Covers the released-gate lookup, which runs once per request on every locked customer route.
   @@index([projectId, branchId, publishedAt(sort: Desc)])
+}
+
+model GrowthReportPresentation {
+  // Prisma cannot express the partial unique constraint; the SQL-only one_published_per_report
+  // index in the migration enforces at most one published version for each report.
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reportId          String   @db.Uuid
+  projectId         String
+  branchId          String
+  format            String
+  // Staff-authored source, passed to the existing sandbox runtime without rewriting.
+  tsxSource         String   @db.Text
+  actionItemIds     String[] @default([])
+  version           Int
+  createdAt         DateTime @default(now())
+  createdByUserId   String?
+  publishedAt       DateTime?
+  publishedByUserId String?
+
+  report GrowthReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, version])
+  @@index([reportId, createdAt(sort: Desc), version(sort: Desc)])
+  @@index([reportId, publishedAt])
 }
 
 model GrowthActionItem {

@@ -18,7 +18,7 @@ import { useCallback, useEffect, useState } from "react";
 import { GrowthActionCard } from "../components/action-card";
 import { GrowthDocumentRenderer } from "../components/growth-document";
 import { GrowthReportSections } from "../components/report-sections";
-
+import { PresentationEditor } from "./presentation-editor";
 
 type ListState =
   | { status: "loading" }
@@ -65,7 +65,7 @@ function ReportRow(props: {
   );
 }
 
-/** The report exactly as the customer would read it. */
+/** The internal analysis artifact staff use while authoring the customer presentation. */
 function ReportPreview(props: { report: GrowthAdminReportDetail }) {
   const { report } = props;
   return (
@@ -74,7 +74,11 @@ function ReportPreview(props: { report: GrowthAdminReportDetail }) {
         <h3 className="text-lg font-semibold tracking-tight">{report.title}</h3>
         <p className="mt-1 text-sm text-muted-foreground">{report.summary}</p>
       </header>
-      {report.document == null ? <GrowthReportSections report={report} /> : <GrowthDocumentRenderer document={report.document} />}
+      {report.content.document == null ? (
+        <GrowthReportSections contentMd={report.content.contentMd} sections={report.content.sections} />
+      ) : (
+        <GrowthDocumentRenderer document={report.content.document} />
+      )}
       {report.actionItems.length > 0 && (
         <section className="border-t border-foreground/[0.09] pt-4">
           <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
@@ -145,7 +149,7 @@ export function GrowthAdminReportsCard(props: { app: object, projectId: string }
     }
   };
 
-  const subtitle = "What the analysis sent this customer. Reports publish on write — the review gate is on the interview above";
+  const subtitle = "Internal analysis for staff review. Author and explicitly publish the customer presentation below.";
 
   if (list.status === "loading") {
     return (
@@ -177,8 +181,8 @@ export function GrowthAdminReportsCard(props: { app: object, projectId: string }
 
         {reports.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No reports for this project yet. One is written — and published — at the end of every
-            analysis run, once the customer has finished their interview.
+            No reports for this project yet. One is written at the end of an analysis run, once the
+            customer has finished their interview.
           </p>
         ) : (
           <div className="space-y-2">
@@ -201,17 +205,12 @@ export function GrowthAdminReportsCard(props: { app: object, projectId: string }
           <div className="space-y-3 border-t border-foreground/[0.09] pt-4">
             <div className="flex flex-wrap items-center gap-2">
               {selected.publishedAtMillis == null ? (
-                // No "publish" counterpart: there is no way back from a pull except a fresh
-                // analysis run, and offering a one-click re-release would re-create the review
-                // queue this build deliberately removed.
                 <span className="text-xs text-muted-foreground">
-                  Pulled — the customer can no longer read this. Run a new analysis to replace it.
+                  Pulled — the customer can no longer read this. Author and publish a presentation
+                  below when it is ready.
                 </span>
               ) : (
                 <>
-                  {/* Retracting a report the customer may already have read is a real act, not a
-                    * toggle — it exists for the analysis that went badly wrong, so it is styled as
-                    * the secondary, deliberate choice. */}
                   <DesignButton
                     size="sm"
                     variant="outline"
@@ -240,6 +239,14 @@ export function GrowthAdminReportsCard(props: { app: object, projectId: string }
               </DesignAlert>
             )}
             {detail.status === "loaded" && <ReportPreview report={detail.report} />}
+            {detail.status === "loaded" && (
+              <PresentationEditor
+                app={props.app}
+                projectId={props.projectId}
+                report={detail.report}
+                onReportChange={(report) => setDetail({ status: "loaded", report })}
+              />
+            )}
           </div>
         )}
       </div>

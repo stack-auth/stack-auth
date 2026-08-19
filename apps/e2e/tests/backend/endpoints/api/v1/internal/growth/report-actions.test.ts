@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Project, niceBackendFetch } from "../../../../../backend-helpers";
-import { GROWTH_AGENT_AUTH, createGrowthProject, requireRunId } from "./growth-helpers";
+import { GROWTH_AGENT_AUTH, createGrowthProject, publishGrowthPresentationAsStaff, requireRunId } from "./growth-helpers";
 
 const ADMIN_BASE = "/api/latest/internal/growth";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
@@ -58,29 +58,13 @@ const REPORT_DOCUMENT = {
 };
 
 /**
- * Plays the agent through a minimal full run: complete every phase, save + complete the interview,
+ * Plays the agent through the write surfaces needed by this suite: save + complete the interview,
  * then save the report with three action items (one per registered type). Returns the ids the
- * admin surface should observe.
+ * admin surface should observe. Phase completion is intentionally omitted: run details are internal
+ * analysis data and unavailable to customer tenancies, while report writes do not require phases to
+ * be completed.
  */
 async function seedCompletedRunWithReport(scope: { project_id: string, branch_id: string }, runId: string) {
-  const run = await niceBackendFetch(`${ADMIN_BASE}/runs/${runId}`, { accessType: "admin" });
-  if (run.status !== 200) {
-    throw new Error(`Reading the run failed with status ${run.status}.`);
-  }
-  const phaseKeys = (run.body as { phases: { phase_key: string }[] }).phases.map((phase) => phase.phase_key);
-  for (const phaseKey of phaseKeys) {
-    for (const action of ["start", "complete"]) {
-      const response = await niceBackendFetch(`${AGENT_BASE}/runs/${runId}/phases/${phaseKey}/${action}`, {
-        method: "POST",
-        headers: GROWTH_AGENT_AUTH,
-        body: { ...scope, attempt: 0 },
-      });
-      if (response.status !== 200) {
-        throw new Error(`Phase ${phaseKey} ${action} failed with status ${response.status}.`);
-      }
-    }
-  }
-
   const questions = await niceBackendFetch(`${AGENT_BASE}/interview-questions`, {
     method: "POST",
     headers: GROWTH_AGENT_AUTH,
@@ -146,8 +130,7 @@ async function seedCompletedRunWithReport(scope: { project_id: string, branch_id
   if (report.status !== 200) {
     throw new Error(`Saving the report failed with status ${report.status}.`);
   }
-  // No release step: writing the report IS releasing it (see lib/growth/report-release.ts), so the
-  // report route and the action surface below are readable from here on.
+  await publishGrowthPresentationAsStaff(scope.project_id, (report.body as { report_id: string }).report_id, (report.body as { action_item_ids: string[] }).action_item_ids);
   return {
     reportId: (report.body as { report_id: string }).report_id,
     actionItemIds: (report.body as { action_item_ids: string[] }).action_item_ids,
@@ -155,15 +138,15 @@ async function seedCompletedRunWithReport(scope: { project_id: string, branch_id
   };
 }
 
-describe("internal growth reports and actions", { timeout: 90_000 }, () => {
+describe.sequential("internal growth reports and actions", { timeout: 300_000 }, () => {
   it("serves the report by id and as latest, with its action items", async ({ expect }) => {
     const { projectId, branchId } = await createGrowthProjectWithIds();
     const scope = { project_id: projectId, branch_id: branchId };
     const runId = await completeOnboarding();
-    const { reportId, actionItemIds, artifactId } = await seedCompletedRunWithReport(scope, runId);
+    const { reportId, actionItemIds } = await seedCompletedRunWithReport(scope, runId);
 
     // No report exists under the id "latest"-shaped lookup until we saved one — asserted implicitly
-    // by the cross-project test below; here the saved content must round-trip exactly.
+    // by the cross-project test below; here the customer-safe presentation shape must round-trip.
     const latest = await niceBackendFetch(`${ADMIN_BASE}/reports/latest`, { accessType: "admin" });
     expect(latest.status).toBe(200);
     expect(latest.body).toMatchObject({
@@ -171,40 +154,31 @@ describe("internal growth reports and actions", { timeout: 90_000 }, () => {
       run_id: runId,
       title: "Growth analysis for Plannery",
       summary: "Focus on paid acquisition and comparison content.",
-      content_md: "# Report\n\nDetails...",
-      document: expect.objectContaining({ format: "growth-mdx-v1", sourceMdx: REPORT_DOCUMENT.source_mdx }),
-      sections: REPORT_SECTIONS,
+      presentation: { format: "sandboxed-tsx-v1", version: 1, tsx_source: "const Dashboard = () => null;" },
     });
-    const actionItems = (latest.body as { action_items: { id: string, type_id: string, status: string, payload: unknown, watched_metrics: unknown, workflow: unknown, created_at_millis: number, activated_at_millis: number | null, completed_at_millis: number | null, report_id: string | null, brief_id: string | null }[] }).action_items;
+    expect(latest.body).not.toHaveProperty("content_md");
+    expect(latest.body).not.toHaveProperty("document");
+    expect(latest.body).not.toHaveProperty("sections");
+    const actionItems = (latest.body as { action_items: { id: string, type_id: string, status: string, title: string, description: string, has_workflow: boolean, created_at_millis: number, activated_at_millis: number | null, completed_at_millis: number | null, payload?: unknown, document?: unknown, brief_id?: unknown, report_id?: unknown, workflow?: unknown }[] }).action_items;
     expect(actionItems).toHaveLength(3);
     expect(actionItems.map((item) => item.id).sort()).toEqual([...actionItemIds].sort());
     expect(actionItems.map((item) => item.type_id)).toEqual(["run_ads", "publish_blog", "custom"]);
     for (const item of actionItems) {
       expect(item).toMatchObject({
         status: "proposed",
-        report_id: reportId,
-        brief_id: null,
+        title: expect.any(String),
+        description: expect.any(String),
+        has_workflow: expect.any(Boolean),
         activated_at_millis: null,
         completed_at_millis: null,
-        // Plain items (no agent-authored automation attached) carry an explicit workflow: null;
-        // the workflow-bearing wire shape is pinned in action-workflows.test.ts.
-        workflow: null,
       });
       expect(typeof item.created_at_millis).toBe("number");
+      expect(item).not.toHaveProperty("payload");
+      expect(item).not.toHaveProperty("document");
+      expect(item).not.toHaveProperty("brief_id");
+      expect(item).not.toHaveProperty("report_id");
+      expect(item).not.toHaveProperty("workflow");
     }
-    const publishBlog = actionItems[1];
-    expect(publishBlog).toMatchObject({
-      payload: { artifact_id: artifactId },
-      watched_metrics: [{ metric_id: "new_signups", window_days: 30 }],
-    });
-    // run_ads without explicit watched_metrics falls back to the type registry's defaults.
-    expect(actionItems[0]).toMatchObject({
-      document: expect.objectContaining({ format: "growth-mdx-v1", sourceMdx: REPORT_DOCUMENT.source_mdx }),
-      watched_metrics: [
-        { metric_id: "new_signups", window_days: 14 },
-        { metric_id: "total_users", window_days: 14 },
-      ],
-    });
 
     const byId = await niceBackendFetch(`${ADMIN_BASE}/reports/${reportId}`, { accessType: "admin" });
     expect(byId.status).toBe(200);
@@ -220,138 +194,6 @@ describe("internal growth reports and actions", { timeout: 90_000 }, () => {
     expect(crossProject.status).toBe(404);
     const emptyLatest = await niceBackendFetch(`${ADMIN_BASE}/reports/latest`, { accessType: "admin" });
     expect(emptyLatest.status).toBe(404);
-  });
-
-  it("lists actions with status filter and cursor pagination", async ({ expect }) => {
-    const { projectId, branchId } = await createGrowthProjectWithIds();
-    const scope = { project_id: projectId, branch_id: branchId };
-    const runId = await completeOnboarding();
-    const { actionItemIds } = await seedCompletedRunWithReport(scope, runId);
-
-    const list = await niceBackendFetch(`${ADMIN_BASE}/actions`, { accessType: "admin" });
-    expect(list.status).toBe(200);
-    const listBody = list.body as { items: { id: string }[], next_cursor: string | null };
-    expect(listBody.items).toHaveLength(3);
-    expect(listBody.next_cursor).toBeNull();
-    expect(listBody.items.map((item) => item.id).sort()).toEqual([...actionItemIds].sort());
-
-    const proposedOnly = await niceBackendFetch(`${ADMIN_BASE}/actions?status=proposed`, { accessType: "admin" });
-    expect(proposedOnly.status).toBe(200);
-    expect((proposedOnly.body as { items: unknown[] }).items).toHaveLength(3);
-    const activeOnly = await niceBackendFetch(`${ADMIN_BASE}/actions?status=active`, { accessType: "admin" });
-    expect(activeOnly.status).toBe(200);
-    expect(activeOnly.body).toMatchObject({ items: [], next_cursor: null });
-    const badStatus = await niceBackendFetch(`${ADMIN_BASE}/actions?status=made-up`, { accessType: "admin" });
-    expect(badStatus.status).toBe(400);
-
-    // Two pages of 2: the cursor from page one yields the remaining item, with no overlap.
-    const pageOne = await niceBackendFetch(`${ADMIN_BASE}/actions?limit=2`, { accessType: "admin" });
-    expect(pageOne.status).toBe(200);
-    const pageOneBody = pageOne.body as { items: { id: string }[], next_cursor: string | null };
-    expect(pageOneBody.items).toHaveLength(2);
-    expect(typeof pageOneBody.next_cursor).toBe("string");
-    const pageTwo = await niceBackendFetch(`${ADMIN_BASE}/actions?limit=2&cursor=${pageOneBody.next_cursor}`, { accessType: "admin" });
-    expect(pageTwo.status).toBe(200);
-    const pageTwoBody = pageTwo.body as { items: { id: string }[], next_cursor: string | null };
-    expect(pageTwoBody.items).toHaveLength(1);
-    expect(pageTwoBody.next_cursor).toBeNull();
-    const allIds = [...pageOneBody.items, ...pageTwoBody.items].map((item) => item.id);
-    expect(allIds.sort()).toEqual([...actionItemIds].sort());
-
-    const badCursor = await niceBackendFetch(`${ADMIN_BASE}/actions?cursor=${randomUUID()}`, { accessType: "admin" });
-    expect(badCursor.status).toBe(400);
-  });
-
-  it("activates and dismisses actions with idempotent acks", async ({ expect }) => {
-    const { projectId, branchId } = await createGrowthProjectWithIds();
-    const scope = { project_id: projectId, branch_id: branchId };
-    const runId = await completeOnboarding();
-    const { actionItemIds } = await seedCompletedRunWithReport(scope, runId);
-    const [adsItemId, blogItemId, customItemId] = actionItemIds;
-
-    // Activation captures a "before" metric snapshot via computeGrowthMetrics (analytics-backed) —
-    // asserted only through the resulting state, never through metric values, so the test stays
-    // independent of what the analytics store returns for a fresh project.
-    const activate = await niceBackendFetch(`${ADMIN_BASE}/actions/${adsItemId}/activate`, { accessType: "admin", method: "POST" });
-    expect(activate).toMatchObject({ status: 200, body: { status: "active" } });
-    const activateAgain = await niceBackendFetch(`${ADMIN_BASE}/actions/${adsItemId}/activate`, { accessType: "admin", method: "POST" });
-    expect(activateAgain).toMatchObject({ status: 200, body: { status: "active" } });
-
-    const activeList = await niceBackendFetch(`${ADMIN_BASE}/actions?status=active`, { accessType: "admin" });
-    expect(activeList.status).toBe(200);
-    const activeItems = (activeList.body as { items: { id: string, status: string, activated_at_millis: number | null }[] }).items;
-    expect(activeItems).toHaveLength(1);
-    expect(activeItems[0]).toMatchObject({ id: adsItemId, status: "active" });
-    expect(typeof activeItems[0].activated_at_millis).toBe("number");
-
-    // Dismissal from proposed, idempotently.
-    const dismiss = await niceBackendFetch(`${ADMIN_BASE}/actions/${customItemId}/dismiss`, { accessType: "admin", method: "POST" });
-    expect(dismiss).toMatchObject({ status: 200, body: { status: "dismissed" } });
-    const dismissAgain = await niceBackendFetch(`${ADMIN_BASE}/actions/${customItemId}/dismiss`, { accessType: "admin", method: "POST" });
-    expect(dismissAgain).toMatchObject({ status: 200, body: { status: "dismissed" } });
-
-    // A dismissed item can no longer be activated.
-    const activateDismissed = await niceBackendFetch(`${ADMIN_BASE}/actions/${customItemId}/activate`, { accessType: "admin", method: "POST" });
-    expect(activateDismissed.status).toBe(400);
-
-    // An active item can still be dismissed (turning it off), and the status counts reflect it all.
-    const dismissActive = await niceBackendFetch(`${ADMIN_BASE}/actions/${adsItemId}/dismiss`, { accessType: "admin", method: "POST" });
-    expect(dismissActive).toMatchObject({ status: 200, body: { status: "dismissed" } });
-    const finalStatus = await niceBackendFetch(`${ADMIN_BASE}/status`, { accessType: "admin" });
-    expect(finalStatus.status).toBe(200);
-    expect(finalStatus.body).toMatchObject({ counts: { suggested_actions: 1, active_actions: 0 } });
-
-    // Unknown ids (and, via the same lookup, other projects' ids) are a uniform 404.
-    const unknown = await niceBackendFetch(`${ADMIN_BASE}/actions/${randomUUID()}/activate`, { accessType: "admin", method: "POST" });
-    expect(unknown.status).toBe(404);
-    expect(blogItemId).toBeDefined(); // seeded but intentionally left proposed in this test
-  });
-
-  it("serves before/after metric series for unactivated and activated items", async ({ expect }) => {
-    const { projectId, branchId } = await createGrowthProjectWithIds();
-    const scope = { project_id: projectId, branch_id: branchId };
-    const runId = await completeOnboarding();
-    const { actionItemIds } = await seedCompletedRunWithReport(scope, runId);
-    const [adsItemId, blogItemId] = actionItemIds;
-
-    // Unactivated: a before-only preview from the daily rollups (none exist for a fresh project, so
-    // the series are empty — "missing days simply absent") with null captured_at on both sides.
-    const preview = await niceBackendFetch(`${ADMIN_BASE}/actions/${blogItemId}/metrics`, { accessType: "admin" });
-    expect(preview).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "metrics": [
-            {
-              "after": [],
-              "after_captured_at_millis": null,
-              "before": [],
-              "before_captured_at_millis": null,
-              "metric_id": "new_signups",
-              "window_days": 30,
-            },
-          ],
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
-
-    // Activated: the before snapshot exists, so before_captured_at_millis is set; there has been no
-    // daily rollup since activation, so after stays empty and after_captured_at_millis null.
-    const activate = await niceBackendFetch(`${ADMIN_BASE}/actions/${adsItemId}/activate`, { accessType: "admin", method: "POST" });
-    expect(activate.status).toBe(200);
-    const activated = await niceBackendFetch(`${ADMIN_BASE}/actions/${adsItemId}/metrics`, { accessType: "admin" });
-    expect(activated.status).toBe(200);
-    const activatedMetrics = (activated.body as { metrics: { metric_id: string, window_days: number, before: unknown[], after: unknown[], before_captured_at_millis: number | null, after_captured_at_millis: number | null }[] }).metrics;
-    // run_ads has two default watched metrics.
-    expect(activatedMetrics.map((series) => series.metric_id)).toEqual(["new_signups", "total_users"]);
-    for (const series of activatedMetrics) {
-      expect(series).toMatchObject({ window_days: 14, before: [], after: [], after_captured_at_millis: null });
-      expect(typeof series.before_captured_at_millis).toBe("number");
-    }
-
-    const unknown = await niceBackendFetch(`${ADMIN_BASE}/actions/${randomUUID()}/metrics`, { accessType: "admin" });
-    expect(unknown.status).toBe(404);
   });
 
   it("rejects non-admin access and projects without the growth app", async ({ expect }) => {

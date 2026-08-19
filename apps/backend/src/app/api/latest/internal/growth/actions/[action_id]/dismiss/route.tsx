@@ -1,4 +1,5 @@
 import { dismissGrowthActionItem } from "@/lib/growth/actions";
+import { requireGrowthInternalResourceAccess } from "@/lib/growth/customer-access";
 import { requireGrowthAppEnabled } from "@/lib/growth/dashboard";
 import { requireGrowthWorkspaceReleased } from "@/lib/growth/report-release";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -23,6 +24,7 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ auth, params }) => {
     requireGrowthAppEnabled(auth.tenancy);
+    requireGrowthInternalResourceAccess(auth.tenancy);
     await requireGrowthWorkspaceReleased(auth.tenancy);
     const result = await dismissGrowthActionItem(auth.tenancy, params.action_id);
     return { statusCode: 200, bodyType: "json", body: { status: result.status } };

@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Auth, InternalProjectKeys, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
-import { GROWTH_AGENT_AUTH, asGrowthStaff, createGrowthProject, requireRunId } from "./growth-helpers";
+import { GROWTH_AGENT_AUTH, asGrowthStaff, createGrowthProject, publishGrowthPresentationAsStaff, requireRunId } from "./growth-helpers";
 
 const GROWTH_BASE = "/api/latest/internal/growth";
 const ADMIN_BASE = "/api/latest/internal/growth/admin";
@@ -11,13 +12,11 @@ const AGENT_BASE = "/api/latest/internal/growth-agent";
 // full-suite load, so default-timeout tests need 90s of headroom.
 
 /**
- * What a customer may read, and when. A report is theirs the moment the analysis writes it — there
- * is no staff review of reports; the human gate moved onto the interview questions
- * (interview-release.test.ts), because that is the last point at which a person can still change
- * what the customer is asked.
+ * What a customer may read, and when. Analysis writes an internal report artifact; staff must author
+ * and publish a presentation before the customer can read the report.
  *
- * So the subject here is narrower than it used to be: the workspace is dark until a report EXISTS,
- * and `unpublish` — staff error recovery, with no publish counterpart — puts it back in the dark.
+ * The workspace is dark until a presentation is published, and either presentation unpublish or
+ * report unpublish puts it back in the dark.
  *
  * Seeding "plays the agent" with the shared machine secret, the way report-actions.test.ts does:
  * reports have no customer-facing write API, so that is the only way one comes into existence.
@@ -49,30 +48,32 @@ async function seedReport() {
       content_md: "# Live\n\nPublished on write.",
       action_items: [
         { type_id: "custom", category: "conversion", tags: [], title: "A suggestion", description: "Also live." },
+        { type_id: "custom", category: "retention", tags: [], title: "A second suggestion", description: "Keep it live." },
       ],
     },
   });
   if (report.status !== 200) throw new Error(`Saving the report failed with ${report.status}.`);
-  return { projectId, scope, reportId: (report.body as { report_id: string }).report_id };
+  const reportId = (report.body as { report_id: string }).report_id;
+  const actionItemIds = (report.body as { action_item_ids: string[] }).action_item_ids;
+  await publishGrowthPresentationAsStaff(projectId, reportId, actionItemIds);
+  return { projectId, scope, runId, reportId, actionItemIds };
 }
 
-describe("internal Growth report release", { timeout: 90_000 }, () => {
+describe.sequential("internal Growth report release", { timeout: 300_000 }, () => {
   it("withholds the whole workspace from the customer until a report exists", { timeout: 300_000 }, async ({ expect }) => {
     await seedProjectWithoutReport();
 
-    // Every surface that could reveal what an unwritten report would say. The overview carries the
-    // insights and category scores; actions ARE the suggestions; briefs and chat both speak from the
-    // same findings.
+    // Every surface that could reveal what an unwritten report would say. These analysis surfaces
+    // are staff-only even when the customer has a released workspace.
     for (const path of [
       `${GROWTH_BASE}/overview`,
       `${GROWTH_BASE}/metrics-overview`,
       `${GROWTH_BASE}/actions`,
       `${GROWTH_BASE}/briefs`,
-      `${GROWTH_BASE}/chat/conversations`,
     ]) {
       const response = await niceBackendFetch(path, { accessType: "admin" });
-      expect([path, response.status]).toEqual([path, 409]);
-      expect([path, response.body]).toEqual([path, "Your growth report is still being prepared."]);
+      expect([path, response.status]).toEqual([path, 403]);
+      expect([path, response.body]).toEqual([path, "This Growth resource is not available."]);
     }
 
     // The report itself 404s rather than 409s: to the customer a report that does not exist yet and
@@ -92,19 +93,142 @@ describe("internal Growth report release", { timeout: 90_000 }, () => {
     expect(status.body).toMatchObject({ latest_report: null, latest_brief: null, release: { state: "not_ready" } });
   });
 
-  it("releases everything the moment the analysis writes the report — no staff step", { timeout: 300_000 }, async ({ expect }) => {
+  it("does not release a report merely because the agent wrote it", { timeout: 300_000 }, async ({ expect }) => {
+    const { projectId, scope, runId } = await seedProjectWithoutReport();
+    const report = await niceBackendFetch(`${AGENT_BASE}/report`, {
+      method: "POST",
+      headers: GROWTH_AGENT_AUTH,
+      body: {
+        ...scope,
+        run_id: runId,
+        title: "Held report",
+        summary: "Awaiting presentation review.",
+        content_md: "# Internal",
+        action_items: [],
+      },
+    });
+    expect(report.status).toBe(200);
+    const reportId = (report.body as { report_id: string }).report_id;
+    expect((await niceBackendFetch(`${GROWTH_BASE}/reports/${reportId}`, { accessType: "admin" })).status).toBe(404);
+
+    await publishGrowthPresentationAsStaff(projectId, reportId, []);
+    expect((await niceBackendFetch(`${GROWTH_BASE}/reports/${reportId}`, { accessType: "admin" })).status).toBe(200);
+  });
+
+  it("versions, publishes, and unpublishes presentations without drifting the report gate", { timeout: 300_000 }, async ({ expect }) => {
+    const { projectId, reportId, actionItemIds } = await seedReport();
+    const customerV1 = await niceBackendFetch(`${GROWTH_BASE}/reports/${reportId}`, { accessType: "admin" });
+    expect(customerV1).toMatchObject({
+      status: 200,
+      body: { presentation: { version: 1, tsx_source: "const Dashboard = () => null;" } },
+    });
+
+    const versionTwo = await asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/reports/${reportId}/presentations`, {
+      accessType: "client",
+      method: "POST",
+      body: {
+        target_project_id: projectId,
+        tsx_source: "const Dashboard = () => null;\n// version two",
+        action_item_ids: [...actionItemIds].reverse(),
+      },
+    }));
+    expect(versionTwo).toMatchObject({ status: 201, body: { version: 2, published_at_millis: null } });
+    const versionTwoId = (versionTwo.body as { id: string }).id;
+
+    const versions = await asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/reports/${reportId}/presentations?project_id=${projectId}`, { accessType: "client" }));
+    expect(versions).toMatchObject({ status: 200, body: { presentations: [{ version: 2 }, { version: 1 }] } });
+
+    const published = await asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/reports/${reportId}/presentations/${versionTwoId}`, {
+      accessType: "client",
+      method: "PATCH",
+      body: { target_project_id: projectId, action: "publish" },
+    }));
+    expect(published).toMatchObject({ status: 200, body: { id: versionTwoId, version: 2, published_at_millis: expect.any(Number) } });
+    const customerV2 = await niceBackendFetch(`${GROWTH_BASE}/reports/${reportId}`, { accessType: "admin" });
+    expect(customerV2).toMatchObject({
+      status: 200,
+      body: {
+        presentation: { version: 2, tsx_source: "const Dashboard = () => null;\n// version two" },
+        action_items: [...actionItemIds].reverse().map((id) => expect.objectContaining({ id })),
+      },
+    });
+
+    const unpublished = await asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/reports/${reportId}/presentations/${versionTwoId}`, {
+      accessType: "client",
+      method: "PATCH",
+      body: { target_project_id: projectId, action: "unpublish" },
+    }));
+    expect(unpublished).toMatchObject({ status: 200, body: { id: versionTwoId, published_at_millis: null } });
+    expect((await niceBackendFetch(`${GROWTH_BASE}/reports/${reportId}`, { accessType: "admin" })).status).toBe(404);
+  });
+
+  it("rejects invalid presentation source, format, and action-item selections", { timeout: 300_000 }, async ({ expect }) => {
+    const { projectId, reportId, actionItemIds } = await seedReport();
+    const create = (body: Record<string, unknown>) => asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/reports/${reportId}/presentations`, {
+      accessType: "client",
+      method: "POST",
+      body: { target_project_id: projectId, ...body },
+    }));
+    expect((await create({ format: "unknown", tsx_source: "const Dashboard = () => null;", action_item_ids: [] })).status).toBe(400);
+    // JSX/TSX compilation belongs to the sandbox; the backend only checks the source contract.
+    expect((await create({ tsx_source: "const Dashboard = ;", action_item_ids: [] })).status).toBe(201);
+    expect((await create({ tsx_source: "const Dashboard = () => null;", action_item_ids: [actionItemIds[0], actionItemIds[0]] })).status).toBe(400);
+    expect((await create({ tsx_source: "const Dashboard = () => null;", action_item_ids: [randomUUID()] })).status).toBe(400);
+  });
+
+  it("skips curated action items removed while recomposing the internal report", { timeout: 300_000 }, async ({ expect }) => {
+    const { scope, runId, reportId } = await seedReport();
+    const recomposed = await niceBackendFetch(`${AGENT_BASE}/report`, {
+      method: "POST",
+      headers: GROWTH_AGENT_AUTH,
+      body: {
+        ...scope,
+        run_id: runId,
+        title: "Recomposed growth analysis",
+        summary: "The internal artifact was refreshed.",
+        content_md: "# Refreshed",
+        action_items: [],
+      },
+    });
+    expect(recomposed.status).toBe(200);
+
+    const customer = await niceBackendFetch(`${GROWTH_BASE}/reports/${reportId}`, { accessType: "admin" });
+    expect(customer).toMatchObject({ status: 200, body: { presentation: { version: 1 }, action_items: [] } });
+    expect(customer.body).not.toHaveProperty("content_md");
+  });
+
+  it("releases everything after staff publishes a presentation", { timeout: 300_000 }, async ({ expect }) => {
     const { reportId } = await seedReport();
 
     const status = await niceBackendFetch(`${GROWTH_BASE}/status`, { accessType: "admin" });
     expect(status.body).toMatchObject({ release: { state: "released" }, latest_report: { id: reportId, read_at_millis: null } });
 
-    for (const path of [`${GROWTH_BASE}/overview`, `${GROWTH_BASE}/actions`, `${GROWTH_BASE}/briefs`]) {
+    for (const path of [`${GROWTH_BASE}/overview`, `${GROWTH_BASE}/metrics-overview`, `${GROWTH_BASE}/actions`, `${GROWTH_BASE}/briefs`]) {
       const response = await niceBackendFetch(path, { accessType: "admin" });
-      expect([path, response.status]).toEqual([path, 200]);
+      expect([path, response.status]).toEqual([path, 403]);
+      expect([path, response.body]).toEqual([path, "This Growth resource is not available."]);
     }
 
     const report = await niceBackendFetch(`${GROWTH_BASE}/reports/latest`, { accessType: "admin" });
     expect(report).toMatchObject({ status: 200, body: { id: reportId, title: "Growth analysis for the fixture" } });
+  });
+
+  it("allows customer activation only for actions curated into the live presentation", { timeout: 300_000 }, async ({ expect }) => {
+    const { projectId, reportId, actionItemIds } = await seedReport();
+    await publishGrowthPresentationAsStaff(projectId, reportId, [actionItemIds[0]]);
+
+    const uncurated = await niceBackendFetch(`${GROWTH_BASE}/actions/${actionItemIds[1]}/activate`, {
+      accessType: "admin",
+      method: "POST",
+    });
+    expect(uncurated.status).toBe(403);
+    expect(uncurated.body).toBe("This action is not available.");
+
+    const curated = await niceBackendFetch(`${GROWTH_BASE}/actions/${actionItemIds[0]}/activate`, {
+      accessType: "admin",
+      method: "POST",
+    });
+    expect(curated).toMatchObject({ status: 200, body: { status: "active" } });
   });
 
   it("marks a report read once and exposes the receipt on status", { timeout: 300_000 }, async ({ expect }) => {
@@ -138,12 +262,14 @@ describe("internal Growth report release", { timeout: 90_000 }, () => {
     expect(unpublished.status).toBe(200);
     expect(unpublished.body).toMatchObject({ reports: [{ id: reportId, published_at_millis: null }] });
 
-    // The whole point of keeping the publishedAt filter now that writes auto-publish: an unpublished
-    // report really is gone for the customer, not merely missing from one response.
+    // The whole point of keeping the publishedAt filter: an unpublished report really is gone for
+    // the customer, not merely missing from one response.
     const gone = await niceBackendFetch(`${GROWTH_BASE}/reports/${reportId}`, { accessType: "admin" });
     expect(gone.status).toBe(404);
+    const adminDetail = await asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/reports/${reportId}?project_id=${projectId}`, { accessType: "client" }));
+    expect(adminDetail).toMatchObject({ status: 200, body: { presentations: [{ version: 1, published_at_millis: null }] } });
     const overview = await niceBackendFetch(`${GROWTH_BASE}/overview`, { accessType: "admin" });
-    expect(overview.status).toBe(409);
+    expect(overview).toMatchObject({ status: 403, body: "This Growth resource is not available." });
 
     // Unpublishing what is not published is a stale second tab — 409, not 500.
     const again = await asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/reports/${reportId}`, {
@@ -177,7 +303,10 @@ describe("internal Growth report release", { timeout: 90_000 }, () => {
     for (const [path, init] of [
       [`${ADMIN_BASE}/reports?project_id=${projectId}`, {}],
       [`${ADMIN_BASE}/reports/${reportId}?project_id=${projectId}`, {}],
+      [`${ADMIN_BASE}/reports/${reportId}/presentations?project_id=${projectId}`, {}],
+      [`${ADMIN_BASE}/reports/${reportId}/presentations`, { method: "POST", body: { target_project_id: projectId, tsx_source: "const Dashboard = () => null;", action_item_ids: [] } }],
       [`${ADMIN_BASE}/reports/${reportId}`, { method: "PATCH", body: { target_project_id: projectId, action: "unpublish" } }],
+      [`${ADMIN_BASE}/reports/${reportId}/presentations/not-a-uuid`, { method: "PATCH", body: { target_project_id: projectId, action: "publish" } }],
     ] as const) {
       const response = await niceBackendFetch(path, { accessType: "client", ...init });
       expect([path, response.status]).toEqual([path, 403]);
@@ -187,8 +316,7 @@ describe("internal Growth report release", { timeout: 90_000 }, () => {
       const list = await niceBackendFetch(`${ADMIN_BASE}/reports?project_id=${projectId}`, { accessType: "client" });
       expect(list.status).toBe(200);
       expect(list.body).toMatchObject({
-        // Published with no publisher: the policy released it, not a person.
-        reports: [{ id: reportId, trigger: "initial", action_item_count: 1, published_by_user_id: null }],
+        reports: [{ id: reportId, trigger: "initial", action_item_count: 2, published_by_user_id: expect.any(String) }],
       });
       expect((list.body as { reports: { published_at_millis: number | null }[] }).reports[0].published_at_millis).toEqual(expect.any(Number));
 
@@ -199,7 +327,7 @@ describe("internal Growth report release", { timeout: 90_000 }, () => {
           id: reportId,
           title: "Growth analysis for the fixture",
           content_md: "# Live\n\nPublished on write.",
-          action_items: [{ title: "A suggestion" }],
+          action_items: expect.arrayContaining([expect.objectContaining({ title: "A suggestion" })]),
         },
       });
 

@@ -860,9 +860,7 @@ function OngoingStep(props: { status: GrowthStatus, state: GrowthTimelineStepSta
               Your daily comparison of signups, returning users, transactions, and emails is ready — everything
               measured against the day before (UTC).
             </p>
-            <div>
-              <GoToButton href={withQuery(`/projects/${projectId}/gtm/briefs/${brief.id}`)}>Read the brief</GoToButton>
-            </div>
+            <p className="text-xs text-muted-foreground">Your Hexclave team can review the full brief.</p>
           </div>
         </DesignCard>
       )}

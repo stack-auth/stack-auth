@@ -1,4 +1,5 @@
 import { listGrowthActionsBody } from "@/lib/growth/actions";
+import { requireGrowthInternalResourceAccess } from "@/lib/growth/customer-access";
 import { requireGrowthAppEnabled } from "@/lib/growth/dashboard";
 import { requireGrowthWorkspaceReleased } from "@/lib/growth/report-release";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -39,6 +40,7 @@ export const GET = createSmartRouteHandler({
   }),
   handler: async ({ auth, query }) => {
     requireGrowthAppEnabled(auth.tenancy);
+    requireGrowthInternalResourceAccess(auth.tenancy);
     await requireGrowthWorkspaceReleased(auth.tenancy);
     const body = await listGrowthActionsBody(auth.tenancy, {
       status: query.status,

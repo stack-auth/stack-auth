@@ -1,51 +1,24 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
-import type { AnchorHTMLAttributes } from "react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getGrowthOverview } from "@/lib/growth/growth-api";
-import { FindingDetailContent } from "./page-client";
+import PageClient from "./page-client";
 
-vi.mock("@/lib/growth/growth-api", () => ({
-  getGrowthOverview: vi.fn(),
+vi.mock("../../../page-layout", () => ({
+  PageLayout: (props: { title: string, children: ReactNode }) => <main><h1>{props.title}</h1>{props.children}</main>,
 }));
-vi.mock("@/lib/growth/growth-data", () => ({
-  useGrowthStatus: () => ({ demo: false }),
-}));
-vi.mock("@/components/link", () => ({
-  Link: (props: AnchorHTMLAttributes<HTMLAnchorElement>) => <a {...props} />,
-}));
-vi.mock("../../../use-admin-app", () => ({
-  useAdminApp: () => ({}),
-  useProjectId: () => "project-1",
-}));
-vi.mock("../../components/action-card", () => ({
-  useGrowthHref: () => (href: string) => href,
+vi.mock("../../components/frame", () => ({
+  GrowthAppFrame: (props: { children: ReactNode }) => <div>{props.children}</div>,
 }));
 
-afterEach(() => {
-  cleanup();
-  vi.clearAllMocks();
-});
+afterEach(() => cleanup());
 
-describe("FindingDetailContent", () => {
-  it("renders the report preparation state without requesting gated evidence", () => {
-    render(<FindingDetailContent releaseState="preparing" />);
+describe("Growth finding detail page", () => {
+  it("renders an explicit staff-only state without requesting internal evidence", () => {
+    render(<PageClient />);
 
-    expect(screen.getByText("We're putting your report together")).toBeTruthy();
-    // The hold names its duration and sends people away, so nobody waits on a page that only
-    // updates when it is reloaded.
-    expect(screen.getByText(/takes about a day/i)).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Growth overview" }).getAttribute("href")).toBe("/projects/project-1/gtm");
-    expect(getGrowthOverview).not.toHaveBeenCalled();
-    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
-  });
-
-  it("does not claim analysis is running before the first run starts", () => {
-    render(<FindingDetailContent releaseState="not_ready" />);
-
-    expect(screen.getByText("Your Growth report isn't ready yet")).toBeTruthy();
-    expect(screen.getByText(/complete your first Growth analysis/i)).toBeTruthy();
-    expect(getGrowthOverview).not.toHaveBeenCalled();
+    expect(screen.getByText("Growth evidence is staff-only")).toBeTruthy();
+    expect(screen.getByText(/not in the customer workspace/i)).toBeTruthy();
   });
 });

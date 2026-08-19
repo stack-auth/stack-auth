@@ -1,18 +1,19 @@
 "use client";
 
-import { DesignAlert, DesignButton } from "@/components/design-components";
+import { DesignAlert, DesignBadge, DesignButton, DesignCard } from "@/components/design-components";
 import { Link } from "@/components/link";
-import { GrowthApiError, getGrowthReport, markGrowthReportRead } from "@/lib/growth/growth-api";
+import { activateGrowthAction, GrowthApiError, getGrowthReport, markGrowthReportRead } from "@/lib/growth/growth-api";
 import { type GrowthLoadable, useGrowthStatus } from "@/lib/growth/growth-data";
 import { GROWTH_DEMO_NOW_MILLIS, buildGrowthDemoReport } from "@/lib/growth/growth-demo-data";
-import type { GrowthReport, GrowthStatus } from "@/lib/growth/growth-types";
+import type { GrowthActionItem, GrowthActionStatus, GrowthCustomerActionItem, GrowthReport, GrowthStatus } from "@/lib/growth/growth-types";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
-import { GrowthActionCard, useGrowthHref } from "../components/action-card";
+import { GrowthActionStatusBadge, useGrowthHref } from "../components/action-card";
 import { GrowthAppFrame, GrowthStatusGate } from "../components/frame";
+import { GrowthPresentationSandbox } from "../components/presentation-sandbox";
 import { GrowthReportHoldPanel } from "../components/report-hold";
 import { GrowthReportSections } from "../components/report-sections";
 import { GrowthDocumentRenderer } from "../components/growth-document";
@@ -158,17 +159,64 @@ function ReportContent(props: { report: GrowthReport }) {
         <p className="mt-3 max-w-3xl text-pretty text-sm leading-6 text-muted-foreground sm:text-base">{report.summary}</p>
       </header>
 
-      {report.document == null ? <GrowthReportSections report={report} /> : <GrowthDocumentRenderer document={report.document} />}
+      <ReportDocumentContent report={report} />
 
       {report.actionItems.length > 0 && (
         <section className="border-t border-foreground/[0.08] pt-8">
           <h2 className="text-xl font-semibold tracking-tight">Recommended actions</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Review the evidence and expected measurement window before activating anything.</p>
+          <p className="mt-1 text-sm text-muted-foreground">These are the actions selected for you. Activate one when you are ready to start it.</p>
           <div className="mt-4 flex flex-col gap-3">
-            {report.actionItems.map((action) => <GrowthActionCard key={action.id} action={action} />)}
+            {report.actionItems.map((action) => <CustomerGrowthActionCard key={action.id} action={action} />)}
           </div>
         </section>
       )}
     </div>
+  );
+}
+
+function ReportDocumentContent(props: { report: GrowthReport }) {
+  const { content } = props.report;
+  if (content.type === "presentation") {
+    return <GrowthPresentationSandbox tsxSource={content.tsxSource} />;
+  }
+  if (content.document == null) {
+    return <GrowthReportSections contentMd={content.contentMd} sections={content.sections} />;
+  }
+  return <GrowthDocumentRenderer document={content.document} />;
+}
+
+function CustomerGrowthActionCard(props: { action: GrowthActionItem | GrowthCustomerActionItem }) {
+  const app = useAdminApp();
+  const [status, setStatus] = useState<GrowthActionStatus>(props.action.status);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleActivate = async () => {
+    setError(null);
+    try {
+      const result = await activateGrowthAction(app, props.action.id);
+      setStatus(result.status);
+    } catch (activationError) {
+      captureError("growth-customer-action-activate", activationError);
+      setError("We couldn't activate this action. Please try again.");
+    }
+  };
+
+  return (
+    <DesignCard>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold">{props.action.title}</h3>
+          <GrowthActionStatusBadge status={status} />
+        </div>
+        <p className="text-sm leading-6 text-muted-foreground">{props.action.description}</p>
+        {error != null && <DesignAlert variant="error">{error}</DesignAlert>}
+        {status === "proposed" && (
+          <DesignButton size="sm" className="self-start" onClick={handleActivate}>
+            Activate action
+          </DesignButton>
+        )}
+        {status === "active" && <DesignBadge label="This action is active" color="green" size="sm" />}
+      </div>
+    </DesignCard>
   );
 }

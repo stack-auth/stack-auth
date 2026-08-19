@@ -17,6 +17,7 @@ import { GrowthMetricId, GrowthWatchedMetric } from "./action-item-types";
 import { normalizeStoredGrowthCategory } from "./categories";
 import { computeGrowthMetrics } from "./metrics";
 import { scanWorkflowSourceWarnings } from "./workflow-authoring";
+import { isGrowthCustomerTenancy } from "./customer-access";
 
 // Re-exported for existing consumers (dashboard read routes, actions.test.ts) that import these wire
 // helpers from "./actions" — the actual definitions live in action-item-wire.ts now. See that file's
@@ -174,6 +175,20 @@ export function growthActionItemToWire(item: GrowthActionItemRow, workflowRuntim
   };
 }
 
+export function growthActionItemToCustomerWire(item: GrowthActionItemRow) {
+  return {
+    id: item.id,
+    type_id: item.typeId,
+    title: item.title,
+    description: item.description,
+    status: assertActionStatus(item.status),
+    has_workflow: item.workflowId != null,
+    created_at_millis: item.createdAt.getTime(),
+    activated_at_millis: item.activatedAt == null ? null : item.activatedAt.getTime(),
+    completed_at_millis: item.completedAt == null ? null : item.completedAt.getTime(),
+  };
+}
+
 function growthDocumentFromRow(row: { id: string, document?: unknown }): unknown | null {
   return row.document ?? null;
 }
@@ -207,10 +222,91 @@ export async function getGrowthReportBody(tenancy: Tenancy, reportId: string | "
       ...options.publishedOnly ? { publishedAt: { not: null } } : {},
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    include: {
+      presentations: {
+        where: { publishedAt: { not: null } },
+        orderBy: [{ publishedAt: "desc" }, { version: "desc" }],
+        take: 1,
+      },
+    },
   });
   if (report == null) {
     throw new StatusError(404, "Report not found.");
   }
+  const publishedPresentation = options.publishedOnly && report.presentations.length > 0
+    ? report.presentations[0]
+    : null;
+  const actionItems = await globalPrismaClient.growthActionItem.findMany({
+    where: { reportId: report.id },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+  let visibleActionItems = actionItems;
+  if (publishedPresentation != null) {
+    const actionItemsById = new Map(actionItems.map((item) => [item.id, item]));
+    const missingActionItemIds: string[] = [];
+    visibleActionItems = publishedPresentation.actionItemIds.flatMap((id) => {
+      const item = actionItemsById.get(id);
+      if (item == null) {
+        missingActionItemIds.push(id);
+        return [];
+      }
+      return [item];
+    });
+    if (missingActionItemIds.length > 0) {
+      captureError("growth-report-presentation-action-item-drift", new HexclaveAssertionError(
+        `Published GrowthReportPresentation ${publishedPresentation.id} references action items that no longer exist.`,
+        { reportId: report.id, presentationId: publishedPresentation.id, missingActionItemIds },
+      ));
+    }
+  }
+  // Fields both branches share. The action items deliberately are NOT part of this: the presentation
+  // branch maps them through the customer allowlist and the legacy branch through the internal wire,
+  // and building the internal shape here first would make a leak one spread-order slip away.
+  const base = {
+    id: report.id,
+    run_id: report.runId,
+    title: report.title,
+    summary: report.summary,
+    created_at_millis: report.createdAt.getTime(),
+  };
+  if (publishedPresentation != null) {
+    return {
+      ...base,
+      action_items: visibleActionItems.map(growthActionItemToCustomerWire),
+      presentation: {
+        format: publishedPresentation.format,
+        version: publishedPresentation.version,
+        tsx_source: publishedPresentation.tsxSource,
+      },
+    };
+  }
+  // Reports auto-published before GrowthReportPresentation existed have no presentation. Keep the
+  // legacy body for those grandfathered rows so their customers do not go dark; new publication
+  // always requires a presentation and therefore takes the explicit allowlist path above.
+  const workflowRuntimeByItemId = await loadGrowthActionWorkflowRuntimeInfo(tenancy, visibleActionItems);
+  return {
+    ...base,
+    action_items: visibleActionItems.map((item) => growthActionItemToWire(item, workflowRuntimeByItemId.get(item.id) ?? null)),
+    content_md: report.contentMd,
+    document: growthDocumentFromRow(report),
+    // Stored Json passes through unchanged: the column shape ([{ id?, kind, title, body_markdown }])
+    // is exactly the wire shape, by design (see the comment on the dashboard's reportSchema).
+    sections: report.sections ?? null,
+  };
+}
+
+/**
+ * Staff review keeps the complete analysis artifact and action internals available regardless of
+ * publication state. This intentionally has a separate body builder from getGrowthReportBody:
+ * customer presentation reports use an explicit allowlist and must never be widened by an admin
+ * response refactor.
+ */
+export async function getGrowthAdminReportBody(tenancy: Tenancy, reportId: string) {
+  if (!isUuid(reportId)) throw new StatusError(404, "Report not found.");
+  const report = await globalPrismaClient.growthReport.findFirst({
+    where: { id: reportId, projectId: tenancy.project.id, branchId: tenancy.branchId },
+  });
+  if (report == null) throw new StatusError(404, "Report not found.");
   const actionItems = await globalPrismaClient.growthActionItem.findMany({
     where: { reportId: report.id },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -221,13 +317,11 @@ export async function getGrowthReportBody(tenancy: Tenancy, reportId: string | "
     run_id: report.runId,
     title: report.title,
     summary: report.summary,
-    content_md: report.contentMd,
-    document: growthDocumentFromRow(report),
-    // Stored Json passes through unchanged: the column shape ([{ id?, kind, title, body_markdown }])
-    // is exactly the wire shape, by design (see the comment on the dashboard's reportSchema).
-    sections: report.sections ?? null,
     created_at_millis: report.createdAt.getTime(),
     action_items: actionItems.map((item) => growthActionItemToWire(item, workflowRuntimeByItemId.get(item.id) ?? null)),
+    content_md: report.contentMd,
+    document: growthDocumentFromRow(report),
+    sections: report.sections ?? null,
   };
 }
 
@@ -401,6 +495,22 @@ export async function activateGrowthActionItem(
   actionItemId: string,
 ): Promise<{ status: GrowthActionStatus, workflowId: string | null }> {
   const item = await requireActionItemInTenancy(tenancy, actionItemId);
+  if (isGrowthCustomerTenancy(tenancy)) {
+    if (item.reportId == null) {
+      throw new StatusError(403, "This action is not available.");
+    }
+    const publishedPresentation = await globalPrismaClient.growthReportPresentation.findFirst({
+      where: {
+        reportId: item.reportId,
+        publishedAt: { not: null },
+        actionItemIds: { has: item.id },
+      },
+      select: { id: true },
+    });
+    if (publishedPresentation == null) {
+      throw new StatusError(403, "This action is not available.");
+    }
+  }
   const status = assertActionStatus(item.status);
 
   if (status === "active") {

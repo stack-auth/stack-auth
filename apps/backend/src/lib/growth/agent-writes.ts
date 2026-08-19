@@ -599,12 +599,9 @@ export async function upsertGrowthReport(options: {
         contentMd: options.contentMd,
         sections: options.sections === undefined ? undefined : toJsonInput(options.sections),
         document: compiledDocument === undefined ? undefined : toJsonInput(compiledDocument),
-        // A report is the customer's the moment it is written. There is no staff review of reports:
-        // the human step happens earlier, on the interview questions (lib/growth/interview-release.ts),
-        // because that is the last point at which a person can still change what the report is built
-        // from. Deliberately NOT mirrored in `update` below — re-composing a run whose report staff
-        // had explicitly unpublished (their error-recovery escape hatch) must not silently re-publish it.
-        publishedAt: new Date(),
+        // Reports are internal analysis artifacts. Customers only receive a report after staff
+        // author and publish a GrowthReportPresentation, so writing or recomposing this row never
+        // opens the customer-facing release gate.
       },
       update: {
         title: options.title,
