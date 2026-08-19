@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { getAppEnableConfigUpdate, getEnabledAppIds, getEnabledNavigableAppIds } from "./apps-utils";
+import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
+
+import { getAppEnableConfigUpdate, getAppIdsForListing, getEnabledAppIds, getEnabledNavigableAppIds } from "./apps-utils";
 
 describe("app enablement", () => {
   it("enables Warehouse and Observability independently as top-level apps", () => {
@@ -17,6 +19,17 @@ describe("app enablement", () => {
       "observability",
       "warehouse",
     ]);
+  });
+});
+
+describe("getAppIdsForListing", () => {
+  it("hides alpha apps unless they are enabled", () => {
+    const alphaAppIds = Object.entries(ALL_APPS)
+      .filter(([, app]) => app.stage === "alpha")
+      .map(([appId]) => appId);
+
+    expect(getAppIdsForListing()).not.toEqual(expect.arrayContaining(alphaAppIds));
+    expect(getAppIdsForListing(["support"])).toContain("support");
   });
 });
 

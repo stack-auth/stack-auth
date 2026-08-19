@@ -386,7 +386,10 @@ async function handleCreate(opts: InitOptions, outputDir: string): Promise<{ con
     const validAppIds = Object.keys(ALL_APPS);
     const invalidApps = selectedApps.filter((id) => !validAppIds.includes(id));
     if (invalidApps.length > 0) {
-      throw new CliError(`Unknown app IDs: ${invalidApps.join(", ")}. Valid IDs: ${validAppIds.join(", ")}`);
+      const availableAppIds = Object.entries(ALL_APPS)
+        .filter(([, app]) => app.stage !== "alpha")
+        .map(([appId]) => appId);
+      throw new CliError(`Unknown app IDs: ${invalidApps.join(", ")}. Available IDs: ${availableAppIds.join(", ")}`);
     }
   } else {
     const stageOrder = { stable: 0, beta: 1 } as const;

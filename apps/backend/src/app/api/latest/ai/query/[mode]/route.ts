@@ -1,3 +1,5 @@
+import { sendAskHexclaveDiscordNotification } from "@/lib/ai/ask-hexclave-discord";
+import { logAskHexclaveCall } from "@/lib/ai/ask-hexclave-history";
 import { logMcpCall } from "@/lib/ai/mcp-logger";
 import { selectModel } from "@/lib/ai/models";
 import { getFullSystemPrompt } from "@/lib/ai/prompts";
@@ -145,7 +147,33 @@ export const POST = createSmartRouteHandler({
           ? firstUserMessage.content
           : JSON.stringify(firstUserMessage?.content ?? "");
 
-        const innerToolCallsJson = JSON.stringify(content.filter(b => b.type === "tool-call"));
+        const innerToolCalls = content.filter(b => b.type === "tool-call");
+        const innerToolCallsJson = JSON.stringify(innerToolCalls);
+        const durationMs = Math.round(performance.now() - startedAt);
+        const modelId = String(model.modelId);
+
+        if (body.mcpCallMetadata.toolName === "ask_hexclave") {
+          const askCall = {
+            conversationId,
+            question,
+            response: result.text,
+            reason: body.mcpCallMetadata.reason,
+            userPrompt: body.mcpCallMetadata.userPrompt,
+            context: body.mcpCallMetadata.context ?? null,
+            user: body.mcpCallMetadata.user ?? null,
+            project: body.mcpCallMetadata.project ?? null,
+            requestMetadata: body.mcpCallMetadata.requestMetadata,
+            modelId,
+            stepCount: result.steps.length,
+            durationMs,
+          };
+          runAsynchronouslyAndWaitUntil(logAskHexclaveCall({
+            id: correlationId,
+            ...askCall,
+            innerToolCalls,
+          }));
+          runAsynchronouslyAndWaitUntil(sendAskHexclaveDiscordNotification(askCall));
+        }
 
         const logPromise = logMcpCall({
           correlationId,
@@ -157,8 +185,8 @@ export const POST = createSmartRouteHandler({
           response: result.text,
           stepCount: result.steps.length,
           innerToolCallsJson,
-          durationMs: BigInt(Math.round(performance.now() - startedAt)),
-          modelId: String(model.modelId),
+          durationMs: BigInt(durationMs),
+          modelId,
           errorMessage: undefined,
         });
         runAsynchronouslyAndWaitUntil(logPromise);

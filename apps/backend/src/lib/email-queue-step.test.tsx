@@ -1,7 +1,8 @@
 import { BooleanTrue, EmailOutboxCreatedWith } from "@/generated/prisma/client";
-import { globalPrismaClient, type PrismaClientTransaction } from "@/prisma-client";
+import { globalPrismaClient, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
+import { recordExternalDbSyncDeletion } from "./external-db-sync";
 import { _forTesting } from "./email-queue-step";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "./tenancies";
 
@@ -100,9 +101,17 @@ describe.sequential("failEmailsStuckInSending", () => {
   };
 
   afterAll(async () => {
-    for (const { tenancyId, id } of createdIds) {
-      await globalPrismaClient.emailOutbox.deleteMany({ where: { tenancyId, id } });
-    }
+    await retryTransaction(globalPrismaClient, async (tx) => {
+      for (const { tenancyId, id } of createdIds) {
+        // Deletions of synced tables only reach ClickHouse through DeletedRow.
+        await recordExternalDbSyncDeletion(tx, {
+          tableName: "EmailOutbox",
+          tenancyId,
+          emailOutboxId: id,
+        });
+        await tx.emailOutbox.deleteMany({ where: { tenancyId, id } });
+      }
+    });
   });
 
   it("marks a row as failed when startedSendingAt is older than the stuck timeout", async () => {
@@ -219,7 +228,21 @@ describe.sequential("claimEmailsForSending burst allowance", () => {
   };
 
   afterEach(async () => {
-    await globalPrismaClient.emailOutbox.deleteMany({ where: testFilter });
+    await retryTransaction(globalPrismaClient, async (tx) => {
+      const rows = await tx.emailOutbox.findMany({
+        where: testFilter,
+        select: { tenancyId: true, id: true },
+      });
+      for (const row of rows) {
+        // Deletions of synced tables only reach ClickHouse through DeletedRow.
+        await recordExternalDbSyncDeletion(tx, {
+          tableName: "EmailOutbox",
+          tenancyId: row.tenancyId,
+          emailOutboxId: row.id,
+        });
+        await tx.emailOutbox.deleteMany({ where: { tenancyId: row.tenancyId, id: row.id } });
+      }
+    });
   });
 
   it("claims up to the burst limit when the rate quota is zero", async () => {

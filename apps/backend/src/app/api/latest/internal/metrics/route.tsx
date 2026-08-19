@@ -27,7 +27,7 @@ import { userFullInclude, userPrismaToCrud, usersCrudHandlers } from "../../user
 type DataPoints = MetricsDataPoint[];
 
 const MAX_USERS_FOR_COUNTRY_SAMPLE = 10_000;
-const METRICS_WINDOW_DAYS = 30;
+export const METRICS_WINDOW_DAYS = 30;
 const METRICS_WINDOW_MS = METRICS_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 export const METRICS_REVENUE_INVOICE_STATUSES = ["paid", "succeeded"] as const;
@@ -305,7 +305,7 @@ async function loadLiveUsersCount(
   return liveUsers;
 }
 
-async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<DataPoints> {
+export async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<DataPoints> {
   const { since, untilExclusive } = getMetricsWindowBounds(now);
   const clickhouseClient = getClickhouseAdminClientForMetrics();
 
@@ -808,7 +808,7 @@ async function loadMonthlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonym
 }
 
 
-async function loadDailyRevenue(tenancy: Tenancy, now: Date): Promise<Array<{ date: string, new_cents: number, refund_cents: number }>> {
+export async function loadDailyRevenue(tenancy: Tenancy, now: Date): Promise<Array<{ date: string, new_cents: number, refund_cents: number }>> {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
   const { since } = getMetricsWindowBounds(now);
@@ -841,7 +841,7 @@ async function loadDailyRevenue(tenancy: Tenancy, now: Date): Promise<Array<{ da
   return dailyRevenue;
 }
 
-async function loadPaymentsOverview(tenancy: Tenancy, now: Date) {
+export async function loadPaymentsOverview(tenancy: Tenancy, now: Date) {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
 
@@ -952,7 +952,7 @@ async function loadPaymentsOverview(tenancy: Tenancy, now: Date) {
 
 // ── Email Aggregates ─────────────────────────────────────────────────────────
 
-async function loadEmailOverview(tenancy: Tenancy, now: Date) {
+export async function loadEmailOverview(tenancy: Tenancy, now: Date) {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
   const { since: thirtyDaysAgo } = getMetricsWindowBounds(now);
@@ -1343,7 +1343,7 @@ export function reconcileAnalyticsVisitorCount(
   return Math.max(analyticsVisitors, anonymousVisitorsFallback);
 }
 
-async function loadAnalyticsOverview(
+export async function loadAnalyticsOverview(
   tenancy: Tenancy,
   now: Date,
   includeAnonymous: boolean,
@@ -2012,7 +2012,7 @@ async function loadAnalyticsOverview(
 
 // ── Auth Extra Aggregates ────────────────────────────────────────────────────
 
-async function loadAuthOverview(tenancy: Tenancy, includeAnonymous: boolean, now: Date) {
+export async function loadAuthOverview(tenancy: Tenancy, includeAnonymous: boolean, now: Date) {
   const clickhouseClient = getClickhouseAdminClientForMetrics();
 
   const [usersRow, teamsRow, dailyActiveUsersSplit, dailyActiveTeamsSplit, mau] = await Promise.all([

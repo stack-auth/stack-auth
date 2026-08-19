@@ -19,11 +19,15 @@ Analytics is organized into these areas in the dashboard:
 
 Observability is a separate app for Issues, Logs, Traces, Services, and Performance. Enable it independently when you need production diagnostics; it still shares correlation and ingestion foundations with Analytics.
 
+See [Replays & Clickmaps](./replays-and-clickmaps) for the full guide to session replays and clickmaps, and [Queries & Tables](./queries-and-tables) for the shared ClickHouse dataset.
+
 ## How Analytics Works
 
 Hexclave records product events and replay chunks, then exposes them through Analytics for read-only querying and investigation. The shared telemetry foundation also correlates these signals with code observability without storing them in the same read model.
 
 User activity in your app flows into Hexclave event ingestion, which stores product events in ClickHouse. This data powers Events, replays, Clickmaps, and Explore.
+
+Analytics isn't only client events. Hexclave also exposes product data from the rest of your project — users, contact channels, teams, permissions, email outbox, and more — in the same read-only ClickHouse dataset, so you can join product state with behavior in one place.
 
 ### What Gets Tracked
 
@@ -47,12 +51,12 @@ To use analytics in your project:
 ## Quick Start
 
 1. Enable Analytics in your Hexclave dashboard (**Apps -> Analytics**)
-2. Initialize Hexclave on your frontend with `HexclaveClientApp`/`HexclaveProvider`
+2. Initialize Hexclave on your frontend with `HexclaveClientApp`/`HexclaveProvider` and a persistent `tokenStore` (e.g. `"cookie"`, or `"nextjs-cookie"` in Next.js)
 3. Sign in with a real user session
 4. Open the app and navigate/click around
 5. Check **Analytics -> Events** to confirm events are arriving
 
-After setup, Stack automatically captures client-side `$page-view` and `$click` events.
+SDK analytics capture and session replay recording are **on by default** once the Analytics app is enabled — you do not need to set `analytics.enabled` or `analytics.replays.enabled` unless you want to opt out (pass `analytics: { enabled: false }` or `analytics: { replays: { enabled: false } }`).
 
 Replay recording is on by default as part of analytics capture; set `analytics.replays.enabled: false` in your client app config to opt out.
 
@@ -180,7 +184,7 @@ export const hexclaveClientApp = new HexclaveClientApp({
 
 `captureKeystrokes` is disabled by default. When enabled, the SDK records one debounced `$keystroke` event per typing burst with only a count and timing metadata; it never records key values or typed text. Keystrokes in masked inputs, password fields, or elements covered by `blockClass` / `blockSelector` are excluded entirely.
 
-`maskAllInputs` defaults to `true`, so form fields are masked unless you explicitly disable it. That same setting also keeps their keystrokes out of keyboard-activity counts.
+`maskAllInputs` defaults to `true`, so form fields are masked unless you explicitly disable it. That same setting also keeps their keystrokes out of keyboard-activity counts. For the full set of privacy controls, playback, and clickmaps, see [Replays & Clickmaps](./replays-and-clickmaps).
 
 ### Disabling Analytics Capture in the SDK
 
@@ -208,5 +212,6 @@ This stops product events and replays. Logs, errors, spans, propagation, and ins
 2. **Use Observability for code investigation**: Logs and Traces retain the user/session context that caused the code path.
 3. **Use Queries for repeatable analysis**: save important SQL in folders, and scope queries with filters/`LIMIT` so they stay within result and timeout limits.
 4. **Use Replays for behavioral debugging**: start from an event pattern, then inspect matching session replays to understand what users actually did.
-5. **Keep replay privacy defaults on**: leave `maskAllInputs` enabled unless you have a specific reason and a data-handling policy for unmasked inputs.
-6. **Instrument the flows you care about**: a few well-named [custom spans](/guides/apps/analytics/custom-events-and-spans) around checkout, onboarding, or imports make Traces and SQL dramatically more useful than raw page views alone.
+5. **Use Clickmaps for UI friction and attention**: overlay click counts on your live pages to see whether a flow takes unnecessary clicks, whether a control looks interactable, or how variants compare in an A/B test. See [Replays & Clickmaps](./replays-and-clickmaps).
+6. **Keep replay privacy defaults on**: leave `maskAllInputs` enabled unless you have a specific reason and a data-handling policy for unmasked inputs.
+7. **Instrument the flows you care about**: a few well-named [custom spans](/guides/apps/analytics/custom-events-and-spans) around checkout, onboarding, or imports make Traces and SQL dramatically more useful than raw page views alone.

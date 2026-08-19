@@ -1,5 +1,7 @@
 import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
 import { enqueueExternalDbSyncBatch } from "@/lib/external-db-sync-queue";
+import { runSequenceAllocationInTransaction } from "@/lib/external-db-sync-sequencing";
+import { Span } from "@opentelemetry/api";
 import { Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -12,12 +14,27 @@ import {
   yupTuple,
 } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
-import { captureError, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 
 const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
 const SEQUENCER_BATCH_SIZE_ENV = "STACK_EXTERNAL_DB_SYNC_SEQUENCER_BATCH_SIZE";
 const DEFAULT_BATCH_SIZE = 1000;
+
+async function runSequenceAllocation<T>(
+  allocation: (tx: Prisma.TransactionClient) => Promise<T>,
+  span: Span,
+): Promise<T | null> {
+  // Allocation batches can contain up to 1,000 rows; allow substantial headroom above
+  // the normal sub-second case while keeping the globally locked transaction bounded.
+  const result = await retryTransaction(
+    globalPrismaClient,
+    (tx) => runSequenceAllocationInTransaction(tx, allocation),
+    { timeout: 30_000 },
+  );
+  if (result == null) span.setAttribute("stack.external-db-sync.sequence-allocation-skipped", true);
+  return result;
+}
 
 function parseMaxDurationMs(value: string | undefined): number {
   if (!value) return DEFAULT_MAX_DURATION_MS;
@@ -50,10 +67,9 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       "stack.external-db-sync.batch-size": batchSize,
     },
   }, async (span) => {
-    return await retryTransaction(globalPrismaClient, async (tx) => {
-      let didUpdate = false;
+    let didUpdate = false;
 
-      const projectUserTenants = await tx.$queryRaw<{ tenancyId: string }[]>`
+    const projectUserTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "projectUserId"
         FROM "ProjectUser"
@@ -72,17 +88,17 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING pu."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `, span)) ?? [];
 
     span.setAttribute("stack.external-db-sync.project-user-tenants", projectUserTenants.length);
 
     // Enqueue sync for all affected tenants in a single batch query
     if (projectUserTenants.length > 0) {
-      await enqueueExternalDbSyncBatch(projectUserTenants.map(t => t.tenancyId), tx);
+      await enqueueExternalDbSyncBatch(projectUserTenants.map(t => t.tenancyId));
       didUpdate = true;
     }
 
-    const contactChannelTenants = await tx.$queryRaw<{ tenancyId: string }[]>`
+    const contactChannelTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "projectUserId", "id"
         FROM "ContactChannel"
@@ -102,16 +118,16 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING cc."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `, span)) ?? [];
 
     span.setAttribute("stack.external-db-sync.contact-channel-tenants", contactChannelTenants.length);
 
     if (contactChannelTenants.length > 0) {
-      await enqueueExternalDbSyncBatch(contactChannelTenants.map(t => t.tenancyId), tx);
+      await enqueueExternalDbSyncBatch(contactChannelTenants.map(t => t.tenancyId));
       didUpdate = true;
     }
 
-    const teamTenants = await tx.$queryRaw<{ tenancyId: string, teamId: string }[]>`
+    const teamTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string, teamId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "teamId"
         FROM "Team"
@@ -130,17 +146,17 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING t."tenancyId", t."teamId"
       )
       SELECT DISTINCT "tenancyId", "teamId" FROM updated_rows
-    `;
+    `, span)) ?? [];
 
     span.setAttribute("stack.external-db-sync.team-tenants", teamTenants.length);
 
     if (teamTenants.length > 0) {
-      await enqueueExternalDbSyncBatch(teamTenants.map(t => t.tenancyId), tx);
+      await enqueueExternalDbSyncBatch(teamTenants.map(t => t.tenancyId));
       didUpdate = true;
 
       // Cascade: when a team changes, mark related TEAM_INVITATION verification codes for re-sync
       // so the team_display_name in team_invitations stays fresh
-      await tx.$executeRaw`
+      await globalPrismaClient.$executeRaw`
         UPDATE "VerificationCode"
         SET "shouldUpdateSequenceId" = TRUE
         FROM (
@@ -159,7 +175,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       `;
     }
 
-    const teamMemberTenants = await tx.$queryRaw<{ tenancyId: string }[]>`
+    const teamMemberTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "projectUserId", "teamId"
         FROM "TeamMember"
@@ -179,16 +195,16 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING tm."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `, span)) ?? [];
 
     span.setAttribute("stack.external-db-sync.team-member-tenants", teamMemberTenants.length);
 
     if (teamMemberTenants.length > 0) {
-      await enqueueExternalDbSyncBatch(teamMemberTenants.map(t => t.tenancyId), tx);
+      await enqueueExternalDbSyncBatch(teamMemberTenants.map(t => t.tenancyId));
       didUpdate = true;
     }
 
-    const teamPermissionTenants = await tx.$queryRaw<{ tenancyId: string }[]>`
+    const teamPermissionTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "id"
         FROM "TeamMemberDirectPermission"
@@ -206,16 +222,16 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING tp."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `, span)) ?? [];
 
     span.setAttribute("stack.external-db-sync.team-permission-tenants", teamPermissionTenants.length);
 
     if (teamPermissionTenants.length > 0) {
-      await enqueueExternalDbSyncBatch(teamPermissionTenants.map(t => t.tenancyId), tx);
+      await enqueueExternalDbSyncBatch(teamPermissionTenants.map(t => t.tenancyId));
       didUpdate = true;
     }
 
-    const teamInvitationTenants = await tx.$queryRaw<{ tenancyId: string }[]>`
+    const teamInvitationTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "projectId", "branchId", "id"
         FROM "VerificationCode"
@@ -239,16 +255,16 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       FROM updated_rows
       JOIN "Tenancy" ON "Tenancy"."projectId" = updated_rows."projectId"
         AND "Tenancy"."branchId" = updated_rows."branchId"
-    `;
+    `, span)) ?? [];
 
     span.setAttribute("stack.external-db-sync.team-invitation-tenants", teamInvitationTenants.length);
 
     if (teamInvitationTenants.length > 0) {
-      await enqueueExternalDbSyncBatch(teamInvitationTenants.map(t => t.tenancyId), tx);
+      await enqueueExternalDbSyncBatch(teamInvitationTenants.map(t => t.tenancyId));
       didUpdate = true;
     }
 
-    const emailOutboxTenants = await tx.$queryRaw<{ tenancyId: string }[]>`
+    const emailOutboxTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "id"
         FROM "EmailOutbox"
@@ -267,16 +283,16 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING eo."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `, span)) ?? [];
 
     span.setAttribute("stack.external-db-sync.email-outbox-tenants", emailOutboxTenants.length);
 
     if (emailOutboxTenants.length > 0) {
-      await enqueueExternalDbSyncBatch(emailOutboxTenants.map(t => t.tenancyId), tx);
+      await enqueueExternalDbSyncBatch(emailOutboxTenants.map(t => t.tenancyId));
       didUpdate = true;
     }
 
-    const projectPermissionTenants = await tx.$queryRaw<{ tenancyId: string }[]>`
+    const projectPermissionTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "id"
         FROM "ProjectUserDirectPermission"
@@ -294,16 +310,16 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING pp."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `, span)) ?? [];
 
     span.setAttribute("stack.external-db-sync.project-permission-tenants", projectPermissionTenants.length);
 
     if (projectPermissionTenants.length > 0) {
-      await enqueueExternalDbSyncBatch(projectPermissionTenants.map(t => t.tenancyId), tx);
+      await enqueueExternalDbSyncBatch(projectPermissionTenants.map(t => t.tenancyId));
       didUpdate = true;
     }
 
-    const notificationPreferenceTenants = await tx.$queryRaw<{ tenancyId: string }[]>`
+    const notificationPreferenceTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "id"
         FROM "UserNotificationPreference"
@@ -322,16 +338,16 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING np."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `, span)) ?? [];
 
     span.setAttribute("stack.external-db-sync.notification-preference-tenants", notificationPreferenceTenants.length);
 
     if (notificationPreferenceTenants.length > 0) {
-      await enqueueExternalDbSyncBatch(notificationPreferenceTenants.map(t => t.tenancyId), tx);
+      await enqueueExternalDbSyncBatch(notificationPreferenceTenants.map(t => t.tenancyId));
       didUpdate = true;
     }
 
-    const refreshTokenTenants = await tx.$queryRaw<{ tenancyId: string }[]>`
+    const refreshTokenTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "id"
         FROM "ProjectUserRefreshToken"
@@ -350,16 +366,16 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING rt."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `, span)) ?? [];
 
     span.setAttribute("stack.external-db-sync.refresh-token-tenants", refreshTokenTenants.length);
 
     if (refreshTokenTenants.length > 0) {
-      await enqueueExternalDbSyncBatch(refreshTokenTenants.map(t => t.tenancyId), tx);
+      await enqueueExternalDbSyncBatch(refreshTokenTenants.map(t => t.tenancyId));
       didUpdate = true;
     }
 
-    const oauthAccountTenants = await tx.$queryRaw<{ tenancyId: string }[]>`
+    const oauthAccountTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "id"
         FROM "ProjectUserOAuthAccount"
@@ -378,16 +394,16 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING oa."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `, span)) ?? [];
 
     span.setAttribute("stack.external-db-sync.oauth-account-tenants", oauthAccountTenants.length);
 
     if (oauthAccountTenants.length > 0) {
-      await enqueueExternalDbSyncBatch(oauthAccountTenants.map(t => t.tenancyId), tx);
+      await enqueueExternalDbSyncBatch(oauthAccountTenants.map(t => t.tenancyId));
       didUpdate = true;
     }
 
-    const deletedRowTenants = await tx.$queryRaw<{ tenancyId: string }[]>`
+    const deletedRowTenants = (await runSequenceAllocation((tx) => tx.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "id", "tenancyId"
         FROM "DeletedRow"
@@ -405,12 +421,12 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         RETURNING dr."tenancyId"
       )
       SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
+    `, span)) ?? [];
 
     span.setAttribute("stack.external-db-sync.deleted-row-tenants", deletedRowTenants.length);
 
     if (deletedRowTenants.length > 0) {
-      await enqueueExternalDbSyncBatch(deletedRowTenants.map(t => t.tenancyId), tx);
+      await enqueueExternalDbSyncBatch(deletedRowTenants.map(t => t.tenancyId));
       didUpdate = true;
     }
 
@@ -420,7 +436,6 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
     }
 
     return didUpdate;
-    });
   });
 }
 

@@ -6,6 +6,7 @@ import type { ManualTransactionRow } from "@/lib/payments/schema/types";
 const BULLDOZER_FETCH_MAX_ATTEMPTS = 5;
 const BULLDOZER_FETCH_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000];
 const SAFE_CONNECT_ERROR_CODES = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "EAI_FAIL"]);
+const RETRIABLE_GET_RESPONSE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 type ErrorWithCause = {
   cause?: unknown,
@@ -87,8 +88,23 @@ export async function fetchBulldozerServerJson<T>(options: {
           ...options.body === undefined ? {} : { body: JSON.stringify(options.body) },
         });
 
+        if (
+          options.method === "GET"
+          && RETRIABLE_GET_RESPONSE_STATUSES.has(response.status)
+          && attempt < BULLDOZER_FETCH_MAX_ATTEMPTS
+        ) {
+          firstRetryError ??= new HexclaveAssertionError("Bulldozer GET received a transient HTTP response", {
+            method: options.method,
+            path: options.path,
+            status: response.status,
+          });
+          await response.body?.cancel();
+          await new Promise((resolve) => setTimeout(resolve, BULLDOZER_FETCH_RETRY_DELAYS_MS[attempt - 1]));
+          continue;
+        }
+
         if (attempt > 1 && response.ok) {
-          captureError("bulldozer-server-connect-retry", new HexclaveAssertionError("Bulldozer server request recovered after connect-phase failures", {
+          captureError("bulldozer-server-connect-retry", new HexclaveAssertionError("Bulldozer server request recovered after transient failures", {
             cause: firstRetryError,
             attempts: attempt,
             method: options.method,
@@ -97,7 +113,8 @@ export async function fetchBulldozerServerJson<T>(options: {
         }
         return response;
       } catch (error) {
-        if (!isRetriableBulldozerFetchError(error) || attempt >= BULLDOZER_FETCH_MAX_ATTEMPTS) {
+        const isRetriable = options.method === "GET" || isRetriableBulldozerFetchError(error);
+        if (!isRetriable || attempt >= BULLDOZER_FETCH_MAX_ATTEMPTS) {
           throw error;
         }
         firstRetryError ??= error;

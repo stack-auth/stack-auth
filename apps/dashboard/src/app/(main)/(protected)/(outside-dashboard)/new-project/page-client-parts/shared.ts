@@ -1,4 +1,5 @@
 import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
+import { getAppIdsForListing } from "@/lib/apps-utils";
 import { AdminOwnedProject } from "@hexclave/next";
 import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
@@ -25,7 +26,7 @@ export const REQUIRED_APP_IDS: AppId[] = ["analytics"];
 export const PRIMARY_APP_IDS: AppId[] = ["authentication", "emails", "payments", "analytics"];
 const EARLY_ONBOARDING_DEFAULT_APP_IDS: AppId[] = ["authentication", "emails", "analytics"];
 export const ALL_APP_IDS = Object.keys(ALL_APPS) as AppId[];
-export const ONBOARDING_APP_IDS = ALL_APP_IDS.filter((appId) => ALL_APPS[appId].stage !== "alpha" && getParentAppId(appId) == null);
+export const ONBOARDING_APP_IDS = getAppIdsForListing().filter((appId) => getParentAppId(appId) == null);
 export const OAUTH_SIGN_IN_METHODS = ["google", "github", "microsoft"] satisfies SignInMethod[];
 export const SHARED_OAUTH_SIGN_IN_METHODS = sharedProviders.filter((provider): provider is (typeof sharedProviders)[number] & SignInMethod => {
   return OAUTH_SIGN_IN_METHODS.some((method) => method === provider);

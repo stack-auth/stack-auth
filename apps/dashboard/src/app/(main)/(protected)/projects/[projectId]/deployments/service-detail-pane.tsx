@@ -1,14 +1,13 @@
 "use client";
 
 import { DesignBadge, DesignButton } from "@/components/design-components";
-import { ActionDialog, Typography, cn } from "@/components/ui";
-import type { AdminDeploymentRunJson, AdminProject } from "@hexclave/next";
+import { Typography, cn } from "@/components/ui";
+import type { AdminDeploymentServiceOutcomeJson, AdminProject } from "@hexclave/next";
 import { XIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { getServiceTypeMeta, type BoardService } from "./board-model";
 import {
-  DeploymentDetailContent,
-  DeploymentsContent,
+  BuildLogsContent,
   DomainsContent,
   OverviewContent,
   SettingsContent,
@@ -16,34 +15,38 @@ import {
 } from "./panel-content";
 import { STATUS_META, getAccentClasses } from "./variants";
 
+// Note: service definitions (name, build config, env vars) are read-only here
+// — they come from the deploy file's `services` export and are synced by
+// `hexclave deploy`. Domains are operational state and stay editable.
+
 type ServiceDetailPaneProps = {
   service: BoardService,
   services: BoardService[],
   project: AdminProject,
-  // True when the project's config is pushed from a config file or GitHub:
-  // service definitions (name, build config, env vars) can't be edited here.
-  // Domains are operational state and stay editable regardless.
-  readOnly: boolean,
+  // The run THIS deployment gave this service, or null when it never started one (and for the
+  // managed hexclave node, which is not deployed at all). Owns the Build logs tab.
+  deploymentId: string | null,
+  outcome: AdminDeploymentServiceOutcomeJson | null,
   onClose: () => void,
-  onDeleted: () => void,
   refresh: () => Promise<void>,
 };
 
-type PanelTabId = "overview" | "variables" | "deployments" | "domains" | "settings";
+// No "Deployments" tab listing every past run of this service: the page is already scoped to
+// ONE deployment, so the only run that belongs here is that deploy's. It gets a Build logs tab
+// instead — the thing you actually open a failed service to read.
+type PanelTabId = "overview" | "build-logs" | "variables" | "domains" | "settings";
 
 const TABS: { id: PanelTabId, label: string }[] = [
   { id: "overview", label: "Overview" },
+  { id: "build-logs", label: "Build logs" },
   { id: "variables", label: "Variables" },
-  { id: "deployments", label: "Deployments" },
   { id: "domains", label: "Domains" },
   { id: "settings", label: "Settings" },
 ];
 
 export function ServiceDetailPane(props: ServiceDetailPaneProps) {
-  const { service, services, project, readOnly, refresh } = props;
+  const { service, services, project, refresh } = props;
   const [tab, setTab] = useState<PanelTabId>("overview");
-  const [openRun, setOpenRun] = useState<AdminDeploymentRunJson | null>(null);
-  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const isHexclave = service.type === "hexclave";
   const meta = getServiceTypeMeta(service.type);
@@ -51,28 +54,22 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   const Icon = meta.icon;
   const status = STATUS_META.get(service.status);
 
-  // When a different service is selected, jump back to Overview and reset the
-  // drill-in / dialog.
+  // When a different service is selected, jump back to Overview.
   useEffect(() => {
     setTab("overview");
-    setOpenRun(null);
-    setDeleteOpen(false);
   }, [service.id]);
 
   const selectTab = (id: PanelTabId) => {
     setTab(id);
-    setOpenRun(null);
   };
 
-  const content = openRun ? (
-    <DeploymentDetailContent run={openRun} project={project} onBack={() => setOpenRun(null)} />
-  ) : (() => {
+  const content = (() => {
     switch (tab) {
       case "overview": { return <OverviewContent service={service} project={project} isHexclave={isHexclave} />; }
-      case "variables": { return <VariablesContent service={service} services={services} project={project} isHexclave={isHexclave} readOnly={readOnly} refresh={refresh} />; }
-      case "deployments": { return <DeploymentsContent service={service} project={project} isHexclave={isHexclave} onOpenRun={setOpenRun} />; }
+      case "build-logs": { return <BuildLogsContent deploymentId={props.deploymentId} outcome={props.outcome} project={project} isHexclave={isHexclave} />; }
+      case "variables": { return <VariablesContent service={service} services={services} isHexclave={isHexclave} />; }
       case "domains": { return <DomainsContent service={service} project={project} isHexclave={isHexclave} refresh={refresh} />; }
-      case "settings": { return <SettingsContent service={service} project={project} isHexclave={isHexclave} readOnly={readOnly} refresh={refresh} onRequestDelete={() => setDeleteOpen(true)} />; }
+      case "settings": { return <SettingsContent service={service} isHexclave={isHexclave} />; }
     }
   })();
 
@@ -114,22 +111,6 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
       </div>
 
       <div className="min-h-0 flex-1">{content}</div>
-
-      <ActionDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        danger
-        title="Delete service"
-        description={`This permanently removes "${service.name}", including its deployment target and all of its configuration. This can't be undone.`}
-        okButton={{
-          label: "Delete service",
-          onClick: async () => {
-            await project.deleteDeploymentService(service.id);
-            props.onDeleted();
-          },
-        }}
-        cancelButton
-      />
     </div>
   );
 }

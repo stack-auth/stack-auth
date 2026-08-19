@@ -6,6 +6,7 @@ on:
       - main
       - dev
   pull_request:
+  workflow_dispatch:
 
 # A concurrency group only ever runs one run at a time, so the sha is part of the group on main/dev:
 # otherwise consecutive dev pushes queue behind each other (and GitHub cancels the older queued run),
@@ -32,7 +33,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   build:
-    timeout-minutes: 150
+    timeout-minutes: 300
     needs: wait-for-fast-fail
     name: E2E Tests (Node ${{ matrix.node-version }})
     runs-on: ubicloud-standard-8
@@ -45,7 +46,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [22.x]
+        node-version: [24.x]
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -124,6 +125,14 @@ jobs:
       - name: Wait on ClickHouse
         run: pnpm exec wait-on http://localhost:8136/ping
 
+      # The deployments e2e tests hit s3mock and fly-mock directly; marshal's /health does
+      # not touch either, so wait on them explicitly (fly-mock is a build:-from-context image).
+      - name: Wait on s3mock
+        run: pnpm exec wait-on http://localhost:8121/
+
+      - name: Wait on fly-mock
+        run: pnpm exec wait-on http://localhost:8148/health
+
       - name: Initialize database
         run: pnpm run db:init
   
@@ -131,6 +140,7 @@ jobs:
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         env:
           HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB: "1"
+          HEXCLAVE_BULLDOZER_DIAGNOSTICS: "true"
         with:
           run: |
             bulldozer_log="$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
@@ -150,6 +160,18 @@ jobs:
       # fresh bulldozer-js store so the backend's payment reads aren't empty.
       - name: Backfill Bulldozer from Postgres
         run: pnpm run db:backfill-bulldozer-from-prisma
+
+      # Marshal (the deployments runtime) talks to the fly-mock + s3mock
+      # containers; the deployments e2e tests drive it through the backend.
+      - name: Start marshal in background
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        with:
+          run: NODE_ENV=test pnpm run start:marshal &
+          wait-on: |
+            http://localhost:8147/health
+          tail: true
+          wait-for: 30s
+          log-output-if: true
 
       # The built server (node dist/server.mjs) does not auto-load .env files the way
       # `next start` used to, so it must be wrapped in with-env:test to pick up
@@ -212,38 +234,143 @@ jobs:
       - name: Wait 10 seconds
         run: sleep 10
 
+      - name: Reset process attribution
+        continue-on-error: true
+        run: .github/scripts/process-attribution.sh reset || true
+
       - name: Reset PostgreSQL statement attribution
         continue-on-error: true
         run: .github/scripts/postgres-attribution.sh reset
 
       - name: Run tests
         id: run_tests_pass1
-        run: pnpm test run
+        timeout-minutes: 60
+        run: |
+          set -o pipefail
+          pnpm test run --reporter=default --reporter=json \
+            --outputFile="$RUNNER_TEMP/e2e-test-results-pass1.untracked.json" 2>&1 |
+            tee "$RUNNER_TEMP/e2e-test-output-pass1.untracked.log"
+          pipeline_status=("${PIPESTATUS[@]}")
+          if [[ "${pipeline_status[1]}" -ne 0 ]]; then
+            echo "::warning::tee failed while capturing pass 1 output; the test result is still used for the step status"
+          fi
+          exit "${pipeline_status[0]}"
 
       - name: Snapshot PostgreSQL attribution after pass 1
         if: always()
         continue-on-error: true
         run: .github/scripts/postgres-attribution.sh snapshot
 
+      - name: Snapshot process attribution after pass 1
+        if: always()
+        continue-on-error: true
+        run: |
+          .github/scripts/process-attribution.sh snapshot || true
+          pnpm -C apps/backend run with-env:test bash -c \
+            '
+              mock_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}22"
+              curl --fail --silent --show-error \
+                "http://localhost:${mock_port}/diagnostics?reset=true" \
+                > "$RUNNER_TEMP/freestyle-mock-diagnostics-pass1.untracked.json"
+            ' || true
+
+      - name: Wait for external DB sync to become idle before pass 2
+        id: sync_barrier_pass1
+        if: always() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && steps.run_tests_pass1.outcome != 'skipped'
+        timeout-minutes: 35
+        run: |
+          pnpm -C apps/backend run with-env:test tsx scripts/wait-for-external-db-sync-idle.ts
+          .github/scripts/postgres-attribution.sh reset || true
+          .github/scripts/process-attribution.sh reset || true
+          pnpm -C apps/backend run with-env:test bash -c \
+            '
+              mock_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}22"
+              curl --fail --silent --show-error \
+                "http://localhost:${mock_port}/diagnostics?reset=true" \
+                >/dev/null
+            ' || true
+
       - name: Run tests again (attempt 1)
         id: run_tests_pass2
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test run
+        if: always() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && steps.sync_barrier_pass1.outcome == 'success'
+        timeout-minutes: 75
+        run: |
+          set -o pipefail
+          pnpm test run --reporter=default --reporter=json \
+            --outputFile="$RUNNER_TEMP/e2e-test-results-pass2.untracked.json" 2>&1 |
+            tee "$RUNNER_TEMP/e2e-test-output-pass2.untracked.log"
+          pipeline_status=("${PIPESTATUS[@]}")
+          if [[ "${pipeline_status[1]}" -ne 0 ]]; then
+            echo "::warning::tee failed while capturing pass 2 output; the test result is still used for the step status"
+          fi
+          exit "${pipeline_status[0]}"
 
       - name: Snapshot PostgreSQL attribution after pass 2
         if: always() && steps.run_tests_pass2.outcome != 'skipped'
         continue-on-error: true
         run: .github/scripts/postgres-attribution.sh snapshot
 
+      - name: Snapshot process attribution after pass 2
+        if: always() && steps.run_tests_pass2.outcome != 'skipped'
+        continue-on-error: true
+        run: |
+          .github/scripts/process-attribution.sh snapshot || true
+          pnpm -C apps/backend run with-env:test bash -c \
+            '
+              mock_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}22"
+              curl --fail --silent --show-error \
+                "http://localhost:${mock_port}/diagnostics?reset=true" \
+                > "$RUNNER_TEMP/freestyle-mock-diagnostics-pass2.untracked.json"
+            ' || true
+
+      - name: Wait for external DB sync to become idle before pass 3
+        id: sync_barrier_pass2
+        if: always() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && steps.run_tests_pass2.outcome != 'skipped'
+        timeout-minutes: 35
+        run: |
+          pnpm -C apps/backend run with-env:test tsx scripts/wait-for-external-db-sync-idle.ts
+          .github/scripts/postgres-attribution.sh reset || true
+          .github/scripts/process-attribution.sh reset || true
+          pnpm -C apps/backend run with-env:test bash -c \
+            '
+              mock_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}22"
+              curl --fail --silent --show-error \
+                "http://localhost:${mock_port}/diagnostics?reset=true" \
+                >/dev/null
+            ' || true
+
       - name: Run tests again (attempt 2)
         id: run_tests_pass3
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test run
+        if: always() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && steps.sync_barrier_pass2.outcome == 'success'
+        timeout-minutes: 105
+        run: |
+          set -o pipefail
+          pnpm test run --reporter=default --reporter=json \
+            --outputFile="$RUNNER_TEMP/e2e-test-results-pass3.untracked.json" 2>&1 |
+            tee "$RUNNER_TEMP/e2e-test-output-pass3.untracked.log"
+          pipeline_status=("${PIPESTATUS[@]}")
+          if [[ "${pipeline_status[1]}" -ne 0 ]]; then
+            echo "::warning::tee failed while capturing pass 3 output; the test result is still used for the step status"
+          fi
+          exit "${pipeline_status[0]}"
 
       - name: Snapshot PostgreSQL attribution after pass 3
         if: always() && steps.run_tests_pass3.outcome != 'skipped'
         continue-on-error: true
         run: .github/scripts/postgres-attribution.sh snapshot
+
+      - name: Snapshot process attribution after pass 3
+        if: always() && steps.run_tests_pass3.outcome != 'skipped'
+        continue-on-error: true
+        run: |
+          .github/scripts/process-attribution.sh snapshot || true
+          pnpm -C apps/backend run with-env:test bash -c \
+            '
+              mock_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}22"
+              curl --fail --silent --show-error \
+                "http://localhost:${mock_port}/diagnostics?reset=true" \
+                > "$RUNNER_TEMP/freestyle-mock-diagnostics-pass3.untracked.json"
+            ' || true
 
       - name: Run perf tests
         env:
@@ -264,12 +391,44 @@ jobs:
           tail -n 2000 "$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
 
       - name: Upload bulldozer-js logs
-        if: ${{ failure() }}
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-api-bulldozer
           path: ${{ runner.temp }}/hexclave-bulldozer.untracked.log
-          if-no-files-found: error
+          if-no-files-found: warn
+
+      - name: Capture bulldozer-js diagnostics
+        if: always()
+        continue-on-error: true
+        run: |
+          pnpm -C apps/backend run with-env:test bash -c \
+            '
+              bulldozer_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}46"
+              curl --fail --silent --show-error \
+                -H "Authorization: Bearer ${HEXCLAVE_BULLDOZER_SERVER_SECRET}" \
+                "http://localhost:${bulldozer_port}/diagnostics" \
+                > "$RUNNER_TEMP/hexclave-bulldozer-diagnostics.untracked.json"
+            '
+
+      - name: Upload bulldozer-js diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-api-bulldozer-diagnostics
+          path: ${{ runner.temp }}/hexclave-bulldozer-diagnostics.untracked.json
+          if-no-files-found: warn
+
+      - name: Upload E2E timing diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-api-test-timing-diagnostics
+          path: |
+            ${{ runner.temp }}/e2e-test-results-pass*.untracked.json
+            ${{ runner.temp }}/e2e-test-output-pass*.untracked.log
+            ${{ runner.temp }}/freestyle-mock-diagnostics-pass*.untracked.json
+          if-no-files-found: warn
 
       - name: Print Docker Compose logs
         if: always()

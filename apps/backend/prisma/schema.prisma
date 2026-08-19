@@ -48,6 +48,7 @@ model Project {
   environmentConfigOverrides EnvironmentConfigOverride[]
   configAgentRuns            ConfigAgentRun[]
   aiConversations            AiConversation[]
+  
   gtmInsights                GtmInsight[]
   gtmActions                 GtmAction[]
   gtmNotes                   GtmNote[]
@@ -64,6 +65,20 @@ model Project {
   issueSubscriptions          IssueSubscription[]
   issueBookmarks              IssueBookmark[]
   savedIssueSearchViews       IssueSavedSearchView[]
+  growthOnboardings          GrowthOnboarding[]
+  growthAnalysisRuns         GrowthAnalysisRun[]
+  growthFindings             GrowthFinding[]
+  growthArtifacts            GrowthArtifact[]
+  growthChatConversations    GrowthChatConversation[]
+  growthActionItems          GrowthActionItem[]
+  growthCategoryScores       GrowthCategoryScore[]
+  growthDailyMetrics         GrowthDailyMetrics[]
+  growthBriefs               GrowthBrief[]
+  growthMilestones           GrowthMilestone[]
+  growthQuizGames            GrowthQuizGame[]
+  growthQuizRounds           GrowthQuizRound[]
+
+  projectSecrets             ProjectSecret[]
 
   @@index([ownerTeamId], map: "Project_ownerTeamId_idx")
 }
@@ -167,6 +182,660 @@ model GtmOnboarding {
   @@unique([projectId, branchId])
 }
 
+// ─── Growth app ─────────────────────────────────────────────────────────────
+// Durable state for the Growth app's agent-driven lifecycle: one-time analysis
+// runs executed phase-by-phase in the Eve agent runtime, the interview and
+// report they produce, one-click action items with watched-metric snapshots,
+// daily metric rollups and briefs, milestones that re-trigger analysis, and
+// recurring scheduled tasks. The backend engine owns all orchestration; the
+// agent runtime is stateless and only reads/writes through these tables via
+// the internal/growth-agent API.
+
+enum GrowthRunStatus {
+  PENDING
+  RUNNING
+  AWAITING_INTERVIEW
+  COMPOSING_REPORT
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum GrowthPhaseStatus {
+  PENDING
+  DISPATCHED
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+// One intake per project branch: the website the analysis starts from. Kept
+// separate from analysis runs because it is written once at onboarding and
+// re-read by every subsequent (milestone/manual) run.
+model GrowthOnboarding {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+
+  websiteUrl     String  @db.VarChar(2048)
+  companySummary String? @db.Text
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  completedAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, branchId])
+}
+
+model GrowthAnalysisRun {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+
+  trigger          String // "initial" | "milestone" | "manual"
+  milestoneEventId String? @db.Uuid
+  status           GrowthRunStatus @default(PENDING)
+  // User-visible only; internals go to captureError, never into this column.
+  errorMessage     String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  // Generated column (see migration): TRUE while status is one of
+  // PENDING/RUNNING/AWAITING_INTERVIEW/COMPOSING_REPORT, NULL otherwise.
+  // Exists solely so the one-active-run-per-branch uniqueness below can be an
+  // ordinary unique index (NULLs never collide) — the same trick, with the
+  // same Prisma caveats, as WorkflowRun.isActive: Prisma only applies
+  // dbgenerated() as a DEFAULT, the migration hand-writes the actual
+  // GENERATED ALWAYS AS ... STORED column, and the expression string below
+  // must match what Postgres re-deparses (pg_get_expr), not what the
+  // migration writes.
+  isActive Boolean? @default(dbgenerated("\nCASE\n    WHEN (status = ANY (ARRAY['PENDING'::\"GrowthRunStatus\", 'RUNNING'::\"GrowthRunStatus\", 'AWAITING_INTERVIEW'::\"GrowthRunStatus\", 'COMPOSING_REPORT'::\"GrowthRunStatus\"])) THEN true\n    ELSE NULL::boolean\nEND"))
+
+  project   Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  phases    GrowthAnalysisPhase[]
+  interview GrowthInterview?
+  report    GrowthReport?
+  findings  GrowthFinding[]
+  artifacts GrowthArtifact[]
+
+  @@unique([projectId, branchId, isActive], map: "GrowthAnalysisRun_active_run")
+  @@index([projectId, branchId, createdAt(sort: Desc), id(sort: Desc)])
+  // Engine tick: every sub-step starts from "all runs in an active status".
+  @@index([status])
+}
+
+// The unit of dispatch, retry, and resume: each phase is one invocation of the
+// agent runtime. Phase keys are "website-research", "data-analysis",
+// "playbook:<id>", "interview-questions", and "report" (see lib/growth/phases.ts).
+model GrowthAnalysisPhase {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  runId    String @db.Uuid
+  phaseKey String
+
+  status       GrowthPhaseStatus @default(PENDING)
+  attempt      Int               @default(0)
+  dispatchedAt DateTime?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  heartbeatAt  DateTime?
+  eveSessionId String?
+  // User-visible only, like GrowthAnalysisRun.errorMessage.
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  run GrowthAnalysisRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, phaseKey])
+  // Engine reaper: scan for DISPATCHED/RUNNING phases with stale (or missing) heartbeats.
+  @@index([status, heartbeatAt])
+}
+
+// A single piece of gathered intelligence (competitor, audience, blog idea,
+// data insight, metric baseline, ...). Findings outlive their run — they are
+// the accumulated context every later agent invocation reads — hence SetNull.
+model GrowthFinding {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+  runId     String? @db.Uuid
+
+  source String // phaseKey, "daily-brief", "scheduled-task", "chat", or "admin"
+  kind   String
+  // Nullable during the staged overview rollout. New writes require a category;
+  // existing rows are assigned through the internal admin before the later NOT NULL migration.
+  category String?
+  tags     String[] @default([])
+  title  String
+  body   String @db.Text
+  data   Json?
+  // Versioned, validated Growth MDX document. `body` remains the compact plain-text summary used
+  // by legacy readers and list rows; the dashboard renders this richer document when present.
+  document Json?
+
+  createdAt DateTime @default(now())
+
+  project Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  run     GrowthAnalysisRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, branchId, kind, createdAt(sort: Desc)])
+  @@index([projectId, branchId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([runId])
+}
+
+// Larger generated content (blog drafts, report sections, crawl summaries)
+// referenced by findings and action-item payloads.
+model GrowthArtifact {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+  runId     String? @db.Uuid
+
+  kind     String
+  title    String
+  content  String @db.Text
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  project Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  run     GrowthAnalysisRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, branchId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([runId])
+}
+
+// The interview attached to a run. The pre-generated question plan lives in
+// GrowthInterviewQuestion rows; the live chat transcript (which follows the
+// plan but may adapt) is stored as messages here so the chat is resumable.
+model GrowthInterview {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  runId     String @unique @db.Uuid
+  projectId String
+  branchId  String
+
+  status   String @default("pending") // "pending" | "active" | "completed" | "skipped"
+  // UIMessage-compatible chat transcript, whole-list read/write only.
+  messages Json?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+  releasedAt       DateTime?
+  releasedByUserId String?
+
+  run       GrowthAnalysisRun         @relation(fields: [runId], references: [id], onDelete: Cascade)
+  questions GrowthInterviewQuestion[]
+
+  @@index([projectId, branchId])
+}
+
+model GrowthInterviewQuestion {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  interviewId String @db.Uuid
+  orderIndex  Int
+  questionKey String
+  prompt      String @db.Text
+  kind        String @default("single") // "single" | "multi"
+  // [{ id, label, description? }] — whole-list read/write only, never queried.
+  options   Json
+  allowSkip Boolean @default(true)
+  origin    String  @default("planned") // "planned" | "adaptive"
+
+  answerOptionIds Json?
+  answerFreeText  String?   @db.Text
+  answeredAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interview GrowthInterview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@unique([interviewId, orderIndex])
+}
+
+model GrowthChatConversation {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+
+  // Derived from the first user message; see deriveGrowthChatTitle in lib/growth/chat.ts.
+  title String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project  Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages GrowthChatMessage[]
+
+  // Serves the sidebar listing: WHERE projectId/branchId ORDER BY updatedAt DESC, id DESC.
+  @@index([projectId, branchId, updatedAt(sort: Desc), id(sort: Desc)])
+}
+
+model GrowthChatMessage {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  conversationId String @db.Uuid
+  position       Int
+  role           String
+  // Opaque AI SDK UIMessage, whole-object read/write only — the dashboard hands it to useChat
+  // verbatim and the agent gets it back unchanged on the next turn.
+  content Json
+
+  createdAt DateTime @default(now())
+
+  conversation GrowthChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // Unique rather than a plain index: position is derived from a COUNT inside the append
+  // transaction, so two turns racing on one conversation would otherwise both write the same
+  // position and permanently scramble the transcript's order. A unique violation turns that race
+  // into a loud, retryable failure instead (nothing is persisted until the agent has replied, so
+  // the client can simply resend).
+  @@unique([conversationId, position])
+}
+
+model GrowthReport {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  runId     String @unique @db.Uuid
+  projectId String
+  branchId  String
+
+  title     String
+  summary   String @db.Text
+  contentMd String @db.Text
+  // Structured [{ id, title, kind, body_markdown }] for dashboard rendering.
+  sections  Json?
+  // Versioned Growth MDX source, safe render AST, and typed evidence data. Kept nullable so reports
+  // written before growth-mdx-v1 continue through the legacy Markdown renderer without a backfill.
+  document Json?
+
+  createdAt DateTime @default(now())
+
+  publishedAt       DateTime?
+  publishedByUserId String?
+  readAt DateTime?
+
+  run GrowthAnalysisRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, branchId, createdAt(sort: Desc), id(sort: Desc)])
+  // Covers the released-gate lookup, which runs once per request on every locked customer route.
+  @@index([projectId, branchId, publishedAt(sort: Desc)])
+}
+
+model GrowthActionItem {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+  reportId  String? @db.Uuid
+  briefId   String? @db.Uuid
+
+  typeId      String
+  // See GrowthFinding.category. Functional action behavior never depends on
+  // this presentation metadata; it only decides where the overview renders it.
+  category    String?
+  tags        String[] @default([])
+  title       String
+  description String @db.Text
+  payload     Json?
+  // Rich evidence, hypothesis, and experiment detail. `description` remains the short list summary.
+  document    Json?
+  status      String @default("proposed") // "proposed" | "active" | "completed" | "dismissed"
+  // [{ metricId, windowDays }] — declared at creation from the type registry.
+  watchedMetrics Json
+
+  // Optional agent-authored workflow attached to this recommendation. The workflow is deployed as
+  // an ordinary customer-editable workflow (WorkflowDefinition, id prefixed "growth-") when the
+  // user activates the item; until then the source/manifest live only here. workflowManifest holds
+  // the dry-compile manifest so the dashboard can render triggers without re-compiling.
+  workflowId           String?
+  workflowSource       String?   @db.Text
+  workflowManifest     Json?
+  workflowExplanation  String?   @db.Text
+  workflowRollbackNote String?   @db.Text
+  workflowDeployedAt   DateTime?
+
+  activatedAt DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project   Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  snapshots GrowthMetricSnapshot[]
+
+  @@index([projectId, branchId, status, createdAt(sort: Desc)])
+  @@index([projectId, branchId, category, status, createdAt(sort: Desc)])
+  @@index([projectId, branchId, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+// Human-curated category scores for the Growth overview radar. A missing row is
+// deliberately different from score 0: it means nobody has assessed the category yet.
+model GrowthCategoryScore {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+  category  String
+  score     Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, branchId, category])
+  @@index([projectId, branchId, updatedAt(sort: Desc)])
+}
+
+model GrowthMetricSnapshot {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  actionItemId String @db.Uuid
+  phase        String // "before" | "after"
+  capturedAt   DateTime @default(now())
+  // { <metricId>: number }
+  metrics Json
+
+  actionItem GrowthActionItem @relation(fields: [actionItemId], references: [id], onDelete: Cascade)
+
+  @@index([actionItemId, capturedAt])
+}
+
+// Per-branch daily metric rollup (UTC days), computed by the engine from the
+// metrics registry. Feeds briefs, milestone evaluation, and before/after
+// series without re-querying the analytics store.
+model GrowthDailyMetrics {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+  date      DateTime @db.Date
+  // { <metricId>: number }
+  metrics Json
+
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, branchId, date])
+}
+
+model GrowthBrief {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+  date      DateTime @db.Date
+
+  status    String @default("generating") // "generating" | "ready" | "failed" | "skipped"
+  summary   String @db.Text
+  contentMd String @db.Text
+  // The deltas the brief was written from, for dashboard rendering.
+  data   Json?
+  // Versioned Growth MDX document. `data` remains the engine/ad-metric payload and is not overloaded
+  // with presentation data.
+  document Json?
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project    Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  deliveries GrowthDelivery[]
+
+  // Doubles as the idempotency lock for the daily engine tick: inserting the
+  // "generating" row claims the day.
+  @@unique([projectId, branchId, date])
+  @@index([projectId, branchId, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+model GrowthDelivery {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  briefId String @db.Uuid
+  channel String // "dashboard"; later "email" | "imessage" | ...
+  status  String @default("pending") // "pending" | "delivered" | "failed"
+
+  deliveredAt DateTime?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  brief GrowthBrief @relation(fields: [briefId], references: [id], onDelete: Cascade)
+
+  @@unique([briefId, channel])
+}
+
+// One-shot in v1: an armed milestone fires once, records an event, and flips
+// to "reached". Evaluation is deterministic backend code in the engine tick.
+model GrowthMilestone {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+
+  metricId   String
+  comparator String @default("gte")
+  threshold  Float
+  source     String @default("default") // "default" | "user" | "agent"
+  status     String @default("armed") // "armed" | "reached" | "disabled"
+
+  lastEvaluatedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  project Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  events  GrowthMilestoneEvent[]
+
+  @@index([projectId, branchId, status])
+}
+
+model GrowthMilestoneEvent {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  milestoneId String @db.Uuid
+  reachedAt   DateTime @default(now())
+  metricValue Float
+  // The analysis run the crossing triggered, when one could be started. Not a
+  // foreign key: the event must survive as history even if the run is deleted.
+  analysisRunId String? @db.Uuid
+
+  milestone GrowthMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+
+  @@index([milestoneId])
+}
+
+// ── Growth games ─────────────────────────────────────────────────────────────
+// A curated set of quiz questions about a project's own metrics, generated and
+// reviewed by Hexclave staff from the internal Growth admin page and then
+// published to that project's customer.
+//
+// WHY A GAME IS SEPARATE FROM A ROUND: the questions are authored once and
+// reviewed by a human; a round is one customer playing them. Folding the two
+// together (as the first cut of this feature did) means there is nowhere to put
+// "reviewed but not yet visible", and no way to tell a customer's answers apart
+// from the answer key.
+//
+// Scoped by (projectId, branchId) like every other Growth resource. Today there
+// is exactly one game ("know_your_users": guess your own metrics), but rows are
+// keyed by `gameKey` so a second game needs no new tables.
+model GrowthQuizGame {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+
+  gameKey String @default("know_your_users")
+  status  String @default("generating") // "generating" | "draft" | "published" | "archived" | "failed"
+  // "agent" when the growth agent authored the question prose, "template" when
+  // the agent turn failed and the deterministic fallback text was used. The
+  // numbers are computed from real metric rows either way — only the wording
+  // degrades — but the distinction has to be recorded to stay honest about it.
+  // Staff edits during review do not change this: the provenance being recorded
+  // is who wrote the FIRST draft, not who last touched a sentence.
+  textSource String @default("template")
+
+  questionCount Int
+  // `latest_stored_date` of the metrics the questions were built from. Pinned so
+  // a daily rollup landing after generation cannot retroactively make a graded
+  // answer look wrong.
+  metricsAsOf String?
+
+  // Staff attribution. The first place Growth records who curated something —
+  // every other Growth row is either agent-written or project-scoped.
+  generatedByUserId String?
+  publishedByUserId String?
+  publishedAt       DateTime?
+
+  // User-visible only; internals go to captureError, never into this column.
+  generationError String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Two generated columns (see migration), each backing a partial unique index,
+  // the same trick as GrowthAnalysisRun.isActive: Prisma only applies
+  // dbgenerated() as a DEFAULT, the migration hand-writes the actual
+  // GENERATED ALWAYS AS ... STORED columns, and the expression strings below
+  // must match what Postgres re-deparses (pg_get_expr), not what the migration
+  // writes. If `prisma migrate diff` reports drift, paste in the exact text
+  // from:
+  //   SELECT a.attname, pg_get_expr(d.adbin, d.adrelid) FROM pg_attrdef d
+  //     JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+  //     WHERE d.adrelid = '"GrowthQuizGame"'::regclass;
+  //
+  // TRUE while the game is still being generated or reviewed, NULL otherwise —
+  // so staff cannot accumulate two half-reviewed drafts for one project.
+  isUnpublished Boolean? @default(dbgenerated("\nCASE\n    WHEN (status = ANY (ARRAY['generating'::text, 'draft'::text])) THEN true\n    ELSE NULL::boolean\nEND"))
+  // TRUE while the game is the live one, NULL otherwise — so exactly one game is
+  // ever visible to a customer. Publishing archives the incumbent in the same
+  // transaction; this index is what makes that an invariant rather than a habit.
+  isPublished Boolean? @default(dbgenerated("\nCASE\n    WHEN (status = 'published'::text) THEN true\n    ELSE NULL::boolean\nEND"))
+
+  project   Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  questions GrowthQuizQuestion[]
+  rounds    GrowthQuizRound[]
+
+  @@unique([projectId, branchId, gameKey, isUnpublished], map: "GrowthQuizGame_unpublished_slot")
+  @@unique([projectId, branchId, gameKey, isPublished], map: "GrowthQuizGame_published_slot")
+  @@index([projectId, branchId, gameKey, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+// One multiple-choice question inside a game.
+//
+// SECURITY-RELEVANT: `correctOptionId`, `trueValue`, and `explanation` are the
+// answer key. They must never reach a CUSTOMER before that question has been
+// answered in their round — `toWireQuestion()` in lib/growth/games/quiz-wire.ts
+// is the single place this row becomes a customer-facing wire object, and it
+// redacts all three unless the round has an answer for it. Staff reviewing a
+// draft see the key in full, through the separate `toAdminWireQuestion()`.
+//
+// Staff may edit `questionText` and `explanation` during review. Everything else
+// is computed from real metric rows and is immutable by construction — there is
+// no write path that changes `options`, `correctOptionId`, or `trueValue`, so a
+// human cannot introduce a wrong fact any more than the agent can.
+model GrowthQuizQuestion {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  gameId     String @db.Uuid
+  orderIndex Int
+
+  metricId String
+  factKind String // see QUIZ_FACT_KINDS in lib/growth/games/quiz-facts.ts
+
+  questionText String @db.Text
+  explanation  String @db.Text
+  // [{ id, label }], already shuffled at write time so the correct answer's
+  // position carries no signal.
+  options      Json
+
+  correctOptionId String
+  trueValue       Float
+  unit            String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  game    GrowthQuizGame     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  answers GrowthQuizAnswer[]
+
+  @@unique([gameId, orderIndex])
+}
+
+// One customer's playthrough of a published game.
+//
+// `playedByUserId` is recorded for attribution in the UI only — it is never a
+// query key, because growth data is project-scoped throughout (see
+// GrowthChatConversation, which records no acting user at all for the same
+// reason).
+model GrowthQuizRound {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  gameId    String @db.Uuid
+  projectId String
+  branchId  String
+
+  status String @default("ready") // "ready" | "completed" | "abandoned"
+
+  score        Int @default(0)
+  correctCount Int @default(0)
+  bestStreak   Int @default(0)
+
+  playedByUserId String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  // Generated column (see migration): TRUE while status is "ready", NULL
+  // otherwise, so at most one round per game is live at a time. Same technique
+  // and same Prisma caveats as GrowthQuizGame's two slot columns above.
+  isActive Boolean? @default(dbgenerated("\nCASE\n    WHEN (status = 'ready'::text) THEN true\n    ELSE NULL::boolean\nEND"))
+
+  game    GrowthQuizGame     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  project Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  answers GrowthQuizAnswer[]
+
+  @@unique([gameId, isActive], map: "GrowthQuizRound_active_round")
+  @@index([projectId, branchId, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+// One graded answer. Its existence IS the record that the question has been
+// answered, which is what makes a question single-use per round: the unique
+// index below is the concurrency guard against a double-clicked option, and the
+// redaction in quiz-wire.ts keys off whether this row exists.
+model GrowthQuizAnswer {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  roundId    String @db.Uuid
+  questionId String @db.Uuid
+
+  optionId      String
+  isCorrect     Boolean
+  pointsAwarded Int
+  answeredAt    DateTime @default(now())
+
+  round    GrowthQuizRound    @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  question GrowthQuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([roundId, questionId])
+  @@index([questionId])
+}
+
 model Tenancy {
   id String @id @default(uuid()) @db.Uuid
 
@@ -189,7 +858,11 @@ model Tenancy {
   conversations       Conversation[]
   conversationEntryPoints ConversationEntryPoint[]
   conversationMessages ConversationMessage[]
+  deploymentSources   DeploymentSource[]
   deploymentServices  DeploymentService[]
+  deploymentVolumes   DeploymentVolume[]
+  deploymentDomains   DeploymentDomain[]
+  deployments         Deployment[]
   deploymentSourceUploads DeploymentSourceUpload[]
   workflowDefinitions WorkflowDefinition[]
   workflowVersions WorkflowVersion[]
@@ -1470,6 +2143,40 @@ model AiMessage {
   @@index([conversationId, position])
 }
 
+// Durable, internal-only history for the public skill /ask endpoint and the
+// ask_hexclave MCP tool. Request metadata is deliberately allowlisted at the
+// transport boundary so credentials and arbitrary headers never reach this table.
+model AskHexclaveCall {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  transport     String
+  conversationId String
+  question      String @db.Text
+  response      String @db.Text
+  reason        String @db.Text
+  userPrompt    String @db.Text
+  context       String? @db.Text
+  user          String? @db.Text
+  project       String? @db.Text
+
+  requestIp         String?
+  requestIpSource   String?
+  userAgent         String? @db.Text
+  requestHost       String?
+  mcpProtocolVersion String?
+
+  modelId       String
+  stepCount     Int
+  durationMs    Int
+  innerToolCalls Json
+
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([transport, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([conversationId, createdAt(sort: Asc), id(sort: Asc)])
+}
+
 enum CustomerType {
   USER
   TEAM
@@ -1737,15 +2444,87 @@ model DeletedRow {
   @@index([shouldUpdateSequenceId, tenancyId], name: "DeletedRow_shouldUpdateSequenceId_idx")
 }
 
+// ================== Project secrets ==================
+// Per-project credential values, write-only through the API
+// (set/overwrite/delete, never read back) and envelope-encrypted with the same
+// KMS flow as the data vault's server-side layer (`encryptWithKms`), so
+// plaintext never touches this table. Only the feature consuming a secret
+// decrypts it, server-side.
+//
+// Deployments are the only consumer today (`secret()` env vars in the config
+// file's `services` export name a key here), but the store deliberately isn't
+// deployments-specific — see @/lib/project-secrets.
+//
+// Keyed by project, not tenancy: these are infrastructure credentials that
+// branches share by design, and a per-organization copy of an API key would be
+// meaningless. If a consumer ever needs per-branch values, the intended shape is
+// a nullable `branchId` (null = every branch) resolved
+// exact-match-then-project-wide; that needs a partial unique index for the NULL
+// case, which Prisma can't express, so it wants a hand-written migration.
+model ProjectSecret {
+  projectId String
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  key String
+  // { edkBase64, ciphertextBase64 } from encryptWithKms()
+  encrypted Json
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, id])
+  @@unique([projectId, key])
+}
+
 // ================== Deployments ==================
-// Operational state for the Deployments app. The service DEFINITIONS
-// (type, framework, build config, env vars) live in the environment config
-// under `deployments.services.<serviceId>` so they follow the project's config
-// source (dashboard / config file / GitHub); these tables only hold what the
-// config cannot: the lazily-provisioned Vercel project id, custom domains and
-// their verification state as reported by Vercel, and the deployment runs
-// themselves. Note that env vars are NOT stored here: their definitions live
-// in the config, and secret values only ever pass through at deploy time.
+// State for the Deployments app.
+//
+// A project owns DEPLOYMENT SOURCES; a source is deployed one or more times;
+// each deployment ships a set of SERVICES. A source is one deploy file
+// (hexclave.deploy.ts, named by its own `id` export) and what one
+// `hexclave deploy` ships — one upload, one build — so a project deployed from
+// several repositories gives each of them a source of its own. Service ids stay
+// unique per PROJECT, so a reference never has to name a source.
+//
+// Service definitions come from the `services` export of the deploy file:
+// `hexclave deploy` evaluates it and syncs the parts the server needs (build
+// config, env var definitions) into DeploymentService rows, which are the
+// authoritative server-side copy — the dashboard renders services from these
+// rows and cannot edit them. Secret VALUES are never part of a definition: env
+// vars of type "secret" only name a key in the ProjectSecret store above.
+//
+// Two things deliberately OUTLIVE the service that uses them, because the
+// resource behind them does: a persistent volume (a disk with tenant data) is
+// owned by the CLUSTER and merely mounted by a service, and a custom domain (a
+// hostname with a certificate) is owned by the PROJECT and merely pointed at a
+// service. Dropping a service from a deploy file tears the service down and
+// leaves both behind, unattached, until someone deletes them explicitly.
+
+model DeploymentSource {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // The deploy file's own `id` export — which deploy file (and so which
+  // repository) these services were deployed from. Deployments declared in
+  // hexclave.config.ts, which has no id of its own, belong to a source named
+  // after that file. Created implicitly by the first deploy that names it.
+  sourceId String
+
+  tenancy     Tenancy             @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  services    DeploymentService[]
+  deployments Deployment[]
+  volumes     DeploymentVolume[]
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, sourceId])
+}
 
 model DeploymentService {
   tenancyId String @db.Uuid
@@ -1755,30 +2534,83 @@ model DeploymentService {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // The user-facing service id — the key under `deployments.services` in the
-  // environment config (e.g. "api").
+  // Which deployment source last declared this service. A service belongs to
+  // exactly one: the deploy file that declares it owns it, and a sync from
+  // another source claiming the same id is refused rather than silently taking
+  // it over.
+  sourceRowId String @db.Uuid
+
+  // The user-facing service id — the key of the record returned by the deploy
+  // file's `services` export (e.g. "api"). Unique across the whole PROJECT, not
+  // per source, which is what lets a reference name a service without naming
+  // its source. It doubles as the Marshal service key.
   serviceId String
 
-  // Set when the Vercel project is lazily provisioned on first deploy.
-  vercelProjectId String?
+  // Set when the service's spec was first successfully applied to Marshal
+  // (the Fly-backed runtime). Marshal apps have deterministic names, so there
+  // is no foreign id to store, only the fact that provisioning happened.
+  provisionedAt DateTime?
 
-  // Build configuration as last sent to Vercel (operational cache — the
-  // authoritative definition lives in the environment config).
-  framework       String?
-  installCommand  String?
-  buildCommand    String?
-  outputDirectory String?
-  rootDirectory   String?
+  // The definition as last synced from the deploy file's `services` export.
+  // `definitionSyncId` is regenerated once per source sync and fenced by the
+  // deploy that follows it, so two CLIs cannot silently combine one checkout's
+  // source with another checkout's stored build settings and env definition.
+  definitionSyncedAt DateTime?
+  definitionSyncId   String?   @db.Uuid
+  // How the service runs: "server" (one instance that suspends when idle, the
+  // only kind that may mount a volume) or "serverless" (scales between the
+  // bounds below, stops on scale-down).
+  type          String @default("serverless")
+  // Whether the service takes public ingress. A property of the SERVICE rather
+  // than of a port: the runtime's proxy serves every declared port on every
+  // address the app holds, so "public 3000, private 5432" is not a thing it can
+  // do, and a per-port flag could only ever misdescribe it.
+  //
+  // A public service must be all-HTTP (raw TCP carries no SNI or Host, so a
+  // shared public address cannot route it) and must declare at least one port.
+  // Both are enforced in code rather than by a CHECK: they are facts about the
+  // runtime we deploy onto, not about what these columns may contain, and are
+  // expected to move — public TCP is a dedicated IPv4 away. See the migration.
+  isPublic      Boolean @default(false)
+  // The ports the container listens on, as a JSON object keyed by port number
+  // with required `{ protocol }` values (see DeploymentPortDefinition). A "tcp" port is
+  // raw and only a private service may declare one.
+  ports         Json   @default("{}")
+  minInstances  Int?
+  maxInstances  Int?
+  // Where the service's code lives inside the deployment source's upload, relative to the
+  // deploy file. The build CONTEXT is the whole upload (a monorepo service
+  // usually has to reach shared code above its own directory); this only scopes
+  // where build detection starts.
+  rootDirectory String?
+  // The Dockerfile to build from, relative to the root of the uploaded source.
+  // Null = no Dockerfile: the remote builder auto-detects the build with Railpack.
+  dockerfilePath String?
+  // Note there is deliberately no dev command here: `devCommand` in the deploy
+  // file's `services` export is consumed locally by `hexclave dev
+  // --service-id`, and the backend never acts on it, so storing it would only
+  // buy a display row in the dashboard at the price of a column that can drift
+  // from the deploy file.
+  //
+  // Array of [env var key, DeploymentEnvVarDefinition] entries (see
+  // @hexclave/shared/dist/deployments). An entry array, rather than a JSON object, preserves
+  // special keys such as `__proto__` through Prisma's JSON serializer:
+  // { value } for plain vars,
+  // { type: "secret", key } for secrets (never their values, and never their
+  // `secret(key, default)` fallbacks — those travel with the deploy request
+  // and are rejected by deploymentEnvVarSchema on every write path),
+  // { type: "connection", value } for service-output references.
+  env Json @default("{}")
 
-  tenancy Tenancy                   @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
-  domains DeploymentServiceDomain[]
-  runs    DeploymentRun[]
+  tenancy Tenancy           @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  source DeploymentSource @relation(fields: [tenancyId, sourceRowId], references: [tenancyId, id], onDelete: Cascade)
 
   @@id([tenancyId, id])
   @@unique([tenancyId, serviceId])
+  @@index([tenancyId, sourceRowId])
 }
 
-model DeploymentServiceDomain {
+model DeploymentVolume {
   tenancyId String @db.Uuid
 
   id String @default(uuid()) @db.Uuid
@@ -1786,28 +2618,85 @@ model DeploymentServiceDomain {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  deploymentServiceId String @db.Uuid
+  sourceRowId String @db.Uuid
 
-  hostname  String
-  isPrimary Boolean @default(false)
-  // Vercel-reported verification state, refreshed whenever the domain is read.
-  verified Boolean @default(false)
+  // The author-chosen id (the key of `persistentVolumes` in the deploy file),
+  // which names the underlying Fly volume. Unique within the deployment source, which is
+  // what OWNS the disk: a service that stops being declared is torn down, and
+  // its disk survives here for a later deploy to mount again.
+  volumeId String
+  // Provisioned size in whole gigabytes. Grow-only — Fly rejects a shrink, and
+  // shrinking would mean destroying tenant data.
+  sizeGb Int
 
-  service DeploymentService @relation(fields: [tenancyId, deploymentServiceId], references: [tenancyId, id], onDelete: Cascade)
+  // The service currently mounting it, and where. Both null = unattached: the
+  // disk exists (and is still billed) but no service declares it. They are a
+  // pair and are always written together.
+  serviceId String?
+  path      String?
+
+  tenancy Tenancy           @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  source DeploymentSource @relation(fields: [tenancyId, sourceRowId], references: [tenancyId, id], onDelete: Cascade)
 
   @@id([tenancyId, id])
-  @@unique([tenancyId, deploymentServiceId, hostname])
+  @@unique([tenancyId, sourceRowId, volumeId])
+  // One disk, one holder: two services asking to mount the same volume would
+  // ask Fly to attach it to two machines. Project-wide rather than per source,
+  // because service ids are.
+  @@unique([tenancyId, serviceId])
 }
 
-enum DeploymentRunStatus {
+model DeploymentDomain {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Per-TENANCY, not per-service: the deployments runtime holds exactly one
+  // claim per hostname, so two services both holding a row for one hostname
+  // would leave the loser advertising a verified URL that routes to the winner.
+  hostname String
+
+  // What the hostname points at: a service (ids are unique across the project,
+  // so it needs no deployment source to disambiguate) and one of its ports.
+  // Both null = unattached, which is what a domain becomes when its service
+  // stops being declared — the certificate is kept rather than silently
+  // released, and the row waits for someone to re-point or delete it.
+  //
+  // The port is the target service's standard-ports holder — the one that owns
+  // 80/443, which is where a certificate terminates. Stated rather than derived
+  // because a domain names an ENDPOINT, not a machine: a public service may
+  // declare several ports, and this row has to keep saying which one it meant
+  // even after the service changes them.
+  //
+  // Deliberately NOT a foreign key to DeploymentService: a domain OUTLIVES the
+  // service it points at, which is the whole reason it is a table of its own.
+  serviceId String?
+  port      Int?
+
+  isPrimary Boolean @default(false)
+  // Runtime-reported (Marshal) verification state, refreshed whenever the domain is read.
+  verified Boolean @default(false)
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, hostname])
+  @@index([tenancyId, serviceId])
+}
+
+enum DeploymentStatus {
   QUEUED
   BUILDING
-  READY
-  ERROR
+  DEPLOYING
+  SUCCEEDED
+  FAILED
   CANCELED
 }
 
-model DeploymentRun {
+model Deployment {
   tenancyId String @db.Uuid
 
   id String @default(uuid()) @db.Uuid
@@ -1815,24 +2704,63 @@ model DeploymentRun {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  deploymentServiceId String @db.Uuid
+  sourceRowId String @db.Uuid
 
-  vercelDeploymentId  String?
-  vercelDeploymentUrl String?
+  // Monotonic per tenancy, so the dashboard and CLI can say "deployment #47"
+  // instead of showing a uuid. Assigned inside the same transaction that
+  // creates the row (see createDeployment), which the unique constraint below
+  // makes safe against two concurrent deploys picking the same number.
+  number Int
 
-  status DeploymentRunStatus @default(QUEUED)
-  // "production" | "preview" (kept a string to match Vercel's target values)
-  target String
-  // Free-form descriptor of what triggered the run (e.g. "cli").
+  // Free-form descriptor of what triggered the deploy (e.g. "cli").
   triggeredBy String
 
-  error      String?
+  status DeploymentStatus @default(QUEUED)
+  error  String?
+
+  // ONE build per deployment: the source's whole tree is uploaded once and
+  // every service's image is built by one builder machine, so the build (and
+  // its log) belongs to the deployment rather than to any single service.
+  // Null until the runtime has accepted the batch build.
+  marshalBuildId String?
+
+  // The service ids this deploy INTENDED to ship, in dependency order, as a
+  // JSON string array — kept separately from the outcomes below because a
+  // service can fail before it has an outcome at all.
+  plannedServiceIds Json @default("[]")
+
+  // What each service actually did in THIS deploy, as a JSON object keyed by
+  // service id: `{ status, url, revision, error }` (see DeploymentServiceOutcome).
+  // A deployment is the unit of history, so the outcomes live on it rather than
+  // in rows of their own — nothing queries a single service's timeline except
+  // through the deployments of its source.
+  services Json @default("{}")
+
+  // `{ edkBase64, ciphertextBase64 }`, encrypting a JSON string array of the
+  // exact sensitive values injected into this deploy. Build logs are fetched
+  // from the runtime (Marshal) on demand, potentially after a project secret was
+  // rotated or deleted; keeping the encrypted snapshot here lets those
+  // historical logs stay redacted without retaining the old value in ProjectSecret.
+  redactionSecretsEncrypted Json?
+
   finishedAt DateTime?
 
-  service DeploymentService @relation(fields: [tenancyId, deploymentServiceId], references: [tenancyId, id], onDelete: Cascade)
+  // Set when the client owning this deploy reports that it has stopped working
+  // on it (see the conclude route). A planned service with no outcome normally
+  // reads as "still going" — but a client can fail before reporting anything at
+  // all (packaging, upload, a crash), which leaves nothing to derive a terminal
+  // state from. This column is what says "nothing further is coming"; without it
+  // such a deployment stays queued forever and the dashboard polls it
+  // indefinitely.
+  concludedAt DateTime?
+
+  tenancy Tenancy           @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  source DeploymentSource @relation(fields: [tenancyId, sourceRowId], references: [tenancyId, id], onDelete: Cascade)
 
   @@id([tenancyId, id])
-  @@index([tenancyId, deploymentServiceId, createdAt(sort: Desc)])
+  @@unique([tenancyId, number])
+  @@index([tenancyId, createdAt(sort: Desc)])
+  @@index([tenancyId, sourceRowId, createdAt(sort: Desc)])
 }
 
 model DeploymentSourceUpload {
@@ -1840,8 +2768,10 @@ model DeploymentSourceUpload {
   id String @default(uuid()) @db.Uuid
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  objectKey String
-  expiresAt DateTime
+
+  // The upload slot id in Marshal's bucket (passed as the spec's source).
+  marshalUploadId String
+  expiresAt       DateTime
 
   tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 

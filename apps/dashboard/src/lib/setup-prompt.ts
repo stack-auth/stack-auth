@@ -1,6 +1,6 @@
 import { getPublicEnvVar } from "@/lib/env";
-import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { remindersPrompt } from "@hexclave/shared/dist/ai/unified-prompts/reminders";
+import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import { deindent } from "@hexclave/shared/dist/utils/strings";
 
@@ -210,15 +210,18 @@ export function buildSelectedOnboardingConfigFile(options: {
   return `export const config = ${JSON.stringify(configValue, null, 2)};\n`;
 }
 
-export function prependExactConfigToSetupPrompt(setupPrompt: string, configFile: string): string {
+export function prependConfigChangesToSetupPrompt(setupPrompt: string, configFile: string): string {
   return deindent`
-    IMPORTANT: Use this exact \`hexclave.config.ts\` file. Do not replace it with \`"show-onboarding"\`, regenerate it, or change the selected products and settings:
+    IMPORTANT: Apply the selected products and settings from the \`hexclave.config.ts\` example below.
+
+    - If \`hexclave.config.ts\` does not exist, create it with the exact contents shown.
+    - If \`hexclave.config.ts\` already exists, update the existing config to apply the products and settings shown while preserving every unrelated existing setting.
 
     \`\`\`ts
     ${configFile.trim()}
     \`\`\`
 
-    Below is the setup prompt for using Hexclave. Follow it carefully, but use the \`hexclave.config.ts\` file from above.
+    Below is the setup prompt for using Hexclave. Follow it carefully, while applying the \`hexclave.config.ts\` changes described above.
 
     ${setupPrompt}
   `;

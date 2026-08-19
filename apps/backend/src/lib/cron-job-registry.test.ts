@@ -9,12 +9,14 @@ describe("cron job registry", () => {
       "/api/latest/internal/external-db-sync/sequencer",
       "/api/latest/internal/workflow-engine-step",
       "/api/latest/internal/issues/reconciler",
+      "/api/latest/internal/growth-watchdog-step",
     ]);
     expect(getLocalCronJobPaths()).toEqual([
       "/api/latest/internal/external-db-sync/poller",
       "/api/latest/internal/external-db-sync/sequencer",
       "/api/latest/internal/workflow-engine-step",
       "/api/latest/internal/issues/reconciler",
+      "/api/latest/internal/growth-watchdog-step",
     ]);
   });
 

@@ -11,7 +11,8 @@ import { DesignBadge } from "@/components/design-components/badge";
 import { DesignButton } from "@/components/design-components/button";
 import { DesignCard } from "@/components/design-components/card";
 import { DesignInput } from "@/components/design-components/input";
-import { buildSelectedOnboardingConfigFile, formatApproximateTokenCountLabel, getManualSetupDocsUrl, prependExactConfigToSetupPrompt } from "@/lib/setup-prompt";
+import { buildSelectedOnboardingConfigFile, formatApproximateTokenCountLabel, getManualSetupDocsUrl, prependConfigChangesToSetupPrompt } from "@/lib/setup-prompt";
+import { getAppIdsForListing } from "@/lib/apps-utils";
 import { HostedAuthMethodPreview } from "@/components/hosted-auth-preview";
 import {
   Alert,
@@ -183,7 +184,7 @@ export function OnboardingPage(props: OnboardingPageProps) {
           <Typography variant="secondary" className="text-center text-xs">
             Need help?{" "}
             <a
-              href="https://cal.com/stack-konsti/chat"
+              href="https://cal.com/team/hexclave/onboarding-call"
               target="_blank"
               rel="noopener noreferrer"
               className="underline underline-offset-2 transition-colors hover:text-foreground hover:transition-none"
@@ -386,7 +387,7 @@ export function NewProjectEntryPage(props: {
   );
 }
 
-const POPULAR_PRODUCT_IDS = ["deployments-alpha", "authentication", "analytics"] satisfies AppId[];
+const POPULAR_PRODUCT_IDS = ["authentication", "analytics", "payments"] satisfies AppId[];
 
 function isKnownAppId(value: string): value is AppId {
   return Object.prototype.hasOwnProperty.call(ALL_APPS, value);
@@ -402,8 +403,7 @@ function toInstallableAppIds(appIds: Iterable<AppId>): Set<AppId> {
 }
 
 function allSelectableAppIds(): AppId[] {
-  return Object.keys(ALL_APPS)
-    .filter((appId): appId is AppId => isKnownAppId(appId));
+  return getAppIdsForListing();
 }
 
 function productMatchesSearch(appId: AppId, query: string): boolean {
@@ -516,7 +516,7 @@ export function parseOnboardingAppSearchParam(value: string | null): AppId | nul
   if (value == null || value.length === 0) {
     return null;
   }
-  return isKnownAppId(value) ? value : null;
+  return isKnownAppId(value) && getAppIdsForListing().some((appId) => appId === value) ? value : null;
 }
 
 export function ProductSelectionPage(props: {
@@ -940,7 +940,7 @@ export function SetupNewProjectPage(props: {
   const manualSetupDocsUrl = getManualSetupDocsUrl();
   const setupPrompt = props.configFile == null
     ? aiSetupPrompt
-    : prependExactConfigToSetupPrompt(aiSetupPrompt, props.configFile);
+    : prependConfigChangesToSetupPrompt(aiSetupPrompt, props.configFile);
 
   return (
     <OnboardingPage
