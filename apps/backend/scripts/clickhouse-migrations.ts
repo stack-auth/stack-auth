@@ -88,30 +88,26 @@ export async function runClickhouseMigrations() {
   // and those users need exactly the same analytics access. Row policies and
   // grants are attached to the role; every user that should read analytics is
   // granted the role.
+  //
+  // The ordering below is load-bearing. ClickHouse's shipped default — verified
+  // on Cloud 26.2.1.558, which does not expose it in system.server_settings and
+  // does not let us override it — is `users_without_row_policies_can_read_rows
+  // = true`: a user that holds SELECT and is named by *no* row policy reads
+  // every row rather than none. So `limited_user` has to stay covered by a
+  // policy at every single instant. Hence: build the role, grant it, and only
+  // then narrow the policies, revoking the direct grants last. Re-pointing the
+  // policies before the revoke would open a window in which `limited_user`
+  // still holds SELECT while no policy names it — a cross-tenant read, live,
+  // for as long as the window lasts.
   await client.command({ query: `CREATE ROLE IF NOT EXISTS ${ANALYTICS_READER_ROLE}` });
 
-  // OR REPLACE rather than IF NOT EXISTS: existing deployments already have
-  // these policies pointing at `limited_user`, and they have to be re-pointed
-  // at the role. A policy that named only `limited_user` would leave every
-  // per-project user seeing no rows at all (ClickHouse restricts a table to
-  // the users its policies name, once any policy exists on it).
-  // The table list (incl. the growth_daily_* tables) lives in ANALYTICS_TABLES
-  // and must stay in sync with GROWTH_AGENT_QUERYABLE_TABLES (see its comment).
-  await Promise.all(ANALYTICS_TABLES.map(table =>
-    client.command({
-      query: `CREATE ROW POLICY OR REPLACE ${table}_project_isolation ON default.${table} FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO ${ANALYTICS_READER_ROLE}`,
-    })
-  ));
-
-  // Grants. The REVOKEs come first and include `REVOKE ALL FROM limited_user`,
-  // which strips granted *roles* too — so the role grant has to follow them.
-  // TODO(data-warehouse-ga): build and verify a versioned shadow role before
-  // switching users/policies in a future PR. We accept for alpha that this
-  // destructive rebuild creates a short cluster-wide partial-grant window and
-  // that a failed GRANT leaves the live role incomplete until the next run.
-  await client.command({ query: `REVOKE ALL PRIVILEGES ON *.* FROM ${ANALYTICS_READER_ROLE};` });
-  await client.command({ query: "REVOKE ALL PRIVILEGES ON *.* FROM limited_user;" });
-  await client.command({ query: "REVOKE ALL FROM limited_user;" });
+  // Role grants first, so `limited_user` has a working indirect route to the
+  // data before its direct one is taken away. Additive on purpose: a
+  // revoke-then-rebuild would leave the role empty in between, and on a re-run
+  // every analytics reader already depends on it, so that gap is a live outage.
+  // TODO(data-warehouse-ga): the tradeoff is that a table dropped from
+  // ANALYTICS_TABLES leaves a stale SELECT grant on the role. Diff against
+  // system.grants, or build the versioned shadow role, when that starts to matter.
   await Promise.all(ANALYTICS_TABLES.map(table =>
     client.command({ query: `GRANT SELECT ON default.${table} TO ${ANALYTICS_READER_ROLE};` })
   ));
@@ -120,6 +116,36 @@ export async function runClickhouseMigrations() {
   // CREATE USER defaults to `DEFAULT ROLE ALL`, but say it explicitly so a
   // user created by an older migration behaves the same.
   await client.command({ query: "ALTER USER limited_user DEFAULT ROLE ALL;" });
+
+  // OR REPLACE rather than IF NOT EXISTS: existing deployments already have
+  // these policies pointing at `limited_user`, and they have to be re-pointed
+  // at the role so that the per-project warehouse users are covered too.
+  //
+  // `limited_user` is named alongside the role deliberately, and this is the
+  // bit to delete later. Naming only the role would make correctness depend on
+  // the GRANT above being visible to every in-flight session by the time this
+  // policy lands. Role membership is cached (role_cache_expiration_time_seconds
+  // defaults to 600), so a session that picked up the new policy but not yet
+  // its new role would be matched by no policy at all — and, per the default
+  // above, would read every tenant's rows. Naming the user directly removes
+  // that dependency for free: the filter is identical either way.
+  // TODO(data-warehouse-ga): drop `, limited_user` from this TO clause in a
+  // later release, once limited_user has held the role across a full deploy
+  // cycle and there is no in-flight handoff left to race.
+  // The table list (incl. the growth_daily_* tables) lives in ANALYTICS_TABLES
+  // and must stay in sync with GROWTH_AGENT_QUERYABLE_TABLES (see its comment).
+  await Promise.all(ANALYTICS_TABLES.map(table =>
+    client.command({
+      query: `CREATE ROW POLICY OR REPLACE ${table}_project_isolation ON default.${table} FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO ${ANALYTICS_READER_ROLE}, limited_user`,
+    })
+  ));
+
+  // Direct grants go last. `REVOKE ALL PRIVILEGES ON *.*` strips privileges but
+  // NOT granted roles — that would be `REVOKE ALL FROM limited_user`, which must
+  // not be used here: it would take the role straight back off and black out
+  // analytics until the next run. Access continues through the role, so this
+  // revoke is invisible to readers.
+  await client.command({ query: "REVOKE ALL PRIVILEGES ON *.* FROM limited_user;" });
 
   const elapsed = ((performance.now() - start) / 1000).toFixed(1);
   console.log(`[Clickhouse] Clickhouse migrations complete (${elapsed}s)`);

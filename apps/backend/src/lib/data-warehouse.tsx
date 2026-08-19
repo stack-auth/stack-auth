@@ -86,6 +86,21 @@ const MAX_CONCURRENT_QUERIES_FOR_USER = 10;
 /** Per-query CPU parallelism ceiling, so one query cannot occupy every core. */
 const MAX_THREADS = 4;
 
+/**
+ * Floors for the ceilings above. ClickHouse reads `0` as *unlimited* for
+ * `max_execution_time`, `max_memory_usage`, `max_memory_usage_for_user` and
+ * `max_concurrent_queries_for_user` (and as "use every core" for `max_threads`),
+ * so a `MAX`-only constraint is not really a ceiling: a direct connection can
+ * `SET max_memory_usage = 0`, satisfy the MAX check, and remove the limit
+ * altogether. Every setting carrying that sentinel needs a positive `MIN` too.
+ * The floors are deliberately low — a customer may legitimately want a tighter
+ * budget than we impose, just not an unbounded one.
+ */
+const MIN_EXECUTION_TIME_SECONDS = 1;
+const MIN_MEMORY_USAGE_BYTES = 1_000_000;
+const MIN_CONCURRENT_QUERIES_FOR_USER = 1;
+const MIN_THREADS = 1;
+
 /** Hourly quota per warehouse user. Generous — this is an abuse backstop, not a product limit. */
 const QUOTA_INTERVAL_HOURS = 1;
 const QUOTA_MAX_QUERIES = 10_000;
@@ -441,11 +456,11 @@ async function applyWarehouseDdl(options: {
         SETTINGS
           SQL_project_id = '${tenancy.project.id}' CONST,
           SQL_branch_id = '${tenancy.branchId}' CONST,
-          max_execution_time = ${timeoutSeconds} MAX ${MAX_EXECUTION_TIME_SECONDS},
-          max_memory_usage = ${MAX_MEMORY_USAGE_BYTES} MAX ${MAX_MEMORY_USAGE_BYTES},
-          max_memory_usage_for_user = ${MAX_MEMORY_USAGE_FOR_USER_BYTES} MAX ${MAX_MEMORY_USAGE_FOR_USER_BYTES},
-          max_concurrent_queries_for_user = ${MAX_CONCURRENT_QUERIES_FOR_USER} MAX ${MAX_CONCURRENT_QUERIES_FOR_USER},
-          max_threads = ${MAX_THREADS} MAX ${MAX_THREADS}
+          max_execution_time = ${timeoutSeconds} MIN ${MIN_EXECUTION_TIME_SECONDS} MAX ${MAX_EXECUTION_TIME_SECONDS},
+          max_memory_usage = ${MAX_MEMORY_USAGE_BYTES} MIN ${MIN_MEMORY_USAGE_BYTES} MAX ${MAX_MEMORY_USAGE_BYTES},
+          max_memory_usage_for_user = ${MAX_MEMORY_USAGE_FOR_USER_BYTES} MIN ${MIN_MEMORY_USAGE_BYTES} MAX ${MAX_MEMORY_USAGE_FOR_USER_BYTES},
+          max_concurrent_queries_for_user = ${MAX_CONCURRENT_QUERIES_FOR_USER} MIN ${MIN_CONCURRENT_QUERIES_FOR_USER} MAX ${MAX_CONCURRENT_QUERIES_FOR_USER},
+          max_threads = ${MAX_THREADS} MIN ${MIN_THREADS} MAX ${MAX_THREADS}
       `,
       query_params: { password },
     });
