@@ -2198,6 +2198,10 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
       tenancyId: dummyTenancy.id,
       userEmailToId,
     }),
+    seedDummyDeployments({
+      prisma: dummyPrisma,
+      tenancyId: dummyTenancy.id,
+    }),
     seedDummySessionActivityEvents({
       tenancyId: dummyTenancy.id,
       projectId,
@@ -2208,6 +2212,8 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
     seedDummySessionReplays({
       prisma: dummyPrisma,
       tenancyId: dummyTenancy.id,
+      projectId,
+      clickhouseClient,
       userEmailToId,
       freshProject,
     }),
@@ -2450,15 +2456,32 @@ async function seedDummyAnalyticsMirrorTables(options: {
   ]);
 }
 
+// Device/browser strings the replay seeder cycles through, so the dashboard's
+// replay overview shows a realistic spread of desktop, mobile and tablet
+// sessions instead of one hardcoded browser.
+const SESSION_REPLAY_DEVICES = [
+  { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', screenWidth: 2560, screenHeight: 1440, viewportWidth: 1512, viewportHeight: 916 },
+  { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.3485.66', screenWidth: 1920, screenHeight: 1080, viewportWidth: 1920, viewportHeight: 969 },
+  { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15', screenWidth: 1728, screenHeight: 1117, viewportWidth: 1440, viewportHeight: 810 },
+  { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1', screenWidth: 393, screenHeight: 852, viewportWidth: 393, viewportHeight: 659 },
+  { userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36', screenWidth: 412, screenHeight: 915, viewportWidth: 412, viewportHeight: 780 },
+  { userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/604.1', screenWidth: 1024, screenHeight: 1366, viewportWidth: 1024, viewportHeight: 1219 },
+  { userAgent: 'Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0', screenWidth: 1920, screenHeight: 1200, viewportWidth: 1680, viewportHeight: 1050 },
+];
+
 async function seedDummySessionReplays({
   prisma,
   tenancyId,
+  projectId,
+  clickhouseClient,
   userEmailToId,
   freshProject,
   targetSessionReplayCount = 250,
 }: {
   prisma: PrismaClientTransaction,
   tenancyId: string,
+  projectId: string,
+  clickhouseClient: ClickHouseClient,
   userEmailToId: Map<string, string>,
   freshProject: boolean,
   targetSessionReplayCount?: number,
@@ -2481,20 +2504,94 @@ async function seedDummySessionReplays({
   const rand = deterministicPrng(seedFromString(`session-replays:${tenancyId}`));
 
   const seeds: Prisma.SessionReplayCreateManyInput[] = [];
+  const clickhouseRows: Array<Record<string, unknown>> = [];
   for (let i = 0; i < targetSessionReplayCount; i++) {
     const startedAt = new Date(twoWeeksAgo.getTime() + rand() * windowMs);
     const durationMs = 10_000 + Math.floor(rand() * (20 * 60 * 1000)); // 10s..20m
     const lastEventAt = new Date(startedAt.getTime() + durationMs);
     const projectUserId = userIds[Math.floor(rand() * userIds.length)]!;
+    const replayId = deterministicUuid(`session-replay:${tenancyId}:${i}`);
+    const refreshTokenId = deterministicUuid(`session-replay-refresh-token:${tenancyId}:${i}`);
+    // The overview's bounce rate and average session duration group events by
+    // segment (one browser tab), skipping rows where it's null, so seeded events
+    // need one too — the browser SDK always sends it.
+    const segmentId = deterministicUuid(`session-replay-segment:${tenancyId}:${i}`);
 
     seeds.push({
       tenancyId,
-      refreshTokenId: deterministicUuid(`session-replay-refresh-token:${tenancyId}:${i}`),
+      refreshTokenId,
       projectUserId,
-      id: deterministicUuid(`session-replay:${tenancyId}:${i}`),
+      id: replayId,
       startedAt,
       lastEventAt,
     });
+
+    // The dashboard reads the device, entry page, referrer and location of a
+    // replay from the analytics events recorded alongside it, so a replay
+    // without events would render a header full of blanks. Seed the same event
+    // shapes the browser SDK emits.
+    const device = SESSION_REPLAY_DEVICES[Math.floor(rand() * SESSION_REPLAY_DEVICES.length)]!;
+    const location = sessionActivityLocations[Math.floor(rand() * sessionActivityLocations.length)]!;
+    clickhouseRows.push(buildTokenRefreshClickhouseRow({
+      projectId,
+      userId: projectUserId,
+      refreshTokenId,
+      eventAt: startedAt,
+      ipAddress: bulkFakeIp(`${10 + Math.floor(rand() * 200)}.${Math.floor(rand() * 256)}`, rand),
+      location,
+    }));
+
+    const pageViewCount = 1 + Math.floor(rand() * 4);
+    for (let p = 0; p < pageViewCount; p++) {
+      const path = BULK_PAGE_PATHS[Math.floor(rand() * BULK_PAGE_PATHS.length)]!;
+      clickhouseRows.push({
+        event_type: '$page-view',
+        event_at: formatClickhouseTimestamp(new Date(startedAt.getTime() + Math.floor((durationMs * p) / pageViewCount))),
+        data: {
+          url: `https://demo.hexclave.com${path}`,
+          path,
+          // Only the session's first page-view has a referrer; later ones are
+          // internal navigations, exactly like in the real SDK.
+          referrer: p === 0 ? pickBulkReferrer(rand) : '',
+          title: 'Demo Project',
+          user_agent: device.userAgent,
+          screen_width: device.screenWidth,
+          screen_height: device.screenHeight,
+          viewport_width: device.viewportWidth,
+          viewport_height: device.viewportHeight,
+          is_anonymous: false,
+        },
+        project_id: projectId,
+        branch_id: DEFAULT_BRANCH_ID,
+        user_id: projectUserId,
+        team_id: null,
+        refresh_token_id: refreshTokenId,
+        session_replay_id: replayId,
+        session_replay_segment_id: segmentId,
+      });
+    }
+
+    const clickCount = Math.floor(rand() * 12);
+    for (let c = 0; c < clickCount; c++) {
+      clickhouseRows.push({
+        event_type: '$click',
+        event_at: formatClickhouseTimestamp(new Date(startedAt.getTime() + Math.floor(rand() * durationMs))),
+        data: {
+          selector: 'button.cta-primary',
+          tag_name: 'button',
+          text: 'Get started',
+          user_agent: device.userAgent,
+          is_anonymous: false,
+        },
+        project_id: projectId,
+        branch_id: DEFAULT_BRANCH_ID,
+        user_id: projectUserId,
+        team_id: null,
+        refresh_token_id: refreshTokenId,
+        session_replay_id: replayId,
+        session_replay_segment_id: segmentId,
+      });
+    }
   }
 
   // Delete existing deterministic IDs first, then bulk-insert (Prisma createMany
@@ -2513,5 +2610,217 @@ async function seedDummySessionReplays({
     data: seeds,
   });
 
-  console.log(`Seeded ${targetSessionReplayCount} session replays`);
+  // Self-hosted setups without ClickHouse still get the replay rows; only the
+  // analytics-derived parts of the replay overview stay empty for them.
+  const shouldSeedClickhouse = getEnvVariable('STACK_CLICKHOUSE_URL', '') !== '';
+  if (shouldSeedClickhouse) {
+    await clickhouseClient.insert({
+      table: 'analytics_internal.events',
+      values: clickhouseRows,
+      format: 'JSONEachRow',
+      clickhouse_settings: {
+        date_time_input_format: 'best_effort',
+        async_insert: 1,
+      },
+    });
+  }
+
+  console.log(`Seeded ${targetSessionReplayCount} session replays (${shouldSeedClickhouse ? clickhouseRows.length : 0} analytics events)`);
+}
+
+// Services for the demo project's Deployments app, across TWO deployment
+// sources — the shape a project deployed from two repositories has, which is
+// what the board's per-source colouring and its cross-source connections exist
+// for. `storefront` is one repo holding a public serverless frontend;
+// `platform` is another holding the private API it calls and the stateful
+// `server` database behind that (only a `server` may hold a persistent volume).
+//
+// The interesting part is `web`'s API_URL: a connection into a service that
+// another deploy file declares. Service ids are unique per PROJECT, so the
+// reference names no source — and a map scoped to one source could not draw it.
+const DUMMY_DEPLOYMENT_SOURCE_IDS = { storefront: 'storefront', platform: 'platform' } as const;
+
+const DUMMY_DEPLOYMENT_SERVICES = [
+  {
+    sourceId: DUMMY_DEPLOYMENT_SOURCE_IDS.storefront,
+    serviceId: 'web',
+    type: 'serverless',
+    isPublic: true,
+    ports: { '3000': { protocol: 'http' } },
+    minInstances: 0,
+    maxInstances: 3,
+    rootDirectory: './apps/web',
+    dockerfilePath: null,
+    volume: null,
+    url: 'https://demo-web.hexclave.app',
+    env: [
+      ['NEXT_PUBLIC_SITE_NAME', { value: 'Demo' }],
+      ['API_URL', { type: 'connection', value: 'api.url:8080' }],
+    ],
+  },
+  {
+    sourceId: DUMMY_DEPLOYMENT_SOURCE_IDS.platform,
+    serviceId: 'api',
+    type: 'serverless',
+    isPublic: false,
+    ports: { '8080': { protocol: 'http' } },
+    minInstances: 0,
+    maxInstances: 2,
+    rootDirectory: './apps/api',
+    dockerfilePath: 'Dockerfile',
+    volume: null,
+    url: null,
+    env: [
+      ['DATABASE_HOST', { type: 'connection', value: 'db.hostname' }],
+      ['DATABASE_PORT', { value: '5432' }],
+      ['OPENAI_API_KEY', { type: 'secret', key: 'OPENAI_API_KEY' }],
+    ],
+  },
+  {
+    sourceId: DUMMY_DEPLOYMENT_SOURCE_IDS.platform,
+    serviceId: 'db',
+    type: 'server',
+    isPublic: false,
+    ports: { '5432': { protocol: 'tcp' } },
+    // A database is the case for an always-on server: suspended, nothing could
+    // wake it, since its clients reach it over a raw TCP port.
+    minInstances: 1,
+    maxInstances: 1,
+    rootDirectory: './database',
+    dockerfilePath: 'Dockerfile',
+    volume: { id: 'pgdata', path: '/data', sizeGb: 10 },
+    url: null,
+    env: [['POSTGRES_PASSWORD', { type: 'secret', key: 'POSTGRES_PASSWORD' }]],
+  },
+] as const;
+
+// Deployments, newest last. Each entry is one `hexclave deploy` of ONE source:
+// the services it planned, in dependency order, and the outcome of each. A
+// service marked `skipped` was planned but never reached — that is what a
+// dependency failure looks like, and the dashboard renders it as such.
+//
+// The two sources deploy INDEPENDENTLY and interleaved, which is the point of
+// the fixture: opening a deployment shows everything running at that moment, so
+// each entry below is a different answer. Opening #1 (the first `platform`
+// deploy) predates `storefront` entirely, so `web` is absent — it had not been
+// deployed yet. Opening #4 shows `web` as that deploy shipped it alongside the
+// FAILED `api` from #3, which is what was actually running underneath it.
+//
+// Every deployment is TERMINAL on purpose. The list refreshes non-terminal
+// deployments from the runtime on read, which a demo project has no runtime for;
+// a seeded "building" deployment would poll forever and log an error each time.
+const DUMMY_DEPLOYMENTS = [
+  { minutesAgo: 60 * 26, sourceId: DUMMY_DEPLOYMENT_SOURCE_IDS.platform, status: 'SUCCEEDED', services: { db: 'deployed', api: 'deployed' } },
+  { minutesAgo: 60 * 25, sourceId: DUMMY_DEPLOYMENT_SOURCE_IDS.storefront, status: 'SUCCEEDED', services: { web: 'deployed' } },
+  { minutesAgo: 60 * 6, sourceId: DUMMY_DEPLOYMENT_SOURCE_IDS.platform, status: 'FAILED', services: { db: 'deployed', api: 'failed' } },
+  { minutesAgo: 42, sourceId: DUMMY_DEPLOYMENT_SOURCE_IDS.storefront, status: 'SUCCEEDED', services: { web: 'deployed' } },
+] as const;
+
+/**
+ * Seeds the Deployments app: two deployment sources, their service definitions,
+ * and a short deploy history that interleaves them.
+ *
+ * Without this the app renders its empty state, which shows none of the states
+ * the page exists to display — a partially failed deploy, a skipped service, a
+ * service with a persistent volume, and a connection that crosses from one
+ * repository's service into another's.
+ */
+async function seedDummyDeployments(options: {
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+}) {
+  const { prisma, tenancyId } = options;
+  const now = Date.now();
+  const firstDeployedAt = new Date(now - DUMMY_DEPLOYMENTS[0].minutesAgo * 60_000);
+
+  // An earlier version of this fixture put all three services under a single
+  // `demo-app` source. Drop it before seeding the two that replace it: the
+  // upserts below re-point the services and deployments by their deterministic
+  // ids, but the volume is keyed by (source, volumeId) and would collide with
+  // its own old row, and the emptied source would still show up as a
+  // repository the demo project no longer deploys from. Cascades to whatever
+  // of it survives.
+  await prisma.deploymentSource.deleteMany({ where: { tenancyId, sourceId: 'demo-app' } });
+
+  const sourceRowIdOf = (sourceId: string) => deterministicUuid(`deployment-source:${tenancyId}:${sourceId}`);
+  for (const sourceId of Object.values(DUMMY_DEPLOYMENT_SOURCE_IDS)) {
+    await prisma.deploymentSource.upsert({
+      where: { tenancyId_sourceId: { tenancyId, sourceId } },
+      create: { tenancyId, id: sourceRowIdOf(sourceId), sourceId },
+      update: {},
+    });
+  }
+
+  for (const service of DUMMY_DEPLOYMENT_SERVICES) {
+    const id = deterministicUuid(`deployment-service:${tenancyId}:${service.serviceId}`);
+    const sourceRowId = sourceRowIdOf(service.sourceId);
+    const definitionColumns = {
+      sourceRowId,
+      definitionSyncedAt: firstDeployedAt,
+      definitionSyncId: deterministicUuid(`deployment-sync:${tenancyId}:${service.serviceId}`),
+      type: service.type,
+      isPublic: service.isPublic,
+      ports: service.ports as unknown as Prisma.InputJsonValue,
+      minInstances: service.minInstances,
+      maxInstances: service.maxInstances,
+      rootDirectory: service.rootDirectory,
+      dockerfilePath: service.dockerfilePath,
+      env: service.env as unknown as Prisma.InputJsonValue,
+      provisionedAt: firstDeployedAt,
+    };
+    await prisma.deploymentService.upsert({
+      where: { tenancyId_serviceId: { tenancyId, serviceId: service.serviceId } },
+      create: { tenancyId, id, serviceId: service.serviceId, ...definitionColumns },
+      update: definitionColumns,
+    });
+    // The disk is owned by the deployment source and merely mounted here, so it
+    // is a row of its own rather than a column on the service.
+    if (service.volume !== null) {
+      const volumeColumns = { serviceId: service.serviceId, path: service.volume.path, sizeGb: service.volume.sizeGb };
+      await prisma.deploymentVolume.upsert({
+        where: { tenancyId_sourceRowId_volumeId: { tenancyId, sourceRowId, volumeId: service.volume.id } },
+        create: { tenancyId, id: deterministicUuid(`deployment-volume:${tenancyId}:${service.volume.id}`), sourceRowId, volumeId: service.volume.id, ...volumeColumns },
+        update: volumeColumns,
+      });
+    }
+  }
+
+  for (const [index, deployment] of DUMMY_DEPLOYMENTS.entries()) {
+    const deploymentId = deterministicUuid(`deployment:${tenancyId}:${index}`);
+    const createdAt = new Date(now - deployment.minutesAgo * 60_000);
+    // A deploy ships one SOURCE's services, in dependency order: within
+    // `platform`, the database before the API that connects to it.
+    const plannedServiceIds = ['db', 'api', 'web'].filter((serviceId) => serviceId in deployment.services);
+    const deploymentColumns = {
+      sourceRowId: sourceRowIdOf(deployment.sourceId),
+      // Monotonic per TENANCY, not per source — the number counts deploys of
+      // the whole project, which is why two sources share one sequence.
+      number: index + 1,
+      triggeredBy: 'cli',
+      status: deployment.status,
+      error: deployment.status === 'FAILED' ? 'The build of `api` failed, so nothing was rolled out.' : null,
+      marshalBuildId: `bld_${createHash('sha256').update(deploymentId).digest('hex').slice(0, 16)}`,
+      plannedServiceIds,
+      services: Object.fromEntries(plannedServiceIds.map((serviceId) => {
+        // The per-entry `services` records have different keys, so the union's
+        // index type is narrower than the ids being looked up here.
+        const status = (deployment.services as Record<string, string>)[serviceId];
+        const service = DUMMY_DEPLOYMENT_SERVICES.find((candidate) => candidate.serviceId === serviceId) ?? throwErr(`unknown dummy service ${serviceId}`);
+        return [serviceId, {
+          status,
+          url: status === 'deployed' ? service.url : null,
+          revision: createHash('sha256').update(`${deploymentId}:${serviceId}`).digest('hex').slice(0, 12),
+          error: status === 'failed' ? 'Build failed: `pnpm build` exited with code 1' : null,
+        }];
+      })) as unknown as Prisma.InputJsonValue,
+      createdAt,
+      finishedAt: new Date(createdAt.getTime() + 140_000),
+    };
+    await prisma.deployment.upsert({
+      where: { tenancyId_id: { tenancyId, id: deploymentId } },
+      create: { tenancyId, id: deploymentId, ...deploymentColumns },
+      update: deploymentColumns,
+    });
+  }
+
 }

@@ -1,7 +1,7 @@
-import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
+import { createWorkflow, listRuns, pollWithTicks, randomSlug, retireWorkflow, sendCustomEvent, tickWorkflowEngine, updateWorkflowSource } from "./workflows-helpers";
 
 // E2E tests for Hexclave Workflows v1. These exercise the real engine end to
 // end: sync -> version mint -> event -> run creation (runKey/onConflict) ->
@@ -16,12 +16,9 @@ import { Project, backendContext, niceBackendFetch } from "../../../../backend-h
 // Dynamic ids/emails make inline snapshots impractical here, so these tests
 // use toMatchObject assertions instead (deliberate deviation from the
 // usual snapshot preference).
-
-const CRON_AUTH = { "Authorization": "Bearer mock_cron_secret" };
-
-function randomSlug(prefix: string): string {
-  return `${prefix}-${generateSecureRandomString(8).toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "x"}`;
-}
+//
+// The engine drivers (tickWorkflowEngine, pollWithTicks) and workflow CRUD helpers live in
+// workflows-helpers.ts so the growth e2e suites can share them.
 
 /**
  * Creates a project with the Workflows app installed and switches the backend
@@ -37,80 +34,6 @@ async function createWorkflowsProject() {
 async function inFreshWorkflowsProject<T>(fn: () => Promise<T>): Promise<T> {
   await createWorkflowsProject();
   return await fn();
-}
-
-async function tickWorkflowEngine(expect: any) {
-  const response = await niceBackendFetch("/api/v1/internal/workflow-engine-step", {
-    method: "GET",
-    headers: CRON_AUTH,
-    query: { only_one_step: "true" },
-  });
-  expect(response.status).toBe(200);
-}
-
-async function pollWithTicks<T>(expect: any, check: () => Promise<T | null>, options: { timeoutMs?: number } = {}): Promise<T> {
-  const timeoutMs = options.timeoutMs ?? 90_000;
-  const deadline = Date.now() + timeoutMs;
-  while (true) {
-    await tickWorkflowEngine(expect);
-    const result = await check();
-    if (result != null) return result;
-    if (Date.now() > deadline) throw new Error(`pollWithTicks: condition not met within ${timeoutMs}ms`);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-}
-
-async function createWorkflow(expect: any, workflowId: string, source: string) {
-  const response = await niceBackendFetch("/api/v1/internal/workflows", {
-    method: "POST",
-    accessType: "admin",
-    body: { id: workflowId, source },
-  });
-  expect(response).toMatchObject({
-    status: 201,
-    body: { workflow_id: workflowId, version: 1, created: true },
-  });
-}
-
-async function updateWorkflowSource(expect: any, workflowId: string, source: string, expectedVersion: number) {
-  const response = await niceBackendFetch(`/api/v1/internal/workflows/${workflowId}/source`, {
-    method: "PATCH",
-    accessType: "admin",
-    body: { source },
-  });
-  expect(response).toMatchObject({
-    status: 200,
-    body: { workflow_id: workflowId, version: expectedVersion, created: true },
-  });
-}
-
-/** Permanently removes the workflow, including active work and history. */
-async function retireWorkflow(expect: any, workflowId: string) {
-  const response = await niceBackendFetch(`/api/v1/internal/workflows/${workflowId}`, {
-    method: "DELETE",
-    accessType: "admin",
-  });
-  expect(response.status).toBe(200);
-}
-
-async function sendCustomEvent(expect: any, name: string, data: unknown) {
-  const response = await niceBackendFetch("/api/v1/internal/workflows/events", {
-    method: "POST",
-    accessType: "admin",
-    body: { name, data },
-  });
-  expect(response).toMatchObject({ status: 200, body: { event_id: expect.any(String) } });
-  return response.body.event_id as string;
-}
-
-async function listRuns(workflowId: string, query: Record<string, string> = {}) {
-  const response = await niceBackendFetch(`/api/v1/internal/workflows/${workflowId}/runs`, {
-    method: "GET",
-    accessType: "admin",
-    query,
-  });
-  if (response.status !== 200) throw new Error(`listRuns failed: ${JSON.stringify(response.body)}`);
-  return response.body as { runs: any[], next_cursor: string | null };
 }
 
 describe("multi-tenancy", () => {

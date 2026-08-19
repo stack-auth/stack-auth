@@ -7,6 +7,7 @@ import {
   DesignInput,
   DesignSelectorDropdown as BaseDesignSelectorDropdown,
 } from "@/components/design-components";
+import { Link } from "@/components/link";
 import {
   Avatar,
   AvatarFallback,
@@ -37,7 +38,7 @@ const FEATURED_APP_IDS = [
   "emails",
   "payments",
   "analytics",
-  "deployments-alpha",
+  "deploy",
   "gtm",
 ] as const satisfies readonly AppId[];
 
@@ -45,12 +46,17 @@ type FeaturedAppId = (typeof FEATURED_APP_IDS)[number];
 type AppTickLevel = "off" | "enabled" | "setup" | "used";
 type RdeFilter = "both" | "rde" | "not_rde";
 type OnboardingFilter = "both" | "incomplete" | "completed";
+type NeonFilter = "include" | "exclude";
+
+const NEON_PROJECT_DESCRIPTION = "Created with Neon";
 
 type OwnerMember = {
   id: string,
   display_name: string | null,
   primary_email: string | null,
   profile_image_url: string | null,
+  created_at: string | null,
+  last_active_at: string | null,
 };
 
 type ProjectOwner = {
@@ -63,6 +69,7 @@ type ProjectOwner = {
 type ProjectRow = {
   id: string,
   display_name: string,
+  description: string,
   created_at: string,
   is_development_environment: boolean,
   onboarding_status: string,
@@ -118,7 +125,7 @@ type ProjectDetail = ProjectRow & {
 
 type LegacyCompatibleProjectDetail = Omit<
   ProjectDetail,
-  "rendered_config" | "replay_next_cursor" | "stripe_setup_complete" | "email_setup" | "email_customization"
+  "rendered_config" | "replay_next_cursor" | "stripe_setup_complete" | "email_setup" | "email_customization" | "owner"
 > & {
   rendered_config?: unknown,
   environment_config?: unknown,
@@ -126,6 +133,9 @@ type LegacyCompatibleProjectDetail = Omit<
   stripe_setup_complete?: boolean,
   email_setup?: ProjectRow["email_setup"],
   email_customization?: ProjectRow["email_customization"],
+  owner: Omit<ProjectOwner, "members"> & {
+    members: LegacyCompatibleOwnerMember[],
+  },
 };
 
 type ListResponse = {
@@ -136,17 +146,30 @@ type ListResponse = {
     min_users: number,
     rde: RdeFilter,
     onboarding: OnboardingFilter,
+    neon: NeonFilter,
     activity_24h_after_creation: boolean,
   },
 };
 
-type LegacyCompatibleProjectRow = Omit<ProjectRow, "email_setup" | "email_customization"> & {
-  email_setup?: ProjectRow["email_setup"],
-  email_customization?: ProjectRow["email_customization"],
+type LegacyCompatibleOwnerMember = Omit<OwnerMember, "created_at" | "last_active_at"> & {
+  created_at?: string | null,
+  last_active_at?: string | null,
 };
 
-type LegacyCompatibleListResponse = Omit<ListResponse, "projects"> & {
+type LegacyCompatibleProjectRow = Omit<ProjectRow, "description" | "email_setup" | "email_customization" | "owner"> & {
+  description?: string,
+  email_setup?: ProjectRow["email_setup"],
+  email_customization?: ProjectRow["email_customization"],
+  owner: Omit<ProjectOwner, "members"> & {
+    members: LegacyCompatibleOwnerMember[],
+  },
+};
+
+type LegacyCompatibleListResponse = Omit<ListResponse, "projects" | "filters"> & {
   projects: LegacyCompatibleProjectRow[],
+  filters: Omit<ListResponse["filters"], "neon"> & {
+    neon?: NeonFilter,
+  },
 };
 
 type ListState =
@@ -166,13 +189,15 @@ type ListFilters = {
   minUsers: string,
   rde: RdeFilter,
   onboarding: OnboardingFilter,
+  neon: NeonFilter,
   activity24h: "yes" | "no",
 };
 
 const DEFAULT_FILTERS: ListFilters = {
   minUsers: "0",
-  rde: "not_rde",
+  rde: "both",
   onboarding: "both",
+  neon: "exclude",
   activity24h: "no",
 };
 
@@ -195,9 +220,23 @@ function isListResponse(value: unknown): value is LegacyCompatibleListResponse {
     && Array.isArray(Reflect.get(value, "featured_app_ids"));
 }
 
+function normalizeOwner(owner: LegacyCompatibleProjectRow["owner"]): ProjectOwner {
+  return {
+    ...owner,
+    members: owner.members.map((member) => ({
+      ...member,
+      // Dashboard and backend instances can roll over independently.
+      created_at: member.created_at ?? null,
+      last_active_at: member.last_active_at ?? null,
+    })),
+  };
+}
+
 function normalizeProjectRow(project: LegacyCompatibleProjectRow): ProjectRow {
   return {
     ...project,
+    description: project.description ?? "",
+    owner: normalizeOwner(project.owner),
     email_setup: project.email_setup ?? {
       kind: "shared",
       provider: null,
@@ -224,7 +263,7 @@ async function fetchListState(app: object, filters: ListFilters): Promise<ListSt
   try {
     const response = await sendInternalUserRequest(
       app,
-      urlString`/internal/newly-created-projects?min_users=${minUsersValue}&rde=${filters.rde}&onboarding=${filters.onboarding}&activity_24h_after_creation=${activityValue}`,
+      urlString`/internal/newly-created-projects?min_users=${minUsersValue}&rde=${filters.rde}&onboarding=${filters.onboarding}&neon=${filters.neon}&activity_24h_after_creation=${activityValue}`,
     );
     if (response.status === 403) return { status: "forbidden" };
     if (!response.ok) {
@@ -239,6 +278,10 @@ async function fetchListState(app: object, filters: ListFilters): Promise<ListSt
       data: {
         ...body,
         projects: body.projects.map(normalizeProjectRow),
+        filters: {
+          ...body.filters,
+          neon: body.filters.neon ?? "include",
+        },
       },
     };
   } catch (error) {
@@ -289,6 +332,7 @@ async function fetchProjectDetailState(
       status: "ok",
       data: {
         ...body,
+        owner: normalizeOwner(body.owner),
         rendered_config: renderedConfig ?? legacyEnvironmentConfig,
         replay_next_cursor: responseReplayCursor ?? null,
         stripe_setup_complete: body.stripe_setup_complete === true,
@@ -440,6 +484,51 @@ function Tick(props: { level: AppTickLevel, appId: FeaturedAppId, project?: Proj
   );
 }
 
+function OwnerMemberLink(props: {
+  member: OwnerMember,
+  teamDisplayName: string | null,
+  children: React.ReactNode,
+}) {
+  const label = props.member.display_name ?? props.member.primary_email ?? props.member.id;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Link
+          href={urlString`/projects/internal/users/${props.member.id}`}
+          aria-label={`Open user details for ${label}`}
+          className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {props.children}
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="w-80 max-w-[calc(100vw-2rem)] p-3">
+        <div className="flex items-center gap-2.5 border-b pb-2">
+          <Avatar className="h-8 w-8 shrink-0">
+            <AvatarImage src={props.member.profile_image_url ?? undefined} alt={props.member.display_name ?? ""} />
+            <AvatarFallback className="text-[10px]">{initials(label)}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{props.member.display_name ?? "No display name"}</p>
+            <p className="truncate text-xs text-muted-foreground">{props.member.primary_email ?? "No primary email"}</p>
+          </div>
+        </div>
+        <dl className="mt-2 grid grid-cols-[5rem_1fr] gap-x-2 gap-y-1 text-xs">
+          <dt className="text-muted-foreground">User ID</dt>
+          <dd className="break-all font-mono">{props.member.id}</dd>
+          <dt className="text-muted-foreground">Team</dt>
+          <dd>{props.teamDisplayName ?? "—"}</dd>
+          <dt className="text-muted-foreground">Created</dt>
+          <dd>{formatDateTime(props.member.created_at)}</dd>
+          <dt className="text-muted-foreground">Last active</dt>
+          <dd>{formatDateTime(props.member.last_active_at)}</dd>
+        </dl>
+        <p className="mt-2 border-t pt-2 text-[11px] text-muted-foreground">Click to open user details</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function OwnerCell(props: { owner: ProjectOwner }) {
   if (props.owner.kind === "rde") {
     return (
@@ -454,7 +543,7 @@ function OwnerCell(props: { owner: ProjectOwner }) {
     }
     const member = props.owner.members[0];
     return (
-      <CellTooltip label={[member.display_name, member.primary_email, props.owner.team_display_name].filter(Boolean).join(" · ")}>
+      <OwnerMemberLink member={member} teamDisplayName={props.owner.team_display_name}>
         <span className="inline-flex items-center gap-1.5 min-w-0">
           <Avatar className="h-5 w-5 shrink-0">
             <AvatarImage src={member.profile_image_url ?? undefined} alt={member.display_name ?? ""} />
@@ -462,24 +551,24 @@ function OwnerCell(props: { owner: ProjectOwner }) {
           </Avatar>
           <span className="truncate text-xs">{member.primary_email ?? member.display_name ?? "—"}</span>
         </span>
-      </CellTooltip>
+      </OwnerMemberLink>
     );
   }
   if (props.owner.kind === "team") {
     return (
-      <CellTooltip label={`${props.owner.team_display_name ?? "Team"} · ${props.owner.members.length} members`}>
-        <span className="inline-flex items-center gap-1.5 min-w-0">
-          <span className="flex -space-x-1.5 shrink-0">
-            {props.owner.members.slice(0, 4).map((member) => (
+      <span className="inline-flex items-center gap-1.5 min-w-0">
+        <span className="flex -space-x-1.5 shrink-0">
+          {props.owner.members.slice(0, 4).map((member) => (
+            <OwnerMemberLink key={member.id} member={member} teamDisplayName={props.owner.team_display_name}>
               <Avatar key={member.id} className="h-5 w-5 ring-1 ring-background">
                 <AvatarImage src={member.profile_image_url ?? undefined} alt={member.display_name ?? ""} />
                 <AvatarFallback className="text-[9px]">{initials(member.display_name ?? member.primary_email)}</AvatarFallback>
               </Avatar>
-            ))}
-          </span>
-          <span className="truncate text-xs">{props.owner.team_display_name ?? "Team"}</span>
+            </OwnerMemberLink>
+          ))}
         </span>
-      </CellTooltip>
+        <span className="truncate text-xs">{props.owner.team_display_name ?? "Team"}</span>
+      </span>
     );
   }
   return <span className="text-muted-foreground text-xs">—</span>;
@@ -580,8 +669,9 @@ function NewlyCreatedProjectsContent(props: {
 }) {
   const initialListState = use(props.initialListStatePromise);
   const [minUsers, setMinUsers] = useState("0");
-  const [rde, setRde] = useState<RdeFilter>("not_rde");
+  const [rde, setRde] = useState<RdeFilter>("both");
   const [onboarding, setOnboarding] = useState<OnboardingFilter>("both");
+  const [neon, setNeon] = useState<NeonFilter>("exclude");
   const [activity24h, setActivity24h] = useState<"yes" | "no">("no");
   const [listState, setListState] = useState<ListState>(initialListState);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -659,6 +749,17 @@ function NewlyCreatedProjectsContent(props: {
                 ]}
               />
             </label>
+            <label className="flex flex-col gap-1 text-xs min-w-[11rem]">
+              <span className="text-muted-foreground">Neon projects</span>
+              <DesignSelectorDropdown
+                value={neon}
+                onValueChange={setNeon}
+                options={[
+                  { value: "include", label: "Include" },
+                  { value: "exclude", label: "Exclude" },
+                ]}
+              />
+            </label>
             <label className="flex flex-col gap-1 text-xs min-w-[14rem]">
               <span className="text-muted-foreground">Activity ≥24h after creation</span>
               <DesignSelectorDropdown
@@ -672,7 +773,7 @@ function NewlyCreatedProjectsContent(props: {
             </label>
             <DesignButton
               onClick={async () => {
-                await fetchList({ minUsers, rde, onboarding, activity24h });
+                await fetchList({ minUsers, rde, onboarding, neon, activity24h });
               }}
               variant="secondary"
             >
@@ -770,8 +871,13 @@ function ProjectsTable(props: {
                 <UsersCell nonAnon={project.non_anonymous_users} anon={project.anonymous_users} />
               </td>
               <td className="px-2 py-1.5 align-middle max-w-[14rem]">
-                <CellTooltip label={project.id}>
-                  <span className="font-medium truncate block">{project.display_name}</span>
+                <CellTooltip label={project.description === NEON_PROJECT_DESCRIPTION ? `${project.id} · Created with Neon` : project.id}>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {project.description === NEON_PROJECT_DESCRIPTION ? (
+                      <AppIcon appId="neon" className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                    ) : null}
+                    <span className="font-medium truncate block">{project.display_name}</span>
+                  </span>
                 </CellTooltip>
               </td>
               <td className="px-2 py-1.5 align-middle max-w-[14rem]">
@@ -874,7 +980,12 @@ function DetailBody(props: {
     <div className="grid gap-3 lg:grid-cols-2">
       <DesignCard className="p-4 space-y-3">
         <div>
-          <Typography type="h3">{data.display_name}</Typography>
+          <div className="flex items-center gap-2">
+            {data.description === NEON_PROJECT_DESCRIPTION ? (
+              <AppIcon appId="neon" className="h-4 w-4 shrink-0 text-emerald-500" />
+            ) : null}
+            <Typography type="h3">{data.display_name}</Typography>
+          </div>
           <Typography type="label" className="text-muted-foreground font-mono text-xs break-all">
             {data.id}
           </Typography>

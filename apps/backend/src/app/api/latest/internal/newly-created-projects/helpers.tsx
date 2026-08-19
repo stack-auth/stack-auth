@@ -30,13 +30,15 @@ export const CANDIDATE_WINDOW_SIZE = 5_000;
 export const DETAIL_REPLAY_LIMIT = 50;
 const CONFIG_RENDER_CONCURRENCY = 12;
 const STRIPE_ACCOUNT_CONCURRENCY = 8;
+const METRICS_PROJECT_BATCH_SIZE = 200;
+const METRICS_QUERY_CONCURRENCY = 4;
 
 export const FEATURED_APP_IDS = [
   "authentication",
   "emails",
   "payments",
   "analytics",
-  "deployments-alpha",
+  "deploy",
   "gtm",
 ] as const satisfies readonly AppId[];
 
@@ -51,6 +53,8 @@ export type OwnerMember = {
   display_name: string | null,
   primary_email: string | null,
   profile_image_url: string | null,
+  created_at: string,
+  last_active_at: string,
 };
 
 export type ProjectOwner = {
@@ -63,6 +67,7 @@ export type ProjectOwner = {
 export type NewlyCreatedProjectRow = {
   id: string,
   display_name: string,
+  description: string,
   created_at: string,
   is_development_environment: boolean,
   onboarding_status: string,
@@ -245,6 +250,17 @@ export type ProjectActivityMetrics = {
   lastActivityByProjectId: Map<string, Date>,
 };
 
+export function chunkProjectIds(projectIds: readonly string[], chunkSize: number): string[][] {
+  if (!Number.isInteger(chunkSize) || chunkSize < 1) {
+    throw new HexclaveAssertionError("Project ID chunk size must be a positive integer", { chunkSize });
+  }
+  const chunks: string[][] = [];
+  for (let index = 0; index < projectIds.length; index += chunkSize) {
+    chunks.push(projectIds.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
 export async function loadProjectActivityMetrics(projectIds: string[]): Promise<ProjectActivityMetrics> {
   const empty = {
     nonAnonByProjectId: new Map<string, number>(),
@@ -257,58 +273,88 @@ export async function loadProjectActivityMetrics(projectIds: string[]): Promise<
   const branchId = DEFAULT_BRANCH_ID;
 
   try {
-    const [userRowsResult, activityRowsResult] = await Promise.all([
-      clickhouse.query({
-        query: `
-          SELECT
-            project_id AS projectId,
-            countIf(is_anonymous = 0) AS nonAnon,
-            countIf(is_anonymous = 1) AS anon
-          FROM analytics_internal.users FINAL
-          WHERE branch_id = {branchId:String}
-            AND sync_is_deleted = 0
-            AND project_id IN {projectIds:Array(String)}
-          GROUP BY project_id
-        `,
-        query_params: { branchId, projectIds },
-        format: "JSONEachRow",
-      }),
-      clickhouse.query({
-        query: `
-          SELECT
-            project_id AS projectId,
-            max(event_at) AS lastActive
-          FROM analytics_internal.events
-          WHERE event_type = '$token-refresh'
-            AND user_id IS NOT NULL
-            AND project_id IN {projectIds:Array(String)}
-          GROUP BY project_id
-        `,
-        query_params: { projectIds },
-        format: "JSONEachRow",
-      }),
-    ]);
+    // The candidate window can contain thousands of user-heavy projects. Even
+    // with external aggregation enabled, one query over the whole window can
+    // exceed ClickHouse's per-query memory cap because the inner dedup must
+    // hold one group for every user. Batch project IDs so each aggregation has
+    // a bounded number of groups, while keeping a small concurrency limit to
+    // avoid replacing one large query with an unbounded fan-out.
+    const chunkResults = await mapWithConcurrency(
+      chunkProjectIds(projectIds, METRICS_PROJECT_BATCH_SIZE),
+      METRICS_QUERY_CONCURRENCY,
+      async (projectIdChunk) => {
+        const [userRowsResult, activityRowsResult] = await Promise.all([
+          clickhouse.query({
+            // Deduplicate the ReplacingMergeTree rows with `FINAL` instead of
+            // an explicit argMax GROUP BY on the dedup key: argMax needs one
+            // aggregation state per user, which exceeds the per-query memory
+            // cap on user-heavy batches (even with external group-by spill),
+            // while FINAL is a streaming merge of sorted parts whose memory
+            // scales with part count, not user count. Combined with the
+            // project-ID batching below it stays far under the cap, and it
+            // matches the dedup semantics of the public `default.users` view.
+            // Note that deletion tombstones carry deletedAt as signed_up_at
+            // and thus usually live in a later monthly partition than the
+            // live row; FINAL still collapses the pair because it merges
+            // across partitions by default — so never enable
+            // do_not_merge_across_partitions_select_final on this table, or
+            // deleted users would be counted again (validated empirically).
+            query: `
+              SELECT
+                project_id AS projectId,
+                countIf(is_anonymous = 0) AS nonAnon,
+                countIf(is_anonymous = 1) AS anon
+              FROM analytics_internal.users FINAL
+              WHERE branch_id = {branchId:String}
+                AND project_id IN {projectIds:Array(String)}
+                AND sync_is_deleted = 0
+              GROUP BY project_id
+            `,
+            query_params: { branchId, projectIds: projectIdChunk },
+            format: "JSONEachRow",
+          }),
+          clickhouse.query({
+            query: `
+              SELECT
+                project_id AS projectId,
+                max(event_at) AS lastActive
+              FROM analytics_internal.events
+              WHERE event_type = '$token-refresh'
+                AND user_id IS NOT NULL
+                AND project_id IN {projectIds:Array(String)}
+              GROUP BY project_id
+            `,
+            query_params: { projectIds: projectIdChunk },
+            format: "JSONEachRow",
+          }),
+        ]);
 
-    // clickhouse-js `json<T>()` returns T[] — pass the row type, not Array<row>.
-    const userRows = await userRowsResult.json<{ projectId: string, nonAnon: string | number, anon: string | number }>();
-    const activityRows = await activityRowsResult.json<{ projectId: string, lastActive: string }>();
+        // clickhouse-js `json<T>()` returns T[] — pass the row type, not Array<row>.
+        return {
+          userRows: await userRowsResult.json<{ projectId: string, nonAnon: string | number, anon: string | number }>(),
+          activityRows: await activityRowsResult.json<{ projectId: string, lastActive: string }>(),
+        };
+      },
+    );
 
     const nonAnonByProjectId = new Map<string, number>();
     const anonByProjectId = new Map<string, number>();
-    for (const row of userRows) {
-      nonAnonByProjectId.set(row.projectId, Number(row.nonAnon) || 0);
-      anonByProjectId.set(row.projectId, Number(row.anon) || 0);
-    }
     const lastActivityByProjectId = new Map<string, Date>();
-    for (const row of activityRows) {
-      // ClickHouse DateTime comes back as "YYYY-MM-DD HH:MM:SS" (UTC, no zone).
-      const normalized = row.lastActive.includes("T")
-        ? row.lastActive
-        : row.lastActive.replace(" ", "T");
-      const withZone = /[zZ]|[+-]\d\d:\d\d$/.test(normalized) ? normalized : `${normalized}Z`;
-      const parsed = new Date(withZone);
-      if (!Number.isNaN(parsed.getTime())) {
-        lastActivityByProjectId.set(row.projectId, parsed);
+    for (const { userRows, activityRows } of chunkResults) {
+      for (const row of userRows) {
+        nonAnonByProjectId.set(row.projectId, Number(row.nonAnon) || 0);
+        anonByProjectId.set(row.projectId, Number(row.anon) || 0);
+      }
+      for (const row of activityRows) {
+        // ClickHouse DateTime comes back as "YYYY-MM-DD HH:MM:SS" (UTC, no zone).
+        const normalized = row.lastActive.includes("T")
+          ? row.lastActive
+          : row.lastActive.replace(" ", "T");
+        const withZone = /[zZ]|[+-]\d\d:\d\d$/.test(normalized) ? normalized : `${normalized}Z`;
+        const parsed = new Date(withZone);
+        if (!Number.isNaN(parsed.getTime())) {
+          lastActivityByProjectId.set(row.projectId, parsed);
+        }
       }
     }
     return { nonAnonByProjectId, anonByProjectId, lastActivityByProjectId };
@@ -454,6 +500,8 @@ async function loadOwnersByTeamId(ownerTeamIds: string[]): Promise<Map<string, {
             projectUserId: true,
             displayName: true,
             profileImageUrl: true,
+            createdAt: true,
+            lastActiveAt: true,
             contactChannels: {
               where: { type: "EMAIL", isPrimary: "TRUE" },
               select: { value: true },
@@ -473,6 +521,8 @@ async function loadOwnersByTeamId(ownerTeamIds: string[]): Promise<Map<string, {
       display_name: member.displayName ?? member.projectUser.displayName,
       primary_email: member.projectUser.contactChannels[0]?.value ?? null,
       profile_image_url: member.profileImageUrl ?? member.projectUser.profileImageUrl,
+      created_at: member.projectUser.createdAt.toISOString(),
+      last_active_at: member.projectUser.lastActiveAt.toISOString(),
     });
     membersByTeamId.set(member.teamId, list);
   }
@@ -595,6 +645,7 @@ export async function buildNewlyCreatedProjectRows(
     rows.push({
       id: project.id,
       display_name: project.displayName,
+      description: project.description,
       created_at: project.createdAt.toISOString(),
       is_development_environment: project.isDevelopmentEnvironment,
       onboarding_status: project.onboardingStatus,

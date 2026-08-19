@@ -10,6 +10,9 @@ import ThemeToggle from "./theme-toggle";
 
 export function Navbar({ ...props }) {
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
+  // In preview mode the dashboard is embedded on the marketing site; the external
+  // Docs link would navigate the iframe away, so hide it there.
+  const isPreview = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
 
   return (
     <header
@@ -21,9 +24,11 @@ export function Navbar({ ...props }) {
       </div>
       <div className="flex items-center">
         <div className="flex gap-4 mr-4 items-center">
-          <Link href="https://docs.hexclave.com/">
-            <Typography type='label'>Docs</Typography>
-          </Link>
+          {!isPreview && (
+            <Link href="https://docs.hexclave.com/">
+              <Typography type='label'>Docs</Typography>
+            </Link>
+          )}
           <ThemeToggle />
         </div>
         {!isRemoteDevelopmentEnvironment && <DashboardUserButton />}

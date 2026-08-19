@@ -12,6 +12,8 @@ export const OwnerMemberSchema = yupObject({
   display_name: yupString().nullable().defined(),
   primary_email: yupString().nullable().defined(),
   profile_image_url: yupString().nullable().defined(),
+  created_at: yupString().defined(),
+  last_active_at: yupString().defined(),
 }).defined();
 
 export const ProjectOwnerSchema = yupObject({
@@ -28,13 +30,14 @@ export const FeaturedAppsSchema = yupObject({
   emails: AppTickLevelSchema,
   payments: AppTickLevelSchema,
   analytics: AppTickLevelSchema,
-  "deployments-alpha": AppTickLevelSchema,
+  "deploy": AppTickLevelSchema,
   gtm: AppTickLevelSchema,
 }).defined();
 
 export const ProjectRowSchema = yupObject({
   id: yupString().defined(),
   display_name: yupString().defined(),
+  description: yupString().defined(),
   created_at: yupString().defined(),
   is_development_environment: yupBoolean().defined(),
   onboarding_status: yupString().defined(),

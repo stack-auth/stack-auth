@@ -1,4 +1,5 @@
 import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-channel";
+import { logSignInAttemptInBackground } from "@/lib/compliance-events";
 import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { createAuthTokens } from "@/lib/tokens";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -53,6 +54,12 @@ export const POST = createSmartRouteHandler({
 
     // we compare the password even if the authMethod doesn't exist to prevent timing attacks
     if (!await comparePassword(password, passwordAuthMethod?.passwordHash || "")) {
+      logSignInAttemptInBackground(tenancy, {
+        outcome: "failed",
+        method: "password",
+        failureReason: "invalid_password",
+        email,
+      });
       throw new KnownErrors.EmailPasswordMismatch();
     }
 
@@ -66,6 +73,8 @@ export const POST = createSmartRouteHandler({
         branchId: tenancy.branchId,
         isNewUser: false,
         userId: contactChannel.projectUser.projectUserId,
+        method: "password",
+        email,
       });
     }
 
@@ -73,6 +82,12 @@ export const POST = createSmartRouteHandler({
       tenancy,
       projectUserId: contactChannel.projectUser.projectUserId,
       apiUrl: getApiUrlForRequest(fullReq),
+    });
+    logSignInAttemptInBackground(tenancy, {
+      outcome: "success",
+      method: "password",
+      email,
+      userId: contactChannel.projectUser.projectUserId,
     });
 
     return {
