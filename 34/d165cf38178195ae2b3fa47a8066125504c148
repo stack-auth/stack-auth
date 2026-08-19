@@ -1,0 +1,51 @@
+apps/backend/src/lib/issues/issue-alerts/persistence.test.ts
+  s_b1ec09ed09497c::t_e15500ced45802 205
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/alert-rule-form.ts
+  s_b1ec09ed09497c::t_bf98ee8c123441 199-211,213-219
+  s_b1ec09ed09497c::t_a1e57fe652e43b 110
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/alert-rule-form.test.ts
+  s_b1ec09ed09497c::t_a1857ab63cc250 96-97,99
+apps/backend/src/lib/issues/issue-alerts/evaluator.ts
+  s_b1ec09ed09497c::t_d8843b64669ff0 465-466
+apps/backend/src/lib/issues/issue-alerts/api.test.ts
+  s_b1ec09ed09497c::t_679fc7cb6b0b72 34,40
+apps/backend/src/lib/error-ingest/error-ingest-protocol-projections.ts
+  s_b1ec09ed09497c::t_001334ef490162 15-23
+  s_b1ec09ed09497c::t_b437e9281a2757 80-82,88
+apps/backend/src/app/api/latest/analytics/otlp/v1/traces/route.test.ts
+  s_b1ec09ed09497c::t_cec5325f539671 102
+  s_b1ec09ed09497c::t_65e779ed62eb71 56
+  s_b1ec09ed09497c::t_f3f2c7d75f5759 74-75,79,92-101,103-115
+  s_b1ec09ed09497c::t_b882d50b065011 5
+  s_b1ec09ed09497c::t_d2632da0e5c0f9 116
+apps/backend/src/app/api/latest/analytics/otlp/v1/traces/policy-selection.ts
+  s_b1ec09ed09497c::t_18f01cc1288daf 2,5
+apps/backend/src/lib/issues/issue-alerts/destinations.test.ts
+  s_b1ec09ed09497c::t_97daf21c061f3a 8-9,14
+apps/backend/src/lib/issues/issue-alerts/destinations.ts
+  s_b1ec09ed09497c::t_48db6cede87ae0 122-124
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/page-client.tsx
+  s_b1ec09ed09497c::t_3ec55b96e6729c 373
+  s_b1ec09ed09497c::t_8dd091d2e44059 509,520-528
+  s_b1ec09ed09497c::t_5db12e4c14645b 469
+  s_b1ec09ed09497c::t_a6dd745e5b8caf 507
+apps/backend/src/lib/issues/issue-alerts/evaluator.test.ts
+  s_b1ec09ed09497c::t_fea95e52cc2a90 150-151,153
+  s_b1ec09ed09497c::t_ba7bfd6bc6d086 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "34d165cf38178195ae2b3fa47a8066125504c148",
+  "prompts": {},
+  "sessions": {
+    "s_b1ec09ed09497c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e9f2673a-f101-44fa-972e-cb237641b3d5",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
