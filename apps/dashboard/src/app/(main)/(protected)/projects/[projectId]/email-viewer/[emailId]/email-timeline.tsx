@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
+import { TooltipPortal } from "@radix-ui/react-tooltip";
 import { AdminEmailOutbox, AdminSendAttemptError } from "@hexclave/next";
 
 type TimelineEvent = {
@@ -237,9 +238,11 @@ export function EmailTimeline({ email }: { email: AdminEmailOutbox }) {
                       <TooltipTrigger asChild>
                         <span className="ml-1.5 text-[10px] text-red-500 cursor-help underline decoration-dotted">details</span>
                       </TooltipTrigger>
-                      <TooltipContent side="right" className="text-xs max-w-[280px]">
-                        <p className="whitespace-pre-wrap break-words">{event.detail}</p>
-                      </TooltipContent>
+                      <TooltipPortal>
+                        <TooltipContent side="right" className="text-xs max-w-[280px]">
+                          <p className="whitespace-pre-wrap break-words">{event.detail}</p>
+                        </TooltipContent>
+                      </TooltipPortal>
                     </Tooltip>
                   )}
                 </div>
@@ -253,9 +256,11 @@ export function EmailTimeline({ email }: { email: AdminEmailOutbox }) {
                       <TooltipTrigger asChild>
                         <span className="ml-1.5 text-[10px] text-red-500 cursor-help underline decoration-dotted">details</span>
                       </TooltipTrigger>
-                      <TooltipContent side="right" className="text-xs max-w-[280px]">
-                        <p className="whitespace-pre-wrap break-words">{event.detail}</p>
-                      </TooltipContent>
+                      <TooltipPortal>
+                        <TooltipContent side="right" className="text-xs max-w-[280px]">
+                          <p className="whitespace-pre-wrap break-words">{event.detail}</p>
+                        </TooltipContent>
+                      </TooltipPortal>
                     </Tooltip>
                   )}
                 </div>

@@ -41,7 +41,6 @@ async function proxyToOpenRouter(req: Request, options: { params: Promise<{ path
   const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY");
   const params = await options.params;
   const subpath = params.path?.join("/") ?? "";
-  const requestUrl = new URL(req.url);
 
   const contentType = req.headers.get("Content-Type");
   const body = req.method !== "GET" && req.method !== "HEAD"
@@ -49,7 +48,7 @@ async function proxyToOpenRouter(req: Request, options: { params: Promise<{ path
     : undefined;
 
   if (apiKey === "FORWARD_TO_PRODUCTION") {
-    const targetUrl = `${PRODUCTION_AI_PROXY_BASE_URL}/${subpath}${requestUrl.search}`;
+    const targetUrl = `${PRODUCTION_AI_PROXY_BASE_URL}/${subpath}${new URL(req.url).search}`;
     const headers: Record<string, string> = {};
     if (contentType) {
       headers["Content-Type"] = contentType;
@@ -70,7 +69,7 @@ async function proxyToOpenRouter(req: Request, options: { params: Promise<{ path
     });
   }
 
-  const targetUrl = `${OPENROUTER_BASE_URL}/${subpath}${requestUrl.search}`;
+  const targetUrl = `${OPENROUTER_BASE_URL}/${subpath}${new URL(req.url).search}`;
   const headers: Record<string, string> = {
     "Authorization": `Bearer ${apiKey}`,
     "anthropic-version": "2023-06-01",
