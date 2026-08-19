@@ -1,0 +1,53 @@
+apps/backend/src/lib/workflows/issue-alerts/registration.ts
+  s_932924f5d25fb5::t_3af4afab02b661 56-68,71
+  s_932924f5d25fb5::t_62b99dea74a57d 118-120,134
+  s_932924f5d25fb5::t_238ead41483b21 23-29,32
+  s_932924f5d25fb5::t_0906fff606c8bb 2-3
+apps/backend/src/lib/workflows/engine.tsx
+  s_932924f5d25fb5::t_61d073741519b6 14-15,164-176,281-292,314-330,335-345,369-373,530,551-553,555-570,572,583,588,705-706,710,712,715-716,731,790,992,1153,1179,1206,1216,1410-1420
+apps/backend/src/lib/issues/issue-alerts/workflow-status.test.ts
+  s_932924f5d25fb5::t_b4d7471e760ff5 8-9,11-12,32,46-67,69-77,82,112-126,128-129,131-138,141-142,144-151,155-159,161-165,167-169,171-178,180-186,189,191,193,196-197,200
+apps/backend/src/lib/workflows/issue-alerts/delivery-proof.test.ts
+  s_932924f5d25fb5::t_98d3a642c6cc60 20
+  s_932924f5d25fb5::t_c6cb18181255e1 343
+  s_932924f5d25fb5::t_5e4c44c2d7b351 169,174-176
+  s_932924f5d25fb5::t_822a1c46ba0720 11
+  s_932924f5d25fb5::t_d119413ba98e15 357,360-363,365-369,371,393
+apps/backend/src/lib/workflows/issue-alerts/registration.test.ts
+  s_932924f5d25fb5::t_30c8dfc7b4c10f 41,107
+  s_932924f5d25fb5::t_dcdbb25ebbf7d3 9
+apps/backend/src/app/api/latest/internal/issues/reconciler/route.tsx
+  s_932924f5d25fb5::t_c280e8ca522a8d 89
+  s_932924f5d25fb5::t_6006d4c3c481f2 1
+packages/shared/src/interface/workflows.ts
+  s_932924f5d25fb5::t_61d073741519b6 40-46,202-204
+apps/backend/src/lib/workflows/event-processing.test.ts
+  s_932924f5d25fb5::t_61d073741519b6 3
+apps/backend/src/lib/issues/issue-alerts/workflow-status.ts
+  s_932924f5d25fb5::t_dea3028fc1af83 194-198
+  s_932924f5d25fb5::t_59a75387694390 161
+  s_932924f5d25fb5::t_85246c315bcc05 4,9,16
+  s_932924f5d25fb5::t_40369eb7ac64c1 46-56,59,70,75,79-80,114-119,121-122,124-125,127-132,137-143,146,148-149,153,155-156,160,162,167-189,192-193,199-205,221-248,262-266,268-269,271-276,278-280,284,287-288,293-331
+  s_932924f5d25fb5::t_85e074d40602f2 332
+apps/backend/src/lib/workflows/api.tsx
+  s_932924f5d25fb5::t_61d073741519b6 3,59,199-206,211,215,262-263,306-382
+  s_932924f5d25fb5::t_33bb94310c454d 383-384
+apps/backend/src/lib/workflows/events.tsx
+  s_932924f5d25fb5::t_61d073741519b6 99-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "42dc4fa07a787faa6aef6725579cb531719ea7d3",
+  "prompts": {},
+  "sessions": {
+    "s_932924f5d25fb5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c812916a-dc7f-4d1a-bf0c-8f5f80d9248f",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
