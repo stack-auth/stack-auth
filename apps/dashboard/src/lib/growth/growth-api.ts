@@ -1,5 +1,5 @@
 import { sendInternalUserRequest } from "@/lib/hexclave-app-internals";
-import { GrowthApiError, growthRequestHeaders, requestJson } from "./growth-api-client";
+import { GrowthApiError, growthRequestHeaders, requestJson, toGrowthApiError } from "./growth-api-client";
 import { growthDocumentSchema } from "./growth-document";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { z } from "zod";
@@ -671,7 +671,12 @@ export async function getGrowthOverview(app: object): Promise<GrowthOverview> {
  * error-shaping below — same reasoning as the requestJson extraction in growth-api-client.ts.
  */
 export async function requestGrowthAdminJson(app: object, path: string, init: RequestInit = {}): Promise<unknown> {
-  const response = await sendInternalUserRequest(app, `/internal/growth/admin${path}`, { ...init, headers: growthRequestHeaders(init) });
+  let response;
+  try {
+    response = await sendInternalUserRequest(app, `/internal/growth/admin${path}`, { ...init, headers: growthRequestHeaders(init) });
+  } catch (error) {
+    throw toGrowthApiError(error) ?? error;
+  }
   const responseText = await response.text();
   if (!response.ok) {
     let message = `Growth admin request failed with status ${response.status}`;
@@ -713,6 +718,19 @@ export async function updateGrowthAdminFinding(app: object, projectId: string, f
 
 export async function setGrowthAdminCategoryScore(app: object, projectId: string, category: string, score: number): Promise<void> {
   await requestGrowthAdminJson(app, "/category-scores", { method: "PUT", body: JSON.stringify({ target_project_id: projectId, category, score }) });
+}
+
+export type GrowthAdminManualStep = "workflow_engine" | "growth_watchdog";
+
+export async function runGrowthAdminManualStep(app: object, step: GrowthAdminManualStep): Promise<{ didWork: boolean }> {
+  const response = z.object({
+    step: z.enum(["workflow_engine", "growth_watchdog"]),
+    did_work: z.boolean(),
+  }).parse(await requestGrowthAdminJson(app, "/run-now", {
+    method: "POST",
+    body: JSON.stringify({ step }),
+  }));
+  return { didWork: response.did_work };
 }
 
 export type GrowthAdminFunctionalActionFields = {
