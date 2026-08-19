@@ -698,7 +698,7 @@ class RuntimeCache {
     if (this.entries.get(entry.hash) === entry) {
       this.entries.delete(entry.hash);
     }
-    this.disposeEntry(entry);
+    if (entry.activeJobs === 0) this.disposeEntry(entry);
   }
 
   disposeEntry(entry) {
@@ -762,7 +762,10 @@ class RuntimeCache {
 
   release(entry) {
     entry.activeJobs--;
-    if (entry.evicted) return;
+    if (entry.evicted) {
+      if (entry.activeJobs === 0) this.disposeEntry(entry);
+      return;
+    }
     entry.jobsHandled++;
     entry.lastUsed = performance.now();
     if (entry.jobsHandled >= MAX_JOBS_PER_RUNTIME) {
