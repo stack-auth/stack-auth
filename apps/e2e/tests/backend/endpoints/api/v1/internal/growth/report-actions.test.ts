@@ -1,10 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { Client } from "pg";
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Project, niceBackendFetch } from "../../../../../backend-helpers";
+import { withInternalDatabase } from "../../external-db-sync-utils";
 import { GROWTH_AGENT_AUTH, asGrowthStaff, createGrowthProject, publishGrowthPresentationAsStaff, releaseGrowthInterviewAsStaff, requireRunId } from "./growth-helpers";
-import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 
 const ADMIN_BASE = "/api/latest/internal/growth";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
@@ -43,15 +42,9 @@ async function staffFetch(url: string, options: Parameters<typeof niceBackendFet
 }
 
 async function publishLegacyReport(reportId: string): Promise<void> {
-  const connectionString = getEnvVariable("STACK_DATABASE_CONNECTION_STRING", "");
-  if (connectionString === "") throw new Error("The growth E2E suite requires STACK_DATABASE_CONNECTION_STRING.");
-  const client = new Client({ connectionString });
-  await client.connect();
-  try {
+  await withInternalDatabase(async (client) => {
     await client.query('UPDATE "GrowthReport" SET "publishedAt" = NOW() WHERE "id" = $1', [reportId]);
-  } finally {
-    await client.end();
-  }
+  });
 }
 
 const REPORT_SECTIONS = [
