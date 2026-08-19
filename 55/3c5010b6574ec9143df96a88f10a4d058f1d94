@@ -1,0 +1,175 @@
+apps/backend/src/app/api/latest/analytics/otlp/v1/traces/policy-selection.test.ts
+  s_fc93bef52b423f::t_2454e472dacf2a 1-48
+apps/backend/src/lib/safe-request-context.ts
+  s_fc93bef52b423f::t_90752242782bf5 64,85-88
+apps/backend/src/app/api/latest/issues/[issue_id]/actions/_shared.ts
+  s_fc93bef52b423f::t_b40c932a0ec005 94-99
+apps/backend/src/app/api/latest/analytics/envelope/route.ts
+  s_fc93bef52b423f::t_1d669a323f729c 26-27,32,196-199,208,229-279,285-286
+  s_fc93bef52b423f::t_b08a514f033d4e 280-284
+  s_fc93bef52b423f::t_9997f7b0bdda49 287
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/stack-frame-list.tsx
+  s_fc93bef52b423f::t_9d8edad1b8efa0 160-162,195,207,216
+apps/backend/src/app/api/latest/analytics/events/batch/route.test.tsx
+  s_3ee20509e3b48b::t_9fbb6ba50fce37 66-76,102
+  s_3ee20509e3b48b::t_23815ec1cc37a7 124-125
+  s_3ee20509e3b48b::t_29b522c6f66836 1
+  s_fc93bef52b423f::t_1536473acd6826 2-13,27,30,33-34,37-45,48,109-116,120-123,126-136
+  s_3ee20509e3b48b::t_958aa953dd9856 62-65,77-101
+apps/backend/src/lib/workflows/issue-alerts/source.test.ts
+  s_fc93bef52b423f::t_bf81986ef91d88 20
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/stack-frame-list.test.tsx
+  s_fc93bef52b423f::t_9d8edad1b8efa0 56-66
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-leading-up-to.tsx
+  s_fc93bef52b423f::t_9d8edad1b8efa0 31-32,39,61,80
+apps/backend/src/lib/plan-metering.test.ts
+  s_fc93bef52b423f::t_8180419c3882e6 8,11,50,59-60,62,65,70-89,91,93-97
+  s_3ee20509e3b48b::t_c3e5a3c2d72f9d 99-100
+  s_fc93bef52b423f::t_db77ed019910ae 101-102
+apps/backend/src/lib/error-ingest/error-ingest-scrubber.ts
+  s_fc93bef52b423f::t_1d436c916c5d47 178-180
+  s_fc93bef52b423f::t_90752242782bf5 73,176-177,181
+packages/template/src/lib/hexclave-app/apps/implementations/otel-span-facade.test.ts
+  s_fc93bef52b423f::t_bbf4c0e49e5823 8,46-61
+apps/backend/src/lib/issues/issue-product.ts
+  s_fc93bef52b423f::t_b40c932a0ec005 391-396
+  s_fc93bef52b423f::t_a0c83cc7aa2812 229-237,589,596-619,627-629,632-643,666,668,672-691,710,712-719,722
+  s_3ee20509e3b48b::t_e8452fe2e26734 390,397-398
+apps/backend/src/lib/issues/ownership/types.ts
+  s_fc93bef52b423f::t_78895566ac6395 28-30
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event-search.tsx
+  s_fc93bef52b423f::t_9d8edad1b8efa0 43
+apps/backend/src/lib/qstash-outbox.ts
+  s_fc93bef52b423f::t_90752242782bf5 78-81
+apps/backend/src/app/api/latest/issues/actions/bulk/route.test.ts
+  s_fc93bef52b423f::t_b0766114c6558e 186-187
+packages/template/src/lib/hexclave-app/apps/implementations/otel-context.test.ts
+  s_fc93bef52b423f::t_bbf4c0e49e5823 1-18
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_fc93bef52b423f::t_c7c84ce522028b 4,11,122-129,144-167
+apps/backend/src/lib/workflows/events.tsx
+  s_fc93bef52b423f::t_bf81986ef91d88 129-133
+apps/backend/src/lib/issues/issue-product.test.ts
+  s_fc93bef52b423f::t_34bea11afc5ec9 153-176
+  s_fc93bef52b423f::t_0b111ce365753f 110,113
+  s_fc93bef52b423f::t_a0c83cc7aa2812 106-109,111-112,114-152
+apps/backend/src/lib/issues/issue-store.ts
+  s_fc93bef52b423f::t_a5f34ae17dbcb4 307-308,315-318
+apps/backend/src/s3.tsx
+  s_fc93bef52b423f::t_f46a7d26bb642b 214,221-233,237,253-261
+apps/backend/src/lib/error-ingest/error-ingest-scrubber.test.ts
+  s_fc93bef52b423f::t_2bd8334dceb6aa 55-67
+apps/backend/src/lib/error-ingest/error-ingest-event-adapter.test.ts
+  s_fc93bef52b423f::t_2bd8334dceb6aa 133-134,139-151
+apps/backend/src/lib/error-ingest/error-ingest-event-adapter.ts
+  s_fc93bef52b423f::t_90752242782bf5 118-121
+  s_fc93bef52b423f::t_1d436c916c5d47 3
+apps/backend/src/lib/issues/issue-merge.ts
+  s_fc93bef52b423f::t_4b4ec80dce23b1 570-680,686-695
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_fc93bef52b423f::t_bbf4c0e49e5823 917,919,921,950,952,954,4788
+  s_fc93bef52b423f::t_e4fee11dbe5d0c 81
+packages/template/src/lib/hexclave-app/apps/implementations/otel-context.ts
+  s_3ee20509e3b48b::t_c30ab6cbd8a0bf 18-25
+  s_fc93bef52b423f::t_e4fee11dbe5d0c 1,17,26-35,57-60
+  s_3ee20509e3b48b::t_1178851d141f66 2
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event-sections.tsx
+  s_fc93bef52b423f::t_9d8edad1b8efa0 519
+packages/template/src/lib/hexclave-app/apps/implementations/otel-span-facade.ts
+  s_fc93bef52b423f::t_e4fee11dbe5d0c 5,151-154
+apps/backend/src/lib/workflows/events.test.ts
+  s_fc93bef52b423f::t_bf81986ef91d88 4,30-51
+apps/backend/src/lib/issues/grouping.ts
+  s_fc93bef52b423f::t_b0766114c6558e 324-326
+  s_fc93bef52b423f::t_b40c932a0ec005 314-316,323,327-332
+  s_fc93bef52b423f::t_77ae8395343c66 333
+apps/backend/src/lib/issues/issue-reconciler.ts
+  s_fc93bef52b423f::t_7b7e834ac1610a 8-11,113-142,286,567-571,573
+  s_fc93bef52b423f::t_52f616cadbfabf 7
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.analytics.test.ts
+  s_fc93bef52b423f::t_bbf4c0e49e5823 123-138
+apps/backend/src/app/api/latest/issues/actions/bulk/bulk-status.ts
+  s_fc93bef52b423f::t_b40c932a0ec005 127-131,133
+sdks/spec/src/apps/analytics.spec.md
+  s_fc93bef52b423f::t_bbf4c0e49e5823 407-409,411-412,705
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issues-data.ts
+  s_fc93bef52b423f::t_9d8edad1b8efa0 578,638
+apps/backend/src/app/api/latest/analytics/envelope/route.test.ts
+  s_fc93bef52b423f::t_5359ea3c776899 37-41
+  s_fc93bef52b423f::t_1c49a1deeff224 8-16,26-36,42-51,61-64,87,89-91,94-120,144-169
+  s_fc93bef52b423f::t_fdfa851c3b6ed0 170
+apps/backend/src/app/api/latest/analytics/otlp/v1/traces/route.tsx
+  s_fc93bef52b423f::t_2454e472dacf2a 16,92-93,99
+apps/backend/src/lib/plan-metering.ts
+  s_fc93bef52b423f::t_2905be7139f941 2,247-268
+  s_fc93bef52b423f::t_a3a3505f5e1175 4,23,51-62,194-210,213-230,233-234,236,238-241,244,246,269-277,279
+apps/backend/src/lib/workflows/api.tsx
+  s_fc93bef52b423f::t_bf81986ef91d88 73-85,170,355
+apps/backend/src/lib/workflows/issue-alerts/source.ts
+  s_fc93bef52b423f::t_bf81986ef91d88 181,190
+apps/backend/src/lib/issues/issue-reconciler.test.ts
+  s_fc93bef52b423f::t_7b7e834ac1610a 1-32
+apps/backend/src/lib/emails.tsx
+  s_fc93bef52b423f::t_bf81986ef91d88 12,53,55-57,59-62,77-80,90-100,103-104
+  s_3ee20509e3b48b::t_49c24d4e7fef8d 101-102
+  s_fc93bef52b423f::t_48791ad9f78ab9 105-106
+apps/backend/src/lib/issues/issue-store.test.ts
+  s_fc93bef52b423f::t_a5f34ae17dbcb4 245-262
+packages/template/src/lib/hexclave-app/email/index.ts
+  s_fc93bef52b423f::t_bf81986ef91d88 238-240
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-leading-up-to.test.tsx
+  s_fc93bef52b423f::t_9d8edad1b8efa0 60-75
+apps/backend/src/lib/qstash-outbox.test.ts
+  s_fc93bef52b423f::t_2bd8334dceb6aa 62-69
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_fc93bef52b423f::t_0bd79b911cf81e 6,169-176,179,218
+apps/backend/src/app/api/latest/issues/[issue_id]/actions/_shared.test.ts
+  s_fc93bef52b423f::t_6069b77504b44b 48-51
+  s_3ee20509e3b48b::t_e038779a41df48 36-38
+  s_fc93bef52b423f::t_b0766114c6558e 1,4-15,35,39-47,52-54,56-66
+  s_fc93bef52b423f::t_dcfe2c50a2b0d5 2-3,16-34,55
+packages/shared/src/interface/server-interface.ts
+  s_fc93bef52b423f::t_bf81986ef91d88 962,983
+apps/backend/src/app/api/latest/emails/send-email/route.tsx
+  s_fc93bef52b423f::t_bf81986ef91d88 29-31,192
+apps/backend/src/lib/emails.test.ts
+  s_fc93bef52b423f::t_bf81986ef91d88 1-13
+apps/backend/src/lib/issues/ownership/hydration.ts
+  s_fc93bef52b423f::t_00087c93a82fd4 302-304,306-315
+  s_fc93bef52b423f::t_78895566ac6395 7,43,173,247-253,255,257,266-301,318
+apps/backend/src/lib/issues/ownership/resolver.test.ts
+  s_fc93bef52b423f::t_78895566ac6395 141-157
+apps/backend/src/lib/issues/ownership/resolver.ts
+  s_fc93bef52b423f::t_78895566ac6395 163-166,469-470
+apps/backend/src/lib/safe-request-context.test.ts
+  s_fc93bef52b423f::t_2bd8334dceb6aa 146-155
+apps/backend/src/app/api/latest/analytics/otlp/v1/traces/policy-selection.ts
+  s_3ee20509e3b48b::t_912cda6dabd7f8 16
+  s_fc93bef52b423f::t_2454e472dacf2a 1-15,17-24
+apps/backend/src/lib/issues/grouping.test.ts
+  s_fc93bef52b423f::t_1eda8a5ccf60a8 83-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "553c5010b6574ec9143df96a88f10a4d058f1d94",
+  "prompts": {},
+  "sessions": {
+    "s_3ee20509e3b48b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70d93e36-42f6-467b-941e-40a8fc7be70e",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_fc93bef52b423f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0179f-d5f2-7af2-8504-f1667e26075f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
