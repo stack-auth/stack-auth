@@ -2,7 +2,7 @@ import { describe, type ExpectStatic } from "vitest";
 import { it } from "../../../../../../helpers";
 import { niceBackendFetch } from "../../../../../backend-helpers";
 import { listRuns, pollWithTicks, sendCustomEvent } from "../workflows-helpers";
-import { GROWTH_AGENT_AUTH, createGrowthProject, releaseGrowthInterviewAsStaff, requireRunId, unlockGrowthWorkspaceAsStaff } from "./growth-helpers";
+import { asGrowthStaff, GROWTH_AGENT_AUTH, createGrowthProject, releaseGrowthInterviewAsStaff, requireRunId, unlockGrowthWorkspaceAsStaff } from "./growth-helpers";
 import { MockEve, MockEveDispatch, withMockEve } from "./mock-eve";
 
 const ADMIN_BASE = "/api/latest/internal/growth";
@@ -136,6 +136,23 @@ async function bridgeCall(path: string, body: unknown) {
 }
 
 describe("growth workflow orchestration e2e (mock Eve)", { timeout: 90_000 }, () => {
+  // Deliberately no withMockEve: this only proves repair materializes/claims the activation leg,
+  // not that analysis completes, so it needs no Eve target and must not bind the fixed mock port.
+  it("repairs the activation leg without a separate workflow-engine tick", { timeout: 120_000 }, async ({ expect }) => {
+    const { projectId } = await setUpOnboardedProject();
+    const runId = await completeOnboarding();
+
+    const recovery = await asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/admin/run-now`, {
+      accessType: "client",
+      method: "POST",
+      body: { step: "project_recovery", target_project_id: projectId },
+    }));
+    expect(recovery).toMatchObject({ status: 200, body: { step: "project_recovery" } });
+
+    const { runs } = await listRuns(GROWTH_ANALYSIS_WORKFLOW_ID, { run_key: `${runId}:${ANALYSIS_ACTIVATED_EVENT_TYPE}` });
+    expect(runs).toHaveLength(1);
+  });
+
   it("drives a full analysis lifecycle through the workflow engine: seeding, legs, dispatches, interview gate, report, completion", { timeout: 420_000 }, async ({ expect }) => {
     await withMockEve(async (mock) => {
       const { projectId, branchId } = await setUpOnboardedProject();

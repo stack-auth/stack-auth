@@ -39,6 +39,7 @@ import { createWorkflowRunToken } from "./run-token";
 // no-ops).
 
 const EVENT_BATCH_SIZE = 50;
+export type WorkflowEngineScope = { tenancyId: string };
 // Kept small: the claim query's per-workflow concurrency filter only counts
 // leases that exist BEFORE the batch, so one batch can overshoot the
 // per-workflow cap by at most the batch size. The cap is flow control, not
@@ -160,7 +161,7 @@ type ScheduledDefinitionRow = {
 // query/parameter limits and failing wholesale, so inserts are chunked.
 const SCHEDULE_EVENT_INSERT_CHUNK_SIZE = 1000;
 
-async function materializeScheduleOccurrences(tenancyCache: Map<string, Tenancy | null>, deadlineMs: number): Promise<boolean> {
+async function materializeScheduleOccurrences(tenancyCache: Map<string, Tenancy | null>, deadlineMs: number, scope?: WorkflowEngineScope): Promise<boolean> {
   const definitions = await retryTransaction(globalPrismaClient, async (tx) => {
     return await tx.$queryRaw<ScheduledDefinitionRow[]>(Prisma.sql`
       SELECT d."tenancyId", d."workflowId", d."latestVersion", v."manifest", v."createdAt" AS "deployedAt"
@@ -168,6 +169,7 @@ async function materializeScheduleOccurrences(tenancyCache: Map<string, Tenancy 
       JOIN "WorkflowVersion" v
         ON v."tenancyId" = d."tenancyId" AND v."workflowId" = d."workflowId" AND v."version" = d."latestVersion"
       WHERE v."manifest"->'triggers' @> '[{"type":"schedule"}]'
+        ${scope == null ? Prisma.empty : Prisma.sql`AND d."tenancyId" = ${scope.tenancyId}::uuid`}
     `);
   });
 
@@ -493,13 +495,17 @@ async function createRunForEvent(tenancy: Tenancy, event: WorkflowEventRow, defi
   }
 }
 
-async function processWorkflowEvents(tenancyCache: Map<string, Tenancy | null>, deadlineMs: number): Promise<boolean> {
+async function processWorkflowEvents(tenancyCache: Map<string, Tenancy | null>, deadlineMs: number, scope?: WorkflowEngineScope): Promise<boolean> {
   // No claim marker on purpose: events are only marked processed AFTER all
   // their runs exist, and run creation is idempotent (deterministic ids), so
   // crash-replays and overlapping ticks are safe — at-least-once with
   // no duplicate runs. The cost is occasional duplicate work under overlap.
   const events: WorkflowEventRow[] = await globalPrismaClient.workflowEvent.findMany({
-    where: { processedAt: null, retryAt: { lte: new Date() } },
+    where: {
+      processedAt: null,
+      retryAt: { lte: new Date() },
+      ...(scope == null ? {} : { tenancyId: scope.tenancyId }),
+    },
     orderBy: { scheduledAt: "asc" },
     take: EVENT_BATCH_SIZE,
     select: {
@@ -520,6 +526,10 @@ async function processWorkflowEvents(tenancyCache: Map<string, Tenancy | null>, 
       const tenancy = await getCachedTenancy(event.tenancyId, tenancyCache);
       if (tenancy != null) {
         const definitions = await listDefinitionsForTenancy(event.tenancyId, definitionCache);
+        // Deliberately scope by tenancy only, not workflowId: an event is
+        // marked processed only after runs exist for every matching definition
+        // in that tenancy, so filtering definitions could skip legitimate runs
+        // or leave the event stuck.
         let processedEveryDefinition = true;
         for (const definition of definitions) {
           if (workflowDefinitionMatchesEvent(definition.workflowId, definition.manifest, event)) {
@@ -577,12 +587,13 @@ type ClaimedRunRow = {
   preClaimWakeAt: Date | null,
 };
 
-async function claimDueRuns(): Promise<ClaimedRunRow[]> {
+async function claimDueRuns(scope?: WorkflowEngineScope): Promise<ClaimedRunRow[]> {
   return await globalPrismaClient.$queryRaw<ClaimedRunRow[]>(Prisma.sql`
     WITH busy AS (
       SELECT "tenancyId", "workflowId", COUNT(*) AS "count"
       FROM "WorkflowRun"
       WHERE "state" = 'RUNNING' AND "leaseUntil" > NOW()
+        ${scope == null ? Prisma.empty : Prisma.sql`AND "tenancyId" = ${scope.tenancyId}::uuid`}
       GROUP BY "tenancyId", "workflowId"
     ),
     selected AS (
@@ -594,6 +605,7 @@ async function claimDueRuns(): Promise<ClaimedRunRow[]> {
         OR (r."state" = 'SLEEPING' AND r."wakeAt" <= NOW())
         OR (r."state" = 'RUNNING' AND r."leaseUntil" <= NOW())
       )
+      ${scope == null ? Prisma.empty : Prisma.sql`AND r."tenancyId" = ${scope.tenancyId}::uuid`}
       AND EXISTS (
         SELECT 1 FROM "WorkflowDefinition" d
         WHERE d."tenancyId" = r."tenancyId" AND d."workflowId" = r."workflowId"
@@ -1129,9 +1141,9 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
   await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'QUEUED', "wakeAt" = NOW(), "leaseUntil" = NULL`);
 }
 
-async function executeDueRuns(tenancyCache: Map<string, Tenancy | null>, deadlineMs: number): Promise<boolean> {
+async function executeDueRuns(tenancyCache: Map<string, Tenancy | null>, deadlineMs: number, scope?: WorkflowEngineScope): Promise<boolean> {
   if (Date.now() >= deadlineMs) return false;
-  const claimed = await claimDueRuns();
+  const claimed = await claimDueRuns(scope);
   if (claimed.length === 0) return false;
   await Promise.all(claimed.map(async (run) => {
     try {
@@ -1432,14 +1444,14 @@ let stepCounter = 0;
  * One engine step. Returns whether any work was done, so the caller can
  * idle-wait longer between steps when the system is quiet.
  */
-export async function runWorkflowEngineStep(options: { deadlineMs: number }): Promise<{ didWork: boolean }> {
+export async function runWorkflowEngineStep(options: { deadlineMs: number, scope?: WorkflowEngineScope }): Promise<{ didWork: boolean }> {
   const tenancyCache = new Map<string, Tenancy | null>();
   let didWork = false;
-  didWork = await materializeScheduleOccurrences(tenancyCache, options.deadlineMs) || didWork;
-  didWork = await processWorkflowEvents(tenancyCache, options.deadlineMs) || didWork;
-  didWork = await executeDueRuns(tenancyCache, options.deadlineMs) || didWork;
+  didWork = await materializeScheduleOccurrences(tenancyCache, options.deadlineMs, options.scope) || didWork;
+  didWork = await processWorkflowEvents(tenancyCache, options.deadlineMs, options.scope) || didWork;
+  didWork = await executeDueRuns(tenancyCache, options.deadlineMs, options.scope) || didWork;
   // Retention pruning is cheap but pointless to run every second.
-  if (stepCounter++ % 60 === 0) {
+  if (options.scope == null && stepCounter++ % 60 === 0) {
     await pruneWorkflowRetention();
   }
   return { didWork };

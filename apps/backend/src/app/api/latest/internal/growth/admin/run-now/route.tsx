@@ -12,6 +12,8 @@ export const maxDuration = 300;
  * Runs one server-side scheduler step from the internal GTM admin page. This is intentionally a
  * user-authenticated route rather than a browser-visible CRON_SECRET route: Preview deployments do
  * not receive scheduled Vercel Cron invocations, and the cron secret must never reach dashboard JS.
+ * Project recovery also advances the selected tenancy's workflow engine so queued Growth boundary
+ * events can materialize and execute without relying on the shared cron invocation.
  */
 export const POST = createSmartRouteHandler({
   metadata: {
