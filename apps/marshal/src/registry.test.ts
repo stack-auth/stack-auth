@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { validateImageRef } from "./image-ref.js";
-import { isPublicAddress, resolveImage } from "./registry.js";
+import { assertRunnableOnAmd64, isPublicAddress, resolveImage } from "./registry.js";
 
 // resolveImage reads the registry mode from config; the rest of the module's
 // config (Fly, S3) is irrelevant here, so only that one field is stubbed.
@@ -68,9 +68,26 @@ describe("isPublicAddress", () => {
     expect(isPublicAddress("::1")).toBe(false);
     expect(isPublicAddress("fe80::1")).toBe(false);
     expect(isPublicAddress("fd00::1")).toBe(false);
-    // An IPv4 destination wearing an IPv6 name is still that destination.
+    // An IPv4 destination wearing an IPv6 name is still that destination — in
+    // EVERY spelling. One value has many texts, so a check written against the
+    // dotted form alone let the hex forms through, and a registry can put any of
+    // them in a redirect or an auth realm.
     expect(isPublicAddress("::ffff:10.0.0.1")).toBe(false);
     expect(isPublicAddress("::ffff:169.254.169.254")).toBe(false);
+    expect(isPublicAddress("::ffff:7f00:1")).toBe(false); // 127.0.0.1
+    expect(isPublicAddress("::ffff:a00:1")).toBe(false); // 10.0.0.1
+    expect(isPublicAddress("::ffff:a9fe:a9fe")).toBe(false); // 169.254.169.254
+    expect(isPublicAddress("0:0:0:0:0:ffff:7f00:1")).toBe(false); // fully expanded
+    expect(isPublicAddress("::127.0.0.1")).toBe(false); // deprecated IPv4-compatible
+    expect(isPublicAddress("::7f00:1")).toBe(false);
+    expect(isPublicAddress("64:ff9b::7f00:1")).toBe(false); // NAT64 well-known prefix
+    expect(isPublicAddress("64:ff9b::10.0.0.1")).toBe(false); // ...in its dotted spelling too
+    expect(isPublicAddress("::10.0.0.1")).toBe(false);
+    expect(isPublicAddress("::a00:1")).toBe(false);
+    // Link-local and unique-local are RANGES, not text prefixes: fe80::/10 runs
+    // to febf, and fc00::/7 covers fc and fd.
+    expect(isPublicAddress("febf::1")).toBe(false);
+    expect(isPublicAddress("fdff::1")).toBe(false);
     // Anything unparseable fails closed rather than being assumed public.
     expect(isPublicAddress("not-an-address")).toBe(false);
     expect(isPublicAddress("172.16")).toBe(false);
@@ -78,6 +95,12 @@ describe("isPublicAddress", () => {
 
   it("accepts real registry addresses", () => {
     expect(isPublicAddress("1.1.1.1")).toBe(true);
+    // A mapped PUBLIC v4 is still public, in either spelling.
+    expect(isPublicAddress("::ffff:1.1.1.1")).toBe(true);
+    expect(isPublicAddress("::ffff:101:101")).toBe(true);
+    // fe00::/9 and fb00 are neither link-local nor unique-local.
+    expect(isPublicAddress("fe00::1")).toBe(true);
+    expect(isPublicAddress("fb00::1")).toBe(true);
     expect(isPublicAddress("172.15.0.1")).toBe(true); // just outside RFC1918
     expect(isPublicAddress("172.32.0.1")).toBe(true); // just outside RFC1918
     expect(isPublicAddress("2606:4700::1111")).toBe(true);
@@ -102,4 +125,41 @@ describe("resolveImage", () => {
     await expect(resolveImage(validateImageRef("this-host-does-not-exist.invalid/app:v1", "image")))
       .rejects.toThrow(/could not be resolved/);
   }, 30000);
+});
+
+describe("assertRunnableOnAmd64", () => {
+  const ref = validateImageRef("ghcr.io/org/app:1", "image");
+
+  it("survives any legal JSON a registry could answer with", () => {
+    // The body comes from a host the tenant named, so it is attacker-shaped.
+    // `null` is the dangerous one: it is a legal JSON document, and reading a
+    // property off it throws a TypeError — not a badRequest, so it escaped
+    // while the caller held the source reconciliation lease.
+    for (const body of [
+      "null", "[]", "42", '"a string"', "true", "{}",
+      '{"manifests":null}', '{"manifests":{}}', '{"manifests":[]}',
+      '{"manifests":[null]}', '{"manifests":["x"]}',
+      '{"manifests":[{"platform":null}]}', '{"manifests":[{"platform":"linux"}]}',
+      '{"manifests":[{}]}', "not json at all",
+    ]) {
+      expect(() => assertRunnableOnAmd64(body, ref), body).not.toThrow();
+    }
+  });
+
+  it("still rejects an image published without a linux/amd64 variant", () => {
+    const armOnly = JSON.stringify({ manifests: [
+      { platform: { os: "linux", architecture: "arm64" } },
+      { platform: { os: "linux", architecture: "arm" } },
+    ] });
+    expect(() => assertRunnableOnAmd64(armOnly, ref)).toThrow(/no linux\/amd64 variant/);
+    // ...and accepts one that includes it, even alongside others.
+    const multi = JSON.stringify({ manifests: [
+      { platform: { os: "linux", architecture: "arm64" } },
+      { platform: { os: "linux", architecture: "amd64" } },
+    ] });
+    expect(() => assertRunnableOnAmd64(multi, ref)).not.toThrow();
+    // A malformed entry next to a good one must not hide the good one.
+    const mixed = JSON.stringify({ manifests: [null, { platform: { os: "linux", architecture: "amd64" } }] });
+    expect(() => assertRunnableOnAmd64(mixed, ref)).not.toThrow();
+  });
 });

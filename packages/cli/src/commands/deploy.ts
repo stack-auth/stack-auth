@@ -511,7 +511,13 @@ export function registerDeployCommand(program: Command) {
       // Keyed on the DEPLOY SET rather than on the whole file, so
       // `hexclave deploy --service-id database` skips the upload even in a repo
       // whose other services are built from source.
-      const buildsFromSource = deploySet.some((serviceId) => services.get(serviceId)?.definition.image === undefined);
+      // Resolved explicitly rather than with `?.`: a deploy-set id that is not a
+      // known service is impossible (the set comes from `services`), and letting
+      // it read as "source-built" would package an upload for nothing and defer
+      // the real error to the API. Same shape as the two other lookups here.
+      const buildsFromSource = deploySet.some((serviceId) => (services.get(serviceId) ?? (() => {
+        throw new CliError(`Internal error: deploy set contains unknown service ${JSON.stringify(serviceId)}.`);
+      })()).definition.image === undefined);
       const sourceRoot = path.dirname(deploySource.path);
       const uploadId = buildsFromSource
         ? await packageAndUploadSource({ auth, authHeaders, sourceRoot, services })

@@ -101,7 +101,11 @@ async function resolveFromRegistry(ref: ImageRef): Promise<string> {
   // Docker Hub's registry API lives on a different host from the name that
   // appears in references.
   const host = ref.registry === "docker.io" ? "registry-1.docker.io" : ref.registry;
+  // `validateImageRef` guarantees one of the two, but the TYPE permits neither —
+  // so this states it rather than interpolating `null` into the URL and having
+  // the registry report a perfectly real image as missing.
   const reference = ref.digest ?? ref.tag;
+  if (reference === null) throw badRequest(`the image ${ref.canonical} names neither a tag nor a digest`);
   const url = `https://${host}/v2/${ref.repository}/manifests/${reference}`;
 
   // One budget for the whole resolution, not one per request: the handshake can
@@ -150,24 +154,33 @@ async function resolveFromRegistry(ref: ImageRef): Promise<string> {
 /**
  * Fails a multi-platform image that has no linux/amd64 variant.
  *
+ * Exported for tests: the bodies it has to survive are attacker-shaped, and
+ * driving them through a live registry is not a thing a unit test can do.
+ *
  * Only a manifest LIST can be checked from the manifest alone: a single-platform
  * manifest states its platform in its config blob, which is another request and
  * another failure mode. The list case is the one that actually reaches us —
  * an image published for several architectures but not ours — so it is the one
  * that gets a real error instead of an unstartable machine.
  */
-function assertRunnableOnAmd64(body: string, ref: ImageRef): void {
+export function assertRunnableOnAmd64(body: string, ref: ImageRef): void {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
   } catch {
     return; // Not something we can read; the pull is the authority.
   }
-  const manifests = (parsed as { manifests?: unknown }).manifests;
+  // The body comes from a registry the tenant named, so it is not necessarily a
+  // manifest — or an object at all. `JSON.parse("null")` returns null, and
+  // reading a property off it throws a TypeError, which is not a badRequest and
+  // would escape while the caller holds the source reconciliation lease.
+  if (!isRecord(parsed)) return;
+  const manifests = parsed.manifests;
   if (!Array.isArray(manifests) || manifests.length === 0) return;
   const platforms = manifests.flatMap((entry) => {
-    const platform = (entry as { platform?: { os?: unknown, architecture?: unknown } }).platform;
-    if (platform === undefined || typeof platform.os !== "string" || typeof platform.architecture !== "string") return [];
+    if (!isRecord(entry) || !isRecord(entry.platform)) return [];
+    const platform = entry.platform;
+    if (typeof platform.os !== "string" || typeof platform.architecture !== "string") return [];
     return [{ os: platform.os, architecture: platform.architecture }];
   });
   if (platforms.length === 0) return;
@@ -210,9 +223,11 @@ async function fetchAnonymousToken(challenge: string | null, ref: ImageRef, dead
   } catch {
     return null;
   }
-  const record = parsed as { token?: unknown, access_token?: unknown };
+  // Same reason as above: a token endpoint answering `null` must not crash the
+  // deployment that asked.
+  if (!isRecord(parsed)) return null;
   // Registries disagree about which of the two names they use.
-  return typeof record.token === "string" ? record.token : (typeof record.access_token === "string" ? record.access_token : null);
+  return typeof parsed.token === "string" ? parsed.token : (typeof parsed.access_token === "string" ? parsed.access_token : null);
 }
 
 type RegistryResponse = {
@@ -250,6 +265,16 @@ async function registryGet(url: string, headers: Record<string, string>, deadlin
     headers = {};
   }
   throw badRequest("the registry redirected too many times");
+}
+
+/**
+ * Whether a parsed JSON value is an object whose properties can be read. Guards
+ * every read of a registry's response body: those bodies are attacker-shaped,
+ * and `null` in particular is a legal JSON document that a property read throws
+ * on.
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Ends a resolution that has already spent its whole budget. */
@@ -406,15 +431,62 @@ export function isPublicAddress(address: string): boolean {
     return true;
   }
   if (version === 6) {
-    const normalized = address.toLowerCase().split("%")[0];
-    if (normalized === "::" || normalized === "::1") return false;
-    // IPv4-mapped ("::ffff:10.0.0.1") is an IPv4 destination wearing a v6 name.
-    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(normalized);
-    if (mapped !== null) return isPublicAddress(mapped[1]);
-    if (normalized.startsWith("fe80")) return false; // link-local
-    if (/^f[cd]/.test(normalized)) return false; // unique-local
-    if (normalized.startsWith("ff")) return false; // multicast
+    // Expanded to eight numbers rather than matched as text. An IPv6 address has
+    // many spellings of one value — `::ffff:127.0.0.1`, `::ffff:7f00:1` and
+    // `0:0:0:0:0:ffff:7f00:1` are the same loopback — so a check written against
+    // one spelling passes the others. Comparing numbers removes the spelling
+    // from the question entirely.
+    const groups = expandIpv6(address.toLowerCase().split("%")[0]);
+    if (groups === null) return false; // unparseable: fail closed
+    const embeddedIpv4 = () => `${groups[6] >> 8}.${groups[6] & 0xff}.${groups[7] >> 8}.${groups[7] & 0xff}`;
+    const zeroThrough = (end: number) => groups.slice(0, end).every((group) => group === 0);
+
+    // ::ffff:0:0/96 — an IPv4 destination wearing a v6 name, in ANY spelling.
+    if (zeroThrough(5) && groups[5] === 0xffff) return isPublicAddress(embeddedIpv4());
+    if (zeroThrough(6)) {
+      // `::` and `::1`.
+      if (groups[6] === 0 && groups[7] <= 1) return false;
+      // ::/96 IPv4-compatible: deprecated, but still routed to the embedded v4.
+      return isPublicAddress(embeddedIpv4());
+    }
+    // 64:ff9b::/96, the well-known NAT64 prefix, embeds IPv4 the same way.
+    if (groups[0] === 0x0064 && groups[1] === 0xff9b && groups.slice(2, 6).every((group) => group === 0)) {
+      return isPublicAddress(embeddedIpv4());
+    }
+
+    // Masked rather than prefix-matched on text: fe80::/10 covers fe80–febf, not
+    // just addresses whose text starts "fe80".
+    if ((groups[0] & 0xffc0) === 0xfe80) return false; // link-local
+    if ((groups[0] & 0xfe00) === 0xfc00) return false; // unique-local
+    if ((groups[0] & 0xff00) === 0xff00) return false; // multicast
     return true;
   }
   return false;
+}
+
+/**
+ * An IPv6 address as its eight 16-bit groups, or null if it cannot be read.
+ *
+ * Only ever called on a string `net.isIP` already accepted, so this handles the
+ * legal forms rather than validating: a `::` run of zeros, and a trailing dotted
+ * quad (which is two groups written in decimal).
+ */
+function expandIpv6(address: string): number[] | null {
+  let text = address;
+  const dotted = /^(.*:)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(text);
+  if (dotted !== null) {
+    const octets = dotted[2].split(".").map((part) => Number(part));
+    if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return null;
+    text = `${dotted[1]}${(((octets[0] << 8) | octets[1]) >>> 0).toString(16)}:${(((octets[2] << 8) | octets[3]) >>> 0).toString(16)}`;
+  }
+  const halves = text.split("::");
+  if (halves.length > 2) return null;
+  const toGroups = (part: string) => part === "" ? [] : part.split(":").map((group) => Number.parseInt(group, 16));
+  const head = toGroups(halves[0]);
+  const tail = halves.length === 2 ? toGroups(halves[1]) : [];
+  const groups = halves.length === 2
+    ? [...head, ...new Array<number>(Math.max(0, 8 - head.length - tail.length)).fill(0), ...tail]
+    : head;
+  if (groups.length !== 8 || groups.some((group) => !Number.isInteger(group) || group < 0 || group > 0xffff)) return null;
+  return groups;
 }
