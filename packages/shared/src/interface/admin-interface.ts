@@ -63,7 +63,7 @@ export type DataWarehouseJson = {
   connection: DataWarehouseConnectionJson,
 };
 
-/** Only ever returned by provisioning and rotation — the password is not stored in a readable form for any other path. */
+/** Only returned by provisioning and rotation; the password is not readable elsewhere. */
 export type DataWarehouseCredentialsJson = {
   database_name: string,
   username: string,
@@ -331,17 +331,13 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     return await response.json();
   }
 
-  /**
-   * Returns the password, which is shown once and never retrievable again.
-   */
+  /** Returns the password, which is shown once and never retrievable again. */
   async provisionDataWarehouse(): Promise<DataWarehouseCredentialsJson> {
     const response = await this.sendAdminRequest(`/data-warehouse/provision`, { method: "POST" }, null);
     return await response.json();
   }
 
-  /**
-   * Returns the new password, which — like provisioning — is shown once.
-   */
+  /** Returns the new password, which — like provisioning — is shown once. */
   async rotateDataWarehousePassword(): Promise<DataWarehouseCredentialsJson> {
     const response = await this.sendAdminRequest(`/data-warehouse/rotate-password`, { method: "POST" }, null);
     return await response.json();

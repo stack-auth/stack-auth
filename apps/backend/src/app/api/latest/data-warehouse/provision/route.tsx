@@ -33,9 +33,8 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth }) => {
-    // Validate all public connection metadata before changing the one-time
-    // password. A malformed port must not turn a successful mutation into a
-    // response failure that discards the only copy of the credential.
+    // Read connection metadata first: a malformed port must not fail the response
+    // after provisioning, discarding the only copy of the password.
     const connection = getDataWarehouseConnectionInfo();
     const { password, warehouse } = await provisionDataWarehouse(auth.tenancy);
     const passwordUpdatedAtMillis = warehouse.passwordUpdatedAt?.getTime();

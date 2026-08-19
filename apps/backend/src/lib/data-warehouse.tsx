@@ -1,46 +1,27 @@
 // Core logic for the Data Warehouse app (`data-warehouse-alpha`): a per-project
-// ClickHouse database plus a dedicated ClickHouse user with read/write access
-// to it, living on the same ClickHouse instance that serves analytics.
+// ClickHouse database plus a dedicated ClickHouse user, on the same ClickHouse
+// instance that serves analytics.
 //
-// Why a per-project ClickHouse *user* and not just a database: ClickHouse row
-// policies filter rows, they do not restrict which databases a query may name.
-// The shared `limited_user` that `/analytics/query` connects as is one user for
-// every project, so granting it access to one project's warehouse would let
-// every other project read that warehouse by naming it explicitly. Isolation
-// therefore has to come from the connecting user, which means one user per
-// project, each granted only its own database.
+// Isolation has to come from the connecting user, not the database: row policies
+// filter rows but don't restrict which databases a query may name, so granting
+// the shared `limited_user` access to one project's warehouse would expose it to
+// every other project. Each warehouse user also holds the `analytics_reader`
+// role (see scripts/clickhouse-migrations.ts), so it keeps the project's usual
+// analytics access and can join it against the project's own tables, with
+// `SQL_project_id`/`SQL_branch_id` pinned as CONST settings.
 //
-// That user also carries the `analytics_reader` role (see
-// scripts/clickhouse-migrations.ts), which holds the row policies and SELECT
-// grants for the `default.*` analytics views. So a project with a warehouse
-// keeps exactly the analytics access it had before, and can additionally join
-// analytics data against its own tables. `SQL_project_id`/`SQL_branch_id` are
-// pinned as CONST user-level settings rather than being passed per query,
-// which is strictly stronger than the shared-user model: the row policies
-// cannot be defeated by a caller that forgets to set them.
-//
-// ALPHA CAVEATS (deliberate, tracked):
-// - TODO(data-warehouse-ga): add storage accounting and enforcement in a future
-//   PR. We accept for alpha that ClickHouse has no native per-database size
-//   limit, so a project can fill disk shared with our analytics.
-// - TODO(data-warehouse-ga): add a deprovisioning/reconciliation path in a
-//   future PR. We accept for alpha that deleting a tenancy cascades away the
-//   PostgreSQL row while its ClickHouse database and still-usable user remain;
-//   uninstalling the app likewise leaves both objects in place.
-// - No downgrade enforcement yet. The entitlement gates provisioning and
-//   rotation, but an already-provisioned ClickHouse user remains active after
-//   the project loses the entitlement, including for direct connections. This
-//   is an explicit alpha tradeoff: a future plan-change reconciler must disable
-//   the ClickHouse user without deleting its database or customer data.
-// - No plan-change reconciliation for ClickHouse settings. Per-user settings
-//   (below) are a snapshot taken at provision/rotation time. Upgrading from
-//   team to growth does not raise the ClickHouse-side defaults until the
-//   password is rotated. The `/analytics/query` path is unaffected — it
-//   computes the timeout per request from the live entitlement.
-// - One database per project, not per branch. The database is named after the
-//   project id, so a second branch in the same project would collide; the
-//   Prisma model allows one row per tenancy and provisioning refuses when
-//   another tenancy in the same project already owns the database.
+// Alpha limitations, all deliberate:
+// - TODO(data-warehouse-ga): no storage accounting; ClickHouse has no per-database
+//   size limit, so a project can fill disk shared with analytics.
+// - TODO(data-warehouse-ga): no deprovisioning; deleting a tenancy or uninstalling
+//   the app leaves the ClickHouse database and user in place.
+// - No downgrade enforcement: losing the entitlement blocks provisioning and
+//   rotation, but an existing ClickHouse user stays active.
+// - Per-user ClickHouse settings are a snapshot taken at provision/rotation time,
+//   so a plan upgrade only takes effect on the next rotation. `/analytics/query`
+//   is unaffected; it computes its timeout per request.
+// - One database per project, not per branch (the database is named after the
+//   project id, so a second branch would collide).
 
 import { getHexclaveServerApp } from "@/hexclave";
 import { ANALYTICS_READER_ROLE, getClickhouseAdminClient, type ClickHouseClient } from "@/lib/clickhouse";
@@ -57,26 +38,21 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 
 /**
- * Hard ceiling on `max_execution_time` for a warehouse user, independent of the
- * project's plan. The plan's own timeout becomes the *default*; a direct
- * ClickHouse connection may raise it up to this value, which is the highest
- * timeout any plan grants.
+ * Hard ceiling on `max_execution_time`, regardless of plan. The plan's timeout is
+ * only the default; a direct connection may raise it up to this value.
  */
 const MAX_EXECUTION_TIME_SECONDS = Math.max(...Object.values(PLAN_LIMITS).map(p => p.analyticsTimeoutSeconds));
 
 /**
- * Per-query memory ceiling for warehouse users. Deliberately well below the
- * cluster's OvercommitTracker budget: these queries run on the same instance as
- * our own analytics, and (unlike `/analytics/query`, which we can shape per
- * request) a direct connection can run anything it likes.
+ * Per-query memory ceiling, well below the cluster's OvercommitTracker budget:
+ * these queries share an instance with our analytics and, unlike
+ * `/analytics/query`, we cannot shape a direct connection per request.
  */
 const MAX_MEMORY_USAGE_BYTES = 4_000_000_000;
 
 /**
- * Aggregate memory ceiling across every query concurrently running as one
- * warehouse user. Keep this equal to the per-query ceiling: concurrency may
- * divide the budget, but can never multiply one customer's impact on the
- * shared analytics instance.
+ * Aggregate memory ceiling across one user's concurrent queries. Kept equal to the
+ * per-query ceiling so concurrency cannot multiply one customer's footprint.
  */
 const MAX_MEMORY_USAGE_FOR_USER_BYTES = MAX_MEMORY_USAGE_BYTES;
 
@@ -87,14 +63,10 @@ const MAX_CONCURRENT_QUERIES_FOR_USER = 10;
 const MAX_THREADS = 4;
 
 /**
- * Floors for the ceilings above. ClickHouse reads `0` as *unlimited* for
- * `max_execution_time`, `max_memory_usage`, `max_memory_usage_for_user` and
- * `max_concurrent_queries_for_user` (and as "use every core" for `max_threads`),
- * so a `MAX`-only constraint is not really a ceiling: a direct connection can
- * `SET max_memory_usage = 0`, satisfy the MAX check, and remove the limit
- * altogether. Every setting carrying that sentinel needs a positive `MIN` too.
- * The floors are deliberately low — a customer may legitimately want a tighter
- * budget than we impose, just not an unbounded one.
+ * Floors for the ceilings above. ClickHouse reads `0` as "unlimited" for these
+ * settings, so a MAX alone is not a ceiling — a connection could `SET
+ * max_memory_usage = 0` and pass the MAX check. They are low on purpose: a
+ * customer may want a tighter budget than ours, just not an unbounded one.
  */
 const MIN_EXECUTION_TIME_SECONDS = 1;
 const MIN_MEMORY_USAGE_BYTES = 1_000_000;
@@ -117,14 +89,10 @@ const encryptedWarehousePasswordSchema = yupObject({
 }).defined();
 
 /**
- * Table engines that can read from or write to somewhere other than this
- * ClickHouse instance. Recent ClickHouse versions already revoke these from
- * non-admin users by default (which is where `limited_user` gets its posture
- * from), but the warehouse user is the one account on the instance that can
- * create tables at all, so we revoke them explicitly rather than inheriting a
- * server default that a future config or version bump could change.
- *
- * Revoking a privilege that was never granted is a no-op in ClickHouse.
+ * Table engines that can reach outside this ClickHouse instance. Recent versions
+ * revoke these from non-admin users by default, but the warehouse user is the only
+ * account that can create tables at all, so we revoke them explicitly rather than
+ * trust a server default. Revoking a privilege that was never granted is a no-op.
  */
 const FORBIDDEN_TABLE_ENGINES = [
   "AzureBlobStorage", "Distributed", "File", "HDFS", "Hive", "JDBC", "Kafka",
@@ -133,9 +101,9 @@ const FORBIDDEN_TABLE_ENGINES = [
 ] as const;
 
 /**
- * Local-only engines that remain useful in a customer warehouse. Once
- * table_engines_require_grant is enabled, ClickHouse requires an explicit
- * engine grant, so this allow-list is the counterpart to the deny-list above.
+ * Local-only engines a customer warehouse still needs. With
+ * `table_engines_require_grant` enabled, engines must be granted explicitly, so
+ * this allow-list is the counterpart to the deny-list above.
  */
 const ALLOWED_TABLE_ENGINES = [
   "MergeTree", "ReplacingMergeTree", "SummingMergeTree", "AggregatingMergeTree",
@@ -144,34 +112,21 @@ const ALLOWED_TABLE_ENGINES = [
 ] as const;
 
 /**
- * The matching *source* privileges, which gate the table functions (`url()`,
- * `s3()`, `remote()`, `file()`, …). Same reasoning as the engines above.
+ * The matching *source* privileges, gating the table functions (`url()`, `s3()`,
+ * `remote()`, `file()`, …). Same reasoning as the engines above.
  *
- * Known gap (ClickHouse #99122): these REVOKEs gate the *execution* path, but
- * the schema-resolution path does not consult them. `DESCRIBE TABLE mysql(...)`
- * / `postgresql(...)` (and `CREATE TABLE AS ...`) connect to an
- * attacker-supplied host to infer the schema *before* the source check runs, so
- * revoking MYSQL/POSTGRES does not stop the outbound connection. `SELECT FROM
- * mysql(...)` is still blocked; only the DESCRIBE/CREATE-AS resolution leaks.
- * We verified this on ClickHouse Cloud (26.2.1.558): `url()`/`s3()`/`remote()`
- * are correctly denied even for DESCRIBE, but `mysql()`/`postgresql()` DESCRIBE
- * still dial out. The same bypass is reachable through `/analytics/query` as the
- * shared `limited_user`, independent of the Data Warehouse app.
+ * Known gap (ClickHouse #99122): these revokes gate execution but not schema
+ * resolution, so `DESCRIBE TABLE mysql(...)`/`postgresql(...)` (and `CREATE TABLE
+ * AS ...`) still dial out to an attacker-supplied host. Verified on Cloud
+ * 26.2.1.558; `url()`/`s3()`/`remote()` are denied even for DESCRIBE, and the same
+ * bypass exists via `/analytics/query` independently of this app.
  *
- * We accept this. The severe SSRF outcome — reading cloud instance-metadata
- * (IMDS) credentials — is not reachable through this bypass: the leaking
- * functions speak DB wire protocols and cannot emit the HTTP GET that IMDS
- * requires, and the functions that *can* speak HTTP (`url()`/`s3()`) are denied
- * even for DESCRIBE. So credential theft is blocked by the bypass's own protocol
- * limitation, not by anything we do; Cloud additionally appears to firewall
- * egress to IMDS/RFC1918. What remains is low, abuse-tier: a blind localhost
- * port scan of the ClickHouse node (open/closed distinguishable by error code +
- * timing) and blind outbound connects to public hosts — no rows, banners, or
- * credentials are readable, because the DB handshake needs valid target creds.
- * An app-layer statement guard would not help anyway: warehouse users hold
- * direct ClickHouse credentials and bypass our routes entirely. Self-hosted
- * operators who do not firewall IMDS should restrict ClickHouse egress
- * themselves; on Cloud we rely on the provider's network isolation.
+ * Accepted: the leaking functions speak DB wire protocols, so they cannot reach
+ * IMDS (which needs an HTTP GET) and cannot read anything back without valid
+ * target credentials. What remains is blind port scanning and blind outbound
+ * connects. An app-layer guard would not help — warehouse users hold direct
+ * ClickHouse credentials and bypass our routes. Self-hosted operators should
+ * firewall ClickHouse egress themselves.
  */
 const FORBIDDEN_SOURCES = [
   "FILE", "URL", "REMOTE", "MYSQL", "ODBC", "JDBC", "HDFS", "S3", "HIVE",
@@ -179,12 +134,10 @@ const FORBIDDEN_SOURCES = [
 ] as const;
 
 /**
- * Privileges the warehouse user gets on its own database. Enough to use it as
- * a real warehouse — create and alter tables and views, insert, read, clean up
- * — and nothing outside that database. Dictionaries are deliberately omitted:
- * their HTTP and database-backed sources initiate server-side connections but
- * are not governed by the URL/S3/etc. source revokes below, which would turn
- * CREATE DICTIONARY into an SSRF primitive on the shared ClickHouse instance.
+ * Privileges the warehouse user gets on its own database, and nothing outside it.
+ * Dictionaries are omitted on purpose: their HTTP and database-backed sources open
+ * server-side connections that the source revokes above do not cover, which would
+ * make CREATE DICTIONARY an SSRF primitive on the shared instance.
  */
 const OWN_DATABASE_PRIVILEGES = [
   "SELECT", "INSERT", "ALTER", "CREATE TABLE", "CREATE VIEW",
@@ -195,14 +148,12 @@ const OWN_DATABASE_PRIVILEGES = [
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * The single point where a project id becomes part of a ClickHouse identifier.
- * The ClickHouse client cannot parameterize identifiers, so every database and
- * user name is interpolated into DDL as a string — this assertion plus the
- * backtick quoting below is what makes that safe.
+ * The single point where a project id becomes a ClickHouse identifier. Identifiers
+ * cannot be parameterized, so every name is interpolated into DDL — this UUID check
+ * plus the backtick quoting is what makes that safe.
  *
- * Note that this rejects the `internal` project (whose id is not a UUID). That
- * is intentional: the internal project is Hexclave's own dashboard project and
- * has no business provisioning a customer warehouse.
+ * It also rejects the `internal` project (whose id is not a UUID), which should
+ * never provision a customer warehouse.
  */
 function quoteClickhouseIdentifierFromProjectId(projectId: string): string {
   if (!UUID_REGEX.test(projectId)) {
@@ -212,9 +163,8 @@ function quoteClickhouseIdentifierFromProjectId(projectId: string): string {
 }
 
 export function getDataWarehouseNames(projectId: string): { databaseName: string, userName: string } {
-  // Both the database and the user are named after the project id. They live in
-  // different ClickHouse namespaces, so sharing the name is not a conflict, and
-  // it makes an unexpected object on the instance trivially traceable.
+  // Database and user share the project id; they live in different ClickHouse
+  // namespaces, so there is no conflict, and stray objects stay traceable.
   return { databaseName: projectId, userName: projectId };
 }
 
@@ -223,11 +173,7 @@ export async function getDataWarehouse(tenancy: Tenancy): Promise<DataWarehouse 
   return await prisma.dataWarehouse.findUnique({ where: { tenancyId: tenancy.id } });
 }
 
-/**
- * Throws unless the project's billing team is entitled to a Data Warehouse
- * (team plan or higher). Mirrors how `/analytics/query` gates the analytics
- * timeout, including the `STACK_DISABLE_PLAN_LIMITS` escape hatch.
- */
+/** Throws unless the project's billing team is on the team plan or higher. */
 export async function ensureDataWarehouseEntitlement(tenancy: Tenancy): Promise<void> {
   if (!arePlanLimitsEnforced()) return;
   const billingTeamId = getBillingTeamId(tenancy.project);
@@ -240,71 +186,32 @@ export async function ensureDataWarehouseEntitlement(tenancy: Tenancy): Promise<
 }
 
 /**
- * The project's analytics timeout entitlement, used as the ClickHouse-side
- * default for direct connections. Falls back to the platform maximum when plan
- * limits are disabled or the project has no billing team (self-hosted, and the
- * internal tenancy).
+ * The project's analytics timeout entitlement, used as the ClickHouse-side default
+ * for direct connections. Falls back to the platform maximum when plan limits are
+ * disabled or there is no billing team (self-hosted, internal tenancy).
  */
 async function getPlanTimeoutSeconds(tenancy: Tenancy): Promise<number> {
   const billingTeamId = getBillingTeamId(tenancy.project);
   if (billingTeamId == null || !arePlanLimitsEnforced()) return MAX_EXECUTION_TIME_SECONDS;
   const app = getHexclaveServerApp();
   const item = await app.getItem({ itemId: ITEM_IDS.analyticsTimeoutSeconds, teamId: billingTeamId });
-  // A zero entitlement would mean "unlimited" to ClickHouse, so clamp to at
-  // least one second. `/analytics/query` rejects those projects outright.
+  // Zero would mean "unlimited" to ClickHouse, so clamp to at least a second.
   return Math.min(Math.max(item.quantity, 1), MAX_EXECUTION_TIME_SECONDS);
 }
 
 /**
- * Data Warehouse users can create tables only with the engines in
- * ALLOWED_TABLE_ENGINES; the SSRF/exfil-capable engines and sources are revoked
- * (see FORBIDDEN_TABLE_ENGINES / FORBIDDEN_SOURCES). That posture only holds if
- * the ClickHouse server enforces `access_control_improvements.table_engines_require_grant`.
+ * Whether the ClickHouse admin can hand `TABLE ENGINE` grants to warehouse users.
  *
- * There used to be a runtime probe here that, on every provision and rotation,
- * created a throwaway user with `CREATE TABLE` but no engine grant and asserted
- * `CREATE TABLE ... ENGINE = Memory` was DENIED — refusing to provision if it
- * succeeded. It was removed: it was expensive (5+ ClickHouse round-trips inside
- * the provision/rotation transaction) and, more importantly, wrong on ClickHouse
- * Cloud. We verified on a real Cloud service (26.2.1.558) that Cloud enforces
- * engine grants *selectively*: it allows the safe engines (`Memory`, the
- * MergeTree family) without a grant while still denying the dangerous ones. So
- * the probe's `ENGINE = Memory` succeeded, the probe concluded enforcement was
- * off, and it hard-failed provisioning — a false positive that would have
- * blocked the product on Cloud, exactly like the removed version gate.
+ * On a self-managed server it holds the privilege WITH GRANT OPTION and the grants
+ * are required, since safe engines are denied until granted. On ClickHouse Cloud it
+ * does not, and the grants are unnecessary: Cloud allows the safe engines without a
+ * grant and denies the dangerous ones regardless (verified on 26.2.1.558). So we
+ * decide from the admin's actual capability rather than a deployment label. The
+ * FORBIDDEN_* revokes stay unconditional — they never need grant option, and they
+ * are the real security boundary.
  *
- * What we confirmed on Cloud with a user provisioned the way applyWarehouseDdl
- * builds one (own-database privileges + `analytics_reader`):
- *   - `CREATE ... ENGINE = MergeTree` in its own database succeeds.
- *   - `CREATE ... ENGINE = URL | S3 | MySQL` is DENIED (`TABLE ENGINE ON ...`).
- *   - `url()` / `s3()` table functions are DENIED (`READ ON URL` / `READ ON S3`).
- * i.e. the isolation we rely on holds on Cloud without any runtime probe.
- *
- * One wrinkle that makes those `GRANT TABLE ENGINE` statements environment-
- * dependent: on Cloud the admin user (`default`) does NOT hold `TABLE ENGINE`
- * with grant option, so it cannot pass the grant along and each statement fails
- * ("...WITH GRANT OPTION"). But on Cloud the grants are also unnecessary — safe
- * engines already work without them and dangerous ones are already denied — so
- * we simply skip them there. On a self-managed server the admin *does* hold the
- * privilege with grant option and the grants *are* required (safe engines are
- * denied until granted), so we issue them. `applyWarehouseDdl` decides which
- * case it is from the admin's actual capability (see
- * `getAdminCanGrantTableEngines`), not from a deployment label, so it is correct
- * on Cloud, dev, and self-hosted alike. The FORBIDDEN_* revokes stay
- * unconditional — revoking never needs grant option (verified on Cloud), and it
- * is the actual security boundary.
- *
- * (Deferred to a follow-up: re-establishing a *correct* runtime enforcement
- * check — one that probes a dangerous engine such as URL rather than Memory —
- * for self-hosted servers that leave `table_engines_require_grant` disabled.)
+ * Memoized: the admin's own privileges do not change between requests.
  */
-
-// Whether the ClickHouse admin can hand `TABLE ENGINE` grants to warehouse
-// users. True on a self-managed server (admin holds it WITH GRANT OPTION);
-// false on ClickHouse Cloud (admin lacks it — and the grants are unnecessary
-// there). Resolved via effective grants, so grants held through a role or via
-// `ALL` are counted. The admin's own privileges do not change between requests,
-// so the answer is memoized for the process.
 let adminCanGrantTableEnginesCache: boolean | undefined;
 
 async function getAdminCanGrantTableEngines(client: ClickHouseClient): Promise<boolean> {
@@ -367,12 +274,11 @@ import.meta.vitest?.test("ClickHouse cleanup attempts every step after a failure
 });
 
 /**
- * Creates (or repairs) the ClickHouse database, user, grants, settings, and
- * quota for a project, and sets the user's password to `password`.
+ * Creates (or repairs) the ClickHouse database, user, grants, settings and quota
+ * for a project, and sets the user's password.
  *
  * Every statement is idempotent, so this doubles as the retry path for a
- * provisioning run that died halfway: re-running it converges on the same
- * state rather than failing on objects that already exist.
+ * provisioning run that died halfway.
  */
 async function applyWarehouseDdl(options: {
   tenancy: Tenancy,
@@ -390,22 +296,19 @@ async function applyWarehouseDdl(options: {
   try {
     await client.command({ query: `CREATE DATABASE IF NOT EXISTS ${quotedDatabase}` });
 
-    // CREATE ... IF NOT EXISTS followed by ALTER, rather than CREATE OR REPLACE:
-    // replacing a user drops its grants and detaches its quota, which would
-    // silently strip a working warehouse of its access on every rotation.
+    // CREATE IF NOT EXISTS + ALTER, not CREATE OR REPLACE: replacing a user drops
+    // its grants and detaches its quota, breaking the warehouse on every rotation.
     await client.command({
       query: `CREATE USER IF NOT EXISTS ${quotedUser} IDENTIFIED WITH sha256_password BY {password:String}`,
       query_params: { password },
     });
-    // ClickHouse does not accept query parameters inside a SETTINGS clause, so
-    // the two identity settings are interpolated as string literals. The
-    // project id is UUID-validated above and the branch id is checked here —
-    // between them, nothing that reaches this template can carry a quote.
+    // SETTINGS clauses cannot take query parameters, so the identity settings are
+    // interpolated. The project id is UUID-validated above; check the branch id here
+    // so neither can carry a quote.
     if (!/^[a-zA-Z0-9_-]+$/.test(tenancy.branchId)) {
       throw new HexclaveAssertionError("Unexpected branch id shape for a ClickHouse setting", { branchId: tenancy.branchId });
     }
-    // Start from nothing so that a re-run also *removes* anything a previous
-    // version of this function granted.
+    // Start from nothing, so a re-run also removes grants an older version issued.
     await client.command({ query: `REVOKE ALL PRIVILEGES ON *.* FROM ${quotedUser}` });
     await client.command({ query: `REVOKE ALL FROM ${quotedUser}` });
 
@@ -413,14 +316,11 @@ async function applyWarehouseDdl(options: {
     await client.command({
       query: `GRANT ${OWN_DATABASE_PRIVILEGES.join(", ")} ON ${quotedDatabase}.* TO ${quotedUser}`,
     });
-    // Needed for the database to be listable/usable by clients that introspect
-    // before querying (clickhouse-client, BI tools, dbt).
+    // Clients that introspect before querying (clickhouse-client, BI tools, dbt).
     await client.command({ query: `GRANT SHOW DATABASES ON ${quotedDatabase}.* TO ${quotedUser}` });
 
-    // Only issue engine grants where the admin can actually grant them. On
-    // ClickHouse Cloud it cannot, and they are unnecessary there anyway (safe
-    // engines work by default, dangerous ones are already denied). See the
-    // comment above `getAdminCanGrantTableEngines`.
+    // Skipped on Cloud, where the admin cannot grant them and they are unnecessary
+    // anyway; see `getAdminCanGrantTableEngines`.
     if (await getAdminCanGrantTableEngines(client)) {
       for (const engine of ALLOWED_TABLE_ENGINES) {
         await client.command({ query: `GRANT TABLE ENGINE ON ${engine} TO ${quotedUser}` });
@@ -445,9 +345,8 @@ async function applyWarehouseDdl(options: {
       `,
     });
 
-    // Change the password last. If any preceding grant or quota command fails,
-    // a rotation can still repair the full prior DDL state using the old
-    // password instead of locking the customer and backend out mid-operation.
+    // Password last: if any grant or quota command above fails, the old password
+    // still works, so a rotation can repair the rest instead of locking everyone out.
     await client.command({
       query: `
         ALTER USER ${quotedUser}
@@ -480,16 +379,14 @@ async function withDataWarehouseOperationLock<T>(options: {
   tenancyId: string,
   operation: (tx: PrismaClientTransaction) => Promise<T>,
 }): Promise<T> {
-  // This transaction deliberately spans the ClickHouse mutation. Retrying it
-  // could replay a non-transactional external side effect, so this must not use
-  // retryTransaction. The advisory lock makes overlapping provision/rotation
-  // requests fail immediately instead of returning two competing passwords.
+  // This transaction spans the ClickHouse mutation, so it must not use
+  // retryTransaction — a retry would replay a non-transactional side effect. The
+  // advisory lock makes overlapping provision/rotation requests fail fast rather
+  // than return two competing passwords.
   //
-  // TODO(data-warehouse-ga): replace this with a durable multi-phase operation
-  // in a future PR. We accept for alpha that a PostgreSQL commit failure after
-  // the callback returns is ambiguous: ClickHouse may have the new password
-  // while PostgreSQL retains the old encrypted password. The in-callback
-  // recovery below cannot observe or reconcile that commit-phase failure.
+  // TODO(data-warehouse-ga): make this a durable multi-phase operation. For alpha we
+  // accept that a commit failure after the callback returns is ambiguous: ClickHouse
+  // may hold the new password while PostgreSQL still has the old one.
   // eslint-disable-next-line no-restricted-syntax
   return await options.prisma.$transaction(async (tx) => {
     const lockRows = await tx.$queryRaw<{ locked: boolean }[]>`
@@ -535,10 +432,9 @@ async function cleanUpUnpersistedWarehouseUser(userName: string): Promise<boolea
   const quotedUser = quoteClickhouseIdentifierFromProjectId(userName);
   const quotaName = `\`${userName}_quota\``;
   const client = getClickhouseAdminClient();
-  // Keep the database and any customer data so a retry remains non-destructive,
-  // but remove credentials that the failed request could not return or store.
-  // Every step is attempted even if an earlier one fails; in particular, a
-  // quota cleanup failure must never leave live credentials behind by itself.
+  // Keep the database and customer data so a retry stays non-destructive, but drop
+  // credentials the failed request could neither return nor store. Every step runs
+  // even if an earlier one fails, so a quota error cannot strand live credentials.
   return await runClickhouseCleanupSteps("data-warehouse-clean-up-unpersisted-user", [
     async () => await client.command({ query: `DROP QUOTA IF EXISTS ${quotaName}` }),
     async () => await client.command({ query: `DROP USER IF EXISTS ${quotedUser}` }),
@@ -563,19 +459,18 @@ async function recoverPreviousWarehouseAccess(options: {
 }
 
 function generateWarehousePassword(): string {
-  // base32, so it survives every connection-string and CLI quoting context a
-  // customer might paste it into.
+  // base32, so it survives any connection-string or CLI quoting a customer pastes
+  // it into.
   return generateSecureRandomString(160);
 }
 
 /**
- * Provisions the project's warehouse and returns the password *once* — it is
- * stored KMS-encrypted and never returned by any read path.
+ * Provisions the project's warehouse and returns the password once; it is stored
+ * KMS-encrypted and never returned by any read path.
  *
- * Safe to call again after a failure: the DDL is idempotent and a FAILED row is
- * retried in place. Calling it on an already-READY warehouse is rejected, since
- * that would silently invalidate credentials the customer is already using
- * (rotation is the explicit way to do that).
+ * Safe to retry after a failure — the DDL is idempotent and a FAILED row is retried
+ * in place. Rejected on an already-READY warehouse, which would silently invalidate
+ * credentials in use; rotation is the explicit way to do that.
  */
 export async function provisionDataWarehouse(tenancy: Tenancy): Promise<{ password: string, warehouse: DataWarehouse }> {
   await ensureDataWarehouseEntitlement(tenancy);
@@ -598,10 +493,8 @@ export async function provisionDataWarehouse(tenancy: Tenancy): Promise<{ passwo
       const previousPassword = existing == null
         ? null
         : await decryptWarehousePassword(existing.encryptedPassword);
-      // The ClickHouse database is per project while this row is per tenancy, so a
-      // second tenancy in the same project would provision on top of the first
-      // one's data. Branches don't exist yet, so this is a guard against a future
-      // change rather than a reachable state today.
+      // The database is per project but this row is per tenancy, so a second tenancy
+      // would provision over the first one's data. Not reachable until branches exist.
       const otherTenancyRow = await tx.dataWarehouse.findUnique({ where: { userName } });
       if (otherTenancyRow != null && otherTenancyRow.tenancyId !== tenancy.id) {
         throw new HexclaveAssertionError("A data warehouse for this project is already owned by another tenancy", {
@@ -665,9 +558,8 @@ export async function provisionDataWarehouse(tenancy: Tenancy): Promise<{ passwo
 }
 
 /**
- * Issues a new password for an existing warehouse and returns it once.
- * Re-applies the full DDL on the way, so a warehouse whose grants drifted (or
- * whose provisioning half-failed) is repaired by rotating.
+ * Issues a new password for an existing warehouse and returns it once. Re-applies
+ * the full DDL, so rotating also repairs drifted grants or a half-failed provision.
  */
 export async function rotateDataWarehousePassword(tenancy: Tenancy): Promise<{ password: string, warehouse: DataWarehouse }> {
   await ensureDataWarehouseEntitlement(tenancy);
@@ -757,13 +649,11 @@ export async function rotateDataWarehousePassword(tenancy: Tenancy): Promise<{ p
 }
 
 /**
- * The ClickHouse credentials `/analytics/query` should connect with, or `null`
- * when the project has no usable warehouse (in which case the caller falls back
- * to the shared `limited_user`).
+ * The ClickHouse credentials `/analytics/query` should connect with, or `null` if
+ * the project has no usable warehouse (the caller then falls back to `limited_user`).
  *
- * Decrypts on every call. That is a deliberate choice for the alpha: caching
- * decrypted passwords in process memory is the kind of thing that needs an
- * invalidation story across instances, and rotation is a user-visible action.
+ * Decrypts on every call: caching decrypted passwords would need cross-instance
+ * invalidation on rotation.
  */
 export async function getDataWarehouseQueryAuth(tenancy: Tenancy): Promise<{ username: string, password: string } | null> {
   const warehouse = await getDataWarehouse(tenancy);
@@ -778,10 +668,9 @@ export async function getDataWarehouseQueryAuth(tenancy: Tenancy): Promise<{ use
 }
 
 /**
- * Host and ports a customer points their own ClickHouse client at. Falls back
- * to the host of the backend's own ClickHouse URL, which is right for local
- * development and wrong for any deployment where the instance is reachable
- * under a different name — hence the explicit env var.
+ * Host and ports a customer points their own ClickHouse client at. Falls back to the
+ * host of the backend's own ClickHouse URL, which is right locally but wrong wherever
+ * the instance is reachable under a different name — hence the explicit env var.
  */
 export function getDataWarehouseConnectionInfo(): { host: string, httpsPort: number, nativePort: number } {
   const configuredHost = getEnvVariable("HEXCLAVE_CLICKHOUSE_PUBLIC_HOST", "");

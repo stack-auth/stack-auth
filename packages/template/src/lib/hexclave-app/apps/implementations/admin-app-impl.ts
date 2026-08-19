@@ -72,10 +72,9 @@ function apiToPushedConfigSource(source: BranchConfigSourceApi): PushedConfigSou
 }
 
 function getDataWarehousePasswordUpdatedAtMillis(credentials: unknown): number {
-  // SDK responses are not runtime-schema-validated, and this timestamp is what
-  // lets the mutation response replace the cache without a second request.
-  // Fail loudly rather than caching an invented value if an older backend omits
-  // the field.
+  // SDK responses are not runtime-validated, and this timestamp is what lets the
+  // mutation response replace the cache. Fail loudly rather than cache a made-up
+  // value if an older backend omits it.
   if (typeof credentials !== "object" || credentials == null) {
     throw new HexclaveAssertionError("The Data Warehouse credentials response was not an object");
   }

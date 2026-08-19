@@ -76,9 +76,8 @@ function DataWarehousePage() {
                       Get a private database for your project data.
                     </Typography>
                     <div className="mt-8 flex justify-center">
-                      {/* The tooltip wraps the button rather than sitting on it:
-                          a disabled button emits no pointer events, so Radix
-                          would never see the hover. */}
+                      {/* Wraps the button rather than sitting on it: a disabled button
+                          emits no pointer events, so Radix would never see the hover. */}
                       <SimpleTooltip tooltip={isEntitled ? null : UNENTITLED_MESSAGE}>
                         <DesignButton
                           className="gap-2"
@@ -109,10 +108,7 @@ function DataWarehousePage() {
   );
 }
 
-/**
- * Shown once, right after provisioning or rotation. The password is not
- * retrievable afterwards, so this dialog is the only chance to copy it.
- */
+/** The password is not retrievable afterwards, so this is the only chance to copy it. */
 function PasswordDialog({ credentials, onClose }: { credentials: DataWarehouseCredentialsJson | null, onClose: () => void }) {
   return (
     <ActionDialog
@@ -132,14 +128,12 @@ function PasswordDialog({ credentials, onClose }: { credentials: DataWarehouseCr
 }
 
 /**
- * The Data Warehouse needs a team plan or higher. The backend enforces this on
- * every provision and rotation; this renders the upgrade banner and tells the
- * page whether to enable the provision button.
+ * Renders the upgrade banner and tells the page whether to enable the provision
+ * button; the backend enforces the team-plan requirement independently.
  *
- * It resolves in two steps because `team.useItem` is a hook: the outer half
- * decides whether there is a billing team to read at all, the inner half reads
- * it. Projects with no billing team, and deployments that do not enforce plan
- * limits at all (self-hosted, local development), count as entitled.
+ * Split in two because `team.useItem` is a hook: the outer half decides whether there
+ * is a billing team to read, the inner half reads it. Projects with no billing team,
+ * and deployments that do not enforce plan limits, count as entitled.
  */
 function EntitlementBoundary({ children }: { children: (isEntitled: boolean) => ReactNode }) {
   const adminApp = useAdminApp();

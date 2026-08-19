@@ -70,14 +70,12 @@ export const POST = createSmartRouteHandler({
       effectiveTimeoutMs = Math.min(body.timeout_ms, maxAllowedMs);
     }
 
-    // Projects with a Data Warehouse connect as their own ClickHouse user
-    // rather than the shared `limited_user`, so that their queries can also
-    // reach their own database (and only their own). That user carries the
-    // `analytics_reader` role, so analytics access is identical either way.
+    // Projects with a Data Warehouse connect as their own ClickHouse user instead of
+    // the shared `limited_user`, so queries can also reach their own database. That
+    // user holds `analytics_reader`, so analytics access is unchanged.
     //
-    // Its `SQL_project_id`/`SQL_branch_id` are pinned as CONST user-level
-    // settings, so we must not send them per query — ClickHouse rejects any
-    // attempt to change a CONST setting, even to the same value.
+    // Its `SQL_project_id`/`SQL_branch_id` are pinned as CONST user settings, so they
+    // must not be sent per query — ClickHouse rejects setting a CONST setting at all.
     const warehouseAuth = await getDataWarehouseQueryAuth(auth.tenancy);
     const client = warehouseAuth == null
       ? getClickhouseExternalClient()
@@ -118,9 +116,8 @@ export const POST = createSmartRouteHandler({
         },
       };
     } finally {
-      // The shared limited-user client is intentionally reused, while a
-      // warehouse client carries per-project credentials and is created for
-      // this request only. Closing it releases its HTTP agent and sockets.
+      // The shared limited-user client is reused; a warehouse client is per request,
+      // so close it to release its HTTP agent and sockets.
       if (warehouseAuth != null) {
         await client.close();
       }

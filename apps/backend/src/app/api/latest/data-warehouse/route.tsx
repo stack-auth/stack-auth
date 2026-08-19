@@ -43,9 +43,7 @@ export const GET = createSmartRouteHandler({
           READY: "ready" as const,
           FAILED: "failed" as const,
         }[warehouse.status]),
-        // Before provisioning, the names are still predictable — showing them
-        // up front is what makes the "your database will be called <project
-        // id>" copy on the dashboard honest.
+        // Predictable before provisioning, so the dashboard can name the database up front.
         database_name: warehouse?.databaseName ?? getDataWarehouseNames(auth.tenancy.project.id).databaseName,
         username: warehouse?.userName ?? null,
         error: warehouse?.error ?? null,

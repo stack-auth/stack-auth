@@ -8,15 +8,13 @@ import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 export type { ClickHouseClient } from "@clickhouse/client";
 
 /**
- * The `default.*` views that customers can read through `/analytics/query`.
- * Row policies scope every one of them to `SQL_project_id`/`SQL_branch_id`.
+ * The `default.*` views customers can read through `/analytics/query`, each scoped
+ * by a row policy to `SQL_project_id`/`SQL_branch_id`. Drives both those policies
+ * and the GRANT SELECT loop in scripts/clickhouse-migrations.ts.
+ *
+ * Keep in sync with GROWTH_AGENT_QUERYABLE_TABLES in lib/growth/metric-catalog.ts
+ * (pinned by metric-catalog.test.ts).
  */
-// Drives both the row policies and the GRANT SELECT loop in
-// scripts/clickhouse-migrations.ts. Keep this list in sync with
-// GROWTH_AGENT_QUERYABLE_TABLES in src/lib/growth/metric-catalog.ts (pinned by
-// metric-catalog.test.ts): the growth agent's catalog assumes exactly these
-// tables are readable, so a table here without a policy — or a policy without a
-// catalog entry — is a bug.
 export const ANALYTICS_TABLES = [
   "events", "users", "contact_channels", "teams", "team_member_profiles",
   "team_permissions", "team_invitations", "email_outboxes",
@@ -25,9 +23,8 @@ export const ANALYTICS_TABLES = [
 ] as const;
 
 /**
- * ClickHouse role carrying the row policies and SELECT grants for
- * `ANALYTICS_TABLES`. Held by the shared `limited_user` and by every
- * per-project Data Warehouse user, so both read analytics the same way.
+ * Role carrying the row policies and SELECT grants for `ANALYTICS_TABLES`. Held by
+ * `limited_user` and by every per-project Data Warehouse user.
  */
 export const ANALYTICS_READER_ROLE = "analytics_reader";
 
@@ -56,10 +53,9 @@ export function createClickhouseClient(
 }
 
 /**
- * Client for a project's own Data Warehouse user (see lib/data-warehouse.tsx).
- * Unlike the admin and `limited_user` clients, the credentials are per project
- * and come from the caller — they are stored KMS-encrypted, not in the
- * environment.
+ * Client for a project's own Data Warehouse user (see lib/data-warehouse.tsx). Its
+ * credentials are per project and passed in by the caller, not read from the
+ * environment like the admin and `limited_user` clients.
  */
 export function createClickhouseWarehouseClient(
   auth: { username: string, password: string },

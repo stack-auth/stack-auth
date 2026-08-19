@@ -82,69 +82,50 @@ export async function runClickhouseMigrations() {
     await client.command({ query: sql });
   }
 
-  // The project-isolated read access to `default.*` lives on a role rather
-  // than directly on `limited_user`, because the Data Warehouse app gives each
-  // provisioned project its own ClickHouse user (see lib/data-warehouse.tsx)
-  // and those users need exactly the same analytics access. Row policies and
-  // grants are attached to the role; every user that should read analytics is
-  // granted the role.
+  // Project-isolated read access to `default.*` lives on a role rather than on
+  // `limited_user` directly, because the Data Warehouse app gives each provisioned
+  // project its own ClickHouse user (see lib/data-warehouse.tsx) needing the same
+  // access. Row policies and SELECT grants hang off the role; every analytics reader
+  // is granted it.
   //
-  // The ordering below is load-bearing. ClickHouse's shipped default — verified
-  // on Cloud 26.2.1.558, which does not expose it in system.server_settings and
-  // does not let us override it — is `users_without_row_policies_can_read_rows
-  // = true`: a user that holds SELECT and is named by *no* row policy reads
-  // every row rather than none. So `limited_user` has to stay covered by a
-  // policy at every single instant. Hence: build the role, grant it, and only
-  // then narrow the policies, revoking the direct grants last. Re-pointing the
-  // policies before the revoke would open a window in which `limited_user`
-  // still holds SELECT while no policy names it — a cross-tenant read, live,
-  // for as long as the window lasts.
+  // The ordering below is load-bearing. ClickHouse defaults to
+  // `users_without_row_policies_can_read_rows = true` (verified on Cloud 26.2.1.558,
+  // which does not let us override it), so a user holding SELECT that no policy names
+  // reads *every* row. `limited_user` must therefore stay covered at every instant:
+  // build the role, grant it, then narrow the policies, and revoke direct grants last.
   await client.command({ query: `CREATE ROLE IF NOT EXISTS ${ANALYTICS_READER_ROLE}` });
 
-  // Role grants first, so `limited_user` has a working indirect route to the
-  // data before its direct one is taken away. Additive on purpose: a
-  // revoke-then-rebuild would leave the role empty in between, and on a re-run
-  // every analytics reader already depends on it, so that gap is a live outage.
-  // TODO(data-warehouse-ga): the tradeoff is that a table dropped from
-  // ANALYTICS_TABLES leaves a stale SELECT grant on the role. Diff against
-  // system.grants, or build the versioned shadow role, when that starts to matter.
+  // Role grants first, so `limited_user` has an indirect route to the data before
+  // its direct one is taken away. Additive on purpose: a revoke-then-rebuild would
+  // empty the role in between, which on a re-run is a live outage.
+  // TODO(data-warehouse-ga): the tradeoff is that dropping a table from
+  // ANALYTICS_TABLES leaves a stale SELECT grant on the role.
   await Promise.all(ANALYTICS_TABLES.map(table =>
     client.command({ query: `GRANT SELECT ON default.${table} TO ${ANALYTICS_READER_ROLE};` })
   ));
   await client.command({ query: `GRANT ${ANALYTICS_READER_ROLE} TO limited_user;` });
-  // Granted roles are only active in a session if they are default roles.
-  // CREATE USER defaults to `DEFAULT ROLE ALL`, but say it explicitly so a
-  // user created by an older migration behaves the same.
+  // Granted roles are only active in a session if they are default roles. New users
+  // get `DEFAULT ROLE ALL` anyway; say it explicitly for users older migrations made.
   await client.command({ query: "ALTER USER limited_user DEFAULT ROLE ALL;" });
 
-  // OR REPLACE rather than IF NOT EXISTS: existing deployments already have
-  // these policies pointing at `limited_user`, and they have to be re-pointed
-  // at the role so that the per-project warehouse users are covered too.
+  // OR REPLACE, not IF NOT EXISTS: existing deployments have these policies pointing
+  // at `limited_user` and they must be re-pointed at the role.
   //
-  // `limited_user` is named alongside the role deliberately, and this is the
-  // bit to delete later. Naming only the role would make correctness depend on
-  // the GRANT above being visible to every in-flight session by the time this
-  // policy lands. Role membership is cached (role_cache_expiration_time_seconds
-  // defaults to 600), so a session that picked up the new policy but not yet
-  // its new role would be matched by no policy at all — and, per the default
-  // above, would read every tenant's rows. Naming the user directly removes
-  // that dependency for free: the filter is identical either way.
-  // TODO(data-warehouse-ga): drop `, limited_user` from this TO clause in a
-  // later release, once limited_user has held the role across a full deploy
-  // cycle and there is no in-flight handoff left to race.
-  // The table list (incl. the growth_daily_* tables) lives in ANALYTICS_TABLES
-  // and must stay in sync with GROWTH_AGENT_QUERYABLE_TABLES (see its comment).
+  // `limited_user` is named alongside the role on purpose. Role membership is cached
+  // (10 minutes by default), so a session that saw the new policy but not yet its new
+  // role would be named by no policy at all and — per the default above — read every
+  // tenant's rows. The filter is identical either way.
+  // TODO(data-warehouse-ga): drop `, limited_user` from the TO clause once it has held
+  // the role across a full deploy cycle.
   await Promise.all(ANALYTICS_TABLES.map(table =>
     client.command({
       query: `CREATE ROW POLICY OR REPLACE ${table}_project_isolation ON default.${table} FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO ${ANALYTICS_READER_ROLE}, limited_user`,
     })
   ));
 
-  // Direct grants go last. `REVOKE ALL PRIVILEGES ON *.*` strips privileges but
-  // NOT granted roles — that would be `REVOKE ALL FROM limited_user`, which must
-  // not be used here: it would take the role straight back off and black out
-  // analytics until the next run. Access continues through the role, so this
-  // revoke is invisible to readers.
+  // Direct grants last. `REVOKE ALL PRIVILEGES ON *.*` strips privileges but not
+  // granted roles — do NOT use `REVOKE ALL FROM limited_user` here, which would also
+  // remove the role and black out analytics until the next run.
   await client.command({ query: "REVOKE ALL PRIVILEGES ON *.* FROM limited_user;" });
 
   const elapsed = ((performance.now() - start) / 1000).toFixed(1);

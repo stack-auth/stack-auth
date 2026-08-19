@@ -33,8 +33,8 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth }) => {
-    // Validate before rotation so a response-serialization failure cannot lose
-    // the only copy of a password that ClickHouse has already activated.
+    // Read connection metadata first, so a failure here cannot lose a password
+    // ClickHouse has already activated.
     const connection = getDataWarehouseConnectionInfo();
     const { password, warehouse } = await rotateDataWarehousePassword(auth.tenancy);
     const passwordUpdatedAtMillis = warehouse.passwordUpdatedAt?.getTime();

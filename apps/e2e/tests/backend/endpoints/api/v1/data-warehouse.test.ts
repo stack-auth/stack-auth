@@ -49,10 +49,7 @@ async function whileWarehouseOperationLocked<T>(projectId: string, operation: ()
   }
 }
 
-/**
- * Creates a project whose billing team is on the team plan, which is what
- * entitles it to a Data Warehouse.
- */
+/** A project on the team plan, which is what entitles it to a Data Warehouse. */
 async function createEntitledProject() {
   const { createProjectResponse, projectId } = await Project.createAndSwitch();
   const ownerTeamId = createProjectResponse.body.owner_team_id;
@@ -91,8 +88,8 @@ async function runAnalyticsQuery(query: string) {
 }
 
 /**
- * Talks to ClickHouse directly as the customer would, which is the only way to
- * exercise the write path — `/analytics/query` pins `readonly=1`.
+ * Talks to ClickHouse directly as a customer would — the only way to exercise the
+ * write path, since `/analytics/query` pins `readonly=1`.
  */
 async function clickhouse(options: { username: string, password: string, query: string }) {
   const url = new URL(process.env.HEXCLAVE_CLICKHOUSE_URL ?? throwMissingClickhouseUrl());
@@ -267,9 +264,8 @@ it("denies the table engines and table functions that reach outside the instance
   });
   expect(urlFunction.status).not.toBe(200);
 
-  // On affected ClickHouse builds CREATE TABLE AS could infer a remote schema
-  // before checking READ ON URL. This must fail on privileges, without trying
-  // the deliberately unreachable address.
+  // On affected builds, CREATE TABLE AS infers a remote schema before checking READ
+  // ON URL. This must fail on privileges, without dialing the unreachable address.
   const inferredUrlTable = await clickhouse({
     ...credentials,
     query: `CREATE TABLE "${projectId}".inferred_url AS url('http://127.0.0.1:1/data.csv', CSV)`,
@@ -277,9 +273,8 @@ it("denies the table engines and table functions that reach outside the instance
   expect(inferredUrlTable.status).not.toBe(200);
   expect(inferredUrlTable.text).toContain("URL");
 
-  // Dictionary sources have their own outbound connectors and are not governed
-  // by the URL source privilege above. The user must not have CREATE DICTIONARY
-  // at all, so ClickHouse rejects this before attempting the HTTP request.
+  // Dictionary sources have their own outbound connectors, which the URL source
+  // privilege above does not cover — so the user must not have CREATE DICTIONARY.
   const httpDictionary = await clickhouse({
     ...credentials,
     query: `
@@ -296,9 +291,8 @@ it("denies the table engines and table functions that reach outside the instance
   expect(httpDictionary.status).not.toBe(200);
   expect(httpDictionary.text).toContain("CREATE DICTIONARY");
 
-  // Kafka has no matching source privilege in FORBIDDEN_SOURCES, so this only
-  // fails when ClickHouse actually enforces the TABLE ENGINE revoke. The URL
-  // engine assertion alone could pass because URL is also revoked as a source.
+  // Kafka has no entry in FORBIDDEN_SOURCES, so this only fails if the TABLE ENGINE
+  // revoke is really enforced — unlike URL, which is revoked as a source too.
   const kafkaEngine = await clickhouse({
     ...credentials,
     query: `CREATE TABLE "${projectId}".kafka_exfil (a String) ENGINE = Kafka('localhost:9092', 'topic', 'group', 'JSONEachRow')`,
@@ -321,10 +315,8 @@ it("does not let one project read another project's warehouse", async ({ expect 
   });
   expect(inserted.status).toBe(200);
 
-  // A second project, with its own warehouse and therefore its own ClickHouse
-  // user. This is the test that matters: before per-project users existed,
-  // every project shared `limited_user`, and any grant on one project's
-  // database would have been readable by all of them.
+  // A second project with its own warehouse user. This is the assertion that matters:
+  // with the old shared `limited_user`, one project's database was readable by all.
   const second = await createEntitledProject();
   const { body: secondCredentials } = await provision();
 
@@ -385,8 +377,7 @@ it("rotates the password, invalidating the old one and keeping analytics working
   const withNewPassword = await clickhouse({ ...rotateResponse.body, query: `SELECT count() FROM "${projectId}".orders` });
   expect(withNewPassword.status).toBe(200);
 
-  // The backend reads the stored password per request, so its own connection
-  // follows the rotation without any cache to invalidate.
+  // The backend reads the stored password per request, so it follows the rotation.
   const analytics = await runAnalyticsQuery("SELECT count() AS c FROM events");
   expect(analytics.status).toBe(200);
 });
