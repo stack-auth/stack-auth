@@ -394,6 +394,12 @@ export function BuildLogsContent({ deploymentId, outcome, project, isHexclave }:
             {outcome?.revision != null && <span className="font-mono text-[11px] text-muted-foreground">{outcome.revision}</span>}
           </div>
         )}
+        {/* What this deploy actually ran, digest-pinned. The tag an author wrote
+            and the bytes that ran are different facts, and only this one explains
+            a deploy that behaved unexpectedly. */}
+        {outcome?.image != null && (
+          <div className="truncate font-mono text-[11px] text-muted-foreground" title={outcome.image}>{outcome.image}</div>
+        )}
         {outcome?.url != null && <ExternalLink hostname={new URL(outcome.url).host} />}
         {outcome?.error != null && <div className="text-xs text-red-600 dark:text-red-400">{outcome.error}</div>}
       </div>
@@ -655,11 +661,20 @@ export function SettingsContent({ service, isHexclave }: {
 
   const servicePorts = portEntriesOf(service.api?.ports ?? {});
   const isPublic = service.api?.public === true;
+  // A service either runs an already-built image or is built from the source, so
+  // the two describe the same slot and only one of them has anything to say. The
+  // source rows on an image service would read "./" and "None (Railpack
+  // auto-detected build)" — both false, and the second actively misleading.
+  const prebuiltImage = service.api?.image ?? null;
   const fields: { label: string, value: string | null | undefined, fallback: string }[] = [
-    { label: "Root directory", value: service.api?.root_directory, fallback: "./" },
-    // A missing dockerfile_path means "Railpack build" only once a definition was actually
-    // synced — before that (there are no ports either) it just means "not synced yet".
-    { label: "Dockerfile", value: service.api?.dockerfile_path, fallback: servicePorts.length > 0 ? "None (Railpack auto-detected build)" : "Not synced yet" },
+    ...(prebuiltImage !== null ? [
+      { label: "Image", value: prebuiltImage, fallback: "Not synced yet" },
+    ] : [
+      { label: "Root directory", value: service.api?.root_directory, fallback: "./" },
+      // A missing dockerfile_path means "Railpack build" only once a definition was actually
+      // synced — before that (there are no ports either) it just means "not synced yet".
+      { label: "Dockerfile", value: service.api?.dockerfile_path, fallback: servicePorts.length > 0 ? "None (Railpack auto-detected build)" : "Not synced yet" },
+    ]),
     // Visibility is the SERVICE's, so it gets a row of its own rather than being
     // repeated on every port.
     { label: "Visibility", value: service.api == null ? undefined : service.api.public ? "Public" : "Private", fallback: "Not synced yet" },
@@ -688,7 +703,9 @@ export function SettingsContent({ service, isHexclave }: {
       <div className="space-y-3">
         <SectionLabel>Container</SectionLabel>
         <p className="text-[11px] text-muted-foreground">
-          Container settings are defined in the <span className="font-mono">services</span> member of the <span className="font-mono">deployment</span> export of your <span className="font-mono">hexclave.deploy.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. The image is built from the service&apos;s Dockerfile when <span className="font-mono">dockerfilePath</span> is set, and auto-detected with Railpack otherwise.
+          Container settings are defined in the <span className="font-mono">services</span> member of the <span className="font-mono">deployment</span> export of your <span className="font-mono">hexclave.deploy.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. {prebuiltImage !== null
+            ? <>This service runs an already-built image, so nothing is built for it; each deploy pins the tag to the exact image it resolved to.</>
+            : <>The image is built from the service&apos;s Dockerfile when <span className="font-mono">dockerfilePath</span> is set, and auto-detected with Railpack otherwise.</>}
         </p>
         {fields.map((field) => (
           <div key={field.label} className="space-y-1.5">

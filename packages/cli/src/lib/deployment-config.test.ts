@@ -387,6 +387,54 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
   });
 });
 
+describe("prebuilt images", () => {
+  it("normalizes the image and omits the source fields", () => {
+    const { services } = evaluate(() => ({
+      database: { type: "server", ports: { 5432: { protocol: "tcp" } }, image: "postgres:16" },
+    }));
+    const definition = services.get("database")?.definition;
+    // Stored fully qualified, so the definition names what is actually pulled.
+    expect(definition?.image).toBe("docker.io/library/postgres:16");
+    // Not built from the upload, so a path within it would point at nothing —
+    // unlike a source service, which always states its root directory.
+    expect(definition?.root_directory).toBeUndefined();
+    expect(definition?.dockerfile_path).toBeUndefined();
+  });
+
+  it("still resolves a local root directory for `hexclave dev`", () => {
+    // `rootDirectory` may not be SET on an image service, but the dev command
+    // has to run somewhere: the deploy file's own directory. That value is
+    // local-only and never reaches the definition.
+    const { services } = evaluate(() => ({
+      database: { type: "server", ports: { 5432: { protocol: "tcp" } }, image: "postgres:16", devCommand: "docker compose up db" },
+    }));
+    expect(services.get("database")?.absoluteRootDirectory).toBe(path.join(path.sep, "repo"));
+    expect(services.get("database")?.devCommand).toBe("docker compose up db");
+  });
+
+  it("rejects a service that both names an image and builds from source", () => {
+    // The two say different things — where the code is, versus what to run —
+    // and a service that gave both would leave the deploy with two answers.
+    expect(() => evaluate(() => ({
+      database: { type: "server", ports: {}, image: "postgres:16", rootDirectory: "./database" },
+    }))).toThrow(/both `image` and `rootDirectory`/);
+    expect(() => evaluate(() => ({
+      database: { type: "server", ports: {}, image: "postgres:16", dockerfilePath: "Dockerfile" },
+    }))).toThrow(/both `image` and `dockerfilePath`/);
+  });
+
+  it("rejects an image that names no version", () => {
+    // A bare name means ":latest", which is the one reference guaranteed to
+    // move under a service that holds a volume.
+    expect(() => evaluate(() => ({
+      database: { type: "server", ports: {}, image: "postgres" },
+    }))).toThrow(/no tag or digest/);
+    expect(() => evaluate(() => ({
+      database: { type: "server", ports: {}, image: "Postgres:16" },
+    }))).toThrow(/invalid repository path segment/);
+  });
+});
+
 describe("persistent volumes", () => {
   function web(service: Record<string, unknown>) {
     return () => ({ web: { type: "server", ports: { 3000: { protocol: "http" } }, env: {}, ...service } });

@@ -203,6 +203,9 @@ export type DeploymentServiceDefinition = {
   // Relative to the directory containing hexclave.deploy.ts. Only used
   // client-side (it decides what `hexclave deploy` packages), but stored so
   // the dashboard can display it.
+  //
+  // Mutually exclusive with `image`: a prebuilt image is not built from the
+  // uploaded source, so it has no directory within it.
   root_directory?: string | undefined,
   // The Dockerfile to build from, as a path within the uploaded tree — i.e.
   // relative to the directory containing hexclave.deploy.ts, like
@@ -211,7 +214,21 @@ export type DeploymentServiceDefinition = {
   // pre-flight, this schema and the remote builder all resolve it against one
   // base. When absent the service is NOT built from a Dockerfile — the remote
   // builder auto-detects the build with Railpack (https://railpack.com) instead.
+  //
+  // Mutually exclusive with `image`.
   dockerfile_path?: string | undefined,
+  // An ALREADY-BUILT image to run, instead of building one from the uploaded
+  // source: `postgres:16`, `ghcr.io/org/app:1.2.3`, or a digest. Mutually
+  // exclusive with `root_directory` and `dockerfile_path` — those say where the
+  // code is, this says what to run, and a service has exactly one of the two.
+  //
+  // Stored as the author wrote it (normalized to a canonical, fully-qualified
+  // ref by parseDeploymentImageRef, so `postgres:16` is stored as
+  // `docker.io/library/postgres:16`). A TAG here is deliberately not resolved
+  // at this layer: the definition is what the author asked for, and the digest
+  // it resolved to belongs to a DEPLOYMENT, which is what has to name fixed
+  // bytes. See the deployment's image map.
+  image?: string | undefined,
   // Persistent disks mounted into the container, keyed by VOLUME ID. Absent or
   // empty = the container filesystem is entirely ephemeral (the default).
   // Only "server" services may declare one.
@@ -417,6 +434,146 @@ export const MAX_PERSISTENT_VOLUMES_PER_SERVICE = 1;
 export const DEPLOYMENT_VOLUME_ID_REGEX = /^[a-z][a-z0-9_]*$/;
 export const MAX_VOLUME_ID_LENGTH = 26;
 
+
+// ---------------------------------------------------------------------------
+// Prebuilt images.
+//
+// A service either builds from the uploaded source (`root_directory` /
+// `dockerfile_path`) or names an ALREADY-BUILT image (`image`). The two are
+// mutually exclusive: those fields describe where the code is, `image`
+// describes what to run, and a definition carrying both would leave the
+// deployment with two answers to "what does this service run".
+
+export const MAX_DEPLOYMENT_IMAGE_REF_LENGTH = 512;
+
+// The registry an unqualified name belongs to, following Docker's own rule: the
+// first path component is a REGISTRY only when it looks like a host (it has a
+// dot or a port, or it is exactly "localhost"), and otherwise it is the first
+// half of a repository on the default registry.
+export const DEFAULT_DEPLOYMENT_IMAGE_REGISTRY = "docker.io";
+// Unqualified repositories on Docker Hub are "official images" and live under
+// this namespace: `postgres` is `library/postgres`.
+export const DEFAULT_DEPLOYMENT_IMAGE_NAMESPACE = "library";
+
+// One path component of a repository, per the OCI distribution spec.
+const IMAGE_PATH_COMPONENT_REGEX = /^[a-z0-9]+(?:(?:[._]|__|[-]+)[a-z0-9]+)*$/;
+// A tag: up to 128 characters of word characters, dots and dashes, not starting
+// with a dot or a dash.
+const IMAGE_TAG_REGEX = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/;
+// Only sha256 is accepted. The registry API can name others in principle, but
+// nothing in practice produces them, and a narrow rule gives a clearer error
+// than a general one that then fails at the registry.
+const IMAGE_DIGEST_REGEX = /^sha256:[a-f0-9]{64}$/;
+// A registry host with an optional port. Deliberately not a general URL: a
+// scheme, a path or credentials in here would all be silently dropped by the
+// registry client, so they are refused where the author can still see why.
+const IMAGE_REGISTRY_HOST_REGEX = /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*(?::[0-9]{1,5})?$/;
+
+/**
+ * An image reference in its parts, always fully qualified: `postgres:16` parses
+ * to the registry `docker.io` and the repository `library/postgres`, because
+ * that is what actually gets pulled and a stored definition should say so.
+ *
+ * Exactly one of `tag` and `digest` is set. A tag is a POINTER the publisher can
+ * move; a digest is the content hash and cannot be moved. Both spellings are
+ * accepted from authors, and a tag is resolved to a digest when a deployment is
+ * created — see the note on pinning in the deploy flow.
+ */
+export type DeploymentImageRef = {
+  registry: string,
+  repository: string,
+  tag: string | null,
+  digest: string | null,
+  // The reference as it should be stored and displayed, which is the parts
+  // rejoined: one spelling for one image, so two definitions naming the same
+  // image are equal as strings.
+  canonical: string,
+};
+
+/**
+ * Parses and normalizes an image reference.
+ *
+ * Returns the failure MESSAGE rather than just null (unlike
+ * parseConnectionValue) because every caller wants to say the same thing and
+ * the useful part is always *which* rule was broken: the CLI prints it as a
+ * deploy-file diagnostic, the schema as a validation error, and the backend as
+ * a 400. One message, phrased once.
+ */
+export function parseDeploymentImageRef(value: string): { ok: true, ref: DeploymentImageRef } | { ok: false, message: string } {
+  const fail = (message: string) => ({ ok: false as const, message });
+  if (value === "") return fail("image must not be empty");
+  if (value.length > MAX_DEPLOYMENT_IMAGE_REF_LENGTH) return fail(`image must be at most ${MAX_DEPLOYMENT_IMAGE_REF_LENGTH} characters long`);
+  if (/\s/.test(value)) return fail(`image ${JSON.stringify(value)} contains whitespace`);
+  if (value.includes("://")) return fail(`image ${JSON.stringify(value)} must not have a scheme — write the registry host on its own, like "ghcr.io/org/app:1.2.3"`);
+
+  // The digest comes off first: it is the only "@" an image reference may hold,
+  // so splitting here leaves a name that a ":" can be looked for in.
+  const atIndex = value.indexOf("@");
+  const digest = atIndex === -1 ? null : value.slice(atIndex + 1);
+  const beforeDigest = atIndex === -1 ? value : value.slice(0, atIndex);
+  if (digest !== null && !IMAGE_DIGEST_REGEX.test(digest)) {
+    return fail(`image ${JSON.stringify(value)} has an invalid digest — a digest is "sha256:" followed by 64 lowercase hex characters`);
+  }
+
+  // A ":" is a tag separator only AFTER the last "/": before it, it is the port
+  // of a registry host ("localhost:5000/app").
+  const lastSlashIndex = beforeDigest.lastIndexOf("/");
+  const colonIndex = beforeDigest.indexOf(":", lastSlashIndex + 1);
+  const tag = colonIndex === -1 ? null : beforeDigest.slice(colonIndex + 1);
+  const name = colonIndex === -1 ? beforeDigest : beforeDigest.slice(0, colonIndex);
+  if (tag !== null && !IMAGE_TAG_REGEX.test(tag)) {
+    return fail(`image ${JSON.stringify(value)} has an invalid tag — a tag starts with a letter, digit or underscore and may then contain letters, digits, dots, dashes and underscores`);
+  }
+
+  // Naming an image twice over. Accepted by Docker, but it leaves two answers to
+  // "which bytes" in one string, and the deploy has to pick one silently.
+  if (tag !== null && digest !== null) {
+    return fail(`image ${JSON.stringify(value)} names both a tag and a digest — use one or the other, since the digest already says exactly which image to run`);
+  }
+  // An untagged name means ":latest", which is the one reference that is
+  // guaranteed to move. Refused rather than defaulted: the author gets to state
+  // which version they meant, and a service holding a volume must not silently
+  // change major version between deploys.
+  if (tag === null && digest === null) {
+    return fail(`image ${JSON.stringify(value)} has no tag or digest — an image without one means ":latest", which can change between deploys. Write the version you mean, like ${JSON.stringify(`${value}:1.2.3`)}, or pin it by digest`);
+  }
+
+  const components = name.split("/");
+  if (components.some((component) => component === "")) {
+    return fail(`image ${JSON.stringify(value)} has an empty path segment`);
+  }
+  // Docker's own rule for telling a registry host from a repository namespace.
+  const first = components[0];
+  const hasRegistry = components.length > 1 && (first.includes(".") || first.includes(":") || first === "localhost");
+  const registry = hasRegistry ? first : DEFAULT_DEPLOYMENT_IMAGE_REGISTRY;
+  const repositoryComponents = hasRegistry ? components.slice(1) : components;
+  if (hasRegistry && !IMAGE_REGISTRY_HOST_REGEX.test(registry)) {
+    return fail(`image ${JSON.stringify(value)} has an invalid registry host ${JSON.stringify(registry)}`);
+  }
+  if (repositoryComponents.length === 0) return fail(`image ${JSON.stringify(value)} names a registry but no repository`);
+  for (const component of repositoryComponents) {
+    if (!IMAGE_PATH_COMPONENT_REGEX.test(component)) {
+      return fail(`image ${JSON.stringify(value)} has an invalid repository path segment ${JSON.stringify(component)} — repository names are lowercase, and may contain digits, dots, dashes and underscores between them`);
+    }
+  }
+  // `postgres` is `library/postgres`: an unqualified name on the default
+  // registry is an official image, and storing the short spelling would leave
+  // the definition saying something other than what is pulled.
+  const repository = !hasRegistry && repositoryComponents.length === 1
+    ? `${DEFAULT_DEPLOYMENT_IMAGE_NAMESPACE}/${repositoryComponents[0]}`
+    : repositoryComponents.join("/");
+
+  return {
+    ok: true,
+    ref: {
+      registry,
+      repository,
+      tag,
+      digest,
+      canonical: `${registry}/${repository}${digest === null ? `:${tag}` : `@${digest}`}`,
+    },
+  };
+}
 export const deploymentEnvVarSchema = yupObject({
   type: yupString().oneOf(["secret", "connection"]).optional(),
   value: yupString().when("type", ([type], schema) => {
@@ -597,6 +754,38 @@ export const deploymentServiceDefinitionSchema = yupObject({
         && !/[\x00-\x1f]/.test(value)
         && value.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..")
       )),
+  // An already-built image to run instead of building one. Validated with the
+  // shared parser so the deploy file, this schema and the runtime cannot
+  // disagree about what a reference means, and stored CANONICAL so a definition
+  // says what is actually pulled.
+  image: yupString().optional().max(MAX_DEPLOYMENT_IMAGE_REF_LENGTH)
+    // Normalized on the way IN, so what is stored is what is actually pulled and
+    // every write path agrees. Doing it here rather than in each client is what
+    // keeps `postgres:16` from the CLI and `postgres:16` from a direct API call
+    // from becoming two different stored strings for one image.
+    //
+    // A reference that does not parse is passed through untouched, so the test
+    // below reports which rule it broke instead of a confusing cast failure.
+    // (Only write paths validate: rows stored before this existed keep whatever
+    // spelling they were written with.)
+    .transform((value: unknown) => {
+      if (typeof value !== "string") return value;
+      const parsed = parseDeploymentImageRef(value);
+      return parsed.ok ? parsed.ref.canonical : value;
+    })
+    .test("valid-image-ref", "invalid image reference", function (value) {
+      if (value === undefined) return true;
+      const parsed = parseDeploymentImageRef(value);
+      // The parser's message is the whole point of it — surfaced verbatim rather
+      // than collapsed into "invalid image reference", which would leave the
+      // author to guess which of a dozen rules they broke.
+      return parsed.ok || this.createError({ message: parsed.message });
+    })
+    .test("image-excludes-source-build", "a service either names an `image` to run or is built from your source with `root_directory`/`dockerfile_path` — it cannot do both", function (value) {
+      if (value === undefined) return true;
+      const parent = this.parent as { root_directory?: string, dockerfile_path?: string };
+      return parent.root_directory === undefined && parent.dockerfile_path === undefined;
+    }),
   // `devCommand` is a config-file-only field: `hexclave dev --service-id`
   // reads it straight out of the local deploy file, and the backend never acts
   // on it, so it is never sent and never stored. Rejected rather than simply
@@ -628,6 +817,80 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts all env var 
       API_INTERNAL_URL: { type: "connection", value: "api.url:8080" },
     },
   }, { abortEarly: false })).resolves.toBeDefined();
+});
+
+import.meta.vitest?.test("parseDeploymentImageRef fully qualifies every accepted spelling", ({ expect }) => {
+  const parse = (value: string) => {
+    const result = parseDeploymentImageRef(value);
+    if (!result.ok) throw new Error(`expected ${value} to parse, got: ${result.message}`);
+    return result.ref;
+  };
+  // An unqualified name is an official image on the default registry, and is
+  // stored as such: the definition must say what is actually pulled.
+  expect(parse("postgres:16")).toMatchObject({ registry: "docker.io", repository: "library/postgres", tag: "16", digest: null, canonical: "docker.io/library/postgres:16" });
+  expect(parse("myorg/app:1.2.3")).toMatchObject({ registry: "docker.io", repository: "myorg/app", canonical: "docker.io/myorg/app:1.2.3" });
+  // A first component that looks like a host IS one; one that does not is a
+  // repository namespace. That is the only thing telling the two apart.
+  expect(parse("ghcr.io/org/app:1.2.3")).toMatchObject({ registry: "ghcr.io", repository: "org/app" });
+  expect(parse("registry.example.com:5000/team/app:v1")).toMatchObject({ registry: "registry.example.com:5000", repository: "team/app", tag: "v1" });
+  expect(parse("localhost:5000/app:v1")).toMatchObject({ registry: "localhost:5000", repository: "app" });
+  // A deep repository path keeps every segment.
+  expect(parse("gcr.io/project/team/app:v1")).toMatchObject({ registry: "gcr.io", repository: "project/team/app" });
+  // A digest is a reference in its own right and needs no tag.
+  const digest = `sha256:${"a".repeat(64)}`;
+  expect(parse(`postgres@${digest}`)).toMatchObject({ tag: null, digest, canonical: `docker.io/library/postgres@${digest}` });
+});
+
+import.meta.vitest?.test("parseDeploymentImageRef refuses references that would not name fixed bytes", ({ expect }) => {
+  const message = (value: string) => {
+    const result = parseDeploymentImageRef(value);
+    if (result.ok) throw new Error(`expected ${value} to be rejected`);
+    return result.message;
+  };
+  // The headline rule: an untagged name means ":latest", which is exactly the
+  // reference a publisher moves. The author says which version they meant.
+  expect(message("postgres")).toMatch(/no tag or digest/);
+  expect(message("ghcr.io/org/app")).toMatch(/no tag or digest/);
+  // An EXPLICIT :latest is allowed — it is pinned to a digest at deploy time
+  // like any other tag, and the author has stated what they want.
+  expect(parseDeploymentImageRef("postgres:latest").ok).toBe(true);
+  // Two answers to "which bytes" in one string.
+  expect(message(`postgres:16@sha256:${"a".repeat(64)}`)).toMatch(/both a tag and a digest/);
+  expect(message("postgres@sha256:abc")).toMatch(/invalid digest/);
+  expect(message("postgres@md5:abc")).toMatch(/invalid digest/);
+  // Repository names are lowercase; an uppercase one fails at the registry with
+  // a far worse error than this.
+  expect(message("Postgres:16")).toMatch(/invalid repository path segment/);
+  expect(message("ghcr.io/Org/app:1")).toMatch(/invalid repository path segment/);
+  expect(message("https://ghcr.io/org/app:1")).toMatch(/must not have a scheme/);
+  expect(message("ghcr.io//app:1")).toMatch(/empty path segment/);
+  expect(message("postgres:.16")).toMatch(/invalid tag/);
+  expect(message("")).toMatch(/must not be empty/);
+  expect(message("postgres :16")).toMatch(/whitespace/);
+});
+
+import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts an image service and refuses one that also builds", async ({ expect }) => {
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: { "5432": { protocol: "tcp" } }, image: "postgres:16",
+    persistent_volumes: { pgdata: { path: "/data", size_gb: 10 } },
+    env: { POSTGRES_PASSWORD: { type: "secret", key: "POSTGRES_PASSWORD" } },
+    // Normalized by the schema itself, so every write path stores the reference
+    // that is actually pulled rather than whichever spelling the client used.
+  }, { abortEarly: false })).resolves.toMatchObject({ image: "docker.io/library/postgres:16" });
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: {}, image: "ghcr.io/org/app:1.2.3", env: {},
+  }, { abortEarly: false })).resolves.toMatchObject({ image: "ghcr.io/org/app:1.2.3" });
+  // The parser's own message survives validation rather than being flattened.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: {}, image: "postgres", env: {},
+  }, { abortEarly: false })).rejects.toThrow(/no tag or digest/);
+  // Either the image says what to run, or the source fields say what to build.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: {}, image: "postgres:16", root_directory: "./database", env: {},
+  }, { abortEarly: false })).rejects.toThrow(/cannot do both/);
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: {}, image: "postgres:16", dockerfile_path: "Dockerfile", env: {},
+  }, { abortEarly: false })).rejects.toThrow(/cannot do both/);
 });
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema requires explicit port protocols and defaults a service to private", async ({ expect }) => {

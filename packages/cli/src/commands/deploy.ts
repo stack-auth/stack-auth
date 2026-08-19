@@ -213,6 +213,10 @@ export async function packageAndUploadSource(options: {
   const packaged = packageSourceDirectory(sourceRoot);
 
   for (const service of services.values()) {
+    // A service that names an already-built image is not built from this tree at
+    // all, so neither the Dockerfile pre-flight nor the Railpack note below
+    // applies to it — and a stray Dockerfile beside it is not a mistake.
+    if (service.definition.image !== undefined) continue;
     const dockerfilePath = service.definition.dockerfile_path;
     if (dockerfilePath === undefined) {
       // No dockerfilePath means Railpack auto-detection — an existing Dockerfile is
@@ -500,16 +504,27 @@ export function registerDeployCommand(program: Command) {
       }
 
       // ONE upload for the whole deployment source, and one build of every
-      // service from it.
+      // service from it — but only if anything is actually built. A deploy set
+      // that is entirely prebuilt images has nothing to send: no packaging, no
+      // upload, and no builder machine on the other end.
+      //
+      // Keyed on the DEPLOY SET rather than on the whole file, so
+      // `hexclave deploy --service-id database` skips the upload even in a repo
+      // whose other services are built from source.
+      const buildsFromSource = deploySet.some((serviceId) => services.get(serviceId)?.definition.image === undefined);
       const sourceRoot = path.dirname(deploySource.path);
-      const uploadId = await packageAndUploadSource({ auth, authHeaders, sourceRoot, services });
+      const uploadId = buildsFromSource
+        ? await packageAndUploadSource({ auth, authHeaders, sourceRoot, services })
+        : undefined;
 
       console.error("Starting deployment...");
       const deploymentResponse = await deployApiFetch(auth, authHeaders, "/deployments/deployments", {
         method: "POST",
         jsonBody: {
           source_id: sourceId,
-          upload_id: uploadId,
+          // Omitted entirely when nothing is built from source; the backend
+          // requires it exactly when at least one service needs a build.
+          ...(uploadId === undefined ? {} : { upload_id: uploadId }),
           definition_sync_id: definitionSyncId,
           levels,
           // The `secret()` defaults ride along with the deploy instead of being
@@ -529,7 +544,7 @@ export function registerDeployCommand(program: Command) {
         throw new CliError("Unexpected response from the Hexclave API when starting the deployment.");
       }
       const deploymentId = deploymentResponse.id;
-      console.error(`Deployment #${deploymentResponse.number} started. Waiting for the remote build...`);
+      console.error(`Deployment #${deploymentResponse.number} started. ${buildsFromSource ? "Waiting for the remote build..." : "Nothing to build — waiting for the services to come up..."}`);
 
       // try/finally: the deployment row exists from here on, and a client that
       // dies leaves it reading as in-flight forever — so whatever happens, the

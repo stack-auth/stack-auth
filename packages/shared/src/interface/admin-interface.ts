@@ -57,6 +57,10 @@ export type AdminDeploymentServiceOutcomeJson = {
   status: "pending" | "building" | "deploying" | "deployed" | "failed" | "skipped",
   url: string | null,
   revision: string | null,
+  // The digest-pinned image this deploy actually ran for the service — what its
+  // build pushed, or what its `image` reference resolved to. Null until the
+  // apply has happened, and on deployments from before this was recorded.
+  image: string | null,
   error: string | null,
 };
 
@@ -122,6 +126,11 @@ export type AdminDeploymentServiceJson = {
   root_directory: string | null,
   // Null = built with Railpack auto-detection rather than a Dockerfile.
   dockerfile_path: string | null,
+  // The already-built image this service runs, canonical and fully qualified
+  // ("docker.io/library/postgres:16"), as the deploy file named it. Null = the
+  // service is built from source, in which case the two fields above say how.
+  // The two are mutually exclusive.
+  image: string | null,
   // Null = no persistent disk (an ephemeral container filesystem). Otherwise a
   // single-entry record keyed by volume id, which names a disk owned by the
   // deployment source — it outlives the service that mounts it. Mirrors

@@ -188,6 +188,7 @@ export function definitionFromServiceRow(row: {
   maxInstances: number | null,
   rootDirectory: string | null,
   dockerfilePath: string | null,
+  image: string | null,
   env: Prisma.JsonValue,
 }, volume: { volumeId: string, path: string | null, sizeGb: number } | null = null): DeploymentServiceDefinition {
   if (row.type !== "server" && row.type !== "serverless") {
@@ -205,6 +206,7 @@ export function definitionFromServiceRow(row: {
     max_instances: row.maxInstances ?? undefined,
     root_directory: row.rootDirectory ?? undefined,
     dockerfile_path: row.dockerfilePath ?? undefined,
+    image: row.image ?? undefined,
     // A volume row with no mount path is unattached — it belongs to the source
     // rather than to this service, so it is not part of the definition.
     persistent_volumes: volume !== null && volume.path !== null
@@ -515,6 +517,9 @@ export async function syncSourceServices(
       maxInstances: definition.max_instances ?? null,
       rootDirectory: definition.root_directory ?? null,
       dockerfilePath: definition.dockerfile_path ?? null,
+      // Null = built from source. The schema has already refused a definition
+      // that sets this alongside either field above.
+      image: definition.image ?? null,
       // The yup-validated env may contain explicit `undefined` fields, which
       // aren't valid JSON values; filter each entry at this boundary. Spelled
       // out field-by-field so the result is a Prisma-storable entry array
@@ -1171,6 +1176,12 @@ export type DeploymentServiceOutcome = {
   status: "pending" | "building" | "deploying" | "deployed" | "failed" | "skipped",
   url?: string | null,
   revision?: string | null,
+  // The digest-pinned image this deploy actually ran for the service — what its
+  // build pushed, or what its `image` reference resolved to. Null until the
+  // apply has happened. Recorded per DEPLOYMENT rather than on the service,
+  // because it is the answer to "what did this deploy ship", which a later
+  // deploy must not overwrite.
+  image?: string | null,
   error?: string | null,
 };
 
@@ -1191,6 +1202,9 @@ function parseStoredOutcomes(services: Prisma.JsonValue): Map<string, Deployment
       status: status === "building" || status === "deploying" || status === "deployed" || status === "failed" || status === "skipped" ? status : "pending",
       url: typeof outcome.url === "string" ? outcome.url : null,
       revision: typeof outcome.revision === "string" ? outcome.revision : null,
+      // Absent on rows written before deploys recorded it, which reads the same
+      // as an apply that has not happened yet.
+      image: typeof outcome.image === "string" ? outcome.image : null,
       error: typeof outcome.error === "string" ? outcome.error : null,
     });
   }
@@ -1218,7 +1232,9 @@ export async function startDeployment(options: {
   levels: string[][],
   definitionsByServiceId: Map<string, DeploymentServiceDefinition>,
   resolvedEnvByServiceId: Map<string, Record<string, MarshalEnvValue>>,
-  marshalUploadId: string,
+  // Absent when every target names an already-built image: nothing is built, so
+  // there is no source archive for the runtime to consume.
+  marshalUploadId: string | undefined,
 }): Promise<void> {
   const { tenancy, prisma, deploymentId, source, levels, definitionsByServiceId, resolvedEnvByServiceId, marshalUploadId } = options;
   const client = getMarshalClientOrThrow();
@@ -1231,6 +1247,9 @@ export async function startDeployment(options: {
       service_key: serviceId,
       ...(definition.root_directory !== undefined ? { root_directory: definition.root_directory } : {}),
       ...(definition.dockerfile_path !== undefined ? { dockerfile_path: definition.dockerfile_path } : {}),
+      // A target with an image is not built: the runtime resolves the reference
+      // to a digest and applies it, and never looks at the upload for it.
+      ...(definition.image !== undefined ? { image: definition.image } : {}),
       spec: marshalSpecForDefinition(definition, resolvedEnv),
     };
   });
@@ -1238,7 +1257,7 @@ export async function startDeployment(options: {
   let result: MarshalDeployment;
   try {
     result = await client.startSourceDeployment(ns, source.sourceId, {
-      upload_id: marshalUploadId,
+      ...(marshalUploadId === undefined ? {} : { upload_id: marshalUploadId }),
       targets,
       order: levels,
     });
@@ -1250,6 +1269,10 @@ export async function startDeployment(options: {
     where: { tenancyId_id: { tenancyId: tenancy.id, id: deploymentId } },
     data: {
       marshalBuildId: result.id,
+      // Taken from the runtime rather than inferred here: it is the runtime that
+      // decides whether a builder machine ran, and it says so on the deployment
+      // it just accepted.
+      hasBuildLogs: result.has_logs,
       status: marshalDeploymentStatus(result),
       services: outcomesFromMarshal(result, levels.flat()),
     },
@@ -1310,6 +1333,7 @@ function outcomesFromMarshal(deployment: MarshalDeployment, plannedServiceIds: s
       status: reported.status,
       url: reported.url,
       revision: reported.revision,
+      image: reported.image,
       error: reported.error,
     };
   }
@@ -1468,6 +1492,9 @@ export type DeploymentApiShape = {
     status: DeploymentServiceOutcome["status"],
     url: string | null,
     revision: string | null,
+    // The digest-pinned image this deploy ran for the service. Null until its
+    // apply has happened (and on deployments from before this was recorded).
+    image: string | null,
     error: string | null,
   }[],
 };
@@ -1487,6 +1514,10 @@ export type DeploymentServiceApiShape = {
   root_directory: string | null,
   // Null = built with Railpack auto-detection rather than a Dockerfile.
   dockerfile_path: string | null,
+  // The already-built image this service runs, as the deploy file named it
+  // (canonical and fully qualified, e.g. "docker.io/library/postgres:16"). Null =
+  // the service is built from source, in which case the two fields above say how.
+  image: string | null,
   // Null = no persistent disk (an ephemeral container filesystem). Otherwise a
   // single-entry record keyed by volume id.
   persistent_volumes: Record<string, { path: string, size_gb: number }> | null,
@@ -1521,6 +1552,7 @@ export function deploymentToApiShape(deployment: {
   finishedAt: Date | null,
   error: string | null,
   marshalBuildId: string | null,
+  hasBuildLogs: boolean,
   plannedServiceIds: Prisma.JsonValue,
   services: Prisma.JsonValue,
   source: { sourceId: string },
@@ -1541,7 +1573,9 @@ export function deploymentToApiShape(deployment: {
     error: deployment.error,
     // The build is what produces a log, so a deployment the runtime never
     // accepted has none to offer.
-    has_build_logs: deployment.marshalBuildId !== null,
+    // Both halves matter: a deployment the runtime never accepted has no log to
+    // fetch, and one that built nothing produced no log to fetch.
+    has_build_logs: deployment.marshalBuildId !== null && deployment.hasBuildLogs,
     services: serviceIds.map((serviceId) => {
       const outcome = outcomes.get(serviceId) ?? { status: "pending" as const };
       return {
@@ -1549,6 +1583,7 @@ export function deploymentToApiShape(deployment: {
         status: outcome.status,
         url: outcome.url ?? null,
         revision: outcome.revision ?? null,
+        image: outcome.image ?? null,
         error: outcome.error ?? null,
       };
     }),
@@ -1662,6 +1697,7 @@ export async function serviceToApiShape(options: {
     max_instances: row.maxInstances,
     root_directory: row.rootDirectory,
     dockerfile_path: row.dockerfilePath,
+    image: row.image,
     persistent_volumes: definition.persistent_volumes ?? null,
     provisioned: row.provisionedAt != null,
     status,

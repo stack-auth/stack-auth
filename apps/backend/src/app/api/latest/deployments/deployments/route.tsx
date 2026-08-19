@@ -93,7 +93,12 @@ export const POST = createSmartRouteHandler({
         .defined()
         .max(MAX_DEPLOYMENT_SOURCE_ID_LENGTH, "deployment source ids may be at most ${max} characters long")
         .matches(DEPLOYMENT_SOURCE_ID_REGEX, "deployment source ids must contain only letters, numbers, underscores, dots, and hyphens (not starting with a dot or hyphen)"),
-      upload_id: yupString().uuid().defined(),
+      // Optional: a deployment whose every service names an already-built image
+      // builds nothing, so there is no source tarball to consume. Required
+      // exactly when at least one planned service is built from source, which is
+      // checked against the stored definitions below rather than here — the
+      // schema cannot see them.
+      upload_id: yupString().uuid().optional(),
       definition_sync_id: yupString().uuid().defined(),
       // The services to deploy, grouped into dependency LEVELS: everything in
       // one level is applied concurrently, and a level starts only once the
@@ -164,6 +169,21 @@ export const POST = createSmartRouteHandler({
       definitionsByServiceId.set(serviceId, definitionFromServiceRow(row, await getServiceVolume(prisma, auth.tenancy, serviceId)));
     }
 
+    // Whether anything is BUILT decides whether an upload is required. Read from
+    // the stored definitions rather than trusted from the request: the upload is
+    // what the builder consumes, so "is there a build" and "is there a tarball"
+    // must be answered from one source.
+    const buildsFromSource = [...definitionsByServiceId.values()].some((definition) => definition.image === undefined);
+    if (buildsFromSource && body.upload_id === undefined) {
+      throw new StatusError(400, "This deployment builds at least one service from source, so it needs an uploaded source archive. Create an upload (POST /deployments/uploads) and send its id as `upload_id`.");
+    }
+    if (!buildsFromSource && body.upload_id !== undefined) {
+      // Refused rather than ignored: accepting it would consume (or strand) an
+      // upload that nothing can ever build from, and it means the client and the
+      // stored definitions disagree about what this deploy is.
+      throw new StatusError(400, "Every service in this deployment runs an already-built image, so there is nothing to build and `upload_id` must be omitted.");
+    }
+
     // Re-check the plan against the STORED definitions. The sync checks too, but
     // only as CLI UX — this is the actual entitlement boundary, since a stored
     // definition can outlive the plan that was allowed to create it.
@@ -200,20 +220,26 @@ export const POST = createSmartRouteHandler({
     const redactionSecretsEncrypted = await encryptDeploymentRedactionSecrets([...redactionSecrets]);
 
     // Consume the upload before doing anything slow: this makes replaying the
-    // same deploy request fail fast instead of deploying twice.
-    const upload = await prisma.deploymentSourceUpload.findUnique({
-      where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.upload_id } },
-    });
-    if (upload == null || upload.expiresAt < new Date()) {
-      throw new StatusError(404, "Upload not found or expired. Create a new upload and try again.");
-    }
-    // deleteMany (not delete) so a concurrent duplicate request loses the race
-    // with a clean 4xx instead of an unhandled P2025 500.
-    const consumed = await prisma.deploymentSourceUpload.deleteMany({
-      where: { tenancyId: auth.tenancy.id, id: body.upload_id },
-    });
-    if (consumed.count === 0) {
-      throw new StatusError(409, "This upload was already consumed by another deploy request.");
+    // same deploy request fail fast instead of deploying twice. An all-prebuilt
+    // deployment has no upload at all, and so also no duplicate-request fence —
+    // it starts no builder and applies images that are already immutable, so a
+    // replay converges on the same thing rather than building twice.
+    let upload: { id: string, marshalUploadId: string, expiresAt: Date } | null = null;
+    if (body.upload_id !== undefined) {
+      upload = await prisma.deploymentSourceUpload.findUnique({
+        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.upload_id } },
+      });
+      if (upload == null || upload.expiresAt < new Date()) {
+        throw new StatusError(404, "Upload not found or expired. Create a new upload and try again.");
+      }
+      // deleteMany (not delete) so a concurrent duplicate request loses the race
+      // with a clean 4xx instead of an unhandled P2025 500.
+      const consumed = await prisma.deploymentSourceUpload.deleteMany({
+        where: { tenancyId: auth.tenancy.id, id: body.upload_id },
+      });
+      if (consumed.count === 0) {
+        throw new StatusError(409, "This upload was already consumed by another deploy request.");
+      }
     }
 
     // SERIALIZABLE: the deployment number is `max + 1` within the tenancy, so
@@ -240,7 +266,7 @@ export const POST = createSmartRouteHandler({
         levels: body.levels,
         definitionsByServiceId,
         resolvedEnvByServiceId,
-        marshalUploadId: upload.marshalUploadId,
+        marshalUploadId: upload?.marshalUploadId,
       });
     } catch (error) {
       // The upload is consumed BEFORE this to fence concurrent duplicates, but
@@ -248,7 +274,7 @@ export const POST = createSmartRouteHandler({
       // in the bucket and the deploy is retryable — so restore the upload row
       // rather than stranding it behind a misleading 404. Best-effort: a
       // concurrent retry may have re-created it.
-      if (upload.expiresAt > new Date()) {
+      if (upload !== null && upload.expiresAt > new Date()) {
         try {
           await prisma.deploymentSourceUpload.create({
             data: { id: upload.id, tenancyId: auth.tenancy.id, marshalUploadId: upload.marshalUploadId, expiresAt: upload.expiresAt },

@@ -68,6 +68,7 @@ import {
   connectionRequiresTargetDeployed,
   formatConnectionValue,
   parseConnectionValue,
+  parseDeploymentImageRef,
   DEPLOYMENT_PORT_KEY_REGEX,
   deploymentPortEntries,
   deploymentPortEntry,
@@ -327,7 +328,7 @@ export type EvaluatedServices = {
 
 const KNOWN_SERVICE_FIELDS = new Set([
   "type", "public", "ports", "minInstances", "maxInstances",
-  "rootDirectory", "dockerfilePath", "devCommand", "persistentVolumes", "env",
+  "rootDirectory", "dockerfilePath", "image", "devCommand", "persistentVolumes", "env",
 ]);
 const KNOWN_VOLUME_FIELDS = new Set(["path", "sizeGb"]);
 
@@ -699,6 +700,28 @@ export function evaluateDeploymentConfig(options: {
     const isPublic = record.public === true;
     const ports = evaluatePorts(serviceId, isPublic, record.ports);
 
+    // A service either names an already-built `image` or is built from the
+    // uploaded source. Checked on the RAW record rather than on the resolved
+    // values below, because `rootDirectory` resolves to a default and would
+    // otherwise look present on every service.
+    const imageRaw = readOptionalStringField(record, serviceId, "image");
+    let image: string | undefined;
+    if (imageRaw !== undefined) {
+      for (const conflicting of ["rootDirectory", "dockerfilePath"] as const) {
+        if (record[conflicting] !== undefined) {
+          throw new CliError(`deploy.services.${serviceId} sets both \`image\` and \`${conflicting}\`. A service either runs an already-built image or is built from your source — remove \`${conflicting}\` to run ${JSON.stringify(imageRaw)}, or remove \`image\` to build it.`);
+        }
+      }
+      const parsed = parseDeploymentImageRef(imageRaw);
+      if (!parsed.ok) {
+        // The shared parser phrases the rule; this only says where it was broken.
+        throw new CliError(`deploy.services.${serviceId}: ${parsed.message}.`);
+      }
+      // Normalized rather than stored verbatim, so the definition names what is
+      // actually pulled: `postgres:16` is `docker.io/library/postgres:16`.
+      image = parsed.ref.canonical;
+    }
+
     const rootDirectoryRaw = readOptionalStringField(record, serviceId, "rootDirectory");
     const absoluteRootDirectory = path.resolve(deployFileDirectory, rootDirectoryRaw ?? ".");
     const relativeRootDirectory = path.relative(deployFileDirectory, absoluteRootDirectory);
@@ -785,10 +808,19 @@ export function evaluateDeploymentConfig(options: {
         // Stored/displayed as a config-directory-relative posix path ("." for
         // the config directory itself) — an absolute local path would be
         // meaningless (and leak local filesystem layout) server-side.
-        root_directory: relativeRootDirectory === "" ? "." : relativeRootDirectory.split(path.sep).join("/"),
+        //
+        // Both source fields are omitted entirely for an image service: it is
+        // not built from the upload, so a root directory within it would be a
+        // path to nothing. (`absoluteRootDirectory` below is still the deploy
+        // file's own directory, because `hexclave dev` runs `devCommand` there
+        // — that is a local concern and never leaves this machine.)
+        root_directory: image === undefined ? (relativeRootDirectory === "" ? "." : relativeRootDirectory.split(path.sep).join("/")) : undefined,
         // Posix path within the uploaded tree — `rootDirectory` already joined
         // on. Absent = Railpack auto-detection.
         dockerfile_path: dockerfilePath,
+        // An already-built image to run instead of building one. Nothing is
+        // built or uploaded for this service.
+        image,
         // Absent = the container filesystem is entirely ephemeral.
         persistent_volumes: persistentVolumes,
         env: serializeEnvForWire(env),

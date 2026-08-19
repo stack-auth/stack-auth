@@ -12,6 +12,8 @@ import { computeRevision } from "./revision.js";
 import { reconcilePublicIps } from "./public-networking.js";
 import { createDeployment, deleteSpecConditionally, deleteUpload, deleteValidatedUpload, listDomainClaimsForService, listSpecKeys, readDeployment, readDeploymentVersioned, readDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, replaceDeployment, statUpload, writeDeploymentLog, writeSpec, writeValidatedUpload } from "./store.js";
 import { validateSourceArchive } from "./source-archive.js";
+import { validateImageRef } from "./image-ref.js";
+import { resolveImage } from "./registry.js";
 import { portEntries, type Deployment, type DeploymentServiceState, type DeploymentTarget, type DnsRecord, type EnvValue, type PortEntry, type PortsConfig, type ServiceDomainState, type ServiceSpec, type ServiceState, type StoredDeployment, type StoredSpec, type VolumeConfig } from "./types.js";
 import { ulid } from "./ulid.js";
 
@@ -964,11 +966,15 @@ function sourceLeaseKey(sourceId: string): string {
   return `source:${sourceId}`;
 }
 
-export function validateDeploymentRequest(body: unknown): { uploadId: string, targets: DeploymentTarget[], order: string[][] } {
+export function validateDeploymentRequest(body: unknown): { uploadId: string | null, targets: DeploymentTarget[], order: string[][] } {
   const record = asRecord(body);
   if (record === null) throw badRequest("request body must be an object");
-  const uploadId = record.upload_id;
-  if (typeof uploadId !== "string" || !UPLOAD_ID_REGEX.test(uploadId)) throw badRequest("upload_id must be a UUID");
+  // Optional: a deployment whose every target names a prebuilt image builds
+  // nothing, so there is no archive to consume. Whether it is REQUIRED depends on
+  // the targets, so that check comes after they are parsed.
+  const uploadIdRaw = record.upload_id;
+  const uploadId = uploadIdRaw === undefined || uploadIdRaw === null ? null : uploadIdRaw;
+  if (uploadId !== null && (typeof uploadId !== "string" || !UPLOAD_ID_REGEX.test(uploadId))) throw badRequest("upload_id must be a UUID");
   if (!Array.isArray(record.targets) || record.targets.length === 0) throw badRequest("targets must be a non-empty array");
   if (record.targets.length > MAX_TARGETS_PER_DEPLOYMENT) throw badRequest(`a deployment may declare at most ${MAX_TARGETS_PER_DEPLOYMENT} targets`);
 
@@ -981,6 +987,15 @@ export function validateDeploymentRequest(body: unknown): { uploadId: string, ta
     // field is refused rather than escaped.
     const rootDirectory = validateOptionalRelativePath(target.root_directory, `target ${serviceKey} root_directory`);
     const dockerfilePath = validateOptionalRelativePath(target.dockerfile_path, `target ${serviceKey} dockerfile_path`);
+    // A target either takes part in the build or names an image to run. Parsed
+    // (not merely pattern-checked) so the reference is stored fully qualified and
+    // the resolver below knows which registry to ask.
+    const image = target.image === undefined || target.image === null
+      ? undefined
+      : validateImageRef(target.image, `target ${serviceKey} image`).canonical;
+    if (image !== undefined && (rootDirectory !== undefined || dockerfilePath !== undefined)) {
+      throw badRequest(`target ${serviceKey} names an image and a source build (root_directory/dockerfile_path); a target is one or the other`);
+    }
     // The spec arrives without a source: the image does not exist yet. It is
     // validated in full anyway (ports, bounds, env, volumes) so a bad spec is a
     // 400 on THIS request rather than a failure after a five-minute build.
@@ -991,6 +1006,7 @@ export function validateDeploymentRequest(body: unknown): { uploadId: string, ta
       service_key: serviceKey,
       ...(rootDirectory !== undefined ? { root_directory: rootDirectory } : {}),
       ...(dockerfilePath !== undefined ? { dockerfile_path: dockerfilePath } : {}),
+      ...(image !== undefined ? { image } : {}),
       spec: { config: spec.config, env: spec.env },
     };
   });
@@ -1006,6 +1022,13 @@ export function validateDeploymentRequest(body: unknown): { uploadId: string, ta
   if (ordered.length !== keys.length || ordered.some((key) => !keys.includes(key)) || new Set(ordered).size !== ordered.length) {
     throw badRequest("order must list every target exactly once");
   }
+  // The upload is required exactly when something is built from it, and refused
+  // when nothing is: an upload nothing can build from would be consumed (and its
+  // bytes copied) for no reason, and it means the caller and the targets disagree
+  // about what this deployment is.
+  const buildsFromSource = targets.some((target) => target.image === undefined);
+  if (buildsFromSource && uploadId === null) throw badRequest("upload_id is required: at least one target is built from source");
+  if (!buildsFromSource && uploadId !== null) throw badRequest("upload_id must be omitted: every target names an already-built image, so there is nothing to build");
   return { uploadId, targets, order };
 }
 
@@ -1037,29 +1060,59 @@ function validateOptionalRelativePath(value: unknown, label: string): string | u
 export async function startSourceDeployment(ns: string, sourceId: string, body: unknown, builder: Builder): Promise<Deployment> {
   const { uploadId, targets, order } = validateDeploymentRequest(body);
   const config = getConfig();
+  // Targets that need the builder, and targets that already have their image.
+  // Everything below branches on THIS rather than on "does the target have an
+  // image", so that a future source of prebuilt images (one Marshal has to mirror
+  // before it can run, say) changes only what fills these two lists.
+  const buildTargets = targets.filter((target) => target.image === undefined);
+  const prebuiltTargets = targets.filter((target) => target.image !== undefined);
   return await withReconciliationLease(ns, sourceLeaseKey(sourceId), async (lease) => {
     const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
+
+    // Pin every prebuilt image BEFORE anything is created: a tag that does not
+    // resolve — a typo, a deleted repository, an image with no amd64 variant —
+    // is a 400 on this request rather than a deployment that fails at apply.
+    //
+    // Resolved once, here, and never again: the digest is what every apply of
+    // this deployment names, so the bytes cannot change under a redeploy of the
+    // same deployment or under a machine that starts an hour later.
+    const prebuiltImages: Record<string, string> = {};
+    for (const target of prebuiltTargets) {
+      const resolved = await resolveImage(validateImageRef(target.image, `target ${target.service_key} image`));
+      prebuiltImages[target.service_key] = resolved.imageRef;
+    }
 
     // Validate the archive before anything else touches it: the presigned PUT the
     // client used stays valid until it expires, so building from it directly would
     // leave a validation-to-extraction race even after strict tar validation.
-    const upload = await statUpload(ns, uploadId);
-    if (upload === null) throw badRequest(`upload ${JSON.stringify(uploadId)} does not exist (expired, already consumed, or never uploaded)`);
-    if (upload.sizeBytes > MAX_UPLOAD_BYTES) throw badRequest(`upload is ${upload.sizeBytes} bytes; the maximum is ${MAX_UPLOAD_BYTES}`);
-    const archive = await readUpload(ns, uploadId);
-    if (archive === null) throw badRequest(`upload ${JSON.stringify(uploadId)} disappeared before it could be consumed`);
-    await validateSourceArchive(archive);
+    // Skipped entirely when nothing is built — there is no upload in that case
+    // (validateDeploymentRequest refuses one).
+    let validatedArchive: Uint8Array | null = null;
+    if (uploadId !== null) {
+      const upload = await statUpload(ns, uploadId);
+      if (upload === null) throw badRequest(`upload ${JSON.stringify(uploadId)} does not exist (expired, already consumed, or never uploaded)`);
+      if (upload.sizeBytes > MAX_UPLOAD_BYTES) throw badRequest(`upload is ${upload.sizeBytes} bytes; the maximum is ${MAX_UPLOAD_BYTES}`);
+      const archive = await readUpload(ns, uploadId);
+      if (archive === null) throw badRequest(`upload ${JSON.stringify(uploadId)} disappeared before it could be consumed`);
+      await validateSourceArchive(archive);
+      validatedArchive = archive;
+    }
 
     const now = Date.now();
     // Minted from `now` so the id's embedded time never runs ahead of
     // started_at_millis.
     const deploymentId = ulid(now);
+    // Nothing to build means nothing to wait for: the deployment opens straight
+    // in "deploying" and the first read advances it, rather than sitting in
+    // "building" for a webhook that no builder will ever call. It also has no
+    // build log, so `has_logs` says so instead of offering an empty one.
+    const buildsFromSource = buildTargets.length > 0;
     const deployment: StoredDeployment = {
       id: deploymentId,
       ns,
       source_id: sourceId,
-      status: "building",
-      has_logs: true,
+      status: buildsFromSource ? "building" : "deploying",
+      has_logs: buildsFromSource,
       error: null,
       started_at_millis: now,
       finished_at_millis: null,
@@ -1067,12 +1120,21 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
       targets,
       services: Object.fromEntries(targets.map((target) => [target.service_key, {
         service_key: target.service_key,
-        status: "building" as const,
+        // A prebuilt target is never "building": its image already exists. It
+        // waits in "pending" like any service whose turn in the dependency order
+        // has not come — including while a SIBLING builds, since the applies of a
+        // mixed deployment all start once the build lands.
+        status: target.image === undefined ? "building" as const : "pending" as const,
         revision: null,
         url: null,
+        // Filled in by the apply. A prebuilt target's image is already known
+        // (it is in `images`), but this field says what RAN, not what will.
+        image: null,
         error: null,
       }])),
-      images: {},
+      // Prebuilt targets are resolved before the deployment exists; the build
+      // fills in the rest.
+      images: prebuiltImages,
       builder_app: null,
       builder_machine_id: null,
       upload_id: uploadId,
@@ -1080,7 +1142,8 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
 
     // Every target's app must exist BEFORE the build: registry.fly.io only accepts
     // pushes to repositories of existing apps (real-Fly-verified — pushing first
-    // fails with "app repository not found").
+    // fails with "app repository not found"). Prebuilt targets need their app
+    // too, just for the apply rather than for a push.
     const network = networkForNamespace(config.envId, ns);
     for (const target of targets) {
       await lease.assertOwned();
@@ -1092,9 +1155,20 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
     // completion may land at any moment after startBuild, and a blind write
     // afterwards could clobber a terminal record.
     await lease.assertOwned();
-    await writeValidatedUpload(ns, deploymentId, archive);
+    if (validatedArchive !== null) await writeValidatedUpload(ns, deploymentId, validatedArchive);
     await lease.assertOwned();
     if (await createDeployment(deployment) === null) throw new Error(`deployment id collision for ${deploymentId}`);
+
+    // No build, no builder machine, no upload to consume: the deployment is
+    // already "deploying" and the caller's next poll applies its first service.
+    if (!buildsFromSource) {
+      return deploymentToApiShape(await readDeployment(ns, deploymentId) ?? deployment);
+    }
+
+    // Not reachable: `buildsFromSource` is what got us past the early return, and
+    // it is exactly the condition under which validateDeploymentRequest requires
+    // an upload. Stated so the builder call needs no assertion.
+    if (uploadId === null) throw new Error("internal: a source build reached the builder without an upload");
 
     try {
       await lease.assertOwned();
@@ -1102,7 +1176,9 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
         ns,
         deploymentId,
         uploadId,
-        targets: targets.map((target) => ({
+        // Only the targets that are actually built. A prebuilt sibling has no
+        // Dockerfile, nothing to detect, and nothing to push.
+        targets: buildTargets.map((target) => ({
           serviceKey: target.service_key,
           pushTarget: `${config.fly.registryHost}/${appNameForService(config.envId, ns, target.service_key)}:${deploymentId.toLowerCase()}`,
           dockerfilePath: target.dockerfile_path ?? null,
@@ -1130,6 +1206,7 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
       throw error;
     }
     // Consume the upload only once the build owns its own copy of the bytes.
+    // (Non-null: an all-prebuilt deployment returned above, before the builder.)
     await deleteUploadBestEffort(ns, uploadId);
     return deploymentToApiShape(await readDeployment(ns, deploymentId) ?? deployment);
   });
@@ -1160,16 +1237,19 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
  * under-pinned machines (which carries no error) counted as deployed, instead of
  * failing deploys for a transient scale-up.
  */
-export function deploymentStateForApply(serviceKey: string, applied: { revision: string, state: ServiceState }): DeploymentServiceState {
+export function deploymentStateForApply(serviceKey: string, image: string, applied: { revision: string, state: ServiceState }): DeploymentServiceState {
   const failed = applied.state.status === "blocked" || applied.state.status === "failed" || applied.state.error !== null;
   if (!failed) {
-    return { service_key: serviceKey, status: "deployed", revision: applied.revision, url: applied.state.outputs.url ?? null, error: null };
+    return { service_key: serviceKey, status: "deployed", revision: applied.revision, url: applied.state.outputs.url ?? null, image, error: null };
   }
   return {
     service_key: serviceKey,
     status: "failed",
     revision: applied.revision,
     url: null,
+    // Reported on a FAILURE too: "which image" is most of the question when an
+    // apply fails, and the apply did happen with this one.
+    image,
     error: applied.state.error ?? (applied.state.status === "blocked" ? "a connection could not be resolved" : `${serviceKey} failed to deploy`),
   };
 }
@@ -1220,7 +1300,12 @@ export async function completeBuild(options: {
     }
 
     const images = parseBuildImages(options.metadataJson, current.value);
-    const missing = current.value.targets.filter((target) => lookup(images, target.service_key) === undefined).map((target) => target.service_key);
+    // Only the targets that were BUILT need a digest from the build. A prebuilt
+    // target was resolved when the deployment was created and is already in
+    // `images`; asking the build for one would fail every mixed deployment.
+    const missing = current.value.targets
+      .filter((target) => target.image === undefined && lookup(images, target.service_key) === undefined)
+      .map((target) => target.service_key);
     if (missing.length > 0) {
       // The harness reports a digest per target; a missing one means the build
       // ended in a state Marshal cannot map to images, which is a failure rather
@@ -1234,7 +1319,9 @@ export async function completeBuild(options: {
     await replaceDeployment({
       ...current.value,
       status: "deploying",
-      images,
+      // MERGED, not replaced: the prebuilt entries were resolved before the build
+      // started and the build knows nothing about them.
+      images: { ...current.value.images, ...images },
       services: Object.fromEntries(Object.entries(current.value.services).map(([key, service]) => [key, { ...service, status: "pending" as const }])),
     }, current.etag);
     await persistDeploymentLog(flyClientForNamespaceOrg(resolveNamespaceOrg(options.ns)), current.value);
@@ -1261,6 +1348,9 @@ function parseBuildImages(metadataJson: string | null, deployment: StoredDeploym
   const targets = asRecord(asRecord(parsed)?.targets ?? null);
   if (targets === null) return images;
   for (const target of deployment.targets) {
+    // A prebuilt target never entered the build, so a digest reported for it
+    // would not be one this build pushed.
+    if (target.image !== undefined) continue;
     const digest = targets[target.service_key];
     if (typeof digest !== "string" || !/^sha256:[a-f0-9]{64}$/.test(digest)) continue;
     images[target.service_key] = `${config.fly.registryHost}/${appNameForService(config.envId, deployment.ns, target.service_key)}@${digest}`;
@@ -1349,10 +1439,10 @@ async function applyNextService(ns: string, deployment: StoredDeployment, lease:
     let state: DeploymentServiceState;
     try {
       const applied = await applyServiceSpec(ns, next.service_key, { ...target.spec, source: { image } }, { knownTargets });
-      state = deploymentStateForApply(next.service_key, applied);
+      state = deploymentStateForApply(next.service_key, image, applied);
     } catch (error) {
       if (isReconciliationFencingError(error)) throw error;
-      state = { service_key: next.service_key, status: "failed", revision: null, url: null, error: truncateError(error instanceof Error ? error.message : "the deploy failed") };
+      state = { service_key: next.service_key, status: "failed", revision: null, url: null, image, error: truncateError(error instanceof Error ? error.message : "the deploy failed") };
     }
     const updated: StoredDeployment = { ...deployment, services: { ...deployment.services, [next.service_key]: state } };
     if (state.status === "failed") {

@@ -10,6 +10,8 @@ const baseRow = {
   maxInstances: 1,
   rootDirectory: null,
   dockerfilePath: null,
+  // Null = built from source, which is what every row here is.
+  image: null as string | null,
   env: [] as [string, { value: string }][],
 };
 
@@ -127,10 +129,22 @@ describe("deploymentToApiShape", () => {
     finishedAt: null,
     error: null,
     marshalBuildId: "build-1",
+    // A source build, which is what every row here is unless it says otherwise.
+    hasBuildLogs: true,
     plannedServiceIds: ["web", "api"],
     services: { web: { status: "deployed", url: "https://web.example.com" } },
     source: { sourceId: "backend" },
     ...overrides,
+  });
+
+  it("offers build logs only when a build actually ran", () => {
+    // A deployment whose every service ran an already-built image starts no
+    // builder machine, so there is no log — and an affordance for an empty one
+    // is worse than none.
+    expect(deploymentRow().has_build_logs).toBe(true);
+    expect(deploymentRow({ hasBuildLogs: false }).has_build_logs).toBe(false);
+    // ...and neither is there one before the runtime has accepted the deployment.
+    expect(deploymentRow({ marshalBuildId: null }).has_build_logs).toBe(false);
   });
 
   it("reports the deployment source and every planned service, outcome or not", () => {
@@ -140,8 +154,8 @@ describe("deploymentToApiShape", () => {
     // `api` has no outcome yet: it is still pending rather than missing from
     // the list, which is what lets the dashboard show what a deploy will ship.
     expect(shape.services).toEqual([
-      { service_id: "web", status: "deployed", url: "https://web.example.com", revision: null, error: null },
-      { service_id: "api", status: "pending", url: null, revision: null, error: null },
+      { service_id: "web", status: "deployed", url: "https://web.example.com", revision: null, image: null, error: null },
+      { service_id: "api", status: "pending", url: null, revision: null, image: null, error: null },
     ]);
   });
 
@@ -153,12 +167,12 @@ describe("deploymentToApiShape", () => {
   it("keeps an outcome whose service is missing from the plan", () => {
     // A hand-edited row: showing the outcome beats silently dropping it.
     const shape = deploymentRow({ plannedServiceIds: [], services: { ghost: { status: "failed", error: "boom" } } });
-    expect(shape.services).toEqual([{ service_id: "ghost", status: "failed", url: null, revision: null, error: "boom" }]);
+    expect(shape.services).toEqual([{ service_id: "ghost", status: "failed", url: null, revision: null, image: null, error: "boom" }]);
   });
 
   it("survives a plannedServiceIds value that is not a string array", () => {
     expect(deploymentRow({ plannedServiceIds: { nonsense: true } }).services).toEqual([
-      { service_id: "web", status: "deployed", url: "https://web.example.com", revision: null, error: null },
+      { service_id: "web", status: "deployed", url: "https://web.example.com", revision: null, image: null, error: null },
     ]);
   });
 });
@@ -176,7 +190,7 @@ describe("marshal deployment shape", () => {
       error: null,
       started_at_millis: 1,
       finished_at_millis: null,
-      services: [{ service_key: "web", status: "deployed", revision: "rev1", url: null, error: null }],
+      services: [{ service_key: "web", status: "deployed", revision: "rev1", url: null, image: "registry.fly.io/web@sha256:abc", error: null }],
     };
     expect(deployment.services[0].service_key).toBe("web");
   });

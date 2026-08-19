@@ -26,6 +26,11 @@ export type MarshalConfig = {
     region: string,
   },
   builderKind: "fly" | "mock",
+  // Where a prebuilt image's tag is resolved to a digest. "mock" mints a
+  // deterministic fake digest instead of asking a registry, for the same reason
+  // the mock builder does: a local or e2e run must not depend on a public
+  // registry being reachable.
+  registryKind: "real" | "mock",
   s3: {
     endpoint: string,
     region: string,
@@ -70,6 +75,15 @@ export function getConfig(): MarshalConfig {
   }
   if (builderKind === "mock") assertMocksExplicitlyAllowed("the mock builder");
 
+  // Defaults to follow the builder: an environment that mocks its builds is one
+  // with no outbound registry access to depend on either. Still overridable, so
+  // a mock-builder environment can resolve real images if it wants to.
+  const registryKind = env("MARSHAL_REGISTRY", builderKind === "mock" ? "mock" : "real");
+  if (registryKind !== "real" && registryKind !== "mock") {
+    throw new Error(`marshal refuses to start: MARSHAL_REGISTRY must be "real" or "mock" (got ${JSON.stringify(registryKind)})`);
+  }
+  if (registryKind === "mock") assertMocksExplicitlyAllowed("the mock image registry");
+
   const port = Number(env("MARSHAL_PORT", `${portPrefix()}47`));
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(`marshal refuses to start: MARSHAL_PORT must be a valid port number (got ${JSON.stringify(process.env.MARSHAL_PORT)})`);
@@ -92,6 +106,7 @@ export function getConfig(): MarshalConfig {
     dataEncryptionRootKey: parseDataEncryptionRootKey(dataEncryptionKey),
     publicUrl,
     envId: env("MARSHAL_ENV_ID"),
+    registryKind,
     fly: {
       token: flyToken,
       orgSlug: env("MARSHAL_FLY_ORG_SLUG"),
