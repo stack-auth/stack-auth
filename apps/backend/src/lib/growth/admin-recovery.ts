@@ -2,7 +2,7 @@ import { GrowthRunStatus, WorkflowRunState } from "@/generated/prisma/enums";
 import type { Tenancy } from "@/lib/tenancies";
 import { enqueueWorkflowEvent } from "@/lib/workflows/events";
 import { globalPrismaClient } from "@/prisma-client";
-import { runWorkflowEngineStepForTenancy } from "@/lib/workflows/engine";
+import { runWorkflowEngineStep } from "@/lib/workflows/engine";
 import { getGrowthAnalysisSnapshot, tickGrowthAnalysisRun } from "./orchestration";
 import { GROWTH_ANALYSIS_WORKFLOW_ID } from "./workflow-sources";
 import { ensureGrowthWorkflows, getGrowthAnalysisLegRunKeys, GROWTH_EVENT_TYPES } from "./workflows";
@@ -92,7 +92,10 @@ async function driveGrowthLegUntilActive(tenancy: Tenancy, growthRunId: string):
   // measures elapsed time — hence both clocks appearing here.
   const engineDeadlineMs = Date.now() + REPAIR_ENGINE_BUDGET_MS;
   while (true) {
-    const step = await runWorkflowEngineStepForTenancy(tenancy, { deadlineMs: engineDeadlineMs });
+    // The shared cron worker, not scoped to this project: it also advances other tenancies' queued
+    // events and due runs. Its `didWork` therefore says nothing about this project, which is why the
+    // leg lookup below decides the outcome instead.
+    const step = await runWorkflowEngineStep({ deadlineMs: engineDeadlineMs });
     if (await findActiveGrowthLeg(tenancy, growthRunId) != null) return true;
     if (performance.now() - startedAt >= REPAIR_ENGINE_BUDGET_MS) return false;
     // A step that moved nothing and produced no leg means we are waiting on something outside this
