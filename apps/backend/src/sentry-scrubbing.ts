@@ -1,5 +1,5 @@
 import { httpMethodNames } from "@/generated/route-modules";
-import { nicify } from "@hexclave/shared/dist/utils/strings";
+import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
 import type { Event, EventHint } from "@sentry/node";
 
 const knownHttpMethods = new Set<string>(httpMethodNames);
@@ -78,8 +78,8 @@ export function sanitizeBackendSentrySpan(span: BackendSentrySpan): BackendSentr
   return span;
 }
 
-// Dashboard dump, then CLI-style extra scrub. Segment-split so "timeout" does
-// not match "token". Nested secrets under boring keys can still leak.
+// Segment-split so "timeout" does not match "token". Nested secrets under
+// boring keys can still leak.
 const sensitiveDiagnosticKeySegments = new Set([
   "password",
   "passwd",
@@ -108,22 +108,11 @@ const sensitiveDiagnosticKeySegments = new Set([
 ]);
 
 const maxDiagnosticDepth = 8;
-const maxDiagnosticCollectionSize = 50;
-// Sentry does not apply maxValueLength to extras we attach in beforeSend.
-const maxDiagnosticStringLength = 5_000;
-const maxDiagnosticNicifyLength = 20_000;
-const maxDiagnosticPayloadBytes = 100_000;
-
-type DiagnosticBudget = {
-  used: number,
-};
 
 function matchesSensitiveDiagnosticSegment(part: string): boolean {
   if (sensitiveDiagnosticKeySegments.has(part)) {
     return true;
   }
-  // tokens / passwords / secrets / dsns / apiKeys — same as the singular forms
-  // already in the set (credential/credentials were listed explicitly).
   if (part.length > 3 && part.endsWith("es") && sensitiveDiagnosticKeySegments.has(part.slice(0, -2))) {
     return true;
   }
@@ -145,11 +134,8 @@ function isSensitiveDiagnosticKey(key: string): boolean {
   return normalized.split("_").some((part) => part !== "" && matchesSensitiveDiagnosticSegment(part));
 }
 
-function scrubDiagnosticString(value: string, budget: DiagnosticBudget): string {
-  if (budget.used >= maxDiagnosticPayloadBytes) {
-    return "[truncated]";
-  }
-  let scrubbed = value
+function scrubDiagnosticString(value: string): string {
+  const scrubbed = value
     .replaceAll(
       /\b(sk_[A-Za-z0-9_-]+|pk_[A-Za-z0-9_-]+|pck_[A-Za-z0-9_-]+|sak_[A-Za-z0-9_-]+|ssk_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b/g,
       "[redacted]",
@@ -159,232 +145,65 @@ function scrubDiagnosticString(value: string, budget: DiagnosticBudget): string 
     // `https://api.example.com, page ops@company.com`.
     .replaceAll(/:\/\/[^\s/?#]*:[^/?#]*@/g, "://[redacted]@")
     .replaceAll(/:\/\/[^\s/?#@]*@/g, "://[redacted]@");
-  if (scrubbed.length > maxDiagnosticStringLength) {
-    scrubbed = `${scrubbed.slice(0, maxDiagnosticStringLength)}…`;
+  // extras attached in beforeSend skip Sentry's maxValueLength truncation.
+  if (scrubbed.length <= sentryBaseConfig.maxValueLength) {
+    return scrubbed;
   }
-  budget.used += scrubbed.length;
-  if (budget.used > maxDiagnosticPayloadBytes) {
-    return "[truncated]";
-  }
-  return scrubbed;
+  return `${scrubbed.slice(0, sentryBaseConfig.maxValueLength)}…`;
 }
 
-function takeIterable<T>(value: Iterable<T>, limit: number): T[] {
-  const items: T[] = [];
-  for (const item of value) {
-    items.push(item);
-    if (items.length >= limit) {
-      break;
-    }
-  }
-  return items;
-}
-
-function readOwnDataProperty(object: object, key: string): { kind: "missing" } | { kind: "accessor" } | { kind: "value", value: unknown } {
-  const descriptor = Object.getOwnPropertyDescriptor(object, key);
-  if (descriptor == null) {
-    return { kind: "missing" };
-  }
-  if (descriptor.get != null) {
-    return { kind: "accessor" };
-  }
-  if (Object.prototype.hasOwnProperty.call(descriptor, "value")) {
-    return { kind: "value", value: descriptor.value };
-  }
-  return { kind: "missing" };
-}
-
-function scrubOwnEnumerableFields(
-  value: object,
-  seen: WeakSet<object>,
-  depth: number,
-  budget: DiagnosticBudget,
-): unknown {
-  if (depth >= maxDiagnosticDepth || budget.used >= maxDiagnosticPayloadBytes) {
-    return "[truncated]";
-  }
-  if (seen.has(value)) {
-    return "[circular]";
-  }
-  seen.add(value);
-  try {
-    if (Array.isArray(value)) {
-      const entries: unknown[] = [];
-      const limit = Math.min(value.length, maxDiagnosticCollectionSize);
-      for (let index = 0; index < limit; index++) {
-        if (budget.used >= maxDiagnosticPayloadBytes) {
-          entries.push("[truncated]");
-          break;
-        }
-        entries.push(scrubDiagnosticValue(value[index], undefined, seen, depth + 1, budget));
-      }
-      if (value.length > maxDiagnosticCollectionSize && entries.at(-1) !== "[truncated]") {
-        entries.push("[truncated]");
-      }
-      return entries;
-    }
-    const scrubbed = new Map<string, unknown>();
-    let enumerableCount = 0;
-    let truncated = false;
-    for (const nestedKey in value) {
-      if (!Object.prototype.hasOwnProperty.call(value, nestedKey)) {
-        continue;
-      }
-      enumerableCount += 1;
-      if (enumerableCount > maxDiagnosticCollectionSize || budget.used >= maxDiagnosticPayloadBytes) {
-        truncated = true;
-        break;
-      }
-      const own = readOwnDataProperty(value, nestedKey);
-      if (own.kind === "accessor") {
-        scrubbed.set(nestedKey, isSensitiveDiagnosticKey(nestedKey) ? "[redacted]" : "[accessor]");
-        continue;
-      }
-      if (own.kind === "value") {
-        scrubbed.set(nestedKey, scrubDiagnosticValue(own.value, nestedKey, seen, depth + 1, budget));
-      }
-    }
-    if (truncated) {
-      scrubbed.set("[truncated]", true);
-    }
-    return Object.fromEntries(scrubbed);
-  } finally {
-    // Path-local `seen`: diamonds (`{ a: shared, b: shared }`) must dump twice,
-    // not mark the second edge `[circular]`. True cycles still hit `seen` on the
-    // way down, before this unwind.
-    seen.delete(value);
-  }
-}
-
-function scrubDiagnosticValue(
-  value: unknown,
-  key?: string,
-  seen: WeakSet<object> = new WeakSet(),
-  depth = 0,
-  budget: DiagnosticBudget = { used: 0 },
-): unknown {
+function scrubValue(value: unknown, key: string | undefined, depth: number): unknown {
   if (key != null && isSensitiveDiagnosticKey(key) && value != null) {
     return "[redacted]";
   }
-  if (value == null || typeof value === "boolean" || typeof value === "number") {
-    return value;
-  }
   if (typeof value === "string") {
-    return scrubDiagnosticString(value, budget);
+    return scrubDiagnosticString(value);
   }
   if (typeof value === "bigint") {
-    return scrubDiagnosticString(value.toString(), budget);
+    return scrubDiagnosticString(value.toString());
   }
-  if (typeof value === "symbol" || typeof value === "function") {
-    return `[${typeof value}]`;
+  if (value == null || typeof value !== "object") {
+    return value;
+  }
+  if (depth >= maxDiagnosticDepth) {
+    return "[truncated]";
   }
   if (value instanceof Error) {
-    const name = readOwnDataProperty(value, "name");
-    const message = readOwnDataProperty(value, "message");
     return {
-      name: name.kind === "accessor" ? "[accessor]" : name.kind === "value" && typeof name.value === "string" ? name.value : value.constructor.name,
-      message: message.kind === "accessor" ? "[accessor]" : message.kind === "value" && typeof message.value === "string" ? scrubDiagnosticString(message.value, budget) : "",
+      name: value.name,
+      message: scrubDiagnosticString(value.message),
+      ...(value.cause !== undefined ? { cause: scrubValue(value.cause, undefined, depth + 1) } : {}),
     };
-  }
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? "[Invalid Date]" : scrubDiagnosticString(value.toISOString(), budget);
-  }
-  if (value instanceof URL) {
-    return scrubDiagnosticString(value.href, budget);
-  }
-  if (value instanceof RegExp) {
-    return scrubDiagnosticString(value.toString(), budget);
   }
   if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
     return `[bytes ${value.byteLength}]`;
   }
-  if (typeof value !== "object") {
-    return value;
+  if (Array.isArray(value)) {
+    return value.map((entry) => scrubValue(entry, undefined, depth + 1));
   }
-  // Map/Set don't enumerate entries via for-in. Mark the original in `seen`
-  // before converting so a collection that contains itself stays `[circular]`.
-  // Copy at most cap+1 entries so a huge collection cannot allocate unbounded
-  // intermediates; the enumerable walk then applies the usual 50-item truncation.
-  if (value instanceof Map || value instanceof Set) {
-    if (seen.has(value)) {
-      return "[circular]";
-    }
-    seen.add(value);
-    try {
-      const converted = value instanceof Map
-        ? Object.fromEntries(takeIterable(value.entries(), maxDiagnosticCollectionSize + 1).map(([mapKey, mapValue]) => [
-          typeof mapKey === "string" ? mapKey : String(mapKey),
-          mapValue,
-        ]))
-        : takeIterable(value, maxDiagnosticCollectionSize + 1);
-      return scrubOwnEnumerableFields(converted, seen, depth, budget);
-    } finally {
-      seen.delete(value);
-    }
-  }
-  return scrubOwnEnumerableFields(value, seen, depth, budget);
-}
-
-function capNicifiedError(value: string): string {
-  if (value.length <= maxDiagnosticNicifyLength) {
-    return value;
-  }
-  return `${value.slice(0, maxDiagnosticNicifyLength)}…`;
-}
-
-function extrasFromDumpedProps(errorProps: unknown): Record<string, unknown> {
-  if (
-    errorProps != null
-    && typeof errorProps === "object"
-    && !Array.isArray(errorProps)
-    && Object.keys(errorProps).length === 0
-  ) {
-    return {};
-  }
-  return {
-    errorProps,
-    nicifiedError: capNicifiedError(nicify(errorProps, { maxDepth: maxDiagnosticDepth })),
-  };
+  return Object.fromEntries(Object.entries(value).map(([nestedKey, nestedValue]) => [
+    nestedKey,
+    scrubValue(nestedValue, nestedKey, depth + 1),
+  ]));
 }
 
 /**
- * Dashboard dump (cause, enumerable error props, nicify), then key-scrub.
- * Root errorProps walks enumerable own data (extraData) without spreading the
- * Error. Nested Error values stay name/message only. nicify runs on the
- * already-scrubbed tree so its cycle handling stays in the readable dump
- * without re-walking live getters.
+ * `cause` plus `{ ...error }` — extraData is the enumerable own field — then redact.
  */
 function getExceptionExtra(error: unknown): Record<string, unknown> {
-  if (error === undefined) {
+  if (!(error instanceof Error)) {
     return {};
   }
-  const budget: DiagnosticBudget = { used: 0 };
-  const seen = new WeakSet<object>();
-  if (!(error instanceof Error)) {
-    return extrasFromDumpedProps(scrubDiagnosticValue(error, undefined, seen, 0, budget));
-  }
-
-  const errorProps = scrubOwnEnumerableFields(error, seen, 0, budget);
-  const causeProperty = readOwnDataProperty(error, "cause");
-  const cause = causeProperty.kind === "accessor"
-    ? "[accessor]"
-    : causeProperty.kind === "value"
-      ? scrubDiagnosticValue(causeProperty.value, undefined, seen, 0, budget)
-      : undefined;
   return {
-    ...(cause !== undefined ? { cause } : {}),
-    ...extrasFromDumpedProps(errorProps),
+    ...(error.cause !== undefined ? { cause: scrubValue(error.cause, undefined, 0) } : {}),
+    errorProps: scrubValue({ ...error }, undefined, 0),
   };
 }
 
 /**
- * Keep the minimum metadata needed to correlate a backend error while ensuring
- * request bodies, credentials, query values, customer identities, and SQL never
- * cross the Sentry boundary. Clears `extra` entirely — callers that need
- * diagnostics should go through prepareBackendSentryEvent, which rebuilds a
- * scrubbed dump. extraData on HexclaveAssertionError can still mention
- * identities if a caller put them there; this sanitizer only default-denies
- * the request/span/user envelope.
+ * Default-deny the request/span/user envelope. extra is cleared here;
+ * prepareBackendSentryEvent rebuilds a redacted dump. extraData can still
+ * mention identities if a caller put them there.
  */
 export function sanitizeBackendSentryEvent<T extends Event>(event: T): T {
   if (event.request != null) {
@@ -465,8 +284,8 @@ export function sanitizeBackendSentryEvent<T extends Event>(event: T): T {
 }
 
 /**
- * beforeSend entrypoint: scrub request/span PII, then rebuild `extra` as the
- * dashboard dump plus captureError's `location`, then key-scrub that dump.
+ * beforeSend entrypoint: scrub the request/span envelope, then rebuild `extra` from
+ * captureError's `location` plus the redacted exception dump.
  */
 export function prepareBackendSentryEvent<T extends Event>(event: T, hint?: EventHint): T {
   const location = typeof event.extra?.location === "string" ? event.extra.location : undefined;

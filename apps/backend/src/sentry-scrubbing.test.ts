@@ -3,14 +3,6 @@ import type { Event } from "@sentry/node";
 import { describe, expect, it } from "vitest";
 import { prepareBackendSentryEvent, sanitizeBackendSentryEvent } from "./sentry-scrubbing";
 
-function requireEventExtra(event: Event) {
-  const extra = event.extra;
-  if (extra == null) {
-    throw new Error("expected Sentry extra to be set");
-  }
-  return extra;
-}
-
 describe("sanitizeBackendSentryEvent", () => {
   it("removes request and trace data that can contain credentials or PII", () => {
     const event: Event = {
@@ -246,7 +238,7 @@ describe("sanitizeBackendSentryEvent", () => {
       extra: {
         location: "js-execution-freestyle-failed",
         connectionString: "postgres://secret",
-        nicifiedError: "should not survive sanitize alone",
+        leftover: "should not survive sanitize alone",
       },
     });
 
@@ -285,7 +277,7 @@ describe("prepareBackendSentryEvent", () => {
         name: "Error",
         message: "upstream sandbox failure",
       },
-      errorProps: expect.objectContaining({
+      errorProps: {
         extraData: {
           cause: {
             name: "Error",
@@ -294,14 +286,13 @@ describe("prepareBackendSentryEvent", () => {
           innerCode: "<redacted workflow>",
           innerOptions: { timeoutMs: 1_000 },
         },
-      }),
-      nicifiedError: expect.stringContaining("innerCode"),
+      },
     }));
     expect(JSON.stringify(result)).not.toContain("postgres://secret");
     expect(JSON.stringify(result)).not.toContain("token=secret");
   });
 
-  it("redacts credential-shaped keys in the dashboard dump", () => {
+  it("redacts credential-shaped keys in extraData", () => {
     const error = new HexclaveAssertionError(
       "OAuth callback failed",
       {
@@ -323,7 +314,7 @@ describe("prepareBackendSentryEvent", () => {
 
     expect(result.extra).toEqual(expect.objectContaining({
       location: "oauth-callback",
-      errorProps: expect.objectContaining({
+      errorProps: {
         extraData: {
           innerCode: "<safe>",
           password: "[redacted]",
@@ -334,12 +325,9 @@ describe("prepareBackendSentryEvent", () => {
             timeoutMs: 1_000,
           },
         },
-      }),
+      },
     }));
     expect(JSON.stringify(result)).not.toContain("hunter2");
-    const nicifiedError = requireEventExtra(result).nicifiedError;
-    expect(nicifiedError).toEqual(expect.stringContaining("innerCode"));
-    expect(nicifiedError).toEqual(expect.not.stringContaining("hunter2"));
   });
 
   it("redacts plural credential keys", () => {
@@ -355,13 +343,13 @@ describe("prepareBackendSentryEvent", () => {
     );
 
     expect(result.extra).toEqual(expect.objectContaining({
-      errorProps: expect.objectContaining({
+      errorProps: {
         extraData: {
           tokens: "[redacted]",
           passwords: "[redacted]",
           secrets: "[redacted]",
         },
-      }),
+      },
     }));
     expect(JSON.stringify(result)).not.toContain("rawTokenValue");
     expect(JSON.stringify(result)).not.toContain("hunter2");
@@ -378,11 +366,11 @@ describe("prepareBackendSentryEvent", () => {
     );
 
     expect(result.extra).toEqual(expect.objectContaining({
-      errorProps: expect.objectContaining({
+      errorProps: {
         extraData: {
           url: "postgres://[redacted]@db/app",
         },
-      }),
+      },
     }));
     expect(JSON.stringify(result)).not.toContain("hunter2");
   });
@@ -397,40 +385,19 @@ describe("prepareBackendSentryEvent", () => {
     expect(result.extra).toBeUndefined();
   });
 
-  it("truncates deeply nested diagnostic values before nicify", () => {
+  it("truncates deeply nested diagnostic values", () => {
     let nested: unknown = "leaf";
     for (let depth = 0; depth < 20; depth++) {
       nested = { child: nested };
     }
-    const result = prepareBackendSentryEvent(
+    const result: Event = prepareBackendSentryEvent(
       { extra: { location: "deep-error" } },
       { originalException: new HexclaveAssertionError("deep extraData", { nested }) },
     );
 
-    expect(JSON.stringify(requireEventExtra(result).errorProps)).toContain("[truncated]");
-    expect(JSON.stringify(requireEventExtra(result).errorProps)).not.toContain("leaf");
-  });
-
-  it("truncates oversized diagnostic collections before nicify", () => {
-    const result = prepareBackendSentryEvent(
-      { extra: { location: "wide-error" } },
-      {
-        originalException: new HexclaveAssertionError("wide extraData", {
-          items: Array.from({ length: 80 }, (_, index) => index),
-        }),
-      },
-    );
-
-    expect(result.extra).toEqual(expect.objectContaining({
-      errorProps: expect.objectContaining({
-        extraData: expect.objectContaining({
-          items: [
-            ...Array.from({ length: 50 }, (_, index) => index),
-            "[truncated]",
-          ],
-        }),
-      }),
-    }));
+    const errorProps = result.extra?.errorProps;
+    expect(JSON.stringify(errorProps)).toContain("[truncated]");
+    expect(JSON.stringify(errorProps)).not.toContain("leaf");
   });
 
   it("redacts URL userinfo when the password contains @ or space", () => {
@@ -444,108 +411,13 @@ describe("prepareBackendSentryEvent", () => {
     );
 
     expect(result.extra).toEqual(expect.objectContaining({
-      errorProps: expect.objectContaining({
+      errorProps: {
         extraData: {
           url: "postgres://[redacted]@db/app",
         },
-      }),
+      },
     }));
     expect(JSON.stringify(result)).not.toContain("p@ss word");
-  });
-
-  it("stops after 50 enumerable own keys on a wide diagnostic object", () => {
-    const wide: Record<string, number> = {};
-    for (let index = 0; index < 80; index++) {
-      wide[`field${index}`] = index;
-    }
-    const result = prepareBackendSentryEvent(
-      { extra: { location: "wide-object" } },
-      { originalException: new HexclaveAssertionError("wide extraData", wide) },
-    );
-
-    expect(result.extra).toEqual(expect.objectContaining({
-      errorProps: expect.objectContaining({
-        extraData: expect.objectContaining({
-          field0: 0,
-          field49: 49,
-          "[truncated]": true,
-        }),
-      }),
-    }));
-    expect(JSON.stringify(requireEventExtra(result).errorProps)).not.toContain("field50");
-  });
-
-  it("does not invoke throwing enumerable getters while building extras", () => {
-    const extraData = { innerCode: "<safe>" };
-    const error = new HexclaveAssertionError("accessor extraData", extraData);
-    Object.defineProperty(extraData, "boom", {
-      enumerable: true,
-      get() {
-        throw new Error("diagnostic getter should not run");
-      },
-    });
-    Object.defineProperty(error, "explode", {
-      enumerable: true,
-      get() {
-        throw new Error("error getter should not run");
-      },
-    });
-
-    const result = prepareBackendSentryEvent(
-      { extra: { location: "throwing-getter" } },
-      { originalException: error },
-    );
-
-    expect(result.extra).toEqual(expect.objectContaining({
-      location: "throwing-getter",
-      errorProps: expect.objectContaining({
-        explode: "[accessor]",
-        extraData: {
-          innerCode: "<safe>",
-          boom: "[accessor]",
-        },
-      }),
-    }));
-  });
-
-  it("dumps a shared nested object on every path, not as circular", () => {
-    const shared = { leaf: "shared-value" };
-    const result = prepareBackendSentryEvent(
-      { extra: { location: "diamond" } },
-      {
-        originalException: new HexclaveAssertionError("diamond extraData", {
-          a: shared,
-          b: shared,
-        }),
-      },
-    );
-
-    expect(result.extra).toEqual(expect.objectContaining({
-      errorProps: expect.objectContaining({
-        extraData: {
-          a: { leaf: "shared-value" },
-          b: { leaf: "shared-value" },
-        },
-      }),
-    }));
-  });
-
-  it("still marks true cycles as circular", () => {
-    const extraData: Record<string, unknown> = { name: "cycle-root" };
-    extraData.self = extraData;
-    const result = prepareBackendSentryEvent(
-      { extra: { location: "cycle" } },
-      { originalException: new HexclaveAssertionError("cycle extraData", extraData) },
-    );
-
-    expect(result.extra).toEqual(expect.objectContaining({
-      errorProps: expect.objectContaining({
-        extraData: {
-          name: "cycle-root",
-          self: "[circular]",
-        },
-      }),
-    }));
   });
 
   it("does not treat a host followed by a prose email as URL userinfo", () => {
@@ -558,32 +430,14 @@ describe("prepareBackendSentryEvent", () => {
     );
 
     expect(result.extra).toEqual(expect.objectContaining({
-      errorProps: expect.objectContaining({
+      errorProps: {
         extraData: {
           note: prose,
         },
-      }),
+      },
     }));
     expect(JSON.stringify(result)).toContain("api.example.com");
     expect(JSON.stringify(result)).toContain("ops@company.com");
-  });
-
-  it("caps oversized diagnostic strings and nicify output", () => {
-    const huge = "x".repeat(8_000);
-    const result = prepareBackendSentryEvent(
-      { extra: { location: "huge-string" } },
-      { originalException: new HexclaveAssertionError("huge extraData", { dump: huge }) },
-    );
-
-    const extra = requireEventExtra(result);
-    expect(extra.errorProps).toEqual(expect.objectContaining({
-      extraData: {
-        dump: `${"x".repeat(5_000)}…`,
-      },
-    }));
-    expect(JSON.stringify(result)).not.toContain("x".repeat(5_001));
-    expect(typeof extra.nicifiedError).toBe("string");
-    expect((extra.nicifiedError as string).length).toBeLessThanOrEqual(20_000 + 1);
   });
 
   it("redacts backend admin keys and extra credential-shaped fields", () => {
@@ -601,7 +455,7 @@ describe("prepareBackendSentryEvent", () => {
     );
 
     expect(result.extra).toEqual(expect.objectContaining({
-      errorProps: expect.objectContaining({
+      errorProps: {
         extraData: {
           note: "issued [redacted]",
           pwd: "[redacted]",
@@ -609,49 +463,172 @@ describe("prepareBackendSentryEvent", () => {
           otp: "[redacted]",
           signature: "[redacted]",
         },
-      }),
+      },
     }));
     expect(JSON.stringify(result)).not.toContain("sak_abcdefghijklmnopqrstuvwxyz");
     expect(JSON.stringify(result)).not.toContain("hunter2");
     expect(JSON.stringify(result)).not.toContain("123456");
   });
 
-  it("serializes Dates and dumps non-Error throws", () => {
-    const occurredAt = new Date("2026-08-18T12:00:00.000Z");
-    const dateResult = prepareBackendSentryEvent(
-      { extra: { location: "date" } },
-      { originalException: new HexclaveAssertionError("date extraData", { occurredAt }) },
+  it("caps oversized diagnostic strings", () => {
+    const huge = "x".repeat(8_000);
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "huge-string" } },
+      { originalException: new HexclaveAssertionError("huge extraData", { dump: huge }) },
     );
-    expect(dateResult.extra).toEqual(expect.objectContaining({
-      errorProps: expect.objectContaining({
-        extraData: {
-          occurredAt: "2026-08-18T12:00:00.000Z",
-        },
-      }),
-    }));
 
-    const thrownResult = prepareBackendSentryEvent(
-      { extra: { location: "non-error" } },
-      { originalException: { reason: "sandbox-timeout", attempt: 2 } },
-    );
-    expect(thrownResult.extra).toEqual(expect.objectContaining({
-      location: "non-error",
+    expect(result.extra).toEqual(expect.objectContaining({
       errorProps: {
-        reason: "sandbox-timeout",
-        attempt: 2,
+        extraData: {
+          dump: `${"x".repeat(5_000)}…`,
+        },
       },
-      nicifiedError: expect.stringContaining("sandbox-timeout"),
+    }));
+    expect(JSON.stringify(result)).not.toContain("x".repeat(5_001));
+  });
+
+  it("still serializes cyclic extraData", () => {
+    const extraData: Record<string, unknown> = { name: "cycle-root" };
+    extraData.self = extraData;
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "cycle" } },
+      { originalException: new HexclaveAssertionError("cycle extraData", extraData) },
+    );
+
+    const extra = result.extra;
+    expect(JSON.stringify(extra)).toContain("cycle-root");
+    expect(JSON.stringify(extra)).toContain("[truncated]");
+    expect(() => JSON.stringify(extra)).not.toThrow();
+  });
+
+  it("JSON.stringify of extra does not throw on bigint, Date, Buffer, or URL", () => {
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "exotic-types" } },
+      {
+        originalException: new HexclaveAssertionError("exotic extraData", {
+          id: 1n,
+          occurredAt: new Date("2026-08-19T12:00:00.000Z"),
+          payload: Buffer.from("secret-bytes"),
+          href: new URL("postgres://user:hunter2@db/app"),
+        }),
+      },
+    );
+
+    expect(() => JSON.stringify(result.extra)).not.toThrow();
+    expect(result.extra).toEqual(expect.objectContaining({
+      errorProps: {
+        extraData: {
+          id: "1",
+          occurredAt: {},
+          payload: "[bytes 12]",
+          href: {},
+        },
+      },
+    }));
+    expect(JSON.stringify(result)).not.toContain("hunter2");
+    expect(JSON.stringify(result)).not.toContain("secret-bytes");
+  });
+
+  it("redacts userinfo in redis URLs and in query-embedded URLs", () => {
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "url-variants" } },
+      {
+        originalException: new HexclaveAssertionError("url extraData", {
+          redis: "redis://:hunter2@localhost:6379/0",
+          redirect: "https://app.example.com/oauth?next=https://user:hunter2@evil.example.com/cb",
+          pathAt: "https://example.com/@aman",
+        }),
+      },
+    );
+
+    expect(result.extra).toEqual(expect.objectContaining({
+      errorProps: {
+        extraData: {
+          redis: "redis://[redacted]@localhost:6379/0",
+          redirect: "https://app.example.com/oauth?next=https://[redacted]@evil.example.com/cb",
+          pathAt: "https://example.com/@aman",
+        },
+      },
+    }));
+    expect(JSON.stringify(result)).not.toContain("hunter2");
+  });
+
+  it("redacts credential keys inside webhook-shaped nested data", () => {
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "webhook" } },
+      {
+        originalException: new HexclaveAssertionError("Error sending Svix webhook!", {
+          event: "user.created",
+          data: {
+            id: "user_123",
+            authorization: "Bearer hunter2",
+            client_secret: "shhh",
+          },
+        }),
+      },
+    );
+
+    expect(result.extra).toEqual(expect.objectContaining({
+      errorProps: {
+        extraData: {
+          event: "user.created",
+          data: {
+            id: "user_123",
+            authorization: "[redacted]",
+            client_secret: "[redacted]",
+          },
+        },
+      },
+    }));
+    expect(JSON.stringify(result)).not.toContain("hunter2");
+    expect(JSON.stringify(result)).not.toContain("shhh");
+  });
+
+  it("scrubs credential-shaped text in Error messages", () => {
+    const cause = new Error("upstream postgres://user:hunter2@db/app sak_abcdefghijklmnopqrstuvwxyz");
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "cause-message" } },
+      { originalException: new HexclaveAssertionError("wrapped", { cause }) },
+    );
+
+    expect(result.extra).toEqual(expect.objectContaining({
+      cause: {
+        name: "Error",
+        message: "upstream postgres://[redacted]@db/app [redacted]",
+      },
+    }));
+    expect(JSON.stringify(result)).not.toContain("hunter2");
+    expect(JSON.stringify(result)).not.toContain("sak_abcdefghijklmnopqrstuvwxyz");
+  });
+
+  it("dumps a cause chain, not only the first Error", () => {
+    const root = new Error("root failure");
+    const mid = new Error("mid failure", { cause: root });
+    const result = prepareBackendSentryEvent(
+      { extra: { location: "cause-chain" } },
+      { originalException: new HexclaveAssertionError("wrapped", { cause: mid }) },
+    );
+
+    expect(result.extra).toEqual(expect.objectContaining({
+      cause: {
+        name: "Error",
+        message: "mid failure",
+        cause: {
+          name: "Error",
+          message: "root failure",
+        },
+      },
     }));
   });
 
-  it("omits empty errorProps for Errors with no enumerable own data", () => {
+  it("does not dump extra for non-Error throws", () => {
     const result = prepareBackendSentryEvent(
-      { extra: { location: "plain-error" } },
-      { originalException: new Error("plain") },
+      { extra: { location: "non-error" } },
+      { originalException: { reason: "sandbox-timeout" } },
     );
 
     expect(result.extra).toEqual({
-      location: "plain-error",
+      location: "non-error",
     });
   });
 });
