@@ -114,36 +114,49 @@ function getPresentationDocument(options: {
         }
       }
 
-      class ErrorBoundary extends React.Component {
-        constructor(props) {
-          super(props);
-          this.state = { hasError: false };
-        }
-        static getDerivedStateFromError() {
-          return { hasError: true };
-        }
-        componentDidCatch(error, errorInfo) {
-          window.parent.postMessage({
-            type: 'growth-presentation-error',
-            message: error?.message,
-            stack: error?.stack,
-            componentStack: errorInfo?.componentStack,
-            document_id: window.__sandboxDocumentId,
-          }, '*');
-        }
-        render() {
-          // Staff see the message on the admin preview; the customer gets the neutral copy the
-          // parent renders around this frame, so there is nothing to show in place of the report.
-          return this.state.hasError ? null : this.props.children;
-        }
-      }
-
       const rootElement = document.getElementById('root');
       if (!rootElement) {
         throw new Error('Presentation root element not found');
       }
 
       waitForDeps().then(() => {
+        // Declared in here, not at the top of this script: Babel runs the script as soon as the
+        // document parses, while window.React only exists once the dependency module's awaited
+        // imports resolve, so referencing React any earlier throws before the presentation boots.
+        class ErrorBoundary extends React.Component {
+          constructor(props) {
+            super(props);
+            this.state = { hasError: false };
+          }
+          static getDerivedStateFromError() {
+            return { hasError: true };
+          }
+          componentDidCatch(error, errorInfo) {
+            window.parent.postMessage({
+              type: 'growth-presentation-error',
+              message: error?.message,
+              stack: error?.stack,
+              componentStack: errorInfo?.componentStack,
+              document_id: window.__sandboxDocumentId,
+            }, '*');
+          }
+          render() {
+            // Staff see the message on the admin preview; the customer gets the neutral copy the
+            // parent renders around this frame, so there is nothing to show in place of the report.
+            return this.state.hasError ? null : this.props.children;
+          }
+        }
+
+        // Ready is reported from inside the tree so that it can only follow a commit that actually
+        // painted: render() returns before React renders, so posting it right after would beat a
+        // first-render throw to the parent and let staff publish a presentation that never paints.
+        function ReadyMarker() {
+          React.useEffect(() => {
+            window.parent.postMessage({ type: 'growth-presentation-ready', document_id: window.__sandboxDocumentId }, '*');
+          }, []);
+          return null;
+        }
+
         const DashboardUI = window.DashboardUI;
         const Recharts = window.Recharts;
         if (!DashboardUI) throw new Error('Dashboard UI components failed to load in the presentation sandbox.');
@@ -172,13 +185,13 @@ function getPresentationDocument(options: {
         ReactDOM.createRoot(rootElement).render(
           <ErrorBoundary>
             <Dashboard />
+            <ReadyMarker />
           </ErrorBoundary>
         );
 
         new ResizeObserver(reportHeight).observe(rootElement);
         window.addEventListener('load', reportHeight);
         reportHeight();
-        window.parent.postMessage({ type: 'growth-presentation-ready', document_id: window.__sandboxDocumentId }, '*');
       }).catch((error) => {
         window.parent.postMessage({
           type: 'growth-presentation-error',
