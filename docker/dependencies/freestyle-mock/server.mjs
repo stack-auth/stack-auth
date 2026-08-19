@@ -195,13 +195,6 @@ function isSidecarFrameTimeout(error) {
   return formatError(error).includes("timed out waiting for sidecar protocol frame");
 }
 
-function isPreparationAbort(job) {
-  return (
-    job.controller.signal.aborted &&
-    formatError(job.controller.signal.reason) === "Dependency preparation timed out"
-  );
-}
-
 // @secure-exec/core has a fire-and-forget proc.kill() path without a catch for
 // this sidecar timeout; letting it terminate the mock takes down every later
 // E2E test that depends on the rendering service.
@@ -615,25 +608,20 @@ class RuntimeCache {
       }
       let creation = this.creationPromises.get(dependency.hash);
       if (!creation) {
-        const creationState = {
-          discarded: false,
-          promise: null,
-        };
-        creationState.promise = this.createEntry(dependency, creationState);
-        creation = creationState;
+        creation = this.createEntry(dependency);
         this.creationPromises.set(dependency.hash, creation);
         const clearCreation = () => {
           if (this.creationPromises.get(dependency.hash) === creation) {
             this.creationPromises.delete(dependency.hash);
           }
         };
-        creation.promise.then(clearCreation, clearCreation);
+        creation.then(clearCreation, clearCreation);
       }
-      await awaitAbort(creation.promise, signal);
+      await awaitAbort(creation, signal);
     }
   }
 
-  async createEntry(dependency, creationState) {
+  async createEntry(dependency) {
     const options = {
       nodeModules: dependency.nodeModulesPath,
       permissions: {
@@ -662,14 +650,6 @@ class RuntimeCache {
       };
     }
     const runtime = await NodeRuntime.create(options);
-    if (creationState?.discarded) {
-      try {
-        await runtime.dispose();
-      } catch (error) {
-        logInternalError("dispose discarded runtime", error);
-      }
-      throw new Error("Secure-exec runtime creation was discarded");
-    }
     const entry = {
       hash: dependency.hash,
       isDefault: dependency.isDefault,
@@ -679,36 +659,9 @@ class RuntimeCache {
       jobsHandled: 0,
       lastUsed: performance.now(),
       retiring: false,
-      discarded: false,
-      disposePromise: null,
     };
     this.entries.set(dependency.hash, entry);
     return entry;
-  }
-
-  discardCreation(dependency) {
-    const creation = this.creationPromises.get(dependency.hash);
-    if (!creation) return;
-    creation.discarded = true;
-    this.creationPromises.delete(dependency.hash);
-  }
-
-  discard(entry) {
-    entry.discarded = true;
-    entry.retiring = true;
-    if (this.entries.get(entry.hash) === entry) {
-      this.entries.delete(entry.hash);
-    }
-    if (entry.activeJobs === 0) this.disposeEntry(entry);
-  }
-
-  disposeEntry(entry) {
-    if (!entry.disposePromise) {
-      entry.disposePromise = entry.runtime
-        .dispose()
-        .catch((error) => logInternalError("dispose discarded runtime", error));
-    }
-    return entry.disposePromise;
   }
 
   async evictInactiveRuntime() {
@@ -763,10 +716,6 @@ class RuntimeCache {
     entry.activeJobs--;
     entry.jobsHandled++;
     entry.lastUsed = performance.now();
-    if (entry.discarded) {
-      if (entry.activeJobs === 0) this.disposeEntry(entry);
-      return;
-    }
     if (entry.jobsHandled >= MAX_JOBS_PER_RUNTIME) {
       entry.retiring = true;
     }
@@ -1193,9 +1142,6 @@ async function executeScript(runtime, job) {
     });
   } catch (error) {
     logInternalError("secure-exec execution", error);
-    if (isSidecarFrameTimeout(error) || isPreparationAbort(job)) {
-      throw error;
-    }
     return {
       statusCode: 500,
       payload: {
@@ -1322,20 +1268,16 @@ class JobQueue {
   async execute(job) {
     let entry;
     let dependency;
-    let acquiringRuntime = false;
-    let runningRuntime = false;
     try {
       dependency = await this.dependencyCache.get(
         job.config.nodeModules,
         job.controller.signal,
       );
       if (job.settled || job.controller.signal.aborted) return null;
-      acquiringRuntime = true;
       entry = await this.runtimeCache.acquire(
         dependency,
         job.controller.signal,
       );
-      acquiringRuntime = false;
       // Preparation can finish after the preparation watchdog already settled
       // the response; never hand a settled job to the guest or arm a timer for
       // it, or a late timer would retire a healthy runtime.
@@ -1343,19 +1285,7 @@ class JobQueue {
       job.entry = entry;
       if (job.timer) clearTimeout(job.timer);
       this.armExecutionTimeout(job);
-      runningRuntime = true;
       return await executeScript(entry.runtime, job);
-    } catch (error) {
-      const sidecarFailure =
-        isSidecarFrameTimeout(error) &&
-        (acquiringRuntime || runningRuntime || entry);
-      const preparationAbort =
-        isPreparationAbort(job) && (acquiringRuntime || runningRuntime);
-      if (sidecarFailure || preparationAbort) {
-        if (entry) this.runtimeCache.discard(entry);
-        else if (dependency) this.runtimeCache.discardCreation(dependency);
-      }
-      throw error;
     } finally {
       if (entry) this.runtimeCache.release(entry);
       dependency?.release();
