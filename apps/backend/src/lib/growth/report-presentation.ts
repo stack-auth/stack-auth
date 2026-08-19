@@ -99,12 +99,12 @@ async function requirePresentationInTenancy(tx: PrismaClientTransaction, tenancy
 
 export async function listGrowthReportPresentations(tenancy: Tenancy, reportId: string) {
   const id = requireReportId(reportId);
-  const report = await globalPrismaClient.$replica().growthReport.findFirst({
+  const report = await globalPrismaClient.growthReport.findFirst({
     where: { id, projectId: tenancy.project.id, branchId: tenancy.branchId },
     select: { id: true },
   });
   if (report == null) throw new StatusError(404, "Report not found.");
-  const presentations = await globalPrismaClient.$replica().growthReportPresentation.findMany({
+  const presentations = await globalPrismaClient.growthReportPresentation.findMany({
     where: { reportId: id, projectId: tenancy.project.id, branchId: tenancy.branchId },
     orderBy: [{ version: "desc" }, { id: "desc" }],
   });

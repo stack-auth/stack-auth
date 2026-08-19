@@ -17,7 +17,6 @@ import { GrowthMetricId, GrowthWatchedMetric } from "./action-item-types";
 import { normalizeStoredGrowthCategory } from "./categories";
 import { computeGrowthMetrics } from "./metrics";
 import { scanWorkflowSourceWarnings } from "./workflow-authoring";
-import { isGrowthCustomerTenancy } from "./customer-access";
 
 // Re-exported for existing consumers (dashboard read routes, actions.test.ts) that import these wire
 // helpers from "./actions" — the actual definitions live in action-item-wire.ts now. See that file's
@@ -292,7 +291,6 @@ export async function getGrowthReportBody(tenancy: Tenancy, reportId: string | "
     // Stored Json passes through unchanged: the column shape ([{ id?, kind, title, body_markdown }])
     // is exactly the wire shape, by design (see the comment on the dashboard's reportSchema).
     sections: report.sections ?? null,
-    published_by_user_id: report.publishedByUserId,
   };
 }
 
@@ -494,9 +492,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 export async function activateGrowthActionItem(
   tenancy: Tenancy,
   actionItemId: string,
+  options: { enforceCustomerCuration: boolean },
 ): Promise<{ status: GrowthActionStatus, workflowId: string | null }> {
   const item = await requireActionItemInTenancy(tenancy, actionItemId);
-  if (isGrowthCustomerTenancy(tenancy)) {
+  if (options.enforceCustomerCuration) {
     if (item.reportId == null) {
       throw new StatusError(403, "This action is not available.");
     }

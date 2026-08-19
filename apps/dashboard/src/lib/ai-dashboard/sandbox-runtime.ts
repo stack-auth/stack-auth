@@ -76,6 +76,7 @@ export const SANDBOX_ERROR_LISTENER_SCRIPT = html`
               type: 'dashboard-error-boundary',
               message: message || 'Unknown dashboard error',
               stack: stack || undefined,
+              document_id: window.__sandboxDocumentId,
             }, '*');
           } catch (_) { /* parent may be gone */ }
         }
@@ -218,6 +219,7 @@ function getCustomDashboardDependencyScripts(
             type: 'dashboard-sandbox-dependency-error',
             message,
             stack: error instanceof Error ? error.stack : undefined,
+            document_id: window.__sandboxDocumentId,
           }, '*');
         }
 
@@ -231,14 +233,19 @@ function getCustomDashboardDependencyScripts(
           window.dispatchEvent(new Event('deps-ready'));
         }
 
-        import React from 'https://esm.sh/react@19.2.3';
-        import * as ReactDOM from 'https://esm.sh/react-dom@19.2.3?deps=react@19.2.3';
-        import * as ReactDOMClient from 'https://esm.sh/react-dom@19.2.3/client?deps=react@19.2.3';
-        import * as Recharts from 'https://esm.sh/recharts@2.15.4?deps=react@19.2.3,react-dom@19.2.3';
-
-        window.React = React;
-        window.ReactDOM = { ...ReactDOM, ...ReactDOMClient };
-        window.Recharts = Recharts;
+        try {
+          const [ReactModule, ReactDOMModule, ReactDOMClientModule, RechartsModule] = await Promise.all([
+            import('https://esm.sh/react@19.2.3'),
+            import('https://esm.sh/react-dom@19.2.3?deps=react@19.2.3'),
+            import('https://esm.sh/react-dom@19.2.3/client?deps=react@19.2.3'),
+            import('https://esm.sh/recharts@2.15.4?deps=react@19.2.3,react-dom@19.2.3'),
+          ]);
+          window.React = ReactModule.default;
+          window.ReactDOM = { ...ReactDOMModule, ...ReactDOMClientModule };
+          window.Recharts = RechartsModule;
+        } catch (error) {
+          failDependencyLoad('[sandbox] Foundational dependency load failed: ' + formatDependencyError(error), error);
+        }
 
         // Stack SDK may not be published at the current version — try with fallback
         try {
@@ -260,17 +267,19 @@ function getCustomDashboardDependencyScripts(
         window.generateUuid = () => crypto.randomUUID();
 
         // Load local IIFE for dashboard-ui-components (after globals are set)
-        const script = document.createElement('script');
-        script.src = '${dashboardUrl}/dashboard-ui-components.iife.js';
-        script.onload = () => {
-          window.__depsReady = true;
-          window.dispatchEvent(new Event('deps-ready'));
-        };
-        script.onerror = (e) => {
-          const message = '[sandbox] Failed to load local dashboard-ui-components IIFE bundle. Run pnpm --filter @hexclave/dashboard-ui-components dev or pnpm --filter @hexclave/dashboard-ui-components build so apps/dashboard/public/dashboard-ui-components.iife.js exists.';
-          failDependencyLoad(message, e instanceof Error ? e : new Error(message));
-        };
-        document.head.appendChild(script);
+        if (!window.__depsError) {
+          const script = document.createElement('script');
+          script.src = '${dashboardUrl}/dashboard-ui-components.iife.js';
+          script.onload = () => {
+            window.__depsReady = true;
+            window.dispatchEvent(new Event('deps-ready'));
+          };
+          script.onerror = (e) => {
+            const message = '[sandbox] Failed to load local dashboard-ui-components IIFE bundle. Run pnpm --filter @hexclave/dashboard-ui-components dev or pnpm --filter @hexclave/dashboard-ui-components build so apps/dashboard/public/dashboard-ui-components.iife.js exists.';
+            failDependencyLoad(message, e instanceof Error ? e : new Error(message));
+          };
+          document.head.appendChild(script);
+        }
       </script>`;
   }
 
@@ -287,6 +296,7 @@ function getCustomDashboardDependencyScripts(
           type: 'dashboard-sandbox-dependency-error',
           message,
           stack: error instanceof Error ? error.stack : undefined,
+          document_id: window.__sandboxDocumentId,
         }, '*');
       }
 
@@ -300,14 +310,19 @@ function getCustomDashboardDependencyScripts(
         window.dispatchEvent(new Event('deps-ready'));
       }
 
-      import React from 'https://esm.sh/react@19.2.3';
-      import * as ReactDOM from 'https://esm.sh/react-dom@19.2.3?deps=react@19.2.3';
-      import * as ReactDOMClient from 'https://esm.sh/react-dom@19.2.3/client?deps=react@19.2.3';
-      import * as Recharts from 'https://esm.sh/recharts@2.15.4?deps=react@19.2.3,react-dom@19.2.3';
-
-      window.React = React;
-      window.ReactDOM = { ...ReactDOM, ...ReactDOMClient };
-      window.Recharts = Recharts;
+      try {
+        const [ReactModule, ReactDOMModule, ReactDOMClientModule, RechartsModule] = await Promise.all([
+          import('https://esm.sh/react@19.2.3'),
+          import('https://esm.sh/react-dom@19.2.3?deps=react@19.2.3'),
+          import('https://esm.sh/react-dom@19.2.3/client?deps=react@19.2.3'),
+          import('https://esm.sh/recharts@2.15.4?deps=react@19.2.3,react-dom@19.2.3'),
+        ]);
+        window.React = ReactModule.default;
+        window.ReactDOM = { ...ReactDOMModule, ...ReactDOMClientModule };
+        window.Recharts = RechartsModule;
+      } catch (error) {
+        failDependencyLoad('[sandbox] Foundational dependency load failed: ' + formatDependencyError(error), error);
+      }
 
       // Try current version first, fall back to last known good version
       let DashboardUIComponents, StackSDK;
@@ -375,6 +390,7 @@ export function getSandboxDependencyScripts(options: {
           type: 'dashboard-sandbox-dependency-error',
           message,
           stack: error instanceof Error ? error.stack : undefined,
+          document_id: window.__sandboxDocumentId,
         }, '*');
       }`;
 
@@ -393,28 +409,35 @@ ${errorHelpers}
           window.dispatchEvent(new Event('deps-ready'));
         }
 
-        import React from 'https://esm.sh/react@19.2.3';
-        import * as ReactDOM from 'https://esm.sh/react-dom@19.2.3?deps=react@19.2.3';
-        import * as ReactDOMClient from 'https://esm.sh/react-dom@19.2.3/client?deps=react@19.2.3';
-        import * as Recharts from 'https://esm.sh/recharts@2.15.4?deps=react@19.2.3,react-dom@19.2.3';
-
-        window.React = React;
-        window.ReactDOM = { ...ReactDOM, ...ReactDOMClient };
-        window.Recharts = Recharts;
+        try {
+          const [ReactModule, ReactDOMModule, ReactDOMClientModule, RechartsModule] = await Promise.all([
+            import('https://esm.sh/react@19.2.3'),
+            import('https://esm.sh/react-dom@19.2.3?deps=react@19.2.3'),
+            import('https://esm.sh/react-dom@19.2.3/client?deps=react@19.2.3'),
+            import('https://esm.sh/recharts@2.15.4?deps=react@19.2.3,react-dom@19.2.3'),
+          ]);
+          window.React = ReactModule.default;
+          window.ReactDOM = { ...ReactDOMModule, ...ReactDOMClientModule };
+          window.Recharts = RechartsModule;
+        } catch (error) {
+          failDependencyLoad('[sandbox] Foundational dependency load failed: ' + formatDependencyError(error), error);
+        }
         window.generateUuid = () => crypto.randomUUID();
 
         // Load local IIFE for dashboard-ui-components (after globals are set)
-        const script = document.createElement('script');
-        script.src = '${dashboardUrl}/dashboard-ui-components.iife.js';
-        script.onload = () => {
-          window.__depsReady = true;
-          window.dispatchEvent(new Event('deps-ready'));
-        };
-        script.onerror = (e) => {
-          const message = '[sandbox] Failed to load local dashboard-ui-components IIFE bundle. Run pnpm --filter @hexclave/dashboard-ui-components dev or pnpm --filter @hexclave/dashboard-ui-components build so apps/dashboard/public/dashboard-ui-components.iife.js exists.';
-          failDependencyLoad(message, e instanceof Error ? e : new Error(message));
-        };
-        document.head.appendChild(script);
+        if (!window.__depsError) {
+          const script = document.createElement('script');
+          script.src = '${dashboardUrl}/dashboard-ui-components.iife.js';
+          script.onload = () => {
+            window.__depsReady = true;
+            window.dispatchEvent(new Event('deps-ready'));
+          };
+          script.onerror = (e) => {
+            const message = '[sandbox] Failed to load local dashboard-ui-components IIFE bundle. Run pnpm --filter @hexclave/dashboard-ui-components dev or pnpm --filter @hexclave/dashboard-ui-components build so apps/dashboard/public/dashboard-ui-components.iife.js exists.';
+            failDependencyLoad(message, e instanceof Error ? e : new Error(message));
+          };
+          document.head.appendChild(script);
+        }
       </script>`;
   }
 
@@ -437,14 +460,19 @@ ${errorHelpers}
         window.dispatchEvent(new Event('deps-ready'));
       }
 
-      import React from 'https://esm.sh/react@19.2.3';
-      import * as ReactDOM from 'https://esm.sh/react-dom@19.2.3?deps=react@19.2.3';
-      import * as ReactDOMClient from 'https://esm.sh/react-dom@19.2.3/client?deps=react@19.2.3';
-      import * as Recharts from 'https://esm.sh/recharts@2.15.4?deps=react@19.2.3,react-dom@19.2.3';
-
-      window.React = React;
-      window.ReactDOM = { ...ReactDOM, ...ReactDOMClient };
-      window.Recharts = Recharts;
+      try {
+        const [ReactModule, ReactDOMModule, ReactDOMClientModule, RechartsModule] = await Promise.all([
+          import('https://esm.sh/react@19.2.3'),
+          import('https://esm.sh/react-dom@19.2.3?deps=react@19.2.3'),
+          import('https://esm.sh/react-dom@19.2.3/client?deps=react@19.2.3'),
+          import('https://esm.sh/recharts@2.15.4?deps=react@19.2.3,react-dom@19.2.3'),
+        ]);
+        window.React = ReactModule.default;
+        window.ReactDOM = { ...ReactDOMModule, ...ReactDOMClientModule };
+        window.Recharts = RechartsModule;
+      } catch (error) {
+        failDependencyLoad('[sandbox] Foundational dependency load failed: ' + formatDependencyError(error), error);
+      }
 
       // Try current version first, fall back to last known good version
       let DashboardUIComponents;

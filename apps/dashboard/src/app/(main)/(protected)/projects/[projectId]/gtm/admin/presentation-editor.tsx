@@ -37,11 +37,20 @@ export function PresentationEditor(props: {
   const [error, setError] = useState<string | null>(null);
   const [runtimeError, setRuntimeError] = useState<GrowthPresentationRuntimeError | null>(null);
   const [previewState, setPreviewState] = useState<{ source: string, outcome: PreviewOutcome }>({ source: "", outcome: "pending" });
+  const [droppedActionItemCount, setDroppedActionItemCount] = useState(0);
   const [nowMillis] = useState(() => Date.now());
+
+  const resolveDraftActionItemIds = (actionItemIds: string[]) => {
+    const availableActionItemIds = new Set(report.actionItems.map((action) => action.id));
+    const resolvedActionItemIds = actionItemIds.filter((actionItemId) => availableActionItemIds.has(actionItemId));
+    setDroppedActionItemCount(actionItemIds.length - resolvedActionItemIds.length);
+    return resolvedActionItemIds;
+  };
 
   useEffect(() => {
     const ordered = [...report.presentations].sort((a, b) => b.version - a.version);
     setPresentations(ordered);
+    setDroppedActionItemCount(0);
     if (ordered.length === 0) {
       setSelectedPresentationId(null);
       setDraftSource(EMPTY_PRESENTATION_SOURCE);
@@ -51,7 +60,7 @@ export function PresentationEditor(props: {
       const initial = ordered[0];
       setSelectedPresentationId(initial.id);
       setDraftSource(initial.tsxSource);
-      setDraftActionItemIds(initial.actionItemIds);
+      setDraftActionItemIds(resolveDraftActionItemIds(initial.actionItemIds));
       setPreviewState({ source: initial.tsxSource, outcome: "pending" });
     }
     setRuntimeError(null);
@@ -69,7 +78,6 @@ export function PresentationEditor(props: {
       .filter((action) => action != null),
     [draftActionItemIds, report.actionItems],
   );
-  const missingActionItemCount = draftActionItemIds.filter((id) => report.actionItems.every((action) => action.id !== id)).length;
   const draftChanged = selectedPresentation == null
     || selectedPresentation.tsxSource !== draftSource
     || selectedPresentation.actionItemIds.join("\u0000") !== draftActionItemIds.join("\u0000");
@@ -89,7 +97,7 @@ export function PresentationEditor(props: {
   const selectPresentation = (presentation: GrowthReportPresentation) => {
     setSelectedPresentationId(presentation.id);
     setDraftSource(presentation.tsxSource);
-    setDraftActionItemIds(presentation.actionItemIds);
+    setDraftActionItemIds(resolveDraftActionItemIds(presentation.actionItemIds));
     setPreviewState({ source: presentation.tsxSource, outcome: "pending" });
     setRuntimeError(null);
     setError(null);
@@ -126,9 +134,12 @@ export function PresentationEditor(props: {
       const nextPresentations = [created, ...presentations.filter((presentation) => presentation.id !== created.id)];
       setSelectedPresentationId(created.id);
       setPresentations(nextPresentations);
+      setDroppedActionItemCount(0);
       props.onReportChange({ ...report, presentations: nextPresentations });
-      setPreviewState({ source: created.tsxSource, outcome: "pending" });
-      setRuntimeError(null);
+      if (previewState.source !== created.tsxSource) {
+        setPreviewState({ source: created.tsxSource, outcome: "pending" });
+        setRuntimeError(null);
+      }
     } catch (saveError) {
       captureError("growth-admin-presentation-create", saveError);
       setError(saveError instanceof Error ? saveError.message : String(saveError));
@@ -350,9 +361,9 @@ export function PresentationEditor(props: {
               })}
             </div>
           )}
-          {missingActionItemCount > 0 && (
+          {droppedActionItemCount > 0 && (
             <DesignAlert variant="warning">
-              {missingActionItemCount} previously curated {missingActionItemCount === 1 ? "action is" : "actions are"} no longer in this report and will be skipped when the presentation is shown. Remove {missingActionItemCount === 1 ? "it" : "them"} before saving a new version.
+              {droppedActionItemCount} previously curated {droppedActionItemCount === 1 ? "action was" : "actions were"} no longer in this report and {droppedActionItemCount === 1 ? "was" : "were"} dropped from this draft. The saved version remains unchanged until you save a new version.
             </DesignAlert>
           )}
           {selectedActions.length > 0 && (

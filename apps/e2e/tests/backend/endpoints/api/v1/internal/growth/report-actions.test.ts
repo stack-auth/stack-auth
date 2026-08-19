@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Project, niceBackendFetch } from "../../../../../backend-helpers";
-import { GROWTH_AGENT_AUTH, createGrowthProject, publishGrowthPresentationAsStaff, requireRunId } from "./growth-helpers";
+import { GROWTH_AGENT_AUTH, asGrowthStaff, createGrowthProject, publishGrowthPresentationAsStaff, releaseGrowthInterviewAsStaff, requireRunId } from "./growth-helpers";
 
 const ADMIN_BASE = "/api/latest/internal/growth";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
@@ -36,6 +36,10 @@ async function completeOnboarding() {
   return requireRunId(onboarding.body);
 }
 
+async function staffFetch(url: string, options: Parameters<typeof niceBackendFetch>[1] = {}) {
+  return await asGrowthStaff(async () => await niceBackendFetch(url, { ...options, accessType: "admin" }));
+}
+
 const REPORT_SECTIONS = [
   { id: "current-state", kind: "markdown", title: "Current state", body_markdown: "Steady signups, low activation." },
   { id: "opportunities", kind: "markdown", title: "Opportunities", body_markdown: "Paid search and comparison content." },
@@ -64,7 +68,11 @@ const REPORT_DOCUMENT = {
  * analysis data and unavailable to customer tenancies, while report writes do not require phases to
  * be completed.
  */
-async function seedCompletedRunWithReport(scope: { project_id: string, branch_id: string }, runId: string) {
+async function seedCompletedRunWithReport(
+  scope: { project_id: string, branch_id: string },
+  runId: string,
+  options: { publishedActionItemCount?: number } = {},
+) {
   const questions = await niceBackendFetch(`${AGENT_BASE}/interview-questions`, {
     method: "POST",
     headers: GROWTH_AGENT_AUTH,
@@ -130,10 +138,16 @@ async function seedCompletedRunWithReport(scope: { project_id: string, branch_id
   if (report.status !== 200) {
     throw new Error(`Saving the report failed with status ${report.status}.`);
   }
-  await publishGrowthPresentationAsStaff(scope.project_id, (report.body as { report_id: string }).report_id, (report.body as { action_item_ids: string[] }).action_item_ids);
+  const actionItemIds = (report.body as { action_item_ids: string[] }).action_item_ids;
+  await publishGrowthPresentationAsStaff(
+    scope.project_id,
+    (report.body as { report_id: string }).report_id,
+    options.publishedActionItemCount == null ? actionItemIds : actionItemIds.slice(0, options.publishedActionItemCount),
+  );
+  await releaseGrowthInterviewAsStaff(scope.project_id);
   return {
     reportId: (report.body as { report_id: string }).report_id,
-    actionItemIds: (report.body as { action_item_ids: string[] }).action_item_ids,
+    actionItemIds,
     artifactId,
   };
 }
@@ -157,6 +171,7 @@ describe.sequential("internal growth reports and actions", { timeout: 300_000 },
     expect(latest.body).not.toHaveProperty("content_md");
     expect(latest.body).not.toHaveProperty("document");
     expect(latest.body).not.toHaveProperty("sections");
+    expect(latest.body).not.toHaveProperty("published_by_user_id");
     const actionItems = (latest.body as { action_items: { id: string, type_id: string, status: string, title: string, description: string, has_workflow: boolean, created_at_millis: number, activated_at_millis: number | null, completed_at_millis: number | null, payload?: unknown, document?: unknown, brief_id?: unknown, report_id?: unknown, workflow?: unknown }[] }).action_items;
     expect(actionItems).toHaveLength(3);
     expect(actionItems.map((item) => item.id).sort()).toEqual([...actionItemIds].sort());
@@ -192,6 +207,120 @@ describe.sequential("internal growth reports and actions", { timeout: 300_000 },
     expect(crossProject.status).toBe(404);
     const emptyLatest = await niceBackendFetch(`${ADMIN_BASE}/reports/latest`, { accessType: "admin" });
     expect(emptyLatest.status).toBe(404);
+  });
+
+  it("blocks customer access to internal action listing and dismissal", async ({ expect }) => {
+    const { projectId, branchId } = await createGrowthProjectWithIds();
+    const scope = { project_id: projectId, branch_id: branchId };
+    const runId = await completeOnboarding();
+    const { actionItemIds } = await seedCompletedRunWithReport(scope, runId);
+
+    const list = await niceBackendFetch(`${ADMIN_BASE}/actions`, { accessType: "admin" });
+    expect(list.status).toBe(403);
+    const dismiss = await niceBackendFetch(`${ADMIN_BASE}/actions/${actionItemIds[0]}/dismiss`, { accessType: "admin", method: "POST" });
+    expect(dismiss.status).toBe(403);
+  });
+
+  it("activates curated actions for customers and dismisses actions through the admin PATCH", async ({ expect }) => {
+    const { projectId, branchId } = await createGrowthProjectWithIds();
+    const scope = { project_id: projectId, branch_id: branchId };
+    const runId = await completeOnboarding();
+    const { actionItemIds } = await seedCompletedRunWithReport(scope, runId);
+    const [adsItemId, , customItemId] = actionItemIds;
+
+    const activate = await niceBackendFetch(`${ADMIN_BASE}/actions/${adsItemId}/activate`, { accessType: "admin", method: "POST" });
+    expect(activate).toMatchObject({ status: 200, body: { status: "active" } });
+    const activateAgain = await niceBackendFetch(`${ADMIN_BASE}/actions/${adsItemId}/activate`, { accessType: "admin", method: "POST" });
+    expect(activateAgain).toMatchObject({ status: 200, body: { status: "active" } });
+
+    const dismiss = await staffFetch(`${ADMIN_BASE}/admin/actions/${customItemId}`, {
+      method: "PATCH",
+      body: {
+        target_project_id: projectId,
+        type_id: "custom",
+        category: "retention",
+        tags: ["win-back"],
+        title: "Email churned users",
+        description: "Win-back campaign.",
+        status: "dismissed",
+      },
+    });
+    expect(dismiss).toMatchObject({ status: 200, body: { id: customItemId, status: "dismissed" } });
+    const dismissAgain = await staffFetch(`${ADMIN_BASE}/admin/actions/${customItemId}`, {
+      method: "PATCH",
+      body: {
+        target_project_id: projectId,
+        type_id: "custom",
+        category: "retention",
+        tags: ["win-back"],
+        title: "Email churned users",
+        description: "Win-back campaign.",
+        status: "dismissed",
+      },
+    });
+    expect(dismissAgain).toMatchObject({ status: 200, body: { id: customItemId, status: "dismissed" } });
+
+    const dismissActive = await staffFetch(`${ADMIN_BASE}/admin/actions/${adsItemId}`, {
+      method: "PATCH",
+      body: {
+        target_project_id: projectId,
+        type_id: "run_ads",
+        category: "reach",
+        tags: ["search"],
+        title: "Launch a search ads campaign",
+        description: "Target small agencies.",
+        status: "dismissed",
+      },
+    });
+    expect(dismissActive).toMatchObject({ status: 200, body: { id: adsItemId, status: "dismissed" } });
+    const unknown = await staffFetch(`${ADMIN_BASE}/admin/actions/${randomUUID()}`, {
+      method: "PATCH",
+      body: {
+        target_project_id: projectId,
+        type_id: "custom",
+        category: "retention",
+        tags: ["win-back"],
+        title: "Unknown",
+        description: "Unknown.",
+        status: "dismissed",
+      },
+    });
+    expect(unknown.status).toBe(404);
+  });
+
+  it("allows staff to activate an uncurated action while customer activation stays blocked", async ({ expect }) => {
+    const { projectId, branchId } = await createGrowthProjectWithIds();
+    const scope = { project_id: projectId, branch_id: branchId };
+    const runId = await completeOnboarding();
+    const { actionItemIds } = await seedCompletedRunWithReport(scope, runId, { publishedActionItemCount: 1 });
+    const uncuratedActionId = actionItemIds[2];
+
+    const staffActivation = await staffFetch(`${ADMIN_BASE}/admin/actions/${uncuratedActionId}`, {
+      method: "PATCH",
+      body: {
+        target_project_id: projectId,
+        type_id: "custom",
+        category: "retention",
+        tags: ["win-back"],
+        title: "Email churned users",
+        description: "Win-back campaign.",
+        status: "active",
+      },
+    });
+    expect(staffActivation).toMatchObject({ status: 200, body: { id: uncuratedActionId, status: "active" } });
+
+    const customerActivation = await niceBackendFetch(`${ADMIN_BASE}/actions/${uncuratedActionId}/activate`, { accessType: "admin", method: "POST" });
+    expect(customerActivation.status).toBe(403);
+    expect(customerActivation.body).toBe("This action is not available.");
+  });
+
+  it("blocks customer access to internal action metrics", async ({ expect }) => {
+    const { projectId, branchId } = await createGrowthProjectWithIds();
+    const scope = { project_id: projectId, branch_id: branchId };
+    const runId = await completeOnboarding();
+    const { actionItemIds } = await seedCompletedRunWithReport(scope, runId);
+    const metrics = await niceBackendFetch(`${ADMIN_BASE}/actions/${actionItemIds[1]}/metrics`, { accessType: "admin" });
+    expect(metrics.status).toBe(403);
   });
 
   it("rejects non-admin access and projects without the growth app", async ({ expect }) => {

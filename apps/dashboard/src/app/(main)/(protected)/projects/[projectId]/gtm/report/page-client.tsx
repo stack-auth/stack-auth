@@ -146,10 +146,10 @@ function ReportBody(props: { latestReport: GrowthStatus["latestReport"], held: b
   if (data.value == null) {
     return <ReportEmptyState held={props.held} />;
   }
-  return <ReportContent report={data.value} />;
+  return <ReportContent report={data.value} demo={demo} />;
 }
 
-function ReportContent(props: { report: GrowthReport }) {
+function ReportContent(props: { report: GrowthReport, demo: boolean }) {
   const { report } = props;
   const legacyReport = "title" in report ? report : null;
   return (
@@ -169,7 +169,7 @@ function ReportContent(props: { report: GrowthReport }) {
           <h2 className="text-xl font-semibold tracking-tight">Recommended actions</h2>
           <p className="mt-1 text-sm text-muted-foreground">These are the actions selected for you. Activate one when you are ready to start it.</p>
           <div className="mt-4 flex flex-col gap-3">
-            {report.actionItems.map((action) => <CustomerGrowthActionCard key={action.id} action={action} />)}
+            {report.actionItems.map((action) => <CustomerGrowthActionCard key={action.id} action={action} demo={props.demo} />)}
           </div>
         </section>
       )}
@@ -180,11 +180,28 @@ function ReportContent(props: { report: GrowthReport }) {
 function ReportDocumentContent(props: { report: GrowthReport }) {
   const { content } = props.report;
   const [presentationErrorSource, setPresentationErrorSource] = useState<string | null>(null);
+  const [presentationAttempt, setPresentationAttempt] = useState(0);
   if (content.type === "presentation") {
     if (presentationErrorSource === content.tsxSource) {
-      return <DesignAlert variant="error">This report presentation is temporarily unavailable. Please try again later.</DesignAlert>;
+      return (
+        <DesignAlert variant="error">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span>This report presentation is temporarily unavailable. Please try again.</span>
+            <DesignButton
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setPresentationErrorSource(null);
+                setPresentationAttempt((current) => current + 1);
+              }}
+            >
+              Retry
+            </DesignButton>
+          </div>
+        </DesignAlert>
+      );
     }
-    return <GrowthPresentationSandbox tsxSource={content.tsxSource} onRuntimeError={() => setPresentationErrorSource(content.tsxSource)} />;
+    return <GrowthPresentationSandbox key={`${content.tsxSource}-${presentationAttempt}`} tsxSource={content.tsxSource} onRuntimeError={() => setPresentationErrorSource(content.tsxSource)} />;
   }
   if (content.document == null) {
     return <GrowthReportSections contentMd={content.contentMd} sections={content.sections} />;
@@ -192,13 +209,17 @@ function ReportDocumentContent(props: { report: GrowthReport }) {
   return <GrowthDocumentRenderer document={content.document} />;
 }
 
-function CustomerGrowthActionCard(props: { action: GrowthActionItem | GrowthCustomerActionItem }) {
+function CustomerGrowthActionCard(props: { action: GrowthActionItem | GrowthCustomerActionItem, demo: boolean }) {
   const app = useAdminApp();
   const [status, setStatus] = useState<GrowthActionStatus>(props.action.status);
   const [error, setError] = useState<string | null>(null);
 
   const handleActivate = async () => {
     setError(null);
+    if (props.demo) {
+      setStatus("active");
+      return;
+    }
     try {
       const result = await activateGrowthAction(app, props.action.id);
       setStatus(result.status);

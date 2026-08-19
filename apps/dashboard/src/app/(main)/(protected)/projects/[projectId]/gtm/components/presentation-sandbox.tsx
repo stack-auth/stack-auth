@@ -46,8 +46,9 @@ function getPresentationDocument(options: {
   tsxSource: string,
   dashboardUrl: string,
   initialTheme: "light" | "dark",
+  documentId: string,
 }): string {
-  const { tsxSource, dashboardUrl, initialTheme } = options;
+  const { tsxSource, dashboardUrl, initialTheme, documentId } = options;
   const esmVersion = getSandboxEsmVersion(tsxSource);
   const devSrc = isSandboxDevMode ? ` ${dashboardUrl}` : '';
 
@@ -68,6 +69,7 @@ function getPresentationDocument(options: {
   </head>
   <body>
     <div id="root"></div>
+    <script>window.__sandboxDocumentId = ${JSON.stringify(documentId)};</script>
     ${SANDBOX_ERROR_LISTENER_SCRIPT}
     ${SANDBOX_BABEL_SCRIPT}
     ${getSandboxDependencyScripts({ esmVersion, esmFallbackVersion: getEsmFallbackVersion(esmVersion), dashboardUrl, includeStackSdk: false })}
@@ -90,7 +92,7 @@ function getPresentationDocument(options: {
           document.body.scrollHeight,
           document.documentElement.scrollHeight,
         );
-        window.parent.postMessage({ type: 'growth-presentation-height', height: height }, '*');
+        window.parent.postMessage({ type: 'growth-presentation-height', height: height, document_id: window.__sandboxDocumentId }, '*');
       }
 
       async function waitForDeps() {
@@ -118,6 +120,7 @@ function getPresentationDocument(options: {
             message: error?.message,
             stack: error?.stack,
             componentStack: errorInfo?.componentStack,
+            document_id: window.__sandboxDocumentId,
           }, '*');
         }
         render() {
@@ -167,12 +170,13 @@ function getPresentationDocument(options: {
         new ResizeObserver(reportHeight).observe(rootElement);
         window.addEventListener('load', reportHeight);
         reportHeight();
-        window.parent.postMessage({ type: 'growth-presentation-ready' }, '*');
+        window.parent.postMessage({ type: 'growth-presentation-ready', document_id: window.__sandboxDocumentId }, '*');
       }).catch((error) => {
         window.parent.postMessage({
           type: 'growth-presentation-error',
           message: error instanceof Error ? error.message : 'Failed to load the report presentation',
           stack: error instanceof Error ? error.stack : undefined,
+          document_id: window.__sandboxDocumentId,
         }, '*');
       });
     </script>
@@ -197,11 +201,14 @@ export const GrowthPresentationSandbox = memo(function GrowthPresentationSandbox
 
   const dashboardUrl = useMemo(() => typeof window === "undefined" ? "" : window.location.origin, []);
   const initialThemeRef = useRef<"light" | "dark">(resolvedTheme === "dark" ? "dark" : "light");
+  const documentId = useMemo(() => `${crypto.randomUUID()}-${props.tsxSource.length}`, [props.tsxSource]);
+  const documentIdRef = useRef(documentId);
+  documentIdRef.current = documentId;
   // Deliberately not keyed on the theme: re-rendering the document would remount the presentation
   // on every theme flip, so the theme travels by message instead.
   const srcDoc = useMemo(
-    () => getPresentationDocument({ tsxSource: props.tsxSource, dashboardUrl, initialTheme: initialThemeRef.current }),
-    [props.tsxSource, dashboardUrl],
+    () => getPresentationDocument({ tsxSource: props.tsxSource, dashboardUrl, initialTheme: initialThemeRef.current, documentId }),
+    [props.tsxSource, dashboardUrl, documentId],
   );
 
   useEffect(() => {
@@ -215,6 +222,7 @@ export const GrowthPresentationSandbox = memo(function GrowthPresentationSandbox
       if (typeof event.data !== "object" || event.data === null) return;
       if (event.origin !== "null") return;
       if (!iframeRef.current?.contentWindow || event.source !== iframeRef.current.contentWindow) return;
+      if (event.data.document_id !== documentIdRef.current) return;
 
       if (event.data.type === "growth-presentation-height" && typeof event.data.height === "number") {
         setHeight(Math.max(MIN_PRESENTATION_HEIGHT_PX, Math.ceil(event.data.height)));

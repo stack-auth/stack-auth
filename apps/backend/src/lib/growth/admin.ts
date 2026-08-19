@@ -158,7 +158,7 @@ export async function updateGrowthAdminAction(tenancy: Tenancy, actionId: string
       },
     },
   });
-  if (requestedStatus === "active") await activateGrowthActionItem(tenancy, existing.id);
+  if (requestedStatus === "active") await activateGrowthActionItem(tenancy, existing.id, { enforceCustomerCuration: false });
   if (requestedStatus === "dismissed") await dismissGrowthActionItem(tenancy, existing.id);
   const updated = await globalPrismaClient.growthActionItem.findUnique({ where: { id: existing.id } });
   if (updated == null) throw new StatusError(404, "Growth action not found after update.");

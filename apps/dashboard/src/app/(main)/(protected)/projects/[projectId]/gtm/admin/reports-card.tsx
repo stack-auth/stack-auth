@@ -136,11 +136,12 @@ export function GrowthAdminReportsCard(props: { app: object, projectId: string }
    * unpublishing something already unpublished (two staff tabs open on the same project), which is
    * information, not a crash.
    */
-  const mutate = async (label: string, mutation: () => Promise<GrowthAdminReportsBody>) => {
+  const mutate = async (label: string, mutation: () => Promise<GrowthAdminReportsBody>, afterSuccess?: () => Promise<void>) => {
     setActionError(null);
     setBusy(true);
     try {
       setList({ status: "loaded", body: await mutation() });
+      if (afterSuccess != null) await afterSuccess();
     } catch (error) {
       captureError(label, error);
       setActionError(error instanceof Error ? error.message : String(error));
@@ -215,7 +216,11 @@ export function GrowthAdminReportsCard(props: { app: object, projectId: string }
                     size="sm"
                     variant="outline"
                     disabled={busy}
-                    onClick={async () => await mutate("growth-admin-reports-unpublish", () => unpublishGrowthAdminReport(props.app, props.projectId, selected.id))}
+                    onClick={async () => await mutate(
+                      "growth-admin-reports-unpublish",
+                      () => unpublishGrowthAdminReport(props.app, props.projectId, selected.id),
+                      async () => await openReport(selected.id),
+                    )}
                   >
                     Unpublish
                   </DesignButton>
