@@ -71,6 +71,9 @@ export const postMigration = async (sql: Sql) => {
       access_method: "btree",
     });
     const normalizePredicate = (predicate: string) => predicate.replace(/[()\s]/g, "");
+    if (typeof index.predicate !== "string") {
+      throw new Error(`TV payment index "${index.index_name}" must be partial and have a predicate.`);
+    }
     expect(normalizePredicate(index.predicate)).toBe(normalizePredicate(expected.predicate));
   }
 };

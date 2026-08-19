@@ -82,6 +82,7 @@ export default function PageClient() {
   }, [adminApp, fixtureLoadKey, profileId]);
   const liveSnapshot = useTvLiveSnapshot({
     adminApp,
+    projectId,
     profileId,
     enabled: fixtureVariant == null,
   });

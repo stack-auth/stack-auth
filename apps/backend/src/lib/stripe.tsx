@@ -348,17 +348,97 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
   }
 }
 
-function getStripeInvoiceStatusTransitions(invoice: {
+type StripeInvoiceTransitionSource = {
   status_transitions?: {
     paid_at?: number | null,
     marked_uncollectible_at?: number | null,
     voided_at?: number | null,
   },
-}) {
+};
+
+function getStripeInvoiceStatusTransitions(invoice: StripeInvoiceTransitionSource) {
   return invoice.status_transitions;
 }
 
-export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: string, invoice: Stripe.Invoice) {
+function getStripeInvoiceOutcomeTimestamps(
+  invoice: StripeInvoiceTransitionSource,
+  event: Pick<Stripe.Event, "created" | "type">,
+): {
+  paidAt: Date | null,
+  markedUncollectibleAt: Date | null,
+  voidedAt: Date | null,
+} {
+  const transitionTimestamp = (timestamp: number | null | undefined) => timestamp == null ? null : new Date(timestamp * 1000);
+  const statusTransitions = getStripeInvoiceStatusTransitions(invoice);
+  const eventTimestamp = transitionTimestamp(event.created);
+  return {
+    // The transition object is the most precise source. Some webhook payloads
+    // omit it, but a terminal event's own Stripe timestamp is still
+    // authoritative evidence of that exact transition.
+    paidAt: transitionTimestamp(statusTransitions?.paid_at)
+      ?? (event.type === "invoice.paid" ? eventTimestamp : null),
+    markedUncollectibleAt: transitionTimestamp(statusTransitions?.marked_uncollectible_at)
+      ?? (event.type === "invoice.marked_uncollectible" ? eventTimestamp : null),
+    voidedAt: transitionTimestamp(statusTransitions?.voided_at)
+      ?? (event.type === "invoice.voided" ? eventTimestamp : null),
+  };
+}
+
+import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
+  test("uses terminal webhook timestamps when status transitions are absent", ({ expect }) => {
+    const occurredAtSeconds = 1_787_098_400;
+    const occurredAt = new Date(occurredAtSeconds * 1000);
+    expect(getStripeInvoiceOutcomeTimestamps({}, {
+      type: "invoice.paid",
+      created: occurredAtSeconds,
+    })).toEqual({
+      paidAt: occurredAt,
+      markedUncollectibleAt: null,
+      voidedAt: null,
+    });
+    expect(getStripeInvoiceOutcomeTimestamps({}, {
+      type: "invoice.marked_uncollectible",
+      created: occurredAtSeconds,
+    })).toEqual({
+      paidAt: null,
+      markedUncollectibleAt: occurredAt,
+      voidedAt: null,
+    });
+    expect(getStripeInvoiceOutcomeTimestamps({}, {
+      type: "invoice.voided",
+      created: occurredAtSeconds,
+    })).toEqual({
+      paidAt: null,
+      markedUncollectibleAt: null,
+      voidedAt: occurredAt,
+    });
+  });
+
+  test("prefers Stripe's precise transition timestamp and does not infer from non-terminal events", ({ expect }) => {
+    const paidAtSeconds = 1_787_098_100;
+    expect(getStripeInvoiceOutcomeTimestamps({
+      status_transitions: { paid_at: paidAtSeconds },
+    }, {
+      type: "invoice.updated",
+      created: 1_787_098_400,
+    })).toEqual({
+      paidAt: new Date(paidAtSeconds * 1000),
+      markedUncollectibleAt: null,
+      voidedAt: null,
+    });
+    expect(getStripeInvoiceOutcomeTimestamps({}, {
+      type: "invoice.updated",
+      created: 1_787_098_400,
+    })).toEqual({ paidAt: null, markedUncollectibleAt: null, voidedAt: null });
+  });
+});
+
+export async function upsertStripeInvoice(
+  stripe: Stripe,
+  stripeAccountId: string,
+  invoice: Stripe.Invoice,
+  event: Pick<Stripe.Event, "created" | "type">,
+) {
   const invoiceLines = (invoice as { lines?: { data?: Stripe.InvoiceLineItem[] } }).lines?.data ?? [];
   const invoiceSubscriptionIds = invoiceLines
     .map((line) => line.parent?.subscription_item_details?.subscription)
@@ -377,14 +457,10 @@ export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: strin
   const isSubscriptionCreationInvoice = invoice.billing_reason === "subscription_create";
   const tenancy = await getTenancyFromStripeAccountIdOrThrow(stripe, stripeAccountId);
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const transitionTimestamp = (timestamp: number | null | undefined) => timestamp == null ? null : new Date(timestamp * 1000);
   // Stripe's wire payload may omit this expansion even though the installed
   // SDK types currently mark it required. Keep webhook normalization tolerant
   // without weakening the rest of the invoice contract.
-  const statusTransitions = getStripeInvoiceStatusTransitions(invoice);
-  const paidAt = transitionTimestamp(statusTransitions?.paid_at);
-  const markedUncollectibleAt = transitionTimestamp(statusTransitions?.marked_uncollectible_at);
-  const voidedAt = transitionTimestamp(statusTransitions?.voided_at);
+  const { paidAt, markedUncollectibleAt, voidedAt } = getStripeInvoiceOutcomeTimestamps(invoice, event);
 
   // dual write - prisma and bulldozer
   const upsertedInvoice = await prisma.subscriptionInvoice.upsert({

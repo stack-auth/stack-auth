@@ -370,7 +370,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
 
     if (event.type.startsWith("invoice.")) {
       const invoice = event.data.object as Stripe.Invoice;
-      await upsertStripeInvoice(stripe, accountId, invoice);
+      await upsertStripeInvoice(stripe, accountId, invoice, event);
     }
 
     if (event.type === "invoice.payment_succeeded") {

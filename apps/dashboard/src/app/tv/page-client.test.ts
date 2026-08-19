@@ -62,4 +62,43 @@ describe("independent TV display requests", () => {
 
     await act(async () => root.unmount());
   });
+
+  it("creates a pairing challenge independently after a credential is revoked", async () => {
+    const challenge = {
+      challengeId: "927dfeac-2e80-4311-8180-4879b687bfc0",
+      pairingCode: "A2BC3DEF",
+      deviceSecret: "display-secret-with-at-least-32-characters",
+      expiresAt: "2026-08-19T01:00:00.000Z",
+      pollingIntervalSeconds: 5,
+    };
+    const jsonResponse = (status: number, body?: unknown) => new Response(
+      body == null ? null : JSON.stringify(body),
+      {
+        status,
+        headers: body == null ? undefined : { "content-type": "application/json" },
+      },
+    );
+    let recoveryChallengeSignal: AbortSignal | null | undefined;
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { accessToken: "initial-display-access-token" }))
+      .mockResolvedValueOnce(jsonResponse(401))
+      .mockResolvedValueOnce(jsonResponse(401))
+      .mockImplementationOnce(async (_input, init: RequestInit | undefined) => {
+        recoveryChallengeSignal = init?.signal;
+        return jsonResponse(200, challenge);
+      })
+      .mockReturnValueOnce(new Promise(() => {}));
+    const root = createRoot(document.createElement("div"));
+
+    await act(async () => {
+      root.render(createElement(IndependentTvPageClient));
+      for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(fetchMock.mock.calls[3]?.[0]).toBe("http://localhost:8102/api/latest/tv-displays/pairing-challenges");
+    expect(recoveryChallengeSignal).toBeUndefined();
+
+    await act(async () => root.unmount());
+  });
 });

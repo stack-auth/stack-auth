@@ -199,7 +199,8 @@ describe("TV metric semantics", () => {
       data: { ...revenue.data, revenueChangePercent: 0 },
     }));
 
-    screen.getByText("— 0% vs previous 30 days · exact values off");
+    screen.getByText("0% vs previous 30 days · exact values off");
+    expect(screen.queryByText("— 0% vs previous 30 days · exact values off")).toBeNull();
     expect(screen.queryByText("↓ 0% vs previous 30 days · exact values off")).toBeNull();
   });
 

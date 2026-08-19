@@ -32,6 +32,7 @@ export function getRetainedSnapshotState(
 
 export function useTvLiveSnapshot(options: {
   adminApp: object,
+  projectId: string,
   profileId: string,
   enabled: boolean,
 }): TvLiveSnapshotState {
@@ -41,7 +42,7 @@ export function useTvLiveSnapshot(options: {
   return useTvSnapshotPolling({
     loadSnapshot,
     enabled: options.enabled,
-    sourceKey: options.profileId,
+    sourceKey: `${options.projectId}\u0000${options.profileId}`,
     failureProfileId: options.profileId,
   });
 }

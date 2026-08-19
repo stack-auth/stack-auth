@@ -26,14 +26,19 @@ const snapshot = createTvFixtureSnapshot("project", profile);
 const ADMIN_APP = {};
 
 function Probe({
+  adminApp = ADMIN_APP,
   onState,
+  projectId = "project",
   profileId = "company-pulse",
 }: {
+  adminApp?: object,
   onState: (state: TvLiveSnapshotState) => void,
+  projectId?: string,
   profileId?: string,
 }) {
   const state = useTvLiveSnapshot({
-    adminApp: ADMIN_APP,
+    adminApp,
+    projectId,
     profileId,
     enabled: true,
   });
@@ -262,6 +267,47 @@ describe("useTvLiveSnapshot", () => {
     await act(async () => {
       root.unmount();
     });
+  });
+
+  it("discards an older project response when projects share a profile ID", async () => {
+    const oldResponse = Promise.withResolvers<typeof snapshot>();
+    const nextAdminApp = {};
+    const newSnapshot = {
+      ...snapshot,
+      project: { ...snapshot.project, id: "project-b" },
+    };
+    fetchTvSnapshotMock
+      .mockReturnValueOnce(oldResponse.promise)
+      .mockResolvedValueOnce(newSnapshot);
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    const observedStates: TvLiveSnapshotState[] = [];
+    const onState = (state: TvLiveSnapshotState) => {
+      observedStates.push(state);
+    };
+
+    await act(async () => {
+      root.render(<Probe adminApp={ADMIN_APP} projectId="project-a" onState={onState} />);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      root.render(<Probe adminApp={nextAdminApp} projectId="project-b" onState={onState} />);
+      await Promise.resolve();
+    });
+    expect(fetchTvSnapshotMock).toHaveBeenNthCalledWith(
+      2,
+      nextAdminApp,
+      "company-pulse",
+      expect.any(AbortSignal),
+    );
+
+    await act(async () => {
+      oldResponse.resolve(snapshot);
+      await Promise.resolve();
+    });
+    expect(observedStates.at(-1)?.snapshot?.project.id).toBe("project-b");
+
+    await act(async () => root.unmount());
   });
 
   it("does not reset retained data when the loader callback is recreated for the same source", async () => {
