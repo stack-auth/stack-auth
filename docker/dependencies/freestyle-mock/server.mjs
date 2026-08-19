@@ -209,6 +209,7 @@ function isDeadRuntimeError(error) {
   }
   const message = formatError(error).toLowerCase();
   return (
+    message.includes("timed out waiting for sidecar protocol frame") ||
     message.includes("resident runner exited before completing request") ||
     message.includes("resident runner is not running") ||
     message.includes("sidecar protocol stream ended") ||
@@ -1173,7 +1174,11 @@ async function cleanupGuestFiles(runtime, userModuleDir) {
     await runtime.run(makeCleanupWrapper(userModuleDir), { timeout: 2_000 });
   } catch (error) {
     logInternalError("cleanup guest source", error);
+    // Cleanup cannot change the already-produced response, but a dead runtime
+    // must still be reported so the queue can evict it for the next request.
+    if (isDeadRuntimeError(error)) return error;
   }
+  return null;
 }
 
 async function executeScript(runtime, job) {
@@ -1200,7 +1205,7 @@ async function executeScript(runtime, job) {
       },
     };
   } finally {
-    await cleanupGuestFiles(runtime, userModuleDir);
+    job.cleanupError = await cleanupGuestFiles(runtime, userModuleDir);
   }
   if (result.exitCode !== 0 || result.value === undefined) {
     logInternalError("secure-exec nonzero exit", result.stderr || result.exitCode);
@@ -1245,6 +1250,7 @@ class JobQueue {
         controller: new AbortController(),
         output: createOutput(),
         entry: null,
+        cleanupError: null,
         timer: null,
         settled: false,
         resolve,
@@ -1335,7 +1341,9 @@ class JobQueue {
       job.entry = entry;
       if (job.timer) clearTimeout(job.timer);
       this.armExecutionTimeout(job);
-      return await executeScript(entry.runtime, job);
+      const result = await executeScript(entry.runtime, job);
+      if (job.cleanupError) this.runtimeCache.evict(entry);
+      return result;
     } catch (error) {
       if (entry && isDeadRuntimeError(error)) {
         this.runtimeCache.evict(entry);
