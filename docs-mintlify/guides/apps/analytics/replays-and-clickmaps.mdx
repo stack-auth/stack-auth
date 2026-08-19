@@ -46,6 +46,12 @@ export const hexclaveClientApp = new HexclaveClientApp({
 
 To turn replays off entirely, pass `analytics: { replays: { enabled: false } }`. To stop **all** analytics capture (events and replays), pass `analytics: { enabled: false }`.
 
+### Sampling
+
+`observability.traceSampleRate` (default `0.1`) samples **traces** only. Session replays are a separate signal and are **not** sampled by that rate — every eligible session is recorded unless you opt out with `analytics.replays.enabled: false` or exhaust the plan allowance.
+
+A replay can still exist for a session whose trace was dropped. Correlation IDs are still attached, so you can jump from the replay to other signals; the waterfall for that session may simply be missing.
+
 ### Privacy controls
 
 Replays are masked by default to keep sensitive content out of recordings:

@@ -184,7 +184,9 @@ export const hexclaveClientApp = new HexclaveClientApp({
 
 `captureKeystrokes` is disabled by default. When enabled, the SDK records one debounced `$keystroke` event per typing burst with only a count and timing metadata; it never records key values or typed text. Keystrokes in masked inputs, password fields, or elements covered by `blockClass` / `blockSelector` are excluded entirely.
 
-`maskAllInputs` defaults to `true`, so form fields are masked unless you explicitly disable it. That same setting also keeps their keystrokes out of keyboard-activity counts. For the full set of privacy controls, playback, and clickmaps, see [Replays & Clickmaps](./replays-and-clickmaps).
+`maskAllInputs` defaults to `true`, so form fields are masked unless you explicitly disable it. That same setting also keeps their keystrokes out of keyboard-activity counts.
+
+Replay recording is independent of `observability.traceSampleRate`. That option samples traces only; replays are still recorded for every eligible session. For sampling, privacy controls, playback, and clickmaps, see [Replays & Clickmaps](./replays-and-clickmaps).
 
 ### Disabling Analytics Capture in the SDK
 

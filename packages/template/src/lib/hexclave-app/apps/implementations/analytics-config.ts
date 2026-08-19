@@ -11,6 +11,9 @@ export type AnalyticsReplayOptions = {
   /**
    * Whether session replays are enabled.
    *
+   * Independent of `observability.traceSampleRate`: that option samples traces
+   * only. When this is true (the default), every eligible session is recorded.
+   *
    * @default true
    */
   enabled?: boolean,

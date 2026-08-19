@@ -149,6 +149,9 @@ excluded entirely so the count cannot reveal a masked value's length.
 `analytics.enabled` controls custom/product events, autocapture, replays, and
 integrity signals. It does not disable code instrumentation.
 
+`analytics.replays.enabled` defaults to true. Replay recording is not sampled
+by `observability.traceSampleRate`; that option only selects root traces.
+
   observability: {
     enabled?: bool
     release?: string
@@ -340,13 +343,15 @@ Buffering, export, and sampling:
   and mutation-only replay streams that the player cannot reconstruct.
 - `observability.traceSampleRate` defaults to 0.1 and configures the managed
   provider's standard parent-aware root sampler. Existing-provider mode leaves
-  sampling entirely to the application's provider.
+  sampling entirely to the application's provider. This rate samples traces
+  only.
 - Error/latency-aware retention is tail sampling. It must run after ingestion
   in a Collector or authenticated backend buffering boundary; an SDK cannot
-  resurrect a head-dropped span after its outcome becomes known. Logs and
-  errors may be retained independently of trace sampling. HTTP client metrics
-  are derived from recorded CLIENT spans (spanmetrics), so they follow the
-  same head-sampling decision as the request span.
+  resurrect a head-dropped span after its outcome becomes known. Session
+  replays, product events, logs, and errors are retained independently of
+  trace sampling. HTTP client metrics are derived from recorded CLIENT spans
+  (spanmetrics), so they follow the same head-sampling decision as the
+  request span.
 
 
 ## trackEvent(eventType, data?, options?)

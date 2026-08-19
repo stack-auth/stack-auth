@@ -74,6 +74,9 @@ export type ObservabilityOptions = {
    * parent-based ratio sampler, so an upstream sampling decision is preserved.
    * Existing-provider mode leaves sampling entirely to that provider.
    *
+   * This rate samples traces only. Session replays, product events, logs, and
+   * errors are independent signals and are not gated on it.
+   *
    * @default 0.1
    */
   traceSampleRate?: number,
