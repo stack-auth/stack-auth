@@ -2,7 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { jsonObjectSchema } from "#lib/json-payload.ts";
 import { growthCategorySchema, growthTagsSchema } from "#lib/growth-taxonomy.ts";
-import { growthDocumentInputSchema } from "#lib/growth-document.ts";
+import { GROWTH_DOCUMENT_AUTHORING_GUIDE, growthDocumentInputSchema } from "#lib/growth-document.ts";
 import { saveFindings } from "#lib/hexclave-client.ts";
 
 // Thin per-subagent wrapper around the shared backend client. The `source` is
@@ -10,7 +10,7 @@ import { saveFindings } from "#lib/hexclave-client.ts";
 // the ones this analyst produces, so a confused model cannot write findings
 // under another phase's identity.
 export default defineTool({
-  description: "Save data-analysis findings to the Hexclave backend for the current growth run. Every finding must cite concrete numbers from queries run in this session. Use the exact project_id, branch_id, and run_id you were given in your task message.",
+  description: `Save data-analysis findings to the Hexclave backend for the current growth run. Every finding must cite concrete numbers from queries run in this session. ${GROWTH_DOCUMENT_AUTHORING_GUIDE} Use the exact project_id, branch_id, and run_id you were given in your task message.`,
   inputSchema: z.object({
     project_id: z.string().min(1),
     branch_id: z.string().min(1),

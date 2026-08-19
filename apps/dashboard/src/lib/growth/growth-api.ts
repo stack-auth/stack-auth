@@ -715,6 +715,19 @@ export async function setGrowthAdminCategoryScore(app: object, projectId: string
   await requestGrowthAdminJson(app, "/category-scores", { method: "PUT", body: JSON.stringify({ target_project_id: projectId, category, score }) });
 }
 
+export type GrowthAdminManualStep = "workflow_engine" | "growth_watchdog";
+
+export async function runGrowthAdminManualStep(app: object, step: GrowthAdminManualStep): Promise<{ didWork: boolean }> {
+  const response = z.object({
+    step: z.enum(["workflow_engine", "growth_watchdog"]),
+    did_work: z.boolean(),
+  }).parse(await requestGrowthAdminJson(app, "/run-now", {
+    method: "POST",
+    body: JSON.stringify({ step }),
+  }));
+  return { didWork: response.did_work };
+}
+
 export type GrowthAdminFunctionalActionFields = {
   payload: unknown,
   watchedMetrics: GrowthActionItem["watchedMetrics"],
