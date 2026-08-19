@@ -13,13 +13,14 @@ const stepLabels: Record<GrowthAdminManualStep, string> = {
   project_recovery: "Repair selected project",
 };
 
-export function GrowthAdminRunNowCard(props: { app: object, projectId: string, projectName: string }) {
+export function GrowthAdminRunNowCard(props: { app: object, projectId: string, projectName: string, onCompleted: () => Promise<void> }) {
   const [state, setState] = useState<RunState>({ status: "idle" });
 
   const runStep = (step: GrowthAdminManualStep) => {
     setState({ status: "running", step });
     runAsynchronouslyWithAlert(async () => {
       const result = await runGrowthAdminManualStep(props.app, props.projectId, step);
+      await props.onCompleted();
       setState({ status: "success", step, didWork: result.didWork });
     }, {
       onError: error => setState({ status: "error", message: error instanceof Error ? error.message : String(error) }),
