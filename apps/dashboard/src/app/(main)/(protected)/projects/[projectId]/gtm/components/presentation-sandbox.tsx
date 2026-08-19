@@ -36,6 +36,14 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 const MIN_PRESENTATION_HEIGHT_PX = 320;
 
+function getPresentationDocumentId(tsxSource: string): string {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < tsxSource.length; index += 1) {
+    hash = Math.imul(hash ^ tsxSource.charCodeAt(index), 16_777_619);
+  }
+  return `${(hash >>> 0).toString(16)}-${tsxSource.length}`;
+}
+
 export type GrowthPresentationRuntimeError = {
   message: string,
   stack?: string,
@@ -201,7 +209,7 @@ export const GrowthPresentationSandbox = memo(function GrowthPresentationSandbox
 
   const dashboardUrl = useMemo(() => typeof window === "undefined" ? "" : window.location.origin, []);
   const initialThemeRef = useRef<"light" | "dark">(resolvedTheme === "dark" ? "dark" : "light");
-  const documentId = useMemo(() => `${crypto.randomUUID()}-${props.tsxSource.length}`, [props.tsxSource]);
+  const documentId = useMemo(() => getPresentationDocumentId(props.tsxSource), [props.tsxSource]);
   const documentIdRef = useRef(documentId);
   documentIdRef.current = documentId;
   // Deliberately not keyed on the theme: re-rendering the document would remount the presentation

@@ -25,8 +25,8 @@ export const GET = createSmartRouteHandler({
     body: yupMixed().defined(),
   }),
   handler: async ({ auth, params }) => {
-    requireGrowthAppEnabled(auth.tenancy);
     requireGrowthInternalResourceAccess(auth.tenancy);
+    requireGrowthAppEnabled(auth.tenancy);
     await requireGrowthWorkspaceReleased(auth.tenancy);
     const body = await getGrowthBriefBody(auth.tenancy, params.brief_id);
     return { statusCode: 200, bodyType: "json", body };

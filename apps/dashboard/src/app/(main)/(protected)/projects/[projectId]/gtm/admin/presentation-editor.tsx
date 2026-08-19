@@ -231,15 +231,19 @@ export function PresentationEditor(props: {
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <label className="text-sm font-medium" htmlFor={`growth-presentation-source-${report.id}`}>TSX source</label>
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-foreground/[0.12] px-3 py-1.5 text-xs font-medium hover:bg-foreground/[0.04]">
+            <label className={cn(
+              "inline-flex items-center gap-2 rounded-lg border border-foreground/[0.12] px-3 py-1.5 text-xs font-medium",
+              pendingMutation ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-foreground/[0.04]",
+            )}>
               <FileArrowUpIcon className="size-4" />
               Upload file
-              <input className="sr-only" type="file" accept=".tsx,.jsx,.ts,.js,text/plain" onChange={(event) => runAsynchronously(onSourceFileChange(event))} />
+              <input className="sr-only" type="file" accept=".tsx,.jsx,.ts,.js,text/plain" disabled={pendingMutation} onChange={(event) => runAsynchronously(onSourceFileChange(event))} />
             </label>
           </div>
           <textarea
             id={`growth-presentation-source-${report.id}`}
             value={draftSource}
+            disabled={pendingMutation}
             onChange={(event) => updateDraftSource(event.target.value)}
             className="min-h-[24rem] w-full rounded-xl border border-foreground/[0.12] bg-background p-3 font-mono text-xs leading-5 outline-none transition-colors focus:border-foreground/30"
             spellCheck={false}
@@ -302,9 +306,10 @@ export function PresentationEditor(props: {
                 <button
                   key={presentation.id}
                   type="button"
+                  disabled={pendingMutation}
                   onClick={() => selectPresentation(presentation)}
                   className={cn(
-                    "flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors hover:transition-none",
+                    "flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors hover:transition-none disabled:cursor-not-allowed disabled:opacity-50",
                     selectedPresentationId === presentation.id ? "border-foreground/25 bg-foreground/[0.05]" : "border-foreground/[0.09] hover:bg-foreground/[0.03]",
                   )}
                 >
@@ -350,7 +355,7 @@ export function PresentationEditor(props: {
                 const selectedIndex = draftActionItemIds.indexOf(action.id);
                 return (
                   <label key={action.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-foreground/[0.09] p-3 hover:bg-foreground/[0.03]">
-                    <input type="checkbox" checked={selectedIndex >= 0} onChange={() => toggleAction(action.id)} className="mt-1 size-4 accent-foreground" />
+                    <input type="checkbox" checked={selectedIndex >= 0} disabled={pendingMutation} onChange={() => toggleAction(action.id)} className="mt-1 size-4 accent-foreground" />
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium">{action.title}</span>
                       <span className="mt-1 block text-xs text-muted-foreground">{action.description}</span>
@@ -374,10 +379,10 @@ export function PresentationEditor(props: {
                   <div key={action.id} className="flex items-center gap-2 rounded-lg bg-foreground/[0.03] px-3 py-2">
                     <span className="w-5 font-mono text-xs text-muted-foreground">{index + 1}</span>
                     <span className="min-w-0 flex-1 truncate text-sm">{action.title}</span>
-                    <DesignButton size="sm" variant="ghost" disabled={index === 0} onClick={() => moveAction(action.id, -1)} aria-label={`Move ${action.title} up`}>
+                    <DesignButton size="sm" variant="ghost" disabled={pendingMutation || index === 0} onClick={() => moveAction(action.id, -1)} aria-label={`Move ${action.title} up`}>
                       <CaretUpIcon className="size-4" />
                     </DesignButton>
-                    <DesignButton size="sm" variant="ghost" disabled={index === selectedActions.length - 1} onClick={() => moveAction(action.id, 1)} aria-label={`Move ${action.title} down`}>
+                    <DesignButton size="sm" variant="ghost" disabled={pendingMutation || index === selectedActions.length - 1} onClick={() => moveAction(action.id, 1)} aria-label={`Move ${action.title} down`}>
                       <CaretDownIcon className="size-4" />
                     </DesignButton>
                   </div>

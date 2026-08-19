@@ -41,8 +41,8 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, params }) => {
-    requireGrowthAppEnabled(auth.tenancy);
     requireGrowthInternalResourceAccess(auth.tenancy);
+    requireGrowthAppEnabled(auth.tenancy);
     await requireGrowthWorkspaceReleased(auth.tenancy);
     const { draftMarkdown, generated } = await generateGrowthBlogDraft(auth.tenancy, params.action_id);
     return {

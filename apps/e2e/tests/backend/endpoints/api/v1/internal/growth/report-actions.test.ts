@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { Client } from "pg";
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Project, niceBackendFetch } from "../../../../../backend-helpers";
 import { GROWTH_AGENT_AUTH, asGrowthStaff, createGrowthProject, publishGrowthPresentationAsStaff, releaseGrowthInterviewAsStaff, requireRunId } from "./growth-helpers";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 
 const ADMIN_BASE = "/api/latest/internal/growth";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
@@ -40,6 +42,18 @@ async function staffFetch(url: string, options: Parameters<typeof niceBackendFet
   return await asGrowthStaff(async () => await niceBackendFetch(url, { ...options, accessType: "admin" }));
 }
 
+async function publishLegacyReport(reportId: string): Promise<void> {
+  const connectionString = getEnvVariable("STACK_DATABASE_CONNECTION_STRING", "");
+  if (connectionString === "") throw new Error("The growth E2E suite requires STACK_DATABASE_CONNECTION_STRING.");
+  const client = new Client({ connectionString });
+  await client.connect();
+  try {
+    await client.query('UPDATE "GrowthReport" SET "publishedAt" = NOW() WHERE "id" = $1', [reportId]);
+  } finally {
+    await client.end();
+  }
+}
+
 const REPORT_SECTIONS = [
   { id: "current-state", kind: "markdown", title: "Current state", body_markdown: "Steady signups, low activation." },
   { id: "opportunities", kind: "markdown", title: "Opportunities", body_markdown: "Paid search and comparison content." },
@@ -71,7 +85,7 @@ const REPORT_DOCUMENT = {
 async function seedCompletedRunWithReport(
   scope: { project_id: string, branch_id: string },
   runId: string,
-  options: { publishedActionItemCount?: number } = {},
+  options: { publishedActionItemCount?: number, publishPresentation?: boolean } = {},
 ) {
   const questions = await niceBackendFetch(`${AGENT_BASE}/interview-questions`, {
     method: "POST",
@@ -139,11 +153,15 @@ async function seedCompletedRunWithReport(
     throw new Error(`Saving the report failed with status ${report.status}.`);
   }
   const actionItemIds = (report.body as { action_item_ids: string[] }).action_item_ids;
-  await publishGrowthPresentationAsStaff(
-    scope.project_id,
-    (report.body as { report_id: string }).report_id,
-    options.publishedActionItemCount == null ? actionItemIds : actionItemIds.slice(0, options.publishedActionItemCount),
-  );
+  if (options.publishPresentation !== false) {
+    await publishGrowthPresentationAsStaff(
+      scope.project_id,
+      (report.body as { report_id: string }).report_id,
+      options.publishedActionItemCount == null ? actionItemIds : actionItemIds.slice(0, options.publishedActionItemCount),
+    );
+  } else {
+    await publishLegacyReport((report.body as { report_id: string }).report_id);
+  }
   await releaseGrowthInterviewAsStaff(scope.project_id);
   return {
     reportId: (report.body as { report_id: string }).report_id,
@@ -193,7 +211,7 @@ describe.sequential("internal growth reports and actions", { timeout: 300_000 },
       expect(item).not.toHaveProperty("workflow");
     }
 
-    const byId = await niceBackendFetch(`${ADMIN_BASE}/reports/${reportId}`, { accessType: "admin" });
+    const byId = await niceBackendFetch(`${ADMIN_BASE}/reports/${encodeURIComponent(reportId)}`, { accessType: "admin" });
     expect(byId.status).toBe(200);
     expect(byId.body).toMatchObject({ id: reportId });
 
@@ -203,7 +221,7 @@ describe.sequential("internal growth reports and actions", { timeout: 300_000 },
 
     // Another project (with the app enabled) must see neither the report by id nor any "latest".
     await createGrowthProjectWithIds();
-    const crossProject = await niceBackendFetch(`${ADMIN_BASE}/reports/${reportId}`, { accessType: "admin" });
+    const crossProject = await niceBackendFetch(`${ADMIN_BASE}/reports/${encodeURIComponent(reportId)}`, { accessType: "admin" });
     expect(crossProject.status).toBe(404);
     const emptyLatest = await niceBackendFetch(`${ADMIN_BASE}/reports/latest`, { accessType: "admin" });
     expect(emptyLatest.status).toBe(404);
@@ -217,7 +235,7 @@ describe.sequential("internal growth reports and actions", { timeout: 300_000 },
 
     const list = await niceBackendFetch(`${ADMIN_BASE}/actions`, { accessType: "admin" });
     expect(list.status).toBe(403);
-    const dismiss = await niceBackendFetch(`${ADMIN_BASE}/actions/${actionItemIds[0]}/dismiss`, { accessType: "admin", method: "POST" });
+    const dismiss = await niceBackendFetch(`${ADMIN_BASE}/actions/${encodeURIComponent(actionItemIds[0])}/dismiss`, { accessType: "admin", method: "POST" });
     expect(dismiss.status).toBe(403);
   });
 
@@ -228,9 +246,9 @@ describe.sequential("internal growth reports and actions", { timeout: 300_000 },
     const { actionItemIds } = await seedCompletedRunWithReport(scope, runId);
     const [adsItemId, , customItemId] = actionItemIds;
 
-    const activate = await niceBackendFetch(`${ADMIN_BASE}/actions/${adsItemId}/activate`, { accessType: "admin", method: "POST" });
+    const activate = await niceBackendFetch(`${ADMIN_BASE}/actions/${encodeURIComponent(adsItemId)}/activate`, { accessType: "admin", method: "POST" });
     expect(activate).toMatchObject({ status: 200, body: { status: "active" } });
-    const activateAgain = await niceBackendFetch(`${ADMIN_BASE}/actions/${adsItemId}/activate`, { accessType: "admin", method: "POST" });
+    const activateAgain = await niceBackendFetch(`${ADMIN_BASE}/actions/${encodeURIComponent(adsItemId)}/activate`, { accessType: "admin", method: "POST" });
     expect(activateAgain).toMatchObject({ status: 200, body: { status: "active" } });
 
     const dismiss = await staffFetch(`${ADMIN_BASE}/admin/actions/${customItemId}`, {
@@ -260,7 +278,7 @@ describe.sequential("internal growth reports and actions", { timeout: 300_000 },
     });
     expect(dismissAgain).toMatchObject({ status: 200, body: { id: customItemId, status: "dismissed" } });
 
-    const dismissActive = await staffFetch(`${ADMIN_BASE}/admin/actions/${adsItemId}`, {
+    const dismissActive = await staffFetch(`${ADMIN_BASE}/admin/actions/${encodeURIComponent(adsItemId)}`, {
       method: "PATCH",
       body: {
         target_project_id: projectId,
@@ -295,7 +313,7 @@ describe.sequential("internal growth reports and actions", { timeout: 300_000 },
     const { actionItemIds } = await seedCompletedRunWithReport(scope, runId, { publishedActionItemCount: 1 });
     const uncuratedActionId = actionItemIds[2];
 
-    const staffActivation = await staffFetch(`${ADMIN_BASE}/admin/actions/${uncuratedActionId}`, {
+    const staffActivation = await staffFetch(`${ADMIN_BASE}/admin/actions/${encodeURIComponent(uncuratedActionId)}`, {
       method: "PATCH",
       body: {
         target_project_id: projectId,
@@ -309,9 +327,19 @@ describe.sequential("internal growth reports and actions", { timeout: 300_000 },
     });
     expect(staffActivation).toMatchObject({ status: 200, body: { id: uncuratedActionId, status: "active" } });
 
-    const customerActivation = await niceBackendFetch(`${ADMIN_BASE}/actions/${uncuratedActionId}/activate`, { accessType: "admin", method: "POST" });
+    const customerActivation = await niceBackendFetch(`${ADMIN_BASE}/actions/${encodeURIComponent(uncuratedActionId)}/activate`, { accessType: "admin", method: "POST" });
     expect(customerActivation.status).toBe(403);
     expect(customerActivation.body).toBe("This action is not available.");
+  });
+
+  it("allows customer activation for a grandfathered published report without a presentation", async ({ expect }) => {
+    const { projectId, branchId } = await createGrowthProjectWithIds();
+    const scope = { project_id: projectId, branch_id: branchId };
+    const runId = await completeOnboarding();
+    const { actionItemIds } = await seedCompletedRunWithReport(scope, runId, { publishPresentation: false });
+
+    const activation = await niceBackendFetch(`${ADMIN_BASE}/actions/${encodeURIComponent(actionItemIds[0])}/activate`, { accessType: "admin", method: "POST" });
+    expect(activation).toMatchObject({ status: 200, body: { status: "active" } });
   });
 
   it("blocks customer access to internal action metrics", async ({ expect }) => {
@@ -319,7 +347,7 @@ describe.sequential("internal growth reports and actions", { timeout: 300_000 },
     const scope = { project_id: projectId, branch_id: branchId };
     const runId = await completeOnboarding();
     const { actionItemIds } = await seedCompletedRunWithReport(scope, runId);
-    const metrics = await niceBackendFetch(`${ADMIN_BASE}/actions/${actionItemIds[1]}/metrics`, { accessType: "admin" });
+    const metrics = await niceBackendFetch(`${ADMIN_BASE}/actions/${encodeURIComponent(actionItemIds[1])}/metrics`, { accessType: "admin" });
     expect(metrics.status).toBe(403);
   });
 
@@ -334,16 +362,16 @@ describe.sequential("internal growth reports and actions", { timeout: 300_000 },
     expect(clientReport.status).toBe(401);
     const clientActions = await niceBackendFetch(`${ADMIN_BASE}/actions`, { accessType: "client" });
     expect(clientActions.status).toBe(401);
-    const clientActivate = await niceBackendFetch(`${ADMIN_BASE}/actions/${firstActionItemId}/activate`, { accessType: "client", method: "POST" });
+    const clientActivate = await niceBackendFetch(`${ADMIN_BASE}/actions/${encodeURIComponent(firstActionItemId)}/activate`, { accessType: "client", method: "POST" });
     expect(clientActivate.status).toBe(401);
 
     // Disabling the app cuts off the whole surface, even for admins and existing data.
     await Project.updateConfig({ "apps.installed.gtm.enabled": false });
-    const disabledReport = await niceBackendFetch(`${ADMIN_BASE}/reports/${reportId}`, { accessType: "admin" });
+    const disabledReport = await niceBackendFetch(`${ADMIN_BASE}/reports/${encodeURIComponent(reportId)}`, { accessType: "admin" });
     expect(disabledReport.status).toBe(400);
     const disabledActions = await niceBackendFetch(`${ADMIN_BASE}/actions`, { accessType: "admin" });
-    expect(disabledActions.status).toBe(400);
-    const disabledMetrics = await niceBackendFetch(`${ADMIN_BASE}/actions/${firstActionItemId}/metrics`, { accessType: "admin" });
-    expect(disabledMetrics.status).toBe(400);
+    expect(disabledActions.status).toBe(403);
+    const disabledMetrics = await niceBackendFetch(`${ADMIN_BASE}/actions/${encodeURIComponent(firstActionItemId)}/metrics`, { accessType: "admin" });
+    expect(disabledMetrics.status).toBe(403);
   });
 });

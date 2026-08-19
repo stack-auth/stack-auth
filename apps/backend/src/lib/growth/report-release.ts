@@ -48,7 +48,7 @@ async function requireReportInTenancy(tenancy: Tenancy, reportId: string) {
   if (!isUuid(reportId)) throw new StatusError(404, "Report not found.");
   const report = await globalPrismaClient.growthReport.findFirst({
     where: { id: reportId, projectId: tenancy.project.id, branchId: tenancy.branchId },
-    select: { id: true, publishedAt: true },
+    select: { id: true, publishedAt: true, publishedByUserId: true },
   });
   if (report == null) throw new StatusError(404, "Report not found.");
   return report;
@@ -122,6 +122,7 @@ export async function getGrowthAdminReport(tenancy: Tenancy, reportId: string) {
   return {
     ...body,
     published_at_millis: report.publishedAt == null ? null : report.publishedAt.getTime(),
+    published_by_user_id: report.publishedByUserId,
     presentations: presentations.map(presentationToWire),
   };
 }

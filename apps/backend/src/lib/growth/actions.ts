@@ -499,15 +499,20 @@ export async function activateGrowthActionItem(
     if (item.reportId == null) {
       throw new StatusError(403, "This action is not available.");
     }
-    const publishedPresentation = await globalPrismaClient.growthReportPresentation.findFirst({
-      where: {
-        reportId: item.reportId,
-        publishedAt: { not: null },
-        actionItemIds: { has: item.id },
+    const report = await globalPrismaClient.growthReport.findUnique({
+      where: { id: item.reportId },
+      select: {
+        publishedAt: true,
+        presentations: {
+          select: { publishedAt: true, actionItemIds: true },
+        },
       },
-      select: { id: true },
     });
-    if (publishedPresentation == null) {
+    const reportHasNoPresentation = report != null && report.presentations.length === 0;
+    const isCuratedInPublishedPresentation = report?.presentations.some((presentation) =>
+      presentation.publishedAt != null && presentation.actionItemIds.includes(item.id),
+    ) === true;
+    if (report?.publishedAt == null || (!reportHasNoPresentation && !isCuratedInPublishedPresentation)) {
       throw new StatusError(403, "This action is not available.");
     }
   }

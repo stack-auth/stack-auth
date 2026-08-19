@@ -265,7 +265,7 @@ describe.sequential("internal Growth report release", { timeout: 300_000 }, () =
   });
 
   it("releases everything after staff publishes a presentation", { timeout: 300_000 }, async ({ expect }) => {
-    const { reportId } = await seedReport();
+    const { projectId, reportId } = await seedReport();
 
     const status = await niceBackendFetch(`${GROWTH_BASE}/status`, { accessType: "admin" });
     expect(status.body).toMatchObject({ release: { state: "released" }, latest_report: { id: reportId, read_at_millis: null } });
@@ -280,6 +280,9 @@ describe.sequential("internal Growth report release", { timeout: 300_000 }, () =
     expect(report).toMatchObject({ status: 200, body: { id: reportId, presentation: { version: 1 } } });
     expect(report.body).not.toHaveProperty("title");
     expect(report.body).not.toHaveProperty("summary");
+
+    const adminDetail = await asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/reports/${encodeURIComponent(reportId)}?project_id=${encodeURIComponent(projectId)}`, { accessType: "client" }));
+    expect(adminDetail).toMatchObject({ status: 200, body: { published_by_user_id: expect.any(String) } });
   });
 
   it("allows customer activation only for actions curated into the live presentation", { timeout: 300_000 }, async ({ expect }) => {

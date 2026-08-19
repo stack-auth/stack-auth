@@ -23,8 +23,8 @@ export const POST = createSmartRouteHandler({
     body: yupMixed().defined(),
   }),
   handler: async ({ auth, params }) => {
-    requireGrowthAppEnabled(auth.tenancy);
     requireGrowthInternalResourceAccess(auth.tenancy);
+    requireGrowthAppEnabled(auth.tenancy);
     await requireGrowthWorkspaceReleased(auth.tenancy);
     const result = await dismissGrowthActionItem(auth.tenancy, params.action_id);
     return { statusCode: 200, bodyType: "json", body: { status: result.status } };

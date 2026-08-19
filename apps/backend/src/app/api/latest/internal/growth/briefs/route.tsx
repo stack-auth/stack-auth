@@ -38,8 +38,8 @@ export const GET = createSmartRouteHandler({
     body: yupMixed().defined(),
   }),
   handler: async ({ auth, query }) => {
-    requireGrowthAppEnabled(auth.tenancy);
     requireGrowthInternalResourceAccess(auth.tenancy);
+    requireGrowthAppEnabled(auth.tenancy);
     await requireGrowthWorkspaceReleased(auth.tenancy);
     const body = await listGrowthBriefsBody(auth.tenancy, {
       cursor: query.cursor,

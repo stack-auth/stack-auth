@@ -49,8 +49,8 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth }) => {
-    requireGrowthAppEnabled(auth.tenancy);
     requireGrowthInternalResourceAccess(auth.tenancy);
+    requireGrowthAppEnabled(auth.tenancy);
     await requireGrowthWorkspaceReleased(auth.tenancy);
     return { statusCode: 200, bodyType: "json", body: await getGrowthMetricsOverviewBody(auth.tenancy, new Date()) };
   },
