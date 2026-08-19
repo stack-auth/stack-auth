@@ -20,8 +20,9 @@ ENV PATH=$PNPM_HOME:$PNPM_HOME/bin:$PATH
 
 RUN corepack enable
 RUN corepack prepare pnpm@11.5.0 --activate
-RUN pnpm add -g turbo
-RUN pnpm add -g tsx
+# Keep Docker pruning behavior stable and include generated SDK files despite their .gitignore rules.
+RUN pnpm add -g turbo@2.10.11
+RUN pnpm add -g tsx@4.23.12
 
 
 # Prune stage
@@ -32,7 +33,7 @@ COPY . .
 RUN tsx ./scripts/generate-sdks.ts
 
 # Only prune backend (no dashboard)
-RUN turbo prune --scope=@hexclave/backend --scope=@hexclave/template --docker
+RUN turbo prune --scope=@hexclave/backend --scope=@hexclave/template --docker --use-gitignore=false
 
 
 # Build stage
