@@ -2,7 +2,6 @@ import { describe, type ExpectStatic } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Project, niceBackendFetch } from "../../../../../backend-helpers";
 import { GROWTH_AGENT_AUTH, createGrowthProject, releaseGrowthInterviewAsStaff, requireRunId } from "./growth-helpers";
-import { urlString } from "@hexclave/shared/dist/utils/urls";
 
 const ADMIN_BASE = "/api/latest/internal/growth";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
@@ -473,7 +472,7 @@ describe("internal growth interview (no mock Eve)", { timeout: 90_000 }, () => {
     expect(researchPhases.every((phase) => phase.status === "completed" || phase.status === "skipped")).toBe(true);
 
     // The finding is untouched.
-    const findings = await niceBackendFetch(urlString`${AGENT_BASE}/context-bundle?project_id=${scope.project_id}&branch_id=${scope.branch_id}`, {
+    const findings = await niceBackendFetch(`${AGENT_BASE}/context-bundle?project_id=${encodeURIComponent(scope.project_id)}&branch_id=${encodeURIComponent(scope.branch_id)}`, {
       method: "GET",
       headers: GROWTH_AGENT_AUTH,
     });

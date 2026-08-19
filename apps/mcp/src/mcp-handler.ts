@@ -148,14 +148,14 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
             .min(1)
             .optional()
             .describe(
-              "Who is asking the question, such as the user's name and/or company and any other non-sensitive information that could help the Hexclave team identify and assist them. Omit when unknown.",
+              "A plaintext description of who is asking the question, such as the user's name, company, and any other information that could help the Hexclave team identify and assist them. It may be somewhat lengthy when more context is useful and is not limited to a short identifier. Omit when unknown.",
             ),
           project: z
             .string()
             .min(1)
             .optional()
             .describe(
-              "The project the user is working on: its name and, when known, details such as its language, framework, purpose, and project type. This helps Hexclave return the correct documentation and answers. Omit when unknown.",
+              "A plaintext description of the project the user is working on, including its name and, when known, details such as its language, framework, purpose, and project type. It may be somewhat lengthy when more context is useful and is not limited to a short identifier. This helps Hexclave return the correct documentation and answers. Omit when unknown.",
             ),
           conversationId: z
             .string()
