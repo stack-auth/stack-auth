@@ -62,6 +62,22 @@ export type FollowSessionOptions = {
   readonly maxSessionMs: number,
   readonly reconnect?: SessionStreamReconnectPolicy,
   readonly cancelWaitMs?: number,
+  /**
+   * Lets a caller that stops the session itself (eg. the interview turn, which cancels as soon as a
+   * turn-ending tool returns) suppress the cleanup cancel below. Without it, abandoning on
+   * `turn.cancelled` — which is not a settled *session* — would send a second `cancel()` that eve
+   * answers with a benign `no_active_turn`; harmless, but a wasted round-trip on a path where a
+   * human is waiting for the reply.
+   *
+   * A callback rather than a boolean because it is read at cleanup time, not at call time: the
+   * caller flips its own flag mid-iteration, long after it passed these options in. Answer `true`
+   * only once that stop actually landed — a `cancel()` that threw leaves the session running, and
+   * the cleanup below is the last thing that can still stop it.
+   *
+   * Opt-in on purpose. Every other way out of this generator (wall-clock timeout, exhausted
+   * reconnect budget, a fatal read error, a consumer bailing on a non-terminal event) leaves a live
+   * session behind that only we can stop, so the default must stay "cancel".
+   */
   readonly isAlreadyStopped?: () => boolean,
 };
 

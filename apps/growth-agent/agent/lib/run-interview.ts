@@ -106,6 +106,9 @@ export async function executeInterviewTurn(input: InterviewTurnRequest, helpers:
   let cancelledAfterTurnEndingTool = false;
   const seenTextParts = new Set<string>();
 
+  // This turn ends by cancelling the session itself, and its exits (`turn.cancelled`, or the
+  // `session.waiting` that follows it) settle the turn but not the session — so without this the
+  // follower would fire a second, redundant cancel on every single turn.
   collect: for await (const event of followSessionEvents({
     session,
     label: "Interview turn",
