@@ -4,7 +4,6 @@ import { Project, niceBackendFetch } from "../../../../../backend-helpers";
 import { createGrowthProject, requireRunId } from "./growth-helpers";
 
 const BASE_PATH = "/api/latest/internal/growth";
-const INTERNAL_RESOURCE_DENIAL = "This Growth resource is not available.";
 
 // Dynamic run ids make inline snapshots impractical for the run-shaped responses, so those use
 // toMatchObject (deliberate deviation from the usual snapshot preference); the pre-onboarding
