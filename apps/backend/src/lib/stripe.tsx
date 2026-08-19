@@ -264,17 +264,17 @@ export function getCanceledAtForSync(subscription: Stripe.Subscription): { cance
 }
 
 /**
- * Sanitized period end of the subscription's first item, or null when the
- * response has no items (mocked Stripe). Lets wind-down writers take the
- * boundary from Stripe's authoritative response instead of a possibly stale
- * (pre-renewal) local period end.
+ * Sanitized billing period of the subscription's first item, or null when the
+ * response has no items (mocked Stripe). Lets wind-down writers take both the
+ * entitlement boundary (`endedAt`) and the displayed period from Stripe's
+ * authoritative response instead of a possibly stale (pre-renewal) local one.
  */
-export function getStripeSubscriptionPeriodEnd(subscription: Stripe.Subscription, context: { tenancyId: string }): Date | null {
+export function getStripeSubscriptionPeriod(subscription: Stripe.Subscription, context: { tenancyId: string }): { start: Date, end: Date } | null {
   if (subscription.items.data.length === 0) {
     return null;
   }
   const item = subscription.items.data[0];
-  return sanitizeStripePeriodDates(item.current_period_start, item.current_period_end, { subscriptionId: subscription.id, tenancyId: context.tenancyId }).end;
+  return sanitizeStripePeriodDates(item.current_period_start, item.current_period_end, { subscriptionId: subscription.id, tenancyId: context.tenancyId });
 }
 
 export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: string, stripeCustomerId: string) {

@@ -7,7 +7,7 @@ import { REFUND_TXN_PREFIX } from "@/lib/payments/refund-txn-id";
 import { resolveSelectedPriceFromProduct } from "@/app/api/latest/internal/payments/transactions/transaction-builder";
 import { ONE_TIME_PURCHASE_PRODUCT_GRANT_ENTRY_INDEX, SUBSCRIPTION_START_PRODUCT_GRANT_ENTRY_INDEX } from "@/lib/payments/transaction-entry-indexes";
 import type { ManualTransactionRow, TransactionEntryData } from "@/lib/payments/schema/types";
-import { getStripeForAccount, getStripeSubscriptionPeriodEnd } from "@/lib/stripe";
+import { getStripeForAccount, getStripeSubscriptionPeriod } from "@/lib/stripe";
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, type PrismaClientTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -686,7 +686,7 @@ async function handleSubscriptionRefund(options: {
   } else if (endAtPeriodEnd) {
     // End at period end. Items follow natural lifecycle when sub-end fires
     // at period boundary.
-    let stripePeriodEnd: Date | null = null;
+    let stripePeriod: { start: Date, end: Date } | null = null;
     if (!isTestMode && subscription.stripeSubscriptionId) {
       const stripe = await getStripeForAccount({ tenancy });
       // Idempotent guard, mirroring the endNow branch. The end-at-period-end
@@ -703,7 +703,7 @@ async function handleSubscriptionRefund(options: {
         });
         // Same as the cancel route: Stripe's response is the authority on
         // the boundary; the local row can be stale around a renewal
-        stripePeriodEnd = getStripeSubscriptionPeriodEnd(updated, { tenancyId: tenancy.id });
+        stripePeriod = getStripeSubscriptionPeriod(updated, { tenancyId: tenancy.id });
       } catch (e: unknown) {
         if (!isStripeSubscriptionAlreadyTerminalError(e)) {
           throw e;
@@ -715,7 +715,14 @@ async function handleSubscriptionRefund(options: {
       data: {
         cancelAtPeriodEnd: true,
         canceledAt: subscription.canceledAt ?? now,
-        endedAt: subscription.endedAt ?? stripePeriodEnd ?? subscription.currentPeriodEnd,
+        endedAt: subscription.endedAt ?? stripePeriod?.end ?? subscription.currentPeriodEnd,
+        // Mirror the cancel route: the displayed period must track the
+        // entitlement boundary, otherwise "Ends on" keeps showing a stale
+        // local period after a missed renewal sync.
+        ...(stripePeriod ? {
+          currentPeriodStart: stripePeriod.start,
+          currentPeriodEnd: stripePeriod.end,
+        } : {}),
       },
     });
   }

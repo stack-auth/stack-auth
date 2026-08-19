@@ -117,13 +117,15 @@ export async function ensureProductIdOrInlineProduct(
 // were removed. All reads now go through customer-data.ts backed by Bulldozer.
 
 /**
- * The subscription will renew and can be acted on (canceled, switched). For
- * "does this still entitle the customer" use `isSubscriptionInEffect` — a
- * canceled sub keeps entitling until its future `endedAt`.
+ * Stripe status is `active` or `trialing`.
+ *
+ * A sub set to cancel at period end stays `active` in Stripe, so this returns
+ * true for it. To ask "will it renew?", use `isSubscriptionCancelable`. To ask
+ * "does the customer still get the product?", use `isSubscriptionInEffect`.
  */
 export function isActiveSubscription(subscription: { status: string }): boolean {
   const s = subscription.status;
-  return s === "active" || s === SubscriptionStatus.active || s === "trialing" || s === SubscriptionStatus.trialing;
+  return s === SubscriptionStatus.active || s === SubscriptionStatus.trialing;
 }
 
 /**

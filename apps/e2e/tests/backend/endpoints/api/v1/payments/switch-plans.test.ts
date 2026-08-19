@@ -552,3 +552,77 @@ it("two rapid sequential test-mode switches in the same product line leave only 
     .sort((a, b) => stringCompare(a ?? "", b ?? ""));
   expect(activeIds).toEqual(["elite"]);
 }, { timeout: 30_000 });
+
+it("blocks a free-plan switch when a canceled-but-still-in-effect sub holds the product line", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Project.updateConfig({
+    payments: {
+      productLines: { plans: { displayName: "Plans" } },
+      products: {
+        free: {
+          displayName: "Free",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: {},
+          includedItems: {},
+        },
+        basic: {
+          displayName: "Basic",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+        pro: {
+          displayName: "Pro",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: { monthly: { USD: "2000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+
+  const grantResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: { product_id: "basic" },
+  });
+  expect(grantResponse.status).toBe(200);
+
+  // Canceling a sub with no Stripe object writes status `canceled` with a
+  // future `endedAt`: it stops being "active" while still entitling the
+  // customer for the rest of the period.
+  const cancelResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/basic`, {
+    method: "DELETE",
+    accessType: "client",
+  });
+  expect(cancelResponse.status).toBe(200);
+
+  // Switching "from free" must still see that sub as occupying the product
+  // line — otherwise the new paid sub coexists with one that's still granting.
+  const switchResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
+    method: "POST",
+    accessType: "client",
+    body: {
+      from_product_id: "free",
+      to_product_id: "pro",
+    },
+  });
+  expect(switchResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Customer has an active subscription in this product line; switch from that product instead.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+}, { timeout: 30_000 });

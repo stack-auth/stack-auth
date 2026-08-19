@@ -1,3 +1,4 @@
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { it } from "../../../../../helpers";
@@ -1844,3 +1845,131 @@ it("should cancel existing subscriptions immediately when granting a product of 
     }
   `);
 });
+
+it("refreshes the local billing period from Stripe's response when canceling at period end", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+
+  const product = {
+    displayName: "Pro Plan",
+    customerType: "user",
+    serverOnly: false,
+    stackable: false,
+    prices: {
+      monthly: {
+        USD: "1000",
+        interval: [1, "month"],
+      },
+    },
+    includedItems: {},
+  };
+  await configureProduct({
+    testMode: false,
+    products: { "pro-plan": product },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+
+  const accountInfo = await niceBackendFetch("/api/latest/internal/payments/stripe/account-info", {
+    accessType: "admin",
+  });
+  expect(accountInfo.status).toBe(200);
+  const accountId: string = accountInfo.body.account_id;
+
+  const createUrl = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "pro-plan" },
+  });
+  expect(createUrl.status).toBe(200);
+  const fullCode = (createUrl.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
+  expect(fullCode).toBeDefined();
+  const tenancyId = (fullCode as string).split("_")[0];
+
+  // Seed the local row with a period that ends in an hour. stripe-mock reports a
+  // different period on the cancel response, which stands in for a local row
+  // that drifted from Stripe (e.g. a renewal we never synced).
+  const nowSec = Math.floor(Date.now() / 1000);
+  const idSuffix = generateUuid().replace(/-/g, "");
+  const stripeSubscription = {
+    id: `sub_cancel_period_${idSuffix}`,
+    status: "active",
+    items: {
+      data: [{
+        quantity: 1,
+        current_period_start: nowSec - 60,
+        current_period_end: nowSec + 60 * 60,
+      }],
+    },
+    metadata: {
+      productId: "pro-plan",
+      product: JSON.stringify(product),
+      priceId: "monthly",
+    },
+    cancel_at_period_end: false,
+  };
+
+  const startWebhook = await Payments.sendStripeWebhook({
+    id: `evt_cancel_period_${idSuffix}`,
+    type: "invoice.payment_succeeded",
+    account: accountId,
+    data: {
+      object: {
+        id: `in_cancel_period_${idSuffix}`,
+        customer: `cus_cancel_period_${idSuffix}`,
+        billing_reason: "subscription_create",
+        stack_stripe_mock_data: {
+          "accounts.retrieve": { metadata: { tenancyId } },
+          "customers.retrieve": { metadata: { customerId: userId, customerType: "USER" } },
+          "subscriptions.list": { data: [stripeSubscription] },
+        },
+        lines: {
+          data: [{
+            parent: { subscription_item_details: { subscription: stripeSubscription.id } },
+          }],
+        },
+      },
+    },
+  });
+  expect(startWebhook.status).toBe(200);
+
+  const readSubscription = async () => {
+    for (let i = 0; i < 30; i++) {
+      const res = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+        accessType: "client",
+      });
+      expect(res.status).toBe(200);
+      const items = (res.body as {
+        items: Array<{
+          id: string,
+          subscription: { cancel_at_period_end: boolean, current_period_end: string | null } | null,
+        }>,
+      }).items;
+      const sub = items.find((i) => i.id === "pro-plan")?.subscription;
+      if (sub) {
+        return sub;
+      }
+      await wait(500);
+    }
+    throw new Error("Subscription for pro-plan never became visible");
+  };
+
+  const beforeCancel = await readSubscription();
+  const staleEndMillis = new Date(beforeCancel.current_period_end ?? throwErr("no period end")).getTime();
+  expect(staleEndMillis).toBeLessThan(Date.now() + 2 * 60 * 60 * 1000);
+
+  const cancelResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}/pro-plan`, {
+    method: "DELETE",
+    accessType: "client",
+  });
+  expect(cancelResponse.status).toBe(200);
+
+  // The sub must still be in effect, and "Ends on" (current_period_end) must
+  // track the boundary Stripe reported rather than the stale local period —
+  // otherwise entitlements and the displayed end date disagree.
+  const afterCancel = await readSubscription();
+  expect(afterCancel.cancel_at_period_end).toBe(true);
+  const refreshedEndMillis = new Date(afterCancel.current_period_end ?? throwErr("no period end")).getTime();
+  expect(refreshedEndMillis).toBeGreaterThan(staleEndMillis);
+  expect(refreshedEndMillis).toBeGreaterThan(Date.now() + 20 * 24 * 60 * 60 * 1000);
+}, { timeout: 60_000 });

@@ -106,6 +106,10 @@ export const POST = createSmartRouteHandler({
       customerId: params.customer_id,
     });
 
+    // Shared by both in-effect checks below (OTP guard and competing-sub guard)
+    // so they classify subscriptions against the same instant.
+    const nowMillis = Date.now();
+
     // Block switching if a non-subscription (OTP) product exists in the same product line,
     // since OTPs can't be replaced. Subscription ownership is fine — that's what we're switching.
     if (fromProduct.productLineId) {
@@ -118,7 +122,6 @@ export const POST = createSmartRouteHandler({
       // ownedProducts keys use '__null__' for inline products (null productId),
       // so we normalize subscription productIds to match. In-effect (not
       // active): a canceled-at-period-end sub is still sub-backed, not an OTP.
-      const nowMillis = Date.now();
       const subBackedProductIds = new Set(
         Object.values(subMap).filter(s => isSubscriptionInEffect(s, nowMillis)).map(s => s.productId ?? "__null__")
       );
@@ -165,7 +168,10 @@ export const POST = createSmartRouteHandler({
     if (!existingSub && fromIsFreePlan) {
       const competingSub = Object.values(subMap).find(
         s => s.productId !== body.from_product_id
-          && isActiveSubscription(s)
+          // In-effect, not active: a canceled sub that still entitles (pending
+          // cancel, or a local test-mode cancel written as `canceled` with a
+          // future `endedAt`) would otherwise coexist with the new paid sub.
+          && isSubscriptionInEffect(s, nowMillis)
           && s.productId != null
           && getOrUndefined(products, s.productId)?.productLineId === fromProduct.productLineId
       );

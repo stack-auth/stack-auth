@@ -4,7 +4,7 @@ import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write"
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
 import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
-import { getStripeForAccount, getStripeSubscriptionPeriodEnd } from "@/lib/stripe";
+import { getStripeForAccount, getStripeSubscriptionPeriod } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
@@ -148,8 +148,8 @@ export const DELETE = createSmartRouteHandler({
         // Stripe's response is the authority on the boundary — the bulldozer
         // snapshot can be a stale pre-renewal period end. Snapshot fallback
         // only covers item-less mocked responses.
-        const endedAt = getStripeSubscriptionPeriodEnd(updated, { tenancyId: auth.tenancy.id })
-          ?? new Date(subscription.currentPeriodEndMillis);
+        const stripePeriod = getStripeSubscriptionPeriod(updated, { tenancyId: auth.tenancy.id });
+        const endedAt = stripePeriod?.end ?? new Date(subscription.currentPeriodEndMillis);
         updatedSub = await prisma.subscription.update({
           where: {
             tenancyId_id: {
@@ -161,6 +161,14 @@ export const DELETE = createSmartRouteHandler({
             cancelAtPeriodEnd: true,
             canceledAt: new Date(),
             endedAt,
+            // Keep the displayed period in step with the entitlement boundary:
+            // the products list surfaces `currentPeriodEnd` as `current_period_end`
+            // ("Ends on"), so writing only `endedAt` leaves a stale local period
+            // showing the wrong date after a missed renewal sync.
+            ...(stripePeriod ? {
+              currentPeriodStart: stripePeriod.start,
+              currentPeriodEnd: stripePeriod.end,
+            } : {}),
           },
         });
       } else {
