@@ -220,10 +220,15 @@ export const POST = createSmartRouteHandler({
     const redactionSecretsEncrypted = await encryptDeploymentRedactionSecrets([...redactionSecrets]);
 
     // Consume the upload before doing anything slow: this makes replaying the
-    // same deploy request fail fast instead of deploying twice. An all-prebuilt
-    // deployment has no upload at all, and so also no duplicate-request fence —
-    // it starts no builder and applies images that are already immutable, so a
-    // replay converges on the same thing rather than building twice.
+    // same deploy request fail fast instead of deploying twice.
+    //
+    // KNOWN AND ACCEPTED: an all-prebuilt deployment has no upload, so it has no
+    // such fence — two identical requests each create a deployment and apply it.
+    // The applied STATE still converges (the runtime serializes a source's
+    // applies and re-applying one spec is a no-op), so the cost is a duplicate
+    // row in the project's deployment history, not a broken deploy. Fencing it
+    // properly needs a client-minted idempotency key, which is deliberately left
+    // until something actually depends on it.
     let upload: { id: string, marshalUploadId: string, expiresAt: Date } | null = null;
     if (body.upload_id !== undefined) {
       upload = await prisma.deploymentSourceUpload.findUnique({

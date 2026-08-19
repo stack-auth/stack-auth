@@ -7,13 +7,22 @@
 // redeploy resolves again, which is how a moved tag is picked up — deliberately,
 // and at a moment that is recorded.
 //
+// A reference that ALREADY names a digest is checked here too. The digest fixes
+// which bytes, so there is nothing to resolve — but "does this image exist",
+// "can it be pulled without credentials" and "does it run on amd64" are separate
+// questions, and answering them here is what keeps a bad reference a 400 on the
+// deploy request instead of a machine that will not start.
+//
 // This is also the only place Marshal makes an outbound request to a host the
 // USER chose, so it carries the guards that go with that: no private-network
 // destinations, a bounded number of redirects each re-checked, a short timeout,
-// and a small response cap.
+// and a small response cap. Requests are pinned to the address that was
+// validated (see registryGet) so that a name resolving differently a moment
+// later cannot move the connection somewhere the check would have refused.
 
 import dns from "node:dns/promises";
 import net from "node:net";
+import https from "node:https";
 import { createHash } from "node:crypto";
 import { getConfig } from "./config.js";
 import { badRequest } from "./errors.js";
@@ -54,18 +63,18 @@ export type ResolvedImage = {
 };
 
 /**
- * Resolves a reference to a digest-pinned one.
+ * Resolves a reference to a digest-pinned one, having checked that the image
+ * exists, is publicly pullable, and can run on amd64.
  *
- * A reference that already names a digest resolves to itself without a request:
- * it already names fixed bytes, and a registry round-trip could only agree.
+ * Both spellings go through the registry: a tag because its digest is unknown,
+ * and a digest because everything OTHER than which-bytes is still unknown.
  */
 export async function resolveImage(ref: ImageRef): Promise<ResolvedImage> {
-  if (ref.digest !== null) {
-    return { imageRef: `${ref.registry}/${ref.repository}@${ref.digest}`, digest: ref.digest };
-  }
   const digest = getConfig().registryKind === "mock"
-    ? mockDigestFor(ref)
-    : await resolveTagDigest(ref);
+    // The mock stands in for the whole registry, digests included: an e2e run
+    // must not depend on a public registry being reachable.
+    ? ref.digest ?? mockDigestFor(ref)
+    : await resolveFromRegistry(ref);
   return { imageRef: `${ref.registry}/${ref.repository}@${digest}`, digest };
 }
 
@@ -79,19 +88,26 @@ function mockDigestFor(ref: ImageRef): string {
   return `sha256:${createHash("sha256").update(`mock-image:${ref.canonical}`).digest("hex")}`;
 }
 
-async function resolveTagDigest(ref: ImageRef): Promise<string> {
+/**
+ * Fetches the manifest and returns the digest the registry reports for it.
+ *
+ * `reference` is the tag or the digest — the registry API takes either in the
+ * same position, which is what lets one path answer both.
+ */
+async function resolveFromRegistry(ref: ImageRef): Promise<string> {
   // Docker Hub's registry API lives on a different host from the name that
   // appears in references.
   const host = ref.registry === "docker.io" ? "registry-1.docker.io" : ref.registry;
-  const url = `https://${host}/v2/${ref.repository}/manifests/${ref.tag}`;
+  const reference = ref.digest ?? ref.tag;
+  const url = `https://${host}/v2/${ref.repository}/manifests/${reference}`;
 
-  let response = await registryFetch(url, {});
+  let response = await registryGet(url, {});
   if (response.status === 401) {
     // The standard anonymous-pull handshake: the challenge names where to get a
     // token for this repository, and the token is scoped to it.
-    const token = await fetchAnonymousToken(response.headers.get("www-authenticate"), ref);
+    const token = await fetchAnonymousToken(response.header("www-authenticate"), ref);
     if (token !== null) {
-      response = await registryFetch(url, { Authorization: `Bearer ${token}` });
+      response = await registryGet(url, { Authorization: `Bearer ${token}` });
     }
   }
 
@@ -99,23 +115,28 @@ async function resolveTagDigest(ref: ImageRef): Promise<string> {
     throw badRequest(`the image ${ref.canonical} could not be pulled: the registry requires authentication. Only public images are supported`);
   }
   if (response.status === 404) {
-    throw badRequest(`the image ${ref.canonical} does not exist in the registry (no such repository or tag)`);
+    throw badRequest(`the image ${ref.canonical} does not exist in the registry (no such repository, tag or digest)`);
   }
-  if (!response.ok) {
+  if (response.status < 200 || response.status > 299) {
     // A registry outage is not the author's mistake, and must not read like one.
     throw badRequest(`the registry did not answer for ${ref.canonical} (HTTP ${response.status}). This is a problem reaching the registry, not with the image reference; try again`);
   }
 
-  const body = await readCappedText(response);
   // The digest of the manifest as the registry computed it. Preferred over
   // hashing the body: the two must agree, and the registry's answer is the one
   // a puller will look for.
-  const digest = response.headers.get("docker-content-digest");
-  if (digest === null || !isImageDigest(digest)) {
+  const reported = response.header("docker-content-digest");
+  if (reported === null || !isImageDigest(reported)) {
     throw badRequest(`the registry did not return a usable digest for ${ref.canonical}`);
   }
-  assertRunnableOnAmd64(body, ref);
-  return digest;
+  // When the caller already named a digest, the registry must agree it is the
+  // one it just served. A mismatch means something between us and the registry
+  // is answering for a different image, which is not a deploy to continue.
+  if (ref.digest !== null && reported !== ref.digest) {
+    throw badRequest(`the registry served a different image than ${ref.canonical} (it reported ${reported})`);
+  }
+  assertRunnableOnAmd64(response.body, ref);
+  return reported;
 }
 
 /**
@@ -173,40 +194,41 @@ async function fetchAnonymousToken(challenge: string | null, ref: ImageRef): Pro
   const service = parameters.get("service");
   if (service !== undefined) realmUrl.searchParams.set("service", service);
 
-  const response = await registryFetch(realmUrl.toString(), {});
-  if (!response.ok) return null;
+  const response = await registryGet(realmUrl.toString(), {});
+  if (response.status < 200 || response.status > 299) return null;
   let parsed: unknown;
   try {
-    parsed = JSON.parse(await readCappedText(response));
+    parsed = JSON.parse(response.body);
   } catch {
     return null;
   }
   const record = parsed as { token?: unknown, access_token?: unknown };
   // Registries disagree about which of the two names they use.
-  const token = typeof record.token === "string" ? record.token : (typeof record.access_token === "string" ? record.access_token : null);
-  return token;
+  return typeof record.token === "string" ? record.token : (typeof record.access_token === "string" ? record.access_token : null);
 }
+
+type RegistryResponse = {
+  status: number,
+  body: string,
+  header: (name: string) => string | null,
+};
 
 /**
  * One request to a user-influenced host, with the guards that implies.
  *
- * Redirects are followed BY HAND rather than by fetch, because each hop is a new
- * destination that has to pass the private-network check: a registry that
- * redirects to "http://169.254.169.254/" must not be followed just because the
- * first hop was fine.
+ * Redirects are followed BY HAND rather than by the HTTP client, because each
+ * hop is a new destination that has to pass the private-network check: a
+ * registry that redirects to "http://169.254.169.254/" must not be followed just
+ * because the first hop was fine.
  */
-async function registryFetch(url: string, headers: Record<string, string>): Promise<Response> {
+async function registryGet(url: string, headers: Record<string, string>): Promise<RegistryResponse> {
   let current = url;
   for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect++) {
-    await assertPublicDestination(current);
-    const response = await fetch(current, {
-      method: "GET",
-      redirect: "manual",
-      headers: { Accept: MANIFEST_ACCEPT, "User-Agent": "hexclave-marshal", ...headers },
-      signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
-    });
+    const target = parseHttpsUrl(current);
+    const addresses = await resolvePublicAddresses(target.hostname);
+    const response = await httpsGetPinned(target, headers, addresses[0]);
     if (response.status < 300 || response.status > 399) return response;
-    const location = response.headers.get("location");
+    const location = response.header("location");
     if (location === null) return response;
     try {
       current = new URL(location, current).toString();
@@ -221,16 +243,7 @@ async function registryFetch(url: string, headers: Record<string, string>): Prom
   throw badRequest("the registry redirected too many times");
 }
 
-/**
- * Refuses a destination that is not a public internet host.
- *
- * This is the SSRF boundary: the host comes from the user's deploy file, and
- * Marshal runs where it can reach infrastructure the user cannot. Every address
- * the name resolves to has to be public — a name that resolves to both a public
- * and a private address is refused, since which one connect() picks is not ours
- * to decide.
- */
-async function assertPublicDestination(url: string): Promise<void> {
+function parseHttpsUrl(url: string): URL {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -240,18 +253,102 @@ async function assertPublicDestination(url: string): Promise<void> {
   if (parsed.protocol !== "https:") {
     throw badRequest(`registries must be reached over https (got ${parsed.protocol.replace(":", "")})`);
   }
-  const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
-  const addresses = net.isIP(hostname) !== 0
-    ? [hostname]
-    : (await dns.lookup(hostname, { all: true }).catch(() => {
-      throw badRequest(`the registry host ${JSON.stringify(hostname)} could not be resolved`);
+  return parsed;
+}
+
+/**
+ * Every address a registry hostname resolves to, having checked that all of them
+ * are public.
+ *
+ * This is the SSRF boundary: the host comes from the user's deploy file, and
+ * Marshal runs where it can reach infrastructure the user cannot. EVERY address
+ * the name resolves to has to be public — a name resolving to both a public and
+ * a private address is refused, since which one a connection picks is not ours
+ * to decide.
+ *
+ * The addresses are RETURNED rather than merely approved because the connection
+ * is pinned to one of them (see httpsGetPinned). Validating a name and then
+ * letting the HTTP client resolve it again is a DNS-rebinding hole: the second
+ * lookup can answer with a private address that this check never saw.
+ */
+async function resolvePublicAddresses(hostname: string): Promise<string[]> {
+  const bare = hostname.replace(/^\[|\]$/g, "");
+  const addresses = net.isIP(bare) !== 0
+    ? [bare]
+    : (await dns.lookup(bare, { all: true }).catch(() => {
+      throw badRequest(`the registry host ${JSON.stringify(bare)} could not be resolved`);
     })).map((entry) => entry.address);
-  if (addresses.length === 0) throw badRequest(`the registry host ${JSON.stringify(hostname)} could not be resolved`);
+  if (addresses.length === 0) throw badRequest(`the registry host ${JSON.stringify(bare)} could not be resolved`);
   for (const address of addresses) {
     if (!isPublicAddress(address)) {
-      throw badRequest(`the registry host ${JSON.stringify(hostname)} resolves to a non-public address`);
+      throw badRequest(`the registry host ${JSON.stringify(bare)} resolves to a non-public address`);
     }
   }
+  return addresses;
+}
+
+/**
+ * A GET whose TCP connection goes to `address` — the one already validated —
+ * while TLS and the Host header still use the hostname, so certificate
+ * verification and virtual hosting keep working.
+ *
+ * `lookup` is the pinning mechanism: Node hands DNS resolution to it, and this
+ * one ignores the name and answers with the address that was checked. Without
+ * it the client would resolve the name a second time, and the answer to that
+ * second lookup is not the answer this request was authorized against.
+ */
+function httpsGetPinned(url: URL, headers: Record<string, string>, address: string): Promise<RegistryResponse> {
+  return new Promise((resolve, reject) => {
+    const request = https.request({
+      hostname: url.hostname,
+      port: url.port === "" ? 443 : Number(url.port),
+      path: `${url.pathname}${url.search}`,
+      method: "GET",
+      // SNI and certificate validation follow the NAME, not the pinned address.
+      servername: url.hostname,
+      headers: { Accept: MANIFEST_ACCEPT, "User-Agent": "hexclave-marshal", ...headers },
+      lookup: (_hostname: string, options: { all?: boolean }, callback: (...args: any[]) => void) => {
+        const family = net.isIP(address);
+        // Node calls this with `all` either set or not, and expects a different
+        // shape for each.
+        if (options.all === true) callback(null, [{ address, family }]);
+        else callback(null, address, family);
+      },
+    }, (response) => {
+      const declared = Number(response.headers["content-length"] ?? "0");
+      if (Number.isFinite(declared) && declared > MAX_MANIFEST_BYTES) {
+        response.destroy();
+        reject(badRequest("the registry returned an implausibly large manifest"));
+        return;
+      }
+      const chunks: Buffer[] = [];
+      let total = 0;
+      response.on("data", (chunk: Buffer) => {
+        total += chunk.byteLength;
+        if (total > MAX_MANIFEST_BYTES) {
+          response.destroy();
+          reject(badRequest("the registry returned an implausibly large manifest"));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      response.on("end", () => resolve({
+        status: response.statusCode ?? 0,
+        body: Buffer.concat(chunks).toString("utf8"),
+        header: (name: string) => {
+          const value = response.headers[name.toLowerCase()];
+          return typeof value === "string" ? value : (Array.isArray(value) ? value[0] ?? null : null);
+        },
+      }));
+      response.on("error", () => reject(badRequest(`the registry connection to ${url.hostname} failed`)));
+    });
+    request.setTimeout(REGISTRY_TIMEOUT_MS, () => {
+      request.destroy();
+      reject(badRequest(`the registry ${url.hostname} did not answer within ${REGISTRY_TIMEOUT_MS}ms`));
+    });
+    request.on("error", () => reject(badRequest(`the registry connection to ${url.hostname} failed`)));
+    request.end();
+  });
 }
 
 /**
@@ -291,28 +388,4 @@ export function isPublicAddress(address: string): boolean {
     return true;
   }
   return false;
-}
-
-/** Reads a response body, refusing anything past the cap instead of buffering it. */
-async function readCappedText(response: Response): Promise<string> {
-  const declared = Number(response.headers.get("content-length") ?? "0");
-  if (Number.isFinite(declared) && declared > MAX_MANIFEST_BYTES) {
-    throw badRequest("the registry returned an implausibly large manifest");
-  }
-  const body = response.body;
-  if (body === null) return "";
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > MAX_MANIFEST_BYTES) {
-      await reader.cancel().catch(() => {});
-      throw badRequest("the registry returned an implausibly large manifest");
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks).toString("utf8");
 }

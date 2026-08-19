@@ -1,6 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { validateImageRef } from "./image-ref.js";
-import { isPublicAddress } from "./registry.js";
+import { isPublicAddress, resolveImage } from "./registry.js";
+
+// resolveImage reads the registry mode from config; the rest of the module's
+// config (Fly, S3) is irrelevant here, so only that one field is stubbed.
+vi.mock("./config.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./config.js")>(),
+  getConfig: () => ({ registryKind: "real" }),
+}));
 
 describe("validateImageRef", () => {
   it("fully qualifies every accepted spelling", () => {
@@ -62,4 +69,24 @@ describe("isPublicAddress", () => {
     expect(isPublicAddress("172.32.0.1")).toBe(true); // just outside RFC1918
     expect(isPublicAddress("2606:4700::1111")).toBe(true);
   });
+});
+
+describe("resolveImage", () => {
+  it("refuses a registry host that resolves to a private address", async () => {
+    // The end-to-end shape of the SSRF guard, exercised through the same entry
+    // point a deployment uses. "localhost" needs no network to resolve, and it
+    // is exactly the destination a user could name to reach Marshal's own host.
+    await expect(resolveImage(validateImageRef("localhost:5000/app:v1", "image")))
+      .rejects.toThrow(/non-public address/);
+    await expect(resolveImage(validateImageRef("127.0.0.1:5000/app:v1", "image")))
+      .rejects.toThrow(/non-public address/);
+    // The cloud metadata address, spelled as a literal so no DNS is involved.
+    await expect(resolveImage(validateImageRef("169.254.169.254/app:v1", "image")))
+      .rejects.toThrow(/non-public address/);
+  }, 30000);
+
+  it("refuses a registry host that does not resolve at all", async () => {
+    await expect(resolveImage(validateImageRef("this-host-does-not-exist.invalid/app:v1", "image")))
+      .rejects.toThrow(/could not be resolved/);
+  }, 30000);
 });
