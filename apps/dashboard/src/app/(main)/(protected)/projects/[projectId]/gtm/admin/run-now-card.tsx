@@ -2,7 +2,7 @@
 
 import { DesignAlert, DesignButton, DesignCard } from "@/components/design-components";
 import { runGrowthAdminManualStep, type GrowthAdminManualStep } from "@/lib/growth/growth-api";
-import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { GearSixIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
@@ -16,15 +16,14 @@ const stepLabels: Record<GrowthAdminManualStep, string> = {
 export function GrowthAdminRunNowCard(props: { app: object }) {
   const [state, setState] = useState<RunState>({ status: "idle" });
 
-  const runStep = async (step: GrowthAdminManualStep) => {
+  const runStep = (step: GrowthAdminManualStep) => {
     setState({ status: "running", step });
-    try {
+    runAsynchronouslyWithAlert(async () => {
       const result = await runGrowthAdminManualStep(props.app, step);
       setState({ status: "success", step, didWork: result.didWork });
-    } catch (error) {
-      captureError(`growth-admin-${step}`, error);
-      setState({ status: "error", message: error instanceof Error ? error.message : String(error) });
-    }
+    }, {
+      onError: error => setState({ status: "error", message: error instanceof Error ? error.message : String(error) }),
+    });
   };
 
   const runningStep = state.status === "running" ? state.step : null;
@@ -35,7 +34,7 @@ export function GrowthAdminRunNowCard(props: { app: object }) {
         {state.status === "success" && <DesignAlert variant="info">{stepLabels[state.step]} completed{state.didWork ? " and processed work." : ", but found no work to process."}</DesignAlert>}
         <div className="flex flex-wrap gap-2">
           {(Object.keys(stepLabels) as GrowthAdminManualStep[]).map((step) => (
-            <DesignButton key={step} variant="outline" size="sm" disabled={runningStep != null} loading={runningStep === step} onClick={async () => await runStep(step)}>
+            <DesignButton key={step} variant="outline" size="sm" disabled={runningStep != null} loading={runningStep === step} onClick={() => runStep(step)}>
               {stepLabels[step]}
             </DesignButton>
           ))}

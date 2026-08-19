@@ -46,7 +46,11 @@ function maskMarkdownCode(sourceMdx: string): string {
 }
 
 function validateParagraphLengths(sourceMdx: string, ctx: z.RefinementCtx): void {
-  const blocks = sourceMdx.split(/\n\s*\n/);
+  // Component tags are block boundaries, not paragraph content. Masking them before splitting
+  // also makes paragraphs inside Evidence/Hypothesis/Experiment bodies subject to the same limit
+  // as top-level paragraphs, matching the backend compiler's recursive MDX conversion.
+  const paragraphSource = sourceMdx.replace(COMPONENT_TAG_PATTERN, "\n");
+  const blocks = paragraphSource.split(/\n\s*\n/);
   for (const block of blocks) {
     const lines = block.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
     if (lines.length === 0 || lines.some((line) => /^<\/?[A-Z]/.test(line))) continue;
@@ -61,6 +65,40 @@ function validateParagraphLengths(sourceMdx: string, ctx: z.RefinementCtx): void
       addMdxIssue(ctx, `paragraphs must be at most 360 characters; found ${paragraph.length}. Split the paragraph with a blank line.`);
     }
   }
+}
+
+function validateListLengths(sourceMdx: string, ctx: z.RefinementCtx): void {
+  const lines = sourceMdx.split("\n");
+  const lists: { indent: number, itemCount: number }[] = [];
+
+  const finishList = () => {
+    const list = lists.pop();
+    if (list != null && list.itemCount > 7) addMdxIssue(ctx, `lists must have at most 7 items; found ${list.itemCount}.`);
+  };
+
+  for (const line of lines) {
+    const item = /^(\s*)(?:[-*+]\s+|\d+[.)]\s+)/.exec(line);
+    if (item != null) {
+      const indent = item[1].replace(/\t/g, "    ").length;
+      let currentList = lists.at(-1);
+      while (currentList != null && indent < currentList.indent) {
+        finishList();
+        currentList = lists.at(-1);
+      }
+      if (currentList == null || indent > currentList.indent) lists.push({ indent, itemCount: 1 });
+      else currentList.itemCount += 1;
+      continue;
+    }
+
+    if (line.trim().length === 0) continue;
+    const indent = line.search(/\S|$/);
+    let currentList = lists.at(-1);
+    while (currentList != null && indent <= currentList.indent) {
+      finishList();
+      currentList = lists.at(-1);
+    }
+  }
+  while (lists.length > 0) finishList();
 }
 
 function validateGrowthMdx(sourceMdx: string, ctx: z.RefinementCtx): void {
@@ -148,6 +186,7 @@ function validateGrowthMdx(sourceMdx: string, ctx: z.RefinementCtx): void {
   for (const unclosed of stack.reverse()) addMdxIssue(ctx, `${unclosed} is missing its closing tag.`);
 
   validateParagraphLengths(syntaxSource, ctx);
+  validateListLengths(syntaxSource, ctx);
 }
 
 const evidenceBase = {
@@ -232,6 +271,12 @@ export const growthDocumentInputSchema = z.object({
     const expectedKind = expectedKinds.get(componentName);
     if (expectedKind !== datum.kind) {
       ctx.addIssue({ code: "custom", message: `Invalid Growth data: ${componentName} requires ${expectedKind} data, but ${JSON.stringify(dataId)} is ${datum.kind}.` });
+    }
+  }
+  for (const match of document.source_mdx.matchAll(/<Evidence\b(?=[^>]*\bdata\s*=\s*(?:"([^"]+)"|'([^']+)'))[^>]*>/g)) {
+    const dataId = firstDefinedCapture(match[1], match[2]);
+    if (dataId !== undefined && byId.get(dataId) === undefined) {
+      ctx.addIssue({ code: "custom", message: `Invalid Growth data: Evidence references missing data id ${JSON.stringify(dataId)}.` });
     }
   }
 });

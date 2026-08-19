@@ -1,5 +1,5 @@
 import { sendInternalUserRequest } from "@/lib/hexclave-app-internals";
-import { GrowthApiError, growthRequestHeaders, requestJson } from "./growth-api-client";
+import { GrowthApiError, growthRequestHeaders, requestJson, toGrowthApiError } from "./growth-api-client";
 import { growthDocumentSchema } from "./growth-document";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { z } from "zod";
@@ -671,7 +671,12 @@ export async function getGrowthOverview(app: object): Promise<GrowthOverview> {
  * error-shaping below — same reasoning as the requestJson extraction in growth-api-client.ts.
  */
 export async function requestGrowthAdminJson(app: object, path: string, init: RequestInit = {}): Promise<unknown> {
-  const response = await sendInternalUserRequest(app, `/internal/growth/admin${path}`, { ...init, headers: growthRequestHeaders(init) });
+  let response;
+  try {
+    response = await sendInternalUserRequest(app, `/internal/growth/admin${path}`, { ...init, headers: growthRequestHeaders(init) });
+  } catch (error) {
+    throw toGrowthApiError(error) ?? error;
+  }
   const responseText = await response.text();
   if (!response.ok) {
     let message = `Growth admin request failed with status ${response.status}`;
