@@ -1,5 +1,4 @@
 import { getGrowthBriefBody } from "@/lib/growth/briefs";
-import { requireGrowthInternalResourceAccess } from "@/lib/growth/customer-access";
 import { requireGrowthAppEnabled } from "@/lib/growth/dashboard";
 import { requireGrowthWorkspaceReleased } from "@/lib/growth/report-release";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -25,7 +24,6 @@ export const GET = createSmartRouteHandler({
     body: yupMixed().defined(),
   }),
   handler: async ({ auth, params }) => {
-    requireGrowthInternalResourceAccess(auth.tenancy);
     requireGrowthAppEnabled(auth.tenancy);
     await requireGrowthWorkspaceReleased(auth.tenancy);
     const body = await getGrowthBriefBody(auth.tenancy, params.brief_id);

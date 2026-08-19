@@ -5,18 +5,6 @@ import { GROWTH_AGENT_AUTH, createGrowthProject, requireRunId } from "../growth/
 
 const ADMIN_BASE = "/api/latest/internal/growth";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
-const INITIAL_PHASE_KEYS = [
-  "compute-metrics",
-  "integrations",
-  "website-research",
-  "data-analysis",
-  "analysis:first-screen-audit",
-  "analysis:seo-aeo-strategy",
-  "analysis:traffic-quality",
-  "analysis:icp-visitor-outreach",
-  "interview-questions",
-  "report",
-] as const;
 
 // These tests "play the agent": they drive the machine-facing growth-agent write API end to end the
 // way Eve would during an analysis run. No orchestration runs here (neither the workflow engine nor
@@ -50,13 +38,21 @@ async function completeOnboarding() {
   return requireRunId(onboarding.body);
 }
 
+async function getRunPhaseKeys(runId: string): Promise<string[]> {
+  const run = await niceBackendFetch(`${ADMIN_BASE}/runs/${runId}`, { accessType: "admin" });
+  if (run.status !== 200) {
+    throw new Error(`Reading the run failed with status ${run.status}.`);
+  }
+  return (run.body as { phases: { phase_key: string }[] }).phases.map((phase) => phase.phase_key);
+}
+
 describe("growth agent simulation", () => {
   it("runs a full analysis: phase lifecycle, findings, artifacts, interview, report, brief, tasks", { timeout: 300_000 }, async ({ expect }) => {
     const { projectId, branchId } = await createGrowthProjectWithIds();
     const scope = { project_id: projectId, branch_id: branchId };
     const runId = await completeOnboarding();
 
-    const phaseKeys = INITIAL_PHASE_KEYS;
+    const phaseKeys = await getRunPhaseKeys(runId);
     expect(phaseKeys).toHaveLength(10);
 
     for (const phaseKey of phaseKeys) {
@@ -262,8 +258,11 @@ describe("growth agent simulation", () => {
     expect(steps.every((step) => step.state === "done")).toBe(true);
 
     const run = await niceBackendFetch(`${ADMIN_BASE}/runs/${runId}`, { accessType: "admin" });
-    expect(run.status).toBe(403);
-    expect(run.body).toBe("This Growth resource is not available.");
+    expect(run.status).toBe(200);
+    expect(run.body).toMatchObject({ id: runId, status: "pending" });
+    const phases = (run.body as { phases: { status: string, attempt: number }[] }).phases;
+    expect(phases).toHaveLength(10);
+    expect(phases.every((phase) => phase.status === "completed" && phase.attempt === 0)).toBe(true);
   });
 
   it("rejects wrong or missing agent secrets with a 401", { timeout: 300_000 }, async ({ expect }) => {

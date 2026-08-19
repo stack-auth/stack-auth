@@ -1,5 +1,4 @@
 import { getGrowthRunBody, requireGrowthAppEnabled } from "@/lib/growth/dashboard";
-import { requireGrowthInternalResourceAccess } from "@/lib/growth/customer-access";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
@@ -21,7 +20,6 @@ export const GET = createSmartRouteHandler({
     body: yupMixed().defined(),
   }),
   handler: async ({ auth, params }) => {
-    requireGrowthInternalResourceAccess(auth.tenancy);
     requireGrowthAppEnabled(auth.tenancy);
     const body = await getGrowthRunBody({
       projectId: auth.tenancy.project.id,

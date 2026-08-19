@@ -156,8 +156,9 @@ describe("internal growth lifecycle", { timeout: 90_000 }, () => {
     expect(analysis.integrations).toEqual({ state: "pending", connection_ready: false });
 
     const run = await niceBackendFetch(`${BASE_PATH}/runs/${runId}`, { accessType: "admin" });
-    expect(run.status).toBe(403);
-    expect(run.body).toBe(INTERNAL_RESOURCE_DENIAL);
+    expect(run.status).toBe(200);
+    expect(run.body).toMatchObject({ id: runId, status: "pending", trigger: "initial" });
+    expect((run.body as { phases: unknown[] }).phases).toHaveLength(10);
   });
 
   it("refuses concurrent runs and manual runs before onboarding", { timeout: 300_000 }, async ({ expect }) => {
@@ -210,11 +211,9 @@ describe("internal growth lifecycle", { timeout: 90_000 }, () => {
     });
     const runId = requireRunId(onboarding.body);
 
-    // Run details are an internal resource, so customer project admins receive the generic denial
-    // before a cross-project lookup can reveal whether the id exists.
+    // A different project (with the app enabled) must not see the first project's run.
     await createGrowthProject();
     const crossProject = await niceBackendFetch(`${BASE_PATH}/runs/${runId}`, { accessType: "admin" });
-    expect(crossProject.status).toBe(403);
-    expect(crossProject.body).toBe(INTERNAL_RESOURCE_DENIAL);
+    expect(crossProject.status).toBe(404);
   });
 });

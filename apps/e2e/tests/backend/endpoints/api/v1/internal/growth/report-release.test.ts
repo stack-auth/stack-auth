@@ -91,18 +91,19 @@ describe.sequential("internal Growth report release", { timeout: 300_000 }, () =
   it("withholds the whole workspace from the customer until a report exists", { timeout: 300_000 }, async ({ expect }) => {
     await seedProjectWithoutReport();
 
-    // Every surface that could reveal what an unwritten report would say. These analysis surfaces
-    // are staff-only even when the customer has a released workspace.
+    // Report analysis surfaces are staff-only even when the customer has a released workspace.
     for (const path of [
       `${GROWTH_BASE}/overview`,
-      `${GROWTH_BASE}/metrics-overview`,
       `${GROWTH_BASE}/actions`,
-      `${GROWTH_BASE}/briefs`,
     ]) {
       const response = await niceBackendFetch(path, { accessType: "admin" });
       expect([path, response.status]).toEqual([path, 403]);
       expect([path, response.body]).toEqual([path, "This Growth resource is not available."]);
     }
+    const metrics = await niceBackendFetch(`${GROWTH_BASE}/metrics-overview`, { accessType: "admin" });
+    expect(metrics).toMatchObject({ status: 409, body: "Your growth report is still being prepared." });
+    const briefs = await niceBackendFetch(`${GROWTH_BASE}/briefs`, { accessType: "admin" });
+    expect(briefs).toMatchObject({ status: 409, body: "Your growth report is still being prepared." });
 
     // The report itself 404s rather than 409s: to the customer a report that does not exist yet and
     // one that was pulled back are the same thing, and neither is a state they can act on.
@@ -270,11 +271,15 @@ describe.sequential("internal Growth report release", { timeout: 300_000 }, () =
     const status = await niceBackendFetch(`${GROWTH_BASE}/status`, { accessType: "admin" });
     expect(status.body).toMatchObject({ release: { state: "released" }, latest_report: { id: reportId, read_at_millis: null } });
 
-    for (const path of [`${GROWTH_BASE}/overview`, `${GROWTH_BASE}/metrics-overview`, `${GROWTH_BASE}/actions`, `${GROWTH_BASE}/briefs`]) {
+    for (const path of [`${GROWTH_BASE}/overview`, `${GROWTH_BASE}/actions`]) {
       const response = await niceBackendFetch(path, { accessType: "admin" });
       expect([path, response.status]).toEqual([path, 403]);
       expect([path, response.body]).toEqual([path, "This Growth resource is not available."]);
     }
+    const metrics = await niceBackendFetch(`${GROWTH_BASE}/metrics-overview`, { accessType: "admin" });
+    expect(metrics.status).toBe(200);
+    const briefs = await niceBackendFetch(`${GROWTH_BASE}/briefs`, { accessType: "admin" });
+    expect(briefs.status).toBe(200);
 
     const report = await niceBackendFetch(`${GROWTH_BASE}/reports/latest`, { accessType: "admin" });
     expect(report).toMatchObject({ status: 200, body: { id: reportId, presentation: { version: 1 } } });

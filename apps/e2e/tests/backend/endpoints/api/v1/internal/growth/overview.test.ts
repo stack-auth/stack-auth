@@ -4,8 +4,10 @@ import { niceBackendFetch } from "../../../../../backend-helpers";
 import { GROWTH_AGENT_AUTH, asGrowthStaff, createGrowthProject, unlockGrowthWorkspaceAsStaff } from "./growth-helpers";
 
 const ADMIN_OVERVIEW_PATH = "/api/latest/internal/growth/admin/overview";
+const CUSTOMER_OVERVIEW_PATH = "/api/latest/internal/growth/overview";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
 const FINDING_DOCUMENT = { format: "growth-mdx-v1", source_mdx: "## Evidence\n\nThe first-session drop is concentrated before project two.", data: [] };
+const INTERNAL_RESOURCE_DENIAL = "This Growth resource is not available.";
 
 // Growth fixtures seed sandbox-backed workflows during onboarding and can land around 60s under
 // full-suite load, so default-timeout tests need 90s of headroom.
@@ -24,8 +26,12 @@ async function getAdminOverview(projectId: string) {
 }
 
 describe("internal Growth overview", { timeout: 90_000 }, () => {
-  it("requires a Growth onboarding record for the staff-targeted overview", async ({ expect }) => {
+  it("denies customer access while retaining the staff-targeted overview", async ({ expect }) => {
     const scope = await createGrowthProjectScope();
+    const customer = await niceBackendFetch(CUSTOMER_OVERVIEW_PATH, { accessType: "admin" });
+    expect(customer.status).toBe(403);
+    expect(customer.body).toBe(INTERNAL_RESOURCE_DENIAL);
+
     const held = await getAdminOverview(scope.project_id);
     expect(held.status).toBe(404);
     expect(held.body).toBe("Growth project not found.");
@@ -77,21 +83,23 @@ describe("internal Growth overview", { timeout: 90_000 }, () => {
     });
     expect(action.status).toBe(200);
 
-    const bounded = await getAdminOverview(scope.project_id);
-    expect(bounded.status).toBe(200);
-    expect(bounded.body).toMatchObject({ limit: 50 });
-    expect((bounded.body as { findings: unknown[] }).findings).toHaveLength(3);
-    expect((bounded.body as { actions: unknown[] }).actions).toHaveLength(1);
-    const categories = (bounded.body as { categories: { category: string, count: number }[] }).categories;
+    const customerBounded = await niceBackendFetch(`${CUSTOMER_OVERVIEW_PATH}?limit=1`, { accessType: "admin" });
+    expect(customerBounded.status).toBe(403);
+    expect(customerBounded.body).toBe(INTERNAL_RESOURCE_DENIAL);
+
+    const overview = await getAdminOverview(scope.project_id);
+    expect(overview.status).toBe(200);
+    expect(overview.body).toMatchObject({ limit: 50 });
+    expect((overview.body as { findings: unknown[] }).findings).toHaveLength(3);
+    expect((overview.body as { actions: unknown[] }).actions).toHaveLength(1);
+    const categories = (overview.body as { categories: { category: string, count: number }[] }).categories;
     expect(categories.find((category) => category.category === "conversion")?.count).toBe(3);
     expect(categories.find((category) => category.category === "revenue")?.count).toBe(1);
 
-    const clamped = await getAdminOverview(scope.project_id);
-    expect(clamped).toMatchObject({ status: 200, body: { limit: 50 } });
-    const normalizedFinding = (clamped.body as { findings: { title: string, tags: string[], document: unknown }[] }).findings.find((finding) => finding.title === "First activation signal");
+    const normalizedFinding = (overview.body as { findings: { title: string, tags: string[], document: unknown }[] }).findings.find((finding) => finding.title === "First activation signal");
     expect(normalizedFinding?.tags).toEqual(["onboarding"]);
     expect(normalizedFinding?.document).toMatchObject({ format: "growth-mdx-v1", sourceMdx: FINDING_DOCUMENT.source_mdx });
-    expect((clamped.body as { actions: { document: unknown }[] }).actions[0]?.document).toMatchObject({ format: "growth-mdx-v1", sourceMdx: FINDING_DOCUMENT.source_mdx });
+    expect((overview.body as { actions: { document: unknown }[] }).actions[0]?.document).toMatchObject({ format: "growth-mdx-v1", sourceMdx: FINDING_DOCUMENT.source_mdx });
     // Released too, so this still asserts tenant isolation rather than the gate answering first.
     const otherScope = await createGrowthProjectScope();
     await unlockGrowthWorkspaceAsStaff(otherScope);
