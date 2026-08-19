@@ -195,6 +195,29 @@ function isSidecarFrameTimeout(error) {
   return formatError(error).includes("timed out waiting for sidecar protocol frame");
 }
 
+const DEAD_RUNTIME_ERROR_NAMES = new Set([
+  "SidecarEventBufferOverflow",
+  "SidecarProcessError",
+  "SidecarProcessExited",
+]);
+
+function isDeadRuntimeError(error) {
+  // The secure-exec facade does not re-export these core error classes, but
+  // their names are stable and distinguish dead runtimes from script failures.
+  if (error?.name && DEAD_RUNTIME_ERROR_NAMES.has(error.name)) {
+    return true;
+  }
+  const message = formatError(error).toLowerCase();
+  return (
+    message.includes("resident runner exited before completing request") ||
+    message.includes("resident runner is not running") ||
+    message.includes("sidecar protocol stream ended") ||
+    message.includes("sidecar exited with code") ||
+    message.includes("unknown sidecar vm") ||
+    message.includes("no such process")
+  );
+}
+
 // @secure-exec/core has a fire-and-forget proc.kill() path without a catch for
 // this sidecar timeout; letting it terminate the mock takes down every later
 // E2E test that depends on the rendering service.
@@ -659,9 +682,32 @@ class RuntimeCache {
       jobsHandled: 0,
       lastUsed: performance.now(),
       retiring: false,
+      evicted: false,
+      disposePromise: null,
     };
     this.entries.set(dependency.hash, entry);
     return entry;
+  }
+
+  evict(entry) {
+    if (this.entries.get(entry.hash) !== entry) return;
+    // Remove it before disposal so the next acquire can create a replacement;
+    // release must not recycle an entry already known to be unusable.
+    this.entries.delete(entry.hash);
+    entry.evicted = true;
+    entry.retiring = true;
+    this.disposeEntry(entry);
+  }
+
+  disposeEntry(entry) {
+    if (entry.disposePromise) return;
+    entry.disposePromise = (async () => {
+      try {
+        await entry.runtime.dispose();
+      } catch (error) {
+        logInternalError("dispose evicted runtime", error);
+      }
+    })();
   }
 
   async evictInactiveRuntime() {
@@ -714,6 +760,7 @@ class RuntimeCache {
 
   release(entry) {
     entry.activeJobs--;
+    if (entry.evicted) return;
     entry.jobsHandled++;
     entry.lastUsed = performance.now();
     if (entry.jobsHandled >= MAX_JOBS_PER_RUNTIME) {
@@ -1142,6 +1189,7 @@ async function executeScript(runtime, job) {
     });
   } catch (error) {
     logInternalError("secure-exec execution", error);
+    if (isDeadRuntimeError(error)) throw error;
     return {
       statusCode: 500,
       payload: {
@@ -1286,6 +1334,11 @@ class JobQueue {
       if (job.timer) clearTimeout(job.timer);
       this.armExecutionTimeout(job);
       return await executeScript(entry.runtime, job);
+    } catch (error) {
+      if (entry && isDeadRuntimeError(error)) {
+        this.runtimeCache.evict(entry);
+      }
+      throw error;
     } finally {
       if (entry) this.runtimeCache.release(entry);
       dependency?.release();
