@@ -88,12 +88,16 @@ describe("subscription collection evaluator", () => {
   it("falls back to strict rules when the project baseline is stale", () => {
     const result = evaluateTvSubscriptionCollection(createTvPaymentEvaluatorState(), sample({
       outcomes: 10,
-      failures: 3,
+      failures: 5,
       baseline: 99,
       baselineComputedAt: new Date(now.getTime() - 13 * 60 * 60_000),
     }));
-    expect(result.qualification).toBeNull();
-    expect(result.state.candidate).toBeNull();
+    expect(result.qualification).toBe("strict");
+    expect(result.state.candidate).toEqual({
+      rulePath: "strict",
+      presentationClass: "incident",
+      accumulatedMs: 0,
+    });
   });
 
   it("activates only after ten observed minutes of standard degradation", () => {

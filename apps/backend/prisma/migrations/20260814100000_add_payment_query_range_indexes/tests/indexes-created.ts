@@ -5,22 +5,22 @@ const EXPECTED_INDEXES = new Map([
   ["SubscriptionInvoice_tenancyId_paidAt_idx", {
     tableName: "SubscriptionInvoice",
     keyColumns: ["tenancyId", "paidAt"],
-    predicateParts: ['"paidAt" IS NOT NULL'],
+    predicate: '"paidAt" IS NOT NULL',
   }],
   ["SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx", {
     tableName: "SubscriptionInvoice",
     keyColumns: ["tenancyId", "markedUncollectibleAt"],
-    predicateParts: ['"markedUncollectibleAt" IS NOT NULL'],
+    predicate: '"markedUncollectibleAt" IS NOT NULL',
   }],
   ["OneTimePurchase_purchasePage_paidAt_idx", {
     tableName: "OneTimePurchase",
     keyColumns: ["tenancyId", "paidAt"],
-    predicateParts: ['"creationSource" = \'PURCHASE_PAGE\'::"PurchaseCreationSource"', '"paidAt" IS NOT NULL'],
+    predicate: '"creationSource" = \'PURCHASE_PAGE\'::"PurchaseCreationSource" AND "paidAt" IS NOT NULL',
   }],
   ["temp_OneTimePurchase_legacyPurchasePage_createdAt_idx", {
     tableName: "OneTimePurchase",
     keyColumns: ["tenancyId", "createdAt"],
-    predicateParts: ['"creationSource" = \'PURCHASE_PAGE\'::"PurchaseCreationSource"', '"paidAt" IS NULL'],
+    predicate: '"creationSource" = \'PURCHASE_PAGE\'::"PurchaseCreationSource" AND "paidAt" IS NULL',
   }],
 ]);
 
@@ -61,17 +61,16 @@ export const postMigration = async (sql: Sql) => {
   expect(indexes).toHaveLength(EXPECTED_INDEXES.size);
   for (const index of indexes) {
     const expected = EXPECTED_INDEXES.get(index.index_name);
-    expect(expected).toBeDefined();
+    if (expected == null) throw new Error(`Unexpected TV payment index "${index.index_name}".`);
     expect(index).toMatchObject({
-      table_name: expected?.tableName,
-      key_columns: expected?.keyColumns,
+      table_name: expected.tableName,
+      key_columns: expected.keyColumns,
       indisvalid: true,
       indisready: true,
       indisunique: false,
       access_method: "btree",
     });
-    for (const predicatePart of expected?.predicateParts ?? []) {
-      expect(index.predicate).toContain(predicatePart);
-    }
+    const normalizePredicate = (predicate: string) => predicate.replace(/[()\s]/g, "");
+    expect(normalizePredicate(index.predicate)).toBe(normalizePredicate(expected.predicate));
   }
 };

@@ -85,6 +85,14 @@ import.meta.vitest?.test("only the configured TV origin receives credentialed CO
   expect(ordinaryApi.get("access-control-allow-origin")).toBe("*");
   expect(ordinaryApi.has("access-control-allow-credentials")).toBe(false);
   expect(ordinaryApi.get("vary")).not.toContain("Origin");
+
+  const malformedConfiguration = new Headers(getCorsHeadersInitForTvOrigin(new Request(
+    "https://api.hexclave.example/api/latest/tv-displays/auth/refresh",
+    { headers: { origin: "https://tv.hexclave.example" } },
+  ), "not a URL"));
+  expect(malformedConfiguration.get("access-control-allow-origin")).toBe("*");
+  expect(malformedConfiguration.has("access-control-allow-credentials")).toBe(false);
+  expect(malformedConfiguration.get("vary")).not.toContain("Origin");
 });
 
 export function getCorsHeadersInit(request: Request): HeadersInit | undefined {
@@ -101,10 +109,11 @@ function getCorsHeadersInitForTvOrigin(request: Request, configuredTvOrigin: str
   const requestOrigin = request.headers.get("origin");
   const isTvDisplayRequest = pathname.startsWith("/api/latest/tv-displays/")
     || pathname.startsWith("/api/v1/tv-displays/");
+  const configuredTvUrl = configuredTvOrigin === "" ? null : URL.parse(configuredTvOrigin);
   const allowCredentialedTvOrigin = isTvDisplayRequest
     && requestOrigin != null
-    && configuredTvOrigin !== ""
-    && requestOrigin === new URL(configuredTvOrigin).origin;
+    && configuredTvUrl != null
+    && requestOrigin === configuredTvUrl.origin;
   return {
     "Access-Control-Allow-Origin": allowCredentialedTvOrigin ? requestOrigin : "*",
     ...(allowCredentialedTvOrigin ? { "Access-Control-Allow-Credentials": "true" } : {}),
@@ -113,7 +122,7 @@ function getCorsHeadersInitForTvOrigin(request: Request, configuredTvOrigin: str
     "Access-Control-Allow-Headers": corsAllowedRequestHeadersWithAliases.join(", "),
     "Access-Control-Expose-Headers": corsAllowedResponseHeadersWithAliases.join(", "),
     "Vary": [
-      ...(isTvDisplayRequest && configuredTvOrigin !== "" ? ["Origin"] : []),
+      ...(isTvDisplayRequest && configuredTvUrl != null ? ["Origin"] : []),
       ...corsAllowedRequestHeadersWithAliases,
     ].join(", "),
   };

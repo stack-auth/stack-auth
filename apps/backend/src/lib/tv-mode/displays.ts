@@ -8,10 +8,10 @@ import { signJWT, verifyJWT } from "@hexclave/shared/dist/utils/jwt";
 import { yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import type { TvDisplayResource } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { createHmac } from "node:crypto";
-import { logEvent, SystemEventTypes } from "@/lib/events";
+import { logEvent, SystemEventTypes, type TvDisplaySecurityAction } from "@/lib/events";
 import { getBillingTeamId } from "@/lib/plan-entitlements";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
-import { captureError, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 
 export const TV_DISPLAY_POLLING_INTERVAL_SECONDS = 5;
 export const TV_DISPLAY_REFRESH_COOKIE = "hexclave-tv-display-refresh";
@@ -69,11 +69,28 @@ type RefreshRotationResult =
   | { status: "reused" }
   | { status: "rotated", id: string, rawToken: string };
 
-type TvDisplayAuditAction = "pairing-approved" | "credential-issued" | "credential-rotated"
-  | "refresh-reuse-detected" | "display-renamed" | "profile-reassigned" | "display-revoked";
+export type TvDisplayOperationErrorCode =
+  | "tv_display_profile_not_found"
+  | "tv_display_exact_financials_acknowledgement_required"
+  | "tv_display_pairing_code_invalid";
+
+export class TvDisplayOperationError extends Error {
+  override name = "TvDisplayOperationError";
+
+  constructor(readonly code: TvDisplayOperationErrorCode) {
+    super(code);
+  }
+}
+
+export function requireTvDisplayAdminUserId(adminUserId: string | undefined): string {
+  if (adminUserId == null) {
+    throw new StatusError(StatusError.Forbidden, "tv_display_user_bound_admin_auth_required");
+  }
+  return adminUserId;
+}
 
 function logTvDisplayAuditInBackground(tenancy: Tenancy, options: {
-  action: TvDisplayAuditAction,
+  action: TvDisplaySecurityAction,
   displayId: string | null,
   actorUserId: string | null,
 }): void {
@@ -96,6 +113,7 @@ function logTvDisplayAuditInBackground(tenancy: Tenancy, options: {
 }
 
 const DisplayAccessTokenSchema = yupObject({
+  aud: yupString().oneOf([TV_DISPLAY_AUDIENCE]).defined(),
   displayId: yupString().uuid().defined(),
   credentialVersion: yupNumber().integer().min(1).defined(),
   credentialId: yupString().uuid().defined(),
@@ -227,10 +245,10 @@ export async function approveTvDisplayPairing(options: {
   await retryTransaction(globalPrismaClient, async (transaction) => {
     await lockTvProfileDisplayAssignment(transaction, options.tenancy.id, options.profileId);
     const profile = await resolveTvProfile(options.tenancy, options.profileId);
-    if (profile == null) throw new Error("tv_display_profile_not_found");
+    if (profile == null) throw new TvDisplayOperationError("tv_display_profile_not_found");
     const exact = profile.configuration.financialVisibility === "exact";
     if (exact && !options.acknowledgeExactFinancials) {
-      throw new Error("tv_display_exact_financials_acknowledgement_required");
+      throw new TvDisplayOperationError("tv_display_exact_financials_acknowledgement_required");
     }
     const updated = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       UPDATE "TvDisplayPairingChallenge"
@@ -248,7 +266,7 @@ export async function approveTvDisplayPairing(options: {
         AND "expiresAt" > ${now}
       RETURNING "id"
     `);
-    if (updated.length === 0) throw new Error("tv_display_pairing_code_invalid");
+    if (updated.length === 0) throw new TvDisplayOperationError("tv_display_pairing_code_invalid");
   });
   logTvDisplayAuditInBackground(options.tenancy, {
     action: "pairing-approved",
@@ -316,6 +334,22 @@ export async function pollTvDisplayPairing(options: {
   const approvedDisplayName = challenge.approvedDisplayName;
   const approvedByAdminUserId = challenge.approvedByAdminUserId;
   const result = await retryTransaction(globalPrismaClient, async (transaction) => {
+    const tenancyRows = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
+      FROM "Tenancy"
+      WHERE "id" = ${approvedTenancyId}::UUID
+      FOR KEY SHARE
+    `);
+    if (tenancyRows.length === 0) {
+      await transaction.$executeRaw`
+        UPDATE "TvDisplayPairingChallenge"
+        SET "state" = 'REJECTED'::"TvDisplayPairingState", "rejectedAt" = ${now}, "updatedAt" = ${now}
+        WHERE "id" = ${challenge.id}::UUID
+          AND "state" = 'APPROVED'::"TvDisplayPairingState"
+      `;
+      const rejected: PairingPollResult = { status: "rejected" };
+      return rejected;
+    }
     const claimed = await transaction.$queryRaw<ChallengeRow[]>(Prisma.sql`
       UPDATE "TvDisplayPairingChallenge"
       SET "state" = 'CONSUMED'::"TvDisplayPairingState", "consumedAt" = ${now}, "updatedAt" = ${now}
@@ -608,9 +642,11 @@ export async function updateTvDisplay(options: {
   const result = await retryTransaction(globalPrismaClient, async (transaction) => {
     await lockTvProfileDisplayAssignment(transaction, options.tenancy.id, options.profileId);
     const profile = await resolveTvProfile(options.tenancy, options.profileId);
-    if (profile == null) throw new Error("tv_display_profile_not_found");
+    if (profile == null) throw new TvDisplayOperationError("tv_display_profile_not_found");
     const exact = profile.configuration.financialVisibility === "exact";
-    if (exact && !options.acknowledgeExactFinancials) throw new Error("tv_display_exact_financials_acknowledgement_required");
+    if (exact && !options.acknowledgeExactFinancials) {
+      throw new TvDisplayOperationError("tv_display_exact_financials_acknowledgement_required");
+    }
     const rows = await transaction.$queryRaw<Array<{ displayName: string, profileId: string }>>(Prisma.sql`
       SELECT "displayName", "profileId"
       FROM "TvDisplay"

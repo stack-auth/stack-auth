@@ -1,14 +1,21 @@
 import { getExactEndUserIp } from "@/lib/end-users";
-import { approveTvDisplayPairing, consumeTvDisplayPairingRateLimit, listTvDisplays, refundTvDisplayPairingRateLimit } from "@/lib/tv-mode/displays";
+import {
+  approveTvDisplayPairing,
+  consumeTvDisplayPairingRateLimit,
+  listTvDisplays,
+  refundTvDisplayPairingRateLimit,
+  requireTvDisplayAdminUserId,
+  TvDisplayOperationError,
+} from "@/lib/tv-mode/displays";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { TvDisplayResourceSchema } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 
 const adminAuthSchema = yupObject({
   type: adminAuthTypeSchema,
   tenancy: adaptSchema.defined(),
-  adminUserId: yupString().uuid().defined(),
+  adminUserId: yupString().uuid().optional(),
 }).defined();
 
 export const GET = createSmartRouteHandler({
@@ -43,10 +50,11 @@ export const POST = createSmartRouteHandler({
     body: yupObject({ success: yupBoolean().oneOf([true]).defined() }).noUnknown().defined(),
   }),
   handler: async ({ auth, body }) => {
+    const adminUserId = requireTvDisplayAdminUserId(auth.adminUserId);
     const ip = await getExactEndUserIp() ?? "unknown-untrusted-ip";
     const [adminAllowed, ipAllowed] = await Promise.all([
       consumeTvDisplayPairingRateLimit({
-        identity: auth.adminUserId,
+        identity: adminUserId,
         operation: "approval-admin",
         windowMs: 10 * 60_000,
         limit: 10,
@@ -65,22 +73,25 @@ export const POST = createSmartRouteHandler({
         pairingCode: body.pairingCode,
         profileId: body.profileId,
         displayName: body.displayName,
-        adminUserId: auth.adminUserId,
+        adminUserId,
         acknowledgeExactFinancials: body.acknowledgeExactFinancials,
       });
-      await Promise.all([
-        refundTvDisplayPairingRateLimit({ identity: auth.adminUserId, operation: "approval-admin", windowMs: 10 * 60_000 }),
+      const refundResults = await Promise.allSettled([
+        refundTvDisplayPairingRateLimit({ identity: adminUserId, operation: "approval-admin", windowMs: 10 * 60_000 }),
         refundTvDisplayPairingRateLimit({ identity: ip, operation: "approval-ip", windowMs: 10 * 60_000 }),
       ]);
+      for (const refundResult of refundResults) {
+        if (refundResult.status === "rejected") {
+          captureError("tv-display-rate-limit-refund-failed", new HexclaveAssertionError(
+            "A successful TV display approval could not refund its rate-limit bucket.",
+            { cause: refundResult.reason },
+          ));
+        }
+      }
     } catch (error) {
-      if (error instanceof Error && error.message === "tv_display_exact_financials_acknowledgement_required") {
-        throw new StatusError(400, error.message);
-      }
-      if (error instanceof Error && error.message === "tv_display_profile_not_found") {
-        throw new StatusError(404, error.message);
-      }
-      if (error instanceof Error && error.message === "tv_display_pairing_code_invalid") {
-        throw new StatusError(400, error.message);
+      if (error instanceof TvDisplayOperationError) {
+        const status = error.code === "tv_display_profile_not_found" ? 404 : 400;
+        throw new StatusError(status, error.code);
       }
       throw error;
     }

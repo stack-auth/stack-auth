@@ -212,20 +212,23 @@ const UserRestrictedEventType = {
   inherits: [],
 } as const satisfies SystemEventTypeBase;
 
+export const TV_DISPLAY_SECURITY_ACTIONS = [
+  "pairing-approved",
+  "credential-issued",
+  "credential-rotated",
+  "refresh-reuse-detected",
+  "display-renamed",
+  "profile-reassigned",
+  "display-revoked",
+] as const;
+export type TvDisplaySecurityAction = typeof TV_DISPLAY_SECURITY_ACTIONS[number];
+
 const TvDisplaySecurityEventType = {
   id: "$tv-display-security",
   dataSchema: yupObject({
     projectId: yupString().defined(),
     branchId: yupString().defined(),
-    action: yupString().oneOf([
-      "pairing-approved",
-      "credential-issued",
-      "credential-rotated",
-      "refresh-reuse-detected",
-      "display-renamed",
-      "profile-reassigned",
-      "display-revoked",
-    ]).defined(),
+    action: yupString().oneOf(TV_DISPLAY_SECURITY_ACTIONS).defined(),
     displayId: yupString().uuid().nullable().defined(),
     actorUserId: yupString().uuid().nullable().defined(),
   }).noUnknown().defined(),

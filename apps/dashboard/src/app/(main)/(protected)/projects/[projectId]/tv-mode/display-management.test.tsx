@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
-import { Toaster } from "@/components/ui";
+import { clearToasts, Toaster } from "@/components/ui";
 import { getTvBuiltInProfile, type TvDisplayResource, type TvProfileResource } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -39,6 +39,7 @@ function renderManagement(adminApp: object, profiles: TvProfileResource[] = [get
 
 afterEach(() => {
   cleanup();
+  clearToasts();
   vi.restoreAllMocks();
 });
 
@@ -93,6 +94,43 @@ describe("TV display pairing feedback", () => {
     await waitFor(() => expect(screen.getByText("Display Paired")).toBeTruthy());
     expect(screen.getAllByText("Office Display").length).toBeGreaterThan(0);
     expect(alert).not.toHaveBeenCalled();
+  });
+
+  it("normalizes formatted codes and defaults to the server-selected profile", async () => {
+    const engineering = getTvBuiltInProfile("engineering-office");
+    if (engineering == null) throw new Error("Engineering Office profile is missing.");
+    const submittedBodies: string[] = [];
+    const adminApp = {
+      [hexclaveAppInternalsSymbol]: {
+        sendRequest: async (_path: string, options: RequestInit) => {
+          if (options.method === "POST") {
+            if (typeof options.body === "string") submittedBodies.push(options.body);
+            return jsonResponse({ success: true });
+          }
+          return jsonResponse({ displays: [] });
+        },
+      },
+    };
+    render(<>
+      <TvDisplayManagement
+        adminApp={adminApp}
+        profiles={[engineering, getCompanyPulseProfile()]}
+        defaultProfileId="company-pulse"
+      />
+      <Toaster />
+    </>);
+
+    await screen.findByText("No Displays Paired Yet");
+    expect(screen.getByLabelText("Assigned Profile").textContent).toContain("Company Pulse");
+    fireEvent.change(screen.getByLabelText("Pairing code"), { target: { value: "ABCD-EFGH" } });
+    fireEvent.click(screen.getByRole("button", { name: "Pair Display" }));
+    await waitFor(() => expect(submittedBodies).toHaveLength(1));
+    const submittedBody = submittedBodies.at(0);
+    if (submittedBody == null) throw new Error("Pairing request body is missing.");
+    expect(JSON.parse(submittedBody)).toMatchObject({
+      pairingCode: "ABCDEFGH",
+      profileId: "company-pulse",
+    });
   });
 
   it("uses the design dialog to confirm unpairing and removes the active display immediately", async () => {

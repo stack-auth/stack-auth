@@ -112,4 +112,30 @@ describe("TV profile interruption preference normalization", () => {
       incidentTypes: { emailDeliveryDegradation: true, subscriptionCollectionDegradation: true },
     });
   });
+
+  it("preserves an explicitly disabled incident policy when adding subscription collection", async () => {
+    const recoveryTiming = {
+      celebration: { takeoverSeconds: 60, animationSeconds: 3600, highlightSeconds: 21600 },
+      incident: { takeoverSeconds: 60, recoveryTakeoverSeconds: 30, resolvedHighlightSeconds: 3600 },
+      criticalIncident: { takeoverSeconds: 120, recoveryTakeoverSeconds: 60, resolvedHighlightSeconds: 21600 },
+    };
+    await expect(normalizeTvInterruptionPreferences({
+      incidentTypes: { emailDeliveryDegradation: false },
+      celebrations: { userMilestone: true, revenueMilestone: false },
+      timing: recoveryTiming,
+    })).resolves.toMatchObject({
+      incidentTypes: { emailDeliveryDegradation: false, subscriptionCollectionDegradation: false },
+    });
+    await expect(normalizeTvInterruptionPreferences({
+      incidentTypes: { emailDeliveryDegradation: false },
+      celebrations: { userMilestone: true, revenueMilestone: false },
+      timing: {
+        celebration: recoveryTiming.celebration,
+        incident: { takeoverSeconds: 60, resolvedHighlightSeconds: 3600 },
+        criticalIncident: { resolvedHighlightSeconds: 21600 },
+      },
+    })).resolves.toMatchObject({
+      incidentTypes: { emailDeliveryDegradation: false, subscriptionCollectionDegradation: false },
+    });
+  });
 });

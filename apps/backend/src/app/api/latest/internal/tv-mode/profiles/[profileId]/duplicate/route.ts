@@ -65,7 +65,10 @@ export const POST = createSmartRouteHandler({
         )
         : await createTvProfile(tenancy, duplicateConfiguration);
       if (profile == null) {
-        throw new StatusError(StatusError.NotFound, "tv_profile_not_found");
+        throw new StatusError(
+          source.origin === "built-in" ? StatusError.ServiceUnavailable : StatusError.NotFound,
+          source.origin === "built-in" ? "tv_profile_persistence_not_ready" : "tv_profile_not_found",
+        );
       }
       return { statusCode: 200, bodyType: "json", body: { profile } };
     } catch (error) {

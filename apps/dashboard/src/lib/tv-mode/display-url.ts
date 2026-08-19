@@ -7,11 +7,11 @@ type TvDisplayUrlSources = {
 };
 
 export function buildTvDisplayUrl(sources: TvDisplayUrlSources): string | null {
-  const publicOrigin = sources.browserDashboardUrl
-    ?? sources.dashboardUrl
-    ?? sources.currentOrigin;
-  if (publicOrigin == null) return null;
-  return new URL("/tv", publicOrigin).toString();
+  for (const candidate of [sources.browserDashboardUrl, sources.dashboardUrl, sources.currentOrigin]) {
+    if (candidate == null || candidate.trim() === "" || !URL.canParse("/tv", candidate)) continue;
+    return new URL("/tv", candidate).toString();
+  }
+  return null;
 }
 
 export function getConfiguredTvDisplayUrl(currentOrigin?: string): string | null {

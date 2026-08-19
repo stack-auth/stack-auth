@@ -345,6 +345,26 @@ describe("TV Mode centralized fixtures", () => {
     });
   });
 
+  it("derives preview phase deadlines from the selected profile timing", () => {
+    const profile = structuredClone(getProfile());
+    profile.interruptionTiming = {
+      celebration: { takeoverSeconds: 90, animationSeconds: 1800, highlightSeconds: 43200 },
+      incident: { takeoverSeconds: 120, recoveryTakeoverSeconds: 90, resolvedHighlightSeconds: 21600 },
+      criticalIncident: { takeoverSeconds: 90, recoveryTakeoverSeconds: 120, resolvedHighlightSeconds: 86400 },
+    };
+
+    expect(createTvFixtureSnapshot("project-fixture", profile, "celebration-takeover").presentation).toMatchObject({
+      takeover: { endsAt: "2026-07-23T14:33:30.000Z" },
+      highlight: {
+        expiresAt: "2026-07-24T02:30:00.000Z",
+        animationExpiresAt: "2026-07-23T15:00:00.000Z",
+      },
+    });
+    expect(createTvFixtureSnapshot("project-fixture", profile, "critical-takeover").presentation.takeover?.endsAt).toBe("2026-07-23T14:33:30.000Z");
+    expect(createTvFixtureSnapshot("project-fixture", profile, "critical-recovery").presentation.takeover?.endsAt).toBe("2026-07-23T14:34:00.000Z");
+    expect(createTvFixtureSnapshot("project-fixture", profile, "incident-recovery-highlight").presentation.highlight?.expiresAt).toBe("2026-07-23T20:32:00.000Z");
+  });
+
   it("keeps long-name stress data centralized", () => {
     const snapshot = createTvFixtureSnapshot("project-fixture", getProfile(), "long-names");
     expect(snapshot.project.displayName.length).toBeGreaterThan(50);

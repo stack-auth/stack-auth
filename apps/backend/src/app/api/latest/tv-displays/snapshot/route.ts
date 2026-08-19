@@ -29,6 +29,7 @@ export const GET = createSmartRouteHandler({
     const snapshot = await buildLiveTvSnapshot({
       tenancy: authorized.tenancy,
       profileId: authorized.display.profileId,
+      resolvedProfile: profile,
       includeScreenDurations: true,
       forceFinancialRedaction: !exactFinancialsAcknowledged,
     });

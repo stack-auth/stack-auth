@@ -9,7 +9,7 @@
     "with-env": "dotenv -c development --",
     "with-env:prod": "dotenv -c --",
     "dev": "concurrently -n \"dev,bundle-type-defs\" -k \"next dev --turbopack --port ${NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT:-${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}01}\" \"pnpm run bundle-type-definitions:watch\"",
-    "dev:rde": "HEXCLAVE_DASHBOARD_BUILD_FOR_RDE=true next dev --webpack --port ${PORT:-${NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT:-${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}42}}",
+    "dev:rde": "HEXCLAVE_DASHBOARD_BUILD_FOR_RDE=true next dev --webpack --port ${PORT:-${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}42}",
     "dev:rde-production": "node scripts/dev-rde-production.mjs",
     "bundle-type-definitions": "tsx scripts/bundle-type-definitions.ts",
     "bundle-type-definitions:watch": "tsx watch --clear-screen=false scripts/bundle-type-definitions.ts",

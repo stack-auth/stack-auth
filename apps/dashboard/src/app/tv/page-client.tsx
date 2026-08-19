@@ -77,11 +77,14 @@ export default function IndependentTvPageClient() {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [challenge, setChallenge] = useState<TvDisplayPairingChallenge | null>(null);
   const [pairingError, setPairingError] = useState(false);
+  const [pairingRetryAttempt, setPairingRetryAttempt] = useState(0);
   const pairingPollInFlight = useRef(false);
   const pairingRestoreInFlight = useRef<Promise<void> | null>(null);
+  const accessTokenRef = useRef(accessToken);
+  accessTokenRef.current = accessToken;
 
-  const refreshAccess = useCallback(async (): Promise<string | null> => {
-    const response = await jsonRequest("/tv-displays/auth/refresh", { method: "POST" });
+  const refreshAccess = useCallback(async (signal?: AbortSignal): Promise<string | null> => {
+    const response = await jsonRequest("/tv-displays/auth/refresh", { method: "POST", signal });
     if (response.status === 401) return null;
     if (!response.ok) throw new Error("TV display credential could not be refreshed.");
     const body = await response.json();
@@ -92,9 +95,9 @@ export default function IndependentTvPageClient() {
     return body.accessToken;
   }, []);
 
-  const createChallenge = useCallback(async () => {
+  const createChallenge = useCallback(async (signal?: AbortSignal) => {
     setPairingError(false);
-    const response = await jsonRequest("/tv-displays/pairing-challenges", { method: "POST" });
+    const response = await jsonRequest("/tv-displays/pairing-challenges", { method: "POST", signal });
     if (!response.ok) throw new Error("TV display pairing challenge could not be created.");
     const next = await TvDisplayPairingChallengeSchema.validate(await response.json(), { strict: true });
     setChallenge(next);
@@ -123,7 +126,10 @@ export default function IndependentTvPageClient() {
       try {
         await restoreOrCreatePairing();
       } catch {
-        if (active) setPairingError(true);
+        if (active) {
+          setPairingError(true);
+          setPairingRetryAttempt((attempt) => attempt + 1);
+        }
       }
     });
     return () => {
@@ -138,11 +144,12 @@ export default function IndependentTvPageClient() {
         await restoreOrCreatePairing();
       } catch {
         setPairingError(true);
+        setPairingRetryAttempt((attempt) => attempt + 1);
       }
     };
     const timeout = window.setTimeout(() => runAsynchronously(retry()), PAIRING_RETRY_INTERVAL_MS);
     return () => window.clearTimeout(timeout);
-  }, [accessToken, challenge, pairingError, restoreOrCreatePairing]);
+  }, [accessToken, challenge, pairingError, pairingRetryAttempt, restoreOrCreatePairing]);
 
   useEffect(() => {
     if (challenge == null || accessToken != null) return;
@@ -181,34 +188,38 @@ export default function IndependentTvPageClient() {
     };
   }, [accessToken, challenge, createChallenge]);
 
-  const loadSnapshot = useCallback(async () => {
-    if (accessToken == null) throw new Error("TV display access token is unavailable.");
-    let token = accessToken;
+  const loadSnapshot = useCallback(async (signal: AbortSignal) => {
+    const currentAccessToken = accessTokenRef.current;
+    if (currentAccessToken == null) throw new Error("TV display access token is unavailable.");
+    let token = currentAccessToken;
     let response = await jsonRequest("/tv-displays/snapshot", {
       method: "GET",
       headers: { authorization: `Bearer ${token}` },
+      signal,
     });
     if (response.status === 401) {
-      const refreshed = await refreshAccess();
+      const refreshed = await refreshAccess(signal);
       if (refreshed == null) {
         setAccessToken(null);
-        await createChallenge();
+        await createChallenge(signal);
         throw new Error("TV display credential was revoked or expired.");
       }
       token = refreshed;
       response = await jsonRequest("/tv-displays/snapshot", {
         method: "GET",
         headers: { authorization: `Bearer ${token}` },
+        signal,
       });
     }
     if (!response.ok) throw new Error(`TV display snapshot failed with ${response.status}.`);
     const next = await TvSnapshotSchema.validate(await response.json(), { strict: true });
     return next;
-  }, [accessToken, createChallenge, refreshAccess]);
+  }, [createChallenge, refreshAccess]);
 
   const liveSnapshot = useTvSnapshotPolling({
     loadSnapshot,
     enabled: accessToken != null,
+    sourceKey: "independent-display",
   });
 
   if (accessToken == null) return <PairingScreen challenge={challenge} error={pairingError} />;

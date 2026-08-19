@@ -54,6 +54,7 @@ export default function PageClient() {
         if (active) {
           setProfiles(null);
           setLoadedProjectId(projectId);
+          setPersistenceReady(true);
           setLoadError(true);
         }
       }

@@ -19,6 +19,15 @@ describe("TV display URL", () => {
     expect(buildTvDisplayUrl({})).toBeNull();
   });
 
+  it("skips empty or malformed configured origins", () => {
+    expect(buildTvDisplayUrl({
+      browserDashboardUrl: "",
+      dashboardUrl: "not a URL",
+      currentOrigin: "http://localhost:8101",
+    })).toBe("http://localhost:8101/tv");
+    expect(buildTvDisplayUrl({ browserDashboardUrl: "not a URL" })).toBeNull();
+  });
+
   it("identifies loopback and local development hosts", () => {
     expect(isLocalTvDisplayUrl("http://localhost:8101/tv")).toBe(true);
     expect(isLocalTvDisplayUrl("http://127.0.0.1:8101/tv")).toBe(true);

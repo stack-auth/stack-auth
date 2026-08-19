@@ -19,9 +19,9 @@ import { UserIdentity } from "./providers";
 import { fetchWithRemoteDevelopmentEnvironmentBrowserSecret, RemoteDevelopmentEnvironmentBrowserSecretRedirectingError } from "./remote-development-environment-browser-secret-client";
 import { RemoteDevelopmentEnvironmentAuthGate } from "./remote-development-environment-auth-gate";
 import { WrongAddressScreen } from "./wrong-address-screen";
+import { isTvPresentationPath } from "@/lib/tv-mode/routes";
 
 const DEV_ENVIRONMENT_HEALTHCHECK_INTERVAL_MS = 2_000;
-const TV_PRESENTATION_PATH = /^\/projects\/[^/]+\/tv-mode\/present\/[^/]+\/?$/;
 const INDEPENDENT_TV_DISPLAY_PATH = /^\/tv\/?$/;
 
 type DevEnvironmentHealthSnapshot =
@@ -190,7 +190,7 @@ export function LayoutClient(props: {
 }) {
   const pathname = usePathname();
   const isBrowserSecretAuthorizationPage = pathname === "/development-environment/browser-secret";
-  const isTvPresentationPage = TV_PRESENTATION_PATH.test(pathname);
+  const isTvPresentationPage = isTvPresentationPath(pathname);
   const isIndependentTvDisplayPage = INDEPENDENT_TV_DISPLAY_PATH.test(pathname);
   const isTvViewingPage = isTvPresentationPage || isIndependentTvDisplayPage;
   const bypassDevelopmentEnvironmentGates = isBrowserSecretAuthorizationPage || isIndependentTvDisplayPage;

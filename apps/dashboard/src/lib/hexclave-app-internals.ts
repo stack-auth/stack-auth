@@ -207,11 +207,19 @@ export function getTvSnapshotPath(profileId: string): string {
   return `/internal/tv-mode/profiles/${encodeURIComponent(profileId)}/snapshot`;
 }
 
-export async function fetchTvSnapshotOrThrow(adminApp: object, profileId: string): Promise<TvSnapshot> {
-  return await TvSnapshotSchema.validate(await fetchJsonOrThrow(
+export async function fetchTvSnapshotOrThrow(
+  adminApp: object,
+  profileId: string,
+  signal?: AbortSignal,
+): Promise<TvSnapshot> {
+  return await TvSnapshotSchema.validate(await requestJsonOrThrow(
     adminApp,
     getTvSnapshotPath(profileId),
-    { "x-hexclave-tv-snapshot-contract": "2" },
+    {
+      method: "GET",
+      headers: { "x-hexclave-tv-snapshot-contract": "2" },
+      signal,
+    },
   ), {
     strict: true,
   });

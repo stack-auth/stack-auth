@@ -21,13 +21,14 @@ export const POST = createSmartRouteHandler({
       windowMs: 60_000,
       limit: 5,
     });
+    if (!minuteAllowed) throw new StatusError(429, "tv_display_pairing_rate_limited");
     const hourAllowed = await consumeTvDisplayPairingRateLimit({
       identity: ip,
       operation: "challenge-create-hour",
       windowMs: 60 * 60_000,
       limit: 30,
     });
-    if (!minuteAllowed || !hourAllowed) throw new StatusError(429, "tv_display_pairing_rate_limited");
+    if (!hourAllowed) throw new StatusError(429, "tv_display_pairing_rate_limited");
     const challenge = await createTvDisplayPairingChallenge();
     return {
       statusCode: 200,

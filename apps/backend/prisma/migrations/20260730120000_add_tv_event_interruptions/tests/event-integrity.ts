@@ -120,6 +120,14 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     lifecycle: "RESOLVED",
     resolvedAt: null,
   })).rejects.toThrow(/TvEventOccurrence_lifecycle_class_check/);
+  await expect(insertOccurrence(sql, {
+    tenancyId: ctx.first.tenancyId,
+    deduplicationKey: "invalid-celebration-resolution-timestamp",
+    eventType: "USER_MILESTONE",
+    presentationClass: "CELEBRATION",
+    lifecycle: "OCCURRED",
+    resolvedAt: new Date(),
+  })).rejects.toThrow(/TvEventOccurrence_lifecycle_class_check/);
 
   const invalidClasses = [
     ["USER_MILESTONE", "INCIDENT", "ACTIVE"],

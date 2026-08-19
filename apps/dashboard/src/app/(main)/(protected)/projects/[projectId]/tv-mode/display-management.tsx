@@ -92,12 +92,24 @@ function stateLabel(state: TvDisplayResource["state"]): string {
   return state[0].toUpperCase() + state.slice(1);
 }
 
-export function TvDisplayManagement({ adminApp, profiles }: { adminApp: object, profiles: TvProfileResource[] }) {
+export function TvDisplayManagement({
+  adminApp,
+  profiles,
+  defaultProfileId = "company-pulse",
+}: {
+  adminApp: object,
+  profiles: TvProfileResource[],
+  defaultProfileId?: string,
+}) {
   const [displays, setDisplays] = useState<TvDisplayResource[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [pairingCode, setPairingCode] = useState("");
   const [displayName, setDisplayName] = useState("Office Display");
-  const [profileId, setProfileId] = useState(profiles[0]?.id ?? "company-pulse");
+  const [profileId, setProfileId] = useState(
+    profiles.some((profile) => profile.id === defaultProfileId)
+      ? defaultProfileId
+      : profiles[0]?.id ?? "company-pulse",
+  );
   const [acknowledgeExact, setAcknowledgeExact] = useState(false);
   const [pairing, setPairing] = useState(false);
   const [pairingError, setPairingError] = useState<ActionNotice | null>(null);
@@ -151,7 +163,7 @@ export function TvDisplayManagement({ adminApp, profiles }: { adminApp: object, 
     const nextDisplayName = displayName.trim();
     try {
       await approveTvDisplayOrThrow(adminApp, {
-        pairingCode,
+        pairingCode: normalizedPairingCode,
         profileId,
         displayName: nextDisplayName,
         acknowledgeExactFinancials: acknowledgeExact,
@@ -210,7 +222,7 @@ export function TvDisplayManagement({ adminApp, profiles }: { adminApp: object, 
             </div>
             <div className="space-y-2">
               <label htmlFor="new-tv-display-name" className="text-xs font-medium text-foreground">Display Name</label>
-              <DesignInput id="new-tv-display-name" aria-label="Display name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Office Display" size="lg" />
+              <DesignInput id="new-tv-display-name" aria-label="Display name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Office Display" maxLength={80} size="lg" />
             </div>
             <div className="space-y-2">
               <label htmlFor="new-tv-display-profile" className="text-xs font-medium text-foreground">Assigned Profile</label>
@@ -243,8 +255,10 @@ export function TvDisplayManagement({ adminApp, profiles }: { adminApp: object, 
         glassmorphic
         contentClassName="!p-0"
       >
-        {displays == null && !loadFailed ? (
-          <p className="p-5 text-sm text-muted-foreground">Loading paired displays…</p>
+        {displays == null ? (
+          <p className="p-5 text-sm text-muted-foreground">
+            {loadFailed ? "Displays couldn’t be loaded. Retrying automatically…" : "Loading paired displays…"}
+          </p>
         ) : null}
         {displays?.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-5 py-10 text-center">

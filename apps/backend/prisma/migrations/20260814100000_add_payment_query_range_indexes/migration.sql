@@ -106,7 +106,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS "SubscriptionInvoice_tenancyId_markedUnc
 -- RUN_OUTSIDE_TRANSACTION_SENTINEL
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "OneTimePurchase_purchasePage_paidAt_idx"
   ON /* SCHEMA_NAME_SENTINEL */."OneTimePurchase"("tenancyId", "paidAt")
-  WHERE "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+  WHERE "creationSource" = 'PURCHASE_PAGE'::/* SCHEMA_NAME_SENTINEL */."PurchaseCreationSource"
     AND "paidAt" IS NOT NULL;
 
 -- SPLIT_STATEMENT_SENTINEL
@@ -116,7 +116,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS "OneTimePurchase_purchasePage_paidAt_idx
 -- RUN_OUTSIDE_TRANSACTION_SENTINEL
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "temp_OneTimePurchase_legacyPurchasePage_createdAt_idx"
   ON /* SCHEMA_NAME_SENTINEL */."OneTimePurchase"("tenancyId", "createdAt")
-  WHERE "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+  WHERE "creationSource" = 'PURCHASE_PAGE'::/* SCHEMA_NAME_SENTINEL */."PurchaseCreationSource"
     AND "paidAt" IS NULL;
 
 -- SPLIT_STATEMENT_SENTINEL

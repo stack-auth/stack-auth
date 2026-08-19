@@ -386,6 +386,11 @@ async function fetchSubscriptionInvoiceBatch(
       "isSubscriptionCreationInvoice",
       "status",
       "amountTotal",
+      "paidAt",
+      "markedUncollectibleAt",
+      "voidedAt",
+      "currency",
+      "amountPaid",
       "hostedInvoiceUrl",
       "createdAt"
     FROM "SubscriptionInvoice"
@@ -417,6 +422,9 @@ async function fetchOneTimePurchaseBatch(
       "revokedAt",
       "refundedAt",
       "creationSource",
+      "amountReceived",
+      "currency",
+      "paidAt",
       "createdAt"
     FROM "OneTimePurchase"
     WHERE TRUE

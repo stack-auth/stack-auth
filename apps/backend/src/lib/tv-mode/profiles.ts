@@ -137,13 +137,19 @@ export async function normalizeTvInterruptionPreferences(
     const previous = await PreSubscriptionTvInterruptionPreferencesSchema.validate(input, { strict: true });
     return {
       ...previous,
-      incidentTypes: { ...previous.incidentTypes, subscriptionCollectionDegradation: true },
+      incidentTypes: {
+        ...previous.incidentTypes,
+        subscriptionCollectionDegradation: previous.incidentTypes.emailDeliveryDegradation,
+      },
     };
   }
   if (await PreviousTvInterruptionPreferencesSchema.isValid(input, { strict: true })) {
     const previous = await PreviousTvInterruptionPreferencesSchema.validate(input, { strict: true });
     return {
-      incidentTypes: { ...previous.incidentTypes, subscriptionCollectionDegradation: true },
+      incidentTypes: {
+        ...previous.incidentTypes,
+        subscriptionCollectionDegradation: previous.incidentTypes.emailDeliveryDegradation,
+      },
       celebrations: previous.celebrations,
       timing: {
         celebration: previous.timing.celebration,

@@ -9,6 +9,8 @@ import {
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
+const TV_SNAPSHOT_REQUEST_TIMEOUT_MS = 12_000;
+
 export type TvLiveSnapshotState = {
   snapshot: TvSnapshot | null,
   loading: boolean,
@@ -33,35 +35,56 @@ export function useTvLiveSnapshot(options: {
   profileId: string,
   enabled: boolean,
 }): TvLiveSnapshotState {
-  const loadSnapshot = useCallback(async () => {
-    return await fetchTvSnapshotOrThrow(options.adminApp, options.profileId);
+  const loadSnapshot = useCallback(async (signal: AbortSignal) => {
+    return await fetchTvSnapshotOrThrow(options.adminApp, options.profileId, signal);
   }, [options.adminApp, options.profileId]);
   return useTvSnapshotPolling({
     loadSnapshot,
     enabled: options.enabled,
+    sourceKey: options.profileId,
     failureProfileId: options.profileId,
   });
 }
 
 export function useTvSnapshotPolling(options: {
-  loadSnapshot: () => Promise<TvSnapshot>,
+  loadSnapshot: (signal: AbortSignal) => Promise<TvSnapshot>,
   enabled: boolean,
+  sourceKey: string,
   failureProfileId?: string,
 }): TvLiveSnapshotState {
-  const { enabled, failureProfileId, loadSnapshot } = options;
+  const { enabled, failureProfileId, loadSnapshot, sourceKey } = options;
   const [snapshot, setSnapshot] = useState<TvSnapshot | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [unavailableReason, setUnavailableReason] = useState<"offline" | "error" | null>(null);
   const inFlightRef = useRef(false);
   const requestIdRef = useRef(0);
   const snapshotRef = useRef<TvSnapshot | null>(null);
+  const activeRequestRef = useRef<AbortController | null>(null);
+  const enabledRef = useRef(enabled);
+  const failureProfileIdRef = useRef(failureProfileId);
+  const loadSnapshotRef = useRef(loadSnapshot);
+  enabledRef.current = enabled;
+  failureProfileIdRef.current = failureProfileId;
+  loadSnapshotRef.current = loadSnapshot;
 
   const refresh = useCallback(async () => {
-    if (!enabled || inFlightRef.current) return;
+    if (!enabledRef.current || inFlightRef.current) return;
     inFlightRef.current = true;
     const requestId = ++requestIdRef.current;
+    const requestController = new AbortController();
+    activeRequestRef.current = requestController;
+    let timeoutId: number | undefined;
     try {
-      const nextSnapshot = await loadSnapshot();
+      const timeout = new Promise<never>((_resolve, reject) => {
+        timeoutId = window.setTimeout(() => {
+          requestController.abort();
+          reject(new Error("TV snapshot request timed out."));
+        }, TV_SNAPSHOT_REQUEST_TIMEOUT_MS);
+      });
+      const nextSnapshot = await Promise.race([
+        loadSnapshotRef.current(requestController.signal),
+        timeout,
+      ]);
       if (requestId !== requestIdRef.current) return;
       snapshotRef.current = nextSnapshot;
       setSnapshot(nextSnapshot);
@@ -70,7 +93,7 @@ export function useTvSnapshotPolling(options: {
       if (requestId !== requestIdRef.current) return;
       captureError("tv-snapshot-refresh-failed", new HexclaveAssertionError(
         "Failed to refresh the TV presentation snapshot.",
-        { cause, profileId: failureProfileId },
+        { cause, profileId: failureProfileIdRef.current },
       ));
       const retained = snapshotRef.current;
       if (retained == null) {
@@ -81,17 +104,21 @@ export function useTvSnapshotPolling(options: {
         setSnapshot(nextSnapshot);
       }
     } finally {
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+      if (activeRequestRef.current === requestController) activeRequestRef.current = null;
       if (requestId === requestIdRef.current) {
         inFlightRef.current = false;
         setLoading(false);
       }
     }
-  }, [enabled, failureProfileId, loadSnapshot]);
+  }, []);
 
   useEffect(() => {
     // Route or display-principal changes can reuse this client component.
     // Invalidate the previous source so its response cannot cross boundaries.
     requestIdRef.current += 1;
+    activeRequestRef.current?.abort();
+    activeRequestRef.current = null;
     inFlightRef.current = false;
     snapshotRef.current = null;
     setSnapshot(null);
@@ -139,13 +166,17 @@ export function useTvSnapshotPolling(options: {
     runAsynchronously(refresh());
 
     return () => {
+      requestIdRef.current += 1;
+      activeRequestRef.current?.abort();
+      activeRequestRef.current = null;
+      inFlightRef.current = false;
       window.clearInterval(interval);
       window.clearInterval(freshnessInterval);
       document.removeEventListener("visibilitychange", refreshIfVisible);
       window.removeEventListener("online", updateConnectionState);
       window.removeEventListener("offline", updateConnectionState);
     };
-  }, [enabled, refresh]);
+  }, [enabled, refresh, sourceKey]);
 
   return { snapshot, loading, unavailableReason };
 }

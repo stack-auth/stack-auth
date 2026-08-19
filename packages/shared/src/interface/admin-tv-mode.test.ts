@@ -295,6 +295,21 @@ describe("TvProfileConfigurationSchema", () => {
     )).resolves.toEqual(companyPulse.configuration);
   });
 
+  it("returns isolated built-in profile graphs", () => {
+    const firstCompanyPulse = getTvBuiltInProfile("company-pulse");
+    const secondCompanyPulse = getTvBuiltInProfile("company-pulse");
+    const engineeringOffice = getTvBuiltInProfile("engineering-office");
+    if (firstCompanyPulse == null || secondCompanyPulse == null || engineeringOffice == null) {
+      throw new Error("TV built-in profiles must exist.");
+    }
+
+    firstCompanyPulse.configuration.interruptionPreferences.incidentTypes.emailDeliveryDegradation = false;
+
+    expect(secondCompanyPulse.configuration.interruptionPreferences.incidentTypes.emailDeliveryDegradation).toBe(true);
+    expect(engineeringOffice.configuration.interruptionPreferences.incidentTypes.emailDeliveryDegradation).toBe(true);
+    expect(getTvBuiltInProfile("company-pulse")?.configuration.interruptionPreferences.incidentTypes.emailDeliveryDegradation).toBe(true);
+  });
+
   it("rejects duplicate screens and revenue celebrations in redacted profiles", async () => {
     const companyPulse = getTvBuiltInProfile("company-pulse");
     if (companyPulse == null) throw new Error("Company Pulse must exist.");

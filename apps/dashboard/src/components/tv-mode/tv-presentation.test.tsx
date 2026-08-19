@@ -130,7 +130,7 @@ describe("TV chart headers", () => {
     render(renderTvScreen(selectedScreen));
 
     expect(screen.getByText(title)).toBeDefined();
-    expect(screen.getByText(subtitle)).toBeDefined();
+    expect(screen.getAllByText(subtitle).length).toBeGreaterThan(0);
   });
 });
 
@@ -185,6 +185,22 @@ describe("TV metric semantics", () => {
     expect(screen.getAllByText("Delivered").length).toBeGreaterThan(0);
     screen.getByText("12,640 confirmed outcomes");
     expect(screen.queryByText("Completed Successfully")).toBeNull();
+  });
+
+  it("renders unchanged revenue with a neutral direction marker", () => {
+    const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
+    const revenue = snapshot?.screens.find((candidate) => candidate.id === "revenue-payments");
+    if (revenue?.id !== "revenue-payments" || revenue.data == null) {
+      throw new Error("Missing Revenue & Payments fixture data");
+    }
+
+    render(renderTvScreen({
+      ...revenue,
+      data: { ...revenue.data, revenueChangePercent: 0 },
+    }));
+
+    screen.getByText("— 0% vs previous 30 days · exact values off");
+    expect(screen.queryByText("↓ 0% vs previous 30 days · exact values off")).toBeNull();
   });
 
   it("keeps core Audience metrics visible when Analytics enrichment is unavailable", () => {

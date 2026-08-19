@@ -799,7 +799,10 @@ export default function PageClient() {
             <DesignButton size="sm" disabled={!hasChanges || draft.displayName.trim().length === 0} onClick={async () => {
               setSaveError(null);
               try {
-                const configuration = editorDraftToProfileConfiguration(draft);
+                const configuration = editorDraftToProfileConfiguration({
+                  ...draft,
+                  displayName: draft.displayName.trim(),
+                });
                 const savedResource = resource.origin === "saved" && !createFromTemplate
                   ? await updateTvProfileOrThrow(adminApp, resource.id, resource.version, configuration)
                   : await createTvProfileOrThrow(adminApp, configuration);

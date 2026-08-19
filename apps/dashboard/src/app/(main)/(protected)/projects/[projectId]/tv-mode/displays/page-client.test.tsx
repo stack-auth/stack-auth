@@ -19,7 +19,12 @@ vi.mock("@/lib/hexclave-app-internals", () => ({
   fetchTvProfilesOrThrow: async () => {
     const template = getTvBuiltInProfile("company-pulse");
     if (template == null) throw new Error("Company Pulse profile is missing.");
-    return { savedProfiles: [], templates: [template], persistenceReady: true };
+    return {
+      savedProfiles: [],
+      templates: [template],
+      persistenceReady: true,
+      effectiveDefaultProfileId: "company-pulse",
+    };
   },
 }));
 

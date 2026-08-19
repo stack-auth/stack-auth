@@ -350,6 +350,7 @@ describe.sequential("TV presentation persistence (real DB)", () => {
 
   it("does not rewrite an assignment after policy supersession is already persisted", async () => {
     const occurrence = await createOccurrence(firstTenancy.id);
+    const secondOccurrence = await createOccurrence(firstTenancy.id);
     const profileId = randomUUID();
     const template = getTvBuiltInProfile("company-pulse");
     if (template == null) throw new Error("Company Pulse TV template is missing");
@@ -371,31 +372,36 @@ describe.sequential("TV presentation persistence (real DB)", () => {
     await synchronizeTvProfileAssignments({
       tenancy: firstTenancy,
       profile,
-      occurrences: [occurrence],
+      occurrences: [occurrence, secondOccurrence],
       now: new Date("2026-07-31T10:01:10.000Z"),
     });
     await synchronizeTvProfileAssignments({
       tenancy: firstTenancy,
       profile: disabledProfile,
-      occurrences: [occurrence],
+      occurrences: [occurrence, secondOccurrence],
       now: new Date("2026-07-31T10:01:20.000Z"),
     });
-    const superseded = await globalPrismaClient.tvProfileEventPresentation.findUniqueOrThrow({
-      where: { tenancyId_profileId_occurrenceId: { tenancyId: firstTenancy.id, profileId, occurrenceId: occurrence.id } },
-    });
+    const superseded = new Map((await globalPrismaClient.tvProfileEventPresentation.findMany({
+      where: { tenancyId: firstTenancy.id, profileId },
+    })).map((assignment) => [assignment.occurrenceId, assignment]));
+    expect(superseded.size).toBe(2);
 
     await synchronizeTvProfileAssignments({
       tenancy: firstTenancy,
       profile: disabledProfile,
-      occurrences: [occurrence],
+      occurrences: [occurrence, secondOccurrence],
       now: new Date("2026-07-31T10:01:30.000Z"),
     });
-    await expect(globalPrismaClient.tvProfileEventPresentation.findUniqueOrThrow({
-      where: { tenancyId_profileId_occurrenceId: { tenancyId: firstTenancy.id, profileId, occurrenceId: occurrence.id } },
-    })).resolves.toMatchObject({
-      supersededAt: superseded.supersededAt,
-      updatedAt: superseded.updatedAt,
+    const afterRepeatedSynchronization = await globalPrismaClient.tvProfileEventPresentation.findMany({
+      where: { tenancyId: firstTenancy.id, profileId },
     });
+    expect(afterRepeatedSynchronization).toHaveLength(2);
+    for (const assignment of afterRepeatedSynchronization) {
+      expect(assignment).toMatchObject({
+        supersededAt: superseded.get(assignment.occurrenceId)?.supersededAt,
+        updatedAt: superseded.get(assignment.occurrenceId)?.updatedAt,
+      });
+    }
   });
 
   it("removes only the deleted saved profile's assignments", async () => {

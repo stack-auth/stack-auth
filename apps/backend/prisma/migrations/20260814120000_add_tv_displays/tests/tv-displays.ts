@@ -22,9 +22,9 @@ export const postMigration = async (sql: Sql) => {
   await sql`INSERT INTO "Tenancy" ("id", "createdAt", "updatedAt", "projectId", "branchId", "hasNoOrganization") VALUES (${tenancyId}, NOW(), NOW(), ${projectId}, 'main', 'TRUE'::"BooleanTrue")`;
   await sql`
     INSERT INTO "TvDisplay" (
-      "id", "tenancyId", "profileId", "displayName", "pairedByAdminUserId"
+      "id", "tenancyId", "profileId", "displayName", "pairedByAdminUserId", "updatedAt"
     ) VALUES (
-      ${displayId}, ${tenancyId}, 'company-pulse', 'Lobby', ${crypto.randomUUID()}
+      ${displayId}, ${tenancyId}, 'company-pulse', 'Lobby', ${crypto.randomUUID()}, NOW()
     )
   `;
   await sql`
@@ -44,16 +44,16 @@ export const postMigration = async (sql: Sql) => {
   const pairingCode = "ABC12345";
   await sql`
     INSERT INTO "TvDisplayPairingChallenge" (
-      "id", "pairingCode", "deviceSecretHash", "expiresAt"
+      "id", "pairingCode", "deviceSecretHash", "expiresAt", "updatedAt"
     ) VALUES (
-      ${crypto.randomUUID()}, ${pairingCode}, ${"b".repeat(64)}, NOW() + INTERVAL '10 minutes'
+      ${crypto.randomUUID()}, ${pairingCode}, ${"b".repeat(64)}, NOW() + INTERVAL '10 minutes', NOW()
     )
   `;
   await expect(sql`
     INSERT INTO "TvDisplayPairingChallenge" (
-      "id", "pairingCode", "deviceSecretHash", "expiresAt"
+      "id", "pairingCode", "deviceSecretHash", "expiresAt", "updatedAt"
     ) VALUES (
-      ${crypto.randomUUID()}, ${pairingCode}, ${"c".repeat(64)}, NOW() + INTERVAL '10 minutes'
+      ${crypto.randomUUID()}, ${pairingCode}, ${"c".repeat(64)}, NOW() + INTERVAL '10 minutes', NOW()
     )
   `).rejects.toThrow();
   await sql`DELETE FROM "TvDisplayPairingChallenge" WHERE "pairingCode" = ${pairingCode}`;

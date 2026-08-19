@@ -20,6 +20,7 @@ import {
 } from "./displays";
 import { createTvProfile, deleteTvProfile, TvProfileAssignedToDisplaysError } from "./profiles";
 import { getTvBuiltInProfile } from "@hexclave/shared/dist/interface/admin-tv-mode";
+import { signJWT } from "@hexclave/shared/dist/utils/jwt";
 
 describe.sequential("independent TV display persistence", () => {
   const projectIds: string[] = [];
@@ -113,6 +114,38 @@ describe.sequential("independent TV display persistence", () => {
       deviceSecret: challenge.deviceSecret,
       now: new Date("2026-08-14T12:10:01.000Z"),
     })).resolves.toEqual({ status: "expired" });
+  });
+
+  it("rejects display tokens issued for another audience", async () => {
+    const token = await signJWT({
+      issuer: "hexclave-tv-display",
+      audience: "another-service",
+      expirationTime: "10min",
+      payload: {
+        displayId: randomUUID(),
+        credentialVersion: 1,
+        credentialId: randomUUID(),
+      },
+    });
+    await expect(decodeDisplayAccessToken(token)).resolves.toBeNull();
+  });
+
+  it("rejects an approved challenge cleanly if its tenancy was deleted", async () => {
+    const challenge = await createChallenge();
+    await approveTvDisplayPairing({
+      tenancy,
+      pairingCode: challenge.pairingCode,
+      profileId: "company-pulse",
+      displayName: "Deleted Project Display",
+      adminUserId: randomUUID(),
+      acknowledgeExactFinancials: false,
+    });
+    await globalPrismaClient.project.delete({ where: { id: tenancy.project.id } });
+
+    await expect(pollTvDisplayPairing({
+      challengeId: challenge.challengeId,
+      deviceSecret: challenge.deviceSecret,
+    })).resolves.toEqual({ status: "rejected" });
   });
 
   it("enforces distributed pairing limits and can refund a successful approval attempt", async () => {

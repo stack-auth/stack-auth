@@ -1,8 +1,8 @@
 import { cookies } from "@/lib/runtime/headers";
 import { refreshTvDisplayCredential, TV_DISPLAY_REFRESH_COOKIE } from "@/lib/tv-mode/displays";
+import { clearedTvDisplayRefreshCookieOptions, tvDisplayRefreshCookieOptions } from "@/lib/tv-mode/display-refresh-cookie";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
@@ -19,23 +19,10 @@ export const POST = createSmartRouteHandler({
     if (rawRefreshToken == null) throw new StatusError(401, "tv_display_refresh_required");
     const result = await refreshTvDisplayCredential(rawRefreshToken);
     if (result == null) {
-      cookieStore.set(TV_DISPLAY_REFRESH_COOKIE, "", {
-        httpOnly: true,
-        secure: getNodeEnvironment() !== "development" && getNodeEnvironment() !== "test",
-        sameSite: "strict",
-        path: "/api/latest/tv-displays",
-        expires: new Date(0),
-        maxAge: 0,
-      });
+      cookieStore.set(TV_DISPLAY_REFRESH_COOKIE, "", clearedTvDisplayRefreshCookieOptions());
       throw new StatusError(401, "tv_display_refresh_invalid");
     }
-    cookieStore.set(TV_DISPLAY_REFRESH_COOKIE, result.refreshToken, {
-      httpOnly: true,
-      secure: getNodeEnvironment() !== "development" && getNodeEnvironment() !== "test",
-      sameSite: "strict",
-      path: "/api/latest/tv-displays",
-      maxAge: 90 * 24 * 60 * 60,
-    });
+    cookieStore.set(TV_DISPLAY_REFRESH_COOKIE, result.refreshToken, tvDisplayRefreshCookieOptions());
     return { statusCode: 200, bodyType: "json", body: { accessToken: result.accessToken } };
   },
 });

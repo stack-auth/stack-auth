@@ -14,7 +14,7 @@ CREATE TABLE "TvDisplay" (
   "financialVisibilityAcknowledgedAt" TIMESTAMP(3),
   "financialVisibilityAcknowledgedByAdminUserId" UUID,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "TvDisplay_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "TvDisplay_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
@@ -39,7 +39,7 @@ CREATE TABLE "TvDisplayPairingChallenge" (
   "consumedAt" TIMESTAMP(3),
   "rejectedAt" TIMESTAMP(3),
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "TvDisplayPairingChallenge_pkey" PRIMARY KEY ("id")
 );
 

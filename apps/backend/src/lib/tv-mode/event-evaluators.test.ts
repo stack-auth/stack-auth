@@ -65,9 +65,11 @@ function evaluateSequence(
   samples: TvEmailEvaluationSample[],
   initial = createTvEmailEvaluatorState(),
 ) {
-  let state = initial;
-  let result = evaluateTvEmailDelivery(state, samples[0]);
-  for (const sample of samples) {
+  const first = samples.at(0);
+  if (first == null) throw new Error("Email evaluator sequences require at least one sample.");
+  let result = evaluateTvEmailDelivery(initial, first);
+  let state = result.state;
+  for (const sample of samples.slice(1)) {
     result = evaluateTvEmailDelivery(state, sample);
     state = result.state;
   }

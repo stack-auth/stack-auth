@@ -564,15 +564,17 @@ export type TvDisplayPairingStatus = yup.InferType<typeof TvDisplayPairingStatus
 
 export type TvBuiltInProfile = TvBuiltInProfileResource;
 
-const defaultInterruptionPreferences: TvInterruptionPreferences = {
-  incidentTypes: { emailDeliveryDegradation: true, subscriptionCollectionDegradation: true },
-  celebrations: { userMilestone: true, revenueMilestone: false },
-  timing: {
-    celebration: { takeoverSeconds: 60, animationSeconds: 3600, highlightSeconds: 21600 },
-    incident: { takeoverSeconds: 60, recoveryTakeoverSeconds: 30, resolvedHighlightSeconds: 3600 },
-    criticalIncident: { takeoverSeconds: 120, recoveryTakeoverSeconds: 60, resolvedHighlightSeconds: 21600 },
-  },
-};
+function createDefaultInterruptionPreferences(): TvInterruptionPreferences {
+  return {
+    incidentTypes: { emailDeliveryDegradation: true, subscriptionCollectionDegradation: true },
+    celebrations: { userMilestone: true, revenueMilestone: false },
+    timing: {
+      celebration: { takeoverSeconds: 60, animationSeconds: 3600, highlightSeconds: 21600 },
+      incident: { takeoverSeconds: 60, recoveryTakeoverSeconds: 30, resolvedHighlightSeconds: 3600 },
+      criticalIncident: { takeoverSeconds: 120, recoveryTakeoverSeconds: 60, resolvedHighlightSeconds: 21600 },
+    },
+  };
+}
 
 export const TV_BUILT_IN_PROFILES: readonly TvBuiltInProfile[] = [
   {
@@ -591,7 +593,7 @@ export const TV_BUILT_IN_PROFILES: readonly TvBuiltInProfile[] = [
         { screenId: "audience-momentum", durationSecondsOverride: 20 },
         { screenId: "email-health", durationSecondsOverride: 18 },
       ],
-      interruptionPreferences: defaultInterruptionPreferences,
+      interruptionPreferences: createDefaultInterruptionPreferences(),
       financialVisibility: "redacted",
     },
   },
@@ -612,12 +614,15 @@ export const TV_BUILT_IN_PROFILES: readonly TvBuiltInProfile[] = [
         { screenId: "revenue-payments", durationSecondsOverride: 18 },
         { screenId: "email-health", durationSecondsOverride: 18 },
       ],
-      interruptionPreferences: defaultInterruptionPreferences,
+      interruptionPreferences: createDefaultInterruptionPreferences(),
       financialVisibility: "redacted",
     },
   },
 ];
 
 export function getTvBuiltInProfile(profileId: string): TvBuiltInProfile | null {
-  return TV_BUILT_IN_PROFILES.find((profile) => profile.id === profileId) ?? null;
+  const profile = TV_BUILT_IN_PROFILES.find((candidate) => candidate.id === profileId);
+  // Built-ins are process-wide constants, while profile editors intentionally
+  // mutate drafts. Never hand a caller the canonical nested object graph.
+  return profile == null ? null : structuredClone(profile);
 }

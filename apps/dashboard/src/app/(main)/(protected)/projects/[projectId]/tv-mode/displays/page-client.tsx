@@ -1,6 +1,7 @@
 "use client";
 
 import type { TvProfileResource } from "@hexclave/shared/dist/interface/admin-tv-mode";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { ArrowSquareOutIcon, CopyIcon, MonitorIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
@@ -15,9 +16,9 @@ import { TvDisplayManagement } from "../display-management";
 export default function PageClient() {
   const adminApp = useAdminApp();
   const [profiles, setProfiles] = useState<TvProfileResource[] | null>(null);
+  const [defaultProfileId, setDefaultProfileId] = useState("company-pulse");
   const [loadError, setLoadError] = useState(false);
   const [tvDisplayUrl, setTvDisplayUrl] = useState<string | null>(null);
-  const [copyFailed, setCopyFailed] = useState(false);
 
   useEffect(() => {
     setTvDisplayUrl(getConfiguredTvDisplayUrl(window.location.origin));
@@ -30,8 +31,10 @@ export default function PageClient() {
         const result = await fetchTvProfilesOrThrow(adminApp);
         if (!active) return;
         setProfiles([...result.savedProfiles, ...result.templates]);
+        setDefaultProfileId(result.effectiveDefaultProfileId);
         setLoadError(false);
-      } catch {
+      } catch (cause) {
+        captureError("tv-display-profile-load-failed", cause);
         if (active) setLoadError(true);
       }
     });
@@ -42,17 +45,12 @@ export default function PageClient() {
 
   const copyTvDisplayUrl = async () => {
     if (tvDisplayUrl == null) return;
-    try {
-      await navigator.clipboard.writeText(tvDisplayUrl);
-      setCopyFailed(false);
-      toast({
-        variant: "success",
-        title: "TV Link Copied",
-        description: "The display address is ready to paste.",
-      });
-    } catch {
-      setCopyFailed(true);
-    }
+    await navigator.clipboard.writeText(tvDisplayUrl);
+    toast({
+      variant: "success",
+      title: "TV Link Copied",
+      description: "The display address is ready to paste.",
+    });
   };
 
   return (
@@ -118,13 +116,6 @@ export default function PageClient() {
           description="This address works only on devices that can reach your development environment. A separate TV will usually need a network-accessible dashboard URL."
         />
       ) : null}
-      {copyFailed ? (
-        <DesignAlert
-          variant="error"
-          title="TV Link Couldn’t Be Copied"
-          description="Copy the display address shown above, or open it directly in a new tab."
-        />
-      ) : null}
       {loadError ? (
         <DesignAlert
           variant="error"
@@ -137,7 +128,13 @@ export default function PageClient() {
           <p className="text-sm text-muted-foreground">Loading display profiles…</p>
         </DesignCard>
       ) : null}
-      {profiles == null ? null : <TvDisplayManagement adminApp={adminApp} profiles={profiles} />}
+      {profiles == null ? null : (
+        <TvDisplayManagement
+          adminApp={adminApp}
+          profiles={profiles}
+          defaultProfileId={defaultProfileId}
+        />
+      )}
     </PageLayout>
   );
 }

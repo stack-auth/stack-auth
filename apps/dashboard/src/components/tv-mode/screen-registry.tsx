@@ -397,13 +397,18 @@ function LivePulseScreen({
                 </span>
                 Live signal
               </div>
-              <TvMetric label="Live now · rolling 2 min" value={data.liveUsers.toLocaleString()} detail="Distinct signed-in users refreshing now" hero />
+              <TvMetric
+                label="Live now · rolling 2 min"
+                value={data.liveUsers.toLocaleString()}
+                detail={insight == null ? "Distinct signed-in users refreshing now" : `↑ ${insight.evidence.deltaPercent}% vs recent baseline`}
+                hero
+              />
             </div>
             <div className="grid grid-cols-2 gap-5 border-t border-cyan-100/10 pt-[clamp(1.25rem,2.5vh,3rem)]">
               <TvMetric
                 label="Active today · UTC"
                 value={data.todayActiveUsers.toLocaleString()}
-                detail={insight == null ? "Current UTC day" : `↑ ${insight.evidence.deltaPercent}% vs recent baseline`}
+                detail="Current UTC day"
               />
               <TvMetric label="Monitored sources" value={data.sourceHealth.length.toString()} detail="Reporting now" />
             </div>
@@ -531,7 +536,7 @@ function RevenuePaymentsScreen({
       <div className="grid h-full min-h-0 grid-cols-[0.78fr_1.22fr] gap-[clamp(2rem,5vw,12rem)]">
         <GlassPanel tone="emerald" className="h-full">
           <div className="flex h-full min-h-0 flex-col justify-between p-[clamp(1.5rem,2.3vw,5.5rem)]">
-            <TvMetric label="Gross Collected Revenue · 30d" value={financials.visibility === "exact" ? formatUsd(financials.paidRevenueCents) : "Hidden"} detail={`${data.revenueChangePercent >= 0 ? "↑" : "↓"} ${Math.abs(data.revenueChangePercent)}% vs previous 30 days${financials.visibility === "exact" ? "" : " · exact values off"}`} hero />
+            <TvMetric label="Gross Collected Revenue · 30d" value={financials.visibility === "exact" ? formatUsd(financials.paidRevenueCents) : "Hidden"} detail={`${data.revenueChangePercent > 0 ? "↑" : data.revenueChangePercent < 0 ? "↓" : "—"} ${Math.abs(data.revenueChangePercent)}% vs previous 30 days${financials.visibility === "exact" ? "" : " · exact values off"}`} hero />
             <div className="grid grid-cols-2 gap-6">
               <TvMetric label="Payment Success" value={data.paymentSuccess.percent == null ? "Insufficient Data" : `${data.paymentSuccess.percent}%`} detail={`${data.paymentSuccess.applicableAttempts} terminal outcomes`} />
               <TvMetric label="Active subscriptions" value={data.activeSubscriptions.toLocaleString()} />

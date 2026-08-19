@@ -4,7 +4,11 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTvFixtureSnapshot, getTvProfileFixture } from "./fixtures";
-import { useTvLiveSnapshot, type TvLiveSnapshotState } from "./live-snapshot";
+import {
+  useTvLiveSnapshot,
+  useTvSnapshotPolling,
+  type TvLiveSnapshotState,
+} from "./live-snapshot";
 
 const fetchTvSnapshotMock = vi.hoisted(() => vi.fn());
 Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
@@ -32,6 +36,24 @@ function Probe({
     adminApp: ADMIN_APP,
     profileId,
     enabled: true,
+  });
+  onState(state);
+  return null;
+}
+
+function PollingProbe({
+  loadSnapshot,
+  onState,
+  sourceKey = "display-a",
+}: {
+  loadSnapshot: (signal: AbortSignal) => Promise<typeof snapshot>,
+  onState: (state: TvLiveSnapshotState) => void,
+  sourceKey?: string,
+}) {
+  const state = useTvSnapshotPolling({
+    loadSnapshot,
+    enabled: true,
+    sourceKey,
   });
   onState(state);
   return null;
@@ -71,7 +93,7 @@ describe("useTvLiveSnapshot", () => {
     });
     expect(fetchTvSnapshotMock).toHaveBeenCalledTimes(2);
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(15_000);
+      await vi.advanceTimersByTimeAsync(5_000);
     });
     expect(fetchTvSnapshotMock).toHaveBeenCalledTimes(2);
     await act(async () => {
@@ -224,7 +246,12 @@ describe("useTvLiveSnapshot", () => {
       root.render(<Probe onState={onState} profileId="engineering-office" />);
       await Promise.resolve();
     });
-    expect(fetchTvSnapshotMock).toHaveBeenNthCalledWith(2, ADMIN_APP, "engineering-office");
+    expect(fetchTvSnapshotMock).toHaveBeenNthCalledWith(
+      2,
+      ADMIN_APP,
+      "engineering-office",
+      expect.any(AbortSignal),
+    );
 
     await act(async () => {
       oldResponse.resolve(snapshot);
@@ -235,5 +262,84 @@ describe("useTvLiveSnapshot", () => {
     await act(async () => {
       root.unmount();
     });
+  });
+
+  it("does not reset retained data when the loader callback is recreated for the same source", async () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    const observedStates: TvLiveSnapshotState[] = [];
+    const firstLoader = vi.fn(async (_signal: AbortSignal) => snapshot);
+
+    await act(async () => {
+      root.render(<PollingProbe loadSnapshot={firstLoader} onState={(state) => observedStates.push(state)} />);
+      await Promise.resolve();
+    });
+    expect(observedStates.at(-1)?.snapshot).toBe(snapshot);
+
+    const replacementLoader = vi.fn(async (_signal: AbortSignal) => snapshot);
+    await act(async () => {
+      root.render(<PollingProbe loadSnapshot={replacementLoader} onState={(state) => observedStates.push(state)} />);
+      await Promise.resolve();
+    });
+
+    expect(observedStates.at(-1)?.snapshot).toBe(snapshot);
+    expect(firstLoader).toHaveBeenCalledTimes(1);
+    expect(replacementLoader).not.toHaveBeenCalled();
+
+    await act(async () => root.unmount());
+  });
+
+  it("times out a stalled request and resumes polling", async () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    const observedStates: TvLiveSnapshotState[] = [];
+    const stalled = new Promise<typeof snapshot>(() => {});
+    const loadSnapshot = vi.fn()
+      .mockReturnValueOnce(stalled)
+      .mockResolvedValueOnce(snapshot);
+
+    await act(async () => {
+      root.render(<PollingProbe loadSnapshot={loadSnapshot} onState={(state) => observedStates.push(state)} />);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12_000);
+    });
+    expect(observedStates.at(-1)).toMatchObject({
+      snapshot: null,
+      loading: false,
+      unavailableReason: "error",
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(loadSnapshot).toHaveBeenCalledTimes(2);
+    expect(observedStates.at(-1)).toMatchObject({
+      snapshot: { project: { id: "project" } },
+      unavailableReason: null,
+    });
+
+    await act(async () => root.unmount());
+  });
+
+  it("aborts and ignores an in-flight request when the presentation unmounts", async () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    const observedSignals: AbortSignal[] = [];
+    const loadSnapshot = vi.fn(async (signal: AbortSignal) => {
+      observedSignals.push(signal);
+      return await new Promise<typeof snapshot>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      });
+    });
+
+    await act(async () => {
+      root.render(<PollingProbe loadSnapshot={loadSnapshot} onState={() => {}} />);
+      await Promise.resolve();
+    });
+    await act(async () => root.unmount());
+
+    expect(observedSignals[0]?.aborted).toBe(true);
   });
 });

@@ -3,6 +3,7 @@ import { type Tenancy } from "@/lib/tenancies";
 import {
   evaluateTvEventsIfDue,
   resolveTvEventPresentation,
+  tvEventTablesAreReady,
   type TvEventPresentation,
 } from "@/lib/tv-mode/events";
 import { resolveTvProfile } from "@/lib/tv-mode/profiles";
@@ -211,6 +212,13 @@ function getRollingWindow(now: Date, days: number): TvWindowBounds {
   };
 }
 
+function getUtcCalendarDayStartsAt(now: Date, days: number): Date {
+  const startsAt = new Date(now);
+  startsAt.setUTCHours(0, 0, 0, 0);
+  startsAt.setUTCDate(startsAt.getUTCDate() - (days - 1));
+  return startsAt;
+}
+
 function reportingWindow(bounds: TvWindowBounds, days: number): TvReportingWindow {
   return {
     current: {
@@ -368,6 +376,7 @@ async function loadActivityScreens(
 ): Promise<{ livePulse: TvAdapterResult<TvLivePulseScreen>, audience: TvAdapterResult<TvAudienceMomentumScreen> }> {
   const observedAt = now.toISOString();
   const sevenDayBounds = getRollingWindow(now, 7);
+  const lifecycleStartsAt = getUtcCalendarDayStartsAt(now, 7);
   const emptyLive = createTvLivePulseErrorScreen(now);
   const emptyAudience: TvAudienceMomentumScreen = {
     id: "audience-momentum",
@@ -480,7 +489,7 @@ async function loadActivityScreens(
         query_params: {
           projectId: tenancy.project.id,
           branchId: tenancy.branchId,
-          since: formatClickhouseDateTime(sevenDayBounds.currentStartsAt),
+          since: formatClickhouseDateTime(lifecycleStartsAt),
           until: formatClickhouseDateTime(sevenDayBounds.currentEndsAt),
           windowDays: 7,
         },
@@ -546,7 +555,9 @@ async function loadActivityScreens(
     }]));
     const todayActivity = lifecycleByDate.get(todayKey)?.total ?? 0;
     const todayHourly = hourlyRows.map((point) => ({
-      label: new Date(point.hour).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" }),
+      // ClickHouse's default DateTime text has no zone marker. The source is
+      // queried in UTC, so make that explicit before JavaScript parses it.
+      label: new Date(`${point.hour.replace(" ", "T")}Z`).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" }),
       value: Number(point.active_users),
     }));
 
@@ -768,7 +779,7 @@ async function loadRevenueScreen(
             AND "createdAt" >= ${bounds.comparisonStartsAt}
             AND "createdAt" < ${bounds.currentEndsAt}
             AND COALESCE("currency", 'USD') = 'USD'
-            AND ("product"->'prices'->"priceId"->>'USD') ~ '^[0-9]+(\.[0-9]+)?$'
+            AND ("product"->'prices'->"priceId"->>'USD') ~ '^[0-9]+(\\.[0-9]+)?$'
         ), revenue_events AS (
           SELECT * FROM normalized_subscription_revenue
           UNION ALL
@@ -891,7 +902,7 @@ async function loadRevenueScreen(
             AND "createdAt" < ${bounds.currentEndsAt}
             AND (
               ("product"->'prices'->"priceId"->>'USD') IS NULL
-              OR ("product"->'prices'->"priceId"->>'USD') !~ '^[0-9]+(\.[0-9]+)?$'
+              OR ("product"->'prices'->"priceId"->>'USD') !~ '^[0-9]+(\\.[0-9]+)?$'
             )
         )
         SELECT
@@ -938,7 +949,7 @@ async function loadRevenueScreen(
             AND "paidAt" IS NULL
             AND "createdAt" >= ${bounds.currentStartsAt} AND "createdAt" < ${bounds.currentEndsAt}
             AND COALESCE("currency", 'USD') = 'USD'
-            AND ("product"->'prices'->"priceId"->>'USD') ~ '^[0-9]+(\.[0-9]+)?$'
+            AND ("product"->'prices'->"priceId"->>'USD') ~ '^[0-9]+(\\.[0-9]+)?$'
         )
         SELECT TO_CHAR(occurred_at::date, 'YYYY-MM-DD') AS day, COALESCE(SUM(amount), 0)::BIGINT AS revenue
         FROM revenue_events
@@ -1300,13 +1311,17 @@ export function assembleTvSnapshot(options: {
 export async function buildLiveTvSnapshot(options: {
   tenancy: Tenancy,
   profileId: string,
+  resolvedProfile?: TvProfileResource,
   now?: Date,
   includeScreenDurations?: boolean,
   forceFinancialRedaction?: boolean,
 }): Promise<TvSnapshot | null> {
   const now = options.now ?? new Date();
-  const resolvedProfile = await resolveTvProfile(options.tenancy, options.profileId);
+  const resolvedProfile = options.resolvedProfile ?? await resolveTvProfile(options.tenancy, options.profileId);
   if (resolvedProfile == null) return null;
+  if (resolvedProfile.id !== options.profileId) {
+    throw new TvSnapshotInvariantError("A pre-resolved TV profile must match the requested profile ID.");
+  }
   const profile = applyTvDisplayFinancialPolicy(resolvedProfile, options.forceFinancialRedaction === true);
 
   const [activity, revenue, email] = await Promise.all([
@@ -1320,17 +1335,29 @@ export async function buildLiveTvSnapshot(options: {
     revenue: revenue.screen,
     audience: audience.screen,
   });
+  let eventTablesReady = false;
   try {
-    await evaluateTvEventsIfDue({
-      tenancy: options.tenancy,
-      now,
-      totalUsers: audience.screen.data?.totalUsers ?? null,
-    });
+    eventTablesReady = await tvEventTablesAreReady(options.tenancy);
   } catch (cause) {
-    captureError("tv-event-evaluation-failed", new HexclaveAssertionError(
-      "TV event evaluation failed without affecting the operational snapshot.",
+    captureError("tv-event-storage-readiness-failed", new HexclaveAssertionError(
+      "TV event storage readiness failed without affecting the operational snapshot.",
       { cause, tenancyId: options.tenancy.id },
     ));
+  }
+  if (eventTablesReady) {
+    try {
+      await evaluateTvEventsIfDue({
+        tenancy: options.tenancy,
+        now,
+        totalUsers: audience.screen.data?.totalUsers ?? null,
+        eventTablesReady,
+      });
+    } catch (cause) {
+      captureError("tv-event-evaluation-failed", new HexclaveAssertionError(
+        "TV event evaluation failed without affecting the operational snapshot.",
+        { cause, tenancyId: options.tenancy.id },
+      ));
+    }
   }
   let presentation: TvEventPresentation = { highlight: null, takeover: null };
   try {
@@ -1338,6 +1365,7 @@ export async function buildLiveTvSnapshot(options: {
       tenancy: options.tenancy,
       profile,
       now,
+      eventTablesReady,
     });
   } catch (cause) {
     captureError("tv-event-presentation-resolution-failed", new HexclaveAssertionError(

@@ -75,8 +75,11 @@ it("pairs a narrow display principal, preserves tenancy assignment, and detects 
   const pairing = await TvDisplayPairingStatusSchema.validate(statusResponse.body, { strict: true });
   if (pairing.status !== "paired") throw new Error(`Expected paired display, received ${pairing.status}.`);
   const firstRefreshCookie = updateCookiesFromResponse("", statusResponse);
-  expect(statusResponse.headers.getSetCookie().join(";")).toContain("HttpOnly");
-  expect(statusResponse.headers.getSetCookie().join(";")).toContain("SameSite=Strict");
+  const refreshSetCookie = statusResponse.headers.getSetCookie()
+    .find((cookie) => cookie.startsWith("hexclave-tv-display-refresh="));
+  if (refreshSetCookie == null) throw new Error("Expected a TV display refresh cookie.");
+  expect(refreshSetCookie).toContain("HttpOnly");
+  expect(refreshSetCookie).toContain("SameSite=Strict");
 
   const snapshotResponse = await publicJsonRequest(
     "/tv-displays/snapshot?projectId=not-trusted&profileId=engineering-office",
@@ -90,7 +93,7 @@ it("pairs a narrow display principal, preserves tenancy assignment, and detects 
   const adminBoundaryResponse = await publicJsonRequest("/internal/tv-mode/profiles", {
     authorization: pairing.accessToken,
   });
-  expect(adminBoundaryResponse.status).not.toBe(200);
+  expect(adminBoundaryResponse.status).toBe(400);
 
   const secondProject = await Project.createAndSwitch();
   const crossTenantUpdate = await adminJsonRequest({

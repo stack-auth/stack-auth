@@ -158,7 +158,7 @@ const revenuePaymentsScreen: TvRevenuePaymentsScreen = {
   },
   insight: {
     kind: "revenue-up-payments-stable",
-    message: "Gross collected revenue increased while payment collection remained stable.",
+    message: "Gross collected revenue increased while subscription collection remained stable.",
     evidence: {
       revenueChangePercent: 14.2,
       paymentSuccessPercent: 98.6,
@@ -213,8 +213,8 @@ export const TV_PROFILE_FIXTURES = [
       { screenId: "revenue-payments", enabled: engineeringProfile.configuration.playlist.some((entry) => entry.screenId === "revenue-payments"), durationSecondsOverride: 18 },
       { screenId: "email-health", enabled: engineeringProfile.configuration.playlist.some((entry) => entry.screenId === "email-health"), durationSecondsOverride: 18 },
     ],
-    incidentTypes: { emailDeliveryDegradation: true, subscriptionCollectionDegradation: true },
-    celebrations: { userMilestone: true, revenueMilestone: false },
+    incidentTypes: engineeringProfile.configuration.interruptionPreferences.incidentTypes,
+    celebrations: engineeringProfile.configuration.interruptionPreferences.celebrations,
     interruptionTiming: engineeringProfile.configuration.interruptionPreferences.timing,
     showExactFinancialValues: false,
   },
@@ -230,8 +230,8 @@ export const TV_PROFILE_FIXTURES = [
       { screenId: "revenue-payments", enabled: companyPulseProfile.configuration.playlist.some((entry) => entry.screenId === "revenue-payments"), durationSecondsOverride: 18 },
       { screenId: "email-health", enabled: companyPulseProfile.configuration.playlist.some((entry) => entry.screenId === "email-health"), durationSecondsOverride: 18 },
     ],
-    incidentTypes: { emailDeliveryDegradation: true, subscriptionCollectionDegradation: true },
-    celebrations: { userMilestone: true, revenueMilestone: true },
+    incidentTypes: companyPulseProfile.configuration.interruptionPreferences.incidentTypes,
+    celebrations: companyPulseProfile.configuration.interruptionPreferences.celebrations,
     interruptionTiming: companyPulseProfile.configuration.interruptionPreferences.timing,
     showExactFinancialValues: companyPulseProfile.configuration.financialVisibility === "exact",
   },
@@ -315,22 +315,13 @@ const resolvedEmailEvent: TvEvent = {
 function presentedTakeover(
   event: TvEvent,
   variant: TvPresentedTakeover["variant"],
-  endsAt: string,
+  durationSeconds: number,
 ): TvPresentedTakeover {
   return {
     event,
     variant,
     startedAt: FIXTURE_NOW,
-    endsAt,
-  };
-}
-
-function celebrationHighlight(): TvPresentedEventHighlight {
-  return {
-    event: userMilestoneEvent,
-    variant: "celebration",
-    expiresAt: "2026-07-23T20:30:00.000Z",
-    animationExpiresAt: "2026-07-23T15:30:00.000Z",
+    endsAt: new Date(new Date(FIXTURE_NOW).getTime() + durationSeconds * 1000).toISOString(),
   };
 }
 
@@ -338,15 +329,15 @@ function celebrationHighlightWith(options: {
   event?: TvEvent,
   expiresAt?: string,
   animationExpiresAt?: string,
+  timing: TvProfileFixture["interruptionTiming"]["celebration"],
 }): TvPresentedEventHighlight {
   const event = options.event ?? userMilestoneEvent;
   const occurredAt = new Date(event.occurredAt).getTime();
-  const timing = companyPulseProfile.configuration.interruptionPreferences.timing.celebration;
   return {
     event,
     variant: "celebration",
-    expiresAt: options.expiresAt ?? new Date(occurredAt + timing.highlightSeconds * 1000).toISOString(),
-    animationExpiresAt: options.animationExpiresAt ?? new Date(occurredAt + timing.animationSeconds * 1000).toISOString(),
+    expiresAt: options.expiresAt ?? new Date(occurredAt + options.timing.highlightSeconds * 1000).toISOString(),
+    animationExpiresAt: options.animationExpiresAt ?? new Date(occurredAt + options.timing.animationSeconds * 1000).toISOString(),
   };
 }
 
@@ -431,13 +422,13 @@ export function createTvFixtureSnapshot(projectId: string, profile: TvProfileFix
       || variant === "celebration-takeover"
       || variant === "celebration-suspended"
       || variant === "celebration-resumed"
-    ? celebrationHighlight()
+    ? celebrationHighlightWith({ timing: profile.interruptionTiming.celebration })
     : variant === "celebration-animation-expired"
-      ? celebrationHighlightWith({ animationExpiresAt: "2026-07-23T14:31:00.000Z" })
+      ? celebrationHighlightWith({ timing: profile.interruptionTiming.celebration, animationExpiresAt: "2026-07-23T14:31:00.000Z" })
       : variant === "celebration-replaced"
-        ? celebrationHighlightWith({ event: newerUserMilestoneEvent })
+        ? celebrationHighlightWith({ timing: profile.interruptionTiming.celebration, event: newerUserMilestoneEvent })
         : variant === "event-long-content"
-          ? celebrationHighlightWith({ event: longContentMilestoneEvent })
+          ? celebrationHighlightWith({ timing: profile.interruptionTiming.celebration, event: longContentMilestoneEvent })
           : variant === "payment-incident-takeover"
             ? incidentHighlight(paymentDegradationEvent, "active-incident", null)
             : variant === "incident-highlight" || variant === "incident-takeover"
@@ -449,24 +440,24 @@ export function createTvFixtureSnapshot(projectId: string, profile: TvProfileFix
                     ...resolvedEmailEvent,
                     id: "fixture-resolved-email-highlight",
                     presentationClass: "incident",
-                  }, "resolved-incident", "2026-07-23T20:30:00.000Z")
+                  }, "resolved-incident", new Date(new Date(FIXTURE_NOW).getTime() + profile.interruptionTiming.incident.resolvedHighlightSeconds * 1000).toISOString())
                   : null;
   const takeover = variant === "celebration-takeover"
-    ? presentedTakeover(userMilestoneEvent, "celebration", "2026-07-23T14:33:00.000Z")
+    ? presentedTakeover(userMilestoneEvent, "celebration", profile.interruptionTiming.celebration.takeoverSeconds)
     : variant === "payment-incident-takeover"
-      ? presentedTakeover(paymentDegradationEvent, "incident", "2026-07-23T14:33:00.000Z")
+      ? presentedTakeover(paymentDegradationEvent, "incident", profile.interruptionTiming.incident.takeoverSeconds)
       : variant === "celebration-suspended" || variant === "incident-takeover"
-        ? presentedTakeover(ordinaryEmailIncidentEvent, "incident", "2026-07-23T14:33:00.000Z")
+        ? presentedTakeover(ordinaryEmailIncidentEvent, "incident", profile.interruptionTiming.incident.takeoverSeconds)
         : variant === "critical-takeover"
-          ? presentedTakeover(emailDegradationEvent, "critical-incident", "2026-07-23T14:34:00.000Z")
+          ? presentedTakeover(emailDegradationEvent, "critical-incident", profile.interruptionTiming.criticalIncident.takeoverSeconds)
           : variant === "incident-recovery"
             ? presentedTakeover({
               ...resolvedEmailEvent,
               id: "fixture-resolved-email-incident",
               presentationClass: "incident",
-            }, "recovery-confirmation", "2026-07-23T14:32:30.000Z")
+            }, "recovery-confirmation", profile.interruptionTiming.incident.recoveryTakeoverSeconds)
             : variant === "critical-recovery"
-              ? presentedTakeover(resolvedEmailEvent, "recovery-confirmation", "2026-07-23T14:32:30.000Z")
+              ? presentedTakeover(resolvedEmailEvent, "recovery-confirmation", profile.interruptionTiming.criticalIncident.recoveryTakeoverSeconds)
               : null;
   const configuredPlaylist = profile.playlist.filter((entry) => entry.enabled).map((entry) => entry.screenId);
   const playlist: TvProfileFixture["playlist"][number]["screenId"][] = variant === "partial-failure" && configuredPlaylist.includes("email-health")

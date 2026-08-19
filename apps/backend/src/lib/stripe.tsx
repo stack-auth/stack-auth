@@ -348,6 +348,16 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
   }
 }
 
+function getStripeInvoiceStatusTransitions(invoice: {
+  status_transitions?: {
+    paid_at?: number | null,
+    marked_uncollectible_at?: number | null,
+    voided_at?: number | null,
+  },
+}) {
+  return invoice.status_transitions;
+}
+
 export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: string, invoice: Stripe.Invoice) {
   const invoiceLines = (invoice as { lines?: { data?: Stripe.InvoiceLineItem[] } }).lines?.data ?? [];
   const invoiceSubscriptionIds = invoiceLines
@@ -368,9 +378,13 @@ export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: strin
   const tenancy = await getTenancyFromStripeAccountIdOrThrow(stripe, stripeAccountId);
   const prisma = await getPrismaClientForTenancy(tenancy);
   const transitionTimestamp = (timestamp: number | null | undefined) => timestamp == null ? null : new Date(timestamp * 1000);
-  const paidAt = transitionTimestamp(invoice.status_transitions.paid_at);
-  const markedUncollectibleAt = transitionTimestamp(invoice.status_transitions.marked_uncollectible_at);
-  const voidedAt = transitionTimestamp(invoice.status_transitions.voided_at);
+  // Stripe's wire payload may omit this expansion even though the installed
+  // SDK types currently mark it required. Keep webhook normalization tolerant
+  // without weakening the rest of the invoice contract.
+  const statusTransitions = getStripeInvoiceStatusTransitions(invoice);
+  const paidAt = transitionTimestamp(statusTransitions?.paid_at);
+  const markedUncollectibleAt = transitionTimestamp(statusTransitions?.marked_uncollectible_at);
+  const voidedAt = transitionTimestamp(statusTransitions?.voided_at);
 
   // dual write - prisma and bulldozer
   const upsertedInvoice = await prisma.subscriptionInvoice.upsert({

@@ -1,4 +1,5 @@
 import { type Tenancy } from "@/lib/tenancies";
+import { Prisma } from "@/generated/prisma/client";
 import {
   calculateTvEmailEvidenceRate,
   createTvEmailEvaluatorState,
@@ -121,7 +122,7 @@ function readLastObservedTotal(typedState: unknown): number {
   return 0;
 }
 
-async function eventTablesAreReady(tenancy: Tenancy): Promise<boolean> {
+export async function tvEventTablesAreReady(tenancy: Tenancy): Promise<boolean> {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
   const rows = await prisma.$queryRaw<Array<{
@@ -835,12 +836,12 @@ async function persistPaymentEvaluation(options: { tenancy: Tenancy, claim: Eval
         )
       `;
     } else if (activeOccurrenceId != null && result.action.type === "escalate") {
-      await transaction.$executeRaw`UPDATE ${sqlQuoteIdent(schema)}."TvEventOccurrence" SET "presentationClass" = 'CRITICAL_INCIDENT'::${sqlQuoteIdent(schema)}."TvEventPresentationClass", "escalatedAt" = ${options.now}, "metricValue" = ${metricValue}, "aggregateEvidence" = ${JSON.stringify({ ...previousEvidence, escalation: evidence, latestActiveObservation: evidence })}::JSONB, "updatedAt" = ${options.now} WHERE "tenancyId" = ${options.tenancy.id}::UUID AND "id" = ${activeOccurrenceId}::UUID`;
+      await transaction.$executeRaw`UPDATE ${sqlQuoteIdent(schema)}."TvEventOccurrence" SET "presentationClass" = 'CRITICAL_INCIDENT'::${sqlQuoteIdent(schema)}."TvEventPresentationClass", "escalatedAt" = ${options.now}, "metricValue" = ${metricValue}, "aggregateEvidence" = ${JSON.stringify({ ...previousEvidence, escalation: evidence, latestActiveObservation: evidence })}::JSONB, "updatedAt" = ${options.now} WHERE "tenancyId" = ${options.tenancy.id}::UUID AND "id" = ${activeOccurrenceId}::UUID AND "lifecycle" = 'ACTIVE'::${sqlQuoteIdent(schema)}."TvEventOccurrenceLifecycle"`;
     } else if (activeOccurrenceId != null && result.action.type === "resolve") {
-      await transaction.$executeRaw`UPDATE ${sqlQuoteIdent(schema)}."TvEventOccurrence" SET "lifecycle" = 'RESOLVED'::${sqlQuoteIdent(schema)}."TvEventOccurrenceLifecycle", "resolvedAt" = ${options.now}, "title" = ${TV_PAYMENT_RECOVERY_TITLE}, "summary" = 'Subscription collection is back within the expected range.', "metricValue" = ${metricValue}, "aggregateEvidence" = ${JSON.stringify({ ...previousEvidence, resolution: evidence })}::JSONB, "updatedAt" = ${options.now} WHERE "tenancyId" = ${options.tenancy.id}::UUID AND "id" = ${activeOccurrenceId}::UUID`;
+      await transaction.$executeRaw`UPDATE ${sqlQuoteIdent(schema)}."TvEventOccurrence" SET "lifecycle" = 'RESOLVED'::${sqlQuoteIdent(schema)}."TvEventOccurrenceLifecycle", "resolvedAt" = ${options.now}, "title" = ${TV_PAYMENT_RECOVERY_TITLE}, "summary" = 'Subscription collection is back within the expected range.', "metricValue" = ${metricValue}, "aggregateEvidence" = ${JSON.stringify({ ...previousEvidence, resolution: evidence })}::JSONB, "updatedAt" = ${options.now} WHERE "tenancyId" = ${options.tenancy.id}::UUID AND "id" = ${activeOccurrenceId}::UUID AND "lifecycle" = 'ACTIVE'::${sqlQuoteIdent(schema)}."TvEventOccurrenceLifecycle"`;
       activeOccurrenceId = null;
     } else if (activeOccurrenceId != null) {
-      await transaction.$executeRaw`UPDATE ${sqlQuoteIdent(schema)}."TvEventOccurrence" SET "metricValue" = ${metricValue}, "aggregateEvidence" = ${JSON.stringify({ ...previousEvidence, latestActiveObservation: evidence })}::JSONB, "updatedAt" = ${options.now} WHERE "tenancyId" = ${options.tenancy.id}::UUID AND "id" = ${activeOccurrenceId}::UUID`;
+      await transaction.$executeRaw`UPDATE ${sqlQuoteIdent(schema)}."TvEventOccurrence" SET "metricValue" = ${metricValue}, "aggregateEvidence" = ${JSON.stringify({ ...previousEvidence, latestActiveObservation: evidence })}::JSONB, "updatedAt" = ${options.now} WHERE "tenancyId" = ${options.tenancy.id}::UUID AND "id" = ${activeOccurrenceId}::UUID AND "lifecycle" = 'ACTIVE'::${sqlQuoteIdent(schema)}."TvEventOccurrenceLifecycle"`;
     }
     await transaction.$executeRaw`UPDATE ${sqlQuoteIdent(schema)}."TvEventEvaluatorState" SET "typedState" = ${JSON.stringify(result.state)}::JSONB, "activeOccurrenceId" = ${activeOccurrenceId}::UUID, "updatedAt" = ${options.now} WHERE "tenancyId" = ${options.tenancy.id}::UUID AND "evaluatorKey" = 'subscription-collection'`;
   });
@@ -936,8 +937,9 @@ export async function evaluateTvEventsIfDue(options: {
   tenancy: Tenancy,
   now: Date,
   totalUsers: number | null,
+  eventTablesReady?: boolean,
 }): Promise<void> {
-  if (!(await eventTablesAreReady(options.tenancy))) return;
+  if (!(options.eventTablesReady ?? await tvEventTablesAreReady(options.tenancy))) return;
   try {
     await evaluateEmailIfDue(options.tenancy, options.now);
   } catch (cause) {
@@ -1099,27 +1101,71 @@ export async function synchronizeTvProfileAssignments(options: {
     occurrence.presentationClass === "CELEBRATION"
     && isEligible(occurrence, preferences)
   ))?.id ?? null;
+  const policyDisabledAssignmentIds = options.occurrences
+    .filter((occurrence) => (
+      !isEligible(occurrence, preferences)
+      && existingAssignments.has(occurrence.id)
+      && existingAssignments.get(occurrence.id)?.supersededAt == null
+    ))
+    .map((occurrence) => occurrence.id);
+  if (policyDisabledAssignmentIds.length > 0) {
+    await prisma.$executeRaw`
+      UPDATE ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"
+      SET
+        "supersededAt" = ${options.now},
+        "supersededReason" = 'POLICY_DISABLED'::${sqlQuoteIdent(schema)}."TvPresentationSupersededReason",
+        "updatedAt" = ${options.now}
+      WHERE "tenancyId" = ${options.tenancy.id}::UUID
+        AND "profileId" = ${options.profile.id}
+        AND "occurrenceId" IN (${Prisma.join(
+          policyDisabledAssignmentIds.map((occurrenceId) => Prisma.sql`${occurrenceId}::UUID`),
+        )})
+        AND "supersededAt" IS NULL
+    `;
+  }
+  const newestCelebrationAssignment = newestEligibleCelebrationId == null
+    ? null
+    : existingAssignments.get(newestEligibleCelebrationId);
+  const staleCelebrationAssignmentIds = newestCelebrationAssignment == null
+    ? []
+    : options.occurrences
+      .filter((occurrence) => (
+        occurrence.presentationClass === "CELEBRATION"
+        && occurrence.id !== newestEligibleCelebrationId
+        && existingAssignments.has(occurrence.id)
+        && existingAssignments.get(occurrence.id)?.supersededAt == null
+      ))
+      .map((occurrence) => occurrence.id);
+  // The initial celebration insert supersedes older rows atomically. This
+  // batched reconciliation covers a stale concurrent reader that inserted an
+  // older celebration immediately after that transaction committed.
+  if (staleCelebrationAssignmentIds.length > 0) {
+    await prisma.$executeRaw`
+      UPDATE ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"
+      SET
+        "supersededAt" = ${options.now},
+        "supersededReason" = 'NEWER_CELEBRATION'::${sqlQuoteIdent(schema)}."TvPresentationSupersededReason",
+        "updatedAt" = ${options.now}
+      WHERE "tenancyId" = ${options.tenancy.id}::UUID
+        AND "profileId" = ${options.profile.id}
+        AND "occurrenceId" IN (${Prisma.join(
+          staleCelebrationAssignmentIds.map((occurrenceId) => Prisma.sql`${occurrenceId}::UUID`),
+        )})
+        AND "supersededAt" IS NULL
+    `;
+  }
   for (const occurrence of options.occurrences) {
     if (!isEligible(occurrence, preferences)) {
-      await prisma.$executeRaw`
-        UPDATE ${sqlQuoteIdent(schema)}."TvProfileEventPresentation"
-        SET
-          "supersededAt" = COALESCE("supersededAt", ${options.now}),
-          "supersededReason" = COALESCE(
-            "supersededReason",
-            'POLICY_DISABLED'::${sqlQuoteIdent(schema)}."TvPresentationSupersededReason"
-          ),
-          "updatedAt" = ${options.now}
-        WHERE "tenancyId" = ${options.tenancy.id}::UUID
-          AND "profileId" = ${options.profile.id}
-          AND "occurrenceId" = ${occurrence.id}::UUID
-          AND "supersededAt" IS NULL
-      `;
       continue;
     }
 
+    const existingAssignment = existingAssignments.get(occurrence.id);
     if (occurrence.presentationClass === "CELEBRATION") {
       if (occurrence.id !== newestEligibleCelebrationId) continue;
+      // A celebration assignment is immutable after its first writer. The
+      // pending-celebration block below owns the one later transition from a
+      // suspended assignment into its bounded takeover.
+      if (existingAssignment != null) continue;
       const highlightExpiresAt = addSeconds(
         occurrence.occurredAt,
         preferences.timing.celebration.highlightSeconds,
@@ -1193,6 +1239,14 @@ export async function synchronizeTvProfileAssignments(options: {
     const highlightExpiresAt = occurrence.resolvedAt == null
       ? null
       : addSeconds(occurrence.resolvedAt, resolvedHighlightSeconds);
+    const assignmentNeedsWrite = existingAssignment == null
+      || (
+        existingAssignment.takeoverStartedAt != null
+        && takeoverStartedAt.getTime() > existingAssignment.takeoverStartedAt.getTime()
+      )
+      || (existingAssignment.recoveryEndsAt == null && recoveryEndsAt != null)
+      || (existingAssignment.highlightExpiresAt == null && highlightExpiresAt != null);
+    if (!assignmentNeedsWrite) continue;
     await prisma.$executeRaw`
       INSERT INTO ${sqlQuoteIdent(schema)}."TvProfileEventPresentation" (
         "tenancyId", "profileId", "occurrenceId", "takeoverStartedAt",
@@ -1344,8 +1398,9 @@ export async function resolveTvEventPresentation(options: {
   tenancy: Tenancy,
   profile: TvProfileResource,
   now: Date,
+  eventTablesReady?: boolean,
 }): Promise<TvEventPresentation> {
-  if (!(await eventTablesAreReady(options.tenancy))) {
+  if (!(options.eventTablesReady ?? await tvEventTablesAreReady(options.tenancy))) {
     return { takeover: null, highlight: null };
   }
   const occurrences = await loadOccurrences(options.tenancy, options.now);
