@@ -493,13 +493,13 @@ async function createRunForEvent(tenancy: Tenancy, event: WorkflowEventRow, defi
   }
 }
 
-async function processWorkflowEvents(tenancyCache: Map<string, Tenancy | null>, deadlineMs: number): Promise<boolean> {
+async function processWorkflowEvents(tenancyCache: Map<string, Tenancy | null>, deadlineMs: number, tenancyId?: string): Promise<boolean> {
   // No claim marker on purpose: events are only marked processed AFTER all
   // their runs exist, and run creation is idempotent (deterministic ids), so
   // crash-replays and overlapping ticks are safe — at-least-once with
   // no duplicate runs. The cost is occasional duplicate work under overlap.
   const events: WorkflowEventRow[] = await globalPrismaClient.workflowEvent.findMany({
-    where: { processedAt: null, retryAt: { lte: new Date() } },
+    where: { processedAt: null, retryAt: { lte: new Date() }, ...tenancyId === undefined ? {} : { tenancyId } },
     orderBy: { scheduledAt: "asc" },
     take: EVENT_BATCH_SIZE,
     select: {
@@ -577,7 +577,12 @@ type ClaimedRunRow = {
   preClaimWakeAt: Date | null,
 };
 
-async function claimDueRuns(): Promise<ClaimedRunRow[]> {
+/**
+ * `tenancyId` restricts the claim to one tenancy. Only the `selected` CTE needs it: `busy` is
+ * already grouped by tenancy and joined on it, so it counts the right concurrency either way.
+ */
+async function claimDueRuns(tenancyId?: string): Promise<ClaimedRunRow[]> {
+  const tenancyFilter = tenancyId === undefined ? Prisma.empty : Prisma.sql`AND r."tenancyId" = ${tenancyId}::uuid`;
   return await globalPrismaClient.$queryRaw<ClaimedRunRow[]>(Prisma.sql`
     WITH busy AS (
       SELECT "tenancyId", "workflowId", COUNT(*) AS "count"
@@ -599,6 +604,7 @@ async function claimDueRuns(): Promise<ClaimedRunRow[]> {
         WHERE d."tenancyId" = r."tenancyId" AND d."workflowId" = r."workflowId"
       )
       AND COALESCE(b."count", 0) < ${PER_WORKFLOW_CONCURRENCY}
+      ${tenancyFilter}
       ORDER BY r."wakeAt" ASC NULLS FIRST
       LIMIT ${RUN_CLAIM_BATCH_SIZE}
       FOR UPDATE SKIP LOCKED
@@ -1129,9 +1135,9 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
   await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'QUEUED', "wakeAt" = NOW(), "leaseUntil" = NULL`);
 }
 
-async function executeDueRuns(tenancyCache: Map<string, Tenancy | null>, deadlineMs: number): Promise<boolean> {
+async function executeDueRuns(tenancyCache: Map<string, Tenancy | null>, deadlineMs: number, tenancyId?: string): Promise<boolean> {
   if (Date.now() >= deadlineMs) return false;
-  const claimed = await claimDueRuns();
+  const claimed = await claimDueRuns(tenancyId);
   if (claimed.length === 0) return false;
   await Promise.all(claimed.map(async (run) => {
     try {
@@ -1432,6 +1438,27 @@ let stepCounter = 0;
  * One engine step. Returns whether any work was done, so the caller can
  * idle-wait longer between steps when the system is quiet.
  */
+/**
+ * One engine step restricted to a single tenancy, for callers that need to push one project's work
+ * forward without touching anyone else's.
+ *
+ * WHY THIS EXISTS SEPARATELY FROM {@link runWorkflowEngineStep}. The unscoped step is the cron
+ * worker: it is meant to advance everything, and it also materializes schedules and prunes
+ * retention, which are inherently global. Reaching for it from a user-authenticated route would let
+ * one project's operator drive every other tenant's workflows and block on their work — so this
+ * variant does only the two sub-steps that can be scoped, and only for the tenancy it is given.
+ *
+ * Deliberately NOT a drop-in for the cron path: it skips schedule materialization and retention
+ * pruning outright, so calling it in a loop is not equivalent to running the engine.
+ */
+export async function runWorkflowEngineStepForTenancy(tenancy: Tenancy, options: { deadlineMs: number }): Promise<{ didWork: boolean }> {
+  const tenancyCache = new Map<string, Tenancy | null>([[tenancy.id, tenancy]]);
+  let didWork = false;
+  didWork = await processWorkflowEvents(tenancyCache, options.deadlineMs, tenancy.id) || didWork;
+  didWork = await executeDueRuns(tenancyCache, options.deadlineMs, tenancy.id) || didWork;
+  return { didWork };
+}
+
 export async function runWorkflowEngineStep(options: { deadlineMs: number }): Promise<{ didWork: boolean }> {
   const tenancyCache = new Map<string, Tenancy | null>();
   let didWork = false;
