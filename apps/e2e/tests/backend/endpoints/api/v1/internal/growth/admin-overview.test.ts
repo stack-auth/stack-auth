@@ -71,6 +71,16 @@ describe("internal Growth admin", { timeout: 90_000 }, () => {
     expect(customerRequest.body).toMatchObject({ code: "EXPECTED_INTERNAL_PROJECT" });
   });
 
+  it("requires the selected project for manual scheduler actions", async ({ expect }) => {
+    await signInAsInternalAdmin();
+    const response = await niceBackendFetch(`${ADMIN_BASE}/run-now`, {
+      accessType: "client",
+      method: "POST",
+      body: { step: "analysis_tick" },
+    });
+    expect(response.status).toBe(400);
+  });
+
   it("edits customer-visible Growth data without bypassing action lifecycle rules", async ({ expect }) => {
     const { projectId, actionId } = await createOnboardedProjectWithAction();
     await signInAsInternalAdmin();

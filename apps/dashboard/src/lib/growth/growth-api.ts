@@ -720,15 +720,15 @@ export async function setGrowthAdminCategoryScore(app: object, projectId: string
   await requestGrowthAdminJson(app, "/category-scores", { method: "PUT", body: JSON.stringify({ target_project_id: projectId, category, score }) });
 }
 
-export type GrowthAdminManualStep = "workflow_engine" | "growth_watchdog";
+export type GrowthAdminManualStep = "analysis_tick" | "project_recovery";
 
-export async function runGrowthAdminManualStep(app: object, step: GrowthAdminManualStep): Promise<{ didWork: boolean }> {
+export async function runGrowthAdminManualStep(app: object, projectId: string, step: GrowthAdminManualStep): Promise<{ didWork: boolean }> {
   const response = z.object({
-    step: z.enum(["workflow_engine", "growth_watchdog"]),
+    step: z.enum(["analysis_tick", "project_recovery"]),
     did_work: z.boolean(),
   }).parse(await requestGrowthAdminJson(app, "/run-now", {
     method: "POST",
-    body: JSON.stringify({ step }),
+    body: JSON.stringify({ step, target_project_id: projectId }),
   }));
   return { didWork: response.did_work };
 }

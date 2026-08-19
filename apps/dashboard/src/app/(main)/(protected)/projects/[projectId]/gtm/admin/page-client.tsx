@@ -89,7 +89,7 @@ function AdminEditor(props: { app: object, project: GrowthAdminProject, overview
       <GrowthAdminInterviewCard app={props.app} projectId={props.project.id} />
       <GrowthAdminReportsCard app={props.app} projectId={props.project.id} />
       <GrowthAdminGamesCard app={props.app} projectId={props.project.id} />
-      <GrowthAdminRunNowCard app={props.app} />
+      <GrowthAdminRunNowCard app={props.app} projectId={props.project.id} projectName={props.project.displayName} />
 
       <DesignCard title="Stage scores" subtitle="Manual 0–100 values used by the customer growth journey" icon={SlidersHorizontalIcon} gradient="purple">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
