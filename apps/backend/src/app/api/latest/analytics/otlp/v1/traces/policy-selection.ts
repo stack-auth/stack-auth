@@ -1,14 +1,8 @@
 import type { ErrorIngestPolicyDecision } from "@/lib/error-ingest/error-ingest-policy";
+import { otlpSpanPolicyItemId } from "@/lib/error-ingest/error-ingest-protocol-projections";
 import type { CanonicalOtlpSpan } from "@/lib/otlp/traces";
 
-/**
- * Policy decisions are occurrence-scoped, not W3C-identity-scoped. Exporters
- * may repeat the same trace/span identity in one request, and one occurrence
- * must not inherit another occurrence's acceptance or scrubbed payload.
- */
-export function otlpSpanPolicyItemId(span: CanonicalOtlpSpan, index: number): string {
-  return `span:${index}:${span.traceId}:${span.spanId}`;
-}
+export { otlpSpanPolicyItemId };
 
 export function selectOtlpSpansAcceptedByPolicy(
   spans: readonly CanonicalOtlpSpan[],

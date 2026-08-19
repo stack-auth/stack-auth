@@ -1,12 +1,9 @@
 import type { Tenancy } from "@/lib/tenancies";
 import { getBillingTeamId } from "@/lib/plan-entitlements";
 import { getPrismaClientForTenancy, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
-import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Prisma } from "@/generated/prisma/client";
 import type { IssueBatchDelta } from "./issue-materialization-contract";
 import { ISSUE_LOCK_LEASE_MS } from "./issue-merge";
-import { emitIssueWebhooks } from "./issue-webhooks";
-import { dispatchIssueAlertsForMaterialization } from "./issue-alerts/ingestion";
 import { randomUUID } from "node:crypto";
 import { toDurableGroupingProvenance } from "./grouping-provenance";
 import type { GroupingHashProvenance } from "./types";
@@ -747,70 +744,4 @@ export async function materializeIssuesFromBatch(options: {
 }): Promise<IssueBatchApplyOutcome[]> {
   const result = await materializeIssuesFromBatchWithStatus(options);
   return result.outcomes;
-}
-
-/**
- * Wrapper for the ingest hot path.
- *
- * Materialization must never be able to fail a customer's telemetry request:
- * the occurrences are already durable in ClickHouse and self-describing (they
- * carry `issue_hash`), so the worst case of a failure here is a delayed Issue
- * record, which the reconciler repairs. Reporting through `captureError` rather
- * than rethrowing is deliberate — this runs inside
- * `runAsynchronouslyAndWaitUntil`, where a throw would be logged but would also
- * leave no record of WHICH batch to replay.
- */
-export async function materializeIssuesFromBatchSafely(options: {
-  tenancy: Tenancy,
-  batchId: string,
-  inputs: readonly IssueBatchDelta[],
-  receivedAt: Date,
-}): Promise<void> {
-  try {
-    const result = await materializeIssuesFromBatchWithStatus(options);
-    if (result.status === "deferred_locked") return;
-    // Alert email never calls a provider from ingestion. The dispatcher claims
-    // a typed delivery row and writes the Workflows event in the same
-    // serializable transaction; the built-in workflow owns the existing
-    // ServerApp -> EmailOutbox delivery boundary.
-    //
-    // Alerts run BEFORE webhooks for the same reason as the reconciler's
-    // `dispatchMaterializationSideEffects`: webhook emission talks to Svix, and
-    // a Svix outage in a shared try path must not prevent the Postgres-only
-    // alert rows from being written.
-    if (result.sideEffects.alertsDispatchedAt === null) {
-      await dispatchIssueAlertsForMaterialization({
-        tenancy: options.tenancy,
-        outcomes: result.outcomes,
-        inputs: options.inputs,
-        receivedAt: options.receivedAt,
-      });
-      await markIssueMaterializationSideEffect({
-        tenancy: options.tenancy,
-        batchId: options.batchId,
-        sideEffect: "alerts",
-      });
-    }
-    if (result.sideEffects.webhooksDispatchedAt === null) {
-      await emitIssueWebhooks({
-        tenancy: options.tenancy,
-        outcomes: result.outcomes,
-        now: options.receivedAt,
-        batchId: options.batchId,
-        force: result.status === "already_applied",
-      });
-      await markIssueMaterializationSideEffect({
-        tenancy: options.tenancy,
-        batchId: options.batchId,
-        sideEffect: "webhooks",
-      });
-    }
-  } catch (error) {
-    captureError("issue-materialization", {
-      error,
-      batchId: options.batchId,
-      tenancyId: options.tenancy.id,
-      hashes: options.inputs.map((input) => input.ownerHash),
-    });
-  }
 }

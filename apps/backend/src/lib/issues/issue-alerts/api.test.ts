@@ -31,13 +31,13 @@ describe("issue alert API contract", () => {
     expect(() => parseIssueAlertRuleInput(cyclic)).toThrow("Invalid issue alert rule");
   });
 
-  it("accepts a scoped webhook destination reference without requiring project users", () => {
+  it("rejects a webhook destination because no executor exists", () => {
     const webhookRule = {
       ...rule,
       id: "notify-webhook",
       action: { type: "webhook", integrationId: "integration-prod-errors" },
     } as const;
-    expect(parseIssueAlertRuleInput(webhookRule)).toEqual(webhookRule);
+    expect(() => parseIssueAlertRuleInput(webhookRule)).toThrow("Invalid issue alert rule");
   });
 
   it("accepts explicit team routing metadata without converting it to a user list", () => {

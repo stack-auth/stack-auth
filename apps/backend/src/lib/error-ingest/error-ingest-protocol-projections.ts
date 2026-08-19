@@ -12,6 +12,15 @@ import type { CanonicalOtlpSpan } from "@/lib/otlp/traces";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import type { ErrorIngestPolicyItemOutcome } from "./error-ingest-policy";
 
+/**
+ * Policy decisions are occurrence-scoped, not W3C-identity-scoped. Exporters
+ * may repeat the same trace/span identity in one request, and one occurrence
+ * must not inherit another occurrence's acceptance or scrubbed payload.
+ */
+export function otlpSpanPolicyItemId(span: Pick<CanonicalOtlpSpan, "traceId" | "spanId">, index: number): string {
+  return `span:${index}:${span.traceId}:${span.spanId}`;
+}
+
 function policyDetails(outcome: ErrorIngestPolicyItemOutcome): ErrorIngestItemOutcomeDetails {
   switch (outcome.status) {
     case "accepted": { return { status: "accepted" }; }
@@ -68,18 +77,15 @@ export function createOtlpTraceProtocolProjection(
   tenant: OtlpTenantContext,
   policyOutcomes?: readonly ErrorIngestPolicyItemOutcome[],
 ): ErrorIngestProtocolProjection {
-  // Span item IDs are identity-derived (`span:{traceId}:{spanId}`), so one
-  // request can legally contain the same item ID twice. Policy outcomes are
-  // per OCCURRENCE (the route builds one policy item per span, in span order),
-  // so match them by position — an ID-keyed map would collapse duplicate
-  // identities onto the last outcome and misreport partial-success and
-  // client-report counts.
+  // Match policy outcomes by position. An ID-keyed map would collapse
+  // duplicate W3C identities onto the last outcome and misreport
+  // partial-success and client-report counts.
   if (policyOutcomes !== undefined && policyOutcomes.length !== spans.length) {
     throw new HexclaveAssertionError("OTLP trace policy outcomes must be one-per-span in span order");
   }
   const outcomes = spans.map((span, spanIndex) => {
     const item: ErrorIngestItemDescriptor = {
-      itemId: `span:${span.traceId}:${span.spanId}`,
+      itemId: otlpSpanPolicyItemId(span, spanIndex),
       itemType: "span",
     };
     const policyOutcome = policyOutcomes?.[spanIndex];

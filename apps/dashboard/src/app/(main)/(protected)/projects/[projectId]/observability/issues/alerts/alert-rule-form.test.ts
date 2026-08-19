@@ -93,28 +93,10 @@ describe("buildIssueAlertRule", () => {
     });
   });
 
-  it("round-trips a provider-safe webhook reference without email recipients", () => {
-    const webhookRule = sampleRule({
+  it("keeps webhook destinations read-only because no executor exists", () => {
+    expect(getSupportedAlertRuleDraft(sampleRule({
       action: { type: "webhook", integrationId: "integration-prod-errors" },
-    });
-    const draft = getSupportedAlertRuleDraft(webhookRule);
-    expect(draft).toMatchObject({ destination: "webhook", webhookIntegrationId: "integration-prod-errors", userIds: [] });
-    if (draft == null) throw new Error("Expected the webhook rule to be editable");
-
-    const result = buildIssueAlertRule({ ...draft, webhookIntegrationId: "integration-prod-errors" }, webhookRule);
-    expect(result).toEqual(expect.objectContaining({ status: "ok" }));
-    if (result.status === "ok") expect(result.rule.action).toEqual({ type: "webhook", integrationId: "integration-prod-errors" });
-  });
-
-  it("rejects URLs and empty webhook references", () => {
-    expect(buildIssueAlertRule({ ...DEFAULT_ALERT_RULE_DRAFT, destination: "webhook", webhookIntegrationId: "https://example.test/hook" }, null)).toEqual({
-      status: "error",
-      message: "Webhook integration reference must be an opaque identifier, not a URL or credential.",
-    });
-    expect(buildIssueAlertRule({ ...DEFAULT_ALERT_RULE_DRAFT, destination: "webhook", webhookIntegrationId: "" }, null)).toEqual({
-      status: "error",
-      message: "Webhook integration reference is required",
-    });
+    }))).toBeNull();
   });
 
   it("rejects unsafe or incomplete editor input", () => {

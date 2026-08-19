@@ -14,8 +14,6 @@ export type AlertRuleTrigger = "new" | "regression" | "new_or_regression" | "fre
 
 export type AlertRuleDraft = {
   id: string,
-  destination: "email" | "webhook",
-  webhookIntegrationId: string,
   trigger: AlertRuleTrigger,
   frequencyCount: string,
   frequencyWindowSeconds: string,
@@ -30,8 +28,6 @@ export type AlertRuleDraft = {
 
 export const DEFAULT_ALERT_RULE_DRAFT: AlertRuleDraft = {
   id: "issue-alert",
-  destination: "email",
-  webhookIntegrationId: "",
   trigger: "new_or_regression",
   frequencyCount: "10",
   frequencyWindowSeconds: "300",
@@ -111,25 +107,10 @@ export function getSupportedAlertRuleDraft(rule: IssueAlertRuleResponse): AlertR
 
   if (trigger == null) return null;
 
-  if (rule.action.type === "webhook") {
-    return {
-      ...DEFAULT_ALERT_RULE_DRAFT,
-      id: rule.id,
-      destination: "webhook",
-      webhookIntegrationId: rule.action.integrationId,
-      trigger,
-      frequencyCount,
-      frequencyWindowSeconds,
-      cooldownDurationSeconds: String(rule.cooldown.durationSeconds),
-      cooldownKeyBy: rule.cooldown.keyBy,
-      enabled: rule.enabled,
-    };
-  }
+  if (rule.action.type === "webhook") return null;
 
   return {
     id: rule.id,
-    destination: "email",
-    webhookIntegrationId: "",
     trigger,
     frequencyCount,
     frequencyWindowSeconds,
@@ -196,13 +177,6 @@ function boundedText(
   return null;
 }
 
-function boundedIntegrationId(value: string): string | null {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,255}$/u.test(value)) {
-    return "Webhook integration reference must be an opaque identifier, not a URL or credential.";
-  }
-  return null;
-}
-
 function parseInteger(value: string, field: string, maximum: number, allowZero: boolean): number | null {
   const parsed = Number(value.trim());
   if (!Number.isSafeInteger(parsed) || (allowZero ? parsed < 0 : parsed <= 0) || parsed > maximum) {
@@ -222,37 +196,27 @@ export function buildIssueAlertRule(
   if (existingRule != null && existingRule.version >= Number.MAX_SAFE_INTEGER) {
     return { status: "error", message: "This rule has reached the maximum supported version and cannot be updated safely." };
   }
-  let action: IssueAlertRulePayload["action"];
-  if (draft.destination === "webhook") {
-    const integrationId = draft.webhookIntegrationId.trim();
-    const integrationError = boundedText(integrationId, "Webhook integration reference", 256);
-    if (integrationError != null) return { status: "error", message: integrationError };
-    const integrationFormatError = boundedIntegrationId(integrationId);
-    if (integrationFormatError != null) return { status: "error", message: integrationFormatError };
-    action = { type: "webhook", integrationId };
-  } else {
-    if (draft.userIds.length === 0) return { status: "error", message: "Choose at least one team member to receive the email." };
-    if (draft.userIds.some((userId) => userId.trim() === "")) return { status: "error", message: "Recipients must be valid team member IDs." };
+  if (draft.userIds.length === 0) return { status: "error", message: "Choose at least one team member to receive the email." };
+  if (draft.userIds.some((userId) => userId.trim() === "")) return { status: "error", message: "Recipients must be valid team member IDs." };
 
-    const subject = draft.subject.trim();
-    const html = draft.html.trim();
-    const subjectError = boundedText(subject, "Subject", 16 * 1024);
-    if (subjectError != null) return { status: "error", message: subjectError };
-    const htmlError = boundedText(html, "HTML body", 16 * 1024, { allowHtmlWhitespace: true });
-    if (htmlError != null) return { status: "error", message: htmlError };
-    const category = draft.notificationCategoryName.trim();
-    if (category !== "") {
-      const categoryError = boundedText(category, "Notification category", 256);
-      if (categoryError != null) return { status: "error", message: categoryError };
-    }
-    action = {
-      type: "email",
-      userIds: [...new Set(draft.userIds)],
-      subject,
-      html,
-      ...(category === "" ? {} : { notificationCategoryName: category }),
-    };
+  const subject = draft.subject.trim();
+  const html = draft.html.trim();
+  const subjectError = boundedText(subject, "Subject", 16 * 1024);
+  if (subjectError != null) return { status: "error", message: subjectError };
+  const htmlError = boundedText(html, "HTML body", 16 * 1024, { allowHtmlWhitespace: true });
+  if (htmlError != null) return { status: "error", message: htmlError };
+  const category = draft.notificationCategoryName.trim();
+  if (category !== "") {
+    const categoryError = boundedText(category, "Notification category", 256);
+    if (categoryError != null) return { status: "error", message: categoryError };
   }
+  const action: IssueAlertRulePayload["action"] = {
+    type: "email",
+    userIds: [...new Set(draft.userIds)],
+    subject,
+    html,
+    ...(category === "" ? {} : { notificationCategoryName: category }),
+  };
 
   const cooldownDurationSeconds = parseInteger(draft.cooldownDurationSeconds, "Cooldown", 30 * 24 * 60 * 60, true);
   if (cooldownDurationSeconds == null) return { status: "error", message: "Cooldown must be a whole number from 0 to 30 days in seconds." };

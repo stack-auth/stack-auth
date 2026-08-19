@@ -77,11 +77,6 @@ const COOLDOWN_OPTIONS: { value: AlertRuleDraft["cooldownKeyBy"], label: string 
   { value: "issue_environment_release", label: "Per issue + environment + release" },
 ];
 
-const DESTINATION_OPTIONS: { value: AlertRuleDraft["destination"], label: string }[] = [
-  { value: "email", label: "Email via Workflows" },
-  { value: "webhook", label: "Webhook reference" },
-];
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -375,9 +370,7 @@ function RuleEditorDialog(props: RuleEditorDialogProps) {
       size="4xl"
       icon={BellRingingIcon}
       title={props.existingRule == null ? "Create issue-alert rule" : `Update ${props.existingRule.id}`}
-      description={draft.destination === "email"
-        ? "Route new, regressed, or high-frequency issues through Workflows into the email outbox."
-        : "Persist a provider-safe webhook reference through Workflows without storing credentials or arbitrary URLs."}
+      description="Email team members when a new, regressed, or high-frequency issue matches this rule."
       footer={(
         <div className="flex w-full justify-end gap-2">
           <DesignButton variant="secondary" size="sm" type="button" onClick={() => props.onOpenChange(false)}>
@@ -418,46 +411,7 @@ function RuleEditorDialog(props: RuleEditorDialogProps) {
               size="sm"
             />
           </FormField>
-          <FormField
-            label="Destination"
-            description="Email is executable today; webhook references fail closed until an integration provider is configured."
-          >
-            <DesignSelectorDropdown
-              value={draft.destination}
-              onValueChange={(value) => {
-                const next = DESTINATION_OPTIONS.find((option) => option.value === value)?.value;
-                if (next == null) throw new Error(`Unknown issue alert destination: ${value}`);
-                setDraft((current) => ({ ...current, destination: next }));
-              }}
-              options={DESTINATION_OPTIONS}
-              size="sm"
-            />
-          </FormField>
         </div>
-
-        {draft.destination === "webhook" && (
-          <DesignCard gradient="default" className="border-amber-500/20 bg-amber-500/[0.04]">
-            <FormField
-              label="Webhook integration reference"
-              htmlFor="issue-alert-webhook-integration-id"
-              description="Use an opaque integration ID managed by the provider registry. URLs, tokens, and credentials are rejected."
-            >
-              <DesignInput
-                id="issue-alert-webhook-integration-id"
-                size="sm"
-                value={draft.webhookIntegrationId}
-                onChange={(event) => setDraft((current) => ({ ...current, webhookIntegrationId: event.target.value }))}
-                placeholder="integration-prod-errors"
-              />
-            </FormField>
-            <DesignAlert
-              variant="warning"
-              title="Provider not configured"
-              description="The rule can be saved and audited, but Workflows will record a non-retryable provider-not-configured outcome until the integration is registered."
-              className="mt-3"
-            />
-          </DesignCard>
-        )}
 
         {draft.trigger === "frequency" && (
           <div className="grid gap-4 rounded-xl border border-border/60 bg-foreground/[0.02] p-3 sm:grid-cols-2">
@@ -512,7 +466,7 @@ function RuleEditorDialog(props: RuleEditorDialogProps) {
           </FormField>
         </div>
 
-        {draft.destination === "email" && <div className="space-y-2">
+        <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <Typography className="text-xs font-medium">Recipients</Typography>
@@ -550,9 +504,9 @@ function RuleEditorDialog(props: RuleEditorDialogProps) {
           ) : (
             <Typography variant="secondary" className="text-xs">No recipients selected.</Typography>
           )}
-        </div>}
+        </div>
 
-        {draft.destination === "email" && <FormField
+        <FormField
           label="Notification category (optional)"
           htmlFor="issue-alert-category"
           description="Used by the existing notification preference system."
@@ -563,17 +517,15 @@ function RuleEditorDialog(props: RuleEditorDialogProps) {
             value={draft.notificationCategoryName}
             onChange={(event) => setDraft((current) => ({ ...current, notificationCategoryName: event.target.value }))}
           />
-        </FormField>}
+        </FormField>
 
-        {draft.destination === "email" && (
-          <EmailTemplateFields
-            projectId={props.projectId}
-            subject={draft.subject}
-            html={draft.html}
-            onSubjectChange={(subject) => setDraft((current) => ({ ...current, subject }))}
-            onHtmlChange={(html) => setDraft((current) => ({ ...current, html }))}
-          />
-        )}
+        <EmailTemplateFields
+          projectId={props.projectId}
+          subject={draft.subject}
+          html={draft.html}
+          onSubjectChange={(subject) => setDraft((current) => ({ ...current, subject }))}
+          onHtmlChange={(html) => setDraft((current) => ({ ...current, html }))}
+        />
       </div>
     </DesignDialog>
   );

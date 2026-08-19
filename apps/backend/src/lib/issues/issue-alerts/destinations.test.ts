@@ -5,21 +5,13 @@ import {
 } from "./destinations";
 
 describe("issue alert destinations", () => {
-  it("accepts an opaque webhook integration reference without accepting provider secrets or URLs", () => {
-    const action = parseIssueAlertAction({ type: "webhook", integrationId: "integration-prod-errors" });
-    expect(action).toEqual({ type: "webhook", integrationId: "integration-prod-errors" });
-    if (action === null) throw new Error("Expected a webhook action");
-    expect(describeIssueAlertDestination(action)).toEqual({
-      status: "unsupported",
-      destination: "webhook",
-      reason: "provider_not_configured",
-    });
-
+  it("rejects webhook destinations because no executor exists", () => {
+    expect(parseIssueAlertAction({ type: "webhook", integrationId: "integration-prod-errors" })).toBeNull();
     expect(parseIssueAlertAction({
       type: "webhook",
       integrationId: "integration-prod-errors",
       url: "https://example.test/hook?token=secret",
-    })).toEqual({ type: "webhook", integrationId: "integration-prod-errors" });
+    })).toBeNull();
     expect(parseIssueAlertAction({ type: "webhook", integrationId: "https://example.test/hook?token=secret" })).toBeNull();
   });
 

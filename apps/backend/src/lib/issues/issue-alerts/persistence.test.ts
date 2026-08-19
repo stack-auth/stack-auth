@@ -202,7 +202,7 @@ describe("issue alert rule persistence", () => {
     expect(invalidScope).toEqual({ status: "invalid_rule" });
   });
 
-  it("records Workflows state, exposes retry inspection, and tracks replay", async () => {
+  it("records Workflows state and tracks replay", async () => {
     const rule = makeRule(`${RUN_PREFIX}-workflow-rule`, 1, 0);
     databaseRule = await service.saveRule(scope, rule);
     const match = evaluateMatch(rule, `${RUN_PREFIX}-occurrence-workflow`);
@@ -225,7 +225,6 @@ describe("issue alert rule persistence", () => {
     });
     expect(failed.state).toBe("FAILED");
     expect(failed.attemptCount).toBe(1);
-    expect(await service.listRetryableDeliveries(scope, new Date(now.getTime() + 2_000))).toEqual([failed]);
 
     const replayed = await service.requestReplay(scope, delivery.id, new Date(now.getTime() + 3_000));
     expect(replayed?.state).toBe("CLAIMED");

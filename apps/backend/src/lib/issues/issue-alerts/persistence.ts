@@ -994,25 +994,6 @@ export class IssueAlertPersistenceService implements IssueAlertRuleRepository {
     return row === null ? null : toDeliverySnapshot(row);
   }
 
-  async listRetryableDeliveries(scope: IssueAlertRuleScope, now = new Date(), limit = 100): Promise<readonly IssueAlertDeliverySnapshot[]> {
-    validateScope(scope);
-    const timestamp = validateTimestamp(now, "now");
-    if (!Number.isSafeInteger(limit) || limit <= 0 || limit > 1_000) throw new IssueAlertPersistenceInputError("limit must be between 1 and 1000");
-    const rows = await this.client.$replica().issueAlertDelivery.findMany({
-      where: {
-        tenancyId: scope.tenancyId,
-        projectId: scope.projectId,
-        branchId: scope.branchId,
-        state: IssueAlertDeliveryState.FAILED,
-        nextRetryAt: { lte: timestamp },
-      },
-      orderBy: [{ nextRetryAt: "asc" }, { createdAt: "asc" }],
-      take: limit,
-      select: DELIVERY_SELECT,
-    });
-    return rows.map(toDeliverySnapshot);
-  }
-
   async listDeliveries(scope: IssueAlertRuleScope, limit = 100): Promise<readonly IssueAlertDeliverySnapshot[]> {
     validateScope(scope);
     if (!Number.isSafeInteger(limit) || limit <= 0 || limit > 1_000) throw new IssueAlertPersistenceInputError("limit must be between 1 and 1000");

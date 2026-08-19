@@ -2,7 +2,7 @@ import type { OtlpTenantContext } from "@/lib/otlp/trace-writer";
 import type { CanonicalOtlpSpan } from "@/lib/otlp/traces";
 import { describe, expect, it } from "vitest";
 import { createErrorIngestPolicyStateStore, evaluateErrorIngestPolicy } from "@/lib/error-ingest";
-import { createOtlpTraceProtocolProjection } from "@/lib/error-ingest/error-ingest-protocol-projections";
+import { createOtlpTraceProtocolProjection, otlpSpanPolicyItemId } from "@/lib/error-ingest/error-ingest-protocol-projections";
 
 const tenant: OtlpTenantContext = {
   projectId: "project-1",
@@ -53,7 +53,7 @@ describe("OTLP traces protocol boundary", () => {
     expect(first.status).toBe("accepted");
     expect(first.items).toEqual([
       expect.objectContaining({
-        itemId: "span:11111111111111111111111111111111:2222222222222222",
+        itemId: "span:0:11111111111111111111111111111111:2222222222222222",
         itemType: "span",
         status: "accepted",
         rejectedByOtlp: false,
@@ -71,11 +71,12 @@ describe("OTLP traces protocol boundary", () => {
   });
 
   it("projects deterministic quota rejection through OTLP partial success and client reports", () => {
-    const spans = [span("11111111111111111111111111111111", "2222222222222222")];
+    const firstSpan = span("11111111111111111111111111111111", "2222222222222222");
+    const spans = [firstSpan];
     const policy = evaluateErrorIngestPolicy({
       config: { observability: { errorIngest: { quota: { maxBytesPerWindow: 1, windowSeconds: 60 } } } },
       scope: { tenancyId: "tenancy-1", projectId: tenant.projectId, branchId: tenant.branchId },
-      items: [{ itemId: "span:11111111111111111111111111111111:2222222222222222", itemType: "span", data: { message: "span" } }],
+      items: [{ itemId: otlpSpanPolicyItemId(firstSpan, 0), itemType: "span", data: { message: "span" } }],
       nowMs: 60_000,
       stateStore: createErrorIngestPolicyStateStore(),
     });
@@ -87,5 +88,30 @@ describe("OTLP traces protocol boundary", () => {
       body: { partialSuccess: { rejectedSpans: "1", errorMessage: "error ingest rejected 1 item(s): rate_limited=1" } },
     });
     expect(projection.clientReport.rate_limited_events).toEqual([{ category: "span", reason: "quota", quantity: 1 }]);
+  });
+
+  it("keeps the live route pairing when one request repeats a W3C span identity", () => {
+    const first = span("11111111111111111111111111111111", "2222222222222222");
+    const second = span("11111111111111111111111111111111", "2222222222222222");
+    const spans = [first, second];
+    const policy = evaluateErrorIngestPolicy({
+      config: { observability: { errorIngest: { rateLimit: { maxItemsPerWindow: 1, windowSeconds: 60 } } } },
+      scope: { tenancyId: "tenancy-1", projectId: tenant.projectId, branchId: tenant.branchId },
+      items: spans.map((item, index) => ({
+        itemId: otlpSpanPolicyItemId(item, index),
+        itemType: "span",
+        data: { message: "span" },
+      })),
+      nowMs: 60_000,
+      stateStore: createErrorIngestPolicyStateStore(),
+    });
+
+    const projection = createOtlpTraceProtocolProjection(spans, tenant, policy.outcomes);
+
+    expect(policy.outcomes.map((outcome) => outcome.itemId)).toEqual([
+      otlpSpanPolicyItemId(first, 0),
+      otlpSpanPolicyItemId(second, 1),
+    ]);
+    expect(projection.items.map((item) => item.status)).toEqual(["accepted", "rate_limited"]);
   });
 });

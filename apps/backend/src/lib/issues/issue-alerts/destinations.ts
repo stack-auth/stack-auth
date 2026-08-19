@@ -119,10 +119,9 @@ export function parseIssueAlertAction(value: unknown): IssueAlertAction | null {
     };
   }
 
-  if (value.type === "webhook" && isBoundedText(value.integrationId, MAX_IDENTIFIER_BYTES) && SAFE_INTEGRATION_ID.test(value.integrationId)) {
-    return { type: "webhook", integrationId: value.integrationId };
-  }
-
+  // Webhook is a type on IssueAlertAction for stored/in-flight payloads, but
+  // there is no executor. Reject here so a rule that can never fire cannot
+  // be saved or loaded into the evaluator.
   return null;
 }
 

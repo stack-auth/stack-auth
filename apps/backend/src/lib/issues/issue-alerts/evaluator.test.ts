@@ -3,11 +3,10 @@ import {
   buildIssueAlertCooldownKey,
   buildIssueAlertDeduplicationKey,
   evaluateIssueAlertRule,
-  evaluateIssueAlertRulesFromRepository,
+  evaluateIssueAlertRules,
 } from "./evaluator";
 import type {
   IssueAlertRule,
-  IssueAlertRuleRepository,
   IssueAlertSignal,
 } from "./types";
 
@@ -148,19 +147,9 @@ describe("issue alert rule evaluation", () => {
     expect(buildIssueAlertCooldownKey(rule, first)).toBe(buildIssueAlertCooldownKey(rule, first));
   });
 
-  it("loads rules through the typed repository seam", async () => {
-    let requestedScope: string | null = null;
-    const repository: IssueAlertRuleRepository = {
-      async listActiveRules(scope) {
-        requestedScope = `${scope.tenancyId}:${scope.projectId}:${scope.branchId}`;
-        return [createRule()];
-      },
-    };
-
-    const results = await evaluateIssueAlertRulesFromRepository(repository, createSignal());
-
-    expect(requestedScope).toBe("tenancy-1:project-1:main");
+  it("evaluates a list of rules against one signal", () => {
+    const results = evaluateIssueAlertRules([createRule()], createSignal());
     expect(results).toHaveLength(1);
-    expect(results[0].outcome).toBe("match");
+    expect(results[0]?.outcome).toBe("match");
   });
 });
