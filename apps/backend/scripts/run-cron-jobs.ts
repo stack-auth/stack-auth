@@ -3,10 +3,11 @@ import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/util
 import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
 
-const endpoints = [
-  "/api/latest/internal/external-db-sync/sequencer",
-  "/api/latest/internal/external-db-sync/poller",
-  "/api/latest/internal/workflow-engine-step",
+const endpoints: { path: string, intervalMs: number }[] = [
+  { path: "/api/latest/internal/external-db-sync/sequencer", intervalMs: 1000 },
+  { path: "/api/latest/internal/external-db-sync/poller", intervalMs: 1000 },
+  { path: "/api/latest/internal/workflow-engine-step", intervalMs: 1000 },
+  { path: "/api/latest/internal/growth-watchdog-step", intervalMs: 5 * 60_000 },
 ];
 
 async function main() {
@@ -19,7 +20,11 @@ async function main() {
   console.log("Starting cron jobs...");
   const cronSecret = getEnvVariable('CRON_SECRET');
 
-  const baseUrl = `http://localhost:${getEnvVariable('NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX', '81')}02`;
+  // Cron jobs call the backend over HTTP, so they must follow the port the
+  // backend listens on (including fallback setups where the primary port is down).
+  const portPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
+  const backendPort = getEnvVariable("PORT", getEnvVariable("BACKEND_PORT", `${portPrefix}02`));
+  const baseUrl = `http://localhost:${backendPort}`;
 
   const run = async (endpoint: string) => {
     console.log(`Running ${endpoint}...`);
@@ -30,15 +35,15 @@ async function main() {
     console.log(`${endpoint} completed.`);
   };
 
-  for (const endpoint of endpoints) {
+  for (const { path, intervalMs } of endpoints) {
     runAsynchronously(async () => {
       await wait(30_000); // Wait 30 seconds to make sure the server is fully started
       while (true) {
-        const runResult = await Result.fromPromise(run(endpoint));
+        const runResult = await Result.fromPromise(run(path));
         if (runResult.status === "error") {
           captureError("run-cron-jobs", runResult.error);
         }
-        await wait(1000);
+        await wait(intervalMs);
       }
     });
   }

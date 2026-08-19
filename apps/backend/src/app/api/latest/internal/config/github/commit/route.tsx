@@ -9,10 +9,6 @@ import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 
-// The commit is a handful of GitHub API calls (~seconds); the generous ceiling just
-// absorbs slow GitHub responses for large change sets.
-export const maxDuration = 120;
-
 /**
  * Commits the agent's captured change set to GitHub after the user reviews the diff.
  * The change set was captured and persisted when the run entered `awaiting_review`

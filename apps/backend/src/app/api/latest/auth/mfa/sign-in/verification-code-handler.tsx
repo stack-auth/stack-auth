@@ -56,6 +56,16 @@ export const mfaVerificationCodeHandler = createVerificationCodeHandler({
     }
     const isTotpValid = verifyTOTP(totpSecret, 30, 6, body.totp);
     if (!isTotpValid) {
+      if (data.method != null) {
+        logSignInAttemptInBackground(tenancy, {
+          outcome: "failed",
+          method: data.method,
+          failureReason: "invalid_mfa_totp",
+          email: data.email ?? null,
+          oauthProvider: data.oauth_provider ?? null,
+          userId: data.user_id,
+        });
+      }
       throw new KnownErrors.InvalidTotpCode();
     }
   },

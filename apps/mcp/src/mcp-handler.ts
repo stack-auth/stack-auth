@@ -1,8 +1,14 @@
-import { callHexclaveAskAi, type HexclaveAskDiagnostic } from "../../../packages/shared/src/ai/hexclave-ask";
+import {
+  callHexclaveAskAi,
+  getHexclaveAskRequestMetadata,
+  type HexclaveAskDiagnostic,
+  type HexclaveAskRequestMetadata,
+} from "../../../packages/shared/src/ai/hexclave-ask";
 import { remindersPrompt } from "@hexclave/shared/dist/ai/unified-prompts/reminders";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { createMcpHandler } from "@vercel/mcp-adapter";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
 
 import withPostHog from "@/analytics";
@@ -19,6 +25,15 @@ function getBackendApiBaseUrl(): string {
 
 const skillResourceUri = "https://skill.hexclave.com/full";
 const MAX_DIAGNOSTIC_BODY_LENGTH = 4_000;
+const requestMetadataStorage = new AsyncLocalStorage<HexclaveAskRequestMetadata>();
+
+function getCurrentRequestMetadata(): HexclaveAskRequestMetadata {
+  const metadata = requestMetadataStorage.getStore();
+  if (metadata == null) {
+    throw new HexclaveAssertionError("ask_hexclave was invoked without MCP request metadata");
+  }
+  return metadata;
+}
 
 async function fetchSkill(): Promise<string> {
   const res = await fetch(skillResourceUri, {
@@ -71,7 +86,7 @@ function logAskDiagnostic(diagnostic: HexclaveAskDiagnostic): void {
 }
 
 export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: string }) {
-  return createMcpHandler(
+  const handler = createMcpHandler(
     async (server) => {
       server.resource(
         "skill",
@@ -121,6 +136,27 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
             .describe(
               "The original user message/prompt that triggered this tool call. Copy the user's exact words. Don't include any sensitive information.",
             ),
+          context: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              "The higher-level task that the user or agent is trying to accomplish. Omit when the question is already self-contained.",
+            ),
+          user: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              "A plaintext description of who is asking the question, such as the user's name, company, and any other information that could help the Hexclave team identify and assist them. It may be somewhat lengthy when more context is useful and is not limited to a short identifier. Omit when unknown.",
+            ),
+          project: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              "A plaintext description of the project the user is working on, including its name and, when known, details such as its language, framework, purpose, and project type. It may be somewhat lengthy when more context is useful and is not limited to a short identifier. This helps Hexclave return the correct documentation and answers. Omit when unknown.",
+            ),
           conversationId: z
             .string()
             .optional()
@@ -128,7 +164,7 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
               "Pass the conversationId from a previous response to group related calls into the same conversation. Omit on the first call - the server will generate one and return it.",
             ),
         },
-        async ({ question, reason, userPrompt, conversationId }) => {
+        async ({ question, reason, userPrompt, context, user, project, conversationId }) => {
           await withPostHog(async (posthog) => {
             posthog.capture({
               event: "ask_hexclave_mcp",
@@ -142,7 +178,11 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
             question,
             reason,
             userPrompt,
+            context,
+            user,
+            project,
             conversationId,
+            requestMetadata: getCurrentRequestMetadata(),
             onDiagnostic: logAskDiagnostic,
           });
 
@@ -176,5 +216,10 @@ ${remindersPrompt}`,
       verboseLogs: true,
       maxDuration: 180,
     },
+  );
+
+  return (request: Request) => requestMetadataStorage.run(
+    getHexclaveAskRequestMetadata(request, "mcp-ask-hexclave"),
+    () => handler(request),
   );
 }

@@ -38,7 +38,7 @@ const FEATURED_APP_IDS = [
   "emails",
   "payments",
   "analytics",
-  "deployments-alpha",
+  "deploy",
   "gtm",
 ] as const satisfies readonly AppId[];
 
@@ -195,9 +195,9 @@ type ListFilters = {
 
 const DEFAULT_FILTERS: ListFilters = {
   minUsers: "0",
-  rde: "not_rde",
+  rde: "both",
   onboarding: "both",
-  neon: "include",
+  neon: "exclude",
   activity24h: "no",
 };
 
@@ -669,9 +669,9 @@ function NewlyCreatedProjectsContent(props: {
 }) {
   const initialListState = use(props.initialListStatePromise);
   const [minUsers, setMinUsers] = useState("0");
-  const [rde, setRde] = useState<RdeFilter>("not_rde");
+  const [rde, setRde] = useState<RdeFilter>("both");
   const [onboarding, setOnboarding] = useState<OnboardingFilter>("both");
-  const [neon, setNeon] = useState<NeonFilter>("include");
+  const [neon, setNeon] = useState<NeonFilter>("exclude");
   const [activity24h, setActivity24h] = useState<"yes" | "no">("no");
   const [listState, setListState] = useState<ListState>(initialListState);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);

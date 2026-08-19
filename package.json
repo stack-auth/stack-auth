@@ -46,6 +46,7 @@
     "db:backfill-bulldozer-from-prisma": "pnpm pre && pnpm run --filter=@hexclave/backend db:backfill-bulldozer-from-prisma",
     "db:backfill-internal-free-plans": "pnpm pre && pnpm run --filter=@hexclave/backend db:backfill-internal-free-plans",
     "db:regen-internal-subscriptions-to-latest": "pnpm pre && pnpm run --filter=@hexclave/backend db:regen-internal-subscriptions-to-latest",
+    "gc:piledriver": "pnpm -C apps/bulldozer-js gc:piledriver",
     "dev:full": "pnpm pre && concurrently -k \"pnpm run build-packages:watch\" \"pnpm run generate-sdks:watch\" \"pnpm run generate-setup-prompt-docs:watch\" \"turbo run dev --concurrency 99999\"",
     "dev": "pnpm pre && HEXCLAVE_DEV_UI=stream pnpm run dev:tasks",
     "dev:tui": "pnpm pre && HEXCLAVE_DEV_UI=tui pnpm run dev:tasks",
@@ -64,6 +65,7 @@
     "start:dashboard": "pnpm pre && turbo run start --concurrency 99999 --filter=@hexclave/dashboard",
     "start:mock-oauth-server": "pnpm pre && turbo run start --concurrency 99999 --filter=@hexclave/mock-oauth-server",
     "start:bulldozer": "pnpm pre && turbo run start --concurrency 99999 --filter=@hexclave/bulldozer-js",
+    "start:marshal": "pnpm pre && turbo run start --concurrency 99999 --filter=@hexclave/marshal",
     "lint": "pnpm pre && turbo run lint --continue -- --max-warnings=0",
     "release": "pnpm pre && release",
     "dotenv": "dotenv",
@@ -76,12 +78,10 @@
     "generate-keys": "pnpm pre && turbo run generate-keys",
     "generate-sdks": "pnpm exec tsx ./scripts/generate-sdks.ts",
     "generate-setup-prompt-docs": "pnpm exec tsx ./scripts/generate-setup-prompt-docs.ts",
-    "generate-docs-legacy-redirects": "pnpm exec tsx ./scripts/generate-docs-legacy-redirects.ts",
-    "test-docs-legacy-redirects": "pnpm exec tsx ./scripts/test-docs-legacy-redirects.ts",
     "generate-sdks:watch": "chokidar --silent -c 'pnpm run generate-sdks' './packages/template' --ignore './packages/template/package.json' --ignore '**/node_modules/**' --ignore '**/dist/**' --ignore '**/.turbo/**' --throttle 2000",
     "generate-openapi-docs:watch": "pnpm exec tsx ./scripts/wait-for-dev-package-imports.ts && pnpm run --filter=@hexclave/backend codegen-docs && chokidar --silent -c 'pnpm run --filter=@hexclave/backend codegen-docs' './apps/backend/src/app/api/latest/**/route.{js,jsx,ts,tsx}' './apps/backend/src/lib/openapi.ts' './packages/shared/src/interface/webhooks.ts' --throttle 2000",
     "generate-setup-prompt-docs:watch": "pnpm run generate-setup-prompt-docs && chokidar --silent -c 'pnpm run generate-setup-prompt-docs' './docs-mintlify/docs.json' './packages/shared/src/ai/unified-prompts/**/*.ts' './scripts/generate-setup-prompt-docs.ts' --throttle 2000",
-    "build-packages:watch": "tsdown -W && pnpm -C packages/dashboard-ui-components run build-iife && pnpm -C packages/dashboard-ui-components run copy-iife && tsdown -W --watch"
+    "build-packages:watch": "tsdown --workspace='packages/*' && pnpm -C packages/dashboard-ui-components run build-iife && pnpm -C packages/dashboard-ui-components run copy-iife && tsdown --workspace='packages/*' --watch"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",
@@ -110,7 +110,7 @@
     "wait-on": "^8.0.1"
   },
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=24.0.0"
   },
   "packageManager": "pnpm@11.5.0+sha512.dbfcc4f81cf48597afd4bc391ffdf12c11f1a9fb83a395bfa6b0a2d9cc2fd8ffebafdb1ccbd529632153f793904c2615b7f09fe1a345473fd1c35845172a8eb1",
   "dependencies": {

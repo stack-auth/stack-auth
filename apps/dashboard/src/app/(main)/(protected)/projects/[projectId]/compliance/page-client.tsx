@@ -261,7 +261,7 @@ function ComplianceDashboard({ data, onExport }: { data: ComplianceData, onExpor
   const summary = data.securityEvents.summary;
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end"><DesignButton size="sm" variant="secondary" onClick={async () => onExport()}><DownloadSimpleIcon className="h-4 w-4" />Export evidence bundle</DesignButton></div>
+      <div className="flex justify-end"><DesignButton size="sm" variant="secondary" onClick={async () => onExport()}><DownloadSimpleIcon className="h-4 w-4" />Export compliance data</DesignButton></div>
       {data.securityEvents.capped && <div role="alert" className="rounded-md border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-sm text-orange-700 dark:text-orange-300">The security event detail list is truncated to 5000 rows; summaries cover the full selected range.</div>}
       <div role="tablist" aria-label="Compliance sections" className="flex flex-wrap gap-1 border-b border-border/50">
         {([["overview", "Overview"], ["events", "Sign-in & denials"], ["access", "Access review"], ["restricted", "Restricted users"], ["posture", "Security posture"]] as const).map(([id, label]) => <button key={id} id={`tab-${id}`} role="tab" aria-selected={tab === id} aria-controls={`panel-${id}`} type="button" className={`px-3 py-2 text-sm transition-colors hover:transition-none ${tab === id ? "border-b-2 border-foreground font-medium text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setTab(id)}>{label}</button>)}

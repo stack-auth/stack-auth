@@ -36,6 +36,10 @@ export const GET = createSmartRouteHandler({
       users = await prisma.projectUser.findMany({
         where: {
           tenancyId: tenancy.id,
+          // Anonymous visitors are not accounts that an administrator can
+          // review or remediate, and high anonymous traffic would otherwise
+          // crowd restricted registered users out of this capped result.
+          isAnonymous: false,
           OR: [
             ...(tenancy.config.onboarding.requireEmailVerification ? [{
               NOT: {
@@ -49,7 +53,6 @@ export const GET = createSmartRouteHandler({
               },
             }] : []),
             { restrictedByAdmin: true },
-            { isAnonymous: true },
           ],
         },
         include: {

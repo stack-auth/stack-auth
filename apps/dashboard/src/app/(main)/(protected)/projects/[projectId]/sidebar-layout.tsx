@@ -21,7 +21,7 @@ import {
 } from "@/components/ui";
 import { WalkthroughProvider } from "@/components/walkthrough/walkthrough-provider";
 import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, hasNavigationItems, testAppPath, testItemPath, type NavigableAppFrontend } from "@/lib/apps-frontend";
-import { getEnabledAppIds, getEnabledNavigableAppIds } from "@/lib/apps-utils";
+import { getAppEnableConfigUpdate, getEnabledAppIds, getEnabledNavigableAppIds } from "@/lib/apps-utils";
 import { isAppNavigationItemVisible } from "@/lib/app-navigation-visibility";
 import { useUpdateConfig } from "@/components/config-update";
 import { cn } from "@/lib/utils";
@@ -131,6 +131,11 @@ const internalToolsItem: AppSection = {
       href: "/newly-created-projects",
       match: (fullUrl: URL) => /^\/projects\/[^\/]+\/newly-created-projects(\/.*)?$/.test(fullUrl.pathname),
     },
+    {
+      name: "Ask Hexclave History",
+      href: "/ask-hexclave-history",
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/ask-hexclave-history(\/.*)?$/.test(fullUrl.pathname),
+    },
   ],
 };
 
@@ -148,6 +153,11 @@ const projectSettingsItem: AppSection = {
       name: "Billing & Usage",
       href: "/project-settings/usage",
       match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings\/usage(\/.*)?$/.test(fullUrl.pathname),
+    },
+    {
+      name: "Secrets",
+      href: "/project-settings/secrets",
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings\/secrets(\/.*)?$/.test(fullUrl.pathname),
     },
     {
       name: "Project Keys",
@@ -515,7 +525,7 @@ function SidebarContent({
     /^\/projects\/[^\/]+\/(project-settings|project-keys|domains)(\/.*)?$/.test(pathname)
   );
   const [isInternalToolsExpanded, setIsInternalToolsExpanded] = useState(() =>
-    /^\/projects\/[^\/]+\/(platform-analytics|external-db-sync|newly-created-projects)(\/.*)?$/.test(pathname)
+    /^\/projects\/[^\/]+\/(platform-analytics|external-db-sync|newly-created-projects|ask-hexclave-history)(\/.*)?$/.test(pathname)
   );
   const internalToolsSection = useMemo<AppSection>(() => ({
     ...internalToolsItem,
@@ -702,7 +712,7 @@ function SpotlightSearchWrapper({ projectId }: { projectId: string }) {
   const handleEnableApp = useCallback(async (appId: AppId) => {
     await updateConfig({
       adminApp: hexclaveAdminApp,
-      configUpdate: { [`apps.installed.${appId}.enabled`]: true },
+      configUpdate: getAppEnableConfigUpdate(appId),
       pushable: true,
     });
   }, [hexclaveAdminApp, updateConfig]);

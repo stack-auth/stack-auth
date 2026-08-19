@@ -16,8 +16,8 @@ import { KnownError, KnownErrors } from "@hexclave/shared";
 import { yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 import { deindent, extractScopes, mergeScopeStrings } from "@hexclave/shared/dist/utils/strings";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { cookies } from "@/lib/runtime/headers";
+import { redirect } from "@/lib/runtime/navigation";
 import { oauthResponseToSmartResponse } from "../../oauth-helpers";
 
 /**
@@ -365,7 +365,7 @@ const handler = createSmartRouteHandler({
       // OAuthModel.saveToken() *after* authenticateHandler.handle() returns, and that's where TOTP
       // MFA is enforced and refresh tokens are persisted. So we defer the success event until after
       // authorize() resolves — otherwise an MFA challenge or a token-persistence failure would be
-      // recorded as a successful sign-in in the compliance evidence.
+      // recorded as a successful sign-in in the Compliance Center.
       const successfulSignInUserIdRef: { current: string | null } = { current: null };
       try {
         await oauthServer.authorize(
