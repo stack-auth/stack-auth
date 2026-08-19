@@ -1,0 +1,27 @@
+apps/dashboard/src/components/hosted-auth-preview.tsx
+  s_b1ec09ed09497c::t_4bf767aa499ce1 136
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-viewer/[emailId]/email-timeline.tsx
+  s_b1ec09ed09497c::t_f02e592acb7c79 5
+  s_b1ec09ed09497c::t_81d0c16e733c69 241-245,259-263
+apps/hosted-components/src/components/ui/tabs.tsx
+  s_b1ec09ed09497c::t_a1d693e6a070cb 103
+apps/backend/src/app/api/latest/integrations/ai-proxy/[[...path]]/route.ts
+  s_b1ec09ed09497c::t_5535544c85405a 51
+  s_b1ec09ed09497c::t_abe5af82c10c2a 72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "9a2a38dbe4ed4111968a3d912b9bb002fc49f32a",
+  "prompts": {},
+  "sessions": {
+    "s_b1ec09ed09497c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e9f2673a-f101-44fa-972e-cb237641b3d5",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
