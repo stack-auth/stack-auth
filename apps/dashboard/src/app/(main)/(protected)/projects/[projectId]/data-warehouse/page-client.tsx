@@ -38,20 +38,26 @@ function DataWarehousePage() {
 
   const isProvisioned = warehouse.status === "ready";
 
+  // The boundary wraps the whole page rather than only its content: rotation lives in
+  // the page header, and the backend requires the entitlement for it too, so the header
+  // has to know. The upgrade banner comes back as a node to keep it where it was.
   return (
-    <PageLayout
-      title="Data Warehouse"
-      description={stageLabel != null ? <DesignBadge label={stageLabel} color="purple" size="sm" /> : undefined}
-      actions={isProvisioned ? (
-        <DesignButton variant="secondary" className="gap-2" onClick={handleRotate}>
-          <ArrowClockwiseIcon className="h-4 w-4" />
-          Rotate password
-        </DesignButton>
-      ) : undefined}
-    >
-      <EntitlementBoundary>
-        {(isEntitled) => (
+    <EntitlementBoundary>
+      {(isEntitled, upgradeBanner) => (
+        <PageLayout
+          title="Data Warehouse"
+          description={stageLabel != null ? <DesignBadge label={stageLabel} color="purple" size="sm" /> : undefined}
+          actions={isProvisioned ? (
+            <SimpleTooltip tooltip={isEntitled ? null : UNENTITLED_MESSAGE}>
+              <DesignButton variant="secondary" className="gap-2" onClick={handleRotate} disabled={!isEntitled}>
+                <ArrowClockwiseIcon className="h-4 w-4" />
+                Rotate password
+              </DesignButton>
+            </SimpleTooltip>
+          ) : undefined}
+        >
           <div className="flex flex-1 flex-col gap-4">
+            {upgradeBanner}
             {isProvisioned ? (
               <DesignCard icon={DatabaseIcon} title="Your warehouse">
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -102,9 +108,9 @@ function DataWarehousePage() {
 
             <PasswordDialog credentials={credentials} onClose={() => setCredentials(null)} />
           </div>
-        )}
-      </EntitlementBoundary>
-    </PageLayout>
+        </PageLayout>
+      )}
+    </EntitlementBoundary>
   );
 }
 
@@ -127,15 +133,17 @@ function PasswordDialog({ credentials, onClose }: { credentials: DataWarehouseCr
   );
 }
 
+type EntitlementChildren = (isEntitled: boolean, upgradeBanner: ReactNode) => ReactNode;
+
 /**
- * Renders the upgrade banner and tells the page whether to enable the provision
- * button; the backend enforces the team-plan requirement independently.
+ * Tells the page whether the plan allows provisioning and rotation, and hands back the
+ * upgrade banner for the page to place; the backend enforces the requirement independently.
  *
  * Split in two because `team.useItem` is a hook: the outer half decides whether there
  * is a billing team to read, the inner half reads it. Projects with no billing team,
  * and deployments that do not enforce plan limits, count as entitled.
  */
-function EntitlementBoundary({ children }: { children: (isEntitled: boolean) => ReactNode }) {
+function EntitlementBoundary({ children }: { children: EntitlementChildren }) {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const planUsage = adminApp.usePlanUsage();
@@ -148,7 +156,7 @@ function EntitlementBoundary({ children }: { children: (isEntitled: boolean) => 
   );
 
   if (!planUsage.arePlanLimitsEnforced || ownerTeam == null) {
-    return <>{children(true)}</>;
+    return <>{children(true, null)}</>;
   }
 
   return <EntitlementBoundaryInner team={ownerTeam}>{children}</EntitlementBoundaryInner>;
@@ -160,7 +168,7 @@ function EntitlementBoundaryInner({ team, children }: {
     useProducts: () => Array<{ id: string | null, type?: string }>,
     createCheckoutUrl: (options: { productId: string, returnUrl: string }) => Promise<string>,
   },
-  children: (isEntitled: boolean) => ReactNode,
+  children: EntitlementChildren,
 }) {
   const item = team.useItem(ITEM_IDS.dataWarehouse);
   const products = team.useProducts();
@@ -175,18 +183,15 @@ function EntitlementBoundaryInner({ team, children }: {
     window.location.assign(checkoutUrl);
   };
 
-  return (
-    <>
-      {!isEntitled && (
-        <Alert>
-          <WarningCircleIcon className="h-4 w-4" />
-          <AlertDescription className="flex items-center justify-between gap-4">
-            <span>{UNENTITLED_MESSAGE}</span>
-            <DesignButton size="sm" onClick={handleUpgrade}>Upgrade</DesignButton>
-          </AlertDescription>
-        </Alert>
-      )}
-      {children(isEntitled)}
-    </>
+  const upgradeBanner = isEntitled ? null : (
+    <Alert>
+      <WarningCircleIcon className="h-4 w-4" />
+      <AlertDescription className="flex items-center justify-between gap-4">
+        <span>{UNENTITLED_MESSAGE}</span>
+        <DesignButton size="sm" onClick={handleUpgrade}>Upgrade</DesignButton>
+      </AlertDescription>
+    </Alert>
   );
+
+  return <>{children(isEntitled, upgradeBanner)}</>;
 }

@@ -1,5 +1,5 @@
 import { getHexclaveServerApp } from "@/hexclave";
-import { createClickhouseWarehouseClient, getClickhouseExternalClient } from "@/lib/clickhouse";
+import { WAREHOUSE_ANALYTICS_CLICKHOUSE_SETTINGS, createClickhouseWarehouseClient, getClickhouseExternalClient } from "@/lib/clickhouse";
 import { getSafeClickhouseErrorMessage } from "@/lib/clickhouse-errors";
 import { getDataWarehouseQueryAuth } from "@/lib/data-warehouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
@@ -76,10 +76,19 @@ export const POST = createSmartRouteHandler({
     //
     // Its `SQL_project_id`/`SQL_branch_id` are pinned as CONST user settings, so they
     // must not be sent per query — ClickHouse rejects setting a CONST setting at all.
+    //
+    // The shared client bakes its resource ceiling in at construction; do the same
+    // here, or a warehouse project would fall back to the much looser per-query
+    // memory default of its own settings profile and skip the GROUP BY spill and
+    // bounded join algorithm entirely.
     const warehouseAuth = await getDataWarehouseQueryAuth(auth.tenancy);
     const client = warehouseAuth == null
       ? getClickhouseExternalClient()
-      : createClickhouseWarehouseClient(warehouseAuth, getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"));
+      : createClickhouseWarehouseClient(
+        warehouseAuth,
+        getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"),
+        WAREHOUSE_ANALYTICS_CLICKHOUSE_SETTINGS,
+      );
     try {
       const queryId = `${auth.tenancy.project.id}:${auth.tenancy.branchId}:${randomUUID()}`;
       const resultSet = await Result.fromPromise(client.query({

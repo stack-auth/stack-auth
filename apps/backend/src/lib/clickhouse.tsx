@@ -93,6 +93,21 @@ export const EXTERNAL_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
   ...BOUNDED_ANALYTICS_CLICKHOUSE_SETTINGS,
 };
 
+/**
+ * The same ceiling for a per-project Data Warehouse user on `/analytics/query`.
+ *
+ * `max_memory_usage_for_user` is deliberately absent: that user's settings profile
+ * pins it with a `MAX` constraint (see MAX_MEMORY_USAGE_FOR_USER_BYTES in
+ * lib/data-warehouse.tsx), and ClickHouse rejects a query that sets a constrained
+ * setting above its MAX — sending the shared-user value here would fail every
+ * warehouse query. The profile ceiling already bounds that user's concurrent
+ * footprint, and it is per project rather than shared, so nothing is lost.
+ */
+export const WAREHOUSE_ANALYTICS_CLICKHOUSE_SETTINGS: ClickHouseSettings = (() => {
+  const { max_memory_usage_for_user, ...rest } = BOUNDED_ANALYTICS_CLICKHOUSE_SETTINGS;
+  return rest;
+})();
+
 export function getClickhouseExternalClient() {
   return createClickhouseClient(
     "external",

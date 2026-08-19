@@ -6,7 +6,7 @@ import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Rotate data warehouse password",
-    description: "Issues a new password for the project's data warehouse user and returns it once. Existing connections using the old password stop working.",
+    description: "Issues a new password for the project's data warehouse user and returns it once. New connections must use the new password; an already-established native-protocol session authenticated with the old one is not terminated.",
     tags: ["Data Warehouse"],
     hidden: true,
   },
