@@ -1,0 +1,31 @@
+docs-mintlify/guides/apps/analytics/cross-tier-tracing.mdx
+  s_687b196ef45ee9::t_50d037b23cf64b 122
+  s_687b196ef45ee9::t_b1b9a585beaa46 303
+packages/template/src/lib/hexclave-app/apps/implementations/analytics-config.ts
+  s_687b196ef45ee9::t_326f1f419810ec 14-16
+sdks/spec/src/apps/analytics.spec.md
+  s_687b196ef45ee9::t_80e58456149af7 152-154
+  s_687b196ef45ee9::t_fbfeb9b70d206e 346-347,350-354
+packages/template/src/lib/hexclave-app/apps/implementations/observability-config.ts
+  s_687b196ef45ee9::t_fdd276573c35be 77-79
+docs-mintlify/guides/apps/analytics/replays-and-clickmaps.mdx
+  s_687b196ef45ee9::t_8215297127f625 49-54
+docs-mintlify/guides/apps/analytics/overview.mdx
+  s_687b196ef45ee9::t_23f37620dec5cc 187-189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "6f7114b9c65665889629b1706f4983f138e0fbc7",
+  "prompts": {},
+  "sessions": {
+    "s_687b196ef45ee9": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8743ad25-52ab-4ee5-940e-442cf943954d",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
