@@ -72,7 +72,18 @@ describe("Growth report presentation admin API", () => {
     ["unpublish", unpublishGrowthAdminReportPresentation],
   ])("%s returns the authoritative presentation snapshot", async (action, mutation) => {
     request.mockResolvedValueOnce(snapshot);
-    await mutation({}, "project-1", "report-1", "presentation-1");
+    await expect(mutation({}, "project-1", "report-1", "presentation-1")).resolves.toEqual({
+      id: "presentation-1",
+      reportId: "report-1",
+      format: "sandboxed-tsx-v1",
+      tsxSource: "const Dashboard = () => <div />;",
+      actionItemIds: ["action-2", "action-1"],
+      version: 2,
+      createdAtMillis: 1_700_000_000_000,
+      createdByUserId: "staff-1",
+      publishedAtMillis: null,
+      publishedByUserId: null,
+    });
     expect(request).toHaveBeenCalledWith({}, "/reports/report-1/presentations/presentation-1", {
       method: "PATCH",
       body: JSON.stringify({ target_project_id: "project-1", action }),

@@ -9,6 +9,7 @@ import { GrowthStatusGate } from "./components/frame";
 import { GrowthLifecycleTimeline } from "./components/lifecycle-panels";
 import { useGrowthHref } from "./components/action-card";
 import { useProjectId } from "../use-admin-app";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 
 export default function PageClient() {
   return (
@@ -36,7 +37,7 @@ function CustomerGrowthReportEntry() {
       <p className="text-sm leading-6 text-muted-foreground">
         Your latest growth recommendations are ready to review.
       </p>
-      <Link href={growthHref(`/projects/${projectId}/gtm/report`)} className="mt-4 inline-flex text-sm font-semibold text-primary hover:underline">
+      <Link href={growthHref(urlString`/projects/${projectId}/gtm/report`)} className="mt-4 inline-flex text-sm font-semibold text-primary hover:underline">
         View presentation
       </Link>
     </DesignCard>

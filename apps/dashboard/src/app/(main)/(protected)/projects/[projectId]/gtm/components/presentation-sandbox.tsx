@@ -57,7 +57,7 @@ function getPresentationDocument(options: {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <!-- No connect-src entry for our API: a presentation paints, it never fetches. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://esm.sh${devSrc}; style-src 'unsafe-inline' https://cdn.jsdelivr.net; img-src data: https:; connect-src https://unpkg.com https://cdn.jsdelivr.net https://esm.sh${devSrc}; font-src 'none'; frame-src 'none'; worker-src 'none';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; script-src 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://esm.sh${devSrc}; style-src 'unsafe-inline' https://cdn.jsdelivr.net; img-src data: https:; connect-src https://unpkg.com https://cdn.jsdelivr.net https://esm.sh${devSrc}; font-src 'none'; frame-src 'none'; worker-src 'none';" />
     ${SANDBOX_TAILWIND_CONFIG_SCRIPT}
     ${SANDBOX_THEME_STYLES}
     <style>
@@ -68,8 +68,8 @@ function getPresentationDocument(options: {
   </head>
   <body>
     <div id="root"></div>
-    ${SANDBOX_BABEL_SCRIPT}
     ${SANDBOX_ERROR_LISTENER_SCRIPT}
+    ${SANDBOX_BABEL_SCRIPT}
     ${getSandboxDependencyScripts({ esmVersion, esmFallbackVersion: getEsmFallbackVersion(esmVersion), dashboardUrl, includeStackSdk: false })}
 
     <script type="application/json" id="growth-presentation-source">${encodeSourceForJsonScript(tsxSource)}</script>

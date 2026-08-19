@@ -83,8 +83,8 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
   </head>
   <body>
     <div id="root"></div>
-    ${SANDBOX_BABEL_SCRIPT}
     ${SANDBOX_ERROR_LISTENER_SCRIPT}
+    ${SANDBOX_BABEL_SCRIPT}
 
     ${getSandboxDependencyScripts({ esmVersion, esmFallbackVersion, dashboardUrl, includeStackSdk: true })}
 

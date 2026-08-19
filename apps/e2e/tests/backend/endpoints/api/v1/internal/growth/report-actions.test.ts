@@ -152,8 +152,6 @@ describe.sequential("internal growth reports and actions", { timeout: 300_000 },
     expect(latest.body).toMatchObject({
       id: reportId,
       run_id: runId,
-      title: "Growth analysis for Plannery",
-      summary: "Focus on paid acquisition and comparison content.",
       presentation: { format: "sandboxed-tsx-v1", version: 1, tsx_source: "const Dashboard = () => null;" },
     });
     expect(latest.body).not.toHaveProperty("content_md");

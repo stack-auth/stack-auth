@@ -59,6 +59,7 @@ const adminDetailSchema = z.object({
     body_markdown: z.string(),
   })).nullable(),
   published_at_millis: z.number().nullable(),
+  published_by_user_id: z.string().nullable(),
   presentations: z.array(presentationSchema),
 });
 
@@ -121,6 +122,7 @@ export async function getGrowthAdminReport(app: object, projectId: string, repor
     createdAtMillis: parsed.created_at_millis,
     actionItems: parsed.action_items.map(mapGrowthActionItem),
     publishedAtMillis: parsed.published_at_millis,
+    publishedByUserId: parsed.published_by_user_id,
     presentations: parsed.presentations.map(mapPresentation),
   };
 }

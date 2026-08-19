@@ -20,6 +20,7 @@ export function html(strings: TemplateStringsArray, ...values: unknown[]): strin
 }
 
 export const isSandboxDevMode = process.env.NODE_ENV === "development";
+export const SANDBOX_LOAD_ERROR_MESSAGE = "This report could not be loaded. Please refresh and try again.";
 
 const ESM_VERSION_HEADER = "// @stack-esm-version:";
 const ESM_VERSION_REGEX = /^\/\/\s*@stack-esm-version:\s*(\S+)\s*$/m;
@@ -364,7 +365,7 @@ export function getSandboxDependencyScripts(options: {
   }
 
   const { esmVersion, esmFallbackVersion, dashboardUrl } = options;
-  const loadErrorMessage = "This report could not be loaded. Please refresh and try again.";
+  const loadErrorMessage = SANDBOX_LOAD_ERROR_MESSAGE;
   const errorHelpers = `      function formatDependencyError(error) {
         return error instanceof Error ? error.message : String(error);
       }
@@ -422,7 +423,7 @@ ${errorHelpers}
 
   return html`
     <script type="module">
-      const CUSTOM_DASHBOARD_LOAD_ERROR_MESSAGE = '${loadErrorMessage}';
+      const CUSTOM_DASHBOARD_LOAD_ERROR_MESSAGE = ${JSON.stringify(loadErrorMessage)};
 
 ${errorHelpers}
 

@@ -21,4 +21,14 @@ describe("validateGrowthReportPresentationSource", () => {
     expect(() => validateGrowthReportPresentationSource("const App = () => null;")).toThrow(/define a top-level Dashboard/);
     expect(() => validateGrowthReportPresentationSource("const Dashboard = <div>unfinished")).not.toThrow();
   });
+
+  it("rejects top-level module syntax without matching words inside source text", () => {
+    expect(() => validateGrowthReportPresentationSource(`
+      import { Card } from "ui";
+      const Dashboard = () => <div>Growth results</div>;
+    `)).toThrow(/must not use import or export/);
+    expect(() => validateGrowthReportPresentationSource(`
+      const Dashboard = () => <div>export this report</div>;
+    `)).not.toThrow();
+  });
 });

@@ -244,7 +244,21 @@ export function GrowthAdminReportsCard(props: { app: object, projectId: string }
                 app={props.app}
                 projectId={props.projectId}
                 report={detail.report}
-                onReportChange={(report) => setDetail({ status: "loaded", report })}
+                onReportChange={(report) => {
+                  setDetail({ status: "loaded", report });
+                  setList((current) => current.status !== "loaded" ? current : {
+                    status: "loaded",
+                    body: {
+                      reports: current.body.reports.map((summary) => summary.id === report.id
+                        ? {
+                          ...summary,
+                          publishedAtMillis: report.publishedAtMillis,
+                          publishedByUserId: report.publishedByUserId,
+                        }
+                        : summary),
+                    },
+                  });
+                }}
               />
             )}
           </div>

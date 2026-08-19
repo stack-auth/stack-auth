@@ -151,13 +151,16 @@ function ReportBody(props: { latestReport: GrowthStatus["latestReport"], held: b
 
 function ReportContent(props: { report: GrowthReport }) {
   const { report } = props;
+  const legacyReport = "title" in report ? report : null;
   return (
     <div className="flex flex-col gap-8">
-      <header className="border-b border-foreground/[0.08] pb-7">
-        <p className="text-xs text-muted-foreground">Created {new Date(report.createdAtMillis).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}</p>
-        <h1 className="mt-2 max-w-4xl text-balance text-2xl font-semibold tracking-tight sm:text-3xl">{report.title}</h1>
-        <p className="mt-3 max-w-3xl text-pretty text-sm leading-6 text-muted-foreground sm:text-base">{report.summary}</p>
-      </header>
+      {legacyReport != null && (
+        <header className="border-b border-foreground/[0.08] pb-7">
+          <p className="text-xs text-muted-foreground">Created {new Date(report.createdAtMillis).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}</p>
+          <h1 className="mt-2 max-w-4xl text-balance text-2xl font-semibold tracking-tight sm:text-3xl">{legacyReport.title}</h1>
+          <p className="mt-3 max-w-3xl text-pretty text-sm leading-6 text-muted-foreground sm:text-base">{legacyReport.summary}</p>
+        </header>
+      )}
 
       <ReportDocumentContent report={report} />
 
@@ -176,8 +179,12 @@ function ReportContent(props: { report: GrowthReport }) {
 
 function ReportDocumentContent(props: { report: GrowthReport }) {
   const { content } = props.report;
+  const [presentationErrorSource, setPresentationErrorSource] = useState<string | null>(null);
   if (content.type === "presentation") {
-    return <GrowthPresentationSandbox tsxSource={content.tsxSource} />;
+    if (presentationErrorSource === content.tsxSource) {
+      return <DesignAlert variant="error">This report presentation is temporarily unavailable. Please try again later.</DesignAlert>;
+    }
+    return <GrowthPresentationSandbox tsxSource={content.tsxSource} onRuntimeError={() => setPresentationErrorSource(content.tsxSource)} />;
   }
   if (content.document == null) {
     return <GrowthReportSections contentMd={content.contentMd} sections={content.sections} />;

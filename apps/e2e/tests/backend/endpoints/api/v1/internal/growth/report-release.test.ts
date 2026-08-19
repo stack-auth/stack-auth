@@ -35,7 +35,7 @@ async function seedProjectWithoutReport() {
   return { projectId: keys.projectId, scope: { project_id: keys.projectId, branch_id: "main" }, runId: requireRunId(onboarding.body) };
 }
 
-async function seedReport() {
+async function seedReport(options: { presentation: "published" | "unpublished" | "none" } = { presentation: "published" }) {
   const { projectId, scope, runId } = await seedProjectWithoutReport();
   const report = await niceBackendFetch(`${AGENT_BASE}/report`, {
     method: "POST",
@@ -55,8 +55,36 @@ async function seedReport() {
   if (report.status !== 200) throw new Error(`Saving the report failed with ${report.status}.`);
   const reportId = (report.body as { report_id: string }).report_id;
   const actionItemIds = (report.body as { action_item_ids: string[] }).action_item_ids;
-  await publishGrowthPresentationAsStaff(projectId, reportId, actionItemIds);
+  if (options.presentation !== "none") {
+    await createGrowthPresentationAsStaff(projectId, reportId, actionItemIds, options.presentation === "published");
+  }
   return { projectId, scope, runId, reportId, actionItemIds };
+}
+
+async function createGrowthPresentationAsStaff(projectId: string, reportId: string, actionItemIds: string[], publish: boolean): Promise<string> {
+  return await asGrowthStaff(async () => {
+    const created = await niceBackendFetch(`${ADMIN_BASE}/reports/${reportId}/presentations`, {
+      accessType: "client",
+      method: "POST",
+      body: {
+        target_project_id: projectId,
+        format: "sandboxed-tsx-v1",
+        tsx_source: "const Dashboard = () => null;",
+        action_item_ids: actionItemIds,
+      },
+    });
+    if (created.status !== 201) throw new Error(`Creating the growth presentation failed with ${created.status}.`);
+    const presentationId = (created.body as { id: string }).id;
+    if (publish) {
+      const published = await niceBackendFetch(`${ADMIN_BASE}/reports/${reportId}/presentations/${presentationId}`, {
+        accessType: "client",
+        method: "PATCH",
+        body: { target_project_id: projectId, action: "publish" },
+      });
+      if (published.status !== 200) throw new Error(`Publishing the growth presentation failed with ${published.status}.`);
+    }
+    return presentationId;
+  });
 }
 
 describe.sequential("internal Growth report release", { timeout: 300_000 }, () => {
@@ -176,8 +204,8 @@ describe.sequential("internal Growth report release", { timeout: 300_000 }, () =
     expect((await create({ tsx_source: "const Dashboard = () => null;", action_item_ids: [randomUUID()] })).status).toBe(400);
   });
 
-  it("skips curated action items removed while recomposing the internal report", { timeout: 300_000 }, async ({ expect }) => {
-    const { scope, runId, reportId } = await seedReport();
+  it("pins curated action items while recomposing a published report", { timeout: 300_000 }, async ({ expect }) => {
+    const { scope, runId, reportId, actionItemIds } = await seedReport();
     const recomposed = await niceBackendFetch(`${AGENT_BASE}/report`, {
       method: "POST",
       headers: GROWTH_AGENT_AUTH,
@@ -193,8 +221,47 @@ describe.sequential("internal Growth report release", { timeout: 300_000 }, () =
     expect(recomposed.status).toBe(200);
 
     const customer = await niceBackendFetch(`${GROWTH_BASE}/reports/${reportId}`, { accessType: "admin" });
-    expect(customer).toMatchObject({ status: 200, body: { presentation: { version: 1 }, action_items: [] } });
+    expect(customer).toMatchObject({ status: 200, body: { presentation: { version: 1 }, action_items: [{ id: expect.any(String) }, { id: expect.any(String) }] } });
+    expect(customer.body.action_items.map((item: { id: string }) => item.id)).toEqual(actionItemIds);
+    expect(customer.body).not.toHaveProperty("title");
+    expect(customer.body).not.toHaveProperty("summary");
     expect(customer.body).not.toHaveProperty("content_md");
+  });
+
+  it("pins curated action items for an unpublished presentation", { timeout: 300_000 }, async ({ expect }) => {
+    const { scope, runId, reportId, actionItemIds } = await seedReport({ presentation: "unpublished" });
+    const recomposed = await niceBackendFetch(`${AGENT_BASE}/report`, {
+      method: "POST",
+      headers: GROWTH_AGENT_AUTH,
+      body: {
+        ...scope,
+        run_id: runId,
+        title: "Recomposed growth analysis",
+        summary: "The internal artifact was refreshed.",
+        content_md: "# Refreshed",
+        action_items: [],
+      },
+    });
+    expect(recomposed.status).toBe(200);
+    expect(recomposed.body).toMatchObject({ action_item_ids: actionItemIds });
+  });
+
+  it("still replaces proposals when no presentation exists", { timeout: 300_000 }, async ({ expect }) => {
+    const { scope, runId, reportId } = await seedReport({ presentation: "none" });
+    const recomposed = await niceBackendFetch(`${AGENT_BASE}/report`, {
+      method: "POST",
+      headers: GROWTH_AGENT_AUTH,
+      body: {
+        ...scope,
+        run_id: runId,
+        title: "Recomposed growth analysis",
+        summary: "The internal artifact was refreshed.",
+        content_md: "# Refreshed",
+        action_items: [],
+      },
+    });
+    expect(recomposed.status).toBe(200);
+    expect(recomposed.body).toMatchObject({ report_id: reportId, action_item_ids: [] });
   });
 
   it("releases everything after staff publishes a presentation", { timeout: 300_000 }, async ({ expect }) => {
@@ -210,7 +277,9 @@ describe.sequential("internal Growth report release", { timeout: 300_000 }, () =
     }
 
     const report = await niceBackendFetch(`${GROWTH_BASE}/reports/latest`, { accessType: "admin" });
-    expect(report).toMatchObject({ status: 200, body: { id: reportId, title: "Growth analysis for the fixture" } });
+    expect(report).toMatchObject({ status: 200, body: { id: reportId, presentation: { version: 1 } } });
+    expect(report.body).not.toHaveProperty("title");
+    expect(report.body).not.toHaveProperty("summary");
   });
 
   it("allows customer activation only for actions curated into the live presentation", { timeout: 300_000 }, async ({ expect }) => {

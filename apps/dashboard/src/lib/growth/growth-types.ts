@@ -338,8 +338,6 @@ export type GrowthReportContent =
 type GrowthReportBase = {
   id: string,
   runId: string,
-  title: string,
-  summary: string,
   createdAtMillis: number,
 };
 
@@ -349,6 +347,8 @@ export type GrowthPresentationReport = GrowthReportBase & {
 };
 
 export type GrowthLegacyReport = GrowthReportBase & {
+  title: string,
+  summary: string,
   content: Extract<GrowthReportContent, { type: "legacy" }>,
   actionItems: GrowthActionItem[],
 };
@@ -368,6 +368,7 @@ export type GrowthAdminReport = {
   createdAtMillis: number,
   actionItems: GrowthActionItem[],
   publishedAtMillis: number | null,
+  publishedByUserId: string | null,
   presentations: GrowthReportPresentation[],
 };
 

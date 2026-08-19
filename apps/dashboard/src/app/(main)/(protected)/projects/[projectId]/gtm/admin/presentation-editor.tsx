@@ -20,6 +20,8 @@ const EMPTY_PRESENTATION_SOURCE = `function Dashboard() {
   return <div className="p-6">Add your customer-facing presentation here.</div>;
 }`;
 
+type PreviewOutcome = "pending" | "ready" | "failed";
+
 export function PresentationEditor(props: {
   app: object,
   projectId: string,
@@ -34,6 +36,7 @@ export function PresentationEditor(props: {
   const [pendingMutation, setPendingMutation] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runtimeError, setRuntimeError] = useState<GrowthPresentationRuntimeError | null>(null);
+  const [previewState, setPreviewState] = useState<{ source: string, outcome: PreviewOutcome }>({ source: "", outcome: "pending" });
   const [nowMillis] = useState(() => Date.now());
 
   useEffect(() => {
@@ -43,15 +46,20 @@ export function PresentationEditor(props: {
       setSelectedPresentationId(null);
       setDraftSource(EMPTY_PRESENTATION_SOURCE);
       setDraftActionItemIds([]);
+      setPreviewState({ source: EMPTY_PRESENTATION_SOURCE, outcome: "pending" });
     } else {
       const initial = ordered[0];
       setSelectedPresentationId(initial.id);
       setDraftSource(initial.tsxSource);
       setDraftActionItemIds(initial.actionItemIds);
+      setPreviewState({ source: initial.tsxSource, outcome: "pending" });
     }
     setRuntimeError(null);
     setError(null);
-  }, [report.id, report.presentations]);
+    // Keep the editor draft stable across authoritative save/publish snapshots; only switching
+    // reports should reinitialize its selected version and source.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [report.id]);
 
   const selectedPresentation = presentations.find((presentation) => presentation.id === selectedPresentationId) ?? null;
   const livePresentation = presentations.find((presentation) => presentation.publishedAtMillis != null) ?? null;
@@ -61,16 +69,19 @@ export function PresentationEditor(props: {
       .filter((action) => action != null),
     [draftActionItemIds, report.actionItems],
   );
+  const missingActionItemCount = draftActionItemIds.filter((id) => report.actionItems.every((action) => action.id !== id)).length;
   const draftChanged = selectedPresentation == null
     || selectedPresentation.tsxSource !== draftSource
     || selectedPresentation.actionItemIds.join("\u0000") !== draftActionItemIds.join("\u0000");
+  const previewOutcome = previewState.source === draftSource ? previewState.outcome : "pending";
 
-  const replacePresentations = useCallback((nextPresentations: GrowthReportPresentation[], publishedAtMillis: number | null) => {
+  const replacePresentations = useCallback((nextPresentations: GrowthReportPresentation[], publishedAtMillis: number | null, publishedByUserId: string | null) => {
     const ordered = [...nextPresentations].sort((a, b) => b.version - a.version);
     setPresentations(ordered);
     props.onReportChange({
       ...report,
       publishedAtMillis,
+      publishedByUserId,
       presentations: ordered,
     });
   }, [props, report]);
@@ -79,8 +90,15 @@ export function PresentationEditor(props: {
     setSelectedPresentationId(presentation.id);
     setDraftSource(presentation.tsxSource);
     setDraftActionItemIds(presentation.actionItemIds);
+    setPreviewState({ source: presentation.tsxSource, outcome: "pending" });
     setRuntimeError(null);
     setError(null);
+  };
+
+  const updateDraftSource = (source: string) => {
+    setDraftSource(source);
+    setPreviewState({ source, outcome: "pending" });
+    setRuntimeError(null);
   };
 
   const onSourceFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -88,8 +106,7 @@ export function PresentationEditor(props: {
     event.currentTarget.value = "";
     if (file == null) return;
     try {
-      setDraftSource(await file.text());
-      setRuntimeError(null);
+      updateDraftSource(await file.text());
       setError(null);
     } catch (fileError) {
       captureError("growth-admin-presentation-file-read", fileError);
@@ -110,6 +127,7 @@ export function PresentationEditor(props: {
       setSelectedPresentationId(created.id);
       setPresentations(nextPresentations);
       props.onReportChange({ ...report, presentations: nextPresentations });
+      setPreviewState({ source: created.tsxSource, outcome: "pending" });
       setRuntimeError(null);
     } catch (saveError) {
       captureError("growth-admin-presentation-create", saveError);
@@ -128,7 +146,7 @@ export function PresentationEditor(props: {
       const nextPresentations = presentations.map((presentation) => presentation.id === published.id
         ? published
         : { ...presentation, publishedAtMillis: null, publishedByUserId: null });
-      replacePresentations(nextPresentations, published.publishedAtMillis);
+      replacePresentations(nextPresentations, published.publishedAtMillis, published.publishedByUserId);
     } catch (publishError) {
       captureError("growth-admin-presentation-publish", publishError);
       setError(publishError instanceof Error ? publishError.message : String(publishError));
@@ -144,7 +162,7 @@ export function PresentationEditor(props: {
     try {
       const unpublished = await unpublishGrowthAdminReportPresentation(props.app, props.projectId, report.id, livePresentation.id);
       const nextPresentations = presentations.map((presentation) => presentation.id === unpublished.id ? unpublished : presentation);
-      replacePresentations(nextPresentations, null);
+      replacePresentations(nextPresentations, null, null);
     } catch (unpublishError) {
       captureError("growth-admin-presentation-unpublish", unpublishError);
       setError(unpublishError instanceof Error ? unpublishError.message : String(unpublishError));
@@ -159,7 +177,9 @@ export function PresentationEditor(props: {
       : [...current, actionId]);
   };
 
-  const moveAction = (index: number, direction: -1 | 1) => {
+  const moveAction = (actionId: string, direction: -1 | 1) => {
+    const index = draftActionItemIds.indexOf(actionId);
+    if (index < 0) return;
     const nextIndex = index + direction;
     if (nextIndex < 0 || nextIndex >= draftActionItemIds.length) return;
     setDraftActionItemIds((current) => {
@@ -189,8 +209,9 @@ export function PresentationEditor(props: {
       {error != null && <DesignAlert variant="error">{error}</DesignAlert>}
       {runtimeError != null && (
         <DesignAlert variant="error">
-          <p className="font-medium">Preview failed before publication</p>
-          <p className="mt-1 whitespace-pre-wrap text-sm">{runtimeError.message}</p>
+          <p className="font-medium">Fix the preview before publishing</p>
+          <p className="mt-1 text-sm">This presentation cannot be published while its preview is failing.</p>
+          <p className="mt-2 whitespace-pre-wrap text-sm">{runtimeError.message}</p>
           {runtimeError.componentStack != null && <pre className="mt-2 max-h-32 overflow-auto text-xs">{runtimeError.componentStack}</pre>}
         </DesignAlert>
       )}
@@ -208,10 +229,7 @@ export function PresentationEditor(props: {
           <textarea
             id={`growth-presentation-source-${report.id}`}
             value={draftSource}
-            onChange={(event) => {
-              setDraftSource(event.target.value);
-              setRuntimeError(null);
-            }}
+            onChange={(event) => updateDraftSource(event.target.value)}
             className="min-h-[24rem] w-full rounded-xl border border-foreground/[0.12] bg-background p-3 font-mono text-xs leading-5 outline-none transition-colors focus:border-foreground/30"
             spellCheck={false}
             aria-label="Customer presentation TSX source"
@@ -240,7 +258,17 @@ export function PresentationEditor(props: {
             {draftSource.trim().length === 0 ? (
               <p className="p-4 text-sm text-muted-foreground">Add source to preview the presentation.</p>
             ) : (
-              <GrowthPresentationSandbox tsxSource={draftSource} onRuntimeError={setRuntimeError} />
+              <GrowthPresentationSandbox
+                tsxSource={draftSource}
+                onReady={() => {
+                  setPreviewState((current) => current.source === draftSource ? { source: current.source, outcome: "ready" } : current);
+                  setRuntimeError(null);
+                }}
+                onRuntimeError={(nextRuntimeError) => {
+                  setPreviewState((current) => current.source === draftSource ? { source: current.source, outcome: "failed" } : current);
+                  setRuntimeError(nextRuntimeError);
+                }}
+              />
             )}
           </div>
         </div>
@@ -278,7 +306,7 @@ export function PresentationEditor(props: {
           )}
           {selectedPresentation != null && (
             <div className="flex flex-wrap items-center gap-2 border-t border-foreground/[0.09] pt-3">
-              <DesignButton size="sm" disabled={pendingMutation || draftChanged} onClick={publishVersion}>
+              <DesignButton size="sm" disabled={pendingMutation || draftChanged || previewOutcome !== "ready"} onClick={publishVersion}>
                 <RocketLaunchIcon className="size-4" />
                 Publish version {selectedPresentation.version}
               </DesignButton>
@@ -290,7 +318,11 @@ export function PresentationEditor(props: {
             </div>
           )}
           <DesignAlert variant="info">
-            Publishing releases this report to the customer. Unpublishing pulls it back immediately; the customer will not see the presentation or its actions.
+            {runtimeError != null
+              ? "Publishing is disabled because the preview is failing. Fix the preview before publishing."
+              : previewOutcome !== "ready"
+                ? "Publishing is disabled until the preview renders successfully. Wait for the preview to finish rendering, then publish to release this report to the customer."
+                : "Publishing releases this report to the customer. Unpublishing pulls it back immediately; the customer will not see the presentation or its actions."}
           </DesignAlert>
         </div>
 
@@ -318,6 +350,11 @@ export function PresentationEditor(props: {
               })}
             </div>
           )}
+          {missingActionItemCount > 0 && (
+            <DesignAlert variant="warning">
+              {missingActionItemCount} previously curated {missingActionItemCount === 1 ? "action is" : "actions are"} no longer in this report and will be skipped when the presentation is shown. Remove {missingActionItemCount === 1 ? "it" : "them"} before saving a new version.
+            </DesignAlert>
+          )}
           {selectedActions.length > 0 && (
             <div className="border-t border-foreground/[0.09] pt-3">
               <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Customer order</p>
@@ -326,10 +363,10 @@ export function PresentationEditor(props: {
                   <div key={action.id} className="flex items-center gap-2 rounded-lg bg-foreground/[0.03] px-3 py-2">
                     <span className="w-5 font-mono text-xs text-muted-foreground">{index + 1}</span>
                     <span className="min-w-0 flex-1 truncate text-sm">{action.title}</span>
-                    <DesignButton size="sm" variant="ghost" disabled={index === 0} onClick={() => moveAction(index, -1)} aria-label={`Move ${action.title} up`}>
+                    <DesignButton size="sm" variant="ghost" disabled={index === 0} onClick={() => moveAction(action.id, -1)} aria-label={`Move ${action.title} up`}>
                       <CaretUpIcon className="size-4" />
                     </DesignButton>
-                    <DesignButton size="sm" variant="ghost" disabled={index === selectedActions.length - 1} onClick={() => moveAction(index, 1)} aria-label={`Move ${action.title} down`}>
+                    <DesignButton size="sm" variant="ghost" disabled={index === selectedActions.length - 1} onClick={() => moveAction(action.id, 1)} aria-label={`Move ${action.title} down`}>
                       <CaretDownIcon className="size-4" />
                     </DesignButton>
                   </div>

@@ -617,10 +617,16 @@ export async function upsertGrowthReport(options: {
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: { id: true, status: true },
     });
+    const existingPresentation = await tx.growthReportPresentation.findFirst({
+      where: { reportId: report.id },
+      select: { id: true },
+    });
     // Re-composing a report may replace its recommendations, but only while they are all still
     // untouched proposals — once the user activated/dismissed anything, their decisions win and a
     // re-POST only refreshes the report prose.
-    if (existingItems.some((item) => item.status !== "proposed")) {
+    // A presentation pins the action rows even when they are still proposals: replacing them would
+    // leave the saved curated ids stale and silently blank the customer's action list.
+    if (existingItems.some((item) => item.status !== "proposed") || existingPresentation != null) {
       return { reportId: report.id, actionItemIds: existingItems.map((item) => item.id) };
     }
     await tx.growthActionItem.deleteMany({ where: { reportId: report.id } });

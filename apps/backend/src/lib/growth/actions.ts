@@ -265,8 +265,6 @@ export async function getGrowthReportBody(tenancy: Tenancy, reportId: string | "
   const base = {
     id: report.id,
     run_id: report.runId,
-    title: report.title,
-    summary: report.summary,
     created_at_millis: report.createdAt.getTime(),
   };
   if (publishedPresentation != null) {
@@ -286,12 +284,15 @@ export async function getGrowthReportBody(tenancy: Tenancy, reportId: string | "
   const workflowRuntimeByItemId = await loadGrowthActionWorkflowRuntimeInfo(tenancy, visibleActionItems);
   return {
     ...base,
+    title: report.title,
+    summary: report.summary,
     action_items: visibleActionItems.map((item) => growthActionItemToWire(item, workflowRuntimeByItemId.get(item.id) ?? null)),
     content_md: report.contentMd,
     document: growthDocumentFromRow(report),
     // Stored Json passes through unchanged: the column shape ([{ id?, kind, title, body_markdown }])
     // is exactly the wire shape, by design (see the comment on the dashboard's reportSchema).
     sections: report.sections ?? null,
+    published_by_user_id: report.publishedByUserId,
   };
 }
 

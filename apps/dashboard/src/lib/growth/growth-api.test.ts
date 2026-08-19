@@ -139,8 +139,6 @@ describe("GrowthReport wire mapping", () => {
   const base = {
     id: "report-1",
     run_id: "run-1",
-    title: "Growth report",
-    summary: "Summary",
     created_at_millis: 1_700_000_000_000,
     action_items: [],
   };
@@ -151,9 +149,17 @@ describe("GrowthReport wire mapping", () => {
       action_items: [{
         id: "action-1",
         type_id: "custom",
+        category: "conversion",
+        tags: ["activation"],
         title: "Review activation",
         description: "Review activation flow",
+        document: { internal: "document" },
         status: "proposed",
+        payload: { internal: "payload" },
+        watched_metrics: [],
+        report_id: "report-1",
+        brief_id: "brief-1",
+        workflow: { workflow_id: "workflow-1", source: "secret", triggers: [], explanation: "internal", rollback_note: "internal", status: "not_deployed", last_run_state: null, warnings: [] },
         has_workflow: true,
         created_at_millis: 1_700_000_000_000,
         activated_at_millis: null,
@@ -164,6 +170,8 @@ describe("GrowthReport wire mapping", () => {
         version: 3,
         tsx_source: "const Dashboard = () => <div />;",
       },
+      content_md: "# Internal analysis",
+      sections: [{ id: "internal", kind: "note", title: "Internal", body_markdown: "Internal" }],
     }));
     expect(report.content).toEqual({
       type: "presentation",
@@ -172,6 +180,10 @@ describe("GrowthReport wire mapping", () => {
       tsxSource: "const Dashboard = () => <div />;",
     });
     expect(report.content.type).toBe("presentation");
+    expect(report).not.toHaveProperty("title");
+    expect(report).not.toHaveProperty("summary");
+    expect(report).not.toHaveProperty("content.contentMd");
+    expect(report).not.toHaveProperty("content.sections");
     expect(report.actionItems).toEqual([{
       id: "action-1",
       typeId: "custom",
@@ -188,6 +200,8 @@ describe("GrowthReport wire mapping", () => {
   test("maps a grandfathered legacy report's document content", () => {
     const report = mapGrowthReport(reportSchema.parse({
       ...base,
+      title: "Growth report",
+      summary: "Summary",
       content_md: "# Analysis",
       document: null,
       sections: [{ id: "section-1", kind: "insight", title: "Insight", body_markdown: "Body" }],

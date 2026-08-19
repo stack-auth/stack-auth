@@ -49,7 +49,9 @@ export function presentationToWire(presentation: {
 /**
  * JSX/TSX cannot be compiled server-side because the customer iframe transpiles it with Babel.
  * Keep the structural checks here; the sandbox performs the real compilation, and the admin
- * preview will surface broken source before staff publishes it.
+ * preview will surface broken source before staff publishes it. The sandbox evaluates scripts, not
+ * modules, so reject obvious top-level import/export statements here; this intentionally favors a
+ * narrow line-start check over a parser to avoid treating those words inside JSX or strings as syntax.
  */
 export function validateGrowthReportPresentationSource(source: string): void {
   if (source.trim().length === 0) {
@@ -60,6 +62,9 @@ export function validateGrowthReportPresentationSource(source: string): void {
   }
   if (!/(?:const|let|var|function|class)\s+Dashboard\b/.test(source)) {
     throw new StatusError(400, "Presentation source must define a top-level Dashboard component.");
+  }
+  if (/^\s*(?:import\s+(?:[\w$,{*]|["'])|export\s+(?:(?:default\s+)?(?:const|let|var|function|class)\b|default\s+\S|\*|\{))/m.test(source)) {
+    throw new StatusError(400, "Presentation source must not use import or export module syntax.");
   }
 }
 
@@ -185,11 +190,12 @@ export async function publishGrowthReportPresentation(options: {
   presentationId: string,
   publishedByUserId: string | null,
 }) {
+  const reportId = requireReportId(options.reportId);
   const presentationId = options.presentationId;
   if (!isUuid(presentationId)) throw new StatusError(404, "Presentation not found.");
   const now = new Date();
   await retryTransaction(globalPrismaClient, async (tx) => {
-    const presentation = await requirePresentationInTenancy(tx, options.tenancy, presentationId, options.reportId);
+    const presentation = await requirePresentationInTenancy(tx, options.tenancy, presentationId, reportId);
     await lockGrowthReport(tx, presentation.reportId);
     await tx.growthReportPresentation.updateMany({
       where: { reportId: presentation.reportId, publishedAt: { not: null } },
@@ -208,9 +214,10 @@ export async function publishGrowthReportPresentation(options: {
 }
 
 export async function unpublishGrowthReportPresentation(options: { tenancy: Tenancy, reportId: string, presentationId: string }) {
+  const reportId = requireReportId(options.reportId);
   if (!isUuid(options.presentationId)) throw new StatusError(404, "Presentation not found.");
   await retryTransaction(globalPrismaClient, async (tx) => {
-    const presentation = await requirePresentationInTenancy(tx, options.tenancy, options.presentationId, options.reportId);
+    const presentation = await requirePresentationInTenancy(tx, options.tenancy, options.presentationId, reportId);
     await lockGrowthReport(tx, presentation.reportId);
     const unpublished = await tx.growthReportPresentation.updateMany({
       where: { id: presentation.id, publishedAt: { not: null } },

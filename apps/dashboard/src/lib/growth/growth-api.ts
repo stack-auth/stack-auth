@@ -371,9 +371,12 @@ const customerActionItemSchema = z.object({
 const reportBaseSchema = z.object({
   id: z.string(),
   run_id: z.string(),
+  created_at_millis: z.number(),
+});
+
+const legacyReportBaseSchema = reportBaseSchema.extend({
   title: z.string(),
   summary: z.string(),
-  created_at_millis: z.number(),
 });
 
 const legacyReportContentSchema = z.object({
@@ -404,7 +407,7 @@ export const reportSchema = z.union([
   reportBaseSchema.extend({
     action_items: z.array(customerActionItemSchema),
   }).merge(presentationReportContentSchema),
-  reportBaseSchema.extend({
+  legacyReportBaseSchema.extend({
     action_items: z.array(actionItemSchema),
   }).merge(legacyReportContentSchema),
 ]);
@@ -530,8 +533,6 @@ export function mapGrowthReport(value: z.infer<typeof reportSchema>): GrowthRepo
     return {
       id: value.id,
       runId: value.run_id,
-      title: value.title,
-      summary: value.summary,
       content: {
         type: "presentation",
         format: value.presentation.format,
