@@ -454,6 +454,9 @@ export const DEFAULT_DEPLOYMENT_IMAGE_REGISTRY = "docker.io";
 // Unqualified repositories on Docker Hub are "official images" and live under
 // this namespace: `postgres` is `library/postgres`.
 export const DEFAULT_DEPLOYMENT_IMAGE_NAMESPACE = "library";
+// Other names for Docker Hub. Written references use these interchangeably, and a
+// definition must not depend on which one the author picked.
+const DOCKER_HUB_REGISTRY_ALIASES = new Set(["index.docker.io", "registry-1.docker.io"]);
 
 // One path component of a repository, per the OCI distribution spec.
 const IMAGE_PATH_COMPONENT_REGEX = /^[a-z0-9]+(?:(?:[._]|__|[-]+)[a-z0-9]+)*$/;
@@ -545,7 +548,11 @@ export function parseDeploymentImageRef(value: string): { ok: true, ref: Deploym
   // Docker's own rule for telling a registry host from a repository namespace.
   const first = components[0];
   const hasRegistry = components.length > 1 && (first.includes(".") || first.includes(":") || first === "localhost");
-  const registry = hasRegistry ? first : DEFAULT_DEPLOYMENT_IMAGE_REGISTRY;
+  // Docker Hub answers to several names; they are one registry, so they
+  // normalize to one, or the same image would canonicalize two different ways.
+  const registry = hasRegistry
+    ? (DOCKER_HUB_REGISTRY_ALIASES.has(first) ? DEFAULT_DEPLOYMENT_IMAGE_REGISTRY : first)
+    : DEFAULT_DEPLOYMENT_IMAGE_REGISTRY;
   const repositoryComponents = hasRegistry ? components.slice(1) : components;
   if (hasRegistry && !IMAGE_REGISTRY_HOST_REGEX.test(registry)) {
     return fail(`image ${JSON.stringify(value)} has an invalid registry host ${JSON.stringify(registry)}`);
@@ -556,10 +563,15 @@ export function parseDeploymentImageRef(value: string): { ok: true, ref: Deploym
       return fail(`image ${JSON.stringify(value)} has an invalid repository path segment ${JSON.stringify(component)} — repository names are lowercase, and may contain digits, dots, dashes and underscores between them`);
     }
   }
-  // `postgres` is `library/postgres`: an unqualified name on the default
-  // registry is an official image, and storing the short spelling would leave
-  // the definition saying something other than what is pulled.
-  const repository = !hasRegistry && repositoryComponents.length === 1
+  // `postgres` is `library/postgres`: a single-component name on Docker Hub is an
+  // official image, and storing the short spelling would leave the definition
+  // saying something other than what is pulled.
+  //
+  // Keyed on the RESOLVED registry rather than on whether one was written, because
+  // Docker applies this whenever the registry is Docker Hub however it was
+  // spelled: `docker.io/postgres` is `library/postgres` too, and treating it as
+  // the repository `postgres` asks the registry for something that does not exist.
+  const repository = registry === DEFAULT_DEPLOYMENT_IMAGE_REGISTRY && repositoryComponents.length === 1
     ? `${DEFAULT_DEPLOYMENT_IMAGE_NAMESPACE}/${repositoryComponents[0]}`
     : repositoryComponents.join("/");
 
@@ -839,6 +851,15 @@ import.meta.vitest?.test("parseDeploymentImageRef fully qualifies every accepted
   // A digest is a reference in its own right and needs no tag.
   const digest = `sha256:${"a".repeat(64)}`;
   expect(parse(`postgres@${digest}`)).toMatchObject({ tag: null, digest, canonical: `docker.io/library/postgres@${digest}` });
+  // The `library/` default follows the REGISTRY, not whether one was written:
+  // Docker applies it to any single-component name on Docker Hub, and the hub
+  // answers to several host names that must all canonicalize to one.
+  for (const written of ["docker.io/postgres:16", "index.docker.io/postgres:16", "registry-1.docker.io/postgres:16"]) {
+    expect(parse(written).canonical).toBe("docker.io/library/postgres:16");
+  }
+  // Already-qualified names, and other registries, are left alone.
+  expect(parse("docker.io/myorg/app:1").canonical).toBe("docker.io/myorg/app:1");
+  expect(parse("ghcr.io/app:1").canonical).toBe("ghcr.io/app:1");
 });
 
 import.meta.vitest?.test("parseDeploymentImageRef refuses references that would not name fixed bytes", ({ expect }) => {

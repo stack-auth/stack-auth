@@ -348,11 +348,15 @@ function useDeploymentBuildLogs(project: AdminProject, deploymentId: string | nu
   return { logs, error, reload: () => setReloadCounter((c) => c + 1) };
 }
 
-export function BuildLogsContent({ deploymentId, outcome, project, isHexclave }: {
+export function BuildLogsContent({ deploymentId, hasBuildLogs, outcome, project, isHexclave }: {
   // The deployment whose build produced this service's image. One deploy is one
   // build — every service of the deployment source is built by the same machine
   // — so the log below is that build's, not this service's alone.
   deploymentId: string | null,
+  // Whether that deploy built anything. A deploy whose every service runs an
+  // already-built image starts no builder, so there is no log to fetch — and
+  // fetching anyway would render an empty stream that looks like a failure.
+  hasBuildLogs: boolean,
   outcome: AdminDeploymentServiceOutcomeJson | null,
   project: AdminProject,
   isHexclave: boolean,
@@ -360,13 +364,23 @@ export function BuildLogsContent({ deploymentId, outcome, project, isHexclave }:
   // Hooks first: useDeploymentBuildLogs has to run on every render, so the
   // "nothing to show" cases below are returned after it rather than
   // short-circuiting above it.
-  const { logs, error, reload } = useDeploymentBuildLogs(project, isHexclave ? null : deploymentId);
+  const { logs, error, reload } = useDeploymentBuildLogs(project, isHexclave || !hasBuildLogs ? null : deploymentId);
 
   if (isHexclave) {
     return (
       <div className="h-full overflow-y-auto p-4">
         <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
           The Hexclave service is deployed and updated for you, so it has no build of its own.
+        </div>
+      </div>
+    );
+  }
+
+  if (deploymentId != null && !hasBuildLogs) {
+    return (
+      <div className="h-full overflow-y-auto p-4">
+        <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
+          Nothing was built for this deploy — every service in it runs an already-built image.
         </div>
       </div>
     );
@@ -666,9 +680,11 @@ export function SettingsContent({ service, isHexclave }: {
   // source rows on an image service would read "./" and "None (Railpack
   // auto-detected build)" — both false, and the second actively misleading.
   const prebuiltImage = service.api?.image ?? null;
-  const fields: { label: string, value: string | null | undefined, fallback: string }[] = [
+  // `fallback` is optional: the Image row below only exists when it has a value,
+  // so a fallback for it would be unreachable.
+  const fields: { label: string, value: string | null | undefined, fallback?: string }[] = [
     ...(prebuiltImage !== null ? [
-      { label: "Image", value: prebuiltImage, fallback: "Not synced yet" },
+      { label: "Image", value: prebuiltImage },
     ] : [
       { label: "Root directory", value: service.api?.root_directory, fallback: "./" },
       // A missing dockerfile_path means "Railpack build" only once a definition was actually
@@ -714,7 +730,7 @@ export function SettingsContent({ service, isHexclave }: {
               "truncate rounded-lg bg-foreground/[0.03] px-2.5 py-1.5 font-mono text-xs ring-1 ring-black/[0.04] dark:ring-white/[0.04]",
               field.value != null && field.value !== "" ? "text-foreground" : "text-muted-foreground",
             )}>
-              {field.value != null && field.value !== "" ? field.value : field.fallback}
+              {field.value != null && field.value !== "" ? field.value : field.fallback ?? ""}
             </div>
           </div>
         ))}

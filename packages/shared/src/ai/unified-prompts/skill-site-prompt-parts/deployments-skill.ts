@@ -7,7 +7,7 @@ import { deindent } from "../../../utils/strings";
 export const deploymentsSkillSection = deindent`
   # Hexclave Deploy
 
-  The Deploy app runs your services as containers built remotely from your source — by default the build is auto-detected with Railpack (https://railpack.com), or you can point a service at your own Dockerfile. You can define multiple services per Hexclave project (e.g. a backend and a frontend). Services are private by default and reach each other over an internal network. Mark a service \`public: true\` to give it a built-in public URL without requiring a custom domain.
+  The Deploy app runs your services as containers. A service is either BUILT remotely from your source — auto-detected with Railpack (https://railpack.com) by default, or from your own Dockerfile — or PULLED from a public image registry by naming an \`image\`, in which case nothing is built. You can define multiple services per Hexclave project (e.g. a backend and a frontend). Services are private by default and reach each other over an internal network. Mark a service \`public: true\` to give it a built-in public URL without requiring a custom domain.
 
   Every service is either a \`"server"\` or a \`"serverless"\`. A \`server\` is a single instance that SUSPENDS when idle and resumes with its memory intact, and it is the only type that may have a persistent disk. A \`serverless\` scales out between \`minInstances\` and \`maxInstances\` and STOPS on scale-down, so each start is a cold start and it can have no disk. Use \`server\` for anything stateful (a database, a queue, anything writing to a volume) and \`serverless\` for stateless web apps and APIs.
 
@@ -38,10 +38,12 @@ export const deploymentsSkillSection = deindent`
         },
       },
       api: { type: "serverless", ports: { 8080: { protocol: "http" } }, rootDirectory: "./api" },
+      cache: { type: "server", ports: { 6379: { protocol: "tcp" } }, image: "redis:7-alpine", minInstances: 0 },
       database: {
         type: "server",
         ports: { 5432: { protocol: "tcp" } },
-        image: "postgres:16",
+        rootDirectory: "./database",
+        dockerfilePath: "Dockerfile",
         persistentVolumes: { pgdata: { path: "/data", sizeGb: 10 } },
         env: { POSTGRES_PASSWORD: secret("POSTGRES_PASSWORD") },
       },
@@ -95,7 +97,7 @@ export const deploymentsSkillSection = deindent`
 
   ## How services are built
 
-  Each service is built remotely — Docker is never required locally. By default (no \`dockerfilePath\`) the build is auto-detected with [Railpack](https://railpack.com), which handles Node, Python, Go, PHP, Java, Ruby, and more out of the box; either way, the image's default command must start a server listening on each configured port on \`0.0.0.0\` and speaking that port's protocol. Set \`dockerfilePath\` to build from your own Dockerfile instead — a Dockerfile in the source is deliberately NOT picked up unless \`dockerfilePath\` names it. A service with an \`image\` is not built at all: nothing is uploaded for it, its deploy takes seconds, and the tag is pinned to the exact image it resolved to on each deploy (redeploy to pick up a tag that has moved). Use it for stateful third-party servers like \`postgres:16\` rather than a Dockerfile that only says \`FROM\`. The reference must carry an explicit tag or digest — a bare \`"postgres"\` means \`:latest\`, which changes under you. To adjust Railpack's detection (custom install/build/start commands, static output dirs), add a \`railpack.json\` to the service's source, or set the equivalent \`RAILPACK_*\` env var on the service. If detection can't work at all, add a Dockerfile and set \`dockerfilePath\`; the remote build's logs are available if a build fails.
+  Each service is built remotely — Docker is never required locally. By default (no \`dockerfilePath\`) the build is auto-detected with [Railpack](https://railpack.com), which handles Node, Python, Go, PHP, Java, Ruby, and more out of the box; either way, the image's default command must start a server listening on each configured port on \`0.0.0.0\` and speaking that port's protocol. Set \`dockerfilePath\` to build from your own Dockerfile instead — a Dockerfile in the source is deliberately NOT picked up unless \`dockerfilePath\` names it. A service with an \`image\` is not built at all: nothing is uploaded for it, its deploy takes seconds, and the tag is pinned to the exact image it resolved to on each deploy (redeploy to pick up a tag that has moved). The reference must carry an explicit tag or digest — a bare \`"postgres"\` means \`:latest\`, which changes under you. Use it for a third-party server you run unmodified, like the \`redis:7-alpine\` cache above; a service that mounts a PERSISTENT VOLUME usually still needs its own small Dockerfile, because the image's data directory has to be moved under the mount point (see Storage below). To adjust Railpack's detection (custom install/build/start commands, static output dirs), add a \`railpack.json\` to the service's source, or set the equivalent \`RAILPACK_*\` env var on the service. If detection can't work at all, add a Dockerfile and set \`dockerfilePath\`; the remote build's logs are available if a build fails.
 
   ## Env vars during the build
 

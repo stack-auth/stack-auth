@@ -16,6 +16,8 @@ import { badRequest } from "./errors.js";
 export const MAX_IMAGE_REF_LENGTH = 512;
 export const DEFAULT_REGISTRY = "docker.io";
 export const DEFAULT_REGISTRY_NAMESPACE = "library";
+// Other names for Docker Hub; references use them interchangeably.
+const DOCKER_HUB_REGISTRY_ALIASES = new Set(["index.docker.io", "registry-1.docker.io"]);
 
 const PATH_COMPONENT_REGEX = /^[a-z0-9]+(?:(?:[._]|__|[-]+)[a-z0-9]+)*$/;
 const TAG_REGEX = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/;
@@ -53,7 +55,7 @@ export function validateImageRef(value: unknown, label: string): ImageRef {
   const atIndex = value.indexOf("@");
   const digest = atIndex === -1 ? null : value.slice(atIndex + 1);
   const beforeDigest = atIndex === -1 ? value : value.slice(0, atIndex);
-  if (digest !== null && !DIGEST_REGEX.test(digest)) {
+  if (digest !== null && !isImageDigest(digest)) {
     throw badRequest(`${label} has an invalid digest (expected "sha256:" followed by 64 lowercase hex characters)`);
   }
 
@@ -71,14 +73,20 @@ export function validateImageRef(value: unknown, label: string): ImageRef {
   if (components.some((component) => component === "")) throw badRequest(`${label} has an empty path segment`);
   const first = components[0];
   const hasRegistry = components.length > 1 && (first.includes(".") || first.includes(":") || first === "localhost");
-  const registry = hasRegistry ? first : DEFAULT_REGISTRY;
+  // Docker Hub answers to several names; they are one registry, so they normalize to one.
+  const registry = hasRegistry
+    ? (DOCKER_HUB_REGISTRY_ALIASES.has(first) ? DEFAULT_REGISTRY : first)
+    : DEFAULT_REGISTRY;
   const repositoryComponents = hasRegistry ? components.slice(1) : components;
   if (hasRegistry && !REGISTRY_HOST_REGEX.test(registry)) throw badRequest(`${label} has an invalid registry host`);
   if (repositoryComponents.length === 0) throw badRequest(`${label} names a registry but no repository`);
   for (const component of repositoryComponents) {
     if (!PATH_COMPONENT_REGEX.test(component)) throw badRequest(`${label} has an invalid repository path segment ${JSON.stringify(component)}`);
   }
-  const repository = !hasRegistry && repositoryComponents.length === 1
+  // Keyed on the RESOLVED registry, not on whether one was written: Docker applies
+  // the `library/` default whenever the registry is Docker Hub however it was
+  // spelled, so `docker.io/postgres` is `library/postgres` too.
+  const repository = registry === DEFAULT_REGISTRY && repositoryComponents.length === 1
     ? `${DEFAULT_REGISTRY_NAMESPACE}/${repositoryComponents[0]}`
     : repositoryComponents.join("/");
 

@@ -440,6 +440,10 @@ export function BoardCanvas({ deployment, deployments }: {
             // service), and the outcome is what that deploy did with this one.
             // `?? null` covers the managed hexclave node, which is in no deploy.
             deploymentId={deployment.id}
+            // False when no builder ever started, because every service of the
+            // deploy ran an already-built image. Distinct from "not deployed
+            // yet", so the Build logs tab can say which it is.
+            hasBuildLogs={deployment.has_build_logs}
             outcome={outcomeByServiceId.get(selected.id) ?? null}
             onClose={() => setSelectedId(null)}
             refresh={refresh}

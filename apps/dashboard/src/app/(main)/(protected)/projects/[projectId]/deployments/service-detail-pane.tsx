@@ -26,6 +26,9 @@ type ServiceDetailPaneProps = {
   // The run THIS deployment gave this service, or null when it never started one (and for the
   // managed hexclave node, which is not deployed at all). Owns the Build logs tab.
   deploymentId: string | null,
+  // Whether that deploy produced a build log at all. An all-prebuilt deploy
+  // starts no builder, so there is nothing to fetch.
+  hasBuildLogs: boolean,
   outcome: AdminDeploymentServiceOutcomeJson | null,
   onClose: () => void,
   refresh: () => Promise<void>,
@@ -66,7 +69,7 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   const content = (() => {
     switch (tab) {
       case "overview": { return <OverviewContent service={service} project={project} isHexclave={isHexclave} />; }
-      case "build-logs": { return <BuildLogsContent deploymentId={props.deploymentId} outcome={props.outcome} project={project} isHexclave={isHexclave} />; }
+      case "build-logs": { return <BuildLogsContent deploymentId={props.deploymentId} hasBuildLogs={props.hasBuildLogs} outcome={props.outcome} project={project} isHexclave={isHexclave} />; }
       case "variables": { return <VariablesContent service={service} services={services} isHexclave={isHexclave} />; }
       case "domains": { return <DomainsContent service={service} project={project} isHexclave={isHexclave} refresh={refresh} />; }
       case "settings": { return <SettingsContent service={service} isHexclave={isHexclave} />; }

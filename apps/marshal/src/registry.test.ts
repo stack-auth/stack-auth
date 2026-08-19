@@ -26,6 +26,19 @@ describe("validateImageRef", () => {
     expect(validateImageRef(`postgres@${digest}`, "image")).toMatchObject({ tag: null, digest });
   });
 
+  it("applies the library/ default whenever the registry is Docker Hub, however it was spelled", () => {
+    // Docker adds `library/` for any single-component name on Docker Hub, not
+    // only for an unqualified one. Keying it on "was a registry written" asked
+    // the registry for `/v2/postgres/...`, which does not exist.
+    for (const written of ["postgres:16", "docker.io/postgres:16", "index.docker.io/postgres:16", "registry-1.docker.io/postgres:16"]) {
+      expect(validateImageRef(written, "image").canonical).toBe("docker.io/library/postgres:16");
+    }
+    // A two-component name on Docker Hub is already qualified and is left alone.
+    expect(validateImageRef("docker.io/myorg/app:1", "image").canonical).toBe("docker.io/myorg/app:1");
+    // Another registry's single-component repository is NOT an official image.
+    expect(validateImageRef("ghcr.io/app:1", "image").canonical).toBe("ghcr.io/app:1");
+  });
+
   it("refuses references that would not name fixed bytes", () => {
     // Marshal is the last line before the runtime and repeats the rules the CLI
     // and the backend already applied, rather than trusting them.

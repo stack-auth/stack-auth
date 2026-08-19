@@ -1078,8 +1078,7 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
     // same deployment or under a machine that starts an hour later.
     const prebuiltImages: Record<string, string> = {};
     for (const target of prebuiltTargets) {
-      const resolved = await resolveImage(validateImageRef(target.image, `target ${target.service_key} image`));
-      prebuiltImages[target.service_key] = resolved.imageRef;
+      prebuiltImages[target.service_key] = await resolveImage(validateImageRef(target.image, `target ${target.service_key} image`));
     }
 
     // Validate the archive before anything else touches it: the presigned PUT the
@@ -1528,7 +1527,10 @@ async function persistDeploymentLog(fly: FlyClient, deployment: StoredDeployment
     // e2e sees the buildTimeEnv selection rule (plain values in, refs out) end to end.
     const lines = [
       { at_millis: deployment.started_at_millis, stream: "stdout" as const, instance: null, text: "MARSHAL_BUILD_START (mock builder)" },
-      ...deployment.targets.flatMap((target, index) => {
+      // Only the targets that were actually BUILT. A prebuilt target never
+      // entered the builder, so claiming a build env for it would let an e2e
+      // assertion pass for a channel production never gives it.
+      ...deployment.targets.filter((target) => target.image === undefined).flatMap((target, index) => {
         const buildEnv = buildTimeEnv(target.spec.env);
         return [
           { at_millis: deployment.started_at_millis + index * 2 + 1, stream: "stdout" as const, instance: null, text: `MARSHAL_TARGET_START ${target.service_key}` },

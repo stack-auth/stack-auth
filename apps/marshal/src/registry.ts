@@ -28,9 +28,18 @@ import { getConfig } from "./config.js";
 import { badRequest } from "./errors.js";
 import { isImageDigest, type ImageRef } from "./image-ref.js";
 
-// Registries answer manifest requests quickly or not at all; a deployment is
-// waiting on this, so it fails fast rather than hanging the request.
-const REGISTRY_TIMEOUT_MS = 10_000;
+// Per-connection INACTIVITY timeout: a registry that stops sending mid-response
+// is abandoned rather than held open.
+const REGISTRY_IDLE_TIMEOUT_MS = 10_000;
+// Wall-clock budget for resolving ONE reference, covering DNS, every redirect
+// hop, and the token handshake.
+//
+// The idle timeout alone is not a bound: it is reset by every byte, so a host
+// that dribbles one byte just under the limit holds the connection open for as
+// long as it likes — and a deployment resolves its targets sequentially while
+// holding the source lease, so that stalls far more than one request. This is
+// the deadline that actually ends it.
+const REGISTRY_TOTAL_TIMEOUT_MS = 20_000;
 // A manifest is kilobytes. Anything larger is not one, and must not be buffered
 // just to find that out.
 const MAX_MANIFEST_BYTES = 2 * 1024 * 1024;
@@ -54,28 +63,22 @@ const MANIFEST_ACCEPT = [
 const REQUIRED_ARCHITECTURE = "amd64";
 const REQUIRED_OS = "linux";
 
-/** The image a deployment target will actually run, pinned to a digest. */
-export type ResolvedImage = {
-  // Fully qualified and digest-pinned: "docker.io/library/postgres@sha256:...".
-  // This is what goes into the spec's `source.image`.
-  imageRef: string,
-  digest: string,
-};
-
 /**
- * Resolves a reference to a digest-pinned one, having checked that the image
- * exists, is publicly pullable, and can run on amd64.
+ * Resolves a reference to the digest-pinned ref a machine will run, having
+ * checked that the image exists, is publicly pullable, and can run on amd64.
  *
  * Both spellings go through the registry: a tag because its digest is unknown,
  * and a digest because everything OTHER than which-bytes is still unknown.
  */
-export async function resolveImage(ref: ImageRef): Promise<ResolvedImage> {
+export async function resolveImage(ref: ImageRef): Promise<string> {
   const digest = getConfig().registryKind === "mock"
     // The mock stands in for the whole registry, digests included: an e2e run
     // must not depend on a public registry being reachable.
     ? ref.digest ?? mockDigestFor(ref)
     : await resolveFromRegistry(ref);
-  return { imageRef: `${ref.registry}/${ref.repository}@${digest}`, digest };
+  // Fully qualified and digest-pinned: "docker.io/library/postgres@sha256:...".
+  // This is what goes into the spec's `source.image`.
+  return `${ref.registry}/${ref.repository}@${digest}`;
 }
 
 /**
@@ -101,13 +104,18 @@ async function resolveFromRegistry(ref: ImageRef): Promise<string> {
   const reference = ref.digest ?? ref.tag;
   const url = `https://${host}/v2/${ref.repository}/manifests/${reference}`;
 
-  let response = await registryGet(url, {});
+  // One budget for the whole resolution, not one per request: the handshake can
+  // take three round trips and each may redirect, so a per-request bound would
+  // still multiply out to minutes.
+  const deadline = Date.now() + REGISTRY_TOTAL_TIMEOUT_MS;
+
+  let response = await registryGet(url, {}, deadline);
   if (response.status === 401) {
     // The standard anonymous-pull handshake: the challenge names where to get a
     // token for this repository, and the token is scoped to it.
-    const token = await fetchAnonymousToken(response.header("www-authenticate"), ref);
+    const token = await fetchAnonymousToken(response.header("www-authenticate"), ref, deadline);
     if (token !== null) {
-      response = await registryGet(url, { Authorization: `Bearer ${token}` });
+      response = await registryGet(url, { Authorization: `Bearer ${token}` }, deadline);
     }
   }
 
@@ -173,7 +181,7 @@ function assertRunnableOnAmd64(body: string, ref: ImageRef): void {
  * anonymous pull token. Returns null when the challenge is not one we can
  * answer, which leaves the caller to report the 401 as "not public".
  */
-async function fetchAnonymousToken(challenge: string | null, ref: ImageRef): Promise<string | null> {
+async function fetchAnonymousToken(challenge: string | null, ref: ImageRef, deadline: number): Promise<string | null> {
   if (challenge === null || !/^Bearer\s/i.test(challenge)) return null;
   const parameters = new Map<string, string>();
   for (const match of challenge.slice("Bearer".length).matchAll(/([a-zA-Z_]+)="([^"]*)"/g)) {
@@ -194,7 +202,7 @@ async function fetchAnonymousToken(challenge: string | null, ref: ImageRef): Pro
   const service = parameters.get("service");
   if (service !== undefined) realmUrl.searchParams.set("service", service);
 
-  const response = await registryGet(realmUrl.toString(), {});
+  const response = await registryGet(realmUrl.toString(), {}, deadline);
   if (response.status < 200 || response.status > 299) return null;
   let parsed: unknown;
   try {
@@ -221,12 +229,13 @@ type RegistryResponse = {
  * registry that redirects to "http://169.254.169.254/" must not be followed just
  * because the first hop was fine.
  */
-async function registryGet(url: string, headers: Record<string, string>): Promise<RegistryResponse> {
+async function registryGet(url: string, headers: Record<string, string>, deadline: number): Promise<RegistryResponse> {
   let current = url;
   for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect++) {
+    assertBeforeDeadline(deadline);
     const target = parseHttpsUrl(current);
     const addresses = await resolvePublicAddresses(target.hostname);
-    const response = await httpsGetPinned(target, headers, addresses[0]);
+    const response = await httpsGetPinned(target, headers, addresses[0], deadline);
     if (response.status < 300 || response.status > 399) return response;
     const location = response.header("location");
     if (location === null) return response;
@@ -241,6 +250,11 @@ async function registryGet(url: string, headers: Record<string, string>): Promis
     headers = {};
   }
   throw badRequest("the registry redirected too many times");
+}
+
+/** Ends a resolution that has already spent its whole budget. */
+function assertBeforeDeadline(deadline: number): void {
+  if (Date.now() >= deadline) throw badRequest("resolving the image took too long");
 }
 
 function parseHttpsUrl(url: string): URL {
@@ -297,8 +311,23 @@ async function resolvePublicAddresses(hostname: string): Promise<string[]> {
  * it the client would resolve the name a second time, and the answer to that
  * second lookup is not the answer this request was authorized against.
  */
-function httpsGetPinned(url: URL, headers: Record<string, string>, address: string): Promise<RegistryResponse> {
+function httpsGetPinned(url: URL, headers: Record<string, string>, address: string, deadline: number): Promise<RegistryResponse> {
   return new Promise((resolve, reject) => {
+    // The absolute cutoff. `request.setTimeout` below only fires on INACTIVITY
+    // and is reset by every byte received, so it cannot bound a slow drip; this
+    // timer destroys the request whatever the socket is doing.
+    const deadlineTimer = setTimeout(() => {
+      request.destroy();
+      reject(badRequest(`the registry ${url.hostname} took too long to answer`));
+    }, Math.max(0, deadline - Date.now()));
+    // Nothing should be kept alive purely by this timer.
+    deadlineTimer.unref();
+    const settle = <T>(finish: (value: T) => void) => (value: T) => {
+      clearTimeout(deadlineTimer);
+      finish(value);
+    };
+    const succeed = settle(resolve);
+    const fail = settle(reject);
     const request = https.request({
       hostname: url.hostname,
       port: url.port === "" ? 443 : Number(url.port),
@@ -318,7 +347,7 @@ function httpsGetPinned(url: URL, headers: Record<string, string>, address: stri
       const declared = Number(response.headers["content-length"] ?? "0");
       if (Number.isFinite(declared) && declared > MAX_MANIFEST_BYTES) {
         response.destroy();
-        reject(badRequest("the registry returned an implausibly large manifest"));
+        fail(badRequest("the registry returned an implausibly large manifest"));
         return;
       }
       const chunks: Buffer[] = [];
@@ -327,12 +356,12 @@ function httpsGetPinned(url: URL, headers: Record<string, string>, address: stri
         total += chunk.byteLength;
         if (total > MAX_MANIFEST_BYTES) {
           response.destroy();
-          reject(badRequest("the registry returned an implausibly large manifest"));
+          fail(badRequest("the registry returned an implausibly large manifest"));
           return;
         }
         chunks.push(chunk);
       });
-      response.on("end", () => resolve({
+      response.on("end", () => succeed({
         status: response.statusCode ?? 0,
         body: Buffer.concat(chunks).toString("utf8"),
         header: (name: string) => {
@@ -340,13 +369,13 @@ function httpsGetPinned(url: URL, headers: Record<string, string>, address: stri
           return typeof value === "string" ? value : (Array.isArray(value) ? value[0] ?? null : null);
         },
       }));
-      response.on("error", () => reject(badRequest(`the registry connection to ${url.hostname} failed`)));
+      response.on("error", () => fail(badRequest(`the registry connection to ${url.hostname} failed`)));
     });
-    request.setTimeout(REGISTRY_TIMEOUT_MS, () => {
+    request.setTimeout(REGISTRY_IDLE_TIMEOUT_MS, () => {
       request.destroy();
-      reject(badRequest(`the registry ${url.hostname} did not answer within ${REGISTRY_TIMEOUT_MS}ms`));
+      fail(badRequest(`the registry ${url.hostname} went quiet for ${REGISTRY_IDLE_TIMEOUT_MS}ms`));
     });
-    request.on("error", () => reject(badRequest(`the registry connection to ${url.hostname} failed`)));
+    request.on("error", () => fail(badRequest(`the registry connection to ${url.hostname} failed`)));
     request.end();
   });
 }
