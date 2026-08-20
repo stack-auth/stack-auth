@@ -6,6 +6,8 @@ import { HexclaveAssertionError, captureError } from '@hexclave/shared/dist/util
 import { Result } from '@hexclave/shared/dist/utils/results';
 import { Sandbox } from '@vercel/sandbox';
 import { Freestyle as FreestyleClient } from 'freestyle';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 
 export type ExecuteJavascriptOptions = {
   /** Cancels provider setup, command execution, and fallback attempts. */
@@ -41,6 +43,68 @@ type JsEngine = {
   execute: (code: string, options: ExecuteJavascriptOptions) => Promise<ExecuteResult>,
 };
 
+// Workflow execution can legitimately use the full 630s engine backstop; the
+// default fetch headers timeout is only 300s, so leave transport time to finish
+// the requested execution plus a small margin while still bounding hung calls.
+const FREESTYLE_TRANSPORT_TIMEOUT_MARGIN_MS = 30_000;
+
+export function getFreestyleTransportTimeoutMs(executionTimeoutMs: number | undefined): number {
+  return (executionTimeoutMs ?? 30_000) + FREESTYLE_TRANSPORT_TIMEOUT_MARGIN_MS;
+}
+
+export async function freestyleFetch(input: RequestInfo | URL, init: RequestInit | undefined, executionTimeoutMs: number | undefined): Promise<Response> {
+  const requestInit = init ?? {};
+  const requestUrl = input instanceof Request ? new URL(input.url) : new URL(input.toString());
+  const requestHeaders = new Headers(input instanceof Request ? input.headers : requestInit.headers);
+  const headers: Record<string, string> = {};
+  for (const [name, value] of requestHeaders) {
+    headers[name] = value;
+  }
+  const body = await new Response(input instanceof Request ? input.body : requestInit.body).arrayBuffer();
+  const requestBody = Buffer.from(body);
+  const requestFunction = requestUrl.protocol === "https:" ? httpsRequest : httpRequest;
+  const transportTimeoutMs = getFreestyleTransportTimeoutMs(executionTimeoutMs);
+
+  return await new Promise<Response>((resolve, reject) => {
+    let settled = false;
+    const rejectOnce = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    const requestHandle = requestFunction(requestUrl, {
+      method: requestInit.method ?? (input instanceof Request ? input.method : "GET"),
+      headers,
+      signal: requestInit.signal ?? (input instanceof Request ? input.signal : undefined),
+    }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer | string) => {
+        chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+      });
+      response.once("error", rejectOnce);
+      response.once("end", () => {
+        if (settled) return;
+        settled = true;
+        const responseHeaders = new Headers();
+        for (const [name, value] of Object.entries(response.headers)) {
+          if (value == null) continue;
+          responseHeaders.set(name, Array.isArray(value) ? value.join(", ") : value);
+        }
+        resolve(new Response(Buffer.concat(chunks), {
+          status: response.statusCode ?? 0,
+          statusText: response.statusMessage,
+          headers: responseHeaders,
+        }));
+      });
+    });
+    requestHandle.once("error", rejectOnce);
+    requestHandle.setTimeout(transportTimeoutMs, () => {
+      requestHandle.destroy(new Error(`Freestyle request exceeded ${transportTimeoutMs}ms.`));
+    });
+    requestHandle.end(requestBody);
+  });
+}
+
 function createFreestyleEngine(): JsEngine {
   return {
     name: 'freestyle',
@@ -61,6 +125,7 @@ function createFreestyleEngine(): JsEngine {
       const freestyle = new FreestyleClient({
         apiKey,
         baseUrl,
+        fetch: (input, init) => freestyleFetch(input, init, options.executionTimeoutMs),
       });
 
       const response = await awaitWithAbortSignal(freestyle.serverless.runs.create({
