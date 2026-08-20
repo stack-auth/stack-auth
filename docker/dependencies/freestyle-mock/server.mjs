@@ -616,7 +616,7 @@ class RuntimeCache {
   constructor() {
     this.entries = new Map();
     this.creationPromises = new Map();
-    this.drainingEntries = new Set();
+    this.drainingEntries = new Map();
   }
 
   async acquire(dependency, signal) {
@@ -630,7 +630,7 @@ class RuntimeCache {
       if (
         !dependency.isDefault &&
         this.nonDefaultCount() >= MAX_NON_DEFAULT_RUNTIMES &&
-        !this.hasDraining(dependency.hash) &&
+        !this.hasSingleDrainingGeneration(dependency.hash) &&
         !(await this.evictInactiveRuntime())
       ) {
         await awaitAbort(this.waitForRuntime(), signal);
@@ -707,7 +707,11 @@ class RuntimeCache {
       } catch (error) {
         logInternalError("dispose detached runtime", error);
       } finally {
-        this.drainingEntries.delete(entry);
+        const draining = this.drainingEntries.get(entry.hash);
+        if (draining) {
+          draining.delete(entry);
+          if (draining.size === 0) this.drainingEntries.delete(entry.hash);
+        }
       }
     })();
   }
@@ -726,7 +730,12 @@ class RuntimeCache {
       this.disposeEntry(entry);
       return;
     }
-    this.drainingEntries.add(entry);
+    let draining = this.drainingEntries.get(entry.hash);
+    if (!draining) {
+      draining = new Set();
+      this.drainingEntries.set(entry.hash, draining);
+    }
+    draining.add(entry);
   }
 
   async evictInactiveRuntime() {
@@ -763,11 +772,9 @@ class RuntimeCache {
     this.detach(entry);
   }
 
-  hasDraining(hash) {
-    for (const entry of this.drainingEntries) {
-      if (entry.hash === hash) return true;
-    }
-    return false;
+  hasSingleDrainingGeneration(hash) {
+    const draining = this.drainingEntries.get(hash);
+    return draining?.size === 1;
   }
 
   nonDefaultCount() {
@@ -775,8 +782,10 @@ class RuntimeCache {
     for (const entry of this.entries.values()) {
       if (!entry.isDefault) count++;
     }
-    for (const entry of this.drainingEntries) {
-      if (!entry.isDefault) count++;
+    for (const draining of this.drainingEntries.values()) {
+      for (const entry of draining) {
+        if (!entry.isDefault) count++;
+      }
     }
     for (const hash of this.creationPromises.keys()) {
       if (hash !== "default") count++;
@@ -787,7 +796,7 @@ class RuntimeCache {
   protectedHashes() {
     return new Set([
       ...this.entries.keys(),
-      ...[...this.drainingEntries].map((entry) => entry.hash),
+      ...this.drainingEntries.keys(),
       ...this.creationPromises.keys(),
     ]);
   }
