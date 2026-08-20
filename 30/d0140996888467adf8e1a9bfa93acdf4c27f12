@@ -1,0 +1,88 @@
+packages/template/src/lib/hexclave-app/apps/implementations/logs.test.ts
+  s_76528f563cdedc::t_4c23e8a8ce3ed8 51,141,162,184
+apps/backend/src/lib/issues/stack-parser.ts
+  s_76528f563cdedc::t_261e0a212e4e67 301
+apps/backend/src/lib/issues/grouping.ts
+  s_76528f563cdedc::t_1dc8bbbc220411 9
+apps/dashboard/next.config.mjs
+  s_94ba030cc2b037::t_e3b3cca4418713 73-82
+apps/dashboard/scripts/copy-swc-helpers-into-standalone.test.ts
+  s_94ba030cc2b037::t_c682bc998880d4 1-32
+apps/backend/src/lib/otlp/metric-query.test.ts
+  s_76528f563cdedc::t_b8e6e172ba1daa 103,119
+apps/e2e/tests/backend/endpoints/api/v1/issues.test.ts
+  s_76528f563cdedc::t_78e74fb99882cb 9,17,66,91
+packages/template/src/lib/hexclave-app/apps/implementations/logs.ts
+  s_76528f563cdedc::t_4c23e8a8ce3ed8 205
+apps/backend/src/lib/artifacts/artifact-archive-safety.test.ts
+  s_76528f563cdedc::t_1dc8bbbc220411 68
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/trace-utils.ts
+  s_76528f563cdedc::t_63241ba5581f6a 34-35
+packages/template/src/lib/hexclave-app/apps/implementations/otel-log-facade.test.ts
+  s_76528f563cdedc::t_4c23e8a8ce3ed8 102
+apps/backend/src/lib/issues/issue-store.ts
+  s_76528f563cdedc::t_261e0a212e4e67 231,370
+apps/backend/src/lib/clickhouse.tsx
+  s_76528f563cdedc::t_704e12abb1363d 16
+packages/template/src/lib/hexclave-app/apps/implementations/telemetry-config.test.ts
+  s_76528f563cdedc::t_704e12abb1363d 1,7,10,15-17,33,39
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.test.ts
+  s_76528f563cdedc::t_704e12abb1363d 28,547,564,576-578,580-583
+apps/dashboard/scripts/dev-rde-production.mjs
+  s_94ba030cc2b037::t_ec557c925e6148 54-55
+  s_94ba030cc2b037::t_35d91bc2686d91 6,10
+apps/backend/src/lib/error-ingest/error-ingest-policy.test.ts
+  s_76528f563cdedc::t_1dc8bbbc220411 99
+apps/backend/src/lib/clickhouse.test.ts
+  s_76528f563cdedc::t_704e12abb1363d 2,34-45
+  s_76528f563cdedc::t_6be1fa4e83a0f7 46-47
+apps/backend/src/lib/issues/issue-reconciler.ts
+  s_76528f563cdedc::t_261e0a212e4e67 20
+apps/backend/src/lib/issues/issue-merge.test.ts
+  s_76528f563cdedc::t_261e0a212e4e67 364
+apps/backend/src/lib/symbolication/javascript-symbolication.ts
+  s_76528f563cdedc::t_b8e6e172ba1daa 712
+packages/template/src/lib/hexclave-app/apps/implementations/error-capture.test.ts
+  s_76528f563cdedc::t_9f5a3e53261e55 327
+apps/dashboard/scripts/copy-swc-helpers-into-standalone.mjs
+  s_94ba030cc2b037::t_4d91d391426d78 1-36
+packages/template/src/lib/hexclave-app/apps/implementations/client-analytics.ts
+  s_76528f563cdedc::t_9f5a3e53261e55 25,117
+packages/shared/src/utils/analytics-wire.test.ts
+  s_76528f563cdedc::t_78e74fb99882cb 71
+.claude/CLAUDE-KNOWLEDGE.md
+  s_94ba030cc2b037::t_8fc8ff96bf8215 5-8
+apps/backend/src/lib/issues/issue-merge.ts
+  s_76528f563cdedc::t_261e0a212e4e67 9
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issues-data.ts
+  s_76528f563cdedc::t_63241ba5581f6a 69
+packages/cli/scripts/copy-runtime-assets.mjs
+  s_94ba030cc2b037::t_d95abc92b36dea 5
+  s_94ba030cc2b037::t_16bce8ebf63840 285-286
+packages/template/src/lib/hexclave-app/apps/implementations/debug-ids.ts
+  s_76528f563cdedc::t_9f5a3e53261e55 127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "30d0140996888467adf8e1a9bfa93acdf4c27f12",
+  "prompts": {},
+  "sessions": {
+    "s_76528f563cdedc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0210d-a698-7041-a0d6-c47111774a13",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_94ba030cc2b037": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "876d0e82-1016-41b8-a89e-7189f2de5ab9",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
