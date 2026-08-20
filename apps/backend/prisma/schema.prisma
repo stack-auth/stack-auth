@@ -2649,10 +2649,15 @@ model Deployment {
   status DeploymentStatus @default(QUEUED)
   error  String?
 
-  // ONE build per deployment: the source's whole tree is uploaded once and
-  // every service's image is built by one builder machine, so the build (and
-  // its log) belongs to the deployment rather than to any single service.
-  // Null until the runtime has accepted the batch build.
+  // The runtime's id for this deployment. Null until the runtime has accepted
+  // it.
+  //
+  // Named "build" for historical reasons: when a deployment builds anything, it
+  // builds ONCE — the source tree is uploaded once and every source-built
+  // service's image comes out of one builder machine, so the build and its log
+  // belong to the deployment rather than to any single service. A deployment
+  // whose every service runs an already-built image starts no builder at all and
+  // still has an id here; see hasBuildLogs for whether a log exists.
   marshalBuildId String?
 
   // Whether this deployment produced a BUILD LOG, as the runtime reported when

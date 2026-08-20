@@ -71,7 +71,10 @@ export function validateImageRef(value: unknown, label: string): ImageRef {
 
   const components = name.split("/");
   if (components.some((component) => component === "")) throw badRequest(`${label} has an empty path segment`);
-  const first = components[0];
+  // Lowercased: DNS is case-insensitive, so `DOCKER.IO` is a legal spelling of
+  // the hub, and an uppercase one matched neither the alias set nor the
+  // `library/` rule nor the registry-host swap.
+  const first = components[0].toLowerCase();
   const hasRegistry = components.length > 1 && (first.includes(".") || first.includes(":") || first === "localhost");
   // Docker Hub answers to several names; they are one registry, so they normalize to one.
   const registry = hasRegistry
@@ -79,6 +82,11 @@ export function validateImageRef(value: unknown, label: string): ImageRef {
     : DEFAULT_REGISTRY;
   const repositoryComponents = hasRegistry ? components.slice(1) : components;
   if (hasRegistry && !REGISTRY_HOST_REGEX.test(registry)) throw badRequest(`${label} has an invalid registry host`);
+  // Range-checked rather than spelled out in the regex, which would be unreadable.
+  const registryPort = hasRegistry ? /:(\d+)$/.exec(registry) : null;
+  if (registryPort !== null && (Number(registryPort[1]) < 1 || Number(registryPort[1]) > 65535)) {
+    throw badRequest(`${label} has an invalid registry port ${registryPort[1]} (must be between 1 and 65535)`);
+  }
   if (repositoryComponents.length === 0) throw badRequest(`${label} names a registry but no repository`);
   for (const component of repositoryComponents) {
     if (!PATH_COMPONENT_REGEX.test(component)) throw badRequest(`${label} has an invalid repository path segment ${JSON.stringify(component)}`);

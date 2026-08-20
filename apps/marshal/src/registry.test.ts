@@ -37,6 +37,22 @@ describe("validateImageRef", () => {
     expect(validateImageRef("docker.io/myorg/app:1", "image").canonical).toBe("docker.io/myorg/app:1");
     // Another registry's single-component repository is NOT an official image.
     expect(validateImageRef("ghcr.io/app:1", "image").canonical).toBe("ghcr.io/app:1");
+    // DNS is case-insensitive, so an uppercase host is a legal spelling of the
+    // same registry — and must not miss the alias set or the `library/` rule.
+    expect(validateImageRef("DOCKER.IO/postgres:16", "image").canonical).toBe("docker.io/library/postgres:16");
+    expect(validateImageRef("Index.Docker.IO/postgres:16", "image").canonical).toBe("docker.io/library/postgres:16");
+    // A non-hub host is lowercased but keeps its own identity.
+    expect(validateImageRef("GHCR.IO/org/app:1", "image").canonical).toBe("ghcr.io/org/app:1");
+  });
+
+  it("refuses a registry port outside 1-65535", () => {
+    // Accepted at authoring, these only failed once the runtime tried to build a
+    // URL from them — a deploy-time "invalid registry URL" instead of a
+    // deploy-file diagnostic.
+    expect(() => validateImageRef("registry.example.com:99999/team/app:v1", "image")).toThrow(/invalid registry port/);
+    expect(() => validateImageRef("registry.example.com:0/team/app:v1", "image")).toThrow(/invalid registry port/);
+    expect(validateImageRef("registry.example.com:65535/team/app:v1", "image").registry).toBe("registry.example.com:65535");
+    expect(validateImageRef("registry.example.com:1/team/app:v1", "image").registry).toBe("registry.example.com:1");
   });
 
   it("refuses references that would not name fixed bytes", () => {

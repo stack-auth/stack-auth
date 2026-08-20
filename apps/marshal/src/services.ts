@@ -1076,10 +1076,20 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
     // Resolved once, here, and never again: the digest is what every apply of
     // this deployment names, so the bytes cannot change under a redeploy of the
     // same deployment or under a machine that starts an hour later.
+    //
+    // Resolved CONCURRENTLY. Each reference carries its own wall-clock deadline,
+    // but a sequential loop multiplies them: at the 20-target cap that is twenty
+    // deadlines end to end, far past the backend's own timeout on this call. The
+    // backend would give up and mark the deployment failed while Marshal carried
+    // on to create apps and write a record nothing ever polls again. Resolving
+    // together bounds the whole step at roughly one deadline, and the target set
+    // is capped so the fan-out is small.
     const prebuiltImages: Record<string, string> = {};
-    for (const target of prebuiltTargets) {
-      prebuiltImages[target.service_key] = await resolveImage(validateImageRef(target.image, `target ${target.service_key} image`));
-    }
+    const resolved = await Promise.all(prebuiltTargets.map(async (target) => ({
+      serviceKey: target.service_key,
+      imageRef: await resolveImage(validateImageRef(target.image, `target ${target.service_key} image`)),
+    })));
+    for (const entry of resolved) prebuiltImages[entry.serviceKey] = entry.imageRef;
 
     // Validate the archive before anything else touches it: the presigned PUT the
     // client used stays valid until it expires, so building from it directly would
@@ -1480,7 +1490,10 @@ export function deploymentToApiShape(deployment: StoredDeployment): Deployment {
     // wants to see progress in.
     services: deployment.order.flat().flatMap((key) => {
       const state = lookup(deployment.services, key);
-      return state === undefined ? [] : [state];
+      // `image` is normalized rather than passed through: records stored before
+      // it existed have no such field, and the contract declares it present-
+      // or-null. Without this the runtime would omit a key it says it returns.
+      return state === undefined ? [] : [{ ...state, image: state.image ?? null }];
     }),
   };
 }

@@ -546,7 +546,12 @@ export function parseDeploymentImageRef(value: string): { ok: true, ref: Deploym
     return fail(`image ${JSON.stringify(value)} has an empty path segment`);
   }
   // Docker's own rule for telling a registry host from a repository namespace.
-  const first = components[0];
+  //
+  // Lowercased first: DNS is case-insensitive, so `DOCKER.IO` is a legal way to
+  // write the hub — but an uppercase spelling matched neither the alias set nor
+  // the `library/` rule nor the registry-host swap, and ended up asking Docker
+  // Hub's WEB host for a repository that does not exist there.
+  const first = components[0].toLowerCase();
   const hasRegistry = components.length > 1 && (first.includes(".") || first.includes(":") || first === "localhost");
   // Docker Hub answers to several names; they are one registry, so they
   // normalize to one, or the same image would canonicalize two different ways.
@@ -556,6 +561,14 @@ export function parseDeploymentImageRef(value: string): { ok: true, ref: Deploym
   const repositoryComponents = hasRegistry ? components.slice(1) : components;
   if (hasRegistry && !IMAGE_REGISTRY_HOST_REGEX.test(registry)) {
     return fail(`image ${JSON.stringify(value)} has an invalid registry host ${JSON.stringify(registry)}`);
+  }
+  // The port is range-checked here rather than written into the regex: a regex
+  // that spells out 1–65535 is unreadable, and an out-of-range port would
+  // otherwise be accepted at sync and only fail when the runtime tried to build
+  // a URL from it.
+  const registryPort = hasRegistry ? /:(\d+)$/.exec(registry) : null;
+  if (registryPort !== null && (Number(registryPort[1]) < 1 || Number(registryPort[1]) > 65535)) {
+    return fail(`image ${JSON.stringify(value)} has an invalid registry port ${registryPort[1]} (must be between 1 and 65535)`);
   }
   if (repositoryComponents.length === 0) return fail(`image ${JSON.stringify(value)} names a registry but no repository`);
   for (const component of repositoryComponents) {
@@ -860,6 +873,24 @@ import.meta.vitest?.test("parseDeploymentImageRef fully qualifies every accepted
   // Already-qualified names, and other registries, are left alone.
   expect(parse("docker.io/myorg/app:1").canonical).toBe("docker.io/myorg/app:1");
   expect(parse("ghcr.io/app:1").canonical).toBe("ghcr.io/app:1");
+  // DNS is case-insensitive, so an uppercase host names the same registry.
+  expect(parse("DOCKER.IO/postgres:16").canonical).toBe("docker.io/library/postgres:16");
+  expect(parse("Index.Docker.IO/postgres:16").canonical).toBe("docker.io/library/postgres:16");
+  expect(parse("GHCR.IO/org/app:1").canonical).toBe("ghcr.io/org/app:1");
+});
+
+import.meta.vitest?.test("parseDeploymentImageRef refuses a registry port outside 1-65535", ({ expect }) => {
+  // Refused at authoring rather than at deploy: the runtime can only report
+  // these as an unbuildable URL, long after the definition was synced.
+  const message = (value: string) => {
+    const result = parseDeploymentImageRef(value);
+    if (result.ok) throw new Error(`expected ${value} to be rejected`);
+    return result.message;
+  };
+  expect(message("registry.example.com:99999/team/app:v1")).toMatch(/invalid registry port/);
+  expect(message("registry.example.com:0/team/app:v1")).toMatch(/invalid registry port/);
+  expect(parseDeploymentImageRef("registry.example.com:65535/team/app:v1").ok).toBe(true);
+  expect(parseDeploymentImageRef("localhost:5000/app:v1").ok).toBe(true);
 });
 
 import.meta.vitest?.test("parseDeploymentImageRef refuses references that would not name fixed bytes", ({ expect }) => {

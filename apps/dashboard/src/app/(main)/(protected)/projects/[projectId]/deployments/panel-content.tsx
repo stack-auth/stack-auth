@@ -380,7 +380,15 @@ export function BuildLogsContent({ deploymentId, hasBuildLogs, outcome, project,
     return (
       <div className="h-full overflow-y-auto p-4">
         <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
-          Nothing was built for this deploy — every service in it runs an already-built image.
+          <div>Nothing was built for this deploy — every service in it runs an already-built image.</div>
+          {/* The digest still belongs here. It is the only place the exact bytes
+              this deploy ran are shown — the Settings panel names the tag the
+              author wrote, which is a different fact — and returning early
+              without it would hide that from precisely the deploys where the
+              tag alone does not identify what is running. */}
+          {outcome?.image != null && (
+            <div className="mt-2 truncate font-mono text-[11px]" title={outcome.image}>{outcome.image}</div>
+          )}
         </div>
       </div>
     );
