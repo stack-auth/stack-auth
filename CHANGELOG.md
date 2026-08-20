@@ -4,7 +4,9 @@
 
 ## 8/21/26
 
-- _(entries added throughout the week)_
+![AI answering a natural language query in Cmd+K](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-cmdk-ai-search.gif)
+
+- Cmd+K now answers natural language questions with AI, so you can just ask instead of searching.
 
 ## 8/14/26
 
