@@ -420,7 +420,7 @@ describe("growth workflow orchestration e2e (mock Eve)", { timeout: 90_000 }, ()
   });
 
   it("retries exhausted phases with fresh token anchors and attempt budgets", { timeout: 300_000 }, async ({ expect }) => {
-    await withGrowthMockEve(expect, async (mock) => {
+    await withMockEve(async (mock) => {
       const { projectId, branchId } = await setUpOnboardedProject();
       const scope: AgentScope = { project_id: projectId, branch_id: branchId };
 
@@ -484,7 +484,7 @@ describe("growth workflow orchestration e2e (mock Eve)", { timeout: 90_000 }, ()
 
       const redispatchTick = await bridgeCall("analysis/tick", { run_id: runId });
       expect(redispatchTick.status).toBe(200);
-      const freshDispatch = await mock.waitForDispatch((candidate) => isAnalysisPhaseDispatchFor(candidate, projectId, runId, "website-research", 1));
+      const freshDispatch = await mock.waitForDispatch((candidate) => isAnalysisPhaseDispatchFor(candidate, projectId, runId, "website-research", 1) && candidate.respondedWithStatus === 200);
       expect(freshDispatch.respondedWithStatus).toBe(200);
       expect(freshDispatch.body.agent_token).toMatch(/^grt_/);
       expect(freshDispatch.body.agent_token).not.toBe(oldToken);

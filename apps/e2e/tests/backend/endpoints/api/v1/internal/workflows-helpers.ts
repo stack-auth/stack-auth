@@ -13,15 +13,21 @@ export const CRON_AUTH = { "authorization": "Bearer mock_cron_secret" };
 const TICK_REQUEST_TIMEOUT_MS = 660_000;
 const TICK_DELAY_MS = 1_000;
 
+function isAbortError(error: unknown): boolean {
+  if (error instanceof Error && error.name === "AbortError") return true;
+  return error != null && typeof error === "object" && "code" in error && error.code === "ABORT_ERR";
+}
+
 export function randomSlug(prefix: string): string {
   return `${prefix}-${generateSecureRandomString(8).toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "x"}`;
 }
 
-export async function tickWorkflowEngine(expect: ExpectStatic): Promise<void> {
+export async function tickWorkflowEngine(expect: ExpectStatic, signal?: AbortSignal): Promise<void> {
   const url = new URL("/api/v1/internal/workflow-engine-step?only_one_step=true", STACK_BACKEND_BASE_URL);
   const status = await new Promise<number>((resolve, reject) => {
     const requestHandle = request(url, {
       method: "GET",
+      signal,
       headers: {
         ...CRON_AUTH,
         "x-stack-disable-artificial-development-delay": "yes",
@@ -44,11 +50,15 @@ export async function tickWorkflowEngine(expect: ExpectStatic): Promise<void> {
 export function startBackgroundWorkflowEngineTicks(expect: ExpectStatic): { stop: () => Promise<void> } {
   let stopped = false;
   let tickError: unknown = null;
+  const abortController = new AbortController();
   const loop = (async () => {
     while (!stopped) {
       try {
-        await tickWorkflowEngine(expect);
+        await tickWorkflowEngine(expect, abortController.signal);
       } catch (error) {
+        if (abortController.signal.aborted && isAbortError(error)) {
+          break;
+        }
         tickError = error;
         stopped = true;
         break;
@@ -60,6 +70,7 @@ export function startBackgroundWorkflowEngineTicks(expect: ExpectStatic): { stop
   return {
     async stop() {
       stopped = true;
+      abortController.abort();
       await loop;
       if (tickError != null) throw tickError;
     },
@@ -68,10 +79,22 @@ export function startBackgroundWorkflowEngineTicks(expect: ExpectStatic): { stop
 
 export async function withBackgroundWorkflowEngineTicks<T>(expect: ExpectStatic, fn: () => Promise<T>): Promise<T> {
   const driver = startBackgroundWorkflowEngineTicks(expect);
+  let fnFailed = false;
   try {
     return await fn();
+  } catch (error) {
+    fnFailed = true;
+    throw error;
   } finally {
-    await driver.stop();
+    if (fnFailed) {
+      try {
+        await driver.stop();
+      } catch {
+        // Preserve the test failure that caused teardown.
+      }
+    } else {
+      await driver.stop();
+    }
   }
 }
 
