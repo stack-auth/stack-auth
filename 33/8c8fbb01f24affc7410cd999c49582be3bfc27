@@ -1,0 +1,24 @@
+apps/backend/src/lib/plan-metering.ts
+  s_07ee1571c53717::t_8874d8da466d85 60-66
+apps/backend/src/lib/plan-metering.test.ts
+  s_07ee1571c53717::t_b2f8f610dac7ae 60,62
+  s_07ee1571c53717::t_484c23c611cf7a 86
+  s_07ee1571c53717::t_4f46cdfcdef431 11
+  s_07ee1571c53717::t_21b3616b3b5058 99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "338c8fbb01f24affc7410cd999c49582be3bfc27",
+  "prompts": {},
+  "sessions": {
+    "s_07ee1571c53717": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c97810af-205e-46c0-9b12-07da7c7187a1",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
