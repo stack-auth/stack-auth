@@ -20,6 +20,9 @@ export type AdminWorkflow = {
   displayName: string,
   latestVersion: number,
   triggers: AdminWorkflowTrigger[],
+  /** Paused workflows create no new runs; their in-flight runs keep going. */
+  isPaused: boolean,
+  pausedAtMillis: number | null,
   stats: {
     activeRuns: number,
     sleepingRuns: number,
@@ -137,6 +140,8 @@ export function adminWorkflowFromCrud(crud: WorkflowSummaryJson): AdminWorkflow 
     triggers: crud.triggers.map((trigger) => trigger.type === "event"
       ? { type: "event", eventType: trigger.event_type }
       : { type: "schedule", cron: trigger.cron, timezone: trigger.timezone }),
+    isPaused: crud.is_paused,
+    pausedAtMillis: crud.paused_at_millis,
     stats: {
       activeRuns: crud.stats.active_runs,
       sleepingRuns: crud.stats.sleeping_runs,
