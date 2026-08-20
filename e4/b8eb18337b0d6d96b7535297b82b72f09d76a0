@@ -1,0 +1,200 @@
+docs-mintlify/guides/getting-started/setup.mdx
+  s_094f33301656b0::t_16f43df37b9a1e 9
+  s_094f33301656b0::t_4121bd857e2b5f 1172,1194
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_094f33301656b0::t_16f43df37b9a1e 3
+.dockerignore
+  s_094f33301656b0::t_e28bf261181252 13-14
+apps/backend/package.json
+  s_094f33301656b0::t_f7b9b710538d8c 3
+apps/backend/prisma/migrations/20260726000000_add_workflow_pause/migration.sql
+  s_094f33301656b0::t_5e5e6c0774e5b3 1-4
+apps/backend/prisma/migrations/20260726000000_add_workflow_pause/tests/paused-at-column.ts
+  s_094f33301656b0::t_1867c5374f1760 1-67
+apps/backend/prisma/schema.prisma
+  s_094f33301656b0::t_d0ef74b8968c29 3168-3178
+apps/backend/src/app/api/latest/internal/growth/admin/run-now/route.tsx
+  s_094f33301656b0::t_4bb26744727c9c 1-49
+apps/backend/src/app/api/latest/internal/workflows/[workflow_id]/route.tsx
+  s_094f33301656b0::t_099ede1129b258 1,3-43
+apps/backend/src/instrument.ts
+  s_094f33301656b0::t_f5dcd6a1b52f6f 14,78,80
+apps/backend/src/lib/growth/admin-recovery.test.ts
+  s_094f33301656b0::t_212ba3846c7d07 1-43
+apps/backend/src/lib/growth/admin-recovery.ts
+  s_094f33301656b0::t_c5e707a9b05065 1-103
+apps/backend/src/sentry-scrubbing.test.ts
+  s_094f33301656b0::t_8aec2f2e8e23c9 1,4,98,235-633
+apps/backend/src/sentry-scrubbing.ts
+  s_094f33301656b0::t_c9599f07b70a2f 2-3,81-202,204-206,216,285-300
+apps/bulldozer-js/package.json
+  s_094f33301656b0::t_43a2da1a49fd80 3
+apps/dashboard/package.json
+  s_094f33301656b0::t_5872d4e177368a 3
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/cloud-project-onboarding.test.ts
+  s_094f33301656b0::t_e649959014bec4 1-87
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/cloud-project-onboarding.tsx
+  s_094f33301656b0::t_e4c4d27efc6fbe 1-688
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/components.tsx
+  s_094f33301656b0::t_dd986c7fb28452 48,361,531,539-545,744,927,933-1023,1035-1037,1048-1049,1067
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/content.test.tsx
+  s_094f33301656b0::t_9ecbabdc7cc134 12-13,21-22,113-141,146,153-156,158,160-161,197-205,218-220,235,238,262,265,270,274-294,307-324,328-332
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/content.tsx
+  s_094f33301656b0::t_ef29796ddebfe1 25,30-34,44-48,80,127-145,154,174-178,182,214,236,335,340-342,348,351-360,468-492,498
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/project-onboarding-wizard.test.tsx
+  s_094f33301656b0::t_16dac03bfb53c7 133,137-144,209,224-225,228-232,251-310
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/project-onboarding-wizard.tsx
+  s_094f33301656b0::t_b421b491b0683a 498,684,699-705
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/setup-page.tsx
+  s_094f33301656b0::t_66733ab9485842 86-90
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/gtm/admin/interview-card.tsx
+  s_094f33301656b0::t_aba37980de8b68 5,39-46,192
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/gtm/admin/page-client.tsx
+  s_094f33301656b0::t_5f38e74464c1df 18,92
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/gtm/admin/run-now-card.tsx
+  s_094f33301656b0::t_2dba56175545a4 1-47
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/workflows/shared.tsx
+  s_094f33301656b0::t_c5828e9580d5e8 23,142-147,154,160-206,260-267,275-280,364-378,391,395,397
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/workflows/workflow-detail.tsx
+  s_094f33301656b0::t_5dbeff6162057f 9,19,22,56,61-72,86-89,101,201-204,283-292,294,420,467-477,498-504
+apps/dashboard/src/lib/growth/growth-api.ts
+  s_094f33301656b0::t_058958a26f1e77 2,674-679,723-735
+apps/dashboard/src/lib/growth/growth-demo-data.ts
+  s_094f33301656b0::t_efb50a19099b65 937-938,948-949,959-960
+apps/dev-launchpad/package.json
+  s_094f33301656b0::t_863aa3e60de8b9 3
+apps/e2e/package.json
+  s_094f33301656b0::t_38de3741e4e990 3
+apps/e2e/tests/backend/endpoints/api/v1/internal/growth/admin-overview.test.ts
+  s_094f33301656b0::t_2d2662ce727b20 74-83
+apps/e2e/tests/backend/endpoints/api/v1/internal/projects.test.ts
+  s_094f33301656b0::t_e5d080acec5b92 162-201
+apps/e2e/tests/backend/endpoints/api/v1/internal/workflows.test.ts
+  s_094f33301656b0::t_4d2ce652418550 39-58,671-762
+apps/growth-agent/agent/lib/browse.test.ts
+  s_094f33301656b0::t_ab4a79fba0e528 2,36,43-108
+apps/growth-agent/agent/lib/browse.ts
+  s_094f33301656b0::t_0829b19d83f415 3,29,62-66,79-82,89-225,292-294
+apps/growth-agent/agent/lib/growth-document.test.ts
+  s_094f33301656b0::t_188e66891f22fc 2-86,109
+apps/growth-agent/agent/lib/growth-document.ts
+  s_094f33301656b0::t_3e31589ea7258c 3-191,233-235,237-281
+apps/growth-agent/agent/subagents/data-analyst/tools/save-findings.ts
+  s_094f33301656b0::t_7154bb4fbd5820 5,13
+apps/growth-agent/agent/subagents/data-analyst/tools/save-notes.ts
+  s_094f33301656b0::t_9f6051646fce00 5,13
+apps/growth-agent/agent/subagents/website-research/tools/browse-page.ts
+  s_094f33301656b0::t_33778390e29895 3,7-9,11,15-20
+apps/growth-agent/agent/subagents/website-research/tools/capture-homepage-screenshot.ts
+  s_094f33301656b0::t_e3ecf6b00fc0c3 3,13-14,17,25-40
+apps/growth-agent/agent/subagents/website-research/tools/save-findings.ts
+  s_094f33301656b0::t_a4acab3169dcb8 5,14
+apps/growth-agent/package.json
+  s_094f33301656b0::t_bfb448eb3d0d9a 3
+apps/hosted-components/package.json
+  s_094f33301656b0::t_a7501483259eab 4
+apps/internal-tool/package.json
+  s_094f33301656b0::t_7b1a4f36e5ace9 4
+apps/marshal/package.json
+  s_094f33301656b0::t_07235667bcc362 3
+apps/mcp/package.json
+  s_094f33301656b0::t_23dbc1d82e3db8 3
+apps/mock-oauth-server/package.json
+  s_094f33301656b0::t_f15a1acb7430e8 3
+apps/skills/package.json
+  s_094f33301656b0::t_6dde9b582fed96 3
+apps/skills/src/ask-route.test.ts
+  s_094f33301656b0::t_8ca001cbb8b030 80-89
+apps/skills/src/ask-route.ts
+  s_094f33301656b0::t_5ca5e7630620b6 68
+docker/backend/Dockerfile
+  s_094f33301656b0::t_083f700960e068 23-26,36-38
+docker/dependencies/docker.compose.yaml
+  s_094f33301656b0::t_b17bbfcde7733b 244-246,253-254,264
+docker/dependencies/freestyle-mock/server.mjs
+  s_094f33301656b0::t_81c87facb8b2b7 40-55,209-246,619,633,692,698-740,760-763,767,772-777,781,783,785-788,790-791,793,799,1163-1165,1167,1185,1194,1239,1313,1332-1334,1336-1341
+docker/server/Dockerfile
+  s_094f33301656b0::t_0b59f457ff36c9 17-20,31-33
+docs-mintlify/package.json
+  s_094f33301656b0::t_8a8d9bdc2a092d 3
+examples/cjs-test/package.json
+  s_094f33301656b0::t_2aa6302031e98a 3
+examples/convex/package.json
+  s_094f33301656b0::t_b1585ab67a3c4c 3
+examples/demo/package.json
+  s_094f33301656b0::t_81a8fc3acec043 3
+examples/docs-examples/package.json
+  s_094f33301656b0::t_62e1434c255817 3
+examples/e-commerce/package.json
+  s_094f33301656b0::t_0625e7ae0bc16f 3
+examples/js-example/package.json
+  s_094f33301656b0::t_e4a80c1f23f170 3
+examples/lovable-react-18-example/package.json
+  s_094f33301656b0::t_8f19f3a805b794 4
+examples/middleware/package.json
+  s_094f33301656b0::t_9a7e1d271213b7 3
+examples/react-example/package.json
+  s_094f33301656b0::t_c7383678d0bde8 4
+examples/supabase/package.json
+  s_094f33301656b0::t_368c401ff3cf7f 3
+examples/tanstack-start-demo/package.json
+  s_094f33301656b0::t_a78dc8de1c38f7 3
+packages/cli/package.json
+  s_094f33301656b0::t_bc414702f1168f 3
+packages/dashboard-ui-components/package.json
+  s_094f33301656b0::t_621964fda9cf51 3
+packages/js/package.json
+  s_094f33301656b0::t_05b39994d2c721 4
+packages/next/package.json
+  s_094f33301656b0::t_fefaf0bccd0a13 4
+packages/react/package.json
+  s_094f33301656b0::t_d8bb273dd6b50c 4
+packages/sc/package.json
+  s_094f33301656b0::t_8834b1135beefc 3
+packages/shared-backend/package.json
+  s_094f33301656b0::t_9c226b20877d78 3
+packages/shared/package.json
+  s_094f33301656b0::t_24acc7d2f10215 3
+packages/shared/src/ai/hexclave-ask.test.ts
+  s_094f33301656b0::t_0b7262ade1d450 23-60
+packages/shared/src/ai/hexclave-ask.ts
+  s_094f33301656b0::t_0580144e664eb8 133-154,186
+packages/shared/src/interface/admin-interface.ts
+  s_094f33301656b0::t_5cee89c15f3f37 335-347
+packages/shared/src/interface/crud/projects.ts
+  s_094f33301656b0::t_dea6050da04876 4,60,68-98
+packages/tanstack-start/package.json
+  s_094f33301656b0::t_274d39654705b9 4
+packages/template/package-template.json
+  s_094f33301656b0::t_ea154f17b5a2ff 16
+packages/template/package.json
+  s_094f33301656b0::t_6f7307305d80d7 5
+packages/template/src/lib/hexclave-app/apps/implementations/admin-app-impl.ts
+  s_094f33301656b0::t_9baa9c76260aa1 583-587
+packages/template/src/lib/hexclave-app/apps/interfaces/admin-app.ts
+  s_094f33301656b0::t_8799851e6023f1 148-149
+packages/template/src/lib/hexclave-app/workflows.ts
+  s_094f33301656b0::t_a3059d733a956a 23-25,143-144
+packages/ui/package.json
+  s_094f33301656b0::t_2ef23220dcb9dc 3
+sdks/implementations/swift/package.json
+  s_094f33301656b0::t_fb43196f6a6927 3
+sdks/spec/package.json
+  s_094f33301656b0::t_773a77c4ab8a73 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "e4b8eb18337b0d6d96b7535297b82b72f09d76a0",
+  "prompts": {},
+  "sessions": {
+    "s_094f33301656b0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d530d9ad-967f-4300-add7-8b594653595f",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
