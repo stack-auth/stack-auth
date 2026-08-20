@@ -343,7 +343,15 @@ describe("growth workflow orchestration e2e (mock Eve)", { timeout: 90_000 }, ()
         return run.status === "completed" ? run : null;
       }, { timeoutMs: 180_000 });
       expect(typeof completedRun.completed_at_millis).toBe("number");
-      expect(completedRun.phases.every((phase) => phase.status === "completed" && phase.attempt === 1)).toBe(true);
+      // The orchestration DAG never dispatches integrations; the tick auto-skips it once
+      // compute-metrics settles. See apps/backend/src/lib/growth/orchestration.ts.
+      expect(completedRun.phases.every((phase) => phase.phase_key === "integrations"
+        ? phase.status === "skipped" && phase.attempt === 0
+        : phase.status === "completed" && phase.attempt === 1)).toBe(true);
+      expect(completedRun.phases.find((phase) => phase.phase_key === "integrations")).toMatchObject({
+        status: "skipped",
+        attempt: 0,
+      });
       await pollWithTicks(expect, async () => {
         const leg = await findAnalysisLegRun(runId, INTERVIEW_FINISHED_EVENT_TYPE);
         return leg != null && leg.state === "completed" ? leg : null;

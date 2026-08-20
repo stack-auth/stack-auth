@@ -18,6 +18,22 @@ function isAbortError(error: unknown): boolean {
   return error != null && typeof error === "object" && "code" in error && error.code === "ABORT_ERR";
 }
 
+async function waitBetweenWorkflowTicks(signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return;
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, TICK_DELAY_MS);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 export function randomSlug(prefix: string): string {
   return `${prefix}-${generateSecureRandomString(8).toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "x"}`;
 }
@@ -63,7 +79,7 @@ export function startBackgroundWorkflowEngineTicks(expect: ExpectStatic): { stop
         stopped = true;
         break;
       }
-      await new Promise((resolve) => setTimeout(resolve, TICK_DELAY_MS));
+      await waitBetweenWorkflowTicks(abortController.signal);
     }
   })();
 
@@ -79,23 +95,11 @@ export function startBackgroundWorkflowEngineTicks(expect: ExpectStatic): { stop
 
 export async function withBackgroundWorkflowEngineTicks<T>(expect: ExpectStatic, fn: () => Promise<T>): Promise<T> {
   const driver = startBackgroundWorkflowEngineTicks(expect);
-  let fnFailed = false;
-  try {
-    return await fn();
-  } catch (error) {
-    fnFailed = true;
-    throw error;
-  } finally {
-    if (fnFailed) {
-      try {
-        await driver.stop();
-      } catch {
-        // Preserve the test failure that caused teardown.
-      }
-    } else {
-      await driver.stop();
-    }
-  }
+  const [callbackResult] = await Promise.allSettled([fn()]);
+  const [teardownResult] = await Promise.allSettled([driver.stop()]);
+  if (callbackResult.status === "rejected") throw callbackResult.reason;
+  if (teardownResult.status === "rejected") throw teardownResult.reason;
+  return callbackResult.value;
 }
 
 export async function pollWithTicks<T>(expect: ExpectStatic, check: () => Promise<T | null>, options: { timeoutMs?: number, driveTicks?: boolean } = {}): Promise<T> {
