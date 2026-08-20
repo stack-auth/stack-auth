@@ -1,5 +1,6 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 
 export type NodeHttpTransportInit = {
   method?: RequestInit["method"],
@@ -18,6 +19,9 @@ export async function nodeHttpTransport(
   init: NodeHttpTransportInit | undefined,
   timeoutMs: number,
 ): Promise<Response> {
+  const deadlineAt = performance.now() + timeoutMs;
+  const getRemainingTimeoutMs = () => Math.max(0, deadlineAt - performance.now());
+  const deadlineError = () => new Error(`HTTP request exceeded its ${timeoutMs}ms absolute deadline.`);
   const requestUrl = new URL(input);
   const requestHeaders = new Headers(init?.headers);
   const headers: Record<string, string> = {};
@@ -45,8 +49,8 @@ export async function nodeHttpTransport(
     };
     const deadlinePromise = new Promise<never>((_resolve, reject) => {
       deadlineTimer = setTimeout(() => {
-        reject(new Error(`HTTP request body exceeded its ${timeoutMs}ms absolute deadline.`));
-      }, timeoutMs);
+        reject(deadlineError());
+      }, getRemainingTimeoutMs());
     });
     try {
       if (requestSignal?.aborted) {
@@ -63,8 +67,12 @@ export async function nodeHttpTransport(
     } finally {
       if (deadlineTimer != null) clearTimeout(deadlineTimer);
       requestSignal?.removeEventListener("abort", abort);
-      await reader.cancel();
+      runAsynchronously(reader.cancel());
     }
+  }
+  const requestTimeoutMs = getRemainingTimeoutMs();
+  if (requestTimeoutMs <= 0) {
+    throw deadlineError();
   }
   const requestFunction = requestUrl.protocol === "https:" ? httpsRequest : httpRequest;
 
@@ -107,12 +115,12 @@ export async function nodeHttpTransport(
       });
     });
     requestHandle.once("error", rejectOnce);
-    requestHandle.setTimeout(timeoutMs, () => {
-      requestHandle.destroy(new Error(`HTTP request exceeded ${timeoutMs}ms.`));
+    requestHandle.setTimeout(requestTimeoutMs, () => {
+      requestHandle.destroy(new Error(`HTTP request exceeded ${requestTimeoutMs}ms of inactivity.`));
     });
     deadlineTimer = setTimeout(() => {
-      requestHandle.destroy(new Error(`HTTP request exceeded its ${timeoutMs}ms absolute deadline.`));
-    }, timeoutMs);
+      requestHandle.destroy(deadlineError());
+    }, requestTimeoutMs);
     requestHandle.end(requestBody);
   });
 }

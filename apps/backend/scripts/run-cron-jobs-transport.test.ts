@@ -75,11 +75,40 @@ describe("cron transport", () => {
       start(controller) {
         controller.enqueue(new TextEncoder().encode("partial"));
       },
+      cancel() {
+        return new Promise<never>(() => {});
+      },
     });
 
+    const startedAt = performance.now();
     await expect(nodeHttpTransport("http://127.0.0.1:1", {
       method: "POST",
       body,
-    }, 20)).rejects.toThrow("request body exceeded its 20ms absolute deadline");
+    }, 20)).rejects.toThrow("absolute deadline");
+    expect(performance.now() - startedAt).toBeLessThan(200);
+  });
+
+  test("does not restart the full deadline after reading a request body", async () => {
+    const server = createServer((_request, response) => {
+      setTimeout(() => response.end("done"), 45);
+    });
+    registerServer(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const address = server.address();
+    if (address == null || typeof address === "string") {
+      throw new Error("Expected the test server to expose a TCP address.");
+    }
+
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("partial"));
+        setTimeout(() => controller.close(), 45);
+      },
+    });
+
+    await expect(nodeHttpTransport(`http://127.0.0.1:${address.port}`, {
+      method: "POST",
+      body,
+    }, 80)).rejects.toThrow("absolute deadline");
   });
 });
