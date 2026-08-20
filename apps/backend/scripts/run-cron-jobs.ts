@@ -2,15 +2,8 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import { CRON_WORKFLOW_ENGINE_MAX_DURATION_MS } from "./run-cron-jobs-config";
+import { CRON_ENDPOINTS, type CronEndpoint } from "./run-cron-jobs-config";
 import { cronFetch } from "./run-cron-jobs-transport";
-
-const endpoints: { path: string, intervalMs: number }[] = [
-  { path: "/api/latest/internal/external-db-sync/sequencer", intervalMs: 1000 },
-  { path: "/api/latest/internal/external-db-sync/poller", intervalMs: 1000 },
-  { path: "/api/latest/internal/workflow-engine-step", intervalMs: 1000 },
-  { path: "/api/latest/internal/growth-watchdog-step", intervalMs: 5 * 60_000 },
-];
 
 async function main() {
   if (getEnvVariable("NEXT_PUBLIC_STACK_IS_PREVIEW", "") === "true") {
@@ -28,31 +21,28 @@ async function main() {
   const backendPort = getEnvVariable("PORT", getEnvVariable("BACKEND_PORT", `${portPrefix}02`));
   const baseUrl = `http://localhost:${backendPort}`;
 
-  const run = async (endpoint: string) => {
-    console.log(`Running ${endpoint}...`);
-    const requestUrl = new URL(endpoint, baseUrl);
-    const maxDurationMs = endpoint === "/api/latest/internal/workflow-engine-step"
-      ? CRON_WORKFLOW_ENGINE_MAX_DURATION_MS
-      : undefined;
+  const run = async ({ path, maxDurationMs }: CronEndpoint) => {
+    console.log(`Running ${path}...`);
+    const requestUrl = new URL(path, baseUrl);
     if (maxDurationMs != null) {
       requestUrl.searchParams.set("max_duration_ms", String(maxDurationMs));
     }
     const res = await cronFetch(requestUrl, {
       headers: { 'Authorization': `Bearer ${cronSecret}` },
     }, maxDurationMs);
-    if (!res.ok) throw new HexclaveAssertionError(`Failed to call ${endpoint}: ${res.status} ${res.statusText}\n${await res.text()}`, { res });
-    console.log(`${endpoint} completed.`);
+    if (!res.ok) throw new HexclaveAssertionError(`Failed to call ${path}: ${res.status} ${res.statusText}\n${await res.text()}`, { res });
+    console.log(`${path} completed.`);
   };
 
-  for (const { path, intervalMs } of endpoints) {
+  for (const endpoint of CRON_ENDPOINTS) {
     runAsynchronously(async () => {
       await wait(30_000); // Wait 30 seconds to make sure the server is fully started
       while (true) {
-        const runResult = await Result.fromPromise(run(path));
+        const runResult = await Result.fromPromise(run(endpoint));
         if (runResult.status === "error") {
           captureError("run-cron-jobs", runResult.error);
         }
-        await wait(intervalMs);
+        await wait(endpoint.intervalMs);
       }
     });
   }

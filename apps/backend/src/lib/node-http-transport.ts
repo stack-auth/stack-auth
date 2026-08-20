@@ -8,6 +8,11 @@ export type NodeHttpTransportInit = {
   signal?: RequestInit["signal"],
 };
 
+// Global fetch uses Undici's 300-second headers timeout, but a workflow
+// invocation can legitimately occupy the full 630-second engine backstop.
+// Aborting the caller while the backend keeps working lets the next cron tick
+// pile another sandbox invocation on top, so these callers need an explicit
+// long-lived transport with an independent absolute deadline.
 export async function nodeHttpTransport(
   input: string | URL,
   init: NodeHttpTransportInit | undefined,
@@ -19,8 +24,48 @@ export async function nodeHttpTransport(
   for (const [name, value] of requestHeaders) {
     headers[name] = value;
   }
-  const body = await new Response(init?.body ?? null).arrayBuffer();
-  const requestBody = Buffer.from(body);
+  const requestSignal = init?.signal ?? undefined;
+  const body = init?.body ?? null;
+  let requestBody: Buffer;
+  if (!(body instanceof ReadableStream)) {
+    if (requestSignal?.aborted) {
+      throw requestSignal.reason ?? new DOMException("The operation was aborted.", "AbortError");
+    }
+    requestBody = Buffer.from(await new Response(body).arrayBuffer());
+  } else {
+    const reader = body.getReader();
+    const chunks: Buffer[] = [];
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    let rejectAbort: (reason?: unknown) => void = () => {};
+    const abortPromise = new Promise<never>((_resolve, reject) => {
+      rejectAbort = reject;
+    });
+    const abort = () => {
+      rejectAbort(requestSignal?.reason ?? new DOMException("The operation was aborted.", "AbortError"));
+    };
+    const deadlinePromise = new Promise<never>((_resolve, reject) => {
+      deadlineTimer = setTimeout(() => {
+        reject(new Error(`HTTP request body exceeded its ${timeoutMs}ms absolute deadline.`));
+      }, timeoutMs);
+    });
+    try {
+      if (requestSignal?.aborted) {
+        abort();
+      } else {
+        requestSignal?.addEventListener("abort", abort, { once: true });
+      }
+      while (true) {
+        const result = await Promise.race([reader.read(), abortPromise, deadlinePromise]);
+        if (result.done) break;
+        chunks.push(Buffer.from(result.value));
+      }
+      requestBody = Buffer.concat(chunks);
+    } finally {
+      if (deadlineTimer != null) clearTimeout(deadlineTimer);
+      requestSignal?.removeEventListener("abort", abort);
+      await reader.cancel();
+    }
+  }
   const requestFunction = requestUrl.protocol === "https:" ? httpsRequest : httpRequest;
 
   return await new Promise<Response>((resolve, reject) => {
@@ -38,7 +83,7 @@ export async function nodeHttpTransport(
     const requestHandle = requestFunction(requestUrl, {
       method: init?.method ?? "GET",
       headers,
-      signal: init?.signal ?? undefined,
+      signal: requestSignal,
     }, (response) => {
       const chunks: Buffer[] = [];
       response.on("data", (chunk: Buffer | string) => {

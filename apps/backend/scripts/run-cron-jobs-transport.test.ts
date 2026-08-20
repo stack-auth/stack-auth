@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import type { Socket } from "node:net";
 import { afterEach, describe, expect, test } from "vitest";
 import { nodeHttpTransport } from "../src/lib/node-http-transport";
-import { CRON_WORKFLOW_ENGINE_MAX_DURATION_MS, getCronTransportTimeoutMs } from "./run-cron-jobs-config";
+import { CRON_ENDPOINTS, CRON_WORKFLOW_ENGINE_ENDPOINT, getCronTransportTimeoutMs } from "./run-cron-jobs-config";
 
 const servers: { server: ReturnType<typeof createServer>, sockets: Set<Socket> }[] = [];
 
@@ -36,7 +36,8 @@ afterEach(async () => {
 
 describe("cron transport", () => {
   test("outlasts the workflow invocation backstop", () => {
-    expect(getCronTransportTimeoutMs(CRON_WORKFLOW_ENGINE_MAX_DURATION_MS)).toBe(840_000);
+    expect(CRON_ENDPOINTS).toContain(CRON_WORKFLOW_ENGINE_ENDPOINT);
+    expect(getCronTransportTimeoutMs(CRON_WORKFLOW_ENGINE_ENDPOINT.maxDurationMs)).toBe(840_000);
   });
 
   test("allows a slow progressing response within the injected bound", async () => {
@@ -67,5 +68,18 @@ describe("cron transport", () => {
     }
 
     await expect(nodeHttpTransport(`http://127.0.0.1:${address.port}`, undefined, 20)).rejects.toThrow("absolute deadline");
+  });
+
+  test("fails an unending request body at the injected absolute deadline", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("partial"));
+      },
+    });
+
+    await expect(nodeHttpTransport("http://127.0.0.1:1", {
+      method: "POST",
+      body,
+    }, 20)).rejects.toThrow("request body exceeded its 20ms absolute deadline");
   });
 });
