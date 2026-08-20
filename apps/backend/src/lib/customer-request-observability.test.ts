@@ -1,6 +1,7 @@
 import { isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
 import { BAGGAGE_HEADER, encodeCorrelationBaggage, type SpanPropagationContext } from "@hexclave/shared/dist/utils/span-context-codec";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import * as clickhouse from "./clickhouse";
 import { getVerifiedCustomerRequestLinkTarget, resolveCustomerRequestObservability, runWithCustomerRequestObservability } from "./customer-request-observability";
 import type { SpanInsertRow } from "./spans";
 
@@ -26,6 +27,11 @@ function request(options: {
 }
 
 describe("customer request observability", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
   it("writes a scrubbed customer span under the incoming W3C parent and supports late refresh-token enrichment", async () => {
     const traceId = "11111111111111111111111111111111";
     const parentSpanId = "2222222222222222";
@@ -252,6 +258,30 @@ describe("customer request observability", () => {
     );
 
     expect(writer).not.toHaveBeenCalled();
+  });
+
+  it("returns the response without creating a ClickHouse client when ClickHouse is absent", async () => {
+    vi.stubEnv("HEXCLAVE_CLICKHOUSE_URL", "");
+    vi.stubEnv("STACK_CLICKHOUSE_URL", "");
+    const getClient = vi.spyOn(clickhouse, "getSharedClickhouseAdminClient").mockImplementation(() => {
+      throw new Error("ClickHouse client must not be created");
+    });
+
+    const response = await runWithCustomerRequestObservability(
+      request(),
+      async () => {
+        resolveCustomerRequestObservability({
+          projectId: "project",
+          branchId: "main",
+          userId: "user",
+          refreshTokenId: "refresh",
+        });
+        return new Response(null, { status: 204 });
+      },
+    );
+
+    expect(response.status).toBe(204);
+    expect(getClient).not.toHaveBeenCalled();
   });
 
   it("rejects cross-project mutation of one request holder", async () => {

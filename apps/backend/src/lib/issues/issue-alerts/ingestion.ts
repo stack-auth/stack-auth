@@ -79,7 +79,7 @@ export function buildIssueAlertFrequencyCountsQuery(windows: readonly number[]):
   return `
         SELECT
           ${counts}
-        FROM analytics_internal.telemetry
+        FROM analytics_internal.events
         PREWHERE project_id = {projectId:String}
           AND branch_id = {branchId:String}
           AND event_type = '$error'
@@ -93,7 +93,7 @@ async function loadOccurrenceEnvelope(tenancy: Tenancy, occurrenceId: string | n
   const result = await getSharedClickhouseAdminClient().query({
     query: `
       SELECT error_envelope
-      FROM analytics_internal.telemetry
+      FROM analytics_internal.events
       PREWHERE project_id = {projectId:String}
         AND branch_id = {branchId:String}
         AND event_type = '$error'

@@ -111,7 +111,7 @@ function getOtlpLogOccurrenceId(log: CanonicalOtlpLogRecord, batchId: string, or
 }
 
 export type OtlpLogInsertDestination = TelemetryWriteDestination & {
-  suffix: "telemetry",
+  suffix: "events",
 };
 
 /**
@@ -124,10 +124,10 @@ export function buildOtlpLogInsertPlan(logs: CanonicalOtlpLogRecord[], tenant: O
   if (logs.length === 0) return [];
   const requestToken = getOtlpLogsDeduplicationToken(logs, tenant);
   return [{
-    table: "analytics_internal.telemetry",
+    table: "analytics_internal.events",
     values: buildOtlpLogRows(logs, tenant),
-    suffix: "telemetry",
-    deduplicationToken: `${requestToken}:telemetry`,
+    suffix: "events",
+    deduplicationToken: `${requestToken}:events`,
   }];
 }
 

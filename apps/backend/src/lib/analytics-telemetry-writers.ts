@@ -62,12 +62,12 @@ export function getTelemetryLens(eventType: string): TelemetryLens {
     : "observability";
 }
 
-// The `:analytics_internal.telemetry` suffix namespaces this token against
+// The `:analytics_internal.events` suffix namespaces this token against
 // other ClickHouse insert paths that derive their own tokens from related ids
 // (e.g. the OTLP trace writer's `${requestToken}:spans`), so two writers can
 // never collide on a bare batch id.
 export function getBatchDeduplicationToken(batchId: string): string {
-  return `${batchId}:analytics_internal.telemetry`;
+  return `${batchId}:analytics_internal.events`;
 }
 
 /**
@@ -313,7 +313,7 @@ function buildBaseEventRow(event: BatchEventWireItem, context: BatchSignalContex
 }
 
 /**
- * A log/error occurrence row for `analytics_internal.telemetry`, i.e. `LOGS_COLUMNS`.
+ * A log/error occurrence row for `analytics_internal.events`, i.e. `LOGS_COLUMNS`.
  *
  * Occurrence identity is a logs-table concept: `events` and `span_events` share
  * the plain `EVENTS_COLUMNS` shape and have no such columns, so stamping these
@@ -463,7 +463,7 @@ export function buildTelemetryWritePlan(
   return {
     batchId,
     destinations: [{
-      table: "analytics_internal.telemetry",
+      table: "analytics_internal.events",
       values: [...normalized.productEvents, ...normalized.logOccurrences],
       deduplicationToken: getBatchDeduplicationToken(batchId),
     }],

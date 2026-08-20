@@ -52,7 +52,7 @@ export const GET = createSmartRouteHandler({
           SELECT
             toDate(event_at) AS day,
             count() AS activity
-          FROM analytics_internal.telemetry
+          FROM analytics_internal.events
           WHERE project_id = {projectId:String}
             AND branch_id = {branchId:String}
             AND user_id = {userId:String}

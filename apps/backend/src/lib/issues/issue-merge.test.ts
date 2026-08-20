@@ -610,7 +610,7 @@ describe("unmerge counter seeding (real ClickHouse)", () => {
     // shared development instance from accumulating fixture occurrences.
     const client = getSharedClickhouseAdminClient();
     await client.command({
-      query: `ALTER TABLE analytics_internal.telemetry DELETE WHERE issue_hash IN ({moved:String}, {kept:String})`,
+      query: `ALTER TABLE analytics_internal.events DELETE WHERE issue_hash IN ({moved:String}, {kept:String})`,
       query_params: { moved: movedHash, kept: keptHash },
     });
     await client.command({
@@ -624,7 +624,7 @@ describe("unmerge counter seeding (real ClickHouse)", () => {
     const eventAt = new Date(Date.now() - 60 * 60 * 1000);
     const batchId = randomUUID();
     await client.insert({
-      table: "analytics_internal.telemetry",
+      table: "analytics_internal.events",
       values: [movedHash, movedHash, keptHash].map((issueHash, ordinal) => ({
         event_type: "$error",
         event_at: eventAt,
@@ -661,7 +661,7 @@ describe("unmerge counter seeding (real ClickHouse)", () => {
     const newHashes = await readOwnedHashes(result.newIssueId);
     const occurrences = await client.query({
       query: `
-        SELECT count() AS n FROM analytics_internal.telemetry
+        SELECT count() AS n FROM analytics_internal.events
         WHERE project_id = {projectId:String} AND branch_id = {branchId:String}
           AND event_type = '$error' AND issue_hash IN {hashes:Array(String)}
       `,

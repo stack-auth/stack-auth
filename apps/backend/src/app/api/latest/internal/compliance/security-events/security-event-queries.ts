@@ -11,7 +11,7 @@ export function buildSecurityEventsSummaryQuery(sharedWhere: string): string {
             tupleElement(facet, 1) AS kind,
             tupleElement(facet, 2) AS bucket,
             count() AS count
-          FROM analytics_internal.telemetry
+          FROM analytics_internal.events
           ARRAY JOIN [
             ('category', ${SECURITY_EVENT_CATEGORY_EXPRESSION}),
             ('outcome', concat(
@@ -42,7 +42,7 @@ export function buildSecurityEventsOffendersQuery(sharedWhere: string): string {
             tupleElement(facet, 1) AS kind,
             tupleElement(facet, 2) AS value,
             count() AS count
-          FROM analytics_internal.telemetry
+          FROM analytics_internal.events
           ARRAY JOIN [
             ('email', NULLIF(CAST(data.email, 'Nullable(String)'), '')),
             ('ip', NULLIF(CAST(data.ip_info.ip, 'Nullable(String)'), '')),

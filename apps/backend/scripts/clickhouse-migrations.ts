@@ -87,7 +87,7 @@ export async function runClickhouseMigrations() {
   // Retention and skip indexes for tables that existed before the CREATE
   // statements declared them (CREATE ... IF NOT EXISTS never alters).
   await Promise.all([
-    ensureTableTtl(client, { database: "analytics_internal", table: "telemetry", ttlDays: TELEMETRY_TTL_DAYS }),
+    ensureTableTtl(client, { database: "analytics_internal", table: "events", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "span_events", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "spans", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "span_links", ttlDays: TELEMETRY_TTL_DAYS }),
@@ -103,7 +103,7 @@ export async function runClickhouseMigrations() {
     ensureTableTtl(client, { database: "analytics_internal", table: "clickmap_events", ttlDays: TELEMETRY_TTL_DAYS, timestampColumn: "event_at" }),
     ensureSkipIndex(client, {
       database: "analytics_internal",
-      table: "telemetry",
+      table: "events",
       indexName: EVENTS_EVENT_TYPE_INDEX_NAME,
       indexDefinitionSql: EVENTS_EVENT_TYPE_INDEX_DEFINITION_SQL,
       // Building the index over a terabyte is deliberate maintenance, not a
@@ -114,7 +114,7 @@ export async function runClickhouseMigrations() {
     }),
     ensureSkipIndex(client, {
       database: "analytics_internal",
-      table: "telemetry",
+      table: "events",
       indexName: LOGS_ISSUE_HASH_INDEX_NAME,
       indexDefinitionSql: LOGS_ISSUE_HASH_INDEX_DEFINITION_SQL,
       // `issue_hash` was just added by TELEMETRY_SCHEMA_UPGRADE_SQL above with a
@@ -137,7 +137,7 @@ export async function runClickhouseMigrations() {
     client.command({ query: TRACE_ROOTS_MV_SQL }),
     client.command({ query: TRACE_SERVICES_MV_SQL }),
     client.command({ query: SPAN_WRITES_MV_SQL }),
-    // Reads `analytics_internal.telemetry`, so it must come after
+    // Reads `analytics_internal.events`, so it must come after
     // TELEMETRY_SCHEMA_UPGRADE_SQL has added the grouping columns — an MV naming a
     // column that does not exist yet fails to create and takes boot down.
     // Deliberately NOT followed by a backfill; see buildIssueOccurrenceRollupMvSql.
@@ -198,7 +198,7 @@ export async function runClickhouseMigrations() {
   //
   // This list is exactly the `default.*` views limited_user may read — it is the
   // customer SQL surface, not an inventory of physical tables. `errors` is
-  // already here (it is the `$error` slice of `analytics_internal.telemetry`, and it
+  // already here (it is the `$error` slice of `analytics_internal.events`, and it
   // now carries the grouping columns). Internal-only tables are deliberately
   // absent: `analytics_internal.span_writes` (billing ledger) and
   // `analytics_internal.issue_occurrence_rollup` (issue statistics) have no
@@ -292,11 +292,175 @@ export function computeSpansSubsystemFingerprint(): string {
 }
 
 /**
- * Validates a fingerprinted subsystem. A fresh database proceeds to canonical
- * CREATEs; an existing database with no marker or a mismatched marker refuses
- * startup before any owned object is changed. The fingerprint is written only
- * after every canonical object exists.
+ * Validates a fingerprinted subsystem without making the marker authoritative
+ * over telemetry. A markerless partial run may resume only when every object it
+ * left behind still matches the canonical definition.
  */
+export type FingerprintGuardDecision =
+  | { kind: "current" }
+  | { kind: "fresh" }
+  | { kind: "resume" }
+  | { kind: "mismatch", stored: string | "absent", expected: string, detail: string };
+
+export type FingerprintLiveObject = {
+  name: string,
+  columns?: readonly { name: string, type: string }[],
+  asSelect?: string,
+};
+
+export type FingerprintExpectedObject = {
+  name: string,
+  columns?: readonly { name: string, type: string }[],
+  asSelect?: string,
+};
+
+function normalizeClickhouseType(type: string): string {
+  return type.toLowerCase().replace(/[\s'"`]/g, "");
+}
+
+function normalizeClickhouseSql(sql: string): string {
+  return sql.toLowerCase().replace(/[`"]/g, "").replace(/\s+/g, " ").trim().replace(/;$/, "");
+}
+
+function getSqlSourceTable(sql: string): string | undefined {
+  return /\bfrom\s+([a-z0-9_.]+)/.exec(normalizeClickhouseSql(sql))?.[1];
+}
+
+function getSqlWhereFragments(sql: string): readonly string[] {
+  const normalized = normalizeClickhouseSql(sql);
+  const whereStart = normalized.indexOf(" where ");
+  if (whereStart === -1) return [];
+
+  const afterWhere = normalized.slice(whereStart + " where ".length);
+  const clauseBoundaries = [" group by ", " order by ", " limit "]
+    .map((boundary) => afterWhere.indexOf(boundary))
+    .filter((index) => index !== -1);
+  const whereClause = afterWhere.slice(0, clauseBoundaries.length === 0 ? undefined : Math.min(...clauseBoundaries));
+  return whereClause
+    .split(/\s+and\s+/)
+    .map((fragment) => fragment.replace(/^\(+/, "").replace(/\)+$/, "").trim());
+}
+
+export function decideFingerprintGuard(input: {
+  stored: string | undefined,
+  expected: string,
+  liveObjects: readonly FingerprintLiveObject[],
+  expectedObjects: readonly FingerprintExpectedObject[],
+}): FingerprintGuardDecision {
+  if (input.stored === input.expected) return { kind: "current" };
+  if (input.stored !== undefined) {
+    return {
+      kind: "mismatch",
+      stored: input.stored,
+      expected: input.expected,
+      detail: "stored fingerprint differs from the expected fingerprint",
+    };
+  }
+  if (input.liveObjects.length === 0) return { kind: "fresh" };
+
+  const expectedByName = new Map(input.expectedObjects.map((object) => [object.name, object]));
+  for (const liveObject of input.liveObjects) {
+    const expectedObject = expectedByName.get(liveObject.name);
+    if (expectedObject === undefined) continue;
+
+    if (expectedObject.columns !== undefined) {
+      if (liveObject.columns === undefined) {
+        return {
+          kind: "mismatch",
+          stored: "absent",
+          expected: input.expected,
+          detail: `${liveObject.name} has no readable column definition`,
+        };
+      }
+      const liveColumnsByName = new Map(liveObject.columns.map((column) => [column.name, column.type]));
+      for (const expectedColumn of expectedObject.columns) {
+        const liveType = liveColumnsByName.get(expectedColumn.name);
+        if (liveType === undefined) {
+          return {
+            kind: "mismatch",
+            stored: "absent",
+            expected: input.expected,
+            detail: `${liveObject.name} is missing expected column ${expectedColumn.name}`,
+          };
+        }
+        if (normalizeClickhouseType(liveType) !== normalizeClickhouseType(expectedColumn.type)) {
+          return {
+            kind: "mismatch",
+            stored: "absent",
+            expected: input.expected,
+            detail: `${liveObject.name}.${expectedColumn.name} has type ${liveType}, expected ${expectedColumn.type}`,
+          };
+        }
+      }
+    }
+
+    if (expectedObject.asSelect !== undefined) {
+      if (liveObject.asSelect === undefined) {
+        return {
+          kind: "mismatch",
+          stored: "absent",
+          expected: input.expected,
+          detail: `${liveObject.name} has no readable SELECT definition`,
+        };
+      }
+      const liveSql = normalizeClickhouseSql(liveObject.asSelect);
+      const expectedSourceTable = getSqlSourceTable(expectedObject.asSelect);
+      const liveSourceTable = getSqlSourceTable(liveObject.asSelect);
+      if (expectedSourceTable === undefined || liveSourceTable !== expectedSourceTable) {
+        return {
+          kind: "mismatch",
+          stored: "absent",
+          expected: input.expected,
+          detail: `${liveObject.name} does not read from the expected source table`,
+        };
+      }
+      const missingPredicate = getSqlWhereFragments(expectedObject.asSelect)
+        .find((fragment) => !liveSql.includes(fragment));
+      if (missingPredicate !== undefined) {
+        return {
+          kind: "mismatch",
+          stored: "absent",
+          expected: input.expected,
+          detail: `${liveObject.name} is missing expected predicate ${missingPredicate}`,
+        };
+      }
+    }
+  }
+
+  return { kind: "resume" };
+}
+
+async function readFingerprintLiveTable(
+  client: ClickHouseClient,
+  table: string,
+): Promise<FingerprintLiveObject> {
+  const resultSet = await client.query({
+    query: "SELECT name, type FROM system.columns WHERE database = 'analytics_internal' AND table = {table:String}",
+    query_params: { table },
+    format: "JSONEachRow",
+  });
+  return {
+    name: table,
+    columns: await resultSet.json<{ name: string, type: string }>(),
+  };
+}
+
+async function readFingerprintLiveMaterializedView(
+  client: ClickHouseClient,
+  table: string,
+): Promise<FingerprintLiveObject> {
+  const resultSet = await client.query({
+    query: "SELECT as_select FROM system.tables WHERE database = 'analytics_internal' AND name = {table:String}",
+    query_params: { table },
+    format: "JSONEachRow",
+  });
+  const rows = await resultSet.json<{ as_select: string }>();
+  return {
+    name: table,
+    asSelect: rows.at(0)?.as_select ?? throwErr(`Materialized view ${table} disappeared while validating its fingerprint`),
+  };
+}
+
 async function resetSubsystemIfFingerprintChanged(
   client: ClickHouseClient,
   options: {
@@ -306,6 +470,7 @@ async function resetSubsystemIfFingerprintChanged(
     materializedViews: readonly string[],
     tables: readonly string[],
     fingerprint: string,
+    expectedObjects: readonly FingerprintExpectedObject[],
   },
 ): Promise<boolean> {
   await client.command({
@@ -322,26 +487,51 @@ CREATE TABLE IF NOT EXISTS ${options.fingerprintTable} (
     format: "JSONEachRow",
   });
   const rows = await resultSet.json<{ fingerprint: string }>();
-  // `.at(0)` rather than `[0]`: an index read is typed as always-present here,
-  // which would make the absent-marker branch below look unreachable.
   const stored = rows.at(0)?.fingerprint;
-  if (stored === options.fingerprint) return false;
-
-  // No marker and no owned object is a fresh database; canonical CREATEs may
-  // establish the boundary. Include MVs so a partial prior setup cannot be
-  // mistaken for fresh merely because its target table is absent.
+  const liveObjects: FingerprintLiveObject[] = [];
   if (stored === undefined) {
-    const objectNames = [...options.tables, ...options.materializedViews];
-    const anyObjectExists = await Promise.all(objectNames.map(
-      (table) => clickhouseTableExists(client, { database: "analytics_internal", table }),
-    ));
-    if (!anyObjectExists.some((exists) => exists)) return false;
+    const expectedByName = new Map(options.expectedObjects.map((object) => [object.name, object]));
+    const liveTables = await Promise.all(options.tables.map(async (table) => {
+      if (!await clickhouseTableExists(client, { database: "analytics_internal", table })) return null;
+      if (expectedByName.get(table)?.columns === undefined) return { name: table };
+      return await readFingerprintLiveTable(client, table);
+    }));
+    const liveMaterializedViews = await Promise.all(options.materializedViews.map(async (table) => {
+      if (!await clickhouseTableExists(client, { database: "analytics_internal", table })) return null;
+      return await readFingerprintLiveMaterializedView(client, table);
+    }));
+    for (const liveObject of [...liveTables, ...liveMaterializedViews]) {
+      if (liveObject !== null) liveObjects.push(liveObject);
+    }
   }
 
-  throw new Error(
-    `[Clickhouse] ${options.label} schema fingerprint changed (stored ${stored ?? "absent"}, current ${options.fingerprint}). `
-    + "Automatic DROP/rebuild is disabled because it destroys telemetry. Apply an explicit online schema migration and seed the fingerprint only after validating the live definitions.",
-  );
+  const decision = decideFingerprintGuard({
+    stored,
+    expected: options.fingerprint,
+    liveObjects,
+    expectedObjects: options.expectedObjects,
+  });
+  switch (decision.kind) {
+    case "current": {
+      return false;
+    }
+    case "fresh": {
+      return false;
+    }
+    case "resume": {
+      return false;
+    }
+    case "mismatch": {
+      throw new Error(
+        `[Clickhouse] ${options.label} schema fingerprint changed (stored ${decision.stored}, current ${decision.expected}). ${decision.detail}. `
+        + "Automatic DROP/rebuild is disabled because it destroys telemetry. Apply an explicit online schema migration and seed the fingerprint only after validating the live definitions.",
+      );
+    }
+    default: {
+      const exhaustive: never = decision;
+      return exhaustive;
+    }
+  }
 }
 
 /** Stamps a subsystem fingerprint. Call only once every canonical object exists. */
@@ -350,6 +540,36 @@ async function writeSubsystemFingerprint(client: ClickHouseClient, fingerprintTa
     query: `INSERT INTO ${fingerprintTable} (fingerprint) VALUES ({fingerprint:String})`,
     query_params: { fingerprint },
   });
+}
+
+function getMaterializedViewSelectBody(createSql: string): string {
+  const marker = "\nAS\n";
+  const selectStart = createSql.indexOf(marker);
+  if (selectStart === -1) {
+    throw new Error("Canonical materialized view SQL has no AS SELECT body");
+  }
+  return createSql.slice(selectStart + marker.length);
+}
+
+function getSpansFingerprintExpectedObjects(): readonly FingerprintExpectedObject[] {
+  return [
+    { name: "spans", columns: SPANS_COLUMNS },
+    { name: "span_events", columns: SPAN_EVENTS_COLUMNS },
+    { name: "span_links", columns: SPAN_LINKS_COLUMNS },
+    { name: "trace_roots", columns: TRACE_ROOTS_COLUMNS },
+    { name: "trace_services", columns: TRACE_SERVICES_COLUMNS },
+    {
+      name: "span_writes",
+      columns: [
+        { name: "project_id", type: "String" },
+        { name: "created_at", type: "DateTime64(3, 'UTC')" },
+      ],
+    },
+    { name: "derived_span_backfill_state" },
+    { name: "trace_roots_mv", asSelect: TRACE_ROOTS_SOURCE_SELECT_SQL },
+    { name: "trace_services_mv", asSelect: TRACE_SERVICES_SOURCE_SELECT_SQL },
+    { name: "span_writes_mv", asSelect: getMaterializedViewSelectBody(buildSpanWritesMvSql("analytics_internal")) },
+  ];
 }
 
 export async function resetSpansSubsystemIfFingerprintChanged(
@@ -362,6 +582,7 @@ export async function resetSpansSubsystemIfFingerprintChanged(
     materializedViews: SPANS_SUBSYSTEM_MATERIALIZED_VIEWS,
     tables: SPANS_SUBSYSTEM_TABLES,
     fingerprint,
+    expectedObjects: getSpansFingerprintExpectedObjects(),
   });
 }
 
@@ -403,6 +624,30 @@ export function computeIssuesSubsystemFingerprint(
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
 }
 
+function getIssuesFingerprintExpectedObjects(): readonly FingerprintExpectedObject[] {
+  return [
+    {
+      name: "issue_occurrence_rollup",
+      columns: [
+        { name: "project_id", type: "String" },
+        { name: "branch_id", type: "String" },
+        { name: "issue_hash", type: "String" },
+        { name: "bucket_start", type: "DateTime('UTC')" },
+        { name: "service_name", type: "LowCardinality(String)" },
+        { name: "deployment_environment_name", type: "LowCardinality(String)" },
+        { name: "occurrences", type: "SimpleAggregateFunction(sum, UInt64)" },
+        { name: "users_state", type: "AggregateFunction(uniq, Nullable(String))" },
+        { name: "first_seen", type: "SimpleAggregateFunction(min, DateTime64(3,'UTC'))" },
+        { name: "last_seen", type: "SimpleAggregateFunction(max, DateTime64(3,'UTC'))" },
+      ],
+    },
+    {
+      name: "issue_occurrence_rollup_mv",
+      asSelect: getMaterializedViewSelectBody(buildIssueOccurrenceRollupMvSql("analytics_internal")),
+    },
+  ];
+}
+
 export async function resetIssuesSubsystemIfFingerprintChanged(
   client: ClickHouseClient,
   fingerprint: string,
@@ -413,6 +658,7 @@ export async function resetIssuesSubsystemIfFingerprintChanged(
     materializedViews: ISSUES_SUBSYSTEM_MATERIALIZED_VIEWS,
     tables: ISSUES_SUBSYSTEM_TABLES,
     fingerprint,
+    expectedObjects: getIssuesFingerprintExpectedObjects(),
   });
 }
 
@@ -638,7 +884,7 @@ export type ClickhouseColumn = {
 export const TELEMETRY_TTL_DAYS = 90;
 export const SPAN_WRITES_TTL_DAYS = 400;
 export const TELEMETRY_INSERT_DEDUPLICATION_WINDOW = 10_000;
-export const TELEMETRY_INSERT_TABLES = ["telemetry", "spans", "span_events", "span_links", "metrics"] as const;
+export const TELEMETRY_INSERT_TABLES = ["events", "spans", "span_events", "span_links", "metrics"] as const;
 
 export function buildTelemetryInsertDeduplicationSettingSql(
   table: typeof TELEMETRY_INSERT_TABLES[number],
@@ -898,11 +1144,10 @@ export const LOGS_ISSUE_HASH_INDEX_DEFINITION_SQL = "issue_hash TYPE bloom_filte
 
 /**
  * Canonical row store for event-shaped telemetry. Product events, logs, and
- * errors share the same tenancy/time layout; the error and OTLP columns simply
- * retain their defaults for rows that do not use them. Of the public views,
- * only `default.events` preserves a pre-existing query contract (the shape of
- * the frozen `analytics_internal.events` table, see EVENTS_VIEW_SQL); `logs`
- * and `errors` are new surfaces that simply project slices of this table.
+ * errors share `analytics_internal.events`; the error and OTLP columns retain
+ * their defaults on rows that do not use them. `default.events` keeps the
+ * pre-existing product-event query contract (see EVENTS_VIEW_SQL). `logs` and
+ * `errors` project slices of the same table.
  *
  * The full log/error row shape IS the physical table shape, so this is the
  * same list as LOGS_COLUMNS — kept as one value so the two can never drift.
@@ -922,8 +1167,8 @@ TTL ${buildRetentionTtlSql(TELEMETRY_TTL_DAYS)}`, [
   ]);
 }
 
-const TELEMETRY_TABLE_BASE_SQL = buildTelemetryCreateTableSql("analytics_internal.telemetry");
-const TELEMETRY_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.telemetry", TELEMETRY_COLUMNS);
+const TELEMETRY_TABLE_BASE_SQL = buildTelemetryCreateTableSql("analytics_internal.events");
+const TELEMETRY_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.events", TELEMETRY_COLUMNS);
 
 // Span events reuse the shared event-shaped columns (EVENTS_COLUMNS) so trace
 // detail queries can project events and span events through one shape, and
@@ -952,19 +1197,14 @@ TTL ${buildRetentionTtlSql(TELEMETRY_TTL_DAYS)}`);
 const SPAN_EVENTS_TABLE_BASE_SQL = buildSpanEventsCreateTableSql("analytics_internal.span_events");
 const SPAN_EVENTS_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.span_events", SPAN_EVENTS_COLUMNS);
 
-// Reads the canonical telemetry table directly. On a database that predates
-// telemetry, a frozen physical `analytics_internal.events` table may still sit
-// next to it holding the pre-telemetry rows. That table is deliberately left
-// exactly as it is: nothing writes to it anymore, nothing here unions it in,
-// and its rows stay directly queryable (by operators/self-hosters) until their
-// retention TTL ages them out — at which point a separately reviewed operator
-// action can drop them. Backfilling them into telemetry was considered and
-// rejected: a verified copy of a production-sized append-only table is a
-// heavyweight operator job, and the query surface only promises the new schema
-// going forward.
+// Reads the physical events table directly. New log/error/OTel columns land
+// through ADD COLUMN IF NOT EXISTS with constant defaults, so existing rows
+// keep their data and read the new fields as empty. A type-widening
+// MODIFY COLUMN is deliberately never issued: on a production-sized table that
+// rewrites every part.
 // `message` is excluded: it is the log/error occurrence text (exposed via
-// default.logs / default.errors) and this view's pre-existing contract — the
-// frozen events table's shape — never had it. Every row here would read ''.
+// default.logs / default.errors) and this view's pre-existing contract never
+// had it. Every product-event row here would read ''.
 // `$page-view` is a SPAN (see default.spans) — never project spans into this
 // view or the traces UI shows the same fact twice (event diamond + span bar).
 // Metrics that need page views query spans directly.
@@ -974,7 +1214,7 @@ SQL SECURITY DEFINER
 AS
 SELECT
   ${buildViewSelectList(EVENTS_COLUMNS, ["message"])}
-FROM analytics_internal.telemetry
+FROM analytics_internal.events
 WHERE event_type NOT IN ('$log', '$error');
 `;
 
@@ -987,7 +1227,7 @@ SQL SECURITY DEFINER
 AS
 SELECT
   ${buildViewSelectList(LOGS_COLUMNS, [...ERROR_GROUPING_COLUMN_NAMES, ...ERROR_ENVELOPE_COLUMN_NAMES])}
-FROM analytics_internal.telemetry
+FROM analytics_internal.events
 WHERE event_type = '$log';
 `;
 
@@ -1000,7 +1240,7 @@ SQL SECURITY DEFINER
 AS
 SELECT
   ${buildViewSelectList(LOGS_COLUMNS)}
-FROM analytics_internal.telemetry
+FROM analytics_internal.events
 WHERE event_type = '$error';
 `;
 
@@ -1071,7 +1311,7 @@ TTL toDateTime(bucket_start) + INTERVAL ${TELEMETRY_TTL_DAYS} DAY DELETE;
 // `LowCardinality(Nullable(String))` on `telemetry` while the rollup columns
 // are non-null, and a type mismatch in a materialized view is rejected at
 // INSERT time against the SOURCE table. Getting this wrong does not break the
-// rollup; it breaks every `analytics_internal.telemetry` insert, i.e. all
+// rollup; it breaks every `analytics_internal.events` insert, i.e. all
 // telemetry ingestion for every project.
 //
 // Column ORDER must match the CREATE TABLE above exactly: a `TO table`
@@ -1092,7 +1332,7 @@ SELECT
   uniqState(user_id) AS users_state,
   min(event_at) AS first_seen,
   max(event_at) AS last_seen
-FROM ${database}.telemetry
+FROM ${database}.events
 WHERE event_type = '$error' AND issue_hash != ''
 GROUP BY project_id, branch_id, issue_hash, bucket_start, service_name, deployment_environment_name;
 `;
@@ -2524,7 +2764,7 @@ CREATE DATABASE IF NOT EXISTS analytics_internal;
 `;
 
 // Clickmap-only physical table (PostHog-style schema). Fed by clickmap_events_mv
-// from analytics_internal.telemetry WHERE event_type='$click'. Backwards compatible
+// from analytics_internal.events WHERE event_type='$click'. Backwards compatible
 // with click rows that pre-date elements_chain / scaled coords: the MV derives
 // pointer_* from raw data.x / data.y / data.page_y, and elements_chain falls
 // back to the empty string when the SDK didn't emit one.
@@ -2576,7 +2816,7 @@ ADD COLUMN IF NOT EXISTS is_dead UInt8 DEFAULT 0;
 `;
 
 // Materialized view that auto-populates clickmap_events on every $click insert.
-// No POPULATE clause: existing rows stay in analytics_internal.telemetry. New
+// No POPULATE clause: existing rows stay in analytics_internal.events. New
 // click rows flow into both tables.
 //
 // All field accesses use the toFloat64OrZero(toString(...)) pattern that the
@@ -2615,7 +2855,7 @@ SELECT
     toString(data.tag_name) AS tag_name,
     nullIf(toString(data.href), '') AS href,
     toUInt8(coalesce(toUInt8OrNull(toString(data.dead)), 0)) AS is_dead
-FROM analytics_internal.telemetry
+FROM analytics_internal.events
 WHERE event_type = '$click';
 `;
 

@@ -348,7 +348,7 @@ async function countAnalyticsEventsForProjects(projectIds: string[], period: Usa
 export function getAnalyticsEventsUsageQueryForTest(): string {
   return `
     SELECT count() AS total
-    FROM analytics_internal.telemetry
+    FROM analytics_internal.events
     PREWHERE project_id IN {projectIds:Array(String)}
       AND event_at >= {periodStart:DateTime}
       AND event_at < {periodEnd:DateTime}

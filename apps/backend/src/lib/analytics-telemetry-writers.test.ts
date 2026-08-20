@@ -50,7 +50,7 @@ describe("SDK ingest insert rows vs. ClickHouse column declarations", () => {
       DRIFT_GUARD_CONTEXT,
       DRIFT_GUARD_BATCH_ID,
     );
-    expectRowMatchesColumns(productEvents[0], EVENTS_COLUMNS, "analytics_internal.telemetry (product-event projection)");
+    expectRowMatchesColumns(productEvents[0], EVENTS_COLUMNS, "analytics_internal.events (product-event projection)");
     // Same guarantee at compile time.
     expectTypeOf<Exclude<keyof typeof productEvents[number], EventColumnName>>().toEqualTypeOf<never>();
   });
@@ -61,7 +61,7 @@ describe("SDK ingest insert rows vs. ClickHouse column declarations", () => {
       DRIFT_GUARD_CONTEXT,
       DRIFT_GUARD_BATCH_ID,
     );
-    expectRowMatchesColumns(logOccurrences[0], LOGS_COLUMNS, "analytics_internal.telemetry (log-occurrence projection)");
+    expectRowMatchesColumns(logOccurrences[0], LOGS_COLUMNS, "analytics_internal.events (log-occurrence projection)");
     expectTypeOf<Exclude<keyof typeof logOccurrences[number], LogColumnName>>().toEqualTypeOf<never>();
   });
 });
@@ -273,8 +273,8 @@ describe("analytics telemetry storage dispatch", () => {
     expect(plan.batchId).toBe(DRIFT_GUARD_BATCH_ID);
     expect(plan.destinations).toHaveLength(1);
     expect(plan.destinations[0]).toMatchObject({
-      table: "analytics_internal.telemetry",
-      deduplicationToken: `${DRIFT_GUARD_BATCH_ID}:analytics_internal.telemetry`,
+      table: "analytics_internal.events",
+      deduplicationToken: `${DRIFT_GUARD_BATCH_ID}:analytics_internal.events`,
     });
     expect(plan.destinations[0]?.values).toHaveLength(1);
     expect(plan.issueInputs).toEqual([]);

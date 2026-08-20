@@ -1,7 +1,7 @@
 import type { ClickHouseClient } from "@/lib/clickhouse";
 
 export type TelemetryWriteDestination = {
-  table: "analytics_internal.telemetry";
+  table: "analytics_internal.events";
   values: unknown[];
   deduplicationToken: string;
 };

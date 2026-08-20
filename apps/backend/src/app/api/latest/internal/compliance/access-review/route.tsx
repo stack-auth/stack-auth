@@ -97,7 +97,7 @@ export const GET = createSmartRouteHandler({
             SELECT
               user_id,
               max(event_at) AS last
-            FROM analytics_internal.telemetry
+            FROM analytics_internal.events
             WHERE project_id = {projectId:String}
               AND branch_id = {branchId:String}
               AND event_type = '$sign-in-attempt'

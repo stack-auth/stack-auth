@@ -65,7 +65,7 @@ export const GET = createSmartRouteHandler({
           data.action as action,
           toStartOfHour(event_at) as hour,
           count() AS trigger_count
-        FROM analytics_internal.telemetry
+        FROM analytics_internal.events
         PREWHERE project_id = {projectId:String}
           AND branch_id = {branchId:String}
           AND event_type = '$sign-up-rule-trigger'
@@ -135,7 +135,7 @@ export const GET = createSmartRouteHandler({
             NULLIF(CAST(data.ruleId, 'Nullable(String)'), '')
           ) as rule_id,
           count() as total_count
-        FROM analytics_internal.telemetry
+        FROM analytics_internal.events
         PREWHERE project_id = {projectId:String}
           AND branch_id = {branchId:String}
           AND event_type = '$sign-up-rule-trigger'

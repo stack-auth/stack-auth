@@ -11,7 +11,7 @@ describe("compliance security event query shape", () => {
   it("expands all summary dimensions from one telemetry scan", () => {
     const query = buildSecurityEventsSummaryQuery(SHARED_WHERE);
 
-    expect(query.match(/FROM analytics_internal\.telemetry/g)).toHaveLength(1);
+    expect(query.match(/FROM analytics_internal\.events/g)).toHaveLength(1);
     expect(query).toContain("('category',");
     expect(query).toContain("('outcome',");
     expect(query).toContain("('reason',");
@@ -22,7 +22,7 @@ describe("compliance security event query shape", () => {
   it("preserves an independent top ten for all offender dimensions in one scan", () => {
     const query = buildSecurityEventsOffendersQuery(SHARED_WHERE);
 
-    expect(query.match(/FROM analytics_internal\.telemetry/g)).toHaveLength(1);
+    expect(query.match(/FROM analytics_internal\.events/g)).toHaveLength(1);
     expect(query).toContain("('email',");
     expect(query).toContain("('ip',");
     expect(query).toContain("('country',");

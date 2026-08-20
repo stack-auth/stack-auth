@@ -318,7 +318,7 @@ export async function loadProjectActivityMetrics(projectIds: string[]): Promise<
               SELECT
                 project_id AS projectId,
                 max(event_at) AS lastActive
-              FROM analytics_internal.telemetry
+              FROM analytics_internal.events
               PREWHERE project_id IN {projectIds:Array(String)}
                 AND branch_id = {branchId:String}
                 AND event_type = '$token-refresh'
@@ -380,7 +380,7 @@ export function buildInternalOwnerReplayIdsQuery(): string {
         UNION ALL
         -- Retain legacy event page views until telemetry retention expires.
         SELECT session_replay_id, user_id, toString(data) AS payload
-        FROM analytics_internal.telemetry
+        FROM analytics_internal.events
         PREWHERE project_id = {internalProjectId:String}
           AND branch_id = {branchId:String}
           AND event_type = '$page-view'

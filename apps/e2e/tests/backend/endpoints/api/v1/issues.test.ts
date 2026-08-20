@@ -721,7 +721,7 @@ it("increments times_seen exactly once when the same batch_id is posted twice", 
  * vitest then reports it as failing-because-it-passed, which is the reminder.
  *
  * The Postgres LIFETIME counter is exactly-once (see the test above), but the
- * ClickHouse WINDOW counter is not: `analytics_internal.telemetry` carries
+ * ClickHouse WINDOW counter is not: `analytics_internal.events` carries
  * `non_replicated_deduplication_window = 10000`, so the retried batch is
  * deduplicated at the source table — but the server runs with
  * `deduplicate_blocks_in_dependent_materialized_views = 0` (the ClickHouse

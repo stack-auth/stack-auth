@@ -76,6 +76,12 @@ export const EXTERNAL_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
 
 let sharedClickhouseAdminClient: ClickHouseClient | undefined;
 
+export type ClickhouseWriteAvailability = "configured" | "absent";
+
+export function getClickhouseWriteAvailability(): ClickhouseWriteAvailability {
+  return getEnvVariable("STACK_CLICKHOUSE_URL", "") === "" ? "absent" : "configured";
+}
+
 /**
  * Process-wide admin client for hot request paths (telemetry ingest and other
  * per-request reads/writes). Each client owns a keep-alive HTTP connection

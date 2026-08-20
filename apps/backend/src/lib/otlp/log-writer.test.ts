@@ -250,17 +250,17 @@ describe("OTLP log storage mapping", () => {
     const retriedPlan = buildOtlpLogInsertPlan(mixed, TENANT);
 
     expect(plan.map((destination) => destination.table)).toEqual([
-      "analytics_internal.telemetry",
+      "analytics_internal.events",
     ]);
     expect(plan.map((destination) => destination.deduplicationToken)).toEqual(
       retriedPlan.map((destination) => destination.deduplicationToken),
     );
     expect(new Set(plan.map((destination) => destination.deduplicationToken)).size).toBe(1);
-    expect(buildOtlpLogInsertPlan(mixed.slice(0, 1), TENANT).map((destination) => destination.table)).toEqual(["analytics_internal.telemetry"]);
+    expect(buildOtlpLogInsertPlan(mixed.slice(0, 1), TENANT).map((destination) => destination.table)).toEqual(["analytics_internal.events"]);
     // Product events and logs share one canonical physical telemetry table;
     // public views retain the previous event/log query surfaces.
     expect(buildOtlpLogInsertPlan(mixed.slice(1), TENANT).map((destination) => destination.table)).toEqual([
-      "analytics_internal.telemetry",
+      "analytics_internal.events",
     ]);
   });
 

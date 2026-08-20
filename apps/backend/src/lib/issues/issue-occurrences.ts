@@ -55,7 +55,7 @@ export async function loadPublicIssueOccurrences(options: {
              issue_grouping_provenance, error_frames,
              trace_id, span_id, page_view_span_id, session_replay_id, session_replay_segment_id, user_id,
              service_name, deployment_environment_name
-      FROM analytics_internal.telemetry
+      FROM analytics_internal.events
       PREWHERE project_id = {projectId:String}
         AND branch_id = {branchId:String}
         AND event_type = '$error'

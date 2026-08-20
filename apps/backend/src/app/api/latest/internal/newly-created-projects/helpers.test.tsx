@@ -16,7 +16,7 @@ describe("newly-created-projects helpers", () => {
 
     expect(query).toContain("FROM analytics_internal.spans FINAL");
     expect(query).toContain("span_type = '$page-view'");
-    expect(query).toContain("FROM analytics_internal.telemetry");
+    expect(query).toContain("FROM analytics_internal.events");
     expect(query).toContain("event_type = '$page-view'");
     expect(query.match(/branch_id = \{branchId:String\}/g)).toHaveLength(2);
     expect(query).toContain("UNION ALL");

@@ -35,7 +35,7 @@ describe("collectIssueAlertFrequencyWindows", () => {
   it("counts every alert frequency window in one bounded ClickHouse scan", () => {
     const query = buildIssueAlertFrequencyCountsQuery([60, 3_600, 86_400]);
 
-    expect(query.match(/FROM analytics_internal\.telemetry/g)).toHaveLength(1);
+    expect(query.match(/FROM analytics_internal\.events/g)).toHaveLength(1);
     expect(query).toContain("PREWHERE project_id = {projectId:String}");
     expect(query).toContain("event_at >= {earliestRangeStart:DateTime}");
     expect(query).toContain("countIf(event_at >= {rangeStart0:DateTime})");

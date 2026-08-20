@@ -556,7 +556,7 @@ export async function logEvent<T extends EventType[]>(
         // session columns above are how it is correlated.
       };
       await clickhouseClient.insert({
-        table: "analytics_internal.telemetry",
+        table: "analytics_internal.events",
         values: [telemetryRow],
         format: "JSONEachRow",
         clickhouse_settings: {

@@ -103,7 +103,7 @@ type EventRow = {
 
 const OLD_QUERY = `
   SELECT assumeNotNull(user_id) AS user_id
-  FROM analytics_internal.telemetry
+  FROM analytics_internal.events
   WHERE event_type = '$token-refresh'
     AND project_id = {projectId:String}
     AND branch_id = {branchId:String}
@@ -122,7 +122,7 @@ const NEW_QUERY = `
   SELECT uniqExact(normalized_user_id) AS mau
   FROM (
     SELECT lower(trim(assumeNotNull(user_id))) AS normalized_user_id
-    FROM analytics_internal.telemetry
+    FROM analytics_internal.events
     WHERE event_type = '$token-refresh'
       AND project_id = {projectId:String}
       AND branch_id = {branchId:String}
@@ -194,7 +194,7 @@ const NEW_QUERY_SET = `
   SELECT DISTINCT normalized_user_id
   FROM (
     SELECT lower(trim(assumeNotNull(user_id))) AS normalized_user_id
-    FROM analytics_internal.telemetry
+    FROM analytics_internal.events
     WHERE event_type = '$token-refresh'
       AND project_id = {projectId:String}
       AND branch_id = {branchId:String}
@@ -261,7 +261,7 @@ const VARIANTS: Variant[] = [
       SELECT uniqExact(normalized_user_id) AS mau
       FROM (
         SELECT lower(trim(assumeNotNull(user_id))) AS normalized_user_id
-        FROM analytics_internal.telemetry
+        FROM analytics_internal.events
         ${COMMON_FILTERS}
       )
       WHERE match(normalized_user_id, {uuidRe:String})
@@ -272,7 +272,7 @@ const VARIANTS: Variant[] = [
     description: "Same as v1 but regex + normalization folded into inner WHERE (no subquery)",
     sql: `
       SELECT uniqExact(lower(trim(assumeNotNull(user_id)))) AS mau
-      FROM analytics_internal.telemetry
+      FROM analytics_internal.events
       ${COMMON_FILTERS}
         AND match(lower(trim(assumeNotNull(user_id))), {uuidRe:String})
     `,
@@ -284,7 +284,7 @@ const VARIANTS: Variant[] = [
       SELECT uniqExact(uid) AS mau
       FROM (
         SELECT toUUIDOrNull(lower(trim(assumeNotNull(user_id)))) AS uid
-        FROM analytics_internal.telemetry
+        FROM analytics_internal.events
         ${COMMON_FILTERS}
       )
       WHERE uid IS NOT NULL
@@ -299,7 +299,7 @@ const VARIANTS: Variant[] = [
       FROM (
         SELECT sipHash64(lower(trim(assumeNotNull(user_id)))) AS h,
                lower(trim(assumeNotNull(user_id))) AS normalized_user_id
-        FROM analytics_internal.telemetry
+        FROM analytics_internal.events
         ${COMMON_FILTERS}
       )
       WHERE match(normalized_user_id, {uuidRe:String})
@@ -313,7 +313,7 @@ const VARIANTS: Variant[] = [
       SELECT uniq(normalized_user_id) AS mau
       FROM (
         SELECT lower(trim(assumeNotNull(user_id))) AS normalized_user_id
-        FROM analytics_internal.telemetry
+        FROM analytics_internal.events
         ${COMMON_FILTERS}
       )
       WHERE match(normalized_user_id, {uuidRe:String})
@@ -327,7 +327,7 @@ const VARIANTS: Variant[] = [
       SELECT uniqCombined(17)(normalized_user_id) AS mau
       FROM (
         SELECT lower(trim(assumeNotNull(user_id))) AS normalized_user_id
-        FROM analytics_internal.telemetry
+        FROM analytics_internal.events
         ${COMMON_FILTERS}
       )
       WHERE match(normalized_user_id, {uuidRe:String})
@@ -341,7 +341,7 @@ const VARIANTS: Variant[] = [
       SELECT uniqHLL12(normalized_user_id) AS mau
       FROM (
         SELECT lower(trim(assumeNotNull(user_id))) AS normalized_user_id
-        FROM analytics_internal.telemetry
+        FROM analytics_internal.events
         ${COMMON_FILTERS}
       )
       WHERE match(normalized_user_id, {uuidRe:String})
@@ -365,7 +365,7 @@ const ANALYTICS_USER_JOIN = `
     SELECT
       user_id,
       argMax(JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8'), event_at) AS latest_is_anonymous
-    FROM analytics_internal.telemetry
+    FROM analytics_internal.events
     WHERE event_type = '$token-refresh'
       AND project_id = {projectId:String}
       AND branch_id = {branchId:String}
@@ -383,7 +383,7 @@ const ANALYTICS_USER_JOIN_AFTER = `
     SELECT
       user_id,
       argMax(coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0), event_at) AS latest_is_anonymous
-    FROM analytics_internal.telemetry
+    FROM analytics_internal.events
     WHERE event_type = '$token-refresh'
       AND project_id = {projectId:String}
       AND branch_id = {branchId:String}
@@ -414,7 +414,7 @@ const ROUTE_QUERIES_BEFORE: RouteQuery[] = [
             event_at,
             CAST(data.ip_info.country_code, 'Nullable(String)') AS cc,
             coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) AS is_anonymous
-          FROM analytics_internal.telemetry
+          FROM analytics_internal.events
           WHERE event_type = '$token-refresh'
             AND project_id = {projectId:String}
             AND branch_id = {branchId:String}
@@ -436,7 +436,7 @@ const ROUTE_QUERIES_BEFORE: RouteQuery[] = [
       SELECT
         toDate(event_at) AS day,
         uniqExact(assumeNotNull(user_id)) AS dau
-      FROM analytics_internal.telemetry
+      FROM analytics_internal.events
       WHERE event_type = '$token-refresh'
         AND project_id = {projectId:String}
         AND branch_id = {branchId:String}
@@ -455,7 +455,7 @@ const ROUTE_QUERIES_BEFORE: RouteQuery[] = [
       SELECT
         toDate(event_at) AS day,
         assumeNotNull(user_id) AS user_id
-      FROM analytics_internal.telemetry
+      FROM analytics_internal.events
       WHERE event_type = '$token-refresh'
         AND project_id = {projectId:String}
         AND branch_id = {branchId:String}
@@ -473,7 +473,7 @@ const ROUTE_QUERIES_BEFORE: RouteQuery[] = [
       SELECT
         toDate(event_at) AS day,
         assumeNotNull(team_id) AS team_id
-      FROM analytics_internal.telemetry
+      FROM analytics_internal.events
       WHERE event_type = '$token-refresh'
         AND project_id = {projectId:String}
         AND branch_id = {branchId:String}
@@ -490,7 +490,7 @@ const ROUTE_QUERIES_BEFORE: RouteQuery[] = [
       SELECT uniqExact(sipHash64(normalized_user_id)) AS mau
       FROM (
         SELECT lower(trim(assumeNotNull(user_id))) AS normalized_user_id
-        FROM analytics_internal.telemetry
+        FROM analytics_internal.events
         WHERE event_type = '$token-refresh'
           AND project_id = {projectId:String}
           AND branch_id = {branchId:String}
@@ -524,7 +524,7 @@ const ROUTE_QUERIES_BEFORE: RouteQuery[] = [
             AND e.user_id IS NOT NULL
             AND ${NON_ANON_FILTER}
         ) AS visitors
-      FROM analytics_internal.telemetry AS e
+      FROM analytics_internal.events AS e
       ${ANALYTICS_USER_JOIN}
       WHERE e.event_type IN ('$page-view', '$click')
         AND e.project_id = {projectId:String}
@@ -545,7 +545,7 @@ const ROUTE_QUERIES_BEFORE: RouteQuery[] = [
           e.user_id IS NOT NULL
             AND ${NON_ANON_FILTER}
         ) AS visitors
-      FROM analytics_internal.telemetry AS e
+      FROM analytics_internal.events AS e
       ${ANALYTICS_USER_JOIN}
       WHERE e.event_type = '$page-view'
         AND e.project_id = {projectId:String}
@@ -566,7 +566,7 @@ const ROUTE_QUERIES_BEFORE: RouteQuery[] = [
           e.user_id IS NOT NULL
             AND ${NON_ANON_FILTER}
         ) AS visitors
-      FROM analytics_internal.telemetry AS e
+      FROM analytics_internal.events AS e
       ${ANALYTICS_USER_JOIN}
       WHERE e.event_type = '$page-view'
         AND e.project_id = {projectId:String}
@@ -591,7 +591,7 @@ const ROUTE_QUERIES_BEFORE: RouteQuery[] = [
           user_id IS NOT NULL
             AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
         ) AS visitors
-      FROM analytics_internal.telemetry
+      FROM analytics_internal.events
       WHERE event_type = '$token-refresh'
         AND project_id = {projectId:String}
         AND branch_id = {branchId:String}
@@ -610,7 +610,7 @@ const ROUTE_QUERIES_BEFORE: RouteQuery[] = [
     sql: `
       SELECT
         uniqExact(assumeNotNull(user_id)) AS online
-      FROM analytics_internal.telemetry
+      FROM analytics_internal.events
       WHERE event_type = '$token-refresh'
         AND project_id = {projectId:String}
         AND branch_id = {branchId:String}
@@ -648,7 +648,7 @@ function splitSqlAfter(idCol: "user_id" | "team_id", withAnonFilter: boolean): s
         SELECT DISTINCT
           toDate(event_at) AS day,
           assumeNotNull(${idCol}) AS ${idCol}
-        FROM analytics_internal.telemetry
+        FROM analytics_internal.events
         WHERE event_type = '$token-refresh'
           AND project_id = {projectId:String}
           AND branch_id = {branchId:String}
@@ -662,7 +662,7 @@ function splitSqlAfter(idCol: "user_id" | "team_id", withAnonFilter: boolean): s
       SELECT
         assumeNotNull(${idCol}) AS ${idCol},
         toDate(min(event_at)) AS first_date
-      FROM analytics_internal.telemetry
+      FROM analytics_internal.events
       WHERE event_type = '$token-refresh'
         AND project_id = {projectId:String}
         AND branch_id = {branchId:String}
@@ -694,7 +694,7 @@ const ROUTE_QUERIES_AFTER: RouteQuery[] = [
             event_at,
             CAST(data.ip_info.country_code, 'Nullable(String)') AS cc,
             coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) AS is_anonymous
-          FROM analytics_internal.telemetry
+          FROM analytics_internal.events
           WHERE event_type = '$token-refresh'
             AND project_id = {projectId:String}
             AND branch_id = {branchId:String}
@@ -718,7 +718,7 @@ const ROUTE_QUERIES_AFTER: RouteQuery[] = [
       SELECT
         toDate(event_at) AS day,
         uniqExact(assumeNotNull(user_id)) AS dau
-      FROM analytics_internal.telemetry
+      FROM analytics_internal.events
       WHERE event_type = '$token-refresh'
         AND project_id = {projectId:String}
         AND branch_id = {branchId:String}
@@ -764,7 +764,7 @@ const ROUTE_QUERIES_AFTER: RouteQuery[] = [
             AND e.user_id IS NOT NULL
             AND ${NON_ANON_FILTER_AFTER}
         ) AS visitors
-      FROM analytics_internal.telemetry AS e
+      FROM analytics_internal.events AS e
       ${ANALYTICS_USER_JOIN_AFTER}
       WHERE e.event_type IN ('$page-view', '$click')
         AND e.project_id = {projectId:String}
@@ -785,7 +785,7 @@ const ROUTE_QUERIES_AFTER: RouteQuery[] = [
           e.user_id IS NOT NULL
             AND ${NON_ANON_FILTER_AFTER}
         ) AS visitors
-      FROM analytics_internal.telemetry AS e
+      FROM analytics_internal.events AS e
       ${ANALYTICS_USER_JOIN_AFTER}
       WHERE e.event_type = '$page-view'
         AND e.project_id = {projectId:String}
@@ -806,7 +806,7 @@ const ROUTE_QUERIES_AFTER: RouteQuery[] = [
           e.user_id IS NOT NULL
             AND ${NON_ANON_FILTER_AFTER}
         ) AS visitors
-      FROM analytics_internal.telemetry AS e
+      FROM analytics_internal.events AS e
       ${ANALYTICS_USER_JOIN_AFTER}
       WHERE e.event_type = '$page-view'
         AND e.project_id = {projectId:String}
@@ -831,7 +831,7 @@ const ROUTE_QUERIES_AFTER: RouteQuery[] = [
           user_id IS NOT NULL
             AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
         ) AS visitors
-      FROM analytics_internal.telemetry
+      FROM analytics_internal.events
       WHERE event_type = '$token-refresh'
         AND project_id = {projectId:String}
         AND branch_id = {branchId:String}
@@ -850,7 +850,7 @@ const ROUTE_QUERIES_AFTER: RouteQuery[] = [
     sql: `
       SELECT
         uniqExact(assumeNotNull(user_id)) AS online
-      FROM analytics_internal.telemetry
+      FROM analytics_internal.events
       WHERE event_type = '$token-refresh'
         AND project_id = {projectId:String}
         AND branch_id = {branchId:String}
@@ -887,7 +887,7 @@ const ROUTE_QUERIES_OPTIMIZED: RouteQuery[] = [
             event_at,
             CAST(data.ip_info.country_code, 'Nullable(String)') AS cc,
             CAST(data.is_anonymous, 'UInt8') AS is_anonymous
-          FROM analytics_internal.telemetry
+          FROM analytics_internal.events
           WHERE event_type = '$token-refresh'
             AND project_id = {projectId:String}
             AND branch_id = {branchId:String}
@@ -923,7 +923,7 @@ const ROUTE_QUERIES_OPTIMIZED: RouteQuery[] = [
           SELECT DISTINCT
             toDate(event_at) AS day,
             sipHash64(assumeNotNull(user_id)) AS user_hash
-          FROM analytics_internal.telemetry
+          FROM analytics_internal.events
           WHERE event_type = '$token-refresh'
             AND project_id = {projectId:String}
             AND branch_id = {branchId:String}
@@ -937,7 +937,7 @@ const ROUTE_QUERIES_OPTIMIZED: RouteQuery[] = [
         SELECT
           sipHash64(assumeNotNull(user_id)) AS user_hash,
           toDate(min(event_at)) AS first_date
-        FROM analytics_internal.telemetry
+        FROM analytics_internal.events
         WHERE event_type = '$token-refresh'
           AND project_id = {projectId:String}
           AND branch_id = {branchId:String}
@@ -969,7 +969,7 @@ const ROUTE_QUERIES_OPTIMIZED: RouteQuery[] = [
           SELECT DISTINCT
             toDate(event_at) AS day,
             sipHash64(assumeNotNull(team_id)) AS team_hash
-          FROM analytics_internal.telemetry
+          FROM analytics_internal.events
           WHERE event_type = '$token-refresh'
             AND project_id = {projectId:String}
             AND branch_id = {branchId:String}
@@ -982,7 +982,7 @@ const ROUTE_QUERIES_OPTIMIZED: RouteQuery[] = [
         SELECT
           sipHash64(assumeNotNull(team_id)) AS team_hash,
           toDate(min(event_at)) AS first_date
-        FROM analytics_internal.telemetry
+        FROM analytics_internal.events
         WHERE event_type = '$token-refresh'
           AND project_id = {projectId:String}
           AND branch_id = {branchId:String}
@@ -1016,7 +1016,7 @@ const ROUTE_QUERIES_OPTIMIZED: RouteQuery[] = [
             AND e.user_id IS NOT NULL
             AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(e.data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
         ) AS visitors
-      FROM analytics_internal.telemetry AS e
+      FROM analytics_internal.events AS e
       WHERE e.event_type IN ('$page-view', '$click')
         AND e.project_id = {projectId:String}
         AND e.branch_id = {branchId:String}
@@ -1036,7 +1036,7 @@ const ROUTE_QUERIES_OPTIMIZED: RouteQuery[] = [
           e.user_id IS NOT NULL
             AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(e.data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
         ) AS visitors
-      FROM analytics_internal.telemetry AS e
+      FROM analytics_internal.events AS e
       WHERE e.event_type = '$page-view'
         AND e.project_id = {projectId:String}
         AND e.branch_id = {branchId:String}
@@ -1056,7 +1056,7 @@ const ROUTE_QUERIES_OPTIMIZED: RouteQuery[] = [
           e.user_id IS NOT NULL
             AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(e.data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
         ) AS visitors
-      FROM analytics_internal.telemetry AS e
+      FROM analytics_internal.events AS e
       WHERE e.event_type = '$page-view'
         AND e.project_id = {projectId:String}
         AND e.branch_id = {branchId:String}
@@ -1084,7 +1084,7 @@ const analyticsUserJoinBounded = `
     SELECT
       user_id,
       argMax(coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0), event_at) AS latest_is_anonymous
-    FROM analytics_internal.telemetry
+    FROM analytics_internal.events
     WHERE event_type = '$token-refresh'
       AND project_id = {projectId:String}
       AND branch_id = {branchId:String}
@@ -1116,7 +1116,7 @@ const ROUTE_QUERIES_BACKFILL_A: RouteQuery[] = [
           e.event_type = '$page-view' AND e.user_id IS NOT NULL
             AND ${NON_ANON_FILTER_AFTER}
         ) AS visitors
-      FROM analytics_internal.telemetry AS e
+      FROM analytics_internal.events AS e
       ${analyticsUserJoinBounded}
       WHERE e.event_type IN ('$page-view', '$click')
         AND e.project_id = {projectId:String}
@@ -1136,7 +1136,7 @@ const ROUTE_QUERIES_BACKFILL_A: RouteQuery[] = [
           assumeNotNull(e.user_id),
           e.user_id IS NOT NULL AND ${NON_ANON_FILTER_AFTER}
         ) AS visitors
-      FROM analytics_internal.telemetry AS e
+      FROM analytics_internal.events AS e
       ${analyticsUserJoinBounded}
       WHERE e.event_type = '$page-view'
         AND e.project_id = {projectId:String}
@@ -1156,7 +1156,7 @@ const ROUTE_QUERIES_BACKFILL_A: RouteQuery[] = [
           assumeNotNull(e.user_id),
           e.user_id IS NOT NULL AND ${NON_ANON_FILTER_AFTER}
         ) AS visitors
-      FROM analytics_internal.telemetry AS e
+      FROM analytics_internal.events AS e
       ${analyticsUserJoinBounded}
       WHERE e.event_type = '$page-view'
         AND e.project_id = {projectId:String}
@@ -1201,7 +1201,7 @@ const ROUTE_QUERIES_BACKFILL_D: RouteQuery[] = [
           e.event_type = '$page-view' AND e.user_id IS NOT NULL
             AND ({includeAnonymous:UInt8} = 1 OR coalesce(e.${BENCH_OPTION_D_COLUMN}, 0) = 0)
         ) AS visitors
-      FROM analytics_internal.telemetry AS e
+      FROM analytics_internal.events AS e
       WHERE e.event_type IN ('$page-view', '$click')
         AND e.project_id = {projectId:String}
         AND e.branch_id = {branchId:String}
@@ -1221,7 +1221,7 @@ const ROUTE_QUERIES_BACKFILL_D: RouteQuery[] = [
           e.user_id IS NOT NULL
             AND ({includeAnonymous:UInt8} = 1 OR coalesce(e.${BENCH_OPTION_D_COLUMN}, 0) = 0)
         ) AS visitors
-      FROM analytics_internal.telemetry AS e
+      FROM analytics_internal.events AS e
       WHERE e.event_type = '$page-view'
         AND e.project_id = {projectId:String}
         AND e.branch_id = {branchId:String}
@@ -1241,7 +1241,7 @@ const ROUTE_QUERIES_BACKFILL_D: RouteQuery[] = [
           e.user_id IS NOT NULL
             AND ({includeAnonymous:UInt8} = 1 OR coalesce(e.${BENCH_OPTION_D_COLUMN}, 0) = 0)
         ) AS visitors
-      FROM analytics_internal.telemetry AS e
+      FROM analytics_internal.events AS e
       WHERE e.event_type = '$page-view'
         AND e.project_id = {projectId:String}
         AND e.branch_id = {branchId:String}
@@ -1271,7 +1271,7 @@ async function ensureOptionDColumn(): Promise<void> {
   if (Number(rows[0]?.c ?? 0) === 0) {
     await client.command({
       query: `
-        ALTER TABLE analytics_internal.telemetry
+        ALTER TABLE analytics_internal.events
         ADD COLUMN IF NOT EXISTS ${BENCH_OPTION_D_COLUMN} Nullable(UInt8)
       `,
     });
@@ -1282,7 +1282,7 @@ async function populateOptionDColumn(): Promise<void> {
   const client = getClickhouseAdminClient();
   await client.command({
     query: `
-      ALTER TABLE analytics_internal.telemetry
+      ALTER TABLE analytics_internal.events
       UPDATE ${BENCH_OPTION_D_COLUMN} = CAST(data.is_anonymous, 'Nullable(UInt8)')
       WHERE project_id = {projectId:String}
     `,
@@ -1294,7 +1294,7 @@ async function populateOptionDColumn(): Promise<void> {
 async function dropOptionDColumn(): Promise<void> {
   const client = getClickhouseAdminClient();
   await client.command({
-    query: `ALTER TABLE analytics_internal.telemetry DROP COLUMN IF EXISTS ${BENCH_OPTION_D_COLUMN}`,
+    query: `ALTER TABLE analytics_internal.events DROP COLUMN IF EXISTS ${BENCH_OPTION_D_COLUMN}`,
   });
 }
 
@@ -1506,7 +1506,7 @@ function buildAnalyticsOverviewVariant(opts: {
               AND e.user_id IS NOT NULL
               AND ${opts.nonAnonFilter}
           ) AS visitors
-        FROM analytics_internal.telemetry AS e
+        FROM analytics_internal.events AS e
         ${opts.joinSql}
         WHERE e.event_type IN ('$page-view', '$click')
           AND e.project_id = {projectId:String}
@@ -1528,7 +1528,7 @@ function buildAnalyticsOverviewVariant(opts: {
             e.user_id IS NOT NULL
               AND ${opts.nonAnonFilter}
           ) AS visitors
-        FROM analytics_internal.telemetry AS e
+        FROM analytics_internal.events AS e
         ${opts.joinSql}
         WHERE e.event_type = '$page-view'
           AND e.project_id = {projectId:String}
@@ -1550,7 +1550,7 @@ function buildAnalyticsOverviewVariant(opts: {
             e.user_id IS NOT NULL
               AND ${opts.nonAnonFilter}
           ) AS visitors
-        FROM analytics_internal.telemetry AS e
+        FROM analytics_internal.events AS e
         ${opts.joinSql}
         WHERE e.event_type = '$page-view'
           AND e.project_id = {projectId:String}
@@ -1994,7 +1994,7 @@ async function seed(rows: EventRow[], batch = envInt("BENCH_BATCH", 50_000)): Pr
   for (let i = 0; i < rows.length; i += batch) {
     const chunk = rows.slice(i, i + batch);
     await client.insert({
-      table: "analytics_internal.telemetry",
+      table: "analytics_internal.events",
       values: chunk,
       format: "JSONEachRow",
       clickhouse_settings: { date_time_input_format: "best_effort" },
@@ -2005,7 +2005,7 @@ async function seed(rows: EventRow[], batch = envInt("BENCH_BATCH", 50_000)): Pr
 async function cleanup(): Promise<void> {
   const client = getClickhouseAdminClient();
   await client.command({
-    query: `ALTER TABLE analytics_internal.telemetry DELETE WHERE project_id = {p:String}`,
+    query: `ALTER TABLE analytics_internal.events DELETE WHERE project_id = {p:String}`,
     query_params: { p: BENCH_PROJECT_ID },
     // Block until the mutation is applied so the script exits clean.
     clickhouse_settings: { mutations_sync: "2" },

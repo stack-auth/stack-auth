@@ -146,7 +146,7 @@ export const GET = createSmartRouteHandler({
             NULLIF(CAST(data.ip_info.city_name, 'Nullable(String)'), '') AS city_name,
             CAST(data.ip_info.is_trusted, 'Nullable(Bool)') AS ip_is_trusted,
             NULLIF(user_id, '') AS user_id
-          FROM analytics_internal.telemetry
+          FROM analytics_internal.events
           ${sharedWhere}
             AND event_type IN ('$sign-in-attempt', '$permission-check', '$user-restricted', '$sign-up-rule-trigger')
           ORDER BY event_at DESC
@@ -168,7 +168,7 @@ export const GET = createSmartRouteHandler({
             countIf(event_type = '$sign-in-attempt' AND CAST(data.outcome, 'Nullable(String)') = 'failed') AS failures,
             countIf(event_type IN ('$permission-check', '$user-restricted')
               OR (event_type = '$sign-up-rule-trigger' AND CAST(data.action, 'Nullable(String)') IN ('reject', 'restrict'))) AS denials
-          FROM analytics_internal.telemetry
+          FROM analytics_internal.events
           ${sharedWhere}
             AND event_type IN ('$sign-in-attempt', '$permission-check', '$user-restricted', '$sign-up-rule-trigger')
           GROUP BY day

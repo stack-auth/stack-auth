@@ -48,6 +48,7 @@ import {
   buildTraceRootsCreateTableSql,
   buildTraceServicesCreateTableSql,
   backfillDerivedSpanTable,
+  decideFingerprintGuard,
   ensureSkipIndex,
   ensureTableTtl,
   selectColumnNames,
@@ -82,6 +83,134 @@ describe("spans subsystem fingerprint", () => {
     const current = computeSpansSubsystemFingerprint();
     expect(current).toMatch(/^[0-9a-f]{32}$/);
     expect(current).toBe(computeSpansSubsystemFingerprint());
+  });
+});
+
+describe("fingerprint guard decision", () => {
+  const expectedObjects = [
+    {
+      name: "spans",
+      columns: [
+        { name: "project_id", type: "String" },
+        { name: "created_at", type: "DateTime64(3, 'UTC')" },
+      ],
+    },
+    {
+      name: "span_writes_mv",
+      asSelect: `
+        SELECT project_id, created_at
+        FROM analytics_internal.spans
+        WHERE producer = 'sdk' AND billing_item = 'analytics_spans'
+      `,
+    },
+  ];
+  const liveSpans = {
+    name: "spans",
+    columns: [
+      { name: "project_id", type: "String" },
+      { name: "created_at", type: "DateTime64(3,'UTC')" },
+    ],
+  };
+  const liveSpanWritesMv = {
+    name: "span_writes_mv",
+    asSelect: `
+      SELECT project_id, created_at FROM analytics_internal.spans
+      WHERE (producer = 'sdk') AND (billing_item = 'analytics_spans')
+    `,
+  };
+  const matchingLiveObjects = [liveSpans, liveSpanWritesMv];
+
+  test("returns current when the stored fingerprint matches", () => {
+    expect(decideFingerprintGuard({
+      stored: "expected",
+      expected: "expected",
+      liveObjects: [],
+      expectedObjects,
+    })).toEqual({ kind: "current" });
+  });
+
+  test("returns fresh when no marker or owned objects exist", () => {
+    expect(decideFingerprintGuard({
+      stored: undefined,
+      expected: "expected",
+      liveObjects: [],
+      expectedObjects,
+    })).toEqual({ kind: "fresh" });
+  });
+
+  test("resumes when live tables and materialized views match", () => {
+    expect(decideFingerprintGuard({
+      stored: undefined,
+      expected: "expected",
+      liveObjects: matchingLiveObjects,
+      expectedObjects,
+    })).toEqual({ kind: "resume" });
+  });
+
+  test("resumes when live tables contain extra columns", () => {
+    expect(decideFingerprintGuard({
+      stored: undefined,
+      expected: "expected",
+      liveObjects: [
+        {
+          ...liveSpans,
+          columns: [
+            ...liveSpans.columns,
+            { name: "future_column", type: "UInt64" },
+          ],
+        },
+        liveSpanWritesMv,
+      ],
+      expectedObjects,
+    })).toEqual({ kind: "resume" });
+  });
+
+  test("rejects a live table missing an expected column", () => {
+    expect(decideFingerprintGuard({
+      stored: undefined,
+      expected: "expected",
+      liveObjects: [{
+        name: "spans",
+        columns: [{ name: "project_id", type: "String" }],
+      }],
+      expectedObjects,
+    })).toMatchObject({ kind: "mismatch", stored: "absent", expected: "expected" });
+  });
+
+  test("rejects a live table with a changed column type", () => {
+    expect(decideFingerprintGuard({
+      stored: undefined,
+      expected: "expected",
+      liveObjects: [{
+        name: "spans",
+        columns: [
+          { name: "project_id", type: "String" },
+          { name: "created_at", type: "DateTime64(6, 'UTC')" },
+        ],
+      }],
+      expectedObjects,
+    })).toMatchObject({ kind: "mismatch", stored: "absent", expected: "expected" });
+  });
+
+  test("rejects a materialized view missing an expected predicate", () => {
+    expect(decideFingerprintGuard({
+      stored: undefined,
+      expected: "expected",
+      liveObjects: [{
+        name: "span_writes_mv",
+        asSelect: "SELECT project_id, created_at FROM analytics_internal.spans WHERE producer = 'sdk'",
+      }],
+      expectedObjects,
+    })).toMatchObject({ kind: "mismatch", stored: "absent", expected: "expected" });
+  });
+
+  test("rejects a different stored fingerprint even when live objects match", () => {
+    expect(decideFingerprintGuard({
+      stored: "old",
+      expected: "expected",
+      liveObjects: matchingLiveObjects,
+      expectedObjects,
+    })).toMatchObject({ kind: "mismatch", stored: "old", expected: "expected" });
   });
 });
 
@@ -150,7 +279,7 @@ describe("derived read models", () => {
   });
 });
 
-describe("error grouping columns on analytics_internal.telemetry", () => {
+describe("error grouping columns on analytics_internal.events", () => {
   test("logs carries the full event shape plus grouping and canonical OTel columns", () => {
     // The log/error row shape is the entire event shape — including `message`,
     // the server-promoted human-readable occurrence text — followed by the
@@ -198,11 +327,10 @@ describe("error grouping columns on analytics_internal.telemetry", () => {
     // released event projection; only issue-grouping internals are hidden.
     expect(ERRORS_VIEW_SQL).toContain("WHERE event_type = '$error'");
     expect(LOGS_VIEW_SQL).toContain("WHERE event_type = '$log'");
-    // Both read the canonical telemetry table directly. A frozen pre-telemetry
-    // `analytics_internal.events` table may still exist on old databases; it is
-    // deliberately not part of any view (see the note above EVENTS_VIEW_SQL).
-    expect(ERRORS_VIEW_SQL).toContain("FROM analytics_internal.telemetry");
-    expect(LOGS_VIEW_SQL).toContain("FROM analytics_internal.telemetry");
+    // Both read the physical events table. Logs and errors are slices of the
+    // same store, not a second table.
+    expect(ERRORS_VIEW_SQL).toContain("FROM analytics_internal.events");
+    expect(LOGS_VIEW_SQL).toContain("FROM analytics_internal.events");
     expect(selectColumnNames(LOGS_COLUMNS, ERROR_GROUPING_COLUMN_NAMES)).toEqual([
       ...names(EVENTS_COLUMNS),
       ...ERROR_ENVELOPE_COLUMN_NAMES,
@@ -275,7 +403,7 @@ describe("issue occurrence rollup", () => {
   });
 
   test("the materialized view reads only grouped $error rows from logs", () => {
-    expect(mvSql).toContain("FROM analytics_internal.telemetry");
+    expect(mvSql).toContain("FROM analytics_internal.events");
     expect(mvSql).toContain("WHERE event_type = '$error' AND issue_hash != ''");
     expect(mvSql).toContain("toStartOfHour(event_at) AS bucket_start");
     expect(mvSql).toContain("GROUP BY project_id, branch_id, issue_hash, bucket_start, service_name, deployment_environment_name");
@@ -285,7 +413,7 @@ describe("issue occurrence rollup", () => {
     // A `TO table` materialized view pairs its SELECT with the target
     // positionally, so a reordered SELECT silently mis-pairs same-typed columns.
     const selectBody = mvSql
-      .slice(mvSql.indexOf("SELECT") + "SELECT".length, mvSql.indexOf("FROM analytics_internal.telemetry"))
+      .slice(mvSql.indexOf("SELECT") + "SELECT".length, mvSql.indexOf("FROM analytics_internal.events"))
       .split("\n")
       .map((line) => line.trim().replace(/,$/, ""))
       .filter((line) => line.length > 0)
@@ -334,7 +462,7 @@ describe("issues subsystem fingerprint", () => {
     // and nothing else.
     const baseline = computeIssuesSubsystemFingerprint();
     const widenedLogs: ClickhouseColumn[] = [...LOGS_COLUMNS, { name: "issue_platform", type: "LowCardinality(String)", default: "''" }];
-    expect(buildColumnUpgradeSql("analytics_internal.telemetry", widenedLogs)).toContain("issue_platform");
+    expect(buildColumnUpgradeSql("analytics_internal.events", widenedLogs)).toContain("issue_platform");
     expect(computeIssuesSubsystemFingerprint()).toBe(baseline);
   });
 });
@@ -351,12 +479,19 @@ describe("telemetry table physical layout", () => {
 
   test("every physical batch destination enables non-replicated insert deduplication", () => {
     expect(TELEMETRY_INSERT_TABLES.map(buildTelemetryInsertDeduplicationSettingSql)).toEqual([
-      `ALTER TABLE analytics_internal.telemetry MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
+      `ALTER TABLE analytics_internal.events MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
       `ALTER TABLE analytics_internal.spans MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
       `ALTER TABLE analytics_internal.span_events MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
       `ALTER TABLE analytics_internal.span_links MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
       `ALTER TABLE analytics_internal.metrics MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
     ]);
+  });
+
+  test("event-shaped ingest does not create a second physical table", () => {
+    expect(TELEMETRY_INSERT_TABLES).not.toContain("telemetry");
+    expect(LOGS_VIEW_SQL).not.toContain("analytics_internal.telemetry");
+    expect(ERRORS_VIEW_SQL).not.toContain("analytics_internal.telemetry");
+    expect(buildTelemetryCreateTableSql("analytics_internal.events")).toContain("CREATE TABLE IF NOT EXISTS analytics_internal.events");
   });
 
   test("native OTLP metrics preserve point identity across retries", () => {
@@ -706,7 +841,7 @@ describe("clickhouse upgrade helpers (integration)", () => {
   });
 
   test("the rollup materialized view's output types match its target table exactly", async () => {
-    await client.command({ query: buildTelemetryCreateTableSql(`${testDatabase}.telemetry`) });
+    await client.command({ query: buildTelemetryCreateTableSql(`${testDatabase}.events`) });
     await client.command({ query: buildIssueOccurrenceRollupCreateTableSql(testDatabase) });
     await client.command({ query: buildIssueOccurrenceRollupMvSql(testDatabase) });
 
@@ -738,13 +873,13 @@ describe("clickhouse upgrade helpers (integration)", () => {
   test("the rollup fills forward from $error inserts without breaking the source insert", async () => {
     // The table/MV are created by the type-match test above; both `IF NOT
     // EXISTS`, so re-issuing them keeps this test independent of ordering.
-    await client.command({ query: buildTelemetryCreateTableSql(`${testDatabase}.telemetry`) });
+    await client.command({ query: buildTelemetryCreateTableSql(`${testDatabase}.events`) });
     await client.command({ query: buildIssueOccurrenceRollupCreateTableSql(testDatabase) });
     await client.command({ query: buildIssueOccurrenceRollupMvSql(testDatabase) });
 
     await client.command({
       query: `
-        INSERT INTO ${testDatabase}.telemetry (event_type, event_at, data, project_id, branch_id, user_id, service_name, deployment_environment_name, issue_hash) VALUES
+        INSERT INTO ${testDatabase}.events (event_type, event_at, data, project_id, branch_id, user_id, service_name, deployment_environment_name, issue_hash) VALUES
         ('$error', now64(3), '{}', 'roll', 'b', 'u1',  'api',  'production', 'hash-a'),
         ('$error', now64(3), '{}', 'roll', 'b', NULL,  'api',  'production', 'hash-a'),
         ('$error', now64(3), '{}', 'roll', 'b', 'u2',  'api',  'production', 'hash-a'),

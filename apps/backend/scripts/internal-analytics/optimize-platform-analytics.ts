@@ -46,7 +46,7 @@ async function seed() {
   log("CH: (re)create bench_pa.events");
   await chAdmin.command({ query: "DROP DATABASE IF EXISTS bench_pa" });
   await chAdmin.command({ query: "CREATE DATABASE bench_pa" });
-  await chAdmin.command({ query: "CREATE TABLE bench_pa.events AS analytics_internal.telemetry" });
+  await chAdmin.command({ query: "CREATE TABLE bench_pa.events AS analytics_internal.events" });
   const projExpr = (k: string) => `concat('bench-proj-', toString(toUInt32(floor(${NUM_PROJECTS} * pow((cityHash64(${k}) % 1000000)/1000000.0, ${ZIPF_K})))))`;
   const cc = `['US','DE','IN','BR','GB','FR','JP','CA','AU','NL'][(cityHash64(number,'cc') % 10)+1]`;
   const CHUNK = 5_000_000;

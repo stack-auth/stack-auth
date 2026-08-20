@@ -1613,7 +1613,7 @@ function formatClickhouseTimestamp(date: Date): string {
 }
 
 /**
- * Builds a `$token-refresh` row for the ClickHouse `analytics_internal.telemetry`
+ * Builds a `$token-refresh` row for the ClickHouse `analytics_internal.events`
  * table. Shared by the historical session-activity seeder and the live-user
  * seeder so the row shape stays defined in exactly one place.
  */
@@ -1710,7 +1710,7 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
       clickhouseBatches.push(clickhouseRows.slice(i, i + BATCH_SIZE));
     }
     await Promise.all(clickhouseBatches.map((batch) => clickhouseClient.insert({
-      table: 'analytics_internal.telemetry',
+      table: 'analytics_internal.events',
       values: batch,
       format: 'JSONEachRow',
       clickhouse_settings: {
@@ -2081,7 +2081,7 @@ async function seedBulkSignupsAndActivity(options: {
   }
   await Promise.all([
     ...clickhouseBatches.map((batch) => clickhouse.insert({
-      table: 'analytics_internal.telemetry',
+      table: 'analytics_internal.events',
       values: batch,
       format: 'JSONEachRow',
       clickhouse_settings: {
@@ -2171,14 +2171,14 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
   // The preview create-project route passes in a client it already warmed up.
   const clickhouseClient = options.clickhouseClient ?? getClickhouseAdminClient();
 
-  // The ClickHouse `analytics_internal.telemetry` table is append-only — unlike
+  // The ClickHouse `analytics_internal.events` table is append-only — unlike
   // the Postgres seeders there is no delete-before-insert. When reseeding an
   // existing project, clear this project's previously-seeded events once, up
   // front (before the concurrent event seeders start), so the reseed refreshes
   // the analytics rather than duplicating them. A fresh project has none.
   if (!freshProject) {
     await clickhouseClient.command({
-      query: 'DELETE FROM analytics_internal.telemetry WHERE project_id = {projectId:String}',
+      query: 'DELETE FROM analytics_internal.events WHERE project_id = {projectId:String}',
       query_params: { projectId },
     });
   }
@@ -2323,7 +2323,7 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
       freshProject,
     }),
     // Error occurrences + the Issue records derived from them. Runs alongside
-    // the other analytics seeders: it writes `analytics_internal.telemetry` and the
+    // the other analytics seeders: it writes `analytics_internal.events` and the
     // `Issue*` Postgres tables, which nothing else here touches.
     seedDummyIssues({
       prisma: dummyPrisma,
@@ -2345,7 +2345,7 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
   //    metrics endpoint reports non-zero user/team totals. In production those
   //    tables are filled by the external-db-sync pipeline, but preview/demo
   //    deployments don't run it — so the seed populates them directly, just
-  //    like it already writes `analytics_internal.telemetry`.
+  //    like it already writes `analytics_internal.events`.
   //  - seedDummyLiveTokenRefreshEvents plants "live" activity. It stays in the
   //    last step so the events are as fresh as possible when the dashboard
   //    loads the overview right after creation.
@@ -2451,7 +2451,7 @@ async function seedDummyLiveTokenRefreshEvents(options: {
   // Synchronous insert (no async_insert) so the events are immediately
   // queryable when the dashboard loads the overview right after creation.
   await clickhouseClient.insert({
-    table: 'analytics_internal.telemetry',
+    table: 'analytics_internal.events',
     values: clickhouseRows,
     format: 'JSONEachRow',
     clickhouse_settings: { date_time_input_format: 'best_effort' },
@@ -2710,7 +2710,7 @@ async function seedDummyIssues(options: {
   }
 
   // Re-seeding: clear this project's previous error occurrences and the Issue
-  // records derived from them. Occurrences live in `analytics_internal.telemetry`,
+  // records derived from them. Occurrences live in `analytics_internal.events`,
   // so the project-wide telemetry DELETE at the top of
   // `seedDummyProject` does not cover them. Postgres goes first: an Issue whose
   // occurrences were already deleted would render as a row with no detail.
@@ -2724,7 +2724,7 @@ async function seedDummyIssues(options: {
     // time each `await` resolves the old rows are gone and the inserts below
     // cannot interleave with a still-running mutation.
     await clickhouseClient.command({
-      query: `DELETE FROM analytics_internal.telemetry WHERE project_id = {projectId:String} AND event_type = '$error'`,
+      query: `DELETE FROM analytics_internal.events WHERE project_id = {projectId:String} AND event_type = '$error'`,
       query_params: { projectId },
     });
     // The rollup must be cleared SEPARATELY. A materialized view is an insert
@@ -3029,7 +3029,7 @@ async function seedDummySessionReplays({
   const shouldSeedClickhouse = getEnvVariable('STACK_CLICKHOUSE_URL', '') !== '';
   if (shouldSeedClickhouse) {
     await clickhouseClient.insert({
-      table: 'analytics_internal.telemetry',
+      table: 'analytics_internal.events',
       values: clickhouseRows,
       format: 'JSONEachRow',
       clickhouse_settings: {

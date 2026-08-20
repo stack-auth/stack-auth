@@ -161,7 +161,7 @@ export const MetricsRecentUserSchema = yupObject({
 }).noUnknown(false).defined();
 
 // Per-user activity clickmap — a simple list of daily event counts for a single
-// user. Backed by ClickHouse `analytics_internal.telemetry` filtered by user_id,
+// user. Backed by ClickHouse `analytics_internal.events` filtered by user_id,
 // project_id, and branch_id. See `/internal/user-activity` on the backend.
 export const UserActivityResponseBodySchema = yupObject({
   data_points: MetricsDataPointsSchema,

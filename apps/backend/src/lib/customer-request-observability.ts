@@ -5,7 +5,7 @@ import { isSpanContextValid, ROOT_CONTEXT, trace, TraceFlags } from "@openteleme
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { getSharedClickhouseAdminClient } from "./clickhouse";
+import { getClickhouseWriteAvailability, getSharedClickhouseAdminClient } from "./clickhouse";
 import { insertSpans, type SpanInsertRow } from "./spans";
 import { isTelemetryIngestionPath } from "./telemetry/ingestion-paths";
 
@@ -194,6 +194,7 @@ function buildCustomerRequestSpan(
 }
 
 async function writeCustomerRequestSpan(row: SpanInsertRow): Promise<void> {
+  if (getClickhouseWriteAvailability() === "absent") return;
   await insertSpans(getSharedClickhouseAdminClient(), [row]);
 }
 

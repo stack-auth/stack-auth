@@ -49,7 +49,7 @@ import { dispatchIssueAlertsForMaterialization } from "./issue-alerts/ingestion"
  * How far back a run looks. Materialization normally completes in well under a
  * second, so anything still unclaimed after an hour is a genuine failure rather
  * than work in progress. Bounded because the query it drives is a group-by over
- * `analytics_internal.telemetry`; an unbounded lookback would turn a repair sweep
+ * `analytics_internal.events`; an unbounded lookback would turn a repair sweep
  * into a full-history scan every minute.
  */
 export const ISSUE_RECONCILER_LOOKBACK_MS = 60 * 60 * 1000;
@@ -168,7 +168,7 @@ async function findCandidateBatches(from: Date, to: Date): Promise<CandidateRow[
   const result = await client.query({
     query: `
       SELECT project_id, branch_id, batch_id
-      FROM analytics_internal.telemetry
+      FROM analytics_internal.events
       PREWHERE event_type = '$error'
         AND event_at >= {from:DateTime64(3)}
         AND event_at < {to:DateTime64(3)}
@@ -256,7 +256,7 @@ async function rebuildInputs(options: {
         -- cannot prove crashed the caller must not be reported as a crash.
         argMax(toString(data.handled) = 'true', event_at) AS handled,
         argMax(issue_variant = 'message' AND toString(data.synthetic) = 'true', event_at) AS synthetic
-      FROM analytics_internal.telemetry
+      FROM analytics_internal.events
       PREWHERE project_id = {projectId:String}
         AND branch_id = {branchId:String}
         AND event_type = '$error'
@@ -405,7 +405,7 @@ export async function processIssueMaterializationBatch(options: {
   const visibility = await client.query({
     query: `
       SELECT count() AS count
-      FROM analytics_internal.telemetry
+      FROM analytics_internal.events
       PREWHERE project_id = {projectId:String}
         AND branch_id = {branchId:String}
         AND event_type = '$error'

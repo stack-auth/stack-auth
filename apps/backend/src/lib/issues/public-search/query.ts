@@ -349,7 +349,7 @@ function occurrenceSelect(): string {
   return `
       SELECT occurrence_id, event_at, body, level, data, error_envelope, error_frames,
              service_name, deployment_environment_name, issue_hash
-      FROM analytics_internal.telemetry`;
+      FROM analytics_internal.events`;
 }
 
 function occurrenceFilterSql(clauses: OccurrenceFilterClauses): string {
@@ -432,7 +432,7 @@ export function buildPublicSearchFacetPlan(options: {
   return {
     query: `
       SELECT {facetName:String} AS facet_key, ${expression} AS facet_value, toUInt64(count()) AS count
-      FROM analytics_internal.telemetry
+      FROM analytics_internal.events
       ${occurrenceFilterSql(clauses)}
         AND ${expression} != ''
       GROUP BY facet_value
@@ -465,7 +465,7 @@ export function buildPublicSearchIssueHashPlan(options: {
   return {
     query: `
       SELECT DISTINCT issue_hash AS issueHash
-      FROM analytics_internal.telemetry
+      FROM analytics_internal.events
       ${occurrenceFilterSql(clauses)}
       LIMIT {resultLimit:UInt32}`,
     query_params: params,
