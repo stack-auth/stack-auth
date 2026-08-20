@@ -1,0 +1,127 @@
+apps/backend/src/lib/otlp/log-writer.test.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 253,259,263
+apps/backend/scripts/benchmark-internal-metrics.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 106,125,197,264,275,287,302,316,330,344,368,386,417,439,458,476,493,527,548,569,594,613,651,665,697,721,767,788,809,834,853,890,926,940,972,985,1019,1039,1059,1087,1119,1139,1159,1204,1224,1244,1274,1285,1297,1509,1531,1553,1997,2008
+apps/backend/src/app/api/latest/internal/compliance/security-events/security-event-queries.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 14,45
+apps/backend/src/lib/issues/issue-occurrences.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 58
+apps/backend/scripts/clickhouse-migrations.test.ts
+  s_7a3ed31e3ef4be::t_b583536af5cf2d 51,89-106,122-155,157,159-161,163-194,207-213
+  s_4aec734becd0ba::t_cbed0e4b16c609 282,332-333,406,416,465,482,844,876,882
+  s_7a3ed31e3ef4be::t_a302f0bcbffa29 195-206
+  s_7a3ed31e3ef4be::t_50634453c4cb73 107-121,156,158,162
+  s_4aec734becd0ba::t_f697d56cfb3690 330-331
+  s_4aec734becd0ba::t_66a0b7f3c6d367 214,490-496
+  s_4aec734becd0ba::t_1461940d731f46 215-216
+apps/backend/src/lib/otlp/log-writer.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 114,127,129-130
+apps/backend/src/lib/plan-usage.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 351
+apps/backend/scripts/clickhouse-migrations.ts
+  s_7a3ed31e3ef4be::t_39477855b9debd 295-297,299-407,410-463,473,491,494-495,497-505,508-514,516,525-528,530-534,585
+  s_7a3ed31e3ef4be::t_f8e5ba381bc300 545-574,627-650,661
+  s_7a3ed31e3ef4be::t_084e21f761d62a 515,517-524,529
+  s_7a3ed31e3ef4be::t_ed267f1569cf90 408-409
+  s_7a3ed31e3ef4be::t_a17c7ef39e9098 493,496
+  s_4aec734becd0ba::t_e60115d4e1275c 1147-1150
+  s_4aec734becd0ba::t_cbed0e4b16c609 90,106,117,140,201,887,1170-1171,1217,1230,1243,1314,1335,2767,2819,2858
+  s_4aec734becd0ba::t_67f0427339f6d8 1200-1204,1206-1207
+apps/backend/src/app/api/latest/internal/compliance/security-events/route.tsx
+  s_4aec734becd0ba::t_cbed0e4b16c609 149,171
+apps/backend/src/lib/issues/issue-alerts/ingestion.test.ts
+  s_4aec734becd0ba::t_464cbec0d25c8d 38
+apps/backend/src/lib/events.tsx
+  s_4aec734becd0ba::t_cbed0e4b16c609 559
+apps/backend/src/app/api/latest/internal/metrics/route.test.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 74
+apps/backend/src/app/api/latest/internal/platform-analytics/route.tsx
+  s_4aec734becd0ba::t_cbed0e4b16c609 289,324,346,372,382,419,428
+apps/backend/src/app/api/latest/internal/analytics/clickmap/route.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 137
+apps/backend/src/app/api/latest/internal/user-activity/route.tsx
+  s_4aec734becd0ba::t_cbed0e4b16c609 55
+apps/backend/src/lib/issues/public-search/query.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 352,435,468
+apps/backend/src/app/api/latest/internal/newly-created-projects/helpers.tsx
+  s_4aec734becd0ba::t_cbed0e4b16c609 321,383
+apps/backend/src/lib/clickhouse.test.ts
+  s_7a3ed31e3ef4be::t_020e3d8a52ecfe 10,16
+  s_7a3ed31e3ef4be::t_a81357b46887e4 1-9,11-15,17-20
+apps/backend/src/app/api/latest/internal/sign-up-rules-stats/route.tsx
+  s_4aec734becd0ba::t_cbed0e4b16c609 68,138
+apps/e2e/tests/backend/endpoints/api/v1/issues.test.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 724
+packages/shared/src/interface/admin-metrics.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 164
+apps/backend/src/app/api/latest/internal/metrics/route.tsx
+  s_4aec734becd0ba::t_cbed0e4b16c609 96,181,284,412,464,564,578,700,781,1325,1422,1654
+apps/backend/src/app/api/latest/internal/newly-created-projects/helpers.test.tsx
+  s_4aec734becd0ba::t_cbed0e4b16c609 19
+apps/backend/src/lib/issues/issue-merge.test.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 613,627,664
+apps/backend/src/lib/customer-request-observability.ts
+  s_7a3ed31e3ef4be::t_c3212a8dd415c7 8
+  s_c2a8b7a4211393::t_7598e784e00e5c 197
+apps/backend/src/lib/customer-request-observability.test.ts
+  s_7a3ed31e3ef4be::t_4f87bbe8a970c8 264
+  s_7a3ed31e3ef4be::t_8feb2c8b0de80b 3-4,30-34,263,265-285
+  s_7a3ed31e3ef4be::t_f36234d65381f0 286
+apps/backend/src/lib/issues/issue-queries.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 598
+apps/backend/src/lib/telemetry/write-plan.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 4
+apps/backend/src/lib/clickhouse.tsx
+  s_7a3ed31e3ef4be::t_ae00425ced0c85 79-84
+apps/backend/src/lib/analytics-telemetry-writers.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 65,70,316,466
+apps/backend/src/lib/issues/issue-reconciler.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 52,171,259,408
+apps/backend/src/lib/issues/issue-alerts/ingestion.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 82,96
+apps/backend/src/lib/analytics-telemetry-writers.test.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 53,64,276-277
+apps/backend/scripts/internal-analytics/optimize-platform-analytics.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 49
+apps/backend/src/app/api/latest/internal/compliance/access-review/route.tsx
+  s_4aec734becd0ba::t_cbed0e4b16c609 100
+apps/backend/src/lib/seed-dummy-data.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 1616,1713,2084,2174,2181,2326,2348,2454,2713,2727,3032
+apps/backend/src/lib/plan-usage.test.ts
+  s_4aec734becd0ba::t_cbed0e4b16c609 124
+  s_4aec734becd0ba::t_0a73628e36c6d0 128
+apps/backend/src/app/api/latest/internal/compliance/security-events/route.test.ts
+  s_4aec734becd0ba::t_fde96728750680 14,25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "fa467867ea9048964ad42a632708d5be1731a649",
+  "prompts": {},
+  "sessions": {
+    "s_4aec734becd0ba": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9053a67d-a551-4400-93f3-0a6da54dc7d1",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_7a3ed31e3ef4be": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e74b51e3-0eae-46be-af22-1284b8afbd8f",
+        "model": "gpt-5.6-sol-xhigh"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_c2a8b7a4211393": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "08648949-094a-4172-9f06-dd3af017f164",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
