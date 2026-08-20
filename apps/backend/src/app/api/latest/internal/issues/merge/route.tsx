@@ -9,18 +9,6 @@ import { mapWithConcurrency } from "@hexclave/shared/dist/utils/promises";
 import { resolveIssueIdentity } from "@/lib/issues/issue-identity";
 import { createHash } from "node:crypto";
 
-/**
- * Merge two or more issues into one.
- *
- * `internal/` because the whole observability surface is dashboard-only today;
- * there is no public merge API yet.
- *
- * The caller does not choose the primary — see `orderIssuesForMerge`. Nothing in
- * this response is a `BigInt`, which matters because `smart-response.tsx` runs
- * the body through `JSON.stringify`, and that THROWS on a BigInt rather than
- * coercing it (it would be a 500 on the very first response). Any future field
- * carrying `shortId` or `timesSeen` must serialize as a decimal string.
- */
 export const POST = createSmartRouteHandler({
   metadata: { hidden: true },
   request: yupObject({
@@ -37,9 +25,6 @@ export const POST = createSmartRouteHandler({
     body: IssueMergeResponseSchema,
   }),
   handler: async ({ auth, body }) => {
-    // Same gate as the list and detail routes. A project that never installed
-    // the observability app must not be able to mutate issue grouping through a
-    // surface it does not have.
     if (auth.tenancy.config.apps.installed["observability"]?.enabled !== true) {
       throw new KnownErrors.ObservabilityNotEnabled();
     }
@@ -48,20 +33,12 @@ export const POST = createSmartRouteHandler({
       tenancy: auth.tenancy,
       issueIds: body.issue_ids,
     });
-    // A merge retry resolves to one target and therefore returns no newly
-    // merged ids. If the requested set contains a redirect, that no-op is the
-    // durable proof that a previous request completed the merge. Re-enqueue
-    // the same lifecycle event with the same id so a send that failed after
-    // the provider accepted it is retried without creating a duplicate.
     const retryIdentities = mergedIssueIds.length === 0
       ? await mapWithConcurrency(body.issue_ids, 8, (issueId) => resolveIssueIdentity(auth.tenancy, issueId, { consistency: "primary" }))
       : [];
     const retryingCompletedMerge = retryIdentities.length > 0
       && retryIdentities.every((identity) => identity !== null && identity.issueId === primaryIssueId)
       && retryIdentities.some((identity) => identity !== null && identity.redirectedFromIssueId !== null);
-    // Canonicalize a completed retry to the surviving issue plus the original
-    // merged-away ids. This makes a retry containing only a subset of the
-    // redirects reuse the same event id as the original merge.
     const mergeEventIssueIds = retryingCompletedMerge
       ? [primaryIssueId, ...retryIdentities.map((identity) => {
         if (identity === null) throw new Error("Completed merge retry proof contained a missing issue identity");
@@ -71,10 +48,6 @@ export const POST = createSmartRouteHandler({
     const mergeEventId = createHash("sha256")
       .update(JSON.stringify([...new Set(mergeEventIssueIds)].sort()))
       .digest("hex");
-    // Announced against the SURVIVING issue: the merged-away ids no longer
-    // resolve to a row, so a consumer receiving one of those could not look it
-    // up. A true no-op has no redirect and stays silent; a retry of a completed
-    // merge is the one no-op that re-enqueues the deterministic event above.
     if (mergedIssueIds.length > 0 || retryingCompletedMerge) {
       runAsynchronouslyAndWaitUntil(emitIssueLifecycleWebhook({
         tenancy: auth.tenancy,

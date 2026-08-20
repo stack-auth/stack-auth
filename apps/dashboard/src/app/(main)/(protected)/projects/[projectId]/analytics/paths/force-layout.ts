@@ -1,7 +1,3 @@
-/**
- * Path graph layout: landing-page distance for a soft x-position, ForceAtlas2
- * forces with collision avoidance, and spring strength proportional to traffic.
- */
 
 export type GraphNode = {
   id: string,
@@ -149,9 +145,6 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
   const distFromLanding = computeDistanceFromLandings(nodes, edges, landings);
 
   const maxDist = Math.max(...distFromLanding.values(), 1);
-  // The old node-count-based spread made a 150-page graph roughly 7,500px
-  // wide before fitting. Stage count describes navigation depth; node count
-  // does not, so cap the overview around a readable desktop canvas.
   const xSpread = Math.max(720, Math.min(2200, (maxDist + 1) * 320));
 
   const simNodes: SimNode[] = nodes.map((n, i) => {
@@ -162,8 +155,6 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
       id: n.id,
       label: n.label,
       width: n.width,
-      // Stable jitter prevents identical-depth nodes from starting on top of
-      // each other without making the graph reshuffle on every refresh.
       x: targetX + (stableUnitValue(n.id, 17) - 0.5) * 80,
       y: (i / nodes.length - 0.5) * ySpread + (stableUnitValue(n.id, 29) - 0.5) * 50,
       vx: 0,
@@ -219,7 +210,6 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
       }
     }
 
-    // Reverse x-force when the arrow points left so the layout stays left-to-right.
     for (const edge of edges) {
       const ai = nodeIndex.get(edge.from);
       const bi = nodeIndex.get(edge.to);
@@ -234,7 +224,6 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
 
       const strength = 0.008 * (edge.weight / maxWeight) * cool;
       const fy = dy * strength;
-      // Backward edges repel on x so they cannot fold the graph right-to-left.
       const fx = dx < 0 ? -(dx * strength) : dx * strength;
 
       a.vx += fx;

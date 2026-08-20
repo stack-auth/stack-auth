@@ -55,8 +55,6 @@ function stackFrameView(frame: IssueExceptionValue["frames"][number]): StackFram
     in_app: frame.in_app,
     ...(frame.debug_id === undefined ? {} : { debug_id: frame.debug_id }),
     ...(frame.context === undefined ? {} : { context: frame.context }),
-    // Passed through so the "Mapped" badge keys off symbolication status even
-    // when the mapped source content (and therefore `context`) is unavailable.
     symbolication: frame.symbolication,
   };
 }
@@ -116,10 +114,6 @@ export function IssueExceptionCauses({
   frameOrder: StackFrameOrder,
 }) {
   const payload = getIssueEventPayload(occurrence);
-  // The LAST chain entry is the primary exception (the hero stack leads with
-  // it — see `heroStack`); everything before it is its cause chain, stored
-  // root-cause-first. Reversed so the list reads outward-in: the direct cause
-  // first, the root cause last, matching how "caused by" chains are read.
   const causes = payload.exceptionChain.slice(0, -1).reverse();
   if (causes.length === 0) return null;
 

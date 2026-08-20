@@ -1,14 +1,8 @@
-/**
- * Normalize a path by replacing dynamic segments (UUIDs, numeric IDs,
- * hashes, base64 tokens, etc.) with placeholder tokens. This groups
- * similar pages (e.g. /users/abc123 and /users/def456 → /users/:id).
- */
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NUMERIC_REGEX = /^\d+$/;
 const HEX_ID_REGEX = /^[0-9a-f]{8,}$/i;
 const BASE64_TOKEN_REGEX = /^[A-Za-z0-9_-]{16,}[=]{0,2}$/;
-// Require a digit in the suffix so static segments like `sign_in` stay literal.
 const PREFIXED_ID_REGEX = /^[a-z]{1,10}_[a-z0-9]*\d[a-z0-9]*$/i;
 
 function isLikelyDynamicSegment(segment: string): boolean {
@@ -19,8 +13,6 @@ function isLikelyDynamicSegment(segment: string): boolean {
   if (HEX_ID_REGEX.test(segment)) return true;
   if (PREFIXED_ID_REGEX.test(segment)) return true;
 
-  // The regex's minimum is long enough to avoid ordinary words such as `api`
-  // and `auth`, while keeping the runtime check aligned with the contract.
   if (/\d/u.test(segment) && BASE64_TOKEN_REGEX.test(segment)) return true;
 
   return false;

@@ -231,17 +231,12 @@ export class AsyncStore<T> implements ReadonlyAsyncStore<T> {
   }
 }
 
-// Concurrency tests for setAsync's update-counter semantics: a fetch result only commits when no
-// newer update happened since setAsync was CALLED. (These tests used to also pin coordination
-// with a global storeLock, but that lock was deliberately removed — see the "Remove global
-// storeLock" commit — so only the counter invariants remain to be tested.)
 import.meta.vitest?.test("AsyncStore.setAsync commits normally when no newer update intervenes", async ({ expect }) => {
   const store = new AsyncStore<string>();
   expect(store.get().status).toBe("pending");
   expect(await store.setAsync(Promise.resolve("value"))).toBe(true);
   expect(store.get()).toEqual({ status: "ok", data: "value" });
 
-  // a second commit with a newer value also goes through
   expect(await store.setAsync(Promise.resolve("value2"))).toBe(true);
   expect(store.get()).toEqual({ status: "ok", data: "value2" });
 });
@@ -254,8 +249,6 @@ import.meta.vitest?.test("AsyncStore.setAsync propagates fetch rejections as rej
 });
 
 import.meta.vitest?.test("AsyncStore.set during an in-flight setAsync wins over the older fetch result", async ({ expect }) => {
-  // The update counter is taken when setAsync is CALLED, so a later synchronous set() must beat
-  // the fetch result even though the fetch commits later in wall-clock time.
   const store = new AsyncStore<string>();
   let resolveFetch!: (value: string) => void;
   const setAsyncPromise = store.setAsync(new Promise<string>((resolve) => {

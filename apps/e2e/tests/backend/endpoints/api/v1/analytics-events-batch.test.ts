@@ -62,9 +62,6 @@ it("requires a user token", async ({ expect }) => {
   `);
 });
 
-// Regression test: the request-level auth-type tests in the batch route's schema
-// used to dereference `req.auth.type` while yup was still reporting the
-// missing-auth nullability error, turning an unauthenticated request into a 500.
 it("returns ACCESS_TYPE_REQUIRED instead of crashing when no project access is provided", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
 
@@ -97,9 +94,6 @@ it("returns ACCESS_TYPE_REQUIRED instead of crashing when no project access is p
   `);
 });
 
-// Regression test: schema tests that dereference `req.body.<field>` used to
-// crash with a 500 on a literal `null` JSON body (valid JSON, parsed to null)
-// instead of letting yup report the body-level nullability error.
 it("rejects a literal null JSON body instead of crashing", async ({ expect }) => {
   await setupAnalyticsProject();
   await Auth.Otp.signIn();
@@ -571,13 +565,6 @@ it("rejects invalid event_type", async ({ expect }) => {
   `);
 });
 
-// Pins the contract reversion: an unreleased "versioned telemetry batch"
-// (schema_version + resource envelope + client-minted spans) briefly existed on
-// this route but was withdrawn before release, so the shipped legacy contract
-// is the only one the route speaks. A payload carrying the withdrawn fields
-// must fail loudly as unknown properties — silently dropping them would let an
-// SDK that still speaks the withdrawn wire format believe its resource/span
-// data was ingested.
 it("rejects a batch carrying the withdrawn versioned fields (schema_version/resource/spans)", async ({ expect }) => {
   await setupAnalyticsProject();
   await Auth.fastSignUp();
@@ -776,8 +763,6 @@ it("allows only one concurrent batch to spend the final analytics event credit",
   const { ownerTeamId } = await setupProjectWithPlan("free");
   await Auth.Otp.signIn();
 
-  // Let sign-in's asynchronous internal events finish before pinning the final
-  // credit; otherwise they are legitimate competing debits in this race.
   await waitForItemQuantityToStabilize(
     ownerTeamId,
     ITEM_IDS.analyticsEvents,

@@ -121,9 +121,6 @@ type LoadState =
   | { status: "error" }
   | { status: "ready", data: AnalyticsData };
 
-// `$page-view` is a span. Shape span rows like events via UNION ALL inside
-// these queries — never by projecting into default.events (that dual-wrote
-// the same fact as event + span in the traces UI).
 function userTelemetrySubquery(startParam: "since" | "prevSince", endParam: "until"): string {
   return `(
     SELECT

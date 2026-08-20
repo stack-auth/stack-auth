@@ -133,9 +133,6 @@ describe("public observability search contract", () => {
     expect(() => parsePublicSearchQuery({ record: "event", level: "trace" })).toThrow("level must be one of");
     expect(() => parsePublicSearchQuery({ record: "event", status: "resolved" })).toThrow("status is only supported");
     expect(() => parsePublicSearchQuery({ record: "event", facets: "level,level" })).toThrow("facets must not contain duplicates");
-    // The COMPLETE identifier (prefix + key) becomes the response's facet
-    // record key, which the response schema caps at 128 characters — a
-    // 124-char key fits alone but not behind `property:`.
     expect(() => parsePublicSearchQuery({ record: "event", facets: `property:${"k".repeat(124)}` })).toThrow("including their prefix");
     expect(() => parsePublicSearchQuery({ record: "event", facets: "tag:" })).toThrow("tag: facets require a non-empty key");
     expect(parsePublicSearchQuery({ record: "event", facets: `property:${"k".repeat(119)}` })).toMatchObject({

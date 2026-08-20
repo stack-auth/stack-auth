@@ -23,12 +23,6 @@ const TELEMETRY_RESOURCE = {
   attributes: { suite: "session-replays" },
 } as const;
 
-/**
- * Only the session-replay batch route is versioned: its body carries rrweb
- * chunks under the live `schema_version: 2` contract. The events batch route
- * speaks the shipped legacy contract with no version or resource fields at
- * all, so these fields must never leak into `uploadEventBatch` below.
- */
 const DEFAULT_REPLAY_TELEMETRY_FIELDS = {
   schema_version: 2,
   resource: TELEMETRY_RESOURCE,
@@ -204,8 +198,6 @@ it("stores session replay batch metadata and dedupes by (session_replay_id, batc
     throw new HexclaveAssertionError("Successful session replay upload did not return a replay id");
   }
 
-  // Simulate a failure after the durable chunk was created but before the
-  // idempotent segment projection completed. Retrying the batch must repair it.
   await withInternalDatabase(async (client) => {
     await client.query(
       `DELETE FROM "SessionReplaySegment" WHERE "sessionReplayId" = $1::uuid AND "id" = $2`,
@@ -223,8 +215,6 @@ it("stores session replay batch metadata and dedupes by (session_replay_id, batc
       batch_id: batchId,
       started_at_ms: now,
       sent_at_ms: now + 500,
-      // A retry body is not authoritative. These deliberately divergent bounds
-      // must not replace the metadata persisted for the original batch.
       events: [
         { timestamp: now + 50, type: 2 },
         { timestamp: now + 250, type: 3 },

@@ -19,12 +19,6 @@ const SECRET_KEY_RE = /(?:access[-_.]?token|api[-_.]?key|authorization|cookie|cr
 const SECRET_TEXT_RE = /(?:bearer\s+|basic\s+|-----begin [^-]*private key-----|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})/iu;
 const SOURCE_MAP_FILENAME_RE = /\.map$/iu;
 
-/**
- * These limits bound framing before any item payload is parsed. Attachment
- * bytes never enter the parsed envelope or a protocol projection; only the
- * privacy-processed bytes handed to the explicit storage callback can cross
- * into private object storage.
- */
 export const ERROR_INGEST_ENVELOPE_LIMITS = {
   maxEnvelopeBytes: 8 * 1024 * 1024,
   maxEnvelopeHeaderBytes: 16 * 1024,
@@ -54,7 +48,6 @@ export type ErrorIngestEnvelopeHeader = {
   sentAt: string | null,
   sdk: { name: string, version: string } | null,
   trace: Readonly<Record<string, string>> | null,
-  /** The public DSN is accepted for wire compatibility but never retained. */
   dsnPresent: boolean,
 };
 
@@ -67,13 +60,6 @@ export type ErrorIngestEnvelopeAttachmentMetadata = {
   sha256: string,
 };
 
-/**
- * Privacy-processed metadata extracted from a native Sentry transaction item.
- * The complete wire payload is intentionally not retained: this descriptor
- * carries only bounded fields needed to build the canonical OTLP span rows,
- * keeping performance data out of error issue grouping while preserving the
- * transaction's trace hierarchy.
- */
 export type ErrorIngestEnvelopeTransactionMetadata = {
   eventId: string,
   name: string | null,
@@ -93,11 +79,6 @@ export type ErrorIngestEnvelopeTransactionMetadata = {
   durationMs: number,
   traceId: string,
   spanId: string,
-  /**
-   * The upstream ancestor from `contexts.trace.parent_span_id`. Retained so a
-   * distributed transaction keeps its cross-service ancestry instead of being
-   * flattened into a second trace root.
-   */
   parentSpanId: string | null,
   spanCount: number,
   spans: readonly ErrorIngestEnvelopeTransactionSpan[],
@@ -124,7 +105,6 @@ export type ErrorIngestEnvelopeItem = {
   wireType: string,
   itemType: ErrorIngestItemType,
   payloadBytes: number,
-  /** The existing protocol adapter receives only this safe descriptor. */
   outcome: ErrorIngestItemOutcome,
   event?: ErrorIngestScrubbedValue,
   clientReport?: ErrorIngestClientReportRequest,
@@ -140,13 +120,6 @@ export type ErrorIngestEnvelopeAttachmentPayload = ErrorIngestEnvelopeAttachment
 
 export type ErrorIngestEnvelopeParseOptions = {
   limits?: Partial<ErrorIngestEnvelopeLimits>,
-  /**
-   * Receives bounded privacy-processed bytes for the caller's immediate
-   * private-storage handoff. Recognized text/JSON is scrubbed first, while
-   * opaque binary bytes are passed through unchanged and integrity-checked.
-   * Attachment bytes are not retained on the parsed envelope result or in
-   * protocol projections.
-   */
   onAttachment?: (payload: ErrorIngestEnvelopeAttachmentPayload) => void,
 };
 
@@ -296,16 +269,8 @@ function parseEnvelopeHeader(value: RecordValue, limits: ErrorIngestEnvelopeLimi
   let trace: Readonly<Record<string, string>> | null = null;
   if (value.trace !== undefined) {
     if (!isRecord(value.trace)) throw new ErrorIngestEnvelopeError("malformed", "Envelope trace must be an object");
-    // These fields are emitted by current Sentry SDKs for distributed trace,
-    // replay, sampling, and organization correlation. They are intentionally
-    // kept as bounded strings here; event projection decides which fields are
-    // meaningful to the local read model.
     const traceKeys = new Set([
       "trace_id",
-      // The Dynamic Sampling Context's public_key is the project's public DSN
-      // key (not a secret; SECRET_KEY_RE only matches api/private key forms)
-      // and is sent by default by current Sentry SDKs, so rejecting it would
-      // reject virtually every distributed-tracing envelope.
       "public_key",
       "sample_rate",
       "release",
@@ -527,9 +492,6 @@ function parseTransactionMetadata(
 
   const scrubbedResult = scrubErrorIngestPayload(rawTransaction, {
     maxPayloadBytes: Math.min(limits.maxEventPayloadBytes, 256 * 1024),
-    // The envelope has a separate span-count limit. Raising this scrubber
-    // collection bound prevents a valid transaction with more than 100 child
-    // spans from being silently truncated before child validation runs.
     maxCollectionEntries: Math.max(100, limits.maxTransactionSpanCount + 1),
   });
   if (scrubbedResult.value === undefined || !isScrubbedRecord(scrubbedResult.value)) {
@@ -658,9 +620,6 @@ function scrubAttachmentPayload(
     || metadata.attachmentType === "event.view_hierarchy";
   const isText = mediaType.startsWith("text/");
 
-  // Relay treats ordinary attachments as binary unless a special processor
-  // recognizes them. Do not probe opaque bytes with a decoder: a binary
-  // attachment can contain arbitrary byte sequences that must remain exact.
   if (!isJson && !isText) return new Uint8Array(payload);
 
   const text = decodeUtf8(payload, "Textual attachment payload");
@@ -726,13 +685,6 @@ function itemTypeForWireType(value: string): ErrorIngestItemType {
   }
 }
 
-/**
- * Parses the byte-framed Sentry envelope format without exposing raw binary
- * attachment content. Framing errors fail the whole envelope; semantically
- * invalid but well-framed items remain in the result as rejected outcomes so
- * callers can return partial success and feed the existing client-report/
- * attachment services without losing item identity.
- */
 export function parseErrorIngestEnvelope(
   input: Uint8Array | ArrayBuffer,
   options?: ErrorIngestEnvelopeParseOptions,
@@ -744,10 +696,6 @@ export function parseErrorIngestEnvelope(
 
   const headerLine = parseJsonLine(bytes, 0, limits.maxEnvelopeHeaderBytes, "Envelope header");
   const header = parseEnvelopeHeader(headerLine.value, limits);
-  // Sentry retries can enrich an event without preserving byte-for-byte
-  // envelope equality. When the envelope has an event identity, use that as
-  // the batch identity so ClickHouse and the Postgres ledger treat the retry as
-  // the same delivery. Envelopes without one retain the content hash fallback.
   const batchId = header.eventId === null
     ? `envelope:${createHash("sha256").update(bytes).digest("hex").slice(0, 32)}`
     : `envelope:event:${header.eventId}`;
@@ -776,9 +724,6 @@ export function parseErrorIngestEnvelope(
         throw new ErrorIngestEnvelopeError("malformed", "Envelope item length is invalid");
       }
       payloadEnd = itemHeaderLine.nextOffset + length;
-      // The Sentry envelope spec terminates a length-framed payload with a
-      // newline OR end-of-file: SDKs join item parts with "\n" and emit no
-      // trailing newline after a final length-framed item (e.g. an attachment).
       if (payloadEnd > bytes.byteLength || (payloadEnd < bytes.byteLength && bytes[payloadEnd] !== 0x0a)) {
         throw new ErrorIngestEnvelopeError("malformed", "Envelope item payload framing is invalid");
       }
@@ -798,9 +743,6 @@ export function parseErrorIngestEnvelope(
           items.push(rejectItem(itemIndex, itemId, wireType, itemType, payload.byteLength, "payload_too_large"));
           continue;
         }
-        // Relay treats content_type as a standard, forward-compatible item
-        // header. Validate it as bounded metadata but do not retain it: the
-        // event payload is parsed as JSON below regardless of the hint.
         assertAllowedKeys(itemHeader, new Set(["type", "length", "content_type"]), "Event item header");
         safeOptionalText(itemHeader.content_type, "Event content_type", limits.maxContentTypeBytes);
         const rawEvent = payloadAsJson(payload, "Event payload");

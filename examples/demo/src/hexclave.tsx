@@ -15,10 +15,6 @@ export const hexclaveServerApp = new StackServerApp({
       "type": "hosted",
     },
   },
-  // Product analytics + session replays (also enabled in hexclave.config.ts via
-  // apps.installed.analytics). Capture defaults on with a persistent token store;
-  // the explicit options below name this deployable and keep the demo as the
-  // customer-facing reference for the constructor knobs.
   analytics: {
     enabled: true,
     integritySignals: true,

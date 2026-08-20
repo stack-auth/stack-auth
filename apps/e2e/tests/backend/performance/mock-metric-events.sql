@@ -186,11 +186,6 @@ SELECT
   (SELECT COUNT(*) FROM insert_otp_methods) AS otp_created,
   (SELECT COUNT(*) FROM insert_oauth_methods) AS oauth_created;
 
--- Telemetry rows now live in ClickHouse's canonical telemetry table. This
--- PostgreSQL fixture intentionally seeds only the users and auth dimensions;
--- inserting into the retired Event/EventIpInfo tables would make a performance
--- seed fail after the observability storage migration. Use the ClickHouse
--- telemetry batch fixture when event-shaped rows are needed.
 SELECT 0 AS events_created;
 
 COMMIT;

@@ -91,12 +91,6 @@ export type WebVitalRating = {
   color: WebVitalRatingColor,
 };
 
-/**
- * Core Web Vitals are scored at p75, not the mean. An average hides the tail
- * the user actually felt; Google's field thresholds are defined on p75, so
- * rating a mean against those thresholds would call a page "good" while a
- * quarter of views were already poor.
- */
 export function webVitalRating(metric: WebVitalMetricDefinition, value: number | null): WebVitalRating {
   if (value === null) return { label: "No data", color: "zinc" };
   if (metric.lowerIsBetter) {
@@ -311,12 +305,6 @@ export async function fetchPerformanceMetrics(
   request: {
     hours: PerformanceTimeRangeHours,
     metricName: string | null,
-    /**
-     * OTLP allows one metric NAME to exist with several metric types, and the
-     * selector keys entries by (name, type) — so the type must be sent along
-     * or selecting a non-busiest pair charts a sibling type's data. Null means
-     * "resolve by name only" (the backend picks the pair with the most points).
-     */
     metricType: PerformanceMetricType | null,
   },
 ): Promise<PerformanceMetricResponse> {
@@ -340,8 +328,6 @@ export async function fetchWebVitals(
   const responses = await Promise.all(WEB_VITAL_METRICS.map((metric) => fetchPerformanceMetrics(adminApp, {
     hours,
     metricName: metric.metricName,
-    // Web vitals are exported under exactly one type per name, so name-only
-    // resolution is unambiguous here.
     metricType: null,
   })));
   const result = new Map<WebVitalMetricKey, PerformanceMetricResponse>();
@@ -351,13 +337,6 @@ export async function fetchWebVitals(
   return result;
 }
 
-/**
- * Native Metrics is intentionally a separate signal from the existing service
- * projection. Until a customer exports OTel Metrics, the projection is the
- * useful performance view that already has data in this dashboard. Keeping
- * this query separate prevents the UI from silently relabeling spans as OTel
- * metric streams.
- */
 export async function fetchSpanPerformance(
   adminApp: StackAdminApp<false>,
   hours: ServiceTimeRangeHours,
@@ -370,18 +349,6 @@ export async function fetchSpanPerformance(
   return response.result.map(parseServiceSummaryRow);
 }
 
-/**
- * Page-view spans already carry the Web Vitals snapshot, path, viewport, scroll
- * depth, and dwell time. Native Metrics only has a global average per stream —
- * no p75, no per-page breakdown, no good/needs-work/poor split, and no way to
- * keep soft-nav samples out of LCP. These queries read the span payload
- * directly so the Performance tab can answer "which pages are slow, and what
- * are people doing on them?"
- *
- * LCP/FCP/TTFB are hard-load metrics: the collector omits them on SPA
- * navigations and flags `web_vitals.soft_nav = 1`. INP/CLS/FPS describe every
- * navigation window.
- */
 const PAGE_VIEW_VITALS_SQL = `
   JSONExtractUInt(data, 'web_vitals', 'soft_nav') AS soft_nav,
   if(JSONHas(data, 'web_vitals', 'lcp_ms'), JSONExtractFloat(data, 'web_vitals', 'lcp_ms'), NULL) AS lcp_ms,
@@ -408,7 +375,6 @@ function assertPerformanceTimeRange(hours: number): asserts hours is Performance
 
 export const MAX_PERFORMANCE_PAGES = 100;
 export const MAX_PERFORMANCE_BEHAVIOR_PATHS = 200;
-/** Below this many samples a p75 is too noisy to call a page "slow". */
 export const MIN_VITAL_INSIGHT_SAMPLES = 8;
 export const MIN_FRICTION_CLICKS = 12;
 export const MIN_SHALLOW_VIEWS = 20;
@@ -821,11 +787,6 @@ export function deadClickRate(page: PageBehavior): number | null {
   return page.deadClicks / page.clicks;
 }
 
-/**
- * Picks at most one insight per kind so the strip does not collapse into
- * "three slow pages". A page can still appear twice if it is both slow and
- * frustrating — that combination is the thing worth interrupting for.
- */
 export function rankPageInsights(pages: readonly PagePerformance[]): PageInsight[] {
   const insights: PageInsight[] = [];
 

@@ -182,7 +182,6 @@ function SaveQueryDialog({
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
 
-  // Saved SQL belongs to Warehouse even when this command is opened from elsewhere.
   const config = adminApp.useProject().useConfig();
   const folders = useMemo((): FolderWithId[] => {
     const queryFolders = config.warehouse.queryFolders;

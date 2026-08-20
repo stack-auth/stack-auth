@@ -227,7 +227,6 @@ function formatEventTooltip(event: TimelineEvent): string {
 }
 
 function markerClassName(eventType: string): string {
-  // Custom events (and any future system types) share a neutral marker.
   return TIMELINE_MARKER_CLASS_NAMES.get(eventType) ?? "bg-zinc-500/70 hover:bg-zinc-400";
 }
 
@@ -842,13 +841,6 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
         speed: msRef.current.settings.playerSpeed,
         skipInactive: msRef.current.settings.skipInactivity,
         triggerFocus: false,
-        // rrweb warns "Node with id 'X' not found" (mostly benign: mutations
-        // targeting since-removed nodes, or seeks across segments) and attaches
-        // the FULL mutation payload to every console.warn. Next 16 forwards
-        // browser console output to the dev terminal over the dev-server
-        // WebSocket, and the flood of giant warning objects can exceed ws's max
-        // payload, crashing the dev server with WS_ERR_UNSUPPORTED_MESSAGE_LENGTH.
-        // We never act on these warnings, so silence them.
         showWarning: false,
         showDebug: false,
       });
@@ -1333,13 +1325,6 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
     setTimelineEvents([]);
     runAsynchronously(async () => {
       const res = await serverApp.queryAnalytics({
-        // All analytics events stamped with this replay — not just the
-        // historical $click/$page-view pair. Autocapture now also emits
-        // $form-submit / $window-resize (and opt-in integrity signals), plus
-        // any custom trackEvent() names; filtering here was hiding them from
-        // the transport markers even when they were present in ClickHouse.
-        // Events + `$page-view` spans (page views are spans, not events — do
-        // not project them into default.events or they dual-appear in traces).
         query: `SELECT event_type,
                        toUnixTimestamp64Milli(event_at) AS event_at_ms,
                        data

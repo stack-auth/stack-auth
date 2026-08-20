@@ -5,11 +5,6 @@ import { syncStack } from "./span-context-state";
 import { setAsyncContextModeForTesting } from "./span-context-state";
 import type { SpanContext } from "./telemetry-core";
 
-// Frames are plain W3C SpanContexts, which are unreadable in assertions, so
-// every context minted here is tagged with a human label. The ids themselves
-// stay real 32/16-hex values: these frames feed resolveSpanParent in production,
-// which rejects malformed ids, so a test using fake ids could pass against a
-// context shape the resolver would refuse.
 const labelsBySpanId = new Map<string, string>();
 
 function ctx(label: string, traceId: string = generateW3cTraceId()): SpanContext {
@@ -36,7 +31,6 @@ describe("span context (AsyncLocalStorage)", () => {
         await new Promise((resolve) => setTimeout(resolve, 5));
         expect(ambientLabels()).toEqual(["a", "b"]);
       });
-      // Inner frame is gone once its withSpan settles.
       expect(ambientLabels()).toEqual(["a"]);
     });
     expect(getAmbientSpanContexts()).toEqual([]);
@@ -59,9 +53,6 @@ describe("span context (AsyncLocalStorage)", () => {
   });
 
   it("frames carry the whole SpanContext, trace id included — not just the span id", async () => {
-    // Load-bearing: the resolver reads BOTH fields off an ambient frame (the
-    // trace id decides whether a sibling ambient context is an ancestor or a
-    // link), so a frame that dropped its trace id would silently fracture traces.
     const frame = ctx("child");
     await runWithSpanContext(frame, async () => {
       expect(getAmbientSpanContexts()).toEqual([{ traceId: frame.traceId, spanId: frame.spanId }]);
@@ -89,7 +80,6 @@ describe("span context (sync-stack fallback)", () => {
       await runWithSpanContext(ctx("b"), async () => {
         expect(ambientLabels()).toEqual(["a", "b"]);
       });
-      // After awaiting the inner withSpan, a's prologue is over — ambient stops.
       expect(ambientLabels()).toEqual([]);
     });
     expect(getAmbientSpanContexts()).toEqual([]);
@@ -101,10 +91,6 @@ describe("span context (sync-stack fallback)", () => {
     const firstBlocked = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });
-    // Start flow1 but leave it parked on an await, then run flow2 to completion
-    // while flow1's frame is still on the stack. flow2 must remove ITS frame
-    // (not flow1's) even though flow1's frame sits beneath it. Ambient reads
-    // never see suspended frames; stack depth pins the cleanup contract.
     const flow1 = ctx("flow1");
     const first = runWithSpanContext(flow1, async () => {
       await firstBlocked;
@@ -135,11 +121,8 @@ describe("span context (sync-stack fallback)", () => {
     const first = runWithSpanContext(ctx("flow1"), async () => {
       await firstBlocked;
     });
-    // flow1 is suspended at its await: no longer ambient.
     expect(ambientLabels()).toEqual([]);
     await runWithSpanContext(ctx("flow2"), async () => {
-      // flow2's synchronous prologue: ambient sees ONLY flow2 — this is the
-      // property that makes cross-flow misattribution impossible.
       expect(ambientLabels()).toEqual(["flow2"]);
     });
     releaseFirst();
@@ -152,11 +135,8 @@ describe("span context (sync-stack fallback)", () => {
     await runWithSpanContext(ctx("a"), async () => {
       expect(ambientLabels()).toEqual(["a"]);
       await runWithSpanContext(ctx("b"), async () => {
-        // b's prologue executes while a's callback is still mid-statement, so
-        // both frames are provably the current flow.
         expect(ambientLabels()).toEqual(["a", "b"]);
       });
-      // Back after an await: a's prologue is over — ambient fails closed.
       expect(ambientLabels()).toEqual([]);
     });
   });
@@ -188,7 +168,6 @@ describe("span context (sync-stack fallback)", () => {
     expect(syncStack[0]?.prologueOpen).toBe(false);
     release();
     await promise;
-    // One extra microtask for the .finally(pop) chained on the result.
     await Promise.resolve();
     expect(getAmbientSpanContexts()).toEqual([]);
     expect(syncStack).toHaveLength(0);

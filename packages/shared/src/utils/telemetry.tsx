@@ -4,11 +4,6 @@ import { HexclaveAssertionError } from "./errors";
 
 const tracer = trace.getTracer('stack-tracer');
 
-// The analytics wire-contract constants deliberately live in the
-// dependency-free ./analytics-wire module rather than here: this module eagerly
-// initializes @opentelemetry/api (the tracer above), and the client SDK's event
-// tracker imports those constants — importing them through here would drag OTel
-// into every customer's browser bundle. Import them from ./analytics-wire.
 
 export function withTraceSpan<P extends any[], T>(optionsOrDescription: string | { description: string, attributes?: Record<string, AttributeValue> }, fn: (...args: P) => Promise<T>): (...args: P) => Promise<T> {
   return async (...args: P) => {

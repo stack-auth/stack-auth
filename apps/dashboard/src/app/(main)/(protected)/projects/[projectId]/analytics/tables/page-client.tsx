@@ -309,8 +309,6 @@ export default function PageClient({ appId }: { appId: AppId }) {
               the same radius on both sides (nav top-right ↔ tables top-left).
               Light: only round the left edge — the shell card already owns the
               top-right radius, so an inner tr curve reads as a stray notch. */}
-          {/* Collapse the light shell's left border under the nested rail so this
-              shared edge does not render as a bright seam beside the primary nav. */}
           <div className="flex min-h-0 flex-1 overflow-hidden rounded-l-2xl dark:rounded-tr-2xl lg:-ml-px">
             {/* Use the same surface treatment as the primary sidebar so equal radii render
                 identically. Omit the right border to keep the sidebar/grid junction divider-free. */}

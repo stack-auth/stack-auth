@@ -4,11 +4,6 @@ import {
   ISSUE_ALERT_WORKFLOW_EVENT_TYPE,
 } from "./contract";
 
-/**
- * Deploy this source as the Workflows app's `issue-alert-email` workflow. The
- * source is intentionally self-contained because Workflows versions are
- * compiled and stored by the existing workflow-definition API.
- */
 export const ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE = `
 import { customEvent, hexclaveApp, NonRetriableError, workflow } from "@hexclave/workflows";
 
@@ -237,10 +232,6 @@ const DIRECT_EMAIL_CALL_MARKERS: readonly string[] = [
   "fetch(",
 ];
 
-/**
- * Fails closed if a future generated source accidentally bypasses the
- * ServerApp -> /emails/send-email -> EmailOutbox boundary.
- */
 export function validateIssueAlertWorkflowSource(source: string): IssueAlertWorkflowSourceValidation {
   const lowerSource = source.toLowerCase();
   if (DIRECT_EMAIL_CALL_MARKERS.some((marker) => lowerSource.includes(marker))) {

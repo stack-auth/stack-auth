@@ -13,7 +13,6 @@ import type { GroupingInput } from "../types";
  * Sentry is MIT licensed; see the attribution header in `../stack-parser.ts`.
  */
 
-/** A fixture is exactly a grouping input; nothing about these needs its own shape. */
 export type StackFixture = GroupingInput;
 
 export const BROWSER_STACK_FIXTURES: ReadonlyMap<string, StackFixture> = new Map<string, StackFixture>([
@@ -145,13 +144,6 @@ export const BROWSER_STACK_FIXTURES: ReadonlyMap<string, StackFixture> = new Map
   }],
 ]);
 
-/**
- * A realistic Node stack: a Next.js route handler that throws through
- * `node_modules` and bottoms out in a Node builtin. Hand-written rather than
- * ported, because the TraceKit corpus is browser-only — but every path shape
- * here (absolute app path, `node_modules`, bare builtin, `Type.<anonymous>`)
- * appears verbatim in real `onRequestError` payloads.
- */
 export const NODE_STACK_FIXTURE: StackFixture = {
   type: "TypeError",
   message: "Cannot read properties of undefined (reading 'id')",
@@ -165,7 +157,6 @@ export const NODE_STACK_FIXTURE: StackFixture = {
   ].join("\n"),
 };
 
-/** A single-line production bundle: the shape every un-source-mapped browser error has. */
 export const MINIFIED_BUNDLE_STACK_FIXTURE: StackFixture = {
   type: "TypeError",
   message: "e.map is not a function",
@@ -178,7 +169,6 @@ export const MINIFIED_BUNDLE_STACK_FIXTURE: StackFixture = {
   ].join("\n"),
 };
 
-/** Nothing but anonymous frames — the case where no frame leaf can contribute. */
 export const ANONYMOUS_ONLY_STACK_FIXTURE: StackFixture = {
   type: "Error",
   message: "boom",
@@ -190,7 +180,6 @@ export const ANONYMOUS_ONLY_STACK_FIXTURE: StackFixture = {
   ].join("\n"),
 };
 
-/** What `normalizeCapturedError` produces for `throw { code: 1 }`. */
 export const SYNTHETIC_OBJECT_THROW_FIXTURE: StackFixture = {
   type: "Error",
   message: "Non-Error exception captured with keys: code",

@@ -1,31 +1,6 @@
 import { type DebugImage, ERROR_MAX_DEBUG_IMAGES, ERROR_MAX_DEBUG_IMAGES_BYTES } from "@hexclave/shared/dist/utils/analytics-wire";
 
-/**
- * Debug-id lookup for `$error` source mapping.
- *
- * `hexclave sourcemaps upload` appends a tiny snippet to every emitted bundle
- * chunk. That snippet runs from inside the chunk, takes `new Error().stack`,
- * and stores `globalThis._hexclaveDebugIds[<that stack string>] = <debug id>`.
- * Because the stack was created inside the chunk, its innermost frame names the
- * chunk's own file — which is how a runtime with no bundler integration learns
- * "this URL was built from that source map".
- *
- * Two constraints shape everything below:
- *
- *  1. This module lives in the client bundle and the SDK deliberately has NO
- *     stack parser (see the header of error-capture.ts — parsing and grouping
- *     stay server-side). So we do the absolute minimum: one regex that pulls
- *     the innermost frame's file location out of a stack string.
- *  2. The raw global maps FULL STACK STRINGS to debug ids. A page with 30-100
- *     chunks holds 30-100 keys of 100-500 bytes each; shipping those keys would
- *     single-handedly exceed CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES (64 KB). So
- *     the keys are collapsed to one filename each, and only the filenames that
- *     literally occur in the erroring stack are attached to the event.
- */
 
-// The global the injected snippet writes to (mirrors Sentry's
-// `_sentryDebugIds`, but under our own name so the two can coexist in an app
-// that runs both SDKs). Keys are stack strings, values are debug ids.
 const DEBUG_IDS_GLOBAL_KEY = "_hexclaveDebugIds";
 
 /**
@@ -47,15 +22,6 @@ const DEBUG_IDS_GLOBAL_KEY = "_hexclaveDebugIds";
  */
 export function extractInnermostFrameFilename(stack: string): string | null {
   for (const line of stack.split("\n")) {
-    // The location is anchored to the END of the line so a function name that
-    // happens to contain `/` or `:` can't be mistaken for the file. The leading
-    // `at ` / `(` / `@` alternatives are the three ways every engine introduces
-    // it. The column is optional: a few engines emit `file:line` only.
-    // Whitespace IS allowed inside the path (`[^()]`, not `[^\s()]`): local
-    // builds regularly live under directories with spaces ("Program Files",
-    // iCloud paths), and excluding them would silently drop `debug_images` for
-    // every error those builds produce. The end anchor plus the `:line[:col]`
-    // suffix keeps the terminal delimiter unambiguous either way.
     const match = /(?:\bat\s+|[(@])((?:[a-zA-Z][a-zA-Z0-9+.-]*:\/{2,3}|\/|[a-zA-Z]:[\\/])[^()]*?):\d+(?::\d+)?\)?\s*$/.exec(line);
     if (match !== null) return match[1];
   }
@@ -63,12 +29,6 @@ export function extractInnermostFrameFilename(stack: string): string | null {
 }
 
 function readDebugIdsGlobal(): object | null {
-  // try-catch is deliberate (normally banned in this codebase): another script
-  // may define this global as a throwing accessor or a hostile Proxy, and this
-  // read sits on the error-capture hot path — a throw HERE would drop the
-  // original `$error` (and arm the capture path's ignore-next counter, hiding
-  // the following genuine error too). Debug-image enrichment is optional, so
-  // an unreadable registry degrades to "no images", never to a lost event.
   try {
     const value: unknown = Reflect.get(globalThis, DEBUG_IDS_GLOBAL_KEY);
     if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
@@ -78,10 +38,6 @@ function readDebugIdsGlobal(): object | null {
   }
 }
 
-// Memoization state. The map is derived from every key of the global, and each
-// derivation runs the frame regex over a full stack string, so recomputing it
-// on every captured error would be O(chunks x stack length) per error — right
-// when the app is already unhealthy.
 let cachedSource: object | null = null;
 let cachedEntries: readonly (readonly [string, unknown])[] | null = null;
 let cachedMap: ReadonlyMap<string, string> | null = null;
@@ -107,9 +63,6 @@ function resetDebugIdCache(): void {
  * cached key now reads `undefined`, which mismatches its cached value.)
  */
 export function getFilenameToDebugIdMap(): ReadonlyMap<string, string> {
-  // Guarded like readDebugIdsGlobal and for the same reason: `Object.keys` and
-  // the per-key reads hit Proxy traps on a hostile registry, and error capture
-  // must survive that. Fail closed to an empty map.
   try {
     const debugIds = readDebugIdsGlobal();
     if (debugIds === null) {
@@ -135,9 +88,6 @@ export function getFilenameToDebugIdMap(): ReadonlyMap<string, string> {
       if (typeof debugId !== "string" || debugId === "") continue;
       const filename = extractInnermostFrameFilename(key);
       if (filename === null) continue;
-      // Last writer wins. Two chunks cannot produce the same innermost filename
-      // in a correct build; if they do (a stale artifact re-registering an old
-      // id), the most recently executed one is the one actually serving code.
       map.set(filename, debugId);
     }
 
@@ -174,7 +124,7 @@ function indexOfFrameLocation(stack: string, codeFile: string): number {
     const hasFrameDelimiter = linePrefix.endsWith("at ")
       || linePrefix.endsWith("(")
       || linePrefix.endsWith("@");
-    if (hasFrameDelimiter && stack.charCodeAt(end) === 0x3a /* ":" */) {
+    if (hasFrameDelimiter && stack.charCodeAt(end) === 0x3a) {
       const digit = stack.charCodeAt(end + 1);
       if (digit >= 0x30 && digit <= 0x39) return index;
     }
@@ -208,8 +158,6 @@ export function getDebugImagesForStack(stack: string | null): DebugImage[] {
   matches.sort((a, b) => a.index - b.index);
 
   const images: DebugImage[] = [];
-  // Budget accounting mirrors what JSON.stringify(images) will actually cost:
-  // the enclosing `[]` plus one `,` between entries.
   let bytes = 2;
   for (const { image } of matches) {
     if (images.length >= ERROR_MAX_DEBUG_IMAGES) break;

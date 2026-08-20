@@ -33,15 +33,9 @@ const corsAllowedRequestHeaders = [
   "x-stack-allow-restricted-user",
   "x-stack-allow-anonymous-user",
   "baggage",
-  // Browser OTel propagation adds these headers to cross-origin API requests. Keep them
-  // in the preflight allowlist or the browser rejects the request before it reaches the API.
   "sentry-trace",
   "traceparent",
   "tracestate",
-  // The SDK's native cross-tier span context (see span-context-codec in
-  // @hexclave/shared). Without this, browser SDK calls to the Hexclave API
-  // from a different origin would fail CORS preflight once the fetch
-  // instrumentation attaches the header.
   "x-hexclave-span-context",
   "x-vercel-protection-bypass",
   "ngrok-skip-browser-warning",

@@ -2372,10 +2372,6 @@ async function seedPerf(now: Date): Promise<void> {
   if (buf.length) await seed(buf, batchRows);
   // Force parts to settle so first-query cost isn't dominated by merges.
   const client = getClickhouseAdminClient();
-  // Do not force OPTIMIZE FINAL here. Besides `events` now being a compatibility
-  // view, a forced full merge is unlike production and can hide the part-layout
-  // costs that the benchmark is meant to expose. Every insert above is awaited,
-  // so the queries can immediately read the isolated benchmark rows.
   console.log(`  done in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 }
 

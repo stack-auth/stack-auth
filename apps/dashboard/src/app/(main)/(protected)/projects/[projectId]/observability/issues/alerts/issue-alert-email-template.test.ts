@@ -1,6 +1,3 @@
-// Interpolation semantics themselves are covered by the shared contract's
-// tests in `packages/shared/src/utils/issue-alert-email-template.test.ts`;
-// this file only covers the dashboard-local defaults and preview values.
 import { describe, expect, it } from "vitest";
 import {
   createIssueAlertEmailPreviewValues,

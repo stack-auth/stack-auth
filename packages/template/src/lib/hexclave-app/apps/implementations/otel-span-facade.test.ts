@@ -121,9 +121,6 @@ describe("OTel Span facade", () => {
 
   it("announces EVERY facade (children included) through onStarted, before use", async () => {
     const { provider, capabilities } = fixture();
-    // The tracker registers live spans for its sign-out inert sweep from this
-    // hook; children minted through the recursive startSpan/withSpan would
-    // otherwise never reach a registry.
     const started: { spanType: string, spanId: string, isEnded: boolean }[] = [];
     const root = createOtelSpanFacade({
       tracer: provider.getTracer("facade-test"),
@@ -139,7 +136,6 @@ describe("OTel Span facade", () => {
     await root.end();
 
     expect(started.map((entry) => entry.spanType)).toEqual(["checkout", "charge", "refund"]);
-    // The handle is fully constructed and still live when announced.
     expect(started.every((entry) => !entry.isEnded)).toBe(true);
     expect(started[1]?.spanId).toBe(child.spanId);
   });

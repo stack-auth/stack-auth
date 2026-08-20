@@ -20,15 +20,9 @@ function createHexclaveServerApp() {
     tokenStore: null,
     publishableClientKey: getEnvVariable('STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY'),
     secretServerKey: getEnvVariable('STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY'),
-    // The backend is an ordinary SDK producer owned by the internal project.
-    // This keeps its logs, errors, request spans, fetches, and library spans on
-    // the normal authenticated ingestion path instead of maintaining a second
-    // ClickHouse exporter with customer-tenancy fan-out.
     analytics: { enabled: selfTelemetryEnabled },
     observability: {
       enabled: selfTelemetryEnabled,
-      // The backend's internal trace context must not become a customer-facing
-      // Hexclave correlation baggage on downstream calls.
       spanPropagation: { enabled: false },
     },
     telemetry: {

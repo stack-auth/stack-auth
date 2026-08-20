@@ -44,8 +44,6 @@ export const postMigration = async (
     ]
   `);
 
-  // The delivery row carries a scrubbed copy of the workflow payload so a
-  // replay does not depend on the 30-day WorkflowEvent retention window.
   const payloadColumns = await sql<{ column_name: string, data_type: string }[]>`
     SELECT column_name, data_type
     FROM information_schema.columns

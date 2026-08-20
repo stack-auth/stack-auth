@@ -1,11 +1,3 @@
-/**
- * Final, fail-closed normalization for values that are about to cross the
- * error-ingest durability boundary.
- *
- * This intentionally accepts `unknown` instead of one of the current event
- * types. Error envelopes and OTLP records have several wire representations,
- * and this boundary must remain useful while those representations coexist.
- */
 
 export type ErrorIngestScrubbedValue =
   | null
@@ -38,11 +30,6 @@ export type ErrorIngestScrubResult = {
   dropped: readonly string[],
 };
 
-/**
- * Customer policy can only add scrubbing. There is deliberately no `keep`,
- * `allow`, or predicate expression here: a config override must not be able
- * to weaken the built-in final privacy boundary.
- */
 export type ErrorIngestScrubOverrides = {
   dropKeys?: readonly string[],
   urlKeys?: readonly string[],
@@ -55,21 +42,13 @@ export type ErrorIngestScrubOptions = Partial<ErrorIngestScrubLimits> & {
 const FILTERED_VALUE = "[Filtered]";
 const TEXT_ENCODER = new TextEncoder();
 
-// Key matching is deliberately segment-aware so OTel names such as
-// `http.request.header.authorization` are covered without treating ordinary
-// fields such as `body_count` as a safe escape hatch.
 const SENSITIVE_KEY_PATTERN = /(?:^|[._-])(?:access[-_.]?token|api[-_.]?key|auth(?:entication|orization)?|body|client[-_.]?secret|cookie|credential|form[-_.]?data|header|id[-_.]?token|password|passwd|params?|private[-_.]?key|query(?:[-_.]?string)?|raw[-_.]?body|refresh[-_.]?token|secret|session(?:[-_.]?(?:id|key|token|value|secret))?|set[-_.]?cookie|signature|token)(?:$|[._-])/i;
 const URL_KEY_PATTERN = /(?:^|[._-])(?:http[-_.]?target|request[-_.]?(?:target|url)|uri|url)(?:$|[._-])/i;
 
 const AUTH_SCHEME_PATTERN = /\b(Bearer|Basic|Digest)\s+[^\s,;]+/gi;
 const PRIVATE_KEY_PATTERN = /-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g;
 const JWT_PATTERN = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
-// The scheme is optional so protocol-relative references (`//user:pass@host`)
-// lose their userinfo credentials just like absolute URLs.
 const URL_AUTH_PATTERN = /((?:[a-z][a-z\d+.-]*:)?\/\/)(?:[^/@\s:]+):(?:[^/\s?#]+)@/gi;
-// The optional quote around the key (backreference \2) covers serialized JSON
-// embedded in message strings (`{"password":"..."}`), which the bare-key form
-// cannot reach because the closing key quote sits between the key and the colon.
 const SENSITIVE_ASSIGNMENT_PATTERN = /((["']?)(?:access[-_.]?token|api[-_.]?key|authorization|client[-_.]?secret|cookie|credential|id[-_.]?token|password|passwd|private[-_.]?key|refresh[-_.]?token|secret|session[-_.]?token|signature|token)\2\s*[:=]\s*)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:(?:Bearer|Basic|Digest)\s+)?[^\s"'&,;}\]]+)/gi;
 const SENSITIVE_QUERY_VALUE_PATTERN = /([?&](?:access[-_.]?token|api[-_.]?key|authorization|client[-_.]?secret|id[-_.]?token|password|refresh[-_.]?token|secret|signature|token)=)[^&#\s]*/gi;
 const SENSITIVE_COMPACT_KEY_PARTS: readonly string[] = [
@@ -94,11 +73,6 @@ const SENSITIVE_COMPACT_KEY_PARTS: readonly string[] = [
   "requestbody",
 ];
 
-// These identifiers are correlation metadata, not credentials. Keep the
-// exact Hexclave spellings so a session/replay or authenticated request can
-// still be joined across the issue, trace, and replay read models without
-// creating a general-purpose exemption for arbitrary `session` or `token`
-// fields.
 const SAFE_TELEMETRY_IDENTIFIER_KEYS = new Set([
   "hexclavesessionreplayid",
   "hexclavesessionreplaysegmentid",
@@ -195,8 +169,6 @@ function scrubUrl(value: string, state: ScrubState, path: string, maxBytes: numb
     const parsed = new URL(value);
     pathOnly = `${parsed.origin}${parsed.pathname}`;
   } catch {
-    // Relative and malformed URLs still get a path-only projection. This is
-    // a deliberate privacy boundary, not a validation fallback for ingestion.
     pathOnly = value.split(/[?#]/, 1)[0].replace(URL_AUTH_PATTERN, "$1");
   }
   if (pathOnly !== value) state.truncated = true;
@@ -233,13 +205,6 @@ function defineSafeProperty(
   });
 }
 
-/**
- * Combines the built-in key policy with configured overrides. The built-in
- * `drop` decision stays authoritative: a `urlKeys` override can only relax a
- * built-in `value` field down to a path-only projection, never resurrect part
- * of a field the built-in boundary would remove (see ErrorIngestScrubOverrides:
- * overrides must not be able to weaken the fail-closed contract).
- */
 function resolveFieldPolicy(fieldPath: string, key: string, overrides: ErrorIngestScrubOverrides | undefined): ScrubPolicy {
   const builtIn = policyForKey(key);
   if (builtIn === "drop" || matchesOverride(fieldPath, key, overrides?.dropKeys)) return "drop";
@@ -299,8 +264,6 @@ function ownEnumerableKeys(value: object, state: ScrubState, path: string): stri
   try {
     return Object.keys(value).sort();
   } catch {
-    // A caller can pass a Proxy even though normal OTLP JSON cannot contain
-    // one. Do not execute an unknown trap again or let it cross the boundary.
     drop(state, path, "object");
     return [];
   }
@@ -315,8 +278,6 @@ function readDataProperty(value: object, key: string, state: ScrubState, path: s
     }
     return descriptor.value;
   } catch {
-    // Accessors and Proxy traps are not part of JSON, but failing closed here
-    // keeps an unknown object from bypassing the final scrubber.
     drop(state, path, "property");
     return undefined;
   }
@@ -434,11 +395,6 @@ function scrubNode(
   }
 }
 
-/**
- * Produces a JSON-compatible, bounded payload suitable for final persistence.
- * Sensitive fields are removed before their values are read, and all dropped
- * paths are returned as safe, deterministic reason codes for later outcomes.
- */
 export function scrubErrorIngestPayload(
   input: unknown,
   options?: ErrorIngestScrubOptions,

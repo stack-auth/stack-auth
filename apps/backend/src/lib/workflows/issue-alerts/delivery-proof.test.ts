@@ -238,9 +238,6 @@ async function outboxRows(subject: string) {
 
 describe.sequential("issue alert workflow delivery proof", () => {
   beforeAll(async () => {
-    // Keep this proof at the durable outbox boundary. The normal email queue
-    // remains available to the development environment, but this test must
-    // not turn a workflow proof into a provider call.
     vi.stubEnv("STACK_EMAIL_BRANCHING_DISABLE_QUEUE_AUTO_TRIGGER", "true");
     tenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
     scope = { tenancyId: tenancy.id, projectId: tenancy.project.id, branchId: tenancy.branchId };
@@ -281,9 +278,6 @@ describe.sequential("issue alert workflow delivery proof", () => {
     workflowWasCreated = registration.status === "created";
     databaseRule = await service.saveRule(getScope(), makeRule());
 
-    // runWorkflowEngineStep intentionally captures and requeues execution
-    // errors. A proof test must surface those errors immediately; otherwise a
-    // missing run parent looks like a 180-second delivery timeout.
     vi.spyOn(errorUtils, "captureError").mockImplementation((location, error) => {
       if (location === "workflow-run-execution" || location === "workflow-event-processing") throw error;
     });

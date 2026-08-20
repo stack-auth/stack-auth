@@ -119,13 +119,10 @@ function positionOf(source: string, needle: string): { line: number, column: num
   return { line: before.split("\n").length, column: index - (before.lastIndexOf("\n") + 1) };
 }
 
-// ---------------------------------------------------------------------------
 
 const tempDirs: string[] = [];
 
 function makeTempDir(): string {
-  // realpath: on macOS os.tmpdir() is a symlink, and the containment checks in
-  // determineSourceMapPathFromBundle compare resolved (not realpath'd) strings.
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "hexclave-sourcemaps-")));
   tempDirs.push(dir);
   return dir;
@@ -146,9 +143,6 @@ afterEach(() => {
 
 describe("appendDebugIdSnippet — mapping invariance", () => {
   it("does not shift any mapping: a known position resolves identically before and after injection", () => {
-    // The token lives inside the minified code on the first (and only) mapped
-    // generated line. If injection shifted lines or columns, resolving it
-    // against the UNCHANGED .map would land somewhere else.
     const needle = "greet() requires a name";
     const beforePosition = positionOf(FIXTURE_BUNDLE, needle);
     const beforeResolved = originalPositionFor(FIXTURE_MAP_TEXT, beforePosition.line, beforePosition.column);
@@ -168,7 +162,6 @@ describe("appendDebugIdSnippet — mapping invariance", () => {
     const lastMappedLine = decodeMappings(String(mappings)).length;
 
     const injected = appendDebugIdSnippet(FIXTURE_BUNDLE, DEBUG_ID_A);
-    // Re-preparing the map never rewrites `mappings`.
     const prepared: unknown = JSON.parse(prepareSourceMapForUpload(map, DEBUG_ID_A, { sourceMapDir: FIXTURES_DIR, repoRoot: FIXTURES_DIR }));
     expect(Reflect.get(prepared as object, "mappings")).toBe(mappings);
 
@@ -202,7 +195,6 @@ describe("appendDebugIdSnippet — idempotence", () => {
     expect(determineDebugIdFromBundleSource(twice)).toBe(DEBUG_ID_B);
     expect(twice.includes(DEBUG_ID_A)).toBe(false);
     expect(twice.split("hexclave:debug-id-injection:start").length - 1).toBe(1);
-    // And re-injecting the original id restores the original bytes exactly.
     expect(appendDebugIdSnippet(twice, DEBUG_ID_A)).toBe(once);
   });
 
@@ -248,9 +240,6 @@ describe("injected snippet — runtime round trip", () => {
     const injected = appendDebugIdSnippet("var ok = 1;", DEBUG_ID_A);
     const context: Record<string, unknown> = {};
     vm.createContext(context);
-    // A global whose `_hexclaveDebugIds` slot throws on read (a locked-down
-    // environment, or another SDK's Proxy) must not take the bundle down with
-    // it — the snippet's try/catch has to swallow it.
     vm.runInContext("Object.defineProperty(globalThis, '_hexclaveDebugIds', { get() { throw new Error('locked down'); } });", context);
     expect(() => vm.runInContext(injected, context, { filename: "/tmp/x.js" })).not.toThrow();
   });
@@ -302,9 +291,6 @@ describe("determineSourceMapPathFromBundle", () => {
   });
 
   it("rejects an in-root symlink whose target escapes the scanned directory", () => {
-    // Lexically the symlink lives inside the scan root and passes the
-    // path.relative containment check; only resolving the real path reveals
-    // that reading it would follow the link to a secret file outside the build.
     const dir = makeTempDir();
     const outsideDir = makeTempDir();
     const secret = writeFile(outsideDir, "secret.map", JSON.stringify({ version: 3, sourcesContent: ["secret"] }));
@@ -417,7 +403,6 @@ describe("prepareSourceMapForUpload", () => {
     expect(() => prepareSourceMapForUpload(withOffset({ line: -1, column: 0 }), DEBUG_ID_A, options)).toThrow(/non-negative integer/);
     expect(() => prepareSourceMapForUpload(withOffset({ line: 1.5, column: 0 }), DEBUG_ID_A, options)).toThrow(/non-negative integer/);
     expect(() => prepareSourceMapForUpload(withOffset("nope"), DEBUG_ID_A, options)).toThrow(CliError);
-    // A well-formed offset still passes.
     expect(() => prepareSourceMapForUpload(withOffset({ line: 0, column: 0 }), DEBUG_ID_A, options)).not.toThrow();
   });
 });
@@ -494,9 +479,6 @@ describe("findIntegrityManifests / findNextBuildRoots", () => {
   });
 
   it("detects integrity in a JavaScript manifest with unquoted or single-quoted keys", () => {
-    // `.js` manifests are scanned too; a JSON-only pattern would miss a JS
-    // object literal's unquoted/single-quoted `integrity` field and then let us
-    // silently rewrite the bundle and break SRI.
     const dir = makeTempDir();
     writeFile(dir, ".next/unquoted-manifest.js", "self.__M = { chunk: { integrity: \"sha384-abc\" } };");
     writeFile(dir, ".next/single-quoted-manifest.js", "self.__M = { chunk: { 'integrity': 'sha384-def' } };");
@@ -567,10 +549,6 @@ describe("prepareArtifacts (the whole --dry-run path)", () => {
   });
 
   it("re-derives distinct ids for different bundles a previous run injected with the same id", () => {
-    // A stale/hand-edited bundle can carry any embedded id. Because the id is
-    // re-derived from the CLEAN bundle + current map (never trusted from the
-    // embedded marker), two genuinely different bundles that both happen to
-    // carry DEBUG_ID_A get distinct content-addressed ids — not a false clash.
     const dir = makeTempDir();
     writeFile(dir, "static/a.js", appendDebugIdSnippet(FIXTURE_BUNDLE.replace("minified-chunk.js.map", "a.js.map"), DEBUG_ID_A));
     writeFile(dir, "static/b.js", appendDebugIdSnippet(FIXTURE_BUNDLE.replace("minified-chunk.js.map", "b.js.map"), DEBUG_ID_A));
@@ -584,10 +562,6 @@ describe("prepareArtifacts (the whole --dry-run path)", () => {
   });
 
   it("re-mints the debug id (and re-injects) when only the source map changed", () => {
-    // The core stale-id guarantee: if the MAP is rebuilt/replaced under an
-    // otherwise-identical bundle, reusing the embedded id would upload the new
-    // map under the old id and leave symbolication on the previous map. Instead
-    // the id must change and the bundle must be re-injected with it.
     const dir = makeTempDir();
     const bundlePath = writeFile(dir, "static/main.js", FIXTURE_BUNDLE.replace("minified-chunk.js.map", "main.js.map"));
     const mapPath = writeFile(dir, "static/main.js.map", FIXTURE_MAP_TEXT);
@@ -596,9 +570,6 @@ describe("prepareArtifacts (the whole --dry-run path)", () => {
     const firstId = first.artifacts[0].debugId;
     expect(determineDebugIdFromBundleSource(fs.readFileSync(bundlePath, "utf-8"))).toBe(firstId);
 
-    // Rewrite ONLY the map with different bytes (a trailing space keeps it valid
-    // JSON) and re-run. The bundle bytes are unchanged apart from the earlier
-    // injection, so a stale-id implementation would keep firstId.
     fs.writeFileSync(mapPath, `${FIXTURE_MAP_TEXT} `, "utf-8");
     const second = prepareArtifacts(collectArtifacts([path.join(dir, "static")]), { repoRoot: dir, dryRun: false });
     const secondId = second.artifacts[0].debugId;
@@ -714,9 +685,7 @@ describe("hexclave sourcemaps upload — command wiring", () => {
     expect(Reflect.get(summary as object, "dryRun")).toBe(true);
     expect(Reflect.get(summary as object, "release")).toBe("v1");
     expect(Array.isArray(Reflect.get(summary as object, "artifacts"))).toBe(true);
-    // The server chunk has no map, so the exact next.config line is printed.
     expect(stderr).toContain("experimental: { serverSourceMaps: true }");
-    // --dry-run never touches the build output.
     expect(fs.readFileSync(path.join(dir, ".next/static/chunks/main.js"), "utf-8")).toBe(before);
   });
 
@@ -821,8 +790,6 @@ describe("hexclave sourcemaps upload — command wiring", () => {
     const bundleHeaders = new Headers(fetchCalls[1]?.init?.headers);
     expect(bundleHeaders.get("content-type")).toBe("application/javascript");
     expect(bundleHeaders.get("content-length")).toBe(String(artifact.bundleBytes));
-    // Signed into the presigned URL server-side; omitting it would invalidate
-    // the signature, so every object PUT must carry it.
     expect(bundleHeaders.get("if-none-match")).toBe("*");
     expect(bundleHeaders.get("x-stack-secret-server-key")).toBeNull();
     const mapHeaders = new Headers(fetchCalls[2]?.init?.headers);
@@ -892,11 +859,6 @@ describe("hexclave sourcemaps upload — command wiring", () => {
   });
 
   it("treats a 412 from object storage as already-uploaded and still finalizes", async () => {
-    // The presigned URLs carry a signed `If-None-Match: "*"`, so object storage
-    // answers 412 when the (content-addressed, immutable) object already exists
-    // — e.g. a rerun after a network failure between a completed PUT and its
-    // response. That is success, not an error: the stored bytes ARE the bytes
-    // we were about to upload, and the flow must proceed to finalize.
     const dir = makeTempDir();
     writeFile(dir, "static/main.js", FIXTURE_BUNDLE.replace("minified-chunk.js.map", "main.js.map"));
     writeFile(dir, "static/main.js.map", FIXTURE_MAP_TEXT);
@@ -1045,11 +1007,6 @@ describe("hexclave sourcemaps upload — command wiring", () => {
   });
 
   it("fails before auth when the project is not configured", async () => {
-    // Hermetic regardless of the surrounding shell: a dev box or CI that exports
-    // a project-ID variable (which the CLI reads for real uploads) would
-    // otherwise satisfy `resolveProjectId` and never reach the expected error.
-    // `vi.stubEnv(name, undefined)` sets the string "undefined" in vitest 1.x
-    // rather than deleting, so the vars are removed and restored by hand.
     const saved = new Map<string, string | undefined>([
       ["HEXCLAVE_PROJECT_ID", process.env.HEXCLAVE_PROJECT_ID],
       ["STACK_PROJECT_ID", process.env.STACK_PROJECT_ID],

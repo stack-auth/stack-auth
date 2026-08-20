@@ -360,16 +360,6 @@ export async function seed() {
     }
   }
 
-  // On top of the Growth plan (kept so the dashboard shows a real plan), grant
-  // the internal team effectively unlimited quantities of every metered item.
-  // The internal team is Hexclave itself: its telemetry is dogfooding, and the
-  // dogfooded dashboard/backend traffic must never exhaust its own quotas and
-  // start rejecting batches (Growth is finite — 1M events/month, and
-  // analytics_timeout_seconds is a NEVER-repeating pool that dashboard query
-  // polling permanently drains). Fixed ids keep the upserts idempotent across
-  // reseeds, and each reseed also tops the balance back up to UNLIMITED.
-  // UNLIMITED (1e9) instead of Int32 max so summing with plan grants and other
-  // changes stays comfortably inside the column type.
   const internalTeamUnlimitedGrants: { id: string, itemId: string }[] = [
     { id: 'b3a52b60-0a1e-4a3c-9c3e-000000000001', itemId: ITEM_IDS.seats },
     { id: 'b3a52b60-0a1e-4a3c-9c3e-000000000002', itemId: ITEM_IDS.authUsers },
@@ -380,9 +370,6 @@ export async function seed() {
     { id: 'b3a52b60-0a1e-4a3c-9c3e-000000000007', itemId: ITEM_IDS.sessionReplays },
   ];
   for (const grant of internalTeamUnlimitedGrants) {
-    // Written with raw Prisma for the same reason as the Growth subscription
-    // above (bulldozer storage isn't initialized at this point in the seed);
-    // the rows are ingressed by the db:backfill-bulldozer-from-prisma step.
     await internalPrisma.itemQuantityChange.upsert({
       where: {
         tenancyId_id: {
@@ -492,12 +479,6 @@ export async function seed() {
       domains: [],
     },
   } satisfies AdminUserProjectsCrud["Admin"]["Create"];
-  // Create-only on purpose: development-environment projects have read-only
-  // environment config overrides (see getEnvironmentConfigWriteBlockReason),
-  // and the create path only works because it stamps isDevelopmentEnvironment
-  // AFTER writing the initial override. An update on a re-seed would hit the
-  // guard and abort the whole seed, so an existing project is left untouched —
-  // its config is a fixture; `db:reset` is the way to get a fresh one.
   if (await getProject(DEVELOPMENT_ENVIRONMENT_PROJECT_ID)) {
     console.log("Development environment project already exists, leaving it unchanged (its environment config is read-only).");
   } else {

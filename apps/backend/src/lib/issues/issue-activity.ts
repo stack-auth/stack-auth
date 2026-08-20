@@ -135,11 +135,6 @@ function validateActivityInput(input: IssueActivityInput): void {
   if (input.type === "bookmark_changed") validateIssueUserId(input.data.userId, "userId");
 }
 
-/**
- * Validates and stamps an activity command. The explicit idempotency key follows
- * Sentry's activity `ident`/action-idempotency boundary so retries stay
- * exactly-once instead of being deduplicated by timestamp.
- */
 export function buildIssueActivity(options: IssueScope & IssueActivityInput): IssueActivityCommand {
   validateIssueScope(options);
   validateActivityInput(options);

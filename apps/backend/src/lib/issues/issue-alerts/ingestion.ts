@@ -17,14 +17,6 @@ import type { IssueBatchDelta } from "../issue-materialization-contract";
 import type { IssueBatchApplyOutcome } from "../issue-store";
 import type { IssueAlertMatch, IssueAlertPredicate, IssueAlertRule, IssueAlertRuleScope } from "./types";
 
-/**
- * Per-QUERY chunk size, not a cap on how many windows get counted. Every
- * configured window must produce a count: the evaluator treats a missing
- * window as `frequency_unavailable`, so silently truncating the collected set
- * would make rules beyond the truncation point never alert, with no error
- * anywhere. Windows beyond one chunk cost one extra ClickHouse query each —
- * acceptable for the rare tenant with >64 distinct windows.
- */
 const MAX_FREQUENCY_WINDOWS_PER_QUERY = 64;
 const MAX_FREQUENCY_COUNT = 1_000_000_000;
 
@@ -61,9 +53,6 @@ export function collectIssueAlertFrequencyWindows(rules: readonly IssueAlertRule
       windows.add(predicate.windowSeconds);
     }
   }
-  // The total is bounded by rule count × predicate cap, both enforced at rule
-  // save time, so collecting everything cannot run away; loadFrequencyCounts
-  // chunks the ClickHouse work.
   return [...windows];
 }
 
@@ -121,10 +110,6 @@ async function loadFrequencyCounts(
   if (windows.length === 0 || hashes.length === 0) return new Map();
   const client = getSharedClickhouseAdminClient();
   const counts = new Map<number, number>();
-  // One query per chunk of windows. Scanning the same issue rows once per
-  // window multiplied ClickHouse I/O by the number of rules; conditional
-  // aggregates keep every second-precise window exact while reading the widest
-  // requested window once per chunk.
   for (let offset = 0; offset < windows.length; offset += MAX_FREQUENCY_WINDOWS_PER_QUERY) {
     const chunk = windows.slice(offset, offset + MAX_FREQUENCY_WINDOWS_PER_QUERY);
     const rangeStarts = chunk.map((windowSeconds) => Math.floor((now.getTime() - windowSeconds * 1000) / 1000));
@@ -201,10 +186,6 @@ async function issueStillOwnsHashInTransaction(
   issueId: string,
   hash: string,
 ): Promise<boolean> {
-  // The ownership check is part of the same serializable transaction as the
-  // delivery claim. FOR UPDATE makes a concurrent unmerge linearize before or
-  // after this decision instead of moving the hash between the check and the
-  // durable enqueue.
   const rows = await tx.$queryRaw<Array<{ hash: string }>>`
     SELECT "hash"
     FROM "IssueHash"
@@ -236,10 +217,6 @@ export async function dispatchIssueAlertsForMaterialization(options: {
   const scope = toScope(options.tenancy);
   const records = await issueAlertPersistenceService.listActiveRuleRecords(scope);
   if (records.length === 0) return result;
-  // The event is useless unless the built-in Workflows definition exists. This
-  // idempotent registration is deliberately performed through the existing
-  // workflow sync API; a user-owned collision fails closed rather than being
-  // overwritten by an alerting side effect.
   await ensureIssueAlertEmailWorkflow(options.tenancy);
 
   const inputsByHash = new Map(options.inputs.map((input) => [input.ownerHash, input]));
@@ -274,9 +251,6 @@ export async function dispatchIssueAlertsForMaterialization(options: {
     const envelope = needsEnvelope
       ? await loadOccurrenceEnvelope(options.tenancy, input.occurrenceId ?? null)
       : undefined;
-    // This batch snapshot supplies the signal and frequency cache without an
-    // N+1 lookup. The matched-delivery path below rechecks the exact hash under
-    // the claim transaction, because an unmerge can repoint it after this read.
     const ownedHashes = ownedHashesByIssueId.get(outcome.issueId) ?? [];
     if (!ownedHashes.includes(outcome.ownerHash)) continue;
     const frequencyCacheKey = JSON.stringify([...ownedHashes].sort());

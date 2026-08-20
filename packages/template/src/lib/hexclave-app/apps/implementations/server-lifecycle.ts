@@ -181,8 +181,6 @@ function emitOutcome(options: ServerLifecycleInstallOptions, outcome: ServerLife
   try {
     options.onOutcome(outcome);
   } catch (error) {
-    // An outcome observer is diagnostic plumbing. It must not change fatal
-    // ownership or turn a successful shutdown attempt into another crash.
     console.warn("Hexclave analytics: server lifecycle outcome observer failed:", error);
   }
 }
@@ -245,8 +243,6 @@ function removeListeners(
     try {
       host.removeListener(event, listener);
     } catch (error) {
-      // Teardown is best effort at the host boundary; continue removing the
-      // remaining hooks so one broken adapter cannot leak every listener.
       console.warn(`Hexclave analytics: failed to remove server lifecycle ${event} listener:`, error);
     }
   }

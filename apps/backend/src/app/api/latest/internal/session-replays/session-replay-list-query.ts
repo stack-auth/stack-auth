@@ -1,9 +1,5 @@
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
-/**
- * "verified" is identified / signed-up (`ProjectUser.isAnonymous = false`),
- * not email-verified.
- */
 export type SessionReplayUserKind = "anonymous" | "verified";
 
 export function parseSessionReplayUserKind(raw: string | undefined): SessionReplayUserKind | null {

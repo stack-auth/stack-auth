@@ -10,22 +10,6 @@ import type { IssueAlertRuleResponse } from "./api";
 import type { IssueAlertPredicate, IssueAlertRuleFilters, IssueAlertScalar, IssueAlertTagFilter } from "./types";
 import type { IssueAlertAction, IssueAlertEmailRouting } from "./destinations";
 
-/**
- * HTTP wire schemas for the issue-alert management routes.
- *
- * Layering: these schemas describe the shape of the wire contract (keys, enum
- * vocabularies, integer-ness) so the routes no longer accept/emit `yupMixed`.
- * They are deliberately NOT the authority on rule validity — byte limits, the
- * rule-id pattern, the exactly-one-of userIds/routing rule for email actions,
- * non-empty `any` predicate groups, count caps, and cross-field metadata
- * checks all stay in `parseStoredIssueAlertRule`/`parseIssueAlertAction`,
- * which the route handlers still run on every mutation. Both layers reject
- * with 400, so pushing a bound into one or the other does not change the wire.
- *
- * Rule wire fields are camelCase on purpose: the stored rule config is the
- * wire format (responses return it verbatim plus `database_id`), and changing
- * the casing here would break every stored rule and dashboard client.
- */
 
 const issueAlertValueOperatorSchema = yupString().oneOf([
   "equals",
@@ -47,7 +31,6 @@ const issueAlertCooldownKeyScopeSchema = yupString().oneOf([
   "issue_environment_release",
 ]).defined();
 
-// A scalar predicate/filter value. Null is a legal scalar, hence .nullable().
 const issueAlertScalarSchema = yupUnion(
   yupString().defined(),
   yupNumber().defined(),
@@ -58,8 +41,6 @@ function issueAlertTagFilterSchema() {
   return yupObject({
     key: yupString().defined(),
     operator: issueAlertValueOperatorSchema,
-    // Single value for scalar operators, an array for "in", absent for
-    // (not_)exists — the pairing is enforced by the persistence parser.
     value: yupUnion(
       yupString().defined(),
       yupArray(yupString().defined()).defined(),
@@ -138,8 +119,6 @@ const issueAlertEmailRoutingSchema = yupUnion(
 const issueAlertActionSchema = yupUnion(
   yupObject({
     type: yupString().oneOf(["email"]).defined(),
-    // Exactly one of userIds/routing must be present; the persistence parser
-    // enforces the pairing, this layer only describes the two shapes.
     userIds: yupArray(yupString().defined()).optional(),
     routing: issueAlertEmailRoutingSchema.optional(),
     subject: yupString().defined(),
@@ -168,12 +147,6 @@ function issueAlertRuleSchema(levels: readonly string[]) {
   }).defined();
 }
 
-/**
- * Request schema for creating/updating a rule. Level predicates additionally
- * accept the Sentry spellings "warning" and "fatal" because the persistence
- * parser normalizes them to "warn"/"error" at this boundary; responses only
- * ever carry the canonical five.
- */
 export const IssueAlertRuleMutationSchema = issueAlertRuleSchema(
   ["trace", "debug", "info", "warn", "error", "warning", "fatal"],
 );
@@ -196,8 +169,6 @@ export const IssueAlertDeliveryResponseSchema = yupObject({
   canonical_issue_id: yupString().uuid().defined(),
   redirected: yupBoolean().defined(),
   redirected_from_issue_id: yupString().uuid().nullable().defined(),
-  // Occurrence ids come from the ingest pipeline and are bounded strings, not
-  // necessarily UUIDs.
   occurrence_id: yupString().defined(),
   rule_version: yupNumber().integer().defined(),
   event_kind: yupString().oneOf(["new", "regression", "occurrence"]).defined(),
@@ -225,13 +196,6 @@ export const IssueAlertDeliveryListResponseSchema = yupObject({
   truncated: yupBoolean().defined(),
 }).defined();
 
-/**
- * The domain types use readonly arrays, but yup's inferred types (which the
- * smart route handler checks handler return values against) are mutable, so
- * responses are shallow-copied into mutable wire objects here. This also acts
- * as an explicit output allowlist, mirroring the serialize* functions in
- * lib/releases/release-route-handlers.ts.
- */
 function serializeIssueAlertTagFilter(filter: IssueAlertTagFilter) {
   return {
     key: filter.key,
@@ -249,19 +213,12 @@ function serializeIssueAlertFilters(filters: IssueAlertRuleFilters) {
   };
 }
 
-// Array.isArray only narrows readonly arrays in the true branch, so without
-// this guard the false branch would still carry `readonly IssueAlertScalar[]`
-// and fail assignability to the mutable wire type.
 function isScalarArray(value: IssueAlertScalar | readonly IssueAlertScalar[]): value is readonly IssueAlertScalar[] {
   return Array.isArray(value);
 }
 
 function serializeIssueAlertPredicate(predicate: IssueAlertPredicate) {
   switch (predicate.type) {
-    // "new" and "regression" are separate cases (despite identical bodies) so
-    // TS narrows predicate.type to its literal in each branch; a combined case
-    // infers { type: "new" | "regression" }, which is not assignable to the
-    // discriminated union the response schema expects.
     case "new": {
       return { type: predicate.type, value: predicate.value };
     }

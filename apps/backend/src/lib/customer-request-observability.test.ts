@@ -59,8 +59,6 @@ describe("customer request observability", () => {
           projectId: "project",
           branchId: "main",
         });
-        // OAuth refresh grant identity is verified only after the route has
-        // validated the refresh token, later than ordinary request auth.
         resolveCustomerRequestObservability({
           projectId: "project",
           branchId: "main",
@@ -135,9 +133,6 @@ describe("customer request observability", () => {
           userId: "user-a",
           refreshTokenId: null,
         });
-        // A later auth enrichment can describe a different principal. The
-        // request span must keep the first verified pair, not cross-wire user A
-        // with user B's refresh token.
         resolveCustomerRequestObservability({
           projectId: "project",
           branchId: "main",
@@ -212,9 +207,6 @@ describe("customer request observability", () => {
     expect(isW3cTraceId(rows[0]?.trace_id)).toBe(true);
   });
 
-  // internal-observability already writes a richer span with the same name into
-  // the same trace for this tenancy; two of them rendered as duplicate siblings
-  // under every fetch in our own dashboard.
   it("does not duplicate the internal project's own detailed request span", async () => {
     const writer = vi.fn(async (_row: SpanInsertRow) => {});
 

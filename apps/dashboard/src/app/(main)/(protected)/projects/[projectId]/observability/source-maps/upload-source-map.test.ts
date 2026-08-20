@@ -79,8 +79,6 @@ describe("browser source-map preparation", () => {
       sourceMapSource,
     });
 
-    // A legitimate bundle may mention the prefix (e.g. tooling that reads
-    // `_hexclaveDebugIdIdentifier` values); only prefix + UUID means injected.
     await expect(prepare(`const prefix = "hexclave-dbid-";\n${bundleSource}`))
       .resolves.toMatchObject({ codeFile: "static/app.min.js" });
     await expect(prepare(`g._hexclaveDebugIdIdentifier="hexclave-dbid-fdecadcc-fcec-429d-868f-cb6db59cb599";\n${bundleSource}`))
@@ -120,8 +118,6 @@ describe("presigned artifact upload", () => {
     expect(url).toBe("https://uploads.example.test/bundle");
     expect(init.method).toBe("PUT");
     expect(init.credentials).toBe("omit");
-    // The backend signs If-None-Match into the presigned URL, so the request
-    // is rejected as a signature mismatch if the header is missing.
     expect(init.headers).toEqual({
       "content-type": "application/javascript",
       "If-None-Match": "*",

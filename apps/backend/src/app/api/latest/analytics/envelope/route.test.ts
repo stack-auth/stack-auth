@@ -14,11 +14,6 @@ const mocks = vi.hoisted(() => ({
   tryDecreasePlanItemQuantities: vi.fn(),
 }));
 
-// The parse boundary must reflect ONLY ErrorIngestEnvelopeError messages
-// (fixed strings authored in the envelope parser) as 400s; anything else is an
-// internal failure that has to bubble to the generic 500 handler instead of
-// leaking its message. The parser is wrapped (not replaced) so the malformed
-// cases exercise the real parser.
 vi.mock("@/lib/error-ingest", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/error-ingest")>();
   return { ...original, parseErrorIngestEnvelope: vi.fn(original.parseErrorIngestEnvelope) };
@@ -50,10 +45,6 @@ vi.mock("@/utils/background-tasks", () => ({
   runAsynchronouslyAndWaitUntil: vi.fn(),
 }));
 
-// Only the fields the parse boundary reads before rejecting (observability
-// gate, scope ids). Same fake-by-cast pattern as the ClickHouseClient fakes
-// in lib/spans.test.ts; a missing field the route starts relying on before
-// the parse boundary will surface as a TypeError in these tests.
 const tenancy = {
   id: "11111111-2222-4333-8444-555555555555",
   branchId: "main",

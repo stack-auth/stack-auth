@@ -29,27 +29,17 @@ if (postHogKey.length > 5) {
 }
 
 
-// Cross-tier tracing note: the Hexclave SDK (src/hexclave/client.tsx) now owns
-// the browser span lifecycle, the W3C `traceparent`, and the
-// W3C `baggage` header on API calls — Sentry no longer participates
-// in tracing at all (no propagateTraceparent/tracePropagationTargets, no
-// transaction export, no dev no-op-transport keep-alive). Sentry stays
-// initialized as an error-reporting/replay backstop only while the native
-// $error pipeline proves itself; PostHog likewise stays as a comparison
-// backstop. Full dogfood means the product works with both of them removed.
 Sentry.init({
   ...sentryBaseConfig,
 
   dsn: getPublicEnvVar('NEXT_PUBLIC_SENTRY_DSN'),
 
-  // Without the tracing duty there is no reason to run Sentry locally or in CI.
   enabled: !isDevelopment && (process.env.CI === undefined || process.env.CI === ""),
 
   // You can remove this option if you're not planning to use the Sentry Session Replay feature:
   integrations: [
     ...isDevelopment ? [] : [
       Sentry.replayIntegration({
-        // Additional Replay configuration goes in here, for example:
         maskAllText: false,
         maskAllInputs: false,
         blockAllMedia: false,

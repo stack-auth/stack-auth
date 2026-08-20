@@ -9,7 +9,6 @@ import { emitIssueLifecycleWebhook } from "./issue-webhooks";
 export const ISSUE_LIFECYCLE_STATUSES = ["unresolved", "resolved", "ignored"] as const;
 export type IssueLifecycleStatus = (typeof ISSUE_LIFECYCLE_STATUSES)[number];
 
-/** Sentry's current group priority contract is low/medium/high. */
 export const ISSUE_PRIORITIES = ["low", "medium", "high"] as const;
 export type IssuePriority = (typeof ISSUE_PRIORITIES)[number];
 
@@ -29,7 +28,6 @@ export type IssueLifecycleState = {
 
 export type IssueStatusMutation = {
   status: IssueLifecycleStatus,
-  /** Only meaningful for ignored issues; null means ignored forever. */
   ignoredUntil?: Date | null,
 };
 
@@ -199,11 +197,6 @@ function resolveAt(at: Date | undefined, fieldName: string): Date {
   return new Date(resolved.getTime());
 }
 
-/**
- * Pure status semantics shared by a route, the activity writer, and the ingest
- * path. `resolvedAt` is intentionally retained when leaving resolved so a later
- * occurrence can distinguish a true recurrence from an old issue.
- */
 export function deriveIssueStatusTransition(options: {
   current: IssueLifecycleState,
   mutation: IssueStatusMutation,
@@ -230,12 +223,6 @@ export function deriveIssueStatusTransition(options: {
   };
 }
 
-/**
- * Applies server-receipt-time regression semantics. Strict `>` is intentional:
- * an occurrence received in the same millisecond as a resolve is not a
- * recurrence after that resolve. An ignored issue only wakes when its snooze
- * has a non-null expiry and that expiry has passed.
- */
 export function deriveIssueOccurrenceTransition(options: {
   current: IssueLifecycleState,
   receivedAt: Date,
@@ -300,10 +287,6 @@ async function readIssueForUpdate(
   tx: PrismaClientTransaction,
   scope: IssueScope,
 ): Promise<IssueLifecycleState | null> {
-  // This read intentionally runs inside the write transaction. A replica read
-  // would make a status/assignment decision from stale state, and a query
-  // without the tenancy predicate would turn a hidden internal helper into an
-  // issue-ID cross-tenant read primitive.
   const rows = await tx.$queryRaw<IssueLifecycleRow[]>`
     SELECT "id", "tenancyId", "status"::text AS "status", "statusChangedAt",
            "resolvedAt", "ignoredUntil", "regressedAt", "assigneeUserId"
@@ -340,11 +323,6 @@ export async function assignIssue(options: IssueScope & {
   const scope: IssueScope = { tenancy: options.tenancy, issueId: options.issueId };
 
   return await withLockedIssue(scope, async (tx, current) => {
-    // Shape-checking the UUID above is not enough: any well-formed UUID would
-    // otherwise become a dangling `assigneeUserId` no lookup can resolve.
-    // Validated inside the locked transaction (same as the issue-product
-    // mutations) so a user deleted concurrently cannot slip through; throws
-    // `IssueProductInputError`, which the action routes map to 400.
     if (options.assigneeUserId !== null) {
       await assertIssueProjectUserInTransaction(tx, scope.tenancy, options.assigneeUserId, "assigneeUserId", { allowInternalMirror: false });
     }
@@ -399,14 +377,6 @@ export async function assignIssueToTeam(options: IssueScope & {
 export async function transitionIssueStatus(options: IssueScope & {
   mutation: IssueStatusMutation,
   changedAt?: Date,
-  /**
-   * When set, the transition only applies while the issue's CURRENT status is
-   * one of these; otherwise it is a no-op reported as `status_unchanged`.
-   * Evaluated inside the locked transaction — a route-level pre-read would be
-   * racy against a concurrent transition. This is what lets "unsnooze" mean
-   * "wake an ignored issue" without silently reopening one that was resolved
-   * between the caller's read and its request.
-   */
   onlyIfCurrentStatus?: readonly IssueLifecycleStatus[],
 }): Promise<IssueLifecycleTransition> {
   const changedAt = resolveAt(options.changedAt, "changedAt");
@@ -466,13 +436,6 @@ export async function transitionIssueStatus(options: IssueScope & {
     return transition;
   });
 
-  // Emitted HERE, after the transaction committed, rather than by each route:
-  // every caller of this function (dashboard PATCH, public status/snooze/bulk
-  // actions) represents the same human lifecycle action, and wiring the webhook
-  // per-route already let the public action routes silently skip it once.
-  // Fire-and-forget by design — a Svix outage must not fail a status change
-  // that is already committed. The eventId inside is keyed on `changedAt`, so
-  // a caller that also emitted with the same instant would dedup at Svix.
   if (transition.kind === "status_changed" && (transition.current.status === "resolved" || transition.current.status === "ignored")) {
     runAsynchronouslyAndWaitUntil(emitIssueLifecycleWebhook({
       tenancy: options.tenancy,

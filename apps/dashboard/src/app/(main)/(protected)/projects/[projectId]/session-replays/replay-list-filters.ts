@@ -1,4 +1,3 @@
-/** "verified" is identified / signed-up, not email-verified. */
 export type ReplayUserKind = "anonymous" | "verified";
 
 export type ReplayFilters = {

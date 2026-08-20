@@ -10,8 +10,6 @@ import {
 
 describe("grouping config registry", () => {
   it("lists exactly the configs it can describe", () => {
-    // Divergence here is the failure mode the closed union exists to prevent:
-    // an id in the union with no config behind it fails at runtime, in ingest.
     expect([...GROUPING_CONFIGS.keys()]).toEqual([...GROUPING_CONFIG_IDS]);
   });
 
@@ -26,9 +24,6 @@ describe("grouping config registry", () => {
   });
 
   it("snapshots the registry, so retiring a config is never silent", () => {
-    // Removing an id from this list is what strands every issue hashed under it.
-    // A durable migration job must report zero remaining hashes BEFORE that
-    // happens; a diff here is the reminder.
     expect([...GROUPING_CONFIG_IDS]).toMatchInlineSnapshot(`
       [
         "hexclave-js:2026-08-01",
@@ -53,7 +48,6 @@ describe("isGroupingConfigId", () => {
   it("narrows to the union", () => {
     const fromDatabase: unknown = "hexclave-js:2026-08-01";
     if (!isGroupingConfigId(fromDatabase)) throw new Error("expected the id to narrow");
-    // `fromDatabase` is a `GroupingConfigId` here; the lookup compiles without a cast.
     expect(GROUPING_CONFIGS.get(fromDatabase)?.introducedAt).toMatchInlineSnapshot(`"2026-08-01"`);
   });
 });

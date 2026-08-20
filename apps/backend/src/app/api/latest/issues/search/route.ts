@@ -10,11 +10,6 @@ import {
 } from "@/lib/issues/public-search/contract";
 import { searchPublicRecords } from "@/lib/issues/public-search/query";
 
-/**
- * Search is intentionally separate from the issue list/detail handlers. The
- * list contract remains stable while this endpoint can add event-envelope
- * dimensions without widening existing public projections.
- */
 export const GET = createSmartRouteHandler({
   metadata: {
     summary: "Search authenticated observability issue records",

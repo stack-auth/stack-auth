@@ -23,12 +23,9 @@ type CustomerRequestTenancy = {
 };
 
 type CustomerRequestObservabilityHolder = {
-  /** Incoming W3C trace supplied by any interoperable upstream tracer. */
   incomingTraceId: string | null,
-  /** Fresh trace used when there is no sampled incoming parent. */
   rootTraceId: string,
   spanId: string,
-  /** The span named by the sampled incoming `traceparent`. */
   incomingParentSpanId: string | null,
   startedAt: Date,
   method: string,
@@ -59,10 +56,6 @@ function mergeTrustedIdentity(
     && incoming.refreshTokenId !== null
     && current.refreshTokenId !== incoming.refreshTokenId;
   if (userConflict || refreshTokenConflict) {
-    // NOT an invariant violation: auth endpoints can mint tokens for a
-    // DIFFERENT principal than the (incidental) session that authenticated
-    // the request. Keep the first verified pair together; merging fields
-    // independently could combine user A with user B's refresh token.
     return {
       userId: current.userId,
       refreshTokenId: current.refreshTokenId,
@@ -82,15 +75,6 @@ function mergeTrustedIdentity(
   };
 }
 
-/**
- * Resolves the customer tenancy for the request span after route authentication.
- *
- * The outer request boundary starts before authentication so it can preserve the
- * incoming W3C parent. This function fills the same mutable ALS holder once the
- * server has verified the project and session. OAuth refresh endpoints learn the
- * user/session later than ordinary access-token routes, so a second same-project
- * call may enrich null identity fields but may never replace a non-null value.
- */
 export function resolveCustomerRequestObservability(options: {
   projectId: string,
   branchId: string,
@@ -125,11 +109,6 @@ export function resolveCustomerRequestObservability(options: {
   };
 }
 
-/**
- * Returns the exact incoming client span only after route authentication proved
- * which project and branch own it. The internal request span uses this as a
- * cross-project link; callers outside the request ALS scope get null.
- */
 export function getVerifiedCustomerRequestLinkTarget(): VerifiedCustomerRequestLinkTarget | null {
   const holder = customerRequestStorage.getStore();
   if (
@@ -167,7 +146,6 @@ function buildCustomerRequestSpan(
       status_code: response.status,
     }),
     kind: "server",
-    // Typed OTel status is independent of the numeric HTTP status in `data`.
     status_code: response.status >= 400 ? "error" : "ok",
     status_message: null,
     service_namespace: null,
@@ -178,8 +156,6 @@ function buildCustomerRequestSpan(
     resource_attributes: "{}",
     scope_name: null,
     scope_version: null,
-    // Platform-generated request spans are customer-visible context, not SDK
-    // writes by the customer, and must never consume their span quota.
     producer: "hexclave-backend",
     project_id: tenancy.projectId,
     branch_id: tenancy.branchId,
@@ -198,17 +174,6 @@ async function writeCustomerRequestSpan(row: SpanInsertRow): Promise<void> {
   await insertSpans(getSharedClickhouseAdminClient(), [row]);
 }
 
-/**
- * Preserves the incoming trace at the outer request boundary, then writes one
- * scrubbed request span into the authenticated customer project after the
- * response is known. The backend's detailed dogfood trace remains in `internal`;
- * this row is the safe bridge that makes the customer's HTTP client span and the
- * backend tier one trace without exposing SQL, headers, or internal attributes.
- *
- * Any sampled W3C parent is inherited, including a parent stored by another
- * vendor. Trace readers must therefore treat a missing local parent as an
- * external boundary instead of rewriting the trace.
- */
 export async function runWithCustomerRequestObservability(
   request: Request,
   fn: () => Promise<Response>,
@@ -221,9 +186,6 @@ export async function runWithCustomerRequestObservability(
     get: (carrier, key) => carrier.get(key) ?? undefined,
   });
   const extractedSpanContext = trace.getSpanContext(extractedContext);
-  // An unsampled W3C context does not promise that its parent was recorded.
-  // Storing our child under it would recreate the exact missing-parent rows the
-  // trace reader cannot resolve, so treat it like no incoming hierarchy.
   const incomingParent = extractedSpanContext !== undefined
     && isSpanContextValid(extractedSpanContext)
     && (extractedSpanContext.traceFlags & TraceFlags.SAMPLED) === TraceFlags.SAMPLED
@@ -242,13 +204,6 @@ export async function runWithCustomerRequestObservability(
   return await customerRequestStorage.run(holder, async () => {
     const response = await fn();
     const tenancy = holder.tenancy;
-    // The `internal` project is the one tenancy that also receives the DETAILED
-    // request span from `internal-observability` (same name, same parent, same
-    // trace, plus request_id/path and the Prisma subtree). Writing the scrubbed
-    // bridge row there too put two identical-looking `hexclave.api.request`
-    // siblings under every client fetch in our own dashboard. The bridge exists
-    // to give a CUSTOMER project a safe view of work it cannot otherwise see;
-    // where the full span is already visible it is pure duplication.
     if (tenancy !== null && tenancy.projectId !== "internal") {
       const row = buildCustomerRequestSpan(holder, tenancy, response, new Date());
       runAsynchronously(writer(row));

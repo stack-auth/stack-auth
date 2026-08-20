@@ -371,14 +371,12 @@ export function buildInternalOwnerReplayIdsQuery(): string {
   return `
       SELECT DISTINCT assumeNotNull(session_replay_id) AS sessionReplayId
       FROM (
-        -- Current SDKs model page views as spans.
         SELECT session_replay_id, user_id, data AS payload
         FROM analytics_internal.spans FINAL
         PREWHERE project_id = {internalProjectId:String}
           AND branch_id = {branchId:String}
           AND span_type = '$page-view'
         UNION ALL
-        -- Retain legacy event page views until telemetry retention expires.
         SELECT session_replay_id, user_id, toString(data) AS payload
         FROM analytics_internal.events
         PREWHERE project_id = {internalProjectId:String}

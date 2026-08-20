@@ -48,11 +48,6 @@ export function selectValueToLogLevel(value: string): LogLevel | null {
   return level;
 }
 
-/**
- * Distinct services that have actually emitted `$log` rows. Sourced from the
- * logs themselves (not `trace_services`) so the dropdown never offers a
- * service that would empty the grid.
- */
 export const LOG_SERVICES_QUERY = `
 SELECT service_namespace, service_name
 FROM default.logs
@@ -64,20 +59,6 @@ ORDER BY service_namespace ASC, service_name ASC
 LIMIT 500
 `;
 
-/**
- * Logs are rows in the dedicated log store, written both by explicit
- * `app.logger.*` calls and by the SDK's automatic console warn/error capture.
- *
- * The `event_at` bound exists to bound the scan: without it every load walks
- * the project's entire events history. `hours` and `level` are interpolated
- * rather than bound parameters because they come from fixed UI sets; the
- * guards restrict both so this can never become an injection surface.
- * Both parts of the logical service identity are free-form strings from
- * ingested data, so both ride as ClickHouse query parameters.
- *
- * The users join resolves the User column to a display name/email the same
- * way the traces list does — the raw id stays available for the detail view.
- */
 export function getLogsQuery(
   hours: number,
   level: LogLevel | null = null,
@@ -92,8 +73,6 @@ export function getLogsQuery(
   if (level != null && !LOG_LEVELS.includes(level)) {
     throw new Error(`Unknown log level: ${level}`);
   }
-  // `level` is the normalized product projection. A vanilla OTLP exporter may
-  // provide only severity_text, so use it when the projection is empty.
   const levelExpression = "coalesce(nullIf(e.level, ''), nullIf(lowerUTF8(e.severity_text), ''), '')";
   const levelCondition = level == null ? "" : `\n  AND ${levelExpression} = '${level}'`;
   const serviceCondition = service == null ? "" : `
@@ -140,9 +119,6 @@ function userLabel(row: RowData): string | null {
   return stringOrNull(row.user_display_name) ?? stringOrNull(row.user_primary_email) ?? userId;
 }
 
-// The grid renders Time | Level | Message | Service | Environment | User;
-// everything else selected by getLogsQuery is hidden here but stays on the
-// row object for quick search, the detail dialog, and its linked resources.
 const LOG_COLUMN_CONFIGS = new Map<string, QueryDataGridColumnConfig>([
   ["event_at", { header: "Time", width: 170 }],
   ["level", {
@@ -190,9 +166,6 @@ const LOG_COLUMN_CONFIGS = new Map<string, QueryDataGridColumnConfig>([
   ["user_primary_email", { hidden: true }],
 ]);
 
-// Detail dialog layout: readable fields first, correlation ids collapsed.
-// Explicit lists (rather than Object.keys) keep the internal row-id key and
-// the users-join helper columns out of the dialog.
 const LOG_DETAIL_MAIN_COLUMNS = [
   "message",
   "level",
@@ -229,16 +202,6 @@ function LogDetailExtraContent({ row, projectId }: { row: RowData, projectId: st
         <div className="flex flex-wrap items-center gap-2 rounded-lg bg-red-500/5 px-3 py-2 text-xs ring-1 ring-red-500/20">
           <span className="font-medium text-red-700 dark:text-red-400">Error fingerprint:</span>
           <code className="font-mono text-foreground">{fingerprint}</code>
-          {/*
-            Seeds the Issues search with the log's message rather than the
-            fingerprint. The fingerprint here is the SDK's client-side djb2
-            hash, which is NOT the server-side issue hash and has no stored
-            mapping to one — searching for it would reliably return nothing.
-            Issue search covers the exception type, value, and culprit, so the
-            message is the field most likely to actually land on the right
-            issue. A direct fingerprint → issue_hash link needs the correlation
-            map that is deliberately out of scope here.
-          */}
           {message != null && (
             <Button size="sm" variant="outline" asChild className="ml-auto h-6 px-2 text-[11px]">
               <Link href={issueSearchHref(projectId, message)}>View issue</Link>
@@ -309,8 +272,6 @@ export default function PageClient() {
         const nextServices = await loadLogServices();
         if (cancelled) return;
         setServices(nextServices);
-        // Drop a selection that disappeared (e.g. after switching projects)
-        // so the dropdown value always maps to a real option.
         setService((current) => (
           current == null || nextServices.some((candidate) => serviceIdentityEquals(candidate, current))
             ? current

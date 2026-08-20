@@ -175,15 +175,6 @@ export function getAnalyticsBaseUrl(regularBaseUrl: string): string {
 
 
 function fetchBackendUrlsInBackground(primaryBaseUrl: string): void {
-  // The started-marker MUST be set before the fetch is issued, NOT via
-  // createGlobal around this whole body: createGlobal only stores the value
-  // after its init returns, and the fetch below runs through the SDK's own
-  // HTTP instrumentation, whose request-policy hook calls
-  // getApiUrls() → this function again. With a createGlobal-wrapped body that
-  // re-entrant call re-ran the init before the marker existed → infinite
-  // recursion (RangeError) on the first instrumented fetch of the process.
-  // Marker-first makes the re-entrant call a no-op; the discovery fetch itself
-  // then matches the primary base URL and is skipped by the ignore check.
   if (getGlobal('__stack-fetch-backend-urls-started')) {
     return;
   }

@@ -6,40 +6,9 @@ import { urlString } from "@hexclave/shared/dist/utils/urls";
 import type { IssueStatus, IssueSubstatus } from "@hexclave/shared/dist/interface/admin-issues";
 import type { IssueBatchApplyOutcome } from "./issue-store";
 
-/**
- * Emits `issue.*` webhooks for the issues a materialized batch touched.
- *
- * These events differ from every other webhook in this codebase in one way that
- * changes the design: they fire from a TELEMETRY FIREHOSE rather than from a
- * human action. `user.created` fires when a person signs up; `issue.regressed`
- * could fire once per ingest batch for a flapping issue. Three consequences:
- *
- *  1. Idempotency is mandatory. `sendWebhooks` is retried up to 5× on a Svix
- *     429, and Svix's own dedup is keyed on `eventId` — which the existing
- *     senders never set (visible as `"eventId": null` in every E2E snapshot).
- *     A retry that failed AFTER Svix accepted would double-deliver. The issue
- *     senders therefore require a deterministic `eventId` at the type level.
- *  2. A throttle is mandatory, and it lives in the Postgres write below rather
- *     than in the sender, so the throttle IS the concurrency control. Two
- *     concurrent batches cannot both pass it.
- *  3. The app gate is checked here rather than inside `sendWebhooks`: changing
- *     `sendWebhooks` would alter behaviour for every existing event, and a
- *     project that never installed webhooks should do zero Svix work per batch.
- */
 
-/**
- * How long an issue must stay quiet before it may emit another state-change
- * webhook. Mirrors Sentry's per-rule "action interval", reduced to its essential
- * form.
- */
 export const ISSUE_WEBHOOK_THROTTLE_MS = 5 * 60 * 1000;
 
-/**
- * The Postgres enum, spelled as it comes back from `::text`. Kept as a literal
- * union rather than `string` so the mapping to the webhook's lowercase status
- * is exhaustive — a new `IssueStatus` value would fail to compile here instead
- * of silently shipping an unmapped string to customers' endpoints.
- */
 type IssueStatusColumn = "UNRESOLVED" | "RESOLVED" | "IGNORED";
 
 const WEBHOOK_STATUS_BY_COLUMN: Record<IssueStatusColumn, IssueStatus> = {
@@ -68,8 +37,6 @@ function buildIssueWebhookData(tenancy: Tenancy, row: IssueWebhookRow, substatus
   const dashboardUrl = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_DASHBOARD_URL", "");
   return {
     id: row.id,
-    // Decimal strings, not numbers: these are Postgres BigInt, and the response
-    // pipeline's `JSON.stringify` throws on a BigInt rather than coercing it.
     short_id: row.shortId.toString(),
     times_seen: row.timesSeen.toString(),
     type: row.type,
@@ -83,31 +50,12 @@ function buildIssueWebhookData(tenancy: Tenancy, row: IssueWebhookRow, substatus
     service_name: row.serviceName,
     environment: row.deploymentEnvironmentName,
     release: row.lastSeenRelease,
-    // The first thing anyone does with an issue webhook is click through, so
-    // the deep link ships in the payload rather than making every consumer
-    // reconstruct it.
     url: dashboardUrl === ""
       ? ""
       : urlString`${dashboardUrl}/projects/${tenancy.project.id}/observability/issues/${row.id}`,
   };
 }
 
-/**
- * Claims the right to emit, for the issues that are outside their throttle
- * window.
- *
- * `UPDATE … WHERE lastWebhookAt < now - interval` and then acting only on the
- * RETURNED rows means the database decides who emits. A read-then-decide-then-
- * write would let two concurrent batches both observe a stale `lastWebhookAt`
- * and both fire.
- *
- * `issue.created` deliberately bypasses the throttle in BOTH directions: an
- * issue is created once, so there is nothing to throttle (its `lastWebhookAt`
- * is still NULL and the claim always succeeds) — and its claim must not START
- * the window either. A brand-new issue is materialized alongside its first
- * occurrence, so if creation consumed the throttle, a resolve-and-regress
- * within the window would silently lose its `issue.regressed` event.
- */
 async function claimWebhookSlots(
   tenancy: Tenancy,
   issueIds: readonly string[],
@@ -169,8 +117,6 @@ export async function emitIssueWebhooks(options: {
       return [sendIssueCreatedWebhook({
         projectId: tenancy.project.id,
         data: buildIssueWebhookData(tenancy, row, "new"),
-        // An issue is created exactly once, so its own id is a naturally stable
-        // idempotency key.
         eventId: row.id,
       })];
     }
@@ -178,8 +124,6 @@ export async function emitIssueWebhooks(options: {
     return [sendIssueRegressedWebhook({
       projectId: tenancy.project.id,
       data: buildIssueWebhookData(tenancy, row, "regressed"),
-      // Keyed on the regression INSTANT, so a re-delivery of the same
-      // regression dedupes while a genuine second regression later does not.
       eventId: batchId === undefined
         ? `${row.id}:${(row.regressedAt ?? now).getTime()}`
         : `${row.id}:${batchId}:regression`,
@@ -187,19 +131,6 @@ export async function emitIssueWebhooks(options: {
   }));
 }
 
-/**
- * Emits the lifecycle events that come from a HUMAN action rather than from
- * ingest: `issue.resolved`, `issue.ignored`, and `issue.merged`.
- *
- * These deliberately bypass the `lastWebhookAt` throttle that `emitIssueWebhooks`
- * applies. That throttle exists because ingest-driven events fire from a
- * firehose; a person clicking Resolve is not a firehose, and swallowing their
- * action because an unrelated regression fired four minutes ago would make the
- * webhook stream lie about the issue's state.
- *
- * The `eventId` is keyed on the transition INSTANT, so a redelivery of the same
- * click dedupes while a genuine resolve → reopen → resolve later does not.
- */
 export async function emitIssueLifecycleWebhook(options: {
   tenancy: Tenancy,
   issueId: string,
@@ -211,11 +142,6 @@ export async function emitIssueLifecycleWebhook(options: {
   if (!isWebhooksAppEnabled(tenancy)) return;
 
   const prisma = await getPrismaClientForTenancy(tenancy);
-  // Deliberately NOT `$replica()` despite being a read-only query: the caller
-  // invokes this immediately after committing the lifecycle transition on the
-  // primary, and the webhook payload must reflect that just-committed state.
-  // A lagging replica could still report the PREVIOUS status (or miss a
-  // just-created survivor entirely), making the webhook stream lie.
   const rows = await prisma.$queryRaw<IssueWebhookRow[]>`
     SELECT "id", "shortId", "type", "value", "culprit", "status"::text AS "status",
            "firstSeenAt", "lastSeenAt", "timesSeen", "regressedAt",
@@ -227,15 +153,6 @@ export async function emitIssueLifecycleWebhook(options: {
   if (rows.length === 0) return;
   const row = rows[0];
 
-  // An issue that was just resolved or merged away is no longer "new" or
-  // "regressed" from a consumer's point of view.
-  //
-  // For resolved/ignored the payload's `status` comes from the EVENT, not from
-  // the row re-read above: this emission is fire-and-forget after the commit,
-  // so by the time it runs a concurrent transition (or a regression on the
-  // ingest path) may already have moved the row on — and an `issue.resolved`
-  // event whose payload says `status: "unresolved"` reads as a contradiction.
-  // `issue.merged` is not a status transition, so it keeps the row's status.
   const data = {
     ...buildIssueWebhookData(tenancy, row, "ongoing"),
     ...event === "merged" ? {} : { status: event },

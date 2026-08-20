@@ -91,9 +91,6 @@ function scopeFromTeam(row: OwnershipHydrationTeamRow): OwnershipScope {
 }
 
 function isActiveMember(row: OwnershipHydrationMemberRow): boolean {
-  // ProjectUser has no separate membership-state column. Restricted or
-  // anonymous identities cannot be safe email recipients, while an ordinary
-  // project user remains eligible for the resolver's all-members path.
   return !row.restrictedByAdmin && !row.isAnonymous;
 }
 
@@ -160,8 +157,6 @@ export function buildOwnershipResolverInput(
     teams.push({ scope: teamScope, teamId: team.teamId, memberUserIds });
   }
 
-  // Keep the over-limit snapshot intact so the resolver rejects it instead of
-  // silently turning a truncated database read into a valid smaller route.
   const memberRows = rows.members.length > OWNERSHIP_RESOLVER_MAX_MEMBERS
     ? rows.members
     : rows.members.filter(isActiveMember);
@@ -285,9 +280,6 @@ export async function hydrateIssueAlertOwnership(
       },
     })))).flat();
 
-  // Issue team IDs live in the internal owner-team namespace. Re-scope those
-  // collaborators into the customer snapshot for resolver validation while
-  // keeping them out of customer-member fallthrough.
   const teamRows: OwnershipHydrationTeamRow[] = internalTeamRows.map((team) => ({
     tenancyId: scope.tenancyId,
     mirroredProjectId: scope.projectId,

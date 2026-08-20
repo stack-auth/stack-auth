@@ -27,15 +27,7 @@ import {
   resolveOccurrenceReplayIds,
 } from "./occurrence-projection";
 
-/**
- * Loads ONE issue aggregate by public identity and projects it, for the public
- * detail/occurrence routes and the internal dashboard detail route alike. The
- * list path lives in `issue-queries.ts`; this module is its single-issue
- * counterpart and reuses the same status/substatus derivations so a detail
- * page can never disagree with the list row that linked to it.
- */
 
-/** The full Issue aggregate row, as needed by both the public and the internal detail projection. */
 export type IssueDetailRow = {
   id: string,
   shortId: bigint,
@@ -61,19 +53,10 @@ export type IssueDetailRow = {
 
 export type IssueDetailContext = {
   row: IssueDetailRow,
-  /** The hashes OWNED by the surviving issue; the key into every ClickHouse occurrence query. */
   hashes: string[],
-  /** Non-null when the requested id was a merged-away issue (dashboard URL-rewrite bookkeeping). */
   redirectedFromIssueId: string | null,
 };
 
-/**
- * Resolves a raw `[issue_id]` segment through the canonical identity resolver
- * and loads the full aggregate row. The identity hop and the row read are two
- * queries by design: identity resolution is shared with surfaces (actions,
- * bulk mutations) that must not pay for the full row, and both reads are
- * single indexed point lookups on the replica.
- */
 export async function loadIssueDetailContext(
   tenancy: Tenancy,
   rawId: string,
@@ -100,18 +83,10 @@ export async function loadIssueDetailContext(
     LIMIT 1
   `);
   const row = rows.at(0);
-  // A merge can delete the row between the identity lookup and this read;
-  // treat that as not-found rather than asserting, exactly like a stale link.
   if (row === undefined) return null;
   return { row, hashes: row.hashes, redirectedFromIssueId: identity.redirectedFromIssueId };
 }
 
-/**
- * Projects the aggregate row into the internal dashboard list-item shape
- * (which includes `issue_hashes` and counter-truncation bookkeeping). The
- * public shape is derived from this via `toPublicIssue`, so the two surfaces
- * cannot drift on status/substatus semantics.
- */
 export function projectIssueListItem(
   row: IssueDetailRow,
   options: {
@@ -166,9 +141,6 @@ async function loadPublicIssue(options: {
     rangeStart,
   });
   return {
-    // `toPublicIssue` both narrows to the public field set and scrubs the
-    // display strings — the same projection the public list route uses, so the
-    // detail response can never expose a value the list already filters.
     issue: toPublicIssue(projectIssueListItem(context.row, { rangeStart, now, stats })),
     hashes: context.hashes,
     firstSeenRelease: context.row.firstSeenRelease,

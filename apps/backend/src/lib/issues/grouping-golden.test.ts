@@ -1,24 +1,3 @@
-/**
- * ============================ READ THIS FIRST ============================
- *
- * CHANGING LEAF ORDER, NORMALIZATION, OR HASH ENCODING WITHOUT BUMPING THE
- * GROUPING CONFIG ID SILENTLY SPLITS EVERY ISSUE IN EVERY CUSTOMER'S PROJECT.
- *
- * The hashes below are a commitment, not an observation. Every open issue in
- * every project is keyed by one of these values; a diff here means every one of
- * them stops matching its own future occurrences, quietly, with no error
- * anywhere — the old issue simply goes silent and a duplicate appears next to
- * it, and there is no migration that can tell the two apart after the fact.
- *
- * So: if a snapshot in this file changes, the ONLY correct responses are
- *   1. revert the change, or
- *   2. add a new `GroupingConfigId`, implement the change under it, leave the
- *      old config in `readableConfigIds`, and add a NEW golden block for it —
- *      leaving the block below untouched.
- *
- * Running `vitest -u` on this file is never the right move.
- * =========================================================================
- */
 
 import { describe, expect, it } from "vitest";
 import {
@@ -109,11 +88,6 @@ describe("golden vectors — hexclave-js:2026-08-01", () => {
   });
 
   it("a synthetic object throw", () => {
-    // This vector was re-committed once BEFORE the feature shipped: the
-    // synthetic rule originally hashed the top frame's raw `absPath`, which
-    // embeds the origin and the per-deploy chunk content hash — every rebuild
-    // split every synthetic issue. The leaf is now the same normalized file
-    // leaf the frame rules use. No customer hashes existed under the old value.
     expect(golden(SYNTHETIC_OBJECT_THROW_FIXTURE)).toMatchInlineSnapshot(`
       {
         "aliasHashes": [],
@@ -125,8 +99,6 @@ describe("golden vectors — hexclave-js:2026-08-01", () => {
   });
 
   it("a stack in which no frame contributes anything hashable", () => {
-    // Every frame is anonymous *and* nameless, so the frame rules drop all of
-    // them and the parameterized message is the only thing left to hash.
     expect(golden({
       type: "Error",
       message: "boom in job 4711",
@@ -156,8 +128,6 @@ describe("golden vectors — hexclave-js:2026-08-01", () => {
 
 describe("hash encoding", () => {
   it("is injective across leaf boundaries", () => {
-    // The length prefix plus U+001F separator is what buys this. Sentry's
-    // `md5("".join(leaves))` cannot tell these two apart.
     const first = computeGrouping({ type: "AB", message: "", stack: null, platform: "javascript" }, DEFAULT_GROUPING_CONFIG_ID);
     const second = computeGrouping({ type: "A", message: "B", stack: null, platform: "javascript" }, DEFAULT_GROUPING_CONFIG_ID);
     expect(first.ownerHash).not.toBe(second.ownerHash);

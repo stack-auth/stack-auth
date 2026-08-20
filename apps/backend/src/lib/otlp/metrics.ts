@@ -19,11 +19,6 @@ const MAX_UINT32 = 4_294_967_295n;
 const MIN_INT32 = -2_147_483_648;
 const MAX_INT32 = 2_147_483_647;
 
-/**
- * Structural limits keep an accepted request bounded. They are deliberately
- * separate from telemetry cardinality policy: these limits protect the ingest
- * boundary and do not decide which valid time series storage retains.
- */
 export type OtlpMetricsNormalizationLimits = {
   maxResourceMetrics: number,
   maxScopeMetricsPerResource: number,
@@ -78,7 +73,6 @@ export type CanonicalOtlpMetricsRequest = {
   resourceMetrics: CanonicalOtlpResourceMetrics[],
 };
 
-/** JSON-safe representation of the special protobuf double spellings. */
 export type CanonicalOtlpMetricNumber = number | "NaN" | "Infinity" | "-Infinity";
 
 export type CanonicalOtlpMetricValue =
@@ -205,11 +199,6 @@ function boolean(value: unknown, path: string, fallback = false): boolean {
   return value;
 }
 
-/**
- * OTLP JSON permits safe JSON numbers as well as decimal strings when reading
- * 64-bit integers. Numbers are canonicalized only after a safe-integer check;
- * larger values must arrive as strings so no precision is lost.
- */
 function uint64(value: unknown, path: string, allowZero: boolean): string {
   let normalized: string;
   if (typeof value === "string" && /^\d+$/.test(value)) {
@@ -608,13 +597,6 @@ function resourceMetrics(value: unknown, path: string, limits: OtlpMetricsNormal
   };
 }
 
-/**
- * Normalize an OTLP/HTTP JSON ExportMetricsServiceRequest.
- *
- * Unknown OTLP fields are intentionally ignored. This matches the existing
- * trace/log normalizers and the OTLP JSON receiver rule, while every known
- * field is type-checked and semantic invariants are rejected explicitly.
- */
 export function normalizeOtlpJsonMetricsRequest(
   value: unknown,
   limits: OtlpMetricsNormalizationLimits = DEFAULT_OTLP_METRICS_NORMALIZATION_LIMITS,

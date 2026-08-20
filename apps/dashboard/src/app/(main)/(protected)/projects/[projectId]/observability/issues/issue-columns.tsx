@@ -19,31 +19,13 @@ import {
 import type { ObservabilityTimeRangeHours } from "../filters";
 import type { IssueListItem, IssueStatus } from "./issues-data";
 
-/**
- * The Issues grid's columns.
- *
- * Sortability is the load-bearing decision here. `events` and `users` are
- * window-scoped ClickHouse aggregates; `firstSeen` and `times_seen` are
- * lifetime Postgres counters. Sorting by "Issue" or "Status" would mean
- * ordering across both stores, which has no defensible answer — so those
- * columns are declared unsortable rather than shipped sortable-and-wrong, and
- * the header tooltips say which store each number came from, because
- * "Events: 412" and "All time: 9,281" look interchangeable and are not.
- */
 
 export type IssueCellContext = {
   projectId: string,
-  /**
-   * The list's selected time window, carried into each row's detail link so
-   * the detail page's window-scoped counts match the column the reader
-   * clicked.
-   */
   rangeHours: ObservabilityTimeRangeHours,
-  /** Fixed at load so a table of relative times shares one "now". */
   nowMs: number,
   overrides: IssueStatusOverrides,
   sparklinesByHash: ReadonlyMap<string, readonly EventSparklineBucket[]>,
-  /** Caption for the sparkline's bucket width, e.g. "per hour". */
   bucketLabel: string,
   onChangeStatus: (issue: IssueListItem, status: IssueStatus) => Promise<void>,
 };
@@ -67,11 +49,7 @@ function IssueCell({ issue, context }: { issue: IssueListItem, context: IssueCel
     <div
       className={cn(
         "flex min-w-0 flex-col justify-center gap-0.5 py-1",
-        // A regressed issue gets a leading rule so it is findable while
-        // scanning, without spending the status column on it.
         issue.substatus === "regressed" && "border-l-2 border-amber-500 pl-2 -ml-2",
-        // Optimistically resolved rows dim rather than disappear: yanking the
-        // row out from under the cursor mid-scan is worse than a stale row.
         isOptimistic && status !== "unresolved" && "opacity-60",
       )}
     >
@@ -102,13 +80,6 @@ function IssueCell({ issue, context }: { issue: IssueListItem, context: IssueCel
 }
 
 function GraphCell({ issue, context }: { issue: IssueListItem, context: IssueCellContext }) {
-  // An issue can own several hashes after a merge, so its series is the sum of
-  // its hashes' series. Missing hashes mean "not loaded yet" — the whole cell
-  // stays pending rather than drawing half a chart. An issue with NO hashes
-  // (a server anomaly — every issue owns at least one) must NOT be pending:
-  // the loader only ever resolves requested hashes, so nothing could ever
-  // complete that cell and it would read "Loading activity" forever instead of
-  // the honest empty hairline.
   const series = issue.issue_hashes.map((hash) => context.sparklinesByHash.get(hash));
   const pending = series.some((entry) => entry == null);
   const merged = new Map<string | number, number>();
@@ -147,8 +118,6 @@ function ActionsCell({ issue, context }: { issue: IssueListItem, context: IssueC
   const primary = primaryIssueStatusAction(status);
   return (
     <div className="flex items-center justify-end gap-1">
-      {/* DesignButton owns its own loading state for async onClick — no
-          hand-rolled spinner, and no way to double-submit. */}
       <DesignButton
         variant="ghost"
         size="sm"
@@ -181,8 +150,6 @@ export function buildIssueColumns(context: IssueCellContext): DataGridColumnDef<
       width: 460,
       minWidth: 280,
       flex: 1,
-      // Sorting spans Postgres text and ClickHouse aggregates; there is no
-      // single meaningful order, so this is explicitly not sortable.
       sortable: false,
       hideable: false,
       renderCell: ({ row }) => <IssueCell issue={row} context={context} />,
@@ -324,14 +291,8 @@ export function buildIssueColumns(context: IssueCellContext): DataGridColumnDef<
   ];
 }
 
-/**
- * Every column id, in render order. Declared separately from `buildIssueColumns`
- * so the default visibility record can be built at module scope, before any
- * cell context exists.
- */
 export const ISSUE_COLUMN_IDS: readonly string[] = [
   "issue", "graph", "events", "users", "lastSeen", "firstSeen", "status", "environment", "release", "actions",
 ];
 
-/** Columns hidden until someone asks for them via the Columns popover. */
 export const ISSUE_COLUMNS_HIDDEN_BY_DEFAULT: readonly string[] = ["environment", "release"];

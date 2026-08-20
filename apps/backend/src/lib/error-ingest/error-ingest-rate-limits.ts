@@ -1,8 +1,3 @@
-/**
- * Native Sentry transports use response headers as a scheduling hint. Keep the
- * projection separate from the JSON response so an envelope route cannot
- * accidentally expose an unbounded reason or category string in a header.
- */
 
 export type ErrorIngestRateLimitHeaderItem = {
   status: string,
@@ -22,8 +17,6 @@ export function buildErrorIngestRateLimitHeaders(
   const retryAfterSeconds = Math.max(1, Math.ceil(retryAfterMs / 1_000));
   const categories = [...new Set(rateLimited.map((item) => item.category).filter((category) => SAFE_CATEGORY.test(category)))].sort().join(";");
   return {
-    // `Retry-After` is useful to generic HTTP clients; the Sentry-specific
-    // header preserves item categories for SDK transports that track quotas.
     "x-sentry-rate-limits": [`${retryAfterSeconds}:${categories}:project`],
     "retry-after": [String(retryAfterSeconds)],
   };

@@ -147,9 +147,6 @@ export const POST = createSmartRouteHandler({
           itemId: ITEM_IDS.analyticsEvents,
           quantity: 1,
           idempotency: {
-            // Tenancy-scoped for the same reason as the traces route: the
-            // occurrence id can be client-chosen (Relay-compatible event ids),
-            // so two projects billed to one team must not collapse debits.
             key: `otlp-log:${auth.tenancy.id}:${billingDebit.occurrenceId}`,
             createdAt: billingDebit.eventAt,
           },

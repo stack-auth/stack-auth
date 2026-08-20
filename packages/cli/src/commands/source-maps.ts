@@ -37,16 +37,11 @@ export type SourceMapsUploadOptions = {
   cloudProjectId?: string,
 };
 
-/** One bundle + map pair, injected and ready to hand to the upload step. */
 export type PreparedSourceMapArtifact = {
   debugId: string,
-  /** Absolute path of the bundle on disk (local logging only — never uploaded). */
   bundlePath: string,
-  /** Scan-dir-relative bundle path. This is what we print, so CI paths stay local. */
   bundleRelativePath: string,
-  /** The `.map` on disk this artifact came from, or null for an inline map. */
   sourceMapPath: string | null,
-  /** Scan-dir-relative map path for the artifact registry, or null for an inline map. */
   sourceMapRelativePath: string | null,
   /** sha256 of the emitted bundle after debug-id injection, which is uploaded. */
   bundleSha256: string,
@@ -54,9 +49,7 @@ export type PreparedSourceMapArtifact = {
   bundleBytes: number,
   /** sha256 of the prepared (uncompressed) source map JSON. Also the storage key. */
   sourceMapSha256: string,
-  /** The prepared map, gzipped — maps compress 5-10x and CI uplinks are slow. */
   sourceMapGzipped: Uint8Array,
-  /** Byte length of the prepared map BEFORE compression (what quota is charged on). */
   sourceMapBytes: number,
 };
 
@@ -68,7 +61,6 @@ export type SourceMapUploadRequest = {
   environment: string | null,
   artifacts: readonly PreparedSourceMapArtifact[],
   plan: SourceMapUploadPlan,
-  /** Injectable only for tests; production uses the global fetch and a real sleep. */
   transport?: SourceMapUploadTransport,
 };
 
@@ -79,7 +71,6 @@ export type SourceMapUploadResult = {
   uploaded: readonly string[],
   /** Debug ids the server already had (a derived id that did not change). */
   alreadyUploaded: readonly string[],
-  /** Reserved for an explicit optional-storage outcome from a self-hosted backend. */
   storageNotConfigured: boolean,
 };
 
@@ -124,7 +115,6 @@ export const SOURCE_MAP_MANIFEST_VERSION = 1;
 
 export type SourceMapManifestArtifact = {
   debugId: string,
-  /** Repo/scan-root-relative bundle identity; machine-absolute paths never enter the manifest. */
   codeFile: string,
   sourceMapFile: string | null,
   sourceMapInline: boolean,
@@ -137,7 +127,6 @@ export type SourceMapManifestArtifact = {
 
 export type SourceMapManifest = {
   schemaVersion: typeof SOURCE_MAP_MANIFEST_VERSION,
-  /** Authenticated project tenancy for the artifact registry. */
   projectId: string | null,
   release: string | null,
   dist: string | null,
@@ -147,9 +136,7 @@ export type SourceMapManifest = {
 
 export type SourceMapUploadPlan = {
   manifest: SourceMapManifest,
-  /** Stable JSON bytes for the future metadata request. */
   manifestJson: string,
-  /** Content-derived idempotency key for upload/finalize retries. */
   manifestSha256: string,
 };
 
@@ -320,9 +307,6 @@ export async function createSourceMapAuthHeadersFactory(auth: ProjectAuth): Prom
     throw new AuthError("Source-map uploads require either HEXCLAVE_SECRET_SERVER_KEY or a `hexclave login` session.");
   }
 
-  // Resolve the user once, but refresh the short-lived access token before
-  // every API request. Large source-map uploads can outlive the token that
-  // started the command; the manifest digest makes those retries idempotent.
   const user = await getInternalUser(auth);
   return async () => {
     const { accessToken } = await user.currentSession.getTokens();
@@ -337,12 +321,6 @@ export async function createSourceMapAuthHeadersFactory(auth: ProjectAuth): Prom
   };
 }
 
-/**
- * Registers the deterministic manifest, uploads every returned immutable
- * bundle/map object, and finalizes the manifest. The manifest SHA-256 is sent
- * both in the body and as the idempotency key: rerunning after a network
- * failure reuses the same object keys and cannot create a second artifact set.
- */
 export async function uploadPreparedSourceMaps(request: SourceMapUploadRequest): Promise<SourceMapUploadResult> {
   const expectedPlan = createSourceMapUploadPlan(request);
   if (
@@ -471,14 +449,8 @@ async function uploadPresignedObject(
   const response = await fetchWithRetries(transport, uploadUrl, {
     method: "PUT",
     headers: {
-      // Presigned URLs sign these values. Do not forward the project auth
-      // headers: object storage must see only the signed content headers.
       "content-type": contentType,
       "content-length": bytes.byteLength.toString(),
-      // The backend signs `If-None-Match: "*"` into the presigned URL so a
-      // published (content-addressed, immutable) object can never be
-      // overwritten. Sending it is REQUIRED, not defensive: omitting a signed
-      // header invalidates the presigned signature and the PUT is rejected.
       "if-none-match": "*",
       ...(contentEncoding === null ? {} : { "content-encoding": contentEncoding }),
     },
@@ -486,11 +458,6 @@ async function uploadPresignedObject(
     // caller-owned Buffer from being mutated while fetch is in flight.
     body: new Uint8Array(bytes).slice().buffer,
   }, operation);
-  // 412 Precondition Failed means the object already exists. Keys are derived
-  // from the content SHA-256, so an existing object IS the bytes we were about
-  // to upload — mirroring the server's `uploadBytesIfAbsent` semantics this is
-  // an already-uploaded success, not an error (e.g. a retry after a network
-  // failure that happened between a completed PUT and its response).
   if (response.status === 412) return;
   if (!response.ok) {
     const responseText = await readResponseText(response, operation);
@@ -589,14 +556,6 @@ function createSourceMapApiUrl(auth: ProjectAuth, apiPath: string, operation: st
   return `${auth.apiUrl.replace(/\/+$/, "")}${apiPath}`;
 }
 
-// Deliberately surfaces the (bounded) upstream body. Unlike a public API — where
-// forwarding an upstream provider's error to an END USER can leak internals — the
-// only reader here is the authenticated operator running the CLI, debugging their
-// OWN upload. The API body is Hexclave's own structured error, and an
-// object-storage body describes a request against a presigned URL the operator
-// already holds, so it reveals nothing new. Hiding it behind a generic string
-// would just make upload failures undebuggable. The body is capped at 1 KiB and
-// the structured `error`/`message` fields are preferred.
 function describeResponseBody(text: string, statusText: string): string {
   if (text.trim() === "") return statusText || "empty response";
   try {
@@ -608,7 +567,6 @@ function describeResponseBody(text: string, statusText: string): string {
       if (typeof parsed.message === "string") return parsed.message.slice(0, 1_000);
     }
   } catch {
-    // The bounded raw response is the best diagnostic for non-JSON errors.
   }
   return text.trim().slice(0, 1_000);
 }
@@ -785,7 +743,6 @@ function resolveScanDirs(dirs: readonly string[], cwd: string): string[] {
 
 export type PreparationResult = {
   artifacts: PreparedSourceMapArtifact[],
-  /** Human-readable warnings; `--strict` turns a non-empty list into exit code 1. */
   warnings: string[],
   /** Server chunks with no map, split out so the Next.js-specific hint can be printed. */
   serverBundlesWithoutMaps: string[],
@@ -826,17 +783,11 @@ export function prepareArtifacts(candidates: readonly SourceMapArtifactCandidate
     if (candidate.sourceMapPath !== null) {
       let realMapPath: string;
       try {
-        // Resolve and validate the canonical path before opening it. Opening
-        // the original symlink first lets a swap between openSync and
-        // realpathSync validate a different target from the bytes we read.
         realMapPath = fs.realpathSync(candidate.sourceMapPath);
         const realScanDir = fs.realpathSync(candidate.scanDir);
         if (!isInside(realMapPath, realScanDir)) {
           throw new CliError(`Source map ${candidate.sourceMapPath} is outside the scanned build directory.`);
         }
-        // The final-component guard closes the remaining replacement window:
-        // a watcher may replace the canonical path with a symlink after
-        // realpathSync, but must not make this read escape the validated tree.
         const mapFd = fs.openSync(realMapPath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
         try {
           mapText = fs.readFileSync(mapFd, "utf-8");
@@ -858,11 +809,6 @@ export function prepareArtifacts(candidates: readonly SourceMapArtifactCandidate
       mapDir = path.dirname(candidate.bundlePath);
     }
 
-    // Derive the id from the CLEAN bundle (any previous injection stripped)
-    // paired with the CURRENT map. This keeps a rerun on unchanged output a true
-    // no-op, yet re-mints the id when only the map changed — so a stale embedded
-    // id can never cause a changed map to be uploaded under the old id (which
-    // would leave symbolication on the previous map). See `deriveBundleDebugId`.
     const debugId = deriveBundleDebugId(source, mapText);
 
     let parsedMap: unknown;
@@ -981,8 +927,6 @@ export function registerSourceMapsCommand(program: Command) {
         );
       }
       if (clientBundlesWithoutMaps.length > 0) {
-        // Without this warning `--strict` (documented to fail on missing source
-        // maps) would pass on a build whose client chunks cannot be symbolicated.
         warnings.push(
           `${clientBundlesWithoutMaps.length} bundle(s) have no source map (e.g. ${clientBundlesWithoutMaps[0]}) and will not be symbolicated. `
           + "Configure your bundler to emit source maps for these files (or scan only the directories that contain them).",
@@ -1028,14 +972,6 @@ export function registerSourceMapsCommand(program: Command) {
           alreadyUploaded: result.alreadyUploaded,
         }, null, 2));
       } else {
-        // Only computed on the print path (dry-run, or a real run with nothing
-        // prepared). The upload path derives and validates its own plan inside
-        // `uploadPreparedSourceMaps`, so computing the manifest there too would
-        // validate, normalize and sort every artifact a second time.
-        // A real upload with prepared artifacts already resolved the project
-        // through authenticated credentials; a dry-run or no-op print still
-        // resolves the optional CLI/env value here, where a conflicting env
-        // configuration is relevant to the output and cannot affect uploads.
         const projectId = auth === null ? resolveOptionalProjectId(opts.cloudProjectId) : auth.projectId;
         const manifest = createSourceMapManifest(artifacts, release, environment, {
           projectId,

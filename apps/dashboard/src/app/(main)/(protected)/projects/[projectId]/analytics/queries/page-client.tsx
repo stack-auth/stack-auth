@@ -350,7 +350,6 @@ function QueriesContent() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ type: "folder" | "query", folderId: string, queryId?: string } | null>(null);
 
-  // Warehouse owns saved SQL so query organization stays independent of product analytics.
   const folders = useMemo((): FolderWithId[] => {
     const queryFolders = config.warehouse.queryFolders;
 

@@ -101,9 +101,6 @@ export function isTelemetryResource(resource: unknown): resource is TelemetryRes
  * telemetry emitted by an already-created app.
  */
 export function snapshotTelemetryResource(resource: unknown): TelemetryResource {
-  // `isTelemetryResource` is `getTelemetryResourceError(...) === null` as a type predicate; we call
-  // the error-returning form first so the thrown message says which field was wrong, then the
-  // predicate form purely to narrow `unknown` (a `string | null` return can't narrow on its own).
   const error = getTelemetryResourceError(resource);
   if (error !== null) {
     throw new HexclaveAssertionError(error);
@@ -122,8 +119,6 @@ export function snapshotTelemetryResource(resource: unknown): TelemetryResource 
       ...service.instanceId === undefined ? {} : { instanceId: service.instanceId },
     },
     ...deploymentEnvironmentName === undefined ? {} : { deploymentEnvironmentName },
-    // Deep-copy so later mutation of the caller's nested attributes object can't relabel telemetry.
-    // `getTelemetryResourceError` already proved this is JSON-serializable.
     ...attributes === undefined ? {} : { attributes: JSON.parse(JSON.stringify(attributes)) },
   };
 }
@@ -187,33 +182,13 @@ export function isAnalyticsSystemEvent(type: string): boolean {
   return ANALYTICS_EVENT_TYPES.has(type);
 }
 
-// The analytics WIRE CONTRACT shared between the browser/server SDKs and the
-// backend ingestion routes. This module must stay dependency-free (no
-// @opentelemetry/api, no node builtins): it is imported by the client SDK's
-// event tracker, so anything pulled in here lands in every customer's initial
-// bundle. Hexclave's own server-side tracing helpers live in ./telemetry.tsx,
-// which re-exports these constants for backend convenience.
 
-// Custom (user-defined) event/span type names: must not start with `$` (reserved
-// for system types), start with a letter, and stay within 64 chars. Shared by
-// the SDK and analytics batch route so local validation cannot drift from the
-// server's batch-level rejection rules.
 export const CUSTOM_TELEMETRY_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/;
-// The released browser tracker flushes at roughly 64 KB per batch. Using that
-// same ceiling for every event/span preserves its generated payloads while
-// giving current custom telemetry one bounded validation contract.
 export const CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES = 64_000;
-// First-class OpenTelemetry span kind / status columns. Kept out of opaque
-// `data` so ClickHouse filters and the traces UI can use typed LowCardinality
-// columns instead of JSON extraction. `internal` / `unset` are the schema
-// defaults and are omitted on the wire when that is what the producer means.
 export const TELEMETRY_SPAN_KINDS = ["internal", "server", "client", "producer", "consumer"] as const;
 export type TelemetrySpanKind = (typeof TELEMETRY_SPAN_KINDS)[number];
 export const TELEMETRY_SPAN_STATUS_CODES = ["unset", "ok", "error"] as const;
 export type TelemetrySpanStatusCode = (typeof TELEMETRY_SPAN_STATUS_CODES)[number];
-// Cap on a `$log` event's message (the human-readable text; structured
-// attributes ride in `data` under the normal item-data cap). Shared so the SDK
-// truncates to exactly what the route accepts instead of 400ing the batch.
 export const TELEMETRY_MAX_LOG_MESSAGE_BYTES = 8_192;
 
 /**
@@ -235,11 +210,6 @@ export const TELEMETRY_MAX_LOG_MESSAGE_BYTES = 8_192;
  */
 export type DebugImage = { code_file: string, debug_id: string };
 
-// Caps on `data.debug_images`. A page can legitimately load 100+ chunks, but
-// only the handful named by one error's own stack are useful, and `data` as a
-// whole must stay under CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES alongside an 8 KB
-// message and an 8 KB stack. Both caps are enforced together (count first,
-// then serialized bytes) because chunk URLs vary wildly in length.
 export const ERROR_MAX_DEBUG_IMAGES = 20;
 export const ERROR_MAX_DEBUG_IMAGES_BYTES = 4_096;
 
@@ -251,16 +221,8 @@ export const ERROR_MAX_DEBUG_IMAGES_BYTES = 4_096;
  * and edge runtimes, so this keeps the module dependency-free.
  */
 export function truncateUtf8Bytes(value: string, maxBytes: number): string {
-  // NaN makes every `bytes + width > maxBytes` comparison false, which would
-  // otherwise let an invalid budget bypass the cap and return the full value.
   if (Number.isNaN(maxBytes) || maxBytes <= 0 || value === "") return "";
 
-  // Stop as soon as the prefix cannot fit. Encoding the entire public message
-  // before truncating defeats the cap on exactly the oversized-input path this
-  // helper protects, and slicing by UTF-16 units can leave a lone surrogate at
-  // the grouping boundary. Count the UTF-8 width of each code point instead;
-  // paired surrogates are admitted as one four-byte code point or rejected as a
-  // pair, so the persisted prefix and the grouping hash always agree.
   let bytes = 0;
   let index = 0;
   while (index < value.length) {
@@ -291,33 +253,13 @@ export function truncateUtf8Bytes(value: string, maxBytes: number): string {
   return index === value.length ? value : value.slice(0, index);
 }
 
-// The one log-level vocabulary of the telemetry pipeline, ordered least to
-// most severe. `$log` items carry exactly one of these strings on the wire
-// (`level`), and the events table stores it verbatim — there is deliberately
-// no parallel numeric severity scale.
 export const LOG_LEVELS = ["trace", "debug", "info", "warn", "error"] as const;
 export type LogLevel = typeof LOG_LEVELS[number];
 
-// The one uuid shape accepted anywhere in the telemetry pipeline for DATABASE
-// identities: batch ids, replay ids, segment ids, user ids, refresh token ids.
-// Span identity is NOT a uuid — it is W3C trace context (see below). Defined
-// ONCE here because the client tracker, the propagation header codec, the
-// server SDK buffer, and the batch route must agree exactly — an id that passes
-// locally but fails server-side 400s the whole batch, so drift between copies
-// is a data-loss bug.
 export const TELEMETRY_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const PAGE_VIEW_SPAN_TYPE = "$page-view";
 
-// ---------------------------------------------------------------------------
-// Native W3C trace context.
-//
-// Span identity IS W3C: a 32-hex trace id, a 16-hex span id, and a single
-// nullable parent span id. This replaces the previous model in which every span
-// carried its full ancestor path and ids were namespaced with prefixes; the
-// hierarchy now lives in one scalar column and cross-tier propagation is the
-// standard `traceparent` header rather than a bespoke one.
-// ---------------------------------------------------------------------------
 
 export const W3C_TRACE_ID_RE = /^[0-9a-f]{32}$/;
 export const W3C_SPAN_ID_RE = /^[0-9a-f]{16}$/;

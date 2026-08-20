@@ -27,11 +27,6 @@ const DEFAULT_ATTACHMENT_TYPE = "event.attachment";
 const ATTACHMENT_TYPE_PATTERN = /^[a-z][a-z0-9_.-]{0,63}$/;
 
 export function cloneErrorAttachmentInput(input: ErrorAttachmentInput): ErrorAttachmentInput {
-  // normalizeErrorAttachmentInput already deep-copies binary data (see
-  // cloneAttachmentData), so this IS the clone — wrapping the bytes in another
-  // `new Uint8Array` would copy a potentially 2MB buffer a second time for no
-  // behavioral difference. The separate name stays because call sites use it to
-  // state intent ("give me an isolated copy"), not to re-validate.
   return normalizeErrorAttachmentInput(input);
 }
 

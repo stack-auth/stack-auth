@@ -78,12 +78,6 @@ import { useIssueFacets, useIssueSparklines } from "./use-issue-data";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
-/**
- * Environment dropdown values are namespaced so a real environment literally
- * named "all" can never collide with the "All environments" sentinel (which
- * would make it impossible to filter on). The prefix only lives inside the
- * dropdown — the URL codec and the API both carry the raw environment name.
- */
 const ENVIRONMENT_SELECT_VALUE_PREFIX = "env:";
 
 const HANDLED_FILTER_LABELS = new Map([
@@ -102,12 +96,6 @@ function readFiltersFromLocation(): IssueFilters {
   return parseIssueFilters(readLocationSearch());
 }
 
-/**
- * Captured once at module scope on purpose: `useDataGridUrlState` snapshots
- * `initial` on first render, and recomputing this per render would mean the
- * user's own visibility choices are the ones being compared against a moving
- * baseline when the URL is serialized.
- */
 const INITIAL_ISSUE_COLUMN_VISIBILITY: Record<string, boolean> = Object.fromEntries(
   ISSUE_COLUMN_IDS.map((id) => [id, !ISSUE_COLUMNS_HIDDEN_BY_DEFAULT.includes(id)]),
 );
@@ -146,30 +134,17 @@ export default function PageClient() {
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [mergeBusy, setMergeBusy] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
-  // Single "now" for every relative timestamp in the table, refreshed on reload
-  // so the column doesn't quietly drift while the page sits open.
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const overridesRef = useRef(overrides);
   overridesRef.current = overrides;
 
-  // Filters are written back with `history.replaceState` (via the shared
-  // `replaceLocationSearch`), NOT `router.replace`: `useDataGridUrlState`
-  // writes the grid's own params the same way, and Next's router would rebuild
-  // the query string from its cached `useSearchParams`, which has never seen
-  // those params — silently dropping the user's column and sort choices on the
-  // next filter change.
   useEffect(() => {
     replaceLocationSearch(serializeIssueFilters(filters, readLocationSearch()));
   }, [filters]);
 
   const facetsState = useIssueFacets(adminApp, filters.hours);
 
-  // Counts and the approximate-ranking banner are side effects applied BEFORE
-  // the generator yields, so `useDataSource`'s own abort guard never sees them.
-  // Without a guard of our own, a slow fetch for an old filter that resolves
-  // after a newer one would stamp its stale metadata over the visible list.
-  // Monotonic sequence: only the most recently started request may apply.
   const listRequestSeqRef = useRef(0);
   const countsRevisionRef = useRef(0);
 
@@ -210,12 +185,6 @@ export default function PageClient() {
     debouncedSearch,
   ]);
 
-  // Issue ids with a status PATCH in flight. A row exposes two independent
-  // status controls (the primary button and the actions menu); letting them
-  // race would allow the server's final status to differ from the user's last
-  // click while the optimistic row shows otherwise. One in-flight mutation per
-  // row keeps the outcome deterministic; extra clicks during it are no-ops (the
-  // primary button also shows its own loading state meanwhile).
   const pendingStatusIssueIdsRef = useRef(new Set<string>());
   const pendingStatusCountRevisionsRef = useRef(new Map<string, number>());
 
@@ -225,24 +194,13 @@ export default function PageClient() {
     const countRevisionAtStart = countsRevisionRef.current;
     pendingStatusCountRevisionsRef.current.set(issue.id, countRevisionAtStart);
     setStatusError(null);
-    // `from` is the status the user acted on (override included), so chained
-    // optimistic count adjustments telescope correctly.
     const from = resolveIssueRowStatus(issue, overridesRef.current).status;
     setOverrides(applyOptimisticStatus(overridesRef.current, issue.id, status, issue.updated_at_millis));
     setCounts((current) => adjustIssueStatusCounts(current, from, status));
     try {
       await updateIssueStatus(adminApp, issue.id, status);
-      // Deliberately no refetch: under the default Unresolved filter a refetch
-      // would yank the row out from under the cursor mid-scan. The override is
-      // versioned, so the next natural refresh reconciles it (and brings exact
-      // counts with it).
     } catch (error) {
-      // Narrow catch around one call: revert and surface. Never swallowed, and
-      // never a toast — a failed state change must stay on screen.
       setOverrides(clearOptimisticStatus(overridesRef.current, issue.id));
-      // A list refresh may have replaced the optimistic counts while the PATCH
-      // was in flight. Reversing against that fresh server snapshot would
-      // subtract a real row, so only undo the delta on the revision it changed.
       if (pendingStatusCountRevisionsRef.current.get(issue.id) === countsRevisionRef.current) {
         setCounts((current) => adjustIssueStatusCounts(current, status, from));
       }
@@ -255,9 +213,6 @@ export default function PageClient() {
 
   const bucketLabel = getBucketGranularity(filters.hours).label;
 
-  // Built before `useDataSource` because the hook needs them; the cell context
-  // is rebuilt whenever anything a cell reads changes, which is what makes the
-  // sparklines and optimistic states appear without touching grid state.
   const [gridRows, setGridRows] = useState<readonly IssueListItem[]>([]);
   const sparklines = useIssueSparklines(adminApp, filters.hours, gridRows);
 
@@ -281,11 +236,6 @@ export default function PageClient() {
     },
   });
 
-  // The issues request carries exactly one (field, direction) and the backend
-  // orders by it alone, but DataGrid's shift-click multi-sort would happily
-  // DISPLAY a secondary sort column the server never applied. Clamping the
-  // model to the most recently toggled column keeps the indicators honest —
-  // shift-click simply behaves like a plain click on this grid.
   const handleGridStateChange = useCallback<Dispatch<SetStateAction<DataGridState>>>((action) => {
     setGridState((current) => {
       const next = typeof action === "function" ? action(current) : action;
@@ -305,14 +255,10 @@ export default function PageClient() {
     paginationMode: "infinite",
   });
 
-  // Mirror the loaded rows into state so the sparkline loader can key off them.
-  // `useDataSource` owns the rows; this is a read-only projection.
   useEffect(() => {
     setGridRows(gridData.rows);
   }, [gridData.rows]);
 
-  // Drop optimistic overrides the server has already moved past, so a later
-  // automatic regression of the same issue is not masked by a stale "Resolved".
   useEffect(() => {
     const reconciled = reconcileIssueStatusOverrides(overridesRef.current, gridData.rows);
     if (reconciled !== overridesRef.current) setOverrides(reconciled);
@@ -521,8 +467,6 @@ export default function PageClient() {
   return (
     <AppEnabledGuard appId="observability">
       <PageLayout fillWidth noPadding containedHeight>
-        {/* The column headers and the First-seen cell explain which store each
-            number came from via SimpleTooltip, which needs a provider in scope. */}
         <TooltipProvider>
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="shrink-0">

@@ -355,10 +355,6 @@ describe("release graph persistence", () => {
   });
 
   it("rejects a deployment whose upsert landed on a different release (concurrent key reuse)", async () => {
-    // Simulates losing the deploymentKey TOCTOU race: the pre-upsert ownership
-    // check saw no row, but by upsert time another request attached the key to
-    // a different release. The returned row exposes that, and the service must
-    // fail instead of reporting success against the wrong release.
     const otherRelease = { ...deployment, releaseId: "00000000-0000-4000-8000-000000000099" };
     const db = fakeDatabase({
       releaseDeployment: {
@@ -454,9 +450,6 @@ describe("release graph persistence", () => {
       status: PrismaReleaseArtifactStatus.REGISTERED,
     });
 
-    // A REGISTERED retry must not touch the stored status at all — writing it
-    // based on a pre-upsert read would let a concurrent retry downgrade a row
-    // another request just finalized.
     expect(captured?.update).not.toHaveProperty("status");
     expect(captured?.create).toMatchObject({ status: PrismaReleaseArtifactStatus.REGISTERED });
   });

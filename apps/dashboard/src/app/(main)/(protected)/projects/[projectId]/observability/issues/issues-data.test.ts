@@ -111,7 +111,6 @@ describe("getIssueFacetsQuery", () => {
 });
 
 describe("parseIssueSparklineRows", () => {
-  // 12:30 UTC — deliberately mid-bucket so the tests exercise the flooring.
   const NOW_MS = Date.parse("2026-07-31T12:30:00.000Z");
   const LATEST_BUCKET_MS = Date.parse("2026-07-31T12:00:00.000Z");
   const EARLIEST_BUCKET_MS = LATEST_BUCKET_MS - 23 * 3_600_000;
@@ -135,8 +134,6 @@ describe("parseIssueSparklineRows", () => {
     );
     const series = parsed.get(SAMPLE_HASH_A);
     expect(series?.[23]).toEqual({ bucketMs: LATEST_BUCKET_MS, occurrences: 17 });
-    // Every other bucket still exists and is zero — the sparkline renders
-    // buckets adjacently, so a missing bucket would misplace every later bar.
     expect(series?.filter((bucket) => bucket.occurrences !== 0)).toHaveLength(1);
   });
 
@@ -222,9 +219,6 @@ describe("buildIssueListQueryString", () => {
       handled: "unhandled",
       environment: "staging",
     }));
-    // `all` is a real value for both, not "omit the param": the endpoint's
-    // parseStatus/parseHandled accept it, and sending "true"/"false" for
-    // `handled` (an easy guess) is a 400.
     expect(params.get("status")).toBe("all");
     expect(params.get("handled")).toBe("unhandled");
     expect(params.get("environment")).toBe("staging");

@@ -6,11 +6,6 @@ export type ServiceIdentity = {
 const ALL_SERVICES_SELECT_VALUE = "all";
 const SERVICE_SELECT_VALUE_PREFIX = "service:";
 
-/**
- * Encode a scalar dropdown value with the same sentinel/prefix convention as
- * service identities. Keeping this codec here prevents filters with a simpler
- * value shape (such as environments) from reimplementing the collision rules.
- */
 export function namespacedSelectValue(value: string | null, prefix: string): string {
   return value == null ? ALL_SERVICES_SELECT_VALUE : `${prefix}${encodeURIComponent(value)}`;
 }

@@ -20,42 +20,20 @@ import type { StackPlatform } from "./types";
  * `stack-parser.ts`.
  */
 
-/**
- * Bundler/runtime paths that are never the customer's source, on the browser
- * side. `/~/` is legacy webpack's module-directory marker (`webpack:///./~/pkg/…`
- * meant `node_modules/pkg`), still seen from older toolchains; treating it as
- * app code would pull third-party frames into the `app` grouping hash.
- */
 const JAVASCRIPT_NOT_IN_APP_SUBSTRINGS = ["/node_modules/"];
 const LEGACY_WEBPACK_MODULE_PATH_RE = /^webpack:\/\/(?:[^/]+)?\/\.\/~\//;
 const JAVASCRIPT_NOT_IN_APP_PREFIXES = ["webpack-internal:", "node:"];
-/**
- * Next.js emits its own runtime into `framework-<hash>.js` under this directory.
- * It is the single biggest source of noise in a Next app's stacks, and unlike
- * `node_modules` it never appears in the URL after bundling.
- */
 const NEXT_FRAMEWORK_CHUNK_PREFIX = "/_next/static/chunks/framework";
 
-/** Paths V8 uses for frames that have no file at all. Not app code, not system code — just unknown. */
 const NON_FILE_PATHS = new Set(["<anonymous>", "[native code]", "native", "<unknown>"]);
 
 const WINDOWS_ABSOLUTE_PATH_RE = /^[a-zA-Z]:/;
-/**
- * `node_modules` as a whole path segment, under either separator. The Windows
- * branch above accepts `C:\…` paths as potential app code, so the dependency
- * exclusion must understand backslashes too — a plain `includes("node_modules/")`
- * would classify `C:\app\node_modules\pkg\index.js` as in-app and change grouping.
- */
 const NODE_MODULES_SEGMENT_RE = /(?:^|[\\/])node_modules[\\/]/;
 // Schema from https://stackoverflow.com/a/3641782 — `scheme://`, i.e. the frame
 // went through a bundler or came off the network rather than off disk.
 const URL_SCHEME_RE = /^[a-zA-Z][a-zA-Z0-9.\-+]*:\/\//;
 
 export function isInAppPath(path: string, platform: StackPlatform): boolean {
-  // An unknown path is not app code. Sentry's port returns `true` here, but only
-  // as a side effect of `""` being falsy in the middle of a `&&` chain — it is a
-  // quirk of that expression, not a decision, and treating unknown frames as
-  // app code would make the `app` grouping variant hash frames it cannot show.
   if (path === "") return false;
   if (NON_FILE_PATHS.has(path)) return false;
 
@@ -64,16 +42,10 @@ export function isInAppPath(path: string, platform: StackPlatform): boolean {
       if (JAVASCRIPT_NOT_IN_APP_PREFIXES.some((prefix) => path.startsWith(prefix))) return false;
       if (JAVASCRIPT_NOT_IN_APP_SUBSTRINGS.some((needle) => path.includes(needle))) return false;
       if (LEGACY_WEBPACK_MODULE_PATH_RE.test(path)) return false;
-      // Matched on the pathname so it holds for both `https://host/_next/...` and a bare `/_next/...`.
       if (path.includes(NEXT_FRAMEWORK_CHUNK_PREFIX)) return false;
       return true;
     }
     case "node": {
-      // Ported from `filenameIsInApp`. In Node the polarity is inverted relative
-      // to the browser: a frame is app code only when it names a real file on
-      // disk. Anything without an absolute/relative path prefix is a Node
-      // builtin (`internal/process/task_queues.js`, `events.js`), and anything
-      // with a URL scheme went through a bundler.
       const isBuiltinOrBundled = !path.startsWith("/")
         && !WINDOWS_ABSOLUTE_PATH_RE.test(path)
         && !path.startsWith(".")

@@ -11,15 +11,9 @@ import { assertValidSpanStartInput, getCustomTelemetryDataError, getCustomTeleme
 import { generateUuid } from "./telemetry-transport";
 import type { TelemetryResource } from "./telemetry-config";
 import { buildAmbientSessionContext, getActiveOtelSpanContext } from "./otel-context";
-// Runtime-safe: span-propagation only imports TYPES from the telemetry modules.
 import { buildFetchInitWithSpanContext, buildPropagationHeaderValues, type SpanPropagationContext } from "./span-propagation";
 import { OtlpWebVitalsMetricRecorder, startWebVitalsCollector, type WebVitalsCollector } from "./web-vitals";
 
-// The environment-independent core of the custom telemetry API (types,
-// validation, parent resolution, withSpanImpl) moved to telemetry-core.ts so
-// this module — with its ~1.5k lines of autocapture — can be lazy-loaded.
-// Re-exported so the SDK's existing import sites (e.g. span-propagation.ts)
-// stay stable across that lazy-load module boundary.
 export {
   getCustomTelemetryDataError,
   getCustomTelemetryNameError,
@@ -39,7 +33,6 @@ export {
 const FLUSH_INTERVAL_MS = 10_000;
 const MAX_EVENTS_PER_BATCH = 50;
 const MAX_APPROX_BYTES_PER_BATCH = 64_000;
-// See _capLiveSpanRegistries.
 export const LIVE_SPAN_REGISTRY_SOFT_CAP = 1000;
 
 function hasScreenDimensions(value: unknown): value is { width: number, height: number } {
@@ -86,9 +79,6 @@ const CLICKMAP_SCALE_FACTOR = 16;
 // still pending when the page unloads led to that navigation, alive by
 // definition.
 //
-// A click still unclassified when its natural flush fires arrives up to one
-// extra FLUSH_INTERVAL_MS late. A live-clicks surface must accept that lag or
-// emit a provisional $click plus a later dead-click reconciliation event.
 const DEAD_CLICK_SCROLL_THRESHOLD_MS = 100;
 const DEAD_CLICK_SELECTION_CHANGED_THRESHOLD_MS = 100;
 const DEAD_CLICK_VISIBILITY_CHANGE_THRESHOLD_MS = 100;
@@ -141,89 +131,47 @@ export type EventTrackerDeps = {
   clientVersion?: string,
   /** Present only when Hexclave owns the active LoggerProvider. */
   forceFlushOtel?: () => Promise<void>,
-  // Per-tab id shared with the SessionRecorder so analytics events and replay
-  // chunks from the same tab carry the same session_replay_segment_id. Falls
-  // back to a fresh uuid when constructed standalone (e.g. in tests).
   sessionReplaySegmentId?: string,
   /** The authenticated refresh-token span: the stable root of browser telemetry. */
   sessionRootContext?: SpanContext,
   /** Whether the replay + per-tab lifecycle levels exist between the root and page views. */
   sessionReplayEnabled?: boolean,
-  // Product autocapture is independently gated from logs/spans, which still
-  // use this shared buffer when Analytics is disabled.
   productAnalyticsEnabled?: boolean,
-  // Opt-in replay keyboard activity. This is deliberately configured from the
-  // replay options so its privacy boundary matches rrweb's recorder settings.
   keystrokeCapture?: KeystrokeCaptureOptions,
-  // Serverless keep-alive hook (TelemetryOptions.waitUntil): every batch-send
-  // promise is passed to it so un-awaited sends survive runtime teardown.
   registerBackgroundTask?: (promise: Promise<unknown>) => void,
-  // Origin policy for span.fetch / propagation headers (same-origin default +
-  // exact-origin allowlist). Provided by the app from observability.spanPropagation.
   getPropagationPolicy?: () => { selfOrigin: string | null, allowedOrigins: readonly string[], allowLocalhost: boolean, correlationBaggage: boolean },
-  // Opt-in presence/integrity signals ($away, clipboard, context-menu, print,
-  // fullscreen-exit). Default OFF: they are surveillance-adjacent, so capturing
-  // them must be a deliberate customer decision
-  // (AnalyticsOptions.integritySignals), not default autocapture.
   integritySignals?: boolean,
 };
 
 type TrackedEvent = {
-  // System types ($page-view, $click, $form-submit, …) from the auto-capture
-  // paths, or a custom name (validated against CUSTOM_TELEMETRY_NAME_RE) from
-  // trackEvent().
   event_type: string,
   event_at_ms: number,
   data: Record<string, unknown>,
-  // The enclosing span this event happened inside. Both are omitted together for
-  // an event with no enclosing span (autocapture at the top of a task): an event
-  // is an instant, so unlike a span it has no identity of its own to anchor a
-  // trace with.
   trace_id?: string,
   span_id?: string,
   trace_flags?: number,
   trace_state?: string,
-  // CORRELATION, not ancestry: the `$page-view` span the event happened on.
   page_view_span_id?: string,
-  // `$log`-only wire fields (route-enforced: REQUIRED on $log items, forbidden
-  // on every other event type).
 };
 
-/**
- * Internal handle for client-minted SYSTEM spans ($page-view, $away, …).
- * Deliberately NOT a public `Span`: system spans have no public capabilities
- * (no child spans, no propagation headers, no settling promises), so the handle
- * exposes only what the tracker itself needs. Its W3C identity IS exposed, because
- * `$away`/`$offline` parent under the page view and events correlate to it. All
- * operations are fire-and-forget.
- */
 type SystemSpanHandle = {
   readonly traceId: string,
   readonly spanId: string,
   readonly traceFlags: number,
   readonly spanType: string,
   isEnded: () => boolean,
-  /** Shallow-merges into the span's data and re-writes the row. */
   setData: (data: Record<string, unknown>) => void,
   end: (endedAtMs?: number) => void,
 };
 
-// Sensors feeding the unified `$away` presence span. Recorded (without the $)
-// in the span's data.reasons so "window blurred but tab still visible"
-// (side-by-side windows) stays distinguishable from a real tab switch.
 type AwayReason = "tab-hidden" | "window-blur";
 
 const RAGE_CLICK_WINDOW_MS = 1_000;
 const RAGE_CLICK_RADIUS_PX = 30;
 const RAGE_CLICK_MIN_CLICKS = 3;
 const RESIZE_DEBOUNCE_MS = 500;
-// A short trailing debounce turns a typing burst into one bounded analytics
-// event. The payload carries only the number and timing of keydown events —
-// never KeyboardEvent.key/code or input values.
 const KEYSTROKE_DEBOUNCE_MS = 500;
 const FORM_FIELD_NAMES_MAX = 50;
-// Click targets whose href looks like a file download even without a `download`
-// attribute (the attribute is also honored; this catches plain file links).
 const DOWNLOAD_EXTENSION_RE = /\.(pdf|zip|gz|tar|tgz|rar|7z|dmg|pkg|exe|msi|apk|csv|tsv|xls[xm]?|doc[xm]?|ppt[xm]?|mp3|wav|mp4|mov|avi|webm)$/i;
 
 type PendingKeystrokeBatch = {
@@ -239,9 +187,6 @@ type PendingKeystrokeBatch = {
 function classMatchesReplayBlock(element: Element, blockClass: string | RegExp): boolean {
   if (typeof blockClass === "string") return element.classList.contains(blockClass);
   for (const className of element.classList) {
-    // RegExp instances with g/y flags are stateful. Preserve the caller's
-    // lastIndex so privacy filtering cannot alternate between matching and not
-    // matching the same class across keystrokes.
     const lastIndex = blockClass.lastIndex;
     blockClass.lastIndex = 0;
     const matches = blockClass.test(className);
@@ -252,9 +197,6 @@ function classMatchesReplayBlock(element: Element, blockClass: string | RegExp):
 }
 
 function isInsideBlockedReplaySubtree(element: Element, options: KeystrokeCaptureOptions): boolean {
-  // rrweb defaults blockClass to rr-block when the SDK caller does not provide
-  // one; mirror the effective option so keyboard metadata cannot reveal
-  // activity from a subtree that is absent from playback.
   const blockClass = options.blockClass ?? "rr-block";
   let current: Element | null = element;
   while (current !== null) {
@@ -266,23 +208,15 @@ function isInsideBlockedReplaySubtree(element: Element, options: KeystrokeCaptur
 }
 
 function isMaskedReplayInput(element: Element, maskAllInputs: boolean): boolean {
-  // rrweb masks password inputs even when maskAllInputs is false. When it is
-  // true (Hexclave's default), it masks every input/textarea/select. Skip the
-  // event rather than reporting even a count, which could reveal secret length.
   if (element instanceof HTMLInputElement) {
     return element.type.toLowerCase() === "password" || maskAllInputs;
   }
   if (element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
     return maskAllInputs;
   }
-  // rrweb's default text-masking class also applies recursively to descendants,
-  // including contenteditable regions.
   return element.closest(".rr-mask") !== null;
 }
 
-// djb2-xor over UTF-16 code units. Used ONLY locally to compare a paste against
-// the last same-page copy; the hash is never transmitted (a hash of short text
-// would be dictionary-reversible, defeating the no-content-capture guarantee).
 function hashTextLocal(text: string): number {
   let hash = 5381;
   for (let i = 0; i < text.length; i++) {
@@ -303,54 +237,31 @@ export class EventTracker {
   private readonly _deps: EventTrackerDeps;
   private _sessionRootContext: SpanContext | null;
   private readonly _sessionReplayEnabled: boolean;
-  // A deterministic segment id is not sufficient proof that its row exists in
-  // this trace. It becomes a valid parent only after replay ingestion has
-  // acknowledged materializing the segment under the current refresh root.
   private _sessionReplaySegmentMaterialized = false;
 
   private _originalPushState: History["pushState"] | null = null;
   private _originalReplaceState: History["replaceState"] | null = null;
 
-  // Spans registered via setGlobalSpan — ambient parents for all subsequent
-  // custom events and spans until cleared (end() auto-clears).
   private _globalSpans = new Set<Span>();
-  // Live (un-ended) span handles' inert switches; flipped on clearBuffer so a
-  // span started before sign-out can never be re-written under the next user.
   private _liveSpanControls = new Set<{ markInert: () => void }>();
-  // Reverse lookup for the deregistration in startSpan's onEnded. A WeakMap on
-  // purpose: _settleAllPending / _capLiveSpanRegistries only maintain the Set,
-  // and stale weak entries are harmless (a late lookup just deletes a control
-  // that is no longer in the Set).
   private readonly _liveSpanControlBySpan = new WeakMap<Span, { markInert: () => void }>();
-  // See _capLiveSpanRegistries.
   private _warnedLiveSpanRegistryCap = false;
 
-  // The $page-view span everything on the current page nests under. Replaced on
-  // every navigation; null before start / after teardown.
   private _pageViewSpan: SystemSpanHandle | null = null;
-  // Memoized getAmbientOtelContext result: it sits on the context manager's
-  // hot path (read on every span start / instrumented fetch), so the Context
-  // is rebuilt only when the ambient anchor or tab segment identity changes.
   private _ambientOtelContextCache: { anchorKey: string, sessionReplaySegmentId: string, context: Context } | null = null;
   private _maxScrollDepthPx = 0;
   private _maxScrollDepthRatio = 0;
   private _webVitals: WebVitalsCollector | null = null;
   private readonly _webVitalsMetricRecorder: OtlpWebVitalsMetricRecorder;
-  // Which $page-view span the vitals belong to (only ever the tab's initial one).
   private _webVitalsSpanId: string | null = null;
   private _recentClicks: { x: number, y: number, atMs: number }[] = [];
   private _resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _keystrokeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _pendingKeystrokes: PendingKeystrokeBatch | null = null;
-  // Presence spans (open while the state holds). Offline is default-on; $away
-  // (tab hidden and/or window blurred) only exists with integritySignals.
   private _awaySpan: SystemSpanHandle | null = null;
-  // Sensors currently holding the user away (empty = present), and the union
-  // of sensors seen during the open $away span (mirrored to its data.reasons).
   private _awayReasons = new Set<AwayReason>();
   private _awaySpanSeenReasons = new Set<AwayReason>();
   private _offlineSpan: SystemSpanHandle | null = null;
-  // Local-only hash of the last same-page copy/cut (see hashTextLocal).
   private _lastCopyHash: number | null = null;
   private _wasFullscreen = false;
   private _detachAutocaptureListeners: (() => void) | null = null;
@@ -400,9 +311,6 @@ export class EventTracker {
         this._setupIntegritySignals();
       }
     }
-    // Last: the keepalive-flush listeners must run AFTER the handlers above for
-    // the same events (visibilitychange, pagehide), so rows they enqueue (e.g.
-    // an $away open row, the $page-view end row) ride the same flush.
     this._setupPageHideListeners();
 
     this._flushTimer = setInterval(() => this._tick(), FLUSH_INTERVAL_MS);
@@ -414,7 +322,6 @@ export class EventTracker {
       clearInterval(this._flushTimer);
       this._flushTimer = null;
     }
-    // End live spans before the provider's final lifecycle flush.
     this._flushPendingKeystrokes();
     this._endPageViewSpan();
     this._endOpenPresenceSpans();
@@ -431,14 +338,7 @@ export class EventTracker {
     this._disconnectDeadClickMutationObserverIfIdle();
   }
 
-  // Rejects every pending custom-event promise and ends live spans before the
-  // authenticated browser identity rotates.
-  // span handles. Called on sign-out (paired with the segment-id rotation): a
-  // span started under user A must never be re-written under user B's session.
   private _settleAllPending(reason: string) {
-    // System events that still need local classification are discarded on an
-    // identity change. Public events already entered the active OTel provider
-    // synchronously and are isolated by its flush/replace lifecycle.
     void reason;
     for (const control of this._liveSpanControls) {
       control.markInert();
@@ -457,11 +357,6 @@ export class EventTracker {
   setSessionReplaySegmentId(id: string) {
     this._sessionReplaySegmentId = id;
     this._sessionReplaySegmentMaterialized = false;
-    // Paired with clearBuffer() on sign-out (clearBuffer runs first): the
-    // previous $page-view span and any open presence spans were inert-ified
-    // under the old identity, so the ongoing page needs fresh spans under the
-    // new segment. Page views are span-only; rotation just restarts the
-    // `$page-view` interval under the new identity (same as restore).
     if (this._deps.productAnalyticsEnabled !== false && this._started && !this._cancelled) {
       this._capturePageView("rotation");
       this._restartPresenceSpans();
@@ -548,10 +443,6 @@ export class EventTracker {
    */
   getAmbientOtelContext(): Context | null {
     const livePageView = this._pageViewSpan !== null && !this._pageViewSpan.isEnded() ? this._currentPageViewContext() : null;
-    // `_pageViewSpan === null` distinguishes "no page view YET" (session-root
-    // fallback applies) from an ENDED one (sign-out window, no fallback) —
-    // but teardown also nulls the handle, so a stopped tracker must not
-    // resurrect the session anchor either.
     const anchor = livePageView ?? (this._pageViewSpan === null && !this._cancelled ? this._sessionRootContext : null);
     if (anchor === null) return null;
     const anchorKey = `${anchor.traceId}/${anchor.spanId}`;
@@ -631,8 +522,6 @@ export class EventTracker {
         ...parent === undefined ? { root: true } : { parent, root: false },
         links: resolved.links,
       },
-      // `correlationBaggage: undefined` (no policy dep) keeps the facade's
-      // enabled-by-default behavior.
       ...this._deps.getPropagationPolicy === undefined ? {} : { correlationBaggage: this._deps.getPropagationPolicy().correlationBaggage },
       correlationAttributes: {
         "hexclave.session_replay.segment.id": this._sessionReplaySegmentId,
@@ -642,12 +531,6 @@ export class EventTracker {
         trackEvent: (eventType, data, trackOptions) => this.trackCustomEvent(eventType, data, trackOptions),
         getSpanPropagationHeaders: (span) => this._spanPropagationHeaders(span, pageViewSpanId),
         fetch: (span, input, init) => this._spanFetch(span, input, init),
-        // The facade reuses this capabilities object for every DESCENDANT span
-        // it creates, so registration lives in onStarted (fired once per
-        // facade, children included) rather than at this call site — a
-        // never-ended CHILD facade must be just as visible to clearBuffer()'s
-        // sign-out inert sweep as its parent, or it could export under the
-        // next identity.
         onStarted: (startedSpan) => {
           const control = {
             markInert: () => runAsynchronously(async () => await startedSpan.end(), { noErrorLogging: true }),
@@ -656,9 +539,6 @@ export class EventTracker {
           this._liveSpanControlBySpan.set(startedSpan, control);
           this._capLiveSpanRegistries();
         },
-        // Always receives the span that actually ended: deregister exactly
-        // that one — a closure over the top-level handle here would let a
-        // child's end unregister its still-live parent.
         onEnded: (endedSpan) => {
           this._globalSpans.delete(endedSpan);
           const endedControl = this._liveSpanControlBySpan.get(endedSpan);
@@ -745,12 +625,8 @@ export class EventTracker {
    * row will survive a healthy flush.
    */
   private _spanPropagationHeaders(span: Span, pageViewSpanId: string | null): Record<string, string> {
-    // spanPropagation.enabled=false gates ONLY this correlation-baggage
-    // fallback — the facade still injects W3C trace context independently.
     if (this._deps.getPropagationPolicy?.().correlationBaggage === false) return {};
     return buildPropagationHeaderValues({
-      // createOtelSpanFacade injects the official active trace context after
-      // merging this correlation-only fallback.
       traceparent: null,
       context: this._spanPropagationContext(pageViewSpanId),
     });
@@ -766,12 +642,6 @@ export class EventTracker {
       const initWithHeader = buildFetchInitWithSpanContext({
         input,
         init,
-        // The facade's getSpanPropagationHeaders(), NOT the correlation-only
-        // _spanPropagationHeaders fallback: the facade merges the real W3C
-        // context (traceparent/tracestate) on top of that fallback, and using
-        // the fallback directly here would send baggage with no traceparent —
-        // the whole point of span.fetch() is cross-tier hierarchy. Mirrors the
-        // server span.fetch path in server-app-impl.ts.
         headerValues: span.getSpanPropagationHeaders(),
         selfOrigin: policy.selfOrigin,
         allowedOrigins: policy.allowedOrigins,
@@ -779,7 +649,6 @@ export class EventTracker {
       });
       return globalThis.fetch(input, initWithHeader?.init ?? init);
     } catch {
-      // Propagation must never break the caller's actual request.
       return globalThis.fetch(input, init);
     }
   }
@@ -936,15 +805,6 @@ export class EventTracker {
     this._maybeTriggerSizeFlush();
   }
 
-  // System events from the auto-capture paths are fire-and-forget (no settler)
-  // and always stamped with the current page ancestry. Their DOM-derived data
-  // is still bounded locally: one oversized selector/URL must not make the
-  // server reject every otherwise-valid item in the shared batch.
-  //
-  // The enclosing span is the current `$page-view` DIRECTLY rather than through
-  // _resolveEnclosingSpan: autocapture fires from DOM handlers, so whatever
-  // withSpan frame happens to be open elsewhere on the page is not the operation
-  // a click belongs to. The page view is.
   private _pushSystemEvent(eventType: SystemEventType, data: Record<string, unknown>, internalOptions?: { eventAtMs?: number }) {
     const dataError = getCustomTelemetryDataError(data);
     if (dataError !== null) {
@@ -955,9 +815,6 @@ export class EventTracker {
     const enclosing = this._currentPageViewContext();
     this._pushEvent({
       event_type: eventType,
-      // eventAtMs is the pre-load adoption path ($error capture installs
-      // eagerly, before this module arrives) — see trackCustomEvent's
-      // internalOptions for the rationale.
       event_at_ms: internalOptions?.eventAtMs ?? Date.now(),
       data,
       ...enclosing !== null ? {
@@ -970,11 +827,6 @@ export class EventTracker {
     });
   }
 
-  // "restore" = bfcache revival (pageshow with persisted), "rotation" =
-  // sign-out segment rotation; both restart the span the same way as a
-  // navigation. Page views are span-only — readers that need them query
-  // `default.spans` / `analytics_internal.spans` (`span_type = '$page-view'`),
-  // never `default.events`.
   private _capturePageView(entryType: "initial" | "push" | "replace" | "pop" | "restore" | "rotation") {
     const screenObject = window.screen;
     if (!hasScreenDimensions(screenObject)) {
@@ -984,8 +836,6 @@ export class EventTracker {
     const url = window.location.href;
     const isForcedRestart = entryType === "initial" || entryType === "restore" || entryType === "rotation";
     if (url === this._lastUrl && !isForcedRestart) return;
-    // Keep a burst on the page where it started. Otherwise a route change that
-    // lands inside the debounce window would stamp old typing onto the new page.
     this._flushPendingKeystrokes();
     this._lastUrl = url;
 
@@ -1004,41 +854,14 @@ export class EventTracker {
       user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
     };
 
-    // The $page-view SPAN is the hierarchy layer everything on this page nests
-    // under (auto-captured events, custom telemetry, and backend spans via
-    // cross-tier propagation). It ends on the next navigation / pagehide, so
-    // its interval IS the time-on-page. There is no companion `$page-view`
-    // EVENT — projecting spans into default.events made the traces UI show
-    // the same fact twice (diamond + bar).
-    // Session → replay → tab segment → page is the product's trace boundary.
-    // The scalar parent stores only the immediate segment edge; the backend
-    // materializes the replay/segment rows after it resolves the durable replay.
     const span = this._startSystemSpan("$page-view", {
       data: pageViewData,
       parent: this._pageViewLifecycleParent(),
     });
     this._pageViewSpan = span;
     this._resetScrollDepth();
-    // Rage bursts describe repeated interaction with one page. Carrying the
-    // prior route's clicks into an SPA navigation creates false positives.
     this._recentClicks = [];
-    // Web vitals are collected PER $page-view span: the tab's hard load gets
-    // all five metrics ({ mode: "initial" }), while every later entry (SPA
-    // push/replace/pop, bfcache restore, sign-out rotation) gets a soft-nav
-    // collector — CLS/INP only, windowed to entries after this navigation and
-    // flagged `soft_nav: 1` so dashboards never mix them into load metrics.
-    // Values are absorbed into the span's data as they finalize and frozen
-    // when the span ends (updates within a flush window coalesce into one wire
-    // row, so no extra throttling is needed). The METRIC recorder is NOT fed
-    // here: under histogram semantics every record() is a separate sample, so
-    // recording each intermediate snapshot (CLS/INP update repeatedly while
-    // the page lives) would inflate counts — the single per-page-view sample
-    // is recorded once, from the final snapshot in _endPageViewSpan.
     if (this._webVitals !== null) {
-      // _endPageViewSpan (called above) already froze + disconnected the
-      // previous span's collector; this guards the paths where the previous
-      // span was ended elsewhere (e.g. pagehide before a bfcache restore) —
-      // one collector must never feed two spans.
       this._webVitals.disconnect();
       this._webVitals = null;
       this._webVitalsSpanId = null;
@@ -1052,9 +875,6 @@ export class EventTracker {
       },
       entryType === "initial"
         ? { mode: "initial" }
-        // performance.now() HERE is the navigation timestamp: _capturePageView
-        // runs synchronously inside the pushState/replaceState patch and the
-        // popstate/pageshow handlers.
         : { mode: "soft-nav", navStartTime: performance.now() },
     );
     if (collector !== null) {
@@ -1074,7 +894,6 @@ export class EventTracker {
     this._sampleScrollDepth();
     span.setData({
       scroll_depth_px: Math.round(this._maxScrollDepthPx),
-      // 3 decimals is plenty for a 0..1 ratio and keeps rows stable.
       scroll_depth_ratio: Math.round(this._maxScrollDepthRatio * 1000) / 1000,
     });
     if (this._webVitals !== null && this._webVitalsSpanId === span.spanId) {
@@ -1091,14 +910,9 @@ export class EventTracker {
   private _resetScrollDepth() {
     this._maxScrollDepthPx = 0;
     this._maxScrollDepthRatio = 0;
-    // Sample immediately so a page that is never scrolled still reports the
-    // initially visible depth.
     this._sampleScrollDepth();
   }
 
-  // Depth = bottom edge of the viewport within the document. Page-level scroll
-  // only (nested scroll containers do not describe how far down the PAGE the
-  // user got).
   private _sampleScrollDepth() {
     const bottom = window.scrollY + window.innerHeight;
     const height = Math.max(document.documentElement.scrollHeight, window.innerHeight);
@@ -1213,10 +1027,6 @@ export class EventTracker {
     const clientYScaled = Math.round(event.clientY / CLICKMAP_SCALE_FACTOR);
     const relativeX = viewportWidth > 0 ? event.clientX / viewportWidth : 0;
 
-    // Rage detection: the click that COMPLETES a burst (>= 3 clicks within a
-    // 30px box inside 1s) is marked in place — earlier clicks of the burst may
-    // already be on the wire, so marking only the completer keeps this a pure
-    // buffer-time flag with no reconciliation.
     const nowMs = Date.now();
     this._recentClicks = this._recentClicks.filter((click) => nowMs - click.atMs < RAGE_CLICK_WINDOW_MS);
     this._recentClicks.push({ x: event.clientX, y: event.clientY, atMs: nowMs });
@@ -1234,15 +1044,10 @@ export class EventTracker {
         outbound = (hrefUrl.protocol === "http:" || hrefUrl.protocol === "https:") && hrefUrl.origin !== window.location.origin;
         download = download || DOWNLOAD_EXTENSION_RE.test(hrefUrl.pathname);
       } catch {
-        // Unparsable href: neither flag applies.
       }
     }
 
     const pageViewSpanId = this.getCurrentPageViewSpanId();
-    // Built inline rather than through _pushSystemEvent (dead-click
-    // classification needs the object identity before it is buffered), so the
-    // enclosing-span stamping has to be repeated here — same rule: the current
-    // `$page-view` span is the operation a click happens inside.
     const enclosing = this._currentPageViewContext();
     const clickEvent: TrackedEvent = {
       event_type: "$click",
@@ -1268,8 +1073,6 @@ export class EventTracker {
         viewport_width: viewportWidth,
         viewport_height: viewportHeight,
         scale_factor: CLICKMAP_SCALE_FACTOR,
-        // Flags are present-when-set only (like `dead`), so existing rows and
-        // queries with `data.rage = 1`-style filters stay cheap and stable.
         ...burstSize >= RAGE_CLICK_MIN_CLICKS ? { rage: 1 } : {},
         ...outbound ? { outbound: 1 } : {},
         ...download ? { download: 1 } : {},
@@ -1286,8 +1089,6 @@ export class EventTracker {
     // Register for dead-click classification before buffering, so a
     // size-triggered flush from this very push already holds the click back.
     if (this._deadClickTimer !== null && this._unclassifiedClicks.size < DEAD_CLICK_MAX_PENDING) {
-      // Connect BEFORE the classification windows start, so mutations caused
-      // by this click are observed (observe() registers synchronously).
       this._connectDeadClickMutationObserver();
       this._unclassifiedClicks.add(clickEvent);
     }
@@ -1313,18 +1114,10 @@ export class EventTracker {
   private _setupDeadClickDetection() {
     if (typeof MutationObserver !== "function") return;
 
-    // Capture phase so scrolls inside nested scroll containers count, not just
-    // the document itself (scroll events don't bubble).
     document.addEventListener("scroll", this._onDeadClickScroll, { capture: true, passive: true });
     document.addEventListener("selectionchange", this._onDeadClickSelectionChange);
     document.addEventListener("visibilitychange", this._onDeadClickVisibilityChange);
 
-    // The MutationObserver is NOT connected here: observing the whole document
-    // subtree for the entire session costs a callback on every DOM change,
-    // while `_lastMutationAtMs` is only ever consumed while a click awaits
-    // classification. The observer connects in the click handler (see
-    // `_connectDeadClickMutationObserver`) and disconnects once the pending
-    // set drains.
     this._deadClickTimer = setInterval(() => this._checkDeadClicks(), DEAD_CLICK_CHECK_INTERVAL_MS);
   }
 
@@ -1357,8 +1150,6 @@ export class EventTracker {
     });
   }
 
-  // Disconnecting with pending mutation records is safe: records only matter
-  // while clicks await classification, and this runs exactly when none do.
   private _disconnectDeadClickMutationObserverIfIdle() {
     if (this._unclassifiedClicks.size > 0) return;
     if (this._deadClickMutationObserver !== null) {
@@ -1403,19 +1194,10 @@ export class EventTracker {
     this._unclassifiedClicks.clear();
   }
 
-  // ---------------------------------------------------------------------------
-  // Default-on autocapture (page-level scroll depth, bfcache restore, forms,
-  // resize, offline)
-  // ---------------------------------------------------------------------------
 
   private readonly _onPageShow = (event: PageTransitionEvent) => {
-    // A bfcache restore revives a page whose $page-view span was already ended
-    // by pagehide; the restored view is a new interval on the same URL.
     if (event.persisted) {
       this._capturePageView("restore");
-      // pagehide closed presence spans before its keepalive flush. Browsers do
-      // not replay offline/visibility events for state that remained true while
-      // frozen, so restore must sample those sensors again under the new view.
       this._restartPresenceSpans();
     }
   };
@@ -1425,8 +1207,6 @@ export class EventTracker {
     if (!(form instanceof HTMLFormElement)) return;
     if (isInsideHexclaveUi(form)) return;
 
-    // Field NAMES only, never values — names identify the form shape without
-    // touching what the user typed.
     const fieldNames: string[] = [];
     for (const element of Array.from(form.elements)) {
       const name = element.getAttribute("name");
@@ -1436,8 +1216,6 @@ export class EventTracker {
       }
     }
 
-    // The action's query string can carry user-derived values; keep only
-    // origin + path (path only when same-origin).
     let actionPath: string | null = null;
     try {
       const actionUrl = new URL(form.action, window.location.href);
@@ -1461,8 +1239,6 @@ export class EventTracker {
   };
 
   private readonly _onWindowResize = () => {
-    // Trailing debounce: resize fires continuously during a drag; only the
-    // settled size is interesting.
     if (this._resizeDebounceTimer !== null) clearTimeout(this._resizeDebounceTimer);
     this._resizeDebounceTimer = setTimeout(() => {
       this._resizeDebounceTimer = null;
@@ -1489,9 +1265,6 @@ export class EventTracker {
       || isInsideBlockedReplaySubtree(target, this._keystrokeCapture)
       || isMaskedReplayInput(target, this._keystrokeCapture.maskAllInputs)
     ) {
-      // A private/blocked target is also a batching boundary: never merge
-      // activity on either side of it into one event whose duration spans the
-      // hidden interaction.
       this._flushPendingKeystrokes();
       return;
     }
@@ -1567,7 +1340,6 @@ export class EventTracker {
     if (this._keystrokeCapture.enabled) {
       document.addEventListener("keydown", this._onKeyDownCapture, { capture: true });
     }
-    // Reflect a state that is already true at start.
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       this._onOffline();
     }
@@ -1587,21 +1359,7 @@ export class EventTracker {
     };
   }
 
-  // ---------------------------------------------------------------------------
-  // Opt-in integrity signals (AnalyticsOptions.integritySignals). All of these
-  // are ADVISORY: page script cannot prove presence or catch a second device —
-  // they are review signals for tools like exam/quiz platforms, never
-  // enforcement. Clipboard CONTENT is never captured (lengths + a local-only
-  // hash comparison; see hashTextLocal).
-  // ---------------------------------------------------------------------------
 
-  // One `$away` span per continuous away interval, fed by two sensors:
-  // visibilitychange (tab switch / minimize) and window blur/focus, which
-  // catches switching to ANOTHER WINDOW while the tab stays visible — a case
-  // visibilitychange misses. A tab switch fires both sensors; recording one
-  // span whose data.reasons holds the union of sensors that fired during the
-  // interval keeps the distinction without emitting overlapping spans that
-  // every consumer would have to merge.
 
   private readonly _onIntegrityVisibilityChange = () => {
     this._setAwayReason("tab-hidden", document.visibilityState === "hidden");
@@ -1646,10 +1404,6 @@ export class EventTracker {
       });
       return;
     }
-    // Already away: a second sensor firing extends the row's reasons; the
-    // interval itself is unchanged. A sensor CLEARING while others still hold
-    // (e.g. focus returns to a hidden tab) is not removed — reasons record
-    // what fired during the interval, not the instantaneous state.
     const unseen = [...this._awayReasons].filter((reason) => !this._awaySpanSeenReasons.has(reason));
     if (unseen.length > 0) {
       for (const reason of unseen) {
@@ -1693,9 +1447,6 @@ export class EventTracker {
     };
     if (typeof text === "string") {
       data.length = text.length;
-      // "Did this paste originate from a copy on this same page?" — the signal
-      // that distinguishes internal shuffling from an external source. Hash
-      // comparison happens locally; the content never leaves the page.
       data.same_page_origin = this._lastCopyHash !== null && text !== "" && hashTextLocal(text) === this._lastCopyHash ? 1 : 0;
     }
     this._pushSystemEvent("$paste", data);
@@ -1724,8 +1475,6 @@ export class EventTracker {
 
   private readonly _onFullscreenChange = () => {
     const isFullscreen = document.fullscreenElement != null;
-    // Exit-only: entering fullscreen is the expected state for e.g. a
-    // fullscreen-required exam; LEAVING it is the signal.
     if (this._wasFullscreen && !isFullscreen) {
       this._pushSystemEvent("$fullscreen-exit", {
         url: window.location.href,
@@ -1736,8 +1485,6 @@ export class EventTracker {
   };
 
   private _setupIntegritySignals() {
-    // Registered BEFORE _setupPageHideListeners (see start()) so an $away
-    // open row enqueued here rides the same keepalive flush.
     document.addEventListener("visibilitychange", this._onIntegrityVisibilityChange);
     window.addEventListener("blur", this._onWindowBlur);
     window.addEventListener("focus", this._onWindowFocus);
@@ -1748,10 +1495,6 @@ export class EventTracker {
     window.addEventListener("beforeprint", this._onBeforePrint);
     document.addEventListener("fullscreenchange", this._onFullscreenChange);
     this._wasFullscreen = document.fullscreenElement != null;
-    // Reflect state that is already true at start. Focus is deliberately NOT
-    // probed here: document.hasFocus() is unreliable while a page is still
-    // loading, and a background-tab load is already covered by
-    // visibilityState — the first real blur/focus event syncs the sensor.
     this._setAwayReason("tab-hidden", document.visibilityState === "hidden");
     this._detachIntegrityListeners = () => {
       document.removeEventListener("visibilitychange", this._onIntegrityVisibilityChange);
@@ -1774,9 +1517,6 @@ export class EventTracker {
     this._offlineSpan = null;
   }
 
-  // Called on sign-out rotation: the old presence spans were inert-ified with
-  // the previous identity, so any state that STILL holds re-opens as a fresh
-  // span under the new segment/page.
   private _restartPresenceSpans() {
     this._awaySpan = null;
     this._offlineSpan = null;
@@ -1789,14 +1529,8 @@ export class EventTracker {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Unload / teardown
-  // ---------------------------------------------------------------------------
 
   private readonly _onPageHide = () => {
-    // pagehide = the page is going away (unload or bfcache entry): close the
-    // $page-view interval so time-on-page is correct, then flush keepalive. A
-    // bfcache restore starts a fresh span via pageshow.
     this._flushPendingKeystrokes();
     this._endPageViewSpan();
     this._endOpenPresenceSpans();
@@ -1804,8 +1538,6 @@ export class EventTracker {
   };
 
   private readonly _onVisibilityChangeFlush = () => {
-    // A hidden tab is the last reliable moment to ship on mobile (pagehide may
-    // never fire). The page may come back, so the $page-view span stays open.
     this._flushPendingKeystrokes();
     this._flushInBackground({ keepalive: true });
   };

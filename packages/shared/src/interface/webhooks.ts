@@ -15,10 +15,6 @@ export type WebhookEvent<S extends yup.Schema> = {
   },
 };
 
-// Every event that customers can subscribe to MUST be listed here: this array is the sole input to
-// `parseWebhookOpenAPI`, which generates `docs-mintlify/openapi/webhooks.json`. An event that is emitted but
-// missing from this list is undocumented and effectively invisible (see `project_permission.created` /
-// `project_permission.deleted`, which are emitted today and are not listed).
 export const webhookEvents = [
   userCreatedWebhookEvent,
   userUpdatedWebhookEvent,

@@ -182,10 +182,6 @@ export async function assertIssueAlertRecipients(tenancy: Tenancy, rule: IssueAl
   if (rule.action.type !== "email") return;
   const prisma = await getPrismaClientForTenancy(tenancy);
   if (rule.action.userIds !== undefined) {
-    // Explicit recipients are owner-team member IDs (dashboard collaborators),
-    // the only shape the dashboard picker stores and the only one send-time
-    // resolution executes. Anything else is rejected here so a rule can never
-    // be saved with recipients that delivery cannot resolve to an email.
     const userIds = [...rule.action.userIds];
     const ownerTeamEmails = await loadOwnerTeamMemberEmailsByUserId(tenancy);
     if (ownerTeamEmails == null) {
@@ -323,10 +319,6 @@ export async function replayIssueAlertDelivery(tenancy: Tenancy, deliveryId: str
   if (after === null) return null;
   return {
     delivery: await toIssueAlertDeliveryResponse(tenancy, after),
-    // The workflow replay helper performs the guarded failed/dropped -> enqueued
-    // transition and creates the durable replacement event in one transaction.
-    // Every non-replayed result is returned as the current delivery snapshot, so
-    // repeating a request cannot create another event while it is in flight.
     replayed: replay.status === "replayed",
   };
 }

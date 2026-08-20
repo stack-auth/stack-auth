@@ -9,14 +9,6 @@ import {
   type ServiceIdentity,
 } from "../service-identity";
 
-/**
- * Traces page URL state: inbox filters plus the currently viewed trace/event.
- *
- * Grid chrome is not involved here (the waterfall is not a DataGrid), but the
- * write path still uses `history.replaceState` so a later grid on this page
- * would not fight Next's cached search params. Defaults are omitted so a
- * freshly-opened page stays a clean URL.
- */
 
 export type TracePageUrlState = {
   hours: ObservabilityTimeRangeHours,

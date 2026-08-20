@@ -267,13 +267,6 @@ async function assertProjectUser(
   if (rows.length === 0) throw new IssueProductInputError(`${fieldName} is not a member of the authenticated branch`);
 }
 
-/**
- * Exported for `issue-lifecycle.ts`'s assignee validation, which must run
- * inside ITS locked transaction — any well-formed UUID would otherwise become
- * a dangling `assigneeUserId` that no route could ever have created on
- * purpose. Kept here rather than duplicated so "is this a project user?" is
- * answered by exactly one query shape.
- */
 export async function assertIssueProjectUserInTransaction(
   tx: PrismaClientTransaction,
   tenancy: Tenancy,
@@ -284,17 +277,6 @@ export async function assertIssueProjectUserInTransaction(
   await assertProjectUser(tx, tenancy, userId, fieldName, options);
 }
 
-/**
- * Retries `run` once when its transaction lost a unique-constraint race.
- *
- * The IssueOwner/IssueSubscription natural keys are enforced NULLS NOT
- * DISTINCT (migration 20260811000000_add_observability), so
- * two concurrent "first" mutations for the same subject now surface as one
- * winner and one P2002 loser instead of silently creating duplicates. A P2002
- * aborts the loser's whole interactive transaction, so recovery has to re-run
- * the transaction from the top — the fresh `findFirst` then sees the winner's
- * committed row and takes the update path, which is the idempotent outcome.
- */
 async function retryOnceOnUniqueConstraintRace<T>(run: () => Promise<T>): Promise<T> {
   try {
     return await run();
@@ -304,12 +286,6 @@ async function retryOnceOnUniqueConstraintRace<T>(run: () => Promise<T>): Promis
   }
 }
 
-/**
- * Issues belong to the Hexclave project owner team, not a Team row in this
- * customer tenancy. Looking the id up in `Team(tenancyId, teamId)` is the
- * identity bug that made the dashboard picker list every team the viewer is
- * in and then fail to persist the real owner.
- */
 function projectOwnerTeamId(tenancy: Tenancy): string | null {
   return getBillingTeamId(tenancy.project);
 }
@@ -360,15 +336,6 @@ async function appendActivityInTransaction(options: {
     },
     update: {},
   });
-  // A reused key must describe the SAME action, mirroring `addIssueComment`'s
-  // body check: without this, a client reusing a key with different inputs
-  // would still apply its (different) surrounding mutation while the audit
-  // trail silently kept the old record — exactly-once in the ledger, twice in
-  // reality. Throwing here rolls the surrounding transaction (and thus the
-  // conflicting mutation) back. `occurredAt` is deliberately NOT compared:
-  // retries of the same request may legitimately re-derive the server-side
-  // timestamp. `deepPlainEquals` rather than JSON.stringify because jsonb does
-  // not preserve object key order.
   if (row.type !== activityTypeToPrisma(options.type) || row.actorUserId !== options.actorUserId || !deepPlainEquals(row.data, options.data)) {
     throw new IssueProductInputError("idempotencyKey was already used for a different activity");
   }
@@ -429,8 +396,6 @@ export async function assignIssueToTeam(options: IssueProductScope & {
   if (ownerTeamId == null) {
     throw new IssueProductInputError("This project has no owner team");
   }
-  // Null means "stamp the owner team", not "unassign". An issue without a
-  // team is a missing identity, not a valid triage state.
   const teamId = options.teamId ?? ownerTeamId;
   assertProjectOwnerTeam(options.tenancy, teamId, "teamId");
   const changedAt = assertValidDate(options.changedAt ?? new Date(), "changedAt");
@@ -689,11 +654,6 @@ export async function setIssueBookmark(options: IssueProductScope & {
         changedAt: receiptDate(receipt.data.result_changed_at, "bookmark changedAt"),
       };
     }
-    // Atomic create-if-absent / delete-if-present, with `changed` derived from
-    // the affected-row count. A read-then-decide-then-write here would let two
-    // overlapping requests that observed the same pre-state race each other
-    // into a unique violation (create/create) or a P2025 (delete/delete)
-    // instead of both settling on the idempotent outcome.
     let changed: boolean;
     if (options.bookmarked) {
       const created = await tx.issueBookmark.createMany({

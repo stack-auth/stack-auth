@@ -76,12 +76,6 @@ async function readJsonOrThrow(response: Response, operation: string): Promise<u
   return await response.json();
 }
 
-/**
- * The dashboard's issue list has a small, URL-backed filter vocabulary. The
- * saved-view contract stores the same filters in the public-search shape so a
- * view can later be executed by another consumer without serializing grid
- * chrome or a cursor.
- */
 export function issueFiltersToSavedIssueSearchQuery(filters: IssueFilters): SavedIssueSearchQuery {
   const savedFilters: Record<string, string> = {
     record: "issue",
@@ -97,11 +91,6 @@ export function issueFiltersToSavedIssueSearchQuery(filters: IssueFilters): Save
   return { version: 1, filters: savedFilters };
 }
 
-/**
- * Applies only the saved filter document. The page owns URL serialization, so
- * its caller can merge this result into the current location without touching
- * the data-grid's sorting, column, and pagination parameters.
- */
 export function savedIssueSearchQueryToIssueFilters(query: SavedIssueSearchQuery): IssueFilters {
   const params = new URLSearchParams();
   const filters = query.filters;

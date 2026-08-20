@@ -23,11 +23,6 @@ export type AnalyticsPlanItemId =
 export type PlanItemDebit = {
   itemId: MeteredPlanItemId,
   quantity: number,
-  /**
-   * Stable identity for retryable ingestion. Both fields must describe the
-   * same logical debit on every retry; they become the stored row identity and
-   * timestamp instead of generating a new transaction.
-   */
   idempotency?: {
     key: string,
     createdAt: Date,
@@ -53,16 +48,6 @@ async function lockPlanMeteringCustomer(
   tenancyId: string,
   billingTeamId: string,
 ): Promise<void> {
-  // A refund/rollback must not expose temporary capacity that a concurrent
-  // debit can consume before Postgres persistence is durable. This lock is
-  // shared by debits and rollbacks across backend instances and remains held
-  // while Bulldozer and the source-of-truth row are changed.
-  //
-  // `pg_advisory_xact_lock` returns PostgreSQL's `void` pseudo-type. `$queryRaw`
-  // asks the Prisma driver adapter to decode that result set and fails with
-  // `UnsupportedNativeDataType void`. This is a command, not a row-producing
-  // query, so it must go through `$executeRaw` (same as saved-search-views and
-  // the email-queue claim lock).
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`plan-metering:${tenancyId}:${billingTeamId}`}, 0))`;
 }
 
@@ -101,11 +86,6 @@ async function getBillingContext(billingTeamId: string, itemIds: readonly Analyt
   return { tenancy, prisma };
 }
 
-/**
- * Reads all requested plan quantities from one Bulldozer snapshot. The public
- * item API fetches the same customer-wide snapshot once per item, which makes
- * mixed telemetry batches pay duplicate backend and Bulldozer round trips.
- */
 export async function getAnalyticsPlanItemQuantities(
   billingTeamId: string,
   itemIds: readonly AnalyticsPlanItemId[],
@@ -133,20 +113,12 @@ export async function getAnalyticsPlanItemQuantities(
   try {
     return new Map(await newRead);
   } finally {
-    // Coalesce only genuinely overlapping dashboard queries. Deleting the
-    // settled promise avoids stale plan data after a subscription change.
     if (inFlightPlanQuantityReads.get(key) === newRead) {
       inFlightPlanQuantityReads.delete(key);
     }
   }
 }
 
-/**
- * Records all accepted telemetry debits in one Postgres transaction after
- * checking one customer-wide quantity snapshot. This preserves fail-closed
- * limits while preventing an exhausted span item from partially charging the
- * event half of a mixed batch.
- */
 export async function tryDecreasePlanItemQuantities(
   billingTeamId: string,
   debits: readonly PlanItemDebit[],
@@ -200,10 +172,6 @@ export async function tryDecreasePlanItemQuantities(
   return await retryTransaction(prisma, async (tx) => {
     await lockPlanMeteringCustomer(tx, tenancy.id, billingTeamId);
 
-    // Bulldozer owns the current balance. Its conditional batch endpoint
-    // applies all rows to one candidate snapshot and commits or rejects under
-    // its global write lock. The Postgres advisory lock extends serialization
-    // through source-of-truth persistence and compensating rollback.
     const debitResult = await bulldozerTryDecreaseItemQuantityChanges(changes);
     if (debitResult.insufficientItemId != null) {
       const insufficientDebit = nonZeroDebits.find(({ itemId }) => itemId === debitResult.insufficientItemId);
@@ -218,8 +186,6 @@ export async function tryDecreasePlanItemQuantities(
 
     const persistResult = await Result.fromPromise(tx.itemQuantityChange.createMany({
       data: changes,
-      // Fixed row ids make transaction retries safe even if the client receives
-      // an ambiguous commit result.
       skipDuplicates: true,
     }));
     if (persistResult.status === "ok") return { insufficientItemId: null };
@@ -236,7 +202,6 @@ export async function tryDecreasePlanItemQuantities(
   });
 }
 
-/** Removes a retry-stable debit instead of publishing a temporary credit. */
 export async function rollbackPlanItemDebits(
   billingTeamId: string,
   debits: readonly PlanItemDebit[],

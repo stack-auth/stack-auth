@@ -138,12 +138,6 @@ const predicateSchema = yup.object({
   windowSeconds: yup.number().optional(),
 }).defined();
 
-/**
- * The backend route currently uses `yupMixed()` for the nested rule contract.
- * Keep a dashboard boundary validator here for the fields the surface reads;
- * malformed or unexpectedly shaped responses fail visibly instead of turning
- * into a plausible empty rules list.
- */
 const issueAlertRuleSchema = yup.object({
   schemaVersion: yup.number().oneOf([1]).defined(),
   id: yup.string().defined(),
@@ -212,8 +206,6 @@ const issueAlertDeliveriesResponseSchema = yup.object({
 
 async function readJsonOrThrow(response: Response, operation: string): Promise<unknown> {
   if (!response.ok) {
-    // The dashboard should not render arbitrary upstream 4xx/5xx bodies. The
-    // status is enough to tell the user that the action can be retried.
     throw new HexclaveAssertionError(`${operation} failed with status ${response.status}`);
   }
   return await response.json();

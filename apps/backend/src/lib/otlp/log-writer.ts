@@ -7,11 +7,6 @@ import { attributesJson, dateFromUnixNano, productAttributes, scrubOtlpValue, st
 import type { CanonicalOtlpLogRecord } from "./logs";
 import { writeTelemetryDestinations, type TelemetryWriteDestination } from "@/lib/telemetry/write-plan";
 
-/**
- * Log records carry the server-resolved rolling replay context. Keep this
- * explicit at the log-writer boundary so callers compiling against an older
- * trace-context declaration still see the log-specific field.
- */
 type OtlpLogTenantContext = OtlpTenantContext & {
   sessionReplayId?: string | null,
 };
@@ -27,11 +22,6 @@ function severityLevel(number: number, text: string): string {
   return "";
 }
 
-// Mirrors the name half of getHexclaveOtlpLogContractError: a product event is
-// a known analytics system event ($click, $form-submit, …) or a valid custom
-// name. Origin gating already happened at the route's contract check, so the
-// writer only classifies. Keep the two in lockstep — a name the contract
-// accepts but this rejects silently misfiles the record as a $log line.
 function isProductEventName(eventName: string): boolean {
   return isAnalyticsSystemEvent(eventName) || CUSTOM_TELEMETRY_NAME_RE.test(eventName);
 }
@@ -80,14 +70,8 @@ function stableTenantIdentity(tenant: OtlpLogTenantContext): Pick<OtlpTenantCont
 
 function getOtlpLogIdentity(log: CanonicalOtlpLogRecord, ordinal: number): string {
   if (log.errorEnvelope?.identityError === null && log.errorEnvelope.eventId !== null) {
-    // Event IDs are the client-owned identity. The rest of the payload may be
-    // enriched by a retrying producer without creating a second occurrence.
     return `event:${log.errorEnvelope.eventId}`;
   }
-  // Vanilla OTLP records and `$error` records without an event ID have no
-  // natural identity, so derive a deterministic one from the record content;
-  // the ordinal keeps equal records in one batch distinct. This string is only
-  // hashed into the batch id / deduplication token, never persisted verbatim.
   return `derived:${ordinal}:${JSON.stringify({
     ...log,
     body: log.body === null ? null : taggedValue(log.body),
@@ -155,8 +139,6 @@ function errorProjection(log: CanonicalOtlpLogRecord, tenant: OtlpLogTenantConte
   return {
     columns: {
       ...normalized.columns,
-      // The grouping/materialization adapter still consumes the flat error
-      // fields, but the occurrence row must retain the SDK event identity.
       occurrence_id: getOtlpLogOccurrenceId(log, batchId, ordinal),
     },
     issueInput: {
@@ -230,20 +212,9 @@ export type OtlpLogBillingDebit = {
   eventAt: Date,
 };
 
-/**
- * Metering inputs for one accepted OTLP logs request. Every accepted projected
- * record is an analytics event (`$log`, `$error`, or a product event), so OTLP
- * must not become a quota bypass for any of them. Keyed by occurrence id so an
- * OTLP exporter retry (same content →
- * same batch id → same occurrence ids) collapses onto the same metering rows
- * instead of double-debiting.
- */
 export function getOtlpLogBillingDebits(logs: CanonicalOtlpLogRecord[], tenant: OtlpLogTenantContext): OtlpLogBillingDebit[] {
   const batchId = getOtlpLogsBatchId(logs, tenant);
   return logs.flatMap((log, ordinal) => {
-    // Billing-wise only the projected event TYPE matters, so the (expensive)
-    // error grouping projection is not computed here: a `$error`-classified
-    // record and the `$log` fallback carry the same billing item.
     const eventNano = log.timeUnixNano === "0" ? log.observedTimeUnixNano : log.timeUnixNano;
     return [{
       occurrenceId: getOtlpLogOccurrenceId(log, batchId, ordinal),

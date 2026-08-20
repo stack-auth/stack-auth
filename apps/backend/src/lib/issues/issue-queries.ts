@@ -15,45 +15,12 @@ import {
 } from "@hexclave/shared/dist/interface/admin-issues";
 import { Prisma } from "@/generated/prisma/client";
 
-/**
- * Reads for the Issues list and detail.
- *
- * ── Why the backend does the join ─────────────────────────────────────────
- * Issue data lives in two stores by design: Postgres owns mutable lifecycle and
- * LIFETIME counters, ClickHouse owns WINDOWED occurrence statistics. Neither
- * can answer a list query alone.
- *
- * The dashboard's usual telemetry path (`POST /analytics/query`) is the wrong
- * tool here: it exists to run CUSTOMER-authored SQL as `limited_user` under row
- * policies, it ships the query text to the browser, it cannot see Postgres, and
- * it caps at 10k rows. This module instead uses the ClickHouse ADMIN client
- * with an explicit `project_id`/`branch_id` predicate derived from the
- * authenticated tenancy — the same trust model `internal/metrics` already uses.
- * Tenant isolation therefore comes from this file, not from a row policy, which
- * is why every query below binds both ids and why there is an E2E test asserting
- * one project cannot read another's issues.
- *
- * ── One plan, Postgres-first ──────────────────────────────────────────────
- * An earlier design ranked ClickHouse hashes BEFORE mapping them to issues and
- * applying status. That is wrong in four separate ways: merged issues consume
- * several slots, resolved hashes crowd out unresolved ones, several hashes
- * collapse to fewer rows than a page, and unique-user counts get SUMMED across
- * hashes when `uniq` states must be MERGED (a user active under two hashes
- * would count twice).
- *
- * So: Postgres selects and orders the candidates (it owns status), ClickHouse
- * supplies the metrics for exactly those candidates' hashes. For the two
- * window-scoped sorts the candidate set is narrowed by status first and then
- * ranked in ClickHouse, with an explicit cap and an `approximate` flag rather
- * than a silent truncation.
- */
 
 export type IssueListFilters = {
   hours: number,
   status: IssueStatus | "all",
   serviceName: string | null,
   environment: string | null,
-  /** Occurrence-scoped, so it can only be applied in ClickHouse. */
   handled: boolean | null,
   search: string | null,
   sort: IssueListSortField,
@@ -113,11 +80,6 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-/**
- * Derived at read time, never stored: an issue that is "new" inside a 24h
- * window is "ongoing" inside a 30d one, so persisting it would make the value
- * depend on whoever looked last.
- */
 export function deriveSubstatus(
   row: { regressedAt: Date | null, firstSeenAt: Date },
   rangeStart: Date,
@@ -127,16 +89,6 @@ export function deriveSubstatus(
   return "ongoing";
 }
 
-/**
- * An issue is treated as unresolved once its snooze has lapsed, even before the
- * next occurrence arrives to flip the stored column.
- *
- * The stored flip happens lazily, inside the ingest `UPDATE` (see
- * `issue-store.ts`) — deliberately, because an ignored issue that never recurs
- * *should* stay ignored, and a cron that woke them all up would be wrong. That
- * leaves a window where the stored status says IGNORED but the user's intent
- * has expired, so the read path compensates.
- */
 export function effectiveStatus(row: Pick<IssueRow, "status">, ignoredUntil: Date | null, now: Date): IssueStatus {
   if (row.status === "IGNORED" && ignoredUntil !== null && ignoredUntil < now) return "unresolved";
   if (row.status === "RESOLVED") return "resolved";
@@ -145,33 +97,16 @@ export function effectiveStatus(row: Pick<IssueRow, "status">, ignoredUntil: Dat
 }
 
 export type IssueListCursor = {
-  /** The value of whichever column the ordering used (firstSeenAt or lastSeenAt). */
   sortValueMillis: number,
   id: string,
   sort: IssueListSortField,
   sortDir: CursorDirection,
 };
 
-/**
- * Shared by the list and the detail route so the two cannot disagree about the
- * same issue. Both are window-relative: a 30-day-old regression is `ongoing` in
- * a 24h view and `regressed` in a 30d one, and a detail page that hardcoded its
- * own window would contradict the row the user clicked to get there.
- */
 export function issueRangeStart(hours: number, now: Date): Date {
   return new Date(now.getTime() - hours * 60 * 60 * 1000);
 }
 
-/**
- * The rollup's `bucket_start` is hour-truncated, so a range filter must align
- * DOWN to the hour before comparing. Comparing against a raw wall-clock
- * `rangeStart` (e.g. "now minus 24h" at 12:30) silently drops the whole bucket
- * that contains it — up to an hour of genuinely in-window occurrences vanish
- * from every windowed count. Aligning down instead admits up to an hour of
- * pre-window occurrences, which is the lesser error: a "last 24h" number that
- * includes 24.5h is approximately right, one that quietly loses the newestmost
- * hour's worth of a partial bucket is misleading in the direction users act on.
- */
 export function rollupRangeStartSeconds(rangeStart: Date): number {
   return Math.floor(rangeStart.getTime() / 3_600_000) * 3600;
 }
@@ -204,8 +139,6 @@ export function decodeIssueCursor(
 
     return { sortValueMillis, id, sort, sortDir };
   } catch {
-    // A malformed cursor is a client bug, not a server error. Callers must
-    // treat null as invalid input (400), never as "start at page one".
     return null;
   }
 }
@@ -221,12 +154,6 @@ export function requireIssueListCursor(
   return cursor;
 }
 
-/**
- * `handled` is a property of the ERROR, not of a time window — every occurrence
- * of one grouped error shares a mechanism — so it is persisted on the Issue row
- * and filtered here, beside status, rather than requiring a second pass over
- * ClickHouse occurrences.
- */
 function handledFilterSql(handled: boolean | null): Prisma.Sql {
   if (handled === null) return Prisma.sql``;
   return Prisma.sql`AND i."handled" = ${handled}`;
@@ -234,9 +161,6 @@ function handledFilterSql(handled: boolean | null): Prisma.Sql {
 
 function searchFilterSql(search: string | null): Prisma.Sql {
   if (search === null || search.trim() === "") return Prisma.sql``;
-  // Deliberately a prefix/substring match over the denormalized display
-  // fields rather than full-text search: these three columns are what the
-  // list renders, so matching anything else would highlight nothing.
   return Prisma.sql`AND (i."type" ILIKE ${`%${search}%`} OR i."value" ILIKE ${`%${search}%`} OR i."culprit" ILIKE ${`%${search}%`})`;
 }
 
@@ -252,14 +176,6 @@ function occurrenceHashFilterSql(matchingHashes: readonly string[] | null): Pris
   )`;
 }
 
-/**
- * Filters on the EFFECTIVE status, not the stored one.
- *
- * An issue whose `ignoredUntil` has lapsed is rendered as unresolved by
- * `effectiveStatus` and counted as unresolved by the counts query, so filtering
- * on the raw column would make `?status=unresolved` fail to return a row the
- * same response describes as unresolved.
- */
 function statusFilterSql(status: IssueStatus | "all", now: Date): Prisma.Sql {
   if (status === "all") return Prisma.sql``;
   const lapsedSnooze = Prisma.sql`(i."status" = 'IGNORED' AND i."ignoredUntil" IS NOT NULL AND i."ignoredUntil" < ${now}::timestamptz)`;
@@ -272,14 +188,6 @@ function statusFilterSql(status: IssueStatus | "all", now: Date): Prisma.Sql {
   return Prisma.sql`AND i."status" = ${status.toUpperCase()}::"IssueStatus"`;
 }
 
-/**
- * Loads candidate issues plus their owned hashes in ONE query.
- *
- * The `hashes` array is aggregated in the same statement rather than fetched
- * per issue — a second round trip per row is exactly the N+1 this whole design
- * exists to avoid, and the dashboard needs those hashes anyway to batch its
- * sparkline query for the entire page.
- */
 async function loadCandidateIssues(
   prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
   tenancyId: string,
@@ -300,9 +208,6 @@ async function loadCandidateIssues(
       ? Prisma.sql`AND (${filters.sort === "first_seen" ? Prisma.sql`i."firstSeenAt"` : Prisma.sql`i."lastSeenAt"`}, i."id") > (${new Date(cursor.sortValueMillis)}::timestamptz, ${cursor.id}::uuid)`
       : Prisma.sql`AND (${filters.sort === "first_seen" ? Prisma.sql`i."firstSeenAt"` : Prisma.sql`i."lastSeenAt"`}, i."id") < (${new Date(cursor.sortValueMillis)}::timestamptz, ${cursor.id}::uuid)`;
 
-  // The cursor must be keyed on the SAME column the rows are ordered by, or the
-  // next page silently skips or repeats rows. `sortColumn` is chosen from a
-  // closed set rather than interpolated from the request.
   const sortColumn = filters.sort === "first_seen" ? Prisma.sql`i."firstSeenAt"` : Prisma.sql`i."lastSeenAt"`;
   const descending = filters.sortDir !== "asc";
   const orderSql = descending
@@ -369,13 +274,6 @@ async function loadMatchingHashes(
   return rows.map((row) => row.issueHash);
 }
 
-/**
- * Window-scoped stats for a known set of hashes, in one ClickHouse query.
- *
- * `uniqMerge(users_state)` — never `sum` of per-hash user counts. The rollup
- * stores a `uniq` aggregate STATE precisely so several hashes belonging to one
- * issue can be combined without double-counting a user who appeared under both.
- */
 async function loadWindowStats(
   clickhouse: ClickHouseClient,
   projectId: string,
@@ -431,9 +329,6 @@ async function loadWindowStats(
 }
 
 function toListItem(row: IssueRow, stats: Map<string, WindowStats>, rangeStart: Date, now: Date, ignoredUntil: Date | null): IssueListItem {
-  // The ClickHouse query merges `users_state` across every hash owned by this
-  // issue. Taking the old per-hash max was only a lower bound and disagreed
-  // with the detail view whenever two hashes had disjoint users.
   const stat = stats.get(row.id);
   const occurrences = stat?.occurrences ?? 0;
   const users = stat?.users ?? 0;
@@ -463,14 +358,6 @@ function toListItem(row: IssueRow, stats: Map<string, WindowStats>, rangeStart: 
   };
 }
 
-/**
- * Window-scoped occurrence/user counts for ONE issue's owned hashes.
- *
- * The detail view needs the same numbers the list column shows, so both go
- * through the rollup rather than the list computing them and the detail page
- * inventing its own. `uniqMerge` — never a sum — because a user who appeared
- * under two of the issue's hashes must count once.
- */
 export async function loadIssueWindowStats(options: {
   tenancy: Tenancy,
   hashes: readonly string[],
@@ -533,17 +420,8 @@ type OccurrenceRow = {
   event_at: string,
   message: string,
   level: string,
-  // ClickHouse returns the `JSON`-typed column already parsed under
-  // JSONEachRow, so this is an object rather than a string to re-parse.
   data: Record<string, unknown>,
-  /** Bounded canonical ErrorEnvelope JSON stored as one stable read-model column. */
   error_envelope: string,
-  /**
-   * Ordered primary/secondary grouping evidence, written on every `$error`
-   * occurrence at ingest. Consumers still parse it defensively (bounded size,
-   * `[]` on malformed JSON) because it round-trips through a ClickHouse string
-   * column on a public read path.
-   */
   issue_grouping_provenance: string,
   error_frames: string,
   trace_id: string | null,
@@ -556,19 +434,6 @@ type OccurrenceRow = {
   deployment_environment_name: string | null,
 };
 
-/**
- * One occurrence of an issue, paginated by `(event_at, occurrence_id)`.
- *
- * The tie-break on `occurrence_id` is not decorative: a batch of 500 errors
- * from one page load can share a millisecond, and a cursor on `event_at` alone
- * would either skip or repeat those rows. `occurrence_id` is deterministic
- * (`sha256(batch_id ‖ ordinal)`), so the ordering is stable across retries too.
- *
- * Occurrences are resolved by the issue's OWNED hashes against the scalar
- * `issue_hash` column — never `hasAny(issue_hashes, …)`. `issue_hashes` holds
- * alias variants, and matching on it would make one occurrence belong to two
- * issues after an unmerge.
- */
 export async function loadOccurrence(options: {
   tenancy: Tenancy,
   hashes: readonly string[],
@@ -586,9 +451,6 @@ export async function loadOccurrence(options: {
       : "AND (event_at, occurrence_id) > ({cursorAt:DateTime64(3)}, {cursorId:String})";
   const order = direction === "older" ? "DESC" : "ASC";
 
-  // `message` (not `body`): for `$error` rows the human-readable message is
-  // promoted server-side into the `message` column; `body` holds the OTLP
-  // AnyValue, which is the JSON null literal for everything that isn't `$log`.
   const resultSet = await clickhouse.query({
     query: `
       SELECT occurrence_id, event_at, message, level, data, error_envelope,
@@ -629,16 +491,6 @@ export async function loadOccurrence(options: {
   const positionCursor = encodeOccurrenceCursor(position);
   return {
     occurrence,
-    // The second row proves there is a next row in the requested direction.
-    //
-    // BOTH cursors anchor on the RETURNED occurrence's position, never on the
-    // request's input cursor: the comparisons above are strict, so an opposite
-    // cursor still holding the input anchor would skip the row the caller just
-    // navigated away from (older from C lands on P; "newer" must be `> P`,
-    // which returns C — `> C` would jump past it). The opposite direction is
-    // known non-terminal whenever an input cursor exists, because the row that
-    // cursor pointed past is itself the opposite neighbor; only the initial,
-    // cursorless page is terminal on that side.
     newerCursor: direction === "newer"
       ? hasAnotherInDirection ? positionCursor : null
       : cursor === null ? null : positionCursor,
@@ -682,20 +534,12 @@ export async function listIssues(options: {
   const isWindowRanked = rankedSort !== null;
   const matchingHashes = await loadMatchingHashes(clickhouse, tenancy.project.id, tenancy.branchId, rangeStart, filters);
 
-  // Window-scoped sorts must be ranked by ClickHouse, so the candidate set is
-  // widened (status-filtered but not paginated) and capped. Beyond the cap the
-  // ranking is over a bounded subset, which the response admits via
-  // `approximate` — "the top N issues" and "a correct ranking over a declared
-  // candidate set" are different claims, and only one of them is honest.
   const candidateLimit = isWindowRanked ? ISSUE_RANK_CANDIDATE_CAP : limit + 1;
   const candidates = await loadCandidateIssues(prisma, tenancy.id, filters, rangeStart, now, candidateLimit, matchingHashes);
   const approximate = isWindowRanked && candidates.length >= ISSUE_RANK_CANDIDATE_CAP;
 
   const stats = await loadWindowStats(clickhouse, tenancy.project.id, tenancy.branchId, candidates, rangeStart, filters);
 
-  // The CASE mirrors `effectiveStatus` below. Counting the raw stored column
-  // instead would make the tab badge say "ignored: 1" for an issue the list
-  // itself renders as unresolved, which reads as a bug to anyone looking at it.
   const counts = await prisma.$replica().$queryRaw<{ status: string, count: bigint }[]>(Prisma.sql`
     SELECT
       CASE

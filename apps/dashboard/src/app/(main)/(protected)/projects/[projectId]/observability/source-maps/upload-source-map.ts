@@ -4,13 +4,6 @@ const SOURCE_MAP_EXTENSION_PATTERN = /\.map$/i;
 const URL_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//u;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
 const DEBUG_ID_IDENTIFIER_PREFIX = "hexclave-dbid-";
-// Matches only a COMPLETE injected identifier (prefix + UUID), mirroring the
-// CLI's detection in packages/cli/src/lib/source-maps.ts. A bare prefix
-// substring check would falsely reject a legitimate bundle that merely
-// mentions the literal "hexclave-dbid-" (e.g. tooling that reads
-// `_hexclaveDebugIdIdentifier`). The identifier check still matters alongside
-// the snippet marker: re-minifying an injected bundle strips the marker
-// comments but keeps the identifier string literal.
 const INJECTED_DEBUG_ID_IDENTIFIER_PATTERN = new RegExp(`${DEBUG_ID_IDENTIFIER_PREFIX}[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`);
 const SNIPPET_START_MARKER = "// hexclave:debug-id-injection:start";
 const SNIPPET_END_MARKER = "// hexclave:debug-id-injection:end";
@@ -138,20 +131,6 @@ export async function prepareSourceMapUpload(input: {
 
 export type PresignedArtifactPutResult = "uploaded" | "already-uploaded";
 
-/**
- * PUTs one artifact to a backend-presigned URL.
- *
- * The backend signs `If-None-Match: *` into these URLs (see
- * apps/backend/src/s3.tsx createPresignedUploadUrl) so a published artifact
- * can never be overwritten. Two consequences for this client:
- * - the header MUST be sent: it is part of the presigned signature, so
- *   omitting it fails signature validation (and on URLs signed before that
- *   change, sending it is harmless — unsigned extra headers are ignored by
- *   SigV4 while S3/R2 still honor the conditional-write semantics);
- * - a 412 Precondition Failed means the content-addressed object already
- *   exists, which is success for this flow, not an error — the registration
- *   and finalize steps verify the digests either way.
- */
 export async function putPresignedArtifact(
   url: string,
   body: Blob,

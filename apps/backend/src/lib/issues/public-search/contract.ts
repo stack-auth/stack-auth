@@ -59,11 +59,6 @@ export type PublicSearchTag = {
 
 export type PublicSearchIssueStatus = "unresolved" | "resolved" | "ignored";
 
-/**
- * This is intentionally a flat, closed projection. In particular, it does not
- * contain the stored error envelope, user/request/context fields, stack text,
- * attachment bytes, or attachment download URLs.
- */
 export type PublicSearchRecord = {
   record_type: PublicSearchRecordType,
   issue_id: string | null,
@@ -321,11 +316,6 @@ function parseFacets(raw: string | undefined, record: PublicSearchRecordType): s
     const dynamicPrefix = ["tag:", "context:", "property:"].find((prefix) => facet.startsWith(prefix));
     if (dynamicPrefix !== undefined) {
       const key = facet.slice(dynamicPrefix.length).trim();
-      // The COMPLETE facet identifier (prefix + key) is bounded, not only the
-      // key: the identifier becomes the response's `facets` record key, whose
-      // schema caps at 128 characters — a key that fits on its own but not
-      // with its prefix would pass request validation and then fail response
-      // validation, turning a valid-looking search into a server error.
       if (key === "") return badRequest(`${dynamicPrefix} facets require a non-empty key`);
       if (facet.length > 128) return badRequest("dynamic facet identifiers must be at most 128 characters including their prefix");
       if (record === "issue") return badRequest(`${facet.split(":", 1)[0]} facets are only supported for event and occurrence records`);

@@ -48,7 +48,7 @@ describe("createLogger", () => {
         return "ok";
       },
     });
-    logger.info("é".repeat(10_000)); // 2 bytes per char
+    logger.info("é".repeat(10_000));
     expect(new TextEncoder().encode(emitted[0].message).length).toBeLessThanOrEqual(8_192);
     expect(emitted[0].message.endsWith("é")).toBe(true);
   });
@@ -79,7 +79,6 @@ describe("createLogger", () => {
         return "ok";
       },
     });
-    // A logging API must never throw on bad input; the intent to log is clear.
     logger.info({ oops: true } as unknown as string);
     expect(emitted).toHaveLength(1);
     expect(emitted[0].message).toContain("oops");
@@ -121,7 +120,6 @@ describe("installConsoleCapture", () => {
     expect(calls[0].data).toEqual({ console_level: "warn" });
 
     uninstall();
-    // After uninstall, further calls don't mirror.
     console.warn("after uninstall");
     expect(calls).toHaveLength(1);
     originalSpy.mockRestore();
@@ -140,7 +138,7 @@ describe("installConsoleCapture", () => {
     const uninstall = installConsoleCapture({ levels: ["warn"], logger, projectId: "internal", serviceName: "dashboard" });
 
     console.warn("Hexclave analytics: something internal");
-    expect(originalSpy).toHaveBeenCalledTimes(1); // original always runs
+    expect(originalSpy).toHaveBeenCalledTimes(1);
     expect(emitted).toHaveLength(0);
 
     uninstall();
@@ -152,8 +150,6 @@ describe("installConsoleCapture", () => {
     const logger = createLogger({
       emit: () => {
         emits += 1;
-        // A sink that (indirectly) writes to the captured console method —
-        // the re-entrancy guard must stop the mirror-of-the-mirror.
         console.log("nested output");
         return "ok";
       },
@@ -163,7 +159,7 @@ describe("installConsoleCapture", () => {
 
     console.log("outer");
     expect(emits).toBe(1);
-    expect(originalSpy).toHaveBeenCalledTimes(2); // outer + nested both reach the original
+    expect(originalSpy).toHaveBeenCalledTimes(2);
 
     uninstall();
     originalSpy.mockRestore();
@@ -185,7 +181,7 @@ describe("installConsoleCapture", () => {
     expect(emitted[0].message).not.toContain("abc123");
     expect(emitted[0].message).not.toContain("sk_live_1");
     expect(emitted[0].message).toContain("[redacted]");
-    expect(emitted[0].message).toContain("json"); // non-sensitive values survive
+    expect(emitted[0].message).toContain("json");
 
     uninstall();
     originalSpy.mockRestore();
@@ -213,7 +209,6 @@ describe("installConsoleCapture", () => {
     console.error("checkout blew up", error);
     expect(emitted).toHaveLength(1);
     expect(emitted[0].data?.error_name).toBe("Error");
-    // Identical inputs ⇒ identical hash as the $error capture path would compute.
     expect(emitted[0].data?.error_fingerprint).toBe(computeErrorFingerprint("Error", error.message, error.stack ?? null));
     expect(captured).toEqual([error]);
 
@@ -235,11 +230,9 @@ describe("installConsoleCapture", () => {
       const uninstall = installConsoleCapture({ levels: ["warn"], logger, projectId: "internal", serviceName: "dashboard" });
 
       for (let i = 0; i < 150; i++) console.warn(`spam ${i}`);
-      // 100-token burst + exactly one rate-limited notice.
       const rateLimited = emitted.filter((item) => item.data?.rate_limited === true);
       expect(rateLimited).toHaveLength(1);
       expect(emitted.length).toBe(101);
-      // Original console output is NEVER rate limited.
       expect(originalSpy).toHaveBeenCalledTimes(150);
 
       uninstall();
@@ -332,7 +325,6 @@ describe("installConsoleCapture", () => {
     expect(first).toEqual([]);
     expect(replacement.map((item) => item.message)).toEqual(["new module owns the sink"]);
 
-    // Disposing the stale module must not remove the replacement's sink.
     uninstallFirst();
     console.error("replacement remains installed");
     expect(replacement.map((item) => item.message)).toEqual([
@@ -344,6 +336,3 @@ describe("installConsoleCapture", () => {
     originalErrorSpy.mockRestore();
   });
 });
-
-// ---------------------------------------------------------------------------
-// Tracker integration: $log / $error on the client event path

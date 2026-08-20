@@ -21,12 +21,6 @@ function compareEdges(left: GraphEdge, right: GraphEdge): number {
     || stringCompare(left.to, right.to);
 }
 
-/**
- * Dense navigation data is a long-tail graph. Rendering every transition gives
- * rare edges the same visual cost as the routes that explain most navigation.
- * The overview keeps a deterministic, traffic-weighted backbone and retains
- * secondary relationships between those visible pages for focus-on-demand.
- */
 export function buildPathsGraphPresentation(
   nodes: readonly GraphNode[],
   allEdges: readonly GraphEdge[],

@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-// Keep management-route tests at the request-contract boundary. Importing the
-// full backend request stack would initialize unrelated server lifecycle code.
 vi.mock("@/route-handlers/smart-route-handler", () => ({
   createSmartRouteHandler: (...args: readonly unknown[]) => {
     const definition = args.at(-1);

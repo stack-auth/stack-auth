@@ -1,11 +1,3 @@
-/**
- * Shared identity for the observability lab's release + source-map fixture.
- *
- * The SDK stamps `telemetry.resource.service.version` onto every `$error`.
- * Symbolication looks up artifacts by that exact release plus the debug ID
- * the injected snippet registers, so these strings must stay in lockstep
- * across the Hexclave app constructor, the upload route, and the served bundle.
- */
 export const OBSERVABILITY_DEMO_RELEASE = "observability-demo@1.0.0";
 export const OBSERVABILITY_DEMO_ENVIRONMENT = "development";
 export const OBSERVABILITY_DEMO_CODE_FILE = "error-tracking-demo/symbolicated/demo-charge.min.js";

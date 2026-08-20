@@ -135,10 +135,6 @@ it("accepts an authenticated Sentry envelope and returns itemized outcomes", asy
     rawContentType: "application/x-sentry-envelope",
   });
   expect(retry.status).toBe(200);
-  // A retry of the identical envelope must be treated as the same delivery end
-  // to end: the batch id is derived from the envelope's event id, so ClickHouse
-  // and the client-report ledger dedupe on it, and the retry reports the same
-  // counts instead of double-counting events or client reports.
   expect(retry.body).toMatchObject({
     batch_id: response.body.batch_id,
     inserted: 1,
@@ -149,10 +145,6 @@ it("accepts an authenticated Sentry envelope and returns itemized outcomes", asy
     },
   });
 
-  // The response is deterministic even if the retry writes a second row. Query
-  // the persisted view by the deterministic envelope batch id so this test
-  // proves ClickHouse deduplication, rather than only comparing recomputed
-  // response fields.
   const persistedErrors = await queryEnvelopeErrorsUntil(response.body.batch_id);
   expect(persistedErrors.status).toBe(200);
   expect(persistedErrors.body.result).toHaveLength(1);

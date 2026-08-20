@@ -1,22 +1,7 @@
-/**
- * Alert destinations are references, not provider credentials. Keeping only an
- * opaque id in the rule prevents secrets and arbitrary URLs from entering
- * the durable rule or Workflows payload.
- */
 
 export type IssueAlertEmailAction = {
   type: "email",
-  /**
-   * Explicit recipients: owner-team member IDs (dashboard collaborators), the
-   * only shape the dashboard picker stores and rule validation accepts.
-   * Send-time resolution turns them into primary emails on the owner team.
-   */
   userIds?: readonly string[],
-  /**
-   * Sentry-style routing intent. Ingestion hydrates this against the current
-   * tenant/project/branch/issue snapshot and carries only the bounded result
-   * across the durable Workflows boundary.
-   */
   routing?: IssueAlertEmailRouting,
   subject: string,
   html: string,
@@ -38,18 +23,8 @@ export type IssueAlertAction = IssueAlertEmailAction | IssueAlertWebhookAction;
 
 const MAX_IDENTIFIER_BYTES = 256;
 const MAX_RECIPIENTS = 64;
-// Must not exceed `ISSUE_ALERT_WORKFLOW_MAX_STRING_BYTES` (8 KiB) in
-// `@/lib/workflows/issue-alerts/contract`: every action string crosses the
-// durable workflow boundary through a scrubber that silently TRUNCATES longer
-// strings, so accepting more here would let a subject/html template pass rule
-// validation and then arrive cut off in the actual email. Stated as a literal
-// rather than imported because this module is the lower-level one — the
-// workflow contract imports from `issue-alerts`, not the other way around.
 const MAX_TEXT_BYTES = 8 * 1024;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
-// HTML bodies are authored in a textarea, so tab/LF/CR have to survive. Other
-// control characters still fail closed — they are not valid in email HTML and
-// would also be rejected by the workflow payload scrubber's neighboring fields.
 const HTML_CONTROL_CHARACTER_PATTERN = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 const SAFE_INTEGRATION_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,255}$/u;
 const TEXT_ENCODER = new TextEncoder();
@@ -96,7 +71,6 @@ function parseEmailRouting(value: unknown): IssueAlertEmailRouting | null {
   return null;
 }
 
-/** Parse and normalize the only actions allowed to cross the durable boundary. */
 export function parseIssueAlertAction(value: unknown): IssueAlertAction | null {
   if (!isObject(value) || typeof value.type !== "string") return null;
 
@@ -119,9 +93,6 @@ export function parseIssueAlertAction(value: unknown): IssueAlertAction | null {
     };
   }
 
-  // Webhook is a type on IssueAlertAction for stored/in-flight payloads, but
-  // there is no executor. Reject here so a rule that can never fire cannot
-  // be saved or loaded into the evaluator.
   return null;
 }
 
@@ -133,7 +104,6 @@ export type IssueAlertDestinationExecution =
   | { status: "supported", destination: "email", routing: "users" | "team" | "issue_owners" }
   | { status: "unsupported", destination: "webhook", reason: "provider_not_configured" };
 
-/** Describe the configured execution path without attempting a provider call. */
 export function describeIssueAlertDestination(action: IssueAlertAction): IssueAlertDestinationExecution {
   if (action.type === "webhook") return { status: "unsupported", destination: "webhook", reason: "provider_not_configured" };
   if (action.userIds !== undefined) return { status: "supported", destination: "email", routing: "users" };

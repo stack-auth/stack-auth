@@ -74,9 +74,6 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ auth, body }) {
     assertIssueActionsEnabled(auth.tenancy);
-    // Keep this guard even though the request schema already validates it. The
-    // lifecycle helper is also exported for server-side callers and must not
-    // gain a looser mutation contract than the HTTP route.
     assertBulkIssueIdentifiers(body.issue_ids);
     const status = parseBulkIssueStatus(body.status);
     const results = await applyBulkIssueStatus({

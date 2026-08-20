@@ -2,9 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { type AdapterServerApp } from "./adapter-core";
 import { createHexclaveTanStackStart } from "./tanstack-start";
 
-// The adapter reads ambient request headers from the TanStack Start server
-// context, whose exports are `undefined` outside server-side request handling.
-// `state.getRequestHeader` is mutable so tests can simulate both environments.
 const state = vi.hoisted(() => ({
   getRequestHeader: undefined as ((name: string) => string | undefined) | undefined,
 }));
@@ -42,11 +39,9 @@ describe("TanStack Start adapter: serverFn", () => {
     expect(withSpan).toHaveBeenCalledTimes(1);
     expect(withSpan.mock.calls[0][0]).toBe("tanstack-start.server-function");
     expect(withSpan.mock.calls[0][1]).toMatchObject({ data: { name: "getOrders" } });
-    // The span links via a RequestLike built from the server context's headers.
     const request = (withSpan.mock.calls[0][1] as { request: { headers: { get: (name: string) => string | null } } }).request;
     expect(request.headers.get("baggage")).toBe("span-context-header");
     expect(request.headers.get("nonexistent")).toBeNull();
-    // The user is resolved from the same ambient headers (cookie token store).
     expect(getUser).toHaveBeenCalledWith(expect.objectContaining({ tokenStore: request, or: "return-null" }));
   });
 
@@ -103,8 +98,6 @@ describe("TanStack Start adapter: routeHandler", () => {
     expect(withSpan).toHaveBeenCalledTimes(1);
     expect(withSpan.mock.calls[0][0]).toBe("tanstack-start.route");
     expect(withSpan.mock.calls[0][1]).toMatchObject({ data: { path: "/api/orders", method: "POST" } });
-    // Route methods receive the real Request, so the span links via it directly
-    // — no server context needed (state.getRequestHeader may be undefined here).
     expect((withSpan.mock.calls[0][1] as { request: unknown }).request).not.toBeUndefined();
   });
 

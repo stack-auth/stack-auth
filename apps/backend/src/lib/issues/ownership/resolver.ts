@@ -71,8 +71,6 @@ class TraceBuilder {
     code: OwnershipTraceCode,
     options: TraceOptions = {},
   ): void {
-    // Reserve one slot for the marker so a large candidate set cannot make
-    // truncation invisible to the Workflows consumer.
     if (this.entries.length >= OWNERSHIP_RESOLVER_MAX_TRACE_ENTRIES - 1) {
       this.truncated = true;
       return;
@@ -324,12 +322,6 @@ function completeResolution(
   };
 }
 
-/**
- * Resolve a scoped routing snapshot into bounded user recipients.
- *
- * This function intentionally accepts unknown at the Workflows boundary. Any
- * malformed or mixed-scope snapshot is rejected before a recipient is emitted.
- */
 export function resolveOwnershipRecipients(value: unknown): OwnershipResolution {
   const traceBuilder = new TraceBuilder();
   const validation = validateInput(value);

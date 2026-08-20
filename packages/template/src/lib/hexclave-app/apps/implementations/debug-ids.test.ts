@@ -14,7 +14,6 @@ function clearDebugIdsGlobal(): void {
   Reflect.deleteProperty(globalThis, GLOBAL_KEY);
 }
 
-/** A stack whose innermost frame is `file`, shaped like what the injected snippet produces. */
 function snippetStack(file: string): string {
   return `Error\n    at ${file}:1:76\n    at ${file}:1:132\n    at Module._compile (node:internal/modules/cjs/loader:1234:14)`;
 }
@@ -26,7 +25,6 @@ function uuid(n: number): string {
 
 afterEach(() => {
   clearDebugIdsGlobal();
-  // The map memoizes; clearing the global resets the cache on the next read.
   getFilenameToDebugIdMap();
 });
 
@@ -81,15 +79,10 @@ describe("extractInnermostFrameFilename", () => {
   it("returns null when no frame names a file", () => {
     expect(extractInnermostFrameFilename("Error: boom")).toBeNull();
     expect(extractInnermostFrameFilename("")).toBeNull();
-    // `node:internal/...` has no `//` after the scheme, so it is not mistaken
-    // for a URL — internal Node frames can never be a chunk.
     expect(extractInnermostFrameFilename("Error\n    at node:internal/process/execution:451:12")).toBeNull();
   });
 
   it("round-trips a stack produced by real code running inside a named file", () => {
-    // This is the mechanism the injected CLI snippet relies on: a stack created
-    // INSIDE an emitted chunk names that chunk in its innermost frame. node:vm
-    // lets us reproduce it exactly without a bundler.
     const filename = "https://app.example.com/_next/static/chunks/main-abc123.js";
     const context: { recorded: unknown } = { recorded: null };
     vm.createContext(context);
@@ -133,8 +126,6 @@ describe("getFilenameToDebugIdMap", () => {
     const registry: Record<string, string> = { [snippetStack("https://app.example.com/a.js")]: uuid(1) };
     setDebugIdsGlobal(registry);
     const first = getFilenameToDebugIdMap();
-    // Identity, not just equality: a fresh Map would mean the regex ran again
-    // over every stack key, which is the cost the memo exists to avoid.
     expect(getFilenameToDebugIdMap()).toBe(first);
 
     registry[snippetStack("https://app.example.com/b.js")] = uuid(2);
@@ -151,8 +142,6 @@ describe("getFilenameToDebugIdMap", () => {
   });
 
   it("invalidates when an existing key's debug id is overwritten in place", () => {
-    // A dev-server rebuild can re-serve the same URL with an identical stack
-    // key but a NEW id — key count alone would serve the stale map here.
     const key = snippetStack("https://app.example.com/a.js");
     const registry: Record<string, string> = { [key]: uuid(1) };
     setDebugIdsGlobal(registry);
@@ -209,10 +198,7 @@ describe("getDebugImagesForStack", () => {
     setDebugIdsGlobal({
       [snippetStack("https://app.example.com/app.js")]: uuid(1),
     });
-    // The registered filename is a strict PREFIX of this frame's file — a
-    // substring match would attach uuid(1)'s source map to a different file.
     expect(getDebugImagesForStack("Error: boom\n    at fn (https://app.example.com/app.js.old:1:2)")).toEqual([]);
-    // A later complete occurrence is still found after skipping the prefix hit.
     const stack = "Error: boom\n    at a (https://app.example.com/app.js.old:1:2)\n    at b (https://app.example.com/app.js:3:4)";
     expect(getDebugImagesForStack(stack)).toEqual([
       { code_file: "https://app.example.com/app.js", debug_id: uuid(1) },
@@ -221,7 +207,6 @@ describe("getDebugImagesForStack", () => {
 
   it("orders by first occurrence so the innermost frames survive trimming", () => {
     setDebugIdsGlobal({
-      // Registration order is deliberately the reverse of the stack order.
       [snippetStack("https://app.example.com/outer.js")]: uuid(3),
       [snippetStack("https://app.example.com/middle.js")]: uuid(2),
       [snippetStack("https://app.example.com/inner.js")]: uuid(1),
@@ -250,7 +235,6 @@ describe("getDebugImagesForStack", () => {
     setDebugIdsGlobal(registry);
     const images = getDebugImagesForStack(frames.join("\n"));
     expect(images.length).toBe(ERROR_MAX_DEBUG_IMAGES);
-    // Trimmed from the OUTER end: the first cap-many frames are kept.
     expect(images[0].code_file).toBe("https://app.example.com/c0.js");
   });
 
@@ -323,10 +307,6 @@ describe("buildErrorEventData with debug images", () => {
     }
     setDebugIdsGlobal(registry);
 
-    // Both bounded text fields are pushed past their 8KB cap independently:
-    // a huge message AND a frame-dense stack. (In a real stack the message is
-    // echoed in the stack's first line, so a message this large would crowd the
-    // frames out — maxing them separately is the strictly worse case for size.)
     const error = new Error("x".repeat(50_000));
     error.stack = `Error: boom\n${frames.join("\n")}\n${"    at padding (https://app.example.com/pad.js:1:1)\n".repeat(500)}`;
 

@@ -106,9 +106,6 @@ function customMetricCatalog(catalog: readonly PerformanceMetricCatalogEntry[]):
   return catalog.filter((entry) => !WEB_VITAL_METRICS.some((metric) => metric.metricName === entry.metric_name));
 }
 
-// Rounds to whole percents on purpose: these are coarse summary shares, not
-// the dense one-decimal cells the Services table renders. Count formatting, by
-// contrast, is shared — see `formatCount` in `../format`.
 function formatPercent(ratio: number): string {
   return `${Math.round(ratio * 100)}%`;
 }
@@ -831,9 +828,6 @@ function PerformancePageClient() {
   const [timelineMetric, setTimelineMetric] = useState<"lcp" | "inp">("lcp");
   const requestSequence = useRef(0);
 
-  // The selector keys entries by `${metric_name}::${metric_type}` (one metric
-  // NAME can exist with several types), so both halves must reach the request
-  // or selecting a non-busiest (name, type) pair would chart a sibling type.
   const selectedMetric = useMemo(() => {
     const separator = metricSelector.lastIndexOf("::");
     if (separator < 0) return null;

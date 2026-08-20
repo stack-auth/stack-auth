@@ -56,8 +56,6 @@ export function buildSecurityEventsOffendersQuery(sharedWhere: string): string {
             )
             AND value IS NOT NULL
           GROUP BY kind, value
-          -- LIMIT BY preserves the previous independent top-ten for each
-          -- offender dimension after collapsing its three source scans.
           ORDER BY kind ASC, count DESC
           LIMIT 10 BY kind
         `;

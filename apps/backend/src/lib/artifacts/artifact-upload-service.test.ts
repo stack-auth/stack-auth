@@ -186,8 +186,6 @@ describe("artifact upload service", () => {
     await expect(missingService.finalizeManifest(SCOPE, { manifestSha256: missingRegistration.manifestSha256 }))
       .rejects.toMatchObject({ code: "artifact_not_found" });
 
-    // Same byte length as BUNDLE so the sha256 comparison (not the earlier
-    // length check) is the branch that rejects the upload.
     const wrongStorage = new MemoryArtifactStorage();
     const wrongService = new ArtifactUploadService(wrongStorage);
     const wrongRegistration = await register(wrongService, wrongStorage);
@@ -266,8 +264,6 @@ describe("artifact upload service", () => {
     await expect(goodService.finalizeManifest(SCOPE, { manifestSha256: goodRegistration.manifestSha256 }))
       .resolves.toMatchObject({ status: "finalized" });
 
-    // A manifest that declares a wrong inline digest must fail finalization
-    // (previously it finalized "successfully" and then failed every lookup).
     const badStorage = new MemoryArtifactStorage();
     const badService = new ArtifactUploadService(badStorage);
     const badManifest = createInlineManifest(sha256Hex(new TextEncoder().encode("not the inline map")), inlineMap.byteLength);

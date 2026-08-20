@@ -21,12 +21,6 @@ import {
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
-/**
- * The dashboard's own error-envelope parse, kept separate from the public
- * `parsePublicErrorEnvelope` on purpose: the internal view has no size cap and
- * no JSON-serializability narrowing (the dashboard renders whatever was
- * stored), and it treats a stored "{}" as absent.
- */
 function parseErrorEnvelope(raw: string): Record<string, unknown> | null {
   if (raw === "" || raw === "{}") return null;
   let parsed: unknown;
@@ -77,9 +71,6 @@ export const GET = createSmartRouteHandler({
     query: yupObject({
       occurrence: yupString().optional(),
       direction: yupString().optional(),
-      // Same allowlisted vocabulary as the list route (and the dashboard's
-      // time-range toggle); parsed through the shared contract so an invalid
-      // value 400s instead of silently falling back to 24h.
       hours: yupString().optional(),
     }).optional(),
   }),
@@ -93,8 +84,6 @@ export const GET = createSmartRouteHandler({
     assertObservabilityEnabled(tenancy);
 
     const now = new Date();
-    // The window is caller-selected so the detail header's counts can match
-    // whatever time range the issue list is showing, rather than always 24h.
     const rangeStart = issueRangeStart(parsePublicIssueHours(query.hours), now);
     const resolved = await loadIssueDetailContext(tenancy, params.issue_id);
     if (resolved === null) throw new StatusError(StatusError.NotFound, "Issue not found");
@@ -107,9 +96,6 @@ export const GET = createSmartRouteHandler({
       direction: query.direction === "newer" ? "newer" : "older",
     });
 
-    // The detail header shows the same window-scoped counts as the list column,
-    // so they come from the same rollup rather than being recomputed (or, as
-    // they briefly were, left at zero).
     const windowStats = await loadIssueWindowStats({ tenancy, hashes: resolved.hashes, rangeStart });
     const issue = projectIssueListItem(resolved.row, { rangeStart, now, stats: windowStats });
     const product = await loadIssueProductSnapshot({ tenancy, issueId: issue.id });
@@ -183,16 +169,6 @@ export const PATCH = createSmartRouteHandler({
 
     const now = new Date();
 
-    // Delegates to the ONE lifecycle implementation (the same one behind the
-    // public issue action routes) rather than a hand-rolled UPDATE. This is
-    // what makes the mutation idempotent: a retried PATCH with an identical
-    // body derives `status_unchanged`, so it neither re-stamps
-    // `statusChangedAt`/`resolvedAt` (which the substatus and regression logic
-    // read) nor emits a duplicate lifecycle webhook. `resolvedAt` is still set
-    // on every genuine transition INTO resolved — the ingest path compares a
-    // later occurrence against it to decide whether a recurrence counts as a
-    // regression — and `regressedAt` is cleared on resolve because the badge
-    // describes the CURRENT unresolved state.
     const { target } = await withIssueActionTarget({
       tenancy,
       rawIssueId: params.issue_id,
@@ -207,10 +183,6 @@ export const PATCH = createSmartRouteHandler({
       }),
     });
 
-    // The `issue.resolved` / `issue.ignored` webhook is emitted by
-    // `transitionIssueStatus` itself (fire-and-forget, only on a genuine
-    // transition), so every route that performs this lifecycle action — this
-    // one and the public status/snooze/bulk actions — behaves identically.
 
     return {
       statusCode: 200,

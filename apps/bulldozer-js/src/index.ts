@@ -576,9 +576,6 @@ async function tryDecreaseItemQuantities(options: {
 
   let insufficientItemId: string | null = null;
   await bulldozerDb.withSnapshot(async snapshot => {
-    // Apply against an immutable candidate snapshot first. The surrounding
-    // withSnapshot lock serializes this read-modify-write across every backend
-    // instance; returning the original snapshot rejects the whole mixed batch.
     const mutation = await snapshot.setOrDeleteRows({
       tableId: schema.manualItemQuantityChanges,
       rows,

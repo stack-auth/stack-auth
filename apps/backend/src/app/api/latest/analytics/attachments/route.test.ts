@@ -13,11 +13,6 @@ import {
 import { POST as uploadAttachment, GET as listAttachments } from "./route";
 import { GET as downloadAttachment } from "./[attachment_id]/route";
 
-// The routes must map service errors by type (404 for every absent-attachment
-// case, 409 for conflicts) and let internal faults bubble to the generic 500
-// handler. The production factory is the only thing replaced here: the real
-// ErrorAttachmentService runs against in-memory repository/storage fakes so
-// the routes exercise the same error classes production throws.
 vi.mock("@/lib/attachments", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/attachments")>();
   return { ...original, createProductionErrorAttachmentService: vi.fn() };
@@ -53,12 +48,6 @@ function createFixture(storageOverrides: Partial<ErrorAttachmentObjectStorage> =
   return { service: new ErrorAttachmentService(repository, storage), records, objects };
 }
 
-// Only the fields the routes under test actually read (observability gate,
-// scope ids). Production hands the route a full Tenancy from the auth layer;
-// reconstructing that entire shape here would couple this test to unrelated
-// config, so this follows the same fake-by-cast pattern as the
-// ClickHouseClient fakes in lib/spans.test.ts. Any missing field the routes
-// start relying on will surface as a TypeError in these tests.
 const tenancy = {
   id: "11111111-2222-4333-8444-555555555555",
   branchId: "main",
@@ -159,10 +148,6 @@ describe("error attachment download route error mapping", () => {
       method: "POST",
       body: { event_id: EVENT_ID, filename: "event.json", data_base64: "YQ==" },
     }));
-    // Simulate a lost backing object: the service then throws
-    // ErrorAttachmentNotFoundError("Attachment bytes are not available"),
-    // whose message does NOT contain "not found" — the case the old
-    // message-substring check turned into a 500.
     fixture.objects.delete(getErrorAttachmentObjectKey(
       { tenantId: tenancy.id, projectId: tenancy.project.id, branchId: tenancy.branchId },
       EVENT_ID,
@@ -181,8 +166,6 @@ describe("error attachment download route error mapping", () => {
       method: "POST",
       body: { event_id: EVENT_ID, filename: "event.json", data_base64: "YQ==" },
     }));
-    // Reuse the created metadata with a storage backend that fails reads, so
-    // the download reaches the storage layer and hits the infrastructure error.
     const brokenFixture = createFixture({
       async readObject() { throw new Error("object storage read exploded"); },
     });

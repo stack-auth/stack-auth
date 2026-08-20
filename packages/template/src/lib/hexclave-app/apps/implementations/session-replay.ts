@@ -6,10 +6,6 @@ import { generateUuid, isAdBlockerNetworkError, isAnalyticsNotEnabledError } fro
 import type { AnalyticsReplayOptions } from "./analytics-config";
 import type { TelemetryResource } from "./telemetry-config";
 
-// This module is lazy-loaded (see ClientAnalytics), so it deliberately
-// re-exports nothing: a value import routed through here would drag the whole
-// recorder into the initial bundle. Options helpers live in analytics-config.ts,
-// transport primitives in telemetry-transport.ts — import them from there.
 
 // ---------- Recording internals ----------
 
@@ -38,10 +34,6 @@ const MAX_SINGLE_EVENT_BYTES = 8 * 1024 * 1024 - BATCH_ENVELOPE_OVERHEAD_BYTES;
 // Reused across the emit hot path to avoid per-event allocation.
 const textEncoder = new TextEncoder();
 
-// Trailing debounce for the stylesheet-load re-snapshot (see the comment in
-// _startRecording): several stylesheets finishing around the same time (initial
-// page load, a route navigation adding multiple chunks) should produce ONE
-// extra full snapshot, not one per stylesheet.
 const STYLESHEET_RESNAPSHOT_DEBOUNCE_MS = 1_000;
 
 /**
@@ -114,9 +106,6 @@ export type SessionRecorderDeps = {
   projectId: string,
   resource: TelemetryResource,
   sendBatch: (body: string, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
-  // Per-tab id shared with the EventTracker so replay chunks and analytics
-  // events from the same tab carry the same session_replay_segment_id. Falls
-  // back to a fresh uuid when constructed standalone (e.g. in tests).
   sessionReplaySegmentId?: string,
   /** Rotate the shared tab span when the durable replay lifecycle rotates. */
   onSessionRotation?: () => void,
@@ -139,10 +128,6 @@ export class SessionRecorder {
   private _rrwebModule: typeof import("rrweb") | null = null;
   private _lastBrowserSessionId: string | null = null;
   private _takingSnapshot = false;
-  // Authentication changes rotate the segment before the next user's tokens
-  // are published. Drop incremental events in that gap: without a new full
-  // snapshot they are unplayable, and retaining them could attach the previous
-  // user's sign-out DOM mutations to the next user's replay.
   private _needsFullSnapshot = false;
   private _flushInProgress = false;
   private _resnapshotTimer: ReturnType<typeof setTimeout> | null = null;
@@ -250,9 +235,6 @@ export class SessionRecorder {
     this._events = [];
     this._eventSizes = [];
     this._approxBytes = 0;
-    // The setter can rotate this id while an async multi-batch flush is in
-    // flight (for example during sign-out). Keep every event captured above on
-    // the segment it belonged to when the flush started.
     const sessionReplaySegmentId = this._sessionReplaySegmentId;
 
     // Non-keepalive flushes gzip before sending, so a single event up to the
@@ -416,8 +398,6 @@ export class SessionRecorder {
     try {
       this._startRrwebRecording();
     } catch (e) {
-      // record() threw before _detachListeners was set up; don't leak the
-      // stylesheet-load listener attached above.
       document.removeEventListener("load", onResourceLoad, true);
       throw e;
     }
@@ -454,12 +434,7 @@ export class SessionRecorder {
           this._lastBrowserSessionId = stored.session_id;
         } else if (stored.session_id !== this._lastBrowserSessionId && !this._takingSnapshot) {
           this._lastBrowserSessionId = stored.session_id;
-          // One segment span may have only one replay parent in the scalar
-          // schema. Rotate the tab identity at the exact replay boundary so a
-          // later replay can never re-parent an existing segment row.
           this._deps.onSessionRotation?.();
-          // Inject a FullSnapshot for the new session (calls emit synchronously).
-          // The app callback marks the new segment as awaiting this snapshot.
           this._needsFullSnapshot = true;
           this.captureFullSnapshotForCurrentSegment();
         }

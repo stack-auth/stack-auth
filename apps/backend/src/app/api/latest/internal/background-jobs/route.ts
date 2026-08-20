@@ -5,10 +5,6 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 
 type BackgroundJobStatsRow = {
-  /**
-   * NULL for rows that predate the `job` envelope (possible only for messages
-   * in flight across a deploy; see decodeQstashMessage's tolerance for them).
-   */
   job_type: string | null,
   total: bigint | number | string,
   pending: bigint | number | string,

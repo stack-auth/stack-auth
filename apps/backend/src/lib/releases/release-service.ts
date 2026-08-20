@@ -48,12 +48,6 @@ export const RELEASE_ARTIFACT_STATUSES = [
 ] as const;
 export type ReleaseArtifactStatusValue = PrismaReleaseArtifactStatusValue;
 
-/**
- * A release operation carries the stable tenancy identity plus its resolved
- * project/branch coordinates. The full auth Tenancy object is structurally
- * compatible with this type; keeping the service boundary small also makes
- * it possible to unit-test all scope validation without a database fixture.
- */
 export type ReleaseScopeTenancy = Pick<Tenancy, "id" | "branchId"> & {
   project: Pick<Tenancy["project"], "id">,
 };
@@ -66,7 +60,6 @@ export type ReleaseArtifactLookupRow = Prisma.ReleaseArtifactDebugIdGetPayload<{
   include: { releaseArtifact: { include: { release: true } } },
 }>;
 
-/** Small Promise-based database seam: Prisma's PrismaPromise delegates adapt into this in production, while unit tests can use ordinary promises. */
 export type ReleaseDatabase = {
   release: {
     findMany(args: Prisma.ReleaseFindManyArgs): Promise<Release[]>,
@@ -89,10 +82,6 @@ export type ReleaseDatabase = {
   },
     releaseArtifactDebugId: {
       upsert(args: Prisma.ReleaseArtifactDebugIdUpsertArgs): Promise<ReleaseArtifactDebugId>,
-      // `include` is excluded from the args on purpose: the return type
-      // promises the ReleaseArtifactLookupRow relation shape, so the adapter
-      // is the single owner of the matching `include` — callers cannot pass a
-      // competing one that the adapter would silently overwrite.
       findMany(args: Omit<Prisma.ReleaseArtifactDebugIdFindManyArgs, "select" | "include">): Promise<ReleaseArtifactLookupRow[]>,
   },
 };
@@ -244,12 +233,6 @@ export function validateDebugId(value: string): string {
   return value;
 }
 
-/**
- * Release metadata is user-controlled JSON, but it is written to the
- * relational release graph and returned by the management API. Normalize it
- * into Prisma's JSON input shape at this boundary so neither a giant payload
- * nor a cyclic/non-JSON object can reach the database.
- */
 export function validateReleaseJson(value: unknown, fieldName: string): Prisma.InputJsonValue {
   const activeObjects = new WeakSet<object>();
   const normalized = normalizeReleaseJson(value, fieldName, 0, activeObjects);
@@ -298,8 +281,6 @@ export class ReleaseService {
       }),
       db.releaseDeployment.findMany({
         where: { tenancyId: fields.tenancyId, releaseId: release.id },
-        // `id` breaks ties between deployments sharing a finishedAt so the
-        // capped list is stable across requests.
         orderBy: [{ finishedAt: "desc" }, { id: "desc" }],
         take: RELEASE_GRAPH_LIST_LIMIT,
       }),
@@ -322,8 +303,6 @@ export class ReleaseService {
     const db = await this.resolveDatabase(scope);
     const rows = await db.release.findMany({
       where: fields,
-      // `id` breaks ties between releases sharing a dateAdded so the limited
-      // page boundary (and the derived `truncated` flag) is deterministic.
       orderBy: [{ dateAdded: "desc" }, { id: "desc" }],
       take: limit + 1,
     });
@@ -424,17 +403,8 @@ export class ReleaseService {
         ...(input.finishedAt === undefined ? {} : { finishedAt: input.finishedAt }),
         ...(metadata === undefined ? {} : { metadata }),
       },
-      // Do not mutate the conflict winner here. A concurrent request for a
-      // different release can win the unique-key race after the friendly
-      // pre-read; Prisma's upsert update branch would otherwise overwrite the
-      // winner's environment/name before the ownership check can reject us.
       update: {},
     });
-    // The pre-upsert ownership check above is a friendly early exit only: two
-    // concurrent registrations that reuse one deploymentKey for different
-    // releases can both pass it (TOCTOU). The conflict winner is immutable
-    // until this ownership check succeeds, so the loser cannot mutate the
-    // winner's fields before failing.
     if (deployment.projectId !== fields.projectId
       || deployment.branchId !== fields.branchId
       || deployment.releaseId !== releaseId) {
@@ -520,12 +490,6 @@ export class ReleaseService {
         manifestSha256,
       },
     };
-    // "Once finalized, always finalized": a REGISTERED retry must never
-    // downgrade an artifact that a concurrent request already finalized. A
-    // read-then-upsert of the stored status would race, so instead the update
-    // clause simply never writes REGISTERED — it either upgrades the row to
-    // FINALIZED (monotone, safe under any interleaving) or leaves the stored
-    // status untouched.
     return await db.releaseArtifact.upsert({
       where,
       create: {
@@ -554,8 +518,6 @@ export class ReleaseService {
   ): Promise<ReleaseArtifactDebugId> {
     const fields = releaseScopeFields(scope);
     const releaseArtifactId = validateUuid(input.releaseArtifactId, "releaseArtifactId");
-    // requireArtifact already throws if the artifact exists outside the
-    // requested project/branch scope, so no further scope check is needed here.
     await this.requireArtifact(scope, releaseArtifactId);
     const debugId = validateDebugId(input.debugId);
     const codeFile = validateText(input.codeFile, "codeFile", 1_024);
@@ -718,9 +680,6 @@ function adaptPrismaClient(client: PrismaClientTransaction): ReleaseDatabase {
     },
     releaseArtifactDebugId: {
       upsert: async (args) => await client.releaseArtifactDebugId.upsert(args),
-      // The seam's arg type omits `include`, so this adapter is the single
-      // place that decides the relation shape — it must stay in sync with
-      // ReleaseArtifactLookupRow (enforced by the return type).
       findMany: async (args) => await client.releaseArtifactDebugId.findMany({
         ...args,
         include: { releaseArtifact: { include: { release: true } } },
@@ -781,11 +740,6 @@ function validateText(value: string, fieldName: string, maxBytes: number): strin
   return value;
 }
 
-/**
- * Like validateText, but for prose fields that are legitimately multi-line —
- * git commit messages are usually "subject\n\nbody". Tab, LF, and CR stay
- * allowed; every other control character is still rejected.
- */
 function validateMultilineText(value: string, fieldName: string, maxBytes: number): string {
   if (value.length === 0 || Buffer.byteLength(value, "utf8") > maxBytes || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)) {
     throw new ReleaseInputError(`${fieldName} must be non-empty, bounded, and free of prohibited control characters`);

@@ -359,9 +359,6 @@ export function getAnalyticsEventsUsageQueryForTest(): string {
   `;
 }
 
-// The immutable write ledger receives one row for every accepted custom-span
-// row. Counting the ReplacingMergeTree state table directly would under-report
-// usage after ClickHouse merges old versions of the same span id.
 async function countAnalyticsSpansForProjects(projectIds: string[], period: UsagePeriod): Promise<number> {
   if (projectIds.length === 0) {
     return 0;

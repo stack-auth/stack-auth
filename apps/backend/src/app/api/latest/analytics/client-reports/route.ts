@@ -34,9 +34,6 @@ export const POST = createSmartRouteHandler({
     try {
       request = parseErrorIngestClientReportRequest(body);
     } catch (error) {
-      // Only deliberate wire-parse rejections may be reflected to the client
-      // (mirroring ErrorIngestEnvelopeError handling in the envelope route);
-      // anything else is an internal failure whose message must not leak.
       if (error instanceof ErrorIngestClientReportParseError) {
         throw new StatusError(StatusError.BadRequest, error.message);
       }

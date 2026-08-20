@@ -31,7 +31,6 @@ describe("issue list cursors", () => {
   });
 
   it("rejects malformed cursors, including ones missing the sort identity", () => {
-    // A cursor always names its sort order; one without it was never issued.
     const missingSort = Buffer.from(JSON.stringify({
       sortValueMillis: 1_754_502_400_000,
       id: ISSUE_A,
@@ -88,8 +87,6 @@ describe("occurrence cursors", () => {
 
 describe("rollup range alignment", () => {
   it("aligns an arbitrary range start DOWN to the containing hourly bucket", () => {
-    // The rollup's bucket_start is hour-truncated; comparing it with a raw
-    // wall-clock range start would silently drop the whole partial bucket.
     expect(rollupRangeStartSeconds(new Date("2026-08-13T12:30:45.123Z"))).toBe(Date.parse("2026-08-13T12:00:00.000Z") / 1000);
     expect(rollupRangeStartSeconds(new Date("2026-08-13T12:00:00.000Z"))).toBe(Date.parse("2026-08-13T12:00:00.000Z") / 1000);
   });

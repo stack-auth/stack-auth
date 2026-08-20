@@ -143,8 +143,6 @@ describe("public issue read routes", () => {
 });
 
 describe("parsePublicIssueHours", () => {
-  // The internal detail route threads `?hours=` through this parser so the
-  // detail header's window counts can match the list's selected range.
   it("accepts every allowlisted range and defaults to 24h when omitted", () => {
     expect(parsePublicIssueHours(undefined)).toBe(24);
     expect(parsePublicIssueHours("1")).toBe(1);

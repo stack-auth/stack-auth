@@ -11,12 +11,6 @@ const OTLP_ERROR_MESSAGE_LIMITS = {
   maxStringBytes: 512,
 };
 
-/**
- * OTLP validation diagnostics may contain an untrusted field or signal name.
- * Keep the useful, field-oriented message for ordinary callers, but run it
- * through the same final scrubber as durable telemetry and cap it before it
- * becomes an HTTP error or partial-success response.
- */
 export function scrubOtlpErrorMessage(message: string, fallback: string): string {
   const scrubbed = scrubErrorIngestPayload(message, OTLP_ERROR_MESSAGE_LIMITS);
   return typeof scrubbed.value === "string" && scrubbed.value.length > 0

@@ -1,11 +1,5 @@
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 
-/**
- * Dashboard hrefs for Observability and Analytics surfaces.
- *
- * Kept as plain URL builders so list pages, detail rails, and the events grid
- * can deep-link without importing page-client modules (and their data loaders).
- */
 
 export type TraceHighlight = {
   traceId: string,
@@ -14,10 +8,6 @@ export type TraceHighlight = {
   eventAtMs?: number | null,
 };
 
-// Issue hrefs (issuesListHref, issueDetailHref, …) live in
-// ./issues/issue-links, which re-exports this module's traceDetailHref for the
-// Issues pages. They were briefly duplicated here as well; one home each keeps
-// the URL logic from silently diverging.
 
 export function tracesHref(projectId: string): string {
   return urlString`/projects/${projectId}/observability/traces`;
@@ -37,14 +27,6 @@ export function sessionReplayHref(projectId: string, replayId: string, options?:
   return `${path}?at=${encodeURIComponent(String(options.atMs))}`;
 }
 
-/**
- * Deep-link the Traces page at a trace, optionally highlighting one span and
- * one event inside it. `event` + `at` are the event's type and epoch-ms — product
- * events have no durable id of their own, so that pair (plus the enclosing span
- * when present) is the shareable identity.
- *
- * The one-argument `traceId` form is kept so existing callers stay valid.
- */
 export function traceDetailHref(projectId: string, traceIdOrHighlight: string | TraceHighlight): string {
   const highlight = typeof traceIdOrHighlight === "string"
     ? { traceId: traceIdOrHighlight }

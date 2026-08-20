@@ -176,8 +176,6 @@ async function encodeGzipJsonBody(
   }
   try {
     const source = new Blob([jsonBody]);
-    // Tiny telemetry envelopes are commonly already under one packet. Avoid
-    // scheduling async compression when the gzip framing can rival the saving.
     if (source.size < MIN_GZIP_JSON_BODY_BYTES) {
       return { body: jsonBody, contentType: "application/json" };
     }

@@ -8,48 +8,12 @@ import { randomUUID } from "node:crypto";
 import { toDurableGroupingProvenance } from "./grouping-provenance";
 import type { GroupingHashProvenance } from "./types";
 
-/**
- * Turns a batch's grouped `$error` occurrences into persistent Issue records.
- *
- * ── Transaction boundary ─────────────────────────────────────────────────
- * The statements below are raw SQL. First-sighting allocation and the
- * lock/claim sequence need a short retrying transaction because they span
- * multiple statements; the repo's `retryTransaction` wrapper keeps transient
- * serialization failures from turning into duplicate issues or lost batches.
- *
- * ── The exactly-once story ────────────────────────────────────────────────
- * This runs off the request path, so it must survive being run twice (a
- * retried ingest batch that ClickHouse deduplicated by insert token, but which
- * reached Postgres again) and being run never (a process that died between the
- * ClickHouse insert and here).
- *
- *   Step 1  Ensure an Issue + IssueHash exists for every owning hash.
- *           Idempotent by construction (`ON CONFLICT DO NOTHING` on the hash
- *           primary key, which is also the first-sighting race arbiter).
- *           Losing first-sighting candidates are deleted before this function
- *           returns, so a race cannot expose an Issue with no owning hash.
- *
- *   Step 2  ONE statement: claim the batch in the ledger and apply the counter
- *           deltas, with the update gated on the claim having succeeded. Both
- *           commit or neither does. A second run finds the ledger row already
- *           present, the claim CTE returns no rows, and the update touches
- *           nothing.
- *
- * Ordering matters: creation before the claim, counters inside it. Doing
- * creation inside the claim would make a crash mid-way leave a claimed batch
- * with no issues at all, which the reconciler could not distinguish from a
- * fully-applied one. A candidate issue is bound to its owner hash before
- * aliases are inserted; this prevents a losing concurrent candidate from
- * surviving through an alias.
- */
 
 export type IssueBatchApplyOutcome = {
   issueId: string,
   shortId: bigint,
   ownerHash: string,
-  /** First time this issue has ever been seen. Drives `issue.created`. */
   isNew: boolean,
-  /** A resolved issue recurred. Drives `issue.regressed`. */
   isRegression: boolean,
 };
 
@@ -157,7 +121,6 @@ export async function markIssueMaterializationSideEffect(options: {
   `;
 }
 
-/** Per-issue deltas, after folding every hash that maps to the same issue. */
 type IssueDelta = {
   issueId: string,
   count: number,
@@ -183,14 +146,6 @@ type StoredIssueHashValues = {
   groupingProvenance: ReturnType<typeof toDurableGroupingProvenance>,
 };
 
-/**
- * Selects the decision records for one stored hash. A hash can be observed
- * under more than one config during a transition, so the JSON column retains
- * every matching observation while the direct columns expose the first one for
- * cheap issue/hash reads. Every materialization input carries provenance for
- * its owner hash and every alias — a hash we cannot explain is a caller bug,
- * never a row to store with an invented (or missing) decision.
- */
 function issueHashValues(
   input: IssueBatchDelta,
   hash: string,
@@ -218,12 +173,6 @@ function issueHashValues(
   };
 }
 
-/**
- * One materialization input is allowed per owning hash. The normalizer already
- * coalesces a batch this way, but keeping the invariant at the persistence
- * boundary prevents a malformed or future ingestion path from allocating two
- * short ids for the same first sighting and then leaving one candidate orphaned.
- */
 export function deduplicateIssueMaterializationInputs(
   inputs: readonly IssueBatchDelta[],
 ): IssueBatchDelta[] {
@@ -234,29 +183,12 @@ export function deduplicateIssueMaterializationInputs(
   return [...byOwnerHash.values()];
 }
 
-/** A locked hash defers the complete ledger batch, never just one delta. */
 export function shouldDeferIssueMaterialization(
   rows: readonly { state: string | null }[],
 ): boolean {
   return rows.some((row) => row.state !== null);
 }
 
-/**
- * Clears EXPIRED merge/unmerge leases on the given hashes so materialization
- * can proceed.
- *
- * `lockedAt` is a lease (see `issue-merge.ts`): a process that dies between
- * acquiring the lock and finishing its work leaves the rows `LOCKED` forever,
- * and only another merge attempt on the same hashes would ever steal the stale
- * lease. Without this reclamation the materializer and the reconciler would
- * defer those hashes on every run, indefinitely — a crashed merge would
- * silently stop the affected errors from ever materializing again.
- *
- * Safe against a zombie holder that is merely slow rather than dead: its final
- * statement re-validates `state = 'LOCKED' AND lockedAt = <its own acquisition
- * instant>` and no-ops when the lease was taken away — the exact same contract
- * `acquireHashLocks` relies on when IT steals a stale lease.
- */
 async function reclaimExpiredIssueHashLeases(
   tx: PrismaClientTransaction,
   tenancyId: string,
@@ -275,16 +207,6 @@ async function reclaimExpiredIssueHashLeases(
   `;
 }
 
-/**
- * Resolves owning hashes to issues, creating any that don't exist yet.
- *
- * Hashes whose `IssueHash` row is `LOCKED` (a merge or unmerge is in flight)
- * are deliberately left unresolved: rebinding them mid-migration would race the
- * migration's own repoint. The occurrence is already durable in ClickHouse
- * carrying its hash, so the reconciler picks it up once the lock clears — the
- * occurrence is delayed, never lost. This is only safe *because* the ClickHouse
- * row stores the immutable hash rather than a mutable issue id.
- */
 async function resolveOrCreateIssues(
   prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
   tenancyId: string,
@@ -297,8 +219,6 @@ async function resolveOrCreateIssues(
     const uniqueInputs = deduplicateIssueMaterializationInputs(inputs);
     const ownerHashes = uniqueInputs.map((input) => input.ownerHash);
 
-    // Wall clock, not `receivedAt`: the reconciler replays batches with their
-    // original (old) receipt time, and lease expiry is a wall-clock contract.
     await reclaimExpiredIssueHashLeases(tx, tenancyId, ownerHashes, new Date());
 
     const existing = await tx.$queryRaw<{ hash: string, issueId: string, shortId: bigint, timesSeen: bigint, state: string | null }[]>`
@@ -308,18 +228,10 @@ async function resolveOrCreateIssues(
       WHERE h."tenancyId" = ${tenancyId}::uuid AND h."hash" = ANY(${ownerHashes}::text[])
     `;
     for (const row of existing) {
-      if (row.state !== null) continue; // LOCKED — see the doc comment above.
-      // A prior attempt may have committed issue/hash creation and then lost
-      // the ledger-claim race. Until any batch increments the counter, that
-      // issue is still awaiting its one `issue.created` outcome.
+      if (row.state !== null) continue;
       resolved.set(row.hash, { issueId: row.issueId, shortId: row.shortId, isNew: row.timesSeen === 0n });
     }
 
-    // A materialization batch is the unit of ledger idempotency. Claiming it while
-    // even one owner hash is locked would permanently discard that hash when the
-    // caller returns: the next retry would see the batch already applied. Do not
-    // create candidates for the other hashes either; the whole batch is retried
-    // after the merge/unmerge lease clears.
     if (shouldDeferIssueMaterialization(existing)) return new Map();
 
     const missing: PendingIssue[] = uniqueInputs
@@ -327,11 +239,6 @@ async function resolveOrCreateIssues(
       .map((input) => ({ id: randomUUID(), input }));
     if (missing.length === 0) return resolved;
 
-    // Reserve a contiguous block of short ids in ONE statement, so the counter
-    // row is locked once per batch rather than once per issue. A batch that then
-    // fails burns its range; gaps are accepted and documented, because the
-    // alternative (allocating lazily per insert) reintroduces per-issue
-    // contention on a single hot row.
     const [{ firstShortId }] = await tx.$queryRaw<{ firstShortId: bigint }[]>`
       INSERT INTO "IssueCounter" ("tenancyId", "nextShortId")
       VALUES (${tenancyId}::uuid, ${missing.length + 1}::bigint)
@@ -348,11 +255,6 @@ async function resolveOrCreateIssues(
       ownerTeamId,
     ));
 
-    // Bind ONLY each owning hash first. `ON CONFLICT DO NOTHING` on the hash
-    // primary key is the concurrency control: if a concurrent batch created the
-    // same issue first, its row wins and ours is discarded. Aliases are delayed
-    // until after the owner winner is known; otherwise an alias that happened to
-    // be unique could keep a losing candidate Issue visible with no owner hash.
     const ownerHashValues = missing.map(({ id, input }) => issueHashValues(input, input.ownerHash, "primary", id));
     if (ownerHashValues.length > 0) {
       await tx.$executeRaw`
@@ -371,9 +273,6 @@ async function resolveOrCreateIssues(
       `;
     }
 
-    // Re-read so a hash the race lost binds to the WINNER's issue, not to the
-    // orphan we just inserted. Without this, two concurrent first-sightings would
-    // each count into a different issue and the user would see a duplicate.
     const rebound = await tx.$queryRaw<{ hash: string, issueId: string, shortId: bigint }[]>`
       SELECT h."hash", h."issueId", i."shortId"
       FROM "IssueHash" h
@@ -384,11 +283,6 @@ async function resolveOrCreateIssues(
     `;
     const createdIds = new Set(created.map((candidate) => candidate.id));
 
-    // The owner-hash insert is the race arbiter. Candidates that lost it are not
-    // addressable by any materializer and must be removed in the same retry
-    // window; leaving them behind makes the issue list show zero-count orphan
-    // issues forever. The NOT EXISTS guard preserves a candidate if a future
-    // aliasing operation has already attached a hash to it.
     await tx.$executeRaw`
       DELETE FROM "Issue" i
       WHERE i."tenancyId" = ${tenancyId}::uuid
@@ -427,8 +321,6 @@ async function resolveOrCreateIssues(
       resolved.set(row.hash, {
         issueId: row.issueId,
         shortId: row.shortId,
-        // Only genuinely new if OUR insert is the one that survived; otherwise a
-        // concurrent batch already emitted `issue.created` for it.
         isNew: createdIds.has(row.issueId),
       });
     }
@@ -456,16 +348,6 @@ function buildIssueInsertSql(
     ${ownerTeamId}::uuid,
     ${receivedAt}::timestamptz
   )`);
-  // assignedTeamId is the Hexclave project owner team, stamped at first
-  // sighting so the dashboard never has to ask. It is not a Team row in this
-  // tenancy; see Issue.assignedTeamId.
-  //
-  // `Issue.id` is declared `@default(uuid())`, which Prisma applies CLIENT-side
-  // in its own query builder. The generated migration therefore emits a bare
-  // `"id" UUID NOT NULL`, so raw INSERTs must provide the candidate id
-  // explicitly. Supplying it from Node also lets us identify and delete the
-  // loser of a concurrent owner-hash insert without relying on unspecified
-  // `RETURNING` row order.
   return Prisma.sql`
     INSERT INTO "Issue" (
       "id", "tenancyId", "shortId", "type", "value", "culprit", "platform",
@@ -478,14 +360,6 @@ function buildIssueInsertSql(
   `;
 }
 
-/**
- * Folds per-hash inputs into per-ISSUE deltas.
- *
- * This is not cosmetic. After a merge, several hashes map to one issue, and
- * PostgreSQL's `UPDATE … FROM (VALUES …)` does NOT apply every matching source
- * row — it updates the target once, from an unspecified one. Feeding it
- * per-hash rows would therefore silently drop deltas for merged issues.
- */
 function foldDeltasByIssue(
   inputs: readonly IssueBatchDelta[],
   resolved: ReadonlyMap<string, { issueId: string }>,
@@ -493,7 +367,7 @@ function foldDeltasByIssue(
   const byIssue = new Map<string, IssueDelta>();
   for (const input of inputs) {
     const target = resolved.get(input.ownerHash);
-    if (target === undefined) continue; // locked hash; the reconciler will retry
+    if (target === undefined) continue;
     const existing = byIssue.get(target.issueId);
     if (existing === undefined) {
       byIssue.set(target.issueId, {
@@ -515,30 +389,6 @@ function foldDeltasByIssue(
   return [...byIssue.values()];
 }
 
-/**
- * Claims the batch and applies the deltas in one retrying transaction.
- *
- * The `claim` CTE is the idempotency check: `ON CONFLICT DO NOTHING` returns no
- * rows when this batch was already materialized. The transaction explicitly
- * locks every owner hash and target Issue before claiming. A merge that deleted
- * one after hash resolution therefore wins the race and leaves this batch
- * unclaimed for reconciliation instead of losing its delta. The lock query is
- * intentionally separate from the claim aggregate: PostgreSQL rejects row-lock
- * clauses once the planner has to evaluate the target count.
- *
- * Lifecycle transitions ride in the same `CASE` rather than in a separate
- * read-decide-write, which also makes them race-free against a concurrent
- * `PATCH status=resolved`:
- *
- *  - A RESOLVED issue recurring after it was resolved goes back to UNRESOLVED
- *    and records `regressedAt`. The comparison uses `receivedAt` (SERVER receipt
- *    time), never the client-supplied `event_at_ms`: a client with a fast clock
- *    would otherwise reopen a resolved issue, and one with a slow clock would
- *    hide a real regression.
- *  - An IGNORED issue whose snooze has expired wakes up on its next occurrence.
- *    There is deliberately no cron for this: an ignored issue that never recurs
- *    *should* stay ignored.
- */
 type AppliedIssue = { issueId: string, isRegression: boolean };
 
 type ClaimAndApplyResult =
@@ -583,8 +433,6 @@ async function claimAndApply(
     const existingLedger = await readMaterializationLedger(tx, tenancyId, batchId);
     if (existingLedger !== null) return { status: "already_applied", ledger: existingLedger };
 
-    // Same reclamation as `resolveOrCreateIssues`: a lease that expired between
-    // the resolve transaction and this one must not defer the batch forever.
     await reclaimExpiredIssueHashLeases(tx, tenancyId, ownerHashes, new Date());
 
     const lockedHashes = await tx.$queryRaw<{ hash: string, state: string | null }[]>(Prisma.sql`
@@ -708,8 +556,6 @@ export async function materializeIssuesFromBatchWithStatus(options: {
   const resolved = await resolveOrCreateIssues(prisma, tenancyId, inputs, receivedAt, getBillingTeamId(tenancy.project));
   const deltas = foldDeltasByIssue(inputs, resolved);
   if (deltas.length === 0) {
-    // Every hash in this batch was locked by an in-flight merge/unmerge. Leave
-    // the batch unclaimed so the QStash delivery and reconciler can retry it.
     return { status: "deferred_locked", outcomes: [], sideEffects: emptySideEffects };
   }
 
@@ -731,11 +577,6 @@ export async function materializeIssuesFromBatchWithStatus(options: {
   };
 }
 
-/**
- * Backward-compatible array-shaped API for existing reconciliation callers.
- * New workers should use `materializeIssuesFromBatchWithStatus` so they can
- * distinguish a completed batch from one deferred behind a merge lock.
- */
 export async function materializeIssuesFromBatch(options: {
   tenancy: Tenancy,
   batchId: string,

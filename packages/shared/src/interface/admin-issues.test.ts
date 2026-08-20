@@ -20,9 +20,6 @@ describe("IssueUpdateRequestSchema", () => {
     })).resolves.toMatchObject({ ignored_until_millis: null });
   });
 
-  // Anything past the bound would construct an Invalid Date in the PATCH
-  // handler and only fail inside the database write — a 500 for what is
-  // really malformed client input, which is why the schema must reject it.
   it("rejects a snooze timestamp beyond the shared bound", async () => {
     await expect(IssueUpdateRequestSchema.validate({
       status: "ignored",
@@ -52,8 +49,6 @@ describe("IssueMergeRequestSchema", () => {
     })).resolves.toBeDefined();
   });
 
-  // `mergeIssues` feeds these straight into `::uuid[]` casts, so a malformed
-  // id must fail request validation instead of becoming a Postgres cast error.
   it("rejects non-uuid issue ids before they can reach a ::uuid cast", async () => {
     await expect(IssueMergeRequestSchema.validate({
       issue_ids: ["3241a285-8329-4d69-8f3d-316e08cf140c", "not-a-uuid"],

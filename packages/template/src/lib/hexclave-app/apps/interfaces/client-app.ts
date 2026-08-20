@@ -8,8 +8,6 @@ import { Project } from "../../projects";
 import { ProjectCurrentUser, SyncedPartialUser, TokenPartialUser } from "../../users";
 import { _HexclaveClientAppImpl } from "../implementations";
 import type { ParentRef, Span, StartSpanOptions, TrackOptions } from "../implementations/event-tracker";
-// Type-only, and from analytics-config (not session-replay): a value import of
-// the recorder module here would defeat the lazy analytics loading.
 import type { AnalyticsOptions, AnalyticsOptionsJson } from "../implementations/analytics-config";
 import type { ObservabilityOptions, ObservabilityOptionsJson } from "../implementations/observability-config";
 import type { TelemetryOptions } from "../implementations/telemetry-config";

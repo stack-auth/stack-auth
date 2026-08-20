@@ -14,7 +14,6 @@ export type ArtifactStorageObject = {
 
 export type ArtifactStorageObjectInfo = {
   byteLength: number,
-  /** The object version observed by the size check, when the provider exposes one. */
   eTag?: string,
 };
 
@@ -29,7 +28,6 @@ export type ArtifactObjectStorage = {
   readObject(key: string, expectedETag?: string): Promise<Uint8Array | null>;
 };
 
-/** The production adapter: private S3/R2 is the durable artifact registry. */
 export function createS3ArtifactObjectStorage(): ArtifactObjectStorage {
   return {
     async putImmutableObject(object) {
@@ -52,9 +50,6 @@ export function createS3ArtifactObjectStorage(): ArtifactObjectStorage {
           expiresInSeconds: 15 * 60,
           contentType: options.contentType,
           contentEncoding: options.contentEncoding,
-          // Artifact keys are content-addressed, so the URL must not be
-          // overwrite-capable; uploaders send `If-None-Match: *` and treat 412
-          // as already-uploaded success.
           createOnly: true,
           private: true,
         });
@@ -72,18 +67,11 @@ export function createS3ArtifactObjectStorage(): ArtifactObjectStorage {
     },
     async readObject(key, expectedETag) {
       try {
-        // If the caller already performed a size check, carry its ETag through
-        // to the conditional GET. Re-HEADing here would leave a TOCTOU window:
-        // a replacement could be observed by this second HEAD and then be
-        // downloaded before the caller's original byte limit is applied.
         const eTag = expectedETag ?? (await headBytes({ key, private: true }))?.eTag;
         if (eTag === undefined) return null;
         try {
           return await downloadBytes({ key, private: true, ifMatch: eTag });
         } catch (error) {
-          // A deleted object is a not-found result. A failed If-Match means the
-          // object still exists but changed after validation, so preserve that
-          // distinction for callers that report integrity/concurrency errors.
           if (error instanceof S3ServiceException && error.$metadata.httpStatusCode === 404) {
             return null;
           }
@@ -99,12 +87,6 @@ export function createS3ArtifactObjectStorage(): ArtifactObjectStorage {
   };
 }
 
-// The exact "not configured" assertion messages thrown by @/s3's getS3Target.
-// Matched exactly (not by substring) so unrelated S3 assertion bugs — e.g. a
-// missing ContentLength or an unexpected body type — keep surfacing as internal
-// errors instead of being misreported as a missing configuration. Any other
-// error is deliberately rethrown unchanged: unclassified failures must stay
-// loud internal errors rather than be masked behind a safe-looking code.
 const STORAGE_NOT_CONFIGURED_MESSAGES = [
   "S3 is not configured",
   "S3 bucket is not configured",
@@ -112,8 +94,6 @@ const STORAGE_NOT_CONFIGURED_MESSAGES = [
 ];
 
 function translateStorageConfigurationError(error: unknown): ArtifactServiceError | unknown {
-  // HexclaveAssertionError appends a support disclaimer to its message, so the
-  // known text is matched as the full message or as a `\n`-terminated prefix.
   const isNotConfigured = error instanceof HexclaveAssertionError
     && STORAGE_NOT_CONFIGURED_MESSAGES.some((message) => error.message === message || error.message.startsWith(`${message}\n`));
   if (isNotConfigured) {

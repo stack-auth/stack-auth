@@ -71,10 +71,6 @@ function isFrequencyGtePredicate(predicate: IssueAlertPredicate): predicate is F
     && typeof predicate.windowSeconds === "number";
 }
 
-/**
- * Return a draft only when the editor can round-trip the complete rule without
- * dropping filters or predicates. Advanced rules stay read-only in the UI.
- */
 export function getSupportedAlertRuleDraft(rule: IssueAlertRuleResponse): AlertRuleDraft | null {
   if (rule.filters != null && hasConfiguredFilters(rule.filters)) return null;
 

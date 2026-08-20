@@ -17,12 +17,6 @@ export type ValidatedArtifactArchiveEntry = ArtifactArchiveEntry & {
   path: string,
 };
 
-/**
- * Validates the archive namespace before any future extractor writes files.
- * The manifest service currently stores individual content-addressed objects;
- * keeping this gate here prevents a later bundle adapter from reintroducing
- * traversal, duplicate-name, symlink, or archive-bomb bugs.
- */
 export function validateArtifactArchiveEntries(
   entries: readonly ArtifactArchiveEntry[],
   limits: { maxEntries?: number, maxBytes?: number } = {},
@@ -61,10 +55,6 @@ export function validateArtifactArchiveEntries(
   return validated;
 }
 
-/**
- * Strictly validates the gzip/ustar subset already used by deployments. This
- * is an inspection boundary only; it does not extract or persist any entry.
- */
 export function validateGzipTarArtifactArchive(
   bytes: Uint8Array,
   limits: { maxEntries?: number, maxBytes?: number } = {},
@@ -84,9 +74,6 @@ export function validateGzipTarArtifactArchive(
       maxTotalBytes: maxBytes,
     });
   } catch (error) {
-    // Only forward static parseTar diagnostics. Its unsafe-path diagnostic
-    // includes the archive's raw entry name, which is attacker-controlled and
-    // must not be reflected through the API error response.
     if (error instanceof StatusError && error.statusCode === 400) {
       const safeMessages = new Set([
         "Invalid tarball: not a ustar archive",

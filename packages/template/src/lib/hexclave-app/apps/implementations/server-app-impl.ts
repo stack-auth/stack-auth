@@ -513,27 +513,9 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       })(),
     });
 
-    // Install the official outbound HTTP instrumentation and uncaught-error
-    // monitor EAGERLY at construction: requiring `hexclaveInstrumentation()`
-    // glue or a first `{ request }` call for baseline server telemetry was the
-    // single biggest piece of setup wiring, and a project without the
-    // official providers exist before the first automatically captured signal.
-    // Construction always happens in customer module scope. Two exclusions,
-    // states the lazy install path could never reach before:
-    // - browser-like environments: the browser OTel instrumentations own fetch
-    //   and XHR there (and when client analytics is off, nothing should patch it) — the
-    //   _clientAnalytics guard inside the install methods doesn't cover
-    //   analytics-disabled browser apps, so gate on the environment;
-    // - projectOwnerSession-backed apps (the dashboard's per-project admin
-    //   apps): they have no server key, so their batches could never be
-    //   accepted — eager install would only produce doomed sends.
     if (!isBrowserLike() && !("projectOwnerSession" in this._interface.options) && isObservabilityEnabled(this._observabilityOptions)) {
       this._ensureOpenTelemetryProvider();
       this._installServerErrorMonitor();
-      // Automatic console capture (warn+error by default), same eager-install
-      // rationale as above. Server-side _emitLog targets the managed OTel
-      // LoggerProvider; browser-like environments install capture through the
-      // client constructor instead.
       const captureConsoleLevels = this._observabilityOptions?.logs?.captureConsole ?? DEFAULT_CONSOLE_CAPTURE_LEVELS;
       if (captureConsoleLevels.length > 0) {
         installConsoleCapture({
@@ -542,15 +524,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
           projectId: this.projectId,
           serviceName: this._telemetryResource.service.name,
           captureError: (error) => {
-            // Deliberately NOT routed through the browser admission policy
-            // (createClientErrorCapturePolicy): its dedupe/flood caps are
-            // keyed to $page-view rollover, which has no server equivalent —
-            // a long-lived process would hit the cap once and then silently
-            // drop every later console.error forever. Server captures instead
-            // go through the processor pipeline (_processServerError), where
-            // beforeSend/eventProcessors provide the filtering seam; a
-            // server-appropriate local rate limit (e.g. time-windowed) can be
-            // added to _captureServerRequestError if flooding shows up.
             ignoreUnhandledRejection(this._captureServerRequestError(error, { mechanism: "console.error", handled: true }));
           },
         });
@@ -1803,17 +1776,9 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Custom telemetry (server-key OTLP export)
-  //
-  // NOTE: setGlobalSpan is app-instance-level state. Under concurrent requests
-  // (one shared app instance) a global span set in one request becomes a parent
-  // in all of them — prefer an explicit parent (or span.trackEvent) on servers.
-  // ---------------------------------------------------------------------------
 
   private readonly _serverGlobalSpans = new Set<Span>();
   private _telemetrySuppressionPredicate: (() => boolean) | null = null;
-  // See the soft-cap block in setGlobalSpan.
   private _warnedServerGlobalSpanCap = false;
   /** Framework/collector seam: keeps SDK-native capture aligned with the
    * runtime's scoped tracing-suppression context. */
@@ -1831,18 +1796,11 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       return rejectedPreCaught("analytics is disabled");
     }
     if (this._clientAnalytics) {
-      // Browser-like environment: identity comes from the session; an explicit
-      // userId would silently mis-attribute, so refuse it loudly. `request` is a
-      // server-only concern (the browser auto-attaches it to outgoing fetches),
-      // so it is simply ignored here.
       if (options?.userId !== undefined) {
         return rejectedPreCaught("userId is only supported for server-key telemetry; in the browser, events are attributed to the signed-in user");
       }
       return this._clientAnalytics.trackCustomEvent(eventType, data, options);
     }
-    // `{ request }`: resolve the caller's session + client-propagated span context
-    // (async) and run the send with that context ambient, so the event joins the
-    // active browser operation and carries session/replay correlation.
     if (options?.request) {
       this._ensureOpenTelemetryProvider();
       this._installServerErrorMonitor();
@@ -1852,11 +1810,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         await runWithServerRequestContext(context, () => this._trackServerEvent(eventType, data, rest, context.userId));
       })();
     }
-    // No explicit request: if a framework registered an ambient request
-    // provider (hexclaveInstrumentation in Next.js) and we are not already
-    // inside a `{ request }` scope, attribute via the framework's ambient
-    // request — this is what makes bare `trackEvent` calls in route handlers
-    // parent under the caller's session with zero wiring.
     if (this._ambientRequestProvider !== null && getServerRequestContext() === null) {
       return preCaught(this._runWithAmbientRequestScope(options?.userId ?? null, (userId) =>
         this._trackServerEvent(eventType, data, options, userId)));
@@ -1873,17 +1826,10 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   ): Promise<T> {
     const options = typeof optionsOrFn === "function" ? undefined : optionsOrFn;
     const fn = typeof optionsOrFn === "function" ? optionsOrFn : maybeFn;
-    // No request (or browser): the inherited withSpan handles global/enclosing
-    // ambient parenting and forwards userId to the server startSpan at runtime.
     if (!options?.request || this._clientAnalytics) {
       if (typeof fn !== "function") {
         return rejectedPreCaught("withSpan() requires a callback function");
       }
-      // Framework-ambient fallback (see trackEvent): a bare server withSpan
-      // outside any `{ request }` scope adopts the framework's ambient request
-      // when a provider is registered, so route-handler code never threads the
-      // request by hand. Nested withSpan calls inside an existing scope keep
-      // the fast inherited path — the ALS context already attributes them.
       if (!this._clientAnalytics && this._ambientRequestProvider !== null && getServerRequestContext() === null) {
         return (async () => {
           await this._ensureOtelReady([]);
@@ -1903,9 +1849,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         ? super.withSpan(spanType, fn)
         : super.withSpan(spanType, options, fn);
     }
-    // First `{ request }` scope on this app: also install the outbound-fetch
-    // instrumentation (lazy so apps that never use request telemetry don't
-    // patch global fetch) and the uncaught-error monitor beside it.
     this._ensureOpenTelemetryProvider();
     this._installServerErrorMonitor();
     const { request, ...rest } = options;
@@ -1933,18 +1876,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   private async _resolveServerRequestContext(request: RequestLike, explicitUserId: string | null): Promise<ServerRequestSpanContext> {
     let userId: string | null = null;
     let refreshTokenId: string | null = null;
-    // Deduplication note (verified): the framework adapters resolve the session
-    // for `getUser({ tokenStore: request })` as well, but the two paths share
-    // state rather than doubling work — `_getOrCreateTokenStore` memoizes the
-    // token store per request object (`_requestTokenStores` WeakMap) and
-    // `_getSessionFromTokenStore` memoizes the InternalSession per (store,
-    // session key), so both resolve to the SAME session instance. The forced
-    // `fetchNewTokens()` below (deliberate: it round-trips the refresh token,
-    // so the derived userId is server-verified rather than trusted from a
-    // client-supplied access token) installs its fresh access token into that
-    // shared session, which means the adapter's subsequent user fetch hits the
-    // session's token cache instead of refreshing again. Concurrent refreshes
-    // additionally coalesce on the session's internal _refreshPromise.
     const session = await this._getSession(request);
     const tokens = await session.fetchNewTokens();
     if (tokens?.refreshToken != null) {
@@ -1971,10 +1902,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     }, explicitUserId);
   }
 
-  // Framework-registered ambient request provider (hexclaveInstrumentation in
-  // the Next.js integration): returns the current request's RequestLike when
-  // called inside a request scope, null otherwise. Single slot with replace
-  // semantics — one framework owns a runtime's ambient requests.
   private _ambientRequestProvider: (() => Promise<RequestLike | null>) | null = null;
 
   /** See getServerAppInstrumentation. Public-but-underscored. */
@@ -2053,14 +1980,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       console.warn("Hexclave analytics: setGlobalSpan() called with an already-ended span; ignoring");
       return;
     }
-    // No path-compatibility check any more: the nearest ambient context wins as
-    // parent and any other global span in a different trace becomes a link.
     this._serverGlobalSpans.add(span);
-    // Soft cap, mirroring the client tracker's registries: global spans are
-    // app-instance state on the server, so a long-lived process registering
-    // never-ended globals would otherwise leak without bound. Beyond the cap
-    // the OLDEST span stops being an ambient parent (its row stays valid
-    // server-side); warned once per app instance so loops cannot spam.
     if (this._serverGlobalSpans.size > SERVER_GLOBAL_SPAN_SOFT_CAP) {
       const oldest = this._serverGlobalSpans.values().next();
       if (!oldest.done) this._serverGlobalSpans.delete(oldest.value);
@@ -2180,9 +2100,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       throw new Error(`Hexclave analytics: ${resolved.error}`);
     }
 
-    // Managed registration installs globals synchronously before its promise
-    // settles. Framework register() normally did this already; this preserves
-    // the standalone server-app path without a second tracing runtime.
     this._registerOpenTelemetryNow([]);
     const parent = resolved.parentSpanId === null
       ? undefined
@@ -2200,9 +2117,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         ...parent === undefined ? { root: true } : { parent, root: false },
         links: resolved.links,
       },
-      // Read the option directly (like _getSpanPropagationContext): the policy
-      // getter's trusted-domains latch must not start as a side effect of
-      // merely starting a span.
       correlationBaggage: this._observabilityOptions?.spanPropagation?.enabled !== false,
       correlationAttributes: {
         ...batchContext.sessionReplayId === null ? {} : { "hexclave.session_replay.id": batchContext.sessionReplayId },
@@ -2212,11 +2126,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       capabilities: {
         trackEvent: (eventType, data, trackOptions) => this._trackServerEvent(eventType, data, trackOptions, userId),
         onEnded: (endedSpan) => this._serverGlobalSpans.delete(endedSpan),
-        // Hierarchy comes exclusively from the registered OTel propagator in
-        // createOtelSpanFacade. This callback contributes only product baggage
-        // (and therefore returns nothing when correlation baggage is disabled);
-        // rebuilding traceparent here would lose the provider's real flags and
-        // tracestate (especially for a non-recording inherited span).
         getSpanPropagationHeaders: () => this._observabilityOptions?.spanPropagation?.enabled === false ? {} : buildPropagationHeaderValues({
           traceparent: null,
           context: {
@@ -2225,12 +2134,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
             ...batchContext.pageViewSpanId ? { pageViewSpanId: batchContext.pageViewSpanId } : {},
           },
         }),
-        // Server runtimes do not have a browser-like current origin, so
-        // span.fetch attaches the header only for the propagation origin
-        // policy (explicit allowedOrigins + the trusted-domain defaults) and
-        // otherwise fails closed instead of leaking context to arbitrary
-        // third-party URLs. Use getSpanPropagationHeaders() explicitly for a
-        // trusted target outside that policy.
         fetch: (span, input, init) => {
           try {
             const policy = this._getPropagationOriginPolicy();
@@ -2252,8 +2155,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     return span;
   }
 
-  // Server outbound HTTP instrumentation (cross-tier bridge, server→server)
-  // ---------------------------------------------------------------------------
 
   private _serverFetchInstrumentationInstalled = false;
 
@@ -2265,7 +2166,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   _ensureOpenTelemetryProvider(): void {
     if (this._serverFetchInstrumentationInstalled) return;
     this._serverFetchInstrumentationInstalled = true;
-    // Browser-like environments are registered by the browser provider.
     if (this._clientAnalytics) return;
     if (!isObservabilityEnabled(this._observabilityOptions)) return;
     this._registerOpenTelemetryNow([]);
@@ -2313,10 +2213,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (this._managedOtelRegistration !== null) return this._managedOtelRegistration;
     const options = this._buildManagedOtelOptions(instrumentations);
     if (options === null) return null;
-    // Prefer the sync Node builtin-require path so construction-time install
-    // stays immediate when available. Otherwise kick the opaque async import
-    // (awaited by flush / withSpan / trackEvent) without a static import edge
-    // to the Node-only OTel graph that client bundles must not see.
     const sync = tryRequireOtelSdkSync();
     if (sync !== null) {
       const registration = sync.registerManagedOtel(options);
@@ -2328,11 +2224,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   async _registerOpenTelemetry(instrumentations: Instrumentation[]): Promise<ManagedOtelRegistration | null> {
-    // Only short-circuit on the cached registration when there is nothing new
-    // to install: app construction registers eagerly with NO instrumentations,
-    // so a later framework register() call supplying e.g. PrismaInstrumentation
-    // must still reach registerManagedOtel, which installs late arrivals on the
-    // cached provider (deduped by instrumentationName — see otel-sdk.ts).
     if (this._managedOtelRegistration !== null && instrumentations.length === 0) return this._managedOtelRegistration;
     const options = this._buildManagedOtelOptions(instrumentations);
     if (options === null) return null;
@@ -2498,20 +2389,10 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   _captureServerRequestError(error: unknown, info: { mechanism: string, handled: boolean, request?: RequestLike, data?: Record<string, unknown> }): Promise<void> {
     if (this._isTelemetrySuppressed()) return Promise.resolve();
     const scope = getActiveErrorScope()?.snapshot();
-    // Shared payload builder (see error-capture.ts): message/name/stack
-    // bounded to 8KB, flattened mechanism_type/handled scalars, local
-    // fingerprint for grouping, release/environment stamps.
     const data: CapturedErrorEvent = {
-      // Adapter-supplied extras spread FIRST so capture metadata stays
-      // authoritative: `data: { handled: false }` (or an event_id /
-      // mechanism_type / fingerprint collision) must never reclassify the
-      // event — `info.handled` at this seam is what crash-free rates trust.
       ...info.data ?? {},
       ...buildErrorEventData(error, {
         mechanismType: info.mechanism,
-        // Handledness is explicit at the capture seam. Inferring it from the
-        // mechanism string would make a newly added adapter silently distort
-        // crash-free rates until its first production event was inspected.
         handled: info.handled,
         release: this._telemetryResource.service.version ?? null,
         environment: this._telemetryResource.deploymentEnvironmentName ?? null,
@@ -2555,23 +2436,16 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
    */
   _installServerErrorMonitor(): void {
     if (this._serverErrorMonitorInstalled) return;
-    // Browser-like environment: the window.onerror/onunhandledrejection
-    // capture (ClientAnalytics) owns errors there.
     if (this._clientAnalytics) return;
     if (!isObservabilityEnabled(this._observabilityOptions)) return;
     if (this._observabilityOptions?.errorCapture?.enabled === false) return;
     const runtime: ErrorIntegrationRuntime = {
       captureException: (error, options) => this.captureException(error, options),
-      // The process integration does not emit breadcrumbs. Keep the runtime
-      // complete without introducing a process-global breadcrumb buffer.
       addBreadcrumb: () => undefined,
       node: {
         onUncaughtException: (handler, _options) => {
           const uninstall = installServerErrorMonitor({
             projectId: this.projectId,
-            // This delegates to the existing uncaughtExceptionMonitor adapter;
-            // it never installs a normal uncaughtException listener and therefore
-            // cannot change Node's default crash behavior.
             capture: handler,
           });
           return uninstall ?? (() => undefined);
@@ -2642,8 +2516,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   /** Server-side OTel LogRecord sink behind `app.logger`. */
   protected override _emitLog(item: LogEmitItem): "ok" | "unavailable" {
-    // "ok" deliberately means "suppressed, do not warn": returning unavailable
-    // would make the logger emit a diagnostic from inside the collector path.
     if (this._isTelemetrySuppressed()) return "ok";
     if (!isObservabilityEnabled(this._observabilityOptions)) return "unavailable";
     if (this._clientAnalytics) return super._emitLog(item);
@@ -2654,12 +2526,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       return "ok";
     }
     if (this._ambientRequestProvider !== null) {
-      // A bare logger call in a route handler should attribute to the
-      // framework's ambient request exactly like bare trackEvent/withSpan do.
-      // The resolution is async (session lookup) while this sink is sync, so
-      // it runs fire-and-forget — the record is emitted once (and only once)
-      // from inside the resolved scope, or unattributed when resolution
-      // degrades (see _runWithAmbientRequestScope's failure contract).
       const ambientLog = this._runWithAmbientRequestScope(null, async () => {
         const resolved = getServerRequestContext();
         if (resolved !== null) {
@@ -2750,9 +2616,6 @@ export function getServerAppInstrumentation(app: unknown): ServerAppInstrumentat
   };
 }
 
-// Shared with the SDK/backend contracts so explicit server attribution cannot
-// create an invalid tenant user reference.
 const SERVER_TELEMETRY_UUID_RE = TELEMETRY_UUID_RE;
 
-// Matches the client tracker's LIVE_SPAN_REGISTRY_SOFT_CAP; see setGlobalSpan.
 const SERVER_GLOBAL_SPAN_SOFT_CAP = 1000;

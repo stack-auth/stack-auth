@@ -13,10 +13,6 @@ import { HookPrefetcher, HookPrefetcherCallback } from "./hook-prefetcher";
 
 type UrlPrefetcher = (match: RegExpMatchArray, query: URLSearchParams, hash: string) => void | HookPrefetcherCallback[];
 
-// Prefetches the data used by the usage limit banners in analytics/shared.tsx (AnalyticsEventLimitBanner &
-// SessionReplayLimitBanner). Mirrors their fetch logic: plan usage + internal user's teams, and — only when plan
-// limits are enforced (the banners bail out otherwise, so we skip the extra requests too) — the billing team's
-// item quantity and products.
 const usageLimitBannerPrefetchers = (itemId: "analytics_events" | "session_replays"): UrlPrefetcher[] => [
   ([_, projectId]) => {
     useAdminApp(projectId).usePlanUsage();
@@ -51,13 +47,8 @@ const urlPrefetchers: Record<string, UrlPrefetcher[]> = {
     ([_, projectId]) => {
       useAdminApp(projectId).useUsers({ limit: 1 });
     },
-    // the project overview page renders the AnalyticsEventLimitBanner
     ...usageLimitBannerPrefetchers("analytics_events"),
   ],
-  // The queries/tables workspaces moved from /analytics to /warehouse (the old
-  // URLs are server-side redirects), so the banner prefetch keys must follow —
-  // keyed to the old paths they would never fire on the pages that render the
-  // banner.
   "/projects/*/warehouse/queries": [
     ...usageLimitBannerPrefetchers("analytics_events"),
   ],

@@ -69,9 +69,6 @@ export type ArtifactLookup = {
   sourceMapObjectKey: string | null,
 };
 
-// Release membership is owned by the Postgres release graph. These records are
-// the immutable object-storage manifest/index needed by symbolication, not a
-// competing release registry.
 type StoredManifestRecord = {
   schemaVersion: typeof ARTIFACT_STORAGE_SCHEMA_VERSION,
   scope: ArtifactScope,
@@ -190,10 +187,6 @@ export class ArtifactUploadService {
         if (inlineMapBytes === null) {
           throw new ArtifactServiceError("integrity_mismatch", `Artifact ${artifact.debugId} does not contain its declared inline source map.`);
         }
-        // The symbolicator re-derives these bytes at read time and rejects the
-        // artifact when they don't match the manifest digest — so a wrong
-        // inline digest/length must fail here, at finalization, instead of
-        // being reported finalized and then failing every runtime lookup.
         if (inlineMapBytes.byteLength !== artifact.sourceMapBytes || sha256Hex(inlineMapBytes) !== artifact.sourceMapSha256) {
           throw new ArtifactServiceError("integrity_mismatch", `Artifact ${artifact.debugId} inline source map does not match its manifest.`);
         }
@@ -262,17 +255,6 @@ export class ArtifactUploadService {
     };
   }
 
-  /**
-   * Exact debug-ID lookup is scoped by tenant/project/branch and release/dist.
-   *
-   * Deliberately not gated on the manifest's finalize marker: index records are
-   * only ever written after *every* artifact in the manifest passed length,
-   * digest, and source-map verification, so an interrupted finalize can at
-   * worst publish a verified subset early — and the retried finalize completes
-   * the rest idempotently. Requiring the marker would double the reads per
-   * lookup without adding integrity (bytes are digest-verified again at
-   * symbolication time anyway).
-   */
   public async lookupArtifact(
     scopeInput: ArtifactScope,
     query: { debugId: string, release: string | null, dist: string | null },
@@ -539,10 +521,6 @@ function verifySourceMap(sourceMapText: string, artifact: ArtifactManifestArtifa
   } catch {
     throw new ArtifactServiceError("integrity_mismatch", `Artifact ${artifact.debugId} source map is not valid version-3 JSON.`);
   }
-  // The runtime symbolicator's bounded VLQ reader deliberately rejects indexed
-  // (`sections`) source maps. Accepting them here would report the artifact as
-  // finalized even though it could never symbolicate, so fail the upload with
-  // an actionable message instead.
   if (record.sections !== undefined) {
     throw new ArtifactServiceError("unsupported_source_map", `Artifact ${artifact.debugId} uses an indexed (sections) source map, which symbolication does not support; upload a flattened version-3 map instead.`);
   }
@@ -551,13 +529,6 @@ function verifySourceMap(sourceMapText: string, artifact: ArtifactManifestArtifa
   }
 }
 
-/**
- * Returns the raw inline source-map bytes, deriving them the same way the
- * runtime symbolicator does (strict base64, byte-level payloads). Returning
- * bytes rather than a decoded string matters: the manifest digest is defined
- * over these bytes, and a lossy UTF-8 round-trip here could accept at
- * finalization what the symbolicator would later reject.
- */
 function readInlineSourceMap(bundleBytes: Uint8Array): Uint8Array | null {
   const source = decodeStrictUtf8(bundleBytes);
   if (source === null) {

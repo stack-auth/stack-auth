@@ -317,29 +317,13 @@ export async function logEvent<T extends EventType[]>(
       ? dataRecord.userId
       : "";
 
-  // The relational Event row used to store the requester's IP guess AND its
-  // spoof-trust bit (isEndUserIpInfoGuessTrusted) for every event; the
-  // ClickHouse rows must not silently lose that signal. Captured here rather
-  // than in the block below because headers() is a dynamic API that is only
-  // available in the synchronous request scope (which is also why this
-  // function's doc comment forbids wrapping it in waitUntil). Event types
-  // whose data schema carries `ipInfo` already embed the same signal in their
-  // validated data; the capture below covers every other event type.
   let requestIpInfo: EndUserIpInfo | null = null;
   try {
     requestIpInfo = await getEndUserIpInfoForEvent();
   } catch (error) {
-    // Some internal event producers run outside the request ALS scope. The
-    // request-local headers helper deliberately throws there; preserve that
-    // signal for observability while allowing the event itself to be written
-    // without request IP enrichment. Other failures must still fail loudly.
     if (!(error instanceof Error) || error.message !== "Backend request context is only available while handling a backend request") {
       throw error;
     }
-    // This is an expected path for detached internal event producers. The
-    // normal error sink flushes through Vercel's waitUntil, which is itself
-    // unavailable here; report it once per process without re-entering that
-    // sink and turning a harmless enrichment miss into a recursive error.
     if (!hasReportedMissingRequestIpContext) {
       hasReportedMissingRequestIpContext = true;
       console.warn("Event logging skipped request IP enrichment outside a backend request context", error);
@@ -368,9 +352,6 @@ export async function logEvent<T extends EventType[]>(
       }
     }
 
-    // ClickHouse is the durable system-telemetry store. Write one row for each
-    // event type in the inheritance chain so the old relational
-    // `systemEventTypeIds` array remains queryable through event_type filters.
     const clickhouseEventTypes = new Set([
       '$token-refresh',
       '$sign-up-rule-trigger',
@@ -381,10 +362,6 @@ export async function logEvent<T extends EventType[]>(
     for (const matchingEventType of eventTypesArray) {
       let clickhouseEventData: Record<string, unknown>;
       if (!clickhouseEventTypes.has(matchingEventType.id)) {
-        // Rows whose validated data already carries `ipInfo` (the auth-flow
-        // event chains) keep it there; everything else gets the request
-        // capture under the same `ip_info` key the $token-refresh branch uses,
-        // so the spoof-trust bit survives the move off the relational store.
         const dataCarriesIpInfo = typeof dataRecord === "object" && dataRecord != null && "ipInfo" in dataRecord;
         clickhouseEventData = dataCarriesIpInfo || requestIpInfo === null
           ? dataRecord ?? {}
@@ -551,9 +528,6 @@ export async function logEvent<T extends EventType[]>(
         refresh_token_id: resolvedRefreshTokenId ?? null,
         session_replay_id: options.sessionReplayId ?? null,
         session_replay_segment_id: options.sessionReplaySegmentId ?? null,
-        // No trace/span ids: a backend-produced system event like this happens
-        // outside any span, and an event never roots a trace of its own. The
-        // session columns above are how it is correlated.
       };
       await clickhouseClient.insert({
         table: "analytics_internal.events",
@@ -592,5 +566,4 @@ export async function logEvent<T extends EventType[]>(
   })());
 }
 
-/** Semantic name for new callers; logEvent remains as the compatibility API. */
 export const recordSystemTelemetry = logEvent;

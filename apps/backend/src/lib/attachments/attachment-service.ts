@@ -59,11 +59,6 @@ export class ErrorAttachmentService {
     return await this.uploadValidated(scope, upload);
   }
 
-  /**
-   * Internal byte-oriented boundary for already parsed envelopes. Sentry
-   * attachments arrive as bytes; keeping them bytes here avoids a needless
-   * base64 encode/decode cycle before private storage.
-   */
   public async uploadBytes(
     scopeInput: ErrorAttachmentScope,
     upload: ValidatedErrorAttachmentUpload,
@@ -164,9 +159,6 @@ function createPrismaErrorAttachmentRepository(client: PrismaClientTransaction):
       const rows = await client.errorAttachment.findMany({
         where: { ...scopeWhere(scope), eventId },
         orderBy: { createdAt: "desc" },
-        // Bound the read at the database so a pathological event cannot inflate
-        // the query result; the service-level slice stays as a defensive cap
-        // for repository implementations that don't enforce the bound.
         take: MAX_ERROR_ATTACHMENTS_PER_EVENT,
       });
       return rows.map((row) => toMetadata(row)).filter((row): row is ErrorAttachmentMetadata => row !== null);

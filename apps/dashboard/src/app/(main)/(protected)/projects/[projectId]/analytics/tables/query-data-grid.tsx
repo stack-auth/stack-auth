@@ -52,18 +52,9 @@ export type QueryDataGridToolbarContext<TRow = RowData> =
     isRefetching: boolean,
   };
 
-/**
- * Per-column display overrides for QueryDataGrid. The grid still discovers
- * the schema from the query result; configs only change how a discovered
- * column is presented. `hidden` columns stay on the row object (so custom
- * `onRowClick` handlers and quick search can use them) but are not rendered
- * as grid columns.
- */
 export type QueryDataGridColumnConfig = {
-  /** Header label shown instead of the raw column name. */
   header?: string,
   width?: number,
-  /** Growth factor for leftover horizontal space (see DataGridColumnDef.flex). */
   flex?: number,
   hidden?: boolean,
   renderCell?: (value: unknown, row: RowData) => ReactNode,
@@ -84,11 +75,6 @@ export type QueryDataGridProps = {
    *   touch its LIMIT.
    */
   query: string,
-  /**
-   * ClickHouse query parameters referenced by `query` (and by the
-   * sort/search wrapper the grid builds around it). Prefer bound params
-   * over interpolating dynamic values into the SQL string.
-   */
   queryParams?: Record<string, string | number>,
   /** Execution mode. Defaults to `paginated`. */
   mode?: QueryDataGridMode,
@@ -139,17 +125,13 @@ export type QueryDataGridProps = {
   toolbarActions?:
     | ReactNode
     | ((ctx: QueryDataGridToolbarContext<RowData>) => ReactNode),
-  /** Per-column display overrides, keyed by discovered column name. */
   columnConfigs?: ReadonlyMap<string, QueryDataGridColumnConfig>,
   /** Whether the default row-click-to-inspect dialog is enabled. Defaults to `true`. */
   enableRowDetailDialog?: boolean,
   /** Custom row click handler. Overrides the default row detail dialog. */
   onRowClick?: (row: RowData) => void,
-  /** Title for the default row-detail dialog. */
   detailTitle?: string,
-  /** Columns collapsed behind "Technical details" in the default dialog. */
   detailTechnicalColumns?: readonly string[],
-  /** Extra content (e.g. "View in trace") rendered above the default dialog fields. */
   detailExtraContent?: ReactNode | ((row: RowData) => ReactNode),
   /** Called whenever the error state changes (null when cleared). */
   onError?: (error: string | null) => void,
@@ -346,12 +328,8 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
     defaultOrderByRef.current = defaultOrderBy;
     const defaultOrderDirRef = useRef(defaultOrderDir);
     defaultOrderDirRef.current = defaultOrderDir;
-    // Ref mirror so the dataSource generator can read the latest params
-    // without being recreated on every fresh-but-equal object identity.
     const queryParamsRef = useRef(queryParams);
     queryParamsRef.current = queryParams;
-    // Stable key so callers can pass a fresh `{}` / params object each render
-    // without resetting the grid or recreating the data source.
     const queryParamsKey = JSON.stringify(queryParams ?? {});
 
     const [gridState, setGridState] = useState<DataGridState>(() => {
@@ -441,12 +419,6 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
       [discoveredColumns, columnConfigs],
     );
 
-    // Capture `query`, `mode`, and `queryParamsKey` so the generator identity
-    // and the SQL it executes change together. useDataSource keys off that
-    // identity to refetch when any input changes. Params are read from a ref
-    // so equal-content object identity churn does not recreate the generator;
-    // `queryParamsKey` is intentionally unused in the body — its job is only
-    // to bust this memo when the params payload changes.
     const dataSource = useMemo<DataGridDataSource<RowData>>(() => {
       void queryParamsKey;
       return async function* (params) {

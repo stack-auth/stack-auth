@@ -39,11 +39,6 @@ function requestHeaders(nativeFetch: ReturnType<typeof stubNativeFetch>, callInd
   return new Headers(init?.headers);
 }
 
-// `@opentelemetry/instrumentation-fetch` delays `span.end()` by 300ms so a
-// PerformanceObserver can attach resource timings. HTTP client metrics are
-// recorded in `SpanProcessor.onEnd`, so they cannot appear until that timer
-// fires. The drop-path test waits too: otherwise a missing export could just
-// mean the span has not ended yet.
 const FETCH_SPAN_END_DELAY_MS = 350;
 
 async function waitForFetchSpanEnd(): Promise<void> {
@@ -139,16 +134,11 @@ describe("managed browser HTTP instrumentation", () => {
     expect(deliveryRequests.every(([, init]) => new Headers(init?.headers).get("traceparent") === null)).toBe(true);
   });
 
-  // Regression test: with a plain StackContextManager, app-initiated fetches
-  // (which never run inside a `context.with(...)` frame) saw ROOT_CONTEXT, so
-  // every fetch minted a fresh parentless trace — detaching the whole request +
-  // backend subtree from the refresh-token session trace.
   it("parents app-initiated fetches under the ambient page-view context", async () => {
     const nativeFetch = stubNativeFetch();
     let ambient: Context | null = null;
     registerWithAmbient(() => ambient);
 
-    // Before the first page view there is no ambient: the fetch roots its own trace.
     await fetch(window.location.origin + "/pre-page-view");
     ambient = pageViewAmbientContext();
     await fetch(window.location.origin + "/orders");
@@ -159,12 +149,8 @@ describe("managed browser HTTP instrumentation", () => {
 
     const joined = requestHeaders(nativeFetch, 1);
     const traceparent = joined.get("traceparent");
-    // Same trace as the session, but a CHILD span id (the fetch span), never
-    // the page view's own id verbatim.
     expect(traceparent).toMatch(new RegExp(`^00-${SESSION_TRACE_ID}-[0-9a-f]{16}-01$`));
     expect(traceparent).not.toContain(PAGE_VIEW_SPAN_ID);
-    // The correlation baggage rides too, so the backend can stamp
-    // page_view_span_id / segment id on everything downstream.
     const baggage = joined.get("baggage") ?? "";
     expect(baggage).toContain(`${HEXCLAVE_PAGE_VIEW_SPAN_ID_BAGGAGE_KEY}=${PAGE_VIEW_SPAN_ID}`);
     expect(baggage).toContain(HEXCLAVE_SESSION_REPLAY_SEGMENT_ID_BAGGAGE_KEY);
@@ -176,11 +162,6 @@ describe("managed browser HTTP instrumentation", () => {
       installHttpInstrumentationImmediately: false,
     });
 
-    // There is no safe hierarchy to export yet. The request still runs, but
-    // the managed registration has not installed its HTTP instrumentations, so
-    // it cannot create a random root that cannot be reparented later. The
-    // explicit return value also makes this assertion independent of any
-    // wrapper left by jsdom or another test's global fetch implementation.
     await fetch(window.location.origin + "/bootstrap");
 
     expect(registration.enableHttpInstrumentation()).toBe(true);
@@ -197,8 +178,6 @@ describe("managed browser HTTP instrumentation", () => {
     });
 
     expect(second).not.toBe(first);
-    // The first instance is no longer allowed to release the second instance's
-    // startup gate after the singleton has been claimed again.
     expect(first.enableHttpInstrumentation()).toBe(false);
     await fetch(window.location.origin + "/bootstrap");
     expect(requestHeaders(nativeFetch, 0).get("traceparent")).toBeNull();

@@ -75,7 +75,6 @@ describe("optimistic overrides", () => {
     const clicked = issue({ updated_at_millis: 2_000 });
     const overrides = applyOptimisticStatus(NO_ISSUE_STATUS_OVERRIDES, clicked.id, "resolved", 2_000);
 
-    // The issue recurred: the server reopened it and bumped updated_at.
     const regressed = issue({ status: "unresolved", substatus: "regressed", updated_at_millis: 5_000 });
     const reconciled = reconcileIssueStatusOverrides(overrides, [regressed]);
 
@@ -103,7 +102,6 @@ describe("optimistic overrides", () => {
     const cleared = clearOptimisticStatus(both, "a");
     expect(cleared.has("a")).toBe(false);
     expect(cleared.get("b")?.status).toBe("ignored");
-    // Immutability: the caller's map is never mutated in place.
     expect(both.has("a")).toBe(true);
   });
 
@@ -117,14 +115,12 @@ describe("optimistic overrides", () => {
     const a = applyOptimisticStatus(NO_ISSUE_STATUS_OVERRIDES, "a", "resolved", 2_000);
     const both = applyOptimisticStatus(a, "b", "ignored", 2_000);
 
-    // Only "a" moved server-side; "b" is still at the version the user clicked.
     const rowA = issue({ id: "a", updated_at_millis: 5_000 });
     const rowB = issue({ id: "b", updated_at_millis: 2_000 });
     const reconciled = reconcileIssueStatusOverrides(both, [rowA, rowB]);
 
     expect(reconciled.has("a")).toBe(false);
     expect(reconciled.get("b")?.status).toBe("ignored");
-    // Immutability: the input map is never mutated in place.
     expect(both.has("a")).toBe(true);
   });
 
@@ -132,8 +128,6 @@ describe("optimistic overrides", () => {
     const a = applyOptimisticStatus(NO_ISSUE_STATUS_OVERRIDES, "a", "resolved", 2_000);
     const both = applyOptimisticStatus(a, "b", "ignored", 2_000);
 
-    // The fetched page contains neither overridden issue (e.g. it scrolled out
-    // of the window) — nothing to reconcile, identity must be preserved.
     const reconciled = reconcileIssueStatusOverrides(both, [issue({ id: "c", updated_at_millis: 9_000 })]);
 
     expect(reconciled).toBe(both);

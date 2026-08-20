@@ -271,9 +271,6 @@ const environmentSchemaFuzzerConfig = [{
   observability: [{
     errorIngest: [undefined, {
       finalScrub: [undefined, {
-        // Record keys are dotless rule ids (config-override normalization
-        // splits dotted keys into nested objects); the dotted field selector
-        // lives in the record value, so every selector is fuzzable now.
         dropKeys: [undefined, { dropEmail: [undefined, "user.email", "tags.customer-id"] }],
         urlKeys: [undefined, { pathOnlyUrl: [undefined, "url", "request.url"] }],
       }],

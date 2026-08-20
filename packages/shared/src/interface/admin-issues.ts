@@ -2,23 +2,6 @@ import yup from "yup";
 import { yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "../schema-fields";
 import type { Json } from "../utils/json";
 
-// Single source of truth for the `/internal/issues*` endpoint shapes.
-//
-// Both the backend route handlers (`apps/backend/src/app/api/latest/internal/issues/**`)
-// and the dashboard (`apps/dashboard/.../observability/issues/**`, via
-// `sendInternalAdminRequest`) import these schemas, exactly like
-// `admin-metrics.ts` does for `/internal/metrics`. Runtime validation lives in
-// the schemas; static types are derived with `yup.InferType` so there is never
-// a parallel copy to keep in sync.
-//
-// ── Why so many `yupString()` where you'd expect a number ──────────────────
-// `Issue.shortId` and `Issue.timesSeen` are Postgres `BigInt`. The response
-// pipeline in `apps/backend/src/route-handlers/smart-response.tsx` runs
-// `JSON.stringify(body)` (twice — once to validate round-tripping, once to
-// encode), and `JSON.stringify` THROWS on a BigInt rather than coercing it.
-// So these cross the wire as decimal strings. Callers that need arithmetic
-// should parse with `BigInt(...)`, not `Number(...)`, because `times_seen` on a
-// firehose project can exceed `Number.MAX_SAFE_INTEGER`.
 
 /** Stored lifecycle status. `substatus` below is derived, never stored. */
 export const IssueStatusSchema = yupString().oneOf(["unresolved", "resolved", "ignored"]).defined();
@@ -279,9 +262,6 @@ export const IssueListItemSchema = yupObject({
   /** Per-tenancy (project AND branch) monotonic counter, as a decimal string. */
   short_id: yupString().defined(),
 
-  // Display identity, denormalized from the occurrence that CREATED the issue
-  // and never rewritten — the title must not shift under the user because a
-  // later occurrence happened to carry a different message.
   type: yupString().defined(),
   value: yupString().defined(),
   culprit: yupString().defined(),
@@ -290,10 +270,6 @@ export const IssueListItemSchema = yupObject({
   status: IssueStatusSchema,
   substatus: IssueSubstatusSchema,
 
-  // ── Lifetime, from Postgres ──
-  // Maintained exclusively by ledger-applied deltas (see IssueMaterialization).
-  // Never reconstructed from ClickHouse: the rollup retains 90 days, so it
-  // cannot answer an all-time question.
   first_seen_at_millis: yupNumber().defined(),
   last_seen_at_millis: yupNumber().defined(),
   times_seen: yupString().defined(),
@@ -304,10 +280,6 @@ export const IssueListItemSchema = yupObject({
    */
   counters_truncated_at_millis: yupNumber().nullable().defined(),
 
-  // ── Window-scoped, from the ClickHouse rollup ──
-  // These answer "in the selected time range", and are deliberately named
-  // differently from the lifetime fields above because the two look
-  // interchangeable in a table and are not.
   window_occurrences: yupNumber().defined(),
   window_users: yupNumber().defined(),
 

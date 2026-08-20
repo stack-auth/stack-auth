@@ -124,8 +124,6 @@ describe("Sentry transaction to canonical OTLP adapter", () => {
         },
       },
     }), context);
-    // Continuing the upstream trace (instead of forcing null) keeps one root
-    // per distributed trace when both services report their spans here.
     expect(spans[0]).toMatchObject({ spanId: ROOT_SPAN_ID, parentSpanId: upstreamSpanId });
   });
 
@@ -174,9 +172,6 @@ describe("Sentry transaction to canonical OTLP adapter", () => {
     });
     expect(() => sentryTransactionToCanonicalOtlpSpans(outsideOtlpRange, context)).toThrow(/OTLP timestamp range/iu);
 
-    // An all-zero parent span id is rejected at the envelope parse boundary
-    // (`isW3cSpanId` refuses the all-zero id), so the adapter never sees the
-    // transaction; the item comes back rejected instead.
     const zeroParentParsed = parseErrorIngestEnvelope(envelope(transactionPayload({
       contexts: {
         trace: {

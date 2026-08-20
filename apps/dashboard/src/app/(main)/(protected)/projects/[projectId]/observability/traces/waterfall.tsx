@@ -42,7 +42,6 @@ const SPAN_COLOR_CLASSES = [
   "bg-fuchsia-500",
 ];
 
-/** Stable color per span type so the same operation looks the same across traces. */
 export function spanColorClass(spanType: string): string {
   if (isSystemSpanType(spanType)) return "bg-slate-400/80 dark:bg-slate-500/80";
   let hash = 0;
@@ -56,23 +55,12 @@ const NAME_COLUMN = "minmax(200px, 260px)";
 const DURATION_COLUMN = "76px";
 const FULL_VIEW: ViewWindow = { start: 0, end: 1 };
 
-// Row heights are pinned by the h-8 (span) / h-7 (event and link) classes on the row
-// elements below; the windowed-rendering math depends on them staying in sync.
 export const SPAN_ROW_HEIGHT_PX = 32;
 export const EVENT_ROW_HEIGHT_PX = 28;
 export const LINK_ROW_HEIGHT_PX = 28;
-// Rows rendered beyond each edge of the scrollport. Also absorbs the one-frame
-// geometry drift when content above the list (banners, sticky header) resizes
-// without a scroll event.
 const ROW_OVERSCAN = 20;
-// Scrollport height assumed for the very first render, before the mount effect
-// measures the real scroll container.
 const INITIAL_VIEWPORT_GUESS_PX = 1200;
 
-/**
- * Cumulative row tops: offsets[i] is the y position of row i relative to the
- * top of the row list, offsets[rows.length] is the total list height.
- */
 export type TraceWaterfallLink = {
   ownerSpanId: string,
   linkedTraceId: string,
@@ -103,11 +91,9 @@ export function computeRowOffsets(rows: readonly TraceWaterfallRow[]): number[] 
 
 export type RowWindow = {
   startIndex: number,
-  /** Exclusive. */
   endIndex: number,
 };
 
-/** Number of entries in the ascending array `offsets` that are <= y. */
 function countOffsetsAtOrBelow(offsets: number[], y: number): number {
   let lo = 0;
   let hi = offsets.length;
@@ -122,17 +108,9 @@ function countOffsetsAtOrBelow(offsets: number[], y: number): number {
   return lo;
 }
 
-/**
- * The slice of rows to actually mount for a scrollport spanning
- * [viewTopPx, viewBottomPx] in list coordinates (negative viewTopPx means the
- * list starts below the top of the scrollport). Everything outside the slice
- * is represented by spacer divs so the page keeps its full scroll height.
- */
 export function computeRowWindow(offsets: number[], viewTopPx: number, viewBottomPx: number, overscan: number): RowWindow {
   const rowCount = offsets.length - 1;
   if (rowCount === 0) return { startIndex: 0, endIndex: 0 };
-  // Row containing y sits at countOffsetsAtOrBelow(y) - 1 (offsets[0] = 0 is
-  // always <= y for y >= 0); clamping handles y outside the list entirely.
   const firstVisible = Math.min(Math.max(countOffsetsAtOrBelow(offsets, viewTopPx) - 1, 0), rowCount);
   const endVisible = Math.min(Math.max(countOffsetsAtOrBelow(offsets, Math.max(viewBottomPx, viewTopPx)), firstVisible), rowCount);
   return {
@@ -141,18 +119,11 @@ export function computeRowWindow(offsets: number[], viewTopPx: number, viewBotto
   };
 }
 
-/**
- * The waterfall participates in the page-level scroll (main's scrollport, see
- * the layout comment in page-client.tsx) instead of owning an overflow
- * container, so the scroll parent is resolved generically rather than
- * hard-coding the shell's <main> element.
- */
 function findScrollParent(element: HTMLElement): HTMLElement | null {
   for (let parent = element.parentElement; parent != null; parent = parent.parentElement) {
     const overflowY = window.getComputedStyle(parent).overflowY;
     if (overflowY === "auto" || overflowY === "scroll") return parent;
   }
-  // No scrollable ancestor: the document itself scrolls (listen on window).
   return null;
 }
 
@@ -186,9 +157,6 @@ function flattenVisibleTrace(
   const walk = (node: TraceNode) => {
     rows.push({ kind: "span", node });
     for (const link of linksByOwnerSpanId.get(node.span.id) ?? []) {
-      // A link is attached to this span but is not its child. Keep it visible
-      // when the hierarchical subtree is collapsed so collapse never changes
-      // the apparent link graph.
       rows.push({ kind: "link", link, depth: node.depth + 1 });
     }
     if (collapsedSpanIds.has(node.span.id)) return;
@@ -209,9 +177,6 @@ function flattenSignalTrace(
   linksByOwnerSpanId: ReadonlyMap<string, readonly TraceWaterfallLink[]>,
 ): TraceWaterfallRow[] {
   const signalIds = traceSignalSpanIds(trace, 20, needle);
-  // Shared push/pop ancestry stack instead of copying an ancestors array per
-  // child: copying makes the walk O(spans x depth), which is quadratic for the
-  // deep chains pathological traces produce.
   const ancestry: TraceNode[] = [];
   const promoteLinkedOwners = (node: TraceNode) => {
     if (linksByOwnerSpanId.has(node.span.id)) {
@@ -328,28 +293,11 @@ export function TraceWaterfall({
   onOpenLink,
 }: {
   trace: Trace,
-  /** Physical services participating in this trace, from trace_services. */
   services: ServiceIdentity[],
-  /** "Current time" reference (when the data was loaded): the timeline never scales past it. */
   nowMs: number,
-  /** Lowercase search text; matching routine spans are promoted into Signal mode. */
   needle: string,
-  /**
-   * Events that could not be placed in the tree — their enclosing span was not
-   * fetched, or they carry no enclosing span at all. Surfaced as a count rather
-   * than dropped: an event that exists but renders nowhere reads as data loss,
-   * and unlike a span there is no sensible placeholder position for it (an event
-   * has one moment, not an interval, so hanging it off the root would assert a
-   * containment that is not in the data).
-   */
   unattachedEventCount: number,
-  /** Non-hierarchical edges, rendered directly beneath their owner spans. */
   links: readonly TraceWaterfallLink[],
-  /**
-   * Deep-link / click selection. A custom event that inherited its enclosing
-   * span (no `root: true`) is identified by that span plus the event's type
-   * and epoch-ms — product events have no durable id of their own.
-   */
   highlight?: TraceEventHighlight | null,
   onSelectSpan: (span: SpanInput) => void,
   onSelectEvent: (event: EventInput) => void,
@@ -378,11 +326,6 @@ export function TraceWaterfall({
   const signalSpanCount = signalRows.filter((row) => row.kind === "span").length;
   const hiddenSignalSpanCount = trace.spanCount - signalSpanCount;
   const errorCount = useMemo(() => traceErrorCount(trace), [trace]);
-  // Links whose owner span is not part of this tree (the owner fell outside the
-  // 10,000-span fetch cap, or belongs to a disconnected fragment of the same
-  // trace id) have no row to hang from. Like unattached events, they are
-  // surfaced as a count rather than silently dropped, so the page-level link
-  // total never claims links the waterfall cannot show.
   const unplacedLinkCount = useMemo(() => {
     const spanIds = new Set<string>();
     const walk = (node: TraceNode) => {
@@ -393,12 +336,6 @@ export function TraceWaterfall({
     return links.filter((link) => !spanIds.has(link.ownerSpanId)).length;
   }, [links, trace.root]);
 
-  // Windowed rendering: only the rows inside the scrollport (± overscan) are
-  // mounted; spacer divs stand in for the rest so a 10k-span trace doesn't
-  // mount thousands of absolutely-positioned bars. Geometry is re-measured
-  // from live rects on every scroll/resize instead of caching an offset,
-  // because content above the list (banners, capped-trace alerts) can
-  // appear/disappear and would silently invalidate a cached offsetTop.
   const rowOffsets = useMemo(() => computeRowOffsets(rows), [rows]);
   const listRef = useRef<HTMLDivElement>(null);
   const [rowWindow, setRowWindow] = useState<RowWindow>(
@@ -415,8 +352,6 @@ export function TraceWaterfall({
       const topPx = viewTop - listTop;
       setRowWindow((prev) => {
         const next = computeRowWindow(rowOffsets, topPx, topPx + viewHeight, ROW_OVERSCAN);
-        // Keep the previous object while the slice is unchanged so scrolling
-        // within the overscan margin doesn't re-render every frame.
         return next.startIndex === prev.startIndex && next.endIndex === prev.endIndex ? prev : next;
       });
     };
@@ -429,9 +364,6 @@ export function TraceWaterfall({
       window.removeEventListener("resize", measure);
     };
   }, [rowOffsets]);
-  // Clamp during render: when rows shrink (collapse, mode switch), the state
-  // from the previous rows array may reach past the new end until the effect
-  // above re-measures after paint.
   const windowStart = Math.min(rowWindow.startIndex, rows.length);
   const windowEnd = Math.max(Math.min(rowWindow.endIndex, rows.length), windowStart);
   const topSpacerPx = rowOffsets[windowStart];
@@ -494,10 +426,6 @@ export function TraceWaterfall({
     scroller.scrollTo({ top: Math.max(target, 0) });
   }, [highlightedRowIndex, rootSpanId, rowOffsets]);
 
-  // The scale is clamped to "now" so a malformed or clock-skewed future end
-  // cannot compress everything that actually happened into a sliver. Future
-  // interval ends render as a fading stub instead. The epsilon keeps
-  // zero-length traces from dividing by zero.
   const scaleStart = trace.startMs;
   const scaleEnd = getTraceScaleEnd(trace, nowMs);
   const totalSpanMs = scaleEnd - scaleStart;
@@ -506,8 +434,6 @@ export function TraceWaterfall({
   const toPct = (ms: number) => ((ms - viewStartMs) / viewSpanMs) * 100;
   const isZoomed = view.start > 0 || view.end < 1;
 
-  // cmd/ctrl+scroll zooms around the cursor; horizontal scroll pans while
-  // zoomed. Attached non-passively so preventDefault stops page zoom/scroll.
   const containerRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -522,8 +448,6 @@ export function TraceWaterfall({
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const anchorFrac = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
-        // Functional update: wheel events can arrive faster than re-renders,
-        // and each step must compound on the previous one.
         setView((prev) => zoomViewWindow(prev, anchorFrac, Math.exp(e.deltaY * 0.01)));
       } else if ((current.start > 0 || current.end < 1) && Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
         e.preventDefault();
@@ -604,7 +528,6 @@ export function TraceWaterfall({
     <TooltipProvider>
       <div ref={containerRef} className="flex flex-col flex-1">
         <div>
-          {/* Trace header */}
           <div className="border-b border-border/50 px-4 py-3">
             <div className="flex min-w-0 items-center gap-1.5">
               <span className="truncate font-mono text-sm font-semibold">{traceSpanDisplayName(trace.root.span)}</span>
@@ -679,7 +602,6 @@ export function TraceWaterfall({
             </div>
           </div>
 
-          {/* Time ruler */}
           <div className="grid gap-3 px-4 py-1.5 border-b border-border/30 shrink-0" style={{ gridTemplateColumns }}>
             <span className="font-mono text-[10px] text-muted-foreground">name</span>
             <div
@@ -718,8 +640,6 @@ export function TraceWaterfall({
           </div>
         </div>
 
-        {/* Rows (windowed): spacers preserve the full list height while only
-            the rows near the scrollport are mounted. */}
         <div ref={listRef}>
           <div style={{ height: `${topSpacerPx}px` }} aria-hidden />
           {visibleRows.map((row, sliceIndex) => {
@@ -811,13 +731,6 @@ export function TraceWaterfall({
               const isHighlighted = highlightedRowIndex === rowIndex;
               return (
                 <div
-                  // Keyed by the absolute row index, not the event's identity:
-                  // two events under one span can share type AND epoch-ms (a
-                  // burst of identical trackEvent calls), which made an
-                  // identity key collide. The absolute index is unique and
-                  // stays stable as the render window scrolls; it only shifts
-                  // when the rows array itself changes (mode/collapse/trace),
-                  // where remounting these stateless rows is fine.
                   key={`event-${rowIndex}`}
                   aria-current={isHighlighted ? "true" : undefined}
                   className={cn(

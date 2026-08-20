@@ -122,9 +122,6 @@ export function getRecentTraceRootsQuery(
       OR positionCaseInsensitiveUTF8(ifNull(u.display_name, ''), {search:String}) > 0
       OR positionCaseInsensitiveUTF8(ifNull(u.primary_email, ''), {search:String}) > 0
     )`;
-  // `started_at` remains the trace interval shown in the waterfall. Inbox
-  // freshness uses ingestion/update activity instead, so a long-lived session
-  // stays discoverable when its virtual refresh-token root is synced again.
   const cursorCondition = cursor == null ? "" : `
     AND (
       r.created_at < fromUnixTimestamp64Milli({cursorActivityMs:Int64})
@@ -193,16 +190,6 @@ LIMIT ${ROOT_PAGE_SIZE}
   };
 }
 
-/**
- * The root activities that happened on one page view — the requests the page
- * made, plus any custom spans it started. Shown nested under the page view in
- * the list rather than as its own top-level row.
- *
- * Deliberately NOT paginated: a page view with more root activities than this
- * cap is already pathological, and a nested "load more" inside a virtualized
- * list is a lot of machinery for a case nobody has hit. The cap is surfaced in
- * the UI instead of silently truncating.
- */
 export const PAGE_VIEW_CHILDREN_CAP = 200;
 
 export function getPageViewChildrenQuery(pageViewSpanId: string): {
@@ -245,10 +232,6 @@ LIMIT ${PAGE_VIEW_CHILDREN_CAP}
   };
 }
 
-// One trace id is the whole query. A client fetch and every backend span it
-// caused share a `trace_id` (the SDK propagates it as `traceparent`), so there
-// is nothing left to bridge across id namespaces at read time — which is the
-// point of the W3C model.
 export function getSelectedTraceSpanQuery(traceId: string, focusSpanId: string | null = null): {
   query: string,
   params: Record<string, string | number>,
@@ -268,8 +251,6 @@ LIMIT 10000
   };
 }
 
-// Safety cap for span links, mirroring the 10,000-span cap: hitting it is
-// surfaced in the UI (see linksResultWasCapped) instead of silently truncating.
 export const TRACE_SPANS_CAP = 10000;
 export const SPAN_LINKS_CAP = 1000;
 
@@ -296,18 +277,6 @@ LIMIT ${SPAN_LINKS_CAP + 1}
   };
 }
 
-// Every column the span detail dialog shows (RowDetailDialog renders all
-// returned columns, and parseSpanRow needs trace_id/span_id/span_type/
-// started_at plus the data/resource_attributes JSON blobs). Enumerated
-// instead of SELECT * because default.spans is a FINAL-backed view: an explicit
-// list keeps this point lookup from reading columns we never display
-// and keeps the dialog stable if the view ever grows internal columns.
-// project_id/branch_id are deliberately excluded — the analytics endpoint
-// already scopes every row to the current project/branch, so they'd be
-// constant noise in the dialog. Ordered native-fields-first so the dialog
-// (which renders columns in this order) leads with what a product user reads;
-// everything from SPAN_TECHNICAL_DETAIL_COLUMNS onward lands in the collapsed
-// "Technical details" section.
 export const SPAN_DETAIL_COLUMNS: readonly string[] = [
   "span_type",
   "started_at",
@@ -337,11 +306,6 @@ export const SPAN_DETAIL_COLUMNS: readonly string[] = [
   "created_at",
 ];
 
-// Raw identifiers and instrumentation plumbing — collapsed behind the
-// "Technical details" disclosure in the shared RowDetailDialog. Also applies
-// to event rows (which share the dialog): only the columns present on the
-// row are rendered. user_display_name etc. are grid-only helper
-// columns on preloaded root rows; they're hidden with the identifiers too.
 export const SPAN_TECHNICAL_DETAIL_COLUMNS: readonly string[] = [
   "trace_id",
   "span_id",
@@ -378,9 +342,6 @@ LIMIT 1
   };
 }
 
-// Slack applied around the selected trace's own interval when fetching its
-// events. Events belong inside their trace's span intervals; the slack only
-// absorbs producer clock skew, so it can stay small.
 export const TRACE_EVENT_WINDOW_SLACK_MS = 15 * 60 * 1000;
 
 export function getSelectedTraceEventQuery(
@@ -392,26 +353,6 @@ export function getSelectedTraceEventQuery(
   params: Record<string, string | number>,
 } {
   return {
-    // Each branch lists its columns EXPLICITLY rather than using `SELECT *`.
-    // ClickHouse matches UNION ALL branches positionally and by count, and
-    // `default.errors` exposes the server-side grouping columns that the other
-    // three views do not — so `SELECT *` makes the branches different widths
-    // and the query fails with "UNION different number of columns". The
-    // event-shaped views (`events`, `span_events`) are not OTel log records
-    // and carry no body/severity, so those branches synthesize an empty body
-    // and zero severity; the log/error branches provide their canonical body
-    // and severity fields.
-    //
-    // The time bound is derived from the SELECTED TRACE's interval (plus skew
-    // slack, plus the deep-linked highlight timestamp — see loadSelectedTrace),
-    // NOT from the inbox hours window: an inbox bound would drop a deep-linked
-    // custom event that happened just outside it, which is exactly the
-    // shareable URL this query exists to serve. Some bound is required though —
-    // the telemetry tables are keyed (project_id, branch_id, event_at) with no
-    // trace_id index, so an unbounded trace_id filter scans the project's whole
-    // retained history and can hit the 30s query timeout on busy projects. The
-    // 5000-row cap is the volume safety; when a highlight timestamp is present
-    // we rank that event first so the cap cannot hide it.
     query: `
 WITH correlated AS (
   SELECT event_type, event_at, data, CAST('' AS String) AS body, level,
@@ -470,8 +411,6 @@ function parseSpanRow(row: Record<string, unknown>): SpanInput | null {
     spanType,
     startMs: parseClickHouseDate(startedAt).getTime(),
     endMs: isDateValue(endedAt) ? parseClickHouseDate(endedAt).getTime() : null,
-    // ClickHouse sends a NULL Nullable(String) as null; an empty string would be
-    // a written-but-empty parent, which is not a real span id either.
     parentSpanId: typeof row.parent_span_id === "string" && row.parent_span_id !== "" ? row.parent_span_id : null,
     raw: {
       ...row,
@@ -491,22 +430,12 @@ export function parseEventRow(row: Record<string, unknown>): EventInput | null {
     traceId: traceId !== null && spanId !== null ? traceId : null,
     eventType,
     atMs: parseClickHouseDate(eventAt).getTime(),
-    // Events that happened outside any span (a bare `trackEvent`) have no
-    // enclosing span id and stay unattached rather than guessing an owner.
     spanId: traceId !== null && spanId !== null ? spanId : null,
-    // Depending on the analytics response surface, events.data can arrive as
-    // either decoded JSON or its serialized representation. Normalize it just
-    // like spans so the shared detail dialog always renders structured data.
     raw: { ...row, body: tryParseJson(row.body), data: tryParseJson(row.data) },
   };
 }
 
 export function parseUniqueSpanRows(rows: Record<string, unknown>[]): SpanInput[] {
-  // Keyed by the PAIR, not the span id: a span id is unique only within its trace
-  // (which is why `trace_roots`' ORDER BY includes trace_id). Keying by span id
-  // alone silently dropped one of two same-id rows from different traces, which
-  // under-reported the inbox — previously masked because prefixed native ids made
-  // cross-namespace collisions impossible.
   const spansByTraceAndId = new Map<string, SpanInput>();
   for (const row of rows) {
     const span = parseSpanRow(row);
@@ -545,8 +474,6 @@ export function parseTraceLinkRow(row: Record<string, unknown>): TraceLink | nul
 }
 
 export function parseTraceLinkRows(rows: Record<string, unknown>[]): TraceLink[] {
-  // Apply the cap after parsing: malformed rows must not consume a display
-  // slot that the query deliberately fetched to surface the next valid link.
   return rows
     .map(parseTraceLinkRow)
     .filter((link): link is TraceLink => link != null)
@@ -611,32 +538,20 @@ export default function PageClient() {
   const [linkedSelection, setLinkedSelection] = useState<{ traceId: string, spanId: string | null } | null>(null);
   const [detailRow, setDetailRow] = useState<RowData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  // Pinned by a deep-link or an explicit inbox/waterfall click. Auto-selecting
-  // the first inbox root does NOT pin: writing that into the URL would churn
-  // the address bar on every refresh as the inbox moves.
   const [pinnedTraceId, setPinnedTraceId] = useState<string | null>(initialUrlState.traceId);
   const [highlightSpanId, setHighlightSpanId] = useState<string | null>(initialUrlState.spanId);
   const [highlightEventType, setHighlightEventType] = useState<string | null>(initialUrlState.eventType);
   const [highlightEventAtMs, setHighlightEventAtMs] = useState<number | null>(initialUrlState.eventAtMs);
   const [shareLinkCopied, setShareLinkCopied] = useState(false);
-  // Set when `?trace=` named a trace that isn't in the loaded window, so the
-  // page can say so instead of silently selecting an unrelated trace. The
-  // waterfall still loads that trace id directly.
   const [seedTraceMiss, setSeedTraceMiss] = useState<string | null>(null);
 
   const [rootSpans, setRootSpans] = useState<TraceRootSpan[]>([]);
-  // Page-view expansion. Children are fetched once per page view and kept, so
-  // collapsing and re-expanding does not re-query; the list is already scoped to
-  // a time range, so there is no staleness window worth invalidating for.
   const [expandedPageViewIds, setExpandedPageViewIds] = useState<ReadonlySet<string>>(() => new Set());
   const [childrenByPageViewId, setChildrenByPageViewId] = useState<ReadonlyMap<string, Trace[]>>(() => new Map());
   const [loadingPageViewIds, setLoadingPageViewIds] = useState<ReadonlySet<string>>(() => new Set());
   const [selectedSpans, setSelectedSpans] = useState<SpanInput[]>([]);
   const [selectedEvents, setSelectedEvents] = useState<EventInput[]>([]);
   const [selectedLinks, setSelectedLinks] = useState<TraceLink[]>([]);
-  // "Now" reference for the waterfall/list: fixed at load time so a span that is
-  // still open (no ended_at) renders as ongoing up to a stable edge instead of
-  // growing on every re-render.
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [rootLoading, setRootLoading] = useState(true);
   const [rootLoadingMore, setRootLoadingMore] = useState(false);
@@ -687,17 +602,12 @@ export default function PageClient() {
       const lastRoot = nextRoots.at(-1);
       setRootCursor(lastRoot == null ? null : { activityMs: lastRoot.activityMs, id: lastRoot.id });
       setHasMoreRoots(recentRootRows.length === ROOT_PAGE_SIZE);
-      // Resolved outside the state updater: React may invoke an updater more
-      // than once, and consuming the seed inside it would drop the selection
-      // on the second call.
       const matchingRoot = pinnedTraceId == null
         ? null
         : (nextRoots.find((span) => span.traceId === pinnedTraceId) ?? null);
       setSeedTraceMiss(pinnedTraceId != null && matchingRoot == null ? pinnedTraceId : null);
       setSelectedRootId((currentRootId) => {
         if (matchingRoot != null) return matchingRoot.id;
-        // A deep-linked trace that isn't in this inbox window still loads in
-        // the waterfall via pinnedTraceId; don't steal the first unrelated root.
         if (pinnedTraceId != null) return null;
         if (currentRootId != null && nextRoots.some((span) => span.id === currentRootId)) return currentRootId;
         return nextRoots[0]?.id ?? null;
@@ -782,27 +692,15 @@ export default function PageClient() {
       ]);
       if (seq !== traceRequestSeqRef.current) return;
       const spans = parseUniqueSpanRows(spansResponse.result);
-      // The event fetch runs AFTER the spans so it can be bounded to the
-      // trace's own interval (see the comment on getSelectedTraceEventQuery).
-      // One extra serial round-trip buys a primary-key/partition-prunable scan
-      // instead of one over the project's entire retained event history. With
-      // no spans there is no waterfall to place events into, so the fetch is
-      // skipped entirely.
       let events: EventInput[] = [];
       if (spans.length > 0) {
         const loadedAtMs = Date.now();
         const spanStartMs = Math.min(...spans.map((span) => span.startMs));
-        // Open spans (endMs == null) extend the interval to "now". A capped
-        // trace can under-report its true end; the capped-trace alert already
-        // flags that view as partial.
         const spansResultWasCapped = spansResponse.result.length >= TRACE_SPANS_CAP;
         const spanEndMs = spansResultWasCapped
           ? loadedAtMs
           : Math.max(...spans.map((span) => span.endMs ?? loadedAtMs));
         const eventQuery = getSelectedTraceEventQuery(traceId, highlightEventAtMs, {
-          // A deep-linked highlight timestamp widens the window so clock skew
-          // between the event and its trace's spans cannot hide the very event
-          // the shared URL points at.
           startMs: (highlightEventAtMs == null ? spanStartMs : Math.min(spanStartMs, highlightEventAtMs)) - TRACE_EVENT_WINDOW_SLACK_MS,
           endMs: (highlightEventAtMs == null ? spanEndMs : Math.max(spanEndMs, highlightEventAtMs)) + TRACE_EVENT_WINDOW_SLACK_MS,
         });
@@ -908,10 +806,6 @@ export default function PageClient() {
       else next.add(pageViewSpanId);
       return next;
     });
-    // Fetch only on first expand. Errors surface as the row simply not expanding
-    // rather than an alert: this is a progressive-disclosure affordance on a list
-    // that still works without it, so interrupting the whole page would be worse
-    // than the row staying closed.
     if (childrenByPageViewId.has(pageViewSpanId) || loadingPageViewIds.has(pageViewSpanId)) return;
     setLoadingPageViewIds((previous) => new Set(previous).add(pageViewSpanId));
     runAsynchronouslyWithAlert((async () => {
@@ -935,15 +829,11 @@ export default function PageClient() {
 
   const { selectedTrace, unattachedEventCount } = useMemo<{ selectedTrace: Trace | null, unattachedEventCount: number }>(() => {
     if (selectedTraceId == null) return { selectedTrace: null, unattachedEventCount: 0 };
-    // Every tier of the request already shares one trace id, so the client
-    // page-view → HTTP client → backend request → db chain builds into a single
-    // connected waterfall with no read-time reparenting.
     const { traces, unattachedEvents } = buildTraces(selectedSpans, selectedEvents);
     return {
       selectedTrace: linkedSelection?.spanId == null
         ? selectPrimaryTrace(traces, selectedTraceId)
         : traces.find((trace) => traceContainsSpanId(trace, linkedSelection.spanId ?? "")) ?? null,
-      // Counted, not discarded — see TraceWaterfall's unattachedEventCount.
       unattachedEventCount: unattachedEvents.length,
     };
   }, [linkedSelection, selectedEvents, selectedSpans, selectedTraceId]);
@@ -1009,9 +899,6 @@ export default function PageClient() {
           <HeaderCountStat icon={<TreeStructureIcon className="h-3.5 w-3.5" />} value={rootTraces.length} label={`${rootTraces.length.toLocaleString()} ${rootTraces.length === 1 ? "trace" : "traces"}`} />
           <HeaderCountStat icon={<StackIcon className="h-3.5 w-3.5" />} value={selectedTrace?.spanCount ?? 0} label={`${(selectedTrace?.spanCount ?? 0).toLocaleString()} spans in the selected trace`} />
           <HeaderCountStat icon={<ChartLineIcon className="h-3.5 w-3.5" />} value={selectedTrace?.eventCount ?? 0} label={`${(selectedTrace?.eventCount ?? 0).toLocaleString()} events in the selected trace`} />
-          {/* Unlike the trace/span/event counts, this one is conditional: span links are rare, and the
-              waterfall already renders each one as its own row under the owning span. A permanent "0
-              links" stat (or a whole empty rail) would spend space on the common case of having none. */}
           {selectedLinks.length > 0 && (
             <HeaderCountStat icon={<LinkSimpleIcon className="h-3.5 w-3.5" />} value={selectedLinks.length} label={`${selectedLinks.length.toLocaleString()} non-hierarchical span ${selectedLinks.length === 1 ? "link" : "links"} in the selected trace`} />
           )}
@@ -1042,10 +929,6 @@ export default function PageClient() {
           title={shareLinkCopied ? "Copied!" : "Copy link to this view"}
           onClick={() => runAsynchronouslyWithAlert(async () => {
             const viewedId = linkedSelection?.traceId ?? pinnedTraceId ?? selectedTraceId;
-            // Pin so the copied URL survives inbox churn — but not while
-            // following a span link: the URL already names the linked trace via
-            // linkedSelection, and pinning the linked trace would break "Back
-            // to originating trace" (the pin is what "back" returns to).
             if (viewedId != null && pinnedTraceId == null && linkedSelection == null) setPinnedTraceId(viewedId);
             const params = serializeTracePageUrlState({
               hours,
@@ -1124,11 +1007,6 @@ export default function PageClient() {
         />
 
         <div className="grid min-w-0 flex-1 gap-[var(--page-content-gap)] lg:grid-cols-[20rem_minmax(0,1fr)]">
-          {/* This panel is constrained by main's actual scrollport, not the
-              browser viewport. It therefore remains flush with the page's
-              bottom gutter regardless of shell or sticky-header height. */}
-          {/* Size containment prevents the virtual canvas from determining the
-              desktop grid row; the waterfall is the page-length authority. */}
           <aside className="min-h-0 lg:[contain:size]" aria-label="Trace list">
             <div
               className={cn(
@@ -1195,7 +1073,6 @@ export default function PageClient() {
             </div>
           </aside>
 
-          {/* Waterfall rows participate in main's page-level scroll. */}
           <section
             aria-label="Selected trace waterfall"
             className={cn(CARD_CLASSES, "flex min-h-[420px] min-w-0 self-start flex-col overflow-hidden")}
@@ -1204,9 +1081,6 @@ export default function PageClient() {
               <div className="flex items-center justify-between gap-3 border-b border-border/50 bg-foreground/[0.03] px-3 py-2">
                 <div className="min-w-0 text-xs text-muted-foreground">
                   <span className="font-medium text-foreground">Following span link</span>{" "}
-                  {/* The originating side is what "Back" returns to: the pinned
-                      trace when one exists (deep link / explicit click), else
-                      the auto-selected inbox root. */}
                   <span className="font-mono">{(pinnedTraceId ?? selectedRootTraceId)?.slice(0, 8) ?? "trace"}</span>{" → "}
                   <span className="font-mono">{linkedSelection.traceId.slice(0, 8)}/{linkedSelection.spanId?.slice(0, 6) ?? "root"}</span>
                 </div>
@@ -1263,11 +1137,6 @@ export default function PageClient() {
                   openEventDetail(event.raw);
                 }}
                 onOpenLink={(link) => {
-                  // The follow target lives ONLY in linkedSelection: selection,
-                  // URL, and highlight all read linkedSelection first, and
-                  // leaving pinned/highlight untouched is what lets "Back to
-                  // originating trace" restore the exact pre-follow view by
-                  // just clearing linkedSelection.
                   setLinkedSelection({ traceId: link.linkedTraceId, spanId: link.linkedSpanId });
                 }}
               />

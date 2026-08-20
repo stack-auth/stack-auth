@@ -1,11 +1,5 @@
 import { scrubErrorIngestPayload } from "@/lib/error-ingest";
 
-/**
- * Scrub helpers for values that leave the trust boundary through issue
- * projections. Stored occurrence payloads are scrubbed again on the way OUT
- * (not only at ingest) so a scrubber improvement immediately applies to rows
- * that were stored before it shipped.
- */
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

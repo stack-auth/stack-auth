@@ -106,13 +106,8 @@ describe("OTLP metric writer", () => {
       }],
     });
     const [row] = buildOtlpMetricRows(scrubberRequest, tenant);
-    // The scrubbed `attributes` column must not be bypassable through the raw
-    // point JSON: the same maps are embedded there (point attributes and
-    // exemplar filteredAttributes) and must be scrubbed identically.
     expect(row.attributes).not.toContain("hidden-secret");
     expect(row.data_point).not.toContain("hidden-secret");
-    // The numeric structure and the surviving attribute stay verbatim so the
-    // series query keeps reading `value`, `count`, `sum`, `min`, `max`.
     expect(JSON.parse(row.data_point)).toMatchObject({
       value: { type: "int", value: "42" },
       attributes: { route: { type: "string", value: "/checkout" } },

@@ -136,21 +136,8 @@ export type HexclaveNextInstrumentationOptions = {
   isTelemetrySuppressed?: () => boolean,
 };
 
-// Memoizes the RequestLike wrapper per Headers instance from `next/headers`.
-// Next returns a stable Headers object per request scope, and the server app
-// memoizes its token store (and therefore the session + its refresh
-// round-trip) by request-OBJECT identity — so without this map, every bare
-// telemetry call would mint a fresh wrapper and re-resolve the session.
 const ambientRequestLikeByHeaders = new WeakMap<object, RequestLike>();
 
-/**
- * The ambient request provider registered by `hexclaveInstrumentation`:
- * resolves the current request's headers via `next/headers`, so bare
- * `trackEvent` / `withSpan` / logger calls in route handlers, server actions,
- * and RSCs attribute to the caller's session without passing `{ request }`.
- * Outside a request scope `next/headers` throws — that simply means there is
- * no ambient request (build time, background work), never an error.
- */
 async function resolveAmbientNextRequest(): Promise<RequestLike | null> {
   let headers: unknown;
   try {
@@ -161,7 +148,6 @@ async function resolveAmbientNextRequest(): Promise<RequestLike | null> {
   if (typeof headers !== "object" || headers === null) return null;
   const existing = ambientRequestLikeByHeaders.get(headers);
   if (existing !== undefined) return existing;
-  // ReadonlyHeaders matches RequestLike's `{ get }` headers variant directly.
   const requestLike: RequestLike = { headers: headers as { get: (name: string) => string | null } };
   ambientRequestLikeByHeaders.set(headers, requestLike);
   return requestLike;
@@ -249,27 +235,18 @@ function nextRequestToRequestLike(request: HexclaveNextRequestErrorRequest): Req
  * wrappers (`routeHandler` / `serverAction` above).
  */
 export function hexclaveInstrumentation(app: AdapterServerApp, options?: HexclaveNextInstrumentationOptions): HexclaveNextInstrumentation {
-  // Fail at setup time, not at error time: a structurally-wrong `app` (or a
-  // mock) would otherwise silently drop every error report.
   const instrumentation = getServerAppInstrumentation(app);
   if (instrumentation === null) {
     throw new Error("hexclaveInstrumentation() requires a StackServerApp instance (created with `new StackServerApp(...)`)");
   }
   return {
     runWithTelemetrySuppressed: async (fn) => await instrumentation.runWithTelemetrySuppressed(fn),
-    // Promise.resolve().then() preserves the promise-returning contract even
-    // when the instrumentation seam throws synchronously. preCaught also
-    // covers callers that intentionally fire-and-forget this hook.
     captureHandledError: (error, info) => preCaught(Promise.resolve().then(async () => await instrumentation.captureServerRequestError(error, {
       mechanism: "captured",
       handled: true,
       data: {
         ...info?.data ?? {},
         ...info?.location === undefined ? {} : { location: info.location },
-        // Reserved mechanism fields are supplied separately below. The server
-        // capture seam also writes those authoritative fields after this
-        // metadata; keeping them here makes the adapter contract explicit even
-        // when the instrumentation seam is replaced by a structural test spy.
         mechanism_type: "captured",
         handled: true,
       },
@@ -278,17 +255,11 @@ export function hexclaveInstrumentation(app: AdapterServerApp, options?: Hexclav
       instrumentation.ensureOpenTelemetryProvider();
       instrumentation.installServerErrorMonitor();
       instrumentation.setTelemetrySuppressionPredicate(options?.isTelemetrySuppressed ?? null);
-      // From here on, bare telemetry calls (no `{ request }`) inside a Next
-      // request scope attribute to the caller's session via `next/headers`.
       instrumentation.setAmbientRequestProvider(options?.requestAttribution === false ? null : resolveAmbientNextRequest);
-      // Register the real provider/exporter before application code creates
-      // spans. Conflicting providers fail loudly inside this call.
       await instrumentation.registerOpenTelemetry(options?.instrumentations ?? []);
     },
     onRequestError: async (error, request, errorContext) => {
       try {
-        // Next stamps a stable `digest` on rendered errors; keep it so a
-        // reported $error can be matched to Next's own error overlay/logs.
         const digest = typeof error === "object" && error !== null && "digest" in error && typeof error.digest === "string"
           ? error.digest
           : undefined;
@@ -306,8 +277,6 @@ export function hexclaveInstrumentation(app: AdapterServerApp, options?: Hexclav
           },
         });
       } catch (captureError) {
-        // Telemetry must never make a crashing request worse; Next awaits this
-        // callback, so a throw here would surface as a second error.
         console.warn("Hexclave analytics: failed to report a request error:", captureError);
       }
     },
@@ -356,12 +325,6 @@ export function createHexclaveNext(app: AdapterServerApp, factoryOptions?: Hexcl
       options?: HexclaveNextServerActionOptions,
     ) => {
       return async (...args: TArgs): Promise<TResult> => {
-        // Goes through resolveAmbientNextRequest (not a fresh `{ headers }`
-        // literal) so it hits the ambientRequestLikeByHeaders memo: the server
-        // app keys its token store — and therefore the session plus its refresh
-        // round-trip — by request-OBJECT identity, so a fresh wrapper here would
-        // make a wrapped action and any bare `trackEvent` in the same request
-        // resolve the session twice.
         const requestInput = await resolveAmbientNextRequest()
           ?? throwErr("Hexclave: `serverAction` must be called during a Next.js request (next/headers is unavailable here).");
         return await runGuardedCall(app, {

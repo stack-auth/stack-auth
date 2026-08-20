@@ -69,9 +69,6 @@ import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } 
 import type { CaptureEvent, CaptureExceptionOptions, CaptureMessageOptions, ErrorEventId, ErrorScopeData, ErrorScope } from "../interfaces/error-capture";
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
-// NOTE: no value import of ./event-tracker or ./session-replay here — the
-// analytics runtime is lazy-loaded by ClientAnalytics; a static value import
-// would put ~2k lines of autocapture back into every initial bundle.
 import { assertValidSpanStartInput, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveSpanParent, withSpanImpl, type ParentRef, type Span, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
 import { ClientAnalytics } from "./client-analytics";
 import { normalizeErrorCaptureOptions } from "./error-capture";
@@ -399,19 +396,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   protected readonly _analyticsOptions: AnalyticsOptions | undefined;
   protected readonly _observabilityOptions: ObservabilityOptions | undefined;
   protected readonly _telemetryOptions: TelemetryOptions | undefined;
-  // The service identity every signal from this app inherits. Resolved once at
-  // construction (immutable for the app's lifetime) from the caller's explicit
-  // `telemetry.resource`, or inferred when they gave none.
   protected readonly _telemetryResource: TelemetryResource;
-  // Normalized ObservabilityOptions.network policy consumed by official OTel
-  // browser and Node HTTP instrumentations.
   protected readonly _networkCaptureConfig: NetworkCaptureConfig;
-  // One deterministic healthy-trace rate shared by propagation and every
-  // environment's final analytics flusher.
   protected readonly _traceSampleRate: number;
-  // The lazily-loading front for the browser analytics runtime (event tracker
-  // + session recorder). Non-null exactly when browser analytics is active for
-  // this app — subclasses use that as the browser/server telemetry dispatch.
   protected _clientAnalytics: ClientAnalytics | null = null;
   private _lastErrorEventId: ErrorEventId | undefined;
   private _anonymousAnalyticsTokenStore: Store<TokenObject> | null = null;
@@ -856,8 +843,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     this._analyticsOptions = resolvedOptions.analytics;
     this._observabilityOptions = resolvedOptions.observability;
     this._telemetryOptions = snapshotTelemetryOptions(resolvedOptions.telemetry);
-    // Resolve immutable telemetry state even for inert apps. Disabling automatic
-    // side effects must not leave explicit telemetry methods partially initialized.
     this._telemetryResource = resolveTelemetryResource(this._telemetryOptions, this._telemetryTier());
     this._networkCaptureConfig = normalizeNetworkCaptureOptions(this._observabilityOptions?.network);
     this._traceSampleRate = normalizeTraceSampleRate(this._observabilityOptions);
@@ -866,9 +851,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       this._uniqueIdentifier = extraOptions.uniqueIdentifier;
     }
 
-    // Custom dashboards can disable automatic initialization so URL parameters, browser storage, global handlers,
-    // and development overlays cannot affect the containing page. The telemetry facade is still initialized so
-    // explicit capture calls remain functional; it defers provider registration/load until the first call.
     this._initializeAutomaticSideEffects(resolvedOptions);
   }
 
@@ -883,12 +865,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       this._initUniqueIdentifier();
     }
 
-    // Client analytics (events + replays) needs a refreshable client session.
-    // Apps authenticated via projectOwnerSession use HexclaveAdminInterface, whose
-    // fetchNewAccessToken intentionally refuses to refresh — so starting a
-    // SessionRecorder/EventTracker here would only spam flush failures once the
-    // short-lived access token expires. Dashboard recording belongs on the
-    // internal StackClientApp, not on per-project owned admin apps.
     const canRefreshClientAccessTokens = !("projectOwnerSession" in this._interface.options);
     const analyticsEnabled = canRefreshClientAccessTokens && this._analyticsOptions?.enabled !== false;
     const observabilityEnabled = canRefreshClientAccessTokens && isObservabilityEnabled(this._observabilityOptions);
@@ -900,9 +876,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     };
     const browserTelemetryEnvironment = automaticSideEffects ? isBrowserLike() : typeof window !== "undefined";
     if ((analyticsEnabled || observabilityEnabled) && browserTelemetryEnvironment) {
-      // The facade is constructed eagerly (it mints the per-tab segment id the
-      // propagation wrapper below needs immediately), but the tracker/recorder
-      // modules themselves load lazily — see ClientAnalytics.
       this._clientAnalytics = new ClientAnalytics({
         projectId: this.projectId,
         resource: telemetryResource ?? throwErr("Telemetry resource was validated above"),
@@ -922,17 +895,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           };
         },
         getCachedSessionRootContext: () => {
-          // BrowserTracing starts its page-load transaction before application
-          // bootstrap. Keep the same invariant for the lazy Hexclave tracker:
-          // use any cached token that has not expired yet. This lookup is only
-          // for trace ancestry, not for an API request: rejecting a token
-          // merely because it is older than the normal refresh window leaves
-          // the browser HTTP instrumentation with no parent during bootstrap.
-          // The normal async path still refreshes it before authenticated work
-          // that needs a likely-valid access token.
-          // Auth callback and nested handoff URLs are a deliberate exception:
-          // their cookie may still belong to the session being replaced, so
-          // fail closed until the existing async auth-resolution path finishes.
           if (!isBrowserLike()) return null;
           const currentUrl = new URL(window.location.href);
           const authTransitionInFlight = currentUrl.searchParams.has(nestedCrossDomainAuthQueryParams.refreshTokenId)
@@ -1734,9 +1696,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return getTrustedParentDomain(currentDomain, (await this._getTrustedRedirectConfig()).trustedDomains);
   }
 
-  // Trusted-domain-derived propagation origins. Resolved asynchronously and at
-  // most once per app instance (the propagation decision itself is sync and
-  // fires on every outgoing request — it can only read a cell, never await).
   private _trustedPropagationOrigins: readonly string[] = [];
   private _trustedPropagationAllowLocalhost = false;
   private _trustedPropagationOriginsPromise: Promise<void> | null = null;
@@ -1763,9 +1722,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   protected _getPropagationOriginPolicy(): { allowedOrigins: readonly string[], allowLocalhost: boolean, correlationBaggage: boolean } {
-    // `spanPropagation.enabled: false` gates ONLY the Hexclave correlation
-    // baggage half of propagation (see the option's doc): standard W3C trace
-    // context (traceparent/tracestate) keeps flowing independently.
     const correlationBaggage = this._observabilityOptions?.spanPropagation?.enabled !== false;
     const explicit = this._observabilityOptions?.spanPropagation?.allowedOrigins ?? [];
     if (this._observabilityOptions?.spanPropagation?.useTrustedDomains === false) {
@@ -1778,11 +1734,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         this._trustedPropagationAllowLocalhost = config.allowLocalhost;
         this._clientAnalytics?.updateOtelPropagationPolicy();
       } catch (error) {
-        // Errors are handled HERE (warn + permanent fail-closed) rather than
-        // rethrown: the stored promise is a fire-and-forget latch nobody
-        // awaits. No retry: a failing project-config fetch means the SDK is
-        // broadly broken (auth needs the same config), and retrying
-        // per-request would hammer a failing endpoint.
         console.warn("Hexclave analytics: could not load the project's trusted domains for span propagation; cross-origin propagation stays limited to spanPropagation.allowedOrigins:", error);
       }
     })();
@@ -1846,14 +1797,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         }
       });
     } else if (options?.duringRender) {
-      // Render-path callers (via _useTokenStore → useUser etc.) must not call
-      // Store.set() synchronously here: set() synchronously notifies subscribers, and useSyncExternalStore
-      // subscribers react by scheduling re-renders on *other* mounted components, which triggers React's
-      // "Cannot update a component while rendering a different component" error (it would also write
-      // cookies as a render side effect via the onChange handler above). Instead, we defer the
-      // cookie-drift check to a microtask; the returned store may be one microtask stale, but subscribers
-      // are notified as soon as it runs — the same mechanism as the 100ms polling interval above, just
-      // faster. The equality re-check inside makes duplicate queued microtasks no-ops.
       const store = this._storedBrowserCookieTokenStore;
       queueMicrotask(() => {
         const oldValue = store.get();
@@ -1863,10 +1806,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         }
       });
     } else {
-      // Async callers (e.g. _getSession → _fetchCurrentRefreshTokenIdIfSignedIn) rely on the contract
-      // "the store reflects the CURRENT browser cookie": a one-microtask-stale store would mint (and
-      // cache, by session key) an InternalSession from an outdated refresh token. Outside a render
-      // there is no set()-during-render hazard, so check synchronously.
       const oldValue = this._storedBrowserCookieTokenStore.get();
       const currentValue = this._getCurrentBrowserCookieTokenStoreValue(oldValue);
       if (!deepPlainEquals(currentValue, oldValue)) {
@@ -2001,7 +1940,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     // END_PLATFORM
     suspendIfSsr();
     const cookieHelper = createBrowserCookieHelper();
-    // duringRender: this hook body IS a React render — see _getBrowserCookieTokenStore.
     const tokenStore = this._getOrCreateTokenStore(cookieHelper, overrideTokenStoreInit, { duringRender: true });
     return tokenStore;
   }
@@ -2127,10 +2065,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       return (await this.getUser({ or: "anonymous" }))._internalSession;
     }
 
-    // `tokenStore: null` means customer auth must remain stateless. Replays
-    // still need a refresh-token identity because the ingestion model groups
-    // chunks and server spans beneath that chain, so keep a private browser-only
-    // store that is never exposed through the app's auth APIs.
     this._anonymousAnalyticsTokenStore ??= createAnonymousAnalyticsTokenStore(this.projectId);
     const analyticsTokenStore = this._anonymousAnalyticsTokenStore;
     const existingTokens = analyticsTokenStore.get();
@@ -3257,8 +3191,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         tokenStore: null,
         projectOwnerSession: session,
         noAutomaticPrefetch: true,
-        // Explicit: owned admin apps must not record under the customer project.
-        // Constructor also refuses analytics when projectOwnerSession is set.
         analytics: { enabled: false },
         automaticSideEffects: false,
       }));
@@ -4525,9 +4457,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   protected async _signOut(session: InternalSession, options?: { redirectUrl?: URL | string }): Promise<void> {
-    // Clear analytics buffers before sign-out to prevent cross-user event leakage.
-    // The reset atomically rotates and suspends the replay segment until a new
-    // authenticated session publishes its replacement FullSnapshot.
     await this._clientAnalytics?.clearBuffer();
 
     const previousSignOut = this._pendingSignOut;
@@ -4584,14 +4513,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
   }
 
-  // Custom telemetry (see the StackClientApp interface for user-facing docs).
-  // Browser analytics only exists in browser-like environments with analytics
-  // enabled and a persistent token store. trackEvent outside that environment
-  // fails visibly (a rejected, pre-caught promise) instead of silently
-  // dropping; startSpan returns an inert handle instead — see below.
 
-  // Lazily-built logger (see the interface docs). One instance per app so the
-  // "unavailable" warn-once state is per app, not per call site.
   private _logger: Logger | null = null;
 
   get logger(): Logger {
@@ -4606,9 +4528,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
    */
   protected _emitLog(item: LogEmitItem): "ok" | "unavailable" {
     if (!isObservabilityEnabled(this._observabilityOptions) || this._clientAnalytics === null) return "unavailable";
-    // An explicit logger call must land on a recording provider even when
-    // `automaticSideEffects: false` deferred the eager managed registration —
-    // otherwise the record would silently hit the no-op global LoggerProvider.
     this._clientAnalytics.ensureProviderForExplicitSignal();
     emitHexclaveOtelLog(item, clientVersion);
     return "ok";
@@ -4622,8 +4541,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (nameError) return rejectedPreCaught(nameError);
     const dataError = getCustomTelemetryDataError(data);
     if (dataError) return rejectedPreCaught(dataError);
-    // Still validate the parent ref so invalid input fails the same way it
-    // would in the browser, rather than being masked by the unavailability error.
     const resolved = resolveSpanParent({ explicit: options?.parent, ambient: [] });
     if ("error" in resolved) return rejectedPreCaught(resolved.error);
     return rejectedPreCaught("telemetry is unavailable in this environment");
@@ -4684,13 +4601,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (isObservabilityEnabled(this._observabilityOptions) && this._clientAnalytics) {
       return this._clientAnalytics.startSpan(spanType, options);
     }
-    // Environment unavailability (SSR / non-browser) hands back an INERT span
-    // instead of throwing: isomorphic code — a hook or utility running on both
-    // server render and hydration — should not need an environment branch
-    // around every span call, and `withSpan` should simply run its callback.
-    // Only invalid INPUT still throws (identical messages to the browser
-    // path); the inert handle's lifecycle methods resolve without ever
-    // emitting a row.
     assertValidSpanStartInput(spanType, options);
     const resolved = resolveSpanParent({ explicit: options?.parent, links: options?.links, ambient: [] });
     if ("error" in resolved) {
@@ -4703,10 +4613,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       startedAtMs: options?.startedAtMs ?? Date.now(),
       parentSpanId: resolved.parentSpanId,
       initialData: { ...options?.data ?? {} },
-      // Thread the resolved parent's sampling decision through: omitting these
-      // means "sampled" per the SpanContext contract, so an explicitly
-      // UNSAMPLED upstream parent would be silently upgraded and downstream
-      // parent-based samplers would start recording a trace the origin dropped.
       ...resolved.traceFlags === undefined ? {} : { traceFlags: resolved.traceFlags },
       ...resolved.traceState === undefined ? {} : { traceState: resolved.traceState },
     });
@@ -4727,8 +4633,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   withSpan<T>(spanType: string, fn: (span: Span) => Promise<T> | T): Promise<T>;
   withSpan<T>(spanType: string, options: StartSpanOptions, fn: (span: Span) => Promise<T> | T): Promise<T>;
   withSpan<T>(spanType: string, optionsOrFn: StartSpanOptions | ((span: Span) => Promise<T> | T), maybeFn?: (span: Span) => Promise<T> | T): Promise<T> {
-    // this.startSpan dispatches virtually, so the server app's userId-aware
-    // startSpan is used automatically when called on a StackServerApp.
     return withSpanImpl((type, options) => this.startSpan(type, options), spanType, optionsOrFn, maybeFn);
   }
 
@@ -4764,9 +4668,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   protected _getSpanPropagationContext(): SpanPropagationContext | null {
     const tracker = this._clientAnalytics;
     if (!tracker) return null;
-    // Read the option directly instead of _getPropagationOriginPolicy(): the
-    // policy getter lazily kicks off the trusted-domains fetch, which a
-    // disabled-baggage check must not trigger as a side effect.
     if (this._observabilityOptions?.spanPropagation?.enabled === false) return null;
     const segmentId = tracker.getSessionReplaySegmentId();
     const pageViewSpanId = tracker.getCurrentPageViewSpanId();

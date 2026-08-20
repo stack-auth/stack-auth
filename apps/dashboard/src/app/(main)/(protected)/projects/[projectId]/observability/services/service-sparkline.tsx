@@ -4,17 +4,6 @@ import { useMemo } from "react";
 import { EventSparkline } from "../event-sparkline";
 import type { ServiceTimelineBucket } from "./services-data";
 
-/**
- * Request volume over the window with failing buckets tinted red.
- *
- * The drawing lives in `EventSparkline` (shared with Issues); what stays here
- * is the Services-specific decision about what a bar means. Two series are
- * deliberately NOT stacked or overlaid as separate shapes: at ~20px tall an
- * error series is almost always invisible next to request volume, which is the
- * failure mode that makes most table sparklines decorative. Tinting the
- * request bar instead means a single failing bucket is legible even when it
- * carries two orders of magnitude fewer errors than requests.
- */
 export function ServiceSparkline({
   buckets,
   bucketLabel,

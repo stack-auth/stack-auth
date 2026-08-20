@@ -12,11 +12,6 @@ export const GET = createSmartRouteHandler({
       type: adminAuthTypeSchema.defined(),
       tenancy: adaptSchema.defined(),
     }).defined(),
-    // Deliberately the SAME query contract as the public list route: the
-    // internal response adds dashboard-only fields, but the accepted filters,
-    // allowlists, and error vocabulary must not fork. (This route used to
-    // re-implement the parsers with a looser sort_dir and no cursor
-    // validation.)
     query: PublicIssueListQuerySchema.optional(),
   }),
   response: yupObject({

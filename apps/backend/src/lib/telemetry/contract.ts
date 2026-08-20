@@ -1,11 +1,3 @@
-/**
- * A batch identity is a transport identity, not an event identity.
- *
- * Sentry envelopes and OTLP requests do not share a UUID format, while
- * ClickHouse already stores batch_id as a String. Keeping this contract string
- * shaped prevents transport IDs from being accidentally cast into UUID-only
- * control-plane columns.
- */
 export type TelemetryBatchId = string;
 
 export type TelemetryScope = {

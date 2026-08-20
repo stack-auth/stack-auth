@@ -209,9 +209,6 @@ describe("server OTel integration", () => {
     }, async () => {});
     await app.flush();
 
-    // A valid `00` parent must remain non-recording even when this process's
-    // local root rate is 100%; otherwise this tier fabricates a new root and
-    // breaks the cross-tier trace.
     expect(spans(collector.requests)).toEqual([]);
   });
 
@@ -279,8 +276,6 @@ describe("server OTel integration", () => {
 
   it("installs late-supplied instrumentations on the cached provider, deduped by name", async () => {
     const collector = await startCollector();
-    // makeReadyApp registers eagerly with NO instrumentations — the exact state
-    // a framework register() call arrives into.
     const app = await makeReadyApp(collector.baseUrl);
     const instrumentation = getServerAppInstrumentation(app);
     if (instrumentation === null) throw new Error("Expected a real server app instrumentation facade");
@@ -307,8 +302,6 @@ describe("server OTel integration", () => {
     expect(calls).toContain("tracer:test-late-instrumentation");
     const callsAfterFirstInstall = calls.length;
 
-    // Same instrumentationName again (HMR re-runs construct NEW instances):
-    // must not patch twice.
     await instrumentation.registerOpenTelemetry([makeFakeInstrumentation("test-late-instrumentation")]);
     expect(calls.length).toBe(callsAfterFirstInstall);
   });
@@ -322,8 +315,6 @@ describe("server OTel integration", () => {
     await instrumentation.captureServerRequestError(new Error("boom"), {
       mechanism: "next.onRequestError",
       handled: false,
-      // A hostile or buggy adapter must not be able to reclassify the event:
-      // `handled` at the capture seam is what crash-free rates trust.
       data: { handled: true, mechanism_type: "spoofed.mechanism", level: "info" },
     });
     await app.flush();
@@ -334,7 +325,6 @@ describe("server OTel integration", () => {
     if (!(errorData instanceof Map)) throw new Error("Expected structured Hexclave error data");
     expect(errorData.get("handled")).toBe(false);
     expect(errorData.get("mechanism_type")).toBe("next.onRequestError");
-    // Non-authoritative extras still flow through.
     expect(errorData.get("level")).toBe("info");
   });
 
@@ -356,8 +346,6 @@ describe("server OTel integration", () => {
 
     const log = logRecords(collector.requests).find((record) => record.eventName === "$log");
     if (log === undefined) throw new Error("Expected the scoped logger LogRecord");
-    // No OTel span was active, so the record joins the caller's trace via the
-    // request's incoming W3C parent — mirroring trackEvent.
     expect(log).toMatchObject({
       traceId: CLIENT_FETCH.traceId,
       spanId: CLIENT_FETCH.spanId,
@@ -379,15 +367,11 @@ describe("server OTel integration", () => {
       pageViewSpanId: "6666666666666666",
       incomingParent: CLIENT_FETCH,
     });
-    // Shadow the session-resolving half: this unit is about the logger's
-    // ambient wiring, not session resolution (covered elsewhere).
     Reflect.set(app, "_resolveServerRequestContext", async () => context);
     instrumentation.setAmbientRequestProvider(async () => ({ headers: new Headers() }));
 
     try {
       app.logger.info("ambient log");
-      // The ambient resolution is fire-and-forget; poll until the attributed
-      // record lands at the collector.
       await vi.waitFor(async () => {
         await app.flush();
         expect(logRecords(collector.requests).find((record) => record.eventName === "$log")).toBeDefined();

@@ -151,9 +151,6 @@ export function handleApiRequest(handler: (req: Request, options: any, requestId
             ...allowedLongRequestPathPrefixes,
             ...allowedLongRequestPathPrefixes.map(path => path.replace(/^\/api\/latest\//, "/api/v1/")),
           ];
-          // Collector requests are background delivery, not a user-facing
-          // request critical path. Exact path matching keeps this exemption off
-          // arbitrary analytics subroutes.
           const warnAfterSeconds = isTelemetryIngestionPath(requestUrl.pathname)
             || allAllowedLongRequestPaths.includes(requestUrl.pathname)
             || allAllowedLongRequestPathPrefixes.some(prefix => requestUrl.pathname.startsWith(prefix))

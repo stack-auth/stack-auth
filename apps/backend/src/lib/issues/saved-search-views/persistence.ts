@@ -27,11 +27,6 @@ export type SavedIssueSearchViewScope = {
   branchId: string,
 };
 
-/**
- * Saved views are user-owned product objects, not arbitrary project records.
- * A trusted server key without a user identity therefore cannot mutate one:
- * only the creator or an explicit admin principal may update/delete a view.
- */
 export type SavedIssueSearchViewMutationAuthorization =
   | { kind: "creator", actorUserId: string }
   | { kind: "admin" };
@@ -237,12 +232,6 @@ export async function createSavedIssueSearchView(options: {
   const queryJson = JSON.stringify(options.mutation.query);
 
   return await retryTransaction(database, async (transaction) => {
-    // The advisory lock serializes the per-scope count with concurrent
-    // creates. It is transaction-local and contains no customer-provided SQL.
-    // `pg_advisory_xact_lock` returns PostgreSQL's `void` pseudo-type. Using
-    // `$queryRaw` asks the Prisma driver adapter to decode that result set and
-    // fails with `UnsupportedNativeDataType void`; this is a command, not a
-    // row-producing query, so execute it through `$executeRaw` instead.
     await transaction.$executeRaw(Prisma.sql`
       SELECT pg_advisory_xact_lock(hashtextextended(${scopeAdvisoryKey(scope)}, 0))
     `);

@@ -51,9 +51,6 @@ describe("error envelope normalization", () => {
   });
 
   it("does not shape-sniff customer payloads that resemble OTLP records", () => {
-    // `eventName: "$error"` here is customer data on a flat payload, not an
-    // OTLP LogRecord: normalization must treat it as an opaque field instead
-    // of routing the payload through a different adapter.
     const envelope = normalizeErrorEnvelope({
       name: "TypeError",
       message: "bad value",

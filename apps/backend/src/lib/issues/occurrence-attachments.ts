@@ -17,13 +17,6 @@ type PublicAttachmentRow = {
   createdAt: Date,
 };
 
-/**
- * Batch-loads attachment metadata for a page of occurrence event ids and
- * projects it into the public wire shape. Kept as one windowed query (rather
- * than the per-event attachment service) because a page of occurrences would
- * otherwise fan out into N round trips, and the per-event cap must hold even
- * if corrupt data exceeded it.
- */
 export async function loadPublicIssueAttachments(
   tenancy: Tenancy,
   eventIds: readonly string[],

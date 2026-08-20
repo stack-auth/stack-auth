@@ -95,8 +95,6 @@ describe("OTLP JSON logs normalization", () => {
 
   it("canonicalizes zero-padded timestamps so the required-timestamp check cannot be bypassed", () => {
     const log = OTLP_LOG_REQUEST_FIXTURE.resourceLogs[0].scopeLogs[0].logRecords[0];
-    // "00" is numerically zero: it must behave exactly like "0", not slip past
-    // the literal comparisons and persist a record at epoch 1970.
     expect(() => normalizeOtlpJsonLogsRequest({
       resourceLogs: [{ scopeLogs: [{ logRecords: [{ ...log, timeUnixNano: "00", observedTimeUnixNano: "0" }] }] }],
     })).toThrow(/timeUnixNano or observedTimeUnixNano/);
@@ -107,9 +105,6 @@ describe("OTLP JSON logs normalization", () => {
   });
 
   it("treats an empty body object as an unset AnyValue", () => {
-    // The official JSON serializers emit `body: {}` for body-less records
-    // (product events have only an eventName); rejecting it dropped whole
-    // browser export batches with a 400.
     const [log] = normalizeOtlpJsonLogsRequest({
       resourceLogs: [{ scopeLogs: [{ logRecords: [{
         timeUnixNano: "1",
@@ -117,7 +112,6 @@ describe("OTLP JSON logs normalization", () => {
         body: {},
         attributes: [
           { key: "hexclave.signal.type", value: { stringValue: "event" } },
-          // `href: null` in autocapture data serializes as the empty AnyValue.
           { key: "hexclave.data", value: { kvlistValue: { values: [{ key: "href", value: {} }] } } },
         ],
       }] }] }],
@@ -140,15 +134,10 @@ describe("OTLP JSON logs normalization", () => {
       }] }] }],
     })[0];
 
-    // Regression test: autocapture sends $click/$form-submit/… through the
-    // same signal type as custom events; requiring the CUSTOM name regex here
-    // silently rejected every browser autocapture event at ingest.
     expect(getHexclaveOtlpLogContractError(eventRecord("$click"), "client")).toBeNull();
     expect(getHexclaveOtlpLogContractError(eventRecord("checkout_completed"), "client")).toBeNull();
     expect(getHexclaveOtlpLogContractError(eventRecord("checkout_completed"), "server")).toBeNull();
-    // A server key must not fabricate browser interactions.
     expect(getHexclaveOtlpLogContractError(eventRecord("$click"), "server")).toMatch(/cannot be written from the server origin/);
-    // $log/$error stay on their own signal types with stricter shapes.
     expect(getHexclaveOtlpLogContractError(eventRecord("$error"), "client")).toMatch(/known system event type or a valid custom eventName/);
     expect(getHexclaveOtlpLogContractError(eventRecord("$not-a-system-event"), "client")).toMatch(/known system event type or a valid custom eventName/);
   });

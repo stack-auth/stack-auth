@@ -29,34 +29,14 @@ import {
 } from "./contract";
 import { createSavedIssueSearchViewMutationAuthorization } from "./persistence";
 
-/**
- * The public (`/issues/search-views`, machine keys) and internal
- * (`/internal/issues/search-views`, dashboard admin) trees expose the same five
- * CRUD operations over the same persistence layer. This factory exists so the
- * two trees can't drift apart: the only real differences between them are the
- * accepted auth types and the OpenAPI metadata (the internal tree is hidden and
- * worded for the dashboard), so those are the only knobs.
- */
 type SavedIssueSearchViewAuthTypeSchema =
   | typeof adminAuthTypeSchema
   | typeof clientOrHigherAuthTypeSchema
   | typeof serverOrHigherAuthTypeSchema;
 
 export type SavedIssueSearchViewRouteHandlerOptions = {
-  /**
-   * Auth types accepted by list/get/create. The public tree uses
-   * server-or-higher (machine keys act for the project), the internal tree
-   * admin only.
-   */
   authTypeSchema: SavedIssueSearchViewAuthTypeSchema,
-  /**
-   * Auth types accepted by update/delete. Deliberately looser than
-   * `authTypeSchema` on the public tree (client-or-higher): ownership is
-   * enforced per-row by the mutation authorization below, so an end user may
-   * mutate their own private views even though they cannot list or create.
-   */
   mutationAuthTypeSchema: SavedIssueSearchViewAuthTypeSchema,
-  /** Full per-operation OpenAPI metadata; the trees differ in wording and `hidden`. */
   metadata: {
     list: SmartRouteHandlerOverloadMetadata,
     create: SmartRouteHandlerOverloadMetadata,
@@ -77,24 +57,10 @@ function savedIssueSearchViewAuthSchema(typeSchema: SavedIssueSearchViewAuthType
   }).defined();
 }
 
-/**
- * Admin-key requests normally have no end-user identity. Returning null here
- * is deliberate: the persistence layer then exposes and creates only
- * project-visible views. We must not turn the dashboard's admin key into a
- * fake private-view owner, because that would make every dashboard operator
- * share one indistinguishable private namespace.
- */
 export function savedIssueSearchViewActorUserId(fullReq: SmartRequest): string | null {
   return fullReq.auth?.user?.id ?? null;
 }
 
-/**
- * Derives the mutation authorization from the authenticated request. Reading
- * `fullReq.auth.type` (instead of a per-tree hardcoded auth type) is exact for
- * both trees because each tree's request auth schema already constrains which
- * auth types can reach this point — the internal tree only admits "admin", so
- * this always yields the admin authorization there.
- */
 function savedIssueSearchViewMutationAuthorization(fullReq: SmartRequest) {
   if (fullReq.auth === null) {
     throw new StatusError(StatusError.Forbidden, "saved issue search view mutation requires authenticated access");

@@ -10,12 +10,6 @@ import { DEFAULT_GROUPING_CONFIG_ID } from "./grouping-config";
 import { computeGrouping } from "./grouping";
 import type { GroupingInput } from "./types";
 
-/**
- * ⚠️ SYNTHETIC STAND-IN — see the header of `__fixtures__/bundler-chunks.ts`.
- * The chunk names here were hand-written to the shapes each bundler emits, not
- * captured from two real builds. A real two-build corpus is still owed before
- * the rebuild-stability claim can be called proven.
- */
 
 function ownerHash(input: GroupingInput): string {
   return computeGrouping(input, DEFAULT_GROUPING_CONFIG_ID).ownerHash;
@@ -35,9 +29,6 @@ describe("rebuild stability", () => {
   });
 
   it("hashes a synthetic (non-Error) throw identically before and after a rebuild", () => {
-    // The synthetic rule hashes its own file leaf rather than going through the
-    // frame rules, so it needs its own rebuild-stability proof: hashing the raw
-    // `absPath` here would split every `throw {…}` issue on every deploy.
     const synthetic = (chunk: string) => ownerHash({
       type: "Error",
       message: "Object captured as exception with keys: code, detail",
@@ -59,16 +50,11 @@ describe("rebuild stability", () => {
   });
 
   it("does not merge webpack and Turbopack builds of the same app", () => {
-    // They genuinely are different modules — Turbopack's chunk names encode the
-    // source path, webpack's encode a numeric chunk id — so this asserts the
-    // normalizer is not over-eager, not that the two *should* differ.
     expect(ownerHash(buildRebuildFixture(WEBPACK_CHUNK_NAMES_BUILD_A)))
       .not.toBe(ownerHash(buildRebuildFixture(TURBOPACK_CHUNK_NAMES_BUILD_A)));
   });
 
   it("normalizes each build's chunk names to the same modules", () => {
-    // The diagnostic behind the two assertions above: if this snapshot changes,
-    // the hash equality tests above become meaningless rather than failing.
     const modules = (chunkNames: readonly string[]) =>
       computeGrouping(buildRebuildFixture(chunkNames), DEFAULT_GROUPING_CONFIG_ID).frames.map((frame) => frame.module);
     expect({

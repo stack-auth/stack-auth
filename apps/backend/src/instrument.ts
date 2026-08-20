@@ -43,22 +43,12 @@ export function registerBackendInstrumentation() {
   process.title = `stack-backend:${portPrefix} (node/elysia)`;
   initPerfStats();
 
-  // Dogfood the same managed SDK integration customers use. Construction
-  // synchronously installs Hexclave's tracer, logger, meter, W3C propagation,
-  // correlation processor, and authenticated OTLP exporters before any other
-  // integration can claim the process-wide OpenTelemetry globals.
   getHexclaveServerApp();
 
-  // Prisma supplies an official OTel instrumentation class rather than using
-  // the global API by itself. Register it against the provider the Hexclave
-  // SDK just installed; otherwise switching provider ownership away from
-  // Sentry silently removes database spans from otherwise-complete traces.
   disableBackendInstrumentations = registerInstrumentations({
     instrumentations: [new PrismaInstrumentation()],
   });
 
-  // Sentry remains an optional error-reporting sink for installations with a
-  // DSN, but it must never own or be required by backend OpenTelemetry.
   Sentry.init({
     ignoreErrors: sentryBaseConfig.ignoreErrors,
     normalizeDepth: sentryBaseConfig.normalizeDepth,
@@ -80,8 +70,6 @@ export function registerBackendInstrumentation() {
     beforeSendTransaction: prepareBackendSentryEvent,
   });
 
-  // Hexclave owns the process provider; enter the standard suppression context
-  // from that provider's OTel graph so ingestion cannot recursively export.
   registerNodeTelemetrySuppressionRunner(
     async (fn) => await context.with(suppressTracing(context.active()), fn),
   );

@@ -139,10 +139,6 @@ export const POST = createSmartRouteHandler({
       });
     } catch (error) {
       if (error instanceof StatusError) throw error;
-      // Only reflect ErrorIngestEnvelopeError messages: they are fixed strings
-      // authored in the envelope parser, so they are safe to show callers.
-      // Any other error is an unexpected internal failure — rethrow so the
-      // generic 500 handler logs it instead of echoing internal text as a 400.
       if (error instanceof ErrorIngestEnvelopeError) throw new StatusError(StatusError.BadRequest, error.message);
       throw error;
     }
@@ -314,10 +310,6 @@ export const POST = createSmartRouteHandler({
               { status: "accepted" },
             ));
           } catch (error) {
-            // Attachment storage is an independent Sentry envelope item. Keep a
-            // valid event usable when private object storage is temporarily
-            // unavailable, while recording the failure as an item outcome so the
-            // client can retry and operators can see the loss reason.
             captureError("sentry-envelope-attachment-storage", error);
             attachmentOutcomes.set(item.itemId, createErrorIngestItemOutcome(
               { itemId: item.itemId, itemType: "attachment", eventId: payload.eventId },

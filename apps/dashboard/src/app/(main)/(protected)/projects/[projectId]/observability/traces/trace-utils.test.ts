@@ -9,8 +9,6 @@ function span(id: string, opts: Partial<SpanInput> = {}): SpanInput {
     startMs: opts.startMs ?? 1000,
     endMs: opts.endMs === undefined ? 2000 : opts.endMs,
     parentSpanId: opts.parentSpanId ?? null,
-    // Default to the SDK producer: most fixtures here stand for spans the
-    // customer's own code created, which is what signal mode keys off.
     raw: opts.raw ?? { producer: "sdk" },
   };
 }
@@ -93,9 +91,6 @@ describe("buildTraces", () => {
   });
 
   it("does not resolve a parent id that only exists in a different trace", () => {
-    // A span id is unique only WITHIN its trace, so a cross-trace id match is a
-    // coincidence — the span is an orphan of its own trace, not a child of the
-    // other one.
     const { traces } = buildTraces([
       span("shared-id", { traceId: "other-trace", startMs: 1000 }),
       span("root", { traceId: "trace", startMs: 2000 }),
@@ -136,8 +131,6 @@ describe("buildTraces", () => {
   });
 
   it("widens startMs to include events that precede their span's start", () => {
-    // Events and replay chunks batch independently, so an attached event can
-    // predate the span row's own started_at.
     const { traces } = buildTraces(
       [span("root", { startMs: 5000, endMs: 9000 })],
       [event("early", { atMs: 3000, spanId: "root" })],
@@ -160,8 +153,6 @@ describe("buildTraces", () => {
       span("y", { parentSpanId: "x" }),
     ];
     const { traces } = buildTraces(spans, []);
-    // Both name each other, so both have a parent inside the trace — but the
-    // cycle guard must still terminate and every span must appear exactly once.
     const seen = new Set<string>();
     for (const trace of traces) {
       for (const row of flattenTrace(trace)) {
@@ -210,10 +201,6 @@ describe("buildTraces missing-parent tolerance", () => {
   });
 
   it("selectPrimaryTrace prefers the true root over newer fragments of the same trace", () => {
-    // Regression test: a session trace whose current $page-view span has not
-    // been exported yet fragments into many trees sharing one trace id. The
-    // detail pane used `.find()` over a newest-first list, so clicking the
-    // $refresh-token root displayed an arbitrary recent backend fragment.
     const { traces } = buildTraces([
       span("session-root", { spanType: "$refresh-token", startMs: 1000, endMs: null }),
       span("old-page-view", { spanType: "$page-view", startMs: 1100, endMs: 1900, parentSpanId: "session-root" }),
@@ -224,7 +211,6 @@ describe("buildTraces missing-parent tolerance", () => {
 
     const primary = selectPrimaryTrace(traces, "test-trace");
     expect(primary?.root.span.id).toBe("session-root");
-    // The fragment stays a separate tree; it must never be silently preferred.
     expect(traces.some((trace) => trace.root.span.id === "fragment-request")).toBe(true);
     expect(selectPrimaryTrace(traces, "other-trace")?.root.span.id).toBe("other-trace-root");
     expect(selectPrimaryTrace(traces, "missing-trace")).toBeNull();
@@ -268,7 +254,6 @@ describe("zoomViewWindow / panViewWindow", () => {
     const zoomed = zoomViewWindow({ start: 0, end: 1 }, 0.5, 0.5);
     expect(zoomed.start).toBeCloseTo(0.25);
     expect(zoomed.end).toBeCloseTo(0.75);
-    // Anchor at 0.5 of the view maps to the same absolute position after zoom.
     const anchorAbsBefore = 0 + 0.5 * 1;
     const anchorAbsAfter = zoomed.start + 0.5 * (zoomed.end - zoomed.start);
     expect(anchorAbsAfter).toBeCloseTo(anchorAbsBefore);
@@ -354,10 +339,6 @@ describe("trace signal selection", () => {
   });
 
   it("thins out an auto-instrumented fan-out but always keeps customer-authored spans", () => {
-    // A non-`$` span type alone does not mean the customer wrote it — an imported
-    // OpenTelemetry span like `prisma:query` also has one. Its instrumentation
-    // scope distinguishes it from deliberate `startSpan("checkout")` work even
-    // though both arrived through the authenticated SDK producer.
     const spans = [
       span("root", { spanType: "$page-view", startMs: 0, endMs: 1000 }),
       span("checkout", { spanType: "checkout", startMs: 1, endMs: 2, parentSpanId: "root" }),
@@ -370,7 +351,6 @@ describe("trace signal selection", () => {
       })),
     ];
     const { traces } = buildTraces(spans, []);
-    // Root + the customer's own span only; the 50 library spans are noise.
     expect([...traceSignalSpanIds(traces[0], 0)]).toEqual(["root", "checkout"]);
   });
 
@@ -388,9 +368,6 @@ describe("trace signal selection", () => {
     ];
     const { traces } = buildTraces(spans, []);
 
-    // The reserved request boundary is SDK-owned despite having no library
-    // scope. Signal keeps the true customer span plus only the 20 slow-context
-    // slots; All spans still contains every request boundary.
     expect(traces[0].spanCount).toBe(102);
     expect([...traceSignalSpanIds(traces[0])]).toEqual([
       "root",

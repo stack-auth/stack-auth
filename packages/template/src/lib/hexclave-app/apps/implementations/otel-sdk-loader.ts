@@ -8,32 +8,10 @@ type OtelSdkLoadAttempt =
   | { module: OtelSdkModule }
   | { module: null, errors: unknown[] };
 
-/**
- * Loads the Node-only managed OTel SDK without a static import edge.
- *
- * `server-app-impl` is reachable from the client package barrel (StackProvider
- * types StackServerApp). A static `import "./otel-sdk"` would drag
- * `async_hooks` / Undici into browser and client-SSR bundles. Keep the
- * specifier opaque (non-literal + ignore pragmas) so bundlers cannot follow it;
- * browsers simply fail the import and degrade to "no managed Node provider".
- *
- * Two resolution strategies, in order:
- * 1. The relative sibling (`./otel-sdk[.js]`) — works when this file runs from
- *    its real dist location (external apps, Vitest TS sources).
- * 2. Bare `<package>/otel` specifiers — when a bundler (e.g. Next.js/Turbopack,
- *    which force-bundles workspace dependencies into server chunks) has copied
- *    this code into a chunk, `import.meta.url` points at the chunk and the
- *    relative sibling no longer exists. A bare package specifier instead
- *    resolves through node_modules from wherever the chunk lives; the `/otel`
- *    subpath re-exports `registerManagedOtel` precisely for this. The bundled
- *    copy cannot know which SDK package it came from, so every package name
- *    that ships this file is tried and absent ones are skipped.
- */
 function otelSdkSpecifiers(): string[] {
   const base = ["otel", "sdk"].join("-");
   // `.js` for Node ESM dist; extensionless for Vitest/Vite TS resolution.
   const relative = [`./${base}.js`, `./${base}`];
-  // Assembled at runtime so bundlers cannot statically follow the specifiers.
   const packageQualified = ["next", "react", "js", "template"]
     .map((name) => ["@hexclave/", name, "/otel"].join(""));
   return [...relative, ...packageQualified];
@@ -72,7 +50,6 @@ function tryRequireOtelSdkSyncAttempt(): OtelSdkLoadAttempt {
     if (!isCreateRequire(createRequire)) return { module: null, errors };
 
     const urls = [import.meta.url];
-    // dist/esm/... → dist/... CJS twin, which createRequire can load.
     if (import.meta.url.includes("/dist/esm/")) {
       urls.push(import.meta.url.replace("/dist/esm/", "/dist/"));
     }

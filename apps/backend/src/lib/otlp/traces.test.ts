@@ -132,8 +132,6 @@ describe("OTLP JSON trace normalization", () => {
     });
     expect(normalizeOtlpJsonTraceRequest(requestWithEnd("0"))[0]).toMatchObject({ endTimeUnixNano: "0" });
     expect(() => normalizeOtlpJsonTraceRequest(requestWithEnd("1785887999999999999"))).toThrow(/must not precede/);
-    // Zero-padded spellings canonicalize to the same open-span marker so the
-    // literal `=== "0"` comparisons downstream cannot be bypassed.
     expect(normalizeOtlpJsonTraceRequest(requestWithEnd("00"))[0]).toMatchObject({ endTimeUnixNano: "0" });
   });
 

@@ -6,11 +6,6 @@ import type {
   ParsedFrame,
 } from "./types";
 
-/**
- * The server-side fingerprint vocabulary. These are intentionally a closed
- * set: a typo must be visible in the grouping result rather than silently
- * becoming a literal that happens to look like a variable.
- */
 export const GROUPING_FINGERPRINT_TOKENS = [
   "{{ default }}",
   "{{ type }}",
@@ -36,7 +31,6 @@ type GroupingFingerprintTokenName =
 
 export type GroupingFingerprintResolution = {
   provenance: GroupingFingerprintProvenance,
-  /** Values for non-`default` tokens, in their original order. */
   resolvedValues: string[],
 };
 
@@ -50,17 +44,6 @@ function readField(data: unknown, key: string): unknown {
   return isRecord(data) ? data[key] : undefined;
 }
 
-/**
- * Wire bounds for a custom fingerprint. These exist because the durable
- * provenance projection is READ back under hard caps (32 tokens per array and
- * 64 KiB serialized, see `occurrence-projection.ts`): an unbounded fingerprint
- * would be accepted, hashed, and persisted, and then silently VANISH from
- * every occurrence API response — grouping the project by evidence nobody can
- * inspect. An input outside these bounds is therefore ignored outright (the
- * occurrence falls back to default grouping), which is at least observable in
- * the provenance, instead of truncated (which would group on an arbitrary
- * prefix of what the customer asked for).
- */
 export const MAX_GROUPING_FINGERPRINT_TOKENS = 32;
 export const MAX_GROUPING_FINGERPRINT_TOKEN_BYTES = 512;
 export const MAX_GROUPING_FINGERPRINT_PROVENANCE_BYTES = 64 * 1024;
@@ -78,33 +61,14 @@ function readStringArray(value: unknown): string[] | undefined {
   return result;
 }
 
-/**
- * Projects the two currently-supported wire representations into one
- * grouping-only field. A flat SDK event's scalar `fingerprint` is deliberately
- * ignored: that field is the SDK's local deduplication key, not a Sentry-style
- * custom fingerprint. The rich envelope's array-shaped `fingerprint` is the
- * canonical exception to that rule.
- */
 export function readGroupingFingerprint(data: unknown): readonly string[] | undefined {
   const rawOverride = readField(data, "fingerprint_override");
   if (rawOverride !== undefined) {
-    // An explicit but malformed override must not silently fall back to the
-    // rich envelope's `fingerprint`: the caller asked for one grouping rule,
-    // and accepting a different field would make invalid input regroup under
-    // an undisclosed contract. A valid empty array still means default
-    // grouping; malformed input remains undefined so the caller can fail
-    // closed without treating an invalid value as a usable fingerprint.
     return readStringArray(rawOverride);
   }
   return readStringArray(readField(data, "fingerprint"));
 }
 
-/**
- * Sentry classifies one default token (and an omitted/empty list) as default;
- * any default token mixed with another value is hybrid; everything else is a
- * custom fingerprint. The distinction matters because hybrid fingerprints
- * retain the active default hash as one component.
- */
 export function classifyGroupingFingerprint(fingerprint: readonly string[] | undefined): GroupingFingerprintType {
   if (fingerprint === undefined || fingerprint.length === 0) return "default";
 
@@ -117,12 +81,6 @@ export function classifyGroupingFingerprint(fingerprint: readonly string[] | und
   return fingerprint.length === 1 ? "default" : "hybrid";
 }
 
-/**
- * Resolves the documented tokens without touching the raw event payload. The
- * `stack` token is a normalized frame projection (no line/column or raw URL),
- * so opting into it does not reintroduce deploy-specific churn that the default
- * grouping algorithm deliberately avoids.
- */
 export function resolveGroupingFingerprint(
   fingerprint: readonly string[] | undefined,
   input: GroupingInput,
@@ -149,10 +107,6 @@ export function resolveGroupingFingerprint(
     resolved_tokens: resolvedValues,
   };
   if (FINGERPRINT_TEXT_ENCODER.encode(JSON.stringify(durableFingerprint)).byteLength > MAX_GROUPING_FINGERPRINT_PROVENANCE_BYTES) {
-    // The occurrence projection has the same 64 KiB durable read cap. Hashing
-    // a value that cannot be returned as provenance creates an issue whose
-    // grouping decision cannot be explained, so degrade to the default owner
-    // before the oversized value reaches either the hash or storage layer.
     return {
       resolvedValues: [],
       provenance: {
@@ -226,9 +180,6 @@ function resolveToken(
       return frames.at(-1)?.module ?? "<no-stack-module>";
     }
     case "default": {
-      // `default` is consumed by the loop above. Keeping this branch makes the
-      // switch exhaustive if the vocabulary grows and prevents an accidental
-      // empty value from becoming a valid custom component.
       throw new Error(`Unexpected default grouping fingerprint token ${JSON.stringify(originalToken)}`);
     }
   }

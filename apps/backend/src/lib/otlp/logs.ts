@@ -25,17 +25,10 @@ export type CanonicalOtlpLogRecord = {
     droppedAttributesCount: number,
     schemaUrl: string,
   },
-  /**
-   * Projection of the flat `$error` payload carried in `hexclave.data`.
-   * Materializing it here means the OTLP writer never has to inspect raw
-   * attribute maps again.
-   */
   errorEnvelope: OtlpErrorEnvelope | null,
-  /** Server-owned final policy projection; never comes from the OTLP wire. */
   policyScrubbedData?: Readonly<Record<string, unknown>>,
 };
 
-/** Relay-compatible, lowercase, dashless event ID. */
 export const HEXCLAVE_ERROR_EVENT_ID_RE = /^[0-9a-f]{32}$/;
 
 export type OtlpErrorEnvelope = {
@@ -54,13 +47,6 @@ function readFlatErrorEventId(fields: OtlpAttributes, key: string): { value: str
   return { value: attribute.value, error: null };
 }
 
-/**
- * Projects the flat `$error` payload out of a LogRecord's `hexclave.data`
- * attribute. The SDK emits the same event ID both as `hexclave.event.id` and
- * inside the flat `hexclave.data.event_id`; accepting either keeps all
- * producers readable, while rejecting disagreement prevents two occurrence
- * identities for one event.
- */
 export function getOtlpErrorEnvelope(log: Pick<CanonicalOtlpLogRecord, "eventName" | "attributes">): OtlpErrorEnvelope | null {
   if (log.eventName !== "$error" || log.attributes.get("hexclave.signal.type")?.type !== "string" || log.attributes.get("hexclave.signal.type")?.value !== "error") return null;
   const flatData = log.attributes.get("hexclave.data");
@@ -86,9 +72,6 @@ function nullToAbsent(value: OtlpAttributeValue): OtlpAttributeValue | null {
 
 function unixNanoOrZero(value: unknown, path: string): string {
   if (value === undefined) return "0";
-  // Canonicalized (BigInt round-trip) so a zero-padded zero like "00" cannot
-  // slip past the literal `=== "0"` checks below and persist a timestamp-less
-  // record at epoch 1970 instead of falling back to observedTimeUnixNano.
   return otlpCanonicalUint64String(value, path);
 }
 
@@ -134,9 +117,6 @@ export function normalizeOtlpJsonLogsRequest(value: unknown): CanonicalOtlpLogRe
           observedTimeUnixNano,
           severityNumber,
           severityText: otlpString(log.severityText, `${logPath}.severityText`, ""),
-          // The official serializers emit `body: {}` (the unset AnyValue) for
-          // body-less records, e.g. product event LogRecords — canonicalize
-          // that to the same null an absent body produces.
           body: log.body === undefined ? null : nullToAbsent(otlpAnyValue(log.body, `${logPath}.body`)),
           attributes: otlpAttributes(log.attributes ?? [], `${logPath}.attributes`),
           droppedAttributesCount: otlpUint(log.droppedAttributesCount, `${logPath}.droppedAttributesCount`),
@@ -161,12 +141,6 @@ export function getHexclaveOtlpLogContractError(log: CanonicalOtlpLogRecord, ori
   if (signalType === undefined) return null;
   if (signalType.type !== "string") return "hexclave.signal.type must be a string";
   if (signalType.value === "event") {
-    // System autocapture events ($click, $form-submit, …) and custom events
-    // ride the same signal type — identical to the legacy events/batch rule:
-    // the name must be a known analytics system event or a valid custom name.
-    // $log/$error are NOT admitted here even though they are system event
-    // types: they have their own signal types with stricter shape validation,
-    // and accepting them as plain events would bypass it.
     if (!isAnalyticsSystemEvent(log.eventName) && !CUSTOM_TELEMETRY_NAME_RE.test(log.eventName)) {
       return "Hexclave product event LogRecords require a known system event type or a valid custom eventName";
     }
@@ -180,8 +154,6 @@ export function getHexclaveOtlpLogContractError(log: CanonicalOtlpLogRecord, ori
   }
   if (signalType.value === "error") {
     if (log.eventName !== "$error") return "Hexclave error LogRecords require eventName $error";
-    // With eventName and signal type already validated, a null projection can
-    // only mean the flat payload attribute is missing or mis-shaped.
     const errorEnvelope = getOtlpErrorEnvelope(log);
     if (errorEnvelope === null) return "Hexclave error LogRecords require a hexclave.data kvlist attribute";
     if (errorEnvelope.identityError != null) return errorEnvelope.identityError;

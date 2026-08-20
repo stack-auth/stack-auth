@@ -9,11 +9,6 @@ function toSharedJson(value: unknown, fieldName: string): Json {
   return value;
 }
 
-/**
- * Product metadata is stored with Date/Prisma naming internally but crosses
- * the issue API as a stable snake-case JSON contract. Keep this conversion in
- * one place so the internal dashboard route and public issue API cannot drift.
- */
 export function serializeIssueProductSnapshot(snapshot: IssueProductSnapshot): IssueProductMetadata {
   return {
     priority: snapshot.priority,

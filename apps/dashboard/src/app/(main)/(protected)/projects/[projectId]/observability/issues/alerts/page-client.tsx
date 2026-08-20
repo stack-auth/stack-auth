@@ -547,9 +547,6 @@ export default function PageClient() {
     [project.id, project.ownerTeamId, userTeams],
   );
   const teamMembers = ownerTeam.useUsers();
-  // Owner-team members are dashboard collaborators. Project `listUsers` would
-  // list end-users of the customer app, which is why the picker used to open
-  // empty on a fresh project.
   const recipients = useMemo(
     () => [...teamMembers]
       .map(teamMemberRecipient)

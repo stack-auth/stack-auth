@@ -160,9 +160,6 @@ describe("issue alert workflow event contract", () => {
   });
 
   it("drops signals with control characters so a rendered subject can never span mail header lines", () => {
-    // The email subject is interpolated from issue fields; this drop is what
-    // guarantees CR/LF (or any other control character) in attacker-controlled
-    // issue text can never reach the single-line subject header downstream.
     const result = evaluateIssueAlertRule(createRule(), (() => {
       const signal = createSignal();
       signal.issue.value = "boom\r\nX-Injected: 1";
@@ -199,11 +196,6 @@ describe("issue alert workflow event contract", () => {
   });
 
   it("drops webhook destinations at evaluation until an executor exists", () => {
-    // The evaluator refuses to match a destination it cannot execute (see the
-    // comment in `evaluateIssueAlertRule`): a match would persist a delivery
-    // row and enqueue a durable workflow event that can only fail. The
-    // Workflows payload arm for webhooks stays in place for when an
-    // integration registry lands, but nothing may reach it today.
     const rule: IssueAlertRule = {
       schemaVersion: 1,
       id: "notify-on-errors-webhook",

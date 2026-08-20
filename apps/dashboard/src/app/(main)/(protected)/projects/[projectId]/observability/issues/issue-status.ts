@@ -1,18 +1,6 @@
 import type { DesignBadgeColor } from "@/components/design-components";
 import type { IssueListItem, IssueStatus, IssueStatusCounts, IssueSubstatus } from "./issues-data";
 
-/**
- * The Issue lifecycle, as pure data.
- *
- * The interesting part is `IssueStatusOverride`: an optimistic status change is
- * **versioned**, not permanent. It records the `updated_at_millis` the row had
- * when the user clicked, and is dropped as soon as the server returns a row
- * that is newer. A permanent override would keep showing "Resolved" after the
- * issue automatically regressed — i.e. it would hide exactly the event the
- * resolve was a bet against. `useDataSource` deliberately keeps prior rows
- * while refetching, which is what lets the reconciliation happen without the
- * list flashing.
- */
 
 export type IssueStatusAction = "resolve" | "unresolve" | "ignore";
 
@@ -32,15 +20,6 @@ export function nextStatusForAction(action: IssueStatusAction): IssueStatus {
 
 export type IssueStatusBadge = { label: string, color: DesignBadgeColor };
 
-/**
- * `null` for a plain unresolved issue.
- *
- * Under the default Unresolved filter that is nearly every row, and a column
- * where nearly every cell carries the same badge is a column of noise. The
- * states worth a badge are the ones that change how you triage: it came back
- * (`regressed`), it's new to this window (`new`), or someone already dealt with
- * it (`resolved` / `ignored`).
- */
 export function issueStatusBadge(issue: { status: IssueStatus, substatus: IssueSubstatus }): IssueStatusBadge | null {
   switch (issue.status) {
     case "resolved": {
@@ -59,7 +38,6 @@ export function issueStatusBadge(issue: { status: IssueStatus, substatus: IssueS
 
 export type IssueStatusOverride = {
   status: IssueStatus,
-  /** The row's `updated_at_millis` at the moment the override was applied. */
   updatedAtMillis: number,
 };
 
@@ -87,12 +65,6 @@ export function clearOptimisticStatus(
   return next;
 }
 
-/**
- * Drops overrides the server has caught up with (or moved past).
- *
- * Returns the SAME map reference when nothing changed, so this can be called
- * from a render-phase `useMemo` without churning identity on every fetch.
- */
 export function reconcileIssueStatusOverrides(
   overrides: IssueStatusOverrides,
   rows: readonly IssueListItem[],
@@ -109,7 +81,6 @@ export function reconcileIssueStatusOverrides(
   return next ?? overrides;
 }
 
-/** The status to render for a row, honoring a still-live optimistic override. */
 export function resolveIssueRowStatus(
   issue: IssueListItem,
   overrides: IssueStatusOverrides,
@@ -121,23 +92,10 @@ export function resolveIssueRowStatus(
   return { status: override.status, isOptimistic: override.status !== issue.status };
 }
 
-/**
- * The primary action offered on a row / in the detail header. Resolved and
- * ignored issues both offer the way back, so a mis-click is one click to undo.
- */
 export function primaryIssueStatusAction(status: IssueStatus): IssueStatusAction {
   return status === "unresolved" ? "resolve" : "unresolve";
 }
 
-/**
- * Moves one issue between the status-tab counts, optimistically. The list page
- * deliberately does not refetch after a single-row status change (a refetch
- * would yank the row out from under the cursor mid-scan), so without this the
- * tab counts would silently keep counting a resolved issue as Unresolved until
- * the next natural refresh. `from === to` is a no-op so an idempotent click
- * cannot drift the totals, and the caller reverts by calling this with the
- * arguments swapped when the PATCH fails.
- */
 export function adjustIssueStatusCounts(
   counts: IssueStatusCounts | null,
   from: IssueStatus,

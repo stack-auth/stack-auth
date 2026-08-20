@@ -9,11 +9,6 @@ export type ArtifactErrorCode =
   | "unsupported_source_map"
   | "storage_unavailable";
 
-/**
- * Errors crossing the artifact service boundary are deliberately classified.
- * Routes can turn these into safe HTTP responses without exposing object-store
- * details or accidentally converting caller input failures into 500s.
- */
 export class ArtifactServiceError extends Error {
   public readonly code: ArtifactErrorCode;
 

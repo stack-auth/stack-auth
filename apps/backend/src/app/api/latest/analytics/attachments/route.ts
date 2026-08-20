@@ -44,11 +44,6 @@ export const POST = createSmartRouteHandler({
   }).defined(),
   async handler({ auth, body }) {
     assertObservabilityEnabled(auth.tenancy);
-    // Parse the payload at the route boundary, separately from the service
-    // call, so the 400 response reflects ONLY errors thrown by our own
-    // validator (every throw in attachment-contract.ts is a fixed, safe
-    // message). This replaces a former message-substring heuristic that could
-    // classify infrastructure failures as client errors and echo their text.
     let upload: ValidatedErrorAttachmentUpload;
     try {
       upload = validateErrorAttachmentUpload(body);
@@ -61,11 +56,6 @@ export const POST = createSmartRouteHandler({
     try {
       result = await service.uploadBytes(attachmentScope(auth.tenancy), upload);
     } catch (error) {
-      // Conflicts are matched by type (never by error.name, which stays
-      // "Error" for subclasses that don't set it) so idempotency-key/content
-      // mismatches surface as the intended 409 with the service's fixed
-      // message. Everything else is an internal fault (DB/object storage) and
-      // bubbles to the generic 500 handler without leaking details.
       if (error instanceof ErrorAttachmentConflictError) throw new StatusError(StatusError.Conflict, error.message);
       throw error;
     }

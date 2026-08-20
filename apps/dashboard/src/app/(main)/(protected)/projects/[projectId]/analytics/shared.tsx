@@ -144,12 +144,6 @@ export function CellValue({ value, truncate = true }: { value: unknown, truncate
   return <span>{str}</span>;
 }
 
-/**
- * One labelled field in a detail view: uppercase label, monospaced value, JSON
- * pretty-printed. Exported because the Issues detail page renders the same
- * shape outside a dialog (in the tags / data card) and a second copy of these
- * classes would drift from `RowDetailDialog`'s.
- */
 export function RowDetailField({ column, value }: { column: string, value: unknown }) {
   return (
     <div className="space-y-1">
@@ -169,14 +163,6 @@ export function RowDetailField({ column, value }: { column: string, value: unkno
   );
 }
 
-/**
- * Dialog for displaying all fields of a single row.
- *
- * Columns listed in `technicalColumns` (raw identifiers, correlation ids, and
- * similar plumbing) are tucked into a collapsed "Technical details" section so
- * the dialog leads with the fields a product user actually reads. The section
- * re-collapses whenever a different row is shown.
- */
 export function RowDetailDialog({
   row,
   columns,
@@ -193,9 +179,7 @@ export function RowDetailDialog({
   loading?: boolean,
   onOpenChange: (open: boolean) => void,
   title?: string,
-  /** Columns rendered inside the collapsed "Technical details" section. */
   technicalColumns?: readonly string[],
-  /** Custom content (e.g. linked-resource buttons) rendered above the fields. */
   extraContent?: ReactNode,
 }) {
   const [technicalOpen, setTechnicalOpen] = useState(false);

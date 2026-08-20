@@ -177,10 +177,6 @@ export default function PageClient() {
     };
   }, [adminApp, reloadToken]);
 
-  // Guards against out-of-order lookup responses: clicking release rows in
-  // quick succession keeps several fetches in flight, and without the sequence
-  // check the slowest response (or a late failure) would overwrite the
-  // selection the user actually made last.
   const lookupSeqRef = useRef(0);
 
   const lookup = async (version: string) => {

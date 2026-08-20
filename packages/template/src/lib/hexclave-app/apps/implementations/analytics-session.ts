@@ -7,9 +7,6 @@ function readPersistedAnonymousAnalyticsTokens(storageKey: string): string | nul
   try {
     return localStorage.getItem(storageKey);
   } catch (error) {
-    // Browser privacy settings can expose localStorage while throwing on every
-    // operation. Analytics identity persistence is optional, so retain the
-    // in-memory session and make the degraded behavior visible for debugging.
     console.warn("Hexclave analytics: browser storage is unavailable; using an in-memory anonymous session", error);
     return null;
   }
@@ -23,8 +20,6 @@ function persistAnonymousAnalyticsTokens(storageKey: string, tokens: TokenObject
       localStorage.setItem(storageKey, JSON.stringify(tokens));
     }
   } catch (error) {
-    // Quota and privacy failures must not reject analytics batches. The Store
-    // still owns the new value for this page even when it cannot be persisted.
     console.warn("Hexclave analytics: could not persist the anonymous session; continuing in memory", error);
   }
 }

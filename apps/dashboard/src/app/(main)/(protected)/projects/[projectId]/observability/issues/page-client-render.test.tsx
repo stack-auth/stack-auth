@@ -7,14 +7,6 @@ import type { DataGridColumnDef, DataGridState } from "@hexclave/dashboard-ui-co
 import PageClient from "./page-client";
 import type { IssueListItem } from "./issues-data";
 
-/**
- * Behavioural tests for the Issues list.
- *
- * The highest-value one is the N+1 guard: the page must issue **exactly one**
- * sparkline query per page of rows, carrying every visible hash. An N+1 there
- * turns a 50-row page into 51 requests and defeats the whole design, and it is
- * the kind of regression that looks fine in a browser with three seed rows.
- */
 
 const HASHES = ["hash-a", "hash-b", "hash-c"];
 
@@ -83,9 +75,6 @@ vi.mock("@/components/router", () => ({
   useRouterConfirm: () => ({ needConfirm: false }),
 }));
 
-// The real `Link` drives the URL prefetcher, which calls `adminApp.useProject()`
-// — a hook the stub admin app above deliberately does not implement. A plain
-// anchor keeps the assertion surface (hrefs) identical.
 vi.mock("@/components/link", () => ({
   Link: ({ href, children, ...rest }: { href: string, children: React.ReactNode }) => (
     <a href={href} {...rest}>{children}</a>
@@ -96,22 +85,12 @@ vi.mock("@/lib/hexclave-app-internals", () => ({
   sendInternalAdminRequest: sendInternalAdminRequestMock,
 }));
 
-// The sparkline is reduced to a testid so "did the row render" and "did the
-// chart resolve" are two separate, unambiguous assertions.
 vi.mock("../event-sparkline", () => ({
   EventSparkline: ({ pending }: { pending?: boolean }) => (
     <div data-testid={pending === true ? "sparkline-pending" : "sparkline-loaded"} />
   ),
 }));
 
-/**
- * `DataGrid` is replaced with a flat renderer. Everything the page owns —
- * `useDataSource`, `useDataGridUrlState`, the column definitions, and every
- * `renderCell` — stays real; only the virtualizer is dropped, because in jsdom
- * it measures every element as zero-height and renders no rows at all, which
- * would make this file a test of the virtualizer's DOM stubs rather than of the
- * page.
- */
 vi.mock("@hexclave/dashboard-ui-components", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   const MockDataGrid = (props: {
@@ -152,8 +131,6 @@ vi.mock("@hexclave/dashboard-ui-components", async (importOriginal) => {
 });
 
 function jsonResponse(body: unknown, ok = true): Response {
-  // Only the three members the data layer reads. A full `Response` would need
-  // jsdom's fetch polyfill for no additional coverage.
   const partial = {
     ok,
     status: ok ? 200 : 500,
@@ -200,7 +177,6 @@ describe("Issues page client", () => {
     const issues = [sampleIssue(0), sampleIssue(1), sampleIssue(2)];
     sendInternalAdminRequestMock.mockResolvedValue(jsonResponse(issueListBody(issues)));
     queryAnalyticsMock.mockImplementation(async ({ query }: { query: string }) => {
-      // The sparkline query never settles, standing in for a slow ClickHouse.
       if (query.includes(SPARKLINE_MARKER)) return await new Promise(() => {});
       return { result: [] };
     });
@@ -212,9 +188,7 @@ describe("Issues page client", () => {
     });
     expect(screen.getByTestId("row-issue-1")).toBeDefined();
     expect(screen.getByTestId("row-issue-2")).toBeDefined();
-    // Titles are real content, not placeholders.
     expect(screen.getByText("TypeError0")).toBeDefined();
-    // ...and the charts are still hairlines.
     expect(screen.getAllByTestId("sparkline-pending")).toHaveLength(3);
     expect(screen.queryByTestId("sparkline-loaded")).toBeNull();
   });
@@ -243,8 +217,6 @@ describe("Issues page client", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.[0].params.issueHashes).toEqual(HASHES);
 
-    // Settle any effect the resolved cache scheduled — a per-row loader would
-    // fire its extra queries here.
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(sparklineCalls()).toHaveLength(1);
   });
@@ -253,7 +225,6 @@ describe("Issues page client", () => {
     const issues = [sampleIssue(0)];
     sendInternalAdminRequestMock.mockImplementation(async (_app: unknown, path: string) => {
       if (path.startsWith("/internal/issues?")) return jsonResponse(issueListBody(issues));
-      // The PATCH endpoint answers with `{ id, status }` only.
       return jsonResponse({ id: "issue-0", status: "resolved" });
     });
     queryAnalyticsMock.mockResolvedValue({ result: [] });
@@ -269,8 +240,6 @@ describe("Issues page client", () => {
     await waitFor(() => {
       expect(screen.getByTestId("cell-issue-0-status").textContent).toBe("Resolved");
     });
-    // The list is deliberately NOT refetched: under the Unresolved filter that
-    // would yank the row out from under the cursor mid-scan.
     expect(issueListCalls()).toHaveLength(listCallsBefore);
   });
 
@@ -290,7 +259,6 @@ describe("Issues page client", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toContain("Couldn't update that issue");
     });
-    // Reverted, not left optimistically resolved.
     expect(screen.getByTestId("cell-issue-0-status").textContent).toBe("—");
   });
 });

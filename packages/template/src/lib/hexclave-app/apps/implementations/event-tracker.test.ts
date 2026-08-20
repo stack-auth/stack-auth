@@ -52,8 +52,6 @@ function makeTracker(overrides?: Partial<EventTrackerDeps>): EventTracker {
   });
 }
 
-// Minimal PerformanceObserver stand-in (same contract as web-vitals.test.ts):
-// one instance per observed type, entries injected by the test.
 class MockPerformanceObserver {
   static supportedEntryTypes = ["navigation", "paint", "largest-contentful-paint", "layout-shift", "event", "first-input"];
   static instances: MockPerformanceObserver[] = [];
@@ -143,8 +141,6 @@ describe("EventTracker OTel autocapture", () => {
     expect(grandchild.isEnded).toBe(false);
 
     tracker.clearBuffer();
-    // markInert ends spans through runAsynchronously; give the microtask/timer
-    // turn a chance to run.
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
     expect(parent.isEnded).toBe(true);
@@ -179,8 +175,6 @@ describe("EventTracker OTel autocapture", () => {
     expect(fetchSpy).toHaveBeenCalledOnce();
     const headers = new Headers(fetchSpy.mock.calls[0]?.[1]?.headers);
     const traceparent = headers.get("traceparent");
-    // The whole point of span.fetch() is cross-tier HIERARCHY: baggage alone
-    // (the correlation-only fallback) would leave the backend span parentless.
     expect(traceparent).toBe(`00-${span.traceId}-${span.spanId}-01`);
     expect(headers.get("baggage")).toContain(SEGMENT_ID);
     await span.end();
@@ -188,10 +182,6 @@ describe("EventTracker OTel autocapture", () => {
 
   it("spanPropagation.enabled=false strips correlation baggage from span.fetch but keeps traceparent", async () => {
     installOtel();
-    // BOTH propagator halves installed, like an existing-provider app: proves
-    // the facade's executionContext gate (not just the fallback gate) — with
-    // correlation entries still in context, the baggage propagator would leak
-    // them into the header.
     propagation.setGlobalPropagator(new CompositePropagator({
       propagators: [new W3CTraceContextPropagator(), new W3CBaggagePropagator()],
     }));
@@ -220,8 +210,6 @@ describe("EventTracker OTel autocapture", () => {
 
     MockPerformanceObserver.byType("largest-contentful-paint").emit([{ startTime: 900.2 }]);
     MockPerformanceObserver.byType("largest-contentful-paint").emit([{ startTime: 1500.7 }]);
-    // Histogram semantics: each record() is a separate sample, so intermediate
-    // snapshots must NOT be recorded — only the final one at page-view end.
     expect(record).not.toHaveBeenCalled();
 
     tracker.stop();
@@ -276,13 +264,10 @@ describe("EventTracker OTel autocapture", () => {
   it("exposes the current page view as the ambient OTel context with correlation baggage", () => {
     installOtel();
     const tracker = makeTracker();
-    // Before the first page view the SESSION ROOT anchors the ambient, so
-    // bootstrap requests join the session trace instead of rooting their own.
     const preStart = tracker.getAmbientOtelContext();
     if (preStart === null) throw new Error("Expected a session-root ambient before the first page view");
     expect(trace.getSpanContext(preStart)).toMatchObject({ traceId: SESSION_ROOT.traceId, spanId: SESSION_ROOT.spanId });
     expect(propagation.getBaggage(preStart)?.getEntry("hexclave.page_view.span_id")).toBeUndefined();
-    // Without a session root there is nothing safe to anchor on.
     expect(makeTracker({ sessionRootContext: undefined }).getAmbientOtelContext()).toBeNull();
 
     tracker.start();
@@ -294,8 +279,6 @@ describe("EventTracker OTel autocapture", () => {
     const baggage = propagation.getBaggage(ambient);
     expect(baggage?.getEntry("hexclave.page_view.span_id")?.value).toBe(pageViewSpanId);
     expect(baggage?.getEntry("hexclave.session_replay.segment.id")?.value).toBe(SEGMENT_ID);
-    // Stable identity while the page view is unchanged (it sits on the context
-    // manager's hot path), rebuilt when navigation replaces the span.
     expect(tracker.getAmbientOtelContext()).toBe(ambient);
 
     window.history.pushState({}, "", "/next-page");
@@ -304,8 +287,6 @@ describe("EventTracker OTel autocapture", () => {
     expect(trace.getSpanContext(afterNavigation)?.spanId).toBe(tracker.getCurrentPageViewSpanId());
     expect(trace.getSpanContext(afterNavigation)?.spanId).not.toBe(pageViewSpanId);
 
-    // After teardown the page view has ended; new work must not stitch itself
-    // into the ended session (see the sign-out window note on the method).
     tracker.stop();
     expect(tracker.getAmbientOtelContext()).toBeNull();
   });

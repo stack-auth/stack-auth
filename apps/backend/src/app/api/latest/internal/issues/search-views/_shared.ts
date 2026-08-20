@@ -1,13 +1,6 @@
 import type { SavedIssueSearchViewRouteHandlerOptions } from "@/lib/issues/saved-search-views/route-handlers";
 import { adminAuthTypeSchema } from "@hexclave/shared/dist/schema-fields";
 
-/**
- * Dashboard tree: admin-key only and hidden from the public OpenAPI docs.
- * Admin keys carry no end-user identity, so the shared route handlers derive a
- * null actor user id here and the persistence layer exposes and creates only
- * project-visible views (see savedIssueSearchViewActorUserId in the factory
- * for why the admin key must not become a fake private-view owner).
- */
 export const internalSavedIssueSearchViewRouteOptions: SavedIssueSearchViewRouteHandlerOptions = {
   authTypeSchema: adminAuthTypeSchema,
   mutationAuthTypeSchema: adminAuthTypeSchema,

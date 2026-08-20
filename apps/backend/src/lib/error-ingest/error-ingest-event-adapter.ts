@@ -82,9 +82,6 @@ function eventTimeMs(event: ErrorRecord, receivedAtMs: number): number {
   const timestamp = field(event, "timestamp");
   if (typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp >= 0) {
     const milliseconds = Math.round(timestamp * 1_000);
-    // Safe integers reach ~9.0e15 but Date only supports ±8.64e15, so a
-    // safe-integer ms value can still be an Invalid Date that ClickHouse would
-    // reject; treat that range as unusable and fall back to receipt time.
     if (Number.isSafeInteger(milliseconds) && milliseconds >= 0 && Number.isFinite(new Date(milliseconds).getTime())) return milliseconds;
   }
   if (typeof timestamp === "string") {
@@ -94,12 +91,6 @@ function eventTimeMs(event: ErrorRecord, receivedAtMs: number): number {
   return receivedAtMs;
 }
 
-/**
- * Projects one accepted Sentry event item onto the existing canonical error
- * writer. The original scrubbed event remains nested in the row, while the
- * flat name/message/stack fields give the existing grouping and issue read
- * models the identity they already understand.
- */
 export function projectSentryEnvelopeEvent(options: {
   event: ErrorIngestScrubbedValue,
   header: ErrorIngestEnvelopeHeader,
@@ -115,9 +106,6 @@ export function projectSentryEnvelopeEvent(options: {
   const message = stringField(root, "value") ?? stringField(options.event, "message") ?? "";
   const rawStack = stringField(rootStacktrace, "raw") ?? stringField(options.event, "stack") ?? stackFromFrames(rootStacktrace);
   const mechanism = recordField(root, "mechanism") ?? recordField(options.event, "mechanism");
-  // Sentry's event protocol makes mechanism.handled optional, including for
-  // captureMessage and generic exception payloads. An absent flag represents
-  // an explicitly captured (handled) event; SDKs mark unhandled crashes false.
   const handled = booleanField(mechanism, "handled") ?? booleanField(options.event, "handled") ?? true;
   const synthetic = booleanField(mechanism, "synthetic") ?? booleanField(options.event, "synthetic");
   const level = sentryLevel(stringField(options.event, "level"));
@@ -135,11 +123,6 @@ export function projectSentryEnvelopeEvent(options: {
     ...(level === undefined ? {} : { level }),
   };
 
-  // The wire contract requires trace_id and span_id together or not at all: an
-  // event has no span identity of its own, so a lone half would persist an
-  // unjoinable partial identity (see BatchEventWireItem). Sentry events can
-  // legitimately carry only a trace_id (e.g. from the envelope DSC), so drop
-  // the partial pair rather than reject the event.
   const traceId = traceIdFromEvent(options.event, options.header);
   const spanId = spanIdFromEvent(options.event);
   const spanIdentity = traceId !== undefined && spanId !== undefined ? { trace_id: traceId, span_id: spanId } : {};

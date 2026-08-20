@@ -217,15 +217,6 @@ const DEMO_PRODUCTS: DemoProduct[] = [
   { id: "4", name: "Sensor Hub", category: "Hardware", price: 79.99, status: "active" },
 ];
 
-/**
- * Single compile-checked source for the badge palette: the `satisfies
- * Record<DesignBadgeColor, string>` makes adding a color to DesignBadge
- * without listing it here a type error, and the swatch row, dropdown options,
- * and change guard below all derive from it (previously three hand-kept
- * copies that could silently drift). A record rather than a Map because only
- * Record keys get that exhaustiveness check. Zinc leads on purpose: the only
- * way to judge the neutral is beside the colored badges it must recede behind.
- */
 const BADGE_PALETTE_LABELS = {
   zinc: "Zinc (neutral)",
   blue: "Blue",
@@ -899,8 +890,6 @@ export default function PageClient() {
             iconClassName={badgeSpin ? "animate-spin" : undefined}
             contentMode={badgeContentMode}
           />
-          {/* The whole palette in one row: the only way to judge `zinc` is
-              beside the colored badges it is meant to recede behind. */}
           <div className="flex flex-wrap items-center justify-center gap-1.5">
             {BADGE_PALETTE.map((color) => (
               <DesignBadge key={color} label={color} color={color} size="sm" />
@@ -1608,9 +1597,6 @@ export default function PageClient() {
             <DesignSelectorDropdown
               value={badgeColor}
               onValueChange={(v) => {
-                // find() narrows the raw dropdown string back to the palette
-                // union without a cast, and keeps the guard derived from the
-                // same source as the options.
                 const color = BADGE_PALETTE.find((candidate) => candidate === v);
                 if (color == null) throw new Error(`Unknown badge color "${v}"`);
                 setBadgeColor(color);

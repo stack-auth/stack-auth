@@ -4,7 +4,6 @@ export {
   HexclaveServerApp,
 } from "./apps";
 
-/** Builds a transport for the authenticated Hexclave attachment API. */
 export {
   createErrorAttachmentTransport,
   MAX_ERROR_ATTACHMENT_BYTES,

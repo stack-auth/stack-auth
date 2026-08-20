@@ -55,11 +55,6 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ auth, body }) {
     assertObservabilityEnabled(auth.tenancy);
-    // Workflow registration runs BEFORE the rule is persisted. The reverse
-    // order could fail on a workflow-id collision after the rule was already
-    // saved, leaving an active rule whose alert materialization then fails on
-    // every matching issue. This order's failure mode is harmless: a registered
-    // built-in workflow with no rule referencing it yet.
     await ensureIssueAlertEmailWorkflow(auth.tenancy);
     const rule = await saveIssueAlertRule(auth.tenancy, body.rule);
     return { statusCode: 200, bodyType: "json", body: { rule: serializeIssueAlertRuleResponse(rule) } } as const;

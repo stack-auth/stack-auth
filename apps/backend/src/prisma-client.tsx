@@ -630,15 +630,6 @@ async function rawQueryArray<Q extends RawQuery<any>[]>(tx: PrismaClientTransact
       ? Prisma.sql`SELECT * FROM (${combinedQuery.sql}) AS _`
       : combinedQuery.sql;
 
-    // Use the read replica if all queries are read-only and a replica is
-    // available. The `'$transaction' in tx` check is what makes this safe to
-    // call with an interactive-transaction client: tx clients still CARRY the
-    // extension's $replica property, but invoking it inside a transaction
-    // throws ("Cannot use $replica inside of a transaction") — and only when a
-    // replica is actually configured, so a dev setup without one never catches
-    // it. Transaction clients are detectable because Prisma strips
-    // $transaction (and $connect/$disconnect) from them; reads inside a
-    // transaction must go to the primary anyway to see the tx's own writes.
     const queryClient = allReadOnly && '$replica' in tx && '$transaction' in tx
       ? (tx as any).$replica()
       : tx;

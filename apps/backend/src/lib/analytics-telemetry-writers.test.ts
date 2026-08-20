@@ -8,13 +8,6 @@ import {
 } from "./analytics-telemetry-writers";
 import { createErrorIngestProtocolProjection } from "./error-ingest/error-ingest-protocol-adapter";
 
-/**
- * Bidirectional drift guard between the hand-built insert rows and the ClickHouse
- * column declarations, for BOTH destinations the SDK ingest path writes to.
- *
- * Drift here fails at INSERT time against real ClickHouse, which means SDK
- * telemetry silently stops landing while every unit test stays green.
- */
 function expectRowMatchesColumns(row: Record<string, unknown>, columns: readonly ClickhouseColumn[], table: string) {
   const columnNames = new Set(columns.map((column) => column.name));
   for (const key of Object.keys(row)) {
@@ -51,7 +44,6 @@ describe("SDK ingest insert rows vs. ClickHouse column declarations", () => {
       DRIFT_GUARD_BATCH_ID,
     );
     expectRowMatchesColumns(productEvents[0], EVENTS_COLUMNS, "analytics_internal.events (product-event projection)");
-    // Same guarantee at compile time.
     expectTypeOf<Exclude<keyof typeof productEvents[number], EventColumnName>>().toEqualTypeOf<never>();
   });
 
@@ -201,10 +193,6 @@ describe("error grouping normalization", () => {
 
 describe("lens-scoped scrubbing and durable-storage data normalization", () => {
   it("stores product-event data byte-identical, even when keys and values look sensitive", () => {
-    // Scrubbing is an error-pipeline control. Customers expect product
-    // analytics ($page-view/$click/custom events) stored exactly as captured —
-    // e.g. exact-match URL queries — so the error scrubber must never touch
-    // this lens, no matter how sensitive the keys look.
     const data = { token: "secret", url: "https://x.example/path?token=abc" };
     const { productEvents, logOccurrences } = normalizeBatchEvents(
       [{ event_type: "checkout_completed", event_at_ms: 1_700_000_000_000, data }],
@@ -214,8 +202,6 @@ describe("lens-scoped scrubbing and durable-storage data normalization", () => {
 
     expect(logOccurrences).toHaveLength(0);
     expect(productEvents[0].data).toEqual({ token: "secret", url: "https://x.example/path?token=abc" });
-    // Byte-identical, not just structurally equal: key order and values
-    // survive the durable-storage normalization pass untouched.
     expect(JSON.stringify(productEvents[0].data)).toBe(JSON.stringify(data));
   });
 
@@ -229,18 +215,12 @@ describe("lens-scoped scrubbing and durable-storage data normalization", () => {
     }], DRIFT_GUARD_CONTEXT, DRIFT_GUARD_BATCH_ID);
 
     const serialized = JSON.stringify(logOccurrences[0].data);
-    // The sensitive key is dropped before its value is read, and the query
-    // secret is filtered out of the URL value.
     expect(serialized).not.toContain("secret");
     expect(serialized).not.toContain("token=abc");
     expect(serialized).toContain("https://x.example/path");
   });
 
   it("wraps non-object product data for the typed JSON telemetry column", () => {
-    // The released pre-versioned wire contract accepted ANY JSON value as
-    // `data`, but the telemetry `data` column is typed ClickHouse JSON (objects
-    // only). Non-objects must survive losslessly under the reserved key rather
-    // than 400ing the batch or being dropped.
     const { productEvents } = normalizeBatchEvents([
       { event_type: "legacy_string_data", event_at_ms: 1_700_000_000_000, data: "just a string" },
       { event_type: "legacy_number_data", event_at_ms: 1_700_000_000_000, data: 42 },
@@ -254,8 +234,6 @@ describe("lens-scoped scrubbing and durable-storage data normalization", () => {
       { "$value": 42 },
       { "$value": [1, "two"] },
       { "$value": null },
-      // Plain objects are stored unwrapped — wrapping is a projection for the
-      // values the typed column cannot hold, not a shape change for everyone.
       { kept: "as-is" },
     ]);
   });
@@ -292,8 +270,6 @@ describe("analytics telemetry storage dispatch", () => {
   });
 
   it("gives each wire batch its own idempotency token", () => {
-    // Distinct across batches, or a retry of batch-2 would be swallowed as a
-    // duplicate of batch-1.
     expect(getBatchDeduplicationToken("batch-2")).not.toBe(getBatchDeduplicationToken("batch-1"));
   });
 
@@ -324,9 +300,6 @@ describe("analytics telemetry storage dispatch", () => {
     }, DRIFT_GUARD_BATCH_ID);
 
     expect(normalized.productEvents).toHaveLength(0);
-    // The SDK owns span identity, so the writer composes NOTHING: no prefixes, no
-    // assembled ancestry. Session and page identity land as scalar correlation
-    // columns instead of being folded into a parent chain.
     expect(normalized.logOccurrences[0]).toMatchObject({
       trace_id: "22222222222222222222222222222222",
       span_id: "3333333333333333",

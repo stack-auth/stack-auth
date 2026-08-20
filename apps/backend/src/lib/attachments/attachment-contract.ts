@@ -9,7 +9,6 @@ export const MAX_ERROR_ATTACHMENT_IDEMPOTENCY_KEY_BYTES = 256;
 export const MAX_ERROR_ATTACHMENT_EVENT_ID_BYTES = 32;
 export const MAX_ERROR_ATTACHMENT_OCCURRENCE_ID_BYTES = 256;
 export const MAX_ERROR_ATTACHMENTS_PER_EVENT = 100;
-/** Mirrors the ErrorAttachment.storageKey VARCHAR(1024) column. */
 export const MAX_ERROR_ATTACHMENT_STORAGE_KEY_BYTES = 1024;
 
 const EVENT_ID_RE = /^[0-9a-f]{32}$/;
@@ -106,10 +105,6 @@ export function getErrorAttachmentObjectKey(scopeInput: ErrorAttachmentScope, ev
   const eventId = validateErrorEventId(eventIdInput);
   const digest = validateErrorAttachmentSha256(sha256);
   const key = `error-attachments/v1/tenants/${encodeURIComponent(scope.tenantId)}/projects/${encodeURIComponent(scope.projectId)}/branches/${encodeURIComponent(scope.branchId)}/events/${eventId}/objects/${digest}.bin`;
-  // Scope parts are individually bounded at 512 chars, but percent-encoding can
-  // triple them past the persisted VARCHAR(1024) storageKey column. Failing here,
-  // before the immutable object write, keeps storage and metadata consistent
-  // instead of orphaning an object when the later row insert would be rejected.
   if (Buffer.byteLength(key, "utf8") > MAX_ERROR_ATTACHMENT_STORAGE_KEY_BYTES) {
     throw new Error(`Attachment storage key exceeds ${MAX_ERROR_ATTACHMENT_STORAGE_KEY_BYTES} bytes; the tenant/project/branch scope is too long to store attachments`);
   }

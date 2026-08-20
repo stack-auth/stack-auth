@@ -59,11 +59,6 @@ describe("Hexclave managed OTel SDK", () => {
   });
 
   it("installs late-supplied instrumentations on the cached registration exactly once", () => {
-    // App construction registers eagerly with NO instrumentations; the
-    // framework register() call that carries e.g. PrismaInstrumentation runs
-    // afterwards and hits the cache. Its instrumentations must still install
-    // — and repeated register() calls (HMR constructs fresh instances of the
-    // same instrumentation) must not double-patch the library.
     const fakeInstrumentation = (name: string) => ({
       instrumentationName: name,
       instrumentationVersion: "1.0.0",

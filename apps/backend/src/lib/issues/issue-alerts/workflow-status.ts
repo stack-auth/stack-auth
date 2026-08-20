@@ -191,8 +191,6 @@ function toDeliveryRef(row: {
 
 const defaultRunLookup: IssueAlertWorkflowRunLookup = {
   async findRunByTriggerEventId(tenancyId, workflowEventId) {
-    // The engine assigns this id at run creation. Using it is a primary-key
-    // read. Listing by triggerEventId is not a public filter and has no index.
     const runId = deterministicWorkflowUuid(`run:${tenancyId}:${workflowEventId}:${ISSUE_ALERT_EMAIL_WORKFLOW_ID}`);
     const run = await globalPrismaClient.workflowRun.findUnique({
       where: { tenancyId_id: { tenancyId, id: runId } },
@@ -545,5 +543,4 @@ export async function replayIssueAlertWorkflowDelivery(
   });
 }
 
-/** Manual retry is a durable replay of the original trigger event. */
 export const retryIssueAlertWorkflowDelivery = replayIssueAlertWorkflowDelivery;

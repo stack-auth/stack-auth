@@ -17,15 +17,7 @@ import {
 } from "./occurrence-symbolication";
 import { isRecord, scrubPublicRecord, scrubPublicText, scrubPublicValue } from "./public-scrub";
 
-/**
- * Projects an error occurrence as stored in ClickHouse into the occurrence
- * shape both the public API and the internal dashboard route serve: parse the
- * stored JSON columns defensively (they are size-bounded, scrubbed, and
- * dropped rather than 500ing on corruption), symbolicate the frames, and
- * recover replay links that were not yet known at ingest time.
- */
 
-/** An error occurrence row as returned by the ClickHouse read model. */
 export type PublicOccurrenceRow = {
   occurrence_id: string,
   event_at: string,
@@ -175,12 +167,6 @@ function toPublicFrame(frame: StoredIssueFrame, symbolication: PublicIssueFrameS
   };
 }
 
-/**
- * The release recorded ON this occurrence row. The envelope is the sole read
- * model for payload fields: it is built from the same event data at ingest, so
- * a raw `data.release` fallback could never fire for a real row and would
- * bypass the envelope limiter's scrubbing.
- */
 function occurrenceRelease(envelope: PublicIssueErrorEnvelope | null): string | null {
   const envelopeRelease = envelope?.release;
   if (typeof envelopeRelease === "string" && envelopeRelease !== "") return envelopeRelease;
@@ -230,11 +216,6 @@ export async function projectPublicIssueOccurrence(
     user_id: row.user_id,
     service_name: row.service_name === null ? null : scrubPublicText(row.service_name),
     environment: row.deployment_environment_name === null ? null : scrubPublicText(row.deployment_environment_name),
-    // Each occurrence reports the release IT was captured under, never the
-    // issue's `lastSeenRelease`: an occurrence page walks historical events,
-    // and labeling pre-deployment events with the newest release would blame
-    // the wrong deploy. An occurrence with no recorded release stays null
-    // rather than inheriting the issue's latest.
     release: release === null ? null : scrubPublicText(release),
     symbolication_diagnostics: symbolication.diagnostics,
   };
@@ -247,9 +228,6 @@ export function projectResolvedOccurrenceReplayIds(
   const replayIdsBySegment = new Map<string, string | null>();
   for (const segment of segments) {
     const existing = replayIdsBySegment.get(segment.id);
-    // Segment IDs are random per-tab UUIDs and rotate with the replay lifecycle.
-    // If corrupt or hand-written data reused one, leave it unlinked instead of
-    // guessing which user's recording belongs to the occurrence.
     replayIdsBySegment.set(
       segment.id,
       existing === undefined || existing === segment.sessionReplayId ? segment.sessionReplayId : null,
@@ -276,12 +254,6 @@ export async function resolveOccurrenceReplayIds(
   if (missingSegmentIds.length === 0) return [...rows];
 
   const prisma = await getPrismaClientForTenancy(tenancy);
-  // Replica read, deliberately: this is a hot public read path, the segment
-  // row is written when the replay RECORDING starts (well before the error is
-  // ingested, materialized, and finally viewed by a human), and the worst
-  // case of replica lag is one response without a replay link that heals on
-  // the next load. Pinning the primary here would trade that cosmetic gap for
-  // primary load on every occurrence page.
   const segments = await prisma.$replica().sessionReplaySegment.findMany({
     where: {
       tenancyId: tenancy.id,

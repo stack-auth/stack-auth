@@ -10,7 +10,6 @@ function group(overrides: Partial<GroupingInput> & Pick<GroupingInput, "type" | 
   return computeGrouping({ platform: "javascript", stack: null, ...overrides }, CONFIG);
 }
 
-/** An all-in-app stack, parameterized on the pieces each test wants to vary. */
 function appStack(options?: { type?: string, functionName?: string, file?: string, line?: number }): string {
   const type = options?.type ?? "TypeError";
   const functionName = options?.functionName ?? "renderRow";
@@ -31,8 +30,6 @@ describe("computeGrouping — exception type is a leaf", () => {
   });
 
   it("does collapse two occurrences of the same type from the same frame with different messages", () => {
-    // The message only participates when no frame contributed, so an id in the
-    // message must not split the issue.
     const first = group({ type: "TypeError", message: "user 1 is not a function", stack: appStack() });
     const second = group({ type: "TypeError", message: "user 99999 is not a function", stack: appStack() });
     expect(first.ownerHash).toBe(second.ownerHash);
@@ -65,16 +62,12 @@ describe("computeGrouping — frame normalization", () => {
   });
 
   it("takes only the last segment of a dotted function name", () => {
-    // `Foo.prototype.bar` and `bar` are the same function; V8 renders either
-    // depending on how it was called.
     const dotted = group({ type: "TypeError", message: "boom", stack: appStack({ functionName: "Table.prototype.renderRow" }) });
     const bare = group({ type: "TypeError", message: "boom", stack: appStack({ functionName: "renderRow" }) });
     expect(dotted.ownerHash).toBe(bare.ownerHash);
   });
 
   it("prefers the module over the filename", () => {
-    // Same module (`static/js/table`), two different absolute URLs. If the
-    // filename won, the CDN-hosted copy would be a separate issue.
     const first = group({ type: "TypeError", message: "boom", stack: appStack({ file: "https://cdn.example.com/static/js/table.js" }) });
     const second = group({ type: "TypeError", message: "boom", stack: appStack({ file: "https://app.example.com/static/js/table.js" }) });
     expect(first.ownerHash).toBe(second.ownerHash);
@@ -141,8 +134,6 @@ describe("computeGrouping — app vs system variants", () => {
     const first = group({ type: "TypeError", message: "boom", stack: viaScheduler });
     const second = group({ type: "TypeError", message: "boom", stack: viaEventHandler });
     expect(first.ownerHash).toBe(second.ownerHash);
-    // ...but the two system hashes genuinely differ, which is why the alias
-    // exists at all.
     expect(first.aliasHashes).not.toEqual(second.aliasHashes);
   });
 
@@ -168,9 +159,6 @@ describe("computeGrouping — app vs system variants", () => {
   });
 
   it("zeroes non-app frames rather than removing them, so recursion collapse sees the original list", () => {
-    // `a -> lib -> a -> lib -> a`. Removing the library frames would leave three
-    // consecutive identical `a` frames, which recursion collapse would then fold
-    // into one — silently merging this with a plain single-`a` stack.
     const interleaved = [
       "TypeError: boom",
       "    at a (https://app.example.com/static/js/app.js:1:1)",
@@ -204,8 +192,6 @@ describe("computeGrouping — message fallback", () => {
       message: "boom",
       stack: ["Error: boom", "    at <anonymous>:1:1", "    at Array.forEach (<anonymous>)"].join("\n"),
     });
-    // `Array.forEach` still contributes a function leaf, so this is NOT the
-    // message variant — the anonymous *filename* is what got dropped.
     expect(result.variant).toMatchInlineSnapshot(`"system"`);
   });
 
@@ -220,8 +206,6 @@ describe("computeGrouping — synthetic throws", () => {
   const syntheticStack = ["Error", "    at https://app.example.com/static/js/app.js:1:9042"].join("\n");
 
   it("keeps distinct non-Error throws distinct", () => {
-    // Both arrive as `name: "Error"` with a capture-site stack. Without the
-    // synthetic rule every non-Error throw in the project is one issue.
     const stringThrow = group({ type: "Error", message: "Non-Error exception captured: nope", stack: syntheticStack, synthetic: true });
     const objectThrow = group({ type: "Error", message: "Non-Error exception captured with keys: code", stack: syntheticStack, synthetic: true });
     expect(stringThrow.ownerHash).not.toBe(objectThrow.ownerHash);
@@ -267,9 +251,6 @@ describe("computeGrouping — degraded fallback", () => {
   });
 
   it("is deterministic and shares the message variant's encoding", () => {
-    // The degraded hash is deliberately the same function as the message
-    // variant, so a degraded occurrence lands in the same issue as a correctly
-    // grouped stackless one rather than in an orphan.
     const messageVariant = group({ type: "Error", message: "Payment 1 declined", stack: null });
     const alsoMessageVariant = group({ type: "Error", message: "Payment 2 declined", stack: null });
     expect(messageVariant.ownerHash).toBe(alsoMessageVariant.ownerHash);
@@ -289,10 +270,6 @@ describe("computeGrouping — degraded fallback", () => {
   });
 
   it("rejects an unknown config id loudly instead of degrading", () => {
-    // `JSON.parse` rather than a cast, because it is literally how an unknown id
-    // reaches production: a row written by an older deploy, read back and
-    // trusted. Silently degrading it would regroup a project's whole history
-    // under the wrong algorithm.
     const staleRowConfigId: GroupingConfigId = JSON.parse('"hexclave-js:1999-01-01"');
     expect(() => computeGrouping(
       { type: "Error", message: "boom", stack: null, platform: "javascript" },

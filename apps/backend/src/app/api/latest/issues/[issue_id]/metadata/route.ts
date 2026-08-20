@@ -17,10 +17,6 @@ export const GET = createSmartRouteHandler({
   response: yupObject({ statusCode: yupNumber().oneOf([200]).defined(), bodyType: yupString().oneOf(["json"]).defined(), body: ResponseSchema }).defined(),
   async handler({ auth, params }) {
     assertObservabilityEnabled(auth.tenancy);
-    // Same identifier grammar as the sibling detail and action routes: uuid or
-    // numeric short id, following a merge redirect. `loadIssueProductSnapshot`
-    // itself only accepts the canonical uuid, so skipping this step made short
-    // ids fail and merged-away ids 404 instead of resolving to the survivor.
     const identity = await resolveIssueIdentity(auth.tenancy, params.issue_id);
     if (identity === null) throw new StatusError(StatusError.NotFound, "Issue not found");
     try {
@@ -31,8 +27,6 @@ export const GET = createSmartRouteHandler({
         body: serializeIssueProductSnapshot(snapshot),
       } as const;
     } catch (error) {
-      // Identity resolution already 404'd unknown ids, so this only remains
-      // for the row vanishing to a concurrent merge between resolve and load.
       if (error instanceof IssueProductInputError) throw new StatusError(StatusError.NotFound, "Issue not found");
       throw error;
     }

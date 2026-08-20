@@ -6,13 +6,6 @@ export type DesignBadgeColor = "blue" | "cyan" | "purple" | "green" | "orange" |
 export type DesignBadgeSize = "sm" | "md";
 
 const badgeStyles = new Map<DesignBadgeColor, string>([
-  // `zinc` is the deliberately non-semantic entry: it labels something that
-  // carries no state ("debug", "trace", an environment name) and must recede
-  // next to the colored badges beside it. Without it, callers reached for
-  // `blue` — which reads as informational — or cloned the pill formula
-  // locally, which is exactly what the Observability logs level chip used to
-  // do. Same ring/bg/text ratios as the others so the two are metrically
-  // identical when they sit in one row.
   ["zinc", "text-zinc-600 dark:text-zinc-400 bg-zinc-500/20 dark:bg-zinc-500/10 ring-1 ring-zinc-500/30 dark:ring-zinc-500/20"],
   ["blue", "text-blue-700 dark:text-blue-400 bg-blue-500/20 dark:bg-blue-500/10 ring-1 ring-blue-500/30 dark:ring-blue-500/20"],
   ["cyan", "text-cyan-700 dark:text-cyan-400 bg-cyan-500/20 dark:bg-cyan-500/10 ring-1 ring-cyan-500/30 dark:ring-cyan-500/20"],
@@ -68,25 +61,6 @@ function getShowLabelShowIcon(
   }
 }
 
-/**
- * Small pill used for status tags, roles, categories, and other short
- * labels. Not a variant-based component — pick a semantic `color` and
- * optionally pass an `icon` (as a component type, not a rendered node).
- *
- * ```tsx
- * <DesignBadge label="Verified" color="green" icon={CheckIcon} />
- * <DesignBadge label="Beta" color="purple" />
- * <DesignBadge label="Error" color="red" size="sm" />
- * <DesignBadge label="staging" color="zinc" size="sm" />
- * ```
- *
- * Notes:
- * - Props are `label` + `color`, NOT `variant` + children.
- * - `color` is one of: `"blue" | "cyan" | "purple" | "green" | "orange" | "red" | "zinc"`.
- * - `zinc` is the neutral/no-state color — use it for labels that carry no
- *   severity or status meaning, so the colored badges around it keep theirs.
- * - `icon` is optional but, if set via `contentMode: "icon"`, is required.
- */
 export function DesignBadge({
   label,
   color,

@@ -1,7 +1,3 @@
-// Import from the defining module, NOT the package root: a leaf util importing
-// ".." creates a module-init cycle (schema-fields → … → promises → index →
-// admin-interface → … → schema-fields), which surfaces as "yupString is not a
-// function" at import time depending on evaluation order.
 import { KnownError } from "../known-errors";
 import { getProcessEnv } from "./env";
 import { HexclaveAssertionError, captureError, concatStacktraces, errorToNiceString } from "./errors";

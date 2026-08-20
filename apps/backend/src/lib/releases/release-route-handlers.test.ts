@@ -253,8 +253,6 @@ describe("authenticated release management routes", () => {
   it("rejects list limits above the service maximum at the schema boundary", async () => {
     const route = createReleaseListRoute(new ReleaseServiceImpl(database()));
 
-    // 101-999 used to pass the query schema and only fail inside the service
-    // with a generic 400; the schema now mirrors the service cap of 100.
     await expect(route.invoke(request(tenancy, "GET", undefined, { limit: "101" })))
       .rejects.toMatchObject({ name: "HexclaveAssertionError" });
   });
@@ -397,8 +395,6 @@ describe("authenticated release management routes", () => {
         projectId: tenancy.project.id,
         branchId: tenancy.branchId,
         debugId: DEBUG_ID,
-        // The named release/dist/environment filters must reach the query, or
-        // a lookup would silently return artifacts from other scopes.
         releaseArtifact: {
           is: {
             tenancyId: tenancy.id,

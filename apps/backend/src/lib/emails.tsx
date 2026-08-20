@@ -74,9 +74,6 @@ export async function sendEmailToMany(options: {
       overrideSubject: options.overrideSubject,
       overrideNotificationCategoryId: options.overrideNotificationCategoryId,
     })),
-    // A keyed retry derives the same composite recipient IDs. The EmailOutbox
-    // primary key is therefore the durable deduplication boundary without a
-    // second ledger or a large-table migration.
     skipDuplicates: options.idempotencyKey !== undefined,
   });
 

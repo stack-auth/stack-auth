@@ -9,7 +9,6 @@ import type { TelemetryResource } from "./telemetry-config";
 import type { NetworkCaptureConfig } from "./network-capture";
 import type { SessionRecorder } from "./session-replay";
 import { buildAmbientSessionContext, getActiveOtelSpanContext } from "./otel-context";
-// Runtime-safe: span-propagation only imports TYPES from the telemetry modules.
 import { buildFetchInitWithSpanContext, buildPropagationHeaderValues } from "./span-propagation";
 import { getCustomTelemetryDataError, getCustomTelemetryNameError, preCaught, rejectedPreCaught, resolveSpanParent, type Span, type SpanContext, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
 import { getActiveErrorScope, mergeErrorScopeData } from "./error-scope";
@@ -23,39 +22,7 @@ import { createDefaultErrorIntegrationRegistry, type ErrorIntegrationRegistry, t
 import { assertErrorAttachmentDeliveryConfigured, deliverErrorAttachments, getErrorAttachmentInputs } from "./error-attachments";
 import { installBrowserResourceErrorCapture } from "./browser-resource-errors";
 
-/**
- * Lazily-loading front for the browser analytics runtime (EventTracker +
- * SessionRecorder). The two modules total ~2k lines that used to ship in every
- * initial bundle via static imports from the app constructor; this facade is
- * the only thing constructed eagerly — it holds the per-tab segment identity
- * (needed at construction time by the fetch span-propagation installer) and
- * `import()`s the real modules on idle, or immediately on the first explicit
- * analytics API call.
- *
- * Contract for the pre-load window (construction → module arrival):
- * - trackEvent: parents and timestamp are captured synchronously (the browser
- *   sync-stack ambient frames close at the first await, so resolution cannot
- *   wait for the load) and the event is re-submitted to the tracker on
- *   arrival — nothing fired in the window is dropped.
- * - startSpan: returns a REAL handle built on the shared span state machine;
- *   its rows queue behind the load and are adopted by the tracker. When the
- *   cached refresh-token root is available, pre-load spans use it as their
- *   session parent even though they predate the tab's first `$page-view`.
- * - Browser Fetch/XHR instrumentation is different: it is held until the
- *   authenticated root lookup settles when no cached root exists. An official
- *   HTTP instrumentation span cannot be reparented after creation, so letting
- *   it start in that window would permanently create the random roots this
- *   facade is specifically meant to avoid.
- * - Autocapture (clicks, page views, replay) only exists once the modules
- *   load; the idle deadline bounds what the very first seconds can miss. This
- *   is the standard trade of lazily-loaded analytics snippets.
- * - Sign-out privacy holds pre-load too: clearBuffer() bumps a generation that
- *   queued items check at adoption, and inert-ifies pre-load span handles.
- */
 
-// Don't defer forever on busy pages: everything before the load is invisible
-// to autocapture, so cap the idle wait. The fallback delay (no
-// requestIdleCallback, e.g. Safari) just yields past hydration's critical path.
 const IDLE_LOAD_TIMEOUT_MS = 2_000;
 const FALLBACK_LOAD_DELAY_MS = 200;
 
@@ -111,50 +78,20 @@ export class ClientAnalytics {
   private _tracker: EventTracker | null = null;
   private _recorder: SessionRecorder | null = null;
   private _loadPromise: Promise<EventTracker> | null = null;
-  // Pre-load mirrors of the tracker's registries; transferred on adoption.
   private readonly _preloadGlobalSpans = new Set<Span>();
-  // Bumped by clearBuffer (sign-out): pre-load items queued under an older
-  // generation must never be delivered under the next user's identity.
   private _bufferGeneration = 0;
-  // The installed global error capture (null when disabled or non-browser).
-  // Kept for tests and owned by the same explicit integration lifecycle as the
-  // registry below.
   private _errorCapture: ClientErrorCapture | null = null;
   private _errorIntegrationRegistry: ErrorIntegrationRegistry | null = null;
-  // Browser breadcrumbs are page-local state. They are intentionally owned by
-  // this facade rather than a module/global slot, so separate app instances and
-  // authentication generations cannot share capture context.
   private readonly _integrationBreadcrumbs: ErrorBreadcrumb[] = [];
   private _browserOtelRegistration: BrowserManagedOtelRegistration | null;
-  // Async processors are part of the capture's delivery lifecycle. Keeping
-  // their promises here prevents flush/sign-out from rotating credentials or
-  // shutting down the provider before a beforeSend decision has completed.
   private readonly _pendingErrorProcessing = new Set<Promise<void>>();
-  // Eagerly-resolved refresh-token session root (managed OTel mode only) and
-  // the ambient Context built from it — the pre-load anchor, see
-  // _preTrackerAmbientContext.
   private _resolvedSessionRoot: SpanContext | null = null;
   private _preTrackerAmbient: { segmentId: string, context: Context } | null = null;
-  // Share the one session lookup between the eager browser-instrumentation
-  // gate and the lazy EventTracker load. Starting both independently widens
-  // the exact race this gate is meant to close and can issue two auth reads
-  // during dashboard bootstrap.
   private _sessionRootResultPromise: Promise<Result<SpanContext, unknown>> | null = null;
 
   constructor(deps: ClientAnalyticsDeps) {
     this._deps = deps;
-    // One per-tab id shared by the SessionRecorder and EventTracker, so replay
-    // chunks and analytics events from the same tab report the same
-    // session_replay_segment_id. Minted here (eagerly) because the fetch
-    // propagation wrapper needs it from the first instrumented request on.
     this._segmentId = generateUuid();
-    // Sentry starts its page-load transaction during SDK initialization, so
-    // the first application fetch is never parentless merely because the
-    // capture module is lazy. We cannot create the full page-view span here
-    // without loading that module, but a cached, already-validated access
-    // token gives the pre-load window the same stable session anchor. Never
-    // guess from a raw refresh token: the access-token payload is what proves
-    // which refresh-token identity owns the session.
     this._resolvedSessionRoot = deps.openTelemetryProvider === "managed"
       && deps.automaticSideEffects !== false
       ? deps.getCachedSessionRootContext?.() ?? null
@@ -164,23 +101,12 @@ export class ClientAnalytics {
       : null;
 
     if (this._browserOtelRegistration !== null) {
-      // Resolve the session root eagerly after construction returns: the app's
-      // bootstrap requests (users/me, projects/current) fire long before the
-      // lazily-loaded tracker mints the first $page-view, and without an
-      // ambient anchor each one roots a single-span trace in the inbox. The
-      // microtask boundary is intentional: callers finish installing their
-      // token/session hooks before this lookup starts, while the HTTP gate
-      // still keeps bootstrap requests from creating an unrepairable root.
       queueMicrotask(() => runAsynchronously(async () => {
         const sessionRootResult = await this._getSessionRootResult();
         if (sessionRootResult.status === "ok") {
           this._resolvedSessionRoot = sessionRootResult.data;
           this._preTrackerAmbient = null;
         }
-        // If the session is anonymous or the lookup fails, there is no safe
-        // authenticated parent to use. Enable ordinary root tracing only after
-        // that fact is known; an authenticated request must never be emitted
-        // as a random root merely because auth resolution is still pending.
         this._browserOtelRegistration?.enableHttpInstrumentation();
       }, { noErrorLogging: true }));
     }
@@ -188,7 +114,7 @@ export class ClientAnalytics {
     if (deps.automaticSideEffects !== false) {
       const kickOff = () => runAsynchronously(async () => {
         await this._ensureLoaded();
-      }, { noErrorLogging: true }); // _doLoad already warns with context
+      }, { noErrorLogging: true });
       if (typeof requestIdleCallback === "function") {
         requestIdleCallback(kickOff, { timeout: IDLE_LOAD_TIMEOUT_MS });
       } else {
@@ -196,25 +122,12 @@ export class ClientAnalytics {
       }
     }
 
-    // Global error capture and the registry's existing console seam install
-    // EAGERLY (here, not in the lazily-loaded tracker): errors thrown before
-    // the tracker module arrives — often the most interesting ones, e.g. a
-    // broken hydration — must still capture. Both remain gated by the explicit
-    // automatic-side-effects switch; the finer gates live INSIDE the two
-    // installers, because `errorCapture.enabled` only governs the error-side
-    // hooks — console $log mirroring is `logs.captureConsole` policy and must
-    // survive error capture being turned off.
     if (deps.automaticSideEffects !== false) {
       this._installClientErrorCapture();
       this._installErrorIntegrations();
     }
   }
 
-  // ONE admission-policy instance per facade, shared between the global
-  // handlers and console.error promotion (see createClientErrorCapturePolicy):
-  // both sources must dedupe and flood-cap as a single stream. Owned here (not
-  // by the installer) so it survives uninstall/reinstall of the hooks and
-  // exists even when only console promotion runs.
   private _errorCapturePolicy: ClientErrorCapturePolicy | null = null;
 
   private _getErrorCapturePolicy(): ClientErrorCapturePolicy {
@@ -245,10 +158,6 @@ export class ClientAnalytics {
     if (this._deps.openTelemetryProvider === "disabled") {
       return null;
     }
-    // `errorCapture.enabled` gates only the ERROR-side hooks (resource-error
-    // capture, console.error promotion). Console mirroring into $log rows is
-    // configured separately via `logs.captureConsole` and must keep working
-    // when a user disables global error capture.
     const errorCaptureEnabled = this._deps.errorCapture.enabled;
 
     const browser: NonNullable<ErrorIntegrationRuntime["browser"]> = {};
@@ -278,8 +187,6 @@ export class ClientAnalytics {
         }),
         projectId: this._deps.projectId,
         serviceName: this._deps.resource.service.name,
-        // Promoting console.error(Error) to a $error event is error-capture
-        // behavior; the mirrored $log row itself is not.
         ...errorCaptureEnabled ? { captureError: (error: Error) => this.captureConsoleError(error) } : {},
       });
     }
@@ -336,11 +243,6 @@ export class ClientAnalytics {
         return { allowedOrigins: policy.allowedOrigins, allowLocalhost: policy.allowLocalhost, correlationBaggage: policy.correlationBaggage };
       },
       installHttpInstrumentationImmediately: this._resolvedSessionRoot !== null,
-      // Late-bound through `this`: the tracker only exists once the lazy
-      // module loads, and auth rotation re-registers with this same options
-      // object, so the ambient base survives both without re-wiring. A
-      // ternary rather than `??`: once the tracker is live, its null (the
-      // sign-out safety window) must NOT fall through to the pre-load anchor.
       getAmbientOtelContext: () => this._tracker !== null
         ? this._tracker.getAmbientOtelContext()
         : this._preTrackerAmbientContext(),
@@ -394,17 +296,12 @@ export class ClientAnalytics {
 
   private _ensureLoaded(): Promise<EventTracker> {
     if (this._loadPromise === null) {
-      // preCaught: fire-and-forget consumers (the idle kickoff) must not turn
-      // an import failure into an unhandled rejection; awaiting consumers
-      // still observe it.
       this._loadPromise = preCaught(this._doLoad());
     }
     return this._loadPromise;
   }
 
   private async _doLoad(): Promise<EventTracker> {
-    // Fetch both chunks in parallel; the recorder failing (or being disabled)
-    // must never take event tracking down with it.
     const trackerImport = Result.fromPromise(import("./event-tracker"));
     const recorderImport = this._deps.replayOptions.enabled ? Result.fromPromise(import("./session-replay")) : null;
     const sessionRootResultPromise = this._getSessionRootResult();
@@ -414,15 +311,8 @@ export class ClientAnalytics {
       console.warn("Hexclave analytics: failed to load the analytics runtime; telemetry from this page will be dropped.", trackerModule.error);
       throw new Error("Hexclave analytics: failed to load the analytics runtime");
     }
-    // The first page view is the hierarchy anchor for every browser span on the
-    // page. Resolve the session root before starting the tracker so the initial
-    // page view cannot be emitted as a temporary local root and then duplicated
-    // under the refresh-token trace when authentication finishes resolving.
     const sessionRootResult = await sessionRootResultPromise;
     if (sessionRootResult.status === "error") {
-      // There is no safe parent when session resolution genuinely fails. Keep
-      // the existing local-root fallback for that failure mode, but do not use
-      // it merely because the normal async resolution has not finished yet.
       console.warn("Hexclave analytics: failed to resolve the authenticated session trace; browser capture will continue with local trace roots.", sessionRootResult.error);
     }
     const tracker = new trackerModule.data.EventTracker({
@@ -448,11 +338,6 @@ export class ClientAnalytics {
     });
     this._tracker = tracker;
     tracker.start();
-    // Transfer still-live pre-load global spans; they were validated mutually
-    // compatible at registration and the fresh tracker has no ambient state to
-    // conflict with. NOTE: their handles' end() only cleans the facade's (now
-    // empty) registry, so an ended transferred span lingers in the tracker's
-    // set — benign, every reader filters on isEnded and the set is soft-capped.
     for (const span of this._preloadGlobalSpans) {
       if (!span.isEnded) tracker.setGlobalSpan(span);
     }
@@ -538,9 +423,6 @@ export class ClientAnalytics {
 
   async clearBuffer(): Promise<void> {
     this._bufferGeneration += 1;
-    // Rotate before any await and suspend recorder increments until the next
-    // authenticated session publishes a replacement FullSnapshot. Otherwise
-    // events captured during the sign-out request can cross the user boundary.
     this.setSessionReplaySegmentId(generateUuid());
     this._preloadGlobalSpans.clear();
     this._integrationBreadcrumbs.length = 0;
@@ -588,9 +470,6 @@ export class ClientAnalytics {
         ...pageViewSpanId === null ? {} : { "hexclave.page_view.span_id": pageViewSpanId },
       },
     });
-    // Preserve the released acknowledgement contract in managed mode. An
-    // existing-provider integration owns its exporter lifecycle, so the SDK
-    // can only acknowledge synchronous acceptance by that provider.
     return preCaught(this._browserOtelRegistration?.forceFlush() ?? Promise.resolve());
   }
 
@@ -628,8 +507,6 @@ export class ClientAnalytics {
       release: this._deps.release,
       environment: this._deps.environment,
       sdkVersion: this._deps.sdkVersion,
-      // The event already carries capture options; pass only the ambient scope
-      // here so array-valued attachment data is not merged twice.
       scope,
     }), mergedScope);
     return eventId;
@@ -764,15 +641,8 @@ export class ClientAnalytics {
 
   /** Promotes a real console.error(Error) call while retaining its $log row. */
   captureConsoleError(error: Error): void {
-    // Routed through the SAME admission policy as the global handlers (shared
-    // instance — see _getErrorCapturePolicy): without it, a render loop that
-    // console.errors every frame would emit unbounded $error rows past the
-    // per-page-view flood caps, ignoreErrors would not apply, and the same
-    // Error object surfacing at window.onerror afterwards would double-capture.
     const admission = this._getErrorCapturePolicy().admit(error);
     if (admission === null) return;
-    // Build from the ADMITTED normalization (never re-normalize) and attach the
-    // active scope, exactly like the automatic global-handler path does.
     const scope = getActiveErrorScope()?.snapshot();
     this.trackErrorEvent(buildErrorEventDataFromNormalized(admission.normalized, {
       mechanismType: "console.error",
@@ -830,13 +700,7 @@ export class ClientAnalytics {
     return span;
   }
 
-  // A pre-load custom span is generation-checked just like a pre-load network
-  // span: sign-in rotation may discard it before the tracker owns its row.
-  // Preserve the useful correlation claim but never promise the span as a
-  // remote parent, even if the runtime finishes loading while the handle lives.
   private _preloadSpanPropagationHeaders(_span: Span): Record<string, string> {
-    // These headers are correlation-only (traceparent stays null pre-load), so
-    // spanPropagation.enabled=false means there is nothing left to build.
     if (!this._deps.getPropagationPolicy().correlationBaggage) return {};
     const segmentId = this.getSessionReplaySegmentId();
     return buildPropagationHeaderValues({
@@ -860,7 +724,6 @@ export class ClientAnalytics {
       });
       return globalThis.fetch(input, initWithHeader?.init ?? init);
     } catch {
-      // Propagation must never break the caller's actual request.
       return globalThis.fetch(input, init);
     }
   }
@@ -874,9 +737,6 @@ export class ClientAnalytics {
       console.warn("Hexclave analytics: setGlobalSpan() called with an already-ended span; ignoring");
       return;
     }
-    // No compatibility check: the nearest ambient context wins as parent and any
-    // other global span in a different trace becomes a link — see
-    // EventTracker.setGlobalSpan.
     this._preloadGlobalSpans.add(span);
   }
 

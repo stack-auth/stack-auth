@@ -35,18 +35,11 @@ export type ErrorIngestClientReportRow = {
 export type ErrorIngestClientReportRequest = {
   clientReport: ErrorIngestClientReportProjection,
   idempotencyKey: string,
-  /** Sentry client reports use Unix seconds or an ISO-8601 timestamp. */
   timestampMs?: number,
 };
 
-/** Relay shifts client-report timestamps when the envelope clock is badly skewed. */
 export const ERROR_INGEST_CLIENT_REPORT_MIN_CLOCK_DRIFT_MS = 55 * 60 * 1_000;
 
-/**
- * Deliberate wire-parse rejections. Routes reflect exactly this class as a 400
- * (mirroring how the envelope route treats ErrorIngestEnvelopeError); any other
- * error stays an internal failure and must not reach the client.
- */
 export class ErrorIngestClientReportParseError extends Error {
   constructor(message: string) {
     super(message);
@@ -54,11 +47,6 @@ export class ErrorIngestClientReportParseError extends Error {
   }
 }
 
-// Same shapes the envelope metadata boundary refuses (SECRET_TEXT_RE in
-// error-ingest-envelope.ts): client-report reason/category are the only
-// client-authored strings that reach the loss ledger without the payload
-// scrubber, so an auth header or JWT pasted there must fail the parse instead
-// of being persisted verbatim.
 const SECRET_TEXT_RE = /(?:bearer\s+|basic\s+|-----begin [^-]*private key-----|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})/iu;
 
 const REPORT_BUCKETS: readonly ErrorIngestClientReportBucket[] = [
@@ -69,9 +57,7 @@ const REPORT_BUCKETS: readonly ErrorIngestClientReportBucket[] = [
 ];
 const MAX_REPORT_ROWS = 100;
 const MAX_REPORT_QUANTITY = 1_000_000_000;
-/** Mirrors ErrorIngestClientReport.reason/category VARCHAR(64) columns. */
 export const ERROR_INGEST_CLIENT_REPORT_REASON_CATEGORY_MAX_BYTES = 64;
-/** Mirrors ErrorIngestClientReport.idempotencyKey VARCHAR(256). */
 export const ERROR_INGEST_CLIENT_REPORT_IDEMPOTENCY_KEY_MAX_BYTES = 256;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
@@ -89,8 +75,6 @@ function validateScope(scope: ErrorIngestClientReportScope): void {
 }
 
 function validateProtocol(protocol: ErrorIngestClientReportProtocol): void {
-  // The runtime check exists because callers may pass strings that only claim
-  // to be ErrorIngestClientReportProtocol (e.g. values read back from storage).
   if (!ERROR_INGEST_CLIENT_REPORT_PROTOCOLS.includes(protocol)) {
     throw new Error("Error ingest client report protocol is invalid");
   }
@@ -121,12 +105,6 @@ function parseReportTimestamp(value: unknown): number | undefined {
   let timestampMs: number;
   if (typeof value === "number") {
     if (!Number.isFinite(value)) throw new ErrorIngestClientReportParseError("Error ingest client report timestamp is invalid");
-    // Relay's UnixTimestamp is expressed in seconds. Accepting millisecond
-    // values as well keeps this boundary compatible with browser adapters that
-    // already operate in Date#getTime units without widening the date range.
-    // Rounding keeps fractional-second timestamps (and float artifacts of the
-    // seconds→ms conversion) inside the safe-integer check below, matching the
-    // envelope timestamp parser.
     timestampMs = Math.round(Math.abs(value) >= 100_000_000_000 ? value : value * 1_000);
   } else if (typeof value === "string") {
     if (!isBoundedText(value, 64)) throw new ErrorIngestClientReportParseError("Error ingest client report timestamp is invalid");
@@ -187,8 +165,6 @@ function isRecord(value: unknown): value is { readonly [key: string]: unknown } 
 }
 
 function parseReportEntries(value: unknown, field: string): ErrorIngestClientReportEntry[] {
-  // Sentry SDKs omit buckets they have nothing to report for, so a missing
-  // bucket is an empty one (mirroring the envelope parser), not a parse error.
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value) || value.length > MAX_REPORT_ROWS) throw new ErrorIngestClientReportParseError(`${field} must be an array with at most ${MAX_REPORT_ROWS} entries`);
   return value.map((entry) => {
@@ -196,9 +172,6 @@ function parseReportEntries(value: unknown, field: string): ErrorIngestClientRep
     const reason = entry.reason;
     const category = entry.category;
     const quantity = entry.quantity;
-    // Relay deliberately preserves forward-compatible reason/category strings;
-    // validate their size and control characters without freezing this API to
-    // today's data-category vocabulary.
     if (
       !isBoundedText(reason, ERROR_INGEST_CLIENT_REPORT_REASON_CATEGORY_MAX_BYTES)
       || !isBoundedText(category, ERROR_INGEST_CLIENT_REPORT_REASON_CATEGORY_MAX_BYTES)
@@ -249,11 +222,6 @@ export function buildErrorIngestClientReportRows(
   }
   if (!isBoundedText(projection.idempotencyKey, ERROR_INGEST_CLIENT_REPORT_IDEMPOTENCY_KEY_MAX_BYTES)) throw new Error("Error ingest client report idempotency key is invalid");
 
-  // The persisted unique index is (scope, idempotencyKey, bucket, reason,
-  // category), and every row of one projection shares the idempotencyKey. Two
-  // same-identity entries in one request would therefore collide with each
-  // other and `skipDuplicates` would silently drop the second one's quantity,
-  // so merge them into a single summed row before building rows.
   const aggregated = new Map<string, { bucket: ErrorIngestClientReportBucket, reason: string, category: string, quantity: number }>();
   let entryCount = 0;
   for (const bucket of REPORT_BUCKETS) {
@@ -266,10 +234,6 @@ export function buildErrorIngestClientReportRows(
       if (existing === undefined) {
         aggregated.set(key, { bucket, reason: entry.reason, category: entry.category, quantity: entry.quantity });
       } else {
-        // Saturate instead of overflowing: each entry is individually bounded,
-        // but a merged sum could exceed the ledger's supported range (and the
-        // Int column). The ledger is lossy accounting metadata, so capping is
-        // preferable to rejecting an otherwise valid report.
         existing.quantity = Math.min(existing.quantity + entry.quantity, MAX_REPORT_QUANTITY);
       }
     }
@@ -300,12 +264,6 @@ export function buildErrorIngestClientReportRequestRows(
   );
 }
 
-/**
- * The single persistence contract for loss-ledger rows: idempotent insert via
- * the (scope, idempotencyKey, bucket, reason, category) unique index. Both
- * public persist entry points funnel through here so the write semantics
- * cannot drift between the projection and raw-request paths.
- */
 async function persistErrorIngestClientReportRows(
   rows: readonly ErrorIngestClientReportRow[],
   client: typeof globalPrismaClient,

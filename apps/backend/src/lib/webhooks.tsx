@@ -20,15 +20,6 @@ export function getSvixClient() {
   );
 }
 
-/**
- * Whether a tenancy has the webhooks app installed and enabled.
- *
- * `sendWebhooks` deliberately does NOT check this — it only checks preview mode — and changing that would
- * alter the behavior of every existing event, so it belongs in its own change. Emit sites for high-frequency,
- * machine-triggered events (`issue.*`, which fire off a telemetry firehose rather than a human action) call
- * this first, so a project without the app installed does zero Svix work per ingest batch instead of one
- * `application.getOrCreate` round trip per event.
- */
 export function isWebhooksAppEnabled(tenancy: Tenancy): boolean {
   return tenancy.config.apps.installed["webhooks"]?.enabled ?? false;
 }
@@ -37,11 +28,6 @@ async function sendWebhooks(options: {
   type: string,
   projectId: string,
   data: any,
-  /**
-   * Svix's idempotency key. When set, Svix collapses repeated `message.create` calls carrying the same id
-   * into a single delivery. Left undefined by every sender that predates issue events, so their on-the-wire
-   * behavior is unchanged (the field is simply absent, exactly as before).
-   */
   eventId?: string,
 }) {
   if (isPreviewModeEnabled()) {
@@ -63,8 +49,6 @@ async function sendWebhooks(options: {
   }
   await svix.message.create(options.projectId, {
     eventType: options.type,
-    // Only spread the key when we have one: Svix treats an explicit `eventId: null` differently from an
-    // absent field, and we do not want to change the payload existing subscribers receive.
     ...options.eventId === undefined ? {} : { eventId: options.eventId },
     payload: {
       type: options.type,
@@ -107,15 +91,6 @@ export const sendTeamPermissionDeletedWebhook = createWebhookSender(teamPermissi
 export const sendProjectPermissionCreatedWebhook = createWebhookSender(projectPermissionCreatedWebhookEvent);
 export const sendProjectPermissionDeletedWebhook = createWebhookSender(projectPermissionDeletedWebhookEvent);
 
-/**
- * Like `createWebhookSender`, but `eventId` is required rather than optional.
- *
- * `createWebhookSender` retries up to 5 times on a 429, and a retry whose predecessor actually reached Svix
- * before failing would otherwise deliver the same event twice. That is tolerable for the human-triggered
- * events (a user is created once, by one request); it is not tolerable for events that fire off telemetry
- * ingest, where the retry path is exercised constantly and a duplicate looks to the subscriber like a second
- * real occurrence. Making the id required means an emit site cannot silently opt out of the guarantee.
- */
 function createIdempotentWebhookSender<T extends yup.Schema>(event: WebhookEvent<T>) {
   const send = createWebhookSender(event);
   return async (options: { projectId: string, data: yup.InferType<typeof event.schema>, eventId: string }) => {
@@ -123,13 +98,6 @@ function createIdempotentWebhookSender<T extends yup.Schema>(event: WebhookEvent
   };
 }
 
-// Issue webhooks. The `eventId` convention, which the emit sites must follow:
-//   - `issue.created`  → `${issueId}`, because an issue is created exactly once.
-//   - state changes    → `${issueId}:${statusChangedAtMillis}`, so retrying one transition is idempotent
-//                        while a genuine later transition of the same issue is a distinct event.
-// The 5-minute emit throttle is NOT implemented here — it lives in the Postgres `UPDATE` that guards the
-// write, so that the throttle and the concurrency control are the same thing. These senders stay unaware of
-// it deliberately: a sender that also throttled would give two places the power to swallow an event.
 export const sendIssueCreatedWebhook = createIdempotentWebhookSender(issueCreatedWebhookEvent);
 export const sendIssueRegressedWebhook = createIdempotentWebhookSender(issueRegressedWebhookEvent);
 export const sendIssueResolvedWebhook = createIdempotentWebhookSender(issueResolvedWebhookEvent);

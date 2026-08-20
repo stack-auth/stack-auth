@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startWebVitalsCollector, type WebVitalsCollectorOptions } from "./web-vitals";
 
-// Minimal PerformanceObserver stand-in: one instance per observed type, entries
-// injected by the test. The collector only relies on observe({type, buffered})
-// and callback(list.getEntries()).
 class MockPerformanceObserver {
   static supportedEntryTypes = ["navigation", "paint", "largest-contentful-paint", "layout-shift", "event", "first-input"];
   static instances: MockPerformanceObserver[] = [];
@@ -70,14 +67,11 @@ describe("startWebVitalsCollector", () => {
   it("accumulates CLS per session window and reports the max window", () => {
     const { collector } = startWithMock();
     const shifts = MockPerformanceObserver.byType("layout-shift");
-    // Window 1: two shifts 200ms apart → 0.1 + 0.2 = 0.3.
     shifts.emit([
       { startTime: 1000, value: 0.1, hadRecentInput: false },
       { startTime: 1200, value: 0.2, hadRecentInput: false },
     ]);
-    // >1s gap starts window 2: a single 0.25 shift — smaller than window 1.
     shifts.emit([{ startTime: 3000, value: 0.25, hadRecentInput: false }]);
-    // Shifts right after user input are excluded by definition.
     shifts.emit([{ startTime: 3100, value: 5, hadRecentInput: true }]);
 
     expect(collector.snapshot().cls).toBeCloseTo(0.3, 4);
@@ -89,13 +83,11 @@ describe("startWebVitalsCollector", () => {
     events.emit([
       { interactionId: 1, duration: 80 },
       { interactionId: 2, duration: 250 },
-      // No interaction id → not an interaction; below threshold → ignored.
       { interactionId: 0, duration: 900 },
       { interactionId: 3, duration: 10 },
     ]);
     expect(collector.snapshot().inp_ms).toBe(250);
 
-    // A later entry for the same interaction can only raise its duration.
     events.emit([{ interactionId: 2, duration: 400 }]);
     expect(collector.snapshot().inp_ms).toBe(400);
   });
@@ -141,7 +133,6 @@ describe("startWebVitalsCollector", () => {
 
     it("excludes buffered entries from before the navigation", () => {
       const { collector } = startWithMock({ mode: "soft-nav", navStartTime: 5000 });
-      // Buffered pre-nav shift + interaction belong to the previous page-view.
       MockPerformanceObserver.byType("layout-shift").emit([
         { startTime: 4000, value: 0.5, hadRecentInput: false },
         { startTime: 5200, value: 0.1, hadRecentInput: false },
@@ -154,8 +145,6 @@ describe("startWebVitalsCollector", () => {
     });
 
     it("indexes the INP percentile from the interaction count within the window", () => {
-      // 120 interactions happened before the navigation; the window itself has
-      // seen far fewer than 50, so the estimate must stay the longest one.
       const mutablePerformance = { interactionCount: 120, now: () => 6000 };
       vi.stubGlobal("performance", mutablePerformance);
       const { collector } = startWithMock({ mode: "soft-nav", navStartTime: 5000 });

@@ -36,8 +36,6 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     ]
   `);
 
-  // Both enums exist with exactly the labels the app switches on. A stray or
-  // missing label here would only surface as a runtime insert failure.
   const enumLabels = await sql<{ typname: string, enumlabel: string }[]>`
     SELECT t.typname, e.enumlabel
     FROM pg_type t
@@ -54,12 +52,6 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     ]
   `);
 
-  // Every index and unique/primary-key constraint this migration creates. These are
-  // load-bearing: the four Issue indexes are the four list-view sort orders, and
-  // the unique ones are the concurrency controls (see the migration header).
-  // COLLATE "C" so the ordering is plain byte order and the snapshot doesn't
-  // depend on the test database's locale (en_US-style collations sort
-  // punctuation differently, which would reorder the _pkey entries).
   const indexes = await sql<{ indexname: string }[]>`
     SELECT indexname
     FROM pg_indexes
@@ -86,8 +78,6 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     ]
   `);
 
-  // A minimal row in every table, exercising the column defaults the
-  // materialization path relies on.
   const issueId = randomUUID();
   await sql`
     INSERT INTO "Issue" ("id", "tenancyId", "shortId", "type", "value", "culprit", "platform", "firstSeenAt", "lastSeenAt", "updatedAt")
@@ -109,9 +99,6 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     INSERT INTO "IssueCounter" ("tenancyId") VALUES (${ctx.tenancyId}::uuid)
   `;
 
-  // BIGINT columns come back from the driver as strings; the API layer relies on
-  // that (shortId and timesSeen serialize as decimal strings because
-  // JSON.stringify throws on BigInt).
   const issue = await sql<{ status: string, timesSeen: string, shortId: string, countersTruncatedAt: Date | null }[]>`
     SELECT "status", "timesSeen", "shortId", "countersTruncatedAt" FROM "Issue" WHERE "id" = ${issueId}::uuid
   `;
@@ -125,15 +112,12 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   `;
   expect(String(counter[0].nextShortId)).toBe("1");
 
-  // A hash with no lease reads back as NULL state — "no lease" costs no extra
-  // column, which is why state is a nullable enum rather than a boolean.
   const hash = await sql<{ state: string | null, lockedAt: Date | null }[]>`
     SELECT "state", "lockedAt" FROM "IssueHash" WHERE "tenancyId" = ${ctx.tenancyId}::uuid
   `;
   expect(hash[0].state).toBeNull();
   expect(hash[0].lockedAt).toBeNull();
 
-  // Invalid enum labels are rejected rather than coerced.
   await expect(sql`
     UPDATE "Issue" SET "status" = 'NOT_A_STATUS' WHERE "id" = ${issueId}::uuid
   `).rejects.toThrow(/invalid input value for enum/);

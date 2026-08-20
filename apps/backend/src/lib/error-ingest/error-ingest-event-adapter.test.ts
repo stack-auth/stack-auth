@@ -87,7 +87,6 @@ describe("Sentry envelope event adapter", () => {
   });
 
   it("falls back to receipt time for numeric timestamps beyond the supported Date range", () => {
-    // 9e12 seconds is a safe integer in ms but past Date's ±8.64e15 ms range.
     const projected = projectSentryEnvelopeEvent({
       header: { ...header, trace: null },
       item,
@@ -98,8 +97,6 @@ describe("Sentry envelope event adapter", () => {
   });
 
   it("emits the span identity only when both trace_id and span_id are present", () => {
-    // A DSC trace_id without a span_id would be an unjoinable partial identity
-    // under the wire contract, so neither half may be emitted.
     const traceOnly = projectSentryEnvelopeEvent({
       header,
       item,

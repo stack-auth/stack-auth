@@ -39,9 +39,6 @@ describe("artifact route contracts", () => {
   });
 
   it("rejects missing identifiers and unsafe lookup metadata", () => {
-    // camelCase request keys are not part of the contract (the CLI, dashboard,
-    // and OpenAPI spec all speak snake_case), so a camelCase-only request is
-    // simply missing the required field.
     expect(() => parseArtifactManifestFinalizeRequest({
       manifestSha256: MANIFEST_SHA256,
     })).toThrowError(ArtifactServiceError);

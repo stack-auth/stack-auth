@@ -65,11 +65,6 @@ import {
 
 type SortColumn = "attention" | "name" | "requests" | "errors" | "latency" | "lastSeen";
 
-/**
- * Timelines are keyed by the rendered label because that is exactly the
- * (namespace, name) pair the summary query groups by, so it is unique by
- * construction — see `buildServiceTimelines`, which keys the same way.
- */
 function identityKey(identity: ServiceIdentity): string {
   return serviceIdentityLabel(identity);
 }
@@ -90,8 +85,6 @@ function DeltaLabel({
   className?: string,
 }) {
   if (ratio == null) return <span className={cn("text-muted-foreground/60", className)}>—</span>;
-  // Sub-5% movement on telemetry counters is noise; colouring it would invite
-  // the reader to chase a difference that inverts on the next refresh.
   const meaningful = Math.abs(ratio) >= 0.05;
   const bad = higherIsWorse ? ratio > 0 : ratio < 0;
   return (
@@ -354,10 +347,6 @@ function ServiceTopology({
   );
 }
 
-/**
- * The trend and Δ columns sit between the sortable ones, so each header places
- * itself explicitly rather than relying on source order.
- */
 const SORT_COLUMNS: readonly {
   id: Exclude<SortColumn, "attention">,
   label: string,
@@ -398,9 +387,6 @@ function ServiceInventory({
       ? [...services]
       : services.filter((service) => serviceIdentityLabel(service.identity).toLowerCase().includes(needle));
 
-    // The default ordering puts flagged services first so the table agrees with
-    // the attention card above it; an explicit column sort overrides that
-    // entirely, so clicking a header does exactly what it says.
     return filtered.sort((left, right) => {
       switch (sort) {
         case "attention": {
@@ -424,8 +410,6 @@ function ServiceInventory({
           return (right.p95DurationMs ?? -1) - (left.p95DurationMs ?? -1);
         }
         case "lastSeen": {
-          // ClickHouse DateTime64 strings are fixed-width and zero-padded, so a
-          // lexicographic compare is a chronological compare without parsing.
           return stringCompare(right.lastSeenAt, left.lastSeenAt);
         }
       }
@@ -584,11 +568,6 @@ export default function PageClient() {
   const [selectedIdentity, setSelectedIdentity] = useState<ServiceIdentity | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  /**
-   * Captured once per load rather than read from the clock during render, so
-   * every relative timestamp on the page refers to the same instant the data
-   * describes and re-renders stay pure.
-   */
   const [loadedAtMs, setLoadedAtMs] = useState(() => Date.now());
   const requestSequenceRef = useRef(0);
 
@@ -630,8 +609,6 @@ export default function PageClient() {
         if (current != null && nextServices.some((service) => serviceIdentityEquals(service.identity, current))) {
           return current;
         }
-        // With no surviving selection, open on whatever the ranking says is
-        // most worth looking at rather than on an arbitrary first row.
         const ranked = rankServiceAttention(nextServices, nextTimelines);
         return ranked.at(0)?.identity ?? nextServices.at(0)?.identity ?? null;
       });

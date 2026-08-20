@@ -55,8 +55,6 @@ describe("groupStackFrames", () => {
   });
 
   it("does NOT collapse a run of length one", () => {
-    // Replacing one readable line with "⋯ 1 frame" costs the same height and
-    // hides strictly more.
     const groups = groupStackFrames([app("submit"), lib("react"), app("render")]);
     expect(groups.map((g) => g.kind)).toEqual(["frame", "frame", "frame"]);
   });

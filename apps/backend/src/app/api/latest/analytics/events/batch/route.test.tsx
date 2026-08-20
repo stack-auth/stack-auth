@@ -12,10 +12,6 @@ const mocks = vi.hoisted(() => ({
   tryDecreasePlanItemQuantities: vi.fn(),
 }));
 
-// Route-schema tests should not initialize the full backend request stack
-// (Prisma, billing, QStash). Same pattern as the issues route-schema tests:
-// expose the overload definition so `overload.request` (the yup schema — the
-// wire contract under test here) is reachable without the server dispatcher.
 vi.mock("@/route-handlers/smart-route-handler", () => ({
   createSmartRouteHandler: (...args: readonly unknown[]) => {
     const definition = args.at(-1);
@@ -51,7 +47,6 @@ import { POST } from "./route";
 const routeOverload = [...POST.overloads.values()].at(0);
 if (routeOverload === undefined) throw new Error("analytics batch route did not register its POST overload");
 
-// The released wire shape: a per-tab segment and only $page-view/$click events.
 const LEGACY_BODY = {
   batch_id: "11111111-1111-4111-8111-111111111111",
   session_replay_segment_id: "22222222-2222-4222-8222-222222222222",
@@ -59,10 +54,6 @@ const LEGACY_BODY = {
   events: [{ event_type: "$page-view", event_at_ms: 1_700_000_000_000, data: "just a string" }],
 };
 
-// The dispatcher is mocked away (see above), so these tests invoke the overload
-// handler directly. It takes the validated request plus the untouched full
-// request; this route only destructures the former, but the signature demands
-// both, so we hand over a real SmartRequest the handler never reads.
 const FULL_REQUEST: SmartRequest = {
   auth: null,
   url: "http://localhost/api/latest/analytics/events/batch",
@@ -77,11 +68,6 @@ const FULL_REQUEST: SmartRequest = {
 
 type BatchHandlerRequest = Parameters<NonNullable<typeof routeOverload>["handler"]>[0];
 
-// Only the fields this handler actually reads: the analytics app gate, the
-// tenancy/user/refresh-token scope ids, and the body. Spelling out the full
-// Tenancy and UsersCrud read shapes would add no coverage here, and anything
-// the handler starts reading that is missing surfaces as a TypeError in these
-// tests. Same fake-by-cast pattern as the sibling envelope route tests.
 const HANDLER_REQUEST = {
   auth: {
     type: "client",

@@ -303,8 +303,6 @@ describe("JavaScriptSymbolicationService", () => {
       diagnostic: { code: "invalid_source_map", message: "The source map contains too many generated lines." },
     });
 
-    // Within the bound, sparse and delimiter-heavy maps still parse; empty
-    // lines share one frozen array instead of allocating per line.
     const sparse = parseStandardSourceMap(JSON.stringify({
       version: 3,
       sources: ["src.ts"],
@@ -364,7 +362,6 @@ describe("artifactCodeFileMatchesFrame", () => {
   it("decodes percent-encoded URL pathnames before comparing with the manifest path", () => {
     expect(artifactCodeFileMatchesFrame("static/my file.js", "https://cdn.example.test/static/my%20file.js")).toBe(true);
     expect(artifactCodeFileMatchesFrame("static/chunk.js", "https://cdn.example.test/st%61tic/chunk.js")).toBe(true);
-    // Malformed escapes keep the raw pathname rather than failing the frame.
     expect(artifactCodeFileMatchesFrame("static/%zz.js", "https://cdn.example.test/static/%zz.js")).toBe(true);
     expect(artifactCodeFileMatchesFrame("static/other.js", "https://cdn.example.test/static/my%20file.js")).toBe(false);
   });

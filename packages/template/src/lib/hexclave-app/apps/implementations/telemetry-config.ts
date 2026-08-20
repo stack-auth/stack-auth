@@ -40,8 +40,6 @@ export function telemetryOptionsToJson(options: TelemetryOptions | undefined): T
  * routinely export empty strings.
  */
 function readEnv(name: string): string | undefined {
-  // Untyped platform contract: narrowed at every step so a missing/odd `process`
-  // degrades to "not set" rather than throwing during app construction.
   const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
   const value = proc?.env?.[name];
   return value === undefined || value === "" ? undefined : value;
@@ -70,8 +68,6 @@ export function inferTelemetryResource(tier: "browser" | "server"): TelemetryRes
   const version = readEnv("VERCEL_GIT_COMMIT_SHA") ?? readEnv("COMMIT_REF") ?? readEnv("npm_package_version");
   const environment = readEnv("VERCEL_ENV") ?? readEnv("NODE_ENV");
   return snapshotTelemetryResource({
-    // Suffixing the tier keeps the two halves distinguishable; with no name at
-    // all the bare tier is still a truthful, low-cardinality identity.
     service: {
       name: inferredName === undefined ? tier : `${inferredName}-${tier}`,
       ...version === undefined ? {} : { version },

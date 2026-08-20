@@ -6,12 +6,6 @@ import { cloneErrorAttachmentInput, cloneErrorAttachmentInputs, MAX_ERROR_ATTACH
 const ACTIVE_ERROR_SCOPE = createContextKey("hexclave.error.scope");
 const MAX_BREADCRUMBS = 100;
 const MAX_EVENT_PROCESSORS = 20;
-// OTel's default context manager is a no-op. Keep a synchronous fallback so a
-// scope still enriches a capture when an existing provider has not installed a
-// context manager; managed OTel and Node integrations use the real context for
-// async isolation. The fallback is deliberately restored as soon as the
-// callback's synchronous prologue ends, so concurrent async callbacks cannot
-// cross-contaminate one process-global slot.
 let fallbackActiveErrorScope: ErrorScopeState | null = null;
 let asyncLocalStorage: AsyncLocalStorageLike<ErrorScopeState> | null = null;
 
@@ -30,15 +24,9 @@ function copyScopeData(data: ErrorScopeData | undefined): ErrorScopeData {
     ...data.tags === undefined ? {} : { tags: { ...data.tags } },
     ...data.contexts === undefined ? {} : { contexts: Object.fromEntries(Object.entries(data.contexts).map(([key, value]) => [key, { ...value }])) },
     ...data.extra === undefined ? {} : { extra: { ...data.extra } },
-    // `.slice(-MAX_BREADCRUMBS)` FIRST: a scope constructed with oversized
-    // initial data must obey the same bound addBreadcrumb enforces, otherwise
-    // createErrorScope(initial) becomes a bypass that emits arbitrarily large
-    // error payloads. Newest breadcrumbs win, matching addBreadcrumb.
     ...data.breadcrumbs === undefined ? {} : { breadcrumbs: data.breadcrumbs.slice(-MAX_BREADCRUMBS).map((breadcrumb) => ({ ...breadcrumb, ...breadcrumb.data === undefined ? {} : { data: { ...breadcrumb.data } } })) },
     ...data.level === undefined ? {} : { level: data.level },
     ...data.fingerprint === undefined ? {} : { fingerprint: [...data.fingerprint] },
-    // Match addEventProcessor and preserve the newest processors when a
-    // caller seeds an oversized initial scope.
     ...data.eventProcessors === undefined ? {} : { eventProcessors: data.eventProcessors.slice(-MAX_EVENT_PROCESSORS) },
     ...data.attachments === undefined ? {} : { attachments: cloneErrorAttachmentInputs(data.attachments) },
   };
@@ -197,10 +185,6 @@ export function mergeErrorScopeData(base: ErrorScopeData | undefined, override: 
     ...right.level === undefined ? {} : { level: right.level },
     ...right.fingerprint === undefined ? {} : { fingerprint: right.fingerprint },
     ...left.eventProcessors === undefined && right.eventProcessors === undefined ? {} : {
-      // A scope can be merged repeatedly (ambient scope + capture options + an
-      // adapter's request scope). Keep the same hard callback bound enforced by
-      // addEventProcessor so a composed capture cannot bypass the processor
-      // budget before the pipeline sees it.
       eventProcessors: [...left.eventProcessors ?? [], ...right.eventProcessors ?? []].slice(0, MAX_EVENT_PROCESSORS),
     },
     ...left.attachments === undefined && right.attachments === undefined ? {} : {

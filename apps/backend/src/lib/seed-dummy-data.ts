@@ -39,17 +39,6 @@ function deterministicUuid(namespace: string): string {
   return `${a}-${b}-${c}-${d}-${e}`;
 }
 
-/**
- * Deterministic W3C ids for seed rows. Span identity is W3C (32/16 lowercase hex),
- * and seeded spans must be re-derivable so a re-seed upserts the same
- * ReplacingMergeTree rows instead of duplicating them — which rules out the random
- * generators the SDK uses. sha256 is already the hash behind `deterministicUuid`;
- * these just take hex slices of it directly rather than shaping a uuid first.
- *
- * The all-zero id is theoretically possible and invalid per spec; it is a
- * 2^-128 sha256 collision with a fixed value, so a hard failure is the right
- * response if it ever somehow happens.
- */
 function deterministicW3cTraceId(namespace: string): string {
   const traceId = createHash('sha256').update(namespace).digest('hex').slice(0, 32);
   return traceId === '0'.repeat(32) ? throwErr(`Seed namespace ${namespace} hashed to the invalid all-zero trace id`) : traceId;
@@ -1490,12 +1479,6 @@ function pickBulkReferrer(rand: () => number): string {
   return '';
 }
 
-/**
- * Scrubbed, representative journeys for exercising the demo project's Paths
- * graph. Reusing destinations across journeys is intentional: it produces the
- * hubs and differently weighted edges that a real product graph has, while
- * keeping the fixture deterministic and free of production routes or domains.
- */
 const DUMMY_NAVIGATION_JOURNEYS: readonly (readonly string[])[] = [
   ['/', '/product', '/product/analytics', '/pricing', '/sign-up'],
   ['/', '/product', '/product/observability', '/pricing', '/sign-up'],
@@ -1524,12 +1507,6 @@ export function buildDummyNavigationJourney(userIndex: number, visitIndex: numbe
   return DUMMY_NAVIGATION_JOURNEYS[journeyIndex] ?? throwErr(`Missing dummy navigation journey ${journeyIndex}`);
 }
 
-/**
- * Field Web Vitals for a seeded `$page-view`. Heavy dashboard/docs routes get
- * worse LCP/INP so the Performance tab has something to rank besides a flat
- * "everything is fine" average. Soft-nav samples omit LCP/FCP/TTFB the same
- * way the browser collector does.
- */
 function dummyWebVitalsForPath(path: string, isSoftNav: boolean, rand: () => number): Record<string, number> {
   const heavy = path.includes("/observability")
     || path.includes("/analytics")
@@ -1560,8 +1537,6 @@ function dummyPageIsHeavy(path: string): boolean {
     || path === "/pricing";
 }
 
-// Session-replay page views pick independently rather than walking a journey.
-// Keep the pool identical to the Paths fixture so demo URLs stay consistent.
 const BULK_PAGE_PATHS: readonly string[] = [...new Set(DUMMY_NAVIGATION_JOURNEYS.flat())];
 
 function bulkFakeIp(prefix: string, rand: () => number): string {
@@ -1723,16 +1698,6 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
   console.log(`Finished seeding session activity events (${clickhouseRows.length} events)`);
 }
 
-/**
- * Seeds the dummy project with a bulk batch of fake user sign-ups and
- * realistic activity data spread across recent history and various
- * geographic regions. Populates:
- *
- *   1. ProjectUser rows with back-dated signedUpAt/createdAt
- *   2. $token-refresh events in ClickHouse with geolocated ip_info
- *   3. $page-view spans in ClickHouse for daily visitors/page views/referrers
- *   4. $click events in ClickHouse for the clicks chart
- */
 async function seedBulkSignupsAndActivity(options: {
   tenancy: Tenancy,
   prisma: PrismaClientTransaction,
@@ -1752,8 +1717,6 @@ async function seedBulkSignupsAndActivity(options: {
 
   const dayOffsets = distributeBulkSignups(count, days, rand, now);
   const clickhouseRows: Array<Record<string, unknown>> = [];
-  // Page views are spans; seed them into analytics_internal.spans so overview
-  // metrics (which query spans, not events) pick them up.
   const pageViewSpanRows: Array<Record<string, unknown>> = [];
 
   let created = 0;
@@ -1959,10 +1922,6 @@ async function seedBulkSignupsAndActivity(options: {
       const navigationJourney = buildDummyNavigationJourney(index, v);
       let clickPageViewTrace: { traceId: string, spanId: string, path: string } | null = null;
       for (let p = 0; p < navigationJourney.length; p++) {
-        // Keep each journey ordered while varying dwell time between pages.
-        // The Paths query infers edges from timestamp order, so independently
-        // random offsets would fabricate transitions that the fixture did not
-        // intend to model.
         const pvOffset = (p * 4 * 60 + Math.floor(rand() * 2 * 60)) * 1000;
         // Clamp to `now`: visitTime is already clamped, but adding the offset
         // can push a same-day event past `now` into the future.
@@ -1973,15 +1932,11 @@ async function seedBulkSignupsAndActivity(options: {
         const dwellMs = Math.floor((heavy ? 6_000 : 18_000) + rand() * (heavy ? 25_000 : 80_000));
         const endedAt = new Date(Math.min(pvTime.getTime() + dwellMs, now.getTime()));
         const mobile = rand() < 0.35;
-        // `v` is part of the namespace because a returning user can have
-        // several visits on the same sampled day; each page view must remain a
-        // distinct ReplacingMergeTree row.
         const namespace = `seed-pv:${tenancy.project.id}:${userId}:${visitDaysAgo}:${v}:${p}`;
         const spanId = deterministicW3cSpanId(namespace);
         const traceId = deterministicW3cTraceId(namespace);
         clickPageViewTrace = { traceId, spanId, path };
         pageViewSpanRows.push({
-          // A `$page-view` is one of the root activities, so it roots its own trace.
           trace_id: traceId,
           span_id: spanId,
           span_type: '$page-view',
@@ -2009,7 +1964,6 @@ async function seedBulkSignupsAndActivity(options: {
           session_replay_id: null,
           session_replay_segment_id: null,
           page_view_span_id: null,
-          // Seed rows are write-once; version = start ms is enough for uniqueness.
           version: pvTime.getTime(),
         });
       }
@@ -2039,8 +1993,6 @@ async function seedBulkSignupsAndActivity(options: {
           branch_id: tenancy.branchId,
           user_id: userId,
           team_id: null,
-          // A click is an instant inside the page-view span, so it carries that
-          // span's identity (trace + enclosing span) plus the page correlation.
           trace_id: pageView.traceId,
           span_id: pageView.spanId,
           page_view_span_id: pageView.spanId,
@@ -2322,9 +2274,6 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
       userEmailToId,
       freshProject,
     }),
-    // Error occurrences + the Issue records derived from them. Runs alongside
-    // the other analytics seeders: it writes `analytics_internal.events` and the
-    // `Issue*` Postgres tables, which nothing else here touches.
     seedDummyIssues({
       prisma: dummyPrisma,
       tenancy: dummyTenancy,
@@ -2572,22 +2521,6 @@ async function seedDummyAnalyticsMirrorTables(options: {
   ]);
 }
 
-/**
- * Realistic `$error` traffic for the Observability > Issues surface.
- *
- * The shapes below are chosen to exercise the grouping rules rather than to
- * look plausible, so the seeded dashboard doubles as a live check that grouping
- * still behaves:
- *
- *  - A `TypeError` and a `RangeError` thrown from the SAME frame must stay two
- *    issues (exception type is a grouping leaf).
- *  - Two different non-`Error` throws must stay two issues even though the SDK
- *    forces `name: "Error"` on both — that is what the synthetic rule is for.
- *  - A Node error carries absolute filesystem paths rather than URLs, so the
- *    in-app ruleset takes its other branch.
- *  - One issue is resolved and one is ignored, so the status tabs, the counts,
- *    and the lapsed-snooze compensation all have something to show.
- */
 type DummyIssueSeed = {
   key: string,
   name: string,
@@ -2598,11 +2531,8 @@ type DummyIssueSeed = {
   environment: string,
   synthetic?: boolean,
   handled?: boolean,
-  /** Roughly how many occurrences to plant across the window. */
   occurrences: number,
-  /** Lifecycle to apply after materialization. */
   status?: "resolved" | "ignored",
-  /** Resolved, then recurring — lands as `regressed` in the UI. */
   regresses?: boolean,
 };
 
@@ -2633,7 +2563,6 @@ const DUMMY_ISSUE_SEEDS: readonly DummyIssueSeed[] = [
     handled: false, occurrences: 46,
   },
   {
-    // Same frames as above. Must NOT merge with it.
     key: "checkout-range",
     name: "RangeError",
     message: "Maximum call stack size exceeded",
@@ -2666,7 +2595,6 @@ const DUMMY_ISSUE_SEEDS: readonly DummyIssueSeed[] = [
     synthetic: true, handled: false, occurrences: 5,
   },
   {
-    // Distinct message, same synthetic shape. Must NOT merge with the one above.
     key: "synthetic-expired",
     name: "Error",
     message: "Object captured as exception with keys: expiredAt, sessionId",
@@ -2692,7 +2620,6 @@ const DUMMY_ISSUE_SEEDS: readonly DummyIssueSeed[] = [
   },
 ];
 
-/** How far back seeded error traffic spreads, so the sparklines have shape. */
 const DUMMY_ISSUE_WINDOW_DAYS = 14;
 
 async function seedDummyIssues(options: {
@@ -2709,28 +2636,14 @@ async function seedDummyIssues(options: {
     return;
   }
 
-  // Re-seeding: clear this project's previous error occurrences and the Issue
-  // records derived from them. Occurrences live in `analytics_internal.events`,
-  // so the project-wide telemetry DELETE at the top of
-  // `seedDummyProject` does not cover them. Postgres goes first: an Issue whose
-  // occurrences were already deleted would render as a row with no detail.
   if (!freshProject) {
     await prisma.$executeRaw`DELETE FROM "Issue" WHERE "tenancyId" = ${tenancy.id}::uuid`;
     await prisma.$executeRaw`DELETE FROM "IssueMaterialization" WHERE "tenancyId" = ${tenancy.id}::uuid`;
     await prisma.$executeRaw`DELETE FROM "IssueCounter" WHERE "tenancyId" = ${tenancy.id}::uuid`;
-    // These lightweight DELETEs are synchronous: ClickHouse's default
-    // `lightweight_deletes_sync = 2` makes the statement wait until the delete
-    // has been applied (and our client sets no overriding setting), so by the
-    // time each `await` resolves the old rows are gone and the inserts below
-    // cannot interleave with a still-running mutation.
     await clickhouseClient.command({
       query: `DELETE FROM analytics_internal.events WHERE project_id = {projectId:String} AND event_type = '$error'`,
       query_params: { projectId },
     });
-    // The rollup must be cleared SEPARATELY. A materialized view is an insert
-    // trigger, not a live view, so deleting the source occurrences leaves the
-    // aggregate rows behind — a re-seed would otherwise stack the new window
-    // counts on top of the old ones and report double the occurrences.
     await clickhouseClient.command({
       query: 'DELETE FROM analytics_internal.issue_occurrence_rollup WHERE project_id = {projectId:String}',
       query_params: { projectId },
@@ -2741,23 +2654,11 @@ async function seedDummyIssues(options: {
   const rand = deterministicPrng(seedFromString(`${projectId}:issues`));
   const now = new Date();
 
-  // Deliberately routed through the PRODUCTION ingest path — `normalizeBatchEvents`
-  // does the grouping and stamps `occurrence_id`/`issue_hash`/`error_frames`,
-  // `insertBatchEvents` writes ClickHouse, and `materializeIssuesFromBatch`
-  // creates the Issue rows through the same exactly-once ledger real traffic
-  // uses. Hand-rolling rows here would let seeded data drift from real data the
-  // first time any of those change, and the seeded dashboard is often the only
-  // place anyone looks at this feature.
   const issueIdByKey = new Map<string, string>();
 
   for (const seed of DUMMY_ISSUE_SEEDS) {
     const events = Array.from({ length: seed.occurrences }, (_unused, index) => {
-      // Weight occurrences toward the recent end of the window so the sparkline
-      // slopes instead of sitting flat.
       const dayOffset = Math.floor(DUMMY_ISSUE_WINDOW_DAYS * rand() * rand());
-      // `daysAgo(0, h)` returns TODAY at hour `h`, which is in the future for
-      // any `h` past the current hour — and a future-dated error reads as a
-      // bug in the dashboard. Clamp to a few minutes ago instead.
       const candidate = daysAgo(dayOffset, 1 + Math.floor(rand() * 22));
       const at = candidate.getTime() > now.getTime()
         ? new Date(now.getTime() - Math.floor(rand() * 60 * 60 * 1000))
@@ -2776,8 +2677,6 @@ async function seedDummyIssues(options: {
           environment: seed.environment,
           sdk_version: '0.0.0-seed',
         },
-        // Only some occurrences carry a user, so "users affected" is a smaller
-        // number than the occurrence count, the way it is in real traffic.
         _userId: userIds.length === 0 || rand() < 0.25
           ? null
           : userIds[Math.floor(rand() * userIds.length)],
@@ -2785,9 +2684,6 @@ async function seedDummyIssues(options: {
       };
     });
 
-    // One batch per (issue, user) so the identity the route would have derived
-    // from the session is reproduced faithfully — a batch carries a single
-    // authenticated user.
     const byUser = new Map<string | null, typeof events>();
     for (const event of events) {
       const bucket = byUser.get(event._userId) ?? [];
@@ -2796,12 +2692,6 @@ async function seedDummyIssues(options: {
     }
 
     for (const [userId, bucket] of byUser) {
-      // Deliberately NOT deterministic. The occurrence inserts carry
-      // `insert_deduplication_token = <batchId>:<table>`, and ClickHouse keeps a
-      // 10k-entry dedup window — so a re-seed that reused the same batch id
-      // would have its re-insert silently rejected, leaving an Issue with a
-      // lifetime count and zero viewable occurrences. Idempotency here comes
-      // from the DELETEs above, not from stable ids.
       const batchId = randomUUID();
       const normalized = normalizeBatchEvents(
         bucket.map(({ event_type, event_at_ms, data }) => ({ event_type, event_at_ms, data })),
@@ -2826,9 +2716,6 @@ async function seedDummyIssues(options: {
         tenancy,
         batchId,
         inputs: normalized.issueInputs,
-        // Backdated so `firstSeenAt` reflects the seeded window rather than the
-        // instant the seed ran; the list's "first seen" column would otherwise
-        // read "just now" for every issue.
         receivedAt: new Date(now.getTime() - DUMMY_ISSUE_WINDOW_DAYS * 24 * 60 * 60 * 1000),
       });
       const created = outcomes.find((outcome) => outcome.isNew);
@@ -2836,8 +2723,6 @@ async function seedDummyIssues(options: {
     }
   }
 
-  // Lifecycle, applied after the occurrences exist so the seeded list shows all
-  // three status tabs populated.
   for (const seed of DUMMY_ISSUE_SEEDS) {
     const issueId = issueIdByKey.get(seed.key);
     if (issueId === undefined) continue;
@@ -2856,8 +2741,6 @@ async function seedDummyIssues(options: {
         WHERE "tenancyId" = ${tenancy.id}::uuid AND "id" = ${issueId}::uuid
       `;
     } else if (seed.regresses === true) {
-      // Resolved in the past, then seen again after that — which is exactly the
-      // state the ingest path stamps when a resolved issue recurs.
       await prisma.$executeRaw`
         UPDATE "Issue"
         SET "status" = 'UNRESOLVED',

@@ -18,12 +18,6 @@ const INLINE_SOURCE_MAP_PATTERN = /^[ \t]*\/\/[#@][ \t]*sourceMappingURL=([^\s]*
 const SOURCE_MAP_VERSION = 3;
 const SOURCE_MAP_SNIP_MARKER = "{snip}";
 
-/**
- * These limits are deliberately lower than the artifact registry's upload
- * limits. Symbolication runs on an error path, so one oversized map or source
- * file must not monopolize a request worker or turn a stack trace into an
- * unbounded read.
- */
 export type JavaScriptSymbolicationLimits = Readonly<{
   maxFrames: number,
   maxBundleBytes: number,
@@ -50,24 +44,12 @@ export const DEFAULT_JAVASCRIPT_SYMBOLICATION_LIMITS: JavaScriptSymbolicationLim
   maxPathBytes: 4_096,
   maxNameBytes: 2_048,
   maxMappingSegments: 200_000,
-  // Bounds generated (semicolon-delimited) lines separately from segments: a
-  // size-valid, semicolon-only `mappings` string contains no segments at all,
-  // so without this bound it could materialize millions of empty mapping lines
-  // (memory-amplification DoS on the error path). Any real map whose mapped
-  // content is dense enough to matter hits maxMappingSegments long before this.
   maxMappingLines: 1_000_000,
   maxSourceContentBytes: 128 * 1024,
   maxContextLines: 5,
   maxContextLineBytes: 512,
 };
 
-/**
- * Raw frames use the same one-based line/column convention as the existing
- * issue frame projection. `codeFile` is the stack's `abs_path`: a relative
- * emitted path in Node, or the served URL in a browser. Lookup is still keyed
- * by debug ID + release + dist; URL pathnames are then joined onto the CLI
- * manifest's relative `codeFile` (see `artifactCodeFileMatchesFrame`).
- */
 export type RawJavaScriptFrame = Readonly<{
   codeFile: string,
   debugId: string | null,
@@ -107,11 +89,6 @@ export type SymbolicationDiagnosticCode =
   | "source_content_too_large"
   | "source_context_unavailable";
 
-/**
- * Diagnostics are safe to expose to an issue/API layer: they contain no
- * object-store keys or raw artifact bytes. The discriminated `code` is the
- * stable contract; `message` is explanatory text for operators.
- */
 export type SymbolicationDiagnostic = Readonly<{
   code: SymbolicationDiagnosticCode,
   message: string,
@@ -130,9 +107,7 @@ export type SymbolicationSourceContext = Readonly<{
 
 export type SymbolicatedJavaScriptLocation = Readonly<{
   source: string,
-  /** Source-map original line, one-based. */
   line: number,
-  /** Source-map original column converted to the one-based issue-frame convention. */
   column: number,
   name: string | null,
   sourceContext?: SymbolicationSourceContext,
@@ -297,11 +272,6 @@ export class JavaScriptSymbolicationService {
     }
     if (!loaded.ok) return frameFailure(raw, [loaded.diagnostic]);
 
-    // Raw columns are one-based, so 0 is out of convention — but browsers
-    // genuinely report `colno: 0` when the column is unknown (e.g. legacy
-    // window.onerror). Treat it exactly like a missing column (first generated
-    // column + diagnostic) instead of rejecting the whole frame, which would
-    // drop otherwise-symbolicatable real-world frames.
     const oneBasedColumn = raw.colno !== null && raw.colno >= 1 ? raw.colno : null;
     const generatedColumn = oneBasedColumn === null ? 0 : oneBasedColumn - 1;
     if (oneBasedColumn === null) {
@@ -524,9 +494,6 @@ export class JavaScriptSymbolicationService {
     }
     let bytes: Uint8Array | null;
     try {
-      // Preserve the version observed by the size check. Without the ETag,
-      // storage re-HEADs the key and a replacement can pass the new size
-      // check before the old artifact's read limit is applied.
       bytes = await this.storage.readObject(key, info.eTag);
     } catch (error) {
       if (!(error instanceof ArtifactServiceError) || error.code !== "storage_unavailable") throw error;
@@ -597,12 +564,6 @@ export class JavaScriptSymbolicationService {
   }
 }
 
-/**
- * Parses the regular version-3 source-map form. Indexed `sections` maps are
- * deliberately reported as unsupported because this module's contract is the
- * standard VLQ `mappings` field; accepting them partially would produce false
- * source locations.
- */
 export function parseStandardSourceMap(
   sourceMapText: string,
   limitsInput: Partial<JavaScriptSymbolicationLimits> = {},
@@ -720,9 +681,6 @@ type MappingParseResult =
   | Readonly<{ ok: true, values: (readonly MappingSegment[])[] }>
   | Readonly<{ ok: false, diagnostic: SymbolicationDiagnostic }>;
 
-// Shared by every generated line without segments so that sparse maps (and
-// hostile all-semicolon ones, up to maxMappingLines) cost one array slot per
-// line instead of one array allocation per line.
 const EMPTY_MAPPING_LINE: readonly MappingSegment[] = Object.freeze([]);
 
 function parseMappings(
@@ -739,9 +697,6 @@ function parseMappings(
   let nameIndex = 0;
   let segmentCount = 0;
 
-  // Deliberately scans with indexOf instead of split(";")/split(","): splitting
-  // materializes one string per delimiter, so a delimiter-only `mappings` field
-  // would allocate millions of entries before any per-segment limit could fire.
   let position = 0;
   while (true) {
     const lineSeparator = mappings.indexOf(";", position);
@@ -754,7 +709,7 @@ function parseMappings(
     let segmentStart = position;
     while (segmentStart < lineEnd) {
       let segmentEnd = segmentStart;
-      while (segmentEnd < lineEnd && mappings.charCodeAt(segmentEnd) !== 0x2c /* "," */) segmentEnd += 1;
+      while (segmentEnd < lineEnd && mappings.charCodeAt(segmentEnd) !== 0x2c) segmentEnd += 1;
       const segmentText = mappings.slice(segmentStart, segmentEnd);
       segmentStart = segmentEnd + 1;
       if (segmentText === "") continue;
@@ -978,13 +933,6 @@ function trimContextLine(line: string, column: number, maxBytes: number): string
   return result;
 }
 
-/**
- * The CLI manifest stores a relative emitted path (`static/chunks/app.js`).
- * Browser stacks name the URL that served that file. After debug-ID lookup has
- * already selected one artifact, accept either an exact match or a URL whose
- * pathname is that relative path (or ends with `/${codeFile}` so a CDN prefix
- * like `/_next/` still joins).
- */
 export function artifactCodeFileMatchesFrame(artifactCodeFile: string, frameCodeFile: string): boolean {
   if (artifactCodeFile === frameCodeFile) return true;
   if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//u.test(frameCodeFile)) return false;
@@ -994,16 +942,9 @@ export function artifactCodeFileMatchesFrame(artifactCodeFile: string, frameCode
   } catch {
     return false;
   }
-  // URL.pathname keeps percent-encoding, but the CLI manifest stores decoded
-  // relative paths, so a served URL like `.../my%20file.js` must be decoded
-  // before comparing. Malformed escapes fall back to the raw pathname (an
-  // exact-encoded manifest path can still match). Decoding `%2F` into extra
-  // slashes is fine here: the frame is client-supplied anyway and this check
-  // only gates which already-authenticated artifact symbolizes it.
   try {
     pathname = decodeURIComponent(pathname);
   } catch {
-    // keep the encoded pathname
   }
   const relative = pathname.startsWith("/") ? pathname.slice(1) : pathname;
   return relative === artifactCodeFile || relative.endsWith(`/${artifactCodeFile}`);
@@ -1048,12 +989,6 @@ function resolveLimits(input: Partial<JavaScriptSymbolicationLimits>): JavaScrip
   };
 }
 
-/**
- * trimContextLine can honor a 14-byte line by retaining the two six-byte
- * markers and their separating spaces while shrinking the excerpt to the
- * smallest representable boundary. Rejecting smaller configs up front keeps
- * the "output is at most maxContextLineBytes" invariant explicit.
- */
 const MIN_CONTEXT_LINE_BYTES = 2 * utf8ByteLength(SOURCE_MAP_SNIP_MARKER) + 2;
 
 function contextLineBytesLimit(value: number | undefined): number {

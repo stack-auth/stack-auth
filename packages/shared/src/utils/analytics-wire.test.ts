@@ -60,9 +60,6 @@ describe("truncateUtf8Bytes", () => {
   });
 
   it("truncates by bytes, not characters", () => {
-    // "€" is 3 UTF-8 bytes, so a 3000-char string is 9000 bytes. The result
-    // is a prefix within budget; the 64-char chop step means the cut can land
-    // up to 192 bytes below the budget, so only bounds are asserted.
     const truncated = truncateUtf8Bytes("\u{20AC}".repeat(3000), 6000);
     expect("\u{20AC}".repeat(3000).startsWith(truncated)).toBe(true);
     const byteLength = new TextEncoder().encode(truncated).length;
@@ -71,12 +68,11 @@ describe("truncateUtf8Bytes", () => {
   });
 
   it("never splits a code point at the boundary", () => {
-    const value = "x".repeat(100) + "\u{1F600}".repeat(50); // 😀 is 4 bytes / 2 UTF-16 units
+    const value = "x".repeat(100) + "\u{1F600}".repeat(50);
     for (const budget of [0, 1, 99, 100, 101, 102, 103, 150, 299, 300]) {
       const truncated = truncateUtf8Bytes(value, budget);
       expect(value.startsWith(truncated)).toBe(true);
       expect(new TextEncoder().encode(truncated).length).toBeLessThanOrEqual(budget);
-      // Re-encoding must round-trip: a split surrogate pair would not.
       expect(new TextDecoder().decode(new TextEncoder().encode(truncated))).toBe(truncated);
     }
   });
@@ -118,10 +114,8 @@ describe("W3C trace context", () => {
     expect(isW3cTraceId("0".repeat(32))).toBe(false);
     expect(isW3cSpanId("0".repeat(16))).toBe(false);
     expect(isW3cTraceId("abc")).toBe(false);
-    // A span id is not a trace id and vice versa.
     expect(isW3cTraceId(generateW3cSpanId())).toBe(false);
     expect(isW3cSpanId(generateW3cTraceId())).toBe(false);
-    // Uppercase hex is not the canonical form.
     expect(isW3cTraceId("A".repeat(32))).toBe(false);
   });
 

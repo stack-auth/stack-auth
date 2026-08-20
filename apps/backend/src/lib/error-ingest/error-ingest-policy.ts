@@ -10,18 +10,10 @@ const MAX_OVERRIDE_KEYS = 32;
 const MAX_OVERRIDE_KEY_BYTES = 96;
 const MAX_COUNTER_BUCKETS = 10_000;
 const SAFE_OVERRIDE_KEY = /^(?:user\.(?:email|username|ip_address)|request\.url|url|tags\.[a-zA-Z0-9_.-]{1,64}|contexts\.[a-zA-Z0-9_.-]{1,64}|extra\.[a-zA-Z0-9_.-]{1,64})$/;
-// Rule ids are deliberately dotless: the config-override API addresses record
-// entries with dot-separated path notation, so a dotted record key would be
-// unrepresentable in a config override. The scrub selector therefore lives in
-// the record VALUE, keyed by a user-chosen id.
 const SAFE_OVERRIDE_RULE_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 
 type JsonRecord = { [key: string]: unknown };
 
-// The declarable policy surface mirrors errorIngestPolicySchema in
-// packages/shared/src/config/schema.ts exactly: config validation rejects any
-// path the schema does not declare, so keys parsed here but undeclared there
-// would be unreachable dead weight.
 export type ErrorIngestPolicyConfig = {
   finalScrub: ErrorIngestScrubOverrides,
   rateLimit: { maxItemsPerWindow: number, windowSeconds: number } | null,
@@ -80,11 +72,6 @@ export function createErrorIngestPolicyStateStore(): ErrorIngestPolicyStateStore
   return { buckets: new Map() };
 }
 
-// Rate/quota counters are deliberately best-effort and instance-local: they
-// bound the work a single backend process performs, not a global budget. With
-// N instances a tenant can ingest up to N× the configured limit; making the
-// limit globally exact would require an atomic shared store (or enforcement at
-// durable ingress) and is a deliberate non-goal of this in-process layer.
 const defaultStateStore = createErrorIngestPolicyStateStore();
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -124,8 +111,6 @@ function parseOverrideKeys(value: unknown, field: "dropKeys" | "urlKeys"): reado
   const keys = new Set<string>();
   for (const [ruleId, selector] of entries) {
     if (!SAFE_OVERRIDE_RULE_ID.test(ruleId)) {
-      // Never echo a configured key: configuration values are not guaranteed
-      // to be harmless labels and policy errors must remain payload-free.
       throw new ErrorIngestPolicyConfigError("Error-ingest scrub override rule ids must be short dotless identifiers");
     }
     if (typeof selector !== "string" || Buffer.byteLength(selector, "utf8") > MAX_OVERRIDE_KEY_BYTES || !SAFE_OVERRIDE_KEY.test(selector)) {
@@ -177,7 +162,6 @@ function defaultPolicyConfig(): ErrorIngestPolicyConfig {
   };
 }
 
-/** Parses only the rendered observability section; absent policy is unlimited. */
 export function parseErrorIngestPolicyConfig(config: unknown): ErrorIngestPolicyConfig {
   if (config === undefined) return defaultPolicyConfig();
   if (!isRecord(config)) throw new ErrorIngestPolicyConfigError("observability config must be an object");
@@ -210,15 +194,6 @@ function retryAfterMs(nowMs: number, seconds: number): number {
   return Math.max(0, windowStart(nowMs, seconds) + seconds * 1000 - nowMs);
 }
 
-// Each limit kind gets its own counter bucket keyed by its own window start.
-// A combined key would reset the quota byte counter whenever the (usually
-// shorter) rate-limit window rolled over, multiplying the effective byte
-// budget by the window ratio.
-//
-// Relay carries scoping as a typed tuple. Encode the tuple structurally here
-// instead of joining untrusted identifiers with a delimiter: otherwise
-// tenant/project/branch values containing `:` could alias another tenant's
-// counter and weaken quota isolation.
 function limitStateKey(kind: "rate" | "quota", scope: ErrorIngestPolicyScope, windowStartMs: number): string {
   return JSON.stringify([kind, scope.tenancyId, scope.projectId, scope.branchId, windowStartMs]);
 }

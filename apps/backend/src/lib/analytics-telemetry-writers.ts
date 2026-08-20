@@ -16,15 +16,8 @@ export type BatchEventWireItem = {
   event_type: string,
   event_at_ms: number,
   data: unknown,
-  /**
-   * The ENCLOSING span this event happened inside, as W3C identity. Both fields
-   * arrive together or not at all: an event is an instant, so unlike a span it has
-   * no identity of its own and never roots a trace — an event outside any span
-   * simply carries no trace at all, and is correlated by page view and session.
-   */
   trace_id?: string,
   span_id?: string,
-  /** CORRELATION: which `$page-view` span the event happened on. */
   page_view_span_id?: string,
   message?: string,
   level?: LogLevel,
@@ -38,19 +31,8 @@ export type BatchSignalContext = {
   sessionReplayId: string | null,
   sessionReplaySegmentId: string | null,
   runtime: "browser" | "server",
-  /**
-   * Released analytics batches predate the resource envelope. They retain
-   * nullable resource columns rather than being assigned an invented service
-   * name; versioned batches always provide the structured resource.
-   */
   resource: TelemetryResource | null,
-  /**
-   * The authenticated SDK ingestion path is always an SDK producer. Platform-
-   * synthesized events use separate writers rather than masquerading as input
-   * from this batch.
-   */
   producer: "sdk",
-  /** Environment-level grouping rollout settings; omitted means the default. */
   groupingConfig?: GroupingRuntimeConfig,
 };
 
@@ -62,27 +44,10 @@ export function getTelemetryLens(eventType: string): TelemetryLens {
     : "observability";
 }
 
-// The `:analytics_internal.events` suffix namespaces this token against
-// other ClickHouse insert paths that derive their own tokens from related ids
-// (e.g. the OTLP trace writer's `${requestToken}:spans`), so two writers can
-// never collide on a bare batch id.
 export function getBatchDeduplicationToken(batchId: string): string {
   return `${batchId}:analytics_internal.events`;
 }
 
-/**
- * Deterministic identity for one occurrence.
- *
- * A telemetry occurrence row has no natural key — no id, no ordinal — so
- * without this there would be no way to keyset-paginate occurrences with equal
- * timestamps, and no way to make Postgres materialization exactly-once.
- *
- * Derived from `(batch_id, ordinal)` rather than randomly generated so that a
- * RETRIED batch produces byte-identical ids. That is what lets ClickHouse's
- * `insert_deduplication_token` and the Postgres materialization ledger agree
- * about which occurrences a batch contained: a random id would make the retry
- * look like new data to one of the two stores.
- */
 export function computeOccurrenceId(batchId: string, ordinal: number): string {
   return createHash("sha256").update(`${batchId}:${ordinal}`, "utf8").digest("hex").slice(0, 32);
 }
@@ -98,25 +63,14 @@ function getOccurrenceId(event: BatchEventWireItem, batchId: string, ordinal: nu
   return getNativeEventId(event) ?? computeOccurrenceId(batchId, ordinal);
 }
 
-/**
- * Native SDK event batch after protocol-specific fields have been normalized
- * into the shared telemetry, log, and issue write inputs.
- */
 export type NormalizedEventBatch = {
   productEvents: ReturnType<typeof buildBaseEventRow>[],
   logOccurrences: ReturnType<typeof buildLogRow>[],
-  /** Empty unless the batch contained `$error` events. */
   issueInputs: IssueBatchDelta[],
 };
 
 export type NativeTelemetryWritePlan = TelemetryWritePlan<IssueBatchDelta>;
 
-/**
- * `stripLoneSurrogates` is declared over `unknown` because it walks arbitrary
- * JSON. Here the input is statically a string, so this narrows the return
- * without a cast — ClickHouse rejects lone surrogates, so the strip is not
- * optional even for a field we control.
- */
 function stripLoneSurrogatesInString(value: string): string {
   const sanitized = stripLoneSurrogates(value);
   if (typeof sanitized !== "string") throw new Error("Expected lone-surrogate normalization to preserve a string value");
@@ -129,16 +83,6 @@ function scrubBatchEvent(event: BatchEventWireItem): BatchEventWireItem {
   return { ...event, data: result.value };
 }
 
-/**
- * The telemetry `data` column is typed ClickHouse JSON, which only stores
- * objects — but the released pre-versioned wire contract accepted ANY JSON
- * value as `data` (the legacy Postgres/String storage kept it verbatim), and
- * old SDKs embedded in customer apps keep that contract forever. Wrapping is
- * the leniency-preserving projection into the typed column: the original value
- * survives losslessly under a reserved key instead of 400ing the whole batch
- * or silently dropping the item. Versioned batches are validated to be plain
- * objects up front, so this is a no-op for them.
- */
 function toStorableTelemetryData(data: unknown): unknown {
   if (data !== null && typeof data === "object" && !Array.isArray(data)) return data;
   return { "$value": data };
@@ -184,22 +128,11 @@ function readStringField(data: unknown, key: string): string | null {
   return typeof value === "string" ? value : null;
 }
 
-/**
- * Grouping output for one `$error` row, plus the columns derived from it.
- *
- * `computeGrouping` degrades only for known fingerprint parse failures and
- * otherwise never returns an empty hash — unexpected throws fail the
- * occurrence write. That matters because the rollup materialized view
- * filters on `issue_hash != ''`, so an empty hash would silently drop the
- * occurrence out of every issue-level aggregate while leaving it visible in
- * `default.errors` — the worst of both worlds.
- */
 type ErrorGroupingFields = {
   grouping: ReturnType<typeof computeGrouping>,
   columns: Record<string, unknown>,
 };
 
-/** One `$error` occurrence paired with its (single) grouping result. */
 type GroupedErrorOccurrence = {
   event: BatchEventWireItem,
   grouping: ReturnType<typeof computeGrouping>,
@@ -236,20 +169,12 @@ function buildErrorGroupingFields(event: BatchEventWireItem, context: Pick<Batch
       error_culprit: grouping.culprit,
       error_frames: JSON.stringify(grouping.frames),
       error_envelope: serializeErrorEnvelope(event.data),
-      // Promoted out of `data` and stamped SERVER-side, so the batch route's
-      // "log-fields" yup test — which forbids client-supplied `message`/`level`
-      // on anything that is not `$log` — stays exactly as it is. No wire change.
       message: truncateUtf8Bytes(stripLoneSurrogatesInString(message), TELEMETRY_MAX_LOG_MESSAGE_BYTES),
       level,
     },
   };
 }
 
-/**
- * Compatibility projection for one canonical OTel error LogRecord. The OTel
- * receiver uses this seam so issue grouping remains one implementation while
- * canonical serialization/storage stays independent of the legacy batch wire.
- */
 export function normalizeErrorOccurrence(
   event: BatchEventWireItem,
   context: {
@@ -278,14 +203,6 @@ export function normalizeErrorOccurrence(
   };
 }
 
-/**
- * The columns every event-shaped row carries, i.e. exactly `EVENTS_COLUMNS`.
- *
- * Split from the logs-only fields below so the TYPE of a product-event row does
- * not gain optional keys that its destination table has no columns for. A
- * conditional spread would have widened both row types to the union, which the
- * compile-time drift guard in the tests correctly rejects.
- */
 function buildBaseEventRow(event: BatchEventWireItem, context: BatchSignalContext) {
   {
     return {
@@ -302,9 +219,6 @@ function buildBaseEventRow(event: BatchEventWireItem, context: BatchSignalContex
       refresh_token_id: context.refreshTokenId,
       session_replay_id: context.sessionReplayId,
       session_replay_segment_id: context.sessionReplaySegmentId,
-      // Stored verbatim: the SDK owns span identity, so there is nothing to
-      // compose here any more. `trace_id` is the ENCLOSING span's trace, not a
-      // trace this event roots.
       trace_id: event.trace_id ?? null,
       span_id: event.span_id ?? null,
       page_view_span_id: event.page_view_span_id ?? null,
@@ -312,13 +226,6 @@ function buildBaseEventRow(event: BatchEventWireItem, context: BatchSignalContex
   }
 }
 
-/**
- * A log/error occurrence row for `analytics_internal.events`, i.e. `LOGS_COLUMNS`.
- *
- * Occurrence identity is a logs-table concept: `events` and `span_events` share
- * the plain `EVENTS_COLUMNS` shape and have no such columns, so stamping these
- * unconditionally would send unknown fields to those tables.
- */
 function buildLogRow(
   event: BatchEventWireItem,
   context: BatchSignalContext,
@@ -330,9 +237,6 @@ function buildLogRow(
   return {
     ...otelBase,
     occurrence_id: occurrenceId,
-    // Stored alongside `occurrence_id` because the latter is a one-way hash:
-    // the reconciler needs to ask "which batches have no ledger row?", which
-    // requires the batch id itself, not a digest of it.
     batch_id: batchId,
     body: JSON.stringify(event.event_type === "$log"
       ? { type: "string", value: stripLoneSurrogates(scrubBatchMessage(requireLogMessage(event))) }
@@ -344,22 +248,6 @@ function buildLogRow(
   };
 }
 
-/**
- * Coalesces a batch's `$error` occurrences into at most one materialization
- * input per owning hash.
- *
- * Grouping by hash (not by event) is what keeps the Postgres write to a single
- * statement per batch: a 500-error batch typically yields 1–5 inputs, because
- * the SDK's own flood control already caps 10 per fingerprint per page view.
- * The `min`/`max` folding here is what lets the later `UPDATE` use
- * `LEAST`/`GREATEST`, which are commutative and therefore safe under concurrent
- * batches touching the same hot issue.
- *
- * Takes already-computed grouping results rather than the raw events, so
- * grouping runs exactly once per occurrence. Recomputing here would double the
- * cost of the one part of ingest that scales with error volume (a 50-frame
- * parse plus two SHA-256 passes each).
- */
 function collectIssueInputs(grouped: readonly GroupedErrorOccurrence[], context: {
   runtime: BatchSignalContext["runtime"],
   serviceName: string | null,
@@ -403,9 +291,6 @@ function collectIssueInputs(grouped: readonly GroupedErrorOccurrence[], context:
       release: readStringField(event.data, "release"),
       level: event.level ?? readStringField(event.data, "level") ?? "error",
       handled: requireBooleanField(event.data, "handled"),
-      // The fingerprint variant may be `custom` even when the captured value
-      // was synthetic; preserve the mechanism fact independently of which hash
-      // won.
       synthetic: readBooleanField(event.data, "synthetic") === true,
     });
   }
@@ -425,11 +310,6 @@ export function normalizeBatchEvents(
   const logOccurrences: ReturnType<typeof buildLogRow>[] = [];
 
   events.forEach((rawEvent, ordinal) => {
-    // Scrubbing is an error-pipeline control and must not touch product
-    // analytics: customers expect $page-view/$click/custom-event data to be
-    // stored byte-identical to what the SDK captured (e.g. exact-match URL
-    // queries), and only durable-storage normalization (lone-surrogate
-    // stripping, object wrapping) may be applied to it below.
     if (getTelemetryLens(rawEvent.event_type) === "product") {
       productEvents.push(buildBaseEventRow(rawEvent, context));
       return;
@@ -471,11 +351,6 @@ export function buildTelemetryWritePlan(
   };
 }
 
-/**
- * Writes all event-shaped telemetry to one physical table. Taxonomy ownership
- * remains visible through event_type and the compatibility views; storage no
- * longer duplicates the large shared tenancy/time prefix.
- */
 export async function insertBatchEvents(
   clickhouseClient: ClickHouseClient,
   plan: NativeTelemetryWritePlan,

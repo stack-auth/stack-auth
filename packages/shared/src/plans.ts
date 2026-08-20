@@ -16,9 +16,6 @@ export const ITEM_IDS = {
   emailsPerMonth: "emails_per_month",
   analyticsTimeoutSeconds: "analytics_timeout_seconds",
   analyticsEvents: "analytics_events",
-  // Spans are billed as their own item (not folded into analytics_events) so
-  // they can be priced/limited independently of events later without a
-  // persisted-item-id migration.
   analyticsSpans: "analytics_spans",
   sessionReplays: "session_replays",
   onboardingCall: "onboarding_call",
@@ -53,8 +50,6 @@ export const PLAN_LIMITS: {
     emailsPerMonth: 1_000,
     analyticsTimeoutSeconds: 10,
     analyticsEvents: 100_000,
-    // Mirrors analyticsEvents for launch; tune independently once real span
-    // volume data exists.
     analyticsSpans: 100_000,
     sessionReplays: 2_500,
   },

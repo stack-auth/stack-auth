@@ -76,9 +76,6 @@ export function createHexclaveTRPC<T extends TRPCInstanceLike>(t: T, app: Adapte
         throw new Error("Hexclave tRPC adapter: `required: true` needs an `unauthorized` error factory (e.g. () => new TRPCError({ code: \"UNAUTHORIZED\" })).");
       }
       return t.middleware(async ({ ctx, path, type, next }: TRPCMiddlewareOpts) => {
-        // Same stance as the oRPC adapter: the context builder is the ONE place
-        // the request enters, so a missing context is a wiring mistake to report,
-        // not something to paper over with a second extraction hook.
         const hexclave = ctx.hexclave
           ?? throwErr("Hexclave tRPC adapter: pass `hexclave.createContext` to your tRPC adapter so the middleware can see the request.");
         return await runRequestSpan(app, hexclave, {

@@ -61,8 +61,6 @@ it("accepts OTLP/HTTP protobuf and returns an empty protobuf success message", a
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { observability: { enabled: true } } } });
 
-  // An empty byte sequence is the canonical encoding of an empty
-  // ExportMetricsServiceRequest.
   const response = await niceBackendFetch("/api/v1/analytics/otlp/v1/metrics", {
     method: "POST",
     accessType: "server",
@@ -78,8 +76,6 @@ it("accepts OTLP/HTTP protobuf and returns an empty protobuf success message", a
 it("accepts browser OTLP metrics with an authenticated client session", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { observability: { enabled: true } } } });
-  // Client access alone is not enough: browser OTLP requires a user session
-  // (the sibling test below asserts the 401 without one).
   await Auth.Otp.signIn();
   const response = await niceBackendFetch("/api/v1/analytics/otlp/v1/metrics", {
     method: "POST",

@@ -373,8 +373,6 @@ describe("error integration registry", () => {
     const registry = createDefaultErrorIntegrationRegistry(fixture.runtime);
     registry.install("browser.xhr-breadcrumbs");
 
-    // For non-HTTP(S) schemes, URL#pathname IS the payload (data: content,
-    // blob:'s inner origin, file:'s local path) — all of it must stay local.
     fixture.xhrBreadcrumb?.handler({ method: "get", url: "data:text/plain;base64,c2VjcmV0", statusCode: 200 });
     fixture.xhrBreadcrumb?.handler({ method: "post", url: "DATA:text/plain,secret", statusCode: 201 });
     fixture.xhrBreadcrumb?.handler({ method: "put", url: "blob:https://private.example.test/some-uuid", statusCode: 202 });

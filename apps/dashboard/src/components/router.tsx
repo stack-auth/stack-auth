@@ -19,9 +19,6 @@ export function useRouter() {
   const router = useNextRouter();
   const { needConfirm, showNavigationDialog } = useRouterConfirm();
 
-  // Router consumers commonly put this object in effect dependencies. Keep the
-  // wrapper stable between renders so unrelated state changes do not restart
-  // data loads (the issue detail page's correlation query is one such caller).
   const push = React.useCallback((...args: Parameters<typeof router.push>) => {
     if (needConfirm) {
       showNavigationDialog(() => router.push(...args));

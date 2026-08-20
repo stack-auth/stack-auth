@@ -2,6 +2,7 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, readlinkSync, readdirSync, rmSync } from "fs";
 import { dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
+import { copySwcHelpersIntoStandalone } from "../../../apps/dashboard/scripts/copy-swc-helpers-into-standalone.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(__dirname, "..");
@@ -280,6 +281,8 @@ function copyDashboardAssets() {
     dashboardStaticSrc,
     "Dashboard static assets are missing. Run `pnpm exec turbo run build:rde-standalone --filter=@hexclave/dashboard` before building @hexclave/cli.",
   );
+
+  copySwcHelpersIntoStandalone(dashboardStandaloneSrc, join(repoRoot, "node_modules", ".pnpm"));
 
   rmSync(dashboardDist, { recursive: true, force: true });
   cpSync(dashboardStandaloneSrc, dashboardDist, { recursive: true, dereference: true, filter: shouldCopyDashboardFile });

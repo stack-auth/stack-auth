@@ -75,15 +75,8 @@ export function decodeBackgroundJobEnvelope(value: unknown): BackgroundJobEnvelo
 }
 
 function assertMessage(message: QstashMessage<Record<string, unknown>>): void {
-  // `new URL("//host", origin)` and the WHATWG-normalized `/\\host` form both
-  // escape to a network-path reference. The poller resolves persisted paths
-  // against its public origin, so accept exactly one leading slash here.
   if (!/^\/(?![\\/])/u.test(message.url)) throw new Error("QStash outbox URLs must be internal relative paths");
   if (message.flowControl !== undefined) {
-    // Mirror QStash's own server-side key alphabet so a bad key fails loudly at
-    // enqueue time. A key the server rejects is worse than a throw here: the
-    // poller would re-publish the same 400-rejected row forever and the job
-    // would never run.
     if (!/^[a-zA-Z0-9._-]+$/.test(message.flowControl.key)) {
       throw new Error("QStash flow-control keys must be non-empty and contain only alphanumerics, hyphens, underscores, or periods");
     }
@@ -96,16 +89,6 @@ function assertMessage(message: QstashMessage<Record<string, unknown>>): void {
   }
 }
 
-/**
- * Decodes the JSON stored in an OutgoingRequest row.
- *
- * `qstashOptions` predates the provider-neutral outbox and is intentionally
- * unversioned JSON. Keep this decoder permissive about legacy fields (including
- * the absent `jobType`) while validating the fields the poller actually sends.
- * Missing legacy bodies become an empty object, matching the old poller's
- * `undefined` body behavior without allowing an invalid JSON shape to reach
- * QStash.
- */
 export function decodeQstashMessage(value: unknown): QstashMessage<Record<string, unknown>> {
   if (!isRecord(value)) throw new Error("OutgoingRequest qstashOptions must be a JSON object");
 
@@ -150,15 +133,6 @@ export function decodeQstashMessage(value: unknown): QstashMessage<Record<string
   return message;
 }
 
-/**
- * Persists a QStash publication before the durable data write. The consumer
- * endpoint is expected to retry while the referenced data is not visible yet.
- * This ordering closes the process-death window between accepting a job and
- * publishing its pointer without putting the original payload in Postgres.
- *
- * The underlying table retains its historical name for migration compatibility;
- * this module is the provider-facing naming boundary for new callers.
- */
 export async function enqueueQstashMessage<TPayload extends Record<string, unknown>>(
   options: QstashOutboxMessage<TPayload>,
   client: PrismaClientTransaction = globalPrismaClient,
@@ -213,10 +187,6 @@ export function buildTelemetryMaterializationMessage(options: {
         batchId: options.batchId,
       },
       flowControl: {
-        // Period separator, NOT a colon: QStash restricts flow-control keys to
-        // alphanumerics plus `-`/`_`/`.`, and rejects the whole publish with a
-        // 400 otherwise — which silently starves every materialization for the
-        // tenancy because the outbox retries the same rejected key forever.
         key: `telemetry-materialization.${options.tenancyId}`,
         parallelism: 4,
       },

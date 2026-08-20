@@ -18,13 +18,6 @@ import {
   type PublicOccurrenceRow,
 } from "./occurrence-projection";
 
-/**
- * The paginated occurrence list for one issue: resolve the issue's owned
- * hashes, page over the ClickHouse read model by `(event_at, occurrence_id)`,
- * then enrich (replay links, attachments) and project each row. The
- * single-occurrence navigation used by the detail views lives in
- * `issue-queries.ts` (`loadOccurrence`); this module is the batched sibling.
- */
 export async function loadPublicIssueOccurrences(options: {
   tenancy: Tenancy,
   issueId: string,
@@ -46,9 +39,6 @@ export async function loadPublicIssueOccurrences(options: {
       ? "AND (event_at, occurrence_id) < ({cursorAt:DateTime64(3)}, {cursorId:String})"
       : "AND (event_at, occurrence_id) > ({cursorAt:DateTime64(3)}, {cursorId:String})";
   const order = options.direction === "older" ? "DESC" : "ASC";
-  // `message` (not `body`): for `$error` rows the human-readable message is
-  // promoted server-side into the `message` column; `body` holds the OTLP
-  // AnyValue, which is the JSON null literal for everything that isn't `$log`.
   const resultSet = await getSharedClickhouseAdminClient().query({
     query: `
       SELECT occurrence_id, event_at, message, level, data, error_envelope,
@@ -89,9 +79,6 @@ export async function loadPublicIssueOccurrences(options: {
   const attachmentEventIds = prepared.map((entry) => entry.attachmentEventId);
   const attachmentsByEvent = await loadPublicIssueAttachments(options.tenancy, attachmentEventIds);
   const last = page.at(-1);
-  // Symbolication may perform an artifact lookup per frame. Keep the page
-  // responsive when one artifact store call is slow without opening an
-  // unbounded burst against the storage backend.
   const items = await mapWithConcurrency(
     prepared,
     8,

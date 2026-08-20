@@ -70,6 +70,16 @@ const nextConfig = {
   output: process.env.NEXT_CONFIG_OUTPUT,
   distDir: process.env.HEXCLAVE_DASHBOARD_NEXT_DIST_DIR,
   outputFileTracingRoot: path.join(__dirname, "../.."),
+  // next@16.3.1 + pnpm + Node >= 22.10: NFT traces only CJS `@swc/helpers`,
+  // but Node's `module-sync` condition resolves to
+  // `esm/_interop_require_default.js`. The standalone server then exits
+  // before `hexclave dev` can spawn the app. Force the full helper package
+  // into the trace. https://github.com/vercel/next.js/issues/97358
+  outputFileTracingIncludes: {
+    "/**": [
+      "../../node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers/**",
+    ],
+  },
   // The claude-agent-sdk spawns cli.js as a child process (resolved via
   // import.meta.url). Keeping it external ensures the entire package directory
   // is included in the standalone trace, so cli.js, vendor/, etc. survive

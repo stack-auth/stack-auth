@@ -13,11 +13,6 @@ const SNIPPET_START_MARKER = "// hexclave:debug-id-injection:start";
 const SNIPPET_END_MARKER = "// hexclave:debug-id-injection:end";
 const ARTIFACT_MANIFEST_SCHEMA_VERSION = 1;
 
-/**
- * Original TypeScript the minified bundle was "compiled" from. Kept as a
- * string (not a real file the bundler emits) so the uploaded `sourcesContent`
- * is exactly what the dashboard source-context card should render.
- */
 export const OBSERVABILITY_DEMO_ORIGINAL_SOURCE = [
   "export function throwSymbolicatedChargeError(): never {",
   "  const reason = \"card_declined\";",
@@ -133,8 +128,6 @@ export function buildObservabilityDemoBundle(options: {
     debugId,
   });
   const sourceMapBytes = Buffer.from(sourceMapJson, "utf8");
-  // Node's current zlib typings no longer expose the historical mtime option;
-  // gzipSync already emits a stable header for this in-memory fixture.
   const sourceMapGzipped = gzipSync(sourceMapBytes);
 
   const assignment = `globalThis[${JSON.stringify(OBSERVABILITY_DEMO_THROWER_GLOBAL_KEY)}]=throwSymbolicatedChargeError;`;
@@ -183,11 +176,6 @@ export function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-/**
- * `uuidShape(sha256(sha256(minified) ‖ sha256(map)))` — same derivation as
- * `hexclave sourcemaps upload`, so an unchanged fixture keeps its debug ID
- * across demo restarts and the server can answer `already_uploaded`.
- */
 export function deriveDebugId(minified: Uint8Array, map: Uint8Array): string {
   const digest = createHash("sha256")
     .update(createHash("sha256").update(minified).digest())

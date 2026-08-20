@@ -234,7 +234,6 @@ export const AnalyticsClickmapResponseBodySchema = yupObject({
 // Recent "currently live" users keyed by ISO country code. Populated by
 // joining a bounded ClickHouse selection from the live `$token-refresh` window
 // with the corresponding Prisma profile rows, so the overview globe can render
-// real avatars of real users from each country.
 export const MetricsActiveUsersByCountrySchema = yupRecord(
   yupString().defined(),
   yupArray(MetricsRecentUserSchema).defined(),

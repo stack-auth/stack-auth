@@ -11,12 +11,9 @@ export type { ClickHouseClient } from "@clickhouse/client";
 // representable in JS strings but rejected by ClickHouse's JSON parser.
 // The client-side event tracker can produce these when .substring() truncates
 // text in the middle of a surrogate pair (e.g. emoji characters).
-// eslint-disable-next-line no-control-regex
-const LONE_SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
-
 export function stripLoneSurrogates(value: unknown): unknown {
   if (typeof value === "string") {
-    return value.replace(LONE_SURROGATE_RE, "�");
+    return value.toWellFormed();
   }
   if (Array.isArray(value)) {
     return value.map(stripLoneSurrogates);
@@ -101,11 +98,6 @@ export function getSharedClickhouseAdminClient(): ClickHouseClient {
 
 let sharedClickhouseExternalClient: ClickHouseClient | undefined;
 
-/**
- * Process-wide limited-user client for analytics queries. Query endpoints are
- * hot paths; constructing a client per request creates a new keep-alive pool
- * that is never closed, so sockets accumulate while no connection is reused.
- */
 export function getClickhouseExternalClient() {
   sharedClickhouseExternalClient ??= createClickhouseClient(
     "external",
@@ -115,7 +107,6 @@ export function getClickhouseExternalClient() {
   return sharedClickhouseExternalClient;
 }
 
-// Safety net for heavy analytical reads against the canonical telemetry table:
 // GROUP BY spills to disk at ~50% of the per-query cap (leaving headroom for
 // the post-spill merge), grace_hash partitions large join build sides instead
 // of allocating one giant hash table, and the per-user cap bounds total
@@ -132,10 +123,6 @@ export const METRICS_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
 
 let sharedClickhouseMetricsClient: ClickHouseClient | undefined;
 
-/**
- * Shared metrics client. Its settings are immutable and every caller is a
- * request path, so a process-lifetime pool provides bounded connection reuse.
- */
 export function getClickhouseAdminClientForMetrics() {
   sharedClickhouseMetricsClient ??= createClickhouseClient(
     "admin",

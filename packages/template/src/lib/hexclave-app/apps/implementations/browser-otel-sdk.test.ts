@@ -119,8 +119,6 @@ describe("managed browser OpenTelemetry", () => {
     };
 
     registerManagedBrowserOtel(makeOptions(false));
-    // spanPropagation.enabled=false: the whole baggage half is uninstalled —
-    // every managed-browser baggage entry is Hexclave-minted correlation.
     expect(inject().get("baggage")).toBeUndefined();
 
     await resetManagedBrowserOtelForTesting();
@@ -254,8 +252,6 @@ describe("managed browser OpenTelemetry", () => {
     const systemSpan = tracer.startSpan("$page-view", { attributes: { "hexclave.signal.type": "system_span" } });
     const systemSpanId = systemSpan.spanContext().spanId;
 
-    // The system span's OPEN snapshot exports immediately — before any end() —
-    // while the custom span produces nothing until it ends.
     await waitFor(() => exportedSpans.some((span) => span.spanId === systemSpanId), "the open system-span snapshot export");
     expect(exportedSpans).toHaveLength(1);
     expect(exportedSpans[0]).toMatchObject({ name: "$page-view", spanId: systemSpanId, endTimeUnixNano: "0" });
@@ -516,11 +512,6 @@ describe("managed browser OpenTelemetry", () => {
   });
 
   it("recognizes the metrics partial-success field (rejectedDataPoints)", async () => {
-    // The backend's OTLP metrics route reports partial success via the
-    // standard `rejectedDataPoints` field (traces use rejectedSpans, logs use
-    // rejectedLogRecords); ignoring it would record rejected data points as
-    // fully accepted. The parser is shared across all three signal exporters,
-    // so exercising it through the log fixture pins the field handling itself.
     const fetchMock = stubResponses([
       response(200, JSON.stringify({ partialSuccess: { rejectedDataPoints: "1", errorMessage: "one invalid point" } }), { "content-type": "application/json" }),
     ]);

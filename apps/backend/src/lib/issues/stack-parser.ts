@@ -51,9 +51,6 @@
 import { isInAppPath } from "./in-app";
 import type { ParsedFrame, StackPlatform } from "./types";
 
-// --- Guards ----------------------------------------------------------------
-// Every one of these exists because the input is an attacker-controllable string
-// off the public ingest endpoint, and this function runs inline on the hot path.
 
 /**
  * Several of the regexes below backtrack, so their runtime grows exponentially
@@ -62,25 +59,15 @@ import type { ParsedFrame, StackPlatform } from "./types";
  * is the entire mitigation.
  */
 const MAX_LINE_LENGTH = 1024;
-/** Matches the SDK's own `Error.stackTraceLimit`, so a full stack is never clipped by us first. */
 const MAX_FRAMES = 50;
-/**
- * A stack of a million non-matching lines would otherwise be scanned in full,
- * because the frame cap only trips on lines that actually parse.
- */
 const MAX_LINES_SCANNED = 500;
 
-// --- Line regexes ----------------------------------------------------------
 
-/** Matches frames with no function name, e.g. `at http://localhost:5000//script.js:1:126`. */
 const CHROME_NO_FN_NAME_RE = /^\s*at (\S+?)(?::(\d+))(?::(\d+))\s*$/i;
-/** Matches all frames that do have a function name. */
 const CHROME_RE = /^\s*at (?:(.+?\)(?: \[.+\])?|.*?) ?\((?:address at )?)?(?:async )?((?:<anonymous>|[-a-z]+:|.*bundle|\/)?.*?)(?::(\d+))?(?::(\d+))?\)?\s*$/i;
 const CHROME_EVAL_RE = /\((\S*)(?::(\d+))(?::(\d+))\)/;
-/** e.g. `at dynamicFn (data:application/javascript,export function dynamicFn() {...` */
 const CHROME_DATA_URI_RE = /at (.+?) ?\(data:(.+?),/;
 
-// `(?:bundle|\d+\.js)` is for React Native (ram bundles emit bare `42.js` filenames).
 const GECKO_RE = /^\s*(.*?)(?:\((.*?)\))?(?:^|@)?((?:[-a-z]+)?:\/.*?|\[native code\]|[^@]*(?:bundle|\d+\.js)|\/[\w\-. /=]+)(?::(\d+))?(?::(\d+))?\s*$/i;
 const GECKO_EVAL_RE = /(\S+) line (\d+)(?: > eval line \d+)* > eval/i;
 
@@ -113,9 +100,7 @@ const WEBPACK_ERROR_WRAPPER_RE = /\(error: (.*)\)/;
 const HEADER_LINE_RE = /^[\w$. ]{0,64}(?:Error|Exception|Violation|Failure)[\w$.]{0,64}(?: \[[\w$. \-]{1,64}\])?\s*:\s/;
 const FRAME_LINE_PREFIX_RE = /^\s*at\s/;
 
-// --- Path / module normalization -------------------------------------------
 
-/** Schema from https://stackoverflow.com/a/3641782. */
 const URL_ORIGIN_RE = /^[a-zA-Z][a-zA-Z0-9.\-+]*:\/\//;
 const WINDOWS_DRIVE_PREFIXED_RE = /^\/[a-zA-Z]:/;
 
@@ -135,32 +120,13 @@ const TURBOPACK_MARKER_SUFFIX_RE = /\._$/;
  * (`-face`, `-added`), silently merging unrelated chunks.
  */
 const WEBPACK_HASH_SUFFIX_RE = /[-_.][0-9a-f]{8,64}$/i;
-/** A chunk whose whole name is a hash carries no logical information at all. */
 const PURE_HASH_RE = /^[0-9a-f]{8,64}$/i;
-/**
- * All of `_next/static/<x>/` except these are the per-build id directory
- * (`_next/static/bLc5F0Ymm5xQfKQ_gW1nS/_buildManifest.js`).
- */
 const NEXT_STATIC_KNOWN_SUBDIRS = new Set(["chunks", "css", "media", "development", "runtime"]);
 
-/** True when the path came off the network or through a bundler rather than off disk. */
 export function hasUrlOrigin(path: string): boolean {
   return URL_ORIGIN_RE.test(path);
 }
 
-/**
- * Removes a bundler content hash from a single path segment whose extension has
- * already been stripped.
- *
- * This is the load-bearing piece of rebuild stability: without it, every deploy
- * renames every chunk and every issue in the project splits in two.
- *
- * Trade-off: a chunk named purely after its hash collapses to a single constant,
- * so two genuinely different pure-hash chunks share a module leaf. That is
- * deliberate — such a name carries zero logical information, the function-name
- * leaf still separates the frames, and the alternative (leaving the hash in) is
- * guaranteed to be wrong on every rebuild rather than occasionally over-merging.
- */
 export function stripContentHash(segment: string): string {
   let out = segment;
   if (TURBOPACK_HASH_SUFFIX_RE.test(out)) {
@@ -170,12 +136,9 @@ export function stripContentHash(segment: string): string {
   }
   out = out.replace(WEBPACK_HASH_SUFFIX_RE, "");
   if (PURE_HASH_RE.test(out)) return "<hash>";
-  // A segment that was nothing but a suffix (`-a1b2c3d4.js`) would otherwise
-  // normalize to the empty string, which is less useful than the raw name.
   return out === "" ? segment : out;
 }
 
-/** Strips scheme + host, query and fragment, leaving the path portion. */
 export function pathnameOf(path: string): string {
   let rest = path;
   const schemeMatch = URL_ORIGIN_RE.exec(rest);
@@ -189,7 +152,6 @@ export function pathnameOf(path: string): string {
   return rest;
 }
 
-/** The known script extension a segment ends with, or `""`. */
 function knownExtensionOf(segment: string): string {
   const lowered = segment.toLowerCase();
   return KNOWN_SCRIPT_EXTENSIONS.find((extension) => lowered.endsWith(extension)) ?? "";
@@ -198,19 +160,12 @@ function knownExtensionOf(segment: string): string {
 function splitExtension(segment: string): { stem: string, extension: string } {
   const extension = knownExtensionOf(segment);
   const withoutExtension = segment.slice(0, segment.length - extension.length);
-  // `foo.min.js` and `foo.js` are the same module built two ways.
   const stem = withoutExtension.toLowerCase().endsWith(".min")
     ? withoutExtension.slice(0, withoutExtension.length - ".min".length)
     : withoutExtension;
   return { stem, extension };
 }
 
-/**
- * Normalizes a basename for the grouping `filename` leaf: content hash removed,
- * extension kept. The extension stays because it is the only thing separating
- * `page.js` from `page.ts` in the same directory, and it never changes across a
- * rebuild — unlike the hash, which always does.
- */
 export function normalizeFilenameForGrouping(filename: string): string {
   const { stem, extension } = splitExtension(filename);
   if (stem === "") return filename;
@@ -259,9 +214,7 @@ export function deriveModule(absPath: string, platform: StackPlatform): string |
   return moduleName === "" ? null : moduleName;
 }
 
-// --- Frame parsing ---------------------------------------------------------
 
-/** What a single line parser produces before platform-independent normalization. */
 type RawFrame = {
   path: string | null,
   func: string | null,
@@ -275,7 +228,6 @@ function parseLineNumber(value: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** Regex groups that did not participate come back as `undefined`; groups that matched nothing come back as `""`. Both mean "absent". */
 function emptyToNull(value: string | undefined): string | null {
   return value === undefined || value === "" ? null : value;
 }
@@ -321,7 +273,6 @@ function parseChromeLine(line: string): RawFrame | null {
   if (rawPath !== undefined && rawPath.startsWith("eval")) {
     const subMatch = CHROME_EVAL_RE.exec(rawPath);
     if (subMatch !== null) {
-      // Throw out the eval wrapper's line/column and keep the top-most ones.
       rawPath = subMatch.at(1);
       rawLine = subMatch.at(2);
       rawCol = subMatch.at(3);
@@ -347,7 +298,7 @@ function parseGeckoLine(line: string): RawFrame | null {
       rawFunc = rawFunc !== undefined && rawFunc !== "" ? rawFunc : "eval";
       rawPath = subMatch.at(1);
       rawLine = subMatch.at(2);
-      rawCol = undefined; // eval frames have no meaningful column
+      rawCol = undefined;
     }
   }
 
@@ -355,7 +306,6 @@ function parseGeckoLine(line: string): RawFrame | null {
   return { path, func, lineno: parseLineNumber(rawLine), colno: parseLineNumber(rawCol) };
 }
 
-/** `file:///a/b.js` -> `/a/b.js`, and `/C:/foo` -> `C:/foo` on Windows. */
 function normalizeNodePath(path: string | undefined): string | undefined {
   let filename = path?.startsWith("file://") === true ? path.slice("file://".length) : path;
   if (filename !== undefined && WINDOWS_DRIVE_PREFIXED_RE.test(filename)) {
@@ -368,8 +318,6 @@ function safeDecodeUri(path: string): string {
   try {
     return decodeURI(path);
   } catch {
-    // A path with a stray `%` is not a decoding failure worth reporting — it is
-    // just a path we leave alone.
     return path;
   }
 }
@@ -421,10 +369,6 @@ function parseNodeLine(line: string): RawFrame | null {
   };
 }
 
-/**
- * A `switch` rather than a lookup map so that adding a `StackPlatform` is a
- * compile error here instead of a silent "no parsers, therefore no frames".
- */
 function lineParsersFor(platform: StackPlatform): ReadonlyArray<(line: string) => RawFrame | null> {
   switch (platform) {
     // Chrome first: Gecko's regex is loose enough to half-match V8 lines.
@@ -440,16 +384,7 @@ function lineParsersFor(platform: StackPlatform): ReadonlyArray<(line: string) =
   }
 }
 
-// --- Our own frames --------------------------------------------------------
 
-/**
- * `normalizeCapturedError` synthesizes a stack with `new Error()` for non-Error
- * throws, so the top frames belong to our SDK rather than to the customer.
- * Stripping them is best-effort by design: in a production bundle our module is
- * inlined into the app's chunk and both the path and the function name are
- * minified away. The synthetic grouping rule is what actually makes those
- * stacks usable; this is only the cheap part.
- */
 const HEXCLAVE_SDK_PATH_PATTERNS = ["@hexclave/", "/hexclave-app/", "\\hexclave-app\\"];
 const HEXCLAVE_SDK_FUNCTION_NAMES = new Set([
   "normalizeCapturedError",
@@ -467,15 +402,7 @@ function isHexclaveSdkFrame(frame: ParsedFrame): boolean {
   return func !== null && HEXCLAVE_SDK_FUNCTION_NAMES.has(func.split(".").at(-1) ?? func);
 }
 
-// --- Entry point -----------------------------------------------------------
 
-/**
- * Parses a raw stack string into frames, oldest-first (crash site last).
- *
- * Never throws. The input is an untrusted string off the ingest endpoint, and a
- * parse failure must degrade to "no frames" (which grouping handles with the
- * message variant) rather than reject the whole batch of events.
- */
 export function parseStack(stack: string, platform: StackPlatform): ParsedFrame[] {
   const parsers = lineParsersFor(platform);
   const lines = stack.split("\n");
@@ -513,8 +440,6 @@ function toParsedFrame(raw: RawFrame, platform: StackPlatform): ParsedFrame {
   if (absPath === null) {
     return { filename: null, function: raw.func, module: null, absPath: null, lineno: raw.lineno, colno: raw.colno, inApp: false };
   }
-  // For URLs the origin is deployment-specific (`localhost:3000` vs the CDN
-  // host), so the display filename is the pathname only.
   const filename = hasUrlOrigin(absPath) ? pathnameOf(absPath) : absPath;
   return {
     filename: filename === "" ? absPath : filename,
@@ -527,9 +452,6 @@ function toParsedFrame(raw: RawFrame, platform: StackPlatform): ParsedFrame {
   };
 }
 
-/**
- * Input is top-of-stack first (crash site at index 0); output is oldest-first.
- */
 function stripSdkFramesAndReverse(frames: ParsedFrame[]): ParsedFrame[] {
   let start = 0;
   while (start < frames.length) {
@@ -537,8 +459,6 @@ function stripSdkFramesAndReverse(frames: ParsedFrame[]): ParsedFrame[] {
     if (frame === undefined || !isHexclaveSdkFrame(frame)) break;
     start++;
   }
-  // A stack that is *entirely* our SDK is more useful kept than dropped — it at
-  // least tells the reader the throw never left the capture path.
   const kept = start === frames.length ? [...frames] : frames.slice(start);
   kept.reverse();
   return kept;

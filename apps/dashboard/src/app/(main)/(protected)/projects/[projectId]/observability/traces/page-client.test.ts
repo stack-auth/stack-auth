@@ -55,8 +55,6 @@ describe("analytics trace row parsing", () => {
     expect(query).toContain("r.status_code");
     expect(query).not.toContain("_next/static");
     expect(query).not.toContain("coalesce(r.scope_name, '')");
-    // trace_roots stores only spans with a NULL parent, so the column is
-    // synthesized rather than read.
     expect(query).toContain("CAST(NULL, 'Nullable(String)') AS parent_span_id");
     expect(query).not.toContain("'bridged-server'");
     expect(query).not.toContain("row_number() OVER");
@@ -136,8 +134,6 @@ describe("analytics trace row parsing", () => {
 
   it("loads physical service sets for every root instead of attributing synthetic roots", () => {
     const { query } = getRecentTraceRootsQuery(null);
-    // Once trace_services is joined, ClickHouse otherwise serializes this
-    // field as "r.trace_id"; the row parser intentionally requires trace_id.
     expect(query).toContain("r.trace_id AS trace_id");
     expect(query).toContain("arraySort(groupUniqArray(tuple(coalesce(service_namespace, ''), service_name)))");
     expect(query).toContain("trace_service_namespaces");
@@ -157,8 +153,6 @@ describe("analytics trace row parsing", () => {
     expect(spanQuery.query).toContain("s.scope_name");
     expect(spanQuery.query).not.toContain("s.data");
     expect(spanQuery.query).not.toContain("s.resource_attributes");
-    // Every tier shares the trace id, so one equality predicate is the whole
-    // filter — no id-namespace bridging, and no OR that could defeat the index.
     expect(spanQuery.query).toContain("WHERE s.trace_id = {traceId:String}");
     expect(spanQuery.query).not.toContain(" OR ");
     expect(spanQuery.query).not.toContain("startsWith(");
@@ -219,8 +213,6 @@ describe("analytics trace row parsing", () => {
   it("selects the enclosing span and page-view correlation on events, not an ancestry array", () => {
     const { query } = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef", null, { startMs: 1_720_000_000_000, endMs: 1_720_000_100_000 });
     expect(query).toContain("trace_id, span_id, page_view_span_id");
-    // The event-shaped branches are not OTel log records: they synthesize an
-    // empty body instead of projecting a column no writer populates for them.
     expect(query).toContain("CAST('' AS String) AS body");
     expect(query).not.toContain("message AS body");
     expect(query).toContain("severity_number");
@@ -231,10 +223,6 @@ describe("analytics trace row parsing", () => {
   });
 
   it("bounds the event scan to the selected trace's interval, not the inbox window", () => {
-    // The telemetry tables are keyed (project_id, branch_id, event_at) with no
-    // trace_id index, so an unbounded trace_id filter would scan the project's
-    // whole retained history. The bound comes from the trace itself so a
-    // deep-linked event outside the inbox hours window still loads.
     const { query, params } = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef", null, { startMs: 1_720_000_000_000, endMs: 1_720_000_100_000 });
     expect(query).toContain("event_at >= fromUnixTimestamp64Milli({eventWindowStartMs:Int64})");
     expect(query).toContain("event_at <= fromUnixTimestamp64Milli({eventWindowEndMs:Int64})");
@@ -259,7 +247,6 @@ describe("analytics trace row parsing", () => {
 
   it("loads only the detail dialog's columns when a span detail opens", () => {
     const detailQuery = getSpanDetailQuery("trace-123", "span-456");
-    // A point lookup over the FINAL-backed spans view must never SELECT *.
     expect(detailQuery.query).not.toContain("*");
     expect(detailQuery.query).toContain(`SELECT ${SPAN_DETAIL_COLUMNS.join(", ")}`);
     expect(detailQuery.query).toContain("trace_id = {traceId:String}");
@@ -267,15 +254,12 @@ describe("analytics trace row parsing", () => {
     expect(detailQuery.query).toContain("LIMIT 1");
     expect(detailQuery.params).toEqual({ traceId: "trace-123", spanId: "span-456" });
 
-    // Everything parseSpanRow consumes must stay in the column list.
     for (const column of ["trace_id", "span_id", "span_type", "started_at", "ended_at", "parent_span_id", "status_code", "data", "resource_attributes"]) {
       expect(SPAN_DETAIL_COLUMNS).toContain(column);
     }
-    // Scoping/internal columns stay out of the detail dialog.
     expect(SPAN_DETAIL_COLUMNS).not.toContain("project_id");
     expect(SPAN_DETAIL_COLUMNS).not.toContain("branch_id");
     expect(SPAN_DETAIL_COLUMNS).not.toContain("version");
-    // Cut telemetry-protocol columns must never resurface in the dialog.
     for (const column of ["trace_state", "trace_flags", "resource_schema_url", "scope_attributes", "scope_schema_url", "dropped_resource_attributes", "dropped_scope_attributes", "dropped_attributes", "dropped_events", "dropped_links"]) {
       expect(SPAN_DETAIL_COLUMNS).not.toContain(column);
     }
@@ -312,9 +296,6 @@ describe("analytics trace row parsing", () => {
   });
 
   it("collapses raw identifiers behind the technical-details disclosure", () => {
-    // Every technical column that the detail query selects must actually be
-    // selected (otherwise the disclosure section can never show it), and no
-    // native product field may be hidden away as technical.
     const queriedTechnicalColumns = SPAN_TECHNICAL_DETAIL_COLUMNS.filter((column) => SPAN_DETAIL_COLUMNS.includes(column));
     expect(queriedTechnicalColumns).toEqual([
       "trace_id",
@@ -351,7 +332,6 @@ describe("analytics trace row parsing", () => {
       eventWindowStartMs: 1_720_000_000_000,
       eventWindowEndMs: 1_720_000_100_000,
     });
-    // The event bound derives from the trace's interval, never the inbox hours.
     expect(events.query).not.toContain("INTERVAL");
   });
 

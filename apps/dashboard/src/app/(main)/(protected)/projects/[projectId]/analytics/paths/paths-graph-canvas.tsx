@@ -121,7 +121,6 @@ export function PathsGraphCanvas({
         set.add(`${e.from}\0${e.to}`);
       }
     }
-    // Also include contextual edges connected to the focused node.
     for (const e of weakEdges) {
       if (e.from === focusedNode || e.to === focusedNode) {
         set.add(`${e.from}\0${e.to}`);
@@ -130,7 +129,6 @@ export function PathsGraphCanvas({
     return set;
   }, [focusedNode, edges, weakEdges]);
 
-  // Contextual edges stay hidden until hover or persistent selection.
   const visibleWeakEdges = useMemo(() => {
     if (focusedNode == null) return [];
     return weakEdges.filter((e) => e.from === focusedNode || e.to === focusedNode);

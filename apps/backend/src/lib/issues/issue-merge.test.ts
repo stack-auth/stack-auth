@@ -16,9 +16,6 @@ import {
   validateUnmergeSubset,
 } from "./issue-merge";
 
-// ── Pure parts ───────────────────────────────────────────────────────────────
-// These need no database and encode the parts of the contract that are pure
-// decisions rather than storage behaviour.
 
 describe("orderIssuesForMerge", () => {
   const issue = (id: string, firstSeenAt: string, timesSeen: bigint) => ({
@@ -43,8 +40,6 @@ describe("orderIssuesForMerge", () => {
   });
 
   it("compares timesSeen as BigInt, so the busiest issues still order deterministically", () => {
-    // Both of these are Number.MAX_SAFE_INTEGER + something; subtracting them as
-    // Numbers collapses to 0 and the ordering silently becomes id-only.
     const big = 9007199254740993n;
     const bigger = 9007199254740995n;
     const ordered = orderIssuesForMerge([
@@ -96,10 +91,6 @@ describe("validateUnmergeSubset", () => {
   });
 });
 
-// ── Integration ──────────────────────────────────────────────────────────────
-// Against the real development database (and ClickHouse for the one place
-// unmerge legitimately reads it). Everything is namespaced by a per-run prefix
-// and torn down afterwards, because these run against a shared dev database.
 
 const RUN_PREFIX = `test-issue-merge-${randomUUID()}`;
 let hashCounter = 0;
@@ -123,11 +114,6 @@ type SeedOptions = {
   tenancy?: Tenancy,
 };
 
-/**
- * Creates an issue the same way ingest does — through the `IssueCounter`
- * allocator — so short ids in these tests come from the same sequence the
- * production path uses and the unique index is exercised for real.
- */
 async function seedIssue(options: SeedOptions = {}): Promise<{ id: string, shortId: bigint, hashes: string[] }> {
   const target = options.tenancy ?? tenancy;
   const prisma = await getPrismaClientForTenancy(target);
@@ -142,7 +128,6 @@ async function seedIssue(options: SeedOptions = {}): Promise<{ id: string, short
     RETURNING "nextShortId" - 1 AS "shortId"
   `;
 
-  // `Issue.id` has a Prisma-level default only, so raw inserts supply it.
   const issueId = randomUUID();
   const [{ id }] = await prisma.$queryRaw<{ id: string }[]>`
     INSERT INTO "Issue" (
@@ -287,8 +272,6 @@ afterAll(async () => {
     `;
   }
   if (createdIssueIds.length === 0) return;
-  // Redirects have no FK (their `fromIssueId` names an already-deleted issue by
-  // design), so they need deleting explicitly. `IssueHash` cascades.
   await globalPrismaClient.issueRedirect.deleteMany({
     where: { OR: [{ fromIssueId: { in: createdIssueIds } }, { toIssueId: { in: createdIssueIds } }] },
   });
@@ -323,9 +306,6 @@ describe("mergeIssues (real DB)", () => {
     await mergeIssues({ tenancy, issueIds: [older.id, newer.id] });
 
     const primary = await readIssue(older.id);
-    // The rollup only retains 90 days, so a ClickHouse-derived number could not
-    // possibly reproduce these all-time values — which is the whole reason the
-    // fold is arithmetic on Postgres rows.
     expect(primary?.timesSeen).toBe(15n);
     expect(primary?.firstSeenAt.toISOString()).toBe("2026-01-01T00:00:00.000Z");
     expect(primary?.lastSeenAt.toISOString()).toBe("2026-04-01T00:00:00.000Z");
@@ -366,14 +346,10 @@ describe("mergeIssues (real DB)", () => {
     const b = await seedIssue({ firstSeenAt: new Date("2026-02-01T00:00:00Z") });
     const c = await seedIssue({ firstSeenAt: new Date("2026-01-01T00:00:00Z") });
 
-    // First merge: B is older than A, so A redirects to B.
     const first = await mergeIssues({ tenancy, issueIds: [a.id, b.id] });
     expect(first.primaryIssueId).toBe(b.id);
     expect(await readRedirectTarget(a.id)).toBe(b.id);
 
-    // Second merge: C is older still, so B loses and A's redirect must be
-    // REWRITTEN to C. If it were chained (A -> B -> C), resolving A would need
-    // two hops and would break the moment an intermediate id was reused.
     const second = await mergeIssues({ tenancy, issueIds: [b.id, c.id] });
     expect(second.primaryIssueId).toBe(c.id);
     expect(await readRedirectTarget(b.id)).toBe(c.id);
@@ -385,7 +361,7 @@ describe("mergeIssues (real DB)", () => {
     const b = await seedIssue({ firstSeenAt: new Date("2026-01-01T00:00:00Z") });
     const c = await seedIssue({ firstSeenAt: new Date("2026-03-01T00:00:00Z") });
 
-    await mergeIssues({ tenancy, issueIds: [a.id, b.id] }); // primary b, a -> b
+    await mergeIssues({ tenancy, issueIds: [a.id, b.id] });
 
     const second = await mergeIssues({ tenancy, issueIds: [a.id, c.id] });
     expect(second.primaryIssueId).toBe(b.id);
@@ -430,8 +406,6 @@ describe("mergeIssues (real DB)", () => {
 
     await expect(mergeIssues({ tenancy, issueIds: [a.id, b.id] })).rejects.toMatchObject({ statusCode: 409 });
 
-    // Nothing partially applied, and the hash we DID manage to lock was handed
-    // back so the in-flight operation is not blocked by our leftovers.
     expect((await readIssue(a.id))?.timesSeen).toBe(3n);
     expect(await readIssue(b.id)).not.toBeNull();
     expect((await readHashState(a.hashes[0]!))?.state).toBeNull();
@@ -455,7 +429,6 @@ describe("mergeIssues (real DB)", () => {
     await expect(mergeIssues({ tenancy, issueIds: [mine.id, theirs.id] }))
       .rejects.toMatchObject({ statusCode: 404 });
 
-    // And the other tenancy's issue is untouched.
     expect(await readIssue(theirs.id, otherTenancy)).not.toBeNull();
   });
 });
@@ -471,9 +444,6 @@ describe("unmergeIssue (real DB)", () => {
     expect(result.sourceIssueId).toBe(source.id);
     expect(await readOwnedHashes(result.newIssueId)).toEqual([hashes[0]]);
     expect(await readOwnedHashes(source.id)).toEqual([hashes[1], hashes[2]]);
-    // Every occurrence carries its owning hash, so the ones owned by the moved
-    // hash now resolve to the new issue with no ClickHouse write at all. That
-    // retroactivity is exactly what the single-owner invariant buys.
   });
 
   it("sets countersTruncatedAt to the start of the retained window, and does not touch the source's counters", async () => {
@@ -490,16 +460,11 @@ describe("unmergeIssue (real DB)", () => {
 
     const created = await readIssue(result.newIssueId);
     expect(created?.countersTruncatedAt).not.toBeNull();
-    // Deliberately NOT decremented: subtracting a windowed number from a
-    // lifetime one produces a value that is neither, and can go negative.
     expect((await readIssue(source.id))?.timesSeen).toBe(42n);
   });
 
   it("inherits the source's display identity and mechanism facts", async () => {
     const hashes = [freshHash(), freshHash()].sort();
-    // `handled`/`synthetic` are properties of the ERROR, not of a time window, so
-    // a split-out issue must carry the source's rather than fall back to the
-    // column defaults (which would silently relabel an unhandled crash as handled).
     const source = await seedIssue({ hashes, handled: false, synthetic: true });
 
     const result = await unmergeIssue({ tenancy, issueId: source.id, hashes: [hashes[0]!] });
@@ -606,8 +571,6 @@ describe("unmerge counter seeding (real ClickHouse)", () => {
   const keptHash = `${RUN_PREFIX}-ch-kept`;
 
   afterAll(async () => {
-    // Lightweight mutations; they are asynchronous server-side but keep the
-    // shared development instance from accumulating fixture occurrences.
     const client = getSharedClickhouseAdminClient();
     await client.command({
       query: `ALTER TABLE analytics_internal.events DELETE WHERE issue_hash IN ({moved:String}, {kept:String})`,
@@ -651,13 +614,9 @@ describe("unmerge counter seeding (real ClickHouse)", () => {
     createdIssueIds.push(result.newIssueId);
 
     const created = await readIssue(result.newIssueId);
-    // Two occurrences of the moved hash, none of the kept one: the seed is
-    // scoped to the hashes that actually moved.
     expect(created?.timesSeen).toBe(2n);
     expect(created?.countersTruncatedAt).not.toBeNull();
 
-    // Retroactivity, asserted the way a read actually does it: expand the new
-    // issue to its owned hashes and filter occurrences on the SCALAR issue_hash.
     const newHashes = await readOwnedHashes(result.newIssueId);
     const occurrences = await client.query({
       query: `

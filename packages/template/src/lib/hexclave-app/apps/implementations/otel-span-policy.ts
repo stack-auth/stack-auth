@@ -54,9 +54,6 @@ function pathWithoutQuery(value: string): string {
 }
 
 function isNextStaticAsset(value: string): boolean {
-  // Sentry's Next integration matches the span description. OTel Next spans
-  // in this SDK often keep the path in http.target/url.path instead, so use
-  // the same path rule across both representations.
   return /^GET (\/.*)?\/_next\/static\//.test(value)
     || value.includes("/_next/static/");
 }
@@ -128,8 +125,6 @@ export function shouldIgnoreNextFrameworkSpan(span: HexclaveManagedSpan): boolea
     isNextStaticAsset(candidate)
     || isNextSourceMapFetch(candidate)
     || isNextNotFoundRequest(candidate)
-    // The SDK's own OTLP/event/replay uploads must not become application
-    // traces. Sentry marks equivalent tunnel/ingest spans for transaction drop.
     || isTelemetryIngestionPath(candidate));
 }
 
@@ -155,9 +150,6 @@ export class HexclaveSpanPolicySampler implements Sampler {
     const span = { name: spanName, kind: spanKind, attributes };
     if (
       this.shouldIgnore(span)
-      // Next can emit `NextNodeServer.startResponse` after its request context
-      // has ended. Keep the useful child spans, but do not persist a lifecycle
-      // span that has become an otherwise meaningless sampled root.
       || (isNextStartResponseSpan(span) && !hasValidParent(context))
     ) {
       return { decision: SamplingDecision.NOT_RECORD };

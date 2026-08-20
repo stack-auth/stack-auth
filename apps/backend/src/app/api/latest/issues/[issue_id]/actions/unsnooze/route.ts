@@ -37,10 +37,6 @@ export const POST = createSmartRouteHandler({
         tenancy: auth.tenancy,
         issueId: resolved.issueId,
         mutation: { status: "unresolved" },
-        // Unsnooze means "wake an ignored issue", not "reopen whatever this
-        // is". Without the precondition, unsnoozing an issue that was resolved
-        // concurrently would silently un-resolve it. Checked inside the locked
-        // transaction; a resolved issue reports `changed: false` instead.
         onlyIfCurrentStatus: ["ignored", "unresolved"],
       }),
     });

@@ -21,11 +21,6 @@ let otherUserId: string;
 let ownerTeamId: string;
 
 beforeAll(async () => {
-  // Not findFirst: the first owner-team project the database happens to return
-  // can be one with no seeded end users at all (e.g. the development
-  // environment fixture project), and this suite's whole precondition is a
-  // branch with at least two users. Scan the candidates and take the first one
-  // that actually satisfies it.
   const projects = await globalPrismaClient.project.findMany({
     where: { ownerTeamId: { not: null }, id: { not: "internal" } },
     select: { id: true, ownerTeamId: true },

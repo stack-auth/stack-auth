@@ -45,26 +45,7 @@ class BrowserCorrelationSpanProcessor implements SpanProcessor {
   async forceFlush(): Promise<void> {}
 }
 
-/**
- * The context manager's base context is the session ambient context, not the
- * empty OTel root. The official fetch/XHR instrumentations parent their spans
- * from `context.active()`, and application-initiated requests run outside any
- * `context.with(...)` frame — with a plain StackContextManager they would see
- * ROOT_CONTEXT and every fetch would mint a fresh parentless single-span trace,
- * detaching the entire request + backend subtree from the refresh-token session
- * trace. Falling back to the current `$page-view` execution context (span +
- * correlation baggage) at the base of the stack is what makes those spans nest
- * under the page view, per the session-hierarchy trace model. An explicit
- * frame always wins, even a span-less one (e.g. suppressTracing), so the
- * fallback applies ONLY when the stack is at its untouched base.
- */
 class AmbientBaseStackContextManager extends StackContextManager {
-  // The manager's own untouched base context, captured at enable() time. This
-  // is deliberately NOT compared against our imported ROOT_CONTEXT: bundlers
-  // can load two copies of @opentelemetry/api, and StackContextManager resets
-  // to ITS copy's root instance (enable(), disable(), and with(null) all
-  // restore the same object), so reference identity only holds against the
-  // instance the manager itself hands out.
   private _baseContext: Context | null = null;
 
   constructor(private readonly _getAmbientContext: () => Context | null) {
@@ -84,19 +65,6 @@ class AmbientBaseStackContextManager extends StackContextManager {
   }
 }
 
-/**
- * Exports an OPEN snapshot (endTimeUnixNano 0) of client system spans the
- * moment they start. `$page-view` lives for the whole page; a standard OTel
- * pipeline only exports spans when they END, so until navigation every fetch,
- * backend subtree, and presence span parented under the current page view is
- * a parentless fragment in ClickHouse — the trace UI cannot attach them. The
- * backend treats endTimeUnixNano 0 as "still open" (ended_at NULL) and the
- * spans table versions rows by end time, so the eventual end-write replaces
- * the snapshot. Restores the pre-OTel SDK's open-row write behavior.
- *
- * System spans only: they are the hierarchy layer (and are never billable), so
- * this cannot double-meter and does not double every span export.
- */
 class OpenSystemSpanSnapshotProcessor implements SpanProcessor {
   constructor(private readonly _exporter: SpanExporter) {}
 
@@ -112,9 +80,6 @@ class OpenSystemSpanSnapshotProcessor implements SpanProcessor {
       endTime: [0, 0],
       status: span.status,
       attributes: { ...span.attributes },
-      // Events and links are deliberately snapshot as empty even if present at
-      // start: their table rows are not versioned by span end time, so writing
-      // them twice (snapshot + end) would duplicate rows.
       links: [],
       events: [],
       duration: [0, 0],
@@ -126,9 +91,6 @@ class OpenSystemSpanSnapshotProcessor implements SpanProcessor {
       droppedLinksCount: 0,
     };
     this._exporter.export([snapshot], () => {
-      // Best-effort: a failed snapshot only means the tree stays fragmented
-      // until the span's authoritative end-write; the batch pipeline already
-      // handles delivery failures of that one.
     });
   }
 
@@ -201,10 +163,6 @@ function networkIgnorePatterns(options: BrowserManagedOtelOptions): RegExp[] {
     const allowed = options.networkCapture.allowOrigins.map((origin) => escapeRegex(origin)).join("|");
     patterns.push(new RegExp(`^(?!(?:${allowed})(?:/|$)).*$`));
   }
-  // Every SDK-owned delivery request must stay outside network capture. It is
-  // not enough to suppress OTLP exports: client reports and attachment uploads
-  // are also made with fetch, and instrumenting either one can create another
-  // telemetry item while the original delivery is still being flushed.
   for (const path of [
     "/api/v1/analytics/events/batch",
     "/api/v1/analytics/otlp/v1/traces",
@@ -278,9 +236,6 @@ export { createHexclaveHttpMetricSpanProcessor };
 const OTLP_EXPORT_MAX_ATTEMPTS = 3;
 const OTLP_EXPORT_RETRY_BASE_DELAY_MS = 1_000;
 const OTLP_EXPORT_RETRY_MAX_DELAY_MS = 30_000;
-// Keep browser batches bounded before a proxy or backend returns an opaque
-// payload-too-large response. The server still validates record counts and
-// fields independently; this is only the client transport budget.
 const OTLP_EXPORT_MAX_BODY_BYTES = 1 * 1024 * 1024;
 const OTLP_EXPORT_RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 const OTLP_OFFLINE_QUEUE_MAX_SIZE = 30;
@@ -289,9 +244,6 @@ const OTLP_FLUSH_DEADLINE_MS = 5_000;
 const OTLP_SHUTDOWN_DEADLINE_MS = 2_000;
 const OTLP_METRIC_EXPORT_INTERVAL_MS = 5_000;
 const OTLP_UNLOAD_DEADLINE_MS = 250;
-// Keep the unload-flush request comfortably inside the shared keepalive budget
-// (see the transport comment) so it isn't rejected at the one moment keepalive
-// is actually needed.
 const OTLP_UNLOAD_KEEPALIVE_MAX_BODY_BYTES = 30_000;
 const OTLP_UNLOAD_KEEPALIVE_PAGE_BUDGET_BYTES = 64 * 1024;
 
@@ -382,8 +334,6 @@ function queueOptionsForExporter(options: HexclaveBrowserOtelExporterOptions, si
 } {
   const projectKey = encodeURIComponent(options.projectId);
   return {
-    // Keep custom names as a prefix so upgrades continue reading the existing
-    // per-signal databases instead of silently starting a fresh queue.
     dbName: `${options.offlineQueue?.dbName ?? `hexclave-otlp-offline-${projectKey}`}-${signal}`,
     storeName: `batches-${signal}`,
     maxQueueSize: normalizedPositiveInteger(options.offlineQueue?.maxQueueSize, OTLP_OFFLINE_QUEUE_MAX_SIZE, "offlineQueue.maxQueueSize"),
@@ -467,8 +417,6 @@ function parseRetryAfterDelay(header: string | null): number | null {
     return Math.min(seconds * 1_000, OTLP_EXPORT_RETRY_MAX_DELAY_MS);
   }
 
-  // Retry-After also permits an HTTP date. Date.now() is intentional here:
-  // this is a wall-clock protocol value, not elapsed-time measurement.
   const targetTime = Date.parse(header);
   if (Number.isNaN(targetTime)) return null;
   return Math.min(Math.max(targetTime - Date.now(), 0), OTLP_EXPORT_RETRY_MAX_DELAY_MS);
@@ -489,20 +437,6 @@ function permanentResponseReason(statusCode: number): "rejected" | "oversized" |
   return "permanent_failure";
 }
 
-/**
- * OTLP/HTTP JSON exporter on a plain-fetch transport. The official browser
- * exporters' fetch transport turns `keepalive: true` on for every export under
- * 60KB, but browsers cap CUMULATIVE in-flight keepalive bodies at 64KiB PER
- * PAGE, shared with session-replay batches, other analytics vendors, and every
- * other exporter — none of which the transport's own accounting can see. On a
- * busy page its requests are then rejected by the browser with an opaque
- * network error before they ever leave (observed: ~5KB log batches failing
- * near-100% while >60KB trace batches, whose size disabled keepalive, sailed
- * through — which is why spans arrived and $click events silently vanished).
- * Plain fetch has no such budget, so ordinary exports never use keepalive;
- * only the final flush of an unloading page does, where a normal request
- * would otherwise be cancelled outright.
- */
 class HexclaveBrowserOtlpJsonExporter<Payload> implements BrowserOtlpExporterControls {
   private _inFlight = 0;
   private readonly _idleWaiters: Array<() => void> = [];
@@ -565,9 +499,6 @@ class HexclaveBrowserOtlpJsonExporter<Payload> implements BrowserOtlpExporterCon
       window.addEventListener("pagehide", this._pageHideHandler);
       window.addEventListener("pageshow", this._pageShowHandler);
     }
-    // Some SSR/test runtimes expose a document-shaped value without DOM event
-    // methods. Lifecycle delivery is optional there; an attempted listener
-    // call must not prevent the client from constructing its auth surface.
     if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
       document.addEventListener("visibilitychange", this._visibilityChangeHandler);
     }
@@ -649,8 +580,6 @@ class HexclaveBrowserOtlpJsonExporter<Payload> implements BrowserOtlpExporterCon
         },
       };
     }
-    // Copied into a fresh ArrayBuffer-backed view: the serializer's is typed
-    // over ArrayBufferLike, which the DOM lib's BodyInit rejects.
     const body = new Uint8Array(new ArrayBuffer(serialized.byteLength));
     body.set(serialized);
     if (body.byteLength > OTLP_EXPORT_MAX_BODY_BYTES) {
@@ -1056,10 +985,6 @@ class HexclaveBrowserOtlpJsonExporter<Payload> implements BrowserOtlpExporterCon
       const currentGeneration = await this._queue.currentAuthGeneration();
       if (entry.authGeneration !== currentGeneration) {
         await this._queue.remove(entry.id);
-        // Client reports are feedback about an earlier telemetry drop. They
-        // are deliberately invisible to outcome accounting, including when
-        // auth rotation removes their queued bytes; otherwise report loss
-        // would create another report and form a feedback loop.
         if (entry.kind === "otlp") {
           this._recordOutcome({
             outcome: "dropped",
@@ -1083,9 +1008,6 @@ class HexclaveBrowserOtlpJsonExporter<Payload> implements BrowserOtlpExporterCon
         }
         return;
       }
-      // Retry-After is a wall-clock retry schedule. A flush/reconnect should
-      // make a due entry drain, but must not turn a server backoff into a hot
-      // loop while the page remains online.
       if (entry.nextAttemptAt > Date.now()) return;
       const batch: PreparedOtlpBatch = {
         body: (() => {
@@ -1253,9 +1175,6 @@ class HexclaveBrowserOtlpJsonExporter<Payload> implements BrowserOtlpExporterCon
   }
 
   async advanceAuthGeneration(): Promise<void> {
-    // Invalidate batches synchronously before waiting on IndexedDB. An export
-    // that finishes during the transition can therefore only report a drop;
-    // it cannot enqueue old-user bytes under the next generation.
     this._authGenerationToken += 1;
     const dropped = await this._withQueueMutation(async () => await this._queue.advanceAuthGeneration());
     if (dropped.queueEntryCount === 0) return;
@@ -1357,9 +1276,6 @@ class HexclaveBrowserOtlpJsonExporter<Payload> implements BrowserOtlpExporterCon
         ? parsed.partial_success
         : undefined;
     if (partialSuccessValue === null || typeof partialSuccessValue !== "object") return null;
-    // One field per signal: logs, traces, and metrics (the backend emits
-    // `rejectedDataPoints` for metric partial successes — see the OTLP
-    // ExportMetricsPartialSuccess message).
     const rejectedItemValue = "rejectedLogRecords" in partialSuccessValue
       ? partialSuccessValue.rejectedLogRecords
       : "rejectedSpans" in partialSuccessValue
@@ -1523,10 +1439,6 @@ type ManagedBrowserOtelRegistration = BrowserManagedOtelRegistration & {
   enableHttpInstrumentationForOwner: (ownerId: number) => boolean,
 };
 
-// OTel providers are global within a browser page, but ClientAnalytics is an
-// app-instance object. Keep one provider while handing each caller an owner
-// view; otherwise a second same-project app instance silently reuses the first
-// instance's ambient-context closure and bootstrap gate.
 let browserRegistration: { signature: string, value: ManagedBrowserOtelRegistration } | null = null;
 
 function registrationView(value: ManagedBrowserOtelRegistration, ownerId: number): BrowserManagedOtelRegistration {
@@ -1537,10 +1449,6 @@ function registrationView(value: ManagedBrowserOtelRegistration, ownerId: number
     forceFlush: value.forceFlush,
     flushBeforeAuthenticationChange: async () => {
       const nextRegistration = await value.flushBeforeAuthenticationChange();
-      // A successful auth rotation keeps the same provider. Preserve the
-      // owner guard when handing it back; returning the internal registration
-      // would let an older ClientAnalytics instance enable the active owner's
-      // HTTP instrumentation after a later app instance claimed the provider.
       return nextRegistration === value ? registrationView(value, ownerId) : nextRegistration;
     },
     getOutcomeCounts: value.getOutcomeCounts,
@@ -1556,9 +1464,6 @@ function registrationSignature(options: BrowserManagedOtelOptions): string {
     projectId: options.projectId,
     resource: options.resource,
     traceSampleRate: options.traceSampleRate,
-    // This policy is installed into the page-global propagator. Treat it as
-    // part of provider ownership so a second same-project app cannot silently
-    // inherit the first owner's baggage behavior.
     correlationBaggage: options.getPropagationPolicy().correlationBaggage,
   });
 }
@@ -1594,9 +1499,6 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
     sendClientReports: true,
   };
 
-  // Access tokens rotate. The exporter resolves the header factory for each
-  // HTTP export, so a long-lived page never freezes construction-time
-  // credentials into its telemetry transport.
   const exporter = createHexclaveBrowserOtlpTraceExporter(exporterOptions);
   const logExporter = createHexclaveBrowserOtlpLogExporter(exporterOptions);
   const metricExporter = createHexclaveBrowserOtlpMetricExporter(exporterOptions);
@@ -1629,12 +1531,6 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
     contextManager.disable();
     throw new Error("Hexclave installed its browser tracer provider but could not install its OTel context manager");
   }
-  // The baggage half is `spanPropagation.enabled` (static config, so reading
-  // the policy once at registration is sound — only the ORIGIN half of the
-  // policy is late-bound). In the managed browser every baggage entry is
-  // Hexclave-minted correlation (ambient session anchor + span facades), so
-  // disabling correlation baggage means the whole W3CBaggagePropagator has
-  // nothing legitimate left to inject. Trace context always stays installed.
   const propagator = new CompositePropagator({
     propagators: [
       new W3CTraceContextPropagator(),
@@ -1676,12 +1572,6 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
     throw new Error("Hexclave installed its browser tracer provider but could not install its managed OpenTelemetry LoggerProvider");
   }
 
-  // One factory for construction AND setConfig (which replaces the whole
-  // config, so every field must be repeated there). Resource-timing span
-  // events (fetchStart, domainLookupStart, …, responseEnd) are suppressed:
-  // the product UI never surfaces them, the request span's own interval
-  // already carries the duration, and at up to nine rows per request they
-  // would be the bulk of span_events volume.
   const httpInstrumentationConfig = () => ({
     ignoreUrls: networkIgnorePatterns(activeOptions),
     propagateTraceHeaderCorsUrls: propagationPatterns(activeOptions),
@@ -1708,11 +1598,6 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
       instrumentations,
       tracerProvider: provider,
     });
-    // registerInstrumentations intentionally skips enable() when an
-    // instrumentation's config is already enabled. That is normally correct
-    // for one-shot setup, but this provider can be gated and later rebound;
-    // explicitly enabling makes the false -> true transition reliable after
-    // a prior owner disabled the hooks.
     for (const instrumentation of instrumentations) instrumentation.enable();
     httpInstrumentationEnabled = true;
     return true;
@@ -1775,10 +1660,6 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
         });
       }
 
-      // A failed flush may leave BatchSpanProcessor entries queued. Reusing
-      // that processor after credentials rotate could authenticate old-user
-      // spans as the next user, so retire the entire provider before allowing
-      // the auth transition to continue.
       const shutdownTimeout = normalizedPositiveInteger(options.shutdownDeadlineMs, OTLP_SHUTDOWN_DEADLINE_MS, "shutdownDeadlineMs");
       removeLifecycleListeners();
       const shutdownResult = await Result.fromPromise(withDeadline(
@@ -1819,10 +1700,6 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
     },
   };
 
-  // The exporter-level lifecycle hook can only drain batches that have already
-  // left the OTel processors. Flush the managed providers as well so a hidden
-  // or bfcache-bound page does not suspend with records still buffered in the
-  // BatchLogRecordProcessor/BatchSpanProcessor.
   const lifecycleFlush = (): void => {
     queueMicrotask(() => ignoreUnhandledRejection(value.forceFlush(OTLP_UNLOAD_DEADLINE_MS)));
   };

@@ -34,10 +34,6 @@ export const ISSUE_ALERT_WORKFLOW_MAX_RECIPIENTS = 64;
 export type IssueAlertWorkflowEmailAction = {
   type: "email",
   user_ids?: readonly string[],
-  /**
-   * Owner-team member primary emails. Present when explicit recipients are
-   * dashboard collaborators rather than users of the customer project.
-   */
   emails?: readonly string[],
   routing_resolution?: OwnershipRoutingMetadata,
   subject: string,
@@ -52,11 +48,6 @@ export type IssueAlertWorkflowWebhookAction = {
 
 export type IssueAlertWorkflowAction = IssueAlertWorkflowEmailAction | IssueAlertWorkflowWebhookAction;
 
-/**
- * This is the only payload that crosses the durable workflow-event boundary.
- * Arbitrary tags and attributes are intentionally absent: they may be used by
- * the evaluator but are never copied into an outbox row or workflow run.
- */
 export type IssueAlertWorkflowEventPayload = {
   schema_version: typeof ISSUE_ALERT_WORKFLOW_PAYLOAD_VERSION,
   kind: "issue_alert",
@@ -251,14 +242,6 @@ function renderIssueAlertEmailAction(match: IssueAlertMatch): { subject: string,
     throw new Error("Issue alert email rendering requires an email action");
   }
   const values = issueAlertEmailValues(match);
-  // The subject becomes a single mail header line downstream, so it must never
-  // contain CR/LF. That invariant already holds by construction: an
-  // IssueAlertMatch can only be produced by evaluateIssueAlertRule, whose
-  // validateSignal/parseIssueAlertAction reject control characters in every
-  // interpolated issue field AND in the subject template itself (isBoundedText
-  // tests SAFE_TEXT_PATTERN), and the derived values (kind label, timestamp,
-  // dashboard URL) are control-character-free formats. See the contract test
-  // "drops signals with control characters" for the enforced boundary.
   return {
     subject: interpolateIssueAlertEmailTemplate(match.action.subject, values, { escapeHtml: false }),
     html: interpolateIssueAlertEmailTemplate(match.action.html, values, { escapeHtml: true }),
@@ -315,11 +298,6 @@ function buildRawPayload(
   };
 }
 
-/**
- * Scrubs and re-validates the small projection sent to Workflows. This is a
- * second boundary after issue predicate evaluation: attributes/tags are useful
- * for matching but must not be copied into durable workflow or email state.
- */
 export function buildIssueAlertWorkflowPayload(
   match: IssueAlertMatch,
   ownershipResolution?: OwnershipRoutingResolution,
@@ -537,12 +515,6 @@ export async function enqueueIssueAlertWorkflowEventWithWriter(
   };
 }
 
-/**
- * Main-agent integration hook: call this with the same transaction used to
- * materialize an issue. The existing enqueueWorkflowEvent implementation then
- * gives the alert event the same durable outbox/transaction semantics as other
- * Workflows events.
- */
 export async function enqueueIssueAlertWorkflowEvent(
   client: PrismaClientTransaction,
   tenancy: Pick<Tenancy, "id">,

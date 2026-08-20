@@ -85,8 +85,6 @@ function createCrossDomainAuthRedirectUrl(app: StackClientApp<true>, redirectUri
 
 describe("cross-domain handoff rejected by the server", () => {
   afterEach(async () => {
-    // The app constructs managed browser OTel eagerly. Its page-wide ownership is correct in
-    // production, but test cases use different projects and must release that global between cases.
     await resetManagedBrowserOtelForTesting();
     // The card's own cleanup, so that the focus trap it installed is released too and does not follow the next test.
     getGlobalUiInstance(SETUP_ERROR_OVERLAY_GLOBAL_INSTANCE_KEY)?.cleanup();

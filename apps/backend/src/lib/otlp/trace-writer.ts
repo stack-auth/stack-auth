@@ -17,9 +17,7 @@ export type OtlpTenantContext = {
   branchId: string,
   userId: string | null,
   refreshTokenId: string | null,
-  /** Server-resolved rolling replay; authenticated context wins over OTLP attributes. */
   sessionReplayId?: string | null,
-  /** Server-owned rollout setting; never trust a client-provided grouping id. */
   groupingConfig?: GroupingRuntimeConfig,
 };
 
@@ -173,9 +171,6 @@ export function buildOtlpTraceRows(spans: CanonicalOtlpSpan[], tenant: OtlpTenan
         ? "analytics_spans"
         : null,
       started_at: dateFromUnixNano(span.startTimeUnixNano, "startTimeUnixNano"),
-      // 0 = the open-span marker (see the normalizer): the span has not ended
-      // yet, so ended_at stays NULL and version 0 lets the end-write replace
-      // this row.
       ended_at: span.endTimeUnixNano === "0" ? null : dateFromUnixNano(span.endTimeUnixNano, "endTimeUnixNano"),
       parent_span_id: span.parentSpanId,
       trace_state: span.traceState,

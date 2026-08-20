@@ -1,8 +1,3 @@
-/**
- * Itemized outcomes for the error-ingest boundary. These are intentionally
- * transport-neutral: routes and queues can later attach them to their own
- * response or client-report format without losing per-item meaning.
- */
 
 export type ErrorIngestItemType = "event" | "log" | "span" | "transaction" | "attachment" | "client_report" | "unknown";
 
@@ -58,7 +53,6 @@ export const ERROR_INGEST_OUTCOME_STATUSES: readonly ErrorIngestOutcomeStatus[] 
   "queued",
 ];
 
-/** Combines an item descriptor with one typed outcome branch. */
 export function createErrorIngestItemOutcome(
   item: ErrorIngestItemDescriptor,
   details: ErrorIngestItemOutcomeDetails,
@@ -86,13 +80,6 @@ export function countErrorIngestOutcomes(
   return counts;
 }
 
-/**
- * The one canonical aggregation from item outcomes to a batch-level summary,
- * shared by every projection so status/count semantics cannot drift between
- * protocols. Mixed outcomes are represented as `partial`; homogeneous
- * filtered/rate-limited/deduplicated batches retain their precise status, and
- * an empty batch is a rejection with the `empty_batch` reason.
- */
 export function summarizeErrorIngestOutcomes(
   outcomes: readonly { status: ErrorIngestOutcomeStatus }[],
 ): ErrorIngestOutcomeSummary {

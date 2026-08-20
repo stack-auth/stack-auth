@@ -77,14 +77,6 @@ function stableJson(value: unknown): string {
   return JSON.stringify(stripLoneSurrogates(stableValue(value)));
 }
 
-/**
- * The durable raw-point JSON must not become a scrubber bypass: the sibling
- * `attributes` column runs the error-ingest scrubber, and the same
- * caller-supplied maps are embedded in the point itself (`attributes` plus
- * every exemplar's `filteredAttributes`). Scrub exactly those maps and keep
- * the numeric structure verbatim — the scrubber's collection caps must never
- * truncate legitimate histogram buckets, which carry no free-form strings.
- */
 function scrubbedStablePoint(point: MetricPoint): unknown {
   return stableValue({
     ...point,

@@ -84,9 +84,6 @@ export const POST = createSmartRouteHandler({
       refreshTokenId: adaptSchema
     }).defined(),
     body: yupObject({
-      // The released replay body predates the resource envelope and omitted
-      // both version and resource. Keep that shape explicit instead of having
-      // callers or tests silently fill the new fields.
       schema_version: yupNumber().optional().integer().oneOf([2]),
       resource: yupMixed().optional().test(
         "telemetry-resource",
@@ -186,9 +183,6 @@ export const POST = createSmartRouteHandler({
     const replayId = recentSession?.id ?? randomUUID();
     const s3Key = `session-replays/${projectId}/${branchId}/${replayId}/${batchId}.json.gz`;
 
-    // A retry's body is not authoritative: callers may resend the same batch ID
-    // with different events. Read the durable chunk before updating projections
-    // so an idempotent retry cannot permanently expand the replay's bounds.
     let chunk: {
       s3Key: string,
       sessionReplaySegmentId: string,
@@ -196,10 +190,6 @@ export const POST = createSmartRouteHandler({
       lastEventAt: Date,
     } | null;
     if (recentSession == null) {
-      // The replay row must exist before its first chunk because of the foreign
-      // key. Persist it immediately after the debit: once this row exists, a
-      // retry finds the same session and cannot debit again even if S3 or a
-      // later projection fails. Only a failed creation needs compensation.
       try {
         await prisma.sessionReplay.create({
           data: {
@@ -236,10 +226,6 @@ export const POST = createSmartRouteHandler({
     }
     let deduped = chunk != null;
 
-    // A retry must still repair the idempotent replay/segment bounds. The chunk
-    // row is the durable source of truth for those projections; returning early
-    // here would strand them if the first request failed after creating the
-    // chunk.
     if (chunk == null) {
       const payload = resource === null
         ? {
@@ -264,9 +250,6 @@ export const POST = createSmartRouteHandler({
           events: body.events,
         };
       const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
-      // rrweb JSON is extremely repetitive. Best-speed gzip is ~4x cheaper
-      // than the default level for representative replay batches while the
-      // resulting object remains only a few percent of its raw size.
       const gzipped = new Uint8Array(await gzip(payloadBytes, { level: zlibConstants.Z_BEST_SPEED }));
 
       await uploadBytes({
@@ -277,9 +260,6 @@ export const POST = createSmartRouteHandler({
         private: true,
       });
 
-      // A single statement both wins the unique-key race or returns the winner.
-      // A catch-then-read sequence can briefly miss the concurrent committed row
-      // on databases with read routing, turning a harmless duplicate into a 500.
       const chunkRows = await prisma.$queryRaw<Array<{
         s3Key: string,
         sessionReplaySegmentId: string,
@@ -308,9 +288,6 @@ export const POST = createSmartRouteHandler({
       deduped = !insertedChunk.inserted;
     }
 
-    // Only durable chunk metadata may advance replay bounds. The atomic update
-    // makes concurrent first-seen copies idempotent after their unique-key race
-    // and prevents distinct concurrent batches from losing each other's bounds.
     const [replayRows, segmentBounds] = await Promise.all([
       prisma.$queryRaw<{ startedAt: Date, lastEventAt: Date }[]>`
         UPDATE "SessionReplay"
@@ -322,8 +299,6 @@ export const POST = createSmartRouteHandler({
         WHERE "tenancyId" = ${tenancyId}::uuid AND "id" = ${replayId}::uuid
         RETURNING "startedAt", "lastEventAt"
       `,
-      // This projection touches a different row/table and derives solely from
-      // the already-durable chunk, so it can advance alongside replay bounds.
       upsertSessionReplaySegmentBounds(prisma, {
         tenancyId,
         sessionReplayId: replayId,
@@ -338,11 +313,6 @@ export const POST = createSmartRouteHandler({
     const replay = replayRows[0];
 
     if (resource !== null) {
-      // These are structural trace rows, not an optional projection. Wait for
-      // ClickHouse acceptance so a successful versioned replay response never
-      // leaves page spans permanently orphaned from their replay/session
-      // ancestors. Legacy replay uploads predate these lifecycle rows and keep
-      // their original storage semantics.
       await insertSessionReplaySpans(getSharedClickhouseAdminClient(), {
         projectId,
         branchId,

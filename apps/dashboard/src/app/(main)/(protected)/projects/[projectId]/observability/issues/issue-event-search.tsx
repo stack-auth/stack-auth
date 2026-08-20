@@ -30,8 +30,6 @@ export function IssueEventSearch({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // `cursor: null` starts a fresh search; a cursor appends the next page to
-  // the already-rendered results.
   const runSearch = async (cursor: string | null) => {
     setBusy(true);
     setError(null);
@@ -59,8 +57,6 @@ export function IssueEventSearch({
       setCursorFilters(result.nextCursor == null ? null : requestFilters);
     } catch (caught) {
       if (cursor == null) {
-        // Clear stale results only for a fresh search. A failed page request
-        // must leave the successful pages and cursor available for retry.
         setItems(null);
         setNextCursor(null);
         setCursorFilters(null);

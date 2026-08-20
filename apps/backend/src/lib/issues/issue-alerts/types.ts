@@ -1,20 +1,8 @@
-/**
- * Typed contracts for issue alerting.
- *
- * The evaluator deliberately keeps storage behind interfaces so ingestion can
- * use a repository adapter without making this contract depend on a particular
- * persistence representation or inventing a JSON storage format.
- */
 
 export const ISSUE_ALERT_RULE_SCHEMA_VERSION: 1 = 1;
 
 export type IssueAlertScalar = string | number | boolean | null;
 
-/**
- * The canonical severity vocabulary used by the telemetry pipeline. Sentry's
- * `warning` and `fatal` spellings are normalized at the alert-rule boundary to
- * `warn` and `error`, because ingest already makes that same normalization.
- */
 export type IssueAlertLevel = "trace" | "debug" | "info" | "warn" | "error";
 
 export type IssueAlertLevelOperator = "equals" | "gte" | "lte";
@@ -62,10 +50,6 @@ export type IssueAlertPredicate =
   | { type: "frequency", operator: IssueAlertFrequencyOperator, count: number, windowSeconds: number }
   | IssueAlertAttributePredicate;
 
-/**
- * `all` is conjunctive. When `any` is present, at least one member of `any`
- * must also match. Empty groups are allowed so filters can be used alone.
- */
 export type IssueAlertConditionGroup = {
   all?: readonly IssueAlertPredicate[],
   any?: readonly IssueAlertPredicate[],
@@ -102,10 +86,6 @@ export type IssueAlertRule = {
   action: IssueAlertAction,
 };
 
-/**
- * Ingestion supplies a snapshot. Maps keep the evaluator input unambiguous and
- * avoid making arbitrary attribute keys look like a durable schema.
- */
 export type IssueAlertSignal = {
   tenancyId: string,
   projectId: string,
@@ -124,31 +104,20 @@ export type IssueAlertSignal = {
     id: string,
     occurredAt: Date,
   },
-  /**
-   * Absent when the occurrence's level string (untrusted customer input) was
-   * not a recognized level; level predicates then simply cannot match.
-   */
   level?: IssueAlertLevel,
   environment: string | null,
   release: string | null,
   tags: ReadonlyMap<string, string>,
   attributes: ReadonlyMap<string, IssueAlertScalar>,
-  /** Exact count snapshots keyed by the rule predicate's window in seconds. */
   frequencyCounts: ReadonlyMap<number, number>,
 };
 
 export type IssueAlertRuleScope = Pick<IssueAlertSignal, "tenancyId" | "projectId" | "branchId">;
 
-/** Persistence stays behind this adapter seam. */
 export type IssueAlertRuleRepository = {
   listActiveRules(scope: IssueAlertRuleScope): Promise<readonly IssueAlertRule[]>;
 };
 
-/**
- * A durable cooldown adapter can implement this interface. The Workflows
- * source also enforces the active-run part of cooldown with `runKey` and a
- * durable sleep, so this store is not required by the event contract builder.
- */
 export type IssueAlertCooldownRepository = {
   claim(key: string, now: Date, durationSeconds: number): Promise<"claimed" | "cooldown_active">;
 };
@@ -185,7 +154,6 @@ export type IssueAlertMatch = {
   cooldown: IssueAlertCooldown,
   cooldownKey: string,
   deduplicationKey: string,
-  /** The workflow run key is the cooldown key, not the occurrence id. */
   runKey: string,
   signal: IssueAlertSignal,
 };

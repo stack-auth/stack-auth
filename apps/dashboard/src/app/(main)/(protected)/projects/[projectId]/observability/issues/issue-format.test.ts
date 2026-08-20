@@ -39,8 +39,6 @@ describe("issueTitle / issueSubtitle", () => {
   });
 
   it("titles a synthetic error on its MESSAGE, because its type is always \"Error\"", () => {
-    // normalizeCapturedError forces name = "Error" for every non-Error throw,
-    // so titling on the type renders all of these identically.
     const first = { type: "Error", value: "Non-Error thrown: \"nope\"", synthetic: true };
     const second = { type: "Error", value: "Non-Error thrown: {\"code\":42}", synthetic: true };
     expect(issueTitle(first)).toBe("Non-Error thrown: \"nope\"");
@@ -71,7 +69,6 @@ describe("issueCulprit", () => {
   });
 
   it("falls back to the top IN-APP frame, not merely the top frame", () => {
-    // Frames are stored oldest-first, so the innermost frame is last.
     const frames = [
       frame({ module: "app/page.tsx", function: "render", in_app: true }),
       frame({ filename: "react-dom.js", function: "commit", in_app: false }),
@@ -96,8 +93,6 @@ describe("issueCulprit", () => {
   });
 
   it("treats the backend's degraded-grouping sentinel as missing", () => {
-    // `degradedResult` in the backend's grouping stamps exactly "<unknown>";
-    // it must not shadow a real locator the occurrence still carries.
     expect(issueCulprit({ culprit: "<unknown>", data: { url: "https://app.test/checkout" } }))
       .toBe("https://app.test/checkout");
     expect(issueCulprit({ culprit: "<unknown>" })).toBe("unknown");
@@ -160,10 +155,7 @@ describe("parseIssueRouteId", () => {
   });
 
   it("rejects uuid-shaped-but-not-v4 ids, matching the backend's isUuid contract", () => {
-    // v1 version digit — the backend would 404 this anyway; catching it here
-    // gives the precise "not a valid issue reference" page instead.
     expect(parseIssueRouteId("3f2504e0-4f89-11d3-9a0c-0305e82c3301")).toBeNull();
-    // wrong variant digit
     expect(parseIssueRouteId("3f2504e0-4f89-41d3-7a0c-0305e82c3301")).toBeNull();
   });
 });

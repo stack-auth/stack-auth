@@ -15,14 +15,7 @@ import {
 } from "../symbolication";
 import { isRecord, scrubPublicText } from "./public-scrub";
 
-/**
- * Turns the frames stored on an error occurrence back into original source
- * locations via the artifact registry, and projects the outcome (including the
- * "why not" diagnostics) into the public symbolication shape. This is the only
- * module that talks to the symbolication service on behalf of the issues API.
- */
 
-/** A stack frame as persisted in the occurrence read model. */
 export type StoredIssueFrame = {
   filename: string | null,
   function: string | null,
@@ -118,9 +111,6 @@ function readSymbolicationMetadata(
     }
   }
 
-  // The artifact registry treats an omitted distribution as the explicit
-  // no-dist binding. This is a contract value, not a fallback derived from the
-  // issue aggregate; the aggregate's last-seen release is never used here.
   let dist: string | null = null;
   const distSource = metadataSource(data, envelope, "dist");
   if (distSource !== null) {

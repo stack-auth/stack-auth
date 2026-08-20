@@ -63,8 +63,6 @@ export function bulldozerCustomerPath(options: {
   suffixSegments: readonly [string, ...string[]],
 }): string {
   const customerPath = urlString`/v1/${options.tenancyId}/customers/${options.customerType}/${options.customerId}`;
-  // The suffix is structured as path segments so a nested route cannot be
-  // accidentally encoded as one literal segment ("a/b" -> "a%2Fb").
   return `${customerPath}/${options.suffixSegments.map(encodeURIComponent).join("/")}`;
 }
 

@@ -25,10 +25,6 @@ export const hexclaveClientApp = new StackClientApp({
   },
   analytics: {
     enabled: !isRemoteDevelopmentEnvironment,
-    // Dogfood the full autocapture surface on the internal dashboard so
-    // session-replay markers / analytics tables see $form-submit,
-    // $window-resize, and the integrity-signal events ($copy/$paste/…) —
-    // not just $click/$page-view. Off by default for customer apps.
     integritySignals: !isRemoteDevelopmentEnvironment,
     replays: {
       captureKeystrokes: !isPreview && !isRemoteDevelopmentEnvironment,
@@ -40,12 +36,6 @@ export const hexclaveClientApp = new StackClientApp({
   observability: {
     enabled: !isRemoteDevelopmentEnvironment,
     spanPropagation: {
-      // The API is cross-origin from the dashboard, so the SDK's same-origin
-      // default would never attach the span-context header (or traceparent) to
-      // API calls. Allowlisting the exact API origins is what makes the SDK —
-      // not Sentry — own dashboard→backend cross-tier tracing (the backend
-      // CORS-allows both headers). This is the dogfood reference for the
-      // customer-facing `observability.spanPropagation.allowedOrigins` option.
       allowedOrigins: getHexclaveApiOrigins([
         getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL"),
         getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL"),
@@ -62,10 +52,6 @@ export const hexclaveClientApp = new StackClientApp({
   },
 });
 
-/**
- * Exact origins (never substrings — `api.example.com.attacker.test` must not
- * match) of the Hexclave API endpoints the browser may talk to.
- */
 function getHexclaveApiOrigins(apiUrls: readonly (string | null | undefined)[]): string[] {
   const origins = new Set<string>();
   for (const apiUrl of apiUrls) {

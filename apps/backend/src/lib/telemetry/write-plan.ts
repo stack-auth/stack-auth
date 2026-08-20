@@ -12,11 +12,6 @@ export type TelemetryWritePlan<TIssueInput> = {
   issueInputs: TIssueInput[];
 };
 
-/**
- * All event-shaped writers use the same ClickHouse settings. Protocol adapters
- * still decide how to parse and normalize their input; this function owns only
- * the final physical write and its dependent-view retry behavior.
- */
 export async function writeTelemetryDestinations(
   client: ClickHouseClient,
   destinations: readonly TelemetryWriteDestination[],

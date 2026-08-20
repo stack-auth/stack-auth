@@ -462,8 +462,6 @@ export function evaluateIssueAlertRule(rule: IssueAlertRule, signal: IssueAlertS
   if (!ruleValidation.valid) return drop(rule, ruleValidation.reason);
   if (!validateSignal(signal)) return drop(rule, "invalid_signal");
   if (!rule.enabled) return noMatch(rule, "rule_disabled");
-  // Destinations without an executor must drop here. A match writes a delivery
-  // row and enqueues a durable workflow that would then fail non-retryably.
   if (describeIssueAlertDestination(rule.action).status === "unsupported") return drop(rule, "unsupported_action");
 
   const filters = rule.filters;

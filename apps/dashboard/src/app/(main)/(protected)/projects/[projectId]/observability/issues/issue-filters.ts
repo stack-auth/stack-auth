@@ -15,16 +15,6 @@ import {
   type IssueStatus,
 } from "./issues-data";
 
-/**
- * The Issues list's own URL state — everything that is not grid chrome.
- *
- * Grid chrome (widths, hidden columns, sort, quick search) belongs to
- * `useDataGridUrlState`, which writes via `history.replaceState`. This codec
- * therefore has to be written back the same way; mixing in `router.replace`
- * would rebuild the query string from Next's cached `useSearchParams`, which
- * has never seen the grid's params and would silently drop them on the next
- * filter change.
- */
 
 export const ALL_STATUSES_FILTER_VALUE = "all";
 export type IssueStatusFilter = IssueStatus | typeof ALL_STATUSES_FILTER_VALUE;
@@ -41,16 +31,10 @@ export type IssueFilters = {
 };
 
 export const DEFAULT_ISSUE_FILTERS: IssueFilters = {
-  // 24h, not Logs' 720h. Logs is an archive you go digging in; Issues is a
-  // triage queue, and a month-wide default buries today's regression under
-  // everything that has ever gone wrong. (The value lives in `issue-links.ts`
-  // because the href builders there omit the param at the default.)
   hours: DEFAULT_ISSUE_RANGE_HOURS,
   status: "unresolved",
   service: null,
   environment: null,
-  // Deliberately All. Defaulting to Unhandled hides handled crashes — the ones
-  // a `try/catch` swallowed — which are frequently the more interesting half.
   handled: "all",
   search: "",
 };
@@ -64,12 +48,6 @@ const PARAM_KEYS = {
   search: "search",
 } as const;
 
-/**
- * Every parse below treats the URL as untrusted input and falls back to the
- * default on anything it doesn't recognize, rather than throwing: a hand-edited
- * or stale bookmarked URL should open the default view, not a crashed page.
- * (Values that come from our own UI are validated at the point they're set.)
- */
 export function parseIssueFilters(params: URLSearchParams): IssueFilters {
   const rawHandled = params.get(PARAM_KEYS.handled);
   const rawService = params.get(PARAM_KEYS.service);
@@ -88,12 +66,6 @@ export function parseIssueFilters(params: URLSearchParams): IssueFilters {
   };
 }
 
-/**
- * The one filter the DETAIL page shares with the list. Split out of
- * `parseIssueFilters` because the detail page carries only the range (its
- * window-scoped counts must match the list the reader came from), and typed
- * against the `get` shape so Next's read-only `useSearchParams` works too.
- */
 export function parseIssueRangeHours(params: Pick<URLSearchParams, "get">): ObservabilityTimeRangeHours {
   const rawHours = Number(params.get(PARAM_KEYS.hours));
   return isObservabilityTimeRangeHours(rawHours) ? rawHours : DEFAULT_ISSUE_FILTERS.hours;
@@ -105,10 +77,6 @@ export function parseIssueStatusFilter(raw: string | null): IssueStatusFilter {
 }
 
 function safeSelectValueToServiceIdentity(value: string): ServiceIdentity | null {
-  // Narrow, single-call catch — not a catch-all. `selectValueToServiceIdentity`
-  // (and the `decodeURIComponent` inside it) throws on a malformed value, which
-  // is the right contract for a dropdown, whose option list produced the value,
-  // and the wrong one for a bookmarked URL. Unparseable becomes "no filter".
   try {
     return selectValueToServiceIdentity(value);
   } catch {
@@ -116,11 +84,6 @@ function safeSelectValueToServiceIdentity(value: string): ServiceIdentity | null
   }
 }
 
-/**
- * Writes the non-default filters into `params`, deleting the rest, and returns
- * the same object. Defaults are omitted so a freshly-opened page has a clean
- * URL and so "no param" and "the default" can never disagree.
- */
 export function serializeIssueFilters(filters: IssueFilters, params: URLSearchParams): URLSearchParams {
   const setOrDelete = (key: string, value: string | null) => {
     if (value == null) params.delete(key);
@@ -131,11 +94,6 @@ export function serializeIssueFilters(filters: IssueFilters, params: URLSearchPa
   setOrDelete(PARAM_KEYS.service, filters.service == null ? null : serviceIdentityToSelectValue(filters.service));
   setOrDelete(PARAM_KEYS.environment, filters.environment);
   setOrDelete(PARAM_KEYS.handled, filters.handled === DEFAULT_ISSUE_FILTERS.handled ? null : filters.handled);
-  // Whitespace-only search is the default: the page trims before fetching, so
-  // "   " sends an unfiltered request — persisting it (and letting
-  // `issueFiltersAreDefault` call the list "filtered") would mislabel an empty
-  // project as "No matching issues". The raw value is kept when non-blank so
-  // typing a trailing space mid-phrase never fights the input.
   setOrDelete(PARAM_KEYS.search, filters.search.trim() === "" ? null : filters.search);
   return params;
 }
@@ -144,15 +102,7 @@ export function issueFiltersAreDefault(filters: IssueFilters): boolean {
   return serializeIssueFilters(filters, new URLSearchParams()).toString() === "";
 }
 
-// ─── Sorting ─────────────────────────────────────────────────────────
 
-/**
- * Only four columns are sortable, and the mapping is explicit rather than
- * derived from the column id: "Issue" and "Status" live in Postgres while
- * "Events" and "Users" are window-scoped ClickHouse aggregates, so a generic
- * `ORDER BY <columnId>` would be meaningless for half the grid. Those columns
- * are declared `sortable: false` rather than sortable-and-wrong.
- */
 const SORTABLE_COLUMN_FIELDS = new Map<string, IssueListSortField>([
   ["events", "events"],
   ["users", "users"],
@@ -169,11 +119,6 @@ export function isSortableIssueColumn(columnId: string): boolean {
   return SORTABLE_COLUMN_FIELDS.has(columnId);
 }
 
-/**
- * The grid's sort model is also URL-restorable, so an unknown column id here is
- * untrusted input rather than a programming error — it falls back to the
- * default instead of throwing, same rule as the filters above.
- */
 export function resolveIssueSort(sorting: DataGridSortModel): { field: IssueListSortField, direction: "asc" | "desc" } {
   if (sorting.length === 0) return DEFAULT_ISSUE_SORT;
   const first = sorting[0];

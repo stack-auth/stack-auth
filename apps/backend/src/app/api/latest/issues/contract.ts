@@ -29,13 +29,6 @@ import type { IssueReleaseContext } from "@/lib/releases/issue-release-context";
 
 export type { IssueGroupingHashProvenance };
 
-/**
- * The internal dashboard response contains query plumbing (`issue_hashes`,
- * counter truncation markers, and redirect bookkeeping) that is useful to the
- * dashboard but is not part of the public issue contract. Keep this projection
- * explicit so adding a field to the dashboard schema cannot accidentally make
- * it visible to API consumers.
- */
 export type PublicIssue = Pick<IssueListItem,
   | "id"
   | "short_id"
@@ -331,11 +324,6 @@ export type PublicIssueListQuery = yup.InferType<typeof PublicIssueListQuerySche
 export type PublicIssueDetailQuery = yup.InferType<typeof PublicIssueDetailQuerySchema>;
 export type PublicIssueOccurrencesQuery = yup.InferType<typeof PublicIssueOccurrencesQuerySchema>;
 
-// Mirrors OBSERVABILITY_TIME_RANGES in the dashboard. Enumerated rather than
-// free-form because `hours` reaches a raw ClickHouse predicate: an allowlist is
-// a cheaper guarantee than trusting a numeric parse. This is the ONE allowlist
-// for every issue-list surface — the internal dashboard route parses its query
-// through this module too.
 const ALLOWED_HOURS = [1, 24, 168, 720] as const;
 const DEFAULT_HOURS = 24;
 export const PUBLIC_ISSUE_PAGE_SIZE = ISSUE_LIST_PAGE_SIZE;

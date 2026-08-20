@@ -59,18 +59,11 @@ export type IssueFrameSymbolication = {
   diagnostics: IssueSymbolicationDiagnostic[],
 };
 
-/** The parse-side frame shape: the wire frame fields minus the nested symbolication object. */
 export type IssueRawFrame = Omit<IssueFrame, "symbolication">;
 
 export type IssueEventFrame = IssueRawFrame & {
-  /** Raw frame fields remain available even when the visible location is mapped. */
   raw: IssueRawFrame,
   symbolication: IssueFrameSymbolication | null,
-  /**
-   * Display-flattened source context, copied out of `symbolication.context` by
-   * `displayFrame`. Present only when the frame was symbolicated AND its
-   * mapped source content was available.
-   */
   context?: { line: string, pre: string[], post: string[], symbolicated: true },
 };
 
@@ -114,7 +107,6 @@ export type IssueEventPayload = {
 };
 
 export type IssueEventOccurrenceProjection = Pick<IssueOccurrence, "data"> & {
-  /** Optional because older internal issue responses only returned opaque data. */
   frames?: readonly IssueFrame[],
 };
 
@@ -141,12 +133,6 @@ const RESERVED_EVENT_KEYS = new Set([
   "level",
 ]);
 
-/**
- * Request data is allowlisted at the display boundary too. The current issue
- * response carries opaque occurrence data, so rendering `data.request` raw
- * would let an opaque occurrence payload expose headers, query strings,
- * cookies, or bodies in an authenticated dashboard.
- */
 function isSensitiveEventKey(key: string): boolean {
   return /(authorization|cookie|password|secret|token|header|query|body|credential|private[-_.]?key|form[-_.]?data)/i.test(key);
 }
@@ -388,9 +374,6 @@ function parseMechanism(value: unknown): string | null {
 }
 
 function parseExceptionChain(data: IssueEventRecord | null): IssueExceptionValue[] {
-  // Both the Hexclave SDK and the Sentry envelope adapter persist the chain at
-  // `data.exception`. `extra.exception` is user-supplied context, not a second
-  // home for the stack — do not read it here.
   const exception = asIssueEventRecord(valueAt(data, "exception"));
   const values = valueAt(exception, "values");
   if (!Array.isArray(values)) return [];
@@ -465,22 +448,11 @@ function deduplicateSymbolicationDiagnostics(
   return [...unique.values()];
 }
 
-/**
- * The stack the issue page should lead with. Exception-chain frames already
- * carry flattened symbolication (original file/line + source context). The
- * occurrence projection is the fallback when the payload has no exception
- * values, which is how non-Error throws arrive.
- */
 export function heroStack(occurrence: Pick<IssueOccurrence, "data" | "frames" | "raw_stack">): {
   frames: IssueEventFrame[],
   rawStack: string | null,
 } {
   const payload = getIssueEventPayload(occurrence);
-  // Sentry orders `exception.values` root-cause-first, with the LAST value
-  // being the exception that was actually thrown — ingestion's
-  // `lastExceptionValue` derives the issue's type/message/grouping stack from
-  // it. Leading with anything else would put a cause's stack under the primary
-  // exception's title. The earlier values render in "Additional causes".
   const primary = payload.exceptionChain.at(-1);
   if (primary !== undefined && (primary.frames.length > 0 || (primary.rawStack != null && primary.rawStack.trim() !== ""))) {
     return { frames: primary.frames, rawStack: primary.rawStack };
@@ -511,15 +483,12 @@ export function getIssueEventPayload(occurrence: IssueEventOccurrenceProjection)
     fingerprintOverride: stringList(valueAt(data, "fingerprint_override")),
     additionalData: parseAdditionalData(data),
     symbolicationDiagnostics: deduplicateSymbolicationDiagnostics([
-      // Occurrence-level diagnostics are a SIBLING of `data` on the projected
-      // occurrence, never nested inside it.
       ...parseSymbolicationDiagnostics(valueAt(occurrenceRecord, "symbolication_diagnostics")),
       ...frameDiagnostics,
     ]),
   };
 }
 
-/** Breadcrumb timestamps follow the Sentry-style seconds convention in the public scope type. */
 export function breadcrumbTimestampMillis(timestamp: number): number {
   return Math.abs(timestamp) < 1_000_000_000_000 ? timestamp * 1_000 : timestamp;
 }

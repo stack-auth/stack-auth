@@ -74,9 +74,6 @@ function cloneBatch(batch: BrowserOtlpQueueBatch): BrowserOtlpQueueBatch {
 }
 
 function summarizeBatch(batch: BrowserOtlpQueueBatch): BrowserOtlpQueueDropSummary {
-  // Client reports describe telemetry that was already dropped. Counting a
-  // report as another telemetry drop during auth rotation would recursively
-  // manufacture a new client report for the report itself.
   if ((batch.kind ?? "otlp") === "client_report") {
     return { queueEntryCount: 0, itemCount: 0, bodyBytes: 0 };
   }
@@ -145,12 +142,6 @@ function readStoredBatch(value: unknown, id: IDBValidKey): BrowserOtlpQueueEntry
   };
 }
 
-// Byte accounting and drop-OUTCOME accounting are different concerns: client
-// reports are excluded from drop summaries (a report about drops must never
-// manufacture another drop report), but their bytes WERE reserved against the
-// queue capacity at enqueue, so removal must always release `storedBodyBytes`
-// — otherwise every delivered client report would leak reserved capacity until
-// the queue falsely reports queue_overflow.
 function readStoredBatchAccounting(value: unknown): { dropSummary: BrowserOtlpQueueDropSummary, storedBodyBytes: number } {
   if (
     typeof value !== "object"
@@ -225,11 +216,6 @@ function openDatabase(options: BrowserOtlpOfflineQueueOptions): Promise<IDBDatab
       database.onversionchange = () => database.close();
       resolve(database);
     };
-    // A previous SDK instance in another tab may still hold the old database
-    // version open. Do not reject here: IndexedDB keeps the request pending and
-    // fires `onsuccess` after that connection closes, which is the safe retry
-    // path. Leaving `onblocked` unset preserves that behavior; the caller's
-    // normal operation deadline remains the bound.
     request.onerror = () => reject(persistenceError("open", request.error));
   });
 }
@@ -411,8 +397,6 @@ class IndexedDbBrowserOtlpOfflineQueue implements BrowserOtlpOfflineQueue {
         if (stored === undefined) return;
         let storedBodyBytes: number;
         try {
-          // The full stored bytes, NOT the drop summary's: client reports have
-          // an all-zero drop summary but still reserved real queue bytes.
           storedBodyBytes = readStoredBatchAccounting(stored).storedBodyBytes;
         } catch (error) {
           fail(error);
@@ -704,10 +688,6 @@ export function createBrowserOtlpOfflineQueue(options: BrowserOtlpOfflineQueueOp
   if (!Number.isSafeInteger(options.maxQueueBytes) || options.maxQueueBytes <= 0) {
     throw new Error("Browser OTLP offline queue maxQueueBytes must be a positive safe integer");
   }
-  // IndexedDB is the only durable browser implementation. If it exists but
-  // fails, callers receive a persistence error; silently falling back to an
-  // in-memory queue would make delivery appear durable while losing data on a
-  // reload.
   return typeof indexedDB === "undefined"
     ? new InMemoryBrowserOtlpOfflineQueue(options)
     : new IndexedDbBrowserOtlpOfflineQueue(options);

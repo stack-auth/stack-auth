@@ -879,7 +879,6 @@ export default function ObservabilityPage() {
                       type="button"
                       className="rounded-md border bg-white px-3 py-3 text-left text-sm dark:bg-black"
                       onClick={() => {
-                        // Deliberately leave the DOM untouched: the click classifier can mark this $click as dead.
                       }}
                     >
                       <div className="font-medium">Dead click candidate</div>

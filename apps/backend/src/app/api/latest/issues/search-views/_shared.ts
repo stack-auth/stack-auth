@@ -4,12 +4,6 @@ import {
   serverOrHigherAuthTypeSchema,
 } from "@hexclave/shared/dist/schema-fields";
 
-/**
- * Public machine-key tree. Mutations deliberately accept client-or-higher
- * auth while list/get/create require server-or-higher: an end user may update
- * or delete their own views (ownership is enforced by the shared mutation
- * authorization), but browsing and creating views is a machine-key surface.
- */
 export const publicSavedIssueSearchViewRouteOptions: SavedIssueSearchViewRouteHandlerOptions = {
   authTypeSchema: serverOrHigherAuthTypeSchema,
   mutationAuthTypeSchema: clientOrHigherAuthTypeSchema,

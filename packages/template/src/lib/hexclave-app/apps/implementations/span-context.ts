@@ -71,15 +71,10 @@ export async function runWithSpanFrame<T>(context: SpanContext, fn: () => T): Pr
   syncStack.push(syncFrame);
   try {
     const result = fn();
-    // fn returned its promise — the synchronous prologue is over. The frame
-    // stays on the stack (suspended) until settle so cleanup can find it under
-    // interleaving, but getAmbientSpanContexts no longer returns it.
     syncFrame.prologueOpen = false;
     return await result;
   } finally {
     syncFrame.prologueOpen = false;
-    // Remove OUR frame specifically — a concurrent flow may have pushed frames
-    // above ours in the meantime (the documented sync-stack limitation).
     const index = syncStack.lastIndexOf(syncFrame);
     if (index !== -1) syncStack.splice(index, 1);
   }

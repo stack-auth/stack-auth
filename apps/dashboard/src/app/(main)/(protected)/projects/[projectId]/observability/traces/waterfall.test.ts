@@ -9,11 +9,6 @@ import { computeRowOffsets, computeRowWindow, findHighlightedRowIndex, shouldSho
 afterEach(cleanup);
 
 beforeEach(() => {
-  // Assigned via an intermediate on purpose: in assignment position, vi.fn()
-  // is contextually typed against the overloaded window.scrollTo and infers
-  // only the (x, y) overload, and that Mock<[number, number], void> then fails
-  // to satisfy the full overload intersection. Without the context it keeps
-  // its default loose signature, which satisfies every overload.
   const scrollToMock = vi.fn();
   window.scrollTo = scrollToMock;
 });
@@ -163,9 +158,6 @@ describe("TraceWaterfall span names", () => {
       endMs: 1010,
       latestMs: 1010,
     };
-    // A link whose target lives in another project/branch is still worth showing — the
-    // correlation is real — but this page only queries the current scope, so following it
-    // would always dead-end. The row stays disabled instead of resolving to nothing.
     const link = {
       ownerSpanId: "server-span",
       linkedTraceId: "0123456789abcdef0123456789abcdef",

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EXTERNAL_CLICKHOUSE_SETTINGS, getClickhouseWriteAvailability } from "./clickhouse";
+import { EXTERNAL_CLICKHOUSE_SETTINGS, getClickhouseWriteAvailability, stripLoneSurrogates } from "./clickhouse";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -29,5 +29,19 @@ describe("external ClickHouse client settings", () => {
         "max_memory_usage_for_user": "9000000000",
       }
     `);
+  });
+});
+
+describe("ClickHouse string sanitization", () => {
+  it("replaces lone surrogates in nested values without changing valid pairs or keys", () => {
+    const malformedKey = `key-${"\uD800"}`;
+
+    expect(stripLoneSurrogates({
+      [malformedKey]: "\uD800",
+      nested: ["plain", "\uD800", "\uDC00", "\uD83D\uDE00", 42, true, null],
+    })).toEqual({
+      [malformedKey]: "�",
+      nested: ["plain", "�", "�", "😀", 42, true, null],
+    });
   });
 });

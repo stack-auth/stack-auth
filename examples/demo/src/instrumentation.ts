@@ -1,9 +1,5 @@
 import type { HexclaveNextInstrumentation } from "@hexclave/next/next";
 
-// Next.js builds instrumentation for both Node.js and Edge. Keep the runtime
-// check inline (`process.env.NEXT_RUNTIME`, not a helper) so the Edge bundle
-// does not follow these Node-only imports — a wrapped read is invisible to
-// Next's define-plugin and pulls `async_hooks` / OpenTelemetry into Edge.
 let hexclaveNextInstrumentationPromise: Promise<HexclaveNextInstrumentation | null> | undefined;
 
 function getHexclaveNextInstrumentation(): Promise<HexclaveNextInstrumentation | null> {

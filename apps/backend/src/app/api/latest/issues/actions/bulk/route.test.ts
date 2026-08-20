@@ -137,9 +137,6 @@ describe("bulk issue status action contract", () => {
   });
 
   it("applies every requested status in order and returns changed/status fields", async () => {
-    // The mocked target helper mirrors the real helper's `{ target, result }`
-    // return shape while allowing this contract test to stay independent from
-    // the generated SDK package graph and a running database.
     mocks.withIssueActionTarget.mockImplementation(async ({ rawIssueId, action }: {
       rawIssueId: string,
       action: (target: { issueId: string, redirectedFromIssueId: string | null }) => Promise<unknown>,

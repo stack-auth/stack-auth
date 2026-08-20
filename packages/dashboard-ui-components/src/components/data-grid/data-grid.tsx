@@ -983,8 +983,6 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
         mode: selectionMode,
         modifiers: {
           shift: event.shiftKey,
-          // Checkboxes are additive: click toggles, shift-click ranges.
-          // Mapping that onto ctrl reuses nextSelection instead of forking it.
           ctrl: event.metaKey || event.ctrlKey || options?.toggle === true,
         },
         allRowIds: rowIds,
@@ -1004,9 +1002,6 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
 
   const handleCheckboxClick = useCallback(
     (rowId: RowId, event: React.MouseEvent) => {
-      // Selection checkboxes must not fire onRowClick. Consumers use that
-      // callback for navigation, so routing checkbox clicks through
-      // handleRowClick would open the row instead of selecting it.
       applySelection(rowId, event, { toggle: true });
     },
     [applySelection],

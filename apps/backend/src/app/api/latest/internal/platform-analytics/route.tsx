@@ -292,10 +292,6 @@ export const GET = createSmartRouteHandler({
             AND event_at >= {since:DateTime} AND event_at < {until:DateTime}
           GROUP BY day ORDER BY day ASC
         `, windowParams),
-        // Page views + unique visitors per day (`$page-view` is a span). Exact
-        // distinct counts are taken over hashed user ids: the state is kept once
-        // per day group, so 36-char uuids across every customer project overran
-        // the metrics memory limit.
         chQuery<{ day: string, pv: string | number, visitors: string | number }>(`
           SELECT toDate(started_at) AS day,
             count() AS pv,
@@ -389,9 +385,6 @@ export const GET = createSmartRouteHandler({
           ) AS f USING (entity_id)
           GROUP BY w.day ORDER BY w.day ASC
         `, windowParams),
-        // Per-project total and verified users. Both counts have the same FINAL
-        // population and grouping, so countIf keeps them in one scan instead of
-        // merging the users/contact-channel state twice.
         chQuery<{ projectId: string, total: string | number, verified: string | number }>(`
           SELECT project_id AS projectId,
             count() AS total,

@@ -47,8 +47,6 @@ describe("OtlpWebVitalsMetricRecorder", () => {
     const meter = new FakeMeter();
     const recorder = new OtlpWebVitalsMetricRecorder(meter);
 
-    // Two page views in one export interval: a gauge would keep only the
-    // second value; histogram semantics must preserve both samples.
     recorder.record({ lcp_ms: 900 });
     recorder.record({ lcp_ms: 4200 });
 

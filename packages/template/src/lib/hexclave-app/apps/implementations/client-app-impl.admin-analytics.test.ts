@@ -25,13 +25,10 @@ describe("client analytics on admin apps", () => {
       tokenStore: null,
       projectOwnerSession: ownerSession,
       noAutomaticPrefetch: true,
-      // Would enable analytics on a normal client app; must still stay off here.
       analytics: { enabled: true, replays: { enabled: true } },
     });
 
     expect(startSpy).not.toHaveBeenCalled();
-    // The lazy analytics facade must not even be constructed for owner-session
-    // admin apps — no facade means no deferred tracker/recorder load either.
     expect(Reflect.get(adminApp, "_clientAnalytics")).toBeNull();
   });
 

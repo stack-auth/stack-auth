@@ -17,8 +17,6 @@ describe("formatRelativeTimeFromMillis", () => {
   });
 
   it("reads a future timestamp as 'just now' rather than 'in 3 minutes'", () => {
-    // Browser/server clock skew makes fresh rows look like they arrived in the
-    // future; "just now" is truthful for both cases.
     expect(formatRelativeTimeFromMillis(NOW + 180_000, NOW)).toBe("just now");
   });
 
@@ -37,7 +35,6 @@ describe("formatAbsoluteTimeFromMillis / formatDateFromMillis", () => {
   it("renders something non-empty and deterministic for a valid instant", () => {
     expect(formatAbsoluteTimeFromMillis(NOW).length).toBeGreaterThan(0);
     expect(formatDateFromMillis(NOW).length).toBeGreaterThan(0);
-    // The date form drops the clock; the absolute form keeps it.
     expect(formatDateFromMillis(NOW)).not.toBe(formatAbsoluteTimeFromMillis(NOW));
   });
 

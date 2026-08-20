@@ -75,9 +75,6 @@ const ReleaseLookupQuerySchema = yupObject({
 }).defined();
 
 const ReleaseListQuerySchema = yupObject({
-  // 1-100, matching the service-side MAX_RELEASE_LIST_LIMIT so out-of-range
-  // limits fail schema validation with a descriptive error instead of the
-  // generic "Invalid release request" 400 the service error would map to.
   limit: yupString().matches(/^(100|[1-9][0-9]?)$/u).optional(),
 }).defined();
 

@@ -99,10 +99,6 @@ describe("browser analytics startup", () => {
       baseUrl: "https://api.example.test",
       tokenStore: null,
       noAutomaticPrefetch: true,
-      // No automatic hooks: this unit only exercises the manual header API,
-      // and eagerly-installed console-capture sinks would leak into the
-      // console-mirroring tests below (multi-identity registration disables
-      // the shared console sink).
       automaticSideEffects: false,
       devTool: false,
       observability: {
@@ -113,10 +109,7 @@ describe("browser analytics startup", () => {
       telemetry: TEST_TELEMETRY,
     });
 
-    // Default: the segment id always exists, so correlation baggage is built.
     expect("baggage" in makeApp(undefined).getSpanPropagationHeaders()).toBe(true);
-    // Disabled: correlation baggage is gone; W3C trace context is unaffected
-    // (there is simply no sampled ambient parent here to serialize).
     expect(makeApp(false).getSpanPropagationHeaders()).toEqual({});
   });
 
@@ -151,9 +144,6 @@ describe("browser analytics startup", () => {
     const span = app.startSpan("db.query", {
       parent: { traceId: "c".repeat(32), spanId: "d".repeat(16), traceFlags: 0, traceState: "vendor=value" },
     });
-    // Omitted flags mean "sampled" per the SpanContext contract, so dropping
-    // them here would let downstream parent-based samplers record a trace the
-    // upstream explicitly dropped.
     expect(span.spanContext()).toMatchObject({
       traceId: "c".repeat(32),
       traceFlags: 0,
@@ -175,14 +165,9 @@ describe("browser analytics startup", () => {
       telemetry: TEST_TELEMETRY,
     });
 
-    // The analytics runtime is lazy-loaded: the facade exists synchronously,
-    // but the tracker/recorder modules (and their start()) only run once the
-    // deferred import completes.
     const analytics = Reflect.get(app, "_clientAnalytics");
     expect(analytics).toBeInstanceOf(ClientAnalytics);
     expect(eventStart).not.toHaveBeenCalled();
-    // This unit exercises lazy runtime startup, not anonymous-session signup.
-    // Production resolves this context from the authenticated refresh token.
     stubSessionRootContext(app);
 
     await (analytics as ClientAnalytics).loadNow();
@@ -460,8 +445,6 @@ describe("browser analytics startup", () => {
       getOtlpRequestHeaders: async () => ({}),
     });
 
-    // trackEvent: the managed provider must come up lazily, or the record
-    // would silently hit the no-op global providers.
     const tracked = makeAnalytics();
     expect(Reflect.get(tracked, "_browserOtelRegistration")).toBeNull();
     const forceFlush = vi.fn(async () => {});
@@ -470,7 +453,6 @@ describe("browser analytics startup", () => {
     expect(Reflect.get(tracked, "_browserOtelRegistration")).not.toBeNull();
     expect(forceFlush).toHaveBeenCalled();
 
-    // startSpan: same contract for explicit spans.
     const spanning = makeAnalytics();
     expect(Reflect.get(spanning, "_browserOtelRegistration")).toBeNull();
     Reflect.set(spanning, "_registerManagedBrowserOtel", () => ({ forceFlush: async () => {} }));
@@ -508,9 +490,7 @@ describe("browser analytics startup", () => {
 
     const error = new Error("console-promoted boom");
     analytics.captureConsoleError(error);
-    // Same OBJECT again: the captured marker must dedupe the promotion.
     analytics.captureConsoleError(error);
-    // Ignore substrings apply to promotions exactly like to global captures.
     analytics.captureConsoleError(new Error("ResizeObserver loop limit exceeded"));
     await loggerProvider.forceFlush();
 
@@ -544,10 +524,8 @@ describe("browser analytics startup", () => {
     });
     const analytics = Reflect.get(app, "_clientAnalytics");
     if (!(analytics instanceof ClientAnalytics)) throw new Error("Expected the browser telemetry facade");
-    // Error-side hooks stay off...
     expect(analytics.getErrorCapture()).toBeNull();
 
-    // ...but `logs.captureConsole` is separate policy and must keep mirroring.
     console.warn("mirrored while error capture is off");
     await loggerProvider.forceFlush();
     const logRecord = exporter.getFinishedLogRecords().find((record) => record.eventName === "$log");
@@ -686,8 +664,6 @@ describe("browser analytics startup", () => {
       getOtlpRequestHeaders: async () => ({}),
       errorAttachmentTransport: {
         upload: async (request) => {
-          // A macrotask so the upload cannot complete on the same microtask
-          // turn that scheduled it — the exact window the drain must cover.
           await new Promise<void>((resolve) => setTimeout(resolve, 0));
           uploads.push(request.attachment.filename);
           return {
@@ -715,9 +691,6 @@ describe("browser analytics startup", () => {
     const cleared = analytics.clearBuffer();
     releaseBeforeSend();
     await cleared;
-    // The attachment delivery was only SCHEDULED once beforeSend accepted the
-    // event (i.e. while clearBuffer was already waiting); it must still finish
-    // before clearBuffer resolves, or it would upload under the next identity.
     expect(uploads).toEqual(["dump.txt"]);
   });
 

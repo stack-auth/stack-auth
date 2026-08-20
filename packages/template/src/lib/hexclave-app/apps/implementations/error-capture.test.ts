@@ -42,10 +42,6 @@ function fireOnError(error: Error, opts?: { url?: string, line?: number, col?: n
 function fireOnUnhandledRejection(event: unknown) {
   const handler = window.onunhandledrejection;
   if (typeof handler !== "function") throw new Error("onunhandledrejection not installed");
-  // The property slot is typed for real PromiseRejectionEvents; tests drive it
-  // with structural stand-ins (jsdom cannot synthesize the real thing outside
-  // an actual unhandled rejection), which is exactly the loose input the
-  // extraction logic must handle.
   return handler.call(window, event as PromiseRejectionEvent);
 }
 
@@ -134,8 +130,6 @@ describe("normalizeCapturedError + buildErrorEventData", () => {
   });
 
   it("trims a deep cause chain to the aggregate exception byte budget, keeping the root last", () => {
-    // Each link carries ~14KB of bounded text; ten of them would sum to ~140KB
-    // and push the whole event past the shared 64KB item-data contract.
     const root = new Error(`root ${"r".repeat(7_000)}`);
     root.stack = `Error: root\n    at f (https://app.example.com/a.js:1:1)\n${"x".repeat(7_000)}`;
     let current = root;
@@ -179,8 +173,6 @@ describe("normalizeCapturedError + buildErrorEventData", () => {
     const value = data.exception?.values.at(-1);
     expect(new TextEncoder().encode(value?.value ?? "").length).toBeLessThanOrEqual(8_192);
     expect(new TextEncoder().encode(value?.stacktrace?.raw ?? "").length).toBeLessThanOrEqual(8_192);
-    // The top-level stack falls back to the raw stack (bounded), so grouping
-    // and debug-image lookup still receive one.
     expect(typeof data.stack).toBe("string");
     expect((data.stack as string).startsWith("Error: boom")).toBe(true);
     expect(new TextEncoder().encode(data.stack as string).length).toBeLessThanOrEqual(8_192);
@@ -290,9 +282,6 @@ describe("createClientErrorCapturePolicy", () => {
     let floodIndex = 0;
     const admitFlood = () => {
       const error = new Error("flood");
-      // The fingerprint only hashes the FIRST `at` line, so varying a DEEPER
-      // frame keeps all of these in one flood-control bucket while the
-      // distinct full stacks defeat the single-slot dedupe.
       floodIndex += 1;
       error.stack = `Error: flood\n    at f (https://app.example.com/a.js:1:1)\n    at g (https://app.example.com/b.js:${floodIndex}:1)`;
       return policy.admit(error);
@@ -310,8 +299,6 @@ describe("createClientErrorCapturePolicy", () => {
 
 describe("installClientErrorCapture", () => {
   afterEach(() => {
-    // Tests install/uninstall explicitly; make sure a failed test cannot leak
-    // a patched slot into the next one.
     window.onerror = null;
     window.onunhandledrejection = null;
     vi.restoreAllMocks();
@@ -337,7 +324,7 @@ describe("installClientErrorCapture", () => {
   it("raises Error.stackTraceLimit at install and restores it on uninstall", () => {
     const errorCtor = Error as ErrorConstructor & { stackTraceLimit?: number };
     const before = errorCtor.stackTraceLimit;
-    if (typeof before !== "number") return; // non-V8 runtime: nothing to assert
+    if (typeof before !== "number") return;
     const { capture } = installWithDeps();
     expect(errorCtor.stackTraceLimit).toBe(50);
     capture.uninstall();
@@ -428,8 +415,6 @@ describe("installClientErrorCapture", () => {
     const policy = createClientErrorCapturePolicy({ ignoreErrors: [], getCurrentPageViewSpanId: () => null });
     const { emitted, capture } = installWithDeps({ policy });
     const error = new Error("promoted via console.error first");
-    // Simulates ClientAnalytics.captureConsoleError admitting through the
-    // shared instance before the same Error surfaces at window.onerror.
     expect(policy.admit(error)).not.toBeNull();
     fireOnError(error);
     expect(emitted).toHaveLength(0);
@@ -455,14 +440,12 @@ describe("installClientErrorCapture", () => {
 
   it("drops an identical back-to-back signature (single-slot dedupe) but keeps alternating errors", () => {
     const { emitted, capture } = installWithDeps();
-    // Two distinct objects with identical name/message/stack → second drops.
     const a1 = new Error("same");
     const a2 = new Error("same");
     a2.stack = a1.stack;
     fireOnError(a1);
     fireOnError(a2);
     expect(emitted).toHaveLength(1);
-    // A different error in between clears the slot.
     fireOnError(new Error("other"));
     const a3 = new Error("same");
     a3.stack = a1.stack;
@@ -482,8 +465,6 @@ describe("installClientErrorCapture", () => {
       const error = new Error("looped");
       error.stack = stack;
       fireOnError(error);
-      // Alternate a distinct error so the single-slot dedupe never triggers —
-      // this test is about the per-fingerprint cap alone.
       const breaker = new Error("breaker");
       breaker.stack = otherStack;
       fireOnError(breaker);
@@ -494,7 +475,6 @@ describe("installClientErrorCapture", () => {
     expect(breakerCount).toBe(10);
     expect(warnSpy.mock.calls.filter(([message]) => typeof message === "string" && message.includes("rate cap")).length).toBe(1);
 
-    // Navigation (page-view span rollover) resets the budget.
     pageViewSpanId = "22222222-2222-4222-8222-222222222222";
     const fresh = new Error("looped");
     fresh.stack = stack;
@@ -507,8 +487,6 @@ describe("installClientErrorCapture", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { emitted, capture } = installWithDeps();
     for (let i = 0; i < 120; i++) {
-      // Unique message per error → unique fingerprint, so only the total cap
-      // can stop the flood.
       fireOnError(new Error(`unique ${i}`));
     }
     expect(emitted).toHaveLength(100);
@@ -544,8 +522,6 @@ describe("installServerErrorMonitor", () => {
     expect(uninstall1).not.toBeNull();
     expect(process.listenerCount("uncaughtExceptionMonitor")).toBe(baseline + 1);
 
-    // Reinstall for the same project (HMR): the old listener is replaced, not
-    // stacked.
     const uninstall2 = installServerErrorMonitor({ projectId: "p1", capture: (error) => captured.push(error) });
     expect(process.listenerCount("uncaughtExceptionMonitor")).toBe(baseline + 1);
 
@@ -554,7 +530,6 @@ describe("installServerErrorMonitor", () => {
     expect(captured).toEqual([error]);
 
     uninstall2?.();
-    // Uninstalling the superseded handle is a no-op (already replaced).
     uninstall1?.();
     expect(process.listenerCount("uncaughtExceptionMonitor")).toBe(baseline);
   });

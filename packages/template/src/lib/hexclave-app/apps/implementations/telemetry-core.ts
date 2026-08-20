@@ -115,8 +115,6 @@ export type StoredSpanLink = SpanContext & {
 
 export const MAX_SPAN_LINKS = 32;
 
-// Keep fire-and-forget telemetry from becoming an unhandled rejection while
-// returning the original promise so callers that await it still observe failure.
 export function preCaught<T>(promise: Promise<T>): Promise<T> {
   ignoreUnhandledRejection(promise);
   return promise;
@@ -170,8 +168,6 @@ export function autoDetectedBackgroundTaskHook(promise: Promise<unknown>): void 
   if (typeof context !== "object" || context === null) return;
   const waitUntil = (context as { waitUntil?: unknown }).waitUntil;
   if (typeof waitUntil !== "function") return;
-  // A throwing waitUntil is handled by registerTelemetryBackgroundTask's
-  // try/catch around the hook invocation.
   waitUntil.call(context, promise);
 }
 
@@ -203,9 +199,6 @@ export function getCustomTelemetryDataError(data: unknown): string | null {
   return null;
 }
 
-// Moved to the shared wire-contract module so the backend's console log
-// capture can bound bodies with the exact same truncation as the SDK.
-// Re-exported here so the SDK's existing internal import sites stay stable.
 export { truncateUtf8Bytes } from "@hexclave/shared/dist/utils/analytics-wire";
 
 export function resolveEndedAtMs(startedAtMs: number, endedAtMs: number | undefined): number {
@@ -239,8 +232,6 @@ export function assertValidSpanStartInput(spanType: string, options: StartSpanOp
   }
 }
 
-/** Normalizes a ParentRef to its W3C context. A live Span exposes `spanContext()`;
- * a plain SpanContext (e.g. deserialized from page props) is already one. */
 function parentRefToSpanContext(ref: ParentRef): SpanContext {
   return "spanContext" in ref && typeof ref.spanContext === "function" ? ref.spanContext() : ref;
 }
@@ -308,9 +299,6 @@ export function resolveSpanParent(opts: {
 }): ResolvedSpanParent | { error: string } {
   const ambient = opts.root ? [] : opts.ambient ?? [];
   for (const context of ambient) {
-    // Ambient contexts come from our own live spans, so a failure here means a
-    // handle was constructed with a malformed identity — fail loud rather than
-    // silently reparenting to a new trace.
     const error = getSpanContextError(context, "ambient parent");
     if (error !== null) return { error };
   }
@@ -339,18 +327,10 @@ export function resolveSpanParent(opts: {
       links.push({ traceId: context.traceId, spanId: context.spanId });
     }
   }
-  // Only CALLER-DECLARED links can exceed the cap loudly: the caller stated an
-  // intent we cannot honor, so failing the span is the honest outcome.
   if (links.length > MAX_SPAN_LINKS) {
     return { error: `A span may link to at most ${MAX_SPAN_LINKS} other spans` };
   }
   if (parent !== null) {
-    // Ambient contexts demoted to links are best-effort provenance, not caller
-    // intent. The global-span registries soft-cap far above MAX_SPAN_LINKS, so
-    // erroring here would make every ordinary startSpan()/trackEvent() call
-    // fail once enough unrelated global spans are registered. Instead, fill the
-    // remaining link capacity preferring the NEAREST ambient contexts (the
-    // ambient list is outermost-first) and silently drop the farthest ones.
     const demoted: StoredSpanLink[] = [];
     for (const context of ambient) {
       if (context.traceId === parent.traceId) continue;
@@ -396,8 +376,6 @@ export async function withSpanImpl<T>(
       runAsynchronously(span.end());
       return result;
     } catch (error) {
-      // Order matters: the merge lands before the end row is enqueued, so the
-      // single deduped wire row carries both the error and the end time.
       runAsynchronously(span.setData({ error: error instanceof Error ? error.message : String(error) }));
       runAsynchronously(span.end());
       throw error;

@@ -12,12 +12,6 @@ import {
   withIssueActionTarget,
 } from "../../[issue_id]/actions/_shared";
 
-/**
- * Sentry's organization issue mutation endpoint caps bulk mutations at 1000
- * groups. Keep the same ceiling, but require callers to name every target so
- * a broad search query can never turn this authenticated action into an
- * accidental mass mutation.
- */
 export const MAX_BULK_ISSUE_IDS = 1_000;
 export const MAX_BULK_ISSUE_ID_LENGTH = 64;
 
@@ -42,19 +36,10 @@ export type BulkIssueStatusResult = {
   error: "not_found" | null,
 };
 
-// Pre-validating each identifier against the SAME grammar the canonical
-// resolver accepts keeps a malformed id a request-level 400 instead of the
-// resolver's per-item throw aborting the whole batch halfway through.
 export function isValidBulkIssueIdentifier(value: string): boolean {
   return value.length <= MAX_BULK_ISSUE_ID_LENGTH && (isUuid(value) || isValidShortId(value));
 }
 
-/**
- * This is intentionally shared by the route handler and the application
- * helper. Smart-route validation protects the public HTTP boundary, while the
- * helper guard keeps an internal caller from bypassing the same ceiling
- * and duplicate rejection.
- */
 export function assertBulkIssueIdentifiers(issueIds: readonly string[]): void {
   if (issueIds.length === 0 || issueIds.length > MAX_BULK_ISSUE_IDS) {
     throw new StatusError(StatusError.BadRequest, `issue_ids must contain between 1 and ${MAX_BULK_ISSUE_IDS} unique identifiers`);
@@ -136,10 +121,6 @@ export async function applyBulkIssueStatusItem(options: {
       action,
     };
   } catch (error) {
-    // A valid UUID/short id that is outside this tenancy is intentionally
-    // indistinguishable from a missing issue. Do not leak whether a foreign
-    // tenant owns the identifier, and do not make the valid items in the same
-    // request fail just because one item disappeared after a merge.
     if (error instanceof StatusError && error.statusCode === StatusError.NotFound.statusCode) {
       return notFoundResult(options.inputIssueId, action);
     }

@@ -27,12 +27,6 @@ function catalogRow(overrides: Partial<{ metric_name: string, metric_type: strin
   };
 }
 
-/**
- * The real `ClickHouseClient` interface is far larger (command/exec/ping/…);
- * only `query` is exercised here, so this follows the established
- * `as unknown as ClickHouseClient` fake pattern from the other ClickHouse
- * tests — any missing method the code starts using fails loudly at runtime.
- */
 function fakeCatalogClient(responses: Array<{ expectQueryContains?: string, rows: unknown[] }>) {
   const executed: Array<{ query: string, query_params: Record<string, unknown> }> = [];
   const client = {
@@ -106,7 +100,7 @@ describe("OTLP metric query contract", () => {
         catalogRow({ metric_name: "checkout.duration", metric_type: "sum", point_count: 100 }),
         catalogRow({ metric_name: "checkout.duration", metric_type: "histogram", point_count: 5 }),
       ] },
-      { rows: [] }, // series query
+      { rows: [] },
     ]);
     const response = await queryOtlpMetrics({
       tenancy: { project: { id: "p" }, branchId: "b" },
@@ -121,9 +115,8 @@ describe("OTLP metric query contract", () => {
   it("resolves a named metric that fell below the bounded catalog and surfaces it in the response", async () => {
     const { client } = fakeCatalogClient([
       { rows: [catalogRow({ metric_name: "popular.metric", metric_type: "gauge", point_count: 100 })] },
-      // Second query: the targeted per-name catalog-entry lookup.
       { expectQueryContains: "metric_name = {metricName:String}", rows: [catalogRow({ metric_name: "rare.metric", metric_type: "gauge", point_count: 1 })] },
-      { rows: [] }, // series query
+      { rows: [] },
     ]);
     const response = await queryOtlpMetrics({
       tenancy: { project: { id: "p" }, branchId: "b" },

@@ -15,12 +15,6 @@ let otherBranchUserId: string;
 let teamId: string;
 
 beforeAll(async () => {
-  // Deliberately NOT the internal tenancy: the ownership resolver rejects
-  // member snapshots above OWNERSHIP_RESOLVER_MAX_MEMBERS (512) by design, and
-  // a seeded dev database gives the internal project 1000+ users — which turns
-  // every hydration into the over-limit rejection instead of exercising the
-  // routing under test. Any small tenancy works; the fixture creates its own
-  // users, team, and issue inside it.
   const tenancyRows = await globalPrismaClient.tenancy.findMany({
     where: { projectId: { not: "internal" } },
     orderBy: { id: "asc" },
@@ -101,13 +95,6 @@ beforeAll(async () => {
     },
   });
 
-  // Hydration deliberately reads membership through the read replica, and the
-  // dev/CI replica is asynchronous with no replication-wait strategy — so a
-  // read issued immediately after the seed writes above can legitimately miss
-  // them. That staleness is acceptable for alert delivery in production, but
-  // this fixture must not start until the replica has caught up, or the tests
-  // race replication instead of testing hydration. (Skipped implicitly when no
-  // replica is configured: $replica() then falls back to the primary.)
   const replicaDeadline = performance.now() + 30_000;
   while (true) {
     const replicatedMember = await globalPrismaClient.$replica().teamMember.findFirst({

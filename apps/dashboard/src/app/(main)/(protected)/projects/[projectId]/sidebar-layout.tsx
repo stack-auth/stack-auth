@@ -768,8 +768,6 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
   return (
     <WalkthroughProvider>
       <TooltipProvider>
-        {/* Next keeps recently visited route trees mounted with display:none.
-            Only the visible page may choose the shell's scroll mode. */}
         <div className="mx-auto flex h-screen min-h-0 w-full flex-col overflow-y-auto has-[[data-scroll-main]:not([style*='display:_none'])]:overflow-hidden dark:border-x dark:border-border/5 dark:bg-background dark:shadow-2xl">
           {/* Header - Glassmorphic with vertical blur gradient (light) / Floating card (dark) */}
           <div className="sticky top-0 z-20 relative dark:top-3 dark:mx-3 dark:mb-3 dark:mt-3 dark:rounded-2xl">

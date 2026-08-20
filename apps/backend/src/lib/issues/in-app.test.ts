@@ -33,9 +33,6 @@ describe("isInAppPath — node", () => {
     ["a node builtin", "node:internal/process/task_queues", false],
     ["a legacy node builtin", "internal/process/task_queues.js", false],
     ["a bare builtin", "events.js", false],
-    // A path carrying a scheme is app code under the ported rule: on the server
-    // a scheme means the frame survived bundling with its original module id
-    // attached, which is exactly the customer's own file.
     ["a bundled frame with a file scheme", "file:///srv/app/.next/server/chunks/1.js", true],
     ["a bundled frame with a webpack scheme", "webpack://app/./src/route.ts", true],
     ["a bundled dependency", "webpack://app/./node_modules/next/index.js", false],
@@ -48,8 +45,6 @@ describe("isInAppPath — node", () => {
 
 describe("isInAppPath — the two rulesets are deliberately different", () => {
   it("treats a bare relative filename as app code on the browser but as a builtin on node", () => {
-    // Browser stacks routinely carry bare filenames after bundling
-    // (`genericDiscoverQuery.tsx?33f8`); Node stacks only do so for builtins.
     expect([isInAppPath("route.ts", "javascript"), isInAppPath("route.ts", "node")]).toMatchInlineSnapshot(`
       [
         true,

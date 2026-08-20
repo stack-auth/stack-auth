@@ -188,9 +188,6 @@ export default function PageClient() {
       }
 
       const presentation = buildPathsGraphPresentation(nodeArray, allEdges);
-      // Layout only the traffic backbone. Long-tail edges between these pages
-      // remain available on focus, while pages outside the overview do not
-      // force the entire canvas to zoom down to illegible labels.
       const laidOutNodes = computeLayout(presentation.nodes, presentation.edges);
 
       setData({

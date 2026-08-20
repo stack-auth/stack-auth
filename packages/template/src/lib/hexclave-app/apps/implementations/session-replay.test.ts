@@ -25,7 +25,7 @@ describe("session replay lifecycle", () => {
 });
 
 const rrwebMocks = vi.hoisted(() => {
-  type TestRrwebEvent = { type: number, timestamp: number, data: Record<string, never> };
+  type TestRrwebEvent = { type: number, timestamp: number, data: Record<string, unknown> };
   let emit: ((event: TestRrwebEvent) => void) | undefined;
   const takeFullSnapshot = vi.fn(() => emit?.({ type: 2, timestamp: Date.now(), data: {} }));
   const record = Object.assign(vi.fn((options: { emit: (event: TestRrwebEvent) => void }) => {
@@ -157,22 +157,18 @@ describe("SessionRecorder stylesheet re-snapshot", () => {
       const link = attachStylesheetLink({ sheet: { cssRules: [{}] } });
       link.dispatchEvent(new Event("load"));
 
-      // Debounced: nothing happens immediately...
       expect(rrwebMocks.takeFullSnapshot).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(900);
       expect(rrwebMocks.takeFullSnapshot).not.toHaveBeenCalled();
 
-      // ...and a second stylesheet finishing resets the debounce window...
       const link2 = attachStylesheetLink({ sheet: { cssRules: [{}] } });
       link2.dispatchEvent(new Event("load"));
       await vi.advanceTimersByTimeAsync(900);
       expect(rrwebMocks.takeFullSnapshot).not.toHaveBeenCalled();
 
-      // ...then exactly ONE snapshot fires for both stylesheets.
       await vi.advanceTimersByTimeAsync(200);
       expect(rrwebMocks.takeFullSnapshot).toHaveBeenCalledTimes(1);
 
-      // No further snapshots without further stylesheet loads.
       await vi.advanceTimersByTimeAsync(10_000);
       expect(rrwebMocks.takeFullSnapshot).toHaveBeenCalledTimes(1);
 
@@ -220,7 +216,6 @@ describe("SessionRecorder stylesheet re-snapshot", () => {
     try {
       await startRecorder(recorder);
 
-      // Cross-origin stylesheet without CORS: cssRules access throws.
       const crossOriginLink = attachStylesheetLink({
         sheet: {
           get cssRules(): CSSRuleList {
@@ -230,7 +225,6 @@ describe("SessionRecorder stylesheet re-snapshot", () => {
       });
       crossOriginLink.dispatchEvent(new Event("load"));
 
-      // Image load events must be ignored.
       const img = document.createElement("img");
       document.body.appendChild(img);
       img.dispatchEvent(new Event("load"));
@@ -261,7 +255,6 @@ describe("SessionRecorder stylesheet re-snapshot", () => {
       await vi.advanceTimersByTimeAsync(10_000);
       expect(rrwebMocks.takeFullSnapshot).not.toHaveBeenCalled();
 
-      // The listener is detached too: loads after stop() schedule nothing.
       link.dispatchEvent(new Event("load"));
       await vi.advanceTimersByTimeAsync(10_000);
       expect(rrwebMocks.takeFullSnapshot).not.toHaveBeenCalled();
@@ -344,22 +337,18 @@ describe("SessionRecorder stylesheet re-snapshot", () => {
       const link = attachStylesheetLink({ sheet: { cssRules: [{}] } });
       link.dispatchEvent(new Event("load"));
 
-      // Debounced: nothing happens immediately...
       expect(rrwebMocks.takeFullSnapshot).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(900);
       expect(rrwebMocks.takeFullSnapshot).not.toHaveBeenCalled();
 
-      // ...and a second stylesheet finishing resets the debounce window...
       const link2 = attachStylesheetLink({ sheet: { cssRules: [{}] } });
       link2.dispatchEvent(new Event("load"));
       await vi.advanceTimersByTimeAsync(900);
       expect(rrwebMocks.takeFullSnapshot).not.toHaveBeenCalled();
 
-      // ...then exactly ONE snapshot fires for both stylesheets.
       await vi.advanceTimersByTimeAsync(200);
       expect(rrwebMocks.takeFullSnapshot).toHaveBeenCalledTimes(1);
 
-      // No further snapshots without further stylesheet loads.
       await vi.advanceTimersByTimeAsync(10_000);
       expect(rrwebMocks.takeFullSnapshot).toHaveBeenCalledTimes(1);
 
@@ -379,7 +368,6 @@ describe("SessionRecorder stylesheet re-snapshot", () => {
     try {
       await startRecorder(recorder);
 
-      // Cross-origin stylesheet without CORS: cssRules access throws.
       const crossOriginLink = attachStylesheetLink({
         sheet: {
           get cssRules(): CSSRuleList {
@@ -389,7 +377,6 @@ describe("SessionRecorder stylesheet re-snapshot", () => {
       });
       crossOriginLink.dispatchEvent(new Event("load"));
 
-      // Image load events must be ignored.
       const img = document.createElement("img");
       document.body.appendChild(img);
       img.dispatchEvent(new Event("load"));
@@ -420,7 +407,6 @@ describe("SessionRecorder stylesheet re-snapshot", () => {
       await vi.advanceTimersByTimeAsync(10_000);
       expect(rrwebMocks.takeFullSnapshot).not.toHaveBeenCalled();
 
-      // The listener is detached too: loads after stop() schedule nothing.
       link.dispatchEvent(new Event("load"));
       await vi.advanceTimersByTimeAsync(10_000);
       expect(rrwebMocks.takeFullSnapshot).not.toHaveBeenCalled();
@@ -558,6 +544,7 @@ describe("SessionRecorder flush", () => {
 
   it("keeps all batches from one flush on the segment id captured before sign-out rotation", async () => {
     vi.useFakeTimers();
+    vi.clearAllMocks();
 
     const storageKey = `hexclave:session-replay:v1:test-project`;
     localStorage.setItem(storageKey, JSON.stringify({
@@ -574,7 +561,7 @@ describe("SessionRecorder flush", () => {
         resource: TEST_RESOURCE,
         sendBatch: async (body) => {
           sentBodies.push(body);
-          recorder.setSessionReplaySegmentId("new-segment");
+          if (sentBodies.length === 1) recorder.setSessionReplaySegmentId("new-segment");
           return Result.ok(new Response("ok", { status: 200 }));
         },
         sessionReplaySegmentId: "old-segment",
@@ -586,22 +573,14 @@ describe("SessionRecorder flush", () => {
     );
 
     try {
-      // Force two batches so the second payload is built after sendBatch's
-      // await boundary has had a chance to rotate the recorder id.
+      recorder.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(rrwebMocks.record).toHaveBeenCalledTimes(1);
+
       const largeData = "x".repeat(500_000);
-      const event1 = { type: 2, timestamp: Date.now(), data: largeData };
-      const event2 = { type: 3, timestamp: Date.now(), data: largeData };
-      const sizeOf = (e: unknown) => new TextEncoder().encode(JSON.stringify(e)).byteLength;
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      (recorder as any)._events = [event1, event2];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      (recorder as any)._eventSizes = [sizeOf(event1), sizeOf(event2)];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      (recorder as any)._approxBytes = sizeOf(event1) + sizeOf(event2);
-
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-      await (recorder as any)._flush({ keepalive: false });
+      rrwebMocks.emitEvent({ type: 2, timestamp: Date.now(), data: { payload: largeData } });
+      rrwebMocks.emitEvent({ type: 3, timestamp: Date.now() + 1, data: { payload: largeData } });
+      await vi.advanceTimersByTimeAsync(0);
 
       expect(sentBodies).toHaveLength(2);
       const batch1 = JSON.parse(sentBodies[0]);

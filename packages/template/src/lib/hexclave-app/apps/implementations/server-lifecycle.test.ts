@@ -122,10 +122,6 @@ describe("server lifecycle integration", () => {
   });
 
   it("keeps the shutdown deadline timer referenced (the only guaranteed event-loop handle)", async () => {
-    // Deliberately NOT unref'd — see settleWithinDeadline: an unref'd deadline
-    // timer would let an otherwise-idle process exit with code 0 before
-    // delivery settles or handoffFatal/handoffSignal runs, silently masking
-    // the crash the integration exists to report.
     const unref = vi.fn();
     const fakeTimers: unknown[] = [];
     vi.stubGlobal("setTimeout", (_callback: () => void, _ms?: number) => {

@@ -36,9 +36,6 @@ vi.mock("./backend-request-metrics", () => ({
 
 describe("internal backend observability", () => {
   beforeAll(() => {
-    // Production gets this context manager from the SDK's hidden OTel bridge.
-    // Install the standard equivalent here so the test exercises suppression
-    // across the async callback instead of the OTel API's no-op default.
     context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
   });
 
@@ -185,8 +182,6 @@ describe("internal backend observability", () => {
 
     await runWithInternalRequestObservability(request, "request-ambient", async () => new Response(null, { status: 200 }));
 
-    // The SDK now inherits an already-active OTel server span when one exists,
-    // and only creates a true root when no ambient span exists either.
     expect(state.startSpan).toHaveBeenCalledWith("hexclave.api.request", {
       data: {
         request_id: "request-ambient",

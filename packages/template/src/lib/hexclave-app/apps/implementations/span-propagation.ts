@@ -65,7 +65,6 @@ export function trustedDomainsToPropagationOrigins(trustedDomains: readonly stri
       const url = new URL(domain);
       if (url.protocol === "http:" || url.protocol === "https:") origins.add(url.origin);
     } catch {
-      // Invalid dashboard configuration cannot loosen the propagation policy.
     }
   }
   return [...origins];

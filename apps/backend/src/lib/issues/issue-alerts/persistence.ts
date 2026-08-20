@@ -489,12 +489,6 @@ function parseRuleConfig(value: unknown): IssueAlertRule | null {
   };
 }
 
-/**
- * Parse a database row without trusting Prisma's JsonValue shape. A malformed
- * or oversized row is omitted by callers rather than becoming an evaluator
- * input. Metadata is checked against the JSON too so a partial update cannot
- * make a delivery point at a different rule version.
- */
 export function parseStoredIssueAlertRule(row: StoredRuleRow): IssueAlertRule | null {
   const serialized = serializedJson(row.config);
   if (serialized === null) return null;
@@ -647,20 +641,11 @@ async function claimIssueAlertDeliveryInTransactionImpl(
     return { status: "invalid_rule" };
   }
 
-  // Read the dedupe winner before touching cooldown state. The surrounding
-  // serializable transaction makes the check + claim + insert one race-safe
-  // unit: a concurrent writer either becomes the winner or is retried after
-  // the winner's delivery row is visible.
   const existingDelivery = await findDelivery(client, input.scope, { deduplicationKey: input.match.deduplicationKey });
   if (existingDelivery !== null) {
     return { status: "duplicate", delivery: existingDelivery };
   }
 
-  /*
-   * The cooldown row is created before the delivery row because delivery has
-   * a foreign key to the claim. Both writes are in this transaction, so a
-   * failed delivery insert rolls the claim back with it.
-   */
   const cooldownExpiresAt = new Date(now.getTime() + input.match.cooldown.durationSeconds * 1000);
   const cooldownClaim = await client.$queryRaw<{ id: string, expiresAt: Date }[]>(Prisma.sql`
     INSERT INTO "IssueAlertCooldownClaim" (
@@ -880,12 +865,6 @@ export class IssueAlertPersistenceService implements IssueAlertRuleRepository {
 
   async listActiveRuleRecords(scope: IssueAlertRuleScope): Promise<readonly IssueAlertRuleRecord[]> {
     validateScope(scope);
-    // `DISTINCT ON ("ruleKey")` in SQL, not a Prisma `take` over raw version
-    // rows: several enabled versions of one rule key can coexist, and a row
-    // limit applied BEFORE version deduplication would let one heavily
-    // versioned rule consume the whole budget and silently push every rule
-    // key sorting after it out of listing and evaluation. (Prisma's `distinct`
-    // is applied in memory — after `take` — so it cannot express this.)
     const rows = await this.client.$replica().$queryRaw<StoredRuleRow[]>(Prisma.sql`
       SELECT DISTINCT ON ("ruleKey")
         "id", "tenancyId", "projectId", "branchId", "ruleKey",

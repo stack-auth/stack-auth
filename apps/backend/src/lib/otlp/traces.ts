@@ -48,7 +48,6 @@ export type CanonicalOtlpSpan = {
     droppedAttributesCount: number,
     schemaUrl: string,
   },
-  /** Server-owned final policy projection; never comes from the OTLP wire. */
   policyScrubbedData?: Readonly<Record<string, unknown>>,
 };
 
@@ -112,9 +111,6 @@ export function normalizeOtlpJsonTraceRequest(value: unknown): CanonicalOtlpSpan
         if (!isW3cTraceId(traceId)) throw new OtlpTraceRequestError(`${spanPath}.traceId must be a valid W3C trace id`);
         if (!isW3cSpanId(spanId)) throw new OtlpTraceRequestError(`${spanPath}.spanId must be a valid W3C span id`);
         if (parentSpanId !== "" && !isW3cSpanId(parentSpanId)) throw new OtlpTraceRequestError(`${spanPath}.parentSpanId must be empty or a valid W3C span id`);
-        // Mirrors the batch ingestion rule ("A span must not name itself as its
-        // parent_span_id"): a self-parented span is a cyclic trace edge that no
-        // tree renderer can place, so reject it at the wire instead of storing it.
         if (parentSpanId === spanId) throw new OtlpTraceRequestError(`${spanPath}.parentSpanId must not equal spanId`);
         const rawStatus = record(span.status ?? {}, `${spanPath}.status`);
         result.push({

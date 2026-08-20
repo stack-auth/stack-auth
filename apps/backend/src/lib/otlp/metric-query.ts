@@ -42,14 +42,6 @@ type RawSeriesRow = {
 export type OtlpMetricQueryRequest = {
   hours?: number,
   metricName?: string,
-  /**
-   * OTLP allows one metric NAME to exist with several metric types, and each
-   * (name, type) pair is a separate catalog entry with its own series. Without
-   * this, selecting such an entry could silently return a sibling type's data.
-   * Optional because a caller may query by name only, in which case the request
-   * resolves to the pair with the most points — exactly like the catalog
-   * ordering the selector shows.
-   */
   metricType?: string,
 };
 
@@ -184,15 +176,6 @@ export function buildOtlpMetricCatalogQuery(hours: OtlpMetricQueryHours): string
   });
 }
 
-/**
- * Targeted catalog lookup for one requested metric name. The bounded catalog
- * above is a top-N by point count, so a metric the dashboard has pinned or
- * deep-linked can fall out of it while its rows are still present — a named
- * query must then resolve the entry directly instead of returning an empty
- * series. The name filter keeps this scan on the same time-bounded PREWHERE
- * as the top-N query, and the LIMIT covers the (bounded) set of OTLP metric
- * types one name can carry.
- */
 export function buildOtlpMetricCatalogEntryQuery(withMetricType: boolean): string {
   return buildOtlpMetricCatalogQuerySql({
     where: `project_id = {projectId:String}
@@ -261,9 +244,6 @@ export function parseOtlpMetricCatalogRows(rows: RawCatalogRow[]): OtlpMetricCat
       is_monotonic: parseCount(row.is_monotonic, "is_monotonic") === 1,
       point_count: parseCount(row.point_count, "point_count"),
       latest_time_unix_nano: parseOtlpMetricUint64(row.latest_time_unix_nano, "latest_time_unix_nano"),
-      // Histograms and summaries carry enough information for a truthful
-      // average (sum / count); min/max remain nullable where the OTLP point
-      // type does not provide them. The series query preserves that distinction.
       supports_numeric_aggregation: true,
     };
   });
@@ -322,10 +302,6 @@ export async function queryOtlpMetrics(options: {
     : catalog.find((entry) => entry.metric_name === options.request.metricName
       && (requestedType === null || entry.metric_type === requestedType));
   if (selected === undefined && options.request.metricName != null) {
-    // The requested metric may simply have fallen below the top-N catalog (or
-    // the requested (name, type) pair may not be its busiest type). Resolve it
-    // directly and surface it in the returned catalog so the selector stays
-    // faithful to what is actually charted.
     const entryResult = await client.query({
       query: buildOtlpMetricCatalogEntryQuery(requestedType !== null),
       query_params: {

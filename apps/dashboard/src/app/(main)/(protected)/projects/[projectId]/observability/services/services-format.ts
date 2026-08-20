@@ -6,19 +6,12 @@ import {
 } from "../format";
 import { parseServiceTimestamp, type ServiceAttentionReason } from "./services-data";
 
-// Count/duration rendering rules live in `../format` so every Observability
-// page compacts the same value to the same string; this module only re-exports
-// them for its existing call sites.
 export { formatCount, formatDuration };
 
 export function formatPercent(ratio: number, fractionDigits = 1): string {
   return `${(ratio * 100).toFixed(fractionDigits)}%`;
 }
 
-/**
- * Signed relative change with an explicit sign, e.g. "+240%" / "−18%". Uses a
- * true minus sign so the two directions have equal visual weight in a column.
- */
 export function formatSignedPercent(ratio: number): string {
   const percent = ratio * 100;
   const rounded = Math.abs(percent) >= 100 ? Math.round(percent) : Number(percent.toFixed(1));
@@ -26,12 +19,6 @@ export function formatSignedPercent(ratio: number): string {
   return rounded > 0 ? `+${rounded}%` : `−${Math.abs(rounded)}%`;
 }
 
-/**
- * ClickHouse-timestamp-shaped wrappers over the shared millisecond formatters
- * in `../format`. The rendering rules live there so Services and Issues can
- * never disagree about what "2m ago" means; only the parse step is local, since
- * only this page reads its timestamps out of ClickHouse rows.
- */
 export function formatRelativeTime(value: string, nowMs: number): string {
   return formatRelativeTimeFromMillis(parseServiceTimestamp(value).getTime(), nowMs);
 }
@@ -54,10 +41,6 @@ export function attentionReasonLabel(reason: ServiceAttentionReason): string {
   return label;
 }
 
-/**
- * Plain-language explanation of what tripped the signal, used as the row's
- * subline. Written so the reader does not need to know the thresholds.
- */
 export function attentionReasonDescription(
   reason: ServiceAttentionReason,
   context: {

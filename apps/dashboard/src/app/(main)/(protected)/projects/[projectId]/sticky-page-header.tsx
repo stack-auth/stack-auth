@@ -4,10 +4,6 @@ import { cn, Typography } from "@/components/ui";
 import { LayoutGroup, motion, useReducedMotion, type Transition } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 
-// Shared sticky page header (extracted from the overview page): at rest it is
-// a full-width card with the title on the left and the actions on the right;
-// once the page scrolls, the title fades/blurs out first and the chrome then
-// morphs into a compact floating pill hugging the right edge.
 
 const STICKY_HEADER_COMPACT_SCROLL_TOP = 24;
 const STICKY_HEADER_MORPH_MS = 520;
@@ -48,15 +44,10 @@ function useStickyHeaderCompacted(enabled: boolean, scrollContainer: "shell" | "
     const sentinel = sentinelRef.current;
     if (sentinel == null) return;
 
-    // Main-scrolling pages can initially fit and become scrollable only after
-    // their async content arrives. Bind to <main> explicitly so compaction
-    // keeps the same threshold before and after that height change.
     const observerRoot = scrollContainer === "main" ? sentinel.closest("main") : findScrollContainer(sentinel);
     const rootTop = observerRoot?.getBoundingClientRect().top ?? 0;
     const rootScrollTop = observerRoot?.scrollTop ?? window.scrollY;
     const sentinelStartOffset = sentinel.getBoundingClientRect().top - rootTop + rootScrollTop;
-    // Keep the 24px compaction threshold independent from each page's top
-    // padding. A fixed negative root margin made compact pages start collapsed.
     const rootMarginTop = STICKY_HEADER_COMPACT_SCROLL_TOP - sentinelStartOffset;
 
     const observer = new IntersectionObserver((entries) => {
@@ -165,9 +156,6 @@ function StickyHeaderChrome({
         {renderTitle && (
           <div
             className={cn(
-              // The min-width keeps the title readable when the actions are
-              // wide — the actions container shrinks (scrolling or wrapping
-              // internally) instead of crushing the title to zero width.
               "min-w-0 sm:min-w-[8rem] transition-[opacity,transform,filter] [transition-duration:150ms] ease-out motion-reduce:transition-none sm:flex-1",
               compacted && "pointer-events-none opacity-0 blur-[1px]",
             )}
@@ -206,11 +194,8 @@ export function StickyPageHeader({ title, description, actions, sticky, layoutGr
   description?: ReactNode,
   actions: ReactNode,
   sticky: boolean,
-  /** Unique per page — namespaces the motion layout animations. */
   layoutGroupId: string,
-  /** Attached to the sticky wrapper, e.g. to measure the header's live height. */
   headerRef?: Ref<HTMLDivElement>,
-  /** Main-scrolling pages start below the dashboard shell header. */
   scrollContainer?: "shell" | "main",
 }) {
   const { compacted, sentinelRef } = useStickyHeaderCompacted(sticky, scrollContainer);

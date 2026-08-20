@@ -6,9 +6,6 @@ import {
 import { getBucketGranularity } from "../bucket-granularity";
 
 describe("trace volume", () => {
-  // The 7d row is 28 six-hour buckets, not 7 daily ones: the grain is shared
-  // with the services sparklines (see ../bucket-granularity), which the traces
-  // chart used to disagree with for this one range.
   it.each([
     { hours: 1, bucketCount: 60, historySql: "INTERVAL 59 MINUTE", stepSql: "INTERVAL 1 MINUTE" },
     { hours: 24, bucketCount: 24, historySql: "INTERVAL 23 HOUR", stepSql: "INTERVAL 1 HOUR" },

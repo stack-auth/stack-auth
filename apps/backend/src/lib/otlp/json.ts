@@ -8,16 +8,9 @@ export type OtlpAttributeValue =
   | { type: "bytes", value: string }
   | { type: "array", value: OtlpAttributeValue[] }
   | { type: "kvlist", value: OtlpAttributes }
-  // The UNSET AnyValue: OTLP JSON encodes it as an empty object, and the
-  // official JS serializers emit exactly that for `null`/`undefined` values
-  // inside kvlists (e.g. `href: null` in autocapture event data). Shaped with
-  // `value: null` so generic consumers reading `.value` project it to JSON
-  // null without a dedicated branch.
   | { type: "null", value: null };
 export type OtlpAttributes = Map<string, OtlpAttributeValue>;
 
-// Shared with metrics normalization so logs and metrics enforce the same
-// recursive AnyValue collection bounds.
 export const DEFAULT_OTLP_ATTRIBUTE_LIMITS = {
   maxDepth: 16,
   maxAttributesPerList: 256,
@@ -57,12 +50,6 @@ export function otlpUint32(value: unknown, path: string, fallback = 0): number {
   return result;
 }
 
-/**
- * Canonicalizes an already-validated decimal string through BigInt so
- * zero-padded spellings ("00", "007") cannot bypass downstream sentinel
- * comparisons: "0" is the open-span / missing-timestamp marker and is always
- * compared literally, so a non-canonical zero must never survive parsing.
- */
 function canonicalUint64(result: string, path: string, message: string): string {
   if (!/^\d+$/.test(result)) throw new OtlpJsonRequestError(message);
   const parsed = BigInt(result);
@@ -76,12 +63,6 @@ export function otlpUnixNano(value: unknown, path: string): string {
   return result;
 }
 
-/**
- * Like otlpUnixNano, but admits "0". Only span END times use this: 0 is the
- * open-span marker (the SDK snapshots long-lived system spans at start so
- * their descendants are not parentless until the span ends), while a zero
- * START or event time would just be a missing timestamp and stays rejected.
- */
 export function otlpUnixNanoOrOpen(value: unknown, path: string): string {
   return canonicalUint64(otlpString(value, path), path, `${path} must be a uint64 string`);
 }
@@ -90,12 +71,6 @@ export function otlpCanonicalUint64String(value: unknown, path: string): string 
   return canonicalUint64(otlpString(value, path), path, `${path} must be a uint64 string`);
 }
 
-// Structural bounds for the recursive AnyValue parser, mirroring the metrics
-// ingest boundary (metrics.ts DEFAULT_OTLP_METRICS_NORMALIZATION_LIMITS).
-// Without a depth cap, a deeply nested arrayValue/kvlistValue chain exhausts
-// the call stack, and the resulting RangeError is not an OtlpJsonRequestError —
-// so it would bypass the routes' 400 handling and surface as a 500. The
-// collection caps bound CPU/allocation before any per-record limit can run.
 const MAX_OTLP_ANY_VALUE_DEPTH = DEFAULT_OTLP_ATTRIBUTE_LIMITS.maxDepth;
 const MAX_OTLP_ATTRIBUTES_PER_LIST = DEFAULT_OTLP_ATTRIBUTE_LIMITS.maxAttributesPerList;
 const MAX_OTLP_ATTRIBUTE_ARRAY_VALUES = DEFAULT_OTLP_ATTRIBUTE_LIMITS.maxAttributeArrayValues;

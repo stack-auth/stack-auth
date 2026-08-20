@@ -33,7 +33,6 @@ const MAX_BAGGAGE_HEADER_LENGTH = 8192;
 
 const baggagePropagator = new W3CBaggagePropagator();
 
-/** Header bag shape shared by browser `Headers` and node request-like objects. */
 type RequestLikeHeaders = { get: (name: string) => string | null } | Record<string, string | null>;
 
 export function readRequestHeader(headers: RequestLikeHeaders, name: string): string | null {

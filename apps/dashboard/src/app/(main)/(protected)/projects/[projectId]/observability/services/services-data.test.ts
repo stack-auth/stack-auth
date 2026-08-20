@@ -54,8 +54,6 @@ describe("services queries", () => {
     const { query, params } = getServicesSummaryQuery(24);
 
     expect(params).toEqual({ hours: 24 });
-    // Both windows have to come out of one scan, otherwise the two halves could
-    // be measured against different `now()` values.
     expect(query).toContain("range_end - INTERVAL {hours:UInt32} HOUR AS range_start");
     expect(query).toContain("range_start - INTERVAL {hours:UInt32} HOUR AS baseline_start");
     expect(query).toContain("WHERE started_at >= baseline_start");
@@ -85,8 +83,6 @@ describe("services queries", () => {
     expect(query).toContain("child.parent_span_id = parent.span_id");
     expect(query).toContain("WHERE child.parent_span_id IS NOT NULL");
     expect(query).toContain("LIMIT 500");
-    // Client→server edges come out of the same join now that both tiers share a
-    // trace id, so there is no second, id-shape-dependent edge source.
     expect(query).not.toContain("bridged_edges");
     expect(query).not.toContain("UNION ALL");
     expect(query).not.toContain("startsWith(");
@@ -112,8 +108,6 @@ describe("services queries", () => {
       const granularity = getServiceBucketGranularity(hours);
       expect(granularity.bucketCount).toBeGreaterThanOrEqual(24);
       expect(granularity.bucketCount).toBeLessThanOrEqual(60);
-      // buildServiceTimelines floors against the epoch to reproduce ClickHouse's
-      // toStartOfInterval boundaries, which only holds for epoch-aligned widths.
       expect(86_400_000 % granularity.stepMs === 0 || granularity.stepMs % 86_400_000 === 0).toBe(true);
     }
   });
@@ -170,8 +164,6 @@ describe("serviceErrorRate", () => {
   });
 
   it("hides the rate when any span came from head-sampled backend traces", () => {
-    // Errors are promoted back into the sample while successes are dropped, so
-    // errors/requests would overstate failure by roughly the sampling factor.
     expect(serviceErrorRate(summary({ requestCount: 200, errorCount: 10, sampledSpanCount: 1 }))).toBeNull();
   });
 
@@ -208,7 +200,6 @@ describe("buildServiceTimelines", () => {
     const built = timelines.get("checkout/api");
     if (built == null) throw new Error("expected a timeline for checkout/api");
     expect(built.buckets).toHaveLength(24);
-    // 24 hourly buckets ending at 17:00 start at 18:00 the previous day.
     expect(built.buckets[0].bucketMs).toBe(Date.UTC(2026, 6, 27, 18));
     expect(built.buckets.at(-1)).toEqual({ bucketMs: Date.UTC(2026, 6, 28, 17), requestCount: 0, errorCount: 0 });
     expect(built.buckets[15]).toEqual({ bucketMs: Date.UTC(2026, 6, 28, 9), requestCount: 40, errorCount: 2 });
@@ -252,7 +243,6 @@ describe("buildServiceTimelines", () => {
 
 describe("detectServiceAttention", () => {
   it("stays quiet for a service that is merely, persistently imperfect", () => {
-    // The whole point of the redesign: a steady nonzero error count is not news.
     const steady = summary({ errorCount: 40, baselineErrorCount: 38, lastErrorAt: "2026-07-28 17:00:00.000" });
     expect(detectServiceAttention(steady, timeline(Array(24).fill(2)))).toBeNull();
   });
@@ -295,7 +285,6 @@ describe("detectServiceAttention", () => {
   });
 
   it("requires latency to regress both proportionally and absolutely", () => {
-    // 3ms → 6ms doubles but is invisible to a user, so it is not a regression.
     expect(detectServiceAttention(summary({ p95DurationMs: 6, baselineP95DurationMs: 3 }), null)).toBeNull();
 
     const signal = detectServiceAttention(summary({ p95DurationMs: 400, baselineP95DurationMs: 120 }), null);

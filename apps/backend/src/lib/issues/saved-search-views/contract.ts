@@ -6,12 +6,6 @@ import {
   type PublicSearchFilters,
 } from "../public-search/contract";
 
-/**
- * Saved views deliberately persist the public-search input shape instead of a
- * free-form search string. This keeps saved views replayable while making the
- * public search parser the single source of truth for filter bounds and
- * cursor semantics.
- */
 export const SAVED_ISSUE_SEARCH_QUERY_VERSION = 1 as const;
 export const SAVED_ISSUE_SEARCH_QUERY_MAX_BYTES = 16 * 1024;
 export const SAVED_ISSUE_SEARCH_VIEW_NAME_MAX_LENGTH = 128;
@@ -218,9 +212,6 @@ export function parseSavedIssueSearchQuery(value: unknown): SavedIssueSearchQuer
   }
   if (!isStringRecord(value.filters)) return badRequest("saved issue search filters must contain only strings");
 
-  // Public search owns the filter vocabulary, pair requirements, scalar
-  // bounds, facet bounds, and cursor validation. Saved views only remove the
-  // cursor before storage and restore it at execution time.
   const filters = parsePublicSearchQuery(value.filters);
   return {
     version: SAVED_ISSUE_SEARCH_QUERY_VERSION,

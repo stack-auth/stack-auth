@@ -116,20 +116,8 @@ async function validate<T>(obj: SmartRequest, schema: yup.Schema<T>, req: Reques
 }
 
 
-// Hard cap applied to decoded JSON and protobuf request bodies before parsing
-// (for compressed bodies it is also the decompression output bound — a
-// zip-bomb guard). JSON.parse and protobuf decoding of an attacker-sized body
-// are CPU/allocation amplifiers, so the limit must be enforced first.
-// 8 MiB matches the largest JSON bodies we accept anywhere (the analytics
-// batch route's decompressed cap).
 const MAX_DECODED_BODY_BYTES = 8 * 1024 * 1024;
 
-// Transparent request decompression for structured JSON and protobuf bodies.
-// The application/octet-stream batch routes do their own gzip
-// decoding (their compression is an adblocker-evasion detail inside the body,
-// not transport encoding, and is sent WITHOUT a Content-Encoding header), and
-// compressed bodies of every content type were rejected before this existed.
-// JSON and OTLP protobuf both define gzip as a transport-level capability.
 async function decodeBodyContentEncoding(req: Request, bodyBuffer: ArrayBuffer): Promise<Uint8Array> {
   const contentEncoding = req.headers.get("content-encoding")?.trim().toLowerCase() ?? "";
   const raw = new Uint8Array(bodyBuffer);
@@ -157,9 +145,6 @@ async function decodeBodyContentEncoding(req: Request, bodyBuffer: ArrayBuffer):
       }
     });
   } catch (error) {
-    // zlib fails here for exactly two reasons: the output cap was exceeded
-    // (a distinct, permanent 413 so clients shrink their payloads instead
-    // of retrying) or the stream is corrupt (400).
     if (error instanceof Error && "code" in error && error.code === "ERR_BUFFER_TOO_LARGE") {
       throw new StatusError(StatusError.PayloadTooLarge, "Request body too large");
     }
@@ -199,9 +184,6 @@ async function parseBody(req: Request, bodyBuffer: ArrayBuffer): Promise<SmartRe
       return bodyBuffer;
     }
     case "application/x-sentry-envelope": {
-      // Sentry envelopes are newline-framed bytes. Keep them opaque here, but
-      // still honor transport-level compression and the shared decompression
-      // cap before the authenticated envelope route parses item framing.
       const decoded = await decodeBodyContentEncoding(req, bodyBuffer);
       if (decoded.byteLength > MAX_DECODED_BODY_BYTES) {
         throw new StatusError(StatusError.PayloadTooLarge, "Request body too large");

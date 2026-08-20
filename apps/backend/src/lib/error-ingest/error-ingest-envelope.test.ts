@@ -11,10 +11,6 @@ function json(value: unknown): string {
 }
 
 function envelope(header: unknown, items: readonly { header: unknown, payload: string | Uint8Array }[]): Uint8Array {
-  // Mirrors real SDK framing: item parts are JOINED with "\n" and the final
-  // payload ends at EOF with no trailing newline — including a final
-  // length-framed item, so these fixtures exercise the parser's EOF terminator
-  // path instead of always padding a newline the wire format doesn't promise.
   const chunks: Uint8Array[] = [new TextEncoder().encode(`${json(header)}\n`)];
   for (const [index, item] of items.entries()) {
     const payload = typeof item.payload === "string" ? new TextEncoder().encode(item.payload) : item.payload;
@@ -101,7 +97,6 @@ describe("Sentry-style error ingest envelope contract", () => {
     withNewline[withNewline.byteLength - 1] = 0x0a;
     expect(parseErrorIngestEnvelope(withNewline).items[0]?.outcome.status).toBe("accepted");
 
-    // A declared length that overruns the envelope stays malformed.
     const truncated = atEof.subarray(0, atEof.byteLength - 1);
     expect(() => parseErrorIngestEnvelope(truncated)).toThrow(/framing/iu);
   });

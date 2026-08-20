@@ -83,9 +83,6 @@ export function createHexclaveConvex(app: AdapterServerApp, factoryOptions?: Hex
     ): (ctx: TCtx, args: TArgs) => Promise<TResult> => {
       return async (ctx: TCtx, args: TArgs): Promise<TResult> => {
         const user = await (app.getUser as (options: { from: "convex", ctx: ConvexCtx, or: "return-null" }) => Promise<AdapterUser | null>)({ from: "convex", ctx, or: "return-null" });
-        // The user is resolved eagerly (the span's link needs it), so the
-        // context helper just replays the result — same `{ user, hexclave }`
-        // bag shape as every other adapter's handler.
         const hexclave: HexclaveConvexContext = { getUser: async () => user };
         return await runAdapterSpan(app, {
           defaultSpanType: "convex.function",

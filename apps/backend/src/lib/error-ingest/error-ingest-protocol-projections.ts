@@ -12,11 +12,6 @@ import type { CanonicalOtlpSpan } from "@/lib/otlp/traces";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import type { ErrorIngestPolicyItemOutcome } from "./error-ingest-policy";
 
-/**
- * Policy decisions are occurrence-scoped, not W3C-identity-scoped. Exporters
- * may repeat the same trace/span identity in one request, and one occurrence
- * must not inherit another occurrence's acceptance or scrubbed payload.
- */
 export function otlpSpanPolicyItemId(span: Pick<CanonicalOtlpSpan, "traceId" | "spanId">, index: number): string {
   return `span:${index}:${span.traceId}:${span.spanId}`;
 }
@@ -33,11 +28,6 @@ function policyDetails(outcome: ErrorIngestPolicyItemOutcome): ErrorIngestItemOu
   }
 }
 
-/**
- * OTLP has no standard response field for Relay client reports or item
- * descriptors. Keep those projections at the protocol-neutral seam and use
- * only its standard partial-success view in the HTTP response.
- */
 export function createOtlpLogProtocolProjection(
   logRecords: CanonicalOtlpLogRecord[],
   acceptedIndexes: ReadonlySet<number>,
@@ -65,21 +55,11 @@ export function createOtlpLogProtocolProjection(
   return createErrorIngestProtocolProjection(getOtlpIssueBatchId(logRecords, tenant), outcomes);
 }
 
-/**
- * OTLP trace normalization is currently request-shaped: a malformed span
- * aborts normalization before the writer receives any rows. The accepted
- * projection still records the stable span identities and writer dedup token
- * without pretending that a storage-level retry was observable as a separate
- * per-span outcome.
- */
 export function createOtlpTraceProtocolProjection(
   spans: CanonicalOtlpSpan[],
   tenant: OtlpTenantContext,
   policyOutcomes?: readonly ErrorIngestPolicyItemOutcome[],
 ): ErrorIngestProtocolProjection {
-  // Match policy outcomes by position. An ID-keyed map would collapse
-  // duplicate W3C identities onto the last outcome and misreport
-  // partial-success and client-report counts.
   if (policyOutcomes !== undefined && policyOutcomes.length !== spans.length) {
     throw new HexclaveAssertionError("OTLP trace policy outcomes must be one-per-span in span order");
   }

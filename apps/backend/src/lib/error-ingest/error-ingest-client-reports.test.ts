@@ -125,7 +125,6 @@ describe("error ingest client report persistence contract", () => {
   });
 
   it("treats omitted buckets as empty, rounds fractional Unix timestamps, and rejects secret-bearing text as a typed parse error", () => {
-    // Standard Sentry client reports carry only `discarded_events`.
     const request = parseErrorIngestClientReportRequest({
       idempotency_key: "client-batch-minimal",
       timestamp: 1_754_444_800.25,

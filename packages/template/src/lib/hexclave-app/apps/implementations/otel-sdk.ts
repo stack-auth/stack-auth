@@ -114,7 +114,6 @@ export function createHexclaveCorrelationSpanProcessor(): SpanProcessor {
 let managedRegistration: {
   signature: string,
   value: ManagedOtelRegistration,
-  /** Installs instrumentations that were not part of an earlier registration call. */
   installInstrumentations: (instrumentations: NonNullable<ManagedOtelOptions["instrumentations"]>) => void,
 } | null = null;
 
@@ -164,10 +163,6 @@ export function registerManagedOtel(options: ManagedOtelOptions): ManagedOtelReg
     if (managedRegistration.signature !== signature) {
       throw new Error("Hexclave OpenTelemetry is already configured for a different project or service in this process");
     }
-    // App construction registers eagerly with NO instrumentations, so by the
-    // time a framework register() call supplies e.g. PrismaInstrumentation the
-    // provider is already cached. Install the late arrivals on the cached
-    // provider instead of silently ignoring them.
     managedRegistration.installInstrumentations(options.instrumentations ?? []);
     return managedRegistration.value;
   }
@@ -258,11 +253,6 @@ export function registerManagedOtel(options: ManagedOtelOptions): ManagedOtelReg
   const httpInstrumentation = new UndiciInstrumentation({
     ignoreRequestHook: (request) => options.shouldInstrumentOutboundRequest?.(new URL(request.path, request.origin).toString()) === false,
   });
-  // Deduped by instrumentationName: repeated register() calls (HMR re-runs the
-  // customer's instrumentation.ts and constructs NEW instrumentation
-  // instances) must not patch the same library twice — a second enable would
-  // wrap the first wrapper and duplicate every span. Names are unique per
-  // instrumentation package, so they are the stable identity across instances.
   const installedInstrumentationNames = new Set<string>();
   const instrumentationDisposers: (() => void)[] = [];
   const installInstrumentations = (instrumentations: NonNullable<ManagedOtelOptions["instrumentations"]>): void => {
@@ -273,9 +263,6 @@ export function registerManagedOtel(options: ManagedOtelOptions): ManagedOtelReg
       return true;
     });
     if (missing.length === 0) return;
-    // Register one at a time so a failure after an earlier enable cannot leave
-    // an enabled instrumentation unmarked. A later HMR retry must skip only the
-    // instrumentations that actually succeeded, or it will double-patch them.
     for (const instrumentation of missing) {
       instrumentationDisposers.push(registerInstrumentations({
         instrumentations: [instrumentation],

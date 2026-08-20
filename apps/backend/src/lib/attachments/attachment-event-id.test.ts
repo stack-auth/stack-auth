@@ -10,9 +10,6 @@ describe("getErrorAttachmentEventId", () => {
   });
 
   it("fails loudly on anything that is not a strict 32-hex id", () => {
-    // Every ingest path derives occurrence ids from a validated client event id
-    // or a SHA-256 digest, so a malformed id means a writer bug — never a row
-    // to silently render without its attachments.
     expect(() => getErrorAttachmentEventId("occurrence-1")).toThrow("not a 32-hex event id");
     expect(() => getErrorAttachmentEventId("")).toThrow("not a 32-hex event id");
     expect(() => getErrorAttachmentEventId(EVENT_ID.toUpperCase())).toThrow("not a 32-hex event id");

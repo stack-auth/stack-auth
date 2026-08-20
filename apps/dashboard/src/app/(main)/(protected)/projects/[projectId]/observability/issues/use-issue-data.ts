@@ -15,28 +15,9 @@ import {
   type IssueListItem,
 } from "./issues-data";
 
-/**
- * The two ClickHouse-backed loaders behind the Issues list.
- *
- * Together with the one `internal/issues` REST call, they are the page's entire
- * network budget: **3 requests for the first page and 2 for every append,
- * independent of how many rows are on screen.** Facets only move when the time
- * range does, and sparklines are batched across the whole page. An N+1 here
- * (one sparkline query per row) is the single easiest way to make this page
- * unusable, so both loaders are written to make that impossible rather than
- * merely unlikely.
- */
-
-// ─── Facets ──────────────────────────────────────────────────────────
 
 const EMPTY_FACETS: IssueFacets = { services: [], environments: [] };
 
-/**
- * Distinct services / environments for the filter dropdowns, memoized per
- * (admin app, time range) so switching tabs, sorting, or paging never re-asks.
- * Mirrors `useServiceIdentityLoader`, including clearing a failed entry so the
- * next call retries instead of returning a permanently rejected promise.
- */
 export function useIssueFacetsLoader(adminApp: StackAdminApp<false>) {
   const cacheRef = useRef<{ adminApp: StackAdminApp<false>, byHours: Map<number, Promise<IssueFacets>> } | null>(null);
 
@@ -80,9 +61,6 @@ export function useIssueFacets(adminApp: StackAdminApp<false>, hours: Observabil
         setError(null);
       } catch (caught) {
         if (cancelled) return;
-        // Surfaced by the caller as a non-blocking notice: the filters degrade
-        // to "no options", but the issue list itself is unaffected and must
-        // still render.
         setError(caught instanceof Error ? caught : new Error(String(caught)));
       } finally {
         if (!cancelled) setLoading(false);
@@ -98,30 +76,15 @@ export function useIssueFacets(adminApp: StackAdminApp<false>, hours: Observabil
   return { facets, loading, error };
 }
 
-// ─── Sparklines ──────────────────────────────────────────────────────
 
 const EMPTY_SPARKLINES: ReadonlyMap<string, readonly EventSparklineBucket[]> = new Map();
 
 export type IssueSparklines = {
-  /** Keyed by issue hash. A missing key means "still loading". */
   byHash: ReadonlyMap<string, readonly EventSparklineBucket[]>,
   error: Error | null,
-  /**
-   * Re-requests every on-screen hash that hasn't loaded yet (failed hashes are
-   * released back into that set). Already-loaded charts are kept — retry exists
-   * to recover from an error, not to refresh data.
-   */
   retry: () => void,
 };
 
-/**
- * Occurrence volume per issue, fetched **once per page of rows**.
- *
- * Rows render immediately with a flat hairline where the chart will be; the
- * sparkline never gates row display, and its failure never blocks triage. The
- * cache is keyed by time range, so changing the range drops it wholesale rather
- * than leaving 24h bars under a 7d header.
- */
 export function useIssueSparklines(
   adminApp: StackAdminApp<false>,
   hours: ObservabilityTimeRangeHours,
@@ -132,19 +95,11 @@ export function useIssueSparklines(
     byHash: ReadonlyMap<string, readonly EventSparklineBucket[]>,
   }>({ hours, byHash: EMPTY_SPARKLINES });
   const [error, setError] = useState<Error | null>(null);
-  // Hashes with a request in flight. Kept in a ref rather than state because a
-  // second effect run must see the update synchronously — going through
-  // setState would let the same hash be requested twice before React re-renders.
   const inFlightRef = useRef<{ hours: ObservabilityTimeRangeHours, hashes: Set<string> }>({ hours, hashes: new Set() });
   const [retryToken, setRetryToken] = useState(0);
 
   const byHash = cache.hours === hours ? cache.byHash : EMPTY_SPARKLINES;
 
-  // `rows` gets a fresh array identity on every fetch, so depending on it
-  // directly would re-run the effect for free. Round-tripping the hash list
-  // through a string gives the array a content-stable identity, which is the
-  // dependency the effect actually has. A newline separator can't appear in a
-  // hex hash, so the split is exact.
   const visibleHashesKey = useMemo(
     () => [...new Set(rows.flatMap((row) => row.issue_hashes))].join("\n"),
     [rows],
@@ -182,9 +137,6 @@ export function useIssueSparklines(
           return { hours, byHash: next };
         });
       } catch (caught) {
-        // Release the hashes so a retry (or the next page) can ask again, and
-        // surface the failure — a silently missing chart is indistinguishable
-        // from an issue that genuinely had no occurrences.
         for (const hash of wanted) inFlight.delete(hash);
         if (cancelled) return;
         setError(caught instanceof Error ? caught : new Error(String(caught)));
@@ -193,12 +145,6 @@ export function useIssueSparklines(
 
     return () => {
       cancelled = true;
-      // Release this run's hashes: once `cancelled` is set the success path
-      // discards its result, so a hash that stays in `inFlight` here would
-      // never reach `byHash` and its row would show "Loading activity" forever
-      // (e.g. when an append or refresh re-runs the effect mid-request). The
-      // next run may re-request a hash whose response was discarded — a
-      // duplicate query is the cheap side of that trade.
       for (const hash of wanted) inFlight.delete(hash);
     };
   }, [adminApp, hours, visibleHashes, byHash, retryToken]);

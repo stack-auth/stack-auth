@@ -20,8 +20,6 @@ function DurationLabel({ startMs, endMs, nowMs }: { startMs: number, endMs: numb
     return <DesignBadge label="Open" color="green" size="sm" />;
   }
   if (endMs > nowMs) {
-    // A clock-skewed or malformed interval reaches into the future; show
-    // elapsed-so-far instead of the misleading total.
     return (
       <span
         className="font-mono text-[11px] text-muted-foreground"
@@ -81,9 +79,7 @@ function TraceRow({
   nowMs: number,
   active: boolean,
   onSelectSpan: (rootId: string) => void,
-  /** Indented because it happened on the page view above it. */
   nested?: boolean,
-  /** Rendered for a page view that has activity nested under it. */
   expander?: { expanded: boolean, childCount: number, loading: boolean, onToggle: () => void },
 }) {
   const root = trace.root;
@@ -96,9 +92,6 @@ function TraceRow({
   return (
     <div className={cn("relative flex h-full w-full", nested && "pl-5")}>
       {nested && (
-        // A plain rule rather than a full tree connector: one level of nesting is
-        // all this list can ever have (only a page view is nestable), so elbows
-        // would be decoration without information.
         <span aria-hidden className="absolute bottom-0 left-2 top-0 w-px bg-border/50" />
       )}
       {expander != null && (
@@ -107,8 +100,6 @@ function TraceRow({
           aria-expanded={expander.expanded}
           aria-label={expander.expanded ? "Hide activity on this page view" : `Show ${expander.childCount} ${expander.childCount === 1 ? "activity" : "activities"} on this page view`}
           onClick={(clickEvent) => {
-            // The row itself is a button; without this the toggle would also
-            // select the trace and swap the waterfall out from under the user.
             clickEvent.stopPropagation();
             expander.onToggle();
           }}
@@ -159,12 +150,6 @@ function TraceRow({
   );
 }
 
-/**
- * A parent-trace list, not a second waterfall. Span-level navigation belongs in the
- * selected trace pane; keeping this list flat prevents automatic
- * instrumentation from multiplying every trace into hundreds of controls.
- */
-/** How many root activities happened on this page view, per the list query. */
 export function pageViewChildCount(trace: Trace): number {
   const raw = trace.root.span.raw.child_count;
   if (raw === undefined || raw === null) return 0;
@@ -201,7 +186,6 @@ export function SpanTreeList({
 }: {
   traces: Trace[],
   nowMs: number,
-  /** Root span id of the trace currently shown in the waterfall. */
   activeSpanId: string | null,
   onSelectSpan: (rootId: string) => void,
   expandedPageViewIds: ReadonlySet<string>,
@@ -216,9 +200,6 @@ export function SpanTreeList({
   const scrollElementRef = useRef<HTMLDivElement>(null);
   const loaderRowVisible = hasMore || loadingMore || loadMoreError != null;
 
-  // Flattened for the virtualizer: it counts and positions ROWS, so an expanded
-  // page view has to contribute its children to that count rather than growing
-  // one row's height (which would break the estimate and the scroll math).
   const rows = useMemo<ListRow[]>(() => {
     const flattened: ListRow[] = [];
     for (const trace of traces) {
@@ -226,8 +207,6 @@ export function SpanTreeList({
       flattened.push({ kind: "trace", key: rootId, trace, nested: false });
       if (!expandedPageViewIds.has(rootId)) continue;
       for (const child of childrenByPageViewId.get(rootId) ?? []) {
-        // Prefixed so a child can never collide with the same trace appearing at
-        // top level (it cannot today, but the key must not depend on that).
         flattened.push({ kind: "trace", key: `${rootId}>${child.root.span.id}`, trace: child, nested: true });
       }
     }
@@ -255,10 +234,6 @@ export function SpanTreeList({
     <div ref={scrollElementRef} className="h-full overflow-y-auto overscroll-contain">
       <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
         {virtualRows.map((virtualRow) => {
-          // `.at()` rather than `[]`: an index read is typed as always-present,
-          // which would make this guard look dead. The virtualizer can briefly
-          // report an index past the array when rows shrink (a page view
-          // collapsing) before it re-measures.
           const row = rows.at(virtualRow.index);
           if (row == null) return null;
           if (row.kind === "loader") {

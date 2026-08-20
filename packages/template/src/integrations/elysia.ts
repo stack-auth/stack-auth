@@ -75,13 +75,7 @@ export function createHexclaveElysia(app: AdapterServerApp, factoryOptions?: Hex
   const ensureContext = (ctx: ElysiaRequestContext): HexclaveRequestContext =>
     ctx.hexclave ?? createRequestContext(app, ctx.request);
 
-  // Requests already spanned by a `handler()` wrapper — the plugin must not
-  // record a second `elysia.route` span for them. Keyed by the Request
-  // instance (stable across Elysia's lifecycle hooks for one request).
   const handlerSpannedRequests = new WeakSet<Request>();
-  // Requests the plugin observed at onRequest and not yet recorded; the FIRST
-  // terminal hook (onError or onAfterResponse — Elysia can fire both for one
-  // failed request) takes the entry and records the span.
   const pendingPluginRequests = new WeakMap<Request, { startedAtMs: number }>();
 
   /**
@@ -103,19 +97,15 @@ export function createHexclaveElysia(app: AdapterServerApp, factoryOptions?: Hex
         data: {
           path: typeof ctx.path === "string" ? ctx.path : new URL(ctx.request.url).pathname,
           method: ctx.request.method,
-          // Elysia leaves set.status unset for a default 200.
           status: typeof ctx.set.status === "number" ? ctx.set.status : 200,
           ...errorData,
         },
         startedAtMs: pending.startedAtMs,
         telemetry: factoryOptions?.telemetry,
       }, async (span) => {
-        // Everything rode in as creation data; the span ends as soon as this
-        // callback settles, stamping the response time as the interval's end.
         return span;
       });
     } catch (recordError) {
-      // Post-response telemetry must never surface as a request failure.
       console.warn("Hexclave analytics: failed to record an elysia.route span:", recordError);
     }
   };
@@ -125,9 +115,6 @@ export function createHexclaveElysia(app: AdapterServerApp, factoryOptions?: Hex
       if (!ctx.user) {
         if (unauthorized !== undefined) {
           const result = unauthorized();
-          // Elysia has no error-factory convention of its own: a value
-          // returned from beforeHandle short-circuits the route, so that is
-          // the default; an Error is thrown for consumers using error mappers.
           if (result instanceof Error) throw result;
           return result;
         }
@@ -151,8 +138,6 @@ export function createHexclaveElysia(app: AdapterServerApp, factoryOptions?: Hex
         pendingPluginRequests.set(ctx.request, { startedAtMs: Date.now() });
       });
       elysia.onError({ as: "global" }, async (ctx) => {
-        // Same convention as withSpanImpl: a failed span carries the error
-        // message in data.error.
         await recordPluginSpan(ctx, {
           error: ctx.error instanceof Error ? ctx.error.message : String(ctx.error),
         });
@@ -196,8 +181,6 @@ export function createHexclaveElysia(app: AdapterServerApp, factoryOptions?: Hex
       handlerOptions?: HexclaveElysiaHandlerOptions,
     ) => {
       return async (ctx: TContext): Promise<TResult> => {
-        // Claim the request BEFORE running: the plugin's terminal hooks fire
-        // after this handler settles, and must skip requests we spanned here.
         handlerSpannedRequests.add(ctx.request);
         return await runRequestSpan(app, ensureContext(ctx), {
           defaultSpanType: "elysia.route",

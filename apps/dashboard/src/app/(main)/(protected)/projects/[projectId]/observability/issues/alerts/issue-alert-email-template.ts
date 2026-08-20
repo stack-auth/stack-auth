@@ -4,11 +4,6 @@ import {
 } from "@hexclave/shared/dist/utils/issue-alert-email-template";
 import { deindent } from "@hexclave/shared/dist/utils/strings";
 
-// The token vocabulary and interpolation semantics are a cross-app contract
-// with the backend's alert-email renderer, so they live in `@hexclave/shared`
-// (utils/issue-alert-email-template). This module re-exports them for the
-// alert editor and adds the dashboard-only pieces: per-token hints, the
-// default subject/body, and sample values for the live preview.
 export {
   ISSUE_ALERT_EMAIL_PLACEHOLDER_TOKENS,
   interpolateIssueAlertEmailTemplate,

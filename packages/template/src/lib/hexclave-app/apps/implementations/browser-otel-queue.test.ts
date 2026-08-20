@@ -1,15 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBrowserOtlpOfflineQueue, type BrowserOtlpQueueBatch } from "./browser-otel-queue";
 
-/**
- * Minimal in-memory IndexedDB stand-in covering exactly the surface the
- * offline queue uses (open/upgrade, readwrite transactions with async
- * request callbacks and oncomplete, add/get/put/delete/count/getAll and a
- * non-continuing openCursor). The repo has no fake-indexeddb dependency, and
- * the byte-accounting bug this file pins lived only in the IndexedDB
- * implementation — the InMemory fallback was already correct — so exercising
- * the real IDB code path is the point.
- */
 type StoredValue = unknown;
 
 class FakeIdbRequest {
@@ -44,8 +35,6 @@ class FakeIdbTransaction {
       request.onsuccess?.();
       this._pending -= 1;
       if (this._pending === 0) {
-        // Auto-commit like real IDB: complete only if the handlers issued no
-        // further requests by the time the microtask queue drains again.
         queueMicrotask(() => {
           if (this._pending === 0 && !this._completed) {
             this._completed = true;
@@ -109,8 +98,6 @@ class FakeIdbObjectStore {
   }
 
   openCursor(): FakeIdbRequest {
-    // The queue's peek() never calls cursor.continue(), so a first-entry-only
-    // cursor is sufficient.
     return this._transaction._run(() => {
       const first = this._state.data.entries().next();
       if (first.done) return null;
@@ -186,10 +173,6 @@ describe("IndexedDB browser OTLP offline queue", () => {
       maxQueueBytes: 100,
     });
 
-    // Client reports reserve real queue bytes at enqueue even though their
-    // drop summary is all-zero (a report about drops must never manufacture
-    // another drop report). Removal must give those bytes back, otherwise
-    // repeated report cycles converge on permanent false queue_overflow.
     expect(await queue.enqueue(batch(60, "client_report"))).toEqual({ status: "queued" });
     const entry = await queue.peek() ?? (() => {
       throw new Error("expected the queued client report to be peekable");
@@ -215,7 +198,6 @@ describe("IndexedDB browser OTLP offline queue", () => {
 
     expect(await queue.advanceAuthGeneration()).toEqual({ queueEntryCount: 1, itemCount: 1, bodyBytes: 10 });
     expect(await queue.size()).toBe(0);
-    // The rotation reset queue-bytes to zero, so full capacity is available.
     expect(await queue.enqueue(batch(1000))).toEqual({ status: "queued" });
     queue.close();
   });

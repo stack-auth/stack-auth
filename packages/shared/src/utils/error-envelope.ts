@@ -498,7 +498,6 @@ function normalizeRequest(value: unknown, state: NormalizationState, limits: typ
   if (url !== undefined) result.url = url;
   if (method !== undefined) result.method = method.toUpperCase();
   if (statusCode !== undefined && statusCode >= 100 && statusCode <= 599) result.status_code = statusCode;
-  // Never read headers, query, cookies, or body here. This is a deliberate allowlist boundary.
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
@@ -880,12 +879,6 @@ function normalizeToEnvelope(input: Record<string, unknown>, limits: typeof ERRO
 
 /** Normalize a flat `$error` payload into the typed v1 contract. */
 export function normalizeErrorEnvelope(input: unknown, options?: ErrorEnvelopeNormalizationOptions): ErrorEnvelopeV1 {
-  // The input here is always the flat product payload (`FlatErrorEventInput`):
-  // the OTLP receiver projects `hexclave.data` out of the LogRecord before
-  // calling this, and nothing re-normalizes an already-serialized envelope. So
-  // no shape sniffing belongs here — sniffing on payload contents (e.g. an
-  // `eventName: "$error"` field in customer data) would mis-route legitimate
-  // flat payloads through a different adapter.
   const raw = normalizeInputRecord(input);
   const limits = mergeLimits(options);
   const state = new NormalizationState();

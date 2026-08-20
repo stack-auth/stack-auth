@@ -5,11 +5,6 @@ export type CronJobDefinition = {
   localRunner: boolean,
 };
 
-/**
- * Keep scheduled HTTP workers in one list. Vercel owns the hosted schedule,
- * while the local runner uses the same paths for development and self-hosted
- * deployments. QStash delivery endpoints are intentionally not listed here.
- */
 export const CRON_JOB_REGISTRY: readonly CronJobDefinition[] = [
   {
     id: "email-queue",

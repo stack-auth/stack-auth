@@ -14,8 +14,6 @@ const SEVERITY_NUMBERS = new Map<LogLevel, SeverityNumber>([
 function objectEntriesToAnyValueMap(value: object): AnyValueMap {
   const result: AnyValueMap = {};
   for (const [key, child] of Object.entries(value)) {
-    // Match JSON.stringify: enumerable function and undefined properties are
-    // omitted from objects, rather than becoming an OTel `undefined` value.
     if (typeof child === "function" || child === undefined) continue;
     const converted = toOtelAnyValue(child, key);
     if (converted !== undefined) result[key] = converted;
@@ -27,21 +25,12 @@ function toOtelAnyValue(value: unknown, key = ""): AnyValue | undefined {
   if (value === null || value === undefined || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
   if (value instanceof Uint8Array) return value;
   if (Array.isArray(value)) {
-    // JSON.stringify turns undefined, functions, and sparse slots into null
-    // inside arrays. Array.from visits holes, unlike Array.prototype.map.
     return Array.from(value, (entry, index) => toOtelAnyValue(entry, String(index)) ?? null);
   }
   if (typeof value === "object") {
-    // Follow JSON.stringify's semantics: the accepted-data contract is "JSON
-    // serializable" (getCustomTelemetryDataError validates via stringify, which
-    // consults toJSON()), so honor toJSON() here too — walking enumerable
-    // properties instead would silently turn e.g. a Date into `{}`.
     const toJson: unknown = Reflect.get(value, "toJSON");
     if (typeof toJson === "function") {
       const jsonValue: unknown = Reflect.apply(toJson, value, [key]);
-      // Like JSON.stringify, toJSON is consulted once per level: converting an
-      // object result through toOtelAnyValue again would loop forever when
-      // toJSON returns `this`. Children still get their own toJSON treatment.
       return jsonValue !== null && typeof jsonValue === "object" && !Array.isArray(jsonValue) && !(jsonValue instanceof Uint8Array)
         ? objectEntriesToAnyValueMap(jsonValue)
         : toOtelAnyValue(jsonValue);
@@ -80,9 +69,6 @@ export function emitHexclaveOtelLog(item: LogEmitItem, clientVersion: string, op
     severityText: item.level.toUpperCase(),
     body: item.message,
     attributes,
-    // Tri-state on purpose: `undefined` (absent) preserves the existing
-    // active-context behavior for every current caller; `null` is an explicit
-    // "no parent" (ROOT_CONTEXT via otelLogContextForParent).
     context: options?.parent === undefined ? context.active() : otelLogContextForParent(options.parent),
   });
 }

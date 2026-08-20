@@ -15,11 +15,6 @@ function normalizeMethod(method: string): string {
   return /^[A-Za-z]{1,16}$/u.test(method) ? method.toUpperCase() : "_OTHER";
 }
 
-/**
- * Records native request measurements independently of trace sampling. Paths
- * are deliberately excluded: request URLs can contain tenant identifiers and
- * would also create an unbounded metric dimension.
- */
 export function recordBackendRequestMetrics(options: {
   durationMs: number,
   method: string,

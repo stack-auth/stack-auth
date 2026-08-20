@@ -116,14 +116,6 @@ describe("Traces page client", () => {
     expect(screen.queryByText("Hexclave")).toBeNull();
   });
 
-  /**
-   * Replaces a test that asserted the verbatim text of a hook's dependency array
-   * (`"}, [adminApp, hours]);"`) against the page's own source. That broke on
-   * reformat and would have passed had the dependency been added back through any
-   * other spelling. This checks the behavior the dependency exists to protect:
-   * the selected trace's span query must be issued once per selection, not again
-   * every time the root list grows.
-   */
   it("does not re-query the selected trace when the root list grows", async () => {
     const spanQueryMarker = "FROM default.spans";
     let rootPage = 0;
@@ -131,8 +123,6 @@ describe("Traces page client", () => {
       if (query.includes("SELECT service_namespace, service_name")) return { result: [] };
       if (query.includes("SELECT event_type")) return { result: [] };
       if (query.includes("LEFT JOIN default.users AS u")) {
-        // Each call returns a different root, standing in for pagination
-        // extending the sidebar.
         rootPage += 1;
         return {
           result: [{
@@ -163,8 +153,6 @@ describe("Traces page client", () => {
     const spanQueriesAfterFirstSelection = queryAnalyticsMock.mock.calls
       .filter(([options]: [{ query: string }]) => options.query.includes(spanQueryMarker)).length;
 
-    // Let any effect scheduled by the root commit settle. A dependency on the
-    // root list would issue another span query here.
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const spanQueriesAfterSettle = queryAnalyticsMock.mock.calls

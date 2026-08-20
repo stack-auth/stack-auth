@@ -43,13 +43,6 @@ describe("adapter-core", () => {
     expect(getUser).not.toHaveBeenCalled();
   });
 
-  /**
-   * The `required` rejection path is shared by every wrapped surface, and its
-   * subtlety is that ONE factory serves surfaces that return a Response (route
-   * handlers) and surfaces that can only throw (server actions/functions) — so
-   * the same factory has to be returned by the former and thrown by the latter.
-   * This used to be four hand-rolled copies; tested here once at the seam.
-   */
   describe("guarded handler spine", () => {
     const guardInfo = {
       defaultSpanType: "test.surface",
@@ -112,7 +105,6 @@ describe("adapter-core", () => {
         .rejects.toThrow(/signed in to call this server action/);
       expect(handler).not.toHaveBeenCalled();
 
-      // A Response-producing factory on a throw-only surface is thrown, not returned.
       await expect(runGuardedCall(app, {
         ...guardInfo,
         requestInput: makeRequest(),
@@ -168,7 +160,6 @@ describe("adapter-core", () => {
 });
 
 describe("tRPC adapter", () => {
-  // Minimal `t` stand-in: t.middleware(fn) just returns fn.
   const t = { middleware: (fn: (opts: never) => Promise<unknown>) => fn };
 
   function callMiddleware(middleware: unknown, ctx: Record<string, unknown>) {
@@ -248,7 +239,6 @@ describe("oRPC adapter", () => {
     const { app, withSpan } = makeApp();
     const hexclave = createHexclaveORPC(app, { unauthorized: () => new Error("nope") });
 
-    // Handler stand-in that captures its options and immediately runs the middleware.
     const captured: { context?: Record<string, unknown> }[] = [];
     const handler = {
       handle: (request: Request, options?: Record<string, unknown>) => {
@@ -326,10 +316,8 @@ describe("Elysia adapter", () => {
     const result = hexclave.requireUser({ request: makeRequest(), set, user: null } as never);
     expect(result).toBeInstanceOf(Response);
     expect((result as Response).status).toBe(403);
-    // A returned Error is thrown instead of short-circuiting as a body.
     const throwing = hexclave.requireUserWith({ unauthorized: () => Object.assign(new Error("PER-ROUTE"), { perRoute: true }) });
     expect(() => throwing({ request: makeRequest(), set: {}, user: null } as never)).toThrow(/PER-ROUTE/);
-    // Signed-in callers pass through untouched.
     expect(hexclave.requireUser({ request: makeRequest(), set: {}, user: FAKE_USER } as never)).toBeUndefined();
   });
 
@@ -379,7 +367,6 @@ describe("Elysia adapter", () => {
     expect(options.startedAtMs).toBeGreaterThanOrEqual(beforeMs);
     expect(options.request).not.toBeUndefined();
 
-    // A second terminal hook for the same request records nothing.
     await hooks.onAfterResponse({ request, path: "/orders", set: {} });
     expect(withSpan).toHaveBeenCalledTimes(1);
   });
@@ -394,7 +381,6 @@ describe("Elysia adapter", () => {
     await hooks.onAfterResponse({ request, set: { status: 500 } });
 
     expect(withSpan).toHaveBeenCalledTimes(1);
-    // path falls back to the request url's pathname when Elysia has no ctx.path.
     expect((withSpan.mock.calls[0][1] as { data: unknown }).data).toEqual({ path: "/boom", method: "GET", status: 500, error: "kaput" });
   });
 
@@ -418,7 +404,6 @@ describe("Elysia adapter", () => {
     await wrapped({ request, path: "/wrapped", set: {}, user: FAKE_USER, hexclave: createRequestContext(app, request) } as never);
     await hooks.onAfterResponse({ request, path: "/wrapped", set: { status: 200 } });
 
-    // Exactly one span — the handler's.
     expect(withSpan).toHaveBeenCalledTimes(1);
     expect((withSpan.mock.calls[0][1] as { data: unknown }).data).toEqual({ path: "/wrapped", method: "GET" });
   });

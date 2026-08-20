@@ -22,7 +22,6 @@ describe("observability logs page", () => {
     expect(query).toContain("FROM default.logs");
     expect(query).not.toContain("event_type");
     expect(query).toContain("event_at >= now64(3) - INTERVAL 720 HOUR");
-    // The grid columns plus everything the detail view links to.
     expect(query).toContain("e.body AS message");
     expect(query).toContain("e.level");
     expect(query).toContain("lowerUTF8(e.severity_text)");
@@ -34,8 +33,6 @@ describe("observability logs page", () => {
     expect(query).toContain("e.trace_id");
     expect(query).toContain("e.span_id");
     expect(query).toContain("e.session_replay_id");
-    // The query aliases the OTel body/product payload for the existing detail
-    // model, but does not pull the other raw ingestion-only fields into the grid.
     expect(query).not.toContain("source");
     expect(query).toContain("body AS message");
     expect(query).toContain("severity_text");
@@ -64,7 +61,6 @@ describe("observability logs page", () => {
     });
     expect(filtered.query).toContain("coalesce(e.service_namespace, '') = {serviceNamespace:String}");
     expect(filtered.query).toContain("e.service_name = {serviceName:String}");
-    // Free-form service names must never be interpolated into the SQL string.
     expect(filtered.query).not.toContain("stack-backend");
     expect(filtered.params).toEqual({
       serviceNamespace: "server",
@@ -107,8 +103,6 @@ describe("observability logs page", () => {
     for (const range of OBSERVABILITY_TIME_RANGES) {
       expect(getLogsQuery(range.hours).query).toContain(`event_at >= now64(3) - INTERVAL ${range.hours} HOUR`);
     }
-    // The hours value is interpolated into raw SQL, so anything outside the
-    // fixed ranges must throw instead of reaching the query.
     expect(() => getLogsQuery(12)).toThrow("Unknown logs time range: 12");
   });
 

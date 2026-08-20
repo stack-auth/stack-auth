@@ -76,9 +76,6 @@ describe("scrubErrorIngestPayload", () => {
   });
 
   it("keeps the built-in drop policy authoritative over urlKeys overrides", () => {
-    // A urlKeys override may only relax a plain field to a path-only URL
-    // projection. Pointing it at a built-in sensitive key must not resurrect
-    // any part of the value as a "URL path".
     const result = scrubErrorIngestPayload(
       { tags: { password: "https://example.test/reset?code=secret-code", plain: "https://example.test/page?q=1" } },
       { overrides: { urlKeys: ["tags.password", "tags.plain"] } },

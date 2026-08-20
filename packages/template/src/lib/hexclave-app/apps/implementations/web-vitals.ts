@@ -38,9 +38,6 @@ export type WebVitalsSnapshot = {
 
 export type WebVitalsCollectorOptions =
   | { mode: "initial" }
-  /** `navStartTime` is the navigation's `performance.now()` timestamp — the
-   * same clock PerformanceEntry.startTime uses — so buffered pre-navigation
-   * entries can be excluded exactly. */
   | { mode: "soft-nav", navStartTime: number };
 
 export type WebVitalsCollector = {
@@ -53,10 +50,6 @@ type WebVitalsMetricKey = "ttfb_ms" | "fcp_ms" | "lcp_ms" | "cls" | "inp_ms" | "
 type WebVitalsHistogram = Pick<Histogram, "record">;
 type WebVitalsMeter = Pick<Meter, "createHistogram">;
 
-// Bucket boundaries always include the metric's Google field thresholds
-// (good / needs-improvement), so the good/needs-work/poor split is exactly
-// recoverable from the bucket counts alone; the remaining boundaries spread
-// the realistic value range so tail behavior stays visible.
 const WEB_VITAL_METRICS: readonly {
   key: WebVitalsMetricKey,
   name: string,
@@ -145,13 +138,7 @@ export class OtlpWebVitalsMetricRecorder {
   }
 }
 
-// INP ignores interactions faster than this (matches the web-vitals library's
-// default durationThreshold); reporting every sub-threshold interaction would
-// flood the entry buffer without changing the high-percentile estimate.
 const INP_DURATION_THRESHOLD_MS = 40;
-// The INP estimate keeps only the N longest interactions (see the web-vitals
-// library): the reported value is the min(floor(count/50), N-1)-th longest, so
-// anything beyond the top 10 can never be selected for realistic counts.
 const INP_LONGEST_KEPT = 10;
 type LongestInteraction = { id: number, durationMs: number };
 
@@ -176,22 +163,13 @@ export function startWebVitalsCollector(onUpdate: (snapshot: WebVitalsSnapshot) 
   if (typeof PerformanceObserver !== "function" || typeof performance === "undefined") return null;
 
   const softNav = options.mode === "soft-nav";
-  // Entries strictly before the navigation belong to the PREVIOUS page-view's
-  // collector; observers use buffered:true, so this cutoff is what scopes a
-  // soft-nav collector to its own navigation window.
   const entryCutoffTime = softNav ? options.navStartTime : 0;
-  // `performance.interactionCount` is monotonic-global for the tab, so the
-  // INP percentile index for a soft-nav window must use the count of
-  // interactions WITHIN the window: snapshot a baseline at nav start.
   const interactionCountBase = softNav ? nativeInteractionCount() ?? 0 : 0;
 
   const state: WebVitalsSnapshot = softNav ? { soft_nav: 1 } : {};
   const observers: PerformanceObserver[] = [];
   const notify = () => onUpdate({ ...state });
 
-  // FPS is a product-facing smoothness signal rather than a Core Web Vital.
-  // Sampling one-second rAF windows keeps the collector bounded and avoids
-  // exporting one metric point per animation frame.
   let fpsFrameHandle: number | null = null;
   let fpsWindowStart: number | null = null;
   let fpsFrameCount = 0;
@@ -211,16 +189,10 @@ export function startWebVitalsCollector(onUpdate: (snapshot: WebVitalsSnapshot) 
     fpsFrameHandle = requestAnimationFrame(sampleFrame);
   }
 
-  // CLS session windows: shifts (without recent input) accumulate into a window
-  // while gaps stay under 1s and the window under 5s; CLS is the max window.
   let clsSessionValue = 0;
   let clsSessionFirstTs = 0;
   let clsSessionLastTs = 0;
 
-  // INP bookkeeping (mirrors the web-vitals library): the longest interactions
-  // by id. The native distinct-interaction count is used to pick the percentile
-  // index when available; without it, the duration-threshold observer is not a
-  // complete denominator, so the honest fallback is the longest interaction.
   const longestInteractions: LongestInteraction[] = [];
   const longestById = new Map<number, LongestInteraction>();
 
@@ -266,8 +238,6 @@ export function startWebVitalsCollector(onUpdate: (snapshot: WebVitalsSnapshot) 
     }
   };
 
-  // The three load metrics describe the hard load only — not installed at all
-  // in soft-nav mode (see the module comment).
   if (!softNav) {
     tryObserve("navigation", (entries) => {
       for (const entry of entries) {
@@ -309,7 +279,6 @@ export function startWebVitalsCollector(onUpdate: (snapshot: WebVitalsSnapshot) 
       }
       clsSessionLastTs = ts;
       if (clsSessionValue > (state.cls ?? 0)) {
-        // 4 decimals: CLS is a small unitless score; more precision is noise.
         state.cls = Math.round(clsSessionValue * 10_000) / 10_000;
         changed = true;
       }
@@ -325,9 +294,6 @@ export function startWebVitalsCollector(onUpdate: (snapshot: WebVitalsSnapshot) 
     if (changed) notify();
   }, { durationThreshold: INP_DURATION_THRESHOLD_MS });
 
-  // `event` intentionally filters durations below 40ms. `first-input` supplies
-  // the valid fast single-interaction case and dedupes by interactionId when
-  // the same first interaction also appears in the event stream.
   tryObserve("first-input", (entries) => {
     let changed = false;
     for (const entry of entries) {
@@ -347,7 +313,6 @@ export function startWebVitalsCollector(onUpdate: (snapshot: WebVitalsSnapshot) 
         try {
           observer.disconnect();
         } catch {
-          // Disconnect after teardown races are harmless.
         }
       }
       observers.length = 0;

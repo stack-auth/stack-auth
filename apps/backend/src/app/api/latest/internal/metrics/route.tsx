@@ -270,7 +270,6 @@ async function loadActiveUsersByCountry(
 // by `loadActiveUsersByCountry`. This is the "live users right now" number on
 // the overview globe and works independently of whether the analytics app is
 // installed (unlike `analytics_overview.online_live`, which relies on
-// `$page-view` spans).
 async function loadLiveUsersCount(
   tenancy: Tenancy,
   now: Date,
@@ -1275,17 +1274,6 @@ export function buildAnalyticsOverviewUserAgentFilterFragmentsForTest(filters: A
   };
 }
 
-// Page views are spans. Shape them like event rows ONLY inside metrics SQL —
-// never project them into default.events (that caused dual event+span UI rows).
-// These PREWHERE fields are immutable for a span ID, so filtering them before
-// FINAL preserves replacement semantics while avoiding JSON reads for the much
-// larger population of operational spans.
-//
-// The column list is deliberately the INTERSECTION of what spans and events both
-// have, because PAGE_VIEWS_AND_CLICKS_SQL unions the two and ClickHouse pairs
-// UNION ALL branches positionally. No span-identity column is selected: these
-// queries only ever aggregate page views and clicks, so carrying hierarchy here
-// would be dead weight that has to be kept in sync with two schemas.
 const PAGE_VIEWS_FROM_SPANS_SQL = `
   SELECT
     CAST('$page-view', 'LowCardinality(String)') AS event_type,
@@ -1307,8 +1295,6 @@ const PAGE_VIEWS_FROM_SPANS_SQL = `
     AND started_at < {untilExclusive:DateTime}
 `;
 
-// Older SDKs wrote page views as events. Keep those rows throughout the
-// retention window while current SDKs contribute span-only page views.
 const PAGE_VIEWS_AND_CLICKS_SQL = `
   SELECT
     event_type,
@@ -1391,10 +1377,6 @@ export async function loadAnalyticsOverview(
   } | null = null;
 
   // Explicit installed-check instead of inferring "analytics not enabled" from
-  // a failed ClickHouse query: when the app isn't installed the analytics
-  // series are explicitly empty; when it IS installed, every ClickHouse error
-  // propagates so the dashboard renders its error state instead of
-  // plausible-looking zeros.
   const analyticsInstalled = tenancy.config.apps.installed["analytics"]?.enabled ?? false;
 
   if (analyticsInstalled) try {
@@ -1486,8 +1468,6 @@ export async function loadAnalyticsOverview(
         `
       : '';
     const [dailyEventResult, hourlyEventResult, totalVisitorResult, referrerResult, topRegionResult, onlineResult, sessionResult, userAgentResult] = await Promise.all([
-      // Combined daily aggregates: page-view count (from spans), click count,
-      // and unique visitors per day.
       clickhouseClient.query({
         query: `
           SELECT
@@ -1723,8 +1703,6 @@ export async function loadAnalyticsOverview(
         },
         format: "JSONEachRow",
       }),
-      // User-Agent buckets from `$page-view` spans so visitor counts line up
-      // with the referrer / region cards on the overview.
       // `data.user_agent` is captured client-side (navigator.userAgent), so
       // older rows that pre-date capture simply return empty here.
       clickhouseClient.query({

@@ -24,9 +24,6 @@ export type ServerRequestSpanContext = {
   refreshTokenId: string | null,
   sessionReplayId: string | null,
   sessionReplaySegmentId: string | null,
-  // CORRELATION: the caller's current $page-view span (from the propagation
-  // header) — an untrusted label, stamped per-item so backend telemetry reports
-  // which page the user was on when they triggered this request.
   pageViewSpanId: string | null,
   /**
    * HIERARCHY: the span named by the incoming `traceparent` — normally the
@@ -75,8 +72,5 @@ export async function runWithServerRequestContext<T>(context: ServerRequestSpanC
   if (als) {
     return await als.run(context, fn);
   }
-  // Fails closed: with no exact async-context primitive we expose NO ambient
-  // request context rather than risk attributing one request's telemetry to
-  // another's session.
   return await fn();
 }

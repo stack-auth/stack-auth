@@ -300,9 +300,6 @@ function decode(type: Type, body: ArrayBuffer | Uint8Array): unknown {
 }
 
 function encode(type: Type, value: Record<string, unknown>): Uint8Array {
-  // fromObject performs protobufjs's lossless string-to-Long conversion before
-  // verification. OTLP JSON deliberately represents 64-bit integers as decimal
-  // strings because JavaScript numbers cannot carry nanosecond timestamps.
   const message = type.fromObject(value);
   const validationError = type.verify(message);
   if (validationError !== null) throw new OtlpProtobufError(`Invalid OTLP protobuf value: ${validationError}`);

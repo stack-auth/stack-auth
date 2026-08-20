@@ -97,11 +97,6 @@ function StatCell({ label, value, hint }: { label: string, value: string, hint?:
   );
 }
 
-/**
- * A correlation entry. Renders an em dash instead of disappearing when the
- * value is missing: occurrence navigation swaps every field at once, and a card
- * that changes height on each step makes the page jump under the cursor.
- */
 function RailRow({ label, children }: { label: string, children: React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-1.5">
@@ -111,13 +106,6 @@ function RailRow({ label, children }: { label: string, children: React.ReactNode
   );
 }
 
-/**
- * `occurrence.data` crosses the wire as `yupMixed()` — it is the customer's own
- * JSON payload, so the contract deliberately doesn't describe its shape. This
- * is the one place it gets narrowed, and anything that isn't a plain object
- * (a stray array or scalar from a hand-rolled ingest call) renders as "no data"
- * rather than crashing the page.
- */
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value == null || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
@@ -175,23 +163,10 @@ export default function PageClient() {
   const projectId = adminApp.projectId;
   const rawIssueId = params.issueId;
   const routeId = useMemo(() => parseIssueRouteId(rawIssueId), [rawIssueId]);
-  // The list forwards its selected time window via `?range=` (see
-  // `issueDetailHref`) so the Impact card's window-scoped counts match the
-  // numbers the reader just clicked. `useSearchParams` (not a one-shot
-  // location read) so a client-side navigation between issues re-reads it.
-  // Unlike the list page there is no `history.replaceState` writer here, so
-  // Next's cached search params cannot go stale.
   const searchParams = useSearchParams();
   const rangeHours = parseIssueRangeHours(searchParams);
 
   const [detail, setDetail] = useState<IssueDetailResponse | null>(null);
-  // The cursor alone is ambiguous — the same `(event_at, occurrence_id)` pair
-  // means "the one before" or "the one after" depending on the direction, so
-  // both travel together. The step is additionally stamped with the route
-  // segment it belongs to and IGNORED for any other segment: a client-side
-  // navigation to another issue keeps this component mounted, and without the
-  // stamp the previous issue's cursor would be forwarded with the new issue's
-  // id, opening it at an unrelated occurrence (or failing to find one at all).
   const [occurrenceStepState, setOccurrenceStepState] = useState<{
     routeKey: string,
     cursor: string,
@@ -206,11 +181,6 @@ export default function PageClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
-  // Serializes the four status mutations (resolve/ignore/snooze/regress): each
-  // one snapshots `detail` for its rollback, so two racing mutations could
-  // resolve/revert independently and leave the page showing a state the server
-  // never settled on. While one is in flight the other controls no-op, same
-  // pattern as `productSaving` below.
   const [statusSaving, setStatusSaving] = useState(false);
   const [productError, setProductError] = useState<string | null>(null);
   const [productSaving, setProductSaving] = useState(false);
@@ -241,13 +211,7 @@ export default function PageClient() {
         setDetail(next);
         setError(null);
         setNowMs(Date.now());
-        // A merged-away link resolves to the surviving issue but keeps the
-        // obsolete URL, so sharing/bookmarking it would rely on the server
-        // redirect forever. Swap the URL to the survivor's canonical id; the
-        // resulting params change re-runs this load once with the new id,
-        // after which `redirected_from_issue_id` is null and the URL is stable.
         if (next.redirected_from_issue_id != null) {
-          // Keep the selected range across the canonical-id rewrite.
           router.replace(issueDetailHref(projectId, next.issue.id, { rangeHours }));
         }
       } catch (caught) {
@@ -285,8 +249,6 @@ export default function PageClient() {
         const { query, params: queryParams } = getLeadingUpToLogsQuery(anchor, occurrence.event_at_millis);
         const response = await queryObservability(adminApp, { query, params: queryParams });
         if (cancelled) return;
-        // The query returns newest-first (that's the cheap direction for a
-        // LIMIT); the excerpt reads forward in time, ending at the error.
         setLeadingUpTo(parseLeadingUpToLogRows(response.result).reverse());
         setLeadingUpToError(null);
       } catch (caught) {
@@ -307,9 +269,6 @@ export default function PageClient() {
     const previous = detail;
     setDetail({ ...detail, issue: { ...detail.issue, status } });
     try {
-      // The endpoint answers with `{ id, status }` only — it does not recompute
-      // the window metrics for a status change — so there is nothing else to
-      // merge back in.
       await updateIssueStatus(adminApp, detail.issue.id, status);
     } catch (caught) {
       setDetail(previous);
@@ -516,8 +475,6 @@ export default function PageClient() {
     const previous = detail;
     setProductError(null);
     setProductSaving(true);
-    // The team action only accepts the project owner team. Null would stamp
-    // the same id server-side; sending it explicitly keeps the request honest.
     setDetail(setIssueTeam(detail, ownerTeam.id));
     try {
       const result = await updateIssueTeam(adminApp, detail.issue.id, ownerTeam.id);
@@ -565,11 +522,6 @@ export default function PageClient() {
       const result = await unmergeIssue(adminApp, detail.issue.id, hashes);
       router.push(issueDetailHref(projectId, result.new_issue_id, { rangeHours }));
     } finally {
-      // Deliberately no catch: the unmerge dialog (GroupingSection) awaits this
-      // callback and shows the failure inside the still-open dialog, preserving
-      // the user's hash selection for a retry. Swallowing the rejection here
-      // would read as success to the dialog, closing it and clearing the
-      // selection while the error appeared elsewhere on the page.
       setProductSaving(false);
     }
   }, [adminApp, detail, productSaving, projectId, rangeHours, router]);
@@ -740,11 +692,6 @@ export default function PageClient() {
                           size="sm"
                           glassmorphic={false}
                         />
-                        {/*
-                          No "84 of 1,203" ordinal on purpose: it needs a second
-                          count query per navigation, and a stale number is worse
-                          than none.
-                        */}
                         <DesignButton
                           variant="ghost"
                           size="sm"

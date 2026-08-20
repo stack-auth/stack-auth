@@ -207,8 +207,6 @@ function invokeProcessor(
 
   let result: ErrorProcessorResult | PromiseLike<ErrorProcessorResult>;
   try {
-    // Match Sentry's processor contract: each callback gets a fresh event shell,
-    // while the canonical nested exception chain remains intact.
     result = step.processor({ ...event }, hint);
   } catch (error) {
     return failure(step.stage, "processor_failure", step.processor, error, onFailure);
@@ -245,13 +243,6 @@ export function processErrorEvent(
   event: CapturedErrorEvent,
   options: ErrorProcessingOptions,
 ): ErrorProcessingResult | PromiseLike<ErrorProcessingResult> {
-  // Defensive backstop for the bounds the SDK already enforces upstream
-  // (normalizeErrorCaptureOptions throws for configured processors,
-  // addEventProcessor/mergeErrorScopeData bound scope processors). Checked PER
-  // SOURCE — never as one combined budget — so a fully loaded but legitimate
-  // configuration (MAX configured + MAX scope + beforeSend) runs instead of
-  // being silently dropped. An over-limit source here can only mean upstream
-  // validation was bypassed, so fail loud with a typed drop.
   for (const [source, processors] of [
     ["configured", options.eventProcessors ?? []],
     ["scope", options.scopeProcessors ?? []],

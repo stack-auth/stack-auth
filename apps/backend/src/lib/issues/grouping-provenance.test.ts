@@ -114,7 +114,6 @@ describe("durable grouping provenance", () => {
   });
 
   it("fails loudly on values no writer produces", () => {
-    // Empty means the occurrence row was written without its decision record.
     expect(() => parseDurableGroupingProvenance("")).toThrow(/issue_grouping_provenance/);
     expect(() => parseDurableGroupingProvenance("[]")).toThrow(/between 1 and/);
     expect(() => parseDurableGroupingProvenance(JSON.stringify([{ hash: "a".repeat(32), role: "owner" }]))).toThrow(/malformed entry/);

@@ -46,11 +46,6 @@ describe("emitHexclaveOtelLog", () => {
     providers.push(provider);
     logs.setGlobalLoggerProvider(provider);
 
-    // The server's request-scoped _emitLog resolves attribution itself instead
-    // of relying on the active OTel context; the log emitter must accept the
-    // same explicit parent + hexclave.* correlation scalars the event emitter
-    // does. Omitting `options` keeps the active-context default (covered by
-    // the first test in this file).
     emitHexclaveOtelLog({
       message: "payment retried",
       level: "warn",
@@ -93,7 +88,6 @@ describe("emitHexclaveOtelLog", () => {
         body: "rootless",
       },
     ]);
-    // `parent: null` is an explicit root record: no span context at all.
     expect(records[1]?.spanContext).toBeUndefined();
   });
 
@@ -103,11 +97,9 @@ describe("emitHexclaveOtelLog", () => {
     providers.push(provider);
     logs.setGlobalLoggerProvider(provider);
 
-    // The accepted-data contract is JSON serializability (validated with
-    // JSON.stringify, which consults toJSON), so the wire form must match it.
     const selfReferential = {
       toJSON(): unknown {
-        return selfReferential; // must not recurse forever (JSON.stringify does not)
+        return selfReferential;
       },
       kept: "value",
     };

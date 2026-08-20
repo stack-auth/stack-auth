@@ -14,8 +14,6 @@ const EVENT_ID = "0123456789abcdef0123456789abcdef";
 
 describe("error attachments", () => {
   afterEach(() => {
-    // The retry test fakes global timers; leaked fake timers would make any
-    // later real-timeout test hang or silently mis-order.
     vi.useRealTimers();
   });
 

@@ -2,9 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { insertSessionReplaySpans, insertSpanLinks, insertSpans, type SpanInsertRow } from "./spans";
 import type { ClickHouseClient } from "./clickhouse";
 
-// W3C ids: 32 hex for traces, 16 hex for spans. Written out literally rather than
-// generated so the assertions below read as identity pass-through — which is the
-// single most important property of this module now that the SDK owns identity.
 const TRACE_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const SPAN_ROOT = "1111111111111111";
 

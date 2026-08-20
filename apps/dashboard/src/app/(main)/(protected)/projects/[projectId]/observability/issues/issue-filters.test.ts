@@ -21,13 +21,11 @@ function roundTrip(filters: IssueFilters): IssueFilters {
 describe("issue filter defaults", () => {
   it("opens on 24h, not on Logs' 30d", () => {
     expect(DEFAULT_ISSUE_FILTERS.hours).toBe(24);
-    // Same value the shared module suggests; Logs deliberately diverges upward.
     expect(DEFAULT_ISSUE_FILTERS.hours).toBe(DEFAULT_OBSERVABILITY_TIME_RANGE_HOURS);
   });
 
   it("opens on Unresolved and on ALL handledness", () => {
     expect(DEFAULT_ISSUE_FILTERS.status).toBe("unresolved");
-    // Defaulting to "unhandled" would silently hide handled crashes.
     expect(DEFAULT_ISSUE_FILTERS.handled).toBe("all");
   });
 
@@ -71,14 +69,9 @@ describe("parse / serialize round trip", () => {
   });
 
   it("treats whitespace-only search as the default", () => {
-    // The page trims before fetching, so "   " requests an unfiltered list —
-    // persisting it would mark the list as filtered and mislabel an empty
-    // project as "No matching issues".
     const filters: IssueFilters = { ...DEFAULT_ISSUE_FILTERS, search: "   " };
     expect(serializeIssueFilters(filters, new URLSearchParams()).toString()).toBe("");
     expect(issueFiltersAreDefault(filters)).toBe(true);
-    // A non-blank search keeps its raw value (trailing spaces included) so the
-    // controlled input never fights the user mid-phrase.
     expect(serializeIssueFilters({ ...DEFAULT_ISSUE_FILTERS, search: "boom " }, new URLSearchParams()).get("search"))
       .toBe("boom ");
   });
@@ -114,8 +107,6 @@ describe("parseIssueRangeHours (the one filter the detail page shares)", () => {
   });
 
   it("round-trips the range a detail link carries", () => {
-    // The list → detail handoff: `issueDetailHref` writes the param this
-    // parser reads, so the detail page's window matches the list's.
     const href = issueDetailHref("p1", "42", { rangeHours: 720 });
     expect(parseIssueRangeHours(new URL(href, "http://localhost").searchParams)).toBe(720);
   });
@@ -139,8 +130,6 @@ describe("resolveIssueSort", () => {
   });
 
   it("refuses to sort by columns that span two stores", () => {
-    // Sorting "Issue" or "Status" would mean ordering across Postgres AND
-    // ClickHouse, which has no defensible answer.
     expect(isSortableIssueColumn("issue")).toBe(false);
     expect(isSortableIssueColumn("status")).toBe(false);
     expect(isSortableIssueColumn("graph")).toBe(false);

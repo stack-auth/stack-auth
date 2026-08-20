@@ -226,9 +226,6 @@ describe("issue event payload", () => {
   });
 
   it("leads with the LAST chain entry — the canonical exception ingestion groups on", () => {
-    // Sentry orders `exception.values` root-cause-first; ingestion's
-    // `lastExceptionValue` takes the issue's type/message/stack from the last
-    // entry, so the hero stack must match it, not the root cause.
     const stack = heroStack({
       data: {
         exception: {

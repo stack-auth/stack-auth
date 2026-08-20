@@ -7,13 +7,6 @@ import type {
   GroupingVariant,
 } from "./types";
 
-/**
- * JSON shape persisted outside the grouping implementation. The snake-case
- * keys are intentional: this is shared by the Postgres issue-hash ledger, the
- * ClickHouse occurrence read model, and the public occurrence projection.
- * Keeping one bounded shape at this boundary prevents each layer from inventing
- * a slightly different explanation for the same Sentry-style decision.
- */
 export type DurableGroupingHashProvenance = {
   hash: string,
   role: "primary" | "secondary",
@@ -27,12 +20,6 @@ export type DurableGroupingHashProvenance = {
   },
 };
 
-/**
- * A transition currently has one primary and a small readable secondary set.
- * This bound is deliberately independent of the event payload cap: it protects
- * the durable issue/hash row even if grouping emits more variants than the
- * current app/system pair.
- */
 export const MAX_GROUPING_PROVENANCE_ENTRIES = 16;
 
 export function toDurableGroupingProvenance(
@@ -62,9 +49,6 @@ export function serializeGroupingProvenance(
   return JSON.stringify(toDurableGroupingProvenance(provenance));
 }
 
-// Total records rather than plain arrays: adding a member to one of the unions
-// in `types.ts` without listing it here must be a compile error, or the parser
-// below would start rejecting rows the writer legitimately produces.
 const GROUPING_VARIANT_SET: Record<GroupingVariant, true> = { app: true, system: true, message: true, custom: true, degraded: true };
 const GROUPING_FINGERPRINT_TYPE_SET: Record<GroupingFingerprintType, true> = { default: true, custom: true, hybrid: true };
 const GROUPING_FINGERPRINT_SOURCE_SET: Record<GroupingFingerprintSource, true> = { default: true, event: true, degraded: true };
@@ -90,15 +74,6 @@ function parseStringArray(value: unknown, label: string): string[] {
   return value.map((item) => typeof item === "string" ? item : throwErr(`Stored grouping provenance has a malformed ${label} list`));
 }
 
-/**
- * Parses the durable JSON written by `serializeGroupingProvenance` back into
- * the storage shape. Strictly structural on purpose: this column is written by
- * our own ingest path on every `$error` occurrence, so a malformed value is
- * corruption (or a writer bug) and must fail loudly rather than degrade into
- * an occurrence with invented or missing grouping evidence. Config ids are NOT
- * narrowed here — whether an id is still shipped is the caller's policy (the
- * reconciler skips retired configs instead of crashing on them).
- */
 export function parseDurableGroupingProvenance(raw: string): DurableGroupingHashProvenance[] {
   if (raw === "") {
     throw new Error("Stored grouping provenance is empty; every $error occurrence row carries issue_grouping_provenance at ingest");
@@ -135,12 +110,6 @@ export function parseDurableGroupingProvenance(raw: string): DurableGroupingHash
   });
 }
 
-/**
- * Narrows durable entries back to the typed in-process shape. The caller must
- * already have decided that every `config_id` is a config it wants to handle
- * (see `parseDurableGroupingProvenance`); an unknown id here is therefore a
- * violated caller contract, not a data-quality condition.
- */
 export function fromDurableGroupingProvenance(
   entries: readonly DurableGroupingHashProvenance[],
 ): GroupingHashProvenance[] {

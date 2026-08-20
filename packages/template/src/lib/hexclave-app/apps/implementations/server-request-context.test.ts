@@ -29,9 +29,6 @@ describe("withExplicitServerUser", () => {
   });
 
   it("detaches the incoming trace parent and every session id when an explicit user differs", () => {
-    // Dropping `incomingParent` is the load-bearing part: keeping it would nest
-    // this user's telemetry inside the OTHER user's trace, which is exactly the
-    // mixed-identity leak this function exists to prevent.
     expect(withExplicitServerUser(requestContext, OTHER_USER)).toEqual(detached);
   });
 

@@ -73,18 +73,9 @@ export async function uploadBytes(options: {
   };
 }
 
-// How often a conditional PUT is retried after S3 reports a concurrent
-// conditional-write conflict (HTTP 409) before the error is surfaced. Each
-// retry backs off linearly by this base delay; conflicts resolve as soon as
-// the competing write commits or aborts, which is well within this window.
 const CONDITIONAL_PUT_CONFLICT_RETRIES = 3;
 const CONDITIONAL_PUT_CONFLICT_RETRY_BASE_MS = 100;
 
-/**
- * Writes one immutable object without allowing a retry or concurrent writer to
- * replace the bytes. Content-addressed callers use the false result to read
- * and compare the existing object before treating the operation as idempotent.
- */
 export async function uploadBytesIfAbsent(options: {
   key: string,
   body: Uint8Array,
@@ -105,18 +96,6 @@ export async function uploadBytesIfAbsent(options: {
   });
 }
 
-/**
- * S3 distinguishes two conditional-write failures, and only one of them means
- * the key exists: 412 PreconditionFailed is "the object is already there" (the
- * caller may safely read-and-compare), while 409 ConditionalRequestConflict
- * means a CONCURRENT conditional write was in flight and the outcome is
- * unknown — AWS documents that the request should be retried. Treating 409 as
- * "exists" made the loser of a race between two identical registrations
- * immediately read a key whose winning write may not have committed yet,
- * turning a legitimate concurrent upload into a spurious not-found/conflict
- * error. Retrying the PUT converges to either a plain success or a definitive
- * 412 once the competing write commits or aborts.
- */
 async function sendConditionalPutWithConflictRetry(sendConditionalPut: () => Promise<void>): Promise<boolean> {
   for (let attempt = 0; ; attempt++) {
     try {
@@ -145,7 +124,6 @@ import.meta.vitest?.test("conditional PUT retries 409 conflicts and reserves fal
     $metadata: { httpStatusCode },
   });
 
-  // 412: the object definitively exists — no retry, report "not created".
   let attempts412 = 0;
   await expect(sendConditionalPutWithConflictRetry(async () => {
     attempts412++;
@@ -153,8 +131,6 @@ import.meta.vitest?.test("conditional PUT retries 409 conflicts and reserves fal
   })).resolves.toBe(false);
   expect(attempts412).toBe(1);
 
-  // 409: outcome unknown — retry until the competing write settles (here: it
-  // committed, so the retry observes 412 and reports "not created").
   const conflictThenExists = [makeS3Error(409), makeS3Error(412)];
   await expect(sendConditionalPutWithConflictRetry(async () => {
     const error = conflictThenExists.shift();
@@ -162,14 +138,12 @@ import.meta.vitest?.test("conditional PUT retries 409 conflicts and reserves fal
     throw new Error("unexpected extra attempt");
   })).resolves.toBe(false);
 
-  // 409 where the competing write aborted: the retry wins the key.
   const conflictThenSuccess = [makeS3Error(409)];
   await expect(sendConditionalPutWithConflictRetry(async () => {
     const error = conflictThenSuccess.shift();
     if (error !== undefined) throw error;
   })).resolves.toBe(true);
 
-  // Persistent 409s eventually surface instead of being misreported as "exists".
   let persistentAttempts = 0;
   await expect(sendConditionalPutWithConflictRetry(async () => {
     persistentAttempts++;
@@ -177,7 +151,6 @@ import.meta.vitest?.test("conditional PUT retries 409 conflicts and reserves fal
   })).rejects.toBeInstanceOf(S3ServiceException);
   expect(persistentAttempts).toBe(CONDITIONAL_PUT_CONFLICT_RETRIES + 1);
 
-  // Non-conditional failures propagate untouched.
   await expect(sendConditionalPutWithConflictRetry(async () => {
     throw makeS3Error(500);
   })).rejects.toBeInstanceOf(S3ServiceException);
@@ -194,23 +167,6 @@ function getS3Target(privateBucket: boolean): { client: S3Client, bucket: string
   return { client: s3Client, bucket };
 }
 
-/**
- * Grants temporary write access to one exact object key without exposing the
- * backend's S3/R2 credentials. Callers must send the returned content type
- * because it is part of the signature.
- *
- * CREATE-ONLY MODE: with `createOnly: true`, `IfNoneMatch: "*"` becomes part
- * of the signed canonical request, so every uploader must send the literal
- * header `If-None-Match: *` (the signature fails without it) and must treat a
- * 412 response as "already uploaded" success. Content-addressed objects (e.g.
- * source-map artifacts) want this because an overwrite-capable presigned URL
- * would let a same-tenant key holder replace already-published bytes (an
- * availability problem even though readers digest-verify what they download).
- * It is opt-in rather than the default because pre-existing consumers of
- * presigned URLs (the deployment source upload flow and its already-released
- * CLI versions) sign plain PUTs; forcing the header on them would 403 every
- * upload from an older CLI.
- */
 type PresignedUploadOptions = {
   key: string,
   expiresInSeconds: number,
@@ -240,10 +196,6 @@ export async function createPresignedUploadUrl(options: PresignedUploadOptions):
 }
 
 import.meta.vitest?.test("create-only presigned upload URLs sign If-None-Match as a required header", async ({ expect }) => {
-  // The createOnly contract only works if the SDK signs If-None-Match into
-  // the canonical request as a HEADER (so the object store rejects requests
-  // that omit it) rather than hoisting it into the query string. Signing is
-  // fully local, so this needs no S3 endpoint or real credentials.
   const testClient = new S3Client({
     region: "us-east-1",
     endpoint: "https://s3.example.com",

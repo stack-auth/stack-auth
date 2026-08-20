@@ -25,8 +25,6 @@ export type OwnershipMemberInput = {
   userId: string,
   isActive: boolean,
   lastActiveAt: string | null,
-  /** Internal owner-team collaborators can be selected by a team owner, but
-   * must never enlarge a customer project's member fallthrough. */
   eligibleForFallthrough?: boolean,
 };
 
@@ -57,11 +55,6 @@ export type OwnershipIssueOwnerInput =
     source: OwnershipOwnerSource,
   };
 
-/**
- * A provider-free snapshot. Hydration and authorization belong to the caller;
- * this module only evaluates already scoped identities and never queries a
- * provider, CODEOWNERS source, or database.
- */
 export type OwnershipResolverInput = {
   schemaVersion: typeof OWNERSHIP_RESOLVER_SCHEMA_VERSION,
   scope: OwnershipScope,
@@ -107,10 +100,6 @@ export type OwnershipTraceCode =
   | "resolution_rejected"
   | "trace_truncated";
 
-/**
- * Trace entries contain only bounded identifiers and fixed vocabulary. They
- * are safe to carry with a Workflows decision without copying event payloads.
- */
 export type OwnershipDecisionTrace = {
   stage: OwnershipTraceStage,
   decision: OwnershipTraceDecision,

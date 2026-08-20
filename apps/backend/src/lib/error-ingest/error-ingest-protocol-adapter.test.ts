@@ -53,9 +53,6 @@ describe("error-ingest protocol adapter", () => {
         { category: "span", reason: "sampling", quantity: 1 },
       ],
     });
-    // Each OTLP signal counts only its own item types: the filtered log for
-    // `logs`, the sampled-out span for `traces`. The other three rejections are
-    // events/unknown items that no OTLP signal may claim.
     expect(projection.otlpPartialSuccess.logs).toEqual({
       rejectedItems: 1,
       body: {
@@ -186,8 +183,6 @@ describe("error-ingest protocol adapter", () => {
     expect(projection.clientReport.discarded_events).toEqual([
       { category: "transaction", reason: "unsupported", quantity: 1 },
     ]);
-    // Transactions belong to the traces signal; a batch with no log items must
-    // never report rejectedLogRecords.
     expect(projection.otlpPartialSuccess.logs).toMatchObject({ rejectedItems: 0 });
     expect(projection.otlpPartialSuccess.traces).toMatchObject({ rejectedItems: 1 });
   });

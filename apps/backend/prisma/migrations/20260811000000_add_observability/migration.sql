@@ -1,39 +1,3 @@
--- Observability foundation: session-replay segment bounds, the release graph,
--- issues (grouping, materialization, alerts, attachments, product metadata),
--- error-ingest client reports, and workflow dead-letter columns.
---
--- These landed as five development migrations. They share one file because
--- nothing here needs its own transaction:
---   * every new table is empty, so indexes and FK validation are O(1)
---   * WorkflowEvent only gains two nullable columns (metadata-only on
---     supported PostgreSQL; the table itself was created by
---     20260720000000_add_workflows)
---   * there is no NOT VALID / VALIDATE CONSTRAINT pair, no row backfill, and
---     no ACCESS EXCLUSIVE rewrite
---
--- The one non-O(1) step is the Tenancy composite unique index that the new
--- scope foreign keys reference. Tenancy is a hot, high-cardinality table, so
--- that index is built concurrently outside the bookkeeping transaction. Later
--- statements in this file reuse it; it is not repeated.
---
--- Timestamped after 20260806000000_add_manual_transaction so this does not
--- insert into the already-shipped sequence. SessionReplay and WorkflowEvent
--- already exist by then.
---
--- The table starts empty and there is no SessionReplaySegment backfill:
--- segments that predate it are seeded lazily by upsertSessionReplaySegmentBounds,
--- which aggregates the segment's existing chunks the first time it sees a
--- segment with no row. That keeps this migration O(1) on a table with millions
--- of chunks, and the aggregate is bounded by one replay's chunk count.
---
--- No SessionReplaySegment secondary indexes: both cascade paths
--- ((tenancyId, sessionReplayId) from SessionReplay and (tenancyId) from
--- Tenancy) are prefixes of the primary key, as is the upsert's conflict target.
---
--- Intermediate follow-up issue migrations that only existed while that surface
--- was under development are folded into the final CREATE shapes (correct alert
--- rule scope key, no IssueActivity actor FK, Issue/IssueHash columns present
--- from day one).
 
 -- If a previous attempt's CREATE INDEX CONCURRENTLY crashed mid-build, it
 -- leaves an INVALID index behind. IF NOT EXISTS would then skip the rebuild,
@@ -82,9 +46,6 @@ CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "Tenancy_id_projectId_branchId_ke
 SET LOCAL lock_timeout = '2s';
 SET LOCAL statement_timeout = '5min';
 
--- Session replay segment bounds (min firstEventAt / max lastEventAt), updated
--- O(1) per replay batch via LEAST/GREATEST upsert instead of re-aggregating
--- over the segment's chunks on every upload.
 CREATE TABLE "SessionReplaySegment" (
     "id" TEXT NOT NULL,
     "tenancyId" UUID NOT NULL,
@@ -97,13 +58,6 @@ CREATE TABLE "SessionReplaySegment" (
     CONSTRAINT "SessionReplaySegment_pkey" PRIMARY KEY ("tenancyId","sessionReplayId","id")
 );
 
--- Release graph: releases, deployments, commits and uploaded artifacts.
---
--- Release rows carry the complete tenancy scope rather than just a tenancyId.
--- Tenancy is the authoritative project/branch scope, and the composite foreign
--- key below makes it impossible for a release row to pair a tenancy with a
--- different project or branch. The child graph repeats the same scope so every
--- release query stays tenant- and branch-indexed without loading the parent.
 CREATE TYPE "ReleaseStatus" AS ENUM ('OPEN', 'ARCHIVED');
 CREATE TYPE "ReleaseArtifactStatus" AS ENUM ('REGISTERED', 'FINALIZED');
 
@@ -220,9 +174,6 @@ CREATE INDEX "ReleaseArtifact_release_environment_dist_idx" ON "ReleaseArtifact"
 CREATE UNIQUE INDEX "ReleaseArtifactDebugId_artifact_debugId_key" ON "ReleaseArtifactDebugId"("tenancyId", "releaseArtifactId", "debugId");
 CREATE INDEX "ReleaseArtifactDebugId_tenancyId_debugId_idx" ON "ReleaseArtifactDebugId"("tenancyId", "debugId");
 
--- Error tracking: issues, grouping hashes, the exactly-once materialization
--- ledger, ownership/activity/saved-search metadata, the alert surface and the
--- attachment ledger.
 CREATE TYPE "IssueStatus" AS ENUM ('UNRESOLVED', 'RESOLVED', 'IGNORED');
 CREATE TYPE "IssueHashState" AS ENUM ('LOCKED');
 CREATE TYPE "IssueHashGroupingRole" AS ENUM ('PRIMARY', 'SECONDARY');
@@ -251,8 +202,6 @@ CREATE TABLE "Issue" (
     "resolvedAt" TIMESTAMP(3),
     "ignoredUntil" TIMESTAMP(3),
     "assigneeUserId" UUID,
-    -- Internal Hexclave owner-team id, not a Team row in this tenancy. There is
-    -- deliberately no FK: the owner team lives on the internal project.
     "assignedTeamId" UUID,
     "firstSeenAt" TIMESTAMP(3) NOT NULL,
     "lastSeenAt" TIMESTAMP(3) NOT NULL,
@@ -270,54 +219,25 @@ CREATE TABLE "Issue" (
     CONSTRAINT "Issue_pkey" PRIMARY KEY ("tenancyId","id")
 );
 
--- Many-to-one from day one: a scalar Issue.hash would make the app/system
--- variant split, merge, unmerge and every future grouping-algorithm change
--- require migrating the whole hash space instead of rewriting rows here.
 CREATE TABLE "IssueHash" (
     "tenancyId" UUID NOT NULL,
     "hash" TEXT NOT NULL,
     "issueId" UUID NOT NULL,
     "groupingConfigId" TEXT NOT NULL,
-    -- Recorded on every row: materialization always knows the decision that
-    -- produced a hash (owning primary or transition alias), so these are NOT
-    -- NULL from day one rather than storing rows without their evidence.
     "groupingRole" "IssueHashGroupingRole" NOT NULL,
     "groupingVariant" VARCHAR(32) NOT NULL,
     "groupingProvenance" JSONB NOT NULL,
-    -- A committed lease, not an in-transaction flag: set in one transaction and
-    -- cleared in another so concurrent ingest can actually observe it and skip
-    -- the hash. "lockedAt" is what makes a crashed merge recoverable by a sweep
-    -- rather than wedging the hash as LOCKED forever.
     "state" "IssueHashState",
     "lockedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    -- Also the concurrency control: two simultaneous first-sightings of the same
-    -- error race on this key, and exactly one wins.
     CONSTRAINT "IssueHash_pkey" PRIMARY KEY ("tenancyId","hash")
 );
 
--- The exactly-once ledger. The INSERT is the idempotency check: ON CONFLICT DO
--- NOTHING returning 0 rows means this ingest batch's deltas were already applied.
--- Without it, a batch retried after ClickHouse's insert-token dedup would write
--- no new occurrences yet double-count every Postgres counter.
---
--- No Tenancy foreign key on purpose: this row is written once per ingest batch on
--- the write path, and an FK would take a row-share lock on the hot Tenancy row
--- every time. Retention is by "appliedAt" pruning instead, which also covers rows
--- left behind by a deleted tenancy.
 CREATE TABLE "IssueMaterialization" (
     "tenancyId" UUID NOT NULL,
-    -- Transport batches are not universally UUIDs: Sentry envelopes and OTLP
-    -- retries use bounded, deterministic string identities. Creating the final
-    -- shape directly avoids a table rewrite and ACCESS EXCLUSIVE lock in the
-    -- follow-up migration when this schema first reaches production.
     "batchId" VARCHAR(512) NOT NULL,
     "appliedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    -- Stored per-batch outcomes let a retried control-plane job replay
-    -- notifications (webhooks, alerts) without re-applying issue deltas; the
-    -- two dispatch timestamps make each side-effect phase independently
-    -- idempotent.
     "outcomes" JSONB,
     "webhooksDispatchedAt" TIMESTAMP(3),
     "alertsDispatchedAt" TIMESTAMP(3),
@@ -325,10 +245,6 @@ CREATE TABLE "IssueMaterialization" (
     CONSTRAINT "IssueMaterialization_pkey" PRIMARY KEY ("tenancyId","batchId")
 );
 
--- Merge keeps the source issue's id AND short id resolvable. Existing redirects
--- are rewritten to the new target on merge rather than chained, so a lookup is
--- always exactly one hop however many times an issue has been merged. No FK in
--- either direction: "fromIssueId" names a row the merge has already deleted.
 CREATE TABLE "IssueRedirect" (
     "tenancyId" UUID NOT NULL,
     "fromIssueId" UUID NOT NULL,
@@ -339,9 +255,6 @@ CREATE TABLE "IssueRedirect" (
     CONSTRAINT "IssueRedirect_pkey" PRIMARY KEY ("tenancyId","fromIssueId")
 );
 
--- Short id allocator. Scoped to a Tenancy, which is (project, branch) — so short
--- ids are per project AND branch, not per project. BIGINT so a firehose project
--- cannot wrap the counter.
 CREATE TABLE "IssueCounter" (
     "tenancyId" UUID NOT NULL,
     "nextShortId" BIGINT NOT NULL DEFAULT 1,
@@ -402,8 +315,6 @@ CREATE TABLE "IssueAlertDelivery" (
     "state" "IssueAlertDeliveryState" NOT NULL DEFAULT 'CLAIMED',
     "outcome" "IssueAlertDeliveryOutcome" NOT NULL DEFAULT 'NONE',
     "workflowEventId" UUID,
-    -- Scrubbed copy of the workflow payload so replay does not depend on the
-    -- 30-day WorkflowEvent retention window.
     "workflowPayload" JSONB,
     "attemptCount" INTEGER NOT NULL DEFAULT 0,
     "replayCount" INTEGER NOT NULL DEFAULT 0,
@@ -478,8 +389,6 @@ CREATE TABLE "IssueActivity" (
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "IssueActivity_pkey" PRIMARY KEY ("tenancyId", "id"),
   CONSTRAINT "IssueActivity_data_size_check" CHECK (pg_column_size("data") <= 65536)
-  -- No actor FK on purpose: system/automation actors and deleted users must still
-  -- leave an auditable activity row. actorUserId is informational only.
 );
 
 CREATE TABLE "IssueComment" (
@@ -609,10 +518,6 @@ CREATE UNIQUE INDEX "IssueComment_scope_issue_idempotency_key"
   ON "IssueComment" ("tenancyId", "projectId", "branchId", "issueId", "idempotencyKey");
 CREATE INDEX "IssueComment_scope_issue_createdAt_idx"
   ON "IssueComment" ("tenancyId", "projectId", "branchId", "issueId", "createdAt" DESC, "id" DESC);
--- NULLS NOT DISTINCT for the same reason as IssueOwner_scope_natural_key: the
--- subject CHECK constraint makes one of subjectUserId/subjectTeamId NULL on
--- every row, so the default semantics would allow unlimited duplicate
--- subscriptions per subject.
 CREATE UNIQUE INDEX "IssueSubscription_scope_natural_key"
   ON "IssueSubscription" ("tenancyId", "projectId", "branchId", "issueId", "subjectType", "subjectUserId", "subjectTeamId")
   NULLS NOT DISTINCT;
@@ -626,12 +531,6 @@ CREATE UNIQUE INDEX "IssueSavedSearchView_scope_name_key"
 CREATE INDEX "IssueSavedSearchView_scope_updatedAt_idx"
   ON "IssueSavedSearchView" ("tenancyId", "projectId", "branchId", "visibility", "ownerUserId", "updatedAt" DESC, "id" DESC);
 
--- The error-ingest client-report ledger: the durable record of item-level
--- ingest outcomes.
---
--- Client reports carry only category/reason/quantity metadata; event payloads
--- never cross this boundary. The idempotency key is supplied by the protocol
--- projection, so retrying an ambiguous response cannot double-count a report.
 CREATE TABLE "ErrorIngestClientReport" (
     "tenancyId" UUID NOT NULL,
     "projectId" TEXT NOT NULL,

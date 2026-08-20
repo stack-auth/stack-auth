@@ -1,10 +1,6 @@
 export * from './lib/hexclave-app';
 export { getConvexProvidersConfig } from "./integrations/convex";
 // IF_PLATFORM next
-// Next.js instrumentation + route/server-action adapters. Also available at
-// `@hexclave/next/next`; re-exported here so `instrumentation.ts` can import
-// from the package root (matches the docs, and editors that ignore package
-// "exports" still resolve the main entry).
 export {
   createHexclaveNext,
   hexclaveInstrumentation,
@@ -36,8 +32,6 @@ export type {
   HexclaveServiceOutputs,
 } from "@hexclave/shared/config";
 
-// Custom telemetry (trackEvent/startSpan) — platform-neutral: the methods exist
-// on every SDK surface (non-browser environments no-op with inert spans).
 export type { ParentRef, Span, SpanContext, StartSpanOptions, TrackOptions } from "./lib/hexclave-app/apps/implementations/event-tracker";
 
 // IF_PLATFORM react-like

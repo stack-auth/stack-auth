@@ -112,8 +112,6 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     },
   ]);
 
-  // Provenance is NOT NULL from day one: a hash row without its grouping
-  // decision would be a writer bug, so the database rejects it outright.
   await expect(sql`
     INSERT INTO "IssueHash" ("tenancyId", "hash", "issueId", "groupingConfigId")
     VALUES (${ctx.tenancyId}::uuid, ${"c".repeat(32)}, ${issueId}::uuid, 'hexclave-js:2026-08-01')

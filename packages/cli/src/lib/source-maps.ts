@@ -26,11 +26,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CliError } from "./errors.js";
 
-// Bundle file extensions worth scanning. `.map` files are found through their
-// bundles, never scanned directly.
 const BUNDLE_EXTENSIONS = new Set([".js", ".mjs", ".cjs"]);
 
-// Directories never worth walking during a build-output scan.
 const SKIPPED_DIRECTORY_NAMES = new Set(["node_modules", ".git", "cache"]);
 
 const DEBUG_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -51,9 +48,6 @@ export function isDebugId(value: string): boolean {
 // `sentry-dbid-<uuid>`; the distinct prefix lets both SDKs coexist in one app.
 const DEBUG_ID_IDENTIFIER_PREFIX = "hexclave-dbid-";
 
-// Delimiters around everything we inject, so a re-run can remove exactly what a
-// previous run added (and nothing else) before appending the new block. This is
-// what makes `appendDebugIdSnippet` safe to call repeatedly on the same file.
 const SNIPPET_START_MARKER = "// hexclave:debug-id-injection:start";
 const SNIPPET_END_MARKER = "// hexclave:debug-id-injection:end";
 const SNIPPET_SEPARATOR_MARKER = "// hexclave:debug-id-injection:separator";
@@ -99,14 +93,10 @@ export function deriveDebugId(minified: Uint8Array, map: Uint8Array): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
-/** sha256 of arbitrary bytes, hex-encoded. The object-storage key is derived from this. */
 export function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-// ---------------------------------------------------------------------------
-// Snippet injection
-// ---------------------------------------------------------------------------
 
 /**
  * Extracts a previously injected debug id from a bundle's source.
@@ -185,8 +175,6 @@ export function appendDebugIdSnippet(source: string, debugId: string): string {
     if (stripped.endsWith("\n") || stripped === "") return `${stripped}${block}`;
     return `${stripped}\n${SNIPPET_SEPARATOR_MARKER}\n${block}`;
   }
-  // `lineStart` is a line boundary (the regex is `^`-anchored with `m`), so the
-  // slice before it already ends in a newline unless it is empty.
   return `${stripped.slice(0, sourceMappingUrl.lineStart)}${block}${stripped.slice(sourceMappingUrl.lineStart)}`;
 }
 
@@ -253,11 +241,6 @@ export function readInlineSourceMap(source: string): string | null {
 }
 
 export type DetermineSourceMapPathOptions = {
-  /**
-   * The directory a resolved map path must stay inside. Defaults to the
-   * bundle's own directory; `collectArtifacts` passes the scan root so a map
-   * one level up (a common bundler layout) still resolves.
-   */
   containingDir?: string,
 };
 
@@ -292,8 +275,6 @@ function resolveContainedFile(candidate: string, containingDir: string): string 
     realCandidate = fs.realpathSync(candidate);
     realContaining = fs.realpathSync(containingDir);
   } catch {
-    // A broken symlink or a vanished directory: treat as "not a usable file"
-    // rather than trusting the unresolved path.
     return null;
   }
   return isInside(realCandidate, realContaining) ? candidate : null;
@@ -330,8 +311,6 @@ export function determineSourceMapPathFromBundle(bundlePath: string, source: str
   searchLocations.push(`${path.resolve(bundlePath)}.map`);
 
   for (const location of searchLocations) {
-    // Real-path containment, not just the lexical `isInside` above: the file is
-    // about to be read and uploaded, and a symlink target must not escape.
     const contained = resolveContainedFile(location, containingDir);
     if (contained !== null) return contained;
   }
@@ -345,8 +324,6 @@ function resolveSourceMappingUrlToPath(url: string, bundleDir: string): string |
     try {
       return path.resolve(fileURLToPath(url));
     } catch {
-      // Malformed file: URL — treat it as "no reference" and let the
-      // `<bundle>.map` fallback decide.
       return null;
     }
   }
@@ -358,7 +335,6 @@ function resolveSourceMappingUrlToPath(url: string, bundleDir: string): string |
   try {
     decoded = decodeURIComponent(url);
   } catch {
-    // Not percent-encoded (or invalidly so); use it verbatim.
   }
   return path.resolve(bundleDir, decoded);
 }
@@ -368,9 +344,7 @@ function resolveSourceMappingUrlToPath(url: string, bundleDir: string): string |
 // ---------------------------------------------------------------------------
 
 export type PrepareSourceMapOptions = {
-  /** Directory the `.map` lives in. Relative `sources` entries resolve against it. */
   sourceMapDir: string,
-  /** Repo root that build-machine absolute paths are made relative to. */
   repoRoot: string,
 };
 
@@ -456,9 +430,6 @@ export function prepareSourceMapForUpload(mapJson: unknown, debugId: string, opt
   map.debugId = debugId;
   normalizeSourcesInPlace(map, options);
   if (Array.isArray(map.sections)) {
-    // Index maps ("sections") hold a nested map per section, each with its own
-    // `sources`. Symbolication resolves through them, so they need the same
-    // normalization as a flat map.
     map.sections = map.sections.map((section: unknown) => {
       if (typeof section !== "object" || section === null || Array.isArray(section)) return section;
       const sectionObject = asJsonObject(section, "Source map section");
@@ -478,9 +449,6 @@ function normalizeSourcesInPlace(map: Record<string, unknown>, options: PrepareS
   if (Array.isArray(map.sources)) {
     map.sources = map.sources.map((source: unknown) => typeof source === "string" ? normalizeSourcePath(source, sourceRoot, options) : source);
   }
-  // `sourceRoot` is folded into each entry above. Keeping it would double-apply
-  // the prefix at read time, and it is itself frequently a build-machine
-  // absolute path — exactly the leak this normalization exists to close.
   delete map.sourceRoot;
 }
 
@@ -524,11 +492,6 @@ function isAbsoluteLike(value: string): boolean {
   return path.isAbsolute(value) || /^[a-zA-Z]:[\\/]/.test(value);
 }
 
-/**
- * Best-effort repo-relative path for one `sources[]` entry. Never throws: an
- * unrecognized entry is better rendered as-is than dropped, because a missing
- * source silently degrades every frame that points at it.
- */
 export function normalizeSourcePath(source: string, sourceRoot: string | null, options: PrepareSourceMapOptions): string {
   let value = source;
   if (sourceRoot !== null && sourceRoot !== "" && !BUNDLER_PROTOCOL_RE.test(value) && !isAbsoluteLike(value)) {
@@ -550,14 +513,10 @@ export function normalizeSourcePath(source: string, sourceRoot: string | null, o
   } else if (isAbsoluteLike(value)) {
     value = relativizeAbsolutePath(value, options.repoRoot);
   } else {
-    // A genuinely relative entry is relative to the map file. Resolving and
-    // re-relativizing is also what collapses its `../` segments correctly.
     value = relativizeAbsolutePath(path.resolve(options.sourceMapDir, value), options.repoRoot);
   }
 
   value = path.posix.normalize(toPosix(value));
-  // Leading `../` runs survive normalization only when the path escaped the
-  // repo root; they carry no information and read as noise in the UI.
   return value.replace(/^(?:\.\.\/)+/, "").replace(/^\.\//, "");
 }
 
@@ -566,27 +525,17 @@ function relativizeAbsolutePath(absolutePath: string, repoRoot: string): string 
   if (relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)) {
     return toPosix(relative);
   }
-  // Outside the repo: a pnpm store, a global cache, a CI toolchain directory.
-  // Keep the part that identifies the file and drop the machine's layout —
-  // the layout is the privacy leak and is useless to the reader anyway.
   const posix = toPosix(absolutePath);
   const nodeModulesIndex = posix.lastIndexOf("node_modules/");
   if (nodeModulesIndex >= 0) return posix.slice(nodeModulesIndex);
   return path.posix.basename(posix);
 }
 
-// ---------------------------------------------------------------------------
-// Build output scanning
-// ---------------------------------------------------------------------------
 
 export type SourceMapArtifactCandidate = {
-  /** Absolute path of the emitted bundle file. */
   bundlePath: string,
-  /** Absolute path of the scan directory it was found under. */
   scanDir: string,
-  /** Absolute path of its `.map`, or null when none could be resolved. */
   sourceMapPath: string | null,
-  /** True when the bundle carries its map inline as a `data:` URI instead. */
   hasInlineSourceMap: boolean,
   /** True for chunks emitted into a Next.js server build (`.next/server/**`). */
   isServerBundle: boolean,
@@ -644,18 +593,8 @@ export function collectArtifacts(dirs: readonly string[]): SourceMapArtifactCand
   return [...byBundlePath.values()].sort((a, b) => a.bundlePath < b.bundlePath ? -1 : a.bundlePath > b.bundlePath ? 1 : 0);
 }
 
-// ---------------------------------------------------------------------------
-// Subresource integrity guard
-// ---------------------------------------------------------------------------
 
 const MANIFEST_FILE_RE = /manifest.*\.(?:json|js)$/i;
-// Matches an `integrity` field with a string value in either JSON (`"integrity":"…"`)
-// or JavaScript-object-literal form (`integrity:'…'`, `'integrity':"…"`). The
-// key/value quotes are independently optional because `.js` manifests are
-// explicitly scanned too, and a JS bundler can emit an unquoted or single-quoted
-// key that a JSON-only pattern would miss — letting us silently rewrite a bundle
-// and invalidate its SRI hash. Over-detection here is safe: the caller hard-stops
-// with an actionable message rather than shipping a broken build.
 const INTEGRITY_FIELD_RE = /["']?integrity["']?\s*:\s*["']/;
 
 /**
@@ -681,7 +620,6 @@ export function findIntegrityManifests(dirs: readonly string[]): string[] {
   return [...found].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
 }
 
-/** Walks up from each scan dir to the enclosing `.next` directory, if any. */
 export function findNextBuildRoots(dirs: readonly string[]): string[] {
   const roots = new Set<string>();
   for (const dir of dirs) {

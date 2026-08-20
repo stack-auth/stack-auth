@@ -95,8 +95,6 @@ type PublicSearchAttachmentRow = {
 function attachmentFilterSql(filters: PublicSearchFilters): Prisma.Sql[] {
   const clauses: Prisma.Sql[] = [];
   if (filters.attachmentFilename !== null) {
-    // Use strpos rather than an ILIKE pattern so `%` and `_` in a filename
-    // filter stay literal and cannot turn a bounded search into a wildcard scan.
     clauses.push(Prisma.sql`AND strpos(lower("filename"), lower(${filters.attachmentFilename})) > 0`);
   }
   if (filters.attachmentContentType !== null) {
@@ -189,13 +187,6 @@ async function loadPublicSearchAttachmentMetadata(options: {
   return attachmentsByEvent;
 }
 
-// The error envelope is the ONLY payload read model these expressions consult.
-// Both ingest paths build `error_envelope` from the same event data on every
-// `$error` row, so a raw-`data` fallback could never fire for a real row — and
-// worse, it would re-expose fields the envelope limiter deliberately dropped or
-// truncated. Physical columns (service_name, deployment_environment_name,
-// level, body) remain genuine fallbacks because they are populated
-// independently of the envelope.
 function errorEnvelopeFieldExpression(field: "event_id" | "release" | "environment"): string {
   return `JSONExtractString(error_envelope, '${field}')`;
 }
@@ -231,9 +222,6 @@ function searchUserExpression(field: "id" | "email" | "username"): string {
 }
 
 function searchObjectStringExpression(container: "contexts" | "extra", keyParameter: string): string {
-  // Only direct scalar strings are searchable here. Nested context/extra JSON is
-  // intentionally not traversed so a public filter cannot become an arbitrary
-  // payload path or force unbounded JSON extraction work.
   return `JSONExtractString(JSONExtractRaw(error_envelope, '${container}'), {${keyParameter}:String})`;
 }
 
@@ -248,17 +236,8 @@ function facetExpression(facet: string, keyParameter: string): string {
   throw new Error(`Unsupported public search facet: ${facet}`);
 }
 
-/**
- * The predicates for one occurrence query, split by WHICH CLAUSE each belongs
- * in. The split is part of each predicate's construction rather than a
- * positional slice over one array, so inserting or reordering a predicate can
- * never silently move a JSON/payload filter into PREWHERE (changing semantics
- * and performance) without the author choosing a group.
- */
 type OccurrenceFilterClauses = {
-  /** Sorting-key/time predicates only — ClickHouse uses these to reject granules before reading payload columns. */
   prewhere: string[],
-  /** Everything that reads error envelopes or JSON payloads. Never empty: `issue_hash != ''` is always present. */
   where: string[],
 };
 

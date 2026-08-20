@@ -3,7 +3,6 @@ import { BROWSER_STACK_FIXTURES, MINIFIED_BUNDLE_STACK_FIXTURE, NODE_STACK_FIXTU
 import { deriveModule, hasUrlOrigin, normalizeFilenameForGrouping, parseStack, pathnameOf, stripContentHash } from "./stack-parser";
 import type { StackFixture } from "./__fixtures__/browser-stacks";
 
-/** Frames are verbose; the snapshots below only assert the fields grouping and the UI read. */
 function summarize(fixture: StackFixture): string[] {
   return parseStack(fixture.stack ?? "", fixture.platform).map((frame) =>
     `${frame.inApp ? "app" : "sys"} ${frame.function ?? "<none>"} @ ${frame.module ?? frame.filename ?? "<none>"} ${frame.lineno ?? "-"}:${frame.colno ?? "-"}`
@@ -159,8 +158,6 @@ describe("parseStack — per-browser TraceKit fixtures", () => {
 
 describe("parseStack — guards", () => {
   it("truncates every line to 1024 characters before regexing", () => {
-    // The padding sits between `at` and the URL, so a parser that regexed the
-    // untruncated line would still find the URL. Only truncation loses it.
     const padded = `    at ${"x".repeat(2000)} (https://example.com/app.js:1:2)`;
     const frames = parseStack(`Error: boom\n${padded}`, "javascript");
     expect(frames.map((frame) => frame.absPath)).toMatchInlineSnapshot(`
@@ -181,14 +178,10 @@ describe("parseStack — guards", () => {
   it("stops scanning after 500 lines even when nothing parses", () => {
     const lines = ["Error: noisy", ...Array.from({ length: 5000 }, () => "not a frame at all")];
     lines.push("    at realFrame (https://example.com/app.js:1:1)");
-    // The real frame is past the scan cap, so it must not appear.
     expect(parseStack(lines.join("\n"), "javascript")).toMatchInlineSnapshot(`[]`);
   });
 
   it("does not turn a URL inside the header line into a frame", () => {
-    // Regression guard: the Gecko regex matches a bare URL anywhere on a line,
-    // so an unskipped header would mint a frame out of the *message*, and the id
-    // in that URL would split the issue on every single occurrence.
     const frames = parseStack(
       [
         "NetworkError: failed to fetch https://api.example.com/users/8f14e45f-ceea-467a-9e33-1c2b3d4e5f60",
@@ -204,11 +197,6 @@ describe("parseStack — guards", () => {
   });
 
   it("skips a Node coded-error header rather than minting a frame from the message", () => {
-    // `Error [ERR_MODULE_NOT_FOUND]: …` neither contains `"Error: "` nor matched
-    // the plain header pattern, and ERR_MODULE_NOT_FOUND messages embed the
-    // importing file's path — so before the bracketed-code branch existed, the
-    // Gecko fallback minted a synthetic frame from that path and split the
-    // issue per call site.
     const frames = parseStack(
       [
         "Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/app/dist/missing.js' imported from /app/dist/main.js",
@@ -286,8 +274,6 @@ describe("parseStack — guards", () => {
     for (let index = 0; index < 200; index++) {
       parseStack(`    at ${"a b ".repeat(3000)}(x`, "javascript");
     }
-    // Generous by two orders of magnitude — this fails only if a regex starts
-    // backtracking exponentially, which is the failure mode being guarded.
     expect(performance.now() - start).toBeLessThan(5000);
   });
 });
@@ -360,7 +346,6 @@ describe("path normalization", () => {
   });
 
   it("leaves short hex-looking suffixes alone", () => {
-    // Below the 8-character floor these are ordinary words, not hashes.
     expect([stripContentHash("use-face"), stripContentHash("chunk-added"), stripContentHash("a-decade")]).toMatchInlineSnapshot(`
       [
         "use-face",

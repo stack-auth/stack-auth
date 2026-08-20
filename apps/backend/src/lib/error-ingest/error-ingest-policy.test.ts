@@ -23,8 +23,6 @@ describe("server-side error-ingest policy", () => {
         observability: {
           errorIngest: {
             finalScrub: {
-              // Record keys are user-chosen dotless rule ids (config overrides
-              // cannot address dotted record keys); the selector is the value.
               dropKeys: { dropEmail: "user.email" },
               urlKeys: { pathOnlyUrl: "url" },
             },
@@ -98,11 +96,10 @@ describe("server-side error-ingest policy", () => {
         },
       },
     };
-    const item = [items()[1]]; // {"message":"ok"} scrubs to 16 bytes
+    const item = [items()[1]];
 
     expect(evaluateErrorIngestPolicy({ config, scope, items: item, nowMs: 0, stateStore: store }).outcomes[0].status).toBe("accepted");
     expect(evaluateErrorIngestPolicy({ config, scope, items: item, nowMs: 500, stateStore: store }).outcomes[0].status).toBe("accepted");
-    // A new 1s rate window must NOT reset the 1h byte quota (32 + 16 > 40).
     const rolled = evaluateErrorIngestPolicy({ config, scope, items: item, nowMs: 1_500, stateStore: store });
     expect(rolled.outcomes[0]).toMatchObject({ status: "rate_limited", reason: "quota" });
   });
@@ -118,8 +115,6 @@ describe("server-side error-ingest policy", () => {
     expect(evaluateErrorIngestPolicy({ config, scope: { ...scope, projectId: "project-2" }, items: item, nowMs: 1_001, stateStore: store }).outcomes[0].status).toBe("accepted");
     expect(evaluateErrorIngestPolicy({ config, scope: { ...scope, branchId: "branch-2" }, items: item, nowMs: 1_001, stateStore: store }).outcomes[0].status).toBe("accepted");
 
-    // Delimiter-based keys would alias these scopes (`a:b:c:d`), while Relay's
-    // typed scoping tuple keeps them independent.
     const firstCollidingScope = { tenancyId: "a:b", projectId: "c", branchId: "d" };
     const secondCollidingScope = { tenancyId: "a", projectId: "b:c", branchId: "d" };
     expect(evaluateErrorIngestPolicy({ config, scope: firstCollidingScope, items: item, nowMs: 1_000, stateStore: store }).outcomes[0].status).toBe("accepted");
@@ -136,9 +131,6 @@ describe("server-side error-ingest policy", () => {
   it("rejects malformed configs and keys outside the declarable policy surface", () => {
     expect(() => parseErrorIngestPolicyConfig(null)).toThrow(ErrorIngestPolicyConfigError);
     expect(() => parseErrorIngestPolicyConfig("not-a-config")).toThrow("observability config must be an object");
-    // `version` (like `selectors`/`filters`/`sampling`) is not declared by
-    // errorIngestPolicySchema in packages/shared/src/config/schema.ts, so it
-    // can never be stored and the parser treats it as any other unknown key.
     expect(() => parseErrorIngestPolicyConfig({ observability: { errorIngest: { version: 1 } } })).toThrow("Unsupported error-ingest policy field");
   });
 });

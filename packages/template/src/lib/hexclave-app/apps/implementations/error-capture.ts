@@ -27,10 +27,6 @@ import type { CapturedErrorEvent, ErrorEventProcessor } from "../interfaces/erro
  * replay-on-error buffered flush.
  */
 
-// Mirrors the `$log` message cap (TELEMETRY_MAX_LOG_MESSAGE_BYTES): big enough for
-// real stacks, small enough that one error cannot crowd out the 64KB
-// item-data budget. Shared by the client capture below and the server-side
-// _captureServerRequestError path.
 export const ERROR_TEXT_MAX_BYTES = 8_192;
 
 /** Sentry/Relay-compatible event identity: lowercase hexadecimal, no dashes. */
@@ -38,20 +34,11 @@ export function generateErrorEventId(): ErrorEventId {
   return generateUuid().replace(/-/g, "");
 }
 
-// First ~50 frames are plenty for grouping/debugging; raising V8's default 10
-// at install time is what makes the "first 50 frames" of the raw stack exist
-// at all.
 const ERROR_STACK_TRACE_LIMIT = 50;
 
-// Flood control, per $page-view (reset when the current page-view span id
-// changes — see installClientErrorCapture): a broken render loop must not
-// generate unbounded telemetry.
 const MAX_ERRORS_PER_FINGERPRINT_PER_PAGE_VIEW = 10;
 const MAX_ERRORS_PER_PAGE_VIEW = 100;
 
-// Default local drops: "Script error" is cross-origin noise (no message, no
-// stack — nothing actionable), "ResizeObserver loop" is a benign browser
-// warning surfaced as an error. Substring-matched like user ignores.
 export const DEFAULT_IGNORE_ERRORS = ["Script error", "ResizeObserver loop"] as const;
 
 export type NormalizedErrorCaptureOptions = {
@@ -74,10 +61,6 @@ export function normalizeErrorCaptureOptions(options: ErrorCaptureOptions | unde
   };
 }
 
-// Non-enumerable marker so the same error OBJECT never double-captures (e.g.
-// rethrown through a boundary and surfacing at both onerror and a rejection
-// handler). Non-enumerable keeps it out of JSON.stringify / for-in of user
-// code that inspects the error.
 const CAPTURED_MARKER = "__hexclaveCaptured__";
 
 function isAlreadyCaptured(value: unknown): boolean {
@@ -89,8 +72,6 @@ function markCaptured(value: unknown): void {
   try {
     Object.defineProperty(value, CAPTURED_MARKER, { value: true, enumerable: false });
   } catch {
-    // Frozen/sealed error objects simply stay unmarked; the single-slot dedupe
-    // below still catches the common immediate double-fire.
   }
 }
 
@@ -98,11 +79,6 @@ function isPrimitive(value: unknown): boolean {
   return value === null || (typeof value !== "object" && typeof value !== "function");
 }
 
-/**
- * djb2-xor over UTF-16 code units (same local-hash flavor the tracker uses for
- * clipboard comparison). Purely a LOCAL grouping key for flood control plus a
- * server-side grouping hint — never a security boundary.
- */
 function djb2Hash(text: string): number {
   let hash = 5381;
   for (let i = 0; i < text.length; i++) {
@@ -112,9 +88,6 @@ function djb2Hash(text: string): number {
 }
 
 export function computeErrorFingerprint(name: string, message: string, stack: string | null): string {
-  // Only the FIRST stack line participates: deeper frames differ per call path
-  // for what users consider "the same error" (matches how server-side grouping
-  // will bucket, and keeps the flood-control key stable across re-renders).
   const firstStackLine = stack === null ? "" : stack.split("\n").find((line) => {
     const trimmed = line.trim();
     return trimmed.startsWith("at ") || trimmed.includes("@");
@@ -149,11 +122,6 @@ function linkedErrorProperty(error: Error, key: "cause" | "errors"): unknown {
 
 function exceptionValueFromNormalized(normalized: NormalizedError, mechanism?: CapturedExceptionValue["mechanism"]): CapturedExceptionValue {
   return {
-    // The top-level compatibility fields are bounded below, but the canonical
-    // exception chain is also sent through OTel as part of the same `data`
-    // object. Keep both representations on the same byte budget; otherwise a
-    // long raw stack would bypass the top-level cap and make the event fail the
-    // shared 64 KB telemetry contract.
     type: truncateUtf8Bytes(normalized.name, ERROR_TEXT_MAX_BYTES),
     value: truncateUtf8Bytes(normalized.message, ERROR_TEXT_MAX_BYTES),
     ...normalized.stack === null ? {} : { stacktrace: { raw: truncateUtf8Bytes(normalized.stack, ERROR_TEXT_MAX_BYTES) } },
@@ -174,12 +142,6 @@ export const ERROR_EXCEPTION_VALUES_MAX_BYTES = 32_768;
 
 const exceptionValueEncoder = new TextEncoder();
 
-/**
- * Applies the same per-value byte bounds `buildLinkedExceptionValues` bakes in
- * to a CALLER-supplied value (captureEvent adapters hand us pre-built chains
- * that must not bypass the byte budget every other capture path enforces).
- * Frames are capped at the raw-stack frame budget for the same reason.
- */
 function boundExceptionValue(value: CapturedExceptionValue): CapturedExceptionValue {
   const boundFrame = (frame: ErrorStackFrame): ErrorStackFrame => ({
     ...frame.filename === undefined ? {} : { filename: truncateUtf8Bytes(frame.filename, ERROR_TEXT_MAX_BYTES) },
@@ -209,9 +171,6 @@ function boundExceptionValue(value: CapturedExceptionValue): CapturedExceptionVa
 }
 
 function jsonSafeMechanismData(data: Record<string, unknown>): { data?: Record<string, unknown> } {
-  // Adapter metadata is outside the typed scalar fields and may contain a
-  // cycle or BigInt. Validate it once here; dropping only that optional field
-  // keeps capture synchronous and preserves the bounded exception identity.
   try {
     JSON.stringify(data);
     return { data };
@@ -220,15 +179,6 @@ function jsonSafeMechanismData(data: Record<string, unknown>): { data?: Record<s
   }
 }
 
-/**
- * Bounds a whole exception chain: per-value truncation, the linked-value count
- * cap, and the aggregate ERROR_EXCEPTION_VALUES_MAX_BYTES budget. The LAST
- * value is the primary group identity, so trimming keeps the root plus the
- * values nearest it (its direct causes) and drops the outermost-linked entries
- * first — the same preference buildLinkedExceptionValues applies at its count
- * cap. The root always survives, even alone over budget: an over-budget event
- * beats silently losing the primary identity.
- */
 function boundExceptionValues(values: readonly CapturedExceptionValue[], primaryMechanism: { type: string, handled: boolean }): CapturedExceptionValue[] {
   const bounded = values.slice(-MAX_LINKED_ERROR_VALUES).map(boundExceptionValue);
   const primaryIndex = bounded.length - 1;
@@ -244,8 +194,6 @@ function boundExceptionValues(values: readonly CapturedExceptionValue[], primary
     };
   }
   const kept: CapturedExceptionValue[] = [];
-  // Byte accounting mirrors what JSON.stringify(values) actually costs: the
-  // enclosing `[]` plus one `,` between entries.
   let bytes = 2;
   for (let i = bounded.length - 1; i >= 0; i--) {
     const entryBytes = exceptionValueEncoder.encode(JSON.stringify(bounded[i])).length + (kept.length > 0 ? 1 : 0);
@@ -288,9 +236,6 @@ export function buildLinkedExceptionValues(error: unknown, normalized: Normalize
         },
       };
     if (values.length >= MAX_LINKED_ERROR_VALUES) {
-      // Children are visited before their parent so the root can stay last.
-      // If the graph is deeper than the cap, retain the newest bounded child
-      // values and always keep the root identity that drives grouping.
       if (!isRoot) return;
       values.splice(0, values.length - (MAX_LINKED_ERROR_VALUES - 1));
     }
@@ -321,8 +266,6 @@ export function normalizeCapturedError(value: unknown): NormalizedError {
   if (isPrimitive(value)) {
     return { name: "Error", message: String(value), stack: null, synthetic: true };
   }
-  // Plain object (or function): the keys are the most identifying thing we can
-  // say without serializing arbitrary user data into an error message.
   const keys = Object.keys(value as object).sort();
   return {
     name: "Error",
@@ -375,23 +318,10 @@ export function buildErrorEventData(error: unknown, options: BuildErrorEventData
   });
 }
 
-// Split from buildErrorEventData so client capture paths — which already
-// normalized the error for dedupe/flood-control (see
-// createClientErrorCapturePolicy) — never normalize twice:
-// normalizeCapturedError synthesizes a fresh capture-site stack for plain
-// objects, so a second call would produce a DIFFERENT stack (and fingerprint)
-// than the one the dedupe logic compared. Exported for consumers of the
-// policy's admission result (console.error promotion in client-analytics.ts).
 export function buildErrorEventDataFromNormalized(normalized: NormalizedError, options: BuildErrorEventDataOptions): CapturedErrorEvent {
   const message = truncateUtf8Bytes(normalized.message, ERROR_TEXT_MAX_BYTES);
   const stack = normalized.stack !== null ? truncateUtf8Bytes(normalized.stack, ERROR_TEXT_MAX_BYTES) : null;
-  // Resolved from the TRUNCATED stack on purpose: symbolication joins debug
-  // images onto the frames parsed out of the stack that actually shipped, so an
-  // image for a frame that got truncated away would never be used.
   const debugImages = (options.getDebugImages ?? getDebugImagesForStack)(stack);
-  // Bounded at the single choke point every capture path funnels through, so
-  // neither a deep automatic cause chain nor an adapter-supplied chain can
-  // push the event past the shared item-data budget.
   const exceptionValues = boundExceptionValues(options.exceptionValues ?? [exceptionValueFromNormalized(normalized)], {
     type: options.mechanismType,
     handled: options.handled,
@@ -406,8 +336,6 @@ export function buildErrorEventDataFromNormalized(normalized: NormalizedError, o
     handled: options.handled,
     ...normalized.synthetic || options.synthetic === true ? { synthetic: 1 } : {},
     exception: { values: exceptionValues },
-    // Fingerprint over the UNTRUNCATED inputs would differ from what a reader
-    // can recompute from the row, so hash the bounded values.
     fingerprint: computeErrorFingerprint(normalized.name, message, stack),
     ...options.release !== null ? { release: options.release } : {},
     ...options.environment !== null ? { environment: options.environment } : {},
@@ -426,10 +354,6 @@ function errorScopeToEventData(scope: ErrorScopeData | undefined): Record<string
     ...scope.extra === undefined ? {} : { extra: scope.extra },
     ...scope.breadcrumbs === undefined ? {} : { breadcrumbs: scope.breadcrumbs },
     ...scope.level === undefined ? {} : { level: scope.level },
-    // Processors are execution policy, not event data. They are passed to the
-    // pipeline from the capture-time scope snapshot and never serialized.
-    // The SDK event's local `fingerprint` is a client dedup key; grouping
-    // reads `fingerprint_override`.
     ...scope.fingerprint === undefined ? {} : { fingerprint_override: scope.fingerprint },
   };
 }
@@ -463,10 +387,6 @@ export function buildCapturedEventData(event: CaptureEvent, options: {
   const name = event.name ?? exception?.type ?? "Error";
   const message = event.message ?? exception?.value ?? "";
   if (message === "") throw new Error("Hexclave captureEvent requires message or exception.values[].value");
-  // `raw` outranks rendered frames: it is the engine-native stack, which is
-  // what server-side grouping and debug-image lookup are tuned for. Without
-  // this fallback, an adapter supplying only `stacktrace.raw` would produce an
-  // event with no top-level stack at all.
   const stack = event.stack ?? exception?.stacktrace?.raw ?? renderStackFrames(exception?.stacktrace?.frames);
   if (typeof event.handled !== "boolean") {
     throw new Error("Hexclave captureEvent requires a boolean handled field");
@@ -524,10 +444,7 @@ export function createClientErrorCapturePolicy(deps: {
   ignoreErrors: readonly string[],
   getCurrentPageViewSpanId: () => string | null,
 }): ClientErrorCapturePolicy {
-  // Single-slot dedupe: the exact same error signature arriving back-to-back
-  // (double-registered handlers, immediate re-render loops) is dropped.
   let lastCaptured: { name: string, message: string, fingerprint: string, stack: string | null } | null = null;
-  // Flood control, keyed to the current page view (see getCurrentPageViewSpanId).
   let capPageViewSpanId = deps.getCurrentPageViewSpanId();
   let perFingerprintCounts = new Map<string, number>();
   let totalOnPageView = 0;
@@ -540,9 +457,6 @@ export function createClientErrorCapturePolicy(deps: {
       const normalized = normalizeCapturedError(raw);
       if (deps.ignoreErrors.some((needle) => normalized.message.includes(needle))) return null;
 
-      // Page-view rollover resets the caps (compare-on-capture: the policy is
-      // created EAGERLY, before the lazily-loaded tracker exists, so it samples
-      // the id on every admission instead of hooking the tracker lifecycle).
       const pageViewSpanId = deps.getCurrentPageViewSpanId();
       if (pageViewSpanId !== capPageViewSpanId) {
         capPageViewSpanId = pageViewSpanId;
@@ -618,16 +532,9 @@ export type ClientErrorCapture = {
 export function installClientErrorCapture(deps: ClientErrorCaptureDeps): ClientErrorCapture | null {
   if (typeof window === "undefined") return null;
 
-  // --- instance state ------------------------------------------------------
-  // Armed when our own capture path failed (or when we otherwise know the next
-  // global error is self-inflicted); the timed decrement bounds the blind spot
-  // to the current task + its immediate timeout turn.
   let ignoreNext = 0;
-  // Synchronous re-entrancy guard: capture code must never capture itself.
   let capturing = false;
   let warnedInternalFailure = false;
-  // Dedupe/flood-control live in the (possibly shared) policy; only the
-  // handler-reentrancy state above belongs to this installer.
   const policy = deps.policy ?? createClientErrorCapturePolicy({
     ignoreErrors: deps.ignoreErrors,
     getCurrentPageViewSpanId: deps.getCurrentPageViewSpanId,
@@ -660,17 +567,12 @@ export function installClientErrorCapture(deps: ClientErrorCaptureDeps): ClientE
         scope,
         exceptionValues: buildLinkedExceptionValues(raw, normalized),
         extra: {
-          // Query strings and fragments routinely contain OAuth codes, reset
-          // tokens, and other credentials. Keep the useful page identity while
-          // matching the network-capture URL privacy boundary.
           url: `${window.location.origin}${window.location.pathname}`,
           path: window.location.pathname,
           ...info.extra ?? {},
         },
       }), scope);
     } catch (captureError) {
-      // A failure HERE must never recurse through the very handlers we patch:
-      // arm the ignore-next counter before doing anything else that could throw.
       armIgnoreNext();
       if (!warnedInternalFailure) {
         warnedInternalFailure = true;
@@ -681,17 +583,12 @@ export function installClientErrorCapture(deps: ClientErrorCaptureDeps): ClientE
     }
   };
 
-  // --- Error.stackTraceLimit -----------------------------------------------
-  // V8's default of 10 frames is often too shallow to group framework errors;
-  // 50 matches the "first ~50 frames" budget of the (8KB-bounded) raw stack.
-  // Saved + restored on uninstall; only ever raised, never lowered.
   const errorCtor = Error as ErrorConstructor & { stackTraceLimit?: unknown };
   const previousStackTraceLimit = errorCtor.stackTraceLimit;
   if (typeof previousStackTraceLimit === "number" && previousStackTraceLimit < ERROR_STACK_TRACE_LIMIT) {
     errorCtor.stackTraceLimit = ERROR_STACK_TRACE_LIMIT;
   }
 
-  // --- window.onerror ------------------------------------------------------
   const previousOnError = window.onerror;
   const patchedOnError: OnErrorEventHandler = function (this: unknown, message, url, line, col, error) {
     if (error != null) {
@@ -704,8 +601,6 @@ export function installClientErrorCapture(deps: ClientErrorCaptureDeps): ClientE
         },
       });
     } else if (typeof message === "string") {
-      // No error object (old browsers, some cross-realm throws): synthesize a
-      // single "frame" from url:line:col so the row is at least locatable.
       const messageText = message;
       const syntheticError = new Error(messageText);
       syntheticError.stack = `${messageText}\n    at ? (${typeof url === "string" && url !== "" ? url : "<anonymous>"}:${typeof line === "number" ? line : 0}:${typeof col === "number" ? col : 0})`;
@@ -719,25 +614,16 @@ export function installClientErrorCapture(deps: ClientErrorCaptureDeps): ClientE
         },
       });
     }
-    // else: `message` is an Event and there is no error object — a
-    // resource-load error surfaced oddly, not a runtime error. Skip capture
-    // but still forward.
 
     if (typeof previousOnError === "function") {
-      // Chain + forward the ORIGINAL's return value (it controls default
-      // console logging); never clobber.
       return previousOnError.apply(this, [message, url, line, col, error]);
     }
     return false;
   };
   window.onerror = patchedOnError;
 
-  // --- window.onunhandledrejection -----------------------------------------
   const previousOnUnhandledRejection = window.onunhandledrejection;
   const patchedOnUnhandledRejection = function (this: WindowEventHandlers, event: PromiseRejectionEvent): unknown {
-    // Sentry's 3-way extraction: a primitive event IS the reason (some
-    // frameworks re-dispatch the raw value), else `.reason`, else CustomEvent
-    // style `.detail.reason`.
     let reason: unknown = event;
     if (!isPrimitive(event)) {
       if ("reason" in event) {
@@ -758,9 +644,6 @@ export function installClientErrorCapture(deps: ClientErrorCaptureDeps): ClientE
       capture(reason, { mechanismType: "global.unhandledrejection" });
     }
     if (typeof previousOnUnhandledRejection === "function") {
-      // `window`, not `this`: the browser always invokes the slot with the
-      // window as receiver, and lib.dom types the stored handler's `this` as
-      // the full Window (which our chained wrapper's `this` cannot prove).
       return previousOnUnhandledRejection.call(window, event);
     }
     return true;
@@ -769,8 +652,6 @@ export function installClientErrorCapture(deps: ClientErrorCaptureDeps): ClientE
 
   return {
     uninstall: () => {
-      // Only restore slots that are still OURS — someone patched on top
-      // otherwise, and restoring would sever their chain.
       if (window.onerror === patchedOnError) {
         window.onerror = previousOnError;
       }
@@ -784,18 +665,12 @@ export function installClientErrorCapture(deps: ClientErrorCaptureDeps): ClientE
   };
 }
 
-// ---------------------------------------------------------------------------
-// Server monitor
-// ---------------------------------------------------------------------------
 
-/** Marker on globalThis: projectId → uninstaller (mirrors server-fetch-instrumentation). */
 const SERVER_ERROR_MONITOR_MARKER = "__hexclaveServerErrorMonitor";
 
 function getServerMonitorRegistry(): Map<string, () => void> {
   const g = globalThis as typeof globalThis & Record<string, unknown>;
   const existing = g[SERVER_ERROR_MONITOR_MARKER];
-  // instanceof narrows to Map<any, any>; only this module ever writes values,
-  // so they are the uninstallers the return type declares.
   if (existing instanceof Map) return existing;
   const registry = new Map<string, () => void>();
   g[SERVER_ERROR_MONITOR_MARKER] = registry;
@@ -849,8 +724,6 @@ export function installServerErrorMonitor(opts: {
     try {
       opts.capture(error);
     } catch (captureError) {
-      // The process is already crashing; our reporting failure must not add a
-      // second crash on top.
       console.warn("Hexclave analytics: failed to report an uncaught exception:", captureError);
     }
   };

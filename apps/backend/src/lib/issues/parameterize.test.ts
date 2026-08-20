@@ -3,9 +3,6 @@ import { parameterizeMessage } from "./parameterize";
 
 describe("parameterizeMessage", () => {
   it("replaces every supported pattern, and only those", () => {
-    // One snapshot rather than one test per pattern: the ORDER of the alternation
-    // is part of the spec (a uuid must not shred into hex + ints), so the cases
-    // are most useful read side by side.
     const cases = [
       "User 8f14e45f-ceea-467a-9e33-1c2b3d4e5f60 not found",
       "Checksum mismatch: expected deadbeefcafe1234",
@@ -68,21 +65,13 @@ describe("parameterizeMessage", () => {
   });
 
   it("caps the input at 8 KB", () => {
-    // `z` rather than `a`: `a` is a hex digit, so a run of them collapses to
-    // `<hex>` and the length assertion would measure the wrong thing.
     const long = `${"z".repeat(10_000)} 12345`;
     const result = parameterizeMessage(long);
     expect(result.length).toBe(8 * 1024);
-    // The trailing number is past the cap and therefore untouched — proving the
-    // slice happens before the regex rather than after it.
     expect(result.includes("<int>")).toBe(false);
   });
 
   it("caps the input in UTF-8 bytes, matching the stored message representation", () => {
-    // `é` is 1 UTF-16 code unit but 2 UTF-8 bytes. The durable `message` column
-    // truncates at 8 KiB of UTF-8, so the hash input must be bounded in the
-    // same unit — otherwise two occurrences whose stored messages are identical
-    // could group differently based on truncated-away content.
     const result = parameterizeMessage("é".repeat(10_000));
     expect(new TextEncoder().encode(result).length).toBeLessThanOrEqual(8 * 1024);
   });

@@ -183,8 +183,6 @@ export const postMigration = async (
     VALUES (${ctx.tenancyId}::uuid, ${ctx.projectId}, 'other-branch', ${randomUUID()}::uuid, 'wrong-scope', NOW())
   `).rejects.toThrow(/foreign key constraint/);
 
-  // Project deletion cascades through Tenancy and therefore removes the whole
-  // release graph. This also proves that no child row can outlive its scope.
   await sql`DELETE FROM "Project" WHERE "id" = ${ctx.projectId}`;
   const remaining = await sql<{ table_name: string, count: number }[]>`
     SELECT table_name, count

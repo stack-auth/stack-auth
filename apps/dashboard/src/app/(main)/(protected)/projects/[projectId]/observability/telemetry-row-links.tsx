@@ -21,13 +21,6 @@ function eventAtMsFromRow(row: RowData): number | null {
   }
 }
 
-/**
- * Correlation actions shared by Events, Logs, and the trace detail dialog.
- *
- * A custom event that inherited its enclosing span (no `root: true`) carries
- * `trace_id` + `span_id`; the trace href highlights that event so the waterfall
- * opens already scrolled to it.
- */
 export function TelemetryRowLinks({
   row,
   projectId,
@@ -35,7 +28,6 @@ export function TelemetryRowLinks({
 }: {
   row: RowData,
   projectId: string,
-  /** False on the traces page itself, where "View in trace" would be a no-op. */
   showTrace?: boolean,
 }) {
   const traceId = stringOrNull(row.trace_id);

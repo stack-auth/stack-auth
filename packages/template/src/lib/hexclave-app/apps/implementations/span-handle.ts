@@ -19,12 +19,6 @@ export function createInertSpanHandle(options: {
 }): Span {
   let accumulatedData = { ...options.initialData };
   let ended = false;
-  // The inert handle must not DOWNGRADE the trace decision it inherited: a
-  // hardcoded TraceFlags.NONE here would make every later real span that uses
-  // spanContext() as its parent unsampled (parent-based samplers drop it) even
-  // when the upstream context was sampled. Pass the resolved flags through
-  // when known, and otherwise omit them — omitted flags mean "sampled" per the
-  // SpanContext contract.
   const context: SpanContext = {
     traceId: options.traceId,
     spanId: options.spanId,
@@ -62,15 +56,12 @@ export function createInertSpanHandle(options: {
         startedAtMs: startOptions?.startedAtMs ?? Date.now(),
         parentSpanId: options.spanId,
         initialData: { ...startOptions?.data ?? {} },
-        // Children stay in the same trace, so they inherit its sampling state.
         ...options.traceFlags === undefined ? {} : { traceFlags: options.traceFlags },
         ...options.traceState === undefined ? {} : { traceState: options.traceState },
       });
     },
     withSpan: <T,>(spanType: string, optionsOrFn: StartSpanOptions | ((child: Span) => Promise<T> | T), maybeFn?: (child: Span) => Promise<T> | T) =>
       withSpanImpl((childType, childOptions) => span.startSpan(childType, childOptions), spanType, optionsOrFn, maybeFn),
-    // This handle is inert because no OTel provider exists in this runtime, so
-    // it must not invent an ambient context that real instrumentations cannot see.
     run: async <T,>(fn: () => T): Promise<Awaited<T>> => await fn(),
     getSpanPropagationHeaders: () => ({}),
     fetch: async (input, init) => await fetch(input, init),

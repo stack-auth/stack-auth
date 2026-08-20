@@ -895,10 +895,6 @@ model Tenancy {
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
-  // Release graph rows carry the full project/branch scope. This redundant
-  // unique key is the referenced target for their composite foreign keys; its
-  // index is installed concurrently because Tenancy is a hot, high-cardinality
-  // table.
   @@unique([id, projectId, branchId], map: "Tenancy_id_projectId_branchId_key")
 }
 
@@ -1290,15 +1286,7 @@ model SessionReplayChunk {
   @@map("SessionReplayChunk")
 }
 
-// Maintained per-tab recording-segment bounds, updated O(1) per replay batch with
-// LEAST/GREATEST (see upsertSessionReplaySegmentBounds) instead of re-aggregating
-// min/max over the segment's chunks on every upload. Segments that predate the
-// table are seeded lazily on first sighting from their existing chunks, so bounds
-// are correct rather than truncated to the first post-deploy batch. These bounds
-// support replay metadata and time-range queries without rescanning every chunk.
 model SessionReplaySegment {
-  // The client-minted per-tab segment id. Plain String (not @db.Uuid) to match
-  // SessionReplayChunk.sessionReplaySegmentId, which it joins against.
   id String
 
   tenancyId       String @db.Uuid
@@ -1926,7 +1914,6 @@ enum DraftThemeMode {
   CUSTOM
 }
 
-//#region Legacy event storage (retained, read-only)
 // The application no longer reads or writes these tables — raw system events
 // moved to ClickHouse's canonical telemetry table, and the tables were
 // deliberately kept in place (no migration drops them) as the only rollback
@@ -1944,7 +1931,6 @@ model Event {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // if isWide == false, then eventEndedAt is always equal to eventStartedAt
   isWide         Boolean
   eventStartedAt DateTime
   eventEndedAt   DateTime
@@ -1955,7 +1941,6 @@ model Event {
   systemEventTypeIds String[]
   data               Json
 
-  // Note that the IP may have been spoofed, unless isEndUserIpInfoGuessTrusted is true
   endUserIpInfoGuessId        String?      @db.Uuid
   endUserIpInfoGuess          EventIpInfo? @relation("EventIpInfo", fields: [endUserIpInfoGuessId], references: [id])
   isEndUserIpInfoGuessTrusted Boolean      @default(false)
@@ -1986,7 +1971,6 @@ model EventIpInfo {
   @@ignore
 }
 
-//#endregion
 
 model CliAuthAttempt {
   tenancyId String @db.Uuid
@@ -2779,14 +2763,6 @@ model DeploymentSourceUpload {
   @@index([expiresAt])
 }
 
-// ================== Error tracking releases ==================
-//
-// Release records intentionally carry the complete tenancy scope. Tenancy is
-// the authoritative project/branch/organization scope, and the composite
-// foreign key below makes it impossible for a release row to combine a
-// tenancy with a different project or branch. The child graph repeats the
-// same scope so every release query can stay tenant- and branch-indexed
-// without first loading the parent row.
 
 enum ReleaseStatus {
   OPEN
@@ -2863,8 +2839,6 @@ model ReleaseDeployment {
 
   releaseId String @db.Uuid
 
-  // Provider deployment IDs or caller-supplied idempotency keys. Keeping this
-  // required makes retries safe without inventing a timestamp-based identity.
   deploymentKey String @db.VarChar(256)
   environment   String @db.VarChar(255)
   name          String? @db.VarChar(64)
@@ -2914,9 +2888,6 @@ model ReleaseCommit {
 }
 
 model ReleaseArtifact {
-  /// PostgreSQL owns release/artifact association and lifecycle state. Object
-  /// storage owns immutable bytes and its derived debug-ID lookup records; it
-  /// must not become a second source of release membership.
   tenancyId String @db.Uuid
   projectId String
   branchId  String
@@ -2972,12 +2943,6 @@ model ReleaseArtifactDebugId {
   @@index([tenancyId, debugId], map: "ReleaseArtifactDebugId_tenancyId_debugId_idx")
 }
 
-// ─── Issue alert persistence ───────────────────────────────────────────────
-//
-// Rule DSL is intentionally stored as a bounded, versioned JSON document: the
-// evaluator owns the public rule shape. Delivery and cooldown coordination is
-// not JSON, because those fields are concurrency controls and operational
-// state. The unique keys below are the database-level idempotency boundary.
 
 model IssueAlertRule {
   tenancyId  String @db.Uuid
@@ -2985,8 +2950,6 @@ model IssueAlertRule {
   branchId   String
   id         String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
-  // ruleKey/version mirror IssueAlertRule.id/version in the stored DSL. The
-  // database id identifies this immutable version row for delivery relations.
   ruleKey      String @db.VarChar(128)
   version      Int
   schemaVersion Int
@@ -3044,8 +3007,6 @@ model IssueAlertDelivery {
   ruleVersion  Int
   eventKind    IssueAlertEventKind
 
-  // These two columns are the durable idempotency/cooldown inputs. Their
-  // unique/indexed constraints must remain typed columns rather than JSON.
   deduplicationKey String @db.VarChar(256)
   cooldownKey      String @db.VarChar(256)
   cooldownDurationSeconds Int
@@ -3055,8 +3016,6 @@ model IssueAlertDelivery {
   outcome IssueAlertDeliveryOutcome @default(NONE)
 
   workflowEventId String? @db.Uuid
-  /// Scrubbed copy of the workflow payload so replay does not depend on the
-  /// 30-day WorkflowEvent retention window.
   workflowPayload Json?
   attemptCount    Int @default(0)
   replayCount     Int @default(0)
@@ -3082,10 +3041,6 @@ model IssueAlertDelivery {
   @@index([tenancyId, workflowEventId], map: "IssueAlertDelivery_workflowEvent_idx")
 }
 
-// Client reports are the durable loss ledger for item-level ingest outcomes.
-// They contain only category/reason/quantity metadata; event payloads never
-// cross this boundary. The idempotency key is supplied by the protocol
-// projection, so retrying an ambiguous response cannot double-count a report.
 model ErrorIngestClientReport {
   tenancyId String @db.Uuid
   projectId String
@@ -3109,9 +3064,6 @@ model ErrorIngestClientReport {
   @@index([tenancyId, projectId, branchId, reportedAt(sort: Desc), id(sort: Desc)], map: "ErrorIngestClientReport_scope_reportedAt_idx")
 }
 
-// Attachment bytes are deliberately not part of ClickHouse logs or the JSON
-// error envelope. The envelope carries only bounded metadata/ids; this ledger
-// binds private immutable object storage to the authenticated event scope.
 model ErrorAttachment {
   tenancyId String @db.Uuid
   projectId String
@@ -3486,24 +3438,6 @@ model WorkflowScheduleCursor {
   @@id([tenancyId, workflowId, scheduleKey])
 }
 
-// ================== Issues (error tracking) ==================
-// Persistent, mutable state for grouped `$error` occurrences. The occurrences
-// themselves live in ClickHouse; these tables hold everything ClickHouse cannot
-// express: a stable identity per group, a resolve/ignore/regression lifecycle,
-// merge/unmerge, and a per-branch short id.
-//
-// COUNTER AUTHORITY IS SPLIT, AND THE SPLIT IS ABSOLUTE. Read this before
-// touching any counter here:
-//   - Postgres `Issue.timesSeen` / `firstSeenAt` / `lastSeenAt` are LIFETIME
-//     values. They move ONLY by deltas applied through the IssueMaterialization
-//     ledger, one delta per ingest batch.
-//   - ClickHouse is authoritative for WINDOWED stats (last 24h/7d/30d counts,
-//     unique users, sparklines).
-// It is tempting to "repair" the Postgres counters from a ClickHouse snapshot
-// during merge or reconciliation. That is arithmetically impossible, not merely
-// racy: the occurrence rollup only retains 90 days, so a snapshot cannot
-// reconstruct an all-time `firstSeenAt` or `timesSeen`. Merge folds lifetime
-// counters by SUMMING the two Postgres values. No snapshot, anywhere.
 
 enum IssueStatus {
   UNRESOLVED
@@ -3547,17 +3481,10 @@ enum IssueSubjectType {
   TEAM
 }
 
-/// Only one variant today, but it is an enum rather than a boolean because the
-/// lease below is a state machine we expect to grow (e.g. a future MIGRATING
-/// state for algorithm changes), and a nullable enum keeps "no lease" free of a
-/// second column.
 enum IssueHashState {
   LOCKED
 }
 
-/// The ordered role of a hash in the grouping decision. Nullable on IssueHash
-/// so rows created before provenance storage remain readable; every new ingest
-/// write supplies one of these values.
 enum IssueHashGroupingRole {
   PRIMARY
   SECONDARY
@@ -3569,26 +3496,13 @@ model Issue {
   tenancyId String  @db.Uuid
   tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
-  /// The human-facing id (HEXCLAVE-123). Allocated from IssueCounter and unique
-  /// PER TENANCY — and a Tenancy is (project, branch), so this is per project AND
-  /// branch, not per project. BigInt rather than Int because a single firehose
-  /// project must not be able to wrap the counter.
   shortId BigInt
 
-  // Descriptive fields, all taken from the occurrence that CREATED the issue and
-  // never rewritten afterwards. Rewriting them on every occurrence would make the
-  // title of a long-lived issue flicker between variants of the same error, and
-  // would make the list view non-deterministic under concurrent ingest.
   type     String
   value    String
   culprit  String
   platform String
 
-  /// Mechanism facts, taken from the occurrence that created the issue. They live
-  /// here rather than being derived per-read because they are properties of the
-  /// ERROR, not of a time window: every occurrence of one grouped error shares a
-  /// mechanism. Persisting them is what lets the list filter on handled-ness in
-  /// Postgres, alongside status, instead of needing a second ClickHouse pass.
   handled   Boolean @default(true)
   synthetic Boolean @default(false)
 
@@ -3598,31 +3512,16 @@ model Issue {
   resolvedAt      DateTime?
   ignoredUntil    DateTime?
 
-  /// The dashboard user this issue is assigned to. Deliberately not a foreign
-  /// key: assignees are members of the internal Hexclave project, not rows in
-  /// this tenancy's ProjectUser table, so there is nothing here to reference.
   assigneeUserId String? @db.Uuid
-  /// The Hexclave project owner team. Same identity boundary as assigneeUserId:
-  /// that team lives in the internal project, not this tenancy's Team table, so
-  /// a composite FK here would either reject the real owner team or (worse)
-  /// accept a customer-app team with a colliding UUID.
   assignedTeamId String? @db.Uuid
 
-  // LIFETIME counters — see the header comment above. Ledger deltas only.
   firstSeenAt DateTime
   lastSeenAt  DateTime
   regressedAt DateTime?
   timesSeen   BigInt    @default(0)
 
-  /// Set by unmerge, which is the one operation where the lifetime counters
-  /// genuinely cannot be split: the occurrences that produced them are only
-  /// retained for 90 days in ClickHouse, so there is no way to attribute
-  /// all-time totals back to the hashes being separated. Rather than silently
-  /// reporting a wrong number, we restart the counters from this instant and the
-  /// UI renders "since <date>".
   countersTruncatedAt DateTime?
 
-  /// Last `issue.*` webhook dispatch, used to debounce noisy issues.
   lastWebhookAt DateTime?
 
   serviceName               String?
@@ -3643,53 +3542,26 @@ model Issue {
 
   @@id([tenancyId, id])
   @@unique([tenancyId, shortId])
-  // The list view is always tenancy-scoped and almost always status-scoped; the
-  // four orderings below are the four sort options the UI offers, each served
-  // directly off its own index so the default view never sorts in memory.
   @@index([tenancyId, status, lastSeenAt])
   @@index([tenancyId, lastSeenAt])
   @@index([tenancyId, status, firstSeenAt])
   @@index([tenancyId, status, timesSeen])
 }
 
-/// hash -> issue. MANY-TO-ONE FROM DAY ONE, and that is the whole point of the
-/// table. A scalar `Issue.hash` would be smaller and simpler, and it would make
-/// the app/system variant split, merge, unmerge, and every future grouping
-/// algorithm change impossible without migrating the entire hash space. With
-/// this indirection each of those is a row-level rewrite.
 model IssueHash {
   tenancyId String @db.Uuid
   hash      String
 
   issueId String @db.Uuid
 
-  /// Which grouping algorithm produced this hash. Kept per row so a config bump
-  /// can re-point hashes incrementally instead of all at once.
   groupingConfigId String
 
-  /// Whether this hash was the owning primary or a transition alias. Recorded
-  /// on every row: materialization always knows the decision that produced a
-  /// hash, so a row without one would be a writer bug, not a data state.
   groupingRole IssueHashGroupingRole
-  /// The grouping variant that produced this hash (app/system/message/custom,
-  /// or a future variant). Kept as text so adding a grouping variant is not a
-  /// blocking database enum migration.
   groupingVariant String @db.VarChar(32)
-  /// Bounded snake-case grouping decision records, including fingerprint tokens
-  /// and resolved values. The same shape is written to ClickHouse occurrences.
   groupingProvenance Json
 
-  /// A COMMITTED LEASE, not an in-transaction flag. It is set in one transaction
-  /// and cleared in another, precisely so that concurrent ingest transactions can
-  /// actually observe it and skip the hash while a merge is rewriting it — an
-  /// uncommitted flag, or a row lock, would be invisible to them (they would
-  /// block, not skip).
   state IssueHashState?
 
-  /// The lease timestamp. Without it, a merge that crashes between the two
-  /// transactions would wedge this hash as LOCKED forever and its occurrences
-  /// would stop materializing. With it, the lease simply expires and a sweep
-  /// reclaims it.
   lockedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -3697,59 +3569,29 @@ model IssueHash {
   issue   Issue   @relation(fields: [tenancyId, issueId], references: [tenancyId, id], onDelete: Cascade)
   tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
-  /// This primary key is ALSO the concurrency control. When two ingest batches
-  /// see the same never-before-seen error at the same instant, both race to
-  /// insert this row; the unique index means exactly one wins and the loser
-  /// re-reads the winner's issue instead of creating a duplicate.
   @@id([tenancyId, hash])
-  // Merge/unmerge and the detail view both walk issue -> hashes.
   @@index([tenancyId, issueId])
-  // The stale-lease sweep scans by state.
   @@index([tenancyId, state])
 }
 
-/// Exactly-once ledger. One row per (tenancy, ingest batch).
-///
-/// Its INSERT *is* the idempotency check: `ON CONFLICT DO NOTHING` returning 0
-/// rows means this batch's deltas were already applied, so materialization stops
-/// there. This is not belt-and-braces — ClickHouse deduplicates a retried insert
-/// by insert token, so without this ledger a retried batch would write no new
-/// occurrences yet still bump every Postgres counter a second time.
 model IssueMaterialization {
   tenancyId String @db.Uuid
-  /// Transport batch IDs are protocol-defined strings. Sentry envelopes and
-  /// OTLP requests are not required to use UUIDs, while ClickHouse stores the
-  /// same identity as a String.
   batchId   String @db.VarChar(512)
 
   appliedAt DateTime @default(now())
 
-  /// Stored outcomes let a retry replay notifications without applying issue
-  /// counters a second time.
   outcomes Json?
 
-  /// Notification delivery is intentionally tracked separately from the ledger
-  /// claim. The issue update can succeed even when a webhook or alert dispatch
-  /// needs a later retry.
   webhooksDispatchedAt DateTime?
   alertsDispatchedAt   DateTime?
 
-  /// Deliberately NOT related to Tenancy. This row is inserted once per ingest
-  /// batch on the write path, and an FK would take a row-share lock on the hot
-  /// Tenancy row for every single batch. Retention is handled by pruning on
-  /// `appliedAt` (which also drives the reconciler's watermark), so rows left
-  /// behind by a deleted tenancy age out on the same schedule as everything else.
   @@id([tenancyId, batchId])
   @@index([appliedAt])
 }
 
-/// Merge leaves the source issue's id and short id resolvable, so a bookmarked
-/// URL or a webhook payload from before the merge still lands somewhere useful.
 model IssueRedirect {
   tenancyId String @db.Uuid
 
-  /// No FK to Issue in either direction: `fromIssueId` names a row that the merge
-  /// has already deleted, which is exactly why the redirect exists.
   fromIssueId String @db.Uuid
   toIssueId   String @db.Uuid
 
@@ -3760,16 +3602,9 @@ model IssueRedirect {
   tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
   @@id([tenancyId, fromIssueId])
-  /// Short ids are the ids users actually type, so they must resolve too. Merge
-  /// REWRITES existing redirects to point at the new target rather than chaining
-  /// them, which is what keeps this lookup a single hop no matter how many times
-  /// an issue has been merged.
   @@unique([tenancyId, fromShortId])
 }
 
-/// Short id allocator. One row per tenancy; `nextShortId` is bumped under the
-/// row lock taken by the same transaction that creates the issue, so short ids
-/// are gapless per branch.
 model IssueCounter {
   tenancyId   String @id @db.Uuid
   nextShortId BigInt @default(1)
@@ -3785,8 +3620,6 @@ model IssueOwner {
   issueId String @db.Uuid
   ownerType IssueOwnerType
   ownerUserId String? @db.Uuid
-  /// Internal Hexclave owner-team id when ownerType is TEAM. Not a Team row in
-  /// this tenancy — same identity boundary as Issue.assignedTeamId.
   ownerTeamId String? @db.Uuid
   source IssueOwnerSource
   context Json?
@@ -3830,8 +3663,6 @@ model IssueActivity {
   @@index([tenancyId, projectId, branchId, issueId, occurredAt(sort: Desc), id(sort: Desc)], map: "IssueActivity_scope_issue_occurredAt_idx")
 }
 
-// Versioned saved issue-search filters. The query is a canonical structured
-// public-search document; it is not an arbitrary search expression.
 model IssueSavedSearchView {
   tenancyId String @db.Uuid
   projectId String
@@ -3886,8 +3717,6 @@ model IssueSubscription {
   issueId String @db.Uuid
   subjectType IssueSubjectType
   subjectUserId String? @db.Uuid
-  /// Internal Hexclave owner-team id when subjectType is TEAM. Not a Team row
-  /// in this tenancy — same identity boundary as Issue.assignedTeamId.
   subjectTeamId String? @db.Uuid
   isActive Boolean @default(true)
   reason String? @db.VarChar(64)
@@ -3900,9 +3729,6 @@ model IssueSubscription {
   user ProjectUser? @relation("IssueSubscriptionUser", fields: [tenancyId, subjectUserId], references: [tenancyId, projectUserId], onDelete: Restrict, map: "IssueSubscription_user_fkey")
 
   @@id([tenancyId, id])
-  // NULLS NOT DISTINCT in SQL, same as IssueOwner_scope_natural_key — the
-  // subject CHECK constraint makes one of subjectUserId/subjectTeamId NULL on
-  // every row, so the default semantics would enforce nothing.
   @@unique([tenancyId, projectId, branchId, issueId, subjectType, subjectUserId, subjectTeamId], map: "IssueSubscription_scope_natural_key")
   @@index([tenancyId, projectId, branchId, issueId, isActive], map: "IssueSubscription_scope_issue_active_idx")
 }

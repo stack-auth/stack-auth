@@ -76,8 +76,6 @@ describe("Next.js adapter: routeHandler", () => {
     })(new Request("https://app.example.com/api/orders"), undefined);
     expect(overridden.status).toBe(403);
 
-    // A factory default producing an Error (the shared shape with server
-    // actions) is thrown by route handlers.
     const throwing = createHexclaveNext(app, { unauthorized: () => Object.assign(new Error("FACTORY"), { fromFactory: true }) });
     await expect(throwing.routeHandler(async () => new Response("never"), { required: true })(new Request("https://app.example.com/api/orders"), undefined))
       .rejects.toMatchObject({ fromFactory: true });
@@ -105,10 +103,8 @@ describe("Next.js adapter: serverAction", () => {
     expect(withSpan).toHaveBeenCalledTimes(1);
     expect(withSpan.mock.calls[0][0]).toBe("next.server-action");
     expect(withSpan.mock.calls[0][1]).toMatchObject({ data: { name: "createOrder" } });
-    // The span links via a RequestLike built from the ambient next/headers.
     const request = (withSpan.mock.calls[0][1] as { request: { headers: Headers } }).request;
     expect(request.headers.get("baggage")).toBe("hexclave.session_replay.segment.id=55555555-5555-4555-8555-555555555555");
-    // The user is resolved from the same ambient headers (cookie token store).
     expect(getUser).toHaveBeenCalledWith(expect.objectContaining({ tokenStore: request, or: "return-null" }));
   });
 
@@ -150,8 +146,6 @@ describe("hexclaveInstrumentation", () => {
       baseUrl: "https://api.example.test",
       tokenStore: "memory",
       noAutomaticPrefetch: true,
-      // Observability is opt-in; these tests exercise the instrumentation
-      // install pipeline, which is inert without it.
       observability: { enabled: true },
     });
   }
@@ -177,9 +171,6 @@ describe("hexclaveInstrumentation", () => {
       const instrumentation = hexclaveInstrumentation(makeRealApp());
       await instrumentation.register();
       await instrumentation.register();
-      // One call from the app constructor (eager self-install) plus one per
-      // register(); idempotence lives in the app methods; register just
-      // forwards.
       expect(installSpy).toHaveBeenCalledTimes(3);
       expect(monitorSpy).toHaveBeenCalledTimes(3);
       expect(otelSpy).toHaveBeenCalledTimes(2);
@@ -293,10 +284,6 @@ describe("hexclaveInstrumentation", () => {
       const error = new Error("background job failed");
       await instrumentation.captureHandledError(error, {
         location: "jobs/send-receipt",
-        // `handled`/`mechanism_type` in user data must NOT be able to flip the
-        // classification this API guarantees — _captureServerRequestError
-        // merges `data` over the flattened $error payload, so the adapter
-        // re-asserts the reserved fields after the user-data spread.
         data: { queue: "receipts", handled: false, mechanism_type: "spoofed" },
       });
 

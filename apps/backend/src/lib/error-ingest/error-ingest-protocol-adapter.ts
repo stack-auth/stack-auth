@@ -17,11 +17,6 @@ import {
   type ErrorIngestRejectReason,
 } from "./error-ingest-outcomes";
 
-/**
- * A drop reason that is not yet modeled by the canonical outcome contract.
- * Unknown reasons are deliberately collapsed to this fixed value before they
- * can reach a client report or an HTTP error message.
- */
 export type ErrorIngestUnknownDropOutcome = ErrorIngestItemDescriptor & {
   status: "dropped",
   reason: "unknown",
@@ -38,14 +33,12 @@ export type ErrorIngestProtocolReason =
   | "deduplicated"
   | "unknown";
 
-/** Sentry-compatible client-report bucket names. */
 export type ErrorIngestClientReportBucket =
   | "discarded_events"
   | "rate_limited_events"
   | "filtered_events"
   | "filtered_sampling_events";
 
-/** Relay's data-category vocabulary for the item types this backend knows. */
 export type ErrorIngestClientReportCategory =
   | "error"
   | "log_item"
@@ -54,7 +47,6 @@ export type ErrorIngestClientReportCategory =
   | "attachment"
   | "client_report"
   | "unknown"
-  /** Relay accepts the complete data-category vocabulary, including categories added after this SDK. */
   | (string & {});
 
 export type ErrorIngestClientReportReason =
@@ -64,7 +56,6 @@ export type ErrorIngestClientReportReason =
   | ErrorIngestDropReason
   | "deduplicated"
   | "unknown"
-  /** Client reports preserve bounded Relay reason strings for forward compatibility. */
   | (string & {});
 
 export type ErrorIngestClientReportEntry = {
@@ -73,11 +64,6 @@ export type ErrorIngestClientReportEntry = {
   quantity: number,
 };
 
-/**
- * This is the exact JSON-shaped partial-success body consumed by the current
- * OTLP HTTP response helper. Counts are strings because that is the OTLP JSON
- * mapping for protobuf uint64 fields.
- */
 export type ErrorIngestOtlpPartialSuccessBody = {
   partialSuccess?: {
     rejectedLogRecords?: string,
@@ -99,7 +85,6 @@ export type ErrorIngestClientReportProjection = {
 };
 
 export type ErrorIngestProtocolItemProjection = {
-  /** Position disambiguates identical item IDs in one batch. */
   itemIndex: number,
   itemId: string,
   itemType: ErrorIngestItemType,
@@ -111,7 +96,6 @@ export type ErrorIngestProtocolItemProjection = {
   category: ErrorIngestClientReportCategory,
   clientReportBucket?: ErrorIngestClientReportBucket,
   clientReportReason?: ErrorIngestClientReportReason,
-  /** Terminal rejection is distinct from queued and idempotent deduplication. */
   rejectedByOtlp: boolean,
 };
 
@@ -129,8 +113,6 @@ export type ErrorIngestProtocolAdapterLimits = {
 };
 
 export const ERROR_INGEST_PROTOCOL_ADAPTER_LIMITS: Readonly<ErrorIngestProtocolAdapterLimits> = {
-  // These limits protect the projection itself. The ingest routes retain their
-  // own larger payload/item limits and may reject before this adapter runs.
   maxBatchIdBytes: 256,
   maxItemIdBytes: 256,
   maxEventIdBytes: 64,
@@ -147,7 +129,6 @@ export type ErrorIngestProtocolProjection = {
   itemCount: number,
   status: ErrorIngestBatchStatus,
   counts: ErrorIngestBatchCounts,
-  /** Safe descriptors only; no input event payload is copied here. */
   items: readonly ErrorIngestProtocolItemProjection[],
   clientReport: ErrorIngestClientReportProjection,
   otlpPartialSuccess: {
@@ -155,7 +136,6 @@ export type ErrorIngestProtocolProjection = {
     traces: ErrorIngestOtlpPartialSuccessProjection,
   },
   truncation: ErrorIngestProtocolTruncation,
-  /** Stable for retries of the same batch and outcome decisions. */
   idempotencyKey: string,
 };
 
@@ -291,15 +271,11 @@ function clientReportDisposition(outcome: ErrorIngestProtocolOutcomeInput): {
   bucket: ErrorIngestClientReportBucket,
   reason: ErrorIngestClientReportReason,
 } | undefined {
-  // A client report is already a loss ledger. Re-reporting a rejected report
-  // would create the exact feedback loop Relay avoids for this item type.
   if (outcome.itemType === "client_report") return undefined;
   const reason = protocolReason(outcome);
   switch (outcome.status) {
     case "accepted":
     case "queued": {
-      // Queued is retained and must not be reported as a loss. It will either
-      // become accepted/deduplicated or emit its own later delivery outcome.
       return undefined;
     }
     case "filtered": {
@@ -379,14 +355,6 @@ function encodeCanonicalPart(value: string): string {
   return `${Buffer.byteLength(value, "utf8")}:${value}`;
 }
 
-// This key is stable across retries of the same batch AND outcome decisions —
-// deliberately including each item's status/reason. A byte-identical retry
-// whose policy decisions changed in between (e.g. a rate-limit window opened)
-// therefore produces a NEW key and a second loss-ledger row: the ledger counts
-// decisions, and making it count "first decision per batch" instead would
-// require durably persisting that first decision before policy reruns, which
-// this stateless projection layer intentionally does not do. The ClickHouse
-// write path stays idempotent separately via the batch identity.
 function idempotencyKey(
   batchId: string,
   items: readonly ErrorIngestProtocolItemProjection[],
@@ -398,8 +366,6 @@ function idempotencyKey(
     item.status,
     item.reason ?? "",
     item.canonicalItemId ?? "",
-    // Retry-After is a delivery hint, not an identity component. A retry can
-    // receive a different hint while still representing the same outcome.
   ])).sort();
   const canonical = [encodeCanonicalPart(batchId), ...canonicalItems.map(encodeCanonicalPart)].join("\u001e");
   return `error-ingest-v1:${createHash("sha256").update(canonical, "utf8").digest("hex").slice(0, 32)}`;
@@ -509,9 +475,6 @@ function otlpPartialSuccess(
   signal: "logs" | "traces",
   maxErrorMessageBytes: number,
 ): ErrorIngestOtlpPartialSuccessProjection {
-  // Each OTLP signal reports only its own item types. Counting the whole batch
-  // would let a rejected transaction surface as `rejectedLogRecords` (and vice
-  // versa) in mixed batches, telling the client the wrong signal failed.
   const counts = countErrorIngestOutcomes(items.filter((item) => isSignalItemType(item.itemType, signal)));
   const rejectedItems = rejectedItemCount(counts);
   const errorMessage = boundedErrorMessage(counts, maxErrorMessageBytes);
@@ -524,11 +487,6 @@ function otlpPartialSuccess(
   return { rejectedItems, body: { partialSuccess } };
 }
 
-/**
- * Creates all protocol projections from item outcomes without accepting or
- * serializing event payloads. Aggregation is order-independent; retries of the
- * same batch and decisions receive the same idempotency key.
- */
 export function createErrorIngestProtocolProjection(
   batchId: string,
   outcomes: readonly ErrorIngestProtocolOutcomeInput[],

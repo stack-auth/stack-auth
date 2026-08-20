@@ -70,14 +70,6 @@ export function actorUserId(fullReq: SmartRequest): string | null {
   return fullReq.auth?.user?.id ?? null;
 }
 
-/**
- * The issue-product mutations (comment, owner, subscription, bookmark) report
- * a row that vanished mid-transaction as `IssueProductInputError` with this
- * marker rather than as `IssueNotFoundError` — but for the resolution-to-merge
- * race the two mean the same thing, so both must get the one
- * follow-the-redirect retry below. `rethrowIssueActionError` matches the same
- * marker when mapping the terminal failure to a 404.
- */
 export function isIssueRowVanishedError(error: unknown): boolean {
   return error instanceof IssueProductInputError && error.message.includes("was not found in the authenticated branch");
 }
@@ -87,14 +79,8 @@ export async function withIssueActionTarget<T>(options: {
   rawIssueId: string,
   action: (target: IssueActionTarget) => Promise<T>,
 }): Promise<{ target: IssueActionTarget, result: T }> {
-  // A merge can delete the row after resolution but before the lifecycle
-  // helper's lock. Retrying resolution once follows the new redirect without
-  // hiding a genuine not-found or retrying an arbitrary failed mutation.
   for (let attempt = 0; attempt < 2; attempt++) {
     const target = await resolveIssueIdentity(options.tenancy, options.rawIssueId, {
-      // The retry is a read-after-write check for a merge redirect. A replica
-      // may still expose the deleted source row, so only that second lookup
-      // must bypass it; ordinary action resolution remains replica-routed.
       consistency: attempt === 0 ? "replica" : "primary",
     });
     if (target === null) throw new StatusError(StatusError.NotFound, "Issue not found");

@@ -14,16 +14,6 @@ import {
   type StackFrameView,
 } from "./stack-frames";
 
-/**
- * The stack trace card.
- *
- * The rule this file exists to keep is **never blank**. A stack that parsed
- * into zero frames still shows the raw string; a stack that is entirely library
- * code still shows its frames (the collapsed group starts open); a frame with
- * no source context still shows its location. Every "nothing to render" path
- * below has a visible outcome, because a silently empty card is
- * indistinguishable from a page that failed to load.
- */
 
 function FrameSourceContext({
   context,
@@ -55,9 +45,6 @@ function FrameSourceContext({
   ];
   return (
     <div className="mt-1.5 overflow-x-auto rounded-lg bg-foreground/[0.03] ring-1 ring-foreground/[0.06]">
-      {/* Each line is a `span` (styled `flex`), not a `div`: `pre` only allows
-          phrasing content, and flow children inside it are invalid HTML that
-          browsers/AT may re-nest unpredictably. Visually identical. */}
       <pre className="min-w-full py-1.5 font-mono text-[11px] leading-[1.6]">
         {rows.map((row) => (
           <span
@@ -99,9 +86,6 @@ function StackFrameRow({ frame, onSelect }: { frame: StackFrameView, onSelect: (
           {frameLocationLabel(frame)}
         </span>
         {frame.in_app && <DesignBadge label="App" color="blue" size="sm" />}
-        {/* Symbolication status, not context presence: a frame whose mapped
-            source content couldn't be fetched still displays the MAPPED
-            filename/function/line, so it must still carry the badge. */}
         {frame.symbolication?.status === "symbolicated" && (
           <DesignBadge label="Mapped" color="green" size="sm" />
         )}
@@ -153,7 +137,6 @@ export function StackFrameList({
   order,
 }: {
   frames: readonly StackFrameView[],
-  /** `data.stack` as the SDK sent it. The fallback when parsing produced nothing. */
   rawStack: string | null,
   order: StackFrameOrder,
 }) {
@@ -195,12 +178,6 @@ export function StackFrameList({
             ? <StackFrameRow key={`frame-${group.index}`} frame={group.frame} onSelect={selectFrame} />
             : (
               <CollapsedFrameGroup
-                // Keyed by content, not just position: `expanded` is component
-                // state seeded from `defaultExpanded`, so a positional key would
-                // carry one occurrence's expand/collapse choice (and a stale
-                // default) onto a DIFFERENT frame run after occurrence
-                // navigation swaps the stack. First/last location plus length is
-                // enough to distinguish runs without hashing every frame.
                 key={`collapsed-${group.startIndex}-${group.frames.length}-${group.defaultExpanded ? "expanded" : "collapsed"}-${frameLocationLabel(group.frames[0] ?? throwMissingCollapsedFrame())}-${frameLocationLabel(group.frames[group.frames.length - 1] ?? throwMissingCollapsedFrame())}`}
                 frames={group.frames}
                 defaultExpanded={group.defaultExpanded}

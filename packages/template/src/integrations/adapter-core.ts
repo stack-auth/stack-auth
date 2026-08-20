@@ -146,14 +146,6 @@ export function unauthorizedMessage(surface: string): string {
   return `You must be signed in to call this ${surface}. (Hexclave: no valid session on the request.)`;
 }
 
-/**
- * Resolves the rejection for a `required: true` call that had no session.
- *
- * Precedence — per-handler override, then the factory-level default, then the
- * surface's own fallback. This exists because every wrapped surface needs the
- * exact same three-tier lookup, and it was previously copy-pasted per surface
- * (which is how the wordings drifted apart).
- */
 async function resolveUnauthorized(
   perHandler: UnauthorizedFactory | undefined,
   factory: UnauthorizedFactory | undefined,

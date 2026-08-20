@@ -22,9 +22,6 @@ function normalizeIssueAlertLevel(value: string): IssueAlertLevel | undefined {
     case "warning": { return "warn"; }
     case "fatal": { return "error"; }
     default: {
-      // Levels arrive from untrusted customer telemetry, so an unrecognized
-      // spelling must not make otherwise valid issue materialization fail; it
-      // simply cannot satisfy a level predicate.
       return undefined;
     }
   }
@@ -62,20 +59,8 @@ function boundedKey(value: string): string | null {
   return value.length > 0 && bytes <= MAX_SIGNAL_KEY_BYTES ? value : null;
 }
 
-// Mirrors the evaluator's SAFE_TEXT_PATTERN: its `validateSignal` rejects the
-// WHOLE signal when any identifier contains a control character or exceeds
-// 256 bytes.
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
 
-/**
- * Release/environment come from customer telemetry with no upstream bound
- * tight enough for the evaluator's 256-byte identifier limit. They must be
- * normalized to null HERE rather than handed through verbatim: an oversized
- * (or control-character) release would fail `validateSignal` and silently
- * suppress EVERY alert for the occurrence, when the honest outcome is "this
- * occurrence has no usable release" — release/environment predicates then
- * simply cannot match, and everything else still alerts.
- */
 function boundedIdentifierOrNull(value: string | null): string | null {
   if (value === null || value.length === 0) return null;
   if (CONTROL_CHARACTER_PATTERN.test(value)) return null;
@@ -135,10 +120,6 @@ function signalEnvelope(value: unknown): Record<string, unknown> {
 }
 
 function eventOccurrenceId(outcome: IssueBatchApplyOutcome, input: IssueBatchDelta): string {
-  // The reconciler coalesces MANY occurrences into one delta per owning hash,
-  // so a delta legitimately has no single occurrence id. Alerts still need a
-  // stable identity for deduplication, so derive one from the (issue, hash)
-  // pair the delta describes.
   if (input.occurrenceId !== undefined && input.occurrenceId.length > 0) return input.occurrenceId;
   return createHash("sha256")
     .update(`issue-alert:${outcome.issueId}:${outcome.ownerHash}`, "utf8")

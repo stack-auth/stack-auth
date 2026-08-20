@@ -1,30 +1,11 @@
 import type { ObservabilityTimeRangeHours } from "./filters";
 
-/**
- * How a time range is divided into buckets for the Observability strip charts
- * (the traces volume chart and the per-service sparklines).
- *
- * These lived twice and had already diverged: at the 7d range the traces chart
- * drew 7 one-day bars while the services sparklines drew 28 six-hour bars, so
- * the same window told two different stories about when something happened. The
- * finer bucketing wins — a daily bar hides the burst you opened the page to
- * find — which is why this is expressed with `toStartOfInterval(x, stepSql)`
- * rather than the named `toStartOfDay`/`toStartOfHour` helpers the traces chart
- * used: those cannot express a 6-hour bucket at all.
- * `toStartOfInterval(t, INTERVAL 1 HOUR)` is exactly `toStartOfHour(t)`, so the
- * ranges that already agreed are unchanged.
- */
 export type BucketGranularity = {
-  /** Chart caption, e.g. "per 6 hours". */
   label: string,
-  /** The bucket in prose, for sentences like "N errors in the last 6 hours". */
   bucketNoun: string,
   bucketCount: number,
-  /** Bucket width in ms, for client-side bucket alignment. */
   stepMs: number,
-  /** ClickHouse interval literal for one bucket. */
   stepSql: string,
-  /** ClickHouse interval literal covering every bucket BEFORE the current one. */
   historySql: string,
 };
 

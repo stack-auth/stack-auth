@@ -7,11 +7,6 @@ export type MatchOwnerTeamRecipientsResult =
   | { status: "missing_member", userId: string }
   | { status: "missing_email", userId: string };
 
-/**
- * Dashboard collaborators live on the internal project's owner team, not as
- * users of the customer project. Issue-alert email therefore has to resolve
- * those IDs to primary emails and send through `sendEmail({ emails })`.
- */
 export function matchOwnerTeamRecipients(
   requestedUserIds: readonly string[],
   emailsByUserId: ReadonlyMap<string, string | null>,

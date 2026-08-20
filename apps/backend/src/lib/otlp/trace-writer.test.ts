@@ -155,7 +155,6 @@ describe("OTLP trace storage mapping", () => {
       refreshTokenId: "22222222-2222-4222-8222-222222222222",
     }).events;
     expect(browserEvent.runtime).toBe("browser");
-    // Server exporters use a server key with no user.
     const [serverEvent] = buildOtlpTraceRows(canonicalWithEvent("33333333333333333333333333333333"), {
       ...tenantBase,
       userId: null,

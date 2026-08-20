@@ -154,12 +154,6 @@ function baseSpan(
   };
 }
 
-/**
- * Converts one privacy-processed Sentry transaction into the existing OTLP
- * span model. Relay treats a transaction as a segment span plus its embedded
- * child spans; keeping that shape gives the traces UI one canonical hierarchy
- * without routing performance data through error issue grouping.
- */
 export function sentryTransactionToCanonicalOtlpSpans(
   transaction: ErrorIngestEnvelopeTransactionMetadata,
   context: SentryTransactionOtlpContext,
@@ -183,12 +177,6 @@ export function sentryTransactionToCanonicalOtlpSpans(
     ...baseSpan(context),
     traceId: transaction.traceId,
     spanId: transaction.spanId,
-    // A distributed transaction keeps its upstream ancestor from the trace
-    // context. This matches OTLP-path behavior: if the upstream service never
-    // reports here, the segment is not a trace root (trace_roots is
-    // parent IS NULL) — same as an OTLP span whose parent never arrives —
-    // whereas nulling it would split one trace into multiple fake roots when
-    // both services DO report.
     parentSpanId: transaction.parentSpanId,
     name: transaction.name,
     startTimeUnixNano: timestampToUnixNano(transaction.startTimestampMs, "Transaction start_timestamp"),
@@ -201,9 +189,6 @@ export function sentryTransactionToCanonicalOtlpSpans(
     ...baseSpan(context),
     traceId: span.traceId,
     spanId: span.spanId,
-    // Relay retains a segment id for a child with no explicit parent. The
-    // existing spans table has only scalar ancestry, so the transaction span
-    // is the safe canonical parent for that case.
     parentSpanId: span.parentSpanId ?? transaction.spanId,
     name: span.op ?? span.description ?? "sentry.span",
     startTimeUnixNano: timestampToUnixNano(span.startTimestampMs, `Transaction span ${index} start_timestamp`),

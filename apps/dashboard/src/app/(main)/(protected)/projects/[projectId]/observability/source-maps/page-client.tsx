@@ -172,9 +172,6 @@ export default function PageClient() {
         if (descriptor.source_map_upload_url === null) {
           throw new HexclaveAssertionError("Source map registration did not return a source map upload URL.");
         }
-        // A 412 ("already-uploaded") from either PUT is fine here: the objects
-        // are content-addressed, and the finalize step below confirms the
-        // digests regardless of who uploaded the bytes first.
         await putPresignedArtifact(
           descriptor.bundle_upload_url,
           prepared.bundleUploadBody,

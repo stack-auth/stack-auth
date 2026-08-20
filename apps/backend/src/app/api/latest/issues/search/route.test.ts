@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-// Route-schema tests should not initialize the full backend request stack. The
-// generated package projection in this checkout can otherwise pull in a
-// missing server-lifecycle artifact before the request schema is reachable.
 vi.mock("@/route-handlers/smart-route-handler", () => ({
   createSmartRouteHandler: (...args: readonly unknown[]) => {
     const definition = args.at(-1);

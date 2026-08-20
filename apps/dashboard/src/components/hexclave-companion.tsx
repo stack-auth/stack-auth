@@ -187,10 +187,6 @@ export function HexclaveCompanion({ className, glassBg = false }: { className?: 
       try {
         response = await fetch(`${baseUrl}/api/latest/internal/changelog`);
       } catch (e) {
-        // The changelog bell is best-effort, so a network-level fetch failure (e.g. the backend
-        // isn't reachable yet during dev startup) should be skipped silently — same treatment as
-        // the `!response.ok` case below and the silentFailure mode of checkVersion. We only catch
-        // the fetch itself so that genuine bugs in the parsing logic below still surface.
         console.warn("Could not fetch changelog, skipping changelog notification check", e);
         return;
       }
