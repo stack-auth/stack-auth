@@ -15,6 +15,7 @@ import { GrowthWorkspaceContent } from "../components/workspace-overview";
 import { GrowthAdminGamesCard } from "./games-card";
 import { GrowthAdminInterviewCard } from "./interview-card";
 import { GrowthAdminReportsCard } from "./reports-card";
+import { GrowthAdminRunNowCard } from "./run-now-card";
 
 type Loadable = { status: "loading" } | { status: "error", message: string } | { status: "loaded", projects: GrowthAdminProject[], selected: GrowthAdminProject | null, overview: GrowthOverview | null };
 
@@ -88,6 +89,7 @@ function AdminEditor(props: { app: object, project: GrowthAdminProject, overview
       <GrowthAdminInterviewCard app={props.app} projectId={props.project.id} />
       <GrowthAdminReportsCard app={props.app} projectId={props.project.id} />
       <GrowthAdminGamesCard app={props.app} projectId={props.project.id} />
+      <GrowthAdminRunNowCard app={props.app} projectId={props.project.id} projectName={props.project.displayName} onCompleted={props.refresh} />
 
       <DesignCard title="Stage scores" subtitle="Manual 0–100 values used by the customer growth journey" icon={SlidersHorizontalIcon} gradient="purple">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

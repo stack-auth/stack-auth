@@ -1,6 +1,6 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { browsePage } from "#lib/browse.ts";
+import { browsePage, isBrowserSandboxCredentialError, isBrowseSandboxAvailable } from "#lib/browse.ts";
 import { saveArtifact } from "#lib/hexclave-client.ts";
 
 /**
@@ -10,14 +10,11 @@ import { saveArtifact } from "#lib/hexclave-client.ts";
  * on demand, at generation time — means a screenshot still exists even for a project whose site
  * becomes unreachable later.
  *
- * The returned tool result carries no image bytes — only metadata. eve 0.27.0's ToolModelOutput is
- * text/JSON only (see browse.ts's module comment on browsePage's `screenshot` option), so returning
- * the base64 PNG here would just be an unreadable wall of text this (reasoning) model can't use; the
- * bytes go straight from the sandbox into the artifact write and are never echoed into the model's
- * context.
+ * The returned tool result carries no image bytes — only metadata. The bytes go straight from the
+ * browser sandbox into the artifact write and are never echoed into the model's context.
  */
 export default defineTool({
-  description: "Capture a screenshot of the product's homepage (or another key marketing page) and save it as a brand_screenshot artifact for future ad-creative reference. Call this at most once or twice per run — each call spins up a sandbox VM. You will not see the image itself (only its URL/title/byte size); that is expected.",
+  description: "Capture a screenshot of the product's homepage (or another key marketing page) and save it as a brand_screenshot artifact for future ad-creative reference. Call this at most once or twice per run. If Chromium is unavailable, the tool returns a non-fatal skipped result so website analysis can continue. You will not see the image itself; that is expected.",
   inputSchema: z.object({
     project_id: z.string().min(1),
     branch_id: z.string().min(1),
@@ -25,7 +22,22 @@ export default defineTool({
     url: z.string().url().describe("Absolute http(s) URL of the page to screenshot — usually the homepage."),
   }),
   async execute(input) {
-    const page = await browsePage({ url: input.url, screenshot: true });
+    if (!isBrowseSandboxAvailable()) {
+      return {
+        skipped: true,
+        reason: "Chromium sandbox credentials are unavailable; continue the website analysis using browse-page's automatic curl fallback.",
+      };
+    }
+    let page: Awaited<ReturnType<typeof browsePage>>;
+    try {
+      page = await browsePage({ url: input.url, screenshot: true });
+    } catch (error) {
+      if (!isBrowserSandboxCredentialError(error)) throw error;
+      return {
+        skipped: true,
+        reason: "Chromium sandbox credentials could not be resolved; continue the website analysis using browse-page's automatic curl fallback.",
+      };
+    }
     if (page.screenshotBase64 == null) {
       throw new Error("Browser sandbox did not return a screenshot.");
     }

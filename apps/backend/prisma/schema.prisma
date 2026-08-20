@@ -3165,6 +3165,17 @@ model WorkflowDefinition {
   // transaction that inserts the version row.
   latestVersion Int
 
+  // Pause state. While `pausedAt` is set the workflow accepts no new runs:
+  // matching events are still consumed from the outbox, they just do not
+  // dispatch to this definition. In-flight runs are untouched — pausing
+  // stops the intake, it does not halt work already underway.
+  //
+  // The gate is evaluated when the engine processes an event, not against the
+  // event's own timestamp, so an event enqueued moments before a resume can
+  // still dispatch if no tick reached it while the workflow was paused. That
+  // boundary is deliberately approximate.
+  pausedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
