@@ -25,8 +25,13 @@ The development script uses `dotenv-cli` like the other monorepo apps: it loads 
 ## Development
 
 ```sh
-pnpm dev  # eve dev on port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}49 (default 8149)
+pnpm dev:agent  # opt-in: eve dev on port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}49 (default 8149)
 ```
+
+The development stack does not start Eve automatically. There is one Eve endpoint in local
+development and e2e: the port configured by `HEXCLAVE_GROWTH_EVE_URL` (default `8149`). The
+growth agent owns that port when you run `pnpm dev:agent`; the growth e2e mock owns the same port
+while its suite is running, so stop the other process before switching owners.
 
 ## HTTP surface
 

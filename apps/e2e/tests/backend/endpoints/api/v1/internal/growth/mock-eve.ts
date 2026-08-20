@@ -1,15 +1,19 @@
 import http from "node:http";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 
 // Mock Eve server for the growth engine e2e suite.
 //
 // The backend dispatches growth agent invocations as HTTP POSTs to
-// getEnvVariable("HEXCLAVE_GROWTH_EVE_URL"), which apps/e2e/.env.development pins to
-// http://127.0.0.1:32872. Because that URL (and therefore the port) is FIXED, only one server can
-// play Eve at a time — so:
+// getEnvVariable("HEXCLAVE_GROWTH_EVE_URL"), which apps/e2e/.env.development keeps in sync with the
+// backend's development URL. Because that URL is the single Eve endpoint, only one server can play
+// Eve at a time — so:
 //   - withMockEve serializes concurrent entries within this process via a module-level
 //     promise-chain mutex, and
 //   - only ONE e2e file may use this helper (growth-workflows.test.ts) — vitest runs test FILES in
 //     separate workers, and a second file binding the same port would flake with EADDRINUSE.
+//
+// The real agent can own this same port when started explicitly with
+// `pnpm -C apps/growth-agent dev:agent`; stop it before running this suite.
 //
 // The server answers every POST with 200 {"accepted":true} (the real Eve app's ack contract) and
 // records it. Note that while the mock is listening, engine ticks triggered by OTHER concurrently
@@ -57,10 +61,31 @@ export type MockEve = {
 };
 
 export const MOCK_EVE_HOST = "127.0.0.1";
-export const MOCK_EVE_PORT = 32872;
+
+function getMockEvePort(): number {
+  const configuredUrl = getEnvVariable("HEXCLAVE_GROWTH_EVE_URL");
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(configuredUrl);
+  } catch (error) {
+    throw new Error(`HEXCLAVE_GROWTH_EVE_URL must be a valid URL for the e2e Eve mock: ${JSON.stringify(configuredUrl)}`, { cause: error });
+  }
+  if (parsedUrl.protocol !== "http:" || parsedUrl.hostname !== MOCK_EVE_HOST || parsedUrl.port === "" || parsedUrl.pathname !== "/" || parsedUrl.search !== "" || parsedUrl.hash !== "") {
+    throw new Error(
+      `HEXCLAVE_GROWTH_EVE_URL must be an http URL on ${MOCK_EVE_HOST} with an explicit port and no path or query for the e2e Eve mock: ${JSON.stringify(configuredUrl)}`,
+    );
+  }
+  const port = Number(parsedUrl.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`HEXCLAVE_GROWTH_EVE_URL has an invalid port for the e2e Eve mock: ${JSON.stringify(configuredUrl)}`);
+  }
+  return port;
+}
+
+export const MOCK_EVE_PORT = getMockEvePort();
 
 // Module-level mutex: chains every withMockEve entry so two tests in the same worker never race
-// for the fixed port. (Across workers there is no such protection — hence the one-file rule above.)
+// for the shared port. (Across workers there is no such protection — hence the one-file rule above.)
 let mockEveMutex: Promise<void> = Promise.resolve();
 
 export async function withMockEve<T>(fn: (mock: MockEve) => Promise<T>): Promise<T> {
@@ -133,10 +158,9 @@ export async function withMockEve<T>(fn: (mock: MockEve) => Promise<T>): Promise
       server.on("error", (error: NodeJS.ErrnoException) => {
         if (error.code === "EADDRINUSE") {
           reject(new Error(
-            `mock Eve could not bind ${MOCK_EVE_HOST}:${MOCK_EVE_PORT} — the port is already taken. `
-            + `The port is fixed by HEXCLAVE_GROWTH_EVE_URL in apps/e2e/.env.development, so only ONE e2e file `
-            + `(growth-workflows.test.ts) may use withMockEve; if another file started using it, or a stray process `
-            + `holds the port, free it before running this suite.`,
+            `mock Eve could not bind ${MOCK_EVE_HOST}:${MOCK_EVE_PORT} — the single configured Eve port is already taken. `
+            + `Stop the real agent started by \`pnpm -C apps/growth-agent dev:agent\` (or any other Eve process) `
+            + `before running growth-workflows.test.ts; only one Eve owner can use HEXCLAVE_GROWTH_EVE_URL at a time.`,
           ));
         } else {
           reject(error);
