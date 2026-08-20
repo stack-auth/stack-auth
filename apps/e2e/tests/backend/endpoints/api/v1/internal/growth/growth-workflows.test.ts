@@ -1,7 +1,7 @@
 import { describe, type ExpectStatic } from "vitest";
 import { it } from "../../../../../../helpers";
 import { niceBackendFetch } from "../../../../../backend-helpers";
-import { listRuns, pollWithTicks, sendCustomEvent } from "../workflows-helpers";
+import { listRuns, pollWithTicks as pollWithEngineTicks, sendCustomEvent, withBackgroundWorkflowEngineTicks } from "../workflows-helpers";
 import { GROWTH_AGENT_AUTH, createGrowthProject, releaseGrowthInterviewAsStaff, requireRunId, unlockGrowthWorkspaceAsStaff } from "./growth-helpers";
 import { MockEve, MockEveDispatch, withMockEve } from "./mock-eve";
 
@@ -54,9 +54,17 @@ const IMMEDIATE_PHASE_KEYS = [
   "analysis:icp-visitor-outreach",
 ] as const;
 
-/** Waits for a dispatch matching `predicate`, ticking the WORKFLOW engine while waiting. */
+async function pollWithTicks<T>(expect: ExpectStatic, check: () => Promise<T | null>, options: { timeoutMs?: number } = {}): Promise<T> {
+  return await pollWithEngineTicks(expect, check, { ...options, driveTicks: false });
+}
+
+/** Waits for a dispatch matching `predicate` while the background engine driver advances workflows. */
 async function waitForDispatchWithTicks(expect: ExpectStatic, mock: MockEve, predicate: (dispatch: MockEveDispatch) => boolean, options: { timeoutMs?: number } = {}): Promise<MockEveDispatch> {
   return await pollWithTicks(expect, async () => mock.dispatches.find(predicate) ?? null, options);
+}
+
+async function withGrowthMockEve<T>(expect: ExpectStatic, fn: (mock: MockEve) => Promise<T>): Promise<T> {
+  return await withMockEve(async (mock) => await withBackgroundWorkflowEngineTicks(expect, () => fn(mock)));
 }
 
 async function setUpOnboardedProject() {
@@ -138,7 +146,7 @@ async function bridgeCall(path: string, body: unknown) {
 
 describe("growth workflow orchestration e2e (mock Eve)", { timeout: 90_000 }, () => {
   it("drives a full analysis lifecycle through the workflow engine: seeding, legs, dispatches, interview gate, report, completion", { timeout: 420_000 }, async ({ expect }) => {
-    await withMockEve(async (mock) => {
+    await withGrowthMockEve(expect, async (mock) => {
       const { projectId, branchId } = await setUpOnboardedProject();
       const scope: AgentScope = { project_id: projectId, branch_id: branchId };
       const runId = await completeOnboarding();
@@ -361,7 +369,7 @@ describe("growth workflow orchestration e2e (mock Eve)", { timeout: 90_000 }, ()
   });
 
   it("resets failed dispatches to pending and re-dispatches with a bumped attempt", { timeout: 300_000 }, async ({ expect }) => {
-    await withMockEve(async (mock) => {
+    await withGrowthMockEve(expect, async (mock) => {
       const { projectId, branchId } = await setUpOnboardedProject();
       const scope: AgentScope = { project_id: projectId, branch_id: branchId };
 
@@ -412,7 +420,7 @@ describe("growth workflow orchestration e2e (mock Eve)", { timeout: 90_000 }, ()
   });
 
   it("retries exhausted phases with fresh token anchors and attempt budgets", { timeout: 300_000 }, async ({ expect }) => {
-    await withMockEve(async (mock) => {
+    await withGrowthMockEve(expect, async (mock) => {
       const { projectId, branchId } = await setUpOnboardedProject();
       const scope: AgentScope = { project_id: projectId, branch_id: branchId };
 
@@ -485,7 +493,7 @@ describe("growth workflow orchestration e2e (mock Eve)", { timeout: 90_000 }, ()
   });
 
   it("fences zombie agents echoing a stale attempt after a re-dispatch, without changing state", { timeout: 300_000 }, async ({ expect }) => {
-    await withMockEve(async (mock) => {
+    await withGrowthMockEve(expect, async (mock) => {
       const { projectId, branchId } = await setUpOnboardedProject();
       const scope: AgentScope = { project_id: projectId, branch_id: branchId };
 
@@ -525,7 +533,7 @@ describe("growth workflow orchestration e2e (mock Eve)", { timeout: 90_000 }, ()
   });
 
   it("runs the daily-brief workflow end to end: rollup, Eve dispatch, agent content, deliveries, milestone evaluation", { timeout: 300_000 }, async ({ expect }) => {
-    await withMockEve(async (mock) => {
+    await withGrowthMockEve(expect, async (mock) => {
       const { projectId, branchId } = await setUpOnboardedProject();
       const scope: AgentScope = { project_id: projectId, branch_id: branchId };
       await completeOnboarding();
@@ -677,7 +685,7 @@ describe("growth workflow orchestration e2e (mock Eve)", { timeout: 90_000 }, ()
 // (GET/skip/answer-persistence negatives) lives in interview.test.ts without the mock.
 describe("growth interview streaming (mock Eve)", () => {
   it("persists the answer before proxying, passes the assistant turn through as a UI chunk stream, and persists the transcript", { timeout: 420_000 }, async ({ expect }) => {
-    await withMockEve(async (mock) => {
+    await withGrowthMockEve(expect, async (mock) => {
       const { projectId, branchId } = await setUpOnboardedProject();
       const scope: AgentScope = { project_id: projectId, branch_id: branchId };
       const runId = await completeOnboarding();
