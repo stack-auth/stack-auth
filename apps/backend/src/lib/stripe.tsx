@@ -373,10 +373,14 @@ function getStripeInvoiceOutcomeTimestamps(
   const eventTimestamp = transitionTimestamp(event.created);
   return {
     // The transition object is the most precise source. Some webhook payloads
-    // omit it, but a terminal event's own Stripe timestamp is still
-    // authoritative evidence of that exact transition.
+    // omit it, but an exact outcome event's own Stripe timestamp is still
+    // authoritative evidence of the successful or terminal transition.
     paidAt: transitionTimestamp(statusTransitions?.paid_at)
-      ?? (event.type === "invoice.paid" ? eventTimestamp : null),
+      ?? (
+        event.type === "invoice.paid" || event.type === "invoice.payment_succeeded"
+          ? eventTimestamp
+          : null
+      ),
     markedUncollectibleAt: transitionTimestamp(statusTransitions?.marked_uncollectible_at)
       ?? (event.type === "invoice.marked_uncollectible" ? eventTimestamp : null),
     voidedAt: transitionTimestamp(statusTransitions?.voided_at)
@@ -390,6 +394,14 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
     const occurredAt = new Date(occurredAtSeconds * 1000);
     expect(getStripeInvoiceOutcomeTimestamps({}, {
       type: "invoice.paid",
+      created: occurredAtSeconds,
+    })).toEqual({
+      paidAt: occurredAt,
+      markedUncollectibleAt: null,
+      voidedAt: null,
+    });
+    expect(getStripeInvoiceOutcomeTimestamps({}, {
+      type: "invoice.payment_succeeded",
       created: occurredAtSeconds,
     })).toEqual({
       paidAt: occurredAt,
