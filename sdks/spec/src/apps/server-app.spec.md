@@ -415,7 +415,6 @@ Arguments:
 
 Returns:
   {
-    chunk_id: string,
     events: unknown[]
   }
 
@@ -424,12 +423,12 @@ Request:
 
 Response:
   {
-    chunk_id: string,
     events: unknown[]
   }
 
 Returns the raw rrweb events of a single chunk. Unlike the other four methods, the response is
-returned verbatim in snake_case rather than mapped to a camelCase domain type.
+returned verbatim rather than mapped to a camelCase domain type; it carries no chunk id, so the
+caller must track which chunk it asked for.
 
 Errors:
   ItemNotFound
