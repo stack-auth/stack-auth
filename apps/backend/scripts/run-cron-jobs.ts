@@ -2,6 +2,7 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
+import { cronFetch } from "./run-cron-jobs-transport";
 
 const endpoints: { path: string, intervalMs: number }[] = [
   { path: "/api/latest/internal/external-db-sync/sequencer", intervalMs: 1000 },
@@ -28,7 +29,7 @@ async function main() {
 
   const run = async (endpoint: string) => {
     console.log(`Running ${endpoint}...`);
-    const res = await fetch(`${baseUrl}${endpoint}`, {
+    const res = await cronFetch(`${baseUrl}${endpoint}`, {
       headers: { 'Authorization': `Bearer ${cronSecret}` },
     });
     if (!res.ok) throw new HexclaveAssertionError(`Failed to call ${endpoint}: ${res.status} ${res.statusText}\n${await res.text()}`, { res });

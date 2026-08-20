@@ -52,30 +52,42 @@ export function getFreestyleTransportTimeoutMs(executionTimeoutMs: number | unde
   return (executionTimeoutMs ?? 30_000) + FREESTYLE_TRANSPORT_TIMEOUT_MARGIN_MS;
 }
 
-export async function freestyleFetch(input: RequestInfo | URL, init: RequestInit | undefined, executionTimeoutMs: number | undefined): Promise<Response> {
+export async function freestyleFetch(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  executionTimeoutMs: number | undefined,
+  transportTimeoutMs = getFreestyleTransportTimeoutMs(executionTimeoutMs),
+): Promise<Response> {
+  const normalizedRequest = input instanceof Request ? new Request(input, init) : undefined;
   const requestInit = init ?? {};
-  const requestUrl = input instanceof Request ? new URL(input.url) : new URL(input.toString());
-  const requestHeaders = new Headers(input instanceof Request ? input.headers : requestInit.headers);
+  const requestUrl = new URL(normalizedRequest?.url ?? input.toString());
+  const requestHeaders = new Headers(normalizedRequest?.headers ?? requestInit.headers);
   const headers: Record<string, string> = {};
   for (const [name, value] of requestHeaders) {
     headers[name] = value;
   }
-  const body = await new Response(input instanceof Request ? input.body : requestInit.body).arrayBuffer();
+  const body = await (normalizedRequest?.arrayBuffer() ?? new Response(requestInit.body).arrayBuffer());
   const requestBody = Buffer.from(body);
   const requestFunction = requestUrl.protocol === "https:" ? httpsRequest : httpRequest;
-  const transportTimeoutMs = getFreestyleTransportTimeoutMs(executionTimeoutMs);
+  const requestMethod = normalizedRequest?.method ?? requestInit.method ?? "GET";
+  const requestSignal = normalizedRequest == null ? requestInit.signal ?? undefined : normalizedRequest.signal;
 
   return await new Promise<Response>((resolve, reject) => {
     let settled = false;
+    let deadlineTimer: ReturnType<typeof setTimeout>;
+    const clearDeadlineTimer = () => {
+      clearTimeout(deadlineTimer);
+    };
     const rejectOnce = (error: unknown) => {
       if (settled) return;
       settled = true;
+      clearDeadlineTimer();
       reject(error);
     };
     const requestHandle = requestFunction(requestUrl, {
-      method: requestInit.method ?? (input instanceof Request ? input.method : "GET"),
+      method: requestMethod,
       headers,
-      signal: requestInit.signal ?? (input instanceof Request ? input.signal : undefined),
+      signal: requestSignal,
     }, (response) => {
       const chunks: Buffer[] = [];
       response.on("data", (chunk: Buffer | string) => {
@@ -85,6 +97,7 @@ export async function freestyleFetch(input: RequestInfo | URL, init: RequestInit
       response.once("end", () => {
         if (settled) return;
         settled = true;
+        clearDeadlineTimer();
         const responseHeaders = new Headers();
         for (const [name, value] of Object.entries(response.headers)) {
           if (value == null) continue;
@@ -101,6 +114,9 @@ export async function freestyleFetch(input: RequestInfo | URL, init: RequestInit
     requestHandle.setTimeout(transportTimeoutMs, () => {
       requestHandle.destroy(new Error(`Freestyle request exceeded ${transportTimeoutMs}ms.`));
     });
+    deadlineTimer = setTimeout(() => {
+      requestHandle.destroy(new Error(`Freestyle request exceeded its ${transportTimeoutMs}ms absolute deadline.`));
+    }, transportTimeoutMs);
     requestHandle.end(requestBody);
   });
 }
