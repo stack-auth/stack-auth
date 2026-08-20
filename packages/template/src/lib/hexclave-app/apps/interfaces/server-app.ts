@@ -14,9 +14,10 @@ import { _HexclaveServerAppImpl } from "../implementations";
 import { StackClientApp, StackClientAppConstructorOptions } from "./client-app";
 
 
-/** @deprecated Use `HexclaveServerAppConstructorOptions` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplaysOptions, ListSessionReplaysResult, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, SessionReplayAllEventsResult } from "../../session-replays";
 
+
+/** @deprecated Use `HexclaveServerAppConstructorOptions` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export type StackServerAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & {
   secretServerKey?: string,
 };
