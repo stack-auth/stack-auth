@@ -37,7 +37,22 @@ if (
   throw new Error("HEXCLAVE_FREESTYLE_MOCK_MAX_IN_FLIGHT must be an integer from 1 to 32");
 }
 const MAX_JOBS_PER_RUNTIME = 50;
-const MAX_NON_DEFAULT_RUNTIMES = 3;
+const DEFAULT_MAX_NON_DEFAULT_RUNTIMES = 3;
+const configuredMaxNonDefaultRuntimes =
+  process.env.HEXCLAVE_FREESTYLE_MOCK_MAX_NON_DEFAULT_RUNTIMES;
+const MAX_NON_DEFAULT_RUNTIMES =
+  configuredMaxNonDefaultRuntimes == null
+    ? DEFAULT_MAX_NON_DEFAULT_RUNTIMES
+    : Number(configuredMaxNonDefaultRuntimes);
+if (
+  !Number.isInteger(MAX_NON_DEFAULT_RUNTIMES) ||
+  MAX_NON_DEFAULT_RUNTIMES < 1 ||
+  MAX_NON_DEFAULT_RUNTIMES > 32
+) {
+  throw new Error(
+    "HEXCLAVE_FREESTYLE_MOCK_MAX_NON_DEFAULT_RUNTIMES must be an integer from 1 to 32",
+  );
+}
 const NPM_INSTALL_TIMEOUT_MS = 60_000;
 const PREPARATION_TIMEOUT_MS = NPM_INSTALL_TIMEOUT_MS + 60_000;
 const MAX_NODE_MODULES = 20;
@@ -601,29 +616,21 @@ class RuntimeCache {
   constructor() {
     this.entries = new Map();
     this.creationPromises = new Map();
-    this.recyclingPromises = new Map();
+    this.drainingEntries = new Set();
   }
 
   async acquire(dependency, signal) {
     for (;;) {
-      const recycling = this.recyclingPromises.get(dependency.hash);
-      if (recycling) {
-        await awaitAbort(recycling, signal);
-        continue;
-      }
       const entry = this.entries.get(dependency.hash);
       if (entry && !entry.retiring) {
         entry.activeJobs++;
         entry.lastUsed = performance.now();
         return entry;
       }
-      if (entry?.retiring) {
-        await awaitAbort(this.recycleEntry(entry, dependency), signal);
-        continue;
-      }
       if (
         !dependency.isDefault &&
         this.nonDefaultCount() >= MAX_NON_DEFAULT_RUNTIMES &&
+        !this.hasDraining(dependency.hash) &&
         !(await this.evictInactiveRuntime())
       ) {
         await awaitAbort(this.waitForRuntime(), signal);
@@ -682,7 +689,6 @@ class RuntimeCache {
       jobsHandled: 0,
       lastUsed: performance.now(),
       retiring: false,
-      evicted: false,
       disposePromise: null,
     };
     this.entries.set(dependency.hash, entry);
@@ -690,15 +696,7 @@ class RuntimeCache {
   }
 
   evict(entry) {
-    // Mark before the map check: an entry that was already replaced in the
-    // cache still must not be recycled once we know its runtime is unusable.
-    entry.evicted = true;
-    entry.retiring = true;
-    // Remove it before disposal so the next acquire can create a replacement.
-    if (this.entries.get(entry.hash) === entry) {
-      this.entries.delete(entry.hash);
-    }
-    if (entry.activeJobs === 0) this.disposeEntry(entry);
+    this.detach(entry);
   }
 
   disposeEntry(entry) {
@@ -707,9 +705,28 @@ class RuntimeCache {
       try {
         await entry.runtime.dispose();
       } catch (error) {
-        logInternalError("dispose evicted runtime", error);
+        logInternalError("dispose detached runtime", error);
+      } finally {
+        this.drainingEntries.delete(entry);
       }
     })();
+  }
+
+  detach(entry) {
+    // Retirement must never gate new jobs: waiting for a retiring runtime to
+    // drain lets a single long-running job stall every later job on the same
+    // node modules set. A detached entry keeps serving the jobs it already has
+    // and is disposed by their last release, while new jobs immediately build
+    // a replacement.
+    entry.retiring = true;
+    if (this.entries.get(entry.hash) === entry) {
+      this.entries.delete(entry.hash);
+    }
+    if (entry.activeJobs === 0) {
+      this.disposeEntry(entry);
+      return;
+    }
+    this.drainingEntries.add(entry);
   }
 
   async evictInactiveRuntime() {
@@ -729,97 +746,55 @@ class RuntimeCache {
     return true;
   }
 
-  async recycleEntry(entry, dependency) {
-    const existing = this.recyclingPromises.get(dependency.hash);
-    if (existing) return existing;
-    const recycling = (async () => {
-      while (entry.activeJobs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-      if (this.entries.get(dependency.hash) === entry) {
-        this.entries.delete(dependency.hash);
-      }
-      try {
-        await entry.runtime.dispose();
-        const replacement = await this.createEntry(dependency);
-        this.entries.set(dependency.hash, replacement);
-      } catch (error) {
-        if (this.entries.get(dependency.hash) === entry) {
-          this.entries.delete(dependency.hash);
-        }
-        throw error;
-      }
-    })();
-    this.recyclingPromises.set(dependency.hash, recycling);
-    try {
-      await recycling;
-    } finally {
-      if (this.recyclingPromises.get(dependency.hash) === recycling) {
-        this.recyclingPromises.delete(dependency.hash);
-      }
-    }
-  }
-
   release(entry) {
     entry.activeJobs--;
-    if (entry.evicted) {
+    if (entry.retiring) {
       if (entry.activeJobs === 0) this.disposeEntry(entry);
       return;
     }
     entry.jobsHandled++;
     entry.lastUsed = performance.now();
     if (entry.jobsHandled >= MAX_JOBS_PER_RUNTIME) {
-      entry.retiring = true;
-    }
-    if (entry.retiring && entry.activeJobs === 0) {
-      this.recycleEntry(entry, dependencyFromEntry(entry)).catch((error) =>
-        logInternalError("recycle secure-exec runtime", error),
-      );
+      this.detach(entry);
     }
   }
 
   retire(entry) {
-    entry.retiring = true;
-    if (entry.activeJobs === 0) {
-      this.recycleEntry(entry, dependencyFromEntry(entry)).catch((error) =>
-        logInternalError("recycle secure-exec runtime", error),
-      );
+    this.detach(entry);
+  }
+
+  hasDraining(hash) {
+    for (const entry of this.drainingEntries) {
+      if (entry.hash === hash) return true;
     }
+    return false;
   }
 
   nonDefaultCount() {
-    const hashes = new Set();
+    let count = 0;
     for (const entry of this.entries.values()) {
-      if (!entry.isDefault) hashes.add(entry.hash);
+      if (!entry.isDefault) count++;
+    }
+    for (const entry of this.drainingEntries) {
+      if (!entry.isDefault) count++;
     }
     for (const hash of this.creationPromises.keys()) {
-      if (hash !== "default") hashes.add(hash);
+      if (hash !== "default") count++;
     }
-    for (const hash of this.recyclingPromises.keys()) {
-      if (hash !== "default") hashes.add(hash);
-    }
-    return hashes.size;
+    return count;
   }
 
   protectedHashes() {
     return new Set([
       ...this.entries.keys(),
+      ...[...this.drainingEntries].map((entry) => entry.hash),
       ...this.creationPromises.keys(),
-      ...this.recyclingPromises.keys(),
     ]);
   }
 
   async waitForRuntime() {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-}
-
-function dependencyFromEntry(entry) {
-  return {
-    hash: entry.hash,
-    isDefault: entry.isDefault,
-    nodeModulesPath: entry.nodeModulesPath,
-  };
 }
 
 function createOutput() {
