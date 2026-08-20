@@ -13,7 +13,11 @@ const gunzip = promisify(gunzipCb);
 const S3_CONCURRENCY = 10;
 
 export const GET = createSmartRouteHandler({
-  metadata: { hidden: true },
+  metadata: {
+    summary: "Get session replay events",
+    description: "Returns chunks of a session replay together with their raw rrweb events, in a single request. Use the offset and limit parameters to page through a long recording.",
+    tags: ["Session Replays"],
+  },
   request: yupObject({
     auth: yupObject({
       type: serverOrHigherAuthTypeSchema.defined(),

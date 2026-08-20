@@ -1191,7 +1191,7 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
     if (typeof params?.last_event_at_to_millis === "number") qs.set("last_event_at_to_millis", String(params.last_event_at_to_millis));
     if (typeof params?.click_count_min === "number") qs.set("click_count_min", String(params.click_count_min));
     const response = await this.sendServerRequest(
-      `/internal/session-replays${qs.size ? `?${qs.toString()}` : ""}`,
+      `/session-replays${qs.size ? `?${qs.toString()}` : ""}`,
       { method: "GET" },
       null,
     );
@@ -1200,7 +1200,7 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
 
   async getSessionReplay(sessionReplayId: string): Promise<AdminGetSessionReplayResponse> {
     const response = await this.sendServerRequest(
-      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}`,
+      `/session-replays/${encodeURIComponent(sessionReplayId)}`,
       { method: "GET" },
       null,
     );
@@ -1212,7 +1212,7 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
     if (params?.cursor) qs.set("cursor", params.cursor);
     if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
     const response = await this.sendServerRequest(
-      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/chunks${qs.size ? `?${qs.toString()}` : ""}`,
+      `/session-replays/${encodeURIComponent(sessionReplayId)}/chunks${qs.size ? `?${qs.toString()}` : ""}`,
       { method: "GET" },
       null,
     );
@@ -1221,7 +1221,7 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
 
   async getSessionReplayChunkEvents(sessionReplayId: string, chunkId: string): Promise<AdminGetSessionReplayChunkEventsResponse> {
     const response = await this.sendServerRequest(
-      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/chunks/${encodeURIComponent(chunkId)}/events`,
+      `/session-replays/${encodeURIComponent(sessionReplayId)}/chunks/${encodeURIComponent(chunkId)}/events`,
       { method: "GET" },
       null,
     );
@@ -1233,7 +1233,7 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
     if (typeof options?.offset === "number") qs.set("offset", String(options.offset));
     if (typeof options?.limit === "number") qs.set("limit", String(options.limit));
     const response = await this.sendServerRequest(
-      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/events${qs.size ? `?${qs.toString()}` : ""}`,
+      `/session-replays/${encodeURIComponent(sessionReplayId)}/events${qs.size ? `?${qs.toString()}` : ""}`,
       { method: "GET" },
       null,
     );

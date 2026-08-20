@@ -8,7 +8,11 @@ const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
 
 export const GET = createSmartRouteHandler({
-  metadata: { hidden: true },
+  metadata: {
+    summary: "List session replay chunks",
+    description: "Lists the chunks of a session replay in recording order, with cursor-based pagination. Each chunk describes a batch of recorded events without including the events themselves.",
+    tags: ["Session Replays"],
+  },
   request: yupObject({
     auth: yupObject({
       type: serverOrHigherAuthTypeSchema.defined(),

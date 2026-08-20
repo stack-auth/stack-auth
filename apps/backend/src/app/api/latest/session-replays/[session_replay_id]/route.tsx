@@ -10,7 +10,11 @@ import {
 } from "../session-replay-admin-rows";
 
 export const GET = createSmartRouteHandler({
-  metadata: { hidden: true },
+  metadata: {
+    summary: "Get session replay",
+    description: "Returns metadata for a single session replay, including the user it belongs to, its start and last-event timestamps, and its chunk and event counts.",
+    tags: ["Session Replays"],
+  },
   request: yupObject({
     auth: yupObject({
       type: serverOrHigherAuthTypeSchema.defined(),

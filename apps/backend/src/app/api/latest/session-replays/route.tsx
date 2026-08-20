@@ -84,7 +84,11 @@ async function loadClickQualifiedReplayIds(options: {
 }
 
 export const GET = createSmartRouteHandler({
-  metadata: { hidden: true },
+  metadata: {
+    summary: "List session replays",
+    description: "Lists session replays for the project, most recently active first. Supports filtering by user, team, duration, last-event time, and click count, and cursor-based pagination.",
+    tags: ["Session Replays"],
+  },
   request: yupObject({
     auth: yupObject({
       type: serverOrHigherAuthTypeSchema.defined(),

@@ -10,7 +10,11 @@ import { gunzip as gunzipCb } from "node:zlib";
 const gunzip = promisify(gunzipCb);
 
 export const GET = createSmartRouteHandler({
-  metadata: { hidden: true },
+  metadata: {
+    summary: "Get session replay chunk events",
+    description: "Returns the raw rrweb events for a single chunk of a session replay. These are the events a replay player consumes.",
+    tags: ["Session Replays"],
+  },
   request: yupObject({
     auth: yupObject({
       type: serverOrHigherAuthTypeSchema.defined(),
