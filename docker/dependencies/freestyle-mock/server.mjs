@@ -726,16 +726,16 @@ class RuntimeCache {
     if (this.entries.get(entry.hash) === entry) {
       this.entries.delete(entry.hash);
     }
-    if (entry.activeJobs === 0) {
-      this.disposeEntry(entry);
-      return;
-    }
+    // Track before disposing: a runtime is still alive while dispose() runs, so
+    // it has to stay visible to the capacity accounting until disposeEntry()
+    // untracks it.
     let draining = this.drainingEntries.get(entry.hash);
     if (!draining) {
       draining = new Set();
       this.drainingEntries.set(entry.hash, draining);
     }
     draining.add(entry);
+    if (entry.activeJobs === 0) this.disposeEntry(entry);
   }
 
   async evictInactiveRuntime() {
