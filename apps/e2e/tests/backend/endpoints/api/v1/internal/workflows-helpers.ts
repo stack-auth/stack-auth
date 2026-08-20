@@ -95,7 +95,7 @@ export function startBackgroundWorkflowEngineTicks(expect: ExpectStatic): { stop
 
 export async function withBackgroundWorkflowEngineTicks<T>(expect: ExpectStatic, fn: () => Promise<T>): Promise<T> {
   const driver = startBackgroundWorkflowEngineTicks(expect);
-  const [callbackResult] = await Promise.allSettled([fn()]);
+  const [callbackResult] = await Promise.allSettled([Promise.resolve().then(fn)]);
   const [teardownResult] = await Promise.allSettled([driver.stop()]);
   if (callbackResult.status === "rejected") throw callbackResult.reason;
   if (teardownResult.status === "rejected") throw teardownResult.reason;
