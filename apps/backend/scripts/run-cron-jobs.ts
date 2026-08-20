@@ -2,6 +2,7 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
+import { CRON_WORKFLOW_ENGINE_MAX_DURATION_MS } from "./run-cron-jobs-config";
 import { cronFetch } from "./run-cron-jobs-transport";
 
 const endpoints: { path: string, intervalMs: number }[] = [
@@ -29,9 +30,16 @@ async function main() {
 
   const run = async (endpoint: string) => {
     console.log(`Running ${endpoint}...`);
-    const res = await cronFetch(`${baseUrl}${endpoint}`, {
+    const requestUrl = new URL(endpoint, baseUrl);
+    const maxDurationMs = endpoint === "/api/latest/internal/workflow-engine-step"
+      ? CRON_WORKFLOW_ENGINE_MAX_DURATION_MS
+      : undefined;
+    if (maxDurationMs != null) {
+      requestUrl.searchParams.set("max_duration_ms", String(maxDurationMs));
+    }
+    const res = await cronFetch(requestUrl, {
       headers: { 'Authorization': `Bearer ${cronSecret}` },
-    });
+    }, maxDurationMs);
     if (!res.ok) throw new HexclaveAssertionError(`Failed to call ${endpoint}: ${res.status} ${res.statusText}\n${await res.text()}`, { res });
     console.log(`${endpoint} completed.`);
   };

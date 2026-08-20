@@ -1,18 +1,42 @@
 import { createServer } from "node:http";
+import type { Socket } from "node:net";
 import { afterEach, describe, expect, test } from "vitest";
-import { cronFetch, getCronTransportTimeoutMs } from "./run-cron-jobs-transport";
+import { nodeHttpTransport } from "../src/lib/node-http-transport";
+import { CRON_WORKFLOW_ENGINE_MAX_DURATION_MS, getCronTransportTimeoutMs } from "./run-cron-jobs-config";
 
-const servers: ReturnType<typeof createServer>[] = [];
+const servers: { server: ReturnType<typeof createServer>, sockets: Set<Socket> }[] = [];
 
-afterEach(() => {
-  for (const server of servers.splice(0)) {
-    server.close();
-  }
+function registerServer(server: ReturnType<typeof createServer>): ReturnType<typeof createServer> {
+  const sockets = new Set<Socket>();
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+  });
+  servers.push({ server, sockets });
+  return server;
+}
+
+afterEach(async () => {
+  await Promise.all(servers.splice(0).map(async ({ server, sockets }) => {
+    for (const socket of sockets) {
+      socket.destroy();
+    }
+    if (!server.listening) return;
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error != null) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  }));
 });
 
 describe("cron transport", () => {
   test("outlasts the workflow invocation backstop", () => {
-    expect(getCronTransportTimeoutMs()).toBe(660_000);
+    expect(getCronTransportTimeoutMs(CRON_WORKFLOW_ENGINE_MAX_DURATION_MS)).toBe(840_000);
   });
 
   test("allows a slow progressing response within the injected bound", async () => {
@@ -20,14 +44,14 @@ describe("cron transport", () => {
       response.write("first");
       setTimeout(() => response.end("last"), 20);
     });
-    servers.push(server);
+    registerServer(server);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
     const address = server.address();
     if (address == null || typeof address === "string") {
       throw new Error("Expected the test server to expose a TCP address.");
     }
 
-    const response = await cronFetch(`http://127.0.0.1:${address.port}`, undefined, 100);
+    const response = await nodeHttpTransport(`http://127.0.0.1:${address.port}`, undefined, 100);
 
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe("firstlast");
@@ -35,13 +59,13 @@ describe("cron transport", () => {
 
   test("fails a hung response at the injected absolute deadline", async () => {
     const server = createServer(() => {});
-    servers.push(server);
+    registerServer(server);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
     const address = server.address();
     if (address == null || typeof address === "string") {
       throw new Error("Expected the test server to expose a TCP address.");
     }
 
-    await expect(cronFetch(`http://127.0.0.1:${address.port}`, undefined, 20)).rejects.toThrow("absolute deadline");
+    await expect(nodeHttpTransport(`http://127.0.0.1:${address.port}`, undefined, 20)).rejects.toThrow("absolute deadline");
   });
 });

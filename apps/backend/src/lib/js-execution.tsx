@@ -6,8 +6,7 @@ import { HexclaveAssertionError, captureError } from '@hexclave/shared/dist/util
 import { Result } from '@hexclave/shared/dist/utils/results';
 import { Sandbox } from '@vercel/sandbox';
 import { Freestyle as FreestyleClient } from 'freestyle';
-import { request as httpRequest } from 'node:http';
-import { request as httpsRequest } from 'node:https';
+import { nodeHttpTransport } from './node-http-transport';
 
 export type ExecuteJavascriptOptions = {
   /** Cancels provider setup, command execution, and fallback attempts. */
@@ -60,65 +59,15 @@ export async function freestyleFetch(
 ): Promise<Response> {
   const normalizedRequest = input instanceof Request ? new Request(input, init) : undefined;
   const requestInit = init ?? {};
-  const requestUrl = new URL(normalizedRequest?.url ?? input.toString());
-  const requestHeaders = new Headers(normalizedRequest?.headers ?? requestInit.headers);
-  const headers: Record<string, string> = {};
-  for (const [name, value] of requestHeaders) {
-    headers[name] = value;
-  }
-  const body = await (normalizedRequest?.arrayBuffer() ?? new Response(requestInit.body).arrayBuffer());
-  const requestBody = Buffer.from(body);
-  const requestFunction = requestUrl.protocol === "https:" ? httpsRequest : httpRequest;
-  const requestMethod = normalizedRequest?.method ?? requestInit.method ?? "GET";
-  const requestSignal = normalizedRequest == null ? requestInit.signal ?? undefined : normalizedRequest.signal;
-
-  return await new Promise<Response>((resolve, reject) => {
-    let settled = false;
-    let deadlineTimer: ReturnType<typeof setTimeout>;
-    const clearDeadlineTimer = () => {
-      clearTimeout(deadlineTimer);
-    };
-    const rejectOnce = (error: unknown) => {
-      if (settled) return;
-      settled = true;
-      clearDeadlineTimer();
-      reject(error);
-    };
-    const requestHandle = requestFunction(requestUrl, {
-      method: requestMethod,
-      headers,
-      signal: requestSignal,
-    }, (response) => {
-      const chunks: Buffer[] = [];
-      response.on("data", (chunk: Buffer | string) => {
-        chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
-      });
-      response.once("error", rejectOnce);
-      response.once("end", () => {
-        if (settled) return;
-        settled = true;
-        clearDeadlineTimer();
-        const responseHeaders = new Headers();
-        for (const [name, value] of Object.entries(response.headers)) {
-          if (value == null) continue;
-          responseHeaders.set(name, Array.isArray(value) ? value.join(", ") : value);
-        }
-        resolve(new Response(Buffer.concat(chunks), {
-          status: response.statusCode ?? 0,
-          statusText: response.statusMessage,
-          headers: responseHeaders,
-        }));
-      });
-    });
-    requestHandle.once("error", rejectOnce);
-    requestHandle.setTimeout(transportTimeoutMs, () => {
-      requestHandle.destroy(new Error(`Freestyle request exceeded ${transportTimeoutMs}ms.`));
-    });
-    deadlineTimer = setTimeout(() => {
-      requestHandle.destroy(new Error(`Freestyle request exceeded its ${transportTimeoutMs}ms absolute deadline.`));
+  if (normalizedRequest != null) {
+    return await nodeHttpTransport(normalizedRequest.url, {
+      method: normalizedRequest.method,
+      headers: normalizedRequest.headers,
+      body: await normalizedRequest.arrayBuffer(),
+      signal: normalizedRequest.signal,
     }, transportTimeoutMs);
-    requestHandle.end(requestBody);
-  });
+  }
+  return await nodeHttpTransport(input.toString(), requestInit, transportTimeoutMs);
 }
 
 function createFreestyleEngine(): JsEngine {

@@ -17,6 +17,7 @@ import { invokeWorkflowSandbox } from "./invoke";
 import { listCronOccurrences, MAX_CATCHUP_WINDOW_MS, parseCronExpression } from "./cron";
 import {
   WORKFLOWS_DEFAULT_LIMITS,
+  WORKFLOW_INVOCATION_BACKSTOP_TIMEOUT_MS,
   WORKFLOWS_PROTOCOL_VERSION,
   type WorkflowSandboxCredentials,
   type WorkflowSandboxEvent,
@@ -26,6 +27,8 @@ import {
 } from "./protocol";
 import { getWorkflowsRuntimeEnv } from "./runtime-env";
 import { createWorkflowRunToken } from "./run-token";
+
+export { WORKFLOW_INVOCATION_BACKSTOP_TIMEOUT_MS };
 
 // The workflow engine: tick-driven like the email queue. A cron route calls
 // runWorkflowEngineStep() in a loop; each step (1) materializes due schedule
@@ -55,7 +58,6 @@ const PER_WORKFLOW_CONCURRENCY = 10;
 const RUN_LEASE_MS = 12 * 60 * 1000;
 // See the credential-minting comment in executeClaimedRun.
 const WORKFLOW_RUN_TOKEN_TTL_MS = 35 * 60 * 1000;
-export const WORKFLOW_INVOCATION_BACKSTOP_TIMEOUT_MS = WORKFLOWS_DEFAULT_LIMITS.maxStepTimeoutMs + 30 * 1000;
 // How many steps a single claim may chain before handing the run back to
 // the queue, so a hot run cannot starve others for a whole tick.
 const MAX_CHAINED_STEPS_PER_CLAIM = 50;

@@ -1,13 +1,36 @@
 import { createServer } from "node:http";
+import type { Socket } from "node:net";
 import { afterEach, describe, expect, test } from "vitest";
 import { freestyleFetch, getFreestyleTransportTimeoutMs } from "./js-execution";
 
-const servers: ReturnType<typeof createServer>[] = [];
+const servers: { server: ReturnType<typeof createServer>, sockets: Set<Socket> }[] = [];
 
-afterEach(() => {
-  for (const server of servers.splice(0)) {
-    server.close();
-  }
+function registerServer(server: ReturnType<typeof createServer>): ReturnType<typeof createServer> {
+  const sockets = new Set<Socket>();
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+  });
+  servers.push({ server, sockets });
+  return server;
+}
+
+afterEach(async () => {
+  await Promise.all(servers.splice(0).map(async ({ server, sockets }) => {
+    for (const socket of sockets) {
+      socket.destroy();
+    }
+    if (!server.listening) return;
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error != null) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  }));
 });
 
 describe("Freestyle transport", () => {
@@ -23,7 +46,7 @@ describe("Freestyle transport", () => {
         response.end(JSON.stringify({ result: { status: "ok", data: "done" } }));
       }, 20);
     });
-    servers.push(server);
+    registerServer(server);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
     const address = server.address();
     if (address == null || typeof address === "string") {
@@ -55,7 +78,7 @@ describe("Freestyle transport", () => {
         }));
       });
     });
-    servers.push(server);
+    registerServer(server);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
     const address = server.address();
     if (address == null || typeof address === "string") {
@@ -83,7 +106,7 @@ describe("Freestyle transport", () => {
       const interval = setInterval(() => response.write("chunk"), 5);
       response.on("close", () => clearInterval(interval));
     });
-    servers.push(server);
+    registerServer(server);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
     const address = server.address();
     if (address == null || typeof address === "string") {

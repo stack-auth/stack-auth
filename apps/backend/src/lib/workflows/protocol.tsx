@@ -166,3 +166,5 @@ export const WORKFLOWS_DEFAULT_LIMITS: WorkflowSandboxLimits = {
   inlineSleepMaxMs: 60 * 1000,
   inlineSleepBudgetMs: 90 * 1000,
 };
+
+export const WORKFLOW_INVOCATION_BACKSTOP_TIMEOUT_MS = WORKFLOWS_DEFAULT_LIMITS.maxStepTimeoutMs + 30 * 1000;
