@@ -1,4 +1,4 @@
-import { assertFreeTrialAllowedForPurchase, ensureClientCanAccessCustomer, ensureCustomerExists, getDefaultCardPaymentMethodSummary, getEffectiveFreeTrial, getStripeCustomerForCustomerOrNull, getStripeTrialPeriodDays, grantProductToCustomer, isActiveSubscription, isAddOnProduct, isSubscriptionInEffect } from "@/lib/payments";
+import { assertFreeTrialAllowedForPurchase, ensureClientCanAccessCustomer, ensureCustomerExists, getDefaultCardPaymentMethodSummary, getEffectiveFreeTrial, getStripeCustomerForCustomerOrNull, getStripeTrialPeriodDays, grantProductToCustomer, isAddOnProduct, isSubscriptionInEffect, isSubscriptionSwitchable } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { getApplicationFeePercentOrUndefined } from "@/lib/payments/platform-fees";
@@ -106,8 +106,8 @@ export const POST = createSmartRouteHandler({
       customerId: params.customer_id,
     });
 
-    // Shared by both in-effect checks below (OTP guard and competing-sub guard)
-    // so they classify subscriptions against the same instant.
+    // Shared by every wind-down-aware check below (OTP guard, `existingSub`
+    // lookup, competing-sub guard) so they classify subs against one instant.
     const nowMillis = Date.now();
 
     // Block switching if a non-subscription (OTP) product exists in the same product line,
@@ -139,8 +139,12 @@ export const POST = createSmartRouteHandler({
     // Find the active subscription to switch from. Customers on a free plan (no prices, or
     // auto-migrated from the legacy `include-by-default` sentinel) won't have a subscription
     // row — in that case we fall through to the "create a new Stripe subscription" branch.
+    // Switchable, not merely active: a local (test-mode) cancel writes
+    // `status: canceled` with a future `endedAt`, so the customer still holds
+    // the product — GET lists it — and must be able to switch off it. Stripe's
+    // equivalent (pending cancel) stays `active` and always could.
     const existingSub = Object.values(subMap).find(
-      s => s.productId === body.from_product_id && isActiveSubscription(s)
+      s => s.productId === body.from_product_id && isSubscriptionSwitchable(s, nowMillis)
     ) ?? null;
     // A price counts as "free" only if EVERY supported currency is either absent or zero.
     // Checking USD alone would misclassify a price that's only set in another supported

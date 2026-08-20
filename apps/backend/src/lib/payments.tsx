@@ -164,6 +164,88 @@ export function isSubscriptionInEffect(
 }
 
 /**
+ * Active, or winding down but still paid through — the subs a customer can
+ * still act on: switch away from, or have replaced by a same-line purchase.
+ * Narrower than `isSubscriptionInEffect`, which also covers `past_due` /
+ * `incomplete` subs; those still entitle, but can't take a plan change until
+ * their payment clears. `replaceableSubs` in `grantProductToCustomer` is the
+ * Prisma-query mirror of this predicate — keep the two in sync.
+ */
+export function isSubscriptionSwitchable(
+  subscription: { status: string } & ({ endedAtMillis: number | null } | { endedAt: Date | null }),
+  nowMillis: number,
+): boolean {
+  return isActiveSubscription(subscription)
+    || (subscription.status === SubscriptionStatus.canceled && isSubscriptionInEffect(subscription, nowMillis));
+}
+
+/**
+ * The billing period a subscription is in right now, rolled forward from the
+ * stored one if it has lapsed.
+ *
+ * Local (non-Stripe) subs never renew: `currentPeriodEnd` is frozen at grant
+ * time, so a monthly sub granted in January still reads "period ends Jan 31"
+ * in March while remaining in effect (`endedAt` null). Copying that stale
+ * boundary into `endedAt` on cancel would end the sub in the past — revoking
+ * access the moment the customer cancels, and retroactively rewriting grant
+ * history for the elapsed window. Advancing by whole periods puts the
+ * boundary where a renewing sub would have it.
+ *
+ * Period length comes from the stored period rather than the price interval so
+ * this needs no parsing of the (untrusted) product snapshot; month/year subs
+ * drift by at most a day or two, which a wind-down date can absorb.
+ */
+export function getCurrentBillingPeriod(
+  subscription: { currentPeriodStartMillis: number, currentPeriodEndMillis: number },
+  nowMillis: number,
+): { start: Date, end: Date } {
+  const { currentPeriodStartMillis: start, currentPeriodEndMillis: end } = subscription;
+  const periodLength = end - start;
+  if (end > nowMillis || periodLength <= 0) {
+    // Still inside the stored period, or a degenerate one we can't extrapolate
+    // from — clamp so a lapsed degenerate period never lands in the past.
+    return { start: new Date(start), end: new Date(Math.max(end, nowMillis)) };
+  }
+  const periodsElapsed = Math.ceil((nowMillis - end) / periodLength);
+  return {
+    start: new Date(start + periodsElapsed * periodLength),
+    end: new Date(end + periodsElapsed * periodLength),
+  };
+}
+
+import.meta.vitest?.describe("getCurrentBillingPeriod", (test) => {
+  const MONTH = 30 * 24 * 60 * 60 * 1000;
+  const jan1 = new Date("2026-01-01T00:00:00Z").getTime();
+
+  test("returns the stored period while it is still running", ({ expect }) => {
+    const period = getCurrentBillingPeriod(
+      { currentPeriodStartMillis: jan1, currentPeriodEndMillis: jan1 + MONTH },
+      jan1 + MONTH / 2,
+    );
+    expect(period.start.getTime()).toBe(jan1);
+    expect(period.end.getTime()).toBe(jan1 + MONTH);
+  });
+
+  test("rolls a lapsed period forward to the one containing `now`", ({ expect }) => {
+    const period = getCurrentBillingPeriod(
+      { currentPeriodStartMillis: jan1, currentPeriodEndMillis: jan1 + MONTH },
+      jan1 + 2.5 * MONTH,
+    );
+    expect(period.start.getTime()).toBe(jan1 + 2 * MONTH);
+    expect(period.end.getTime()).toBe(jan1 + 3 * MONTH);
+  });
+
+  test("never returns an end in the past, even for a degenerate period", ({ expect }) => {
+    const now = jan1 + 5 * MONTH;
+    const period = getCurrentBillingPeriod(
+      { currentPeriodStartMillis: jan1, currentPeriodEndMillis: jan1 },
+      now,
+    );
+    expect(period.end.getTime()).toBe(now);
+  });
+});
+
+/**
  * True when the given product config / snapshot declares itself as an add-on
  * to one or more other products. Add-ons share a product line with their base
  * plan but don't satisfy "base plan owned" invariants on their own.
@@ -487,8 +569,9 @@ export async function validatePurchaseSession(options: {
   // and works for products with no productLineId.
   // Includes canceled-at-period-end subs: they still back their product, so
   // a same-line purchase must treat them as replaceable conflicts, not OTPs.
-  // Narrower than isSubscriptionInEffect so a payment retry of an incomplete
-  // sub isn't rejected as ProductAlreadyGranted below.
+  // This is the query form of `isSubscriptionSwitchable` — narrower than
+  // isSubscriptionInEffect so a payment retry of an incomplete sub isn't
+  // rejected as ProductAlreadyGranted below. Keep the two in sync.
   const replaceableSubs = await prisma.subscription.findMany({
     where: {
       tenancyId,

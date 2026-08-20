@@ -1,10 +1,10 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
-import { customerOwnsProduct, ensureCustomerExists, ensureProductIdOrInlineProduct, isSubscriptionCancelable, isSubscriptionInEffect } from "@/lib/payments";
+import { customerOwnsProduct, ensureCustomerExists, ensureProductIdOrInlineProduct, getCurrentBillingPeriod, isSubscriptionCancelable, isSubscriptionInEffect } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
 import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
-import { getStripeForAccount, getStripeSubscriptionPeriod } from "@/lib/stripe";
+import { getStripeForAccount, getStripeSubscriptionPeriod, isStripeSubscriptionAlreadyTerminalError } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
@@ -14,6 +14,7 @@ import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 export const DELETE = createSmartRouteHandler({
   metadata: {
     summary: "Cancel a customer's subscription product",
+    description: "Cancels at the end of the current billing period; the customer keeps the product until then. Without `subscription_id`, cancels every subscription the customer holds for this product — stackable products can have several.",
     hidden: true,
   },
   request: yupObject({
@@ -28,7 +29,7 @@ export const DELETE = createSmartRouteHandler({
       product_id: yupString().defined(),
     }).defined(),
     query: yupObject({
-      subscription_id: yupString().optional(),
+      subscription_id: yupString().optional().meta({ openapiField: { description: "Cancel only this subscription. Omit to cancel all of the customer's subscriptions for this product." } }),
     }).default(() => ({})).defined(),
   }),
   response: yupObject({
@@ -136,6 +137,7 @@ export const DELETE = createSmartRouteHandler({
 
     const hasStripeSubscription = subscriptions.some((subscription) => subscription.stripeSubscriptionId);
     const stripe = hasStripeSubscription ? await getStripeForAccount({ tenancy: auth.tenancy }) : undefined;
+    // Without `subscription_id` this is every cancelable sub for the product.
     for (const subscription of subscriptions) {
       let updatedSub;
       if (subscription.stripeSubscriptionId) {
@@ -144,7 +146,20 @@ export const DELETE = createSmartRouteHandler({
         // matches the confirm dialog and the local-sub branch below. The
         // eager local write (mirroring the refund route) shows the wind-down
         // before the webhook sync arrives.
-        const updated = await stripeClient.subscriptions.update(subscription.stripeSubscriptionId, { cancel_at_period_end: true });
+        let updated;
+        try {
+          updated = await stripeClient.subscriptions.update(subscription.stripeSubscriptionId, { cancel_at_period_end: true });
+        } catch (e) {
+          if (!isStripeSubscriptionAlreadyTerminalError(e)) {
+            throw e;
+          }
+          // The local row says cancelable but Stripe has already ended the sub
+          // (missed webhook, or a cancel from the Stripe Dashboard). Stripe
+          // rejects the update, which would otherwise surface as a 500. Report
+          // the honest state rather than guessing the terminal one locally —
+          // the webhook sync is what reconciles the row.
+          throw new StatusError(400, "This subscription is already canceled.");
+        }
         // Stripe's response is the authority on the boundary — the bulldozer
         // snapshot can be a stale pre-renewal period end. Snapshot fallback
         // only covers item-less mocked responses.
@@ -172,6 +187,11 @@ export const DELETE = createSmartRouteHandler({
           },
         });
       } else {
+        // Local subs never renew, so the stored period can be long past — see
+        // `getCurrentBillingPeriod`. Write the rolled-forward period alongside
+        // `endedAt` so the "Ends on" date the products list surfaces
+        // (`current_period_end`) matches the entitlement boundary.
+        const period = getCurrentBillingPeriod(subscription, nowMillis);
         updatedSub = await prisma.subscription.update({
           where: {
             tenancyId_id: {
@@ -183,7 +203,9 @@ export const DELETE = createSmartRouteHandler({
             status: SubscriptionStatus.canceled,
             cancelAtPeriodEnd: true,
             canceledAt: new Date(),
-            endedAt: new Date(subscription.currentPeriodEndMillis),
+            endedAt: period.end,
+            currentPeriodStart: period.start,
+            currentPeriodEnd: period.end,
           },
         });
       }

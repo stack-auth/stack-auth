@@ -424,6 +424,78 @@ it("switches in test mode from an existing test-mode grant", async ({ expect }) 
   expect(switchResponse.body).toEqual({ success: true });
 }, { timeout: 30_000 });
 
+it("switches in test mode from a canceled-but-still-in-effect grant", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Project.updateConfig({
+    payments: {
+      productLines: { plans: { displayName: "Plans" } },
+      products: {
+        basic: {
+          displayName: "Basic",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+        pro: {
+          displayName: "Pro",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: { monthly: { USD: "2000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+
+  const createUrl = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "basic" },
+  });
+  expect(createUrl.status).toBe(200);
+  const fullCode = (createUrl.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
+  if (!fullCode) {
+    throw new Error("Expected full purchase code");
+  }
+  const purchaseResponse = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: { full_code: fullCode, price_id: "monthly", quantity: 1 },
+  });
+  expect(purchaseResponse.status).toBe(200);
+
+  // Cancel: the local sub is written `canceled` with a future `endedAt`, so the
+  // customer keeps "basic" until the period ends.
+  const cancelResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/basic`, {
+    method: "DELETE",
+    accessType: "client",
+  });
+  expect(cancelResponse.status).toBe(200);
+
+  // Still listed as an in-effect subscription...
+  const products = await niceBackendFetch(`/api/latest/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  const basic = (products.body as { items: { id: string, type: string }[] }).items.find(i => i.id === "basic");
+  expect(basic?.type).toBe("subscription");
+
+  // ...so it can still be switched away from, exactly like a Stripe pending cancel.
+  const switchResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
+    method: "POST",
+    accessType: "client",
+    body: { from_product_id: "basic", to_product_id: "pro" },
+  });
+  expect(switchResponse.status).toBe(200);
+  expect(switchResponse.body).toEqual({ success: true });
+}, { timeout: 30_000 });
+
 it("rejects switch in live mode without Stripe onboarding", async ({ expect }) => {
   await Project.createAndSwitch();
   await Project.updateConfig({

@@ -264,6 +264,37 @@ export function getCanceledAtForSync(subscription: Stripe.Subscription): { cance
 }
 
 /**
+ * True when an error from a Stripe subscription lifecycle write
+ * (`subscriptions.cancel` / `subscriptions.update`) means the subscription is
+ * already terminal, so our write is a moot no-op and can be swallowed.
+ *
+ * Error shapes determined empirically against Stripe API `2025-06-30.basil`
+ * (stripe-node 18.3.0):
+ *   - `cancel()` on an already-canceled or never-existed sub
+ *       → 404, `code: "resource_missing"`.
+ *   - `update()` on a canceled sub (e.g. `cancel_at_period_end`)
+ *       → 400, `rawType: "invalid_request_error"`, message "A canceled
+ *         subscription can only update its cancellation_details and
+ *         metadata.", and crucially **no `code`** — so it can only be matched
+ *         on the message.
+ *
+ * Note `subscription_already_canceled` is intentionally absent: re-cancelling
+ * a canceled sub returns `resource_missing`, not that code — it is never
+ * actually emitted on this path.
+ */
+export function isStripeSubscriptionAlreadyTerminalError(e: unknown): boolean {
+  const code = (e as { code?: unknown }).code;
+  if (code === "resource_missing") {
+    return true;
+  }
+  const rawType = (e as { rawType?: unknown }).rawType;
+  const message = (e as { message?: unknown }).message;
+  return rawType === "invalid_request_error"
+    && typeof message === "string"
+    && /canceled subscription can only update/i.test(message);
+}
+
+/**
  * Sanitized billing period of the subscription's first item, or null when the
  * response has no items (mocked Stripe). Lets wind-down writers take both the
  * entitlement boundary (`endedAt`) and the displayed period from Stripe's
