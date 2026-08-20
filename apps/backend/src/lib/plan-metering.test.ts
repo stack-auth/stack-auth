@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   deleteMany: vi.fn(),
   ensureCustomerExists: vi.fn(),
   getPrismaClientForTenancy: vi.fn(),
-  queryRaw: vi.fn(),
+  executeRaw: vi.fn(),
   retryTransaction: vi.fn(),
 }));
 
@@ -57,9 +57,9 @@ describe("plan metering persistence", () => {
     mocks.bulldozerTryDecreaseItemQuantityChanges.mockResolvedValue({ insufficientItemId: null });
     mocks.createMany.mockResolvedValue({ count: 1 });
     mocks.deleteMany.mockResolvedValue({ count: 1 });
-    mocks.queryRaw.mockResolvedValue([{ pg_advisory_xact_lock: null }]);
+    mocks.executeRaw.mockResolvedValue(0);
     mocks.retryTransaction.mockImplementation(async (_prisma, callback) => await callback({
-      $queryRaw: mocks.queryRaw,
+      $executeRaw: mocks.executeRaw,
       itemQuantityChange: {
         createMany: mocks.createMany,
         deleteMany: mocks.deleteMany,
@@ -83,7 +83,7 @@ describe("plan metering persistence", () => {
     expect(mocks.deleteMany).toHaveBeenCalledWith({
       where: { tenancyId: "internal-tenancy", id: { in: [originalChange.id] } },
     });
-    expect(mocks.queryRaw).toHaveBeenCalledTimes(2);
+    expect(mocks.executeRaw).toHaveBeenCalledTimes(2);
   });
 
   it("holds the customer lock while compensating a failed debit persistence", async () => {
@@ -96,7 +96,7 @@ describe("plan metering persistence", () => {
       idempotency: { key: "batch", createdAt: new Date("2026-08-04T12:00:00.123Z") },
     }])).rejects.toBe(persistenceError);
 
-    const lockOrder = mocks.queryRaw.mock.invocationCallOrder.at(0);
+    const lockOrder = mocks.executeRaw.mock.invocationCallOrder.at(0);
     const debitOrder = mocks.bulldozerTryDecreaseItemQuantityChanges.mock.invocationCallOrder.at(0);
     if (lockOrder === undefined || debitOrder === undefined) throw new Error("Expected lock and debit calls");
     expect(lockOrder).toBeLessThan(debitOrder);

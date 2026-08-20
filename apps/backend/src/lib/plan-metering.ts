@@ -57,7 +57,13 @@ async function lockPlanMeteringCustomer(
   // debit can consume before Postgres persistence is durable. This lock is
   // shared by debits and rollbacks across backend instances and remains held
   // while Bulldozer and the source-of-truth row are changed.
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`plan-metering:${tenancyId}:${billingTeamId}`}, 0))`;
+  //
+  // `pg_advisory_xact_lock` returns PostgreSQL's `void` pseudo-type. `$queryRaw`
+  // asks the Prisma driver adapter to decode that result set and fails with
+  // `UnsupportedNativeDataType void`. This is a command, not a row-producing
+  // query, so it must go through `$executeRaw` (same as saved-search-views and
+  // the email-queue claim lock).
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`plan-metering:${tenancyId}:${billingTeamId}`}, 0))`;
 }
 
 function deterministicPlanChangeId(parts: readonly string[]): string {
