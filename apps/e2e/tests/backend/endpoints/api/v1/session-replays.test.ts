@@ -827,7 +827,10 @@ it("client access cannot call single session replay endpoint, but server access 
         "code": "INSUFFICIENT_ACCESS_TYPE",
         "details": {
           "actual_access_type": "client",
-          "allowed_access_types": ["server", "admin"],
+          "allowed_access_types": [
+            "server",
+            "admin",
+          ],
         },
         "error": "The x-hexclave-access-type header must be 'server' or 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
       },
@@ -1046,7 +1049,10 @@ it("client access cannot call internal session replays endpoints, but server acc
         "code": "INSUFFICIENT_ACCESS_TYPE",
         "details": {
           "actual_access_type": "client",
-          "allowed_access_types": ["server", "admin"],
+          "allowed_access_types": [
+            "server",
+            "admin",
+          ],
         },
         "error": "The x-hexclave-access-type header must be 'server' or 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
       },
