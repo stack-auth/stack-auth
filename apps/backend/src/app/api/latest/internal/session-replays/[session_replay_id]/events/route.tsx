@@ -4,7 +4,7 @@ import { downloadBytes } from "@/s3";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
-import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { adaptSchema, serverOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { promisify } from "node:util";
 import { gunzip as gunzipCb } from "node:zlib";
 
@@ -16,7 +16,7 @@ export const GET = createSmartRouteHandler({
   metadata: { hidden: true },
   request: yupObject({
     auth: yupObject({
-      type: adminAuthTypeSchema.defined(),
+      type: serverOrHigherAuthTypeSchema.defined(),
       tenancy: adaptSchema.defined(),
     }).defined(),
     params: yupObject({

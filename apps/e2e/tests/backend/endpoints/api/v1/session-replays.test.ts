@@ -800,7 +800,7 @@ it("admin get session replay returns 404 for nonexistent id", async ({ expect })
   `);
 });
 
-it("non-admin access cannot call single session replay endpoint", async ({ expect }) => {
+it("client access cannot call single session replay endpoint, but server access can", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.fastSignUp();
@@ -827,9 +827,9 @@ it("non-admin access cannot call single session replay endpoint", async ({ expec
         "code": "INSUFFICIENT_ACCESS_TYPE",
         "details": {
           "actual_access_type": "client",
-          "allowed_access_types": ["admin"],
+          "allowed_access_types": ["server", "admin"],
         },
-        "error": "The x-hexclave-access-type header must be 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
+        "error": "The x-hexclave-access-type header must be 'server' or 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
       },
       "headers": Headers {
         "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -838,27 +838,14 @@ it("non-admin access cannot call single session replay endpoint", async ({ expec
     }
   `);
 
+  // Server keys read session replays too: the SDK methods live on the server
+  // app, so a secret server key is sufficient. Only client access is rejected.
   const serverRes = await niceBackendFetch(`/api/v1/internal/session-replays/${recordingId}`, {
     method: "GET",
     accessType: "server",
   });
-  expect(serverRes).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 401,
-      "body": {
-        "code": "INSUFFICIENT_ACCESS_TYPE",
-        "details": {
-          "actual_access_type": "server",
-          "allowed_access_types": ["admin"],
-        },
-        "error": "The x-hexclave-access-type header must be 'admin', but was 'server'. (The legacy x-stack-access-type header is also accepted.)",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
+  expect(serverRes.status).toBe(200);
+  expect(serverRes.body.id).toBe(recordingId);
 });
 
 it("admin list session replays rejects unknown cursor", async ({ expect }) => {
@@ -1044,7 +1031,7 @@ it("admin events endpoint does not allow fetching a chunk via the wrong session 
   `);
 });
 
-it("non-admin access cannot call internal session replays endpoints", async ({ expect }) => {
+it("client access cannot call internal session replays endpoints, but server access can", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.fastSignUp();
 
@@ -1059,9 +1046,9 @@ it("non-admin access cannot call internal session replays endpoints", async ({ e
         "code": "INSUFFICIENT_ACCESS_TYPE",
         "details": {
           "actual_access_type": "client",
-          "allowed_access_types": ["admin"],
+          "allowed_access_types": ["server", "admin"],
         },
-        "error": "The x-hexclave-access-type header must be 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
+        "error": "The x-hexclave-access-type header must be 'server' or 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
       },
       "headers": Headers {
         "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -1074,23 +1061,8 @@ it("non-admin access cannot call internal session replays endpoints", async ({ e
     method: "GET",
     accessType: "server",
   });
-  expect(serverRes).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 401,
-      "body": {
-        "code": "INSUFFICIENT_ACCESS_TYPE",
-        "details": {
-          "actual_access_type": "server",
-          "allowed_access_types": ["admin"],
-        },
-        "error": "The x-hexclave-access-type header must be 'admin', but was 'server'. (The legacy x-stack-access-type header is also accepted.)",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
+  expect(serverRes.status).toBe(200);
+  expect(Array.isArray(serverRes.body.items)).toBe(true);
 });
 
 it("groups batches from same refresh token into one session replay", async ({ expect }) => {
