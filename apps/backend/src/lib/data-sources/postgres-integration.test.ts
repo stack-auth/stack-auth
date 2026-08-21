@@ -124,7 +124,7 @@ function recordingClickhouse() {
   };
 }
 
-it("runs full refresh and cursor modes end to end on the Postgres side", async () => {
+it("runs cursor mode end to end on the Postgres side", async () => {
   const { probeDataSource } = await import("./probe");
   const { runStreamSyncs } = await import("./sync");
   const probe = await probeDataSource(credentials);
@@ -143,8 +143,8 @@ it("runs full refresh and cursor modes end to end on the Postgres side", async (
 
   const results = await runStreamSyncs(context, [
     {
-      streamId: "s-plans", schemaName: "public", tableName: "plans", mode: "full_refresh" as const,
-      cursorColumn: null, primaryKeyColumns: ["id"], destinationTable: "public_plans", isPending: false, syncCursor: null,
+      streamId: "s-plans", schemaName: "public", tableName: "plans", mode: "cursor" as const,
+      cursorColumn: "id", primaryKeyColumns: ["id"], destinationTable: "public_plans", isPending: false, syncCursor: null,
     },
     {
       streamId: "s-users", schemaName: "public", tableName: "users", mode: "cursor" as const,
@@ -167,8 +167,6 @@ it("runs full refresh and cursor modes end to end on the Postgres side", async (
   // The primary key of the last row read rides along, so a group of rows sharing
   // one cursor value can be resumed through instead of re-read forever.
   expect(JSON.parse(users.syncCursor!.key!)).toEqual(["500"]); // bigserial arrives as a string from pg
-  // The swap is what makes a full refresh atomic for readers.
-  expect(recorder.commands.some(c => c.startsWith("EXCHANGE TABLES"))).toBe(true);
 }, 60000);
 
 it("resumes a cursor stream from its watermark", async () => {

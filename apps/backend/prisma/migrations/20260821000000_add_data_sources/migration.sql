@@ -5,7 +5,7 @@ CREATE TYPE "DataSourceType" AS ENUM ('POSTGRES');
 CREATE TYPE "DataSourceStatus" AS ENUM ('PENDING', 'ACTIVE', 'PAUSED', 'FAILED');
 
 -- CreateEnum
-CREATE TYPE "DataSourceStreamMode" AS ENUM ('FULL_REFRESH', 'CURSOR', 'CDC');
+CREATE TYPE "DataSourceStreamMode" AS ENUM ('CURSOR', 'CDC');
 
 -- CreateEnum
 CREATE TYPE "DataSourceStreamStatus" AS ENUM ('PENDING', 'SNAPSHOTTING', 'ACTIVE', 'FAILED');

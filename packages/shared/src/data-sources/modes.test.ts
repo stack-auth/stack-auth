@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  FULL_REFRESH_MAX_ROWS,
   getCdcAvailability,
   getDefaultCursorColumn,
   getModeAvailability,
   getRecommendedMode,
+  isTemporalCursorType,
   type DataSourceCapabilities,
   type DataSourceTableInfo,
 } from "./modes";
@@ -69,15 +69,14 @@ describe("mode availability", () => {
     expect(availability.cursor).toEqual({ available: false, reason: "no usable column" });
   });
 
-  it("refuses full refresh above the row ceiling", () => {
-    expect(getModeAvailability(table({ approxRows: FULL_REFRESH_MAX_ROWS + 1 }), capable).full_refresh.available).toBe(false);
-    expect(getModeAvailability(table({ approxRows: FULL_REFRESH_MAX_ROWS }), capable).full_refresh.available).toBe(true);
+  it("offers only the two modes we support", () => {
+    expect(Object.keys(getModeAvailability(table(), capable)).sort()).toEqual(["cdc", "cursor"]);
   });
 });
 
 describe("recommendation", () => {
-  it("reloads small tables wholesale even when CDC is available", () => {
-    expect(getRecommendedMode(table({ approxRows: 40 }), capable)).toBe("full_refresh");
+  it("prefers CDC wherever it is possible, whatever the table's size", () => {
+    expect(getRecommendedMode(table({ approxRows: 40 }), capable)).toBe("cdc");
   });
 
   it("prefers CDC for large mutable tables", () => {
@@ -89,17 +88,9 @@ describe("recommendation", () => {
   });
 
   it("returns null when nothing applies, rather than a mode that would fail", () => {
-    const impossible = table({ approxRows: 12_600_000, cursorCandidates: [], primaryKeyColumns: [] });
+    // No key for CDC to match on, and no column that could serve as a cursor.
+    const impossible = table({ cursorCandidates: [], primaryKeyColumns: [] });
     expect(getRecommendedMode(impossible, { ...capable, walLevel: "replica" })).toBeNull();
-  });
-
-  it("does not treat a never-analyzed table as small", () => {
-    // reltuples is -1 until ANALYZE runs; reading that as 0 would recommend
-    // reloading an arbitrarily large table in full on every sync.
-    expect(getRecommendedMode(table({ approxRows: null }), capable)).toBe("cdc");
-    expect(getRecommendedMode(table({ approxRows: null }), { ...capable, walLevel: "replica" })).toBe("cursor");
-    const noCursor = table({ approxRows: null, cursorCandidates: [] });
-    expect(getRecommendedMode(noCursor, { ...capable, walLevel: "replica" })).toBeNull();
   });
 });
 
@@ -128,5 +119,26 @@ describe("default cursor column", () => {
 
   it("is null when there is nothing to pick", () => {
     expect(getDefaultCursorColumn(table({ cursorCandidates: [] }))).toBeNull();
+  });
+});
+
+describe("temporal cursor columns", () => {
+  it("recognises the timestamp types format_type() emits, typmods and all", () => {
+    for (const type of [
+      "timestamp with time zone",
+      "timestamp(3) without time zone",
+      "timestamp(6) with time zone",
+      "date",
+    ]) {
+      expect(isTemporalCursorType(type), type).toBe(true);
+    }
+  });
+
+  it("treats keys and counters as non-temporal, since they only move on insert", () => {
+    // These are legal cursors — an append-only log is exactly what they suit —
+    // but an edit to an existing row never bumps them, so the picker warns.
+    for (const type of ["bigint", "integer", "smallint"]) {
+      expect(isTemporalCursorType(type), type).toBe(false);
+    }
   });
 });

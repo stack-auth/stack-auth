@@ -2816,7 +2816,6 @@ model DataSource {
 }
 
 enum DataSourceStreamMode {
-  FULL_REFRESH
   CURSOR
   CDC
 }

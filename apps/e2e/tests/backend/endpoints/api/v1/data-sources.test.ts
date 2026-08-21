@@ -238,7 +238,9 @@ it("connects, and returns a catalog with a mode decision per table", async ({ ex
     // preferred because it moves when a row is updated in place.
     expect(events.cursor_candidates.map((c: any) => c.column).sort()).toEqual(["created_at", "id"]);
     expect(events.default_cursor_column).toBe("created_at");
-    expect(events.recommended_mode).toBe("full_refresh"); // small enough to reload wholesale
+    // CDC wherever the server allows it: cheaper in steady state, and the only
+    // mode that sees deletes.
+    expect(events.recommended_mode).toBe("cdc");
 
     // Without a primary key there is no key to match an update or delete against.
     const keyless = tables.find((t: any) => t.table_name === "keyless");
@@ -280,7 +282,7 @@ it("refuses a table the source does not have", async ({ expect }) => {
   await withSourceDatabase(SIMPLE_SCHEMA, async source => {
     const { body: { data_source } } = await connectSource(source.database);
     const response = await setStreams(data_source.id, [
-      { schema_name: "public", table_name: "no_such_table", mode: "full_refresh" },
+      { schema_name: "public", table_name: "no_such_table", mode: "cursor", cursor_column: "id" },
     ]);
     expect(response.status).toBe(400);
     expect(String(response.body)).toContain("no readable table");
@@ -305,19 +307,19 @@ it("replaces the stream list wholesale and reports it back", async ({ expect }) 
     const { body: { data_source } } = await connectSource(source.database);
 
     const first = await setStreams(data_source.id, [
-      { schema_name: "public", table_name: "plans", mode: "full_refresh" },
+      { schema_name: "public", table_name: "plans", mode: "cursor", cursor_column: "id" },
       { schema_name: "public", table_name: "events", mode: "cursor", cursor_column: "created_at" },
     ]);
     expect(first.status).toBe(200);
     expect(first.body.data_source.status).toBe("active");
     expect(first.body.data_source.streams.map((s: any) => [s.table_name, s.mode, s.cursor_column])).toEqual([
       ["events", "cursor", "created_at"],
-      ["plans", "full_refresh", null],
+      ["plans", "cursor", "id"],
     ]);
     expect(first.body.data_source.streams[0].destination_table).toBe("public_events");
 
     const second = await setStreams(data_source.id, [
-      { schema_name: "public", table_name: "plans", mode: "full_refresh" },
+      { schema_name: "public", table_name: "plans", mode: "cursor", cursor_column: "id" },
     ]);
     expect(second.body.data_source.streams.map((s: any) => s.table_name)).toEqual(["plans"]);
 
@@ -329,12 +331,12 @@ it("replaces the stream list wholesale and reports it back", async ({ expect }) 
 
 // ─── syncing ────────────────────────────────────────────────────────────────
 
-it("syncs full-refresh and cursor streams into the project's warehouse", async ({ expect }) => {
+it("syncs cursor streams into the project's warehouse", async ({ expect }) => {
   const { projectId, credentials } = await createProjectWithWarehouse();
   await withSourceDatabase(SIMPLE_SCHEMA, async source => {
     const { body: { data_source } } = await connectSource(source.database);
     await setStreams(data_source.id, [
-      { schema_name: "public", table_name: "plans", mode: "full_refresh" },
+      { schema_name: "public", table_name: "plans", mode: "cursor", cursor_column: "id" },
       { schema_name: "public", table_name: "events", mode: "cursor", cursor_column: "created_at" },
     ]);
 
@@ -447,12 +449,12 @@ it("rebuilds the destination when a stream changes mode", async ({ expect }) => 
   const { projectId, credentials } = await createProjectWithWarehouse();
   await withSourceDatabase(SIMPLE_SCHEMA, async source => {
     const { body: { data_source } } = await connectSource(source.database);
-    await setStreams(data_source.id, [{ schema_name: "public", table_name: "events", mode: "full_refresh" }]);
+    await setStreams(data_source.id, [{ schema_name: "public", table_name: "events", mode: "cursor", cursor_column: "created_at" }]);
     await syncSource(data_source.id);
 
-    // Full-refresh versions are epoch microseconds and CDC versions are LSNs,
-    // which are many orders of magnitude smaller — merging the two would leave
-    // the table frozen at its pre-switch contents forever.
+    // Cursor versions are epoch microseconds and CDC versions are LSNs, which are
+    // many orders of magnitude smaller — merging the two would leave the table
+    // frozen at its pre-switch contents forever.
     await setStreams(data_source.id, [{ schema_name: "public", table_name: "events", mode: "cdc" }]);
     await syncSource(data_source.id);
     await source.query(`UPDATE events SET label = 'after-switch' WHERE label = 'e3'`);
@@ -474,8 +476,8 @@ it("keeps one stream's failure from stopping the others", async ({ expect }) => 
   await withSourceDatabase(SIMPLE_SCHEMA, async source => {
     const { body: { data_source } } = await connectSource(source.database);
     await setStreams(data_source.id, [
-      { schema_name: "public", table_name: "plans", mode: "full_refresh" },
-      { schema_name: "public", table_name: "events", mode: "full_refresh" },
+      { schema_name: "public", table_name: "plans", mode: "cursor", cursor_column: "id" },
+      { schema_name: "public", table_name: "events", mode: "cursor", cursor_column: "created_at" },
     ]);
     // Dropped behind the configuration's back, which is what a permissions change
     // or a migration looks like from here.
@@ -521,7 +523,7 @@ it("does not let one project touch another's source", async ({ expect }) => {
   await createProjectWithWarehouse();
   const ownedId = await withSourceDatabase(SIMPLE_SCHEMA, async source => {
     const { body: { data_source } } = await connectSource(source.database);
-    await setStreams(data_source.id, [{ schema_name: "public", table_name: "plans", mode: "full_refresh" }]);
+    await setStreams(data_source.id, [{ schema_name: "public", table_name: "plans", mode: "cursor", cursor_column: "id" }]);
     return data_source.id;
   });
 

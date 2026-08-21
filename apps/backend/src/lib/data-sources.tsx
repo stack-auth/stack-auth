@@ -25,12 +25,10 @@ const encryptedPasswordSchema = yupObject({
 const SYNC_CLAIM_LEASE_SECONDS = 900;
 
 const MODE_TO_PRISMA = {
-  full_refresh: "FULL_REFRESH",
   cursor: "CURSOR",
   cdc: "CDC",
 } as const;
 const MODE_FROM_PRISMA = {
-  FULL_REFRESH: "full_refresh",
   CURSOR: "cursor",
   CDC: "cdc",
 } as const;

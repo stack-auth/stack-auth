@@ -11,7 +11,7 @@ import { PageLayout } from "../../../page-layout";
 import { useAdminApp } from "../../../use-admin-app";
 import { StreamPicker, formatRowCount } from "../stream-picker";
 
-const MODE_LABEL: Record<string, string> = { cdc: "CDC", cursor: "Cursor", full_refresh: "Full refresh" };
+const MODE_LABEL: Record<string, string> = { cdc: "CDC", cursor: "Cursor" };
 
 export default function PageClient() {
   return (

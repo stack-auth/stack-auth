@@ -38,7 +38,7 @@ export type StreamSyncPlan = {
   streamId: string,
   schemaName: string,
   tableName: string,
-  mode: "full_refresh" | "cursor" | "cdc",
+  mode: "cursor" | "cdc",
   cursorColumn: string | null,
   primaryKeyColumns: string[],
   destinationTable: string,
@@ -125,59 +125,6 @@ async function forEachBatch(
     });
   }
   return total;
-}
-
-/**
- * Reload the table wholesale into a staging table, then swap it in atomically.
- * Readers see the old table until the exchange, and never a half-loaded one.
- */
-async function syncFullRefresh(
-  context: SyncContext,
-  plan: StreamSyncPlan,
-  table: ProbedTable,
-  client: Client,
-): Promise<StreamSyncResult> {
-  const stagingTable = `${plan.destinationTable}__staging`;
-  const version = BigInt(context.startedAt.getTime()) * 1000n;
-
-  await prepareDestination(context, plan, table);
-  await context.clickhouse.command({
-    query: `DROP TABLE IF EXISTS ${quoteClickhouseIdentifier(context.databaseName)}.${quoteClickhouseIdentifier(stagingTable)}`,
-  });
-  await ensureDestinationTable(context.clickhouse, {
-    databaseName: context.databaseName,
-    tableName: stagingTable,
-    columns: table.columns,
-    primaryKeyColumns: plan.primaryKeyColumns,
-  });
-
-  const rowsSynced = await forEachBatch(
-    client,
-    `SELECT * FROM ${quotePgQualifiedName(plan.schemaName, plan.tableName)}`,
-    [],
-    async rows => {
-      await insertRows(context.clickhouse, {
-        databaseName: context.databaseName,
-        tableName: stagingTable,
-        rows: rows.map(values => buildDestinationRow({
-          values, columns: table.columns, version, deleted: false, extractedAt: context.startedAt,
-        })),
-      });
-    },
-    // Unbounded: the mode is already restricted to tables under
-    // FULL_REFRESH_MAX_ROWS, and a partial load would be swapped in as if complete.
-    { maxBatches: Number.POSITIVE_INFINITY },
-  );
-
-  await context.clickhouse.command({
-    query: `EXCHANGE TABLES ${quoteClickhouseIdentifier(context.databaseName)}.${quoteClickhouseIdentifier(stagingTable)}
-            AND ${quoteClickhouseIdentifier(context.databaseName)}.${quoteClickhouseIdentifier(plan.destinationTable)}`,
-  });
-  await context.clickhouse.command({
-    query: `DROP TABLE IF EXISTS ${quoteClickhouseIdentifier(context.databaseName)}.${quoteClickhouseIdentifier(stagingTable)}`,
-  });
-
-  return { streamId: plan.streamId, rowsSynced, syncCursor: null, error: null };
 }
 
 /** Reads rows whose cursor column advanced past the last watermark. */
@@ -615,9 +562,7 @@ export async function runStreamSyncs(context: SyncContext, plans: StreamSyncPlan
           continue;
         }
         try {
-          results.push(plan.mode === "full_refresh"
-            ? await syncFullRefresh(context, plan, table, client)
-            : await syncCursor(context, plan, table, client));
+          results.push(await syncCursor(context, plan, table, client));
         } catch (error) {
           results.push({
             streamId: plan.streamId,

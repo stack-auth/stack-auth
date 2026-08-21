@@ -7,18 +7,25 @@
  * possible outcome of this screen.
  */
 
-export type DataSourceSyncMode = "full_refresh" | "cursor" | "cdc";
+export type DataSourceSyncMode = "cursor" | "cdc";
 
-export const DATA_SOURCE_SYNC_MODES = ["cdc", "cursor", "full_refresh"] as const satisfies readonly DataSourceSyncMode[];
+export const DATA_SOURCE_SYNC_MODES = ["cdc", "cursor"] as const satisfies readonly DataSourceSyncMode[];
 
 /**
- * Above this a full reload on every sync puts sustained load on the customer's
- * database, so we refuse the mode rather than let them find out in production.
+ * Cursor columns that carry a wall-clock time. These are the ones that behave the
+ * way people expect: an application that touches the row bumps the timestamp, so
+ * updates are picked up as well as inserts.
+ *
+ * A monotonic id is still a legal cursor and is often the right one for an
+ * append-only log, but it only ever moves when a row is inserted — so edits to
+ * existing rows are invisible. The picker warns about that rather than refusing
+ * it, because the customer knows their write patterns and we do not.
  */
-export const FULL_REFRESH_MAX_ROWS = 2_000_000;
+const TEMPORAL_CURSOR_TYPE = /^(timestamp( with(out)? time zone)?|date)$/i;
 
-/** Below this, reloading the whole table is cheaper than tracking changes, and it can never drift. */
-export const SMALL_TABLE_ROWS = 100_000;
+export function isTemporalCursorType(dataType: string): boolean {
+  return TEMPORAL_CURSOR_TYPE.test(dataType.trim().replace(/\(\d+(,\s*\d+)?\)/, ""));
+}
 
 /** What the capability probe learned about the source server. */
 export type DataSourceCapabilities = {
@@ -111,12 +118,6 @@ export function getModeAvailability(
     cursor: table.cursorCandidates.length > 0
       ? { available: true, reason: null }
       : { available: false, reason: "no usable column" },
-    // An unknown row count cannot prove the table is small, but refusing on that
-    // basis would block every freshly restored source. It is allowed, just never
-    // recommended — see getRecommendedMode.
-    full_refresh: table.approxRows != null && table.approxRows > FULL_REFRESH_MAX_ROWS
-      ? { available: false, reason: "table too large" }
-      : { available: true, reason: null },
   };
 }
 
@@ -129,16 +130,10 @@ export function getRecommendedMode(
   capabilities: DataSourceCapabilities,
 ): DataSourceSyncMode | null {
   const availability = getModeAvailability(table, capabilities);
-  // Small tables reload wholesale: cheaper than change tracking, and self-healing.
-  // Requires a known count: "unknown" must not be treated as "small".
-  if (table.approxRows != null && table.approxRows <= SMALL_TABLE_ROWS && availability.full_refresh.available) {
-    return "full_refresh";
-  }
+  // CDC first wherever it is possible: it is cheaper in steady state than reading
+  // rows back, and it is the only mode that sees deletes.
   if (availability.cdc.available) return "cdc";
   if (availability.cursor.available) return "cursor";
-  // Only fall back to a full reload when we know the table is small enough to
-  // stand it; an unknown count reaching here means we genuinely cannot say.
-  if (availability.full_refresh.available && table.approxRows != null) return "full_refresh";
   return null;
 }
 

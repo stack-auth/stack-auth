@@ -9,7 +9,6 @@ import {
 import type { DataSourceProbeResult } from "./probe";
 
 const MODE_FROM_PRISMA = {
-  FULL_REFRESH: "full_refresh",
   CURSOR: "cursor",
   CDC: "cdc",
 } as const;

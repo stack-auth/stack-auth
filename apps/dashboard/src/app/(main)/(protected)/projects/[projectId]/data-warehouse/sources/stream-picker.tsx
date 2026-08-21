@@ -1,9 +1,10 @@
 "use client";
 
 import { DesignButton, DesignSelectorDropdown } from "@/components/design-components";
-import { Card, Checkbox, Typography } from "@/components/ui";
+import { Card, Checkbox, SimpleTooltip, Typography } from "@/components/ui";
+import { WarningCircleIcon } from "@phosphor-icons/react";
 import type { DataSourceCatalogJson, DataSourceCatalogTableJson, DataSourceStreamConfig } from "@hexclave/shared/dist/interface/admin-interface";
-import type { DataSourceSyncMode } from "@hexclave/shared/dist/data-sources/modes";
+import { isTemporalCursorType, type DataSourceSyncMode } from "@hexclave/shared/dist/data-sources/modes";
 import { useMemo, useState } from "react";
 
 /**
@@ -20,13 +21,13 @@ const MODE_INFO: Record<DataSourceSyncMode, { label: string, description: string
     label: "Cursor",
     description: "Re-reads rows whose cursor column moved past the last sync. Cannot see deleted rows.",
   },
-  full_refresh: {
-    label: "Full refresh",
-    description: "Reloads the whole table each sync. Always correct, only viable while the table is small.",
-  },
 };
 
-const MODE_ORDER: DataSourceSyncMode[] = ["cdc", "cursor", "full_refresh"];
+const MODE_ORDER: DataSourceSyncMode[] = ["cdc", "cursor"];
+
+const NON_TEMPORAL_CURSOR_WARNING =
+  "This column only changes when a row is inserted, so edits to existing rows will never be synced. "
+  + "Pick a timestamp your application updates on every write — usually updated_at — unless this table is append-only.";
 
 /** Concrete remediation for the specific reason CDC is off, not generic advice. */
 function getCdcRemediation(capabilities: DataSourceCatalogJson["capabilities"]): string | null {
@@ -64,6 +65,13 @@ function buildInitialSelection(
   return selection;
 }
 
+/** True when the chosen cursor moves on insert but not on update. */
+function selectedCursorIsInsertOnly(table: DataSourceCatalogTableJson, column: string | null): boolean {
+  if (column == null) return false;
+  const candidate = table.cursor_candidates.find(c => c.column === column);
+  return candidate != null && !isTemporalCursorType(candidate.data_type);
+}
+
 function modeOptions(table: DataSourceCatalogTableJson) {
   return MODE_ORDER.map(mode => {
     const availability = table.available_modes.find(m => m.mode === mode);
@@ -97,6 +105,7 @@ export function StreamPicker(props: {
 
   const selected = props.catalog.tables.filter(t => selection[`${t.schema_name}.${t.table_name}`]?.on);
   const hasKeylessSelection = selected.some(t => t.primary_key_columns.length === 0);
+  const selectedUsesCursor = selected.some(t => selection[`${t.schema_name}.${t.table_name}`]?.mode === "cursor");
   const remediation = cdcAvailability.available ? null : getCdcRemediation(props.catalog.capabilities);
 
   // Falls back to the same defaults the row renders with, so ticking a table that
@@ -158,6 +167,14 @@ export function StreamPicker(props: {
             To enable CDC: {remediation}
           </p>
         )}
+        {selectedUsesCursor && (
+          <p className="mt-3 border-t border-border-in-card pt-3 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Choosing a cursor column.</span>{" "}
+            Pick a timestamp your application sets on every write, such as <code>updated_at</code> — that way
+            edits are picked up as well as new rows. An id or a <code>created_at</code> only moves when a row is
+            inserted, so it suits an append-only table and nothing else.
+          </p>
+        )}
         {hasKeylessSelection && (
           <p className="mt-2 text-xs text-muted-foreground">
             Tables without a primary key are written append-only: every version of a row is kept, because there is no key to deduplicate on.
@@ -210,17 +227,24 @@ export function StreamPicker(props: {
                   </td>
                   <td className="px-4 py-2.5">
                     {current.mode === "cursor" && table.cursor_candidates.length > 0 ? (
-                      <DesignSelectorDropdown
-                        size="sm"
-                        value={current.cursorColumn ?? ""}
-                        options={table.cursor_candidates.map(candidate => ({
-                          value: candidate.column,
-                          // An unindexed cursor works but scans the table, which is
-                          // the kind of thing to know before picking it.
-                          label: candidate.indexed ? candidate.column : `${candidate.column} — no index`,
-                        }))}
-                        onValueChange={value => update(key, { cursorColumn: value })}
-                      />
+                      <div className="flex items-center gap-1.5">
+                        <DesignSelectorDropdown
+                          size="sm"
+                          value={current.cursorColumn ?? ""}
+                          options={table.cursor_candidates.map(candidate => ({
+                            value: candidate.column,
+                            // An unindexed cursor works but scans the table, which is
+                            // the kind of thing to know before picking it.
+                            label: candidate.indexed ? candidate.column : `${candidate.column} — no index`,
+                          }))}
+                          onValueChange={value => update(key, { cursorColumn: value })}
+                        />
+                        {selectedCursorIsInsertOnly(table, current.cursorColumn) && (
+                          <SimpleTooltip tooltip={NON_TEMPORAL_CURSOR_WARNING}>
+                            <WarningCircleIcon className="h-4 w-4 shrink-0 text-amber-500" weight="fill" />
+                          </SimpleTooltip>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
