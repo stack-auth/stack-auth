@@ -91,6 +91,46 @@ export const postMigration = async (sql: Sql) => {
     await expect(sql.unsafe(postconditionStatement)).rejects.toThrow(
       /did not finish with the expected valid definition/,
     );
+
+    await sql.unsafe(
+      'DROP INDEX CONCURRENTLY IF EXISTS "Subscription_tenancyId_createdAt_idx"',
+    );
+    await sql.unsafe(`
+      CREATE INDEX CONCURRENTLY "Subscription_tenancyId_createdAt_idx"
+        ON "Subscription"("tenancyId", "createdAt")
+    `);
+    await sql.unsafe(`
+      UPDATE pg_index
+      SET indisvalid = false
+      WHERE indexrelid = (
+        SELECT index_relation.oid
+        FROM pg_class index_relation
+        JOIN pg_namespace index_namespace
+          ON index_namespace.oid = index_relation.relnamespace
+        WHERE index_namespace.nspname = current_schema()
+          AND index_relation.relname = 'Subscription_tenancyId_createdAt_idx'
+      )
+    `);
+
+    const preflightForInvalidIndex = migrationStatements[0];
+    const cleanupStatement = migrationStatements[3];
+    await sql.unsafe(preflightForInvalidIndex);
+    expect(await sql`
+      SELECT 1
+      FROM pg_class
+      WHERE relname = 'Subscription_tenancyId_createdAt_idx_invalid'
+    `).toHaveLength(1);
+    const schemaRows = await sql<{ schema: string }[]>`SELECT current_schema() AS schema`;
+    const schema = schemaRows[0].schema;
+    await sql.unsafe(cleanupStatement.replaceAll(
+      "/* SCHEMA_NAME_SENTINEL */",
+      `"${schema.replaceAll('"', '""')}"`,
+    ));
+    expect(await sql`
+      SELECT 1
+      FROM pg_class
+      WHERE relname = 'Subscription_tenancyId_createdAt_idx_invalid'
+    `).toHaveLength(0);
   } finally {
     await sql.unsafe(
       'DROP INDEX CONCURRENTLY IF EXISTS "Subscription_tenancyId_createdAt_idx"',

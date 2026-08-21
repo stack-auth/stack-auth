@@ -1,5 +1,6 @@
--- Fail before starting any expensive work if a previous concurrent attempt left an
--- invalid index, or if an unrelated relation already occupies one of these names.
+-- Fail before starting any expensive work if an unrelated relation already
+-- occupies one of these names. A failed concurrent build is renamed below so
+-- it can be dropped outside a transaction before the rebuild.
 -- CREATE INDEX IF NOT EXISTS only checks the name, so it is not sufficient by itself.
 -- SINGLE_STATEMENT_SENTINEL
 DO $$
@@ -46,8 +47,6 @@ BEGIN
 
     IF FOUND AND (
       existing.table_name IS DISTINCT FROM expected.table_name
-      OR existing.indisvalid IS DISTINCT FROM TRUE
-      OR existing.indisready IS DISTINCT FROM TRUE
       OR existing.indisunique IS DISTINCT FROM FALSE
       OR existing.has_no_predicate IS DISTINCT FROM TRUE
       OR existing.access_method IS DISTINCT FROM 'btree'
@@ -56,10 +55,24 @@ BEGIN
       RAISE EXCEPTION
         'TV snapshot index % already exists but is invalid or has an unexpected definition; drop it concurrently and retry',
         expected.index_name;
+    ELSIF FOUND AND (
+      existing.indisvalid IS DISTINCT FROM TRUE
+      OR existing.indisready IS DISTINCT FROM TRUE
+    ) THEN
+      EXECUTE format(
+        'ALTER INDEX %I RENAME TO %I',
+        expected.index_name,
+        expected.index_name || '_invalid'
+      );
     END IF;
   END LOOP;
 END
 $$;
+
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+-- RUN_OUTSIDE_TRANSACTION_SENTINEL
+DROP INDEX CONCURRENTLY IF EXISTS /* SCHEMA_NAME_SENTINEL */."SubscriptionInvoice_tenancyId_createdAt_idx_invalid";
 
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
@@ -70,8 +83,18 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS "SubscriptionInvoice_tenancyId_createdAt
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
 -- RUN_OUTSIDE_TRANSACTION_SENTINEL
+DROP INDEX CONCURRENTLY IF EXISTS /* SCHEMA_NAME_SENTINEL */."Subscription_tenancyId_createdAt_idx_invalid";
+
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+-- RUN_OUTSIDE_TRANSACTION_SENTINEL
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "Subscription_tenancyId_createdAt_idx"
   ON /* SCHEMA_NAME_SENTINEL */."Subscription"("tenancyId", "createdAt");
+
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+-- RUN_OUTSIDE_TRANSACTION_SENTINEL
+DROP INDEX CONCURRENTLY IF EXISTS /* SCHEMA_NAME_SENTINEL */."EmailOutbox_tenancyId_createdAt_idx_invalid";
 
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
