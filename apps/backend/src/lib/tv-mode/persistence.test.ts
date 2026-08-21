@@ -35,6 +35,7 @@ import {
   updateTvProfile,
 } from "@/lib/tv-mode/profiles";
 import { globalPrismaClient } from "@/prisma-client";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import {
   getTvBuiltInProfile,
   type TvInterruptionPreferences,
@@ -45,11 +46,13 @@ describe.sequential("TV presentation persistence (real DB)", () => {
   let firstTenancy: Tenancy;
   let secondTenancy: Tenancy;
   const projectIds: string[] = [];
+  const tenancyIds: string[] = [];
 
   async function createTestTenancy(): Promise<Tenancy> {
     const projectId = `tv-persistence-${randomUUID()}`;
     const tenancyId = randomUUID();
     projectIds.push(projectId);
+    tenancyIds.push(tenancyId);
     await globalPrismaClient.project.create({
       data: {
         id: projectId,
@@ -313,6 +316,53 @@ describe.sequential("TV presentation persistence (real DB)", () => {
     });
   });
 
+  it("fails loudly when escalation has no active occurrence", async () => {
+    const now = new Date("2026-07-29T12:03:00.000Z");
+    const claim = await claimEvaluator(firstTenancy, "email-delivery", now);
+    if (claim == null) throw new Error("The evaluator claim was not acquired");
+    const previousState = {
+      ruleVersion: 2,
+      activeClass: "incident",
+      candidate: {
+        rulePath: "critical",
+        presentationClass: "critical-incident",
+        accumulatedMs: 5 * 60_000,
+        borderlineEvaluations: 0,
+      },
+      recovery: null,
+      lastFreshEvaluatedAt: new Date(now.getTime() - 60_000).toISOString(),
+      baseline: emailBaseline,
+    } satisfies TvEmailEvaluatorState;
+    await expect(persistEmailEvaluation({
+      tenancy: firstTenancy,
+      claim,
+      previousState,
+      sample: emailSample(now, 50, 11),
+      now,
+    })).rejects.toBeInstanceOf(HexclaveAssertionError);
+  });
+
+  it("fails loudly when resolution has no active occurrence", async () => {
+    const now = new Date("2026-07-29T12:03:00.000Z");
+    const claim = await claimEvaluator(firstTenancy, "email-delivery", now);
+    if (claim == null) throw new Error("The evaluator claim was not acquired");
+    const previousState = {
+      ruleVersion: 2,
+      activeClass: "incident",
+      candidate: null,
+      recovery: { window: "current", accumulatedMs: 4 * 60_000 },
+      lastFreshEvaluatedAt: new Date(now.getTime() - 60_000).toISOString(),
+      baseline: emailBaseline,
+    } satisfies TvEmailEvaluatorState;
+    await expect(persistEmailEvaluation({
+      tenancy: firstTenancy,
+      claim,
+      previousState,
+      sample: emailSample(now, 100, 0),
+      now,
+    })).rejects.toBeInstanceOf(HexclaveAssertionError);
+  });
+
   it("excludes zero-value invoices from subscription collection outcomes", async () => {
     const stripeSubscriptionId = `sub_${randomUUID()}`;
     const startsAt = new Date("2026-08-20T12:00:00.000Z");
@@ -407,10 +457,14 @@ describe.sequential("TV presentation persistence (real DB)", () => {
   });
 
   afterEach(async () => {
-    const tenancyIds = [firstTenancy.id, secondTenancy.id];
-    await globalPrismaClient.subscriptionInvoice.deleteMany({ where: { tenancyId: { in: tenancyIds } } });
-    await globalPrismaClient.subscription.deleteMany({ where: { tenancyId: { in: tenancyIds } } });
-    await globalPrismaClient.project.deleteMany({ where: { id: { in: projectIds.splice(0) } } });
+    try {
+      await globalPrismaClient.subscriptionInvoice.deleteMany({ where: { tenancyId: { in: tenancyIds } } });
+      await globalPrismaClient.subscription.deleteMany({ where: { tenancyId: { in: tenancyIds } } });
+      await globalPrismaClient.project.deleteMany({ where: { id: { in: projectIds } } });
+    } finally {
+      projectIds.splice(0);
+      tenancyIds.splice(0);
+    }
   });
 
   it("freezes one complete takeover, recovery, and Highlight deadline set under concurrent assignment", async () => {

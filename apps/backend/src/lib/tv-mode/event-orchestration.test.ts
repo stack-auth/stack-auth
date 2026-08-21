@@ -307,4 +307,40 @@ describe("TV event presentation orchestration", () => {
       assignments: [],
     })).toEqual({ takeover: null, highlight: null });
   });
+
+  it("ignores superseded assignments when deriving recovery", () => {
+    const incident = occurrence("incident", "incident");
+    incident.lifecycle = "resolved";
+    incident.resolvedAt = new Date("2026-07-29T10:20:00.000Z");
+    const assignment = createTvPresentationAssignment({
+      occurrence: incident,
+      preferences: preferences(),
+      takeoverStartedAt: occurredAt,
+    });
+    expect(deriveTvPresentation({
+      now: new Date("2026-07-29T10:20:20.000Z"),
+      occurrences: [incident],
+      assignments: [{ ...assignment, supersededAt: new Date("2026-07-29T10:20:10.000Z") }],
+    })).toEqual({ takeover: null, highlight: null });
+  });
+
+  it("selects the latest celebration by occurrence time regardless of input order", () => {
+    const older = occurrence("older", "celebration");
+    const newer = {
+      ...occurrence("newer", "celebration"),
+      occurredAt: new Date("2026-07-29T11:00:00.000Z"),
+      activatedAt: new Date("2026-07-29T11:00:00.000Z"),
+    };
+    const now = new Date("2026-07-29T11:30:00.000Z");
+    const assignments = [older, newer].map((candidate) => createTvPresentationAssignment({
+      occurrence: candidate,
+      preferences: preferences(),
+      takeoverStartedAt: candidate.occurredAt,
+    }));
+    expect(deriveTvPresentation({
+      now,
+      occurrences: [newer, older],
+      assignments,
+    }).highlight?.occurrenceId).toBe("newer");
+  });
 });
