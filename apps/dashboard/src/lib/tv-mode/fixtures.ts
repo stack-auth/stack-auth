@@ -147,7 +147,7 @@ const revenuePaymentsScreen: TvRevenuePaymentsScreen = {
   data: {
     financials: {
       visibility: "exact",
-      paidRevenueCents: 4823100,
+      paidRevenueCents: 4823156,
       revenueTrend: exactRevenueTrend,
     },
     revenueChangePercent: 14.2,

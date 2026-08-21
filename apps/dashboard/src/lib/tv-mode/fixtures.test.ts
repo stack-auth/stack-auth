@@ -202,7 +202,7 @@ describe("TV Mode centralized fixtures", () => {
     const redacted = createTvFixtureSnapshot("project-fixture", getProfile(), "financial-redacted");
     const revenue = redacted.screens.find((screen) => screen.id === "revenue-payments");
     expect(revenue?.data?.financials.visibility).toBe("redacted");
-    expect(JSON.stringify(revenue)).not.toContain("4823100");
+    expect(JSON.stringify(revenue)).not.toContain("4823156");
     expect(JSON.stringify(revenue)).not.toContain("3128000");
 
     for (const profileId of ["engineering-office", "company-pulse"]) {

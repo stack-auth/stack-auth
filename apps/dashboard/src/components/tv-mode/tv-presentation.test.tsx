@@ -241,10 +241,10 @@ describe("TV metric semantics", () => {
 
     const audienceRender = render(renderTvScreen(audience));
     screen.getByText("12.8% growth over the last 7 days");
-    screen.getByText("Total Users * 7d");
+    screen.getByText("Total Users · 7d");
     screen.getByText("Monthly Active");
     screen.getByText("Signed-In Visitors");
-    screen.getByText("Session Avg * 7d");
+    screen.getByText("Session Avg · 7d");
     screen.getByText("91.6% users verified");
     screen.getByText("214 Sessions");
     audienceRender.unmount();
