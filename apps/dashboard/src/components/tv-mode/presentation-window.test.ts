@@ -100,16 +100,16 @@ describe("TV presentation window lifecycle", () => {
     expect(environment.replaceLocation).toHaveBeenCalledWith("/projects/project-a/tv-mode");
   });
 
-  it("still attempts to close when fullscreen exit fails", async () => {
+  it("continues closing when fullscreen exit fails", async () => {
     const { environment } = createExitEnvironment({
       fullscreen: true,
       closedAfterClose: false,
     });
     vi.mocked(environment.exitFullscreen).mockRejectedValue(new Error("Fullscreen exit failed"));
-    await expect(exitStandaloneTvPresentation({
+    await exitStandaloneTvPresentation({
       fallbackHref: "/projects/project-a/tv-mode",
       environment,
-    })).rejects.toThrow("Fullscreen exit failed");
+    });
     expect(environment.closeWindow).toHaveBeenCalledOnce();
     expect(environment.scheduleFallback).toHaveBeenCalledOnce();
   });

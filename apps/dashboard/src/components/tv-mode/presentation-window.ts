@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 
 export const TV_PRESENTATION_EXIT_FALLBACK_DELAY_MS = 150;
 
@@ -64,7 +65,11 @@ export async function exitStandaloneTvPresentation({
 }): Promise<void> {
   try {
     if (environment.isFullscreen()) {
-      await environment.exitFullscreen();
+      try {
+        await environment.exitFullscreen();
+      } catch (cause) {
+        captureError("tv-presentation-exit-fullscreen", cause);
+      }
     }
   } finally {
     environment.scheduleFallback(() => {

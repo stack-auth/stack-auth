@@ -63,12 +63,42 @@ describe("TvPresentation rotation", () => {
     expect(screen.getByRole("heading", { name: "Waiting for Activity" })).toBeDefined();
   });
 
+  it("renders an authorization state when the snapshot credential is rejected", () => {
+    render(<TvPresentation snapshot={null} unavailableReason="unauthorized" />);
+    expect(screen.getByRole("heading", { name: "TV Mode Authorization Required" })).toBeDefined();
+  });
+
   it("can render without dashboard exit navigation for an independent display", () => {
     const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
     if (snapshot == null) throw new Error("Missing company-pulse fixture");
     render(<TvPresentation snapshot={snapshot} />);
     expect(screen.queryByRole("button", { name: "Exit TV Mode" })).toBeNull();
     expect(screen.getByRole("button", { name: "Pause rotation" })).toBeDefined();
+  });
+
+  it("does not toggle rotation when Space activates a focused control", () => {
+    const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
+    if (snapshot == null) throw new Error("Missing company-pulse fixture");
+    render(<TvPresentation snapshot={snapshot} />);
+    const pauseButton = screen.getByRole("button", { name: "Pause rotation" });
+    fireEvent.mouseMove(window);
+    fireEvent.keyDown(pauseButton, { key: " " });
+    expect(screen.getByRole("button", { name: "Pause rotation" })).toBeDefined();
+  });
+
+  it("re-arms control auto-hide when controls are shown again", async () => {
+    const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
+    if (snapshot == null) throw new Error("Missing company-pulse fixture");
+    render(<TvPresentation snapshot={snapshot} />);
+    const pauseButton = screen.getByRole("button", { name: "Pause rotation" });
+    expect(pauseButton.getAttribute("tabindex")).toBe("-1");
+    fireEvent.mouseMove(window);
+    await act(() => vi.advanceTimersByTime(2_000));
+    fireEvent.mouseMove(window);
+    await act(() => vi.advanceTimersByTime(1_000));
+    expect(pauseButton.getAttribute("tabindex")).toBe("0");
+    await act(() => vi.advanceTimersByTime(1_800));
+    expect(pauseButton.getAttribute("tabindex")).toBe("-1");
   });
 
   it("does not restart rotation or reset the current screen when polling replaces the snapshot", async () => {

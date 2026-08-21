@@ -515,7 +515,7 @@ export function TvPresentation({
 }: {
   snapshot: TvSnapshot | null,
   loading?: boolean,
-  unavailableReason?: "offline" | "error" | null,
+  unavailableReason?: "offline" | "error" | "unauthorized" | null,
   onExit?: () => void,
   initialScreenId?: TvScreenId,
   previewData?: boolean,
@@ -524,6 +524,7 @@ export function TvPresentation({
   const [screenIndex, setScreenIndex] = useState(0);
   const [completedTakeoverKey, setCompletedTakeoverKey] = useState<string | null>(null);
   const [controlsVisible, setControlsVisible] = useState(false);
+  const [controlsShowVersion, setControlsShowVersion] = useState(0);
   const [rotationPaused, setRotationPaused] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const missingScreenReportKeyRef = useRef<string | null>(null);
@@ -618,7 +619,7 @@ export function TvPresentation({
     if (!controlsVisible) return;
     const timeout = window.setTimeout(() => setControlsVisible(false), 2800);
     return () => window.clearTimeout(timeout);
-  }, [controlsVisible]);
+  }, [controlsShowVersion, controlsVisible]);
 
   useEffect(() => {
     if (missingScreenReportKey == null) {
@@ -646,15 +647,21 @@ export function TvPresentation({
   }, []);
 
   useEffect(() => {
-    const showControls = () => setControlsVisible(true);
+    const showControls = () => {
+      setControlsVisible(true);
+      setControlsShowVersion((version) => version + 1);
+    };
     const handleKeyDown = (event: KeyboardEvent) => {
       showControls();
       if (snapshot == null || view?.type !== "screen") return;
+      const target = event.target;
+      const isInteractiveTarget = target instanceof HTMLElement
+        && target.closest("button, a, input, select, textarea, [contenteditable='true']") != null;
       if (event.key === "ArrowLeft") {
         setScreenIndex((current) => (current - 1 + snapshot.profile.playlist.length) % snapshot.profile.playlist.length);
       } else if (event.key === "ArrowRight") {
         setScreenIndex((current) => getNextTvScreenIndex(current, snapshot.profile.playlist.length));
-      } else if (event.key === " ") {
+      } else if (event.key === " " && !isInteractiveTarget) {
         event.preventDefault();
         setRotationPaused((current) => !current);
       } else if (event.key.toLowerCase() === "f") {
@@ -676,6 +683,9 @@ export function TvPresentation({
   }
   if (snapshot == null && unavailableReason === "offline") {
     return <div className="h-dvh w-full"><PresentationMessage type="error" title="TV Mode Is Offline" message="Check the connection. TV Mode will resume automatically when it is back online." /></div>;
+  }
+  if (snapshot == null && unavailableReason === "unauthorized") {
+    return <div className="h-dvh w-full"><PresentationMessage type="error" title="TV Mode Authorization Required" message="This display is no longer authorized to view the presentation. Pair it again to resume TV Mode." /></div>;
   }
   if (snapshot == null || view == null) {
     return <div className="h-dvh w-full"><PresentationMessage type="error" title="TV Mode Is Temporarily Unavailable" message="We couldn’t load the latest presentation. Please try again shortly." /></div>;
@@ -756,7 +766,7 @@ export function TvPresentation({
 
       {onExit == null ? null : (
         <div className={`absolute left-5 top-5 z-40 transition-opacity duration-200 hover:transition-none motion-reduce:transition-none ${controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}>
-          <button type="button" onClick={onExit} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/55 px-4 py-2 text-sm font-medium text-white/75 backdrop-blur-xl hover:bg-black/75">
+          <button type="button" tabIndex={controlsVisible ? 0 : -1} onClick={onExit} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/55 px-4 py-2 text-sm font-medium text-white/75 backdrop-blur-xl hover:bg-black/75">
             <ArrowLeftIcon className="h-4 w-4" weight="bold" />
             Exit TV Mode
           </button>
@@ -767,6 +777,7 @@ export function TvPresentation({
         <div className={`absolute bottom-[clamp(3.5rem,7vh,6rem)] left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-2xl border border-white/10 bg-black/65 p-1.5 shadow-2xl backdrop-blur-xl transition-opacity duration-200 hover:transition-none motion-reduce:transition-none ${controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}>
           <button
             type="button"
+            tabIndex={controlsVisible ? 0 : -1}
             onClick={() => setScreenIndex((current) => (current - 1 + snapshot.profile.playlist.length) % snapshot.profile.playlist.length)}
             className="flex h-10 w-10 items-center justify-center rounded-xl text-white/65 hover:bg-white/10 hover:text-white"
             aria-label="Previous screen"
@@ -775,6 +786,7 @@ export function TvPresentation({
           </button>
           <button
             type="button"
+            tabIndex={controlsVisible ? 0 : -1}
             onClick={() => setRotationPaused((current) => !current)}
             className="flex h-10 w-10 items-center justify-center rounded-xl text-white/65 hover:bg-white/10 hover:text-white"
             aria-label={rotationPaused ? "Resume rotation" : "Pause rotation"}
@@ -783,6 +795,7 @@ export function TvPresentation({
           </button>
           <button
             type="button"
+            tabIndex={controlsVisible ? 0 : -1}
             onClick={() => setScreenIndex((current) => getNextTvScreenIndex(current, snapshot.profile.playlist.length))}
             className="flex h-10 w-10 items-center justify-center rounded-xl text-white/65 hover:bg-white/10 hover:text-white"
             aria-label="Next screen"
@@ -792,6 +805,7 @@ export function TvPresentation({
           <span className="mx-1 h-6 w-px bg-white/10" />
           <button
             type="button"
+            tabIndex={controlsVisible ? 0 : -1}
             onClick={() => runAsynchronously(document.fullscreenElement == null
               ? document.documentElement.requestFullscreen()
               : document.exitFullscreen())}
