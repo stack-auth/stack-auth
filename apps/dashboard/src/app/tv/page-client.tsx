@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const PAIRING_RETRY_INTERVAL_MS = 5_000;
 const PAIRING_STATUS_TIMEOUT_MS = 12_000;
+const PAIRING_REQUEST_TIMEOUT_MS = 12_000;
 
 function apiUrl(path: string): string {
   const base = getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL")
@@ -38,6 +39,16 @@ async function jsonRequest(path: string, options: RequestInit): Promise<Response
     headers: getTvDisplayRequestHeaders(options),
     cache: "no-store",
   });
+}
+
+async function jsonRequestWithTimeout(path: string, options: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), PAIRING_REQUEST_TIMEOUT_MS);
+  try {
+    return await jsonRequest(path, { ...options, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 function PairingScreen({ challenge, error }: { challenge: TvDisplayPairingChallenge | null, error: boolean }) {
@@ -84,8 +95,8 @@ export default function IndependentTvPageClient() {
   const accessTokenRef = useRef(accessToken);
   accessTokenRef.current = accessToken;
 
-  const refreshAccess = useCallback(async (signal?: AbortSignal): Promise<string | null> => {
-    const response = await jsonRequest("/tv-displays/auth/refresh", { method: "POST", signal });
+  const refreshAccess = useCallback(async (): Promise<string | null> => {
+    const response = await jsonRequestWithTimeout("/tv-displays/auth/refresh", { method: "POST" });
     if (response.status === 401) return null;
     if (!response.ok) throw new Error("TV display credential could not be refreshed.");
     const body = await response.json();
@@ -96,9 +107,9 @@ export default function IndependentTvPageClient() {
     return body.accessToken;
   }, []);
 
-  const createChallenge = useCallback(async (signal?: AbortSignal) => {
+  const createChallenge = useCallback(async () => {
     setPairingError(false);
-    const response = await jsonRequest("/tv-displays/pairing-challenges", { method: "POST", signal });
+    const response = await jsonRequestWithTimeout("/tv-displays/pairing-challenges", { method: "POST" });
     if (!response.ok) throw new Error("TV display pairing challenge could not be created.");
     const next = await TvDisplayPairingChallengeSchema.validate(await response.json(), { strict: true });
     setChallenge(next);
@@ -207,7 +218,7 @@ export default function IndependentTvPageClient() {
       signal,
     });
     if (response.status === 401) {
-      const refreshed = await refreshAccess(signal);
+      const refreshed = await refreshAccess();
       if (refreshed == null) {
         setAccessToken(null);
         // Clearing the credential disables polling and aborts this snapshot

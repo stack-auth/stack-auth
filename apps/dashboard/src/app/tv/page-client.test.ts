@@ -63,6 +63,60 @@ describe("independent TV display requests", () => {
     await act(async () => root.unmount());
   });
 
+  it("aborts a stalled refresh request on its own timeout", async () => {
+    let refreshWasAborted = false;
+    fetchMock.mockImplementationOnce(async (_input, init: RequestInit | undefined) => {
+      const signal = init?.signal;
+      if (signal == null) throw new Error("Refresh request did not receive an abort signal.");
+      return await new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener("abort", () => {
+          refreshWasAborted = signal.aborted;
+          reject(new DOMException("Aborted", "AbortError"));
+        }, { once: true });
+      });
+    });
+    const root = createRoot(document.createElement("div"));
+
+    await act(async () => {
+      root.render(createElement(IndependentTvPageClient));
+      for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12_001);
+    });
+
+    expect(refreshWasAborted).toBe(true);
+    await act(async () => root.unmount());
+  });
+
+  it("aborts a stalled pairing challenge independently after refresh", async () => {
+    let challengeWasAborted = false;
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockImplementationOnce(async (_input, init: RequestInit | undefined) => {
+        const signal = init?.signal;
+        if (signal == null) throw new Error("Challenge request did not receive an abort signal.");
+        return await new Promise<Response>((_resolve, reject) => {
+          signal.addEventListener("abort", () => {
+            challengeWasAborted = signal.aborted;
+            reject(new DOMException("Aborted", "AbortError"));
+          }, { once: true });
+        });
+      });
+    const root = createRoot(document.createElement("div"));
+
+    await act(async () => {
+      root.render(createElement(IndependentTvPageClient));
+      for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12_001);
+    });
+
+    expect(challengeWasAborted).toBe(true);
+    await act(async () => root.unmount());
+  });
+
   it("creates a pairing challenge independently after a credential is revoked", async () => {
     const challenge = {
       challengeId: "927dfeac-2e80-4311-8180-4879b687bfc0",
@@ -78,10 +132,14 @@ describe("independent TV display requests", () => {
         headers: body == null ? undefined : { "content-type": "application/json" },
       },
     );
+    let snapshotSignal: AbortSignal | null | undefined;
     let recoveryChallengeSignal: AbortSignal | null | undefined;
     fetchMock
       .mockResolvedValueOnce(jsonResponse(200, { accessToken: "initial-display-access-token" }))
-      .mockResolvedValueOnce(jsonResponse(401))
+      .mockImplementationOnce(async (_input, init: RequestInit | undefined) => {
+        snapshotSignal = init?.signal;
+        return jsonResponse(401);
+      })
       .mockResolvedValueOnce(jsonResponse(401))
       .mockImplementationOnce(async (_input, init: RequestInit | undefined) => {
         recoveryChallengeSignal = init?.signal;
@@ -97,7 +155,9 @@ describe("independent TV display requests", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(fetchMock.mock.calls[3]?.[0]).toBe("http://localhost:8102/api/latest/tv-displays/pairing-challenges");
-    expect(recoveryChallengeSignal).toBeUndefined();
+    expect(recoveryChallengeSignal).not.toBeNull();
+    expect(snapshotSignal).not.toBeNull();
+    expect(recoveryChallengeSignal).not.toBe(snapshotSignal);
 
     await act(async () => root.unmount());
   });
