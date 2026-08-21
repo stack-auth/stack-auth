@@ -208,20 +208,26 @@ export function getTvSnapshotPath(profileId: string): string {
   return `/internal/tv-mode/profiles/${encodeURIComponent(profileId)}/snapshot`;
 }
 
+export class TvSnapshotRequestError extends Error {
+  override name = "TvSnapshotRequestError";
+
+  constructor(readonly status: number) {
+    super(`TV snapshot request failed with status ${status}.`);
+  }
+}
+
 export async function fetchTvSnapshotOrThrow(
   adminApp: object,
   profileId: string,
   signal?: AbortSignal,
 ): Promise<TvSnapshot> {
-  return await TvSnapshotSchema.validate(await requestJsonOrThrow(
-    adminApp,
-    getTvSnapshotPath(profileId),
-    {
-      method: "GET",
-      headers: { "x-hexclave-tv-snapshot-contract": "2" },
-      signal,
-    },
-  ), {
+  const response = await sendInternalAdminRequest(adminApp, getTvSnapshotPath(profileId), {
+    method: "GET",
+    headers: { "x-hexclave-tv-snapshot-contract": "2" },
+    signal,
+  });
+  if (!response.ok) throw new TvSnapshotRequestError(response.status);
+  return await TvSnapshotSchema.validate(await response.json(), {
     strict: true,
   });
 }

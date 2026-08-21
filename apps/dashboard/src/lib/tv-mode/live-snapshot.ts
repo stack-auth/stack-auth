@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchTvSnapshotOrThrow } from "@/lib/hexclave-app-internals";
+import { fetchTvSnapshotOrThrow, TvSnapshotRequestError } from "@/lib/hexclave-app-internals";
 import {
   TV_SNAPSHOT_POLL_INTERVAL_MS,
   type TvSnapshot,
@@ -14,7 +14,7 @@ const TV_SNAPSHOT_REQUEST_TIMEOUT_MS = 12_000;
 export type TvLiveSnapshotState = {
   snapshot: TvSnapshot | null,
   loading: boolean,
-  unavailableReason: "offline" | "error" | null,
+  unavailableReason: "offline" | "error" | "unauthorized" | null,
 };
 
 export function getRetainedSnapshotState(
@@ -56,7 +56,7 @@ export function useTvSnapshotPolling(options: {
   const { enabled, failureProfileId, loadSnapshot, sourceKey } = options;
   const [snapshot, setSnapshot] = useState<TvSnapshot | null>(null);
   const [loading, setLoading] = useState(enabled);
-  const [unavailableReason, setUnavailableReason] = useState<"offline" | "error" | null>(null);
+  const [unavailableReason, setUnavailableReason] = useState<"offline" | "error" | "unauthorized" | null>(null);
   const [publishedSourceKey, setPublishedSourceKey] = useState(sourceKey);
   const inFlightRef = useRef(false);
   const requestIdRef = useRef(0);
@@ -104,6 +104,13 @@ export function useTvSnapshotPolling(options: {
         "Failed to refresh the TV presentation snapshot.",
         { cause, profileId: failureProfileIdRef.current },
       ));
+      if (cause instanceof TvSnapshotRequestError && cause.status === 401) {
+        snapshotRef.current = null;
+        setSnapshot(null);
+        setUnavailableReason("unauthorized");
+        setPublishedSourceKey(requestSourceKey);
+        return;
+      }
       const retained = snapshotRef.current;
       setPublishedSourceKey(requestSourceKey);
       if (retained == null) {

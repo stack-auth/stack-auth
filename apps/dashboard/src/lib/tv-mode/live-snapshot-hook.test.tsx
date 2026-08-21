@@ -9,6 +9,7 @@ import {
   useTvSnapshotPolling,
   type TvLiveSnapshotState,
 } from "./live-snapshot";
+import { TvSnapshotRequestError } from "@/lib/hexclave-app-internals";
 
 declare global {
   // React reads this flag off the global object to decide whether act() is allowed. It is not part of the
@@ -18,7 +19,8 @@ declare global {
 }
 
 const fetchTvSnapshotMock = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/hexclave-app-internals", () => ({
+vi.mock("@/lib/hexclave-app-internals", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/hexclave-app-internals")>()),
   fetchTvSnapshotOrThrow: fetchTvSnapshotMock,
 }));
 
@@ -241,6 +243,28 @@ describe("useTvLiveSnapshot", () => {
     await act(async () => {
       root.unmount();
     });
+  });
+
+  it("clears retained data after an authorization failure", async () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    const observedStates: TvLiveSnapshotState[] = [];
+    fetchTvSnapshotMock
+      .mockResolvedValueOnce(snapshot)
+      .mockRejectedValueOnce(new TvSnapshotRequestError(401));
+
+    await act(async () => {
+      root.render(<Probe onState={(state) => observedStates.push(state)} />);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(observedStates.at(-1)).toMatchObject({
+      snapshot: null,
+      unavailableReason: "unauthorized",
+    });
+    await act(async () => root.unmount());
   });
 
   it("does not let an in-flight response overwrite a newer offline event", async () => {
