@@ -240,9 +240,9 @@ async function querySavedProfileRows(tenancy: Tenancy, profileId?: string): Prom
   if (!(await tvProfilePersistenceIsReady(tenancy))) return [];
   const prisma = await getPrismaClientForTenancy(tenancy);
   // The readiness catalog query is intentionally primary-bound. Keep the
-  // following model read on that same primary snapshot instead of allowing
-  // read-replica routing to turn a ready table into an empty profile list.
-  return await retryTransaction(prisma, (transaction) => querySavedProfileRowsWithClient(transaction, tenancy, profileId));
+  // following model read on the primary too instead of allowing read-replica
+  // routing to turn a ready table into an empty profile list.
+  return await querySavedProfileRowsWithClient(prisma.$primary(), tenancy, profileId);
 }
 
 export async function listTvProfiles(tenancy: Tenancy): Promise<{
