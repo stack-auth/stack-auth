@@ -10,6 +10,13 @@ import {
   type TvLiveSnapshotState,
 } from "./live-snapshot";
 
+declare global {
+  // React reads this flag off the global object to decide whether act() is allowed. It is not part of the
+  // ambient DOM types, so declare it here: this suite toggles it per test and restores the previous value.
+  // eslint-disable-next-line no-var
+  var IS_REACT_ACT_ENVIRONMENT: boolean | undefined;
+}
+
 const fetchTvSnapshotMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/hexclave-app-internals", () => ({
   fetchTvSnapshotOrThrow: fetchTvSnapshotMock,
@@ -77,7 +84,7 @@ describe("useTvLiveSnapshot", () => {
   afterEach(() => {
     vi.useRealTimers();
     if (previousReactActEnvironment == null) {
-      delete globalThis.IS_REACT_ACT_ENVIRONMENT;
+      Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
     } else {
       Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
         configurable: true,
