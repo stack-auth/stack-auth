@@ -85,6 +85,18 @@ describe.sequential("Stripe invoice outcome ordering (real DB)", () => {
     };
   }
 
+  function inferredPaidOutcome(eventAt: Date): StripeInvoiceOutcomeTimestamps {
+    return {
+      paymentOutcomeEventAt: null,
+      paidAt: eventAt,
+      paidAtIsExact: false,
+      markedUncollectibleAt: null,
+      markedUncollectibleAtIsExact: false,
+      voidedAt: null,
+      voidedAtIsExact: false,
+    };
+  }
+
   afterAll(async () => {
     await globalPrismaClient.project.deleteMany({ where: { id: { in: projectIds } } });
   });
@@ -179,6 +191,36 @@ describe.sequential("Stripe invoice outcome ordering (real DB)", () => {
       paidAt,
       amountPaid: 10_000,
       currency: "USD",
+    });
+  });
+
+  it("lets an older exact payment correct a newer inferred payment", async () => {
+    const { invoice, tenancy } = await createInvoice();
+    const inferredEventAt = new Date("2026-08-20T12:00:00.000Z");
+    const exactEventAt = new Date("2026-08-20T11:00:00.000Z");
+    const exactPaidAt = new Date("2026-08-20T10:59:00.000Z");
+    await applyStripeInvoiceOutcome(globalPrismaClient, {
+      tenancyId: tenancy.id,
+      invoiceId: invoice.id,
+      currency: "usd",
+      amountPaid: 1_000,
+      outcome: inferredPaidOutcome(inferredEventAt),
+    });
+    await applyStripeInvoiceOutcome(globalPrismaClient, {
+      tenancyId: tenancy.id,
+      invoiceId: invoice.id,
+      currency: "eur",
+      amountPaid: 10_000,
+      outcome: exactPaidOutcome(exactEventAt, exactPaidAt),
+    });
+    await expect(globalPrismaClient.subscriptionInvoice.findUniqueOrThrow({
+      where: { tenancyId_id: { tenancyId: tenancy.id, id: invoice.id } },
+      select: { paymentOutcomeEventAt: true, paidAt: true, amountPaid: true, currency: true },
+    })).resolves.toEqual({
+      paymentOutcomeEventAt: exactEventAt,
+      paidAt: exactPaidAt,
+      amountPaid: 10_000,
+      currency: "EUR",
     });
   });
 });

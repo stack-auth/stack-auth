@@ -389,9 +389,11 @@ function getStripeInvoiceOutcomeTimestamps(
   const voidedAt = exactVoidedAt
     ?? (event.type === "invoice.voided" ? eventTimestamp : null);
   return {
-    // The watermark only records events that contributed outcome data. Events
-    // without an outcome must not outrank a later-delivered terminal event.
-    paymentOutcomeEventAt: paidAt != null || markedUncollectibleAt != null || voidedAt != null
+    // The watermark only records exact outcomes. Inferred outcomes remain
+    // COALESCE-only so a later-delivered exact event can correct them.
+    paymentOutcomeEventAt: exactPaidAt != null
+      || exactMarkedUncollectibleAt != null
+      || exactVoidedAt != null
       ? eventTimestamp
       : null,
     // The transition object is the most precise source. Some webhook payloads
@@ -407,14 +409,14 @@ function getStripeInvoiceOutcomeTimestamps(
 }
 
 import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
-  test("uses terminal webhook timestamps when status transitions are absent", ({ expect }) => {
+  test("uses terminal webhook timestamps without advancing the exact-outcome watermark", ({ expect }) => {
     const occurredAtSeconds = 1_787_098_400;
     const occurredAt = new Date(occurredAtSeconds * 1000);
     expect(getStripeInvoiceOutcomeTimestamps({}, {
       type: "invoice.paid",
       created: occurredAtSeconds,
     })).toEqual({
-      paymentOutcomeEventAt: occurredAt,
+      paymentOutcomeEventAt: null,
       paidAt: occurredAt,
       paidAtIsExact: false,
       markedUncollectibleAt: null,
@@ -426,7 +428,7 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
       type: "invoice.payment_succeeded",
       created: occurredAtSeconds,
     })).toEqual({
-      paymentOutcomeEventAt: occurredAt,
+      paymentOutcomeEventAt: null,
       paidAt: occurredAt,
       paidAtIsExact: false,
       markedUncollectibleAt: null,
@@ -438,7 +440,7 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
       type: "invoice.marked_uncollectible",
       created: occurredAtSeconds,
     })).toEqual({
-      paymentOutcomeEventAt: occurredAt,
+      paymentOutcomeEventAt: null,
       paidAt: null,
       paidAtIsExact: false,
       markedUncollectibleAt: occurredAt,
@@ -450,7 +452,7 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
       type: "invoice.voided",
       created: occurredAtSeconds,
     })).toEqual({
-      paymentOutcomeEventAt: occurredAt,
+      paymentOutcomeEventAt: null,
       paidAt: null,
       paidAtIsExact: false,
       markedUncollectibleAt: null,
@@ -513,8 +515,9 @@ export async function applyStripeInvoiceOutcome(
     voidedAtIsExact,
     paymentOutcomeEventAt,
   } = options.outcome;
-  // Stripe does not guarantee webhook ordering, so the watermark records only
-  // the newest event whose authoritative outcome data was applied.
+  // Stripe does not guarantee webhook ordering. The watermark records only the
+  // newest exact outcome event applied; inferred fields must remain repairable
+  // by an exact event even when that exact event was created earlier.
   await prisma.$executeRaw`
     WITH stored AS (
       SELECT
@@ -562,7 +565,9 @@ export async function applyStripeInvoiceOutcome(
         ELSE "voidedAt"
       END,
       "currency" = CASE
-        WHEN decision.should_apply_outcome THEN COALESCE(UPPER(${options.currency}), "currency")
+        WHEN decision.should_apply_outcome
+          OR decision.stored_payment_outcome_event_at IS NULL
+          THEN COALESCE(UPPER(${options.currency}), "currency")
         ELSE "currency"
       END,
       "amountPaid" = CASE
