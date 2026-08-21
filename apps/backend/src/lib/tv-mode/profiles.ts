@@ -1,5 +1,5 @@
 import { type Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
+import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, retryTransaction, sqlQuoteIdent, type PrismaClientTransaction } from "@/prisma-client";
 import { type Prisma } from "@/generated/prisma/client";
 import {
   getTvBuiltInProfile,
@@ -216,22 +216,33 @@ export async function tvProfilePersistenceIsReady(tenancy: Tenancy): Promise<boo
   return rows.at(0)?.relation_name != null;
 }
 
-async function querySavedProfileRows(tenancy: Tenancy, profileId?: string): Promise<TvProfileDatabaseRow[]> {
-  if (!(await tvProfilePersistenceIsReady(tenancy))) return [];
-  const prisma = await getPrismaClientForTenancy(tenancy);
+async function querySavedProfileRowsWithClient(
+  client: PrismaClientTransaction,
+  tenancy: Tenancy,
+  profileId?: string,
+): Promise<TvProfileDatabaseRow[]> {
   if (profileId == null) {
-    return await prisma.tvPresentationProfile.findMany({
+    return await client.tvPresentationProfile.findMany({
       where: { tenancyId: tenancy.id },
       orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
     });
   }
-  const row = await prisma.tvPresentationProfile.findFirst({
+  const row = await client.tvPresentationProfile.findFirst({
     where: {
       tenancyId: tenancy.id,
       id: profileId,
     },
   });
   return row == null ? [] : [row];
+}
+
+async function querySavedProfileRows(tenancy: Tenancy, profileId?: string): Promise<TvProfileDatabaseRow[]> {
+  if (!(await tvProfilePersistenceIsReady(tenancy))) return [];
+  const prisma = await getPrismaClientForTenancy(tenancy);
+  // The readiness catalog query is intentionally primary-bound. Keep the
+  // following model read on that same primary snapshot instead of allowing
+  // read-replica routing to turn a ready table into an empty profile list.
+  return await retryTransaction(prisma, (transaction) => querySavedProfileRowsWithClient(transaction, tenancy, profileId));
 }
 
 export async function listTvProfiles(tenancy: Tenancy): Promise<{
@@ -255,13 +266,17 @@ export async function listTvProfiles(tenancy: Tenancy): Promise<{
 export async function resolveTvProfile(
   tenancy: Tenancy,
   profileId: string,
+  client?: PrismaClientTransaction,
 ): Promise<TvProfileResource | null> {
   const builtIn = getTvBuiltInProfile(profileId);
   if (builtIn != null) return builtIn;
   if (!isSavedTvProfileId(profileId)) {
     return null;
   }
-  const row = (await querySavedProfileRows(tenancy, profileId)).at(0);
+  const rows = client == null
+    ? await querySavedProfileRows(tenancy, profileId)
+    : await querySavedProfileRowsWithClient(client, tenancy, profileId);
+  const row = rows.at(0);
   return row == null ? null : await rowToResource(row);
 }
 

@@ -254,7 +254,7 @@ export async function approveTvDisplayPairing(options: {
   const now = options.now ?? new Date();
   const approval = await retryTransaction(globalPrismaClient, async (transaction) => {
     await lockTvProfileDisplayAssignment(transaction, options.tenancy.id, options.profileId);
-    const profile = await resolveTvProfile(options.tenancy, options.profileId);
+    const profile = await resolveTvProfile(options.tenancy, options.profileId, transaction);
     if (profile == null) throw new TvDisplayOperationError("tv_display_profile_not_found");
     const exact = profile.configuration.financialVisibility === "exact";
     if (exact && !options.acknowledgeExactFinancials) {
@@ -649,7 +649,7 @@ export async function updateTvDisplay(options: {
   const now = options.now ?? new Date();
   const result = await retryTransaction(globalPrismaClient, async (transaction) => {
     await lockTvProfileDisplayAssignment(transaction, options.tenancy.id, options.profileId);
-    const profile = await resolveTvProfile(options.tenancy, options.profileId);
+    const profile = await resolveTvProfile(options.tenancy, options.profileId, transaction);
     if (profile == null) throw new TvDisplayOperationError("tv_display_profile_not_found");
     const exact = profile.configuration.financialVisibility === "exact";
     if (exact && !options.acknowledgeExactFinancials) {
