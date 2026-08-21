@@ -55,6 +55,16 @@ function withHexclaveHeaderAliases(headers: string[]): string[] {
 const corsAllowedRequestHeadersWithAliases = withHexclaveHeaderAliases(corsAllowedRequestHeaders);
 const corsAllowedResponseHeadersWithAliases = withHexclaveHeaderAliases(corsAllowedResponseHeaders);
 
+// The configured TV origin is process-scoped, so resolve its fallback chain once
+// instead of repeating environment lookups for every request.
+const configuredTvOrigin = getEnvVariable(
+  "HEXCLAVE_TV_DISPLAY_ORIGIN",
+  getEnvVariable(
+    "NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL",
+    getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL", ""),
+  ),
+);
+
 import.meta.vitest?.test("TV snapshot contract header is allowed by browser CORS", ({ expect }) => {
   const headers = new Headers(getCorsHeadersInit(new Request(
     "http://localhost/api/v1/internal/tv-mode/profiles/company-pulse/snapshot",
@@ -104,13 +114,6 @@ import.meta.vitest?.test("only the configured TV origin receives credentialed CO
 });
 
 export function getCorsHeadersInit(request: Request): HeadersInit | undefined {
-  const configuredTvOrigin = getEnvVariable(
-    "HEXCLAVE_TV_DISPLAY_ORIGIN",
-    getEnvVariable(
-      "NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL",
-      getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL", ""),
-    ),
-  );
   return getCorsHeadersInitForTvOrigin(request, configuredTvOrigin);
 }
 
