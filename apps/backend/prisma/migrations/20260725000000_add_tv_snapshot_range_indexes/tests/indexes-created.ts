@@ -79,7 +79,11 @@ export const postMigration = async (sql: Sql) => {
       "utf8",
     );
     const migrationStatements = migrationSql.split("SPLIT_STATEMENT_SENTINEL");
-    const preflightStatement = migrationStatements[0];
+    const ownershipStatement = migrationStatements[0];
+    const preflightStatement = migrationStatements.find((statement) => statement.includes("ALTER INDEX"));
+    if (preflightStatement == null) {
+      throw new Error("Expected the TV snapshot index migration to contain a preflight statement.");
+    }
     const postconditionStatement = migrationStatements.at(-1);
     if (postconditionStatement == null) {
       throw new Error("Expected the TV snapshot index migration to contain a postcondition statement.");
@@ -112,26 +116,97 @@ export const postMigration = async (sql: Sql) => {
       )
     `);
 
-    const preflightForInvalidIndex = migrationStatements[0];
-    const cleanupStatement = migrationStatements[3];
-    await sql.unsafe(preflightForInvalidIndex);
-    expect(await sql`
-      SELECT 1
-      FROM pg_class
-      WHERE relname = 'Subscription_tenancyId_createdAt_idx_invalid'
-    `).toHaveLength(1);
+    await sql.unsafe(`
+      CREATE INDEX CONCURRENTLY "Subscription_tenancyId_createdAt_idx_invalid"
+        ON "Subscription"("tenancyId", "createdAt")
+    `);
+    await sql.unsafe(`
+      UPDATE pg_index
+      SET indisvalid = false
+      WHERE indexrelid = (
+        SELECT index_relation.oid
+        FROM pg_class index_relation
+        JOIN pg_namespace index_namespace
+          ON index_namespace.oid = index_relation.relnamespace
+        WHERE index_namespace.nspname = current_schema()
+          AND index_relation.relname = 'Subscription_tenancyId_createdAt_idx_invalid'
+      )
+    `);
     const schemaRows = await sql<{ schema: string }[]>`SELECT current_schema() AS schema`;
     const schema = schemaRows[0].schema;
-    await sql.unsafe(cleanupStatement.replaceAll(
-      "/* SCHEMA_NAME_SENTINEL */",
-      `"${schema.replaceAll('"', '""')}"`,
-    ));
+    for (const statement of migrationStatements) {
+      await sql.unsafe(statement.replaceAll(
+        "/* SCHEMA_NAME_SENTINEL */",
+        `"${schema.replaceAll('"', '""')}"`,
+      ));
+    }
+    const repairedIndexes = await sql`
+      SELECT
+        index_relation.relname AS index_name,
+        index_metadata.indisvalid,
+        index_metadata.indisready
+      FROM pg_index index_metadata
+      JOIN pg_class index_relation
+        ON index_relation.oid = index_metadata.indexrelid
+      JOIN pg_namespace index_namespace
+        ON index_namespace.oid = index_relation.relnamespace
+      WHERE index_namespace.nspname = current_schema()
+        AND index_relation.relname IN (
+          'SubscriptionInvoice_tenancyId_createdAt_idx',
+          'Subscription_tenancyId_createdAt_idx',
+          'EmailOutbox_tenancyId_createdAt_idx'
+        )
+      ORDER BY index_relation.relname
+    `;
+    expect(repairedIndexes).toEqual([
+      {
+        index_name: "EmailOutbox_tenancyId_createdAt_idx",
+        indisvalid: true,
+        indisready: true,
+      },
+      {
+        index_name: "SubscriptionInvoice_tenancyId_createdAt_idx",
+        indisvalid: true,
+        indisready: true,
+      },
+      {
+        index_name: "Subscription_tenancyId_createdAt_idx",
+        indisvalid: true,
+        indisready: true,
+      },
+    ]);
     expect(await sql`
       SELECT 1
-      FROM pg_class
-      WHERE relname = 'Subscription_tenancyId_createdAt_idx_invalid'
+      FROM pg_class index_relation
+      JOIN pg_namespace index_namespace
+        ON index_namespace.oid = index_relation.relnamespace
+      WHERE index_namespace.nspname = current_schema()
+        AND index_relation.relname IN (
+          'SubscriptionInvoice_tenancyId_createdAt_idx_invalid',
+          'Subscription_tenancyId_createdAt_idx_invalid',
+          'EmailOutbox_tenancyId_createdAt_idx_invalid'
+        )
     `).toHaveLength(0);
+
+    await sql.unsafe(`
+      CREATE INDEX CONCURRENTLY "Subscription_tenancyId_createdAt_idx_invalid"
+        ON "Subscription"("createdAt")
+    `);
+    await expect(sql.unsafe(ownershipStatement)).rejects.toThrow(
+      /unexpected definition; refusing to drop it/,
+    );
+    expect(await sql`
+      SELECT 1
+      FROM pg_class index_relation
+      JOIN pg_namespace index_namespace
+        ON index_namespace.oid = index_relation.relnamespace
+      WHERE index_namespace.nspname = current_schema()
+        AND index_relation.relname = 'Subscription_tenancyId_createdAt_idx_invalid'
+    `).toHaveLength(1);
   } finally {
+    await sql.unsafe(
+      'DROP INDEX CONCURRENTLY IF EXISTS "Subscription_tenancyId_createdAt_idx_invalid"',
+    );
     await sql.unsafe(
       'DROP INDEX CONCURRENTLY IF EXISTS "Subscription_tenancyId_createdAt_idx"',
     );
