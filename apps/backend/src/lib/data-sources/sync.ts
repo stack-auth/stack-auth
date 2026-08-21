@@ -31,6 +31,9 @@ const MAX_WAL_CHANGES_PER_SYNC = 20_000;
  */
 const CURSOR_SAFETY_LAG_SECONDS = 10;
 
+/** Alias the cursor's exact text is read back under; never written to the destination. */
+const CURSOR_TEXT_COLUMN = "_hexclave_cursor_text";
+
 export type StreamSyncPlan = {
   streamId: string,
   schemaName: string,
@@ -232,11 +235,19 @@ async function syncCursor(
   }
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-  let maxCursor: unknown = previous;
+  let maxCursor: string | null = previous;
   let maxKey: string | null = previousKey;
   const rowsSynced = await forEachBatch(
     client,
-    `SELECT * FROM ${quotePgQualifiedName(plan.schemaName, plan.tableName)} ${where} ORDER BY ${orderColumns.map(c => `${c} ASC`).join(", ")}`,
+    // The cursor also comes back as text. `pg` materialises a timestamp as a JS
+    // Date, which is millisecond-precision, so a watermark round-tripped through
+    // one lands *below* the microsecond value it came from — and every sync then
+    // re-reads the whole table. Text is exactly what Postgres stored, and it also
+    // sidesteps `timestamp without time zone` being reinterpreted in the
+    // process's local timezone on the way out and back.
+    `SELECT *, (${quotedCursor})::text AS ${quotePgIdentifier(CURSOR_TEXT_COLUMN)}
+     FROM ${quotePgQualifiedName(plan.schemaName, plan.tableName)} ${where}
+     ORDER BY ${orderColumns.map(c => `${c} ASC`).join(", ")}`,
     params,
     async rows => {
       const destinationRows = rows.map(values => buildDestinationRow({
@@ -251,7 +262,7 @@ async function syncCursor(
       // mean re-implementing Postgres' ordering per type — and comparing them as
       // strings, which is the obvious shortcut, puts "99" above "500".
       const last = rows[rows.length - 1];
-      maxCursor = last[cursorColumn];
+      maxCursor = last[CURSOR_TEXT_COLUMN] as string;
       maxKey = useKeyset ? JSON.stringify(plan.primaryKeyColumns.map(column => last[column])) : null;
       await insertRows(context.clickhouse, {
         databaseName: context.databaseName,
@@ -262,7 +273,7 @@ async function syncCursor(
     { maxBatches: MAX_BATCHES_PER_CURSOR_SYNC },
   );
 
-  const nextValue = maxCursor instanceof Date ? maxCursor.toISOString() : maxCursor == null ? null : String(maxCursor);
+  const nextValue = maxCursor;
   return {
     streamId: plan.streamId,
     rowsSynced,
