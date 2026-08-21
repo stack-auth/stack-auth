@@ -2477,6 +2477,7 @@ model SubscriptionInvoice {
   amountTotal                   Int?
   hostedInvoiceUrl              String?
   paidAt                        DateTime?
+  paymentOutcomeEventAt         DateTime?
   markedUncollectibleAt         DateTime?
   voidedAt                      DateTime?
   currency                      String?

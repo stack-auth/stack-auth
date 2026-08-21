@@ -360,10 +360,15 @@ function getStripeInvoiceStatusTransitions(invoice: StripeInvoiceTransitionSourc
   return invoice.status_transitions;
 }
 
+function isStripeInvoiceOutcomeEventAtLeastAsNew(eventAt: Date, storedEventAt: Date | null) {
+  return storedEventAt == null || eventAt >= storedEventAt;
+}
+
 function getStripeInvoiceOutcomeTimestamps(
   invoice: StripeInvoiceTransitionSource,
   event: Pick<Stripe.Event, "created" | "type">,
 ): {
+  paymentOutcomeEventAt: Date,
   paidAt: Date | null,
   paidAtIsExact: boolean,
   markedUncollectibleAt: Date | null,
@@ -378,6 +383,7 @@ function getStripeInvoiceOutcomeTimestamps(
   const exactMarkedUncollectibleAt = transitionTimestamp(statusTransitions?.marked_uncollectible_at);
   const exactVoidedAt = transitionTimestamp(statusTransitions?.voided_at);
   return {
+    paymentOutcomeEventAt: eventTimestamp ?? throwErr("Stripe event is missing a created timestamp"),
     // The transition object is the most precise source. Some webhook payloads
     // omit it, but an exact outcome event's own Stripe timestamp is still
     // authoritative evidence of the successful or terminal transition.
@@ -405,6 +411,7 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
       type: "invoice.paid",
       created: occurredAtSeconds,
     })).toEqual({
+      paymentOutcomeEventAt: occurredAt,
       paidAt: occurredAt,
       paidAtIsExact: false,
       markedUncollectibleAt: null,
@@ -416,6 +423,7 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
       type: "invoice.payment_succeeded",
       created: occurredAtSeconds,
     })).toEqual({
+      paymentOutcomeEventAt: occurredAt,
       paidAt: occurredAt,
       paidAtIsExact: false,
       markedUncollectibleAt: null,
@@ -427,6 +435,7 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
       type: "invoice.marked_uncollectible",
       created: occurredAtSeconds,
     })).toEqual({
+      paymentOutcomeEventAt: occurredAt,
       paidAt: null,
       paidAtIsExact: false,
       markedUncollectibleAt: occurredAt,
@@ -438,6 +447,7 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
       type: "invoice.voided",
       created: occurredAtSeconds,
     })).toEqual({
+      paymentOutcomeEventAt: occurredAt,
       paidAt: null,
       paidAtIsExact: false,
       markedUncollectibleAt: null,
@@ -455,6 +465,7 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
       type: "invoice.updated",
       created: 1_787_098_400,
     })).toEqual({
+      paymentOutcomeEventAt: new Date(1_787_098_400 * 1000),
       paidAt: new Date(paidAtSeconds * 1000),
       paidAtIsExact: true,
       markedUncollectibleAt: null,
@@ -466,6 +477,7 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
       type: "invoice.updated",
       created: 1_787_098_400,
     })).toEqual({
+      paymentOutcomeEventAt: new Date(1_787_098_400 * 1000),
       paidAt: null,
       paidAtIsExact: false,
       markedUncollectibleAt: null,
@@ -473,6 +485,28 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
       voidedAt: null,
       voidedAtIsExact: false,
     });
+  });
+
+  test("does not apply an exact-paid outcome from an older event", ({ expect }) => {
+    const newerEventAt = new Date("2026-08-20T12:00:00.000Z");
+    const olderEventAt = new Date("2026-08-20T11:00:00.000Z");
+    const storedOutcome = {
+      paidAt: new Date("2026-08-20T11:30:00.000Z"),
+      amountPaid: 10_000,
+    };
+    const olderOutcome = {
+      paidAt: new Date("2026-08-20T10:30:00.000Z"),
+      amountPaid: 1_000,
+    };
+
+    expect(isStripeInvoiceOutcomeEventAtLeastAsNew(newerEventAt, null)).toBe(true);
+    expect(isStripeInvoiceOutcomeEventAtLeastAsNew(newerEventAt, newerEventAt)).toBe(true);
+    expect(isStripeInvoiceOutcomeEventAtLeastAsNew(olderEventAt, newerEventAt)).toBe(false);
+    expect(
+      isStripeInvoiceOutcomeEventAtLeastAsNew(olderEventAt, newerEventAt)
+        ? olderOutcome
+        : storedOutcome
+    ).toEqual(storedOutcome);
   });
 });
 
@@ -510,6 +544,7 @@ export async function upsertStripeInvoice(
     markedUncollectibleAtIsExact,
     voidedAt,
     voidedAtIsExact,
+    paymentOutcomeEventAt,
   } = getStripeInvoiceOutcomeTimestamps(invoice, event);
 
   // dual write - prisma and bulldozer
@@ -537,31 +572,69 @@ export async function upsertStripeInvoice(
       hostedInvoiceUrl: invoice.hosted_invoice_url,
     },
   });
-  // Stripe does not guarantee webhook ordering. Preserve the newest authoritative
-  // transition atomically so a delayed invoice.created/updated payload cannot
-  // erase or regress a terminal outcome learned from a newer event.
+  // Stripe does not guarantee webhook ordering, so compare event times before
+  // applying authoritative outcome data rather than trusting delivery order.
   await prisma.$executeRaw`
     UPDATE "SubscriptionInvoice"
     SET
+      "paymentOutcomeEventAt" = CASE
+        WHEN "paymentOutcomeEventAt" IS NULL
+          OR ${paymentOutcomeEventAt}::TIMESTAMP >= "paymentOutcomeEventAt"
+          THEN ${paymentOutcomeEventAt}::TIMESTAMP
+        ELSE "paymentOutcomeEventAt"
+      END,
       "paidAt" = CASE
         WHEN ${paidAt}::TIMESTAMP IS NULL THEN "paidAt"
-        WHEN ${paidAtIsExact} THEN ${paidAt}::TIMESTAMP
-        ELSE COALESCE("paidAt", ${paidAt}::TIMESTAMP)
+        WHEN ${paidAtIsExact}
+          AND (
+            "paymentOutcomeEventAt" IS NULL
+            OR ${paymentOutcomeEventAt}::TIMESTAMP >= "paymentOutcomeEventAt"
+          )
+          THEN ${paidAt}::TIMESTAMP
+        WHEN NOT ${paidAtIsExact} THEN COALESCE("paidAt", ${paidAt}::TIMESTAMP)
+        ELSE "paidAt"
       END,
       "markedUncollectibleAt" = CASE
         WHEN ${markedUncollectibleAt}::TIMESTAMP IS NULL THEN "markedUncollectibleAt"
-        WHEN ${markedUncollectibleAtIsExact} THEN ${markedUncollectibleAt}::TIMESTAMP
-        ELSE COALESCE("markedUncollectibleAt", ${markedUncollectibleAt}::TIMESTAMP)
+        WHEN ${markedUncollectibleAtIsExact}
+          AND (
+            "paymentOutcomeEventAt" IS NULL
+            OR ${paymentOutcomeEventAt}::TIMESTAMP >= "paymentOutcomeEventAt"
+          )
+          THEN ${markedUncollectibleAt}::TIMESTAMP
+        WHEN NOT ${markedUncollectibleAtIsExact}
+          THEN COALESCE("markedUncollectibleAt", ${markedUncollectibleAt}::TIMESTAMP)
+        ELSE "markedUncollectibleAt"
       END,
       "voidedAt" = CASE
         WHEN ${voidedAt}::TIMESTAMP IS NULL THEN "voidedAt"
-        WHEN ${voidedAtIsExact} THEN ${voidedAt}::TIMESTAMP
-        ELSE COALESCE("voidedAt", ${voidedAt}::TIMESTAMP)
+        WHEN ${voidedAtIsExact}
+          AND (
+            "paymentOutcomeEventAt" IS NULL
+            OR ${paymentOutcomeEventAt}::TIMESTAMP >= "paymentOutcomeEventAt"
+          )
+          THEN ${voidedAt}::TIMESTAMP
+        WHEN NOT ${voidedAtIsExact} THEN COALESCE("voidedAt", ${voidedAt}::TIMESTAMP)
+        ELSE "voidedAt"
       END,
-      "currency" = COALESCE(UPPER(${invoice.currency}), "currency"),
+      "currency" = CASE
+        WHEN "paymentOutcomeEventAt" IS NULL
+          OR ${paymentOutcomeEventAt}::TIMESTAMP >= "paymentOutcomeEventAt"
+          THEN COALESCE(UPPER(${invoice.currency}), "currency")
+        ELSE "currency"
+      END,
       "amountPaid" = CASE
         WHEN ${paidAt}::TIMESTAMP IS NOT NULL
-          AND (${paidAtIsExact} OR "paidAt" IS NULL)
+          AND (
+            (
+              ${paidAtIsExact}
+              AND (
+                "paymentOutcomeEventAt" IS NULL
+                OR ${paymentOutcomeEventAt}::TIMESTAMP >= "paymentOutcomeEventAt"
+              )
+            )
+            OR (NOT ${paidAtIsExact} AND "paidAt" IS NULL)
+          )
           THEN ${invoice.amount_paid}
         ELSE "amountPaid"
       END
