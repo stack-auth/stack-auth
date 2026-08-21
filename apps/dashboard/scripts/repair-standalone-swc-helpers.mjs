@@ -151,12 +151,12 @@ function copyMissingFiles(sourceRoot, destinationRoot) {
 }
 
 function resolveExportTarget(helperPackageRoot, target) {
+  // Resolve through Node's own CJS resolver from inside the standalone tree, so
+  // this check picks whichever export condition the standalone server will pick
+  // at runtime (esm/*.js via `module-sync` on Node >= 22.10, cjs/*.cjs before).
   const packageNodeModulesRoot = dirname(dirname(helperPackageRoot));
   const resolver = createRequire(join(packageNodeModulesRoot, "package.json"));
-  return resolver.resolve(`@swc/helpers/${target}`, {
-    conditions: new Set(["module-sync"]),
-    paths: [packageNodeModulesRoot],
-  });
+  return resolver.resolve(`@swc/helpers/${target}`, { paths: [packageNodeModulesRoot] });
 }
 
 export function repairStandaloneSwcHelpers(
