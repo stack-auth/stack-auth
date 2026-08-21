@@ -20,7 +20,7 @@ export const postMigration = async (sql: Sql) => {
     table_name: "OneTimePurchase", key_columns: ["tenancyId", "createdAt"],
     indisvalid: true, indisready: true, indisunique: false, access_method: "btree",
   })]);
-  expect(rows[0].predicate.replace(/[()\s]/g, "")).toBe(
+  expect(rows[0].predicate.replace(/"[^"]+"\."PurchaseCreationSource"/g, '"PurchaseCreationSource"').replace(/[()\s]/g, "")).toBe(
     '"creationSource"=\'PURCHASE_PAGE\'::"PurchaseCreationSource"AND"paidAt"ISNULL',
   );
 };

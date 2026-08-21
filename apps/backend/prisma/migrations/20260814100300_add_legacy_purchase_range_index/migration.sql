@@ -10,7 +10,10 @@ BEGIN
         AND i.indisvalid AND i.indisready AND NOT i.indisunique
         AND access_method.amname = 'btree'
         AND pg_get_indexdef(idx.oid) LIKE '%("tenancyId", "createdAt") WHERE%'
-        AND regexp_replace(pg_get_expr(i.indpred, i.indrelid), '[()\s]', '', 'g') = regexp_replace('"creationSource" = ''PURCHASE_PAGE''::"PurchaseCreationSource" AND "paidAt" IS NULL', '[()\s]', '', 'g')
+        AND regexp_replace(
+          regexp_replace(pg_get_expr(i.indpred, i.indrelid), '"[^"]+"\."PurchaseCreationSource"', '"PurchaseCreationSource"', 'g'),
+          '[()\s]', '', 'g'
+        ) = regexp_replace('"creationSource" = ''PURCHASE_PAGE''::"PurchaseCreationSource" AND "paidAt" IS NULL', '[()\s]', '', 'g')
     ) THEN RAISE EXCEPTION 'TV legacy purchase index exists with an unexpected or invalid definition'; END IF;
 END
 $$;
@@ -33,7 +36,10 @@ BEGIN
       AND i.indisvalid AND i.indisready AND NOT i.indisunique
       AND access_method.amname = 'btree'
       AND pg_get_indexdef(idx.oid) LIKE '%("tenancyId", "createdAt") WHERE%'
-      AND regexp_replace(pg_get_expr(i.indpred, i.indrelid), '[()\s]', '', 'g') = regexp_replace('"creationSource" = ''PURCHASE_PAGE''::"PurchaseCreationSource" AND "paidAt" IS NULL', '[()\s]', '', 'g')
+      AND regexp_replace(
+        regexp_replace(pg_get_expr(i.indpred, i.indrelid), '"[^"]+"\."PurchaseCreationSource"', '"PurchaseCreationSource"', 'g'),
+        '[()\s]', '', 'g'
+      ) = regexp_replace('"creationSource" = ''PURCHASE_PAGE''::"PurchaseCreationSource" AND "paidAt" IS NULL', '[()\s]', '', 'g')
   ) THEN RAISE EXCEPTION 'TV legacy purchase index did not finish with the expected definition'; END IF;
 END
 $$;
