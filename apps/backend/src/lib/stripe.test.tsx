@@ -273,4 +273,42 @@ describe.sequential("Stripe invoice outcome ordering (real DB)", () => {
       markedUncollectibleAt: olderMarkedAt,
     });
   });
+
+  it("fills amountPaid when an older exact payment fills a NULL paidAt", async () => {
+    const { invoice, tenancy } = await createInvoice();
+    const newerMarkedEventAt = new Date("2026-08-20T12:00:00.000Z");
+    const newerMarkedAt = new Date("2026-08-20T11:59:00.000Z");
+    const olderPaidEventAt = new Date("2026-08-20T11:00:00.000Z");
+    const olderPaidAt = new Date("2026-08-20T10:59:00.000Z");
+    await applyStripeInvoiceOutcome(globalPrismaClient, {
+      tenancyId: tenancy.id,
+      invoiceId: invoice.id,
+      currency: "usd",
+      amountPaid: null,
+      outcome: exactMarkedUncollectibleOutcome(newerMarkedEventAt, newerMarkedAt),
+    });
+    await applyStripeInvoiceOutcome(globalPrismaClient, {
+      tenancyId: tenancy.id,
+      invoiceId: invoice.id,
+      currency: "eur",
+      amountPaid: 10_000,
+      outcome: exactPaidOutcome(olderPaidEventAt, olderPaidAt),
+    });
+    await expect(globalPrismaClient.subscriptionInvoice.findUniqueOrThrow({
+      where: { tenancyId_id: { tenancyId: tenancy.id, id: invoice.id } },
+      select: {
+        paymentOutcomeEventAt: true,
+        paidAt: true,
+        amountPaid: true,
+        currency: true,
+        markedUncollectibleAt: true,
+      },
+    })).resolves.toEqual({
+      paymentOutcomeEventAt: newerMarkedEventAt,
+      paidAt: olderPaidAt,
+      amountPaid: 10_000,
+      currency: "USD",
+      markedUncollectibleAt: newerMarkedAt,
+    });
+  });
 });

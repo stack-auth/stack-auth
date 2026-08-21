@@ -577,7 +577,7 @@ export async function applyStripeInvoiceOutcome(
       "amountPaid" = CASE
         WHEN ${paidAt}::TIMESTAMP IS NOT NULL
           AND (
-            (${paidAtIsExact} AND decision.should_apply_outcome)
+            (${paidAtIsExact} AND (decision.should_apply_outcome OR "paidAt" IS NULL))
             OR (NOT ${paidAtIsExact} AND "paidAt" IS NULL)
           )
           THEN ${options.amountPaid}
