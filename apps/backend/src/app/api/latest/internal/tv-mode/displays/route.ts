@@ -120,7 +120,6 @@ export const POST = createSmartRouteHandler({
         adminUserId,
         acknowledgeExactFinancials: body.acknowledgeExactFinancials,
       });
-      await refundApprovalRateLimits(adminUserId, ip, rateLimitNow);
       return {
         statusCode: 200,
         bodyType: "json",
