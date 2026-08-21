@@ -98,7 +98,10 @@ import.meta.vitest?.test("only the configured TV origin receives credentialed CO
 export function getCorsHeadersInit(request: Request): HeadersInit | undefined {
   const configuredTvOrigin = getEnvVariable(
     "HEXCLAVE_TV_DISPLAY_ORIGIN",
-    getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL", ""),
+    getEnvVariable(
+      "NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL",
+      getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL", ""),
+    ),
   );
   return getCorsHeadersInitForTvOrigin(request, configuredTvOrigin);
 }

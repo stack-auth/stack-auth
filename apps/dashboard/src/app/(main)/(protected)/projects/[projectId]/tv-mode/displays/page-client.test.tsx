@@ -13,6 +13,7 @@ const testState = vi.hoisted(() => ({
 
 vi.mock("../../use-admin-app", () => ({
   useAdminApp: () => testState.adminApp,
+  useProjectId: () => "project-a",
 }));
 
 vi.mock("@/lib/hexclave-app-internals", () => ({
@@ -60,6 +61,6 @@ describe("TV displays page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy TV display link" }));
     await waitFor(() => expect(testState.writeText).toHaveBeenCalledWith("http://localhost:8101/tv"));
     expect(screen.getByText("TV Link Copied")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Copy TV Link" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Copy TV display link" })).toBeTruthy();
   });
 });

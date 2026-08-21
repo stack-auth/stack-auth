@@ -28,6 +28,7 @@ import {
   type TvPaymentSample,
 } from "@/lib/tv-mode/event-evaluators";
 import {
+  createTvPresentationAssignment,
   deriveTvPresentation,
   type TvDurableEventOccurrence,
   type TvDurablePresentationAssignment,
@@ -52,6 +53,7 @@ const MINUTE_MS = 60_000;
 const MAX_EVENT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
 export type EvaluatorClaimRow = {
+  claimExpiresAt: Date,
   breachCount: number,
   criticalBreachCount: number,
   recoveryCount: number,
@@ -166,6 +168,7 @@ export async function claimEvaluator(
     )
     SELECT
       claimed."breachCount",
+      claimed."nextEvaluationAt" AS "claimExpiresAt",
       claimed."criticalBreachCount",
       claimed."recoveryCount",
       claimed."milestoneBaseline",
@@ -179,6 +182,24 @@ export async function claimEvaluator(
       AND occurrence."id" = claimed."activeOccurrenceId"
   `;
   return rows.at(0) ?? null;
+}
+
+async function evaluatorClaimStillCurrent(
+  transaction: Prisma.TransactionClient,
+  schema: string,
+  tenancyId: string,
+  evaluatorKey: string,
+  claim: EvaluatorClaimRow,
+): Promise<boolean> {
+  const rows = await transaction.$queryRaw<Array<{ nextEvaluationAt: Date }>>`
+    SELECT "nextEvaluationAt"
+    FROM ${sqlQuoteIdent(schema)}."TvEventEvaluatorState"
+    WHERE "tenancyId" = ${tenancyId}::UUID
+      AND "evaluatorKey" = ${evaluatorKey}
+      AND "nextEvaluationAt" = ${claim.claimExpiresAt}
+    FOR UPDATE
+  `;
+  return rows.length === 1;
 }
 
 async function loadEmailEvaluatorSample(
@@ -492,8 +513,14 @@ export function buildTvEmailBaseline(options: {
 }
 
 function baselineNeedsRefresh(baseline: TvEmailBaseline | null, now: Date): boolean {
-  return baseline == null
-    || now.getTime() - new Date(baseline.computedAt).getTime() >= TV_EMAIL_BASELINE_REFRESH_MS;
+  if (baseline == null) return true;
+  return timestampNeedsRefresh(baseline.computedAt, now, TV_EMAIL_BASELINE_REFRESH_MS);
+}
+
+function timestampNeedsRefresh(computedAt: string, now: Date, refreshIntervalMs: number): boolean {
+  const computedAtMs = Date.parse(computedAt);
+  const elapsedMs = now.getTime() - computedAtMs;
+  return !Number.isFinite(computedAtMs) || elapsedMs < 0 || elapsedMs >= refreshIntervalMs;
 }
 
 function activeClassFromClaim(claim: EvaluatorClaimRow): TvEmailEvaluatorState["activeClass"] {
@@ -548,6 +575,7 @@ export async function persistEmailEvaluation(options: {
   const prisma = await getPrismaClientForTenancy(options.tenancy);
   const result = evaluateTvEmailDelivery(options.previousState, options.sample);
   await retryTransaction(prisma, async (transaction) => {
+    if (!(await evaluatorClaimStillCurrent(transaction, schema, options.tenancy.id, "email-delivery", options.claim))) return;
     let activeOccurrenceId = options.claim.activeOccurrenceId;
     const rulePath = result.qualification;
     const relevantWindow = rulePath === "low-volume" || rulePath === "strict-low-volume"
@@ -743,16 +771,20 @@ function readTvPaymentState(value: unknown, activeClass: TvPaymentEvaluatorState
   return { ruleVersion: TV_PAYMENT_RULE_VERSION, activeClass, baseline, lastFreshEvaluatedAt: freshAt, candidate, recovery };
 }
 
-async function loadPaymentOutcomes(tenancy: Tenancy, startsAt: Date, endsAt: Date): Promise<Array<{ outcomeAt: Date, success: boolean }>> {
+export async function loadTvSubscriptionCollectionOutcomes(
+  tenancy: Tenancy,
+  startsAt: Date,
+  endsAt: Date,
+): Promise<Array<{ outcomeAt: Date, success: boolean }>> {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
   return await prisma.$replica().$queryRaw<Array<{ outcomeAt: Date, success: boolean }>>`
     WITH raw_candidates AS (
-      SELECT "id", "paidAt", "markedUncollectibleAt", "voidedAt"
+      SELECT "id", "paidAt", "markedUncollectibleAt", "voidedAt", "amountPaid", "amountTotal"
       FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
       WHERE "tenancyId" = ${tenancy.id}::UUID AND "paidAt" >= ${startsAt} AND "paidAt" < ${endsAt}
       UNION ALL
-      SELECT "id", "paidAt", "markedUncollectibleAt", "voidedAt"
+      SELECT "id", "paidAt", "markedUncollectibleAt", "voidedAt", "amountPaid", "amountTotal"
       FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
       WHERE "tenancyId" = ${tenancy.id}::UUID
         AND "markedUncollectibleAt" >= ${startsAt} AND "markedUncollectibleAt" < ${endsAt}
@@ -770,10 +802,13 @@ async function loadPaymentOutcomes(tenancy: Tenancy, startsAt: Date, endsAt: Dat
     FROM selected
     WHERE "outcomeAt" >= ${startsAt} AND "outcomeAt" < ${endsAt}
       AND (
-        "paidAt" = "outcomeAt"
+        -- A zero-value invoice has no collection attempt to assess. Preserve
+        -- its authoritative terminal state, but keep it out of health rates.
+        ("paidAt" = "outcomeAt" AND COALESCE("amountPaid", 0) > 0)
         OR (
           "voidedAt" IS DISTINCT FROM "outcomeAt"
           AND "markedUncollectibleAt" = "outcomeAt"
+          AND COALESCE("amountTotal", 0) > 0
         )
       )
   `;
@@ -792,7 +827,7 @@ function paymentWindow(startsAt: Date, endsAt: Date, rows: Array<{ outcomeAt: Da
 async function loadPaymentBaseline(tenancy: Tenancy, now: Date): Promise<TvPaymentBaseline> {
   const endsAt = new Date(now.getTime() - 14 * 24 * 60 * MINUTE_MS);
   const startsAt = new Date(endsAt.getTime() - 12 * 7 * 24 * 60 * MINUTE_MS);
-  const rows = await loadPaymentOutcomes(tenancy, startsAt, endsAt);
+  const rows = await loadTvSubscriptionCollectionOutcomes(tenancy, startsAt, endsAt);
   const weeks = Array.from({ length: 12 }, (_, index) => {
     const weekStartsAt = new Date(startsAt.getTime() + index * 7 * 24 * 60 * MINUTE_MS);
     const weekEndsAt = new Date(weekStartsAt.getTime() + 7 * 24 * 60 * MINUTE_MS);
@@ -812,6 +847,7 @@ async function persistPaymentEvaluation(options: { tenancy: Tenancy, claim: Eval
   const schema = await getPrismaSchemaForTenancy(options.tenancy);
   const prisma = await getPrismaClientForTenancy(options.tenancy);
   await retryTransaction(prisma, async (transaction) => {
+    if (!(await evaluatorClaimStillCurrent(transaction, schema, options.tenancy.id, "subscription-collection", options.claim))) return;
     let activeOccurrenceId = options.claim.activeOccurrenceId;
     const window = result.qualification === "low-volume" || result.qualification?.startsWith("strict") ? options.sample.lowVolume : options.sample.current;
     const metricValue = window?.successRatePercent == null ? "Unavailable" : `${window.successRatePercent}%`;
@@ -853,7 +889,7 @@ async function evaluatePaymentIfDue(tenancy: Tenancy, now: Date): Promise<void> 
   if (claim == null) return;
   const state = readTvPaymentState(claim.typedState, activeClassFromClaim(claim));
   let baseline = state.baseline;
-  if (baseline == null || now.getTime() - new Date(baseline.computedAt).getTime() >= TV_PAYMENT_BASELINE_REFRESH_MS) {
+  if (baseline == null || timestampNeedsRefresh(baseline.computedAt, now, TV_PAYMENT_BASELINE_REFRESH_MS)) {
     baseline = await loadPaymentBaseline(tenancy, now).catch((cause: unknown) => {
       captureError("tv-payment-baseline-refresh-failed", new HexclaveAssertionError("TV payment baseline refresh failed; strict fallback remains active.", { cause, tenancyId: tenancy.id }));
       return baseline;
@@ -861,7 +897,7 @@ async function evaluatePaymentIfDue(tenancy: Tenancy, now: Date): Promise<void> 
   }
   const lowStartsAt = new Date(now.getTime() - 14 * 24 * 60 * MINUTE_MS);
   const currentStartsAt = new Date(now.getTime() - 24 * 60 * MINUTE_MS);
-  const outcomes = await loadPaymentOutcomes(tenancy, lowStartsAt, now);
+  const outcomes = await loadTvSubscriptionCollectionOutcomes(tenancy, lowStartsAt, now);
   const sample: TvPaymentSample = { status: "fresh", evaluatedAt: now.toISOString(), observedAt: now.toISOString(), current: paymentWindow(currentStartsAt, now, outcomes.filter((row) => row.outcomeAt >= currentStartsAt)), lowVolume: paymentWindow(lowStartsAt, now, outcomes), baseline };
   await persistPaymentEvaluation({ tenancy, claim, state: { ...state, baseline }, sample, now });
 }
@@ -882,6 +918,7 @@ async function evaluateMilestoneIfDue(
   }, totalUsers);
 
   await retryTransaction(prisma, async (transaction) => {
+    if (!(await evaluatorClaimStillCurrent(transaction, schema, tenancy.id, "user-milestone", claim))) return;
     if (result.crossedThreshold != null) {
       const occurrenceId = generateUuid();
       const formattedThreshold = new Intl.NumberFormat("en-US", {
@@ -1042,6 +1079,18 @@ function isEligible(
   }
 }
 
+function durableOccurrence(occurrence: TvEventOccurrenceRow): TvDurableEventOccurrence {
+  return {
+    id: occurrence.id,
+    type: occurrenceType(occurrence),
+    presentationClass: presentationClass(occurrence),
+    lifecycle: occurrenceLifecycle(occurrence),
+    occurredAt: occurrence.occurredAt,
+    activatedAt: occurrence.activatedAt ?? occurrence.occurredAt,
+    resolvedAt: occurrence.resolvedAt,
+  };
+}
+
 async function loadOccurrences(
   tenancy: Tenancy,
   now: Date,
@@ -1166,19 +1215,25 @@ export async function synchronizeTvProfileAssignments(options: {
       // pending-celebration block below owns the one later transition from a
       // suspended assignment into its bounded takeover.
       if (existingAssignment != null) continue;
-      const highlightExpiresAt = addSeconds(
-        occurrence.occurredAt,
-        preferences.timing.celebration.highlightSeconds,
-      );
-      const animationExpiresAt = addSeconds(
-        occurrence.occurredAt,
-        preferences.timing.celebration.animationSeconds,
-      );
+      const provisionalAssignment = createTvPresentationAssignment({
+        occurrence: durableOccurrence(occurrence),
+        preferences,
+        takeoverStartedAt: celebrationPresentationBlocked ? null : options.now,
+      });
+      const highlightExpiresAt = provisionalAssignment.highlightExpiresAt;
+      const animationExpiresAt = provisionalAssignment.animationExpiresAt;
+      if (highlightExpiresAt == null || animationExpiresAt == null) {
+        throw new HexclaveAssertionError("A celebration assignment must define Highlight and animation deadlines.");
+      }
       const expired = options.now.getTime() >= highlightExpiresAt.getTime();
       const takeoverStartedAt = celebrationPresentationBlocked || expired ? null : options.now;
-      const takeoverEndsAt = takeoverStartedAt == null
-        ? null
-        : addSeconds(takeoverStartedAt, preferences.timing.celebration.takeoverSeconds);
+      const assignment = takeoverStartedAt === provisionalAssignment.takeoverStartedAt
+        ? provisionalAssignment
+        : createTvPresentationAssignment({
+          occurrence: durableOccurrence(occurrence),
+          preferences,
+          takeoverStartedAt,
+        });
       await retryTransaction(prisma, async (transaction) => {
         await transaction.$executeRaw`
           UPDATE ${sqlQuoteIdent(schema)}."TvProfileEventPresentation" presentation
@@ -1206,7 +1261,7 @@ export async function synchronizeTvProfileAssignments(options: {
             ${options.profile.id},
             ${occurrence.id}::UUID,
             ${takeoverStartedAt},
-            ${takeoverEndsAt},
+            ${assignment.takeoverEndsAt},
             ${highlightExpiresAt},
             ${animationExpiresAt},
             ${expired ? options.now : null},
@@ -1222,23 +1277,14 @@ export async function synchronizeTvProfileAssignments(options: {
     const takeoverStartedAt = occurrence.presentationClass === "CRITICAL_INCIDENT"
       ? occurrence.escalatedAt ?? occurrence.activatedAt ?? occurrence.occurredAt
       : occurrence.activatedAt ?? occurrence.occurredAt;
-    const takeoverEndsAt = occurrence.presentationClass === "CRITICAL_INCIDENT"
-      ? addSeconds(takeoverStartedAt, preferences.timing.criticalIncident.takeoverSeconds)
-      : addSeconds(takeoverStartedAt, preferences.timing.incident.takeoverSeconds);
-    const recoveryEndsAt = occurrence.resolvedAt == null
-      ? null
-      : addSeconds(
-        occurrence.resolvedAt,
-        occurrence.presentationClass === "CRITICAL_INCIDENT"
-          ? preferences.timing.criticalIncident.recoveryTakeoverSeconds
-          : preferences.timing.incident.recoveryTakeoverSeconds,
-      );
-    const resolvedHighlightSeconds = occurrence.presentationClass === "CRITICAL_INCIDENT"
-      ? preferences.timing.criticalIncident.resolvedHighlightSeconds
-      : preferences.timing.incident.resolvedHighlightSeconds;
-    const highlightExpiresAt = occurrence.resolvedAt == null
-      ? null
-      : addSeconds(occurrence.resolvedAt, resolvedHighlightSeconds);
+    const assignment = createTvPresentationAssignment({
+      occurrence: durableOccurrence(occurrence),
+      preferences,
+      takeoverStartedAt,
+    });
+    const takeoverEndsAt = assignment.takeoverEndsAt;
+    const recoveryEndsAt = assignment.recoveryEndsAt;
+    const highlightExpiresAt = assignment.highlightExpiresAt;
     const assignmentNeedsWrite = existingAssignment == null
       || (
         existingAssignment.takeoverStartedAt != null
@@ -1416,15 +1462,7 @@ export async function resolveTvEventPresentation(options: {
       isEligible(occurrence, options.profile.configuration.interruptionPreferences)
       && activeAssignmentOccurrenceIds.has(occurrence.id)
     ))
-    .map((occurrence) => ({
-      id: occurrence.id,
-      type: occurrenceType(occurrence),
-      presentationClass: presentationClass(occurrence),
-      lifecycle: occurrenceLifecycle(occurrence),
-      occurredAt: occurrence.occurredAt,
-      activatedAt: occurrence.activatedAt ?? occurrence.occurredAt,
-      resolvedAt: occurrence.resolvedAt,
-    }));
+    .map(durableOccurrence);
   const durableAssignments: TvDurablePresentationAssignment[] = assignments.map((assignment) => ({
     occurrenceId: assignment.occurrenceId,
     takeoverStartedAt: assignment.takeoverStartedAt,

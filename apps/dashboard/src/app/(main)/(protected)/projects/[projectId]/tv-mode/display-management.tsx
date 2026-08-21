@@ -42,7 +42,11 @@ function errorIncludes(error: unknown, text: string): boolean {
 }
 
 export function getPairingFailureNotice(error: unknown): ActionNotice {
-  if (errorIncludes(error, "Rate limited") || errorIncludes(error, "tv_display_pairing_rate_limited")) {
+  if (
+    errorIncludes(error, "Rate limited")
+    || errorIncludes(error, "tv_display_pairing_rate_limited")
+    || (error instanceof TvProfileRequestError && error.status === 429)
+  ) {
     return {
       variant: "error",
       title: "Pairing Temporarily Paused",
@@ -136,22 +140,23 @@ export function TvDisplayManagement({
     setLoadFailed(false);
   }, [adminApp]);
 
+  const refreshSafely = useCallback(async () => {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
+    try {
+      await refresh();
+    } catch {
+      setLoadFailed(true);
+    } finally {
+      refreshInFlight.current = false;
+    }
+  }, [refresh]);
+
   useEffect(() => {
-    const refreshSafely = async () => {
-      if (refreshInFlight.current) return;
-      refreshInFlight.current = true;
-      try {
-        await refresh();
-      } catch {
-        setLoadFailed(true);
-      } finally {
-        refreshInFlight.current = false;
-      }
-    };
     runAsynchronously(refreshSafely());
     const interval = window.setInterval(() => runAsynchronously(refreshSafely()), DISPLAY_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(interval);
-  }, [refresh]);
+  }, [refreshSafely]);
 
   const selectedProfile = profiles.find((profile) => profile.id === profileId);
   const normalizedPairingCode = pairingCode.replaceAll("-", "");
@@ -277,7 +282,7 @@ export function TvDisplayManagement({
                 adminApp={adminApp}
                 display={display}
                 profiles={profiles}
-                onChanged={refresh}
+                onChanged={refreshSafely}
                 onRemoved={hideDisplay}
               />
             ))}
@@ -378,7 +383,7 @@ function DisplayRow({ adminApp, display, profiles, onChanged, onRemoved }: {
               <DesignInput id={`tv-display-name-${display.id}`} aria-label={`Display name for ${display.displayName}`} value={name} onChange={(event) => {
                 setName(event.target.value);
                 setSaveError(null);
-              }} size="lg" />
+              }} maxLength={80} size="lg" />
             </div>
             <div className="space-y-2">
               <label htmlFor={`tv-display-profile-${display.id}`} className="text-xs font-medium text-foreground">Assigned Profile</label>

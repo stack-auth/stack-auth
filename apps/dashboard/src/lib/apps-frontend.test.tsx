@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DUMMY_ORIGIN, testItemPath, type NavigableAppFrontend } from "./apps-frontend";
+import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, testItemPath, type NavigableAppFrontend } from "./apps-frontend";
 
 const PROJECT_ID = "demo-project";
 
@@ -72,5 +72,15 @@ describe("testItemPath", () => {
     const app = appWith([overview, external]);
 
     expect(testItemPath(PROJECT_ID, app, external, urlFor("/projects/demo-project/gtm"))).toBe(false);
+  });
+
+  it("matches TV profile navigation independently of query parameters", () => {
+    const tvMode = ALL_APPS_FRONTEND["tv-mode"];
+    const profiles = tvMode.navigationItems[0];
+    const displays = tvMode.navigationItems[1];
+    const createCopy = urlFor("/projects/demo-project/tv-mode/profiles/company-pulse?create=1");
+
+    expect(profiles == null ? null : testItemPath(PROJECT_ID, tvMode, profiles, createCopy)).toBe(true);
+    expect(displays == null ? null : testItemPath(PROJECT_ID, tvMode, displays, createCopy)).toBe(false);
   });
 });

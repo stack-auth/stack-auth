@@ -355,37 +355,54 @@ export async function updateTvProfile(
   if (!(await tvProfilePersistenceIsReady(tenancy))) return null;
   const configuration = await validateConfiguration(configurationInput);
   const schema = await getPrismaSchemaForTenancy(tenancy);
-  const prisma = await getPrismaClientForTenancy(tenancy);
-  const rows = await prisma.$queryRaw<TvProfileDatabaseRow[]>`
-    UPDATE ${sqlQuoteIdent(schema)}."TvPresentationProfile"
-    SET "displayName" = ${configuration.displayName},
-      "normalizedDisplayName" = ${normalizeTvProfileDisplayName(configuration.displayName)},
-      "description" = ${configuration.description},
-      "defaultDurationSeconds" = ${configuration.defaultDurationSeconds},
-      "playlist" = ${JSON.stringify(configuration.playlist)}::JSONB,
-      "interruptionPreferences" = ${JSON.stringify(configuration.interruptionPreferences)}::JSONB,
-      "financialVisibility" = ${configuration.financialVisibility === "exact" ? "EXACT" : "REDACTED"}::${sqlQuoteIdent(schema)}."TvFinancialVisibility",
-      "version" = "version" + 1,
-      "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "tenancyId" = ${tenancy.id}::UUID
-      AND "id" = ${profileId}::UUID
-      AND "version" = ${expectedVersion}
-      AND NOT EXISTS (
-        SELECT 1
-        FROM ${sqlQuoteIdent(schema)}."TvPresentationProfile" AS conflicting_profile
-        WHERE conflicting_profile."tenancyId" = ${tenancy.id}::UUID
-          AND conflicting_profile."normalizedDisplayName" = ${normalizeTvProfileDisplayName(configuration.displayName)}
-          AND conflicting_profile."id" <> ${profileId}::UUID
+  const normalizedDisplayName = normalizeTvProfileDisplayName(configuration.displayName);
+  return await retryTransaction(globalPrismaClient, async (transaction) => {
+    // The unique constraint is authoritative, but serializing contenders for
+    // the same tenancy/name lets us return the stable domain conflict instead
+    // of leaking a database-specific unique violation under concurrency.
+    await transaction.$executeRaw`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended(${`tv-profile-name:${tenancy.id}:${normalizedDisplayName}`}, 0)
       )
-    RETURNING "id", "displayName", "description", "mode", "defaultDurationSeconds",
-      "playlist", "interruptionPreferences", "financialVisibility", "version", "createdAt", "updatedAt"
-  `;
-  const row = rows.at(0);
-  if (row != null) return await rowToResource(row);
-  const current = (await querySavedProfileRows(tenancy, profileId)).at(0);
-  if (current == null) return null;
-  if (current.version === expectedVersion) throw new TvProfileNameConflictError();
-  throw new TvProfileVersionConflictError();
+    `;
+    const rows = await transaction.$queryRaw<TvProfileDatabaseRow[]>`
+      UPDATE ${sqlQuoteIdent(schema)}."TvPresentationProfile"
+      SET "displayName" = ${configuration.displayName},
+        "normalizedDisplayName" = ${normalizedDisplayName},
+        "description" = ${configuration.description},
+        "defaultDurationSeconds" = ${configuration.defaultDurationSeconds},
+        "playlist" = ${JSON.stringify(configuration.playlist)}::JSONB,
+        "interruptionPreferences" = ${JSON.stringify(configuration.interruptionPreferences)}::JSONB,
+        "financialVisibility" = ${configuration.financialVisibility === "exact" ? "EXACT" : "REDACTED"}::${sqlQuoteIdent(schema)}."TvFinancialVisibility",
+        "version" = "version" + 1,
+        "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "tenancyId" = ${tenancy.id}::UUID
+        AND "id" = ${profileId}::UUID
+        AND "version" = ${expectedVersion}
+        AND NOT EXISTS (
+          SELECT 1
+          FROM ${sqlQuoteIdent(schema)}."TvPresentationProfile" AS conflicting_profile
+          WHERE conflicting_profile."tenancyId" = ${tenancy.id}::UUID
+            AND conflicting_profile."normalizedDisplayName" = ${normalizedDisplayName}
+            AND conflicting_profile."id" <> ${profileId}::UUID
+        )
+      RETURNING "id", "displayName", "description", "mode", "defaultDurationSeconds",
+        "playlist", "interruptionPreferences", "financialVisibility", "version", "createdAt", "updatedAt"
+    `;
+    const row = rows.at(0);
+    if (row != null) return await rowToResource(row);
+    const currentRows = await transaction.$queryRaw<TvProfileDatabaseRow[]>`
+      SELECT "id", "displayName", "description", "mode", "defaultDurationSeconds",
+        "playlist", "interruptionPreferences", "financialVisibility", "version", "createdAt", "updatedAt"
+      FROM ${sqlQuoteIdent(schema)}."TvPresentationProfile"
+      WHERE "tenancyId" = ${tenancy.id}::UUID AND "id" = ${profileId}::UUID
+      LIMIT 1
+    `;
+    const current = currentRows.at(0);
+    if (current == null) return null;
+    if (current.version === expectedVersion) throw new TvProfileNameConflictError();
+    throw new TvProfileVersionConflictError();
+  });
 }
 
 export async function deleteTvProfile(

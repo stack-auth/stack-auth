@@ -227,6 +227,29 @@ describe("useTvLiveSnapshot", () => {
     });
   });
 
+  it("does not let an in-flight response overwrite a newer offline event", async () => {
+    const pending = Promise.withResolvers<typeof snapshot>();
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    const observedStates: TvLiveSnapshotState[] = [];
+
+    await act(async () => {
+      root.render(<PollingProbe loadSnapshot={async () => await pending.promise} onState={(state) => observedStates.push(state)} />);
+      await Promise.resolve();
+    });
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: false });
+    await act(async () => window.dispatchEvent(new Event("offline")));
+    expect(observedStates.at(-1)).toMatchObject({ snapshot: null, unavailableReason: "offline" });
+
+    await act(async () => {
+      pending.resolve(snapshot);
+      await pending.promise;
+    });
+    expect(observedStates.at(-1)?.snapshot?.connectionStatus).toBe("offline");
+
+    await act(async () => root.unmount());
+  });
+
   it("discards an older profile response when the route changes", async () => {
     const oldResponse = Promise.withResolvers<typeof snapshot>();
     const newSnapshot = {

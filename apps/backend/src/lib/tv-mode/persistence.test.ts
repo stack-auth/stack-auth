@@ -2,6 +2,9 @@ import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   BooleanTrue,
+  CustomerType,
+  PurchaseCreationSource,
+  SubscriptionStatus,
   TvEventOccurrenceLifecycle,
   TvEventPresentationClass,
   TvEventType,
@@ -9,6 +12,7 @@ import {
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import {
   claimEvaluator,
+  loadTvSubscriptionCollectionOutcomes,
   persistEmailEvaluation,
   readTvEmailState,
   synchronizeTvProfileAssignments,
@@ -26,6 +30,7 @@ import {
   deleteTvProfile,
   duplicateSavedTvProfile,
   TvBuiltInProfileMutationError,
+  TvProfileNameConflictError,
   TvProfileVersionConflictError,
   updateTvProfile,
 } from "@/lib/tv-mode/profiles";
@@ -191,6 +196,44 @@ describe.sequential("TV presentation persistence (real DB)", () => {
     expect(claims.filter((claim) => claim != null)).toHaveLength(1);
   });
 
+  it("prevents an expired evaluator claim from overwriting a newer claim", async () => {
+    const firstAt = new Date("2026-07-29T12:00:00.000Z");
+    const staleClaim = await claimEvaluator(firstTenancy, "email-delivery", firstAt);
+    if (staleClaim == null) throw new Error("The first evaluator claim was not acquired");
+    const secondAt = new Date(firstAt.getTime() + 60_001);
+    const currentClaim = await claimEvaluator(firstTenancy, "email-delivery", secondAt);
+    if (currentClaim == null) throw new Error("The replacement evaluator claim was not acquired");
+    const activationState = {
+      ruleVersion: 2,
+      activeClass: null,
+      candidate: {
+        rulePath: "standard",
+        presentationClass: "incident",
+        accumulatedMs: 2 * 60_000,
+        borderlineEvaluations: 0,
+      },
+      recovery: null,
+      lastFreshEvaluatedAt: new Date(firstAt.getTime() - 60_000).toISOString(),
+      baseline: emailBaseline,
+    } satisfies TvEmailEvaluatorState;
+
+    await persistEmailEvaluation({
+      tenancy: firstTenancy,
+      claim: staleClaim,
+      previousState: activationState,
+      sample: emailSample(firstAt, 100, 10),
+      now: firstAt,
+    });
+
+    await expect(globalPrismaClient.tvEventOccurrence.count({
+      where: { tenancyId: firstTenancy.id },
+    })).resolves.toBe(0);
+    await expect(globalPrismaClient.tvEventEvaluatorState.findUniqueOrThrow({
+      where: { tenancyId_evaluatorKey: { tenancyId: firstTenancy.id, evaluatorKey: "email-delivery" } },
+      select: { nextEvaluationAt: true },
+    })).resolves.toEqual({ nextEvaluationAt: currentClaim.claimExpiresAt });
+  });
+
   it("persists versioned activation and escalation evidence without overwriting activation", async () => {
     const activatedAt = new Date("2026-07-29T12:03:00.000Z");
     const activationClaim = await claimEvaluator(firstTenancy, "email-delivery", activatedAt);
@@ -270,7 +313,80 @@ describe.sequential("TV presentation persistence (real DB)", () => {
     });
   });
 
+  it("excludes zero-value invoices from subscription collection outcomes", async () => {
+    const stripeSubscriptionId = `sub_${randomUUID()}`;
+    const startsAt = new Date("2026-08-20T12:00:00.000Z");
+    const endsAt = new Date("2026-08-20T13:00:00.000Z");
+    await globalPrismaClient.subscription.create({
+      data: {
+        tenancyId: firstTenancy.id,
+        customerId: `customer-${randomUUID()}`,
+        customerType: CustomerType.USER,
+        product: {},
+        stripeSubscriptionId,
+        status: SubscriptionStatus.active,
+        currentPeriodStart: startsAt,
+        currentPeriodEnd: endsAt,
+        cancelAtPeriodEnd: false,
+        creationSource: PurchaseCreationSource.PURCHASE_PAGE,
+      },
+    });
+    await globalPrismaClient.subscriptionInvoice.createMany({
+      data: [
+        {
+          tenancyId: firstTenancy.id,
+          stripeSubscriptionId,
+          stripeInvoiceId: `in_zero_paid_${randomUUID()}`,
+          isSubscriptionCreationInvoice: true,
+          status: "paid",
+          amountTotal: 0,
+          amountPaid: 0,
+          paidAt: new Date("2026-08-20T12:10:00.000Z"),
+        },
+        {
+          tenancyId: firstTenancy.id,
+          stripeSubscriptionId,
+          stripeInvoiceId: `in_positive_paid_${randomUUID()}`,
+          isSubscriptionCreationInvoice: false,
+          status: "paid",
+          amountTotal: 1_000,
+          amountPaid: 1_000,
+          paidAt: new Date("2026-08-20T12:20:00.000Z"),
+        },
+        {
+          tenancyId: firstTenancy.id,
+          stripeSubscriptionId,
+          stripeInvoiceId: `in_positive_failed_${randomUUID()}`,
+          isSubscriptionCreationInvoice: false,
+          status: "uncollectible",
+          amountTotal: 1_000,
+          amountPaid: 0,
+          markedUncollectibleAt: new Date("2026-08-20T12:30:00.000Z"),
+        },
+        {
+          tenancyId: firstTenancy.id,
+          stripeSubscriptionId,
+          stripeInvoiceId: `in_zero_failed_${randomUUID()}`,
+          isSubscriptionCreationInvoice: false,
+          status: "uncollectible",
+          amountTotal: 0,
+          amountPaid: 0,
+          markedUncollectibleAt: new Date("2026-08-20T12:40:00.000Z"),
+        },
+      ],
+    });
+
+    const outcomes = await loadTvSubscriptionCollectionOutcomes(firstTenancy, startsAt, endsAt);
+    expect(outcomes.sort((left, right) => left.outcomeAt.getTime() - right.outcomeAt.getTime())).toEqual([
+      { outcomeAt: new Date("2026-08-20T12:20:00.000Z"), success: true },
+      { outcomeAt: new Date("2026-08-20T12:30:00.000Z"), success: false },
+    ]);
+  });
+
   afterEach(async () => {
+    const tenancyIds = [firstTenancy.id, secondTenancy.id];
+    await globalPrismaClient.subscriptionInvoice.deleteMany({ where: { tenancyId: { in: tenancyIds } } });
+    await globalPrismaClient.subscription.deleteMany({ where: { tenancyId: { in: tenancyIds } } });
     await globalPrismaClient.project.deleteMany({ where: { id: { in: projectIds.splice(0) } } });
   });
 
@@ -488,6 +604,28 @@ describe.sequential("TV presentation persistence (real DB)", () => {
         description: "Changed after the duplicate form loaded.",
       },
     });
+  });
+
+  it("returns one stable name conflict when concurrent profile renames target the same name", async () => {
+    const template = getTvBuiltInProfile("company-pulse");
+    if (template == null) throw new Error("Company Pulse TV template is missing");
+    const [first, second] = await Promise.all([
+      createTvProfile(firstTenancy, { ...template.configuration, displayName: "Concurrent Rename A" }),
+      createTvProfile(firstTenancy, { ...template.configuration, displayName: "Concurrent Rename B" }),
+    ]);
+    if (first == null || second == null) throw new Error("TV profile persistence is unavailable");
+
+    const results = await Promise.allSettled([
+      updateTvProfile(firstTenancy, first.id, first.version, { ...first.configuration, displayName: "Shared Rename" }),
+      updateTvProfile(firstTenancy, second.id, second.version, { ...second.configuration, displayName: "Shared Rename" }),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(rejected?.status === "rejected" ? rejected.reason : null).toBeInstanceOf(TvProfileNameConflictError);
+    await expect(globalPrismaClient.tvPresentationProfile.count({
+      where: { tenancyId: firstTenancy.id, normalizedDisplayName: "shared rename" },
+    })).resolves.toBe(1);
   });
 
   it("rejects malformed saved-profile IDs before PostgreSQL UUID casts", async () => {

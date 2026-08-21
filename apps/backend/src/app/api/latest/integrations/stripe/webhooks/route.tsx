@@ -266,6 +266,20 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       throw new HexclaveAssertionError("Normalized one-time purchase disappeared after update", { tenancyId: tenancy.id, purchaseId: upsertedPurchase.id });
     }
     await bulldozerWriteOneTimePurchase(normalizedPurchase);
+    const latestPurchase = (await prisma.$queryRaw<Array<typeof normalizedPurchase>>`
+      SELECT * FROM "OneTimePurchase"
+      WHERE "tenancyId" = ${tenancy.id}::UUID AND "id" = ${upsertedPurchase.id}::UUID
+    `).at(0);
+    if (latestPurchase == null) {
+      throw new HexclaveAssertionError("One-time purchase disappeared during Bulldozer convergence", { tenancyId: tenancy.id, purchaseId: upsertedPurchase.id });
+    }
+    if (
+      latestPurchase.paidAt?.getTime() !== normalizedPurchase.paidAt?.getTime()
+      || latestPurchase.amountReceived !== normalizedPurchase.amountReceived
+      || latestPurchase.currency !== normalizedPurchase.currency
+    ) {
+      await bulldozerWriteOneTimePurchase(latestPurchase);
+    }
 
     const recipients = await getPaymentRecipients({
       tenancy,

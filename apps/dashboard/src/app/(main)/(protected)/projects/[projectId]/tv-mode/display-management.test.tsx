@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
+import { hexclaveAppInternalsSymbol, TvProfileRequestError } from "@/lib/hexclave-app-internals";
 import { clearToasts, Toaster } from "@/components/ui";
 import { getTvBuiltInProfile, type TvDisplayResource, type TvProfileResource } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -53,6 +53,12 @@ describe("TV display pairing feedback", () => {
       variant: "error",
       title: "Pairing Temporarily Paused",
       description: "Too many pairing attempts were received. Wait a few minutes, then use the latest code shown on the display.",
+    });
+  });
+
+  it("recognizes rate limiting from the typed HTTP response", () => {
+    expect(getPairingFailureNotice(new TvProfileRequestError(429))).toMatchObject({
+      title: "Pairing Temporarily Paused",
     });
   });
 
@@ -179,6 +185,7 @@ describe("TV display pairing feedback", () => {
 
     const savedButton = await screen.findByRole("button", { name: "Assignment Saved" });
     expect(savedButton.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByLabelText("Display name for Office Display").getAttribute("maxlength")).toBe("80");
 
     fireEvent.change(screen.getByLabelText("Display name for Office Display"), {
       target: { value: "Lobby Display" },

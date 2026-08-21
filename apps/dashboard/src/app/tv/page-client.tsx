@@ -203,7 +203,13 @@ export default function IndependentTvPageClient() {
         setAccessToken(null);
         // Clearing the credential disables polling and aborts this snapshot
         // request. Pairing recovery must outlive that poll-owned signal.
-        await createChallenge();
+        try {
+          await createChallenge();
+        } catch (cause) {
+          setPairingError(true);
+          setPairingRetryAttempt((attempt) => attempt + 1);
+          throw cause;
+        }
         throw new Error("TV display credential was revoked or expired.");
       }
       token = refreshed;

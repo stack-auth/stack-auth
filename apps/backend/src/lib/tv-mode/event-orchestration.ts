@@ -61,19 +61,21 @@ export function createTvPresentationAssignment(options: {
       recoveryEndsAt: null,
     };
   }
+  const timing = occurrence.presentationClass === "critical-incident"
+    ? preferences.timing.criticalIncident
+    : preferences.timing.incident;
   return {
     occurrenceId: occurrence.id,
     takeoverStartedAt,
     takeoverEndsAt: takeoverStartedAt == null
       ? null
-      : addSeconds(
-        takeoverStartedAt,
-        occurrence.presentationClass === "critical-incident"
-          ? preferences.timing.criticalIncident.takeoverSeconds
-          : preferences.timing.incident.takeoverSeconds,
-      ),
-    recoveryEndsAt: null,
-    highlightExpiresAt: null,
+      : addSeconds(takeoverStartedAt, timing.takeoverSeconds),
+    recoveryEndsAt: occurrence.resolvedAt == null
+      ? null
+      : addSeconds(occurrence.resolvedAt, timing.recoveryTakeoverSeconds),
+    highlightExpiresAt: occurrence.resolvedAt == null
+      ? null
+      : addSeconds(occurrence.resolvedAt, timing.resolvedHighlightSeconds),
     animationExpiresAt: null,
     supersededAt: null,
   };

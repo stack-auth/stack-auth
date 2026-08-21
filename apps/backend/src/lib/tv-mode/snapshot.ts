@@ -276,8 +276,9 @@ function normalizeTrend(points: TvTrendPoint[]): TvTrendPoint[] {
 }
 
 function buildCumulativeRevenueTrend(bounds: TvWindowBounds, revenueByDay: Map<string, number>): TvTrendPoint[] {
-  const firstDay = new Date(bounds.currentStartsAt);
+  const firstDay = new Date(bounds.currentEndsAt);
   firstDay.setUTCHours(0, 0, 0, 0);
+  firstDay.setUTCDate(firstDay.getUTCDate() - 29);
   const daily = Array.from({ length: 30 }, (_, index) => {
     const date = new Date(firstDay.getTime() + index * DAY_MS);
     const key = date.toISOString().slice(0, 10);
@@ -812,12 +813,14 @@ async function loadRevenueScreen(
           FROM selected_health
           WHERE outcome_at >= ${bounds.currentStartsAt}
             AND outcome_at < ${bounds.currentEndsAt}
-            AND COALESCE("amountPaid", "amountTotal", 0) > 0
             AND (
-              "paidAt" = outcome_at
+              -- Paid outcomes represent collected value; uncollectible
+              -- outcomes represent attempted value that failed collection.
+              ("paidAt" = outcome_at AND COALESCE("amountPaid", 0) > 0)
               OR (
                 "voidedAt" IS DISTINCT FROM outcome_at
                 AND "markedUncollectibleAt" = outcome_at
+                AND COALESCE("amountTotal", 0) > 0
               )
             )
           UNION ALL

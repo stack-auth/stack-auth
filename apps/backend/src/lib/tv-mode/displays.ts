@@ -306,14 +306,9 @@ export async function pollTvDisplayPairing(options: {
     ) AS "valid"
   `);
   if (validSecretRows.at(0)?.valid !== true) {
-    await globalPrismaClient.$executeRaw`
-      UPDATE "TvDisplayPairingChallenge"
-      SET "invalidAttempts" = "invalidAttempts" + 1,
-          "state" = CASE WHEN "invalidAttempts" + 1 >= 10 THEN 'REJECTED'::"TvDisplayPairingState" ELSE "state" END,
-          "rejectedAt" = CASE WHEN "invalidAttempts" + 1 >= 10 THEN ${now} ELSE "rejectedAt" END,
-          "updatedAt" = ${now}
-      WHERE "id" = ${options.challengeId}::UUID
-    `;
+    // The challenge UUID is not an authenticator. Mutating shared challenge
+    // state on an invalid high-entropy secret would let UUID disclosure become
+    // a denial-of-service primitive against the legitimate display.
     return { status: "rejected" };
   }
   if (challenge.lastPolledAt != null && now.getTime() - challenge.lastPolledAt.getTime() < TV_DISPLAY_POLLING_INTERVAL_SECONDS * 1000) {

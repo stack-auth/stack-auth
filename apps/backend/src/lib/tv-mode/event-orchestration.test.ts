@@ -81,15 +81,15 @@ describe("TV event presentation orchestration", () => {
       preferences: preferences(),
       takeoverStartedAt: occurredAt,
     });
-    const incidentAssignment = {
-      ...createTvPresentationAssignment({
-        occurrence: incident,
-        preferences: preferences(),
-        takeoverStartedAt: occurredAt,
-      }),
+    const incidentAssignment = createTvPresentationAssignment({
+      occurrence: incident,
+      preferences: preferences(),
+      takeoverStartedAt: occurredAt,
+    });
+    expect(incidentAssignment).toMatchObject({
       recoveryEndsAt: new Date("2026-07-29T10:21:00.000Z"),
       highlightExpiresAt: new Date("2026-07-29T16:20:00.000Z"),
-    };
+    });
     expect(deriveTvPresentation({
       now: new Date("2026-07-29T10:20:20.000Z"),
       occurrences: [celebration, incident],

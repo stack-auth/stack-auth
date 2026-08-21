@@ -325,12 +325,12 @@ export const ALL_APPS_FRONTEND = {
       {
         displayName: "Profiles",
         href: ".",
-        matchPath: (relativePart) => /^\/projects\/[^/]+\/tv-mode(?:\/profiles(?:\/.*)?)?\/?$/.test(relativePart),
+        matchPath: (relativePart) => /^\/projects\/[^/]+\/tv-mode(?:\/profiles(?:\/.*)?)?\/?$/.test(new URL(relativePart, DUMMY_ORIGIN).pathname),
       },
       {
         displayName: "Displays",
         href: "displays",
-        matchPath: (relativePart) => /^\/projects\/[^/]+\/tv-mode\/displays\/?$/.test(relativePart),
+        matchPath: (relativePart) => /^\/projects\/[^/]+\/tv-mode\/displays\/?$/.test(new URL(relativePart, DUMMY_ORIGIN).pathname),
       },
     ],
     screenshots: [],

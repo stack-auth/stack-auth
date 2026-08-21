@@ -365,26 +365,35 @@ function getStripeInvoiceOutcomeTimestamps(
   event: Pick<Stripe.Event, "created" | "type">,
 ): {
   paidAt: Date | null,
+  paidAtIsExact: boolean,
   markedUncollectibleAt: Date | null,
+  markedUncollectibleAtIsExact: boolean,
   voidedAt: Date | null,
+  voidedAtIsExact: boolean,
 } {
   const transitionTimestamp = (timestamp: number | null | undefined) => timestamp == null ? null : new Date(timestamp * 1000);
   const statusTransitions = getStripeInvoiceStatusTransitions(invoice);
   const eventTimestamp = transitionTimestamp(event.created);
+  const exactPaidAt = transitionTimestamp(statusTransitions?.paid_at);
+  const exactMarkedUncollectibleAt = transitionTimestamp(statusTransitions?.marked_uncollectible_at);
+  const exactVoidedAt = transitionTimestamp(statusTransitions?.voided_at);
   return {
     // The transition object is the most precise source. Some webhook payloads
     // omit it, but an exact outcome event's own Stripe timestamp is still
     // authoritative evidence of the successful or terminal transition.
-    paidAt: transitionTimestamp(statusTransitions?.paid_at)
+    paidAt: exactPaidAt
       ?? (
         event.type === "invoice.paid" || event.type === "invoice.payment_succeeded"
           ? eventTimestamp
           : null
       ),
-    markedUncollectibleAt: transitionTimestamp(statusTransitions?.marked_uncollectible_at)
+    paidAtIsExact: exactPaidAt != null,
+    markedUncollectibleAt: exactMarkedUncollectibleAt
       ?? (event.type === "invoice.marked_uncollectible" ? eventTimestamp : null),
-    voidedAt: transitionTimestamp(statusTransitions?.voided_at)
+    markedUncollectibleAtIsExact: exactMarkedUncollectibleAt != null,
+    voidedAt: exactVoidedAt
       ?? (event.type === "invoice.voided" ? eventTimestamp : null),
+    voidedAtIsExact: exactVoidedAt != null,
   };
 }
 
@@ -397,32 +406,44 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
       created: occurredAtSeconds,
     })).toEqual({
       paidAt: occurredAt,
+      paidAtIsExact: false,
       markedUncollectibleAt: null,
+      markedUncollectibleAtIsExact: false,
       voidedAt: null,
+      voidedAtIsExact: false,
     });
     expect(getStripeInvoiceOutcomeTimestamps({}, {
       type: "invoice.payment_succeeded",
       created: occurredAtSeconds,
     })).toEqual({
       paidAt: occurredAt,
+      paidAtIsExact: false,
       markedUncollectibleAt: null,
+      markedUncollectibleAtIsExact: false,
       voidedAt: null,
+      voidedAtIsExact: false,
     });
     expect(getStripeInvoiceOutcomeTimestamps({}, {
       type: "invoice.marked_uncollectible",
       created: occurredAtSeconds,
     })).toEqual({
       paidAt: null,
+      paidAtIsExact: false,
       markedUncollectibleAt: occurredAt,
+      markedUncollectibleAtIsExact: false,
       voidedAt: null,
+      voidedAtIsExact: false,
     });
     expect(getStripeInvoiceOutcomeTimestamps({}, {
       type: "invoice.voided",
       created: occurredAtSeconds,
     })).toEqual({
       paidAt: null,
+      paidAtIsExact: false,
       markedUncollectibleAt: null,
+      markedUncollectibleAtIsExact: false,
       voidedAt: occurredAt,
+      voidedAtIsExact: false,
     });
   });
 
@@ -435,13 +456,23 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
       created: 1_787_098_400,
     })).toEqual({
       paidAt: new Date(paidAtSeconds * 1000),
+      paidAtIsExact: true,
       markedUncollectibleAt: null,
+      markedUncollectibleAtIsExact: false,
       voidedAt: null,
+      voidedAtIsExact: false,
     });
     expect(getStripeInvoiceOutcomeTimestamps({}, {
       type: "invoice.updated",
       created: 1_787_098_400,
-    })).toEqual({ paidAt: null, markedUncollectibleAt: null, voidedAt: null });
+    })).toEqual({
+      paidAt: null,
+      paidAtIsExact: false,
+      markedUncollectibleAt: null,
+      markedUncollectibleAtIsExact: false,
+      voidedAt: null,
+      voidedAtIsExact: false,
+    });
   });
 });
 
@@ -472,7 +503,14 @@ export async function upsertStripeInvoice(
   // Stripe's wire payload may omit this expansion even though the installed
   // SDK types currently mark it required. Keep webhook normalization tolerant
   // without weakening the rest of the invoice contract.
-  const { paidAt, markedUncollectibleAt, voidedAt } = getStripeInvoiceOutcomeTimestamps(invoice, event);
+  const {
+    paidAt,
+    paidAtIsExact,
+    markedUncollectibleAt,
+    markedUncollectibleAtIsExact,
+    voidedAt,
+    voidedAtIsExact,
+  } = getStripeInvoiceOutcomeTimestamps(invoice, event);
 
   // dual write - prisma and bulldozer
   const upsertedInvoice = await prisma.subscriptionInvoice.upsert({
@@ -507,23 +545,37 @@ export async function upsertStripeInvoice(
     SET
       "paidAt" = CASE
         WHEN ${paidAt}::TIMESTAMP IS NULL THEN "paidAt"
-        ELSE GREATEST("paidAt", ${paidAt}::TIMESTAMP)
+        WHEN ${paidAtIsExact} THEN ${paidAt}::TIMESTAMP
+        ELSE COALESCE("paidAt", ${paidAt}::TIMESTAMP)
       END,
       "markedUncollectibleAt" = CASE
         WHEN ${markedUncollectibleAt}::TIMESTAMP IS NULL THEN "markedUncollectibleAt"
-        ELSE GREATEST("markedUncollectibleAt", ${markedUncollectibleAt}::TIMESTAMP)
+        WHEN ${markedUncollectibleAtIsExact} THEN ${markedUncollectibleAt}::TIMESTAMP
+        ELSE COALESCE("markedUncollectibleAt", ${markedUncollectibleAt}::TIMESTAMP)
       END,
       "voidedAt" = CASE
         WHEN ${voidedAt}::TIMESTAMP IS NULL THEN "voidedAt"
-        ELSE GREATEST("voidedAt", ${voidedAt}::TIMESTAMP)
+        WHEN ${voidedAtIsExact} THEN ${voidedAt}::TIMESTAMP
+        ELSE COALESCE("voidedAt", ${voidedAt}::TIMESTAMP)
       END,
       "currency" = COALESCE(UPPER(${invoice.currency}), "currency"),
       "amountPaid" = CASE
         WHEN ${paidAt}::TIMESTAMP IS NOT NULL
-          AND ("paidAt" IS NULL OR ${paidAt}::TIMESTAMP >= "paidAt")
+          AND (${paidAtIsExact} OR "paidAt" IS NULL)
           THEN ${invoice.amount_paid}
         ELSE "amountPaid"
       END
+    WHERE "tenancyId" = ${tenancy.id}::UUID
+      AND "id" = ${upsertedInvoice.id}::UUID
+  `;
+  await prisma.$executeRaw`
+    UPDATE "SubscriptionInvoice"
+    SET "status" = CASE
+      WHEN "paidAt" IS NOT NULL AND "paidAt" = GREATEST("paidAt", "markedUncollectibleAt", "voidedAt") THEN 'paid'
+      WHEN "markedUncollectibleAt" IS NOT NULL AND "markedUncollectibleAt" = GREATEST("paidAt", "markedUncollectibleAt", "voidedAt") THEN 'uncollectible'
+      WHEN "voidedAt" IS NOT NULL AND "voidedAt" = GREATEST("paidAt", "markedUncollectibleAt", "voidedAt") THEN 'void'
+      ELSE "status"
+    END
     WHERE "tenancyId" = ${tenancy.id}::UUID
       AND "id" = ${upsertedInvoice.id}::UUID
   `;
@@ -538,4 +590,18 @@ export async function upsertStripeInvoice(
     WHERE "tenancyId" = ${tenancy.id}::UUID AND "id" = ${upsertedInvoice.id}::UUID
   `).at(0) ?? throwErr("Normalized subscription invoice disappeared after update");
   await bulldozerWriteSubscriptionInvoice(normalizedInvoice);
+  const latestInvoice = (await prisma.$queryRaw<Array<typeof normalizedInvoice>>`
+    SELECT * FROM "SubscriptionInvoice"
+    WHERE "tenancyId" = ${tenancy.id}::UUID AND "id" = ${upsertedInvoice.id}::UUID
+  `).at(0) ?? throwErr("Subscription invoice disappeared during Bulldozer convergence");
+  if (
+    latestInvoice.status !== normalizedInvoice.status
+    || latestInvoice.paidAt?.getTime() !== normalizedInvoice.paidAt?.getTime()
+    || latestInvoice.markedUncollectibleAt?.getTime() !== normalizedInvoice.markedUncollectibleAt?.getTime()
+    || latestInvoice.voidedAt?.getTime() !== normalizedInvoice.voidedAt?.getTime()
+    || latestInvoice.amountPaid !== normalizedInvoice.amountPaid
+    || latestInvoice.currency !== normalizedInvoice.currency
+  ) {
+    await bulldozerWriteSubscriptionInvoice(latestInvoice);
+  }
 }

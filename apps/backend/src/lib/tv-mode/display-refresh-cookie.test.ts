@@ -10,14 +10,14 @@ describe("TV display refresh cookie policy", () => {
       httpOnly: true,
       secure: false,
       sameSite: "strict",
-      path: "/api/latest/tv-displays",
+      path: "/api",
       maxAge: 90 * 24 * 60 * 60,
     });
     expect(clearedTvDisplayRefreshCookieOptions()).toEqual({
       httpOnly: true,
       secure: false,
       sameSite: "strict",
-      path: "/api/latest/tv-displays",
+      path: "/api",
       expires: new Date(0),
       maxAge: 0,
     });

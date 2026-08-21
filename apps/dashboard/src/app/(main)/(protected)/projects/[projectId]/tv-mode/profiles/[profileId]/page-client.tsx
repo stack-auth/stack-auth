@@ -17,7 +17,7 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import type { TvProfileResource } from "@hexclave/shared/dist/interface/admin-tv-mode";
@@ -225,12 +225,15 @@ export default function PageClient() {
   const [resource, setResource] = useState<TvProfileResource | null>(null);
   const [draft, setDraft] = useState<TvProfileFixture | null>(null);
   const [saved, setSaved] = useState<TvProfileFixture | null>(null);
+  const [resetDraft, setResetDraft] = useState<TvProfileFixture | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [savedNoticeVisible, setSavedNoticeVisible] = useState(false);
+  const draftRef = useRef<TvProfileFixture | null>(null);
+  draftRef.current = draft;
   const { setNeedConfirm } = useRouterConfirm();
   const { launchPresentation, popupBlocked } = useTvPresentationLauncher(projectId);
 
@@ -245,6 +248,7 @@ export default function PageClient() {
         setResource(loaded);
         setDraft(cloneProfile(editorDraft));
         setSaved(savedDraft);
+        setResetDraft(cloneProfile(editorDraft));
       } catch {
         if (active) setLoadError(true);
       } finally {
@@ -299,11 +303,15 @@ export default function PageClient() {
         actions={
           <div className="flex gap-2">
             <DesignButton variant="outline" size="sm" onClick={async () => {
-              const duplicated = await duplicateTvProfileOrThrow(
-                adminApp,
-                resource,
-                `${resource.configuration.displayName} Copy`,
-              );
+              const duplicated = resource.origin === "saved"
+                ? await duplicateTvProfileOrThrow(
+                  adminApp,
+                  resource,
+                  `${resource.configuration.displayName} Copy`,
+                )
+                : await createTvProfileOrThrow(adminApp, editorDraftToProfileConfiguration(
+                  createTvProfileEditorDraft(resource, true),
+                ));
               window.location.assign(urlString`/projects/${projectId}/tv-mode/profiles/${duplicated.id}`);
             }}>
               Duplicate
@@ -479,6 +487,8 @@ export default function PageClient() {
                     size="lg"
                     options={[
                       { value: "15", label: "15 seconds" },
+                      { value: "16", label: "16 seconds" },
+                      { value: "18", label: "18 seconds" },
                       { value: "20", label: "20 seconds" },
                       { value: "30", label: "30 seconds" },
                     ]}
@@ -786,18 +796,19 @@ export default function PageClient() {
           </div>
           <div className="flex gap-2">
             <DesignButton variant="outline" size="sm" disabled={!hasChanges} onClick={() => {
-              setDraft(cloneProfile(saved));
+              setDraft(cloneProfile(resetDraft ?? saved));
               setSavedNoticeVisible(false);
             }}>
               Reset
             </DesignButton>
-            {resource.origin === "saved" ? (
+            {resource.origin === "saved" && !createFromTemplate ? (
               <DesignButton variant="outline" size="sm" onClick={() => setDeleteConfirmationOpen(true)}>
                 Delete Profile
               </DesignButton>
             ) : null}
             <DesignButton size="sm" disabled={!hasChanges || draft.displayName.trim().length === 0} onClick={async () => {
               setSaveError(null);
+              const submittedDraft = draft;
               try {
                 const configuration = editorDraftToProfileConfiguration({
                   ...draft,
@@ -808,9 +819,11 @@ export default function PageClient() {
                   : await createTvProfileOrThrow(adminApp, configuration);
                 const nextDraft = profileResourceToEditorDraft(savedResource);
                 setResource(savedResource);
-                setDraft(cloneProfile(nextDraft));
                 setSaved(cloneProfile(nextDraft));
-                setSavedNoticeVisible(true);
+                setResetDraft(cloneProfile(nextDraft));
+                const draftChangedWhileSaving = draftRef.current !== submittedDraft;
+                if (!draftChangedWhileSaving) setDraft(cloneProfile(nextDraft));
+                setSavedNoticeVisible(!draftChangedWhileSaving);
                 if (savedResource.id !== profileId) {
                   window.location.assign(urlString`/projects/${projectId}/tv-mode/profiles/${savedResource.id}`);
                 }
@@ -826,7 +839,7 @@ export default function PageClient() {
         </div>
       </PageLayout>
 
-      {resource.origin === "saved" ? (
+      {resource.origin === "saved" && !createFromTemplate ? (
         <TvProfileDeleteDialog
           open={deleteConfirmationOpen}
           onOpenChange={setDeleteConfirmationOpen}

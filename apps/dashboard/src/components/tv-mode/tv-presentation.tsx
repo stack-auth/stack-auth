@@ -699,7 +699,7 @@ export function TvPresentation({
       <CelebrationFireworks
         ambientActive={celebrationAnimationActive}
         eventId={takeoverIsCelebration ? takeoverEventId : highlight?.event.id ?? null}
-        entryBurst={reducedMotion !== true && takeoverIsCelebration}
+        entryBurst={reducedMotion !== true && takeoverIsCelebration && animationVisible}
         foreground
         takeoverActive={takeoverIsCelebration}
       />

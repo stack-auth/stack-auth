@@ -530,7 +530,9 @@ function RevenuePaymentsScreen({
   headerAccessory?: ReactNode,
 }) {
   const financials = data.financials;
-  const trend = financials.visibility === "exact" ? financials.revenueTrend : financials.normalizedRevenueTrend;
+  const trend = financials.visibility === "exact"
+    ? financials.revenueTrend.map((point) => ({ ...point, value: point.value / 100 }))
+    : financials.normalizedRevenueTrend;
   return (
     <TvScreenFrame eyebrow="Trailing 30 Days" title="Revenue & Payments" description="Gross collected revenue and subscription collection health." icon={<CurrencyDollarIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-emerald-300" headerAccessory={headerAccessory}>
       <div className="grid h-full min-h-0 grid-cols-[0.78fr_1.22fr] gap-[clamp(2rem,5vw,12rem)]">

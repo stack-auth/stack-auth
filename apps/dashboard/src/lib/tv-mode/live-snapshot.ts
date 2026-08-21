@@ -57,6 +57,7 @@ export function useTvSnapshotPolling(options: {
   const [snapshot, setSnapshot] = useState<TvSnapshot | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [unavailableReason, setUnavailableReason] = useState<"offline" | "error" | null>(null);
+  const [publishedSourceKey, setPublishedSourceKey] = useState(sourceKey);
   const inFlightRef = useRef(false);
   const requestIdRef = useRef(0);
   const snapshotRef = useRef<TvSnapshot | null>(null);
@@ -64,13 +65,16 @@ export function useTvSnapshotPolling(options: {
   const enabledRef = useRef(enabled);
   const failureProfileIdRef = useRef(failureProfileId);
   const loadSnapshotRef = useRef(loadSnapshot);
+  const sourceKeyRef = useRef(sourceKey);
   enabledRef.current = enabled;
   failureProfileIdRef.current = failureProfileId;
   loadSnapshotRef.current = loadSnapshot;
+  sourceKeyRef.current = sourceKey;
 
   const refresh = useCallback(async () => {
     if (!enabledRef.current || inFlightRef.current) return;
     inFlightRef.current = true;
+    const requestSourceKey = sourceKeyRef.current;
     const requestId = ++requestIdRef.current;
     const requestController = new AbortController();
     activeRequestRef.current = requestController;
@@ -87,8 +91,12 @@ export function useTvSnapshotPolling(options: {
         timeout,
       ]);
       if (requestId !== requestIdRef.current) return;
-      snapshotRef.current = nextSnapshot;
-      setSnapshot(nextSnapshot);
+      const connectedSnapshot = navigator.onLine
+        ? nextSnapshot
+        : getRetainedSnapshotState(nextSnapshot, new Date(), false);
+      snapshotRef.current = connectedSnapshot;
+      setPublishedSourceKey(requestSourceKey);
+      setSnapshot(connectedSnapshot);
       setUnavailableReason(null);
     } catch (cause) {
       if (requestId !== requestIdRef.current) return;
@@ -97,6 +105,7 @@ export function useTvSnapshotPolling(options: {
         { cause, profileId: failureProfileIdRef.current },
       ));
       const retained = snapshotRef.current;
+      setPublishedSourceKey(requestSourceKey);
       if (retained == null) {
         setUnavailableReason(navigator.onLine ? "error" : "offline");
       } else {
@@ -122,6 +131,7 @@ export function useTvSnapshotPolling(options: {
     activeRequestRef.current = null;
     inFlightRef.current = false;
     snapshotRef.current = null;
+    setPublishedSourceKey(sourceKey);
     setSnapshot(null);
     setUnavailableReason(null);
     if (!enabled) {
@@ -179,5 +189,10 @@ export function useTvSnapshotPolling(options: {
     };
   }, [enabled, refresh, sourceKey]);
 
+  // Effects run after render. Tagging state prevents the previous project's
+  // snapshot from being observable during that otherwise unavoidable frame.
+  if (publishedSourceKey !== sourceKey) {
+    return { snapshot: null, loading: enabled, unavailableReason: null };
+  }
   return { snapshot, loading, unavailableReason };
 }

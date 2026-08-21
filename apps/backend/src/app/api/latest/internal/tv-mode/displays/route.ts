@@ -52,18 +52,21 @@ export const POST = createSmartRouteHandler({
   handler: async ({ auth, body }) => {
     const adminUserId = requireTvDisplayAdminUserId(auth.adminUserId);
     const ip = await getExactEndUserIp() ?? "unknown-untrusted-ip";
+    const rateLimitNow = new Date();
     const [adminAllowed, ipAllowed] = await Promise.all([
       consumeTvDisplayPairingRateLimit({
         identity: adminUserId,
         operation: "approval-admin",
         windowMs: 10 * 60_000,
         limit: 10,
+        now: rateLimitNow,
       }),
       consumeTvDisplayPairingRateLimit({
         identity: ip,
         operation: "approval-ip",
         windowMs: 10 * 60_000,
         limit: 20,
+        now: rateLimitNow,
       }),
     ]);
     if (!adminAllowed || !ipAllowed) throw new StatusError(429, "tv_display_pairing_rate_limited");
@@ -77,8 +80,8 @@ export const POST = createSmartRouteHandler({
         acknowledgeExactFinancials: body.acknowledgeExactFinancials,
       });
       const refundResults = await Promise.allSettled([
-        refundTvDisplayPairingRateLimit({ identity: adminUserId, operation: "approval-admin", windowMs: 10 * 60_000 }),
-        refundTvDisplayPairingRateLimit({ identity: ip, operation: "approval-ip", windowMs: 10 * 60_000 }),
+        refundTvDisplayPairingRateLimit({ identity: adminUserId, operation: "approval-admin", windowMs: 10 * 60_000, now: rateLimitNow }),
+        refundTvDisplayPairingRateLimit({ identity: ip, operation: "approval-ip", windowMs: 10 * 60_000, now: rateLimitNow }),
       ]);
       for (const refundResult of refundResults) {
         if (refundResult.status === "rejected") {

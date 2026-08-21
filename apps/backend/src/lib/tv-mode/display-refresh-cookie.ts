@@ -8,7 +8,9 @@ function baseTvDisplayRefreshCookieOptions(): ResponseCookieOptions {
     httpOnly: true,
     secure: getNodeEnvironment() !== "development" && getNodeEnvironment() !== "test",
     sameSite: "strict",
-    path: "/api/latest/tv-displays",
+    // Both /api/latest and the supported /api/v1 alias must receive the same
+    // host-only credential without widening it beyond backend API routes.
+    path: "/api",
   };
 }
 

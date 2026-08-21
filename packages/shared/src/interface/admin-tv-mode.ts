@@ -19,6 +19,11 @@ export const TV_MINIMUM_PAYMENT_ATTEMPTS = 10;
 export const TV_MINIMUM_EMAIL_OUTCOMES = 20;
 export const TV_SNAPSHOT_POLL_INTERVAL_MS = 15_000;
 export const TV_SNAPSHOT_STALE_AFTER_MS = 45_000;
+export const TV_PROFILE_DURATION_SECONDS = [15, 16, 18, 20, 30] as const;
+export const TV_PROFILE_DISPLAY_NAME_MAX_LENGTH = 80;
+export const TV_TAKEOVER_DURATION_SECONDS = [30, 60, 90, 120] as const;
+export const TV_CELEBRATION_ANIMATION_DURATION_SECONDS = [600, 1800, 3600, 7200] as const;
+export const TV_EVENT_HIGHLIGHT_DURATION_SECONDS = [3600, 21600, 43200, 86400] as const;
 
 export function calculateTvPaymentSuccessPercent(applicableAttempts: number, successfulAttempts: number): number | null {
   if (applicableAttempts < TV_MINIMUM_PAYMENT_ATTEMPTS) return null;
@@ -278,7 +283,14 @@ const TvEventSchema = yupObject({
   sourceLabel: yupString().defined(),
   occurredAt: yupString().defined(),
   updatedAt: yupString().defined(),
-}).noUnknown().defined();
+}).noUnknown().defined().test({
+  name: "event-type-presentation-class",
+  message: "TV event type and presentation class are inconsistent",
+  skipAbsent: true,
+  test: (event) => event.type === "user-milestone"
+    ? event.presentationClass === "celebration"
+    : event.presentationClass === "incident" || event.presentationClass === "critical-incident",
+});
 
 const TvPresentedTakeoverSchema = yupObject({
   event: TvEventSchema,
@@ -292,7 +304,13 @@ const TvPresentedTakeoverSchema = yupObject({
   test: (takeover) => {
     const startedAt = Date.parse(takeover.startedAt);
     const endsAt = Date.parse(takeover.endsAt);
-    if (!Number.isFinite(startedAt) || !Number.isFinite(endsAt) || endsAt <= startedAt) return false;
+    const maximumTakeoverDurationMs = Math.max(...TV_TAKEOVER_DURATION_SECONDS) * 1000;
+    if (
+      !Number.isFinite(startedAt)
+      || !Number.isFinite(endsAt)
+      || endsAt <= startedAt
+      || endsAt - startedAt > maximumTakeoverDurationMs
+    ) return false;
     if (takeover.variant === "celebration") {
       return takeover.event.presentationClass === "celebration"
         && takeover.event.status === "active"
@@ -409,9 +427,6 @@ export type TvPresentedEventHighlight = yup.InferType<typeof TvPresentedEventHig
 export type TvProfileSnapshot = yup.InferType<typeof TvProfileSnapshotSchema>;
 export type TvSnapshot = yup.InferType<typeof TvSnapshotSchema>;
 
-export const TV_PROFILE_DURATION_SECONDS = [15, 16, 18, 20, 30] as const;
-export const TV_PROFILE_DISPLAY_NAME_MAX_LENGTH = 80;
-
 export function normalizeTvProfileDisplayName(displayName: string): string {
   return displayName.normalize("NFKC").trim().toLocaleLowerCase("en-US");
 }
@@ -433,10 +448,6 @@ export const TvProfilePlaylistEntrySchema = yupObject({
   durationSecondsOverride: yupNumber().integer().oneOf(TV_PROFILE_DURATION_SECONDS).nullable().defined(),
 }).noUnknown().defined();
 export const TvProfilePlaylistSchema = yupArray(TvProfilePlaylistEntrySchema).min(1).defined();
-
-export const TV_TAKEOVER_DURATION_SECONDS = [30, 60, 90, 120] as const;
-export const TV_CELEBRATION_ANIMATION_DURATION_SECONDS = [600, 1800, 3600, 7200] as const;
-export const TV_EVENT_HIGHLIGHT_DURATION_SECONDS = [3600, 21600, 43200, 86400] as const;
 
 export const TvInterruptionPreferencesSchema = yupObject({
   incidentTypes: yupObject({

@@ -97,6 +97,10 @@ describe.sequential("independent TV display persistence", () => {
       challengeId: challenge.challengeId,
       deviceSecret: "not-the-device-secret",
     })).resolves.toEqual({ status: "rejected" });
+    await expect(globalPrismaClient.tvDisplayPairingChallenge.findUniqueOrThrow({
+      where: { id: challenge.challengeId },
+      select: { invalidAttempts: true, state: true },
+    })).resolves.toEqual({ invalidAttempts: 0, state: "APPROVED" });
 
     const paired = await pollTvDisplayPairing({ challengeId: challenge.challengeId, deviceSecret: challenge.deviceSecret });
     expect(paired.status).toBe("paired");

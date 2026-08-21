@@ -125,7 +125,7 @@ describe("TvSnapshotSchema", () => {
     const email = snapshot.screens[3];
     await expect(TvEmailHealthScreenSchema.validate({
       ...email,
-      data: { ...email.data, sent: 20, assessableSends: 20, delivered: 19, bounced: 0, errors: 0 },
+      data: { ...email.data, sent: 20, assessableSends: 10, delivered: 19, bounced: 0, errors: 0 },
     }, { strict: true })).rejects.toThrow("email outcome counts are inconsistent");
   });
 
@@ -253,6 +253,30 @@ describe("TvSnapshotSchema", () => {
         highlight: null,
       },
     }, { strict: true })).rejects.toThrow();
+    await expect(TvSnapshotSchema.validate({
+      ...snapshot,
+      presentation: {
+        takeover: {
+          event,
+          variant: "critical-incident",
+          startedAt: snapshot.generatedAt,
+          endsAt: "2026-07-25T12:02:01.000Z",
+        },
+        highlight: null,
+      },
+    }, { strict: true })).rejects.toThrow("deadline");
+    await expect(TvSnapshotSchema.validate({
+      ...snapshot,
+      presentation: {
+        takeover: {
+          event: { ...event, type: "user-milestone" },
+          variant: "critical-incident",
+          startedAt: snapshot.generatedAt,
+          endsAt: "2026-07-25T12:01:00.000Z",
+        },
+        highlight: null,
+      },
+    }, { strict: true })).rejects.toThrow("event type and presentation class");
     await expect(TvSnapshotSchema.validate({
       ...snapshot,
       presentation: {

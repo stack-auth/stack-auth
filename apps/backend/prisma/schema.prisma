@@ -206,7 +206,7 @@ enum TvFinancialVisibility {
 }
 
 model TvPresentationProfile {
-  id        String  @id @default(uuid()) @db.Uuid
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenancyId String  @db.Uuid
   tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
@@ -236,7 +236,7 @@ enum TvDisplayPairingState {
 }
 
 model TvDisplay {
-  id        String  @id @default(uuid()) @db.Uuid
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenancyId String  @db.Uuid
   tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
@@ -263,7 +263,7 @@ model TvDisplay {
 }
 
 model TvDisplayPairingChallenge {
-  id               String @id @default(uuid()) @db.Uuid
+  id               String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   pairingCode      String @unique @db.VarChar(8)
   deviceSecretHash String @unique @db.VarChar(64)
   state            TvDisplayPairingState @default(PENDING)
@@ -288,7 +288,7 @@ model TvDisplayPairingChallenge {
 }
 
 model TvDisplayCredential {
-  id        String @id @default(uuid()) @db.Uuid
+  id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   displayId String @db.Uuid
   display   TvDisplay @relation(fields: [displayId], references: [id], onDelete: Cascade)
 
@@ -375,6 +375,8 @@ model TvEventOccurrence {
   @@id([tenancyId, id])
   @@unique([tenancyId, deduplicationKey], map: "TvEventOccurrence_tenancy_deduplication_key")
   @@index([tenancyId, lifecycle, presentationClass, activatedAt(sort: Desc), id], name: "TvEventOccurrence_active_lookup_idx")
+  @@index([tenancyId, occurredAt(sort: Desc), id], name: "TvEventOccurrence_occurred_lookup_idx")
+  @@index([tenancyId, resolvedAt(sort: Desc), id], name: "TvEventOccurrence_resolved_lookup_idx")
 }
 
 model TvEventEvaluatorState {

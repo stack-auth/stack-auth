@@ -430,6 +430,24 @@ describe("TV interruption presentation", () => {
     expect(container.querySelector("[data-takeover-effects='active']")).not.toBeNull();
   });
 
+  it("does not replay a celebration entrance after its animation deadline", () => {
+    const snapshot = getTvFixtureSnapshot("project-a", "company-pulse", "celebration-takeover");
+    if (snapshot == null || snapshot.presentation.highlight == null) throw new Error("Missing celebration takeover fixture");
+    const expiredAnimationSnapshot = {
+      ...snapshot,
+      presentation: {
+        ...snapshot.presentation,
+        highlight: {
+          ...snapshot.presentation.highlight,
+          animationExpiresAt: snapshot.generatedAt,
+        },
+      },
+    };
+
+    const { container } = render(<TvPresentation snapshot={expiredAnimationSnapshot} onExit={() => undefined} previewData />);
+    expect(container.querySelectorAll("[data-entry-burst='active']")).toHaveLength(0);
+  });
+
   it("preserves celebration canvases across polling and screen rotation", async () => {
     const snapshot = getTvFixtureSnapshot("project-a", "company-pulse", "celebration-highlight");
     if (snapshot == null) throw new Error("Missing celebration Highlight fixture");

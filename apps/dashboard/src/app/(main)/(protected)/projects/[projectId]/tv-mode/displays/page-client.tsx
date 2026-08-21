@@ -10,12 +10,13 @@ import { SimpleTooltip, toast } from "@/components/ui";
 import { fetchTvProfilesOrThrow } from "@/lib/hexclave-app-internals";
 import { getConfiguredTvDisplayUrl, isLocalTvDisplayUrl } from "@/lib/tv-mode/display-url";
 import { PageLayout } from "../../page-layout";
-import { useAdminApp } from "../../use-admin-app";
+import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { TvDisplayManagement } from "../display-management";
 
 export default function PageClient() {
   const adminApp = useAdminApp();
-  const [profiles, setProfiles] = useState<TvProfileResource[] | null>(null);
+  const projectId = useProjectId();
+  const [profilesState, setProfilesState] = useState<{ projectId: string, profiles: TvProfileResource[] } | null>(null);
   const [defaultProfileId, setDefaultProfileId] = useState("company-pulse");
   const [loadError, setLoadError] = useState(false);
   const [tvDisplayUrl, setTvDisplayUrl] = useState<string | null>(null);
@@ -30,18 +31,23 @@ export default function PageClient() {
       try {
         const result = await fetchTvProfilesOrThrow(adminApp);
         if (!active) return;
-        setProfiles([...result.savedProfiles, ...result.templates]);
+        setProfilesState({ projectId, profiles: [...result.savedProfiles, ...result.templates] });
         setDefaultProfileId(result.effectiveDefaultProfileId);
         setLoadError(false);
       } catch (cause) {
         captureError("tv-display-profile-load-failed", cause);
-        if (active) setLoadError(true);
+        if (active) {
+          setProfilesState(null);
+          setLoadError(true);
+        }
       }
     });
     return () => {
       active = false;
     };
-  }, [adminApp]);
+  }, [adminApp, projectId]);
+
+  const profiles = profilesState?.projectId === projectId ? profilesState.profiles : null;
 
   const copyTvDisplayUrl = async () => {
     if (tvDisplayUrl == null) return;
