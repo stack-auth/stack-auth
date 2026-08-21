@@ -3,6 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { repairStandaloneSwcHelpers } from "./repair-standalone-swc-helpers.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const dashboardRoot = resolve(scriptDir, "..");
@@ -42,12 +43,15 @@ runOrExit("pnpm", ["exec", "next", "build"], {
     NODE_ENV: "production",
     STACK_NEXT_CONFIG_DISABLE_TYPESCRIPT: "true",
     HEXCLAVE_DASHBOARD_BUILD_FOR_RDE: "true",
+    HEXCLAVE_DASHBOARD_NEXT_DIST_DIR: distDir,
   },
 });
 
 if (!existsSync(standaloneServerPath)) {
   throw new Error(`Dashboard standalone server was not created at ${standaloneServerPath}.`);
 }
+
+repairStandaloneSwcHelpers(standaloneRoot);
 
 copyIfExists(join(nextOutputRoot, "static"), join(standaloneDashboardRoot, distDir, "static"));
 copyIfExists(join(dashboardRoot, "public"), join(standaloneDashboardRoot, "public"));
