@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { BooleanTrue, CustomerType, PurchaseCreationSource, SubscriptionStatus } from "@/generated/prisma/client";
 import { getTenancy } from "@/lib/tenancies";
 import { globalPrismaClient } from "@/prisma-client";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { applyStripeInvoiceOutcome, type StripeInvoiceOutcomeTimestamps } from "./stripe";
 
 describe.sequential("Stripe invoice outcome ordering (real DB)", () => {
@@ -109,8 +109,8 @@ describe.sequential("Stripe invoice outcome ordering (real DB)", () => {
     };
   }
 
-  afterAll(async () => {
-    await globalPrismaClient.project.deleteMany({ where: { id: { in: projectIds } } });
+  afterEach(async () => {
+    await globalPrismaClient.project.deleteMany({ where: { id: { in: projectIds.splice(0) } } });
   });
 
   it("keeps the newer exact-paid outcome when an older event arrives later", async () => {

@@ -11,11 +11,6 @@ import {
 } from "./live-snapshot";
 
 const fetchTvSnapshotMock = vi.hoisted(() => vi.fn());
-Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
-  configurable: true,
-  value: true,
-});
-
 vi.mock("@/lib/hexclave-app-internals", () => ({
   fetchTvSnapshotOrThrow: fetchTvSnapshotMock,
 }));
@@ -65,16 +60,30 @@ function PollingProbe({
 }
 
 describe("useTvLiveSnapshot", () => {
+  const previousReactActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT;
+
   beforeEach(() => {
     vi.useFakeTimers();
     fetchTvSnapshotMock.mockReset();
     fetchTvSnapshotMock.mockResolvedValue(snapshot);
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
     Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
+    Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
+      configurable: true,
+      value: true,
+    });
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    if (previousReactActEnvironment == null) {
+      delete globalThis.IS_REACT_ACT_ENVIRONMENT;
+    } else {
+      Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
+        configurable: true,
+        value: previousReactActEnvironment,
+      });
+    }
   });
 
   it("polls without overlap, pauses while hidden, and refreshes on restoration", async () => {

@@ -1,10 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearTvDisplayRefreshCookie,
   setTvDisplayRefreshCookie,
 } from "./display-refresh-cookie";
 
 describe("TV display refresh cookie policy", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("issues alias-scoped credentials while clearing the legacy broad cookie", () => {
     const set = vi.fn();
     setTvDisplayRefreshCookie({ set }, "tv-refresh", "secret");
@@ -34,6 +38,15 @@ describe("TV display refresh cookie policy", () => {
         value: "",
         options: expect.objectContaining({ expires: new Date(0), maxAge: 0 }),
       });
+    }
+  });
+
+  it("marks production refresh cookies as secure", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const set = vi.fn();
+    setTvDisplayRefreshCookie({ set }, "tv-refresh", "secret");
+    for (const [, , options] of set.mock.calls) {
+      expect(options).toEqual(expect.objectContaining({ secure: true }));
     }
   });
 });
