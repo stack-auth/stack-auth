@@ -97,6 +97,18 @@ describe.sequential("Stripe invoice outcome ordering (real DB)", () => {
     };
   }
 
+  function exactMarkedUncollectibleOutcome(eventAt: Date, markedAt: Date): StripeInvoiceOutcomeTimestamps {
+    return {
+      paymentOutcomeEventAt: eventAt,
+      paidAt: null,
+      paidAtIsExact: false,
+      markedUncollectibleAt: markedAt,
+      markedUncollectibleAtIsExact: true,
+      voidedAt: null,
+      voidedAtIsExact: false,
+    };
+  }
+
   afterAll(async () => {
     await globalPrismaClient.project.deleteMany({ where: { id: { in: projectIds } } });
   });
@@ -221,6 +233,44 @@ describe.sequential("Stripe invoice outcome ordering (real DB)", () => {
       paidAt: exactPaidAt,
       amountPaid: 10_000,
       currency: "EUR",
+    });
+  });
+
+  it("lets an older exact outcome fill a still-null terminal field", async () => {
+    const { invoice, tenancy } = await createInvoice();
+    const newerPaidEventAt = new Date("2026-08-20T12:00:00.000Z");
+    const newerPaidAt = new Date("2026-08-20T11:59:00.000Z");
+    const olderMarkedEventAt = new Date("2026-08-20T11:00:00.000Z");
+    const olderMarkedAt = new Date("2026-08-20T10:59:00.000Z");
+    await applyStripeInvoiceOutcome(globalPrismaClient, {
+      tenancyId: tenancy.id,
+      invoiceId: invoice.id,
+      currency: "usd",
+      amountPaid: 10_000,
+      outcome: exactPaidOutcome(newerPaidEventAt, newerPaidAt),
+    });
+    await applyStripeInvoiceOutcome(globalPrismaClient, {
+      tenancyId: tenancy.id,
+      invoiceId: invoice.id,
+      currency: "eur",
+      amountPaid: null,
+      outcome: exactMarkedUncollectibleOutcome(olderMarkedEventAt, olderMarkedAt),
+    });
+    await expect(globalPrismaClient.subscriptionInvoice.findUniqueOrThrow({
+      where: { tenancyId_id: { tenancyId: tenancy.id, id: invoice.id } },
+      select: {
+        paymentOutcomeEventAt: true,
+        paidAt: true,
+        amountPaid: true,
+        currency: true,
+        markedUncollectibleAt: true,
+      },
+    })).resolves.toEqual({
+      paymentOutcomeEventAt: newerPaidEventAt,
+      paidAt: newerPaidAt,
+      amountPaid: 10_000,
+      currency: "USD",
+      markedUncollectibleAt: olderMarkedAt,
     });
   });
 });

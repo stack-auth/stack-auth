@@ -546,13 +546,15 @@ export async function applyStripeInvoiceOutcome(
       END,
       "paidAt" = CASE
         WHEN ${paidAt}::TIMESTAMP IS NULL THEN "paidAt"
-        WHEN ${paidAtIsExact} AND decision.should_apply_outcome THEN ${paidAt}::TIMESTAMP
+        WHEN ${paidAtIsExact} AND (decision.should_apply_outcome OR "paidAt" IS NULL)
+          THEN ${paidAt}::TIMESTAMP
         WHEN NOT ${paidAtIsExact} THEN COALESCE("paidAt", ${paidAt}::TIMESTAMP)
         ELSE "paidAt"
       END,
       "markedUncollectibleAt" = CASE
         WHEN ${markedUncollectibleAt}::TIMESTAMP IS NULL THEN "markedUncollectibleAt"
-        WHEN ${markedUncollectibleAtIsExact} AND decision.should_apply_outcome
+        WHEN ${markedUncollectibleAtIsExact}
+          AND (decision.should_apply_outcome OR "markedUncollectibleAt" IS NULL)
           THEN ${markedUncollectibleAt}::TIMESTAMP
         WHEN NOT ${markedUncollectibleAtIsExact}
           THEN COALESCE("markedUncollectibleAt", ${markedUncollectibleAt}::TIMESTAMP)
@@ -560,7 +562,9 @@ export async function applyStripeInvoiceOutcome(
       END,
       "voidedAt" = CASE
         WHEN ${voidedAt}::TIMESTAMP IS NULL THEN "voidedAt"
-        WHEN ${voidedAtIsExact} AND decision.should_apply_outcome THEN ${voidedAt}::TIMESTAMP
+        WHEN ${voidedAtIsExact}
+          AND (decision.should_apply_outcome OR "voidedAt" IS NULL)
+          THEN ${voidedAt}::TIMESTAMP
         WHEN NOT ${voidedAtIsExact} THEN COALESCE("voidedAt", ${voidedAt}::TIMESTAMP)
         ELSE "voidedAt"
       END,

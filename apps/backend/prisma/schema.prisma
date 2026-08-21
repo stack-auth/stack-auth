@@ -2477,6 +2477,7 @@ model SubscriptionInvoice {
   amountTotal                   Int?
   hostedInvoiceUrl              String?
   paidAt                        DateTime?
+  // Event time of the newest exact invoice outcome applied; NULL means no exact outcome has been applied.
   paymentOutcomeEventAt         DateTime?
   markedUncollectibleAt         DateTime?
   voidedAt                      DateTime?
