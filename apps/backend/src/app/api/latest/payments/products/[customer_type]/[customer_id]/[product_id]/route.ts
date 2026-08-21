@@ -14,7 +14,7 @@ import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 export const DELETE = createSmartRouteHandler({
   metadata: {
     summary: "Cancel a customer's subscription product",
-    description: "Cancels at the end of the current billing period; the customer keeps the product until then. Without `subscription_id`, cancels every subscription the customer holds for this product — stackable products can have several.",
+    description: "Cancels at the end of the current billing period; the customer keeps the product until then. Without `subscription_id`, cancels every cancelable subscription the customer holds for this product — stackable products can have several; subscriptions already winding down are left as-is.",
     hidden: true,
   },
   request: yupObject({
@@ -29,7 +29,7 @@ export const DELETE = createSmartRouteHandler({
       product_id: yupString().defined(),
     }).defined(),
     query: yupObject({
-      subscription_id: yupString().optional().meta({ openapiField: { description: "Cancel only this subscription. Omit to cancel all of the customer's subscriptions for this product." } }),
+      subscription_id: yupString().optional().meta({ openapiField: { description: "Cancel only this subscription. Omit to cancel all of the customer's cancelable subscriptions for this product." } }),
     }).default(() => ({})).defined(),
   }),
   response: yupObject({
@@ -138,6 +138,7 @@ export const DELETE = createSmartRouteHandler({
     const hasStripeSubscription = subscriptions.some((subscription) => subscription.stripeSubscriptionId);
     const stripe = hasStripeSubscription ? await getStripeForAccount({ tenancy: auth.tenancy }) : undefined;
     // Without `subscription_id` this is every cancelable sub for the product.
+    let canceledCount = 0;
     for (const subscription of subscriptions) {
       let updatedSub;
       if (subscription.stripeSubscriptionId) {
@@ -157,8 +158,11 @@ export const DELETE = createSmartRouteHandler({
           // (missed webhook, or a cancel from the Stripe Dashboard). Stripe
           // rejects the update, which would otherwise surface as a 500. Report
           // the honest state rather than guessing the terminal one locally —
-          // the webhook sync is what reconciles the row.
-          throw new StatusError(400, "This subscription is already canceled.");
+          // the webhook sync is what reconciles the row. In a batch cancel,
+          // skip the stale row instead of aborting: throwing here would drop
+          // the remaining cancelable subs and report failure for cancels that
+          // already committed.
+          continue;
         }
         // Stripe's response is the authority on the boundary — the bulldozer
         // snapshot can be a stale pre-renewal period end. Snapshot fallback
@@ -211,6 +215,12 @@ export const DELETE = createSmartRouteHandler({
       }
       // dual write - prisma and bulldozer
       await bulldozerWriteSubscription(updatedSub);
+      canceledCount++;
+    }
+    if (canceledCount === 0) {
+      // Every candidate turned out already terminal at Stripe — nothing was
+      // canceled, so a success response would be a lie.
+      throw new StatusError(400, "This subscription is already canceled.");
     }
 
     // Regrant the free plan if a Hexclave billing team just lost their

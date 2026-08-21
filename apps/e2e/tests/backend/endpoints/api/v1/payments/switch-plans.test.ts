@@ -494,6 +494,16 @@ it("switches in test mode from a canceled-but-still-in-effect grant", async ({ e
   });
   expect(switchResponse.status).toBe(200);
   expect(switchResponse.body).toEqual({ success: true });
+
+  // The switch must close out the wind-down sub, not stack a second plan on
+  // top of it: "pro" is now the in-effect subscription and "basic" is gone.
+  const productsAfter = await niceBackendFetch(`/api/latest/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  expect(productsAfter.status).toBe(200);
+  const itemsAfter = (productsAfter.body as { items: { id: string, type: string }[] }).items;
+  expect(itemsAfter.find(i => i.id === "pro")?.type).toBe("subscription");
+  expect(itemsAfter.find(i => i.id === "basic")).toBeUndefined();
 }, { timeout: 30_000 });
 
 it("rejects switch in live mode without Stripe onboarding", async ({ expect }) => {
