@@ -115,7 +115,7 @@ export function getCorsHeadersInit(request: Request): HeadersInit | undefined {
 }
 
 function getCorsHeadersInitForTvOrigin(request: Request, configuredTvOrigin: string): HeadersInit | undefined {
-  const pathname = new URL(request.url).pathname;
+  const pathname = getCanonicalPathname(new URL(request.url).pathname);
   if (!pathname.startsWith("/api/")) return undefined;
   const requestOrigin = request.headers.get("origin");
   const isTvDisplayRequest = pathname.startsWith("/api/latest/tv-displays/")
@@ -233,6 +233,15 @@ import.meta.vitest?.test("getCanonicalPathname normalizes literal slashes only",
   expect(getCanonicalPathname("/api/v1")).toBe("/api/v1");
   // Percent-encoded slashes are data, not path separators — they must survive untouched.
   expect(getCanonicalPathname("/api/v1/users/foo%2Fbar")).toBe("/api/v1/users/foo%2Fbar");
+});
+
+import.meta.vitest?.test("TV CORS classification uses the canonical pathname", ({ expect }) => {
+  const headers = new Headers(getCorsHeadersInitForTvOrigin(new Request(
+    "https://api.hexclave.example/api//latest/tv-displays/auth/refresh/",
+    { headers: { origin: "https://tv.hexclave.example" } },
+  ), "https://tv.hexclave.example"));
+  expect(headers.get("access-control-allow-origin")).toBe("https://tv.hexclave.example");
+  expect(headers.get("access-control-allow-credentials")).toBe("true");
 });
 
 import.meta.vitest?.test("runRequestPipeline 308-redirects noncanonical paths", async ({ expect }) => {
