@@ -235,6 +235,7 @@ export default function PageClient() {
   const [loadedRequestKey, setLoadedRequestKey] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [savedNoticeVisible, setSavedNoticeVisible] = useState(false);
@@ -253,6 +254,7 @@ export default function PageClient() {
     setSaved(null);
     setResetDraft(null);
     setSaveError(null);
+    setDuplicateError(null);
     runAsynchronously(async () => {
       try {
         const loaded = await fetchTvProfileOrThrow(adminApp, profileId);
@@ -319,17 +321,25 @@ export default function PageClient() {
         allowContentOverflow
         actions={
           <div className="flex gap-2">
-            <DesignButton variant="outline" size="sm" onClick={async () => {
-              const duplicated = resource.origin === "saved"
-                ? await duplicateTvProfileOrThrow(
-                  adminApp,
-                  resource,
-                  createTvProfileCopyDisplayName(resource.configuration.displayName),
-                )
-                : await createTvProfileOrThrow(adminApp, editorDraftToProfileConfiguration(
-                  createTvProfileEditorDraft(resource, true),
-                ));
-              window.location.assign(urlString`/projects/${projectId}/tv-mode/profiles/${duplicated.id}`);
+            <DesignButton variant="outline" size="sm" disabled={hasChanges} onClick={async () => {
+              setDuplicateError(null);
+              try {
+                const duplicated = resource.origin === "saved"
+                  ? await duplicateTvProfileOrThrow(
+                    adminApp,
+                    resource,
+                    createTvProfileCopyDisplayName(resource.configuration.displayName),
+                  )
+                  : await createTvProfileOrThrow(adminApp, editorDraftToProfileConfiguration(
+                    createTvProfileEditorDraft(resource, true),
+                  ));
+                setNeedConfirm(false);
+                window.location.assign(urlString`/projects/${projectId}/tv-mode/profiles/${duplicated.id}`);
+              } catch (error) {
+                setDuplicateError(error instanceof TvProfileRequestError && error.status === 409
+                  ? "This profile changed elsewhere or its name conflicts with another profile. Reload before retrying."
+                  : "Profile storage is unavailable. Your profile was not duplicated.");
+              }
             }}>
               Duplicate
             </DesignButton>
@@ -374,6 +384,7 @@ export default function PageClient() {
           <DesignAlert variant="success" title="Profile Saved" description="The project profile and its optimistic-concurrency version were updated." />
         ) : null}
         {saveError != null ? <DesignAlert variant="error" title="Profile Was Not Saved" description={saveError} /> : null}
+        {duplicateError != null ? <DesignAlert variant="error" title="Profile Was Not Duplicated" description={duplicateError} /> : null}
 
         <div inert={createSavePending} aria-busy={createSavePending} className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
           <div className="space-y-4">
@@ -848,6 +859,7 @@ export default function PageClient() {
                 if (!draftChangedWhileSaving) setDraft(cloneProfile(nextDraft));
                 setSavedNoticeVisible(!draftChangedWhileSaving);
                 if (savedResource.id !== profileId) {
+                  setNeedConfirm(false);
                   window.location.assign(urlString`/projects/${projectId}/tv-mode/profiles/${savedResource.id}`);
                 } else if (creatingProfile) {
                   setCreateSavePending(false);
@@ -872,6 +884,7 @@ export default function PageClient() {
           profileName={resource.configuration.displayName}
           onConfirm={async () => {
             await deleteTvProfileOrThrow(adminApp, resource);
+            setNeedConfirm(false);
             window.location.assign(urlString`/projects/${projectId}/tv-mode`);
           }}
         />
